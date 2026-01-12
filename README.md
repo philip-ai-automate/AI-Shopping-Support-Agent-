@@ -17,11 +17,11 @@ Consumer electronics e-commerce stores face three recurring challenges:
 
 # Recap of Your 3 Recurring Challenges
 
-# Product Discovery & Recommendation # – helping customers find the right electronics
+## Product Discovery & Recommendation  – helping customers find the right electronics
 
-## Pre-Purchase Questions / Q&A # – answering specific product or policy questions
+## Pre-Purchase Questions / Q&A  – answering specific product or policy questions
 
-# Post-Purchase Support # – troubleshooting, order inquiries, returns, warranty
+## Post-Purchase Support  – troubleshooting, order inquiries, returns, warranty
 
 This project solves these problems by introducing a **Foundry-based AI agent** that:
 
