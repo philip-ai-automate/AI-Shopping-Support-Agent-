@@ -402,7 +402,7 @@
     </a>
 
     <!-- ── WhatsApp group ── -->
-    {% set _wa_group = request.endpoint in ('portal.whatsapp_connect', 'portal.whatsapp_inbox') %}
+    {% set _wa_group = request.endpoint in ('portal.whatsapp_connect', 'portal.whatsapp_inbox', 'portal.whatsapp_campaigns') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _wa_group %}open{% endif %}"
            onclick="sbToggle(this)">
@@ -419,6 +419,10 @@
         <a href="{{ url_for('portal.whatsapp_inbox') }}"
            class="{% if request.endpoint == 'portal.whatsapp_inbox' %}active{% endif %}">
           Agent Inbox
+        </a>
+        <a href="{{ url_for('portal.whatsapp_campaigns') }}"
+           class="{% if request.endpoint == 'portal.whatsapp_campaigns' %}active{% endif %}">
+          Campaigns
         </a>
       </div>
     </div>

@@ -122,6 +122,27 @@ def init_wa_tables():
               INDEX idx_customer (customer_phone)
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS wa_campaigns (
+              id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+              tenant_id       INT NOT NULL,
+              name            VARCHAR(128) NOT NULL,
+              campaign_type   ENUM('broadcast','cart_recovery') DEFAULT 'broadcast',
+              template_name   VARCHAR(128) NOT NULL,
+              language_code   VARCHAR(16) DEFAULT 'en',
+              status          ENUM('draft','scheduled','running','done','failed') DEFAULT 'draft',
+              scheduled_at    TIMESTAMP NULL,
+              completed_at    TIMESTAMP NULL,
+              total_count     INT DEFAULT 0,
+              sent_count      INT DEFAULT 0,
+              failed_count    INT DEFAULT 0,
+              recipients      MEDIUMTEXT,
+              created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              INDEX idx_tenant (tenant_id),
+              INDEX idx_status (status),
+              INDEX idx_scheduled (scheduled_at)
+            )
+        """)
         conn.commit()
         print("✅ WA Gateway tables ready")
     except Exception as e:

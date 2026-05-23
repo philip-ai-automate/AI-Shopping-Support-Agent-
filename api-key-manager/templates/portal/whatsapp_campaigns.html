@@ -1,0 +1,302 @@
+{% extends "portal/base.html" %}
+{% block title %}Campaigns — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Status badges ─────────────────────────────────────────── */
+  .badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;
+         border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.04em}
+  .badge-draft    {background:rgba(3,12,24,0.07);color:var(--muted)}
+  .badge-scheduled{background:rgba(247,144,9,0.12);color:#B45309}
+  .badge-running  {background:rgba(18,183,106,0.12);color:#047857}
+  .badge-done     {background:rgba(18,183,106,0.10);color:#065F46}
+  .badge-failed   {background:rgba(240,68,56,0.10);color:#B91C1C}
+  .badge-sent     {background:rgba(18,183,106,0.10);color:#065F46}
+  .badge-skipped  {background:rgba(3,12,24,0.07);color:var(--muted)}
+
+  /* ── Campaign table ────────────────────────────────────────── */
+  .camp-table{width:100%;border-collapse:collapse}
+  .camp-table th{font-size:11px;font-weight:700;color:var(--muted);
+                 text-transform:uppercase;letter-spacing:.06em;
+                 padding:8px 12px;text-align:left;border-bottom:1px solid var(--line)}
+  .camp-table td{padding:11px 12px;font-size:13px;border-bottom:1px solid var(--line);
+                 vertical-align:middle}
+  .camp-table tr:last-child td{border-bottom:none}
+  .camp-table tr:hover td{background:rgba(3,12,24,0.02)}
+
+  /* ── Progress bar ──────────────────────────────────────────── */
+  .prog-wrap{background:rgba(3,12,24,0.07);border-radius:99px;height:6px;
+             min-width:80px;overflow:hidden}
+  .prog-fill{height:6px;border-radius:99px;background:var(--good);transition:.3s}
+
+  /* ── Create modal ──────────────────────────────────────────── */
+  .modal-backdrop{display:none;position:fixed;inset:0;background:rgba(3,12,24,0.45);
+                  z-index:900;align-items:center;justify-content:center}
+  .modal-backdrop.open{display:flex}
+  .modal-box{background:#fff;border-radius:18px;padding:30px 28px;width:100%;
+             max-width:540px;box-shadow:var(--shadow);max-height:90vh;overflow-y:auto}
+  .modal-title{font-size:17px;font-weight:700;margin-bottom:20px}
+
+  .form-row{margin-bottom:14px}
+  .form-row label{display:block;font-size:12px;font-weight:600;
+                  color:var(--muted);margin-bottom:5px}
+  .form-row input,.form-row select,.form-row textarea{
+    width:100%;padding:9px 12px;border-radius:10px;font-size:14px;
+    border:1px solid rgba(3,12,24,0.18);font-family:inherit;
+    outline:none;transition:.15s}
+  .form-row input:focus,.form-row select:focus,.form-row textarea:focus{
+    border-color:rgba(3,12,24,0.35);box-shadow:var(--ring)}
+  .form-row textarea{resize:vertical;min-height:90px}
+
+  .send-opts{display:flex;gap:10px;margin-bottom:6px}
+  .send-opt{flex:1;padding:10px;border:1px solid var(--line);border-radius:10px;
+            cursor:pointer;text-align:center;font-size:13px;transition:.15s}
+  .send-opt:hover{background:rgba(3,12,24,0.03)}
+  .send-opt.selected{border-color:var(--ink);background:rgba(3,12,24,0.05)}
+  .send-opt strong{display:block;font-size:14px;margin-bottom:2px}
+  .send-opt small{color:var(--muted)}
+
+  #scheduleField{display:none}
+
+  /* ── Empty state ───────────────────────────────────────────── */
+  .empty-state{text-align:center;padding:48px 20px;color:var(--muted)}
+  .empty-icon{font-size:38px;opacity:.35;margin-bottom:12px}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="margin-bottom:20px">
+  <div>
+    <div class="section-title">Campaigns</div>
+    <p class="muted">Send WhatsApp template messages to your customers at scale.</p>
+  </div>
+  {% if connection %}
+  <button class="btn btn-primary" onclick="openModal()">+ New Campaign</button>
+  {% endif %}
+</div>
+
+{% if not connection %}
+<div class="card" style="text-align:center;padding:40px">
+  <div style="font-size:36px;margin-bottom:12px;opacity:.4">📵</div>
+  <div style="font-weight:700;margin-bottom:6px">WhatsApp not connected</div>
+  <p class="muted" style="margin-bottom:18px">Connect your WhatsApp account before sending campaigns.</p>
+  <a href="{{ url_for('portal.whatsapp_connect') }}" class="btn btn-primary">Connect WhatsApp</a>
+</div>
+{% else %}
+
+<!-- ── Campaigns list ──────────────────────────────────────────────────── -->
+<div class="card" style="margin-bottom:24px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+    <div style="font-weight:700">All Campaigns</div>
+    <span class="muted" style="font-size:12px">{{ campaigns|length }} total</span>
+  </div>
+
+  {% if not campaigns %}
+  <div class="empty-state">
+    <div class="empty-icon">📣</div>
+    <div>No campaigns yet — create your first one above.</div>
+  </div>
+  {% else %}
+  <div style="overflow-x:auto">
+    <table class="camp-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Template</th>
+          <th>Status</th>
+          <th>Recipients</th>
+          <th>Sent / Failed</th>
+          <th>Scheduled</th>
+          <th>Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in campaigns %}
+        <tr>
+          <td style="font-weight:600">{{ c.name }}</td>
+          <td><code style="font-size:12px">{{ c.template_name }}</code>
+              <span class="muted" style="font-size:11px">({{ c.language_code }})</span></td>
+          <td>
+            <span class="badge badge-{{ c.status }}">
+              {% if c.status == 'draft' %}Draft
+              {% elif c.status == 'scheduled' %}Scheduled
+              {% elif c.status == 'running' %}Running…
+              {% elif c.status == 'done' %}Done
+              {% elif c.status == 'failed' %}Failed
+              {% endif %}
+            </span>
+          </td>
+          <td>{{ c.total_count }}</td>
+          <td>
+            {% if c.status in ('done','running','failed') %}
+            <div style="display:flex;align-items:center;gap:8px">
+              <div class="prog-wrap">
+                <div class="prog-fill"
+                     style="width:{{ ((c.sent_count / c.total_count * 100)|int if c.total_count else 0) }}%"></div>
+              </div>
+              <span style="font-size:12px;white-space:nowrap">
+                {{ c.sent_count }} / <span style="color:var(--bad)">{{ c.failed_count }}</span>
+              </span>
+            </div>
+            {% else %}—{% endif %}
+          </td>
+          <td style="font-size:12px;color:var(--muted)">
+            {% if c.scheduled_at %}{{ c.scheduled_at.strftime('%d %b %Y %H:%M') }}{% else %}—{% endif %}
+          </td>
+          <td style="font-size:12px;color:var(--muted)">
+            {{ c.created_at.strftime('%d %b %Y') if c.created_at else '' }}
+          </td>
+          <td style="white-space:nowrap">
+            {% if c.status in ('draft','scheduled') %}
+            <form method="POST"
+                  action="{{ url_for('portal.whatsapp_campaigns_send', campaign_id=c.id) }}"
+                  style="display:inline"
+                  onsubmit="return confirm('Send this campaign now?')">
+              <button type="submit" class="btn btn-sm btn-primary">Send Now</button>
+            </form>
+            <form method="POST"
+                  action="{{ url_for('portal.whatsapp_campaigns_delete', campaign_id=c.id) }}"
+                  style="display:inline;margin-left:6px"
+                  onsubmit="return confirm('Delete this campaign?')">
+              <button type="submit" class="btn btn-sm"
+                      style="color:var(--bad);border-color:rgba(240,68,56,0.25)">Delete</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── Proactive / cart recovery log ──────────────────────────────────── -->
+<div class="card">
+  <div style="font-weight:700;margin-bottom:16px">Proactive Message Log
+    <span class="muted" style="font-size:12px;font-weight:400;margin-left:8px">
+      Cart recovery &amp; order updates sent by the AI
+    </span>
+  </div>
+
+  {% if not proactive_log %}
+  <div class="empty-state">
+    <div class="empty-icon">🔔</div>
+    <div>No proactive messages sent yet.<br>
+         <span style="font-size:13px">Cart recovery and order update messages will appear here once triggered by your WooCommerce store.</span>
+    </div>
+  </div>
+  {% else %}
+  <div style="overflow-x:auto">
+    <table class="camp-table">
+      <thead>
+        <tr>
+          <th>Customer</th>
+          <th>Event</th>
+          <th>Template</th>
+          <th>Status</th>
+          <th>Notes</th>
+          <th>Sent</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in proactive_log %}
+        <tr>
+          <td style="font-size:13px">+{{ p.customer_phone }}</td>
+          <td><span class="badge badge-draft">{{ p.event_type }}</span></td>
+          <td><code style="font-size:12px">{{ p.template_name or '—' }}</code></td>
+          <td>
+            <span class="badge badge-{{ p.status }}">{{ p.status|capitalize }}</span>
+          </td>
+          <td style="font-size:12px;color:var(--muted);max-width:200px;
+                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            {{ p.notes or '—' }}</td>
+          <td style="font-size:12px;color:var(--muted)">
+            {{ p.created_at.strftime('%d %b %H:%M') if p.created_at else '' }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── New Campaign modal ──────────────────────────────────────────────── -->
+<div class="modal-backdrop" id="campModal" onclick="closeModalOutside(event)">
+  <div class="modal-box">
+    <div class="modal-title">New Campaign</div>
+
+    <form method="POST" action="{{ url_for('portal.whatsapp_campaigns_create') }}"
+          onsubmit="prepareForm(this)">
+
+      <div class="form-row">
+        <label>Campaign Name</label>
+        <input type="text" name="name" placeholder="e.g. May Flash Sale" required>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-row">
+          <label>Template Name <span class="muted">(must exist in Meta)</span></label>
+          <input type="text" name="template_name" placeholder="hello_world" required>
+        </div>
+        <div class="form-row">
+          <label>Language Code</label>
+          <input type="text" name="language_code" value="en" placeholder="en">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label>Recipients <span class="muted">(one phone number per line, with country code)</span></label>
+        <textarea name="recipients" placeholder="2348012345678&#10;2347098765432&#10;447911123456" required></textarea>
+      </div>
+
+      <div class="form-row">
+        <label>When to send</label>
+        <div class="send-opts">
+          <div class="send-opt selected" id="optNow" onclick="selectOpt('now')">
+            <strong>Send Now</strong>
+            <small>Sends immediately</small>
+          </div>
+          <div class="send-opt" id="optSchedule" onclick="selectOpt('schedule')">
+            <strong>Schedule</strong>
+            <small>Pick a date &amp; time</small>
+          </div>
+        </div>
+        <div id="scheduleField">
+          <input type="datetime-local" name="scheduled_at" id="scheduledAt">
+        </div>
+        <input type="hidden" name="send_now" id="sendNowHidden" value="1">
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:6px">
+        <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create Campaign</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openModal()  { document.getElementById('campModal').classList.add('open') }
+function closeModal() { document.getElementById('campModal').classList.remove('open') }
+function closeModalOutside(e) { if(e.target===document.getElementById('campModal')) closeModal() }
+
+function selectOpt(mode) {
+  document.getElementById('optNow').classList.toggle('selected', mode==='now')
+  document.getElementById('optSchedule').classList.toggle('selected', mode==='schedule')
+  document.getElementById('scheduleField').style.display = mode==='schedule' ? 'block' : 'none'
+  document.getElementById('sendNowHidden').value = mode==='now' ? '1' : '0'
+  if(mode==='schedule') document.getElementById('scheduledAt').required = true
+  else document.getElementById('scheduledAt').required = false
+}
+
+function prepareForm(form) {
+  // count recipients live
+  return true
+}
+</script>
+
+{% endif %}
+{% endblock %}

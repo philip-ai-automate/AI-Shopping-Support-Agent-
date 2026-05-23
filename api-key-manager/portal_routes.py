@@ -5664,3 +5664,266 @@ def whatsapp_inbox_resolve(session_id: str):
         flash("Could not resolve conversation. Please try again.", "danger")
 
     return redirect(url_for("portal.whatsapp_inbox"))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WHATSAPP CAMPAIGNS
+# ══════════════════════════════════════════════════════════════════════════════
+
+import threading as _threading
+import time as _time
+
+
+def _send_campaign_now(campaign_id: int, tenant_id: int):
+    """Run a campaign immediately in a background thread."""
+    try:
+        import requests as _req
+        conn = get_db_connection()
+        cur  = conn.cursor(dictionary=True, buffered=True)
+
+        cur.execute(
+            "UPDATE wa_campaigns SET status='running', completed_at=NULL "
+            "WHERE id=%s AND tenant_id=%s AND status IN ('draft','scheduled')",
+            (campaign_id, tenant_id),
+        )
+        conn.commit()
+        if cur.rowcount == 0:
+            cur.close(); conn.close()
+            return
+
+        cur.execute(
+            "SELECT c.*, t.phone_number_id, t.access_token "
+            "FROM wa_campaigns c "
+            "JOIN wa_tenants t ON t.tenant_id=c.tenant_id AND t.active=TRUE "
+            "WHERE c.id=%s",
+            (campaign_id,),
+        )
+        row = cur.fetchone()
+        cur.close(); conn.close()
+        if not row:
+            return
+
+        phones = [p.strip() for p in (row["recipients"] or "").splitlines() if p.strip()]
+        sent = failed = 0
+        graph = os.getenv("META_GRAPH_URL", "https://graph.facebook.com/v19.0")
+        for phone in phones:
+            try:
+                resp = _req.post(
+                    f"{graph}/{row['phone_number_id']}/messages",
+                    headers={"Authorization": f"Bearer {row['access_token']}",
+                             "Content-Type": "application/json"},
+                    json={
+                        "messaging_product": "whatsapp",
+                        "to": phone,
+                        "type": "template",
+                        "template": {
+                            "name": row["template_name"],
+                            "language": {"code": row["language_code"]},
+                        },
+                    },
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    sent += 1
+                else:
+                    failed += 1
+            except Exception:
+                failed += 1
+
+        conn2 = get_db_connection()
+        cur2  = conn2.cursor(buffered=True)
+        cur2.execute(
+            "UPDATE wa_campaigns SET status='done', completed_at=UTC_TIMESTAMP(), "
+            "sent_count=%s, failed_count=%s WHERE id=%s",
+            (sent, failed, campaign_id),
+        )
+        conn2.commit()
+        cur2.close(); conn2.close()
+    except Exception as e:
+        print(f"⚠️ _send_campaign_now error (campaign {campaign_id}):", e)
+        try:
+            conn3 = get_db_connection()
+            cur3  = conn3.cursor(buffered=True)
+            cur3.execute("UPDATE wa_campaigns SET status='failed' WHERE id=%s", (campaign_id,))
+            conn3.commit()
+            cur3.close(); conn3.close()
+        except Exception:
+            pass
+
+
+def _campaign_scheduler_loop():
+    """Background thread: fire scheduled campaigns when their time arrives."""
+    while True:
+        try:
+            conn = get_db_connection()
+            if conn:
+                cur = conn.cursor(dictionary=True, buffered=True)
+                cur.execute(
+                    "SELECT id, tenant_id FROM wa_campaigns "
+                    "WHERE status='scheduled' AND scheduled_at <= UTC_TIMESTAMP()"
+                )
+                due = cur.fetchall()
+                cur.close(); conn.close()
+                for c in due:
+                    t = _threading.Thread(
+                        target=_send_campaign_now,
+                        args=(c["id"], c["tenant_id"]),
+                        daemon=True,
+                    )
+                    t.start()
+        except Exception as e:
+            print("⚠️ campaign scheduler error:", e)
+        _time.sleep(60)
+
+
+_sched_started = getattr(_threading, "_phixtra_campaign_sched_started", False)
+if not _sched_started:
+    _threading._phixtra_campaign_sched_started = True  # type: ignore[attr-defined]
+    _sched_thread = _threading.Thread(target=_campaign_scheduler_loop, daemon=True)
+    _sched_thread.start()
+
+
+@portal_bp.route("/whatsapp/campaigns")
+def whatsapp_campaigns():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    connection = _get_wa_connection(tenant_id)
+
+    campaigns = []
+    proactive_log = []
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur.execute(
+            "SELECT * FROM wa_campaigns WHERE tenant_id=%s ORDER BY created_at DESC LIMIT 100",
+            (tenant_id,),
+        )
+        campaigns = cur.fetchall()
+        cur.execute(
+            "SELECT * FROM wa_proactive_log WHERE tenant_id=%s ORDER BY created_at DESC LIMIT 50",
+            (tenant_id,),
+        )
+        proactive_log = cur.fetchall()
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ whatsapp_campaigns fetch error:", e)
+
+    return render_template(
+        "portal/whatsapp_campaigns.html",
+        connection=connection,
+        campaigns=campaigns,
+        proactive_log=proactive_log,
+    )
+
+
+@portal_bp.route("/whatsapp/campaigns/create", methods=["POST"])
+def whatsapp_campaigns_create():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    name          = (request.form.get("name") or "").strip()
+    template_name = (request.form.get("template_name") or "").strip()
+    language_code = (request.form.get("language_code") or "en").strip()
+    recipients    = (request.form.get("recipients") or "").strip()
+    schedule_str  = (request.form.get("scheduled_at") or "").strip()
+    send_now      = request.form.get("send_now") == "1"
+
+    if not name or not template_name or not recipients:
+        flash("Campaign name, template name, and at least one recipient are required.", "danger")
+        return redirect(url_for("portal.whatsapp_campaigns"))
+
+    phones = [p.strip() for p in recipients.splitlines() if p.strip()]
+    if not phones:
+        flash("No valid phone numbers found.", "danger")
+        return redirect(url_for("portal.whatsapp_campaigns"))
+
+    scheduled_at = None
+    status = "draft"
+    if schedule_str and not send_now:
+        try:
+            scheduled_at = datetime.strptime(schedule_str, "%Y-%m-%dT%H:%M")
+            status = "scheduled"
+        except ValueError:
+            flash("Invalid schedule date/time format.", "danger")
+            return redirect(url_for("portal.whatsapp_campaigns"))
+    elif send_now:
+        status = "draft"
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(buffered=True)
+        cur.execute(
+            """
+            INSERT INTO wa_campaigns
+              (tenant_id, name, template_name, language_code, status,
+               scheduled_at, total_count, recipients)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (tenant_id, name, template_name, language_code, status,
+             scheduled_at, len(phones), "\n".join(phones)),
+        )
+        conn.commit()
+        campaign_id = cur.lastrowid
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ whatsapp_campaigns_create error:", e)
+        flash("Could not save campaign. Please try again.", "danger")
+        return redirect(url_for("portal.whatsapp_campaigns"))
+
+    if send_now:
+        t = _threading.Thread(
+            target=_send_campaign_now, args=(campaign_id, tenant_id), daemon=True
+        )
+        t.start()
+        flash(f"Campaign '{name}' started — sending to {len(phones)} recipients.", "success")
+    else:
+        when = scheduled_at.strftime('%d %b %Y %H:%M') if scheduled_at else 'draft'
+        flash(f"Campaign '{name}' saved ({when}).", "success")
+
+    return redirect(url_for("portal.whatsapp_campaigns"))
+
+
+@portal_bp.route("/whatsapp/campaigns/<int:campaign_id>/send", methods=["POST"])
+def whatsapp_campaigns_send(campaign_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    t = _threading.Thread(
+        target=_send_campaign_now, args=(campaign_id, tenant_id), daemon=True
+    )
+    t.start()
+    flash("Campaign sending started.", "success")
+    return redirect(url_for("portal.whatsapp_campaigns"))
+
+
+@portal_bp.route("/whatsapp/campaigns/<int:campaign_id>/delete", methods=["POST"])
+def whatsapp_campaigns_delete(campaign_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(buffered=True)
+        cur.execute(
+            "DELETE FROM wa_campaigns WHERE id=%s AND tenant_id=%s AND status IN ('draft','scheduled')",
+            (campaign_id, tenant_id),
+        )
+        conn.commit()
+        if cur.rowcount:
+            flash("Campaign deleted.", "success")
+        else:
+            flash("Cannot delete a running or completed campaign.", "warning")
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ whatsapp_campaigns_delete error:", e)
+        flash("Delete failed.", "danger")
+
+    return redirect(url_for("portal.whatsapp_campaigns"))
