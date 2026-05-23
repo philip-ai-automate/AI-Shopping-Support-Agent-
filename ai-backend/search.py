@@ -351,6 +351,10 @@ def search_related_products(
         try:
             mn = float(price_min_val) if price_min_val is not None else None
             mx = float(price_max_val) if price_max_val is not None else None
+            if mn is not None and mn <= 0:
+                mn = None
+            if mx is not None and mx <= 0:
+                mx = None
             if mn is not None and mx is not None and abs(mx - mn) > 0.01:
                 return f"£{mn:,.2f} – £{mx:,.2f}"
             elif mn is not None:

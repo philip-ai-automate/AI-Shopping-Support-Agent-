@@ -2,13 +2,14 @@
 
 # ===== Phixtra Safe Recommendation Guard =====
 def _validate_products(products):
-    """Allow only real catalog products with URL and product_id."""
+    """Allow only real catalog products with URL, product_id, and a non-zero price."""
     safe = []
     for p in products:
         url = p.get("url")
         product_id = p.get("product_id") or p.get("id")
         name = p.get("name")
-        if url and product_id and name:
+        price = p.get("price") or ""
+        if url and product_id and name and price:
             safe.append(p)
     return safe
 # ===== End Guard =====
@@ -466,6 +467,10 @@ def chat(req: ChatRequest):
                     try:
                         mn = float(price_min) if price_min is not None else None
                         mx = float(price_max) if price_max is not None else None
+                        if mn is not None and mn <= 0:
+                            mn = None
+                        if mx is not None and mx <= 0:
+                            mx = None
                         if mn is not None and mx is not None and abs(mx - mn) > 0.01:
                             return f"£{mn:,.2f} – £{mx:,.2f}"
                         elif mn is not None:
