@@ -448,11 +448,35 @@
     </p>
   </div>
 
-  <ol style="color:var(--muted);font-size:13px;line-height:2.2;padding-left:20px">
-    <li>Go to <strong>Meta App Dashboard → WhatsApp → Configuration</strong></li>
-    <li>Click <strong>Edit</strong> next to Webhook</li>
-    <li>Paste the <strong>Callback URL</strong> and <strong>Verify Token</strong> from above</li>
-    <li>Click <strong>Verify and Save</strong>, then subscribe to the <code>messages</code> field</li>
+  <ol style="font-size:13px;line-height:1.6;padding-left:20px;display:flex;flex-direction:column;gap:12px">
+    <li>
+      Open the
+      <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener"
+         style="color:var(--ink);font-weight:600">Meta App Dashboard ↗</a>
+      and select your app.
+    </li>
+    <li>
+      In the left sidebar go to <strong>WhatsApp → Configuration</strong>.<br>
+      <span class="muted" style="font-size:12px">Direct link (replace <code>YOUR_APP_ID</code>):
+        <a href="https://developers.facebook.com/apps/YOUR_APP_ID/whatsapp-business/wa-dev-console/"
+           target="_blank" rel="noopener" style="color:var(--ink)">
+          developers.facebook.com/apps/YOUR_APP_ID/whatsapp-business/wa-dev-console/ ↗
+        </a>
+      </span>
+    </li>
+    <li>
+      Scroll down to the <strong>Webhook</strong> section and click <strong>Edit</strong>.
+    </li>
+    <li>
+      In the <strong>Callback URL</strong> field paste the URL shown above.<br>
+      In the <strong>Verify Token</strong> field paste the token shown above.<br>
+      Click <strong>Verify and Save</strong> — Meta will call your webhook immediately to confirm it works.
+    </li>
+    <li>
+      After saving, click <strong>Manage</strong> next to Webhook Fields, find <strong>messages</strong>
+      and toggle it to <strong>Subscribed</strong>.
+      <br><span class="muted" style="font-size:12px">Without this, Meta will not forward incoming customer messages to PhiXtra.</span>
+    </li>
   </ol>
 </div>
 
