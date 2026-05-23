@@ -402,7 +402,7 @@
     </a>
 
     <!-- ── WhatsApp group ── -->
-    {% set _wa_group = request.endpoint in ('portal.whatsapp_connect', 'portal.whatsapp_inbox', 'portal.whatsapp_campaigns') %}
+    {% set _wa_group = request.endpoint in ('portal.whatsapp_connect', 'portal.whatsapp_inbox', 'portal.whatsapp_campaigns', 'portal.whatsapp_templates') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _wa_group %}open{% endif %}"
            onclick="sbToggle(this)">
@@ -414,7 +414,11 @@
       <div class="sb-sub {% if _wa_group %}open{% endif %}">
         <a href="{{ url_for('portal.whatsapp_connect') }}"
            class="{% if request.endpoint == 'portal.whatsapp_connect' %}active{% endif %}">
-          Connect &amp; Templates
+          Connect
+        </a>
+        <a href="{{ url_for('portal.whatsapp_templates') }}"
+           class="{% if request.endpoint == 'portal.whatsapp_templates' %}active{% endif %}">
+          Message Templates
         </a>
         <a href="{{ url_for('portal.whatsapp_inbox') }}"
            class="{% if request.endpoint == 'portal.whatsapp_inbox' %}active{% endif %}">

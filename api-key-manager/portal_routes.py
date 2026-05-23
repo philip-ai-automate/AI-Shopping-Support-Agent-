@@ -5507,6 +5507,21 @@ def whatsapp_check_token():
         return jsonify({"valid": False, "error": str(e)})
 
 
+@portal_bp.route("/whatsapp/templates", methods=["GET"])
+def whatsapp_templates():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    connection = _get_wa_connection(tenant_id)
+    templates  = _get_wa_templates(tenant_id)
+    return render_template(
+        "portal/whatsapp_templates.html",
+        connection=connection,
+        templates=templates,
+    )
+
+
 @portal_bp.route("/whatsapp/templates", methods=["POST"])
 def whatsapp_save_templates():
     r = _require_login()
@@ -5537,7 +5552,7 @@ def whatsapp_save_templates():
             print(f"⚠️ whatsapp_save_templates ({ttype}) error:", e)
 
     flash("Template settings saved. ✅", "success")
-    return redirect(url_for("portal.whatsapp_connect"))
+    return redirect(url_for("portal.whatsapp_templates"))
 
 
 @portal_bp.route("/whatsapp/inbox")

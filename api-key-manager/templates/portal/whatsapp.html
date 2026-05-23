@@ -1,5 +1,5 @@
 {% extends "portal/base.html" %}
-{% block title %}WhatsApp — PhiXtra Portal{% endblock %}
+{% block title %}WhatsApp Connect — PhiXtra Portal{% endblock %}
 
 {% block head %}
 {% if embedded_enabled %}
@@ -441,65 +441,5 @@
   </ol>
 </div>
 {% endif %}
-
-<!-- ── Template Management ───────────────────────────────────────────────── -->
-<div class="card">
-  <div class="card-title">Message Templates</div>
-  <p class="muted" style="margin-bottom:18px;font-size:13px">
-    Templates must be approved in <strong>Meta Business Manager → WhatsApp → Message Templates</strong>
-    before PhiXtra can send them. Enter the approved template names below.
-  </p>
-
-  <form method="POST" action="{{ url_for('portal.whatsapp_save_templates') }}">
-
-    <div style="border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px">
-      <div style="font-weight:700;font-size:14px;margin-bottom:4px">Cart Abandonment Template</div>
-      <p class="muted" style="font-size:12px;margin-bottom:12px">
-        Sent when a customer abandons their cart.
-        Parameters: <code>&#123;&#123;1&#125;&#125;</code> = cart summary,
-        <code>&#123;&#123;2&#125;&#125;</code> = cart URL
-      </p>
-      <div class="form-row">
-        <div class="form-group" style="margin:0">
-          <label>Template Name</label>
-          <input type="text" name="template_cart_recovery"
-                 value="{{ templates.cart_recovery.template_name if 'cart_recovery' in templates else '' }}"
-                 placeholder="e.g. phixtra_cart_recovery">
-        </div>
-        <div class="form-group" style="margin:0">
-          <label>Language Code</label>
-          <input type="text" name="lang_cart_recovery"
-                 value="{{ templates.cart_recovery.language_code if 'cart_recovery' in templates else 'en' }}"
-                 placeholder="en">
-        </div>
-      </div>
-    </div>
-
-    <div style="border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:18px">
-      <div style="font-weight:700;font-size:14px;margin-bottom:4px">Order Status Template</div>
-      <p class="muted" style="font-size:12px;margin-bottom:12px">
-        Sent when an order status changes.
-        Parameters: <code>&#123;&#123;1&#125;&#125;</code> = order ID,
-        <code>&#123;&#123;2&#125;&#125;</code> = order status
-      </p>
-      <div class="form-row">
-        <div class="form-group" style="margin:0">
-          <label>Template Name</label>
-          <input type="text" name="template_order_update"
-                 value="{{ templates.order_update.template_name if 'order_update' in templates else '' }}"
-                 placeholder="e.g. phixtra_order_update">
-        </div>
-        <div class="form-group" style="margin:0">
-          <label>Language Code</label>
-          <input type="text" name="lang_order_update"
-                 value="{{ templates.order_update.language_code if 'order_update' in templates else 'en' }}"
-                 placeholder="en">
-        </div>
-      </div>
-    </div>
-
-    <button type="submit" class="btn btn-primary">Save Templates</button>
-  </form>
-</div>
 
 {% endblock %}
