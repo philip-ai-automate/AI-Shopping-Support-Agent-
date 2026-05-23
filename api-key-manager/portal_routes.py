@@ -5140,6 +5140,7 @@ def whatsapp_save_connection():
     access_token    = (request.form.get("access_token")    or "").strip()
     waba_id         = (request.form.get("waba_id")         or "").strip()
     app_secret      = (request.form.get("app_secret")      or "").strip()
+    phixtra_api_key = (request.form.get("phixtra_api_key") or "").strip()
     # Always use the platform-wide verify token — tenants don't manage this
     verify_token    = os.getenv("WEBHOOK_VERIFY_TOKEN", "")
 
@@ -5147,21 +5148,12 @@ def whatsapp_save_connection():
         flash("Phone Number ID and Access Token are required.", "danger")
         return redirect(url_for("portal.whatsapp_connect"))
 
-    # Fetch the tenant's active API key to store in wa_tenants
-    conn = get_db_connection()
-    cur  = conn.cursor(dictionary=True, buffered=True)
-    cur.execute(
-        "SELECT api_key_plain FROM api_keys WHERE tenant_id=%s AND is_active=1 LIMIT 1",
-        (tenant_id,)
-    )
-    key_row = cur.fetchone()
-    cur.close(); conn.close()
-
-    if not key_row:
-        flash("No active PhiXtra API key found. Contact support.", "danger")
+    # Require API key for new connections; allow blank on updates to keep existing
+    if not phixtra_api_key and not connection:
+        flash("PhiXtra API Key is required.", "danger")
         return redirect(url_for("portal.whatsapp_connect"))
 
-    api_key = key_row["api_key_plain"]
+    api_key = phixtra_api_key
 
     try:
         conn = get_db_connection()
@@ -5180,8 +5172,9 @@ def whatsapp_save_connection():
               active          = TRUE,
               signup_method   = 'manual',
               token_expires_at = NULL,
-              app_secret      = IF(VALUES(app_secret) != '', VALUES(app_secret), app_secret)
-        """, (tenant_id, phone_number_id, access_token, waba_id or None, verify_token, api_key, app_secret or None))
+              app_secret       = IF(VALUES(app_secret) IS NOT NULL, VALUES(app_secret), app_secret),
+              phixtra_api_key  = IF(VALUES(phixtra_api_key) != '', VALUES(phixtra_api_key), phixtra_api_key)
+        """, (tenant_id, phone_number_id, access_token, waba_id or None, verify_token, api_key or '', app_secret or None))
         conn.commit()
         cur.close(); conn.close()
         insert_audit_log(action="wa_connected", tenant_id=tenant_id,

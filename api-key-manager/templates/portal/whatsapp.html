@@ -373,6 +373,19 @@
     </p>
 
     <form method="POST" action="{{ url_for('portal.whatsapp_save_connection') }}">
+
+      <div class="form-group">
+        <label>PhiXtra API Key <span style="color:var(--bad)">*</span></label>
+        <input type="password" name="phixtra_api_key"
+               placeholder="{{ '•••••••• (leave blank to keep current)' if connection else 'Paste your PhiXtra API key' }}"
+               {{ 'required' if not connection else '' }}>
+        <p class="muted" style="margin-top:4px;font-size:12px">
+          The same API key you use for the WooCommerce plugin. Found in
+          <a href="{{ url_for('portal.api_keys') }}" style="color:var(--ink)">API Keys</a>
+          in this portal. This lets the WhatsApp gateway bill usage to your account.
+        </p>
+      </div>
+
       <div class="form-row" style="margin-bottom:14px">
         <div class="form-group" style="margin:0">
           <label>Phone Number ID <span style="color:var(--bad)">*</span></label>
