@@ -5095,6 +5095,14 @@ def whatsapp_connect():
     meta_config_id = os.getenv("META_CONFIG_ID", "")
     embedded_enabled = bool(meta_app_id and meta_config_id)
 
+    webhook_url = os.getenv("META_WEBHOOK_URL", "")
+
+    # Pre-generate a verify token for new connections so the user has something to copy
+    suggested_verify_token = (
+        connection["verify_token"] if connection
+        else secrets.token_hex(16)
+    )
+
     # Token expiry warning state
     token_expiry_status = None  # None | 'ok' | 'expiring' | 'expired'
     if connection and connection.get("token_expires_at"):
@@ -5117,7 +5125,9 @@ def whatsapp_connect():
                            embedded_enabled=embedded_enabled,
                            meta_app_id=meta_app_id,
                            meta_config_id=meta_config_id,
-                           token_expiry_status=token_expiry_status)
+                           token_expiry_status=token_expiry_status,
+                           webhook_url=webhook_url,
+                           suggested_verify_token=suggested_verify_token)
 
 
 @portal_bp.route("/whatsapp/connect", methods=["POST"])

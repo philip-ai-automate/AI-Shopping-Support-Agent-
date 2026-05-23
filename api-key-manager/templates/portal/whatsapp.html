@@ -404,10 +404,10 @@
       <div class="form-group">
         <label>Webhook Verify Token <span style="color:var(--bad)">*</span></label>
         <input type="text" name="verify_token"
-               value="{{ connection.verify_token if connection else '' }}"
-               placeholder="Any secret string you choose" required>
+               value="{{ suggested_verify_token }}"
+               placeholder="Auto-generated — copy this to Meta" required>
         <p class="muted" style="margin-top:4px;font-size:12px">
-          Enter the same string when registering the webhook in Meta App Dashboard.
+          Pre-filled above. Copy this exact value into Meta's Webhook Verify Token field.
         </p>
       </div>
 
@@ -424,22 +424,56 @@
 {% endif %}
 
 <!-- ── Webhook Setup Instructions ───────────────────────────────────────── -->
-{% if not embedded_enabled or not connection %}
 <div class="card" style="margin-bottom:20px">
   <div class="card-title">Webhook Setup</div>
-  <p class="muted" style="margin-bottom:14px;font-size:13px">
-    Register the PhiXtra webhook in your Meta App Dashboard so Meta can deliver messages to PhiXtra.
+  <p class="muted" style="margin-bottom:16px;font-size:13px">
+    Paste these two values into <strong>Meta App Dashboard → WhatsApp → Configuration → Webhook</strong>.
   </p>
-  <ol style="color:var(--muted);font-size:13px;line-height:2.1;padding-left:20px">
+
+  <div style="margin-bottom:14px">
+    <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:5px">Callback URL</div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <code id="webhookUrlBox"
+            style="flex:1;background:rgba(3,12,24,0.04);border:1px solid var(--line);
+                   border-radius:10px;padding:9px 13px;font-size:13px;word-break:break-all">
+        {{ webhook_url or 'https://whatsapp.profitbuyz.com/meta-webhook' }}
+      </code>
+      <button type="button" class="btn btn-sm" onclick="copyText('webhookUrlBox', this)">Copy</button>
+    </div>
+  </div>
+
+  <div style="margin-bottom:18px">
+    <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:5px">Verify Token</div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <code id="verifyTokenBox"
+            style="flex:1;background:rgba(3,12,24,0.04);border:1px solid var(--line);
+                   border-radius:10px;padding:9px 13px;font-size:13px;word-break:break-all">
+        {{ suggested_verify_token }}
+      </code>
+      <button type="button" class="btn btn-sm" onclick="copyText('verifyTokenBox', this)">Copy</button>
+    </div>
+    <p class="muted" style="font-size:12px;margin-top:6px">
+      This token is pre-filled in the form below. Copy it here, then paste it into Meta's Webhook Verify Token field.
+    </p>
+  </div>
+
+  <ol style="color:var(--muted);font-size:13px;line-height:2.2;padding-left:20px">
     <li>Go to <strong>Meta App Dashboard → WhatsApp → Configuration</strong></li>
     <li>Click <strong>Edit</strong> next to Webhook</li>
-    <li>Set <strong>Callback URL</strong> to:
-      <div class="code-box" style="margin:6px 0">https://your-gateway-domain.com/meta-webhook</div>
-    </li>
-    <li>Set <strong>Verify Token</strong> to the same value entered above</li>
+    <li>Paste the <strong>Callback URL</strong> and <strong>Verify Token</strong> from above</li>
     <li>Click <strong>Verify and Save</strong>, then subscribe to the <code>messages</code> field</li>
   </ol>
 </div>
-{% endif %}
+
+<script>
+function copyText(id, btn) {
+  var text = document.getElementById(id).textContent.trim();
+  navigator.clipboard.writeText(text).then(function() {
+    var orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(function() { btn.textContent = orig; }, 1800);
+  });
+}
+</script>
 
 {% endblock %}
