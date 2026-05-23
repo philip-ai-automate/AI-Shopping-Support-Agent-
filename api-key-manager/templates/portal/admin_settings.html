@@ -1,0 +1,108 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Admin Settings — PhiXtra{% endblock %}
+{% block content %}
+
+<div style="max-width:520px">
+  <h1 style="font-size:22px;font-weight:800;margin-bottom:6px">Admin Settings</h1>
+  <p class="muted" style="margin-bottom:28px">Manage your admin account security.</p>
+
+  <!-- ══ Trial Default Duration ══ -->
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">⏱️ Default Trial Duration</div>
+    <p class="muted" style="font-size:13px;margin-bottom:18px">
+      Set how many days new trial accounts last. The current default is
+      <strong>{{ trial_default_days }} day{{ 's' if trial_default_days != 1 else '' }}</strong>.
+      This applies to all new sign-ups from this point forward.
+      Existing trials are not affected.
+    </p>
+    <form method="POST" action="{{ url_for('portal_admin.admin_save_trial_days') }}"
+          onsubmit="return confirm('Update the default trial duration to ' + document.getElementById('trialDaysInput').value + ' days?')">
+      <div class="form-group">
+        <label>Trial duration (days) <span style="font-size:11px;color:var(--muted)">(1 – 365)</span></label>
+        <input type="number" id="trialDaysInput" name="trial_default_days"
+               value="{{ trial_default_days }}" min="1" max="365" required
+               style="width:120px"/>
+      </div>
+      <button type="submit" class="btn btn-primary">Save Duration</button>
+    </form>
+  </div>
+
+  <!-- ══ Change Password ══ -->
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">🔒 Change Admin Password</div>
+    <p class="muted" style="font-size:13px;margin-bottom:18px">
+      Logged in as <strong>{{ username }}</strong>. Use a strong, unique password.
+    </p>
+
+    <form method="POST" action="{{ url_for('portal_admin.admin_change_password') }}"
+          onsubmit="return validateAdminPw()">
+
+      <div class="form-group">
+        <label>Current Password *</label>
+        <input type="password" name="current_password" id="curPw"
+               required autocomplete="current-password"/>
+      </div>
+
+      <div class="form-group">
+        <label>New Password * <span style="font-size:11px;color:var(--muted)">(min 8 characters)</span></label>
+        <input type="password" name="new_password" id="newPw"
+               required minlength="8" autocomplete="new-password"
+               oninput="adminStrength(this.value)"/>
+        <div id="adm-strength" style="height:5px;border-radius:999px;background:#eee;margin:6px 0 3px;overflow:hidden">
+          <div id="adm-strength-bar" style="height:100%;border-radius:999px;width:0;transition:.3s"></div>
+        </div>
+        <p id="adm-strength-label" style="font-size:12px;color:var(--muted);margin:0"></p>
+      </div>
+
+      <div class="form-group">
+        <label>Confirm New Password *</label>
+        <input type="password" name="confirm_password" id="conPw"
+               required autocomplete="new-password"/>
+        <p id="adm-match" style="font-size:12px;margin-top:4px;color:var(--muted)"></p>
+      </div>
+
+      <button type="submit" class="btn btn-primary">Change Password</button>
+    </form>
+  </div>
+
+  <!-- ── Info ── -->
+  <div style="background:rgba(3,12,24,.04);border:1px solid var(--line);border-radius:12px;padding:14px 16px;font-size:13px;color:var(--muted)">
+    <strong style="color:var(--txt)">Security tip</strong><br/>
+    Use a password with at least 12 characters, mixing uppercase, lowercase, numbers and symbols.
+    Never reuse passwords across different services.
+  </div>
+</div>
+
+<script>
+function adminStrength(pw) {
+  var bar = document.getElementById('adm-strength-bar');
+  var lbl = document.getElementById('adm-strength-label');
+  if (!pw) { bar.style.width='0'; lbl.textContent=''; return; }
+  var s = 0;
+  if (pw.length >= 8)  s++;
+  if (pw.length >= 12) s++;
+  if (/[A-Z]/.test(pw)) s++;
+  if (/[0-9]/.test(pw)) s++;
+  if (/[^A-Za-z0-9]/.test(pw)) s++;
+  var lvl = [{w:'15%',c:'#F04438',t:'Very weak'},{w:'30%',c:'#F79009',t:'Weak'},
+             {w:'55%',c:'#F79009',t:'Fair'},{w:'75%',c:'#12B76A',t:'Strong'},
+             {w:'100%',c:'#12B76A',t:'Very strong'}][Math.min(s,4)];
+  bar.style.width=lvl.w; bar.style.background=lvl.c;
+  lbl.textContent=lvl.t; lbl.style.color=lvl.c;
+}
+document.getElementById('conPw').addEventListener('input', function() {
+  var m = document.getElementById('adm-match');
+  if (this.value && this.value !== document.getElementById('newPw').value) {
+    m.textContent='⚠️ Passwords do not match'; m.style.color='#F04438';
+  } else if (this.value) {
+    m.textContent='✅ Passwords match'; m.style.color='#12B76A';
+  } else { m.textContent=''; }
+});
+function validateAdminPw() {
+  if (document.getElementById('newPw').value !== document.getElementById('conPw').value) {
+    alert('New passwords do not match.'); return false;
+  }
+  return true;
+}
+</script>
+{% endblock %}

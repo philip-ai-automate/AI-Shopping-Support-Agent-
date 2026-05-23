@@ -1,0 +1,1209 @@
+{% extends "portal/base.html" %}
+{% block title %}Cart Revenue Recovery — PhiXtra Portal{% endblock %}
+
+{# ── Extra styles (scoped to this page only) ── #}
+{% block head %}
+<style>
+  /* ── Period tabs ── */
+  .period-tabs { display:flex; gap:4px; }
+  .period-tab {
+    padding:7px 16px; border-radius:10px; border:1px solid var(--line);
+    background:#fff; color:var(--muted); font-size:13px; font-weight:600;
+    text-decoration:none; transition:.15s;
+  }
+  .period-tab:hover { color:var(--txt); background:rgba(3,12,24,.04); text-decoration:none; }
+  .period-tab.active { background:var(--ink); color:#fff; border-color:var(--ink); }
+
+  /* ── KPI card accent bar ── */
+  .kpi-accent { height:3px; border-radius:3px 3px 0 0; margin:-22px -22px 18px; }
+
+  /* ── Recovery rate compare badge ── */
+  .compare-note {
+    font-size:11px; color:var(--muted); margin-top:6px;
+    display:flex; align-items:center; gap:5px;
+  }
+  .compare-vs {
+    display:inline-flex; align-items:center; gap:4px;
+    background:rgba(18,183,106,.10); color:#0a7a3c;
+    border:1px solid rgba(18,183,106,.25); border-radius:999px;
+    font-size:11px; font-weight:700; padding:2px 8px;
+  }
+
+  /* ── Funnel bars ── */
+  .funnel-row { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+  .funnel-label { font-size:12px; color:var(--muted); width:130px; flex-shrink:0; text-align:right; }
+  .funnel-track {
+    flex:1; height:24px; border-radius:6px;
+    background:rgba(3,12,24,.05); border:1px solid var(--line);
+    overflow:hidden; position:relative;
+  }
+  .funnel-fill {
+    height:100%; border-radius:6px;
+    display:flex; align-items:center; padding-left:10px;
+    font-size:12px; font-weight:700; color:#fff;
+    transition: width 1.1s cubic-bezier(.4,0,.2,1);
+    white-space:nowrap;
+  }
+  .funnel-count {
+    font-size:14px; font-weight:800; width:38px;
+    flex-shrink:0; text-align:right; color:var(--ink);
+  }
+
+  /* ── Touch sequence row ── */
+  .touch-row {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:12px 0; border-bottom:1px solid var(--line);
+  }
+  .touch-row:last-child { border-bottom:none; }
+  .touch-num {
+    width:26px; height:26px; border-radius:50%;
+    display:inline-flex; align-items:center; justify-content:center;
+    font-size:11px; font-weight:800; flex-shrink:0;
+  }
+  .touch-info { flex:1; padding:0 12px; }
+  .touch-name { font-size:13px; font-weight:600; margin-bottom:2px; }
+  .touch-desc { font-size:12px; color:var(--muted); }
+  .touch-stat { text-align:right; }
+  .touch-count { font-size:18px; font-weight:800; color:var(--ink); }
+  .touch-sublabel { font-size:11px; color:var(--muted); }
+
+  /* ── Progress bar thin ── */
+  .prog { height:5px; border-radius:3px; background:rgba(3,12,24,.07); overflow:hidden; margin-top:6px; }
+  .prog-fill { height:100%; border-radius:3px; }
+
+  /* ── Score bar ── */
+  .score-wrap { display:flex; align-items:center; gap:7px; }
+  .score-track { width:52px; height:6px; border-radius:3px; background:rgba(3,12,24,.08); overflow:hidden; flex-shrink:0; }
+  .score-fill-bar { height:100%; border-radius:3px; }
+
+  /* ── Status pills (extending base pill styles) ── */
+  .pill-recovered { background:rgba(18,183,106,.10); color:#0a7a3c;  border-color:rgba(18,183,106,.30); }
+  .pill-progress  { background:rgba(37,99,235,.09);  color:#1e40af;  border-color:rgba(37,99,235,.25); }
+  .pill-pending   { background:rgba(247,144,9,.10);  color:#7a4f00;  border-color:rgba(247,144,9,.30); }
+  .pill-expired   { border-color:var(--line);         color:var(--muted); background:rgba(3,12,24,.03); }
+
+  /* ── Priority pills ── */
+  .pill-high   { background:rgba(240,68,56,.08);  color:#b02020; border-color:rgba(240,68,56,.25); }
+  .pill-medium { background:rgba(247,144,9,.10);  color:#7a4f00; border-color:rgba(247,144,9,.30); }
+  .pill-low    { border-color:var(--line); color:var(--muted); background:rgba(3,12,24,.03); }
+
+  /* ── Touch dots in table ── */
+  .tdots { display:flex; gap:4px; align-items:center; }
+  .tdot {
+    width:9px; height:9px; border-radius:50%;
+    border:2px solid rgba(3,12,24,.15);
+  }
+  .tdot-done  { background:var(--good);  border-color:var(--good); }
+  .tdot-email { background:#2563EB;      border-color:#2563EB; }
+  .tdot-final { background:var(--warn);  border-color:var(--warn); }
+
+  /* ── Chart canvas wrapper ── */
+  .chart-wrap { position:relative; }
+  .chart-legend { display:flex; gap:16px; margin-bottom:10px; }
+  .chart-legend-item {
+    display:flex; align-items:center; gap:6px;
+    font-size:12px; color:var(--muted); font-weight:500;
+  }
+  .legend-swatch { width:10px; height:10px; border-radius:2px; }
+  .chart-x-labels {
+    display:flex; justify-content:space-between;
+    font-size:11px; color:var(--muted); margin-top:4px; padding:0 2px;
+  }
+
+  /* ── Upgrade card ── */
+  .upgrade-card {
+    background:linear-gradient(135deg,rgba(3,12,24,.03),rgba(37,99,235,.04));
+    border:1px solid rgba(37,99,235,.20); border-radius:18px; padding:32px;
+    text-align:center; max-width:620px; margin:40px auto;
+  }
+  .upgrade-icon { font-size:48px; margin-bottom:16px; }
+  .upgrade-title { font-size:22px; font-weight:800; letter-spacing:-.3px; margin-bottom:10px; }
+  .upgrade-desc { color:var(--muted); font-size:14px; line-height:1.7; margin-bottom:24px; }
+  .feature-list {
+    display:grid; grid-template-columns:1fr 1fr; gap:10px;
+    text-align:left; margin-bottom:24px;
+  }
+  .feature-item {
+    display:flex; align-items:flex-start; gap:8px;
+    font-size:13px; padding:10px 12px;
+    background:#fff; border:1px solid var(--line);
+    border-radius:12px;
+  }
+  .feature-item-icon { font-size:16px; flex-shrink:0; margin-top:1px; }
+  .feature-item-text { font-weight:500; }
+  .feature-item-sub { font-size:11px; color:var(--muted); font-weight:400; }
+  .vs-banner {
+    display:flex; align-items:center; justify-content:center; gap:20px;
+    background:rgba(18,183,106,.07); border:1px solid rgba(18,183,106,.2);
+    border-radius:12px; padding:14px 20px; margin-bottom:24px;
+  }
+  .vs-stat { text-align:center; }
+  .vs-val { font-size:22px; font-weight:800; }
+  .vs-lbl { font-size:11px; color:var(--muted); margin-top:2px; }
+  .vs-divider { color:var(--muted); font-size:20px; font-weight:300; }
+  @media(max-width:540px){
+    .feature-list { grid-template-columns:1fr; }
+  }
+
+  /* ── Empty state ── */
+  .empty-state {
+    text-align:center; padding:40px 20px; color:var(--muted);
+  }
+  .empty-icon { font-size:36px; margin-bottom:10px; }
+
+  /* ── Stat strip ── */
+  .stat-strip {
+    display:grid; grid-template-columns:repeat(4,1fr); gap:12px;
+    margin-bottom:20px;
+  }
+  .stat-strip-item {
+    background:rgba(3,12,24,.025); border:1px solid var(--line);
+    border-radius:14px; padding:14px 16px;
+    display:flex; align-items:center; gap:12px;
+  }
+  .strip-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .strip-label { font-size:12px; color:var(--muted); margin-bottom:3px; }
+  .strip-val { font-size:17px; font-weight:800; color:var(--ink); letter-spacing:-.3px; }
+  @media(max-width:700px){.stat-strip{grid-template-columns:1fr 1fr;}}
+  @media(max-width:420px){.stat-strip{grid-template-columns:1fr;}}
+
+  /* ── Clickable stat cards ── */
+  .stat-strip-item {
+    cursor:pointer; transition:all .2s; position:relative; overflow:visible;
+  }
+  .stat-strip-item:hover {
+    border-color:var(--card-accent-color, var(--ink));
+    box-shadow:0 0 0 3px color-mix(in srgb,var(--card-accent-color,#030C18) 11%,transparent),
+               0 6px 18px rgba(3,12,24,.09);
+    transform:translateY(-2px);
+  }
+  .stat-strip-item.pxd-open {
+    border-color:var(--card-accent-color, var(--ink));
+    box-shadow:0 0 0 3px color-mix(in srgb,var(--card-accent-color,#030C18) 11%,transparent);
+    background:color-mix(in srgb,var(--card-accent-color,#030C18) 4%,white);
+  }
+  .strip-arrow {
+    margin-left:auto; font-size:13px; color:var(--muted);
+    transition:transform .2s; flex-shrink:0;
+  }
+  .pxd-open .strip-arrow { transform:rotate(180deg); }
+  .strip-hint { font-size:10px; color:var(--muted); margin-top:2px; font-weight:500; letter-spacing:.03em; }
+
+  /* ── Slide-down drawer ── */
+  .pxd-drawer-wrap {
+    overflow:hidden; max-height:0; opacity:0;
+    transition:max-height .38s cubic-bezier(.4,0,.2,1), opacity .22s ease, margin .28s ease;
+    margin-bottom:0;
+  }
+  .pxd-drawer-wrap.pxd-open { max-height:560px; opacity:1; margin-bottom:20px; }
+  .pxd-drawer {
+    background:#fff; border:1px solid var(--line); border-radius:18px;
+    box-shadow:var(--shadow); overflow:hidden;
+  }
+  .pxd-drawer-head {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 20px; border-bottom:1px solid var(--line);
+    background:rgba(3,12,24,.018);
+  }
+  .pxd-drawer-title {
+    font-size:13px; font-weight:700; display:flex; align-items:center; gap:8px;
+  }
+  .pxd-close-btn {
+    display:inline-flex; align-items:center; gap:5px;
+    padding:5px 11px; border-radius:8px; border:1px solid var(--line);
+    background:#fff; color:var(--txt); font-size:12px; font-weight:600;
+    cursor:pointer; font-family:inherit; transition:.15s;
+  }
+  .pxd-close-btn:hover { background:rgba(3,12,24,.05); }
+
+  /* ── Drawer table ── */
+  .pxd-tbl-wrap { overflow-x:auto; max-height:440px; overflow-y:auto; }
+  .pxd-tbl-wrap table { width:100%; border-collapse:collapse; font-size:13px; }
+  .pxd-tbl-wrap thead tr { position:sticky; top:0; background:#fff; z-index:2; }
+  .pxd-tbl-wrap th {
+    padding:9px 14px; text-align:left; font-size:11px; font-weight:700;
+    color:var(--muted); text-transform:uppercase; letter-spacing:.06em;
+    border-bottom:1px solid var(--line); white-space:nowrap;
+  }
+  .pxd-tbl-wrap td { padding:11px 14px; border-bottom:1px solid rgba(3,12,24,.04); vertical-align:middle; }
+  .pxd-tbl-wrap tbody tr:last-child td { border-bottom:none; }
+  .pxd-tbl-wrap tbody tr:hover td { background:rgba(3,12,24,.015); }
+
+  /* ── Cart item chips in drawer ── */
+  .item-chips { display:flex; flex-wrap:wrap; gap:4px; }
+  .item-chip {
+    font-size:11px; padding:2px 8px; border-radius:6px;
+    background:rgba(3,12,24,.06); color:var(--txt); font-weight:500;
+    white-space:nowrap; max-width:160px; overflow:hidden; text-overflow:ellipsis;
+  }
+
+  /* ── Drawer empty state ── */
+  .pxd-empty { padding:36px; text-align:center; color:var(--muted); font-size:13px; }
+  .pxd-empty-icon { font-size:28px; margin-bottom:8px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{# PAGE HEADER                                                               #}
+{# ══════════════════════════════════════════════════════════════════════════ #}
+<div class="page-header">
+  <div>
+    <h1 style="font-size:24px;font-weight:800;letter-spacing:-.3px">
+      🛒 Cart Revenue Recovery
+    </h1>
+    <p class="muted" style="margin-top:3px">{{ customer.tenant_domain }}</p>
+  </div>
+  {% if enabled %}
+  <div class="period-tabs">
+    <a href="{{ url_for('portal.cart_recovery_dashboard', days=7) }}"
+       class="period-tab {% if days==7 %}active{% endif %}">7 days</a>
+    <a href="{{ url_for('portal.cart_recovery_dashboard', days=30) }}"
+       class="period-tab {% if days==30 %}active{% endif %}">30 days</a>
+    <a href="{{ url_for('portal.cart_recovery_dashboard', days=90) }}"
+       class="period-tab {% if days==90 %}active{% endif %}">90 days</a>
+  </div>
+  {% endif %}
+</div>
+
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{# FEATURE NOT ENABLED — UPGRADE PROMPT                                      #}
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{% if not enabled %}
+<div class="upgrade-card">
+  <div class="upgrade-icon">🛒</div>
+  <div class="upgrade-title">Intelligent Cart Revenue Recovery</div>
+  <div class="upgrade-desc">
+    Automatically detect abandoned carts, score buyer intent in real time, and
+    run a 3-touch recovery sequence — chat popup, AI-personalised email, then a
+    final urgency email. No extra infrastructure. Works with your existing store.
+  </div>
+
+  <div class="vs-banner">
+    <div class="vs-stat">
+      <div class="vs-val" style="color:#0a7a3c">65%+</div>
+      <div class="vs-lbl">PhiXtra recovery rate</div>
+    </div>
+    <div class="vs-divider">vs</div>
+    <div class="vs-stat">
+      <div class="vs-val" style="color:var(--muted)">~35%</div>
+      <div class="vs-lbl">Industry average (Tidio etc.)</div>
+    </div>
+    <div class="vs-divider">→</div>
+    <div class="vs-stat">
+      <div class="vs-val" style="color:#b02020">+86%</div>
+      <div class="vs-lbl">More carts recovered</div>
+    </div>
+  </div>
+
+  <div class="feature-list">
+    <div class="feature-item">
+      <div class="feature-item-icon">🎯</div>
+      <div>
+        <div class="feature-item-text">Intent Scoring</div>
+        <div class="feature-item-sub">0–100 AI score per session</div>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="feature-item-icon">💬</div>
+      <div>
+        <div class="feature-item-text">Chat Popup — Touch 1</div>
+        <div class="feature-item-sub">Instant widget recovery message</div>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="feature-item-icon">📧</div>
+      <div>
+        <div class="feature-item-text">AI Email — Touch 2</div>
+        <div class="feature-item-sub">GPT-4o personalised at T+2 hr</div>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="feature-item-icon">⚡</div>
+      <div>
+        <div class="feature-item-text">Urgency Email — Touch 3</div>
+        <div class="feature-item-sub">"Cart expires soon" at T+24 hr</div>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="feature-item-icon">📊</div>
+      <div>
+        <div class="feature-item-text">Full Dashboard</div>
+        <div class="feature-item-sub">Revenue, funnel &amp; session log</div>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="feature-item-icon">♻️</div>
+      <div>
+        <div class="feature-item-text">Zero New Infrastructure</div>
+        <div class="feature-item-sub">Uses your existing AI setup</div>
+      </div>
+    </div>
+  </div>
+
+  <a href="mailto:support@phixtra.com?subject=Enable Cart Recovery — {{ customer.tenant_domain }}"
+     class="btn btn-primary">
+    Contact us to enable →
+  </a>
+  <p class="muted" style="margin-top:12px;font-size:12px">
+    Available on Growth and above plans. Reply within 1 business day.
+  </p>
+</div>
+
+{% else %}
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{# FULL DASHBOARD                                                             #}
+{# ══════════════════════════════════════════════════════════════════════════ #}
+
+{# ── RECOVERY SETTINGS CARD ─────────────────────────────────────────────── #}
+<div class="card" style="margin-bottom:22px;border-color:rgba(37,99,235,0.20);">
+  <div class="card-title" style="margin-bottom:4px">⚙️ Recovery Settings</div>
+  <p class="muted" style="font-size:13px;margin-bottom:16px">
+    Configure the discount offered to shoppers in recovery popups and emails.
+    Changes take effect on the next recovery session.
+  </p>
+
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in msgs %}
+      <div class="pill {% if cat == 'success' %}pill-green{% elif cat == 'warning' %}pill-warn{% else %}pill-red{% endif %}"
+           style="display:block;margin-bottom:12px;padding:9px 14px;font-size:13px;border-radius:10px">
+        {{ msg }}
+      </div>
+    {% endfor %}
+  {% endwith %}
+
+  <form method="POST" action="{{ url_for('portal.cart_recovery_save_settings') }}">
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+
+      {# Discount Incentive % #}
+      <div>
+        <label style="display:block;font-size:13px;font-weight:700;margin-bottom:6px">
+          Discount Incentive %
+          <span style="font-weight:400;color:var(--muted);margin-left:4px">(0 = no discount)</span>
+        </label>
+        <input
+          type="number"
+          name="cart_recovery_incentive_pct"
+          value="{{ recovery_settings.get('cart_recovery_incentive_pct', 0) }}"
+          min="0" max="50" step="1"
+          style="width:100px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px;font-family:inherit"
+        />
+        {% set pct = recovery_settings.get('cart_recovery_incentive_pct', 0)|int %}
+        {% if pct > 0 %}
+        <div style="margin-top:6px;font-size:12px;color:#0a7a3c;font-weight:600">
+          ✓ Active — shoppers receive code <strong>COMEBACK{{ pct }}</strong> for {{ pct }}% off
+        </div>
+        {% else %}
+        <div style="margin-top:6px;font-size:12px;color:var(--muted)">
+          No discount code will be offered
+        </div>
+        {% endif %}
+      </div>
+
+      {# Recovery Popup Message #}
+      <div>
+        <label style="display:block;font-size:13px;font-weight:700;margin-bottom:6px">
+          Recovery Popup Message
+          <span style="font-weight:400;color:var(--muted);margin-left:4px">(optional)</span>
+        </label>
+        <input
+          type="text"
+          name="cart_recovery_popup_message"
+          value="{{ recovery_settings.get('cart_recovery_popup_message', '') }}"
+          placeholder="👋 Still thinking it over? Your cart is saved and ready for you!"
+          style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;font-family:inherit;box-sizing:border-box"
+        />
+        <div style="margin-top:6px;font-size:12px;color:var(--muted)">Leave blank to use the default message</div>
+      </div>
+
+    </div>
+
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <button type="submit" class="btn btn-primary btn-sm">
+        Save Settings
+      </button>
+      {% set pct = recovery_settings.get('cart_recovery_incentive_pct', 0)|int %}
+      {% if pct > 0 %}
+      <div style="font-size:12px;color:var(--muted)">
+        💡 The coupon code <strong>COMEBACK{{ pct }}</strong> is automatically created and applied in WooCommerce
+        when a shopper sees the recovery popup. No manual coupon setup needed.
+      </div>
+      {% endif %}
+    </div>
+
+  </form>
+</div>
+
+{# ── EMPTY STATE (no data yet) ────────────────────────────────────────────── #}
+{% if stats.total == 0 %}
+<div class="card" style="margin-bottom:22px">
+  <div class="empty-state">
+    <div class="empty-icon">📭</div>
+    <p style="font-size:15px;font-weight:700;color:var(--txt);margin-bottom:6px">
+      No abandoned carts detected yet
+    </p>
+    <p class="muted" style="max-width:420px;margin:0 auto">
+      Cart Recovery is active on your store. As soon as a visitor abandons a cart,
+      their session will appear here. Make sure the PhiXtra plugin is installed
+      and <strong>Cart Recovery</strong> is enabled in the plugin settings.
+    </p>
+  </div>
+</div>
+{% endif %}
+
+{# ── KPI CARDS ────────────────────────────────────────────────────────────── #}
+<div class="grid g3" style="margin-bottom:14px">
+
+  {# Revenue recovered #}
+  <div class="card" style="padding-top:0;overflow:hidden">
+    <div class="kpi-accent" style="background:linear-gradient(90deg,#12B76A,#34D399)"></div>
+    <div class="card-title">Revenue Recovered</div>
+    <div class="kpi">{{ revenue_fmt }}</div>
+    <div class="muted" style="margin-top:4px">last {{ days }} days</div>
+    {% if stats.recovered > 0 %}
+    <div style="margin-top:10px;font-size:13px;color:#0a7a3c;font-weight:600">
+      ✓ {{ stats.recovered }} cart{{ 's' if stats.recovered != 1 }} recovered
+    </div>
+    {% endif %}
+  </div>
+
+  {# Recovery rate #}
+  <div class="card" style="padding-top:0;overflow:hidden">
+    <div class="kpi-accent" style="background:linear-gradient(90deg,#2563EB,#60A5FA)"></div>
+    <div class="card-title">Recovery Rate</div>
+    {% if stats.recovery_rate > 0 %}
+      <div class="kpi" style="color:#1e40af">{{ stats.recovery_rate }}%</div>
+    {% else %}
+      <div class="kpi" style="color:var(--muted)">—</div>
+    {% endif %}
+    <div class="muted" style="margin-top:4px">of concluded sessions</div>
+    <div class="compare-note">
+      <span>vs</span>
+      <span class="compare-vs">~35% industry avg</span>
+    </div>
+  </div>
+
+  {# Average recovered value #}
+  <div class="card" style="padding-top:0;overflow:hidden">
+    <div class="kpi-accent" style="background:linear-gradient(90deg,#F79009,#FCD34D)"></div>
+    <div class="card-title">Avg Recovered Cart</div>
+    <div class="kpi" style="color:#7a4f00">{{ avg_fmt }}</div>
+    <div class="muted" style="margin-top:4px">per recovered cart</div>
+    {% if stats.active_now > 0 %}
+    <div style="margin-top:10px">
+      <span class="pill pill-progress">
+        {{ stats.active_now }} active now
+      </span>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+{# ── STAT STRIP — clickable cards that open detail drawers ───────────────── #}
+<div class="stat-strip" id="pxdStatStrip">
+
+  <div class="stat-strip-item" id="pxdCard-all"
+       style="--card-accent-color:#030C18"
+       onclick="pxdToggle('all')">
+    <div class="strip-dot" style="background:var(--ink)"></div>
+    <div style="flex:1">
+      <div class="strip-label">Carts Detected</div>
+      <div class="strip-val">{{ stats.total }}</div>
+      <div class="strip-hint">Click to inspect ↓</div>
+    </div>
+    <div class="strip-arrow">▾</div>
+  </div>
+
+  <div class="stat-strip-item" id="pxdCard-in_progress"
+       style="--card-accent-color:#2563EB"
+       onclick="pxdToggle('in_progress')">
+    <div class="strip-dot" style="background:#2563EB"></div>
+    <div style="flex:1">
+      <div class="strip-label">In Recovery</div>
+      <div class="strip-val">{{ stats.in_progress }}</div>
+      <div class="strip-hint">Click to inspect ↓</div>
+    </div>
+    <div class="strip-arrow">▾</div>
+  </div>
+
+  <div class="stat-strip-item" id="pxdCard-pending"
+       style="--card-accent-color:#F79009"
+       onclick="pxdToggle('pending')">
+    <div class="strip-dot" style="background:var(--warn)"></div>
+    <div style="flex:1">
+      <div class="strip-label">Pending</div>
+      <div class="strip-val">{{ stats.pending }}</div>
+      <div class="strip-hint">Click to inspect ↓</div>
+    </div>
+    <div class="strip-arrow">▾</div>
+  </div>
+
+  <div class="stat-strip-item" id="pxdCard-expired"
+       style="--card-accent-color:rgba(3,12,24,.4)"
+       onclick="pxdToggle('expired')">
+    <div class="strip-dot" style="background:rgba(3,12,24,.25)"></div>
+    <div style="flex:1">
+      <div class="strip-label">Expired (48 hr)</div>
+      <div class="strip-val">{{ stats.expired }}</div>
+      <div class="strip-hint">Click to inspect ↓</div>
+    </div>
+    <div class="strip-arrow">▾</div>
+  </div>
+
+</div>
+
+{# ── DRAWERS — one per stat card ─────────────────────────────────────────── #}
+
+{# Macro: renders a single session row for the drawer tables #}
+{% macro drawer_row(row, show_next_touch=false, show_reason=false, show_outcome=false) %}
+<tr>
+  {# Customer #}
+  <td>
+    {% if row.customer_email %}
+      <span style="font-weight:500">{{ row.customer_email }}</span>
+    {% else %}
+      <span class="muted" style="font-style:italic">Guest visitor</span>
+    {% endif %}
+  </td>
+
+  {# Cart items #}
+  <td>
+    {% if row.cart_items %}
+      <div class="item-chips">
+        {% for item in row.cart_items[:3] %}
+          <span class="item-chip" title="{{ item.name or item.title or '' }}">{{ item.name or item.title or '?' }}</span>
+        {% endfor %}
+        {% if row.cart_items|length > 3 %}
+          <span class="item-chip" style="background:rgba(3,12,24,.03);color:var(--muted)">+{{ row.cart_items|length - 3 }} more</span>
+        {% endif %}
+      </div>
+    {% else %}
+      <span class="muted">—</span>
+    {% endif %}
+  </td>
+
+  {# Cart value #}
+  <td>
+    {% if row.cart_value is not none and row.cart_value|float > 0 %}
+      <strong>£{{ "%.2f"|format(row.cart_value|float) }}</strong>
+    {% else %}
+      <span class="muted">—</span>
+    {% endif %}
+  </td>
+
+  {# Intent score #}
+  <td>
+    <div class="score-wrap">
+      <div class="score-track">
+        <div class="score-fill-bar" style="width:{{ row.intent_score or 0 }}%;background:{% if (row.intent_score or 0) >= 70 %}#12B76A{% elif (row.intent_score or 0) >= 40 %}#F79009{% else %}rgba(3,12,24,.3){% endif %}"></div>
+      </div>
+      <span style="font-size:12px;font-weight:700">{{ row.intent_score or 0 }}</span>
+    </div>
+  </td>
+
+  {# Priority #}
+  <td>
+    {% if row.priority == 'HIGH' %}<span class="pill pill-high">HIGH</span>
+    {% elif row.priority == 'MEDIUM' %}<span class="pill pill-medium">MED</span>
+    {% else %}<span class="pill pill-low">LOW</span>{% endif %}
+  </td>
+
+  {# Status pill (for "all" drawer) #}
+  {% if not show_next_touch and not show_reason and not show_outcome %}
+  <td>
+    {% if row.status == 'recovered' %}<span class="pill pill-recovered">✓ Recovered</span>
+    {% elif row.status == 'in_progress' %}<span class="pill pill-progress">▶ Active</span>
+    {% elif row.status == 'pending' %}<span class="pill pill-pending">◉ Pending</span>
+    {% else %}<span class="pill pill-expired">Expired</span>{% endif %}
+  </td>
+  {% endif %}
+
+  {# Next touch (for in_progress drawer) #}
+  {% if show_next_touch %}
+  <td>
+    {% if row.touches_sent == 0 %}<span style="color:#2563EB;font-weight:600;font-size:12px">T1 Popup — next visit</span>
+    {% elif row.touches_sent == 1 %}<span style="color:#12B76A;font-weight:600;font-size:12px">T2 Email — T+2hr</span>
+    {% elif row.touches_sent == 2 %}<span style="color:#F79009;font-weight:600;font-size:12px">T3 Final — T+24hr</span>
+    {% else %}<span class="muted" style="font-size:12px">All sent</span>{% endif %}
+  </td>
+  {% endif %}
+
+  {# Reason (for pending drawer) #}
+  {% if show_reason %}
+  <td style="font-size:12px">
+    {% if (row.intent_score or 0) < 40 %}<span class="muted">Score below threshold ({{ row.intent_score or 0 }}/40)</span>
+    {% else %}<span style="color:#7a4f00">Awaiting next site visit</span>{% endif %}
+  </td>
+  {% endif %}
+
+  {# Outcome (for expired drawer) #}
+  {% if show_outcome %}
+  <td style="font-size:12px">
+    {% if (row.intent_score or 0) < 40 %}<span class="muted">Low intent — not entered</span>
+    {% else %}<span class="muted">48hr window elapsed</span>{% endif %}
+  </td>
+  {% endif %}
+
+  {# Touches #}
+  <td>
+    <div class="tdots">
+      <div class="tdot {% if row.touches_sent >= 1 %}tdot-done{% endif %}" title="T1: Popup"></div>
+      <div class="tdot {% if row.touches_sent >= 2 %}tdot-email{% endif %}" title="T2: Email"></div>
+      <div class="tdot {% if row.touches_sent >= 3 %}tdot-final{% endif %}" title="T3: Final email"></div>
+    </div>
+  </td>
+
+  {# Date #}
+  <td class="muted" style="font-size:12px;white-space:nowrap">
+    {% if row.updated_at %}{{ row.updated_at.strftime('%d %b, %H:%M') }}{% else %}—{% endif %}
+  </td>
+</tr>
+{% endmacro %}
+
+{# ── DRAWER: ALL CARTS DETECTED ── #}
+<div class="pxd-drawer-wrap" id="pxdDrawer-all">
+  <div class="pxd-drawer">
+    <div class="pxd-drawer-head">
+      <div class="pxd-drawer-title">
+        🛒 All Detected Carts
+        <span class="pill pill-progress" style="font-size:11px">{{ rows|length }} sessions</span>
+      </div>
+      <button class="pxd-close-btn" onclick="pxdToggle('all')">✕ Close</button>
+    </div>
+    <div class="pxd-tbl-wrap">
+      {% if rows %}
+      <table>
+        <thead><tr>
+          <th>Customer</th><th>Cart Contents</th><th>Value</th>
+          <th>Intent</th><th>Priority</th><th>Status</th>
+          <th>Touches</th><th>Last Updated</th>
+        </tr></thead>
+        <tbody>
+          {% for row in rows %}{{ drawer_row(row) }}{% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="pxd-empty"><div class="pxd-empty-icon">📭</div>No sessions yet.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# ── DRAWER: IN RECOVERY ── #}
+<div class="pxd-drawer-wrap" id="pxdDrawer-in_progress">
+  <div class="pxd-drawer">
+    <div class="pxd-drawer-head">
+      <div class="pxd-drawer-title">
+        ▶ Active Recovery Sessions
+        <span class="pill pill-progress" style="font-size:11px">{{ stats.in_progress }} in progress</span>
+      </div>
+      <button class="pxd-close-btn" onclick="pxdToggle('in_progress')">✕ Close</button>
+    </div>
+    <div class="pxd-tbl-wrap">
+      {% set ip_rows = rows | selectattr('status', 'equalto', 'in_progress') | list %}
+      {% if ip_rows %}
+      <table>
+        <thead><tr>
+          <th>Customer</th><th>Cart Contents</th><th>Value</th>
+          <th>Intent</th><th>Priority</th><th>Next Touch</th>
+          <th>Touches</th><th>Started</th>
+        </tr></thead>
+        <tbody>
+          {% for row in ip_rows %}{{ drawer_row(row, show_next_touch=true) }}{% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="pxd-empty"><div class="pxd-empty-icon">✅</div>No sessions currently in active recovery.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# ── DRAWER: PENDING ── #}
+<div class="pxd-drawer-wrap" id="pxdDrawer-pending">
+  <div class="pxd-drawer">
+    <div class="pxd-drawer-head">
+      <div class="pxd-drawer-title">
+        ◉ Pending Sessions
+        <span class="pill pill-pending" style="font-size:11px">{{ stats.pending }} waiting</span>
+      </div>
+      <button class="pxd-close-btn" onclick="pxdToggle('pending')">✕ Close</button>
+    </div>
+    <div class="pxd-tbl-wrap">
+      {% set pending_rows = rows | selectattr('status', 'equalto', 'pending') | list %}
+      {% if pending_rows %}
+      <table>
+        <thead><tr>
+          <th>Customer</th><th>Cart Contents</th><th>Value</th>
+          <th>Intent</th><th>Priority</th><th>Reason</th>
+          <th>Touches</th><th>Waiting Since</th>
+        </tr></thead>
+        <tbody>
+          {% for row in pending_rows %}{{ drawer_row(row, show_reason=true) }}{% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="pxd-empty"><div class="pxd-empty-icon">📋</div>No pending sessions.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# ── DRAWER: EXPIRED ── #}
+<div class="pxd-drawer-wrap" id="pxdDrawer-expired">
+  <div class="pxd-drawer">
+    <div class="pxd-drawer-head">
+      <div class="pxd-drawer-title">
+        ⏰ Expired Sessions
+        <span class="pill pill-expired" style="font-size:11px">{{ stats.expired }} closed</span>
+      </div>
+      <button class="pxd-close-btn" onclick="pxdToggle('expired')">✕ Close</button>
+    </div>
+    <div class="pxd-tbl-wrap">
+      {% set expired_rows = rows | selectattr('status', 'equalto', 'expired') | list %}
+      {% if expired_rows %}
+      <table>
+        <thead><tr>
+          <th>Customer</th><th>Cart Contents</th><th>Value</th>
+          <th>Intent</th><th>Priority</th><th>Outcome</th>
+          <th>Touches</th><th>Expired</th>
+        </tr></thead>
+        <tbody>
+          {% for row in expired_rows %}{{ drawer_row(row, show_outcome=true) }}{% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="pxd-empty"><div class="pxd-empty-icon">⏰</div>No expired sessions.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# ── TREND CHART + TOUCH PERFORMANCE ──────────────────────────────────────── #}
+<div class="grid g2" style="margin-bottom:20px">
+
+  {# Revenue trend chart #}
+  <div class="card">
+    <div class="card-title">Revenue Recovered Per Day</div>
+    <p class="muted" style="font-size:12px;margin-bottom:12px">
+      Cart recovery revenue over the last {{ days }} days
+    </p>
+    {% if trend %}
+    <div class="chart-legend">
+      <div class="chart-legend-item">
+        <div class="legend-swatch" style="background:#12B76A"></div> Revenue recovered
+      </div>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="recoveryChart" style="width:100%;height:150px"></canvas>
+    </div>
+    <div class="chart-x-labels" id="recoveryChartXLabels"></div>
+    <script>
+    (function(){
+      const raw = {{ trend | tojson }};
+      const canvas = document.getElementById('recoveryChart');
+      if (!canvas || !raw.length) return;
+      const ctx = canvas.getContext('2d');
+      const W = canvas.offsetWidth || 400;
+      canvas.width = W; canvas.height = 150;
+      const vals = raw.map(p => p.revenue);
+      const maxV = Math.max(...vals, 1);
+      const pad = {t:10, r:10, b:24, l:50};
+      const cw = W - pad.l - pad.r;
+      const ch = 150 - pad.t - pad.b;
+      // Grid lines
+      ctx.strokeStyle = 'rgba(3,12,24,0.06)'; ctx.lineWidth = 1;
+      [0,.25,.5,.75,1].forEach(f => {
+        const y = pad.t + ch*(1-f);
+        ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+cw,y); ctx.stroke();
+        ctx.fillStyle='rgba(3,12,24,0.40)'; ctx.font='10px system-ui';
+        ctx.fillText('£'+(maxV*f).toFixed(0), 2, y+3);
+      });
+      // Points
+      const pts = raw.map((p,i) => ({
+        x: pad.l + (raw.length===1 ? cw/2 : i/(raw.length-1)*cw),
+        y: pad.t + ch*(1 - p.revenue/maxV)
+      }));
+      // Fill
+      ctx.beginPath();
+      pts.forEach((p,i) => i ? ctx.lineTo(p.x,p.y) : ctx.moveTo(p.x,p.y));
+      ctx.lineTo(pts[pts.length-1].x, pad.t+ch);
+      ctx.lineTo(pts[0].x, pad.t+ch);
+      ctx.closePath();
+      ctx.fillStyle='rgba(18,183,106,0.08)'; ctx.fill();
+      // Line
+      ctx.beginPath(); ctx.strokeStyle='#12B76A'; ctx.lineWidth=2.5;
+      ctx.lineJoin='round';
+      pts.forEach((p,i) => i ? ctx.lineTo(p.x,p.y) : ctx.moveTo(p.x,p.y));
+      ctx.stroke();
+      // Dots
+      pts.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x,p.y,3.5,0,Math.PI*2);
+        ctx.fillStyle='#12B76A'; ctx.fill();
+        ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.stroke();
+      });
+      // X labels
+      const lbl = document.getElementById('recoveryChartXLabels');
+      if (lbl && raw.length) {
+        const step = Math.max(1, Math.ceil(raw.length/5));
+        let html = '';
+        raw.forEach((p,i) => {
+          const show = (i===0 || i===raw.length-1 || i%step===0);
+          html += '<span>' + (show ? p.d.slice(5) : '') + '</span>';
+        });
+        lbl.innerHTML = html;
+      }
+    })();
+    </script>
+    {% else %}
+    <div class="empty-state" style="padding:24px 0">
+      <p class="muted">No recovered carts yet in this period.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  {# Touch sequence performance #}
+  <div class="card">
+    <div class="card-title">Recovery Touch Sequence</div>
+    <p class="muted" style="font-size:12px;margin-bottom:16px">
+      How many times each touch was fired in the last {{ days }} days
+    </p>
+
+    {% set t1   = touches.popup_queued %}
+    {% set t2   = touches.email_sent %}
+    {% set t3   = touches.final_email_sent %}
+    {% set max_t = [t1, t2, t3, 1] | max %}
+
+    <div class="touch-row">
+      <div class="touch-num" style="background:rgba(37,99,235,.12);color:#2563EB">1</div>
+      <div class="touch-info">
+        <div class="touch-name">💬 Chat Popup</div>
+        <div class="touch-desc">Shown immediately on exit intent / idle</div>
+        <div class="prog">
+          <div class="prog-fill"
+               style="width:{{ (t1/max_t*100)|round|int }}%;background:#2563EB"></div>
+        </div>
+      </div>
+      <div class="touch-stat">
+        <div class="touch-count">{{ t1 }}</div>
+        <div class="touch-sublabel">sessions</div>
+      </div>
+    </div>
+
+    <div class="touch-row">
+      <div class="touch-num" style="background:rgba(18,183,106,.12);color:#0a7a3c">2</div>
+      <div class="touch-info">
+        <div class="touch-name">📧 AI Recovery Email</div>
+        <div class="touch-desc">GPT-4o personalised, sent at T+2 hrs</div>
+        <div class="prog">
+          <div class="prog-fill"
+               style="width:{{ (t2/max_t*100)|round|int }}%;background:#12B76A"></div>
+        </div>
+      </div>
+      <div class="touch-stat">
+        <div class="touch-count">{{ t2 }}</div>
+        <div class="touch-sublabel">sent</div>
+      </div>
+    </div>
+
+    <div class="touch-row">
+      <div class="touch-num" style="background:rgba(247,144,9,.12);color:#7a4f00">3</div>
+      <div class="touch-info">
+        <div class="touch-name">⚡ Final Urgency Email</div>
+        <div class="touch-desc">"Cart expires soon", sent at T+24 hrs</div>
+        <div class="prog">
+          <div class="prog-fill"
+               style="width:{{ (t3/max_t*100)|round|int }}%;background:#F79009"></div>
+        </div>
+      </div>
+      <div class="touch-stat">
+        <div class="touch-count">{{ t3 }}</div>
+        <div class="touch-sublabel">sent</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+    <p style="font-size:12px;color:var(--muted);line-height:1.6">
+      Touch 2 and Touch 3 only fire if the customer provided their email address.
+      Touch 3 is only sent when Touch 2 did not result in recovery.
+      Sessions with an intent score below 40 do not enter the sequence.
+    </p>
+  </div>
+
+</div>
+
+{# ── RECOVERY FUNNEL ──────────────────────────────────────────────────────── #}
+<div class="card" style="margin-bottom:20px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div>
+      <div class="card-title" style="margin:0">Recovery Funnel</div>
+      <p class="muted" style="font-size:12px;margin-top:3px">Session journey over the last {{ days }} days</p>
+    </div>
+    {% if stats.recovery_rate > 0 %}
+    <span class="pill pill-green">
+      {{ stats.recovery_rate }}% end-to-end recovery
+    </span>
+    {% endif %}
+  </div>
+
+  {% set t = stats.total %}
+  {% set r = stats.recovered %}
+  {% set ip = stats.in_progress %}
+  {% set t1f = touches.popup_queued %}
+  {% set t2f = touches.email_sent %}
+  {% set denom = [t, 1] | max %}
+
+  <div id="funnelWrap">
+    <div class="funnel-row">
+      <div class="funnel-label">Carts detected</div>
+      <div class="funnel-track">
+        <div class="funnel-fill" id="ff1"
+             style="width:0%;background:linear-gradient(90deg,rgba(3,12,24,.5),rgba(3,12,24,.3))">
+          100%
+        </div>
+      </div>
+      <div class="funnel-count">{{ t }}</div>
+    </div>
+    <div class="funnel-row">
+      <div class="funnel-label">Popup shown (T1)</div>
+      <div class="funnel-track">
+        <div class="funnel-fill" id="ff2"
+             style="width:0%;background:linear-gradient(90deg,rgba(37,99,235,.7),rgba(37,99,235,.4))">
+          {% if t > 0 %}{{ (t1f/denom*100)|round|int }}%{% else %}—{% endif %}
+        </div>
+      </div>
+      <div class="funnel-count">{{ t1f }}</div>
+    </div>
+    <div class="funnel-row">
+      <div class="funnel-label">Email sent (T2)</div>
+      <div class="funnel-track">
+        <div class="funnel-fill" id="ff3"
+             style="width:0%;background:linear-gradient(90deg,rgba(18,183,106,.7),rgba(18,183,106,.4))">
+          {% if t > 0 %}{{ (t2f/denom*100)|round|int }}%{% else %}—{% endif %}
+        </div>
+      </div>
+      <div class="funnel-count">{{ t2f }}</div>
+    </div>
+    <div class="funnel-row">
+      <div class="funnel-label">Cart recovered</div>
+      <div class="funnel-track">
+        <div class="funnel-fill" id="ff4"
+             style="width:0%;background:linear-gradient(90deg,rgba(18,183,106,.9),rgba(18,183,106,.6))">
+          {% if t > 0 %}{{ (r/denom*100)|round|int }}%{% else %}—{% endif %}
+        </div>
+      </div>
+      <div class="funnel-count" style="color:#0a7a3c">{{ r }}</div>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    var total   = {{ t }};
+    var t1count = {{ t1f }};
+    var t2count = {{ t2f }};
+    var recov   = {{ r }};
+    var denom   = total || 1;
+    var targets = {
+      ff1: 100,
+      ff2: total>0 ? Math.round(t1count/denom*100) : 0,
+      ff3: total>0 ? Math.round(t2count/denom*100) : 0,
+      ff4: total>0 ? Math.round(recov/denom*100)   : 0,
+    };
+    setTimeout(function(){
+      Object.keys(targets).forEach(function(id){
+        var el = document.getElementById(id);
+        if (el) el.style.width = targets[id] + '%';
+      });
+    }, 200);
+  })();
+  </script>
+</div>
+
+{# ── RECENT SESSIONS TABLE ────────────────────────────────────────────────── #}
+<div class="card">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div>
+      <div class="card-title" style="margin:0">Recent Sessions</div>
+      <p class="muted" style="font-size:12px;margin-top:3px">
+        Last {{ rows_recent|length }} sessions — most recent first
+      </p>
+    </div>
+    {% if rows|length > 25 %}
+    <span class="muted" style="font-size:12px">Showing most recent 25 of {{ rows|length }}</span>
+    {% endif %}
+  </div>
+
+  {% if rows_recent %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Customer</th>
+          <th>Cart Contents</th>
+          <th>Cart Value</th>
+          <th>Intent Score</th>
+          <th>Priority</th>
+          <th>Status</th>
+          <th>Touches</th>
+          <th>Last Updated</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows_recent %}
+        <tr>
+          {# Customer email #}
+          <td>
+            {% if row.customer_email %}
+              {{ row.customer_email }}
+            {% else %}
+              <span class="muted">Guest visitor</span>
+            {% endif %}
+          </td>
+
+          {# Cart items chips #}
+          <td>
+            {% if row.cart_items %}
+              <div class="item-chips">
+                {% for item in row.cart_items[:2] %}
+                  <span class="item-chip" title="{{ item.name or item.title or '' }}">{{ item.name or item.title or '?' }}</span>
+                {% endfor %}
+                {% if row.cart_items|length > 2 %}
+                  <span class="item-chip" style="background:rgba(3,12,24,.03);color:var(--muted)">+{{ row.cart_items|length - 2 }}</span>
+                {% endif %}
+              </div>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+
+          {# Cart value — fixed: use explicit none check so 0.0 is handled correctly #}
+          <td>
+            {% if row.cart_value is not none and row.cart_value|float > 0 %}
+              <strong>£{{ "%.2f"|format(row.cart_value|float) }}</strong>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+
+          {# Intent score with mini bar #}
+          <td>
+            <div class="score-wrap">
+              <div class="score-track">
+                <div class="score-fill-bar" style="
+                  width:{{ row.intent_score or 0 }}%;
+                  background:{% if (row.intent_score or 0) >= 70 %}#12B76A{% elif (row.intent_score or 0) >= 40 %}#F79009{% else %}rgba(3,12,24,.3){% endif %}">
+                </div>
+              </div>
+              <span style="font-size:12px;font-weight:700">{{ row.intent_score or 0 }}</span>
+            </div>
+          </td>
+
+          {# Priority #}
+          <td>
+            {% if row.priority == 'HIGH' %}
+              <span class="pill pill-high">HIGH</span>
+            {% elif row.priority == 'MEDIUM' %}
+              <span class="pill pill-medium">MED</span>
+            {% else %}
+              <span class="pill pill-low">LOW</span>
+            {% endif %}
+          </td>
+
+          {# Status #}
+          <td>
+            {% if row.status == 'recovered' %}
+              <span class="pill pill-recovered">✓ Recovered</span>
+            {% elif row.status == 'in_progress' %}
+              <span class="pill pill-progress">▶ Active</span>
+            {% elif row.status == 'pending' %}
+              <span class="pill pill-pending">◉ Pending</span>
+            {% else %}
+              <span class="pill pill-expired">Expired</span>
+            {% endif %}
+          </td>
+
+          {# Touch dots #}
+          <td>
+            <div class="tdots">
+              <div class="tdot {% if row.touches_sent >= 1 %}tdot-done{% endif %}"
+                   title="Touch 1: Popup{% if row.touches_sent >= 1 %} — sent{% else %} — not yet{% endif %}"></div>
+              <div class="tdot {% if row.touches_sent >= 2 %}tdot-email{% endif %}"
+                   title="Touch 2: Email{% if row.touches_sent >= 2 %} — sent{% else %} — not yet{% endif %}"></div>
+              <div class="tdot {% if row.touches_sent >= 3 %}tdot-final{% endif %}"
+                   title="Touch 3: Final email{% if row.touches_sent >= 3 %} — sent{% else %} — not yet{% endif %}"></div>
+            </div>
+          </td>
+
+          {# Timestamp #}
+          <td class="muted" style="font-size:12px;white-space:nowrap">
+            {% if row.updated_at %}
+              {{ row.updated_at.strftime('%d %b, %H:%M') }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {# Table legend #}
+  <div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--muted)">
+    <span><span class="tdot tdot-done" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>T1 Popup sent</span>
+    <span><span class="tdot tdot-email" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>T2 Email sent</span>
+    <span><span class="tdot tdot-final" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>T3 Final email sent</span>
+    <span style="margin-left:auto">
+      Intent score: <strong style="color:#0a7a3c">70–100</strong> High ·
+      <strong style="color:#7a4f00">40–69</strong> Medium ·
+      <strong style="color:var(--muted)">0–39</strong> Low (not recovered)
+    </span>
+  </div>
+
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-icon">📋</div>
+    <p class="muted">No sessions yet in this period.</p>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+(function(){
+  var currentOpen = null;
+  window.pxdToggle = function(key) {
+    var drawer = document.getElementById('pxdDrawer-' + key);
+    var card   = document.getElementById('pxdCard-'   + key);
+    if (!drawer || !card) return;
+
+    // Close the currently open drawer if it's a different one
+    if (currentOpen && currentOpen !== key) {
+      var prevD = document.getElementById('pxdDrawer-' + currentOpen);
+      var prevC = document.getElementById('pxdCard-'   + currentOpen);
+      if (prevD) prevD.classList.remove('pxd-open');
+      if (prevC) prevC.classList.remove('pxd-open');
+    }
+
+    var isOpen = drawer.classList.contains('pxd-open');
+    if (isOpen) {
+      drawer.classList.remove('pxd-open');
+      card.classList.remove('pxd-open');
+      currentOpen = null;
+    } else {
+      drawer.classList.add('pxd-open');
+      card.classList.add('pxd-open');
+      currentOpen = key;
+      setTimeout(function(){
+        drawer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 120);
+    }
+  };
+})();
+</script>
+
+{% endif %}{# end enabled #}
+{% endblock %}

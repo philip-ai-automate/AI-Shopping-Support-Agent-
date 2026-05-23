@@ -1,0 +1,501 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}{{ customer.full_name }} — PhiXtra Admin{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title">{{ customer.full_name }}</h1>
+    <p class="muted">{{ customer.email }} &nbsp;·&nbsp; {{ customer.domain }}</p>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <a href="{{ url_for('portal_admin.customers') }}" class="btn btn-sm">← All customers</a>
+    <a href="{{ url_for('portal_admin.impersonate', customer_id=customer.id) }}"
+       class="btn btn-sm" style="color:var(--warn);border-color:rgba(247,144,9,0.30)"
+       onclick="return confirm('View portal as this customer?')">Impersonate</a>
+  </div>
+</div>
+
+<div class="grid g2" style="margin-bottom:16px">
+  <div class="card">
+    <div class="card-title">Account details</div>
+    <table style="border:none">
+      <tr><td class="muted" style="border:none;padding:4px 0">First name</td><td style="border:none;padding:4px 8px">{{ customer.first_name or '—' }}</td></tr>
+      <tr><td class="muted" style="border:none;padding:4px 0">Last name</td><td style="border:none;padding:4px 8px">{{ customer.last_name or '—' }}</td></tr>
+      <tr><td class="muted" style="border:none;padding:4px 0">Email</td><td style="border:none;padding:4px 8px">{{ customer.email }}</td></tr>
+      <tr><td class="muted" style="border:none;padding:4px 0">Phone</td><td style="border:none;padding:4px 8px">{{ customer.phone_number or '—' }}</td></tr>
+      <tr><td class="muted" style="border:none;padding:4px 0">Domain</td><td style="border:none;padding:4px 8px">{{ customer.domain }}</td></tr>
+      <tr><td class="muted" style="border:none;padding:4px 0">Verified</td>
+          <td style="border:none;padding:4px 8px">{% if customer.email_verified %}<span class="pill pill-green">✓ Yes</span>{% else %}<span class="pill pill-red">✗ No</span>{% endif %}</td></tr>
+      <tr><td class="muted" style="border:none;padding:4px 0">Status</td>
+          <td style="border:none;padding:4px 8px">{% if customer.is_active %}<span class="pill pill-green">Active</span>{% else %}<span class="pill pill-red">Disabled</span>{% endif %}</td></tr>
+      <tr><td class="muted" style="border:none;padding:4px 0">Signed up</td>
+          <td style="border:none;padding:4px 8px">{{ customer.created_at.strftime('%Y-%m-%d %H:%M') if customer.created_at else '—' }}</td></tr>
+    </table>
+    <div style="margin-top:12px">
+      <form method="POST" action="{{ url_for('portal_admin.customer_toggle_active', customer_id=customer.id) }}"
+            onsubmit="return confirm('Toggle account active status?')">
+        <button type="submit" class="btn btn-sm {% if customer.is_active %}btn-danger{% endif %}">
+          {% if customer.is_active %}Disable account{% else %}Activate account{% endif %}
+        </button>
+      </form>
+    </div>
+
+    <!-- ── Change Customer Email ── -->
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
+      <div class="card-title" style="margin-bottom:8px">✏️ Change Customer Email</div>
+      <form method="POST"
+            action="{{ url_for('portal_admin.customer_change_email', customer_id=customer.id) }}"
+            onsubmit="return confirm('Change email from {{ customer.email }} to the address entered?')">
+        <div class="form-group" style="margin-bottom:8px">
+          <label>New Email Address</label>
+          <input type="email" name="new_email" required placeholder="newaddress@example.com"
+                 style="font-size:13px"/>
+        </div>
+        <button type="submit" class="btn btn-sm">Update Email</button>
+      </form>
+    </div>
+
+    <!-- ── Send Password Reset ── -->
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
+      <div class="card-title" style="margin-bottom:8px">🔑 Password Reset</div>
+      <p class="muted" style="font-size:12px;margin-bottom:8px">
+        Send a password reset link to <strong>{{ customer.email }}</strong>.
+        The customer will use the link to set a new password.
+      </p>
+      <form method="POST"
+            action="{{ url_for('portal_admin.customer_send_reset', customer_id=customer.id) }}"
+            onsubmit="return confirm('Send a password reset email to {{ customer.email }}?')">
+        <button type="submit" class="btn btn-sm">📧 Send Reset Email</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Credit balance</div>
+    <div class="kpi" style="margin-bottom:4px">{{ "%.1f"|format(customer.balance_credits) }}</div>
+    <div class="muted" style="margin-bottom:16px">credits (tenant balance)</div>
+
+    <div class="card-title">Adjust credits</div>
+    <form method="POST" action="{{ url_for('portal_admin.customer_credit_adjust', customer_id=customer.id) }}">
+      <div class="form-group">
+        <label>Credits to add (+) or deduct (−)</label>
+        <input type="number" name="delta_credits" step="0.5" placeholder="e.g. 50 or -10" required/>
+      </div>
+      <div class="form-group">
+        <label>Reason (internal note)</label>
+        <input type="text" name="reason" placeholder="Manual top-up, goodwill credit, etc."/>
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm"
+              onclick="return confirm('Apply this credit adjustment?')">Apply adjustment</button>
+    </form>
+  </div>
+</div>
+
+{# API KEYS #}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-title">API keys (tenant_id {{ customer.tenant_id }})</div>
+
+  {# ── ONE-TIME KEY REVEAL ──────────────────────────────────────────────── #}
+  {% if admin_new_plain_key %}
+  <div style="border:1px solid rgba(18,183,106,0.40);background:rgba(18,183,106,0.06);border-radius:10px;padding:16px;margin-bottom:18px">
+    <div style="font-size:14px;font-weight:700;margin-bottom:6px;color:#0a7a3c">✅ API key created — copy it now</div>
+    <p style="font-size:12px;color:#666;margin-bottom:10px">This is the only time the full key will be shown.</p>
+    <div class="code-box" id="admin-plain-key-box" style="font-size:13px">{{ admin_new_plain_key }}</div>
+    <button onclick="copyAdminKey()" class="btn btn-sm" style="margin-top:10px">📋 Copy to clipboard</button>
+    <p style="font-size:12px;color:#666;margin-top:10px">
+      Send this key to the tenant. They paste it into:<br>
+      <strong>WooCommerce → PhiXtra AI → API Key</strong> and
+      <strong>WooCommerce → PhiXtra Export → PhiXtra Sync → Bearer Token</strong>
+    </p>
+  </div>
+  <script>
+  function copyAdminKey(){
+    const txt = document.getElementById("admin-plain-key-box").textContent.trim();
+    navigator.clipboard.writeText(txt).then(()=>{
+      const btn = event.target; btn.textContent="✅ Copied!";
+      setTimeout(()=>btn.textContent="📋 Copy to clipboard", 2500);
+    });
+  }
+  </script>
+  {% endif %}
+
+  {% if keys %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ID</th><th>Website</th><th>Type</th><th>Active</th><th>Tokens used</th><th>Created</th><th>Actions</th></tr></thead>
+      <tbody>
+        {% for k in keys %}
+        <tr>
+          <td class="muted">{{ k.id }}</td>
+          <td>{{ k.website }}</td>
+          <td><span class="pill">{{ k.key_type }}</span></td>
+          <td>{% if k.is_active %}<span class="pill pill-green">Active</span>{% else %}<span class="pill pill-red">Revoked</span>{% endif %}</td>
+          <td>{{ k.tokens_used }}</td>
+          <td class="muted">{{ k.created_at.strftime('%Y-%m-%d') if k.created_at else '—' }}</td>
+          <td>
+            {% if k.is_active %}
+            <form method="POST" action="{{ url_for('portal_admin.api_keys_revoke', key_id=k.id) }}" style="display:inline">
+              <button class="btn btn-danger btn-sm" onclick="return confirm('Revoke this key?')">Revoke</button>
+            </form>
+            {% else %}
+            <form method="POST" action="{{ url_for('portal_admin.api_keys_reactivate', key_id=k.id) }}" style="display:inline">
+              <button class="btn btn-sm" onclick="return confirm('Reactivate this key?')">Reactivate</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<p class="muted">No API keys found for this tenant.</p>{% endif %}
+
+  <div style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(3,12,24,0.08)">
+    <form method="POST" action="{{ url_for('portal_admin.customer_api_key_create', customer_id=customer.id) }}"
+          onsubmit="return confirm('Generate a new paid API key for this tenant?')">
+      <button class="btn btn-primary btn-sm">🔑 Generate new API key for tenant</button>
+    </form>
+  </div>
+</div>
+
+{# TRIAL MANAGEMENT #}
+{% set trial_key = namespace(found=false, id=none, active=false, activated=none, expires=none) %}
+{% for k in keys %}
+  {% if k.key_type == 'trial' and not trial_key.found %}
+    {% set trial_key.found = true %}
+    {% set trial_key.id = k.id %}
+    {% set trial_key.active = k.is_active %}
+    {% set trial_key.activated = k.trial_activated_at %}
+    {% set trial_key.expires = k.trial_expires_at %}
+  {% endif %}
+{% endfor %}
+
+{% if trial_key.found %}
+<div class="card" style="margin-bottom:16px; border:2px solid #fde68a;">
+  <div class="card-title" style="color:#92400e;">⏱️ Trial Management</div>
+  <p style="font-size:13px;color:#6b7280;margin:0 0 14px 0;">
+    Manage the trial period for this tenant's trial API key (key ID {{ trial_key.id }}).
+  </p>
+
+  <table style="border:none;margin-bottom:16px">
+    <tr>
+      <td class="muted" style="border:none;padding:4px 0;width:130px">Trial activated</td>
+      <td style="border:none;padding:4px 8px">
+        {{ trial_key.activated.strftime('%Y-%m-%d') if trial_key.activated else '—' }}
+      </td>
+    </tr>
+    <tr>
+      <td class="muted" style="border:none;padding:4px 0">Trial expires</td>
+      <td style="border:none;padding:4px 8px">
+        {{ trial_key.expires.strftime('%Y-%m-%d') if trial_key.expires else '—' }}
+      </td>
+    </tr>
+    <tr>
+      <td class="muted" style="border:none;padding:4px 0">Key status</td>
+      <td style="border:none;padding:4px 8px">
+        {% if trial_key.active %}<span class="pill pill-green">Active</span>
+        {% else %}<span class="pill pill-red">Inactive</span>{% endif %}
+      </td>
+    </tr>
+  </table>
+
+  <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">
+
+    <!-- Adjust duration -->
+    <div style="flex:1;min-width:220px;padding:14px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px">
+      <div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#92400e;">✏️ Adjust Trial Duration</div>
+      <p style="font-size:12px;color:#6b7280;margin:0 0 10px 0;">
+        Set the total number of days from their original activation date.
+        Reminder emails will be cleared so the tenant receives fresh warnings.
+      </p>
+      <form method="POST"
+            action="{{ url_for('portal_admin.customer_trial_adjust', customer_id=customer.id) }}"
+            onsubmit="return confirm('Set this tenant\'s trial to ' + document.getElementById('trialAdjustDays').value + ' days from their activation date?')">
+        <div class="form-group" style="margin-bottom:8px">
+          <label style="font-size:12px">Total trial days (from activation)</label>
+          <input type="number" id="trialAdjustDays" name="trial_days"
+                 min="1" max="3650" required placeholder="e.g. 30"
+                 style="width:100px;font-size:13px"/>
+        </div>
+        <button type="submit" class="btn btn-sm" style="background:#92400e;color:#fff;border-color:#92400e;">
+          Save Duration
+        </button>
+      </form>
+    </div>
+
+    <!-- Reset trial -->
+    <div style="flex:1;min-width:220px;padding:14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px">
+      <div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#991b1b;">🔄 Reset Trial</div>
+      <p style="font-size:12px;color:#6b7280;margin:0 0 10px 0;">
+        Starts a brand-new trial from today using the current global default duration.
+        The key will be reactivated and the activation date reset to now.
+      </p>
+      <form method="POST"
+            action="{{ url_for('portal_admin.customer_trial_reset', customer_id=customer.id) }}"
+            onsubmit="return confirm('Reset this tenant\'s trial? Their trial will restart from today using the default duration.')">
+        <button type="submit" class="btn btn-danger btn-sm">Reset Trial</button>
+      </form>
+    </div>
+
+  </div>
+</div>
+{% endif %}
+
+{# INVOICES #}
+<div class="card" style="margin-bottom:16px;">
+  <div class="card-title">Invoices</div>
+  {% if invoices %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Invoice</th><th>Credits</th><th>Total</th><th>Status</th><th>Date</th><th>PDF</th></tr></thead>
+      <tbody>
+        {% for inv in invoices %}
+        <tr>
+          <td style="font-family:monospace;font-size:11px">{{ inv.invoice_number }}</td>
+          <td>{{ inv.credits }}</td>
+          <td>{{ inv.total_fmt }}</td>
+          <td>{% if inv.status=='paid' %}<span class="pill pill-green">Paid</span>{% else %}<span class="pill pill-grey">{{ inv.status }}</span>{% endif %}</td>
+          <td class="muted">{{ inv.created_at.strftime('%Y-%m-%d') if inv.created_at else '—' }}</td>
+          <td>{% if inv.status=='paid' %}<a href="{{ url_for('portal_admin.invoice_download', invoice_id=inv.id) }}" class="btn btn-sm">PDF</a>{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<p class="muted">No invoices.</p>{% endif %}
+</div>
+
+{# ── FEATURE MANAGEMENT (NEW) ───────────────────────────────────────────────── #}
+<div class="card" style="margin-bottom:16px; border:2px solid #dbeafe;">
+  <div class="card-title" style="color:#1d4ed8;">🔌 Feature Management</div>
+  <p style="font-size:13px; color:#6b7280; margin:0 0 16px 0;">
+    Controls which plugin features are active for this customer's store.
+    Changes take effect immediately on the customer's next chat message.
+    Features must also be included in a credit package offered to this customer.
+  </p>
+
+  <form method="POST" action="{{ url_for('portal_admin.customer_set_features', customer_id=customer.id) }}">
+
+    {# Product Recommendation Feature #}
+    <div style="display:flex; align-items:flex-start; gap:12px; padding:14px;
+                background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; margin-bottom:10px;">
+      <input type="checkbox"
+             name="feat_product_recommendation"
+             id="feat_prod_rec"
+             style="width:auto; margin-top:3px;"
+             {% if tenant_features.get('product_recommendation') %}checked{% endif %}/>
+      <div style="flex:1">
+        <label for="feat_prod_rec" style="margin:0; font-weight:700; cursor:pointer; font-size:14px;">
+          🛍️ Product Recommendation
+        </label>
+        <p style="margin:4px 0 0 0; font-size:12px; color:#374151;">
+          When enabled, the AI chat widget will suggest relevant products during conversations
+          and display them as clickable cards with Add to Cart and Buy Now buttons.
+        </p>
+        <p style="margin:6px 0 0 0; font-size:11px; color:#6b7280;">
+          Current status:
+          {% if tenant_features.get('product_recommendation') %}
+            <span style="color:#059669; font-weight:700;">✓ ACTIVE</span>
+          {% else %}
+            <span style="color:#9ca3af; font-weight:700;">✗ Inactive</span>
+          {% endif %}
+        </p>
+      </div>
+    </div>
+
+    {# Automated Cross-selling (Related Product Cards) — Feature 5 #}
+    <div style="display:flex; align-items:flex-start; gap:12px; padding:14px;
+                background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; margin-bottom:10px;">
+      <input type="checkbox"
+             name="feat_related_products"
+             id="feat_related_products"
+             style="width:auto; margin-top:3px;"
+             {% if tenant_features.get('related_products') %}checked{% endif %}/>
+      <div style="flex:1">
+        <label for="feat_related_products" style="margin:0; font-weight:700; cursor:pointer; font-size:14px;">
+          🔗 Automated Cross-selling
+        </label>
+        <p style="margin:4px 0 0 0; font-size:12px; color:#374151;">
+          After displaying recommended products, the widget automatically appends up to 2 related
+          products from the same category and price range — labelled "You may also like:". Requires
+          <strong>Product Recommendation</strong> to also be enabled.
+        </p>
+        <p style="margin:6px 0 0 0; font-size:11px; color:#6b7280;">
+          Current status:
+          {% if tenant_features.get('related_products') %}
+            <span style="color:#059669; font-weight:700;">✓ ACTIVE</span>
+          {% else %}
+            <span style="color:#9ca3af; font-weight:700;">✗ Inactive</span>
+          {% endif %}
+        </p>
+      </div>
+    </div>
+
+    {# Intelligent Cart Revenue Recovery #}
+    <div style="display:flex; align-items:flex-start; gap:12px; padding:14px;
+                background:#fdf4ff; border:1px solid #e9d5ff; border-radius:8px; margin-bottom:10px;">
+      <input type="checkbox"
+             name="feat_cart_recovery"
+             id="feat_cart_recovery"
+             style="width:auto; margin-top:3px;"
+             {% if tenant_features.get('cart_recovery') %}checked{% endif %}/>
+      <div style="flex:1">
+        <label for="feat_cart_recovery" style="margin:0; font-weight:700; cursor:pointer; font-size:14px;">
+          🛒 Intelligent Cart Revenue Recovery
+        </label>
+        <p style="margin:4px 0 0 0; font-size:12px; color:#374151;">
+          Detects cart abandonment in real time, scores intent (0–100), and automatically runs a
+          3-touch recovery sequence: a chat widget popup, a personalised AI email (T+2 hr), and a
+          final urgency email (T+24 hr). Targets 65%+ recovery rate vs Tidio's ~35%.
+        </p>
+        <p style="margin:6px 0 0 0; font-size:11px; color:#6b7280;">
+          Current status:
+          {% if tenant_features.get('cart_recovery') %}
+            <span style="color:#059669; font-weight:700;">✓ ACTIVE</span>
+          {% else %}
+            <span style="color:#9ca3af; font-weight:700;">✗ Inactive</span>
+          {% endif %}
+        </p>
+
+        {# Sub-settings — shown indented when feature is being configured #}
+        <div style="margin-top:12px; padding:12px; background:rgba(255,255,255,0.7);
+                    border:1px solid #e9d5ff; border-radius:8px;">
+          <p style="margin:0 0 8px 0; font-size:12px; font-weight:700; color:#6b7280;">
+            Recovery Popup Message (optional)
+          </p>
+          <input type="text"
+                 name="cart_recovery_popup_message"
+                 value="{{ tenant_features.get('cart_recovery_popup_message','') }}"
+                 placeholder="👋 Still thinking it over? Your cart is saved and ready for you!"
+                 style="font-size:12px; margin-bottom:8px;"/>
+          <p style="margin:0 0 8px 0; font-size:12px; font-weight:700; color:#6b7280;">
+            Discount Incentive % (0 = no discount)
+          </p>
+          <input type="number"
+                 name="cart_recovery_incentive_pct"
+                 value="{{ tenant_features.get('cart_recovery_incentive_pct', 0) }}"
+                 min="0" max="50" step="1"
+                 style="font-size:12px; width:100px;"/>
+          <p style="margin:4px 0 0 0; font-size:11px; color:#9ca3af;">
+            If set, recovery emails will offer this % off with a unique code (e.g. COMEBACK10).
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; align-items:flex-start; gap:12px; padding:14px;
+            background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; margin-bottom:10px;">
+  <input type="checkbox"
+         name="feat_verified_specs_web_lookup"
+         id="feat_verified_specs_web_lookup"
+         style="width:auto; margin-top:3px;"
+         {% if tenant_features.get('verified_specs_web_lookup') %}checked{% endif %}/>
+  <div style="flex:1">
+    <label for="feat_verified_specs_web_lookup" style="margin:0; font-weight:700; cursor:pointer; font-size:14px;">
+      🔎 Verified Specs Lookup (Web)
+    </label>
+    <p style="margin:4px 0 0 0; font-size:12px; color:#374151;">
+      If a customer asks for a numeric specification (e.g., “How much does this laptop weigh?”) and the value is not
+      in your store’s RAG data, PhiXtra will browse trusted manufacturer sources and cite them — never guessing.
+      Verified specs are cached back into your search index for faster future answers.
+    </p>
+    <p style="margin:6px 0 0 0; font-size:11px; color:#6b7280;">
+      Current status:
+      {% if tenant_features.get('verified_specs_web_lookup') %}
+        <span style="color:#059669; font-weight:700;">✓ ACTIVE</span>
+      {% else %}
+        <span style="color:#9ca3af; font-weight:700;">✗ Inactive</span>
+      {% endif %}
+    </p>
+  </div>
+</div>
+
+    {# Chat Archive — 30 Days #}
+    <div style="display:flex; align-items:flex-start; gap:12px; padding:14px;
+                background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px; margin-bottom:10px;">
+      <input type="checkbox"
+             name="feat_chat_archive_30days"
+             id="feat_chat_archive_30days"
+             style="width:auto; margin-top:3px;"
+             {% if tenant_features.get('chat_archive_30days') %}checked{% endif %}/>
+      <div style="flex:1">
+        <label for="feat_chat_archive_30days" style="margin:0; font-weight:700; cursor:pointer; font-size:14px;">
+          📅 Chat Archive — 30 Days
+        </label>
+        <p style="margin:4px 0 0 0; font-size:12px; color:#374151;">
+          Gives the customer access to <strong>30 days</strong> of conversation history.
+          Includes fulltext keyword search, <strong>PDF export</strong> and AI conversation summaries.
+          Excel and Word exports are not included in this tier.
+          Free/trial accounts see only the last 3 days with no search or export.
+        </p>
+        <p style="margin:6px 0 0 0; font-size:11px; color:#6b7280;">
+          Current status:
+          {% if tenant_features.get('chat_archive_30days') %}
+            <span style="color:#059669; font-weight:700;">✓ ACTIVE</span>
+          {% else %}
+            <span style="color:#9ca3af; font-weight:700;">✗ Inactive</span>
+          {% endif %}
+        </p>
+      </div>
+    </div>
+
+    {# Chat Archive — Unlimited #}
+    <div style="display:flex; align-items:flex-start; gap:12px; padding:14px;
+                background:#f0fdf4; border:1px solid #6ee7b7; border-radius:8px; margin-bottom:10px;">
+      <input type="checkbox"
+             name="feat_chat_archive_unlimited"
+             id="feat_chat_archive_unlimited"
+             style="width:auto; margin-top:3px;"
+             {% if tenant_features.get('chat_archive_unlimited') %}checked{% endif %}/>
+      <div style="flex:1">
+        <label for="feat_chat_archive_unlimited" style="margin:0; font-weight:700; cursor:pointer; font-size:14px;">
+          ♾️ Chat Archive — Unlimited
+        </label>
+        <p style="margin:4px 0 0 0; font-size:12px; color:#374151;">
+          Full unlimited conversation history with no day limit.
+          Includes fulltext keyword search, <strong>PDF, Excel and Word export</strong> and AI conversation summaries.
+          If both 30-Day and Unlimited are ticked, Unlimited takes priority.
+        </p>
+        <p style="margin:6px 0 0 0; font-size:11px; color:#6b7280;">
+          Current status:
+          {% if tenant_features.get('chat_archive_unlimited') %}
+            <span style="color:#059669; font-weight:700;">✓ ACTIVE</span>
+          {% else %}
+            <span style="color:#9ca3af; font-weight:700;">✗ Inactive</span>
+          {% endif %}
+        </p>
+      </div>
+    </div>
+
+<button type="submit" class="btn btn-primary btn-sm"
+            onclick="return confirm('Save feature settings for this customer?')">
+      💾 Save Feature Settings
+    </button>
+  </form>
+</div>
+{# ──────────────────────────────────────────────────────────────────────────── #}
+
+{# AUDIT LOG #}
+<div class="card">
+  <div class="card-title">Audit log (last 100 events)</div>
+  {% if audit %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Action</th><th>Website</th><th>Key type</th><th>Admin</th><th>Date</th></tr></thead>
+      <tbody>
+        {% for log in audit %}
+        <tr>
+          <td><code style="font-size:11px">{{ log.action }}</code></td>
+          <td class="muted">{{ log.website or '—' }}</td>
+          <td class="muted">{{ log.key_type or '—' }}</td>
+          <td class="muted">{{ log.admin_username or '—' }}</td>
+          <td class="muted">{{ log.created_at.strftime('%Y-%m-%d %H:%M') if log.created_at else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<p class="muted">No audit events.</p>{% endif %}
+</div>
+
+{% endblock %}

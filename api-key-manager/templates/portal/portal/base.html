@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>{% block title %}PhiXtra Portal{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='portal/favicon.png') }}"/>
+  <style>
+    :root{
+      --ink:#030C18; --bg:#fff; --card:#fff;
+      --line:rgba(3,12,24,0.10); --txt:rgba(3,12,24,0.92);
+      --muted:rgba(3,12,24,0.55); --good:#12B76A;
+      --warn:#F79009; --bad:#F04438;
+      --shadow:0 18px 40px rgba(3,12,24,0.09);
+      --shadow2:0 4px 14px rgba(3,12,24,0.07);
+      --ring:0 0 0 4px rgba(3,12,24,0.07);
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    html{-webkit-font-smoothing:antialiased}
+    body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+         color:var(--txt);
+         background:
+           radial-gradient(1200px 600px at 10% -10%, rgba(3,12,24,0.08), transparent 60%),
+           radial-gradient(1000px 500px at 110% 0%, rgba(3,12,24,0.06), transparent 60%),
+           linear-gradient(180deg, #ffffff 0%, #fbfbfc 100%);
+         min-height:100vh;font-size:15px;line-height:1.55}
+    a{color:var(--ink);text-decoration:none}
+    a:hover{text-decoration:underline;text-underline-offset:3px}
+
+    /* ── NAV ── */
+    .topbar{position:sticky;top:0;z-index:50;background:rgba(255,255,255,0.88);
+            backdrop-filter:blur(12px);border-bottom:1px solid var(--line);
+            box-shadow:0 2px 12px rgba(3,12,24,0.05)}
+    .nav-inner{max-width:1140px;margin:0 auto;padding:0 20px;
+               display:flex;align-items:center;justify-content:space-between;height:68px;gap:14px}
+    .brand{display:flex;align-items:center;gap:10px}
+    .brand img{height:44px;width:auto}
+    .brand-label{font-size:13px;color:var(--muted)}
+    .navlinks{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+    .navlinks a{color:var(--muted);padding:8px 11px;border-radius:10px;font-size:13px;
+                font-weight:500;border:1px solid transparent;transition:.15s}
+    .navlinks a:hover{color:var(--txt);background:rgba(3,12,24,0.04);border-color:var(--line);text-decoration:none}
+    .navlinks a.active{color:var(--txt);background:rgba(3,12,24,0.04);border-color:var(--line)}
+
+    /* ── LAYOUT ── */
+    .page{max-width:1140px;margin:0 auto;padding:32px 20px 60px}
+    .page-sm{max-width:480px;margin:0 auto;padding:56px 20px 60px}
+
+    /* ── CARDS ── */
+    .card{background:var(--card);border:1px solid var(--line);border-radius:18px;
+          padding:22px;box-shadow:var(--shadow)}
+    .card-sm{padding:16px}
+    .card-title{font-size:13px;font-weight:700;color:var(--muted);
+                text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+    .kpi{font-size:30px;font-weight:800;letter-spacing:-.5px;color:var(--ink)}
+    .kpi-sm{font-size:20px;font-weight:700}
+
+    /* ── GRID ── */
+    .grid{display:grid;gap:14px}
+    .g3{grid-template-columns:repeat(3,1fr)}
+    .g2{grid-template-columns:repeat(2,1fr)}
+    @media(max-width:860px){.g3,.g2{grid-template-columns:1fr}
+      .nav-inner{height:auto;padding:12px 16px;flex-wrap:wrap}}
+
+    /* ── BUTTONS ── */
+    .btn{display:inline-flex;align-items:center;gap:7px;padding:10px 16px;
+         border-radius:12px;border:1px solid var(--line);background:#fff;
+         color:var(--txt);cursor:pointer;font-weight:650;font-size:14px;
+         text-decoration:none;transition:.15s;box-shadow:var(--shadow2);
+         font-family:inherit;line-height:1}
+    .btn:hover{transform:translateY(-1px);box-shadow:0 8px 22px rgba(3,12,24,0.12);text-decoration:none}
+    .btn-primary{background:var(--ink);color:#fff;border-color:rgba(3,12,24,0.2);
+                 box-shadow:0 10px 26px rgba(3,12,24,0.18)}
+    .btn-primary:hover{background:#000;color:#fff}
+    /* Ensure anchors styled as buttons remain readable (fixes Create account visibility) */
+    a.btn-primary, a.btn-primary:visited, a.btn-primary:hover{color:#fff}
+    .btn-danger{background:#fff;color:var(--bad);border-color:rgba(240,68,56,0.25)}
+    .btn-danger:hover{background:rgba(240,68,56,0.06)}
+    .btn-sm{padding:7px 12px;font-size:13px;border-radius:10px}
+    .btn-ghost{background:transparent;border-color:transparent;box-shadow:none}
+
+    /* ── FORMS ── */
+    label{display:block;font-size:13px;color:var(--muted);margin-bottom:5px;font-weight:500}
+    input,select,textarea{
+      width:100%;padding:11px 13px;border-radius:12px;border:1px solid rgba(3,12,24,0.18);
+      background:#fff;color:var(--txt);font-size:14px;font-family:inherit;
+      outline:none;transition:.15s;line-height:1.4}
+    input:focus,select:focus,textarea:focus{
+      border-color:rgba(3,12,24,0.35);box-shadow:var(--ring)}
+    .form-group{margin-bottom:16px}
+    .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    @media(max-width:540px){.form-row{grid-template-columns:1fr}}
+
+    /* ── FLASH MESSAGES ── */
+    .flash{border-radius:14px;border:1px solid var(--line);padding:12px 16px;
+           margin:0 0 18px;font-size:14px}
+    .flash.success{border-color:rgba(18,183,106,0.40);background:rgba(18,183,106,0.07)}
+    .flash.warning{border-color:rgba(247,144,9,0.40);background:rgba(247,144,9,0.07)}
+    .flash.danger {border-color:rgba(240,68,56,0.40); background:rgba(240,68,56,0.06)}
+
+    /* ── TABLE ── */
+    .table-wrap{overflow-x:auto;border-radius:14px;border:1px solid var(--line)}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:11px 14px;font-size:13px;border-bottom:1px solid rgba(3,12,24,0.07);text-align:left}
+    th{font-weight:700;color:var(--muted);background:rgba(3,12,24,0.025)}
+    tbody tr:last-child td{border-bottom:none}
+    tbody tr:hover{background:rgba(3,12,24,0.018)}
+
+    /* ── PILLS / BADGES ── */
+    .pill{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;
+          border-radius:999px;font-size:12px;font-weight:650;
+          border:1px solid var(--line)}
+    .pill-green{border-color:rgba(18,183,106,0.30);background:rgba(18,183,106,0.10);color:#0a7a3c}
+    .pill-red  {border-color:rgba(240,68,56,0.30);background:rgba(240,68,56,0.08);color:#b02020}
+    .pill-warn {border-color:rgba(247,144,9,0.30);background:rgba(247,144,9,0.10);color:#7a4f00}
+    .pill-grey {border-color:var(--line);background:rgba(3,12,24,0.04);color:var(--muted)}
+
+    /* ── PROGRESS BAR ── */
+    .progress{height:8px;width:100%;background:rgba(3,12,24,0.07);border-radius:999px;overflow:hidden}
+    .progress>div{height:100%;border-radius:999px;
+                  background:linear-gradient(90deg,var(--good),var(--warn),var(--bad))}
+
+    /* ── MISC ── */
+    .muted{color:var(--muted);font-size:13px}
+    .section-title{font-size:20px;font-weight:800;letter-spacing:-.3px;margin-bottom:18px}
+    .page-header{display:flex;align-items:center;justify-content:space-between;
+                 flex-wrap:wrap;gap:12px;margin-bottom:26px}
+    .divider{height:1px;background:var(--line);margin:22px 0}
+    .code-box{font-family:"SF Mono","Fira Code",monospace;font-size:13px;
+              background:rgba(3,12,24,0.04);border:1px solid var(--line);
+              border-radius:10px;padding:12px 14px;word-break:break-all;
+              letter-spacing:.02em}
+    .dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0}
+    .dot-green{background:var(--good)}
+    .dot-red  {background:var(--bad)}
+    .dot-grey {background:rgba(3,12,24,0.25)}
+    .footer{color:var(--muted);font-size:12px;padding-top:28px;
+            border-top:1px solid var(--line);margin-top:40px}
+    .impersonate-bar{background:#F79009;color:#fff;text-align:center;
+                     padding:8px;font-size:13px;font-weight:650;position:sticky;top:68px;z-index:49}
+
+    /* Small polish helpers */
+    .home-pill{display:inline-flex;align-items:center;gap:7px;padding:8px 12px;border-radius:999px;
+               border:1px solid var(--line);background:rgba(255,255,255,0.75);color:var(--txt);
+               box-shadow:var(--shadow2)}
+    .home-pill:hover{background:#fff;text-decoration:none}
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+<div class="topbar">
+  <div class="nav-inner">
+    <a class="brand" href="{{ url_for('portal.home') }}">
+      <img src="{{ url_for('static', filename='portal/phixtra-logo.png') }}" alt="PhiXtra"/>
+      <span class="brand-label">Customer Portal</span>
+    </a>
+    <div class="navlinks">
+      <a class="home-pill" href="https://phixtra.com" target="_blank" rel="noopener">🏠 Home</a>
+      {% if session.get('portal_logged_in') %}
+        <a href="{{ url_for('portal.dashboard') }}" {% if request.endpoint=='portal.dashboard' %}class="active"{% endif %}>Dashboard</a>
+        <a href="{{ url_for('portal.api_keys') }}"  {% if request.endpoint=='portal.api_keys' %}class="active"{% endif %}>API Keys</a>
+        <a href="{{ url_for('portal.billing') }}"   {% if request.endpoint=='portal.billing' %}class="active"{% endif %}>Buy Credits</a>
+        <a href="{{ url_for('portal.invoices') }}"  {% if request.endpoint=='portal.invoices' %}class="active"{% endif %}>Invoices</a>
+        <a href="{{ url_for('portal.logout') }}">Log out</a>
+      {% else %}
+        <a href="{{ url_for('portal.login') }}">Log in</a>
+        <a href="{{ url_for('portal.register') }}" class="btn btn-primary btn-sm">Create account</a>
+      {% endif %}
+      {% if session.get('portal_admin_logged_in') %}
+        <a href="{{ url_for('portal_admin.customers') }}" style="color:var(--warn);font-weight:700">⚙ Admin</a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% if session.get('impersonate_customer_id') %}
+  <div class="impersonate-bar">
+    👁 Admin impersonating customer —
+    <a href="{{ url_for('portal_admin.stop_impersonate') }}" style="color:#fff;font-weight:800;text-decoration:underline">Stop impersonation</a>
+  </div>
+{% endif %}
+
+<div class="{% block wrap_class %}page{% endblock %}">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  {% block content %}{% endblock %}
+
+  <div class="footer">
+    © 2026 PhiXtra &nbsp;·&nbsp;
+    <a href="mailto:support@phixtra.com">support@phixtra.com</a>
+  </div>
+</div>
+</body>
+</html>

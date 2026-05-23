@@ -1,0 +1,69 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Customers — PhiXtra Admin{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="section-title">Customers</h1>
+</div>
+
+<form method="GET" class="search-bar">
+  <input name="q" value="{{ q }}" placeholder="Search by name, email or domain…"/>
+  <button type="submit" class="btn btn-sm">Search</button>
+  {% if q %}<a href="{{ url_for('portal_admin.customers') }}" class="btn btn-sm">Clear</a>{% endif %}
+</form>
+
+<div class="card" style="padding:0">
+  <div class="table-wrap" style="border:none;border-radius:16px">
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Phone</th>
+          <th>Domain</th>
+          <th>Balance</th>
+          <th>Verified</th>
+          <th>Active</th>
+          <th>Signed up</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in customers %}
+        <tr>
+          <td><strong>{{ c.full_name }}</strong></td>
+          <td>{{ c.email }}</td>
+          <td class="muted">{{ c.phone_number or '—' }}</td>
+          <td class="muted">{{ c.domain }}</td>
+          <td>
+            <strong>{{ "%.1f"|format(c.balance_credits) }}</strong>
+            <span class="muted">cr</span>
+          </td>
+          <td>
+            {% if c.email_verified %}<span class="pill pill-green">✓</span>
+            {% else %}<span class="pill pill-red">✗</span>{% endif %}
+          </td>
+          <td>
+            {% if c.is_active %}<span class="pill pill-green">Active</span>
+            {% else %}<span class="pill pill-red">Disabled</span>{% endif %}
+          </td>
+          <td class="muted">{{ c.created_at.strftime('%Y-%m-%d') if c.created_at else '—' }}</td>
+          <td style="white-space:nowrap;display:flex;gap:5px;flex-wrap:wrap">
+            <a href="{{ url_for('portal_admin.customer_detail', customer_id=c.id) }}"
+               class="btn btn-sm">Detail</a>
+            <a href="{{ url_for('portal_admin.impersonate', customer_id=c.id) }}"
+               class="btn btn-sm" style="color:var(--warn);border-color:rgba(247,144,9,0.30)"
+               onclick="return confirm('View portal as this customer?')">Impersonate</a>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="muted" style="text-align:center;padding:24px">
+          No customers found{% if q %} matching "{{ q }}"{% endif %}.
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

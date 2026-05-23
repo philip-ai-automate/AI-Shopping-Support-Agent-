@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Edit Key</h2>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+{% if key %}
+<div class="card">
+  <div><b>ID:</b> {{ key.id }}</div>
+  <div><b>Tenant:</b> {{ key.tenant_id }}</div>
+  <div><b>Website:</b> {{ key.website }}</div>
+  <div><b>Type:</b> {{ key.key_type }}</div>
+  <div><b>Created:</b> {{ key.created_at }}</div>
+  <div><b>Tokens Used:</b> {{ key.tokens_used }}</div>
+</div>
+
+<div class="card">
+  <form method="post">
+    <label><input type="checkbox" name="is_active" {% if key.is_active %}checked{% endif %}/> Active</label><br/><br/>
+
+    {% if key.key_type == "trial" %}
+      <label>Token Limit</label><br/>
+      <input name="token_limit" value="{{ key.token_limit or '' }}"/><br/>
+      <label><input type="checkbox" name="activate_now"/> Activate trial now (only if not activated before)</label><br/>
+      <div class="muted">Activation sets trial dates (14 days). If already activated, it won’t reset dates.</div><br/>
+    {% endif %}
+
+    <label><input type="checkbox" name="reset_tokens"/> Reset tokens used to 0</label><br/><br/>
+
+    <button type="submit">Save Changes</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

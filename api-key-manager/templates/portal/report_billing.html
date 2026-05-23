@@ -1,0 +1,155 @@
+{% extends "portal/base.html" %}
+{% block title %}Billing Summary Report – PhiXtra{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  .report-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:24px}
+  .report-title{font-size:22px;font-weight:800;letter-spacing:-.3px}
+  .export-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .export-bar span{font-size:13px;color:var(--muted);font-weight:600}
+  .period-tabs{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+  .period-tab{padding:7px 16px;border-radius:20px;border:1px solid var(--line);font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;color:var(--muted);background:#fff;transition:.15s}
+  .period-tab:hover{border-color:var(--ink);color:var(--ink);text-decoration:none}
+  .period-tab.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .chart-card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px;margin-bottom:20px;box-shadow:var(--shadow)}
+  .chart-card h3{font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:16px}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="report-header">
+  <div>
+    <div class="report-title">💳 Billing Summary Report</div>
+    <div class="muted" style="margin-top:4px">Credit purchases, spend and invoice history</div>
+  </div>
+  <div class="export-bar">
+    <span>Export:</span>
+    <a class="btn btn-sm" href="{{ url_for('portal.report_export', report='billing', fmt='pdf', days=days) }}">📄 PDF</a>
+    <a class="btn btn-sm" href="{{ url_for('portal.report_export', report='billing', fmt='xlsx', days=days) }}">📊 Excel</a>
+    <a class="btn btn-sm" href="{{ url_for('portal.report_export', report='billing', fmt='docx', days=days) }}">📝 Word</a>
+  </div>
+</div>
+
+<!-- Period selector -->
+<div class="period-tabs">
+  <a href="?days=30"  class="period-tab {% if days==30  %}active{% endif %}">Last 30 days</a>
+  <a href="?days=90"  class="period-tab {% if days==90  %}active{% endif %}">Last 90 days</a>
+  <a href="?days=365" class="period-tab {% if days==365 %}active{% endif %}">Last 12 months</a>
+  <a href="?days=9999" class="period-tab {% if days==9999 %}active{% endif %}">All time</a>
+</div>
+
+<!-- KPI Cards -->
+<div class="grid g3" style="margin-bottom:20px">
+  <div class="card card-sm">
+    <div class="card-title">Total Spend</div>
+    <div class="kpi">{{ total_spend_fmt }}</div>
+    <div class="muted" style="margin-top:4px">{{ period_label }}</div>
+  </div>
+  <div class="card card-sm">
+    <div class="card-title">Credits Purchased</div>
+    <div class="kpi">{{ total_credits_purchased }}</div>
+    <div class="muted" style="margin-top:4px">1 credit = 5,000 tokens</div>
+  </div>
+  <div class="card card-sm">
+    <div class="card-title">Current Balance</div>
+    <div class="kpi">{{ balance_credits }}</div>
+    <div class="muted" style="margin-top:4px">Credits remaining</div>
+  </div>
+</div>
+<div class="grid g2" style="margin-bottom:20px">
+  <div class="card card-sm">
+    <div class="card-title">Invoices Paid</div>
+    <div class="kpi-sm">{{ invoices_paid }}</div>
+  </div>
+  <div class="card card-sm">
+    <div class="card-title">VAT Paid</div>
+    <div class="kpi-sm">{{ total_vat_fmt }}</div>
+  </div>
+</div>
+
+<!-- Spend Chart -->
+{% if chart_points %}
+<div class="chart-card">
+  <h3>Monthly Spend</h3>
+  <canvas id="spendChart" height="80"></canvas>
+</div>
+{% endif %}
+
+<!-- Invoice History Table -->
+<div class="card" style="margin-bottom:20px">
+  <div style="margin-bottom:14px">
+    <h3 style="font-size:15px;font-weight:700">Invoice History</h3>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Invoice #</th>
+          <th>Date</th>
+          <th>Credits</th>
+          <th>Subtotal</th>
+          <th>VAT</th>
+          <th>Total</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if invoices %}
+          {% for inv in invoices %}
+          <tr>
+            <td><strong>{{ inv.invoice_number }}</strong></td>
+            <td>{{ inv.created_at.strftime('%d %b %Y') if inv.created_at else 'N/A' }}</td>
+            <td>{{ inv.credits }}</td>
+            <td>{{ inv.amount_fmt }}</td>
+            <td>{{ inv.vat_fmt }}</td>
+            <td><strong>{{ inv.total_fmt }}</strong></td>
+            <td>
+              {% if inv.status == 'paid' %}
+                <span class="pill pill-green">Paid</span>
+              {% elif inv.status == 'pending' %}
+                <span class="pill pill-warn">Pending</span>
+              {% else %}
+                <span class="pill pill-grey">{{ inv.status | title }}</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:28px">No invoices found for this period.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if chart_points %}
+<script>
+  (function() {
+    var pts = {{ chart_points | tojson }};
+    var labels = pts.map(function(p){ return p.month; });
+    var data   = pts.map(function(p){ return p.spend; });
+    var ctx = document.getElementById('spendChart').getContext('2d');
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Spend (£)',
+          data: data,
+          backgroundColor: 'rgba(3,12,24,0.75)',
+          borderRadius: 5,
+        }]
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false } },
+          y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } }
+        }
+      }
+    });
+  })();
+</script>
+{% endif %}
+{% endblock %}

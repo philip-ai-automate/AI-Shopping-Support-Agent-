@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Admins</h2>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+<div class="row">
+  <div class="col">
+    <div class="card">
+      <h3>Add Admin</h3>
+      <form method="post">
+        <input type="hidden" name="action" value="add"/>
+        <label>Username</label><br/>
+        <input name="username" required/><br/>
+        <label>Password</label><br/>
+        <input name="password" required/><br/>
+        <button type="submit">Add</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h3>Existing Admins</h3>
+  <table>
+    <thead><tr><th>ID</th><th>Username</th><th>Created</th><th>Delete</th></tr></thead>
+    <tbody>
+      {% for a in admins %}
+      <tr>
+        <td>{{ a.id }}</td>
+        <td>{{ a.username }}</td>
+        <td>{{ a.created_at }}</td>
+        <td>
+          <form method="post" style="margin:0">
+            <input type="hidden" name="action" value="delete"/>
+            <input type="hidden" name="admin_id" value="{{ a.id }}"/>
+            <button type="submit">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

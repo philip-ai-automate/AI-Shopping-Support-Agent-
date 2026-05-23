@@ -1,0 +1,182 @@
+{% extends "portal/base.html" %}
+{% block title %}Agent Inbox — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  .inbox-grid{display:grid;grid-template-columns:280px 1fr;gap:0;height:calc(100vh - 80px);
+              border:1px solid var(--line);border-radius:18px;overflow:hidden;
+              box-shadow:var(--shadow)}
+  @media(max-width:860px){.inbox-grid{grid-template-columns:1fr;height:auto}}
+
+  /* Conversation list (left panel) */
+  .inbox-list{border-right:1px solid var(--line);overflow-y:auto;background:#fff}
+  .inbox-item{padding:14px 16px;border-bottom:1px solid var(--line);cursor:pointer;
+              transition:.15s;text-decoration:none;display:block;color:var(--txt)}
+  .inbox-item:hover{background:rgba(3,12,24,0.03);text-decoration:none}
+  .inbox-item.active{background:rgba(3,12,24,0.06)}
+  .inbox-phone{font-weight:700;font-size:14px;margin-bottom:3px}
+  .inbox-time{font-size:11px;color:var(--muted)}
+  .inbox-preview{font-size:12px;color:var(--muted);white-space:nowrap;
+                 overflow:hidden;text-overflow:ellipsis;margin-top:3px}
+
+  /* Chat panel (right) */
+  .inbox-chat{display:flex;flex-direction:column;background:#f9f9fb}
+  .chat-header{padding:14px 20px;border-bottom:1px solid var(--line);
+               background:#fff;display:flex;align-items:center;
+               justify-content:space-between;gap:12px;flex-shrink:0}
+  .chat-messages{flex:1;overflow-y:auto;padding:20px;display:flex;
+                 flex-direction:column;gap:10px}
+  .chat-bubble{max-width:72%;padding:10px 14px;border-radius:14px;
+               font-size:13px;line-height:1.5;word-break:break-word}
+  .bubble-in{background:#fff;border:1px solid var(--line);
+             align-self:flex-start;border-bottom-left-radius:4px}
+  .bubble-out{background:var(--ink);color:#fff;
+              align-self:flex-end;border-bottom-right-radius:4px}
+  .bubble-agent{background:#12B76A;color:#fff;
+                align-self:flex-end;border-bottom-right-radius:4px}
+  .bubble-time{font-size:11px;opacity:0.55;margin-top:3px}
+  .chat-reply{padding:14px 20px;border-top:1px solid var(--line);
+              background:#fff;flex-shrink:0}
+  .chat-reply form{display:flex;gap:10px}
+  .chat-reply textarea{flex:1;resize:none;border-radius:12px;padding:10px 13px;
+                        font-size:14px;font-family:inherit;
+                        border:1px solid rgba(3,12,24,0.18);outline:none;
+                        transition:.15s;line-height:1.4}
+  .chat-reply textarea:focus{border-color:rgba(3,12,24,0.35);box-shadow:var(--ring)}
+
+  .empty-state{display:flex;flex-direction:column;align-items:center;
+               justify-content:center;flex:1;gap:10px;color:var(--muted);
+               text-align:center;padding:40px}
+  .empty-icon{font-size:40px;opacity:.35}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="margin-bottom:18px">
+  <div>
+    <div class="section-title">Agent Inbox</div>
+    <p class="muted">Reply to customers who asked for a human agent. Resolving a conversation hands them back to the AI.</p>
+  </div>
+  <a href="{{ url_for('portal.whatsapp_connect') }}" class="btn btn-sm">
+    WhatsApp Settings
+  </a>
+</div>
+
+{% if not connection %}
+<div class="card" style="text-align:center;padding:40px">
+  <div style="font-size:36px;margin-bottom:12px;opacity:.4">📵</div>
+  <div style="font-weight:700;margin-bottom:6px">WhatsApp not connected</div>
+  <p class="muted" style="margin-bottom:18px">Connect your WhatsApp account first to receive handoff conversations.</p>
+  <a href="{{ url_for('portal.whatsapp_connect') }}" class="btn btn-primary">Connect WhatsApp</a>
+</div>
+{% elif not handoffs %}
+<div class="card" style="text-align:center;padding:60px">
+  <div style="font-size:42px;margin-bottom:14px;opacity:.35">✅</div>
+  <div style="font-weight:700;font-size:18px;margin-bottom:8px">No open handoffs</div>
+  <p class="muted">All conversations are being handled by the AI assistant.<br>When a customer asks for a human agent, they'll appear here.</p>
+</div>
+{% else %}
+
+{# Show first conversation by default via URL anchor #}
+{% set active_session = request.args.get('session', handoffs[0].session_id) %}
+
+<div class="inbox-grid">
+
+  <!-- Left: conversation list -->
+  <div class="inbox-list">
+    <div style="padding:12px 16px;font-size:11px;font-weight:700;color:var(--muted);
+                text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--line);
+                background:#fff;position:sticky;top:0">
+      Open Handoffs ({{ handoffs|length }})
+    </div>
+    {% for h in handoffs %}
+    <a class="inbox-item {% if h.session_id == active_session %}active{% endif %}"
+       href="?session={{ h.session_id }}">
+      <div class="inbox-phone">+{{ h.customer_phone }}</div>
+      <div class="inbox-time">Escalated {{ h.escalated_at.strftime('%d %b %H:%M') if h.escalated_at else '' }}</div>
+      {% if h.messages %}
+        {% set last = h.messages[-1] %}
+        <div class="inbox-preview">
+          {{ '→' if last.direction == 'outbound' else '←' }}
+          {{ (last.content or '')|truncate(50) }}
+        </div>
+      {% endif %}
+    </a>
+    {% endfor %}
+  </div>
+
+  <!-- Right: active conversation -->
+  {% for h in handoffs %}
+  {% if h.session_id == active_session %}
+  <div class="inbox-chat">
+
+    <!-- Header -->
+    <div class="chat-header">
+      <div>
+        <div style="font-weight:700;font-size:15px">+{{ h.customer_phone }}</div>
+        <div style="font-size:11px;color:var(--muted)">Session: <code>{{ h.session_id }}</code></div>
+      </div>
+      <form method="POST"
+            action="{{ url_for('portal.whatsapp_inbox_resolve', session_id=h.session_id) }}"
+            onsubmit="return confirm('Mark as resolved? The AI assistant will resume this conversation.')">
+        <button type="submit" class="btn btn-sm btn-primary">Mark Resolved</button>
+      </form>
+    </div>
+
+    <!-- Messages -->
+    <div class="chat-messages" id="chatMessages">
+      {% if not h.messages %}
+      <div class="empty-state">
+        <div class="empty-icon">💬</div>
+        <div>No messages yet in this session</div>
+      </div>
+      {% else %}
+        {% for msg in h.messages %}
+        <div>
+          {% if msg.direction == 'inbound' %}
+            <div class="chat-bubble bubble-in">
+              {{ msg.content or '(media message)' }}
+              <div class="bubble-time">{{ msg.created_at.strftime('%H:%M') if msg.created_at else '' }}</div>
+            </div>
+          {% elif msg.message_type == 'agent_reply' %}
+            <div class="chat-bubble bubble-agent">
+              {{ msg.content }}
+              <div class="bubble-time">You · {{ msg.created_at.strftime('%H:%M') if msg.created_at else '' }}</div>
+            </div>
+          {% else %}
+            <div class="chat-bubble bubble-out">
+              {{ msg.content }}
+              <div class="bubble-time">AI · {{ msg.created_at.strftime('%H:%M') if msg.created_at else '' }}</div>
+            </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      {% endif %}
+    </div>
+
+    <!-- Reply box -->
+    <div class="chat-reply">
+      <form method="POST"
+            action="{{ url_for('portal.whatsapp_inbox_reply', session_id=h.session_id) }}">
+        <textarea name="reply" rows="2"
+                  placeholder="Type your reply and press Send..."
+                  onkeydown="if(event.ctrlKey&&event.key==='Enter'){this.form.submit()}"></textarea>
+        <button type="submit" class="btn btn-primary">Send</button>
+      </form>
+      <p class="muted" style="font-size:11px;margin-top:6px">Ctrl+Enter to send</p>
+    </div>
+
+  </div>
+  {% endif %}
+  {% endfor %}
+
+</div>
+
+<script>
+  // Scroll to bottom of chat on load
+  var el = document.getElementById('chatMessages');
+  if (el) el.scrollTop = el.scrollHeight;
+</script>
+
+{% endif %}
+{% endblock %}

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>{% block title %}Admin — PhiXtra{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <style>
+    :root{--ink:#030C18;--line:rgba(3,12,24,0.10);--txt:rgba(3,12,24,0.92);
+          --muted:rgba(3,12,24,0.55);--good:#12B76A;--warn:#F79009;--bad:#F04438;
+          --shadow:0 12px 30px rgba(3,12,24,0.08);--ring:0 0 0 4px rgba(3,12,24,0.07)}
+    *{box-sizing:border-box;margin:0;padding:0}
+    html{-webkit-font-smoothing:antialiased}
+    body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+         color:var(--txt);background:#f8f9fb;min-height:100vh;font-size:14px}
+    a{color:var(--ink);text-decoration:none}
+    a:hover{text-decoration:underline}
+    .topbar{background:var(--ink);position:sticky;top:0;z-index:50}
+    .nav-inner{max-width:1300px;margin:0 auto;padding:0 20px;display:flex;
+               align-items:center;justify-content:space-between;height:52px;gap:12px}
+    .brand{display:flex;align-items:center;gap:10px;color:#fff}
+    .brand img{height:26px;filter:invert(1)}
+    .brand-label{font-size:12px;color:rgba(255,255,255,0.55)}
+    .navlinks{display:flex;align-items:center;gap:2px}
+    .navlinks a{color:rgba(255,255,255,0.7);padding:7px 11px;border-radius:9px;
+                font-size:13px;font-weight:500;transition:.15s}
+    .navlinks a:hover{color:#fff;background:rgba(255,255,255,0.10);text-decoration:none}
+    .navlinks a.active{color:#fff;background:rgba(255,255,255,0.12)}
+    .page{max-width:1300px;margin:0 auto;padding:28px 20px 60px}
+    .card{background:#fff;border:1px solid var(--line);border-radius:16px;
+          padding:20px;box-shadow:var(--shadow);margin-bottom:16px}
+    .card-title{font-size:11px;font-weight:800;color:var(--muted);
+                text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+    .kpi{font-size:26px;font-weight:800;letter-spacing:-.5px}
+    .grid{display:grid;gap:14px}
+    .g4{grid-template-columns:repeat(4,1fr)}
+    .g2{grid-template-columns:repeat(2,1fr)}
+    @media(max-width:900px){.g4,.g2{grid-template-columns:1fr 1fr}}
+    @media(max-width:600px){.g4,.g2{grid-template-columns:1fr}}
+    .btn{display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:11px;
+         border:1px solid var(--line);background:#fff;color:var(--txt);cursor:pointer;
+         font-weight:650;font-size:13px;text-decoration:none;transition:.15s;font-family:inherit}
+    .btn:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(3,12,24,0.10);text-decoration:none}
+    .btn-primary{background:var(--ink);color:#fff;border-color:rgba(3,12,24,0.2)}
+    .btn-primary:hover{background:#000;color:#fff}
+    .btn-danger{color:var(--bad);border-color:rgba(240,68,56,0.25)}
+    .btn-danger:hover{background:rgba(240,68,56,0.05)}
+    .btn-sm{padding:6px 11px;font-size:12px;border-radius:9px}
+    label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:500}
+    input,select,textarea{width:100%;padding:9px 12px;border-radius:10px;
+      border:1px solid rgba(3,12,24,0.18);background:#fff;color:var(--txt);
+      font-size:13px;font-family:inherit;outline:none;transition:.15s}
+    input:focus,select:focus{border-color:rgba(3,12,24,0.35);box-shadow:var(--ring)}
+    .form-group{margin-bottom:14px}
+    .flash{border-radius:12px;border:1px solid var(--line);padding:11px 14px;margin-bottom:16px;font-size:13px}
+    .flash.success{border-color:rgba(18,183,106,0.35);background:rgba(18,183,106,0.07)}
+    .flash.warning{border-color:rgba(247,144,9,0.35);background:rgba(247,144,9,0.07)}
+    .flash.danger{border-color:rgba(240,68,56,0.35);background:rgba(240,68,56,0.06)}
+    .table-wrap{overflow-x:auto;border-radius:12px;border:1px solid var(--line)}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:10px 13px;font-size:12px;border-bottom:1px solid rgba(3,12,24,0.06);text-align:left}
+    th{font-weight:800;color:var(--muted);background:rgba(3,12,24,0.025);font-size:11px}
+    tbody tr:last-child td{border-bottom:none}
+    tbody tr:hover{background:rgba(3,12,24,0.015)}
+    .pill{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;
+          border-radius:999px;font-size:11px;font-weight:700;border:1px solid var(--line)}
+    .pill-green{border-color:rgba(18,183,106,0.30);background:rgba(18,183,106,0.10);color:#0a7a3c}
+    .pill-red{border-color:rgba(240,68,56,0.30);background:rgba(240,68,56,0.08);color:#b02020}
+    .pill-warn{border-color:rgba(247,144,9,0.30);background:rgba(247,144,9,0.10);color:#7a4f00}
+    .pill-grey{border-color:var(--line);background:rgba(3,12,24,0.04);color:var(--muted)}
+    .muted{color:var(--muted);font-size:12px}
+    .page-header{display:flex;align-items:center;justify-content:space-between;
+                 flex-wrap:wrap;gap:10px;margin-bottom:20px}
+    .section-title{font-size:20px;font-weight:800;letter-spacing:-.3px}
+    .code-box{font-family:"SF Mono","Fira Code",monospace;font-size:12px;
+              background:rgba(3,12,24,0.04);border:1px solid var(--line);
+              border-radius:8px;padding:10px 12px;word-break:break-all}
+    .footer{color:var(--muted);font-size:11px;padding-top:24px;
+            border-top:1px solid var(--line);margin-top:32px}
+    .search-bar{display:flex;gap:8px;margin-bottom:18px}
+    .search-bar input{max-width:320px}
+  </style>
+</head>
+<body>
+<div class="topbar">
+  <div class="nav-inner">
+    <div class="brand">
+      <img src="{{ url_for('static', filename='portal/phixtra-logo.png') }}" alt="PhiXtra"/>
+      <span class="brand-label">Admin Portal</span>
+    </div>
+    <div class="navlinks">
+      <a href="{{ url_for('portal_admin.customers') }}"       {% if 'customers' in request.endpoint %}class="active"{% endif %}>Customers</a>
+      <a href="{{ url_for('portal_admin.api_keys') }}"        {% if request.endpoint=='portal_admin.api_keys' %}class="active"{% endif %}>API Keys</a>
+      <a href="{{ url_for('portal_admin.invoices') }}"        {% if request.endpoint=='portal_admin.invoices' %}class="active"{% endif %}>Invoices</a>
+      <a href="{{ url_for('portal_admin.credit_packages') }}" {% if request.endpoint=='portal_admin.credit_packages' %}class="active"{% endif %}>Packages</a>
+      <a href="{{ url_for('portal_admin.plugins') }}"         {% if request.endpoint=='portal_admin.plugins' %}class="active"{% endif %}>Plugins</a>
+      <a href="{{ url_for('portal_admin.logout') }}" style="color:rgba(255,255,255,0.4)">Log out</a>
+    </div>
+  </div>
+</div>
+<div class="page">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}{% for cat,msg in messages %}
+      <div class="flash {{ cat }}">{{ msg }}</div>
+    {% endfor %}{% endif %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+  <div class="footer">© 2026 PhiXtra Admin — logged in as {{ session.get('portal_admin_username','') }}</div>
+</div>
+</body>
+</html>

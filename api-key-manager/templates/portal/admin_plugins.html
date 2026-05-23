@@ -1,0 +1,121 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Plugins — PhiXtra Admin{% endblock %}
+{% block content %}
+<div class="page">
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+  <div>
+    <h1 style="font-size:22px;font-weight:800">Plugin Downloads</h1>
+    <p style="color:var(--muted);font-size:13px;margin-top:3px">Upload plugin zip files here. Customers download them from the setup guide.</p>
+  </div>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}{% for cat, msg in messages %}
+    <div class="flash {{ cat }}">{{ msg }}</div>
+  {% endfor %}{% endif %}
+{% endwith %}
+
+<!-- ── UPLOAD FORM ───────────────────────────────────────────────────────── -->
+<div class="card" style="margin-bottom:20px">
+  <div class="card-title">Upload / Replace a Plugin</div>
+  <p style="font-size:13px;color:var(--muted);margin-bottom:16px">
+    To replace an existing plugin with a new version, use the same Plugin Key — it will overwrite the old file automatically.
+  </p>
+  <form method="POST" action="{{ url_for('portal_admin.plugins') }}" enctype="multipart/form-data">
+    <input type="hidden" name="action" value="upload"/>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div class="form-group" style="margin:0">
+        <label>Plugin Key *
+          <span style="font-weight:400;color:var(--muted)">(unique ID — no spaces, e.g. ai_assistant or phixtra_export)</span>
+        </label>
+        <input type="text" name="plugin_key" required placeholder="ai_assistant"
+               pattern="[a-z0-9_]+" title="Lowercase letters, numbers and underscores only"/>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>Display Name * <span style="font-weight:400;color:var(--muted)">(shown to customers)</span></label>
+        <input type="text" name="display_name" required placeholder="PhiXtra AI Assistant"/>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
+      <div class="form-group" style="margin:0">
+        <label>Version <span style="font-weight:400;color:var(--muted)">(optional, e.g. 2.4.1)</span></label>
+        <input type="text" name="version" placeholder="1.0.0"/>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>Plugin .zip file *</label>
+        <input type="file" name="plugin_file" accept=".zip" required/>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">⬆ Upload Plugin</button>
+  </form>
+</div>
+
+<!-- ── EXISTING PLUGINS ─────────────────────────────────────────────────── -->
+<div class="card">
+  <div class="card-title">Currently Available Plugins</div>
+  {% if plugins %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Display Name</th>
+          <th>Plugin Key</th>
+          <th>Filename</th>
+          <th>Version</th>
+          <th>Last Updated</th>
+          <th>Customer URL</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in plugins %}
+        <tr>
+          <td><strong>{{ p.display_name }}</strong></td>
+          <td><code style="font-size:11px;background:rgba(3,12,24,0.06);padding:2px 6px;border-radius:5px">{{ p.plugin_key }}</code></td>
+          <td style="color:var(--muted);font-size:12px">{{ p.filename }}</td>
+          <td>{{ p.version or '—' }}</td>
+          <td style="color:var(--muted);font-size:12px">{{ p.uploaded_at.strftime('%Y-%m-%d %H:%M') if p.uploaded_at else '—' }}</td>
+          <td style="font-size:12px;color:var(--muted)">/plugins/download/{{ p.plugin_key }}</td>
+          <td>
+            <form method="POST" action="{{ url_for('portal_admin.plugins') }}"
+                  onsubmit="return confirm('Remove this plugin? Customers will no longer be able to download it.')">
+              <input type="hidden" name="action" value="delete"/>
+              <input type="hidden" name="plugin_key" value="{{ p.plugin_key }}"/>
+              <button type="submit" class="btn btn-sm btn-danger">Remove</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p style="color:var(--muted);padding:20px 0;text-align:center;font-size:13px">
+    No plugins uploaded yet. Use the form above to add your first plugin.
+  </p>
+  {% endif %}
+</div>
+
+<!-- ── PLUGIN KEYS REFERENCE ────────────────────────────────────────────── -->
+<div class="card" style="margin-top:16px;background:rgba(37,99,235,0.03);border-color:rgba(37,99,235,0.2)">
+  <div class="card-title" style="color:#1D4ED8">Plugin Key Reference</div>
+  <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
+    The setup guide shows download buttons for these exact plugin keys. Use these keys when uploading.
+  </p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <div style="background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 14px">
+      <div style="font-weight:700;font-size:13px;margin-bottom:3px">PhiXtra AI Assistant</div>
+      <code style="font-size:12px;color:#1D4ED8">ai_assistant</code>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">The chat widget plugin for WooCommerce</div>
+    </div>
+    <div style="background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 14px">
+      <div style="font-weight:700;font-size:13px;margin-bottom:3px">PhiXtra Export</div>
+      <code style="font-size:12px;color:#1D4ED8">phixtra_export</code>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">The product sync / export plugin</div>
+    </div>
+  </div>
+</div>
+
+</div>
+{% endblock %}

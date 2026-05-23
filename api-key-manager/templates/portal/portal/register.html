@@ -1,0 +1,74 @@
+{% extends "portal/base.html" %}
+{% block title %}Create account — PhiXtra Portal{% endblock %}
+{% block wrap_class %}page{% endblock %}
+{% block content %}
+<div class="card" style="margin-top:12px;max-width:680px;margin-left:auto;margin-right:auto">
+  <h1 style="font-size:22px;font-weight:800;margin-bottom:6px">Create your account</h1>
+  <p class="muted" style="margin-bottom:22px">Start your free 14-day trial. No credit card required.</p>
+
+  <form method="POST" action="{{ url_for('portal.register') }}" novalidate>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>First name *</label>
+        <input type="text" name="first_name" required autofocus placeholder="Sarah"/>
+      </div>
+      <div class="form-group">
+        <label>Last name *</label>
+        <input type="text" name="last_name" required placeholder="Jones"/>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Email address *</label>
+      <input type="email" name="email" required placeholder="sarah@mystore.com"/>
+    </div>
+
+    <div class="form-group">
+      <label>Mobile phone <span class="muted">(optional — used for credit alerts &amp; 2FA)</span></label>
+      <input type="tel" name="phone_number" placeholder="+447911123456"/>
+    </div>
+
+    <div class="form-group">
+      <label>Password * <span class="muted">(minimum 8 characters)</span></label>
+      <input type="password" name="password" required minlength="8" placeholder="••••••••"/>
+    </div>
+
+    <div class="form-group">
+      <label>Your store domain * <span class="muted">(e.g. mystore.com)</span></label>
+      <input type="text" name="tenant_domain" required placeholder="mystore.com"
+             pattern="[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,}"/>
+      <p class="muted" style="margin-top:5px;font-size:12px">
+        Enter just the domain — no https://, no trailing slash.
+      </p>
+    </div>
+
+    <div style="border-top:1px solid var(--line);margin:20px 0 16px"></div>
+    <p style="font-size:13px;font-weight:700;margin-bottom:14px;color:var(--txt)">Tell us about your AI assistant</p>
+
+    <div class="form-group">
+      <label>What should the AI agent do for you? * <span class="muted">(e.g. greet customers, answer product questions, recommend items)</span></label>
+      <textarea name="ai_instructions" required rows="4"
+                placeholder="Example: Greet every visitor warmly. Help customers find the right product by asking about their needs. Recommend related products. Answer questions about delivery, returns, and product specifications."
+                style="resize:vertical;font-family:inherit;font-size:13px;padding:9px 12px;border-radius:10px;border:1px solid rgba(3,12,24,0.18);width:100%;color:var(--txt);outline:none;transition:.15s"></textarea>
+      <p class="muted" style="margin-top:5px;font-size:12px">This is used to configure your AI assistant. Be as specific as you like.</p>
+    </div>
+
+    <div class="form-group">
+      <label>Other requirements <span class="muted">(optional — any extra instructions or things to avoid)</span></label>
+      <textarea name="ai_requirements" rows="3"
+                placeholder="Example: Never mention competitor brands. Always suggest our premium range first. Do not discuss pricing."
+                style="resize:vertical;font-family:inherit;font-size:13px;padding:9px 12px;border-radius:10px;border:1px solid rgba(3,12,24,0.18);width:100%;color:var(--txt);outline:none;transition:.15s"></textarea>
+    </div>
+
+    <button type="submit" class="btn btn-primary"
+            style="width:100%;justify-content:center;margin-top:4px">
+      Create account &amp; start free trial
+    </button>
+  </form>
+
+  <div style="margin-top:18px;font-size:13px;text-align:center">
+    Already have an account? <a href="{{ url_for('portal.login') }}">Log in</a>
+  </div>
+</div>
+{% endblock %}

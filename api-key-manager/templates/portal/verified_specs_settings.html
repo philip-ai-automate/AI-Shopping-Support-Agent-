@@ -1,0 +1,306 @@
+{% extends "portal/base.html" %}
+{% block title %}Verified Specs Settings – PhiXtra{% endblock %}
+
+{% block head %}
+<style>
+  .vs-page-header{display:flex;align-items:flex-start;justify-content:space-between;
+                  flex-wrap:wrap;gap:12px;margin-bottom:26px}
+  .vs-page-title{font-size:22px;font-weight:800;letter-spacing:-.3px}
+
+  /* How-it-works box */
+  .how-box{background:rgba(37,99,235,0.04);border:1px solid rgba(37,99,235,0.18);
+           border-radius:16px;padding:18px 20px;margin-bottom:26px}
+  .how-box h3{font-size:14px;font-weight:700;color:#2563EB;margin-bottom:10px}
+  .how-box p{font-size:13px;color:var(--txt);margin-bottom:8px;line-height:1.6}
+  .how-box p:last-child{margin-bottom:0}
+
+  /* Feature-disabled notice */
+  .disabled-notice{background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.35);
+                   border-radius:16px;padding:20px 22px;margin-bottom:26px;
+                   display:flex;gap:14px;align-items:flex-start}
+  .disabled-notice-icon{font-size:22px;flex-shrink:0}
+  .disabled-notice-body{font-size:13px;color:var(--txt);line-height:1.6}
+  .disabled-notice-body strong{color:#92400e}
+
+  /* Section cards */
+  .vs-section{margin-bottom:28px}
+  .vs-section-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  .vs-section-icon{font-size:22px}
+  .vs-section-title{font-size:16px;font-weight:800}
+  .vs-section-sub{font-size:13px;color:var(--muted);margin-top:1px}
+
+  /* List rows */
+  .vs-list{display:flex;flex-direction:column;gap:10px}
+  .vs-row{display:flex;align-items:center;justify-content:space-between;gap:12px;
+          background:#fff;border:1px solid var(--line);border-radius:14px;
+          padding:14px 16px;transition:.15s}
+  .vs-row:hover{box-shadow:var(--shadow2)}
+  .vs-row-body{flex:1;min-width:0}
+  .vs-row-title{font-size:14px;font-weight:600;color:var(--txt)}
+  .vs-row-meta{font-size:12px;color:var(--muted);margin-top:3px}
+  .vs-row-actions{flex-shrink:0}
+
+  /* Add-form card */
+  .add-card{background:rgba(3,12,24,0.025);border:1px dashed rgba(3,12,24,0.18);
+            border-radius:16px;padding:18px 20px;margin-top:12px}
+  .add-card h4{font-size:13px;font-weight:700;color:var(--muted);
+               text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px}
+  .add-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+  .add-row .form-group{margin-bottom:0}
+  .add-input-sm{width:180px}
+  .add-input-md{flex:1;min-width:200px}
+  .add-input-xs{width:100px}
+
+  /* Tags (domain pills) */
+  .domain-tag{display:inline-flex;align-items:center;gap:7px;
+              background:#fff;border:1px solid var(--line);
+              border-radius:999px;padding:6px 14px;font-size:13px;
+              font-weight:500;color:var(--txt)}
+  .domain-tag form{display:inline}
+  .domain-tag button{background:none;border:none;cursor:pointer;
+                     color:var(--muted);font-size:14px;padding:0;line-height:1}
+  .domain-tag button:hover{color:#dc2626}
+  .tag-wrap{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+
+  /* Empty state */
+  .empty-state{text-align:center;padding:28px;color:var(--muted);font-size:14px}
+
+  /* Spec detail chip */
+  .chip{display:inline-block;background:rgba(37,99,235,0.07);color:#1d4ed8;
+        border-radius:6px;padding:2px 8px;font-size:12px;font-weight:600;
+        margin-right:4px}
+
+  @media(max-width:560px){
+    .add-row{flex-direction:column}
+    .add-input-sm,.add-input-md,.add-input-xs{width:100%}
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="vs-page-header">
+  <div>
+    <div class="vs-page-title">🔍 Verified Specs Settings</div>
+    <div class="muted" style="margin-top:4px">
+      Control which websites PhiXtra trusts when looking up numeric specifications, and define custom spec types for your products
+    </div>
+  </div>
+</div>
+
+<!-- ── Feature disabled notice ─────────────────────────────────────────── -->
+{% if not feature_enabled %}
+<div class="disabled-notice">
+  <div class="disabled-notice-icon">⚠️</div>
+  <div class="disabled-notice-body">
+    <strong>Verified Specs Web Lookup is not enabled on your plan.</strong><br>
+    The settings below are saved but will not take effect until this feature is active.
+    Please contact support or upgrade your plan to enable it.
+  </div>
+</div>
+{% endif %}
+
+<!-- ── How it works ─────────────────────────────────────────────────────── -->
+<div class="how-box">
+  <h3>⚡ How this works</h3>
+  <p>
+    When a customer asks for a numeric specification (e.g. "How much does this weigh?")
+    and the answer is <strong>not in your store's data</strong>, PhiXtra searches the web
+    — but <strong>only on websites you trust</strong>. It never guesses, and it never
+    uses unreliable sources.
+  </p>
+  <p>
+    <strong>Trusted Domains</strong> — add the official manufacturer or supplier websites
+    relevant to your products. PhiXtra already includes major tech brands by default;
+    add your own here for any sector (furniture, appliances, sporting goods, etc.).
+  </p>
+  <p>
+    <strong>Custom Spec Types</strong> — if your products have specifications that are
+    not standard tech specs (e.g. "Load Capacity", "Thread Count", "Fuel Tank Size"),
+    add them here. PhiXtra will recognise customer questions about them and extract
+    the right value.
+  </p>
+  <p style="color:#2563EB;font-weight:600">
+    Changes here take effect immediately on the next customer question — no restart needed.
+  </p>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     SECTION 1 — Trusted Domains
+═══════════════════════════════════════════════════════════════════════ -->
+<div class="vs-section">
+  <div class="vs-section-head">
+    <span class="vs-section-icon">🌐</span>
+    <div>
+      <div class="vs-section-title">Trusted Domains</div>
+      <div class="vs-section-sub">
+        PhiXtra will only accept spec values from these websites.
+        Major tech brands are always included — add domains specific to your sector below.
+      </div>
+    </div>
+  </div>
+
+  {% if domains %}
+  <div class="tag-wrap">
+    {% for domain in domains %}
+    <span class="domain-tag">
+      {{ domain }}
+      <form method="post"
+            action="{{ url_for('portal.verified_specs_domain_delete') }}"
+            onsubmit="return confirm('Remove {{ domain }}?')">
+        <input type="hidden" name="domain" value="{{ domain }}">
+        <button type="submit" title="Remove">✕</button>
+      </form>
+    </span>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state" style="padding:16px 0 20px">
+    No custom domains added yet. The system default (major tech brands) is used.
+  </div>
+  {% endif %}
+
+  <!-- Add domain form -->
+  <div class="add-card">
+    <h4>+ Add trusted domain</h4>
+    <form method="post" action="{{ url_for('portal.verified_specs_domain_add') }}">
+      <div class="add-row">
+        <div class="form-group add-input-md">
+          <label>Domain name</label>
+          <input type="text" name="domain" maxlength="253"
+                 placeholder="e.g. johnlewis.com  or  support.bosch.com"
+                 required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm" style="height:42px">
+          Add Domain
+        </button>
+      </div>
+    </form>
+    <p style="font-size:12px;color:var(--muted);margin-top:10px;margin-bottom:0">
+      Enter just the domain — no <code>https://</code> or trailing slash needed.
+      Sub-domains are matched automatically (e.g. adding <em>bosch.com</em> also trusts <em>media.bosch.com</em>).
+    </p>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     SECTION 2 — Custom Spec Types
+═══════════════════════════════════════════════════════════════════════ -->
+<div class="vs-section">
+  <div class="vs-section-head">
+    <span class="vs-section-icon">📐</span>
+    <div>
+      <div class="vs-section-title">Custom Spec Types</div>
+      <div class="vs-section-sub">
+        Define specification types that are unique to your products.
+        PhiXtra already handles weight, dimensions, battery, RAM, storage, screen size, processor, and ports.
+        Add anything else here.
+      </div>
+    </div>
+  </div>
+
+  <div class="vs-list">
+    {% if specs %}
+      {% for spec in specs %}
+      <div class="vs-row">
+        <div class="vs-row-body">
+          <div class="vs-row-title">{{ spec.name }}</div>
+          <div class="vs-row-meta">
+            <span class="chip">unit: {{ spec.unit }}</span>
+            <span style="color:var(--muted)">keywords: {{ spec.keywords }}</span>
+            {% if spec.qualifier %}
+            &nbsp;·&nbsp;<span style="color:var(--muted)">{{ spec.qualifier }}</span>
+            {% endif %}
+          </div>
+        </div>
+        <div class="vs-row-actions">
+          <form method="post"
+                action="{{ url_for('portal.verified_specs_spec_delete') }}"
+                onsubmit="return confirm('Delete the \'{{ spec.name }}\' spec type?')">
+            <input type="hidden" name="spec_id" value="{{ spec.id }}">
+            <button type="submit" class="btn btn-sm btn-danger"
+                    style="padding:5px 10px;font-size:13px">✕ Delete</button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty-rules">No custom spec types added yet.</div>
+    {% endif %}
+  </div>
+
+  <!-- Add spec form -->
+  <div class="add-card">
+    <h4>+ Add custom spec type</h4>
+    <form method="post" action="{{ url_for('portal.verified_specs_spec_add') }}">
+      <div class="add-row" style="margin-bottom:10px">
+        <div class="form-group add-input-sm">
+          <label>Spec name <span style="color:#dc2626">*</span></label>
+          <input type="text" name="spec_name" maxlength="120"
+                 placeholder="e.g. Load Capacity"
+                 required>
+        </div>
+        <div class="form-group add-input-xs">
+          <label>Unit <span style="color:#dc2626">*</span></label>
+          <input type="text" name="spec_unit" maxlength="40"
+                 placeholder="e.g. kg"
+                 required>
+        </div>
+        <div class="form-group add-input-md">
+          <label>Trigger keywords <span style="color:#dc2626">*</span></label>
+          <input type="text" name="spec_keywords" maxlength="500"
+                 placeholder="e.g. load capacity, weight limit, max load"
+                 required>
+        </div>
+      </div>
+      <div class="add-row">
+        <div class="form-group add-input-md">
+          <label>Qualifier / caveat <span style="color:var(--muted)">(optional)</span></label>
+          <input type="text" name="spec_qualifier" maxlength="200"
+                 placeholder="e.g. May vary by model. Always check the product label.">
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm" style="height:42px">
+          Add Spec Type
+        </button>
+      </div>
+    </form>
+    <div style="margin-top:14px;background:#f8f9fa;border-radius:10px;padding:12px 14px;font-size:12px;color:var(--muted);line-height:1.7">
+      <strong style="color:var(--txt)">Field guide:</strong><br>
+      <strong>Spec name</strong> — what the spec is called in answers, e.g. <em>Load Capacity</em>.<br>
+      <strong>Unit</strong> — the unit to look for in web results, e.g. <em>kg</em>, <em>litres</em>, <em>rpm</em>.<br>
+      <strong>Trigger keywords</strong> — comma-separated words or phrases that tell PhiXtra a customer is asking about this spec.
+      A customer asking <em>"what is the maximum load?"</em> would match the keyword <em>maximum load</em>.<br>
+      <strong>Qualifier</strong> — optional note shown with the answer, e.g. <em>"May vary by model."</em>
+    </div>
+  </div>
+</div>
+
+
+<!-- ── Summary bar ──────────────────────────────────────────────────────── -->
+<div class="card card-sm" style="margin-top:8px">
+  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+    <div>
+      <div class="card-title">Custom domains</div>
+      <div style="font-size:20px;font-weight:800">{{ domains | length }}</div>
+    </div>
+    <div class="divider" style="width:1px;height:36px;margin:0"></div>
+    <div>
+      <div class="card-title">Custom spec types</div>
+      <div style="font-size:20px;font-weight:800">{{ specs | length }}</div>
+    </div>
+    <div class="divider" style="width:1px;height:36px;margin:0"></div>
+    <div class="muted" style="font-size:13px;flex:1">
+      {% if not feature_enabled %}
+        ⚠️ Verified Specs Web Lookup is not enabled. Settings are saved but inactive.
+      {% elif domains | length == 0 and specs | length == 0 %}
+        Using system defaults. Add trusted domains or custom spec types above to tailor PhiXtra for your product range.
+      {% else %}
+        PhiXtra is configured with your custom settings. Changes take effect on the next customer question.
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% endblock %}

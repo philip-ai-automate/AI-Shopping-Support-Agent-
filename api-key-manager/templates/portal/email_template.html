@@ -1,0 +1,684 @@
+{% extends "portal/base.html" %}
+{% block title %}Email Templates — PhiXtra Portal{% endblock %}
+
+{#
+  WHY {{ '{{' }} is used throughout this file
+  ─────────────────────────────────────────────
+  Jinja2 treats  {{ variable }}  as a template expression.
+  Our placeholder tokens look like  {{store_name}}, {{cart_value}}  etc.
+  If we write them bare in HTML Jinja2 evaluates them — and because
+  store_name / cart_value are not template variables, they become "".
+
+  Safe approaches used here:
+  • Chip onclick handlers: data-ph="store_name" attribute, JS builds the
+    full  {{store_name}}  token by concatenating  '{{'+'store_name}}'
+    so Jinja2 never sees a complete  {{ … }}  expression.
+  • Chip label text & info-card text:
+    {% raw %}{{store_name}}{% endraw %}  outputs the literal string.
+  • Default template HTML/subject passed via  | tojson | safe  —
+    the {{…}} tokens are inside a JSON string so Jinja2 ignores them.
+#}
+
+{% block head %}
+<link href="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.min.css" rel="stylesheet"/>
+<style>
+  /* ── Tabs ── */
+  .et-tabs       { display:flex; gap:6px; margin-bottom:22px; flex-wrap:wrap; }
+  .et-tab        { padding:9px 20px; border-radius:10px; border:1px solid var(--line);
+                   background:#fff; color:var(--muted); font-size:13px; font-weight:600;
+                   cursor:pointer; transition:.15s; }
+  .et-tab:hover  { color:var(--txt); background:rgba(3,12,24,.04); }
+  .et-tab.active { background:var(--ink); color:#fff; border-color:var(--ink); }
+
+  /* ── Panels ── */
+  .et-panel        { display:none; }
+  .et-panel.active { display:block; }
+
+  /* ── Quill editor ── */
+  .ql-container { border-radius:0 0 12px 12px !important; border-color:rgba(3,12,24,.18) !important; }
+  .ql-toolbar   { border-radius:12px 12px 0 0 !important; border-color:rgba(3,12,24,.18) !important;
+                  background:rgba(3,12,24,.025); flex-wrap:wrap; }
+  .ql-editor    { min-height:340px; font-family:Arial,sans-serif; font-size:14px; line-height:1.6; }
+  .ql-editor:focus { outline:none; }
+
+  /* ── Toolbar tooltips ── */
+  /* Quill generates buttons; we add data-tooltip via JS and show via ::after */
+  .ql-toolbar [data-tooltip] { position:relative; }
+  .ql-toolbar [data-tooltip]:hover::after {
+    content: attr(data-tooltip);
+    position:absolute; bottom:calc(100% + 7px); left:50%;
+    transform:translateX(-50%); white-space:nowrap;
+    background:#030C18; color:#fff; font-size:11px; font-weight:600;
+    padding:4px 9px; border-radius:7px; pointer-events:none; z-index:999;
+    box-shadow:0 2px 8px rgba(0,0,0,.22);
+  }
+  .ql-toolbar [data-tooltip]:hover::before {
+    content:'';
+    position:absolute; bottom:calc(100% + 3px); left:50%;
+    transform:translateX(-50%);
+    border:5px solid transparent; border-top-color:#030C18;
+    pointer-events:none; z-index:999;
+  }
+
+  /* ── Subject field ── */
+  .et-subject       { width:100%; padding:11px 14px; border-radius:12px;
+                      border:1px solid rgba(3,12,24,.18); font-size:14px;
+                      font-family:inherit; color:var(--txt); margin-bottom:14px; }
+  .et-subject:focus { border-color:rgba(3,12,24,.35); box-shadow:var(--ring); outline:none; }
+
+  /* ── Action buttons row ── */
+  .et-actions { display:flex; align-items:center; gap:10px; margin-top:16px; flex-wrap:wrap; }
+
+  /* ── Preview modal ── */
+  .preview-backdrop {
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,.55);
+    z-index:500; align-items:center; justify-content:center; padding:20px;
+  }
+  .preview-backdrop.open { display:flex; }
+  .preview-box {
+    background:#fff; border-radius:18px; width:100%; max-width:680px;
+    max-height:90vh; display:flex; flex-direction:column;
+    box-shadow:0 24px 60px rgba(0,0,0,.25); overflow:hidden;
+  }
+  .preview-header {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 20px; border-bottom:1px solid var(--line); font-weight:700; font-size:15px;
+  }
+  .preview-header button { background:none; border:none; font-size:20px; cursor:pointer;
+                           color:var(--muted); padding:0; line-height:1; }
+  .preview-body iframe   { width:100%; height:500px; border:none; display:block; }
+
+  /* ── Placeholder chips ── */
+  .ph-section { margin-bottom:18px; }
+  .ph-legend  { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+  .ph-chip    { font-family:"SF Mono","Fira Code",monospace; font-size:12px;
+                background:rgba(3,12,24,.05); border:1px solid var(--line);
+                border-radius:6px; padding:4px 10px; color:var(--ink);
+                cursor:pointer; user-select:none; transition:.12s;
+                position:relative; }
+  .ph-chip:hover { background:var(--ink); color:#fff; border-color:var(--ink); }
+  /* chip tooltip */
+  .ph-chip[title]:hover::after {
+    content:attr(title);
+    position:absolute; bottom:calc(100% + 7px); left:50%;
+    transform:translateX(-50%); white-space:nowrap;
+    background:#374151; color:#fff; font-size:11px; font-family:inherit;
+    padding:3px 8px; border-radius:6px; pointer-events:none; z-index:999;
+    box-shadow:0 2px 6px rgba(0,0,0,.20);
+  }
+
+  /* ── Status badges ── */
+  .ts-custom  { display:inline-flex; align-items:center; padding:3px 10px; border-radius:999px;
+                font-size:11px; font-weight:700; margin-left:7px;
+                background:rgba(18,183,106,.12); color:#0a7a3c; border:1px solid rgba(18,183,106,.30); }
+  .ts-default { display:inline-flex; align-items:center; padding:3px 10px; border-radius:999px;
+                font-size:11px; font-weight:700; margin-left:7px;
+                background:rgba(3,12,24,.05); color:var(--muted); border:1px solid var(--line); }
+
+  /* ── Default template notice ── */
+  .default-notice {
+    background:rgba(37,99,235,.06); border:1px solid rgba(37,99,235,.22);
+    border-radius:10px; padding:10px 14px; font-size:13px; color:#1d4ed8;
+    margin-bottom:14px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="section-title">📧 Email Templates</div>
+    <p class="muted">Customise the recovery emails sent to shoppers.
+      A default template is ready to use — send it as-is or edit it first.</p>
+  </div>
+  <a href="{{ url_for('portal.cart_recovery_dashboard') }}" class="btn btn-sm">← Back to Recovery</a>
+</div>
+
+{# ── Tabs ── #}
+<div class="et-tabs">
+  <button class="et-tab active" onclick="switchTab('t2',this)">
+    ✉️ T2 — Recovery Email <em style="font-weight:400;font-size:11px">(T+2 hrs)</em>
+    {% if t2_html %}<span class="ts-custom">Custom saved</span>
+    {% else %}<span class="ts-default">Default ready</span>{% endif %}
+  </button>
+  <button class="et-tab" onclick="switchTab('t3',this)">
+    🔔 T3 — Final Reminder <em style="font-weight:400;font-size:11px">(T+24 hrs)</em>
+    {% if t3_html %}<span class="ts-custom">Custom saved</span>
+    {% else %}<span class="ts-default">Default ready</span>{% endif %}
+  </button>
+</div>
+
+{# ════════════════════════ T2 PANEL ════════════════════════ #}
+<div class="et-panel active" id="panel-t2">
+  <div class="card">
+    <div class="card-title">Touch 2 — Recovery Email (sent 2 hours after abandonment)</div>
+    <p class="muted" style="margin-bottom:14px">
+      This email reminds the shopper what they left behind.
+      A ready-to-send default is pre-loaded — you can use it as-is or edit it.
+    </p>
+    {% if not t2_html %}
+    <div class="default-notice">
+      💡 The default template below is ready to send. Click <strong>Save T2 Template</strong>
+      to activate it, or edit it first then save.
+    </div>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('portal.cart_recovery_email_template') }}"
+          id="form-t2" onsubmit="harvestHtml('t2')">
+      <input type="hidden" name="touch" value="t2"/>
+
+      <div class="form-group">
+        <label>Email Subject Line</label>
+        <input class="et-subject" type="text" name="subject" id="t2-subject"
+               value="{{ t2_subject or '' }}"
+               placeholder="e.g. You left something behind at our store"/>
+      </div>
+
+      <div class="form-group">
+        <label>Email Body</label>
+        <div id="t2-toolbar">
+          <span class="ql-formats">
+            <select class="ql-font">
+              <option selected>Arial</option>
+              <option value="verdana">Verdana</option>
+              <option value="georgia">Georgia</option>
+              <option value="tahoma">Tahoma</option>
+              <option value="trebuchet">Trebuchet MS</option>
+            </select>
+            <select class="ql-size">
+              <option value="10px">10</option><option value="12px">12</option>
+              <option value="14px" selected>14</option><option value="16px">16</option>
+              <option value="18px">18</option><option value="20px">20</option>
+              <option value="24px">24</option><option value="28px">28</option>
+              <option value="32px">32</option>
+            </select>
+          </span>
+          <span class="ql-formats">
+            <button class="ql-bold"></button>
+            <button class="ql-italic"></button>
+            <button class="ql-underline"></button>
+            <button class="ql-strike"></button>
+          </span>
+          <span class="ql-formats">
+            <select class="ql-color"></select>
+            <select class="ql-background"></select>
+          </span>
+          <span class="ql-formats">
+            <button class="ql-header" value="1"></button>
+            <button class="ql-header" value="2"></button>
+            <button class="ql-blockquote"></button>
+          </span>
+          <span class="ql-formats">
+            <button class="ql-align" value=""></button>
+            <button class="ql-align" value="center"></button>
+            <button class="ql-align" value="right"></button>
+            <button class="ql-align" value="justify"></button>
+          </span>
+          <span class="ql-formats">
+            <button class="ql-list" value="ordered"></button>
+            <button class="ql-list" value="bullet"></button>
+            <button class="ql-indent" value="-1"></button>
+            <button class="ql-indent" value="+1"></button>
+          </span>
+          <span class="ql-formats">
+            <button class="ql-link"></button>
+            <button class="ql-image"></button>
+          </span>
+          <span class="ql-formats">
+            <button class="ql-clean"></button>
+          </span>
+        </div>
+        <div id="t2-editor"></div>
+        <textarea name="html_body" id="t2-html-body" style="display:none"></textarea>
+      </div>
+
+      {#
+        PLACEHOLDER CHIPS — T2
+        Chip labels use {% raw %}...{% endraw %} so Jinja2 outputs the literal text.
+        onclick uses data-ph / data-target attributes; JS builds the full {{token}}
+        string via concatenation so Jinja2 never sees a complete {{ }} expression.
+      #}
+      <div class="ph-section">
+        <p style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:0">
+          📌 Click a placeholder to insert it at your cursor position in the email:
+        </p>
+        <div class="ph-legend">
+          <span class="ph-chip" data-target="t2" data-ph="store_name"
+                title="Your store's name — e.g. My Fashion Store">{% raw %}{{store_name}}{% endraw %}</span>
+          <span class="ph-chip" data-target="t2" data-ph="cart_items"
+                title="Products left in cart — e.g. Nike Air Max, Blue T-Shirt">{% raw %}{{cart_items}}{% endraw %}</span>
+          <span class="ph-chip" data-target="t2" data-ph="cart_value"
+                title="Cart total — e.g. £49.99">{% raw %}{{cart_value}}{% endraw %}</span>
+          <span class="ph-chip" data-target="t2" data-ph="cart_url"
+                title="Direct link to shopper's cart">{% raw %}{{cart_url}}{% endraw %}</span>
+          <span class="ph-chip" data-target="t2" data-ph="discount_code"
+                title="Coupon code — e.g. COMEBACK10 (only if Discount % is set in Recovery Settings)">{% raw %}{{discount_code}}{% endraw %}</span>
+          <span class="ph-chip" data-target="t2" data-ph="store_url"
+                title="Your store's website URL">{% raw %}{{store_url}}{% endraw %}</span>
+        </div>
+      </div>
+
+      <div class="et-actions">
+        <button type="submit" class="btn btn-primary">💾 Save T2 Template</button>
+        <button type="button" class="btn" onclick="previewEmail('t2')">👁 Preview</button>
+        <button type="button" class="btn btn-sm" onclick="loadDefault('t2')"
+                title="Reload the default template into the editor (does not save)">
+          ↺ Reload Default
+        </button>
+        {% if t2_html %}
+        <button type="button" class="btn btn-danger btn-sm" onclick="resetTemplate('t2')"
+                title="Delete your custom template — PhiXtra AI will generate the email automatically">
+          🗑 Delete Custom &amp; Use AI
+        </button>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+
+{# ════════════════════════ T3 PANEL ════════════════════════ #}
+<div class="et-panel" id="panel-t3">
+  <div class="card">
+    <div class="card-title">Touch 3 — Final Reminder Email (sent 24 hours after abandonment)</div>
+    <p class="muted" style="margin-bottom:14px">
+      Last email in the recovery sequence. Creates gentle urgency — the cart is about to expire.
+    </p>
+    {% if not t3_html %}
+    <div class="default-notice">
+      💡 The default template below is ready to send. Click <strong>Save T3 Template</strong>
+      to activate it, or edit it first then save.
+    </div>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('portal.cart_recovery_email_template') }}"
+          id="form-t3" onsubmit="harvestHtml('t3')">
+      <input type="hidden" name="touch" value="t3"/>
+
+      <div class="form-group">
+        <label>Email Subject Line</label>
+        <input class="et-subject" type="text" name="subject" id="t3-subject"
+               value="{{ t3_subject or '' }}"
+               placeholder="e.g. Last chance — your cart expires soon"/>
+      </div>
+
+      <div class="form-group">
+        <label>Email Body</label>
+        <div id="t3-toolbar">
+          <span class="ql-formats">
+            <select class="ql-font">
+              <option selected>Arial</option>
+              <option value="verdana">Verdana</option>
+              <option value="georgia">Georgia</option>
+              <option value="tahoma">Tahoma</option>
+              <option value="trebuchet">Trebuchet MS</option>
+            </select>
+            <select class="ql-size">
+              <option value="10px">10</option><option value="12px">12</option>
+              <option value="14px" selected>14</option><option value="16px">16</option>
+              <option value="18px">18</option><option value="20px">20</option>
+              <option value="24px">24</option><option value="28px">28</option>
+              <option value="32px">32</option>
+            </select>
+          </span>
+          <span class="ql-formats">
+            <button class="ql-bold"></button>
+            <button class="ql-italic"></button>
+            <button class="ql-underline"></button>
+            <button class="ql-strike"></button>
+          </span>
+          <span class="ql-formats">
+            <select class="ql-color"></select>
+            <select class="ql-background"></select>
+          </span>
+          <span class="ql-formats">
+            <button class="ql-header" value="1"></button>
+            <button class="ql-header" value="2"></button>
+            <button class="ql-blockquote"></button>
+          </span>
+          <span class="ql-formats">
+            <button class="ql-align" value=""></button>
+            <button class="ql-align" value="center"></button>
+            <button class="ql-align" value="right"></button>
+            <button class="ql-align" value="justify"></button>
+          </span>
+          <span class="ql-formats">
+            <button class="ql-list" value="ordered"></button>
+            <button class="ql-list" value="bullet"></button>
+            <button class="ql-indent" value="-1"></button>
+            <button class="ql-indent" value="+1"></button>
+          </span>
+          <span class="ql-formats">
+            <button class="ql-link"></button>
+            <button class="ql-image"></button>
+          </span>
+          <span class="ql-formats">
+            <button class="ql-clean"></button>
+          </span>
+        </div>
+        <div id="t3-editor"></div>
+        <textarea name="html_body" id="t3-html-body" style="display:none"></textarea>
+      </div>
+
+      <div class="ph-section">
+        <p style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:0">
+          📌 Click a placeholder to insert it at your cursor position in the email:
+        </p>
+        <div class="ph-legend">
+          <span class="ph-chip" data-target="t3" data-ph="store_name"
+                title="Your store's name — e.g. My Fashion Store">{% raw %}{{store_name}}{% endraw %}</span>
+          <span class="ph-chip" data-target="t3" data-ph="cart_items"
+                title="Products left in cart — e.g. Nike Air Max, Blue T-Shirt">{% raw %}{{cart_items}}{% endraw %}</span>
+          <span class="ph-chip" data-target="t3" data-ph="cart_value"
+                title="Cart total — e.g. £49.99">{% raw %}{{cart_value}}{% endraw %}</span>
+          <span class="ph-chip" data-target="t3" data-ph="cart_url"
+                title="Direct link to shopper's cart">{% raw %}{{cart_url}}{% endraw %}</span>
+          <span class="ph-chip" data-target="t3" data-ph="discount_code"
+                title="Coupon code — e.g. COMEBACK10 (only if Discount % is set in Recovery Settings)">{% raw %}{{discount_code}}{% endraw %}</span>
+          <span class="ph-chip" data-target="t3" data-ph="store_url"
+                title="Your store's website URL">{% raw %}{{store_url}}{% endraw %}</span>
+        </div>
+      </div>
+
+      <div class="et-actions">
+        <button type="submit" class="btn btn-primary">💾 Save T3 Template</button>
+        <button type="button" class="btn" onclick="previewEmail('t3')">👁 Preview</button>
+        <button type="button" class="btn btn-sm" onclick="loadDefault('t3')"
+                title="Reload the default template into the editor (does not save)">
+          ↺ Reload Default
+        </button>
+        {% if t3_html %}
+        <button type="button" class="btn btn-danger btn-sm" onclick="resetTemplate('t3')"
+                title="Delete your custom template — PhiXtra AI will generate the email automatically">
+          🗑 Delete Custom &amp; Use AI
+        </button>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+
+{# ── Info card ── #}
+<div class="card" style="margin-top:20px;border-color:rgba(247,144,9,.25);background:rgba(247,144,9,.04)">
+  <div class="card-title" style="color:#7a4f00">ℹ️ How placeholders work</div>
+  <p style="font-size:13px;color:#374151;line-height:1.7;margin-bottom:12px">
+    When the email is sent, each placeholder is automatically replaced with the shopper's real data.
+    Click any chip above to insert a placeholder at your cursor.
+  </p>
+  <ul style="font-size:13px;color:#374151;line-height:2;padding-left:20px">
+    <li><code style="background:rgba(3,12,24,.06);padding:2px 6px;border-radius:4px">{% raw %}{{store_name}}{% endraw %}</code> — your store's display name</li>
+    <li><code style="background:rgba(3,12,24,.06);padding:2px 6px;border-radius:4px">{% raw %}{{cart_items}}{% endraw %}</code> — products left in the cart (e.g. Nike Air Max, Blue T-Shirt)</li>
+    <li><code style="background:rgba(3,12,24,.06);padding:2px 6px;border-radius:4px">{% raw %}{{cart_value}}{% endraw %}</code> — cart total (e.g. £49.99)</li>
+    <li><code style="background:rgba(3,12,24,.06);padding:2px 6px;border-radius:4px">{% raw %}{{cart_url}}{% endraw %}</code> — direct link to the shopper's cart page</li>
+    <li><code style="background:rgba(3,12,24,.06);padding:2px 6px;border-radius:4px">{% raw %}{{discount_code}}{% endraw %}</code> — coupon code e.g. COMEBACK10 (only set if Discount Incentive % is configured in Recovery Settings)</li>
+    <li><code style="background:rgba(3,12,24,.06);padding:2px 6px;border-radius:4px">{% raw %}{{store_url}}{% endraw %}</code> — your store's base URL</li>
+  </ul>
+</div>
+
+{# ── Preview modal ── #}
+<div class="preview-backdrop" id="previewBackdrop">
+  <div class="preview-box">
+    <div class="preview-header">
+      <span id="previewTitle">Email Preview</span>
+      <button onclick="closePreview()" aria-label="Close preview">✕</button>
+    </div>
+    <div class="preview-body">
+      <iframe id="previewFrame" title="Email preview" sandbox="allow-same-origin"></iframe>
+    </div>
+  </div>
+</div>
+
+{# ── Hidden reset form — submits __RESET__ to delete the saved template ── #}
+<form method="POST" action="{{ url_for('portal.cart_recovery_email_template') }}"
+      id="form-reset" style="display:none">
+  <input type="hidden" name="touch"     id="reset-touch"     value=""/>
+  <input type="hidden" name="subject"   id="reset-subject"   value=""/>
+  <input type="hidden" name="html_body" id="reset-html-body" value="__RESET__"/>
+</form>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.min.js"></script>
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// QUILL — register STYLE attributors so Quill writes  style="color:#..."
+// rather than  class="ql-..."  (inline styles are required for email clients)
+// ─────────────────────────────────────────────────────────────────────────────
+var AlignStyle      = Quill.import('attributors/style/align');
+var BackgroundStyle = Quill.import('attributors/style/background');
+var ColorStyle      = Quill.import('attributors/style/color');
+var FontStyle       = Quill.import('attributors/style/font');
+var SizeStyle       = Quill.import('attributors/style/size');
+
+FontStyle.whitelist = ['Arial','verdana','georgia','tahoma','trebuchet'];
+SizeStyle.whitelist = ['10px','12px','14px','16px','18px','20px','24px','28px','32px'];
+
+Quill.register(AlignStyle,      true);
+Quill.register(BackgroundStyle, true);
+Quill.register(ColorStyle,      true);
+Quill.register(FontStyle,       true);
+Quill.register(SizeStyle,       true);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DATA FROM SERVER — passed as JSON, safe to use directly.
+// The placeholder tokens inside these strings are JSON string content —
+// Jinja2 never evaluates them because they are inside | tojson | safe output.
+// ─────────────────────────────────────────────────────────────────────────────
+var savedT2Html     = {{ t2_html           | tojson | safe }};
+var savedT2Subject  = {{ t2_subject        | tojson | safe }};
+var savedT3Html     = {{ t3_html           | tojson | safe }};
+var savedT3Subject  = {{ t3_subject        | tojson | safe }};
+var defaultT2Html   = {{ default_t2_html   | tojson | safe }};
+var defaultT2Subj   = {{ default_t2_subject| tojson | safe }};
+var defaultT3Html   = {{ default_t3_html   | tojson | safe }};
+var defaultT3Subj   = {{ default_t3_subject| tojson | safe }};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PLACEHOLDER TOKENS — built by concatenation so Jinja2 never evaluates them
+// The two halves  OB  and  CB  are just JS strings.
+// When joined they produce the literal placeholder token which is what
+// the Python _resolve_placeholders() function looks for at send time.
+// ─────────────────────────────────────────────────────────────────────────────
+var OB = '{' + '{';   // two opening braces
+var CB = '}' + '}';   // two closing braces
+var PLACEHOLDERS = {
+  store_name:    OB + 'store_name'    + CB,
+  store_url:     OB + 'store_url'     + CB,
+  cart_items:    OB + 'cart_items'    + CB,
+  cart_value:    OB + 'cart_value'    + CB,
+  cart_url:      OB + 'cart_url'      + CB,
+  discount_code: OB + 'discount_code' + CB
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INITIALISE BOTH EDITORS
+// ─────────────────────────────────────────────────────────────────────────────
+var quillT2 = new Quill('#t2-editor', {
+  modules: { toolbar: '#t2-toolbar' },
+  theme:   'snow'
+});
+var quillT3 = new Quill('#t3-editor', {
+  modules: { toolbar: '#t3-toolbar' },
+  theme:   'snow'
+});
+
+// Load saved template if it exists, otherwise load the default template
+function initEditor(quill, savedHtml, defaultHtml, subjectId, savedSubj, defaultSubj) {
+  if (savedHtml && savedHtml.trim() !== '') {
+    quill.clipboard.dangerouslyPasteHTML(savedHtml);
+    if (savedSubj && document.getElementById(subjectId)) {
+      document.getElementById(subjectId).value = savedSubj;
+    }
+  } else {
+    // No saved template — load the default so it's ready to use or edit
+    quill.clipboard.dangerouslyPasteHTML(defaultHtml);
+    var subjectEl = document.getElementById(subjectId);
+    if (subjectEl && subjectEl.value.trim() === '') {
+      subjectEl.value = defaultSubj;
+    }
+  }
+}
+
+initEditor(quillT2, savedT2Html, defaultT2Html, 't2-subject', savedT2Subject, defaultT2Subj);
+initEditor(quillT3, savedT3Html, defaultT3Html, 't3-subject', savedT3Subject, defaultT3Subj);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TOOLBAR TOOLTIPS
+// Quill generates its toolbar buttons after new Quill() runs.
+// We call this after both editors are created to add data-tooltip attributes
+// to the generated DOM elements.
+// ─────────────────────────────────────────────────────────────────────────────
+var TOOLBAR_TIPS = [
+  { sel: '.ql-bold',              tip: 'Bold  (Ctrl+B)' },
+  { sel: '.ql-italic',            tip: 'Italic  (Ctrl+I)' },
+  { sel: '.ql-underline',         tip: 'Underline  (Ctrl+U)' },
+  { sel: '.ql-strike',            tip: 'Strikethrough' },
+  { sel: '.ql-link',              tip: 'Insert Hyperlink' },
+  { sel: '.ql-image',             tip: 'Insert Image' },
+  { sel: '.ql-clean',             tip: 'Clear Formatting' },
+  { sel: '.ql-blockquote',        tip: 'Blockquote' },
+  { sel: '.ql-header[value="1"]', tip: 'Heading 1' },
+  { sel: '.ql-header[value="2"]', tip: 'Heading 2' },
+  { sel: '.ql-list[value="ordered"]',  tip: 'Numbered List' },
+  { sel: '.ql-list[value="bullet"]',   tip: 'Bullet List' },
+  { sel: '.ql-indent[value="-1"]',     tip: 'Decrease Indent' },
+  { sel: '.ql-indent[value="+1"]',     tip: 'Increase Indent' },
+  { sel: '.ql-align[value=""]',        tip: 'Align Left' },
+  { sel: '.ql-align[value="center"]',  tip: 'Align Centre' },
+  { sel: '.ql-align[value="right"]',   tip: 'Align Right' },
+  { sel: '.ql-align[value="justify"]', tip: 'Justify' },
+  { sel: '.ql-color .ql-picker-label',      tip: 'Text Colour' },
+  { sel: '.ql-background .ql-picker-label', tip: 'Highlight Colour' },
+  { sel: '.ql-font .ql-picker-label',       tip: 'Font Family' },
+  { sel: '.ql-size .ql-picker-label',       tip: 'Font Size' }
+];
+
+function applyTooltips(toolbarId) {
+  var toolbar = document.getElementById(toolbarId);
+  if (!toolbar) return;
+  TOOLBAR_TIPS.forEach(function(item) {
+    toolbar.querySelectorAll(item.sel).forEach(function(el) {
+      el.setAttribute('data-tooltip', item.tip);
+    });
+  });
+}
+
+applyTooltips('t2-toolbar');
+applyTooltips('t3-toolbar');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PLACEHOLDER CHIP CLICK HANDLER
+// Reads data-ph from the chip, looks up the placeholder token string in
+// PLACEHOLDERS, then inserts it at the current cursor position in the editor.
+// ─────────────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.ph-chip[data-ph]').forEach(function(chip) {
+  chip.addEventListener('click', function() {
+    var target = this.getAttribute('data-target');  // 't2' or 't3'
+    var key    = this.getAttribute('data-ph');      // e.g. 'store_name'
+    var token  = PLACEHOLDERS[key];
+    if (!token) return;
+    insertPlaceholder(target, token);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INSERT PLACEHOLDER AT CURRENT CURSOR POSITION
+// ─────────────────────────────────────────────────────────────────────────────
+function insertPlaceholder(which, text) {
+  var quill = (which === 't2') ? quillT2 : quillT3;
+  var range = quill.getSelection(true);
+  var index = (range && range.index >= 0) ? range.index : Math.max(0, quill.getLength() - 1);
+  quill.insertText(index, text, 'user');
+  quill.setSelection(index + text.length, 0);
+  quill.focus();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB SWITCHING
+// ─────────────────────────────────────────────────────────────────────────────
+function switchTab(which, btn) {
+  document.querySelectorAll('.et-tab').forEach(function(b)  { b.classList.remove('active'); });
+  document.querySelectorAll('.et-panel').forEach(function(p) { p.classList.remove('active'); });
+  btn.classList.add('active');
+  document.getElementById('panel-' + which).classList.add('active');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HARVEST HTML — copy Quill innerHTML into hidden textarea before form submits
+// ─────────────────────────────────────────────────────────────────────────────
+function harvestHtml(which) {
+  var quill = (which === 't2') ? quillT2 : quillT3;
+  document.getElementById(which + '-html-body').value = quill.root.innerHTML;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOAD DEFAULT — reload the default template into the editor (does NOT save)
+// ─────────────────────────────────────────────────────────────────────────────
+function loadDefault(which) {
+  var quill   = (which === 't2') ? quillT2    : quillT3;
+  var html    = (which === 't2') ? defaultT2Html : defaultT3Html;
+  var subject = (which === 't2') ? defaultT2Subj : defaultT3Subj;
+  quill.clipboard.dangerouslyPasteHTML(html);
+  var subjectEl = document.getElementById(which + '-subject');
+  if (subjectEl) subjectEl.value = subject;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PREVIEW — render current editor content in an iframe popup
+// ─────────────────────────────────────────────────────────────────────────────
+function previewEmail(which) {
+  var quill   = (which === 't2') ? quillT2 : quillT3;
+  var subject = document.getElementById(which + '-subject').value || '(no subject)';
+  var body    = quill.root.innerHTML;
+  var label   = (which === 't2') ? 'T2 Recovery Email' : 'T3 Final Reminder';
+
+  var html = [
+    '<!doctype html><html><head><meta charset="utf-8">',
+    '<style>',
+    'body{margin:0;padding:20px;background:#f0f0f0;font-family:Arial,sans-serif;}',
+    '.wrap{max-width:600px;margin:0 auto;background:#fff;border-radius:10px;',
+    'box-shadow:0 4px 20px rgba(0,0,0,.12);overflow:hidden;}',
+    '.subj{background:#030C18;color:#fff;padding:14px 24px;font-size:13px;font-weight:700;}',
+    '.note{background:#fffbeb;border-bottom:1px solid #fcd34d;padding:8px 24px;',
+    'font-size:11px;color:#92400e;}',
+    '.body{padding:28px 24px;}',
+    '</style></head><body>',
+    '<div class="wrap">',
+    '<div class="subj">Subject: ' + escHtml(subject) + '</div>',
+    '<div class="note">',
+    '&#128204; Preview only — placeholder tokens show literally here.',
+    ' They are replaced with real values when the email is sent.',
+    '</div>',
+    '<div class="body">' + body + '</div>',
+    '</div></body></html>'
+  ].join('');
+
+  document.getElementById('previewTitle').textContent = '\uD83D\uDC41 Preview \u2014 ' + label;
+  document.getElementById('previewFrame').srcdoc = html;
+  document.getElementById('previewBackdrop').classList.add('open');
+}
+
+function closePreview() {
+  document.getElementById('previewBackdrop').classList.remove('open');
+}
+document.getElementById('previewBackdrop').addEventListener('click', function(e) {
+  if (e.target === this) closePreview();
+});
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RESET — submit __RESET__ sentinel to delete the saved custom template
+// ─────────────────────────────────────────────────────────────────────────────
+function resetTemplate(which) {
+  var label = (which === 't2') ? 'T2 Recovery Email' : 'T3 Final Reminder';
+  if (!confirm(
+    'Delete your custom ' + label + ' template?\n\n' +
+    'PhiXtra AI will generate the email automatically from then on.'
+  )) return;
+  document.getElementById('reset-touch').value     = which;
+  document.getElementById('reset-subject').value   = '';
+  document.getElementById('reset-html-body').value = '__RESET__';
+  document.getElementById('form-reset').submit();
+}
+</script>
+{% endblock %}

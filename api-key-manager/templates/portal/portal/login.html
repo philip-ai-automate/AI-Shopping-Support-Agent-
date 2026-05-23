@@ -1,0 +1,31 @@
+{% extends "portal/base.html" %}
+{% block title %}Log in — PhiXtra Portal{% endblock %}
+{% block wrap_class %}page-sm{% endblock %}
+{% block content %}
+<div class="card" style="margin-top:12px">
+  <h1 style="font-size:22px;font-weight:800;margin-bottom:6px">Log in</h1>
+  <p class="muted" style="margin-bottom:22px">Welcome back to your PhiXtra Portal</p>
+
+  <form method="POST" action="{{ url_for('portal.login') }}">
+    <div class="form-group">
+      <label>Email address</label>
+      <input type="email" name="email" required autocomplete="email" autofocus placeholder="you@example.com"/>
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" name="password" required autocomplete="current-password" placeholder="••••••••"/>
+    </div>
+    <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:4px">Log in</button>
+  </form>
+
+  <div style="margin-top:18px;display:flex;justify-content:space-between;font-size:13px">
+    <a href="{{ url_for('portal.forgot_password') }}">Forgot password?</a>
+    <a href="{{ url_for('portal.register') }}">Create account</a>
+  </div>
+
+  <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);font-size:12px;text-align:center;color:var(--muted)">
+    Didn't receive the verification email?
+    <a href="/resend-verify" style="text-decoration:underline">Resend it</a>
+  </div>
+</div>
+{% endblock %}

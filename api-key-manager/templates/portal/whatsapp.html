@@ -1,0 +1,505 @@
+{% extends "portal/base.html" %}
+{% block title %}WhatsApp — PhiXtra Portal{% endblock %}
+
+{% block head %}
+{% if embedded_enabled %}
+<!-- Meta FB JS SDK — loaded async, does NOT block page render -->
+<script>
+  window.fbAsyncInit = function() {
+    FB.init({ appId: '{{ meta_app_id }}', autoLogAppEvents: true, xfbml: true, version: 'v19.0' });
+  };
+</script>
+<script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js"></script>
+{% endif %}
+<style>
+  .wa-signup-btn {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 12px 22px; border-radius: 12px; border: none; cursor: pointer;
+    background: #1877F2; color: #fff; font-size: 15px; font-weight: 700;
+    font-family: inherit; transition: .15s; box-shadow: 0 4px 14px rgba(24,119,242,.35);
+  }
+  .wa-signup-btn:hover { background: #1565D8; transform: translateY(-1px); }
+  .wa-signup-btn:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+  .wa-signup-btn svg { width: 20px; height: 20px; flex-shrink: 0; }
+
+  .phone-option {
+    display: block; padding: 14px 16px; border: 2px solid var(--line);
+    border-radius: 14px; cursor: pointer; margin-bottom: 10px; transition: .15s;
+    text-decoration: none; color: var(--txt);
+  }
+  .phone-option:hover { border-color: #1877F2; background: rgba(24,119,242,.04); text-decoration: none; }
+  .phone-option.selected { border-color: #1877F2; background: rgba(24,119,242,.06); }
+  .phone-option-num { font-weight: 700; font-size: 15px; }
+  .phone-option-meta { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+  .token-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 650;
+  }
+  .token-ok      { background: rgba(18,183,106,.10); color: #0a7a3c; border: 1px solid rgba(18,183,106,.3); }
+  .token-expiring{ background: rgba(247,144,9,.10);  color: #7a4f00; border: 1px solid rgba(247,144,9,.3); }
+  .token-expired { background: rgba(240,68,56,.08);  color: #b02020; border: 1px solid rgba(240,68,56,.3); }
+
+  #signupStatus { display: none; align-items: center; gap: 10px; margin-top: 14px; font-size: 14px; color: var(--muted); }
+  #signupError  { display: none; margin-top: 12px; }
+
+  /* Phone selection modal */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(3,12,24,.55);
+    z-index: 1000; align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal-box {
+    background: #fff; border-radius: 20px; padding: 28px; max-width: 480px;
+    width: 100%; margin: 20px; box-shadow: 0 24px 60px rgba(3,12,24,.22);
+  }
+  .modal-title { font-size: 18px; font-weight: 800; margin-bottom: 6px; }
+  .modal-sub   { font-size: 13px; color: var(--muted); margin-bottom: 20px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="section-title">WhatsApp Integration</div>
+    <p class="muted">Connect your Meta WhatsApp Business account so your AI assistant can reply on WhatsApp.</p>
+  </div>
+  {% if connection %}
+  <a href="{{ url_for('portal.whatsapp_inbox') }}" class="btn btn-primary">Open Agent Inbox</a>
+  {% endif %}
+</div>
+
+<!-- ── Connection Status Card ────────────────────────────────────────────── -->
+<div class="card" style="margin-bottom:20px">
+  <div class="card-title">Connection Status</div>
+
+  {% if connection %}
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <span class="dot {% if token_expiry_status == 'expired' %}dot-red{% else %}dot-green{% endif %}"></span>
+          <span style="font-weight:700;color:{% if token_expiry_status == 'expired' %}var(--bad){% else %}var(--good){% endif %}">
+            {% if token_expiry_status == 'expired' %}Token Expired — Reconnect Required{% else %}Connected{% endif %}
+          </span>
+          {% if connection.signup_method == 'embedded' %}
+            <span class="pill pill-green" style="font-size:11px">Embedded Signup</span>
+          {% else %}
+            <span class="pill pill-grey" style="font-size:11px">Manual</span>
+          {% endif %}
+        </div>
+
+        <div class="muted" style="font-size:13px;display:flex;flex-direction:column;gap:4px">
+          {% if connection.display_phone_number %}
+          <div>Phone: <strong>{{ connection.display_phone_number }}</strong>
+            {% if connection.verified_name %} · {{ connection.verified_name }}{% endif %}
+          </div>
+          {% endif %}
+          <div>Phone Number ID: <code>{{ connection.phone_number_id }}</code></div>
+          {% if connection.waba_id %}
+          <div>WABA ID: <code>{{ connection.waba_id }}</code></div>
+          {% endif %}
+          {% if connection.token_expires_at %}
+            <div style="margin-top:6px">
+              {% if token_expiry_status == 'expired' %}
+                <span class="token-badge token-expired">Token expired {{ connection.token_expires_at.strftime('%d %b %Y') if connection.token_expires_at }}</span>
+              {% elif token_expiry_status == 'expiring' %}
+                <span class="token-badge token-expiring">Token expires {{ connection.token_expires_at.strftime('%d %b %Y') if connection.token_expires_at }} — reconnect soon</span>
+              {% else %}
+                <span class="token-badge token-ok">Token valid until {{ connection.token_expires_at.strftime('%d %b %Y') if connection.token_expires_at }}</span>
+              {% endif %}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <button onclick="checkToken()" class="btn btn-sm" id="checkTokenBtn">Check Token</button>
+        <form method="POST" action="{{ url_for('portal.whatsapp_disconnect') }}"
+              onsubmit="return confirm('Disconnect WhatsApp? The AI will stop replying until you reconnect.')">
+          <button type="submit" class="btn btn-sm btn-danger">Disconnect</button>
+        </form>
+      </div>
+    </div>
+
+    {% if token_expiry_status in ('expired', 'expiring') %}
+    <div class="flash {% if token_expiry_status == 'expired' %}danger{% else %}warning{% endif %}"
+         style="margin-top:16px;margin-bottom:0">
+      {% if token_expiry_status == 'expired' %}
+        Your WhatsApp access token has expired. Reconnect below to restore AI replies.
+      {% else %}
+        Your token expires soon. Reconnect via Embedded Signup to get a fresh 60-day token.
+      {% endif %}
+    </div>
+    {% endif %}
+
+  {% else %}
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="dot dot-grey"></span>
+      <span class="muted">Not connected</span>
+    </div>
+  {% endif %}
+</div>
+
+<!-- ── Connect Section ───────────────────────────────────────────────────── -->
+{% if embedded_enabled %}
+<!-- ════════════════════════════════════════════════════════════
+     EMBEDDED SIGNUP (Tech Provider mode — Meta approved)
+═════════════════════════════════════════════════════════════ -->
+<div class="card" style="margin-bottom:20px">
+  <div class="card-title">{{ 'Reconnect WhatsApp' if connection else 'Connect WhatsApp' }}</div>
+  <p class="muted" style="margin-bottom:20px;font-size:13px">
+    Click the button below to connect your WhatsApp Business Account.
+    A Meta popup will guide you through selecting your phone number — no copy-pasting required.
+  </p>
+
+  <button class="wa-signup-btn" onclick="launchWhatsAppSignup()" id="signupBtn">
+    <svg viewBox="0 0 24 24" fill="currentColor">
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+      <path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.553 4.113 1.522 5.842L.057 23.886l6.221-1.436A11.934 11.934 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.003-1.37l-.36-.213-3.696.853.885-3.576-.234-.369A9.818 9.818 0 012.182 12C2.182 6.578 6.578 2.182 12 2.182S21.818 6.578 21.818 12 17.422 21.818 12 21.818z"/>
+    </svg>
+    Connect with WhatsApp
+  </button>
+
+  <div id="signupStatus">
+    <div style="width:18px;height:18px;border:2px solid var(--muted);border-top-color:var(--ink);
+                border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0"></div>
+    <span id="signupStatusText">Completing setup...</span>
+  </div>
+
+  <div id="signupError" class="flash danger"></div>
+</div>
+
+<!-- Phone Selection Modal (shown when tenant has multiple phone numbers) -->
+<div class="modal-overlay" id="phoneModal">
+  <div class="modal-box">
+    <div class="modal-title">Select your WhatsApp number</div>
+    <div class="modal-sub">Your WhatsApp Business Account has multiple phone numbers. Choose which one PhiXtra should use.</div>
+    <div id="phoneOptions"></div>
+    <form id="phoneSelectForm" method="POST" action="{{ url_for('portal.whatsapp_embedded_complete') }}">
+      <input type="hidden" name="phone_number_id" id="selectedPhoneId">
+      <input type="hidden" name="waba_id"         id="selectedWabaId">
+      <input type="hidden" name="display_phone"   id="selectedDisplayPhone">
+      <input type="hidden" name="verified_name"   id="selectedVerifiedName">
+      <div style="display:flex;gap:10px;margin-top:18px">
+        <button type="submit" class="btn btn-primary" id="confirmPhoneBtn" disabled>Confirm Selection</button>
+        <button type="button" class="btn" onclick="closePhoneModal()">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<style>
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+<script>
+  var _sessionInfo = {};
+
+  // Capture phone_number_id + waba_id sent by Meta during the Embedded Signup flow
+  window.addEventListener('message', function(event) {
+    if (event.origin !== 'https://www.facebook.com' &&
+        event.origin !== 'https://web.facebook.com') return;
+    try {
+      var data = JSON.parse(event.data);
+      if (data.type === 'WA_EMBEDDED_SIGNUP') {
+        if (data.event === 'FINISH') {
+          _sessionInfo = data.data || {};
+        }
+      }
+    } catch(e) {}
+  });
+
+  function launchWhatsAppSignup() {
+    _sessionInfo = {};
+    setStatus('connecting', 'Opening WhatsApp signup...');
+    clearError();
+
+    FB.login(function(response) {
+      if (response.authResponse && response.authResponse.code) {
+        setStatus('connecting', 'Completing setup...');
+        sendCodeToBackend(response.authResponse.code);
+      } else {
+        setStatus('idle');
+        if (response.status === 'unknown' || !response.authResponse) {
+          // User closed the popup — silent, no error needed
+        }
+      }
+    }, {
+      config_id: '{{ meta_config_id }}',
+      response_type: 'code',
+      override_default_response_type: true,
+      extras: {
+        setup: {},
+        featureType: 'whatsapp_embedded_signup',
+        sessionInfoVersion: '3',
+      }
+    });
+  }
+
+  function sendCodeToBackend(code) {
+    fetch('{{ url_for("portal.whatsapp_embedded_callback") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code: code,
+        phone_number_id: _sessionInfo.phone_number_id || '',
+        waba_id: _sessionInfo.waba_id || '',
+      })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.error) {
+        setStatus('idle');
+        showError(data.error);
+        return;
+      }
+      if (data.status === 'connected') {
+        setStatus('connecting', 'Connected! Reloading...');
+        window.location.reload();
+      } else if (data.status === 'select_phone') {
+        setStatus('idle');
+        showPhoneModal(data.phone_options);
+      }
+    })
+    .catch(function(e) {
+      setStatus('idle');
+      showError('Network error. Please check your connection and try again.');
+    });
+  }
+
+  function setStatus(state, text) {
+    var btn    = document.getElementById('signupBtn');
+    var status = document.getElementById('signupStatus');
+    var stxt   = document.getElementById('signupStatusText');
+    if (state === 'idle') {
+      btn.disabled = false;
+      status.style.display = 'none';
+    } else {
+      btn.disabled = true;
+      if (text) stxt.textContent = text;
+      status.style.display = 'flex';
+    }
+  }
+
+  function clearError() {
+    var el = document.getElementById('signupError');
+    el.style.display = 'none'; el.textContent = '';
+  }
+
+  function showError(msg) {
+    var el = document.getElementById('signupError');
+    el.textContent = msg; el.style.display = 'block';
+  }
+
+  function showPhoneModal(phones) {
+    var container = document.getElementById('phoneOptions');
+    container.innerHTML = '';
+    phones.forEach(function(pn) {
+      var el = document.createElement('div');
+      el.className = 'phone-option';
+      el.innerHTML =
+        '<div class="phone-option-num">' + (pn.display_phone_number || pn.phone_number_id) + '</div>' +
+        '<div class="phone-option-meta">' +
+          (pn.verified_name ? pn.verified_name + ' · ' : '') +
+          'WABA: ' + pn.waba_id +
+          (pn.status ? ' · ' + pn.status : '') +
+        '</div>';
+      el.addEventListener('click', function() {
+        document.querySelectorAll('.phone-option').forEach(function(o) { o.classList.remove('selected'); });
+        el.classList.add('selected');
+        document.getElementById('selectedPhoneId').value    = pn.phone_number_id;
+        document.getElementById('selectedWabaId').value     = pn.waba_id;
+        document.getElementById('selectedDisplayPhone').value = pn.display_phone_number || '';
+        document.getElementById('selectedVerifiedName').value = pn.verified_name || '';
+        document.getElementById('confirmPhoneBtn').disabled = false;
+      });
+      container.appendChild(el);
+    });
+    document.getElementById('phoneModal').classList.add('open');
+  }
+
+  function closePhoneModal() {
+    document.getElementById('phoneModal').classList.remove('open');
+    document.getElementById('confirmPhoneBtn').disabled = true;
+  }
+
+  function checkToken() {
+    var btn = document.getElementById('checkTokenBtn');
+    btn.disabled = true;
+    btn.textContent = 'Checking...';
+    fetch('{{ url_for("portal.whatsapp_check_token") }}', { method: 'POST' })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        btn.disabled = false;
+        btn.textContent = 'Check Token';
+        if (data.valid) {
+          alert('Token is valid. ✅' + (data.name ? ' Authenticated as: ' + data.name : ''));
+        } else {
+          alert('Token check failed: ' + (data.error || 'Unknown error'));
+        }
+      })
+      .catch(function() {
+        btn.disabled = false;
+        btn.textContent = 'Check Token';
+        alert('Network error during token check.');
+      });
+  }
+</script>
+
+<!-- ── Manual Setup (collapsible fallback) ─────────────────────────────── -->
+<details style="margin-bottom:20px">
+  <summary style="cursor:pointer;font-size:14px;font-weight:700;color:var(--muted);
+                  padding:14px 18px;border:1px solid var(--line);border-radius:14px;
+                  list-style:none;display:flex;align-items:center;gap:8px">
+    <span>▸</span> Manual Setup (advanced — paste credentials directly)
+  </summary>
+  <div style="border:1px solid var(--line);border-top:none;border-radius:0 0 14px 14px;
+              padding:20px 18px;background:rgba(3,12,24,.02)">
+
+{% else %}
+<!-- ════════════════════════════════════════════════════════════
+     MANUAL SETUP (default mode — no Meta Tech Provider approval yet)
+═════════════════════════════════════════════════════════════ -->
+<div class="card" style="margin-bottom:20px">
+  <div class="card-title">{{ 'Update Credentials' if connection else 'Connect WhatsApp' }}</div>
+  <div class="flash warning" style="margin-bottom:18px">
+    Embedded Signup is not yet configured on this server (META_APP_ID / META_CONFIG_ID missing).
+    Enter your credentials manually below, or contact support to enable Embedded Signup.
+  </div>
+{% endif %}
+
+    <p class="muted" style="margin-bottom:16px;font-size:13px">
+      Find these values in <strong>Meta Business Manager → WhatsApp → API Setup</strong>.
+    </p>
+
+    <form method="POST" action="{{ url_for('portal.whatsapp_save_connection') }}">
+      <div class="form-row" style="margin-bottom:14px">
+        <div class="form-group" style="margin:0">
+          <label>Phone Number ID <span style="color:var(--bad)">*</span></label>
+          <input type="text" name="phone_number_id"
+                 value="{{ connection.phone_number_id if connection else '' }}"
+                 placeholder="e.g. 107563218543210" required>
+          <p class="muted" style="margin-top:4px;font-size:12px">
+            Meta App Dashboard → WhatsApp → API Setup
+          </p>
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>WABA ID <span class="muted">(optional)</span></label>
+          <input type="text" name="waba_id"
+                 value="{{ connection.waba_id if connection else '' }}"
+                 placeholder="e.g. 102345678901234">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Access Token <span style="color:var(--bad)">*</span></label>
+        <input type="password" name="access_token"
+               placeholder="{{ '•••••••• (leave blank to keep current)' if connection else 'Paste your System User permanent access token' }}"
+               {{ 'required' if not connection else '' }}>
+        <p class="muted" style="margin-top:4px;font-size:12px">
+          Use a <strong>System User permanent token</strong> from Meta Business Manager → System Users.
+        </p>
+      </div>
+
+      <div class="form-group">
+        <label>Webhook Verify Token <span style="color:var(--bad)">*</span></label>
+        <input type="text" name="verify_token"
+               value="{{ connection.verify_token if connection else '' }}"
+               placeholder="Any secret string you choose" required>
+        <p class="muted" style="margin-top:4px;font-size:12px">
+          Enter the same string when registering the webhook in Meta App Dashboard.
+        </p>
+      </div>
+
+      <button type="submit" class="btn btn-primary">
+        {{ 'Update Connection' if connection else 'Connect WhatsApp' }}
+      </button>
+    </form>
+
+{% if embedded_enabled %}
+  </div><!-- end details inner -->
+</details>
+{% else %}
+</div><!-- end manual card -->
+{% endif %}
+
+<!-- ── Webhook Setup Instructions ───────────────────────────────────────── -->
+{% if not embedded_enabled or not connection %}
+<div class="card" style="margin-bottom:20px">
+  <div class="card-title">Webhook Setup</div>
+  <p class="muted" style="margin-bottom:14px;font-size:13px">
+    Register the PhiXtra webhook in your Meta App Dashboard so Meta can deliver messages to PhiXtra.
+  </p>
+  <ol style="color:var(--muted);font-size:13px;line-height:2.1;padding-left:20px">
+    <li>Go to <strong>Meta App Dashboard → WhatsApp → Configuration</strong></li>
+    <li>Click <strong>Edit</strong> next to Webhook</li>
+    <li>Set <strong>Callback URL</strong> to:
+      <div class="code-box" style="margin:6px 0">https://your-gateway-domain.com/meta-webhook</div>
+    </li>
+    <li>Set <strong>Verify Token</strong> to the same value entered above</li>
+    <li>Click <strong>Verify and Save</strong>, then subscribe to the <code>messages</code> field</li>
+  </ol>
+</div>
+{% endif %}
+
+<!-- ── Template Management ───────────────────────────────────────────────── -->
+<div class="card">
+  <div class="card-title">Message Templates</div>
+  <p class="muted" style="margin-bottom:18px;font-size:13px">
+    Templates must be approved in <strong>Meta Business Manager → WhatsApp → Message Templates</strong>
+    before PhiXtra can send them. Enter the approved template names below.
+  </p>
+
+  <form method="POST" action="{{ url_for('portal.whatsapp_save_templates') }}">
+
+    <div style="border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px">
+      <div style="font-weight:700;font-size:14px;margin-bottom:4px">Cart Abandonment Template</div>
+      <p class="muted" style="font-size:12px;margin-bottom:12px">
+        Sent when a customer abandons their cart.
+        Parameters: <code>&#123;&#123;1&#125;&#125;</code> = cart summary,
+        <code>&#123;&#123;2&#125;&#125;</code> = cart URL
+      </p>
+      <div class="form-row">
+        <div class="form-group" style="margin:0">
+          <label>Template Name</label>
+          <input type="text" name="template_cart_recovery"
+                 value="{{ templates.cart_recovery.template_name if 'cart_recovery' in templates else '' }}"
+                 placeholder="e.g. phixtra_cart_recovery">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>Language Code</label>
+          <input type="text" name="lang_cart_recovery"
+                 value="{{ templates.cart_recovery.language_code if 'cart_recovery' in templates else 'en' }}"
+                 placeholder="en">
+        </div>
+      </div>
+    </div>
+
+    <div style="border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:18px">
+      <div style="font-weight:700;font-size:14px;margin-bottom:4px">Order Status Template</div>
+      <p class="muted" style="font-size:12px;margin-bottom:12px">
+        Sent when an order status changes.
+        Parameters: <code>&#123;&#123;1&#125;&#125;</code> = order ID,
+        <code>&#123;&#123;2&#125;&#125;</code> = order status
+      </p>
+      <div class="form-row">
+        <div class="form-group" style="margin:0">
+          <label>Template Name</label>
+          <input type="text" name="template_order_update"
+                 value="{{ templates.order_update.template_name if 'order_update' in templates else '' }}"
+                 placeholder="e.g. phixtra_order_update">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>Language Code</label>
+          <input type="text" name="lang_order_update"
+                 value="{{ templates.order_update.language_code if 'order_update' in templates else 'en' }}"
+                 placeholder="en">
+        </div>
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Save Templates</button>
+  </form>
+</div>
+
+{% endblock %}

@@ -1,0 +1,174 @@
+{% extends "portal/base.html" %}
+{% block title %}Cart Recovery Report – PhiXtra{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  .report-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:24px}
+  .report-title{font-size:22px;font-weight:800;letter-spacing:-.3px}
+  .export-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .export-bar span{font-size:13px;color:var(--muted);font-weight:600}
+  .period-tabs{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+  .period-tab{padding:7px 16px;border-radius:20px;border:1px solid var(--line);font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;color:var(--muted);background:#fff;transition:.15s}
+  .period-tab:hover{border-color:var(--ink);color:var(--ink);text-decoration:none}
+  .period-tab.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .chart-card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px;margin-bottom:20px;box-shadow:var(--shadow)}
+  .chart-card h3{font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:16px}
+  .disabled-notice{background:rgba(247,144,9,0.08);border:1px solid rgba(247,144,9,0.30);border-radius:14px;padding:20px 22px;margin-bottom:20px}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="report-header">
+  <div>
+    <div class="report-title">🛒 Cart Recovery Report</div>
+    <div class="muted" style="margin-top:4px">Abandoned cart recovery performance and revenue recaptured</div>
+  </div>
+  <div class="export-bar">
+    <span>Export:</span>
+    <a class="btn btn-sm" href="{{ url_for('portal.report_export', report='cart', fmt='pdf', days=days) }}">📄 PDF</a>
+    <a class="btn btn-sm" href="{{ url_for('portal.report_export', report='cart', fmt='xlsx', days=days) }}">📊 Excel</a>
+    <a class="btn btn-sm" href="{{ url_for('portal.report_export', report='cart', fmt='docx', days=days) }}">📝 Word</a>
+  </div>
+</div>
+
+{% if not enabled %}
+<div class="disabled-notice">
+  <strong>⚠️ Cart Recovery is not enabled on your account.</strong>
+  Contact <a href="mailto:support@phixtra.com">support@phixtra.com</a> to activate this feature.
+  The report below will populate automatically once it's enabled.
+</div>
+{% endif %}
+
+<!-- Period selector -->
+<div class="period-tabs">
+  <a href="?days=7"  class="period-tab {% if days==7  %}active{% endif %}">Last 7 days</a>
+  <a href="?days=30" class="period-tab {% if days==30 %}active{% endif %}">Last 30 days</a>
+  <a href="?days=90" class="period-tab {% if days==90 %}active{% endif %}">Last 90 days</a>
+</div>
+
+<!-- KPI Cards -->
+<div class="grid g3" style="margin-bottom:20px">
+  <div class="card card-sm">
+    <div class="card-title">Abandoned Carts</div>
+    <div class="kpi">{{ stats.total }}</div>
+    <div class="muted" style="margin-top:4px">Total captured</div>
+  </div>
+  <div class="card card-sm">
+    <div class="card-title">Recovered</div>
+    <div class="kpi" style="color:var(--good)">{{ stats.recovered }}</div>
+    <div class="muted" style="margin-top:4px">Carts converted</div>
+  </div>
+  <div class="card card-sm">
+    <div class="card-title">Recovery Rate</div>
+    <div class="kpi">{{ stats.recovery_rate }}%</div>
+    <div class="muted" style="margin-top:4px">Of concluded carts</div>
+  </div>
+</div>
+<div class="grid g3" style="margin-bottom:20px">
+  <div class="card card-sm">
+    <div class="card-title">Revenue Recovered</div>
+    <div class="kpi-sm" style="color:var(--good)">{{ revenue_fmt }}</div>
+  </div>
+  <div class="card card-sm">
+    <div class="card-title">Avg Recovered Value</div>
+    <div class="kpi-sm">{{ avg_fmt }}</div>
+  </div>
+  <div class="card card-sm">
+    <div class="card-title">Currently In Progress</div>
+    <div class="kpi-sm">{{ stats.active_now }}</div>
+    <div class="muted">Active sequences</div>
+  </div>
+</div>
+
+<!-- Touchpoint Performance -->
+<div class="grid g3" style="margin-bottom:20px">
+  <div class="card card-sm">
+    <div class="card-title">Popups Shown</div>
+    <div class="kpi-sm">{{ touches.popup_queued | default(0) }}</div>
+  </div>
+  <div class="card card-sm">
+    <div class="card-title">Recovery Emails Sent</div>
+    <div class="kpi-sm">{{ touches.email_sent | default(0) }}</div>
+  </div>
+  <div class="card card-sm">
+    <div class="card-title">Final Reminder Emails</div>
+    <div class="kpi-sm">{{ touches.final_email_sent | default(0) }}</div>
+  </div>
+</div>
+
+<!-- Recovery Trend Chart -->
+{% if trend %}
+<div class="chart-card">
+  <h3>Daily Recovery Trend</h3>
+  <canvas id="trendChart" height="80"></canvas>
+</div>
+{% endif %}
+
+<!-- Status Breakdown Table -->
+<div class="card" style="margin-bottom:20px">
+  <div style="margin-bottom:14px">
+    <h3 style="font-size:15px;font-weight:700">Status Summary</h3>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Status</th><th>Count</th><th>% of Total</th></tr>
+      </thead>
+      <tbody>
+        {% set total_safe = stats.total if stats.total > 0 else 1 %}
+        <tr>
+          <td><span class="pill pill-green">✅ Recovered</span></td>
+          <td>{{ stats.recovered }}</td>
+          <td>{{ "%.1f"|format(stats.recovered / total_safe * 100) }}%</td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-warn">⏳ In Progress</span></td>
+          <td>{{ stats.in_progress }}</td>
+          <td>{{ "%.1f"|format(stats.in_progress / total_safe * 100) }}%</td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-grey">⌚ Pending</span></td>
+          <td>{{ stats.pending }}</td>
+          <td>{{ "%.1f"|format(stats.pending / total_safe * 100) }}%</td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-red">❌ Expired</span></td>
+          <td>{{ stats.expired }}</td>
+          <td>{{ "%.1f"|format(stats.expired / total_safe * 100) }}%</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if trend %}
+<script>
+  (function() {
+    var pts = {{ trend | tojson }};
+    var labels = pts.map(function(p){ return p.d; });
+    var recovered = pts.map(function(p){ return p.recovered; });
+    var revenue   = pts.map(function(p){ return p.revenue; });
+    var ctx = document.getElementById('trendChart').getContext('2d');
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          { label: 'Carts Recovered', data: recovered, backgroundColor: 'rgba(18,183,106,0.80)', borderRadius: 5, yAxisID: 'y' },
+          { label: 'Revenue (£)', data: revenue, type: 'line', borderColor: '#F79009', backgroundColor: 'transparent', tension: 0.35, pointRadius: 4, yAxisID: 'y2' }
+        ]
+      },
+      options: {
+        plugins: { legend: { display: true, position: 'top' } },
+        scales: {
+          x: { grid: { display: false } },
+          y:  { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' }, title: { display: true, text: 'Carts' } },
+          y2: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'Revenue (£)' } }
+        }
+      }
+    });
+  })();
+</script>
+{% endif %}
+{% endblock %}

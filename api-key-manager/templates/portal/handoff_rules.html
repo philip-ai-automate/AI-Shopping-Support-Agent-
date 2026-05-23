@@ -1,0 +1,259 @@
+{% extends "portal/base.html" %}
+{% block title %}Handoff Rules – PhiXtra{% endblock %}
+
+{% block head %}
+<style>
+  .hr-page-header{display:flex;align-items:flex-start;justify-content:space-between;
+                  flex-wrap:wrap;gap:12px;margin-bottom:26px}
+  .hr-page-title{font-size:22px;font-weight:800;letter-spacing:-.3px}
+
+  /* Section cards */
+  .hr-section{margin-bottom:28px}
+  .hr-section-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  .hr-section-icon{font-size:22px}
+  .hr-section-title{font-size:16px;font-weight:800}
+  .hr-section-sub{font-size:13px;color:var(--muted);margin-top:1px}
+
+  /* Rule rows */
+  .rule-list{display:flex;flex-direction:column;gap:10px}
+  .rule-row{display:flex;align-items:center;justify-content:space-between;gap:12px;
+            background:#fff;border:1px solid var(--line);border-radius:14px;
+            padding:14px 16px;transition:.15s}
+  .rule-row.inactive{opacity:.55}
+  .rule-row:hover{box-shadow:var(--shadow2)}
+  .rule-text{flex:1;font-size:14px;font-weight:500;color:var(--txt)}
+  .rule-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+
+  /* Toggle switch */
+  .toggle-form{display:inline}
+  .toggle-btn{
+    position:relative;display:inline-flex;align-items:center;
+    width:44px;height:24px;border-radius:999px;cursor:pointer;
+    border:none;padding:0;transition:.2s;flex-shrink:0;
+  }
+  .toggle-btn.on {background:var(--good)}
+  .toggle-btn.off{background:rgba(3,12,24,0.18)}
+  .toggle-knob{
+    position:absolute;width:18px;height:18px;border-radius:50%;
+    background:#fff;box-shadow:0 1px 4px rgba(0,0,0,0.25);
+    transition:.2s;
+  }
+  .toggle-btn.on  .toggle-knob{left:23px}
+  .toggle-btn.off .toggle-knob{left:3px}
+
+  /* Add rule form */
+  .add-rule-card{background:rgba(3,12,24,0.025);border:1px dashed rgba(3,12,24,0.18);
+                 border-radius:16px;padding:18px 20px;margin-top:12px}
+  .add-rule-card h4{font-size:13px;font-weight:700;color:var(--muted);
+                    text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px}
+  .add-rule-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+  .add-rule-row .form-group{margin-bottom:0}
+  .add-rule-input{flex:1;min-width:200px}
+
+  /* How it works box */
+  .how-box{background:rgba(37,99,235,0.04);border:1px solid rgba(37,99,235,0.18);
+           border-radius:16px;padding:18px 20px;margin-bottom:26px}
+  .how-box h3{font-size:14px;font-weight:700;color:#2563EB;margin-bottom:10px}
+  .how-box p{font-size:13px;color:var(--txt);margin-bottom:8px;line-height:1.6}
+  .how-box p:last-child{margin-bottom:0}
+
+  /* Empty state */
+  .empty-rules{text-align:center;padding:28px;color:var(--muted);font-size:14px}
+
+  @media(max-width:560px){
+    .rule-row{flex-direction:column;align-items:flex-start}
+    .rule-actions{align-self:flex-end}
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="hr-page-header">
+  <div>
+    <div class="hr-page-title">🔀 Handoff Rules</div>
+    <div class="muted" style="margin-top:4px">
+      Configure when your AI automatically alerts your team that a visitor needs human help
+    </div>
+  </div>
+</div>
+
+<!-- How it works -->
+<div class="how-box">
+  <h3>⚡ How this works</h3>
+  <p>
+    When a rule is <strong>ON</strong>, the AI watches for that situation during every conversation.
+    The moment it is triggered, your team gets an <strong>instant email alert</strong> with the
+    visitor's WhatsApp number, and the conversation appears in the
+    <strong>Needs Attention</strong> panel on your Dashboard.
+  </p>
+  <p>
+    <strong>Visitor-initiated rules</strong> fire when the visitor says something (e.g. "I want to speak to someone").
+    <strong>AI-decided rules</strong> fire silently — the visitor doesn't need to ask, the AI recognises
+    the situation on its own (e.g. visitor asks about a promo offer).
+  </p>
+  <p style="color:#2563EB;font-weight:600">
+    No system prompt editing needed — changes here take effect on the very next chat.
+  </p>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     SECTION 1 — Visitor-initiated rules
+═══════════════════════════════════════════ -->
+<div class="hr-section">
+  <div class="hr-section-head">
+    <span class="hr-section-icon">🙋</span>
+    <div>
+      <div class="hr-section-title">Visitor-Initiated</div>
+      <div class="hr-section-sub">Fires when the visitor explicitly says or asks something</div>
+    </div>
+  </div>
+
+  <div class="rule-list">
+    {% if visitor_rules %}
+      {% for rule in visitor_rules %}
+      <div class="rule-row {% if not rule.is_active %}inactive{% endif %}">
+        <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0">
+          <span style="font-size:16px;flex-shrink:0">🧑</span>
+          <div class="rule-text">{{ rule.trigger_text }}</div>
+        </div>
+        <div class="rule-actions">
+          <!-- Toggle on/off -->
+          <form class="toggle-form" method="post"
+                action="{{ url_for('portal.handoff_rules_toggle', rule_id=rule.id) }}">
+            <button type="submit"
+                    class="toggle-btn {% if rule.is_active %}on{% else %}off{% endif %}"
+                    title="{{ 'Disable' if rule.is_active else 'Enable' }} this rule">
+              <span class="toggle-knob"></span>
+            </button>
+          </form>
+          <!-- Delete -->
+          <form method="post"
+                action="{{ url_for('portal.handoff_rules_delete', rule_id=rule.id) }}"
+                onsubmit="return confirm('Delete this rule?')">
+            <button type="submit" class="btn btn-sm btn-danger" title="Delete rule"
+                    style="padding:5px 10px;font-size:13px">✕</button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty-rules">No visitor-initiated rules yet. Add one below.</div>
+    {% endif %}
+  </div>
+
+  <!-- Add visitor-initiated rule -->
+  <div class="add-rule-card">
+    <h4>+ Add visitor-initiated rule</h4>
+    <form method="post" action="{{ url_for('portal.handoff_rules_add') }}">
+      <input type="hidden" name="trigger_type" value="visitor_initiated">
+      <div class="add-rule-row">
+        <div class="form-group add-rule-input">
+          <label>Describe what the visitor says or asks</label>
+          <input type="text" name="trigger_text" maxlength="280"
+                 placeholder="e.g. Visitor asks about a specific order by order number"
+                 required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm" style="height:42px">
+          Add Rule
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     SECTION 2 — AI-decided rules
+═══════════════════════════════════════════ -->
+<div class="hr-section">
+  <div class="hr-section-head">
+    <span class="hr-section-icon">🤖</span>
+    <div>
+      <div class="hr-section-title">AI-Decided</div>
+      <div class="hr-section-sub">The AI recognises these situations and triggers a handoff silently — the visitor doesn't need to ask</div>
+    </div>
+  </div>
+
+  <div class="rule-list">
+    {% if ai_rules %}
+      {% for rule in ai_rules %}
+      <div class="rule-row {% if not rule.is_active %}inactive{% endif %}">
+        <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0">
+          <span style="font-size:16px;flex-shrink:0">🤖</span>
+          <div class="rule-text">{{ rule.trigger_text }}</div>
+        </div>
+        <div class="rule-actions">
+          <!-- Toggle on/off -->
+          <form class="toggle-form" method="post"
+                action="{{ url_for('portal.handoff_rules_toggle', rule_id=rule.id) }}">
+            <button type="submit"
+                    class="toggle-btn {% if rule.is_active %}on{% else %}off{% endif %}"
+                    title="{{ 'Disable' if rule.is_active else 'Enable' }} this rule">
+              <span class="toggle-knob"></span>
+            </button>
+          </form>
+          <!-- Delete -->
+          <form method="post"
+                action="{{ url_for('portal.handoff_rules_delete', rule_id=rule.id) }}"
+                onsubmit="return confirm('Delete this rule?')">
+            <button type="submit" class="btn btn-sm btn-danger" title="Delete rule"
+                    style="padding:5px 10px;font-size:13px">✕</button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty-rules">No AI-decided rules yet. Add one below.</div>
+    {% endif %}
+  </div>
+
+  <!-- Add AI-decided rule -->
+  <div class="add-rule-card">
+    <h4>+ Add AI-decided rule</h4>
+    <form method="post" action="{{ url_for('portal.handoff_rules_add') }}">
+      <input type="hidden" name="trigger_type" value="ai_initiated">
+      <div class="add-rule-row">
+        <div class="form-group add-rule-input">
+          <label>Describe the situation the AI should recognise</label>
+          <input type="text" name="trigger_text" maxlength="280"
+                 placeholder="e.g. Visitor asks about trade or wholesale pricing"
+                 required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm" style="height:42px">
+          Add Rule
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     ACTIVE RULES SUMMARY
+═══════════════════════════════════════════ -->
+{% set active_total = (visitor_rules + ai_rules) | selectattr('is_active') | list | length %}
+{% set total = (visitor_rules + ai_rules) | length %}
+
+<div class="card card-sm" style="margin-top:8px">
+  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+    <div>
+      <div class="card-title">Active rules</div>
+      <div style="font-size:20px;font-weight:800">
+        {{ active_total }} <span style="font-size:14px;font-weight:500;color:var(--muted)">of {{ total }}</span>
+      </div>
+    </div>
+    <div class="divider" style="width:1px;height:36px;margin:0"></div>
+    <div class="muted" style="font-size:13px;flex:1">
+      {% if active_total == 0 %}
+        ⚠️ No rules are active. Handoff alerts will not fire until at least one rule is enabled.
+      {% else %}
+        The AI is watching for {{ active_total }} trigger{{ 's' if active_total != 1 else '' }}.
+        Changes take effect immediately on the next visitor conversation — no restart needed.
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% endblock %}

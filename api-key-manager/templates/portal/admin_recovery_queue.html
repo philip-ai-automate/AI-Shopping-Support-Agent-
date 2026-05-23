@@ -1,0 +1,174 @@
+{% extends "portal/admin_base.html" %}
+
+{% block title %}Cart Recovery Queue — PhiXtra Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="section-title">🛒 Cart Revenue Recovery Queue</div>
+  <a href="{{ url_for('portal_admin.customers') }}" class="btn btn-sm">← Back to Customers</a>
+</div>
+
+{# ── KPI CARDS ─────────────────────────────────────────────────────────────── #}
+<div class="grid g4" style="margin-bottom:20px;">
+  <div class="card" style="text-align:center;">
+    <div class="card-title">Total Sessions</div>
+    <div class="kpi">{{ stats.total }}</div>
+  </div>
+  <div class="card" style="text-align:center;">
+    <div class="card-title">In Recovery</div>
+    <div class="kpi" style="color:#0369a1;">{{ stats.in_progress }}</div>
+  </div>
+  <div class="card" style="text-align:center;">
+    <div class="card-title">Recovered ✓</div>
+    <div class="kpi" style="color:#059669;">{{ stats.recovered }}</div>
+  </div>
+  <div class="card" style="text-align:center;">
+    <div class="card-title">Conversion Rate</div>
+    <div class="kpi" style="color:#7c3aed;">{{ stats.conversion_rate }}%</div>
+    <p class="muted" style="font-size:11px; margin-top:4px;">vs ~35% industry avg</p>
+  </div>
+</div>
+
+{# ── SECONDARY COUNTS ──────────────────────────────────────────────────────── #}
+<div class="grid g2" style="margin-bottom:20px;">
+  <div class="card" style="display:flex; gap:20px; align-items:center;">
+    <div style="text-align:center; flex:1;">
+      <div class="card-title">Pending (not yet started)</div>
+      <div style="font-size:22px; font-weight:800; color:#92400e;">{{ stats.pending }}</div>
+    </div>
+    <div style="text-align:center; flex:1;">
+      <div class="card-title">Expired (no conversion)</div>
+      <div style="font-size:22px; font-weight:800; color:#6b7280;">{{ stats.expired }}</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title" style="margin-bottom:6px;">How it works</div>
+    <p style="font-size:12px; color:#374151; line-height:1.6; margin:0;">
+      <strong>Touch 1</strong> — Widget popup on next site visit (immediate)<br>
+      <strong>Touch 2</strong> — AI-personalised email (T+2 hours)<br>
+      <strong>Touch 3</strong> — Final urgency email (T+24 hours)<br>
+      Sessions auto-expire after the 48-hour recovery window.
+    </p>
+  </div>
+</div>
+
+{# ── FILTERS ───────────────────────────────────────────────────────────────── #}
+<div class="card" style="margin-bottom:16px;">
+  <form method="GET" action="" style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+    <div style="flex:1; min-width:160px;">
+      <label>Filter by status</label>
+      <select name="status">
+        <option value="">All statuses</option>
+        {% for s in ['pending','in_progress','recovered','expired'] %}
+        <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>
+          {{ s|replace('_',' ')|title }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="flex:1; min-width:180px;">
+      <label>Filter by tenant</label>
+      <select name="tenant_id">
+        <option value="">All tenants</option>
+        {% for t in tenants_list %}
+        <option value="{{ t.id }}" {% if tenant_id_filter == t.id %}selected{% endif %}>
+          {{ t.name or t.domain or t.id }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <button type="submit" class="btn btn-primary btn-sm" style="margin-top:16px;">Apply</button>
+      <a href="{{ url_for('portal_admin.recovery_queue') }}" class="btn btn-sm" style="margin-top:16px;">Reset</a>
+    </div>
+  </form>
+</div>
+
+{# ── QUEUE TABLE ───────────────────────────────────────────────────────────── #}
+<div class="card">
+  <div class="card-title">Recovery Queue (showing up to 200 most recent)</div>
+  {% if rows %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Tenant</th>
+          <th>Customer Email</th>
+          <th>Cart Value</th>
+          <th>Score</th>
+          <th>Priority</th>
+          <th>Status</th>
+          <th>Touches Sent</th>
+          <th>Expires</th>
+          <th>Last Updated</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td class="muted">{{ row.id }}</td>
+          <td>
+            <strong>{{ row.tenant_name or '—' }}</strong>
+            {% if row.domain %}<br><span class="muted">{{ row.domain }}</span>{% endif %}
+          </td>
+          <td>
+            {% if row.customer_email %}
+              <a href="mailto:{{ row.customer_email }}" style="font-size:12px;">{{ row.customer_email }}</a>
+            {% else %}
+              <span class="muted">Guest</span>
+            {% endif %}
+          </td>
+          <td><strong>{{ row.cart_value_fmt }}</strong></td>
+          <td>
+            {# Score badge: colour-coded by intensity #}
+            {% set score = row.intent_score | int %}
+            {% if score >= 70 %}
+              <span class="pill pill-green">{{ score }}</span>
+            {% elif score >= 40 %}
+              <span class="pill pill-warn">{{ score }}</span>
+            {% else %}
+              <span class="pill pill-grey">{{ score }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if row.priority == 'HIGH' %}
+              <span class="pill pill-green">HIGH</span>
+            {% elif row.priority == 'MEDIUM' %}
+              <span class="pill pill-warn">MEDIUM</span>
+            {% else %}
+              <span class="pill pill-grey">LOW</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if row.status == 'recovered' %}
+              <span class="pill pill-green">✓ Recovered</span>
+            {% elif row.status == 'in_progress' %}
+              <span class="pill" style="border-color:rgba(59,130,246,0.35);background:rgba(59,130,246,0.10);color:#1d4ed8;">In Progress</span>
+            {% elif row.status == 'pending' %}
+              <span class="pill pill-warn">Pending</span>
+            {% else %}
+              <span class="pill pill-grey">Expired</span>
+            {% endif %}
+          </td>
+          <td style="text-align:center;">{{ row.touches_sent }}</td>
+          <td class="muted">
+            {{ row.expires_at.strftime('%d %b %H:%M') if row.expires_at else '—' }}
+          </td>
+          <td class="muted">
+            {{ row.updated_at.strftime('%d %b %H:%M') if row.updated_at else '—' }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted" style="padding:20px 0;">
+    No recovery queue entries found.
+    {% if status_filter or tenant_id_filter %}Try removing the filters above.{% endif %}
+  </p>
+  {% endif %}
+</div>
+
+{% endblock %}

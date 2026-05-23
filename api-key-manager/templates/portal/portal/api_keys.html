@@ -1,0 +1,120 @@
+{% extends "portal/base.html" %}
+{% block title %}API Keys — PhiXtra Portal{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title" style="margin:0">API Keys</h1>
+    <p class="muted">Your API key authenticates the AI assistant <em>and</em> the PhiXtra Export plugin.</p>
+  </div>
+</div>
+
+{# ── NEW KEY REVEAL (shown once) ──────────────────────────────────────── #}
+{% if new_plain_key %}
+<div class="card" style="border-color:rgba(18,183,106,0.40);background:rgba(18,183,106,0.06);margin-bottom:22px">
+  <div style="font-size:15px;font-weight:700;margin-bottom:8px;color:#0a7a3c">
+    ✅ API key created — copy it now
+  </div>
+  <p class="muted" style="margin-bottom:12px;font-size:13px">
+    This is the only time the full key will be shown. It is not stored anywhere you can retrieve it again.
+  </p>
+  <div class="code-box" id="plain-key-box">{{ new_plain_key }}</div>
+  <button onclick="copyKey()" class="btn btn-sm" style="margin-top:10px">📋 Copy to clipboard</button>
+  <p class="muted" style="margin-top:10px;font-size:12px">
+    Paste this key into: <strong>WooCommerce → PhiXtra AI → API Key</strong> field
+    AND into <strong>WooCommerce → PhiXtra Export → PhiXtra Sync → Bearer Token</strong>
+  </p>
+</div>
+<script>
+function copyKey(){
+  const txt = document.getElementById("plain-key-box").textContent.trim();
+  navigator.clipboard.writeText(txt).then(()=>{
+    const btn = event.target; btn.textContent="✅ Copied!";
+    setTimeout(()=>btn.textContent="📋 Copy to clipboard", 2500);
+  });
+}
+</script>
+{% endif %}
+
+{# ── CREATE KEY ───────────────────────────────────────────────────────── #}
+<div class="card" style="margin-bottom:22px">
+  <div class="card-title">Create a new API key</div>
+  <p style="font-size:14px;margin-bottom:14px">
+    A key is automatically scoped to your store domain (<strong>{{ keys[0].website if keys else 'your domain' }}</strong>).
+    You can have one active paid key at a time.
+  </p>
+  <form method="POST" action="{{ url_for('portal.api_keys_create') }}">
+    <button type="submit" class="btn btn-primary btn-sm"
+            onclick="return confirm('Create a new API key? Any existing active key will remain active until you revoke it.')">
+      🔑 Generate new API key
+    </button>
+  </form>
+</div>
+
+{# ── KEY LIST ─────────────────────────────────────────────────────────── #}
+<div class="card">
+  <div class="card-title" style="margin-bottom:14px">Your API keys</div>
+  {% if keys %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Website</th>
+          <th>Type</th>
+          <th>Status</th>
+          <th>Credits used (30d)</th>
+          <th>Created</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for k in keys %}
+        <tr>
+          <td>{{ k.website }}</td>
+          <td><span class="pill">{{ k.key_type }}</span></td>
+          <td>
+            {% if k.status == "Active" %}
+              <span class="pill pill-green"><span class="dot dot-green"></span>Active</span>
+            {% elif k.status == "Trial" %}
+              <span class="pill pill-warn">Trial
+                {% if k.trial_days_left is not none %}&nbsp;({{ k.trial_days_left }}d left){% endif %}
+              </span>
+            {% elif k.status == "Expired" %}
+              <span class="pill pill-red">Expired</span>
+            {% else %}
+              <span class="pill pill-grey">Revoked</span>
+            {% endif %}
+          </td>
+          <td>{{ "%.2f"|format(k.credits_30d) }}</td>
+          <td class="muted">{{ k.created_at.strftime('%Y-%m-%d') if k.created_at else '—' }}</td>
+          <td>
+            {% if k.is_active %}
+            <form method="POST" action="{{ url_for('portal.api_keys_revoke', key_id=k.id) }}"
+                  style="display:inline"
+                  onsubmit="return confirm('Revoke this key? Your AI assistant will stop working until you create a new one.')">
+              <button type="submit" class="btn btn-danger btn-sm">Revoke</button>
+            </form>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="muted">No API keys yet. Create one above.</p>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-top:16px;border-color:rgba(3,12,24,0.07);background:rgba(3,12,24,0.02)">
+  <p style="font-size:13px;color:var(--muted)">
+    <strong>ℹ️ Same key, dual purpose:</strong> Your API key is used for both the
+    <strong>PhiXtra AI Assistant plugin</strong> (authenticates /chat requests)
+    and the <strong>PhiXtra Export plugin</strong> (Bearer Token for product sync).
+    You only need one key.
+  </p>
+</div>
+
+{% endblock %}

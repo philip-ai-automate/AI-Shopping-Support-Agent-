@@ -1,0 +1,456 @@
+{% extends "portal/base.html" %}
+{% block title %}Chat Archive – PhiXtra{% endblock %}
+
+{% block head %}
+<style>
+  .archive-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:24px}
+  .archive-title{font-size:22px;font-weight:800;letter-spacing:-.3px}
+  .filter-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:20px;
+              background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;
+              box-shadow:var(--shadow2)}
+  .filter-bar .form-group{margin-bottom:0;min-width:150px}
+  .filter-bar label{margin-bottom:4px}
+  .export-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .export-bar span{font-size:13px;color:var(--muted);font-weight:600}
+  .chat-row{cursor:pointer}
+  .chat-row:hover td{background:rgba(3,12,24,0.03)}
+  .session-badge{font-family:"SF Mono","Fira Code",monospace;font-size:11px;background:rgba(3,12,24,0.05);
+                 border:1px solid var(--line);border-radius:6px;padding:2px 7px;color:var(--muted)}
+  .preview-text{max-width:340px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted);font-size:13px}
+  /* Chat detail modal */
+  .chat-modal-overlay{display:none;position:fixed;inset:0;background:rgba(3,12,24,0.45);z-index:300;
+                       align-items:center;justify-content:center;padding:20px}
+  .chat-modal-overlay.open{display:flex}
+  .chat-modal{background:#fff;border-radius:20px;width:100%;max-width:700px;max-height:85vh;
+               display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(3,12,24,0.22)}
+  .chat-modal-head{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;
+                   justify-content:space-between;flex-shrink:0}
+  .chat-modal-head h3{font-size:15px;font-weight:700}
+  .chat-modal-body{flex:1;overflow-y:auto;padding:18px 22px}
+  .chat-modal-foot{padding:14px 22px;border-top:1px solid var(--line);flex-shrink:0;
+                   display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+  .msg-bubble{margin-bottom:14px;display:flex;flex-direction:column}
+  .msg-bubble.user{align-items:flex-end}
+  .msg-bubble.assistant{align-items:flex-start}
+  .msg-content{max-width:82%;padding:11px 14px;border-radius:14px;font-size:14px;line-height:1.5}
+  .msg-bubble.user .msg-content{background:var(--ink);color:#fff;border-radius:14px 14px 4px 14px}
+  .msg-bubble.assistant .msg-content{background:rgba(3,12,24,0.06);color:var(--txt);border-radius:14px 14px 14px 4px}
+  .msg-meta{font-size:11px;color:var(--muted);margin-top:4px}
+  .close-btn{background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);padding:2px 6px;border-radius:6px}
+  .close-btn:hover{background:rgba(3,12,24,0.08)}
+  .summary-box{background:rgba(247,144,9,0.08);border:1px solid rgba(247,144,9,0.25);border-radius:12px;
+               padding:12px 14px;margin-bottom:16px;font-size:13px;color:var(--txt)}
+  .summary-box strong{color:#7a4f00}
+  .no-results{text-align:center;padding:48px 20px;color:var(--muted)}
+  .no-results .no-icon{font-size:40px;margin-bottom:12px}
+
+  /* ── Tier / upgrade styles ── */
+  .tier-banner{display:flex;align-items:flex-start;gap:14px;border-radius:16px;
+               padding:18px 22px;margin-bottom:24px;border-width:1.5px;border-style:solid}
+  .tier-banner.free   {background:linear-gradient(135deg,#fef9f0,#fef3c7);border-color:#fbbf24}
+  .tier-banner.days30 {background:linear-gradient(135deg,#f0f9ff,#e0f2fe);border-color:#7dd3fc}
+  .tier-banner-icon{font-size:28px;flex-shrink:0;line-height:1}
+  .tier-banner-title{font-size:15px;font-weight:800;margin-bottom:4px}
+  .tier-banner.free   .tier-banner-title{color:#92400e}
+  .tier-banner.days30 .tier-banner-title{color:#0369a1}
+  .tier-banner-body{font-size:13px;line-height:1.6}
+  .tier-banner.free   .tier-banner-body{color:#78350f}
+  .tier-banner.days30 .tier-banner-body{color:#0c4a6e}
+  .tier-banner-action{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+  .btn-upgrade{background:#0369a1;color:#fff!important;border:none;border-radius:10px;
+               padding:9px 20px;font-size:13px;font-weight:700;cursor:pointer;text-decoration:none;
+               display:inline-block;transition:background .15s}
+  .btn-upgrade:hover{background:#0284c7}
+  .btn-upgrade-gold{background:#d97706;color:#fff!important;border:none;border-radius:10px;
+               padding:9px 20px;font-size:13px;font-weight:700;cursor:pointer;text-decoration:none;
+               display:inline-block;transition:background .15s}
+  .btn-upgrade-gold:hover{background:#b45309}
+
+  .locked-input{position:relative;display:flex;align-items:center}
+  .locked-input input[disabled]{background:rgba(3,12,24,0.04)!important;color:var(--muted)!important;
+                       cursor:not-allowed!important;border-color:rgba(3,12,24,0.1)!important}
+  .lock-badge{position:absolute;right:10px;font-size:13px;pointer-events:none;user-select:none}
+  .btn-locked{opacity:0.40;cursor:not-allowed!important;pointer-events:none!important}
+  .export-lock-wrap{display:inline-flex;flex-direction:column;align-items:center;gap:2px}
+  .export-lock-label{font-size:10px;color:var(--muted);font-weight:600;white-space:nowrap}
+  .summary-locked-box{background:rgba(14,165,233,0.06);border:1px solid rgba(14,165,233,0.25);
+                       border-radius:12px;padding:12px 14px;margin-bottom:16px;font-size:13px;
+                       color:#0369a1;display:flex;align-items:center;gap:8px}
+  .tier-pill{font-size:12px;font-weight:700;border-radius:8px;padding:3px 10px;
+             vertical-align:middle;margin-left:8px;border-width:1px;border-style:solid}
+  .tier-pill.free    {color:#92400e;background:rgba(251,191,36,0.12);border-color:rgba(251,191,36,0.40)}
+  .tier-pill.days30  {color:#0369a1;background:rgba(14,165,233,0.10);border-color:rgba(14,165,233,0.30)}
+  .tier-pill.unlimited{color:#16a34a;background:rgba(22,163,74,0.09);border-color:rgba(22,163,74,0.25)}
+</style>
+{% endblock %}
+
+{% block content %}
+
+{# ── Free tier upgrade banner ── #}
+{% if tier == 'free' %}
+<div class="tier-banner free">
+  <div class="tier-banner-icon">🔒</div>
+  <div>
+    <div class="tier-banner-title">Chat Archive — Free Preview (Last {{ free_days }} Days)</div>
+    <div class="tier-banner-body">
+      You are viewing the last <strong>{{ free_days }} days</strong> of conversations.
+      Upgrade to unlock more history, search, export and AI summaries:
+      <table style="margin-top:10px;border:none;font-size:12px;border-collapse:collapse">
+        <thead>
+          <tr>
+            <th style="border:none;padding:4px 14px 4px 0;text-align:left;color:#92400e">Feature</th>
+            <th style="border:none;padding:4px 14px 4px 0;text-align:center;color:#92400e">Free</th>
+            <th style="border:none;padding:4px 14px 4px 0;text-align:center;color:#0369a1">30-Day Plan</th>
+            <th style="border:none;padding:4px 0;text-align:center;color:#16a34a">Unlimited Plan</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td style="border:none;padding:3px 14px 3px 0">Conversation history</td><td style="border:none;padding:3px 14px 3px 0;text-align:center">3 days</td><td style="border:none;padding:3px 14px 3px 0;text-align:center">30 days</td><td style="border:none;padding:3px 0;text-align:center">Unlimited ♾️</td></tr>
+          <tr><td style="border:none;padding:3px 14px 3px 0">Keyword search</td><td style="border:none;padding:3px 14px 3px 0;text-align:center">🔒</td><td style="border:none;padding:3px 14px 3px 0;text-align:center">✅</td><td style="border:none;padding:3px 0;text-align:center">✅</td></tr>
+          <tr><td style="border:none;padding:3px 14px 3px 0">Export to PDF</td><td style="border:none;padding:3px 14px 3px 0;text-align:center">🔒</td><td style="border:none;padding:3px 14px 3px 0;text-align:center">✅</td><td style="border:none;padding:3px 0;text-align:center">✅</td></tr>
+          <tr><td style="border:none;padding:3px 14px 3px 0">Export to Excel &amp; Word</td><td style="border:none;padding:3px 14px 3px 0;text-align:center">🔒</td><td style="border:none;padding:3px 14px 3px 0;text-align:center">🔒</td><td style="border:none;padding:3px 0;text-align:center">✅</td></tr>
+          <tr><td style="border:none;padding:3px 14px 3px 0">AI conversation summaries</td><td style="border:none;padding:3px 14px 3px 0;text-align:center">🔒</td><td style="border:none;padding:3px 14px 3px 0;text-align:center">✅</td><td style="border:none;padding:3px 0;text-align:center">✅</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="tier-banner-action">
+      <a href="{{ url_for('portal.billing') }}" class="btn-upgrade">📅 Upgrade to 30-Day Plan</a>
+      <a href="{{ url_for('portal.billing') }}" class="btn-upgrade-gold">♾️ Upgrade to Unlimited</a>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── 30-day tier — show what they still can't do ── #}
+{% if tier == '30days' %}
+<div class="tier-banner days30">
+  <div class="tier-banner-icon">📅</div>
+  <div>
+    <div class="tier-banner-title">Chat Archive — 30-Day Plan</div>
+    <div class="tier-banner-body">
+      You have access to <strong>30 days</strong> of conversation history, fulltext keyword search, PDF export and AI summaries.
+      Upgrade to <strong>Chat Archive Unlimited</strong> to unlock:
+      <ul style="margin:6px 0 0 0;padding-left:18px">
+        <li>♾️ Unlimited conversation history (no day limit)</li>
+        <li>📊 Export to Excel and Word (in addition to PDF)</li>
+      </ul>
+    </div>
+    <div class="tier-banner-action">
+      <a href="{{ url_for('portal.billing') }}" class="btn-upgrade-gold">♾️ Upgrade to Unlimited</a>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── Page header ── #}
+<div class="archive-header">
+  <div>
+    <div class="archive-title">💬 Chat Archive
+      {% if tier == 'unlimited' %}
+        <span class="tier-pill unlimited">♾️ Unlimited</span>
+      {% elif tier == '30days' %}
+        <span class="tier-pill days30">📅 30-Day Plan</span>
+      {% else %}
+        <span class="tier-pill free">🔒 Last {{ free_days }} days</span>
+      {% endif %}
+    </div>
+    <div class="muted" style="margin-top:4px">Complete record of visitor conversations with your AI agent</div>
+  </div>
+
+  {# ── Export buttons — vary by tier ── #}
+  <div class="export-bar">
+    <span>Export:</span>
+
+    {# PDF: available on 30days and unlimited #}
+    {% if exports_allowed in ('pdf_only', 'all') %}
+      <a class="btn btn-sm" href="{{ url_for('portal.chat_archive_export', fmt='pdf') }}{{ filter_qs }}">📄 PDF</a>
+    {% else %}
+      <div class="export-lock-wrap">
+        <span class="btn btn-sm btn-locked">📄 PDF</span>
+        <span class="export-lock-label">🔒 Upgrade</span>
+      </div>
+    {% endif %}
+
+    {# Excel: unlimited only #}
+    {% if exports_allowed == 'all' %}
+      <a class="btn btn-sm" href="{{ url_for('portal.chat_archive_export', fmt='xlsx') }}{{ filter_qs }}">📊 Excel</a>
+    {% elif exports_allowed == 'pdf_only' %}
+      <div class="export-lock-wrap">
+        <span class="btn btn-sm btn-locked">📊 Excel</span>
+        <span class="export-lock-label">🔒 Unlimited only</span>
+      </div>
+    {% else %}
+      <div class="export-lock-wrap">
+        <span class="btn btn-sm btn-locked">📊 Excel</span>
+        <span class="export-lock-label">🔒 Upgrade</span>
+      </div>
+    {% endif %}
+
+    {# Word: unlimited only #}
+    {% if exports_allowed == 'all' %}
+      <a class="btn btn-sm" href="{{ url_for('portal.chat_archive_export', fmt='docx') }}{{ filter_qs }}">📝 Word</a>
+    {% elif exports_allowed == 'pdf_only' %}
+      <div class="export-lock-wrap">
+        <span class="btn btn-sm btn-locked">📝 Word</span>
+        <span class="export-lock-label">🔒 Unlimited only</span>
+      </div>
+    {% else %}
+      <div class="export-lock-wrap">
+        <span class="btn btn-sm btn-locked">📝 Word</span>
+        <span class="export-lock-label">🔒 Upgrade</span>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+{# ── Filter bar ── #}
+<form method="get" action="{{ url_for('portal.chat_archive') }}">
+  <div class="filter-bar">
+    <div class="form-group" style="min-width:160px">
+      <label>From Date
+        {% if tier == 'free' %}<span style="font-size:11px;color:#92400e">(last {{ free_days }}d only)</span>
+        {% elif tier == '30days' %}<span style="font-size:11px;color:#0369a1">(last 30d)</span>{% endif %}
+      </label>
+      {% if search_allowed %}
+        <input type="date" name="date_from" value="{{ date_from or '' }}" style="padding:8px 10px;font-size:13px">
+      {% else %}
+        <input type="date" disabled
+               style="padding:8px 10px;font-size:13px;background:rgba(3,12,24,0.04);cursor:not-allowed">
+      {% endif %}
+    </div>
+    <div class="form-group" style="min-width:160px">
+      <label>To Date</label>
+      {% if search_allowed %}
+        <input type="date" name="date_to" value="{{ date_to or '' }}" style="padding:8px 10px;font-size:13px">
+      {% else %}
+        <input type="date" disabled
+               style="padding:8px 10px;font-size:13px;background:rgba(3,12,24,0.04);cursor:not-allowed">
+      {% endif %}
+    </div>
+    <div class="form-group" style="min-width:220px">
+      <label>Search
+        {% if not search_allowed %}
+          <span style="font-size:11px;font-weight:600;color:#92400e;background:rgba(251,191,36,0.12);
+                       border:1px solid rgba(251,191,36,0.40);border-radius:5px;padding:1px 6px;margin-left:4px">🔒 Upgrade</span>
+        {% endif %}
+      </label>
+      <div class="locked-input">
+        <input type="text" name="q" value="{{ q or '' }}" placeholder="Search conversations…"
+               style="padding:8px 10px;font-size:13px;width:100%;padding-right:{% if not search_allowed %}32px{% else %}10px{% endif %}"
+               {% if not search_allowed %}disabled title="Keyword search requires a paid plan. Upgrade to search all conversations."{% endif %}>
+        {% if not search_allowed %}<span class="lock-badge">🔒</span>{% endif %}
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:flex-end">
+      {% if search_allowed %}
+        <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+        <a href="{{ url_for('portal.chat_archive') }}" class="btn btn-sm">Clear</a>
+      {% else %}
+        <a href="{{ url_for('portal.billing') }}" class="btn-upgrade" style="padding:8px 14px;font-size:13px">⬆️ Upgrade</a>
+      {% endif %}
+    </div>
+  </div>
+</form>
+
+{% if not search_allowed and q %}
+<div style="background:rgba(251,191,36,0.10);border:1px solid rgba(251,191,36,0.40);border-radius:12px;
+            padding:12px 16px;margin-bottom:16px;font-size:13px;color:#92400e">
+  🔒 <strong>Search is not available on your current plan.</strong>
+  Your query "<em>{{ q | e }}</em>" was not applied.
+  <a href="{{ url_for('portal.billing') }}" style="color:#b45309;font-weight:700">Upgrade</a> to search across all conversations.
+</div>
+{% endif %}
+
+{# ── Stats ── #}
+<div class="grid g3" style="margin-bottom:20px">
+  <div class="card card-sm">
+    <div class="card-title">Total Conversations</div>
+    <div class="kpi-sm">{{ total_sessions }}</div>
+    {% if tier == 'free' %}<div class="muted" style="font-size:11px">Last {{ free_days }} days only</div>
+    {% elif tier == '30days' %}<div class="muted" style="font-size:11px">Last 30 days</div>{% endif %}
+  </div>
+  <div class="card card-sm">
+    <div class="card-title">Total Messages</div>
+    <div class="kpi-sm">{{ total_messages }}</div>
+  </div>
+  <div class="card card-sm">
+    <div class="card-title">Showing</div>
+    <div class="kpi-sm">{{ sessions | length }}</div>
+    <div class="muted">conversations</div>
+  </div>
+</div>
+
+{# ── Sessions table ── #}
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Session ID</th>
+          <th>Started</th>
+          <th>Last Message</th>
+          <th>Messages</th>
+          <th>First Visitor Message</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if sessions %}
+          {% for s in sessions %}
+          <tr class="chat-row" onclick="openChat('{{ s.session_id | e }}')">
+            <td><span class="session-badge">{{ s.session_id[:16] }}…</span></td>
+            <td>{{ s.created_at.strftime('%d %b %Y %H:%M') if s.created_at else 'N/A' }}</td>
+            <td>{{ s.last_seen.strftime('%d %b %Y %H:%M') if s.last_seen else 'N/A' }}</td>
+            <td><strong>{{ s.msg_count }}</strong></td>
+            <td><div class="preview-text">{{ s.first_msg or '—' }}</div></td>
+            <td onclick="event.stopPropagation()">
+              <button class="btn btn-sm" onclick="openChat('{{ s.session_id | e }}')">View</button>
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="6">
+              <div class="no-results">
+                <div class="no-icon">💬</div>
+                <strong>No conversations found</strong>
+                <p style="margin-top:6px">Try adjusting your date filters, or conversations will appear here once visitors start chatting with your AI agent.</p>
+              </div>
+            </td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{# ── Chat detail overlay ── #}
+<div class="chat-modal-overlay" id="chatOverlay" onclick="closeChat(event)">
+  <div class="chat-modal" onclick="event.stopPropagation()">
+    <div class="chat-modal-head">
+      <h3 id="chatModalTitle">Conversation</h3>
+      <button class="close-btn" onclick="closeChatModal()">✕</button>
+    </div>
+    <div class="chat-modal-body" id="chatModalBody">
+      <div style="text-align:center;padding:32px;color:var(--muted)">Loading…</div>
+    </div>
+    <div class="chat-modal-foot">
+      {# PDF: 30days and unlimited #}
+      {% if exports_allowed in ('pdf_only', 'all') %}
+        <a id="chatExportPdf" href="#" class="btn btn-sm">📄 PDF</a>
+      {% else %}
+        <span class="btn btn-sm btn-locked" title="PDF export requires a paid plan">📄 PDF 🔒</span>
+      {% endif %}
+
+      {# Excel: unlimited only #}
+      {% if exports_allowed == 'all' %}
+        <a id="chatExportXlsx" href="#" class="btn btn-sm">📊 Excel</a>
+      {% elif exports_allowed == 'pdf_only' %}
+        <span class="btn btn-sm btn-locked" title="Excel export requires Unlimited plan">📊 Excel 🔒</span>
+      {% else %}
+        <span class="btn btn-sm btn-locked" title="Excel export requires a paid plan">📊 Excel 🔒</span>
+      {% endif %}
+
+      {# Word: unlimited only #}
+      {% if exports_allowed == 'all' %}
+        <a id="chatExportDocx" href="#" class="btn btn-sm">📝 Word</a>
+      {% elif exports_allowed == 'pdf_only' %}
+        <span class="btn btn-sm btn-locked" title="Word export requires Unlimited plan">📝 Word 🔒</span>
+      {% else %}
+        <span class="btn btn-sm btn-locked" title="Word export requires a paid plan">📝 Word 🔒</span>
+      {% endif %}
+
+      {% if exports_allowed != 'all' %}
+        <a href="{{ url_for('portal.billing') }}"
+           style="font-size:12px;color:#0369a1;font-weight:700;text-decoration:none">⬆️ Upgrade exports</a>
+      {% endif %}
+      <button class="btn btn-sm btn-primary" onclick="closeChatModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  var SESSION_DATA      = {{ session_data_json | safe }};
+  var TIER              = '{{ tier }}';
+  var SUMMARIES_ALLOWED = {{ 'true' if summaries_allowed else 'false' }};
+  var EXPORTS_ALLOWED   = '{{ exports_allowed }}';
+
+  function openChat(sessionId) {
+    var data = SESSION_DATA[sessionId];
+    if (!data) return;
+    var overlay = document.getElementById('chatOverlay');
+    var body    = document.getElementById('chatModalBody');
+    var title   = document.getElementById('chatModalTitle');
+
+    title.textContent = 'Conversation — ' + sessionId.substring(0, 20) + '…';
+
+    var html = '';
+
+    // AI summary block
+    if (SUMMARIES_ALLOWED && data.summary) {
+      html += '<div class="summary-box"><strong>🤖 AI Summary:</strong> ' + escHtml(data.summary) + '</div>';
+    } else if (!SUMMARIES_ALLOWED) {
+      html += '<div class="summary-locked-box">' +
+              '🔒 <span><strong>AI Summary</strong> is not available on your current plan. ' +
+              '<a href="{{ url_for("portal.billing") }}" style="color:#0284c7;font-weight:700">Upgrade</a> ' +
+              'to see AI-generated summaries for every conversation.</span></div>';
+    }
+
+    // Messages
+    if (data.messages && data.messages.length > 0) {
+      data.messages.forEach(function(m) {
+        var roleLabel = m.role === 'user' ? '🧑 Visitor' : '🤖 AI Agent';
+        html += '<div class="msg-bubble ' + m.role + '">' +
+                  '<div class="msg-content">' + escHtml(m.content) + '</div>' +
+                  '<div class="msg-meta">' + roleLabel + ' · ' + (m.created_at || '') + '</div>' +
+                '</div>';
+      });
+    } else {
+      html += '<div style="text-align:center;color:var(--muted);padding:24px">No messages available for this session.</div>';
+    }
+
+    body.innerHTML = html;
+
+    // Update export links for formats that are allowed
+    var base = '{{ url_for("portal.chat_archive_session_export", session_id="SESS_ID", fmt="FORMAT") }}';
+    if (EXPORTS_ALLOWED === 'pdf_only' || EXPORTS_ALLOWED === 'all') {
+      var pdfEl = document.getElementById('chatExportPdf');
+      if (pdfEl) pdfEl.href = base.replace('SESS_ID', sessionId).replace('FORMAT', 'pdf');
+    }
+    if (EXPORTS_ALLOWED === 'all') {
+      var xlsxEl = document.getElementById('chatExportXlsx');
+      var docxEl = document.getElementById('chatExportDocx');
+      if (xlsxEl) xlsxEl.href = base.replace('SESS_ID', sessionId).replace('FORMAT', 'xlsx');
+      if (docxEl) docxEl.href = base.replace('SESS_ID', sessionId).replace('FORMAT', 'docx');
+    }
+
+    overlay.classList.add('open');
+  }
+
+  function closeChat(e) {
+    if (e.target === document.getElementById('chatOverlay')) closeChatModal();
+  }
+  function closeChatModal() {
+    document.getElementById('chatOverlay').classList.remove('open');
+  }
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/\n/g, '<br>');
+  }
+
+  // ── Auto-open a specific conversation ────────────────────────────────────
+  // When the page is opened from a handoff email link (?open=SESSION_ID),
+  // automatically open the chat modal for that session as soon as the page loads.
+  (function () {
+    var autoOpen = '{{ open_session_id | e }}';
+    if (autoOpen) {
+      // Use a short timeout so the DOM is fully ready before the modal opens
+      setTimeout(function () { openChat(autoOpen); }, 150);
+    }
+  })();
+</script>
+{% endblock %}

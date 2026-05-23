@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Create API Key</h2>
+<div class="card">
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+  <form method="post">
+    <label>Website (domain)</label><br/>
+    <input name="website" placeholder="example.com" required/><br/>
+
+    <label>Tenant ID</label><br/>
+    <input name="tenant_id" placeholder="123" required/><br/>
+
+    <label>Key Type</label><br/>
+    <select name="key_type">
+      <option value="paid">Paid</option>
+      <option value="trial">Trial (14 days)</option>
+    </select><br/>
+
+    <label>Trial Token Limit (required for Trial)</label><br/>
+    <input name="token_limit" placeholder="200000"/><br/>
+
+    <label><input type="checkbox" name="activate_now"/> Activate trial immediately (starts 14 days now)</label><br/><br/>
+
+    <button type="submit">Create Key</button>
+    <div class="muted">Duplicates are blocked. If a key already exists, you’ll be redirected to Edit.</div>
+  </form>
+</div>
+
+{% if plain_key %}
+<div class="card">
+  <h3>New Key Created ✅</h3>
+  <div><b>Created at:</b> {{ created_at }}</div>
+  <div><b>API Key:</b> <code>{{ plain_key }}</code></div>
+  <div class="warning">Copy it now. It will not be shown again.</div>
+</div>
+{% endif %}
+{% endblock %}

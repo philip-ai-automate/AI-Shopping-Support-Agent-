@@ -1,0 +1,77 @@
+{% extends "portal/base.html" %}
+{% block title %}Buy Credits — PhiXtra Portal{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title" style="margin:0">Buy Credits</h1>
+    <p class="muted">Current balance: <strong>{{ "%.1f"|format(balance_credits) }} credits</strong>
+      &nbsp;(1 credit = 5,000 AI tokens ≈ 30–35 chat messages)</p>
+  </div>
+</div>
+
+{% if not stripe_ready %}
+<div class="flash warning">
+  Online payments are not yet configured. Contact <a href="mailto:support@phixtra.com">support@phixtra.com</a> to top up your credits manually.
+</div>
+{% endif %}
+
+{% if request.args.get('success') %}
+<div class="flash success">✅ Payment received — your credits have been added. Allow a few seconds, then refresh.</div>
+{% endif %}
+{% if request.args.get('canceled') %}
+<div class="flash warning">Payment was cancelled. No charge was made.</div>
+{% endif %}
+
+{% if packages %}
+<div class="grid g3">
+  {% for pkg in packages %}
+  <div class="card" style="display:flex;flex-direction:column">
+    <div class="card-title">{{ pkg.name }}</div>
+    <div class="kpi">{{ pkg.credits }}</div>
+    <div class="muted" style="margin-bottom:14px">credits&nbsp;&nbsp;·&nbsp;&nbsp;
+      {{ (pkg.credits * 6)|int }}–{{ (pkg.credits * 7)|int }} conversations</div>
+
+    {% if stripe_ready %}
+    <form method="POST" action="{{ url_for('portal.billing_checkout') }}" style="margin-top:auto">
+      <input type="hidden" name="package_id" value="{{ pkg.id }}"/>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+        <span style="font-size:18px;font-weight:800">
+          £{{ "%.2f"|format(pkg.price_pence/100) }}
+        </span>
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;margin:0">
+          <input type="checkbox" name="add_vat" style="width:auto"/>
+          Add 20% VAT
+        </label>
+      </div>
+      <div style="margin-bottom:10px">
+        <label style="margin-bottom:4px">VAT number (optional)</label>
+        <input type="text" name="vat_number" placeholder="GB123456789" style="width:100%"/>
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">
+        Buy {{ pkg.credits }} credits
+      </button>
+    </form>
+    {% else %}
+      <div class="muted" style="font-size:13px;margin-top:auto">
+        £{{ "%.2f"|format(pkg.price_pence/100) }} — contact support to purchase
+      </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card">
+  <p class="muted">No credit packages are available right now. Contact support.</p>
+</div>
+{% endif %}
+
+<div class="card" style="margin-top:18px;background:rgba(3,12,24,0.02);border-color:rgba(3,12,24,0.07)">
+  <p style="font-size:13px;color:var(--muted)">
+    <strong>ℹ️ How credits work:</strong> 1 credit = 5,000 AI tokens.
+    A typical short conversation uses ~0.2 credits. Credits do not expire.
+    Your balance is deducted per message by the AI engine.
+  </p>
+</div>
+
+{% endblock %}

@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+pydantic
+mysql-connector-python
+python-dotenv
+bcrypt
+openai
+requests

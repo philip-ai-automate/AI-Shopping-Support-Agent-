@@ -1,0 +1,42 @@
+{% extends "portal/base.html" %}
+{% block title %}PhiXtra Portal{% endblock %}
+{% block wrap_class %}page-sm{% endblock %}
+{% block content %}
+
+<div class="card" style="padding:26px;margin-top:6px">
+  <div style="text-align:center">
+    <img src="{{ url_for('static', filename='portal/phixtra-logo.png') }}"
+         alt="PhiXtra" style="height:62px;margin-bottom:16px">
+    <h1 style="font-size:28px;font-weight:850;letter-spacing:-.6px;margin-bottom:10px">
+      PhiXtra Customer Portal
+    </h1>
+    <p class="muted" style="margin-bottom:18px">
+      Manage your AI assistant, credits, and API keys in one place.
+    </p>
+  </div>
+
+  <div class="grid" style="gap:10px;margin:18px 0 18px">
+    <div style="display:flex;gap:10px;align-items:flex-start">
+      <span class="dot dot-green" style="margin-top:7px"></span>
+      <div>
+        <div style="font-weight:750">Create & manage API keys</div>
+        <div class="muted">Connect your WooCommerce store securely.</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:flex-start">
+      <span class="dot dot-grey" style="margin-top:7px"></span>
+      <div>
+        <div style="font-weight:750">Buy credits & download invoices</div>
+        <div class="muted">Keep your assistant running smoothly.</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:10px;max-width:340px;margin:0 auto">
+    <a href="{{ url_for('portal.login') }}" class="btn btn-primary" style="justify-content:center">Log in</a>
+    <a href="{{ url_for('portal.register') }}" class="btn" style="justify-content:center">Create account</a>
+    <a href="https://phixtra.com" target="_blank" rel="noopener" class="btn btn-ghost" style="justify-content:center">Visit PhiXtra.com</a>
+  </div>
+</div>
+
+{% endblock %}

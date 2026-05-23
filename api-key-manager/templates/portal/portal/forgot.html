@@ -1,0 +1,19 @@
+{% extends "portal/base.html" %}
+{% block title %}Reset password — PhiXtra Portal{% endblock %}
+{% block wrap_class %}page-sm{% endblock %}
+{% block content %}
+<div class="card" style="margin-top:12px">
+  <h1 style="font-size:22px;font-weight:800;margin-bottom:6px">Reset your password</h1>
+  <p class="muted" style="margin-bottom:22px">We'll email you a reset link.</p>
+  <form method="POST">
+    <div class="form-group">
+      <label>Email address</label>
+      <input type="email" name="email" required autofocus placeholder="you@example.com"/>
+    </div>
+    <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">Send reset link</button>
+  </form>
+  <div style="margin-top:16px;font-size:13px;text-align:center">
+    <a href="{{ url_for('portal.login') }}">Back to log in</a>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>API Keys</h2>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Tenant</th>
+        <th>Website</th>
+        <th>Type</th>
+        <th>Active</th>
+        <th>Trial Activated</th>
+        <th>Trial Expires</th>
+        <th>Token Limit</th>
+        <th>Tokens Used</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for k in keys %}
+      <tr>
+        <td>{{ k.id }}</td>
+        <td>{{ k.tenant_id }}</td>
+        <td>{{ k.website }}</td>
+        <td>{{ k.key_type }}</td>
+        <td>{{ "YES" if k.is_active else "NO" }}</td>
+        <td>{{ k.trial_activated_at or "" }}</td>
+        <td>{{ k.trial_expires_at or "" }}</td>
+        <td>{{ k.token_limit or "" }}</td>
+        <td>{{ k.tokens_used }}</td>
+        <td><a href="{{ url_for('edit_key', key_id=k.id) }}">Edit</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

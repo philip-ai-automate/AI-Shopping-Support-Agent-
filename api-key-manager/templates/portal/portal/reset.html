@@ -1,0 +1,17 @@
+{% extends "portal/base.html" %}
+{% block title %}Set new password — PhiXtra Portal{% endblock %}
+{% block wrap_class %}page-sm{% endblock %}
+{% block content %}
+<div class="card" style="margin-top:12px">
+  <h1 style="font-size:22px;font-weight:800;margin-bottom:6px">Set new password</h1>
+  <p class="muted" style="margin-bottom:22px">At least 8 characters.</p>
+  <form method="POST">
+    <input type="hidden" name="token" value="{{ token }}"/>
+    <div class="form-group">
+      <label>New password</label>
+      <input type="password" name="password" required minlength="8" autofocus placeholder="••••••••"/>
+    </div>
+    <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">Update password</button>
+  </form>
+</div>
+{% endblock %}

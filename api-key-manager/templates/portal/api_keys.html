@@ -1,0 +1,108 @@
+{% extends "portal/base.html" %}
+{% block title %}API Keys — PhiXtra Portal{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title" style="margin:0">API Keys</h1>
+    <p class="muted">Your API key authenticates the AI assistant <em>and</em> the PhiXtra Export plugin.</p>
+  </div>
+</div>
+
+{# ── KEY LIST ─────────────────────────────────────────────────────────── #}
+<div class="card">
+  <div class="card-title" style="margin-bottom:14px">Your API keys</div>
+  {% if keys %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Website</th>
+          <th>Type</th>
+          <th>Status</th>
+          <th>API Key</th>
+          <th>Credits used (30d)</th>
+          <th>Created</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for k in keys %}
+        <tr>
+          <td>{{ k.website }}</td>
+          <td><span class="pill">{{ k.key_type }}</span></td>
+          <td>
+            {% if k.status == "Active" %}
+              <span class="pill pill-green"><span class="dot dot-green"></span>Active</span>
+            {% elif k.status == "Trial" %}
+              <span class="pill pill-warn">Trial
+                {% if k.trial_days_left is not none %}&nbsp;({{ k.trial_days_left }}d left){% endif %}
+              </span>
+            {% elif k.status == "Expired" %}
+              <span class="pill pill-red">Expired</span>
+            {% else %}
+              <span class="pill pill-grey">Revoked</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if k.api_key_plain %}
+            <div style="display:flex;align-items:center;gap:8px">
+              <code id="key-{{ k.id }}" class="code-box"
+                    style="font-size:12px;padding:4px 8px;letter-spacing:0.03em;
+                           background:var(--surface-2,#f3f4f6);border-radius:6px;
+                           border:1px solid var(--border,#e5e7eb);white-space:nowrap;
+                           overflow:hidden;text-overflow:ellipsis;max-width:260px">
+                {{ k.api_key_plain }}
+              </code>
+              <button onclick="copyApiKey('key-{{ k.id }}', this)"
+                      class="btn btn-sm"
+                      style="flex-shrink:0;white-space:nowrap">📋 Copy</button>
+            </div>
+            {% else %}
+            <span class="muted" style="font-size:12px">Contact support to retrieve key</span>
+            {% endif %}
+          </td>
+          <td>{{ "%.2f"|format(k.credits_30d) }}</td>
+          <td class="muted">{{ k.created_at.strftime('%Y-%m-%d') if k.created_at else '—' }}</td>
+          <td>
+            {% if k.is_active %}
+            <form method="POST" action="{{ url_for('portal.api_keys_revoke', key_id=k.id) }}"
+                  style="display:inline"
+                  onsubmit="return confirm('Revoke this key? Your AI assistant will stop working until you create a new one.')">
+              <button type="submit" class="btn btn-danger btn-sm">Revoke</button>
+            </form>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="muted">No API keys found. Contact support if you believe this is an error.</p>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-top:16px;border-color:rgba(3,12,24,0.07);background:rgba(3,12,24,0.02)">
+  <p style="font-size:13px;color:var(--muted)">
+    <strong>ℹ️ Same key, dual purpose:</strong> Your API key is used for both the
+    <strong>PhiXtra AI Assistant plugin</strong> (authenticates /chat requests)
+    and the <strong>PhiXtra Export plugin</strong> (Bearer Token for product sync).
+    You only need one key.
+  </p>
+</div>
+
+<script>
+function copyApiKey(elemId, btn) {
+  const txt = document.getElementById(elemId).textContent.trim();
+  navigator.clipboard.writeText(txt).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = "✅ Copied!";
+    setTimeout(() => btn.textContent = orig, 2500);
+  });
+}
+</script>
+
+{% endblock %}

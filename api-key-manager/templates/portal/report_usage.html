@@ -1,0 +1,137 @@
+{% extends "portal/base.html" %}
+{% block title %}AI Usage Report – PhiXtra{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  .report-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:24px}
+  .report-title{font-size:22px;font-weight:800;letter-spacing:-.3px}
+  .export-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .export-bar span{font-size:13px;color:var(--muted);font-weight:600}
+  .period-tabs{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+  .period-tab{padding:7px 16px;border-radius:20px;border:1px solid var(--line);font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;color:var(--muted);background:#fff;transition:.15s}
+  .period-tab:hover{border-color:var(--ink);color:var(--ink);text-decoration:none}
+  .period-tab.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .chart-card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px;margin-bottom:20px;box-shadow:var(--shadow)}
+  .chart-card h3{font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:16px}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="report-header">
+  <div>
+    <div class="report-title">📈 AI Usage Report</div>
+    <div class="muted" style="margin-top:4px">Token consumption and conversation activity for your store</div>
+  </div>
+  <div class="export-bar">
+    <span>Export:</span>
+    <a class="btn btn-sm" href="{{ url_for('portal.report_export', report='usage', fmt='pdf', days=days) }}">📄 PDF</a>
+    <a class="btn btn-sm" href="{{ url_for('portal.report_export', report='usage', fmt='xlsx', days=days) }}">📊 Excel</a>
+    <a class="btn btn-sm" href="{{ url_for('portal.report_export', report='usage', fmt='docx', days=days) }}">📝 Word</a>
+  </div>
+</div>
+
+<!-- Period selector -->
+<div class="period-tabs">
+  <a href="?days=7"  class="period-tab {% if days==7  %}active{% endif %}">Last 7 days</a>
+  <a href="?days=30" class="period-tab {% if days==30 %}active{% endif %}">Last 30 days</a>
+  <a href="?days=90" class="period-tab {% if days==90 %}active{% endif %}">Last 90 days</a>
+</div>
+
+<!-- KPI Cards -->
+<div class="grid g3" style="margin-bottom:20px">
+  <div class="card card-sm">
+    <div class="card-title">Total Sessions</div>
+    <div class="kpi">{{ total_sessions | default(0) }}</div>
+    <div class="muted" style="margin-top:4px">Unique conversations</div>
+  </div>
+  <div class="card card-sm">
+    <div class="card-title">Credits Used</div>
+    <div class="kpi">{{ "%.2f"|format(total_credits) }}</div>
+    <div class="muted" style="margin-top:4px">Over {{ days }} days</div>
+  </div>
+  <div class="card card-sm">
+    <div class="card-title">Avg Credits / Session</div>
+    <div class="kpi">{{ "%.2f"|format(avg_credits_per_session) }}</div>
+    <div class="muted" style="margin-top:4px">Efficiency metric</div>
+  </div>
+</div>
+<div class="grid g2" style="margin-bottom:20px">
+  <div class="card card-sm">
+    <div class="card-title">Today's Usage</div>
+    <div class="kpi-sm">{{ "%.2f"|format(today_credits) }} credits</div>
+  </div>
+  <div class="card card-sm">
+    <div class="card-title">Peak Day</div>
+    <div class="kpi-sm">{{ peak_day or "N/A" }}</div>
+    <div class="muted">{{ "%.2f"|format(peak_credits) }} credits</div>
+  </div>
+</div>
+
+<!-- Daily Usage Chart -->
+<div class="chart-card">
+  <h3>Daily Credit Consumption</h3>
+  <canvas id="usageChart" height="80"></canvas>
+</div>
+
+<!-- Data Table -->
+<div class="card" style="margin-bottom:20px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+    <h3 style="font-size:15px;font-weight:700">Daily Breakdown</h3>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Sessions</th>
+          <th>Credits Used</th>
+          <th>Tokens Used</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if daily_rows %}
+          {% for row in daily_rows %}
+          <tr>
+            <td>{{ row.d }}</td>
+            <td>{{ row.sessions }}</td>
+            <td>{{ "%.2f"|format(row.credits) }}</td>
+            <td>{{ "{:,}".format(row.tokens) }}</td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="4" style="text-align:center;color:var(--muted);padding:28px">No usage data for this period.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  (function() {
+    var pts = {{ chart_points | tojson }};
+    var labels = pts.map(function(p){ return p.d; });
+    var data   = pts.map(function(p){ return p.credits; });
+    var ctx = document.getElementById('usageChart').getContext('2d');
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Credits Used',
+          data: data,
+          backgroundColor: 'rgba(3,12,24,0.75)',
+          borderRadius: 5,
+        }]
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false } },
+          y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } }
+        }
+      }
+    });
+  })();
+</script>
+{% endblock %}

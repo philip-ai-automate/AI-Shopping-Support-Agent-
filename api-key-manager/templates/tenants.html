@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Tenants</h2>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+<div class="row">
+  <div class="col">
+    <div class="card">
+      <h3>Add Tenant</h3>
+      <form method="post">
+        <input type="hidden" name="action" value="add"/>
+        <label>Name</label><br/>
+        <input name="name" placeholder="Client name" required/><br/>
+        <label>Domain (unique)</label><br/>
+        <input name="domain" placeholder="clientsite.com" required/><br/>
+        <button type="submit">Create Tenant</button>
+      </form>
+      <div class="muted">Duplicate domains are blocked.</div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="card">
+      <h3>Update Tenant</h3>
+      <form method="post">
+        <input type="hidden" name="action" value="update"/>
+        <label>Tenant ID</label><br/>
+        <input name="tenant_id" placeholder="123" required/><br/>
+        <label>New Name</label><br/>
+        <input name="name" placeholder="Client name" required/><br/>
+        <label>New Domain (must be unique)</label><br/>
+        <input name="domain" placeholder="clientsite.com" required/><br/>
+        <button type="submit">Update Tenant</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h3>Recent Tenants</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Name</th>
+        <th>Domain</th>
+        <th>Status</th>
+        <th>Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in tenants %}
+      <tr>
+        <td>{{ t.id }}</td>
+        <td>{{ t.name }}</td>
+        <td>{{ t.domain }}</td>
+        <td>{{ t.status }}</td>
+        <td>{{ t.created_at }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

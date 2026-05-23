@@ -1,0 +1,174 @@
+{% extends "portal/base.html" %}
+{% block title %}Dashboard — PhiXtra Portal{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 style="font-size:24px;font-weight:800;letter-spacing:-.3px">
+      Hi {% if customer.first_name %}{{ customer.first_name }}{% else %}there{% endif %} 👋
+    </h1>
+    <p class="muted" style="margin-top:3px">{{ customer.tenant_domain }}</p>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <a href="{{ url_for('portal.api_keys') }}" class="btn btn-sm">🔑 API Keys</a>
+    <a href="{{ url_for('portal.billing') }}"  class="btn btn-primary btn-sm">+ Buy Credits</a>
+  </div>
+</div>
+
+{# ── ONBOARDING WIZARD ─────────────────────────────────────────────────── #}
+{% if not onboarding.wizard_dismissed and not onboarding.complete %}
+<div class="card" style="border-color:rgba(37,99,235,0.25);background:rgba(37,99,235,0.03);margin-bottom:22px">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+    <div>
+      <div class="card-title" style="color:#2563EB">Getting started</div>
+      <p style="font-size:14px;margin-bottom:14px">Complete all steps below to get your AI assistant live.</p>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:14px">
+    {% set steps = [
+      (onboarding.account_verified,          "Email verified"),
+      (onboarding.key_active,                "Trial API key active"),
+      (onboarding.ai_plugin_confirmed,       "PhiXtra AI Assistant plugin installed & configured"),
+      (onboarding.export_plugin_confirmed,   "PhiXtra Export plugin installed"),
+      (onboarding.sync_configured_confirmed, "PhiXtra Sync configured"),
+      (onboarding.synced,                    "First full sync completed"),
+      (onboarding.kb_configured,             "Knowledge base setup by PhiXtra team"),
+      (onboarding.ai_live,                   "AI assistant verified live"),
+    ] %}
+    {% for done, label in steps %}
+    <div style="display:flex;align-items:center;gap:10px;font-size:14px">
+      {% if done %}
+        <span style="color:var(--good);font-size:16px;flex-shrink:0">✓</span>
+      {% else %}
+        <span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0"></span>
+      {% endif %}
+      <span style="{% if done %}color:var(--muted);text-decoration:line-through{% endif %}">{{ label }}</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  <a href="{{ url_for('portal.onboarding') }}" class="btn btn-sm" style="background:#2563EB;color:#fff;border-color:#2563EB">
+    View setup guide →
+  </a>
+</div>
+{% endif %}
+
+{# ── KPI CARDS ─────────────────────────────────────────────────────────── #}
+<div class="grid g3" style="margin-bottom:22px">
+  <div class="card">
+    <div class="card-title">Credit balance</div>
+    <div class="kpi">{{ "%.1f"|format(balance_credits) }}</div>
+    <div class="muted" style="margin-top:4px">credits remaining</div>
+    {% if balance_credits <= 20 %}
+    <div class="pill pill-warn" style="margin-top:10px">Low balance</div>
+    {% endif %}
+    <div class="divider" style="margin:14px 0 10px"></div>
+    <div class="progress"><div style="width:{{ [balance_credits/200*100, 100]|min }}%"></div></div>
+    <div style="margin-top:10px">
+      <a href="{{ url_for('portal.billing') }}" class="btn btn-primary btn-sm">Buy credits</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Used today</div>
+    <div class="kpi">{{ "%.2f"|format(today_credits) }}</div>
+    <div class="muted" style="margin-top:4px">credits</div>
+    <div class="divider" style="margin:14px 0 10px"></div>
+    <div class="card-title" style="margin-bottom:4px">Last 30 days</div>
+    <div class="kpi-sm">{{ "%.1f"|format(month_credits) }}</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">AI conversations</div>
+    <div class="kpi">{{ sessions_30d }}</div>
+    <div class="muted" style="margin-top:4px">sessions (last 30 days)</div>
+    <div class="divider" style="margin:14px 0 10px"></div>
+    <a href="{{ url_for('portal.api_keys') }}" class="btn btn-sm">Manage API keys</a>
+  </div>
+</div>
+
+{# ── SPARKLINE CHART ───────────────────────────────────────────────────── #}
+<div class="card" style="margin-bottom:22px">
+  <div class="card-title">Credits used per day — last 30 days</div>
+  {% if chart_points %}
+  <canvas id="usageChart" style="width:100%;height:160px"></canvas>
+  <script>
+  (function(){
+    const raw = {{ chart_points|tojson }};
+    const canvas = document.getElementById("usageChart");
+    const ctx = canvas.getContext("2d");
+    const W = canvas.offsetWidth; canvas.width = W; canvas.height = 160;
+    if(!raw.length){ctx.fillStyle="#aaa";ctx.fillText("No data yet",W/2-30,80);return;}
+    const vals = raw.map(p=>p.credits);
+    const maxV = Math.max(...vals, 1);
+    const pad = {t:14,r:10,b:28,l:38};
+    const cw = W-pad.l-pad.r, ch = 160-pad.t-pad.b;
+    // Axes
+    ctx.strokeStyle="rgba(3,12,24,0.08)";ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,pad.t+ch);
+    ctx.lineTo(pad.l+cw,pad.t+ch);ctx.stroke();
+    // Grid & y labels
+    ctx.fillStyle="rgba(3,12,24,0.40)";ctx.font="10px system-ui";
+    [0,.25,.5,.75,1].forEach(f=>{
+      const y=pad.t+ch*(1-f);
+      ctx.beginPath();ctx.strokeStyle="rgba(3,12,24,0.06)";
+      ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+cw,y);ctx.stroke();
+      ctx.fillText((maxV*f).toFixed(1),2,y+3);
+    });
+    // Line
+    const pts = raw.map((p,i)=>({
+      x: pad.l + i/(raw.length-1||1)*cw,
+      y: pad.t + ch*(1 - p.credits/maxV)
+    }));
+    ctx.beginPath();ctx.strokeStyle="#030C18";ctx.lineWidth=2;ctx.lineJoin="round";
+    pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
+    ctx.stroke();
+    // Fill
+    ctx.lineTo(pts[pts.length-1].x,pad.t+ch);ctx.lineTo(pts[0].x,pad.t+ch);ctx.closePath();
+    ctx.fillStyle="rgba(3,12,24,0.05)";ctx.fill();
+    // X labels
+    ctx.fillStyle="rgba(3,12,24,0.40)";ctx.font="10px system-ui";
+    const step=Math.ceil(raw.length/6);
+    raw.forEach((p,i)=>{if(i%step===0)ctx.fillText(p.d.slice(5),pts[i].x-10,pad.t+ch+16)});
+  })();
+  </script>
+  {% else %}
+    <p class="muted" style="padding:28px 0;text-align:center">No usage data yet. Once your AI assistant receives its first chat, data will appear here.</p>
+  {% endif %}
+</div>
+
+{# ── API KEYS SUMMARY ─────────────────────────────────────────────────── #}
+<div class="card">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+    <div class="card-title" style="margin:0">API keys</div>
+    <a href="{{ url_for('portal.api_keys') }}" class="btn btn-sm">Manage all keys</a>
+  </div>
+  {% if keys %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Website</th><th>Type</th><th>Status</th><th>Created</th></tr></thead>
+      <tbody>
+        {% for k in keys[:5] %}
+        <tr>
+          <td>{{ k.website }}</td>
+          <td><span class="pill">{{ k.key_type }}</span></td>
+          <td>
+            {% if k.is_active %}
+              <span class="pill pill-green"><span class="dot dot-green"></span>Active</span>
+            {% else %}
+              <span class="pill pill-red"><span class="dot dot-red"></span>Revoked</span>
+            {% endif %}
+          </td>
+          <td class="muted">{{ k.created_at.strftime('%Y-%m-%d') if k.created_at else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="muted">No API keys yet. <a href="{{ url_for('portal.api_keys') }}">Create one →</a></p>
+  {% endif %}
+</div>
+
+{% endblock %}

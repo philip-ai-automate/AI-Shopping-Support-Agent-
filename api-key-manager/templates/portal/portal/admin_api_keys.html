@@ -1,0 +1,106 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}API Key Registry — PhiXtra Admin{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title">API Key Registry</h1>
+    <p class="muted">All keys ever created — from portal.phixtra.com and keys.phixtra.com.
+    Plain keys shown masked by default. Source: <code>audit_logs WHERE action='create_key'</code>.</p>
+  </div>
+</div>
+
+<form method="GET" class="search-bar">
+  <input name="q" value="{{ q }}" placeholder="Search by domain, last 4 digits or tenant name…" style="max-width:360px"/>
+  <button type="submit" class="btn btn-sm btn-primary">Search</button>
+  {% if q %}<a href="{{ url_for('portal_admin.api_keys') }}" class="btn btn-sm">Clear</a>{% endif %}
+</form>
+
+<div class="card" style="padding:0">
+  <div class="table-wrap" style="border:none;border-radius:16px">
+    <table>
+      <thead>
+        <tr>
+          <th>Tenant</th>
+          <th>Domain</th>
+          <th>Type</th>
+          <th>Status</th>
+          <th>API key (masked)</th>
+          <th>Credits used</th>
+          <th>Created by</th>
+          <th>Created</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for k in keys %}
+        <tr>
+          <td><strong>{{ k.tenant_name }}</strong></td>
+          <td class="muted">{{ k.domain }}</td>
+          <td><span class="pill">{{ k.key_type or '—' }}</span></td>
+          <td>
+            {% if k.status == 'Active' %}<span class="pill pill-green">Active</span>
+            {% elif k.status == 'Revoked' %}<span class="pill pill-red">Revoked</span>
+            {% else %}<span class="pill pill-grey">{{ k.status }}</span>{% endif %}
+          </td>
+          <td>
+            {% if k.api_key_plain %}
+            <div style="display:flex;align-items:center;gap:6px">
+              <span class="code-box" id="key-{{ k.id }}" style="padding:5px 9px;cursor:pointer;font-size:11px"
+                    data-plain="{{ k.api_key_plain }}" onclick="toggleKey(this)">
+                ••••••••••••••••••••{{ k.api_key_last4 or '????' }}
+              </span>
+              <button class="btn btn-sm" onclick="copyKeyPlain('{{ k.api_key_plain }}')"
+                      title="Copy to clipboard">📋</button>
+            </div>
+            {% else %}
+              <span class="muted">(not recorded)</span>
+            {% endif %}
+          </td>
+          <td>{{ "%.1f"|format(k.credits_used) }}</td>
+          <td class="muted" style="font-size:11px">{{ k.admin_username or '—' }}</td>
+          <td class="muted">{{ k.created_at.strftime('%Y-%m-%d') if k.created_at else '—' }}</td>
+          <td style="white-space:nowrap">
+            {% if k.api_key_id %}
+              {% if k.status == 'Active' %}
+              <form method="POST" action="{{ url_for('portal_admin.api_keys_revoke', key_id=k.api_key_id) }}"
+                    style="display:inline" onsubmit="return confirm('Revoke this key?')">
+                <button class="btn btn-danger btn-sm">Revoke</button>
+              </form>
+              {% else %}
+              <form method="POST" action="{{ url_for('portal_admin.api_keys_reactivate', key_id=k.api_key_id) }}"
+                    style="display:inline" onsubmit="return confirm('Reactivate this key?')">
+                <button class="btn btn-sm">Reactivate</button>
+              </form>
+              {% endif %}
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="muted" style="text-align:center;padding:24px">
+          No keys found{% if q %} matching "{{ q }}"{% endif %}.
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+function toggleKey(el){
+  const plain = el.dataset.plain;
+  if(el.dataset.revealed==='1'){
+    el.textContent = '••••••••••••••••••••' + plain.slice(-4);
+    el.dataset.revealed='0';
+  } else {
+    el.textContent = plain;
+    el.dataset.revealed='1';
+  }
+}
+function copyKeyPlain(plain){
+  navigator.clipboard.writeText(plain).then(()=>alert('API key copied to clipboard.'));
+}
+</script>
+{% endblock %}

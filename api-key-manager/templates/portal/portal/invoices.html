@@ -1,0 +1,55 @@
+{% extends "portal/base.html" %}
+{% block title %}Invoices — PhiXtra Portal{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="section-title" style="margin:0">Invoices</h1>
+</div>
+
+<div class="card">
+  {% if invoices %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Invoice</th>
+          <th>Credits</th>
+          <th>Amount</th>
+          <th>Status</th>
+          <th>Date</th>
+          <th>Download</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inv in invoices %}
+        <tr>
+          <td style="font-family:monospace;font-size:12px">{{ inv.invoice_number }}</td>
+          <td>{{ inv.credits }}</td>
+          <td>{{ inv.total_fmt }}</td>
+          <td>
+            {% if inv.status == 'paid' %}
+              <span class="pill pill-green">Paid</span>
+            {% else %}
+              <span class="pill pill-grey">{{ inv.status|capitalize }}</span>
+            {% endif %}
+          </td>
+          <td class="muted">{{ inv.created_at.strftime('%Y-%m-%d') if inv.created_at else '—' }}</td>
+          <td>
+            {% if inv.status == 'paid' %}
+              <a href="{{ url_for('portal.invoice_download', invoice_id=inv.id) }}"
+                 class="btn btn-sm">📄 PDF</a>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="muted">No invoices yet. Credits will appear here after purchase.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

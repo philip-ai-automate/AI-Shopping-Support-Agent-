@@ -1,0 +1,271 @@
+{% extends "portal/base.html" %}
+{% block title %}Subscription Plans — PhiXtra Portal{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title" style="margin:0">Subscription Plans</h1>
+    <p class="muted">Choose a recurring plan. Credits are added every billing period.</p>
+  </div>
+  <a href="{{ url_for('portal.billing') }}" class="btn btn-sm">← Back to Billing</a>
+</div>
+
+{# ── Flash messages ── #}
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+    <div class="flash {{ cat }}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+{# ══════════════════════════ CURRENT SUBSCRIPTION ══════════════════════════ #}
+{% if active_sub %}
+<div style="padding:20px;margin-bottom:24px;border-radius:14px;
+            background:rgba(3,12,24,0.04);border:2px solid rgba(3,12,24,0.12);">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+    <div>
+      <div style="font-size:13px;font-weight:700;color:var(--muted);
+                  text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">
+        Current plan
+      </div>
+      <div style="font-size:22px;font-weight:800;">{{ active_sub.plan_name }}</div>
+      <div class="muted" style="font-size:13px;margin-top:4px;">
+        {{ active_sub.plan_credits }} credits /
+        {{ active_sub.billing_period or 'month' }}
+        &nbsp;·&nbsp;
+        Renews {{ active_sub.current_period_end.strftime('%d %B %Y') if active_sub.current_period_end else '—' }}
+      </div>
+    </div>
+    <div style="text-align:right;">
+      {% if active_sub.status == 'active' %}
+        <span class="pill pill-green" style="font-size:13px;padding:4px 12px;">● Active</span>
+      {% elif active_sub.status == 'past_due' %}
+        <span class="pill" style="background:rgba(220,38,38,0.10);color:#b91c1c;
+              border-color:rgba(220,38,38,0.35);font-size:13px;padding:4px 12px;">
+          ⚠️ Payment overdue
+        </span>
+      {% endif %}
+      {% if active_sub.cancel_at_period_end %}
+        <div class="muted" style="font-size:12px;margin-top:6px;">
+          Cancels at end of period
+        </div>
+      {% endif %}
+    </div>
+  </div>
+  <div style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(3,12,24,0.10);">
+    <div style="font-size:13px;color:var(--muted);">Credit balance</div>
+    <div style="font-size:20px;font-weight:700;margin-top:2px;">
+      {{ "%.1f"|format(balance_credits) }} credits remaining
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ══════════════════════════ NO SAVED CARD WARNING ══════════════════════════ #}
+{% if not saved_methods %}
+<div style="padding:16px 18px;margin-bottom:22px;border-radius:12px;
+            background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.25);">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <span style="font-size:20px;">ℹ️</span>
+    <div>
+      <div style="font-weight:700;color:#1d4ed8;margin-bottom:2px;">Save a card first</div>
+      <div style="font-size:13px;color:#374151;">
+        You need a saved payment card to subscribe.
+        <a href="{{ url_for('portal.billing_add_card') }}"
+           style="color:#1d4ed8;font-weight:700;">Add a card →</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ══════════════════════════ PLAN CARDS ══════════════════════════ #}
+{% if plans %}
+<div class="grid g3">
+  {% for plan in plans %}
+  {% set fp = plan.features_parsed %}
+  {% set is_current = active_sub and active_sub.package_id == plan.id %}
+
+  <div class="card" style="display:flex;flex-direction:column;
+       {% if is_current %}border:2px solid #030C18;{% endif %}">
+
+    {% if is_current %}
+    <div style="background:#030C18;color:#fff;font-size:11px;font-weight:700;
+                padding:4px 10px;border-radius:6px;width:fit-content;margin-bottom:10px;
+                text-transform:uppercase;letter-spacing:0.06em;">
+      Current plan
+    </div>
+    {% endif %}
+
+    <div class="card-title">{{ plan.name }}</div>
+    <div class="kpi">{{ plan.credits }}</div>
+    <div class="muted" style="margin-bottom:6px;">
+      credits / {{ plan.billing_period or 'month' }}
+    </div>
+    <div style="font-size:20px;font-weight:800;margin-bottom:14px;">
+      {{ plan.price_fmt }}
+      <span class="muted" style="font-size:13px;font-weight:400;">
+        / {{ plan.billing_period or 'month' }}
+      </span>
+    </div>
+
+    {# Features included #}
+    <div style="margin-bottom:16px;padding:12px;background:#f8fafc;
+                border:1px solid #e2e8f0;border-radius:8px;flex-grow:1;">
+      <p style="margin:0 0 8px 0;font-size:11px;font-weight:800;color:#475569;
+                text-transform:uppercase;letter-spacing:0.06em;">What's included</p>
+      <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;">
+
+        <li style="font-size:13px;color:#374151;display:flex;align-items:flex-start;gap:7px;">
+          <span style="color:#16a34a;font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+          <span>{{ plan.credits }} AI credits per {{ plan.billing_period or 'month' }}</span>
+        </li>
+
+        <li style="font-size:13px;color:#374151;display:flex;align-items:flex-start;gap:7px;">
+          <span style="color:#16a34a;font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+          <span>AI Chat Support</span>
+        </li>
+
+        {% if fp.get('product_recommendation') %}
+        <li style="font-size:13px;color:#374151;display:flex;align-items:flex-start;gap:7px;">
+          <span style="color:#16a34a;font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+          <span>🛍️ Product Recommendations</span>
+        </li>
+        {% endif %}
+
+        {% if fp.get('related_products') %}
+        <li style="font-size:13px;color:#374151;display:flex;align-items:flex-start;gap:7px;">
+          <span style="color:#16a34a;font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+          <span>🔗 Automated Cross-selling</span>
+        </li>
+        {% endif %}
+
+        {% if fp.get('cart_recovery') %}
+        <li style="font-size:13px;color:#374151;display:flex;align-items:flex-start;gap:7px;">
+          <span style="color:#16a34a;font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+          <span>🛒 Cart Revenue Recovery</span>
+        </li>
+        {% endif %}
+
+        {% if fp.get('verified_specs_web_lookup') %}
+        <li style="font-size:13px;color:#374151;display:flex;align-items:flex-start;gap:7px;">
+          <span style="color:#16a34a;font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+          <span>🔎 Verified Specs Lookup</span>
+        </li>
+        {% endif %}
+
+        {% if fp.get('chat_archive_unlimited') %}
+        <li style="font-size:13px;color:#374151;display:flex;align-items:flex-start;gap:7px;">
+          <span style="color:#16a34a;font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+          <span>♾️ Chat Archive — Unlimited</span>
+        </li>
+        {% elif fp.get('chat_archive_30days') %}
+        <li style="font-size:13px;color:#374151;display:flex;align-items:flex-start;gap:7px;">
+          <span style="color:#16a34a;font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+          <span>📅 Chat Archive — 30 days</span>
+        </li>
+        {% endif %}
+
+        {% for feat in fp.get('custom_features', []) %}
+        <li style="font-size:13px;color:#374151;display:flex;align-items:flex-start;gap:7px;">
+          <span style="color:#16a34a;font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+          <span>{{ feat }}</span>
+        </li>
+        {% endfor %}
+
+      </ul>
+    </div>
+
+    {# Subscribe / already subscribed / switch plan button #}
+    {% if is_current %}
+      <div class="muted" style="font-size:13px;margin-top:auto;text-align:center;
+                                 padding:10px;border-radius:8px;background:#f3f4f6;">
+        ✅ You are on this plan
+      </div>
+
+    {% elif active_sub and saved_methods and stripe_ready %}
+      {# Customer already has a subscription — show Switch Plan instead of Subscribe #}
+      {% set is_upgrade = plan.credits > active_sub.plan_credits %}
+      <form method="POST" action="{{ url_for('portal.billing_switch_plan') }}"
+            style="margin-top:auto;"
+            onsubmit="return confirm('Switch to {{ plan.name }}?\n\n{% if is_upgrade %}This is an upgrade — {{ plan.credits - active_sub.plan_credits }} bonus credits will be added to your balance immediately.\n\n{% endif %}The new price of {{ plan.price_fmt }}/{{ plan.billing_period or 'month' }} applies from your next renewal date. No charge today.');">
+        <input type="hidden" name="new_plan_id" value="{{ plan.id }}"/>
+        {% if is_upgrade %}
+        <div style="font-size:12px;padding:6px 10px;border-radius:6px;margin-bottom:8px;
+                    background:rgba(22,163,74,0.08);border:1px solid rgba(22,163,74,0.3);
+                    color:#15803d;text-align:center;">
+          ⬆️ Upgrade · +{{ plan.credits - active_sub.plan_credits }} credits added now
+        </div>
+        {% else %}
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-align:center;">
+          ⬇️ Downgrade · new price from next renewal
+        </div>
+        {% endif %}
+        <button type="submit" class="btn btn-primary"
+                style="width:100%;justify-content:center;
+                       {% if not is_upgrade %}background:#6b7280;border-color:#6b7280;{% endif %}">
+          Switch to {{ plan.name }}
+        </button>
+      </form>
+
+    {% elif saved_methods and stripe_ready %}
+      {# No current subscription — normal Subscribe flow #}
+      {% set default_method = saved_methods | selectattr('is_default', 'equalto', 1) | list %}
+      {% set pm = default_method[0] if default_method else saved_methods[0] %}
+
+      <form method="POST" action="{{ url_for('portal.billing_subscribe_post') }}"
+            style="margin-top:auto;"
+            onsubmit="return confirm('Subscribe to {{ plan.name }} for {{ plan.price_fmt }}/{{ plan.billing_period or 'month' }}?\n\nYour saved card ending {{ pm.card_last4 }} will be charged immediately.');">
+        <input type="hidden" name="plan_id" value="{{ plan.id }}"/>
+        <input type="hidden" name="payment_method_id" value="{{ pm.id }}"/>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-align:center;">
+          Charged to ••••{{ pm.card_last4 }}
+        </div>
+        <button type="submit" class="btn btn-primary"
+                style="width:100%;justify-content:center;">
+          Subscribe — {{ plan.price_fmt }}/{{ plan.billing_period or 'month' }}
+        </button>
+      </form>
+
+    {% else %}
+      <a href="{{ url_for('portal.billing_add_card') }}"
+         class="btn btn-primary"
+         style="margin-top:auto;text-align:center;justify-content:center;display:flex;">
+        Add card to subscribe
+      </a>
+    {% endif %}
+
+  </div>
+  {% endfor %}
+</div>
+
+{% else %}
+<div class="card">
+  <p class="muted">
+    No subscription plans are available yet.
+    Contact <a href="mailto:support@phixtra.com">support@phixtra.com</a>.
+  </p>
+</div>
+{% endif %}
+
+{# ══════════════════════════ MANAGE CARDS LINK ══════════════════════════ #}
+<div style="margin-top:20px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+  <a href="{{ url_for('portal.billing_add_card') }}" class="btn btn-sm">
+    💳 Manage payment cards
+  </a>
+  <a href="{{ url_for('portal.billing') }}" class="btn btn-sm">
+    ⚡ Buy one-time credits
+  </a>
+</div>
+
+<div class="card" style="margin-top:18px;background:rgba(3,12,24,0.02);
+                          border-color:rgba(3,12,24,0.07);">
+  <p style="font-size:13px;color:var(--muted);">
+    <strong>ℹ️ How subscriptions work:</strong>
+    Your plan credits are added to your account at the start of each billing period.
+    If you run out mid-period you can top up at any time from the
+    <a href="{{ url_for('portal.billing') }}">Buy Credits</a> page.
+    Credits never expire.
+  </p>
+</div>
+
+{% endblock %}

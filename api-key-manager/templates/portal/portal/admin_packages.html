@@ -1,0 +1,110 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Credit Packages — PhiXtra Admin{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="section-title">Credit Packages</h1>
+</div>
+
+<div class="grid g2">
+  <div class="card">
+    <div class="card-title">Add package</div>
+    <form method="POST">
+      <div class="form-group"><label>Package name</label><input name="name" required placeholder="Growth"/></div>
+      <div class="form-group"><label>Credits</label><input type="number" name="credits" required min="1" placeholder="200"/></div>
+      <div class="form-group"><label>Price (£)</label><input type="number" step="0.01" name="price_gbp" required placeholder="45.00"/></div>
+      <div class="form-group"><label>VAT rate (%)</label><input type="number" step="0.01" name="vat_rate" value="20.00"/></div>
+      <div class="form-group"><label>Sort order</label><input type="number" name="sort_order" value="0"/></div>
+      <div class="form-group" style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" name="is_active" checked style="width:auto"/>
+        <label style="margin:0">Active (shown to customers)</label>
+      </div>
+
+      {# ── PLUGIN FEATURES (NEW) ────────────────────────────────────────── #}
+      <div class="form-group" style="margin-top:20px; padding-top:16px; border-top:2px solid #e5e7eb;">
+        <label style="font-weight:700; font-size:14px; display:block; margin-bottom:10px;">
+          🔌 Plugin Features
+        </label>
+        <p style="font-size:12px; color:#6b7280; margin:0 0 12px 0;">
+          Select which advanced features are included in this package.
+          Customers on packages without a feature will not see it.
+        </p>
+
+        <div style="display:flex; align-items:flex-start; gap:10px; padding:12px;
+                    background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; margin-bottom:8px;">
+          <input type="checkbox" name="feature_product_recommendation"
+                 id="feat_prod_rec_add" style="width:auto; margin-top:2px;"/>
+          <div>
+            <label for="feat_prod_rec_add" style="margin:0; font-weight:600; cursor:pointer;">
+              🛍️ Product Recommendation
+            </label>
+            <p style="margin:4px 0 0 0; font-size:12px; color:#374151;">
+              AI suggests relevant products during chat and displays them as clickable
+              cards with Add to Cart and Buy Now buttons.
+            </p>
+          </div>
+        </div>
+
+        <div style="display:flex; align-items:flex-start; gap:10px; padding:12px;
+                    background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; margin-bottom:8px;">
+          <input type="checkbox" name="feature_related_products"
+                 id="feat_related_products_add" style="width:auto; margin-top:2px;"/>
+          <div>
+            <label for="feat_related_products_add" style="margin:0; font-weight:600; cursor:pointer;">
+              🔗 Automated Cross-selling
+            </label>
+            <p style="margin:4px 0 0 0; font-size:12px; color:#374151;">
+              After showing recommended products, automatically appends up to 2 related items
+              labelled "You may also like:". Requires Product Recommendation to also be enabled.
+            </p>
+          </div>
+        </div>
+      </div>
+      {# ──────────────────────────────────────────────────────────────────── #}
+
+      <button type="submit" class="btn btn-primary btn-sm">Add package</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Existing packages</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Credits</th>
+            <th>Price</th>
+            <th>Features</th>
+            <th>Active</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in packages %}
+          <tr>
+            <td>{{ p.name }}</td>
+            <td>{{ p.credits }}</td>
+            <td>{{ p.price_fmt }}</td>
+            <td>
+              {# Show which features are enabled for this package #}
+              {% if p.features_parsed and p.features_parsed.get('product_recommendation') %}
+                <span class="pill pill-green" title="Product Recommendation enabled">🛍️ Recommendations</span>
+              {% else %}
+                <span class="pill pill-grey">Basic</span>
+              {% endif %}
+              {% if p.features_parsed and p.features_parsed.get('related_products') %}
+                <span class="pill pill-green" title="Automated Cross-selling enabled">🔗 Cross-selling</span>
+              {% endif %}
+            </td>
+            <td>{% if p.is_active %}<span class="pill pill-green">Yes</span>{% else %}<span class="pill pill-grey">No</span>{% endif %}</td>
+            <td><a href="{{ url_for('portal_admin.credit_packages_toggle', pkg_id=p.id) }}" class="btn btn-sm">Toggle</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
