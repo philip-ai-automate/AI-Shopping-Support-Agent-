@@ -5097,11 +5097,9 @@ def whatsapp_connect():
 
     webhook_url = os.getenv("META_WEBHOOK_URL", "")
 
-    # Pre-generate a verify token for new connections so the user has something to copy
-    suggested_verify_token = (
-        connection["verify_token"] if connection
-        else secrets.token_hex(16)
-    )
+    # Platform-wide verify token — same for all tenants.
+    # Meta calls one webhook URL; routing is by phone_number_id in the payload.
+    suggested_verify_token = os.getenv("WEBHOOK_VERIFY_TOKEN", "")
 
     # Token expiry warning state
     token_expiry_status = None  # None | 'ok' | 'expiring' | 'expired'
@@ -5140,10 +5138,11 @@ def whatsapp_save_connection():
     phone_number_id = (request.form.get("phone_number_id") or "").strip()
     access_token    = (request.form.get("access_token")    or "").strip()
     waba_id         = (request.form.get("waba_id")         or "").strip()
-    verify_token    = (request.form.get("verify_token")    or "").strip()
+    # Always use the platform-wide verify token — tenants don't manage this
+    verify_token    = os.getenv("WEBHOOK_VERIFY_TOKEN", "")
 
-    if not phone_number_id or not access_token or not verify_token:
-        flash("Phone Number ID, Access Token and Verify Token are required.", "danger")
+    if not phone_number_id or not access_token:
+        flash("Phone Number ID and Access Token are required.", "danger")
         return redirect(url_for("portal.whatsapp_connect"))
 
     # Fetch the tenant's active API key to store in wa_tenants

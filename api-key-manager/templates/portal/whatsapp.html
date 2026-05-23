@@ -401,15 +401,6 @@
         </p>
       </div>
 
-      <div class="form-group">
-        <label>Webhook Verify Token <span style="color:var(--bad)">*</span></label>
-        <input type="text" name="verify_token"
-               value="{{ suggested_verify_token }}"
-               placeholder="Auto-generated — copy this to Meta" required>
-        <p class="muted" style="margin-top:4px;font-size:12px">
-          Pre-filled above. Copy this exact value into Meta's Webhook Verify Token field.
-        </p>
-      </div>
 
       <button type="submit" class="btn btn-primary">
         {{ 'Update Connection' if connection else 'Connect WhatsApp' }}
@@ -453,7 +444,7 @@
       <button type="button" class="btn btn-sm" onclick="copyText('verifyTokenBox', this)">Copy</button>
     </div>
     <p class="muted" style="font-size:12px;margin-top:6px">
-      This token is pre-filled in the form below. Copy it here, then paste it into Meta's Webhook Verify Token field.
+      This is PhiXtra's platform-wide token — the same for all businesses. Copy and paste it into Meta's Webhook Verify Token field.
     </p>
   </div>
 
