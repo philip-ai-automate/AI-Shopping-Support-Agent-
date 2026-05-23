@@ -51,6 +51,7 @@ def init_wa_tables():
             "ALTER TABLE wa_tenants ADD COLUMN display_phone_number VARCHAR(32)",
             "ALTER TABLE wa_tenants ADD COLUMN verified_name VARCHAR(128)",
             "ALTER TABLE wa_tenants ADD COLUMN token_expires_at TIMESTAMP NULL",
+            "ALTER TABLE wa_tenants ADD COLUMN app_secret VARCHAR(256)",
         ]:
             try:
                 cur.execute(col_sql)

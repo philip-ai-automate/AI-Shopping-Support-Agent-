@@ -406,6 +406,20 @@
       </div>
 
 
+      <div class="form-group">
+        <label>App Secret
+          <span class="muted" style="font-weight:400">(recommended for production)</span>
+        </label>
+        <input type="password" name="app_secret"
+               placeholder="{{ '•••••••• (leave blank to keep current)' if connection and connection.app_secret else 'Paste your Meta App Secret' }}">
+        <p class="muted" style="margin-top:4px;font-size:12px">
+          Found in <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener"
+          style="color:var(--ink)">Meta App Dashboard ↗</a> → App Settings → Basic → App Secret.
+          Used to verify that webhook messages genuinely came from Meta.
+          Without it anyone who knows your webhook URL could send fake messages.
+        </p>
+      </div>
+
       <button type="submit" class="btn btn-primary">
         {{ 'Update Connection' if connection else 'Connect WhatsApp' }}
       </button>

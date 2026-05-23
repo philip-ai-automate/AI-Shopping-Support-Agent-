@@ -34,14 +34,16 @@ def _wants_human(text: str) -> bool:
     return any(kw in lower for kw in _HUMAN_KEYWORDS)
 
 
-def _verify_signature(body: bytes, sig_header: str) -> bool:
+def _verify_signature(body: bytes, sig_header: str, secret: str = "") -> bool:
     """
     Verify Meta HMAC-SHA256 signature from X-Hub-Signature-256 header.
-    If META_APP_SECRET is not set, all requests pass (allows initial setup).
+    Uses the provided secret (tenant-level), falling back to the platform
+    META_APP_SECRET env var. If neither is set, passes to allow initial setup.
     """
-    if not _APP_SECRET:
+    effective_secret = secret or _APP_SECRET
+    if not effective_secret:
         return True
-    expected = hmac.new(_APP_SECRET.encode(), body, hashlib.sha256).hexdigest()
+    expected = hmac.new(effective_secret.encode(), body, hashlib.sha256).hexdigest()
     return hmac.compare_digest(f"sha256={expected}", sig_header or "")
 
 
@@ -73,10 +75,6 @@ async def receive_webhook(
     """
     body = await request.body()
 
-    if not _verify_signature(body, x_hub_signature_256 or ""):
-        print("⚠️ [META] HMAC mismatch — possible spoofed request, ignoring")
-        return {"status": "ok"}
-
     try:
         payload = json.loads(body)
     except Exception:
@@ -98,6 +96,11 @@ async def receive_webhook(
     if not tenant:
         print(f"⚠️ [META] No active tenant for phone_number_id={phone_number_id}")
         return {"status": "ok", "reason": "no_tenant"}
+
+    # Verify HMAC signature using the tenant's app_secret (falls back to platform secret)
+    if not _verify_signature(body, x_hub_signature_256 or "", tenant.get("app_secret") or ""):
+        print("⚠️ [META] HMAC mismatch — possible spoofed request, ignoring")
+        return {"status": "ok"}
 
     tenant_id    = int(tenant["tenant_id"])
     api_key      = tenant["phixtra_api_key"]

@@ -5030,7 +5030,8 @@ def _get_wa_connection(tenant_id: int) -> dict | None:
         cur  = conn.cursor(dictionary=True, buffered=True)
         cur.execute("""
             SELECT id, phone_number_id, waba_id, verify_token, active, created_at,
-                   signup_method, display_phone_number, verified_name, token_expires_at
+                   signup_method, display_phone_number, verified_name, token_expires_at,
+                   app_secret
             FROM wa_tenants WHERE tenant_id = %s AND active = TRUE LIMIT 1
         """, (tenant_id,))
         row = cur.fetchone()
@@ -5138,6 +5139,7 @@ def whatsapp_save_connection():
     phone_number_id = (request.form.get("phone_number_id") or "").strip()
     access_token    = (request.form.get("access_token")    or "").strip()
     waba_id         = (request.form.get("waba_id")         or "").strip()
+    app_secret      = (request.form.get("app_secret")      or "").strip()
     # Always use the platform-wide verify token — tenants don't manage this
     verify_token    = os.getenv("WEBHOOK_VERIFY_TOKEN", "")
 
@@ -5167,8 +5169,8 @@ def whatsapp_save_connection():
         cur.execute("""
             INSERT INTO wa_tenants
               (tenant_id, phone_number_id, access_token, waba_id, verify_token,
-               phixtra_api_key, active, signup_method)
-            VALUES (%s, %s, %s, %s, %s, %s, TRUE, 'manual')
+               phixtra_api_key, active, signup_method, app_secret)
+            VALUES (%s, %s, %s, %s, %s, %s, TRUE, 'manual', %s)
             ON DUPLICATE KEY UPDATE
               tenant_id       = VALUES(tenant_id),
               access_token    = VALUES(access_token),
@@ -5177,8 +5179,9 @@ def whatsapp_save_connection():
               phixtra_api_key = VALUES(phixtra_api_key),
               active          = TRUE,
               signup_method   = 'manual',
-              token_expires_at = NULL
-        """, (tenant_id, phone_number_id, access_token, waba_id or None, verify_token, api_key))
+              token_expires_at = NULL,
+              app_secret      = IF(VALUES(app_secret) != '', VALUES(app_secret), app_secret)
+        """, (tenant_id, phone_number_id, access_token, waba_id or None, verify_token, api_key, app_secret or None))
         conn.commit()
         cur.close(); conn.close()
         insert_audit_log(action="wa_connected", tenant_id=tenant_id,
