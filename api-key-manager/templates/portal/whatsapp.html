@@ -394,10 +394,14 @@
       <div class="form-group">
         <label>Access Token <span style="color:var(--bad)">*</span></label>
         <input type="password" name="access_token"
-               placeholder="{{ '•••••••• (leave blank to keep current)' if connection else 'Paste your System User permanent access token' }}"
+               placeholder="{{ '•••••••• (leave blank to keep current)' if connection else 'Paste your access token from Meta API Setup' }}"
                {{ 'required' if not connection else '' }}>
         <p class="muted" style="margin-top:4px;font-size:12px">
-          Use a <strong>System User permanent token</strong> from Meta Business Manager → System Users.
+          You can use the <strong>temporary 24-hour token</strong> from Meta App Dashboard → WhatsApp → API Setup to test.
+          For production, replace it with a <strong>permanent System User token</strong> from
+          <a href="https://business.facebook.com/settings/system-users" target="_blank" rel="noopener"
+             style="color:var(--ink)">Meta Business Manager → System Users ↗</a>
+          so your connection never expires.
         </p>
       </div>
 
