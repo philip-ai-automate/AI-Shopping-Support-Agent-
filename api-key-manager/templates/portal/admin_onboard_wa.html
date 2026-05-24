@@ -1,0 +1,135 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Onboard WhatsApp Merchant — PhiXtra Admin{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="section-title">📱 Onboard WhatsApp Merchant</h1>
+</div>
+
+<!-- Provision form -->
+<div class="card" style="max-width:560px;margin-bottom:28px">
+  <div class="card-title" style="margin-bottom:16px">New merchant</div>
+
+  <form method="POST">
+    <div class="form-group">
+      <label>Business Name <span style="color:var(--bad)">*</span></label>
+      <input type="text" name="business_name" required autofocus
+             placeholder="e.g. Zemich Boutique"/>
+    </div>
+
+    <div class="form-group">
+      <label>WhatsApp Number <span style="color:var(--bad)">*</span></label>
+      <input type="tel" name="phone" required
+             placeholder="+2348012345678  or  08012345678"
+             inputmode="tel"/>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">
+        Nigerian numbers: start with 0 or +234. International: include country code.
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Internal notes (optional)</label>
+      <input type="text" name="notes" placeholder="e.g. referred by Philip, sells Ankara fabric"/>
+    </div>
+
+    <button class="btn btn-primary" type="submit">Provision account →</button>
+  </form>
+</div>
+
+<!-- What happens next info box -->
+<div class="card" style="max-width:560px;margin-bottom:28px;
+     border-color:rgba(18,183,106,0.25);background:rgba(18,183,106,0.04)">
+  <div class="card-title" style="color:var(--good)">What happens when you click Provision</div>
+  <ol style="margin:10px 0 0 16px;font-size:13px;line-height:2">
+    <li>Tenant + portal account created instantly</li>
+    <li>14-day free trial API key generated (auto-managed)</li>
+    <li>Merchant can log in at <strong>portal.phixtra.com/wa-login</strong> using their WhatsApp number</li>
+    <li>They receive a 6-digit OTP on WhatsApp to verify and log in</li>
+  </ol>
+  <div style="margin-top:12px;font-size:12px;color:var(--muted)">
+    📋 After provisioning, share this with the merchant:<br>
+    <strong>portal.phixtra.com/wa-login</strong> — log in with your WhatsApp number
+  </div>
+</div>
+
+<!-- Existing WA merchants table -->
+{% if merchants %}
+<div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between">
+  <div class="card-title" style="margin:0">WhatsApp Merchants ({{ merchants|length }})</div>
+</div>
+<div class="card" style="padding:0">
+  <div class="table-wrap" style="border:none;border-radius:16px">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Business Name</th>
+          <th>Phone</th>
+          <th>Status</th>
+          <th>Balance</th>
+          <th>Provisioned</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in merchants %}
+        <tr>
+          <td class="muted">{{ m.tenant_id }}</td>
+          <td><strong>{{ m.business_name or '—' }}</strong></td>
+          <td>
+            {% if m.phone_number %}
+              <a href="https://wa.me/{{ m.phone_number.lstrip('+') }}"
+                 target="_blank" rel="noopener"
+                 style="color:var(--good);font-weight:600">
+                {{ m.phone_number }}
+              </a>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if m.status == 'active' %}
+              <span class="pill pill-green">Active</span>
+            {% elif m.status == 'suspended' %}
+              <span class="pill pill-warn">Suspended</span>
+            {% else %}
+              <span class="pill pill-grey">{{ m.status }}</span>
+            {% endif %}
+            {% if not m.is_active %}
+              <span class="pill pill-red">Disabled</span>
+            {% endif %}
+          </td>
+          <td>
+            <span style="font-weight:700">{{ (m.token_balance / 5000)|round(1) }}</span>
+            <span class="muted"> cr</span>
+          </td>
+          <td class="muted">
+            {{ m.provisioned_at.strftime('%d %b %Y') if m.provisioned_at else '—' }}
+          </td>
+          <td style="display:flex;gap:6px;flex-wrap:wrap">
+            <a class="btn btn-sm"
+               href="{{ url_for('portal_admin.customer_detail', customer_id=m.customer_id) }}">
+              View
+            </a>
+            {% if m.phone_number %}
+            <a class="btn btn-sm"
+               href="https://wa.me/{{ m.phone_number.lstrip('+') }}?text={{ ('Log in to your PhiXtra dashboard: portal.phixtra.com/wa-login — use your WhatsApp number ' ~ m.phone_number ~ ' to log in.')|urlencode }}"
+               target="_blank" rel="noopener"
+               style="border-color:rgba(37,211,102,0.35);color:#1a7a3c">
+              📱 Send link
+            </a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div style="text-align:center;padding:40px 0;color:var(--muted);font-size:13px">
+  No WhatsApp merchants provisioned yet. Use the form above to add the first one.
+</div>
+{% endif %}
+
+{% endblock %}

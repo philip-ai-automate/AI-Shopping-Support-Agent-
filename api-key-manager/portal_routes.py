@@ -462,6 +462,127 @@ def _reg_rate_ok(ip):
     _reg_attempts[ip].append(now)
     return True
 
+
+def _register_whatsapp_merchant(
+    first_name: str, last_name: str, email: str, password: str,
+    business_name: str, wa_phone: str,
+    ai_instructions: str, ai_requirements: str,
+):
+    """
+    Self-service registration path for WhatsApp-only merchants.
+    Creates tenant (source_type='whatsapp') + customer (real email/password)
+    + whatsapp api_key.  Sends email verification like the web path.
+    """
+    if not business_name:
+        business_name = f"{first_name} {last_name}".strip()
+
+    phone = _normalise_phone(wa_phone)
+    if not phone:
+        flash("Please enter a valid WhatsApp number.", "danger")
+        return redirect(url_for("portal.register"))
+
+    # Check phone not already registered
+    conn = get_db_connection()
+    cur  = conn.cursor(dictionary=True, buffered=True)
+    cur.execute("SELECT id FROM customers WHERE phone_number=%s LIMIT 1", (phone,))
+    if cur.fetchone():
+        cur.close(); conn.close()
+        flash("An account with that WhatsApp number already exists. Try logging in.", "warning")
+        return redirect(url_for("portal.wa_login"))
+
+    # Check email not already registered
+    cur.execute("SELECT id FROM customers WHERE email=%s LIMIT 1", (email,))
+    if cur.fetchone():
+        cur.close(); conn.close()
+        flash("An account with that email already exists. Please log in.", "warning")
+        return redirect(url_for("portal.login"))
+
+    system_prompt_text = ai_instructions
+    if ai_requirements:
+        system_prompt_text += f"\n\n[Additional requirements]\n{ai_requirements}"
+
+    trial_features = _json.dumps({
+        "product_recommendation":    True,
+        "related_products":          True,
+        "cart_recovery":             True,
+        "verified_specs_web_lookup": True,
+        "chat_archive_unlimited":    True,
+    })
+
+    # Create tenant
+    cur2 = conn.cursor(buffered=True)
+    cur2.execute("""
+        INSERT INTO tenants (name, domain, status, source_type, features, system_prompt)
+        VALUES (%s, NULL, 'pending', 'whatsapp', %s, %s)
+    """, (business_name, trial_features, system_prompt_text))
+    conn.commit()
+    tenant_id = int(cur2.lastrowid)
+    cur2.close()
+
+    # Create customer with real email + password (email_verified=0, needs email click)
+    verify_token = make_token(24)
+    pw_hash      = hash_password(password)
+    cur3 = conn.cursor(buffered=True)
+    cur3.execute("""
+        INSERT INTO customers
+            (tenant_id, first_name, last_name, email, password_hash,
+             phone_number, email_verified, verify_token)
+        VALUES (%s, %s, %s, %s, %s, %s, 0, %s)
+    """, (tenant_id, first_name, last_name, email, pw_hash, phone, verify_token))
+    conn.commit()
+    cur3.close()
+
+    # Create whatsapp api_key
+    plain_key, hashed_key = _generate_api_key_and_hash()
+    trial_activated_at = datetime.utcnow()
+    trial_expires_at   = trial_activated_at + timedelta(days=TRIAL_DAYS)
+    TRIAL_TOKEN_LIMIT  = 250000
+    cur4 = conn.cursor(buffered=True)
+    cur4.execute("""
+        INSERT INTO api_keys
+            (tenant_id, api_key_hash, api_key_plain, is_active, website,
+             key_type, trial_activated_at, trial_expires_at, token_limit, tokens_used)
+        VALUES (%s, %s, %s, 1, NULL, 'whatsapp', %s, %s, %s, 0)
+    """, (tenant_id, hashed_key, plain_key,
+          trial_activated_at, trial_expires_at, TRIAL_TOKEN_LIMIT))
+    conn.commit()
+    api_key_id = int(cur4.lastrowid)
+    cur4.close()
+
+    cur.close(); conn.close()
+    _ensure_tenant_balance_row(tenant_id)
+
+    insert_audit_log(
+        admin_username=f"self-register-wa:{email}",
+        action="customer_registered",
+        tenant_id=tenant_id,
+        details={"email": email, "phone": phone,
+                 "business_name": business_name, "source": "web-register-wa"},
+    )
+    _send_admin_new_signup_email(
+        customer_name=f"{first_name} {last_name}".strip(),
+        customer_email=email,
+        domain=f"WA:{phone}",
+        ai_instructions=ai_instructions,
+        ai_requirements=ai_requirements,
+    )
+
+    email_sent = _send_verify_email(email, verify_token, first_name)
+    if email_sent:
+        flash(
+            "Account created! ✅ Check your email and click the verification link to activate. "
+            "You can also log in via WhatsApp OTP at any time.",
+            "success"
+        )
+    else:
+        flash(
+            "Account created! However we could not send the verification email — "
+            f"<a href='{url_for('portal.resend_verify')}' style='text-decoration:underline'>"
+            "Resend verification email</a>.",
+            "warning"
+        )
+    return redirect(url_for("portal.login"))
+
 @portal_bp.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "GET":
@@ -489,17 +610,18 @@ def register():
     except Exception:
         pass  # If Google is unreachable, allow through
     # ── end reCAPTCHA ───────────────────────────────────────────────────────
+
+    merchant_type   = (request.form.get("merchant_type") or "web").strip().lower()
     first_name      = (request.form.get("first_name")      or "").strip()
     last_name       = (request.form.get("last_name")       or "").strip()
     email           = (request.form.get("email")           or "").strip().lower()
     password        = (request.form.get("password")        or "").strip()
-    phone_number    = (request.form.get("phone_number")    or "").strip()
-    tenant_domain   = (request.form.get("tenant_domain")   or "").strip().lower()
     ai_instructions = (request.form.get("ai_instructions") or "").strip()
     ai_requirements = (request.form.get("ai_requirements") or "").strip()
 
-    if not first_name or not last_name or not email or not password or not tenant_domain:
-        flash("First name, last name, email, password and store domain are all required.", "danger")
+    # ── Common validation ───────────────────────────────────────────────────
+    if not first_name or not last_name or not email or not password:
+        flash("First name, last name, email, and password are all required.", "danger")
         return redirect(url_for("portal.register"))
 
     if not ai_instructions:
@@ -508,6 +630,25 @@ def register():
 
     if len(password) < 8:
         flash("Password must be at least 8 characters.", "danger")
+        return redirect(url_for("portal.register"))
+
+    # ── WhatsApp-only merchant registration ─────────────────────────────────
+    if merchant_type == "whatsapp":
+        return _register_whatsapp_merchant(
+            first_name=first_name, last_name=last_name,
+            email=email, password=password,
+            business_name=(request.form.get("business_name") or "").strip(),
+            wa_phone=(request.form.get("wa_phone") or "").strip(),
+            ai_instructions=ai_instructions,
+            ai_requirements=ai_requirements,
+        )
+
+    # ── Web merchant registration continues below ───────────────────────────
+    phone_number    = (request.form.get("phone_number")    or "").strip()
+    tenant_domain   = (request.form.get("tenant_domain")   or "").strip().lower()
+
+    if not tenant_domain:
+        flash("Store domain is required for web merchants.", "danger")
         return redirect(url_for("portal.register"))
 
     # Strip https:// or http:// if user pastes full URL
@@ -3736,7 +3877,7 @@ def settings():
     try:
         conn = get_db_connection()
         cur  = conn.cursor(dictionary=True, buffered=True)
-        cur.execute("SELECT features FROM tenants WHERE id=%s", (tenant_id,))
+        cur.execute("SELECT features, daily_report_enabled, report_phone FROM tenants WHERE id=%s", (tenant_id,))
         row = cur.fetchone() or {}
         cur.close(); conn.close()
         import json as _j
@@ -3744,8 +3885,11 @@ def settings():
         for k, label in _FEATURE_LABELS.items():
             if feat.get(k):
                 plan_features.append(label)
+        daily_report_enabled = int(row.get("daily_report_enabled") or 1)
+        report_phone         = row.get("report_phone") or ""
     except Exception:
-        pass
+        daily_report_enabled = 1
+        report_phone         = ""
 
     return render_template("portal/settings.html",
                            customer=customer,
@@ -3754,6 +3898,8 @@ def settings():
                            plan_days_left=plan_days_left,
                            balance_credits=balance_credits,
                            plan_features=plan_features,
+                           daily_report_enabled=daily_report_enabled,
+                           report_phone=report_phone,
                            active_sub=_get_active_subscription(int(customer["id"])),
                            saved_methods=_get_saved_payment_methods(int(customer["id"])))
 
@@ -3948,6 +4094,25 @@ def settings_notifications():
 
         conn.commit()
         cur.close(); conn.close()
+
+        # ── Tenant-level report settings ─────────────────────────────────
+        customer2     = _get_customer(cid)
+        tenant_id2    = int(customer2["tenant_id"])
+        daily_enabled = 1 if request.form.get("daily_report_enabled") else 0
+        report_phone2 = (request.form.get("report_phone") or "").strip() or None
+        try:
+            conn2 = get_db_connection()
+            cur2  = conn2.cursor()
+            cur2.execute("""
+                UPDATE tenants
+                SET daily_report_enabled = %s, report_phone = %s
+                WHERE id = %s
+            """, (daily_enabled, report_phone2, tenant_id2))
+            conn2.commit()
+            cur2.close(); conn2.close()
+        except Exception as e2:
+            print("⚠️ settings_notifications tenant update error:", e2)
+
         flash("Notification preferences saved ✅", "success")
     except Exception as e:
         print("⚠️ settings_notifications error:", e)
@@ -5947,3 +6112,2253 @@ def whatsapp_campaigns_delete(campaign_id: int):
         flash("Delete failed.", "danger")
 
     return redirect(url_for("portal.whatsapp_campaigns"))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ORDERS
+# ══════════════════════════════════════════════════════════════════════════════
+
+_ORDER_STATUS_PILL = {
+    "INTENT_CAPTURED":  "pill-grey",
+    "PAYMENT_PENDING":  "pill-warn",
+    "RECEIPT_RECEIVED": "pill-warn",
+    "PAYMENT_VERIFIED": "pill-green",
+    "PROCESSING":       "pill-grey",
+    "DISPATCHED":       "pill-grey",
+    "DELIVERED":        "pill-green",
+    "COMPLETED":        "pill-green",
+    "CANCELLED":        "pill-red",
+    "FAILED":           "pill-red",
+}
+
+_ORDER_STATUS_LABEL = {
+    "INTENT_CAPTURED":  "Pending",
+    "PAYMENT_PENDING":  "Awaiting Payment",
+    "RECEIPT_RECEIVED": "Receipt Received",
+    "PAYMENT_VERIFIED": "Paid",
+    "PROCESSING":       "Processing",
+    "DISPATCHED":       "Dispatched",
+    "DELIVERED":        "Delivered",
+    "COMPLETED":        "Completed",
+    "CANCELLED":        "Cancelled",
+    "FAILED":           "Failed",
+}
+
+_ORDERS_PER_PAGE = 30
+
+
+def _get_orders_list(tenant_id: int, status_filter: str = "all", page: int = 1):
+    """Return (orders, total_count) for the orders list page."""
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(dictionary=True, buffered=True)
+
+        base_where  = "WHERE o.tenant_id = %s"
+        base_params = [tenant_id]
+        if status_filter and status_filter != "all":
+            base_where  += " AND o.status = %s"
+            base_params += [status_filter]
+
+        cur.execute(
+            f"SELECT COUNT(*) AS cnt FROM orders o {base_where}",
+            base_params,
+        )
+        total = int((cur.fetchone() or {}).get("cnt", 0))
+
+        offset = (page - 1) * _ORDERS_PER_PAGE
+        cur.execute(f"""
+            SELECT o.id, o.reference, o.customer_phone, o.customer_name,
+                   o.total_amount, o.status, o.payment_method, o.created_at,
+                   COUNT(oi.id) AS item_count
+            FROM orders o
+            LEFT JOIN order_items oi ON oi.order_id = o.id
+            {base_where}
+            GROUP BY o.id
+            ORDER BY o.created_at DESC
+            LIMIT %s OFFSET %s
+        """, base_params + [_ORDERS_PER_PAGE, offset])
+        rows = cur.fetchall() or []
+        cur.close(); conn.close()
+        return rows, total
+    except Exception as e:
+        print("⚠️ _get_orders_list error:", e)
+        return [], 0
+
+
+def _get_order_kpis(tenant_id: int) -> dict:
+    """Today's KPI stats for the orders page header."""
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur.execute("""
+            SELECT
+              COUNT(*) AS total,
+              COALESCE(SUM(
+                CASE WHEN status IN
+                  ('PAYMENT_VERIFIED','PROCESSING','DISPATCHED','DELIVERED','COMPLETED')
+                THEN total_amount ELSE 0 END
+              ), 0) AS revenue,
+              SUM(CASE WHEN status IN
+                ('INTENT_CAPTURED','PAYMENT_PENDING','RECEIPT_RECEIVED') THEN 1 ELSE 0 END
+              ) AS pending,
+              SUM(CASE WHEN status IN ('PAYMENT_VERIFIED','PROCESSING') THEN 1 ELSE 0 END
+              ) AS paid,
+              SUM(CASE WHEN status = 'DISPATCHED' THEN 1 ELSE 0 END) AS dispatched,
+              SUM(CASE WHEN status IN ('CANCELLED','FAILED') THEN 1 ELSE 0 END) AS cancelled
+            FROM orders
+            WHERE tenant_id = %s AND DATE(created_at) = CURDATE()
+        """, (tenant_id,))
+        row = cur.fetchone() or {}
+        cur.close(); conn.close()
+        return row
+    except Exception as e:
+        print("⚠️ _get_order_kpis error:", e)
+        return {}
+
+
+def _get_single_order(tenant_id: int, order_id: str):
+    """Return (order_row, [item_rows]) or (None, [])."""
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur.execute(
+            "SELECT * FROM orders WHERE id = %s AND tenant_id = %s",
+            (order_id, tenant_id),
+        )
+        order = cur.fetchone()
+        if not order:
+            cur.close(); conn.close()
+            return None, []
+        cur.execute(
+            "SELECT * FROM order_items WHERE order_id = %s ORDER BY id ASC",
+            (order_id,),
+        )
+        items = cur.fetchall() or []
+        cur.close(); conn.close()
+        return order, items
+    except Exception as e:
+        print("⚠️ _get_single_order error:", e)
+        return None, []
+
+
+def _annotate_order(order: dict) -> dict:
+    s = order.get("status", "")
+    order["pill"]         = _ORDER_STATUS_PILL.get(s, "pill-grey")
+    order["status_label"] = _ORDER_STATUS_LABEL.get(s, s)
+    return order
+
+
+@portal_bp.route("/orders")
+def orders():
+    r = _require_login()
+    if r: return r
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    status_filter = (request.args.get("status") or "all").strip()
+    try:
+        page = max(1, int(request.args.get("page") or 1))
+    except (ValueError, TypeError):
+        page = 1
+
+    order_list, total = _get_orders_list(tenant_id, status_filter, page)
+    kpis              = _get_order_kpis(tenant_id)
+
+    for o in order_list:
+        _annotate_order(o)
+
+    total_pages = max(1, (total + _ORDERS_PER_PAGE - 1) // _ORDERS_PER_PAGE)
+
+    return render_template(
+        "portal/orders.html",
+        customer      = customer,
+        orders        = order_list,
+        kpis          = kpis,
+        status_filter = status_filter,
+        page          = page,
+        total_pages   = total_pages,
+        total         = total,
+        status_label  = _ORDER_STATUS_LABEL,
+    )
+
+
+@portal_bp.route("/orders/<order_id>")
+def order_detail(order_id: str):
+    r = _require_login()
+    if r: return r
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    order, items = _get_single_order(tenant_id, order_id)
+    if not order:
+        flash("Order not found.", "danger")
+        return redirect(url_for("portal.orders"))
+
+    _annotate_order(order)
+    s = order.get("status", "")
+
+    can_dispatch = s in ("PAYMENT_VERIFIED", "PROCESSING")
+    can_deliver  = s == "DISPATCHED"
+    can_cancel   = s in (
+        "INTENT_CAPTURED", "PAYMENT_PENDING",
+        "RECEIPT_RECEIVED", "PAYMENT_VERIFIED", "PROCESSING",
+    )
+
+    return render_template(
+        "portal/order_detail.html",
+        customer     = customer,
+        order        = order,
+        items        = items,
+        can_dispatch = can_dispatch,
+        can_deliver  = can_deliver,
+        can_cancel   = can_cancel,
+        status_pill  = _ORDER_STATUS_PILL,
+        status_label = _ORDER_STATUS_LABEL,
+    )
+
+
+@portal_bp.route("/orders/<order_id>/dispatch", methods=["POST"])
+def order_dispatch(order_id: str):
+    r = _require_login()
+    if r: return r
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    tracking  = (request.form.get("tracking_number") or "").strip() or None
+    courier   = (request.form.get("courier") or "").strip() or None
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(buffered=True)
+        cur.execute("""
+            UPDATE orders
+               SET status = 'DISPATCHED',
+                   tracking_number = %s,
+                   courier = %s,
+                   dispatched_at = NOW(),
+                   updated_at = NOW()
+             WHERE id = %s AND tenant_id = %s
+               AND status IN ('PAYMENT_VERIFIED','PROCESSING')
+        """, (tracking, courier, order_id, tenant_id))
+        conn.commit()
+        if cur.rowcount:
+            flash("Order marked as dispatched.", "success")
+        else:
+            flash("Order status could not be updated.", "warning")
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ order_dispatch error:", e)
+        flash("Update failed — please try again.", "danger")
+
+    return redirect(url_for("portal.order_detail", order_id=order_id))
+
+
+@portal_bp.route("/orders/<order_id>/deliver", methods=["POST"])
+def order_deliver(order_id: str):
+    r = _require_login()
+    if r: return r
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(buffered=True)
+        cur.execute("""
+            UPDATE orders
+               SET status = 'DELIVERED', delivered_at = NOW(), updated_at = NOW()
+             WHERE id = %s AND tenant_id = %s AND status = 'DISPATCHED'
+        """, (order_id, tenant_id))
+        conn.commit()
+        if cur.rowcount:
+            flash("Order marked as delivered.", "success")
+        else:
+            flash("Order status could not be updated.", "warning")
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ order_deliver error:", e)
+        flash("Update failed — please try again.", "danger")
+
+    return redirect(url_for("portal.order_detail", order_id=order_id))
+
+
+@portal_bp.route("/orders/<order_id>/cancel", methods=["POST"])
+def order_cancel(order_id: str):
+    r = _require_login()
+    if r: return r
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(dictionary=True, buffered=True)
+
+        cur.execute("""
+            SELECT id FROM orders
+             WHERE id = %s AND tenant_id = %s
+               AND status IN ('INTENT_CAPTURED','PAYMENT_PENDING',
+                              'RECEIPT_RECEIVED','PAYMENT_VERIFIED','PROCESSING')
+        """, (order_id, tenant_id))
+        row = cur.fetchone()
+
+        if not row:
+            flash("This order cannot be cancelled in its current state.", "warning")
+            cur.close(); conn.close()
+            return redirect(url_for("portal.order_detail", order_id=order_id))
+
+        cur.execute("""
+            UPDATE orders SET status = 'CANCELLED', updated_at = NOW()
+             WHERE id = %s AND tenant_id = %s
+        """, (order_id, tenant_id))
+
+        # Restore reserved stock for each line item
+        cur.execute(
+            "SELECT product_id, quantity FROM order_items WHERE order_id = %s",
+            (order_id,),
+        )
+        for item in (cur.fetchall() or []):
+            cur.execute("""
+                UPDATE products
+                   SET reserved_quantity = GREATEST(0, reserved_quantity - %s)
+                 WHERE id = %s AND tenant_id = %s
+            """, (item["quantity"], item["product_id"], tenant_id))
+
+        conn.commit()
+        cur.close(); conn.close()
+        flash("Order cancelled and reserved stock restored.", "success")
+    except Exception as e:
+        print("⚠️ order_cancel error:", e)
+        flash("Cancellation failed — please try again.", "danger")
+
+    return redirect(url_for("portal.order_detail", order_id=order_id))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PRODUCTS
+# ══════════════════════════════════════════════════════════════════════════════
+
+import uuid as _uuid
+import os as _os
+from werkzeug.utils import secure_filename as _secure_filename
+
+_PRODUCT_UPLOAD_DIR = _os.path.join(
+    _os.path.dirname(__file__), "static", "portal", "product_images"
+)
+_ALLOWED_IMAGE_EXT = {"png", "jpg", "jpeg", "webp", "gif"}
+
+
+def _allowed_image(filename: str) -> bool:
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in _ALLOWED_IMAGE_EXT
+
+
+def _save_product_image(file_storage):
+    """Save uploaded image; return URL path or None."""
+    if not file_storage or not file_storage.filename:
+        return None
+    if not _allowed_image(file_storage.filename):
+        return None
+    ext   = file_storage.filename.rsplit(".", 1)[1].lower()
+    fname = f"{_uuid.uuid4().hex}.{ext}"
+    file_storage.save(_os.path.join(_PRODUCT_UPLOAD_DIR, fname))
+    return f"/static/portal/product_images/{fname}"
+
+
+def _get_tenant_azure_index(tenant_id: int):
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur.execute(
+            "SELECT azure_search_index FROM tenants WHERE id = %s", (tenant_id,)
+        )
+        row = cur.fetchone() or {}
+        cur.close(); conn.close()
+        return row.get("azure_search_index") or None
+    except Exception as e:
+        print("⚠️ _get_tenant_azure_index error:", e)
+        return None
+
+
+def _get_products(tenant_id, q="", category="", page=1, per_page=40):
+    """Return (products, total, categories_list)."""
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(dictionary=True, buffered=True)
+
+        where  = "WHERE tenant_id = %s AND is_active = 1"
+        params = [tenant_id]
+        if q:
+            like = f"%{q}%"
+            where += " AND (name LIKE %s OR description LIKE %s OR category LIKE %s)"
+            params += [like, like, like]
+        if category:
+            where += " AND category = %s"
+            params.append(category)
+
+        cur.execute(f"SELECT COUNT(*) AS cnt FROM products {where}", params)
+        total = int((cur.fetchone() or {}).get("cnt", 0))
+
+        cur.execute(
+            "SELECT DISTINCT category FROM products "
+            "WHERE tenant_id = %s AND is_active = 1 AND category IS NOT NULL "
+            "ORDER BY category",
+            (tenant_id,),
+        )
+        categories = [r["category"] for r in (cur.fetchall() or []) if r["category"]]
+
+        offset = (page - 1) * per_page
+        cur.execute(f"""
+            SELECT id, name, description, price, stock_quantity,
+                   reserved_quantity, category, image_url, is_active, created_at
+            FROM products {where}
+            ORDER BY created_at DESC
+            LIMIT %s OFFSET %s
+        """, params + [per_page, offset])
+        rows = cur.fetchall() or []
+        cur.close(); conn.close()
+        return rows, total, categories
+    except Exception as e:
+        print("⚠️ _get_products error:", e)
+        return [], 0, []
+
+
+def _get_product(tenant_id, product_id):
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur.execute(
+            "SELECT * FROM products WHERE id = %s AND tenant_id = %s",
+            (product_id, tenant_id),
+        )
+        row = cur.fetchone()
+        cur.close(); conn.close()
+        return row
+    except Exception as e:
+        print("⚠️ _get_product error:", e)
+        return None
+
+
+def _get_wa_product_stats(tenant_id):
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur.execute("""
+            SELECT COUNT(DISTINCT wpc.product_id) AS total_products,
+                   MAX(wpc.created_at) AS last_seen
+            FROM wa_product_cache wpc
+            JOIN chat_sessions cs ON cs.session_id = wpc.session_id
+            WHERE cs.tenant_id = %s
+        """, (tenant_id,))
+        row = cur.fetchone() or {}
+        cur.close(); conn.close()
+        return row
+    except Exception as e:
+        print("⚠️ _get_wa_product_stats error:", e)
+        return {}
+
+
+@portal_bp.route("/products")
+def products():
+    r = _require_login()
+    if r: return r
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    has_azure_index = bool(_get_tenant_azure_index(tenant_id))
+
+    q        = (request.args.get("q") or "").strip()
+    category = (request.args.get("category") or "").strip()
+    try:
+        page = max(1, int(request.args.get("page") or 1))
+    except (ValueError, TypeError):
+        page = 1
+
+    product_list, total, categories = _get_products(
+        tenant_id, q=q, category=category, page=page
+    )
+    wa_stats    = _get_wa_product_stats(tenant_id) if has_azure_index else {}
+    total_pages = max(1, (total + 39) // 40)
+
+    return render_template(
+        "portal/products.html",
+        customer        = customer,
+        products        = product_list,
+        total           = total,
+        total_pages     = total_pages,
+        page            = page,
+        q               = q,
+        category        = category,
+        categories      = categories,
+        has_azure_index = has_azure_index,
+        wa_stats        = wa_stats,
+    )
+
+
+@portal_bp.route("/products/add", methods=["GET", "POST"])
+def product_add():
+    r = _require_login()
+    if r: return r
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    if request.method == "POST":
+        name        = (request.form.get("name") or "").strip()
+        price_raw   = (request.form.get("price") or "0").strip().replace(",", "")
+        stock_raw   = (request.form.get("stock_quantity") or "0").strip()
+        description = (request.form.get("description") or "").strip() or None
+        category    = (request.form.get("category") or "").strip() or None
+        image_url   = (request.form.get("image_url") or "").strip() or None
+
+        if not name:
+            flash("Product name is required.", "danger")
+            return redirect(url_for("portal.product_add"))
+
+        try:
+            price = float(price_raw)
+        except ValueError:
+            flash("Price must be a valid number.", "danger")
+            return redirect(url_for("portal.product_add"))
+
+        try:
+            stock = int(stock_raw)
+        except ValueError:
+            stock = 0
+
+        uploaded_file = request.files.get("image_file")
+        if uploaded_file and uploaded_file.filename:
+            saved = _save_product_image(uploaded_file)
+            if saved:
+                image_url = saved
+            elif not image_url:
+                flash("Invalid image format. Supported: JPG, PNG, WebP, GIF.", "warning")
+
+        product_id = str(_uuid.uuid4())
+        try:
+            conn = get_db_connection()
+            cur  = conn.cursor(buffered=True)
+            cur.execute("""
+                INSERT INTO products
+                  (id, tenant_id, name, description, price,
+                   stock_quantity, category, image_url)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (product_id, tenant_id, name, description, price,
+                  stock, category, image_url))
+            conn.commit()
+            cur.close(); conn.close()
+            flash(f"'{name}' added to your catalogue.", "success")
+            return redirect(url_for("portal.products"))
+        except Exception as e:
+            print("⚠️ product_add error:", e)
+            flash("Failed to save product — please try again.", "danger")
+            return redirect(url_for("portal.product_add"))
+
+    return render_template("portal/product_form.html",
+                           customer=customer, product=None, mode="add")
+
+
+@portal_bp.route("/products/<product_id>/edit", methods=["GET", "POST"])
+def product_edit(product_id: str):
+    r = _require_login()
+    if r: return r
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    product = _get_product(tenant_id, product_id)
+    if not product:
+        flash("Product not found.", "danger")
+        return redirect(url_for("portal.products"))
+
+    if request.method == "POST":
+        name        = (request.form.get("name") or "").strip()
+        price_raw   = (request.form.get("price") or "0").strip().replace(",", "")
+        stock_raw   = (request.form.get("stock_quantity") or "0").strip()
+        description = (request.form.get("description") or "").strip() or None
+        category    = (request.form.get("category") or "").strip() or None
+        image_url   = (request.form.get("image_url") or "").strip() or None
+
+        if not name:
+            flash("Product name is required.", "danger")
+            return redirect(url_for("portal.product_edit", product_id=product_id))
+
+        try:
+            price = float(price_raw)
+        except ValueError:
+            flash("Price must be a valid number.", "danger")
+            return redirect(url_for("portal.product_edit", product_id=product_id))
+
+        try:
+            stock = int(stock_raw)
+        except ValueError:
+            stock = 0
+
+        uploaded_file = request.files.get("image_file")
+        if uploaded_file and uploaded_file.filename:
+            saved = _save_product_image(uploaded_file)
+            if saved:
+                image_url = saved
+
+        if not image_url:
+            image_url = product.get("image_url")
+
+        try:
+            conn = get_db_connection()
+            cur  = conn.cursor(buffered=True)
+            cur.execute("""
+                UPDATE products
+                   SET name=%s, description=%s, price=%s,
+                       stock_quantity=%s, category=%s,
+                       image_url=%s, updated_at=NOW()
+                 WHERE id=%s AND tenant_id=%s
+            """, (name, description, price, stock, category,
+                  image_url, product_id, tenant_id))
+            conn.commit()
+            cur.close(); conn.close()
+            flash(f"'{name}' updated successfully.", "success")
+            return redirect(url_for("portal.products"))
+        except Exception as e:
+            print("⚠️ product_edit error:", e)
+            flash("Failed to update product — please try again.", "danger")
+
+    return render_template("portal/product_form.html",
+                           customer=customer, product=product, mode="edit")
+
+
+@portal_bp.route("/products/<product_id>/delete", methods=["POST"])
+def product_delete(product_id: str):
+    r = _require_login()
+    if r: return r
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(buffered=True)
+        cur.execute(
+            "UPDATE products SET is_active=0, updated_at=NOW() WHERE id=%s AND tenant_id=%s",
+            (product_id, tenant_id),
+        )
+        conn.commit()
+        rows = cur.rowcount
+        cur.close(); conn.close()
+        flash("Product removed from your catalogue." if rows else "Product not found.", "success" if rows else "warning")
+    except Exception as e:
+        print("⚠️ product_delete error:", e)
+        flash("Delete failed — please try again.", "danger")
+
+    return redirect(url_for("portal.products"))
+
+
+@portal_bp.route("/products/<product_id>/toggle-stock", methods=["POST"])
+def product_toggle_stock(product_id: str):
+    """Quick action: mark in-stock (999) or out-of-stock (0) from list view."""
+    r = _require_login()
+    if r: return r
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    action    = request.form.get("action", "")
+    new_qty   = 999 if action == "in_stock" else 0
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(buffered=True)
+        cur.execute(
+            "UPDATE products SET stock_quantity=%s, updated_at=NOW() WHERE id=%s AND tenant_id=%s",
+            (new_qty, product_id, tenant_id),
+        )
+        conn.commit()
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ product_toggle_stock error:", e)
+        flash("Update failed.", "danger")
+
+    return redirect(url_for("portal.products"))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CUSTOMERS
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _get_customers_list(tenant_id: int, q: str = "", page: int = 1, per_page: int = 40):
+    """
+    Aggregate unique WhatsApp customers for a tenant.
+    Source of truth: wa_message_log (has phone numbers).
+    Enriched with: order count + total spend from orders table.
+    Returns (customers, total_count).
+    """
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(dictionary=True, buffered=True)
+
+        q_filter = ""
+        params   = [tenant_id]
+        if q:
+            q_filter = "AND wml.customer_phone LIKE %s"
+            params.append(f"%{q}%")
+
+        # Total distinct customers
+        cur.execute(f"""
+            SELECT COUNT(DISTINCT customer_phone) AS cnt
+            FROM wa_message_log wml
+            WHERE wml.tenant_id = %s {q_filter}
+        """, params)
+        total = int((cur.fetchone() or {}).get("cnt", 0))
+
+        offset = (page - 1) * per_page
+        cur.execute(f"""
+            SELECT
+                wml.customer_phone,
+                MIN(wml.created_at)                                AS first_seen,
+                MAX(wml.created_at)                                AS last_seen,
+                COUNT(wml.id)                                      AS message_count,
+                COUNT(CASE WHEN wml.direction='inbound' THEN 1 END) AS inbound_count,
+                COALESCE(ord.order_count, 0)                        AS order_count,
+                COALESCE(ord.total_spent, 0)                        AS total_spent,
+                COALESCE(hs.handoff_count, 0)                       AS handoff_count
+            FROM wa_message_log wml
+            LEFT JOIN (
+                SELECT customer_phone,
+                       COUNT(*)                                          AS order_count,
+                       SUM(CASE WHEN status IN
+                           ('PAYMENT_VERIFIED','PROCESSING','DISPATCHED','DELIVERED','COMPLETED')
+                           THEN total_amount ELSE 0 END)                AS total_spent
+                FROM orders
+                WHERE tenant_id = %s
+                GROUP BY customer_phone
+            ) ord ON ord.customer_phone = wml.customer_phone
+            LEFT JOIN (
+                SELECT customer_phone, COUNT(*) AS handoff_count
+                FROM wa_handoff_state
+                WHERE tenant_id = %s
+                GROUP BY customer_phone
+            ) hs ON hs.customer_phone = wml.customer_phone
+            WHERE wml.tenant_id = %s {q_filter}
+            GROUP BY wml.customer_phone
+            ORDER BY last_seen DESC
+            LIMIT %s OFFSET %s
+        """, [tenant_id, tenant_id, tenant_id] + ([f"%{q}%"] if q else []) + [per_page, offset])
+        rows = cur.fetchall() or []
+        cur.close(); conn.close()
+        return rows, total
+    except Exception as e:
+        print("⚠️ _get_customers_list error:", e)
+        return [], 0
+
+
+def _get_customer_detail(tenant_id: int, phone: str):
+    """Full profile for one customer: summary + orders + handoffs + recent messages."""
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(dictionary=True, buffered=True)
+
+        # Summary stats
+        cur.execute("""
+            SELECT
+                customer_phone,
+                MIN(created_at) AS first_seen,
+                MAX(created_at) AS last_seen,
+                COUNT(*)        AS message_count,
+                COUNT(CASE WHEN direction='inbound' THEN 1 END) AS inbound_count
+            FROM wa_message_log
+            WHERE tenant_id = %s AND customer_phone = %s
+            GROUP BY customer_phone
+        """, (tenant_id, phone))
+        summary = cur.fetchone()
+
+        if not summary:
+            cur.close(); conn.close()
+            return None
+
+        # Orders
+        cur.execute("""
+            SELECT id, reference, total_amount, status, payment_method,
+                   created_at, dispatched_at, delivered_at
+            FROM orders
+            WHERE tenant_id = %s AND customer_phone = %s
+            ORDER BY created_at DESC
+            LIMIT 50
+        """, (tenant_id, phone))
+        orders = cur.fetchall() or []
+
+        # Annotate orders with pill/label
+        for o in orders:
+            s = o.get("status", "")
+            o["pill"]         = _ORDER_STATUS_PILL.get(s, "pill-grey")
+            o["status_label"] = _ORDER_STATUS_LABEL.get(s, s)
+
+        # Lifetime spend
+        spend = sum(
+            float(o["total_amount"] or 0)
+            for o in orders
+            if o.get("status") in (
+                "PAYMENT_VERIFIED", "PROCESSING",
+                "DISPATCHED", "DELIVERED", "COMPLETED"
+            )
+        )
+
+        # Handoff history
+        cur.execute("""
+            SELECT session_id, escalated_at, resolved_at
+            FROM wa_handoff_state
+            WHERE tenant_id = %s AND customer_phone = %s
+            ORDER BY escalated_at DESC
+            LIMIT 20
+        """, (tenant_id, phone))
+        handoffs = cur.fetchall() or []
+
+        # Last 30 messages (for quick preview)
+        cur.execute("""
+            SELECT direction, content, message_type, created_at
+            FROM wa_message_log
+            WHERE tenant_id = %s AND customer_phone = %s
+            ORDER BY created_at DESC
+            LIMIT 30
+        """, (tenant_id, phone))
+        recent_messages = list(reversed(cur.fetchall() or []))
+
+        cur.close(); conn.close()
+        return {
+            "summary":         summary,
+            "orders":          orders,
+            "total_spent":     spend,
+            "handoffs":        handoffs,
+            "recent_messages": recent_messages,
+        }
+    except Exception as e:
+        print("⚠️ _get_customer_detail error:", e)
+        return None
+
+
+@portal_bp.route("/customers")
+def customers():
+    r = _require_login()
+    if r: return r
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    q = (request.args.get("q") or "").strip()
+    try:
+        page = max(1, int(request.args.get("page") or 1))
+    except (ValueError, TypeError):
+        page = 1
+
+    customer_list, total = _get_customers_list(tenant_id, q=q, page=page)
+    total_pages = max(1, (total + 39) // 40)
+
+    return render_template(
+        "portal/customers.html",
+        customer      = customer,
+        customers     = customer_list,
+        total         = total,
+        total_pages   = total_pages,
+        page          = page,
+        q             = q,
+    )
+
+
+@portal_bp.route("/customers/<path:phone>")
+def customer_detail(phone: str):
+    r = _require_login()
+    if r: return r
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    # Normalise: strip leading + so URL and DB value match
+    phone_clean = phone.lstrip("+")
+
+    detail = _get_customer_detail(tenant_id, phone_clean)
+    if not detail:
+        flash("Customer not found.", "danger")
+        return redirect(url_for("portal.customers"))
+
+    return render_template(
+        "portal/customer_detail.html",
+        customer = customer,
+        detail   = detail,
+        phone    = phone_clean,
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PAYMENT GATEWAYS
+# ══════════════════════════════════════════════════════════════════════════════
+
+import base64 as _b64
+import hashlib as _hashlib
+from cryptography.fernet import Fernet as _Fernet
+
+
+def _get_fernet() -> _Fernet:
+    """Derive a stable Fernet key from PORTAL_SECRET_KEY env var."""
+    raw = os.getenv("PORTAL_SECRET_KEY", "fallback-insecure-key-change-me")
+    key = _b64.urlsafe_b64encode(_hashlib.sha256(raw.encode()).digest())
+    return _Fernet(key)
+
+
+def _encrypt_key(plaintext: str) -> str:
+    return _get_fernet().encrypt(plaintext.encode()).decode()
+
+
+def _decrypt_key(ciphertext: str) -> str:
+    try:
+        return _get_fernet().decrypt(ciphertext.encode()).decode()
+    except Exception:
+        return ""
+
+
+def _get_gateway(tenant_id: int, gateway: str) -> dict:
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur.execute(
+            "SELECT * FROM payment_gateways WHERE tenant_id=%s AND gateway=%s",
+            (tenant_id, gateway),
+        )
+        row = cur.fetchone()
+        cur.close(); conn.close()
+        return row or {}
+    except Exception as e:
+        print(f"⚠️ _get_gateway({gateway}) error:", e)
+        return {}
+
+
+def _get_bank_account(tenant_id: int) -> dict:
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur.execute(
+            "SELECT * FROM merchant_bank_accounts WHERE tenant_id=%s AND is_primary=1 LIMIT 1",
+            (tenant_id,),
+        )
+        row = cur.fetchone()
+        cur.close(); conn.close()
+        return row or {}
+    except Exception as e:
+        print("⚠️ _get_bank_account error:", e)
+        return {}
+
+
+def _webhook_health(last_webhook_at) -> str:
+    """Return 'green', 'amber', or 'red' based on recency of last webhook."""
+    if not last_webhook_at:
+        return "red"
+    age_hours = (datetime.utcnow() - last_webhook_at).total_seconds() / 3600
+    if age_hours < 24:
+        return "green"
+    if age_hours < 48:
+        return "amber"
+    return "red"
+
+
+@portal_bp.route("/settings/payments", methods=["GET"])
+def payment_settings():
+    r = _require_login()
+    if r: return r
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    paystack    = _get_gateway(tenant_id, "paystack")
+    flutterwave = _get_gateway(tenant_id, "flutterwave")
+    bank        = _get_bank_account(tenant_id)
+
+    # Mask secret keys for display — show last 6 chars only
+    def _mask(row):
+        if not row or not row.get("secret_key_enc"):
+            return row
+        try:
+            plain = _decrypt_key(row["secret_key_enc"])
+            row["secret_masked"] = "•" * (len(plain) - 6) + plain[-6:] if len(plain) > 6 else "••••••"
+        except Exception:
+            row["secret_masked"] = "••••••••••••••••"
+        return row
+
+    _mask(paystack)
+    _mask(flutterwave)
+
+    # Webhook health indicators
+    paystack["health"]    = _webhook_health(paystack.get("last_webhook_at")) if paystack else "red"
+    flutterwave["health"] = _webhook_health(flutterwave.get("last_webhook_at")) if flutterwave else "red"
+
+    return render_template(
+        "portal/payment_settings.html",
+        customer    = customer,
+        paystack    = paystack,
+        flutterwave = flutterwave,
+        bank        = bank,
+    )
+
+
+@portal_bp.route("/settings/payments/paystack", methods=["POST"])
+def payment_settings_paystack():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    public_key = (request.form.get("public_key") or "").strip()
+    secret_key = (request.form.get("secret_key") or "").strip()
+
+    if not public_key or not secret_key:
+        flash("Both Public Key and Secret Key are required.", "danger")
+        return redirect(url_for("portal.payment_settings"))
+
+    secret_enc = _encrypt_key(secret_key)
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(buffered=True)
+        cur.execute("""
+            INSERT INTO payment_gateways (tenant_id, gateway, public_key, secret_key_enc)
+            VALUES (%s, 'paystack', %s, %s)
+            ON DUPLICATE KEY UPDATE
+              public_key     = VALUES(public_key),
+              secret_key_enc = VALUES(secret_key_enc),
+              is_active      = 1,
+              updated_at     = NOW()
+        """, (tenant_id, public_key, secret_enc))
+        conn.commit()
+        cur.close(); conn.close()
+        flash("Paystack keys saved and encrypted.", "success")
+    except Exception as e:
+        print("⚠️ payment_settings_paystack error:", e)
+        flash("Failed to save Paystack keys.", "danger")
+
+    return redirect(url_for("portal.payment_settings"))
+
+
+@portal_bp.route("/settings/payments/paystack/remove", methods=["POST"])
+def payment_settings_paystack_remove():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(buffered=True)
+        cur.execute(
+            "DELETE FROM payment_gateways WHERE tenant_id=%s AND gateway='paystack'",
+            (tenant_id,),
+        )
+        conn.commit()
+        cur.close(); conn.close()
+        flash("Paystack disconnected.", "success")
+    except Exception as e:
+        print("⚠️ payment_settings_paystack_remove error:", e)
+        flash("Failed to remove Paystack.", "danger")
+
+    return redirect(url_for("portal.payment_settings"))
+
+
+@portal_bp.route("/settings/payments/flutterwave", methods=["POST"])
+def payment_settings_flutterwave():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    public_key = (request.form.get("public_key") or "").strip()
+    secret_key = (request.form.get("secret_key") or "").strip()
+
+    if not public_key or not secret_key:
+        flash("Both Public Key and Secret Key are required.", "danger")
+        return redirect(url_for("portal.payment_settings"))
+
+    secret_enc = _encrypt_key(secret_key)
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(buffered=True)
+        cur.execute("""
+            INSERT INTO payment_gateways (tenant_id, gateway, public_key, secret_key_enc)
+            VALUES (%s, 'flutterwave', %s, %s)
+            ON DUPLICATE KEY UPDATE
+              public_key     = VALUES(public_key),
+              secret_key_enc = VALUES(secret_key_enc),
+              is_active      = 1,
+              updated_at     = NOW()
+        """, (tenant_id, public_key, secret_enc))
+        conn.commit()
+        cur.close(); conn.close()
+        flash("Flutterwave keys saved and encrypted.", "success")
+    except Exception as e:
+        print("⚠️ payment_settings_flutterwave error:", e)
+        flash("Failed to save Flutterwave keys.", "danger")
+
+    return redirect(url_for("portal.payment_settings"))
+
+
+@portal_bp.route("/settings/payments/flutterwave/remove", methods=["POST"])
+def payment_settings_flutterwave_remove():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(buffered=True)
+        cur.execute(
+            "DELETE FROM payment_gateways WHERE tenant_id=%s AND gateway='flutterwave'",
+            (tenant_id,),
+        )
+        conn.commit()
+        cur.close(); conn.close()
+        flash("Flutterwave disconnected.", "success")
+    except Exception as e:
+        print("⚠️ payment_settings_flutterwave_remove error:", e)
+        flash("Failed to remove Flutterwave.", "danger")
+
+    return redirect(url_for("portal.payment_settings"))
+
+
+@portal_bp.route("/settings/payments/bank", methods=["POST"])
+def payment_settings_bank():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    bank_name      = (request.form.get("bank_name") or "").strip()
+    account_number = (request.form.get("account_number") or "").strip()
+    account_name   = (request.form.get("account_name") or "").strip()
+
+    if not bank_name or not account_number or not account_name:
+        flash("All bank account fields are required.", "danger")
+        return redirect(url_for("portal.payment_settings"))
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(buffered=True)
+        # Upsert: one primary bank account per tenant
+        cur.execute(
+            "SELECT id FROM merchant_bank_accounts WHERE tenant_id=%s AND is_primary=1 LIMIT 1",
+            (tenant_id,),
+        )
+        existing = cur.fetchone()
+        if existing:
+            cur.execute("""
+                UPDATE merchant_bank_accounts
+                   SET bank_name=%s, account_number=%s, account_name=%s, updated_at=NOW()
+                 WHERE tenant_id=%s AND is_primary=1
+            """, (bank_name, account_number, account_name, tenant_id))
+        else:
+            cur.execute("""
+                INSERT INTO merchant_bank_accounts
+                  (tenant_id, bank_name, account_number, account_name, is_primary)
+                VALUES (%s, %s, %s, %s, 1)
+            """, (tenant_id, bank_name, account_number, account_name))
+        conn.commit()
+        cur.close(); conn.close()
+        flash("Bank account saved.", "success")
+    except Exception as e:
+        print("⚠️ payment_settings_bank error:", e)
+        flash("Failed to save bank account.", "danger")
+
+    return redirect(url_for("portal.payment_settings"))
+
+
+@portal_bp.route("/settings/payments/reveal/<gateway>", methods=["POST"])
+def payment_settings_reveal(gateway: str):
+    """AJAX endpoint — returns decrypted secret key for 10-second reveal."""
+    r = _require_login()
+    if r: return jsonify({"error": "not logged in"}), 401
+
+    if gateway not in ("paystack", "flutterwave"):
+        return jsonify({"error": "invalid gateway"}), 400
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    row = _get_gateway(tenant_id, gateway)
+    if not row or not row.get("secret_key_enc"):
+        return jsonify({"error": "no key stored"}), 404
+
+    plain = _decrypt_key(row["secret_key_enc"])
+    if not plain:
+        return jsonify({"error": "decryption failed"}), 500
+
+    return jsonify({"key": plain})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ANALYTICS
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _analytics_data(tenant_id: int, days: int = 30) -> dict:
+    """Collect all analytics data for the given tenant and day window."""
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(dictionary=True, buffered=True)
+
+        # ── Revenue KPIs ──────────────────────────────────────────────────────
+        cur.execute("""
+            SELECT
+              COALESCE(SUM(CASE WHEN DATE(created_at)=CURDATE()
+                THEN total_amount END), 0)                      AS today_revenue,
+              COALESCE(SUM(CASE WHEN created_at >= DATE_SUB(NOW(),INTERVAL 7 DAY)
+                AND status IN ('PAYMENT_VERIFIED','PROCESSING','DISPATCHED','DELIVERED','COMPLETED')
+                THEN total_amount END), 0)                      AS week_revenue,
+              COALESCE(SUM(CASE WHEN created_at >= DATE_SUB(NOW(),INTERVAL %s DAY)
+                AND status IN ('PAYMENT_VERIFIED','PROCESSING','DISPATCHED','DELIVERED','COMPLETED')
+                THEN total_amount END), 0)                      AS period_revenue,
+              COUNT(CASE WHEN created_at >= DATE_SUB(NOW(),INTERVAL %s DAY)
+                THEN 1 END)                                     AS period_orders,
+              COUNT(CASE WHEN created_at >= DATE_SUB(NOW(),INTERVAL %s DAY)
+                AND status IN ('PAYMENT_VERIFIED','PROCESSING','DISPATCHED','DELIVERED','COMPLETED')
+                THEN 1 END)                                     AS paid_orders,
+              COUNT(CASE WHEN created_at >= DATE_SUB(NOW(),INTERVAL %s DAY)
+                AND status IN ('CANCELLED','FAILED') THEN 1 END) AS cancelled_orders,
+              COUNT(DISTINCT CASE WHEN created_at >= DATE_SUB(NOW(),INTERVAL %s DAY)
+                THEN customer_phone END)                        AS unique_customers
+            FROM orders WHERE tenant_id = %s
+        """, (days, days, days, days, days, tenant_id))
+        revenue = cur.fetchone() or {}
+
+        # ── Conversion rate: paid / total orders ──────────────────────────────
+        total_ord = int(revenue.get("period_orders") or 0)
+        paid_ord  = int(revenue.get("paid_orders") or 0)
+        conversion = round((paid_ord / total_ord * 100), 1) if total_ord > 0 else 0
+
+        # ── Avg order value ───────────────────────────────────────────────────
+        period_rev = float(revenue.get("period_revenue") or 0)
+        avg_order  = round(period_rev / paid_ord, 0) if paid_ord > 0 else 0
+
+        # ── Revenue by day (for chart) ────────────────────────────────────────
+        cur.execute("""
+            SELECT DATE(created_at) AS day,
+                   COALESCE(SUM(CASE WHEN status IN
+                     ('PAYMENT_VERIFIED','PROCESSING','DISPATCHED','DELIVERED','COMPLETED')
+                     THEN total_amount ELSE 0 END), 0) AS revenue,
+                   COUNT(*) AS orders
+            FROM orders
+            WHERE tenant_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+            GROUP BY DATE(created_at)
+            ORDER BY day ASC
+        """, (tenant_id, days))
+        daily_rows = cur.fetchall() or []
+        daily_chart = [
+            {"day": str(r["day"]), "revenue": float(r["revenue"]), "orders": int(r["orders"])}
+            for r in daily_rows
+        ]
+
+        # ── Top products ──────────────────────────────────────────────────────
+        cur.execute("""
+            SELECT oi.product_name,
+                   SUM(oi.quantity)   AS units_sold,
+                   SUM(oi.subtotal)   AS revenue
+            FROM order_items oi
+            JOIN orders o ON o.id = oi.order_id
+            WHERE o.tenant_id = %s
+              AND o.created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+              AND o.status IN ('PAYMENT_VERIFIED','PROCESSING','DISPATCHED','DELIVERED','COMPLETED')
+            GROUP BY oi.product_name
+            ORDER BY revenue DESC
+            LIMIT 5
+        """, (tenant_id, days))
+        top_products = cur.fetchall() or []
+
+        # ── AI usage (sessions + tokens from usage_events) ───────────────────
+        cur.execute("""
+            SELECT COUNT(DISTINCT session_id) AS ai_sessions,
+                   COALESCE(SUM(used_tokens), 0) AS total_tokens
+            FROM usage_events
+            WHERE tenant_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+        """, (tenant_id, days))
+        ai_usage = cur.fetchone() or {}
+
+        # ── AI usage by day (for chart) ───────────────────────────────────────
+        cur.execute("""
+            SELECT DATE(created_at) AS day,
+                   COUNT(DISTINCT session_id) AS sessions,
+                   SUM(used_tokens)           AS tokens
+            FROM usage_events
+            WHERE tenant_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+            GROUP BY DATE(created_at)
+            ORDER BY day ASC
+        """, (tenant_id, days))
+        ai_daily = [
+            {"day": str(r["day"]), "sessions": int(r["sessions"] or 0), "tokens": int(r["tokens"] or 0)}
+            for r in (cur.fetchall() or [])
+        ]
+
+        # ── Handoff rate ──────────────────────────────────────────────────────
+        cur.execute("""
+            SELECT COUNT(*) AS handoffs
+            FROM wa_handoff_state
+            WHERE tenant_id = %s AND escalated_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+        """, (tenant_id, days))
+        handoffs_row = cur.fetchone() or {}
+        handoff_count   = int(handoffs_row.get("handoffs") or 0)
+        ai_sessions_cnt = int(ai_usage.get("ai_sessions") or 0)
+        handoff_rate    = round((handoff_count / ai_sessions_cnt * 100), 1) if ai_sessions_cnt > 0 else 0
+
+        cur.close(); conn.close()
+
+        return {
+            "revenue":        revenue,
+            "conversion":     conversion,
+            "avg_order":      avg_order,
+            "daily_chart":    daily_chart,
+            "top_products":   top_products,
+            "ai_usage":       ai_usage,
+            "ai_daily":       ai_daily,
+            "handoff_count":  handoff_count,
+            "handoff_rate":   handoff_rate,
+        }
+    except Exception as e:
+        print("⚠️ _analytics_data error:", e)
+        return {}
+
+
+@portal_bp.route("/analytics")
+def analytics():
+    r = _require_login()
+    if r: return r
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    try:
+        days = int(request.args.get("days") or 30)
+        if days not in (7, 30, 90):
+            days = 30
+    except (ValueError, TypeError):
+        days = 30
+
+    data = _analytics_data(tenant_id, days)
+
+    import json as _json_mod
+    return render_template(
+        "portal/analytics.html",
+        customer     = customer,
+        data         = data,
+        days         = days,
+        daily_json   = _json_mod.dumps(data.get("daily_chart", [])),
+        ai_daily_json= _json_mod.dumps(data.get("ai_daily", [])),
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# DATA SOURCES MODULE  —  /data-sources
+# Supports: Excel/CSV file upload  +  Google Sheets OAuth2 sync
+# ═══════════════════════════════════════════════════════════════════════════
+
+import io      as _io
+import csv     as _csv_mod
+import json    as _ds_json
+import os      as _ds_os
+import tempfile as _tempfile
+
+# ─── File upload directory ────────────────────────────────────────────────
+_DS_UPLOAD_DIR = _ds_os.path.join(
+    _ds_os.path.dirname(__file__), "static", "portal", "datasource_uploads"
+)
+_ds_os.makedirs(_DS_UPLOAD_DIR, exist_ok=True)
+
+_ALLOWED_DS_EXT = {"xlsx", "xls", "csv"}
+
+def _allowed_ds_file(filename: str) -> bool:
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in _ALLOWED_DS_EXT
+
+
+# ─── Google OAuth2 helpers ─────────────────────────────────────────────────
+def _google_flow():
+    """Build a google_auth_oauthlib Flow from env vars."""
+    from google_auth_oauthlib.flow import Flow
+    client_id     = _ds_os.getenv("GOOGLE_OAUTH_CLIENT_ID", "")
+    client_secret = _ds_os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", "")
+    redirect_uri  = _ds_os.getenv("GOOGLE_OAUTH_REDIRECT_URI",
+                                   "https://portal.phixtra.com/data-sources/google/callback")
+    client_config = {
+        "web": {
+            "client_id":                client_id,
+            "client_secret":            client_secret,
+            "auth_uri":                 "https://accounts.google.com/o/oauth2/auth",
+            "token_uri":                "https://oauth2.googleapis.com/token",
+            "redirect_uris":            [redirect_uri],
+            "scopes":                   ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+        }
+    }
+    flow = Flow.from_client_config(
+        client_config,
+        scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"],
+        redirect_uri=redirect_uri,
+    )
+    return flow
+
+
+def _google_oauth_configured() -> bool:
+    return bool(_ds_os.getenv("GOOGLE_OAUTH_CLIENT_ID") and _ds_os.getenv("GOOGLE_OAUTH_CLIENT_SECRET"))
+
+
+def _encrypt_ds(plaintext: str) -> str:
+    return _get_fernet().encrypt(plaintext.encode()).decode()
+
+def _decrypt_ds(ciphertext: str) -> str:
+    return _get_fernet().decrypt(ciphertext.encode()).decode()
+
+
+# ─── Sheet / file reading helpers ─────────────────────────────────────────
+def _read_sheet_rows(source: dict) -> list[dict]:
+    """Fetch rows from Google Sheets API using stored refresh token."""
+    import google.oauth2.credentials as _gcreds
+    import googleapiclient.discovery as _gdisc
+
+    refresh_token = _decrypt_ds(source["refresh_token_enc"])
+    creds = _gcreds.Credentials(
+        token=None,
+        refresh_token=refresh_token,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=_ds_os.getenv("GOOGLE_OAUTH_CLIENT_ID"),
+        client_secret=_ds_os.getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
+    )
+    service = _gdisc.build("sheets", "v4", credentials=creds, cache_discovery=False)
+    sheet_id = source["sheet_id"]
+    tab      = source.get("sheet_tab") or ""
+    range_   = f"'{tab}'!A1:Z1000" if tab else "A1:Z1000"
+    result   = service.spreadsheets().values().get(
+        spreadsheetId=sheet_id, range=range_
+    ).execute()
+    rows = result.get("values", [])
+    if not rows or len(rows) < 2:
+        return []
+    headers = [str(h).strip().lower() for h in rows[0]]
+    return [dict(zip(headers, row)) for row in rows[1:]]
+
+
+def _read_file_rows(source: dict) -> list[dict]:
+    """Read rows from uploaded Excel or CSV file."""
+    fpath = source.get("file_path", "")
+    ext   = fpath.rsplit(".", 1)[-1].lower() if "." in fpath else ""
+    if ext == "csv":
+        with open(fpath, newline="", encoding="utf-8-sig") as f:
+            reader = _csv_mod.DictReader(f)
+            return [{k.strip().lower(): v for k, v in row.items()} for row in reader]
+    else:
+        import openpyxl as _oxl
+        wb   = _oxl.load_workbook(fpath, read_only=True, data_only=True)
+        ws   = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+        wb.close()
+        if not rows or len(rows) < 2:
+            return []
+        headers = [str(h).strip().lower() if h is not None else "" for h in rows[0]]
+        result  = []
+        for row in rows[1:]:
+            result.append({headers[i]: (str(row[i]) if row[i] is not None else "")
+                           for i in range(len(headers))})
+        return result
+
+
+def _preview_rows(rows: list[dict], column_map: dict) -> list[dict]:
+    """Apply a column_map to raw rows and return preview dicts."""
+    preview = []
+    for raw in rows[:5]:
+        preview.append({
+            "name":        raw.get(column_map.get("name", ""), ""),
+            "price":       raw.get(column_map.get("price", ""), ""),
+            "category":    raw.get(column_map.get("category", ""), ""),
+            "description": raw.get(column_map.get("description", ""), ""),
+            "stock":       raw.get(column_map.get("stock", ""), ""),
+        })
+    return preview
+
+
+def _import_rows(tenant_id: int, rows: list[dict], column_map: dict) -> int:
+    """Import rows into the products table. Returns count of rows upserted."""
+    conn = get_db_connection()
+    cur  = conn.cursor(dictionary=True)
+    count = 0
+    for raw in rows:
+        name_col  = column_map.get("name", "")
+        price_col = column_map.get("price", "")
+        name  = str(raw.get(name_col, "")).strip()
+        if not name:
+            continue
+        try:
+            price = float(str(raw.get(price_col, "0")).replace(",", "").replace("₦", "").strip() or 0)
+        except (ValueError, TypeError):
+            price = 0.0
+        desc_col  = column_map.get("description", "")
+        cat_col   = column_map.get("category", "")
+        stock_col = column_map.get("stock", "")
+        img_col   = column_map.get("image_url", "")
+        description = str(raw.get(desc_col, "")).strip() if desc_col else ""
+        category    = str(raw.get(cat_col, "")).strip()  if cat_col  else ""
+        image_url   = str(raw.get(img_col, "")).strip()  if img_col  else ""
+        try:
+            stock_val = int(float(str(raw.get(stock_col, "999")).replace(",", "").strip() or 999))
+        except (ValueError, TypeError):
+            stock_val = 999
+        cur.execute("""
+            INSERT INTO products (tenant_id, name, price, description, category,
+                                  stock_quantity, image_url, is_active)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 1)
+            ON DUPLICATE KEY UPDATE
+                price        = VALUES(price),
+                description  = VALUES(description),
+                category     = VALUES(category),
+                stock_quantity = VALUES(stock_quantity),
+                image_url    = VALUES(image_url),
+                is_active    = 1
+        """, (tenant_id, name, price, description, category, stock_val, image_url or None))
+        count += 1
+    conn.commit()
+    cur.close(); conn.close()
+    return count
+
+
+# ─── DB helpers ───────────────────────────────────────────────────────────
+def _get_data_sources(tenant_id: int) -> list[dict]:
+    conn = get_db_connection()
+    cur  = conn.cursor(dictionary=True)
+    cur.execute("""
+        SELECT id, source_type, display_name, sheet_id, sheet_tab,
+               file_name, column_map, last_synced_at, last_row_count,
+               sync_status, sync_error, is_active, created_at
+        FROM data_sources
+        WHERE tenant_id = %s AND is_active = 1
+        ORDER BY created_at DESC
+    """, (tenant_id,))
+    rows = cur.fetchall() or []
+    cur.close(); conn.close()
+    for r in rows:
+        if r.get("column_map") and isinstance(r["column_map"], str):
+            try:
+                r["column_map"] = _ds_json.loads(r["column_map"])
+            except Exception:
+                r["column_map"] = {}
+    return rows
+
+
+def _get_data_source(tenant_id: int, source_id: int) -> dict | None:
+    conn = get_db_connection()
+    cur  = conn.cursor(dictionary=True)
+    cur.execute("""
+        SELECT * FROM data_sources WHERE id = %s AND tenant_id = %s AND is_active = 1
+    """, (source_id, tenant_id))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    if row and row.get("column_map") and isinstance(row["column_map"], str):
+        try:
+            row["column_map"] = _ds_json.loads(row["column_map"])
+        except Exception:
+            row["column_map"] = {}
+    return row
+
+
+# ─── Routes ───────────────────────────────────────────────────────────────
+
+@portal_bp.route("/data-sources")
+def data_sources():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    sources   = _get_data_sources(tenant_id)
+    return render_template(
+        "portal/data_sources.html",
+        customer          = customer,
+        sources           = sources,
+        google_configured = _google_oauth_configured(),
+    )
+
+
+# ── Excel / CSV upload ────────────────────────────────────────────────────
+
+@portal_bp.route("/data-sources/upload", methods=["POST"])
+def data_source_upload():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    f = request.files.get("file")
+    if not f or not f.filename:
+        flash("No file selected.", "warning")
+        return redirect(url_for("portal.data_sources"))
+
+    if not _allowed_ds_file(f.filename):
+        flash("Only .xlsx, .xls, or .csv files are supported.", "warning")
+        return redirect(url_for("portal.data_sources"))
+
+    from werkzeug.utils import secure_filename as _sf
+    import uuid as _uid
+    ext      = f.filename.rsplit(".", 1)[1].lower()
+    safe_fn  = f"{_uid.uuid4().hex}.{ext}"
+    fpath    = _ds_os.path.join(_DS_UPLOAD_DIR, safe_fn)
+    f.save(fpath)
+
+    # Read first row to discover headers
+    try:
+        source_stub = {"file_path": fpath, "source_type": ext if ext != "xls" else "xlsx"}
+        rows   = _read_file_rows(source_stub)
+        if not rows:
+            _ds_os.remove(fpath)
+            flash("File appears empty or has no data rows.", "warning")
+            return redirect(url_for("portal.data_sources"))
+        headers = list(rows[0].keys())
+    except Exception as e:
+        _ds_os.remove(fpath)
+        flash(f"Could not read file: {e}", "danger")
+        return redirect(url_for("portal.data_sources"))
+
+    # Store the pending source (no column_map yet — user maps next)
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("""
+        INSERT INTO data_sources (tenant_id, source_type, display_name,
+                                  file_name, file_path, sync_status)
+        VALUES (%s, %s, %s, %s, %s, 'pending')
+    """, (tenant_id, ext if ext != "xls" else "excel",
+          f.filename, f.filename, fpath))
+    conn.commit()
+    source_id = cur.lastrowid
+    cur.close(); conn.close()
+
+    # Redirect to column mapping
+    return redirect(url_for("portal.data_source_map", source_id=source_id))
+
+
+@portal_bp.route("/data-sources/<int:source_id>/map", methods=["GET", "POST"])
+def data_source_map(source_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    source    = _get_data_source(tenant_id, source_id)
+    if not source:
+        flash("Source not found.", "danger")
+        return redirect(url_for("portal.data_sources"))
+
+    # Load headers
+    try:
+        rows    = _read_file_rows(source) if source["source_type"] in ("excel","csv","xls") \
+                  else _read_sheet_rows(source)
+        headers = list(rows[0].keys()) if rows else []
+    except Exception as e:
+        flash(f"Could not read data: {e}", "danger")
+        return redirect(url_for("portal.data_sources"))
+
+    if request.method == "POST":
+        column_map = {
+            "name":        request.form.get("col_name", ""),
+            "price":       request.form.get("col_price", ""),
+            "description": request.form.get("col_description", ""),
+            "category":    request.form.get("col_category", ""),
+            "stock":       request.form.get("col_stock", ""),
+            "image_url":   request.form.get("col_image_url", ""),
+        }
+        if not column_map["name"] or not column_map["price"]:
+            flash("Product Name and Price columns are required.", "warning")
+        else:
+            display_name = request.form.get("display_name", "").strip() or source.get("file_name") or "Untitled"
+            conn = get_db_connection()
+            cur  = conn.cursor()
+            cur.execute("""
+                UPDATE data_sources
+                SET column_map = %s, display_name = %s, sync_status = 'idle'
+                WHERE id = %s AND tenant_id = %s
+            """, (_ds_json.dumps(column_map), display_name, source_id, tenant_id))
+            conn.commit()
+            cur.close(); conn.close()
+            flash("Column mapping saved. Ready to import.", "success")
+            return redirect(url_for("portal.data_source_sync", source_id=source_id))
+
+    preview = _preview_rows(rows, source.get("column_map") or {}) if source.get("column_map") else []
+    return render_template(
+        "portal/data_source_map.html",
+        customer  = customer,
+        source    = source,
+        headers   = headers,
+        preview   = preview,
+        sample    = rows[:3],
+    )
+
+
+@portal_bp.route("/data-sources/<int:source_id>/sync", methods=["POST", "GET"])
+def data_source_sync(source_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    source    = _get_data_source(tenant_id, source_id)
+    if not source:
+        flash("Source not found.", "danger")
+        return redirect(url_for("portal.data_sources"))
+
+    if not source.get("column_map"):
+        flash("Please map columns first.", "warning")
+        return redirect(url_for("portal.data_source_map", source_id=source_id))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    try:
+        if source["source_type"] == "google_sheet":
+            rows = _read_sheet_rows(source)
+        else:
+            rows = _read_file_rows(source)
+
+        count = _import_rows(tenant_id, rows, source["column_map"])
+
+        cur.execute("""
+            UPDATE data_sources
+            SET sync_status = 'success', last_synced_at = NOW(),
+                last_row_count = %s, sync_error = NULL
+            WHERE id = %s AND tenant_id = %s
+        """, (count, source_id, tenant_id))
+        conn.commit()
+        flash(f"Imported {count} products successfully.", "success")
+    except Exception as e:
+        cur.execute("""
+            UPDATE data_sources
+            SET sync_status = 'error', sync_error = %s
+            WHERE id = %s AND tenant_id = %s
+        """, (str(e)[:500], source_id, tenant_id))
+        conn.commit()
+        flash(f"Sync failed: {e}", "danger")
+    finally:
+        cur.close(); conn.close()
+
+    return redirect(url_for("portal.data_sources"))
+
+
+@portal_bp.route("/data-sources/<int:source_id>/delete", methods=["POST"])
+def data_source_delete(source_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("""
+        UPDATE data_sources SET is_active = 0
+        WHERE id = %s AND tenant_id = %s
+    """, (source_id, tenant_id))
+    conn.commit()
+    cur.close(); conn.close()
+    flash("Data source removed.", "success")
+    return redirect(url_for("portal.data_sources"))
+
+
+# ── Google Sheets OAuth2 ──────────────────────────────────────────────────
+
+@portal_bp.route("/data-sources/google/connect")
+def data_source_google_connect():
+    r = _require_login()
+    if r: return r
+    if not _google_oauth_configured():
+        flash("Google Sheets integration is not configured yet.", "warning")
+        return redirect(url_for("portal.data_sources"))
+    flow = _google_flow()
+    auth_url, state = flow.authorization_url(
+        access_type="offline",
+        prompt="consent",
+        include_granted_scopes="true",
+    )
+    session["google_oauth_state"] = state
+    return redirect(auth_url)
+
+
+@portal_bp.route("/data-sources/google/callback")
+def data_source_google_callback():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    state = session.pop("google_oauth_state", None)
+    if not state or request.args.get("state") != state:
+        flash("OAuth state mismatch. Please try again.", "danger")
+        return redirect(url_for("portal.data_sources"))
+
+    if "error" in request.args:
+        flash(f"Google sign-in was cancelled or denied.", "warning")
+        return redirect(url_for("portal.data_sources"))
+
+    try:
+        flow = _google_flow()
+        flow.fetch_token(code=request.args.get("code"))
+        credentials = flow.credentials
+        refresh_token_enc = _encrypt_ds(credentials.refresh_token)
+    except Exception as e:
+        flash(f"Failed to complete Google sign-in: {e}", "danger")
+        return redirect(url_for("portal.data_sources"))
+
+    # Store a placeholder source; user will fill in Sheet ID + tab on next step
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("""
+        INSERT INTO data_sources (tenant_id, source_type, display_name,
+                                  refresh_token_enc, sync_status)
+        VALUES (%s, 'google_sheet', 'Google Sheet', %s, 'pending')
+    """, (tenant_id, refresh_token_enc))
+    conn.commit()
+    source_id = cur.lastrowid
+    cur.close(); conn.close()
+
+    flash("Google account connected. Now enter the Sheet ID and set up column mapping.", "success")
+    return redirect(url_for("portal.data_source_google_setup", source_id=source_id))
+
+
+@portal_bp.route("/data-sources/google/<int:source_id>/setup", methods=["GET", "POST"])
+def data_source_google_setup(source_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    source    = _get_data_source(tenant_id, source_id)
+    if not source or source["source_type"] != "google_sheet":
+        flash("Source not found.", "danger")
+        return redirect(url_for("portal.data_sources"))
+
+    headers = []
+    error   = None
+
+    if request.method == "POST":
+        action = request.form.get("action", "preview")
+        sheet_id  = request.form.get("sheet_id", "").strip()
+        sheet_tab = request.form.get("sheet_tab", "").strip()
+        display_name = request.form.get("display_name", "").strip() or "Google Sheet"
+
+        # Update sheet ID + tab first
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("""
+            UPDATE data_sources SET sheet_id = %s, sheet_tab = %s, display_name = %s
+            WHERE id = %s AND tenant_id = %s
+        """, (sheet_id, sheet_tab or None, display_name, source_id, tenant_id))
+        conn.commit()
+        cur.close(); conn.close()
+        source["sheet_id"]  = sheet_id
+        source["sheet_tab"] = sheet_tab
+
+        if action == "preview":
+            try:
+                rows    = _read_sheet_rows(source)
+                headers = list(rows[0].keys()) if rows else []
+                session["gs_headers"] = headers
+            except Exception as e:
+                error = str(e)
+
+        elif action == "save_map":
+            column_map = {
+                "name":        request.form.get("col_name", ""),
+                "price":       request.form.get("col_price", ""),
+                "description": request.form.get("col_description", ""),
+                "category":    request.form.get("col_category", ""),
+                "stock":       request.form.get("col_stock", ""),
+                "image_url":   request.form.get("col_image_url", ""),
+            }
+            if not column_map["name"] or not column_map["price"]:
+                error = "Product Name and Price columns are required."
+            else:
+                conn = get_db_connection()
+                cur  = conn.cursor()
+                cur.execute("""
+                    UPDATE data_sources SET column_map = %s, sync_status = 'idle'
+                    WHERE id = %s AND tenant_id = %s
+                """, (_ds_json.dumps(column_map), source_id, tenant_id))
+                conn.commit()
+                cur.close(); conn.close()
+                flash("Google Sheet configured. Running first sync…", "success")
+                return redirect(url_for("portal.data_source_sync", source_id=source_id))
+
+    headers = headers or session.get("gs_headers", [])
+    return render_template(
+        "portal/data_source_google_setup.html",
+        customer = customer,
+        source   = source,
+        headers  = headers,
+        error    = error,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# WHATSAPP MERCHANT PROVISIONING + OTP LOGIN
+# ═══════════════════════════════════════════════════════════════════════════
+
+import random as _random
+import re     as _re
+import requests as _wa_requests
+
+_WA_GRAPH_BASE = "https://graph.facebook.com/v19.0"
+
+
+# ─── Phone normalisation ──────────────────────────────────────────────────
+
+def _normalise_phone(raw: str) -> str:
+    """
+    Return E.164 with '+' prefix, or '' if the input cannot be normalised.
+    Handles: 08012345678  →  +2348012345678
+             2348012345678 → +2348012345678
+             +2348012345678 → +2348012345678
+    """
+    digits = _re.sub(r"\D", "", raw or "")
+    if not digits:
+        return ""
+    # Nigerian local format: starts with 0 and 11 digits
+    if digits.startswith("0") and len(digits) == 11:
+        digits = "234" + digits[1:]
+    # Bare country code without +
+    if not digits.startswith("+"):
+        digits = "+" + digits
+    else:
+        digits = digits  # already has +
+    return digits if len(digits) >= 8 else ""
+
+
+# ─── OTP helpers ──────────────────────────────────────────────────────────
+
+def _generate_otp() -> str:
+    return str(_random.randint(100000, 999999))
+
+
+def _store_otp(phone: str, code: str) -> None:
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    # Expire any previous unused codes for this phone
+    cur.execute("UPDATE wa_portal_otp SET used=1 WHERE phone=%s AND used=0", (phone,))
+    cur.execute("""
+        INSERT INTO wa_portal_otp (phone, otp_code, expires_at)
+        VALUES (%s, %s, DATE_ADD(NOW(), INTERVAL 10 MINUTE))
+    """, (phone, code))
+    conn.commit()
+    cur.close(); conn.close()
+
+
+def _verify_otp(phone: str, code: str) -> bool:
+    conn = get_db_connection()
+    cur  = conn.cursor(dictionary=True)
+    cur.execute("""
+        SELECT id FROM wa_portal_otp
+        WHERE phone=%s AND otp_code=%s AND used=0 AND expires_at > NOW()
+        ORDER BY id DESC LIMIT 1
+    """, (phone, code))
+    row = cur.fetchone()
+    if row:
+        cur.execute("UPDATE wa_portal_otp SET used=1 WHERE id=%s", (row["id"],))
+        conn.commit()
+    cur.close(); conn.close()
+    return bool(row)
+
+
+def _otp_rate_ok(phone: str) -> bool:
+    """Allow at most 1 OTP request per 60 seconds per phone."""
+    conn = get_db_connection()
+    cur  = conn.cursor(dictionary=True)
+    cur.execute("""
+        SELECT COUNT(*) AS c FROM wa_portal_otp
+        WHERE phone=%s AND created_at > DATE_SUB(NOW(), INTERVAL 60 SECOND)
+    """, (phone,))
+    row = cur.fetchone() or {}
+    cur.close(); conn.close()
+    return int(row.get("c") or 0) == 0
+
+
+# ─── WhatsApp message send (for OTP) ──────────────────────────────────────
+
+def _send_wa_otp(phone: str, otp: str) -> bool:
+    """
+    Send OTP via Meta Cloud API using the configured Phixtra OTP number.
+    Returns True on success, False if not configured or send fails.
+    Env vars required:  WA_OTP_PHONE_NUMBER_ID  +  WA_OTP_ACCESS_TOKEN
+    """
+    phone_number_id = _ds_os.getenv("WA_OTP_PHONE_NUMBER_ID", "")
+    access_token    = _ds_os.getenv("WA_OTP_ACCESS_TOKEN",    "")
+    if not phone_number_id or not access_token:
+        return False
+
+    to = phone.lstrip("+")  # Meta expects E.164 without leading +
+    body = (
+        f"Your PhiXtra portal login code is:\n\n"
+        f"*{otp}*\n\n"
+        f"This code expires in 10 minutes. Do not share it with anyone."
+    )
+    try:
+        r = _wa_requests.post(
+            f"{_WA_GRAPH_BASE}/{phone_number_id}/messages",
+            headers={"Authorization": f"Bearer {access_token}"},
+            json={
+                "messaging_product": "whatsapp",
+                "recipient_type":    "individual",
+                "to":                to,
+                "type":              "text",
+                "text":              {"preview_url": False, "body": body},
+            },
+            timeout=10,
+        )
+        return r.status_code == 200
+    except Exception as e:
+        print("⚠️ [OTP] WA send failed:", e)
+        return False
+
+
+# ─── WhatsApp merchant provisioning ───────────────────────────────────────
+
+def _synthetic_email(phone: str) -> str:
+    """Deterministic placeholder email for WhatsApp-only merchant accounts."""
+    digits = _re.sub(r"\D", "", phone)
+    return f"wa_{digits}@wa.phixtra.internal"
+
+
+def provision_whatsapp_merchant(wa_phone: str, business_name: str) -> dict:
+    """
+    Create tenant + customer + api_key + tenant_balance for a WhatsApp-
+    onboarded merchant.  Idempotent: if the phone already has an account,
+    returns the existing record without creating duplicates.
+
+    Returns {"tenant_id": int, "customer_id": int, "portal_url": str}
+    """
+    phone = _normalise_phone(wa_phone)
+    if not phone:
+        raise ValueError(f"Cannot normalise phone: {wa_phone!r}")
+
+    synth_email = _synthetic_email(phone)
+    conn  = get_db_connection()
+    cur   = conn.cursor(dictionary=True, buffered=True)
+
+    # ── Idempotency check ────────────────────────────────────────────────
+    cur.execute("SELECT id, tenant_id FROM customers WHERE email=%s LIMIT 1", (synth_email,))
+    existing = cur.fetchone()
+    if existing:
+        cur.close(); conn.close()
+        return {
+            "tenant_id":  int(existing["tenant_id"]),
+            "customer_id": int(existing["id"]),
+            "portal_url": "https://portal.phixtra.com",
+        }
+
+    # ── Create tenant ────────────────────────────────────────────────────
+    trial_features = _json.dumps({
+        "product_recommendation":    True,
+        "related_products":          True,
+        "cart_recovery":             True,
+        "verified_specs_web_lookup": True,
+        "chat_archive_unlimited":    True,
+    })
+    cur2 = conn.cursor(buffered=True)
+    cur2.execute("""
+        INSERT INTO tenants (name, domain, status, source_type, features)
+        VALUES (%s, %s, 'active', 'whatsapp', %s)
+    """, (business_name or f"WA Merchant {phone[-4:]}", synth_email, trial_features))
+    conn.commit()
+    tenant_id = int(cur2.lastrowid)
+    cur2.close()
+
+    # ── Create customer account ───────────────────────────────────────────
+    # Email verified = 1 (authenticated via WhatsApp, no email link needed)
+    # Password hash is a random unusable token — WA merchants log in via OTP only
+    unusable_pw = hash_password(make_token(32))
+    cur3 = conn.cursor(buffered=True)
+    cur3.execute("""
+        INSERT INTO customers
+            (tenant_id, first_name, last_name, email, password_hash,
+             phone_number, email_verified, is_active)
+        VALUES (%s, %s, '', %s, %s, %s, 1, 1)
+    """, (tenant_id, business_name or "Merchant", synth_email, unusable_pw, phone))
+    conn.commit()
+    customer_id = int(cur3.lastrowid)
+    cur3.close()
+
+    # ── Auto-generate internal WhatsApp API key ───────────────────────────
+    plain_key, hashed_key = _generate_api_key_and_hash()
+    trial_activated_at = datetime.utcnow()
+    trial_expires_at   = trial_activated_at + timedelta(days=TRIAL_DAYS)
+    TRIAL_TOKEN_LIMIT  = 250000
+    cur4 = conn.cursor(buffered=True)
+    cur4.execute("""
+        INSERT INTO api_keys
+            (tenant_id, api_key_hash, api_key_plain, is_active, website,
+             key_type, trial_activated_at, trial_expires_at, token_limit, tokens_used)
+        VALUES (%s, %s, %s, 1, NULL, 'whatsapp', %s, %s, %s, 0)
+    """, (tenant_id, hashed_key, plain_key,
+          trial_activated_at, trial_expires_at, TRIAL_TOKEN_LIMIT))
+    conn.commit()
+    cur4.close()
+
+    cur.close(); conn.close()
+
+    _ensure_tenant_balance_row(tenant_id)
+
+    insert_audit_log(
+        action="whatsapp_merchant_provisioned",
+        tenant_id=tenant_id,
+        details={"phone": phone, "business_name": business_name},
+    )
+
+    return {
+        "tenant_id":  tenant_id,
+        "customer_id": customer_id,
+        "portal_url": "https://portal.phixtra.com",
+    }
+
+
+# ─── Internal provisioning endpoint ───────────────────────────────────────
+
+@portal_bp.route("/internal/provision-wa-merchant", methods=["POST"])
+def internal_provision_wa_merchant():
+    """
+    Called by the WhatsApp gateway when onboarding completes.
+    Protected by PHIXTRA_INTERNAL_TOKEN env var.
+    """
+    expected_token = _ds_os.getenv("PHIXTRA_INTERNAL_TOKEN", "")
+    auth_header    = request.headers.get("Authorization", "")
+    supplied_token = auth_header.removeprefix("Bearer ").strip()
+
+    if not expected_token or supplied_token != expected_token:
+        return {"error": "unauthorised"}, 401
+
+    data         = request.get_json(silent=True) or {}
+    wa_phone     = (data.get("phone") or "").strip()
+    business_name = (data.get("business_name") or "").strip()
+
+    if not wa_phone:
+        return {"error": "phone is required"}, 400
+
+    try:
+        result = provision_whatsapp_merchant(wa_phone, business_name)
+        return result, 200
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+
+# ─── WhatsApp OTP login routes ────────────────────────────────────────────
+
+@portal_bp.route("/wa-login", methods=["GET"])
+def wa_login():
+    if _logged_in():
+        return redirect(url_for("portal.dashboard"))
+    return render_template("portal/wa_login.html")
+
+
+@portal_bp.route("/wa-login/send", methods=["POST"])
+def wa_login_send():
+    if _logged_in():
+        return redirect(url_for("portal.dashboard"))
+
+    raw_phone = (request.form.get("phone") or "").strip()
+    phone     = _normalise_phone(raw_phone)
+
+    if not phone:
+        flash("Please enter a valid WhatsApp number.", "danger")
+        return redirect(url_for("portal.wa_login"))
+
+    # Check the account exists
+    conn = get_db_connection()
+    cur  = conn.cursor(dictionary=True)
+    cur.execute("""
+        SELECT id FROM customers
+        WHERE phone_number = %s AND is_active = 1
+        LIMIT 1
+    """, (phone,))
+    account = cur.fetchone()
+    cur.close(); conn.close()
+
+    if not account:
+        flash(
+            "No account found for that number. "
+            "If you signed up via WhatsApp onboarding, contact support.",
+            "warning"
+        )
+        return redirect(url_for("portal.wa_login"))
+
+    # Rate limit
+    if not _otp_rate_ok(phone):
+        flash("Please wait 60 seconds before requesting another code.", "warning")
+        return redirect(url_for("portal.wa_login"))
+
+    otp  = _generate_otp()
+    _store_otp(phone, otp)
+    sent = _send_wa_otp(phone, otp)
+
+    session["wa_otp_phone"] = phone
+
+    if sent:
+        flash(f"A 6-digit code has been sent to {phone}. Enter it below.", "success")
+    else:
+        # Dev / unconfigured: show the code in the flash so testing works
+        flash(
+            f"WhatsApp delivery not yet configured — "
+            f"your code for testing is: <strong>{otp}</strong>",
+            "warning"
+        )
+
+    return redirect(url_for("portal.wa_login_verify"))
+
+
+@portal_bp.route("/wa-login/verify", methods=["GET", "POST"])
+def wa_login_verify():
+    if _logged_in():
+        return redirect(url_for("portal.dashboard"))
+
+    phone = session.get("wa_otp_phone", "")
+    if not phone:
+        flash("Session expired. Please start again.", "warning")
+        return redirect(url_for("portal.wa_login"))
+
+    if request.method == "GET":
+        return render_template("portal/wa_login_verify.html", phone=phone)
+
+    code = (request.form.get("code") or "").strip().replace(" ", "")
+    if not code or len(code) != 6:
+        flash("Enter the 6-digit code exactly as received.", "danger")
+        return render_template("portal/wa_login_verify.html", phone=phone)
+
+    if not _verify_otp(phone, code):
+        flash("Incorrect or expired code. Try again or request a new one.", "danger")
+        return render_template("portal/wa_login_verify.html", phone=phone)
+
+    # Code verified — find the customer
+    conn = get_db_connection()
+    cur  = conn.cursor(dictionary=True)
+    cur.execute("""
+        SELECT id FROM customers
+        WHERE phone_number = %s AND is_active = 1
+        LIMIT 1
+    """, (phone,))
+    c = cur.fetchone()
+    cur.close(); conn.close()
+
+    if not c:
+        flash("Account not found. Please contact support.", "danger")
+        return redirect(url_for("portal.wa_login"))
+
+    session.pop("wa_otp_phone", None)
+    session.clear()
+    session["portal_logged_in"] = True
+    session["customer_id"]      = int(c["id"])
+
+    return redirect(url_for("portal.dashboard"))
+
+
+@portal_bp.route("/wa-login/resend", methods=["POST"])
+def wa_login_resend():
+    phone = session.get("wa_otp_phone", "")
+    if not phone:
+        return redirect(url_for("portal.wa_login"))
+
+    if not _otp_rate_ok(phone):
+        flash("Please wait 60 seconds before requesting another code.", "warning")
+        return redirect(url_for("portal.wa_login_verify"))
+
+    otp  = _generate_otp()
+    _store_otp(phone, otp)
+    sent = _send_wa_otp(phone, otp)
+
+    if sent:
+        flash("A new code has been sent.", "success")
+    else:
+        flash(
+            f"WhatsApp delivery not configured — code for testing: <strong>{otp}</strong>",
+            "warning"
+        )
+    return redirect(url_for("portal.wa_login_verify"))

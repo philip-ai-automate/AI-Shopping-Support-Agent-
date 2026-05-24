@@ -45,7 +45,11 @@
             {% endif %}
           </td>
           <td>
-            {% if k.api_key_plain %}
+            {% if k.key_type == 'whatsapp' %}
+            <span style="font-size:12px;color:var(--muted);font-style:italic">
+              📱 Managed automatically by PhiXtra
+            </span>
+            {% elif k.api_key_plain %}
             <div style="display:flex;align-items:center;gap:8px">
               <code id="key-{{ k.id }}" class="code-box"
                     style="font-size:12px;padding:4px 8px;letter-spacing:0.03em;

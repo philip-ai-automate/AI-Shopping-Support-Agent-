@@ -1,0 +1,176 @@
+{% extends "portal/base.html" %}
+{% block title %}{{ 'Edit Product' if mode == 'edit' else 'Add Product' }} — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  .form-card{max-width:640px}
+  .img-preview-wrap{margin-top:8px}
+  .img-preview{max-width:180px;max-height:180px;object-fit:cover;
+    border-radius:12px;border:1px solid var(--line);display:block}
+  .img-or{font-size:12px;color:var(--muted);margin:10px 0 6px;font-weight:600;
+    text-transform:uppercase;letter-spacing:.05em}
+  .stock-hint{font-size:12px;color:var(--muted);margin-top:4px}
+
+  /* Category datalist suggestions */
+  input[list]{cursor:pointer}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div style="margin-bottom:18px">
+  <a href="{{ url_for('portal.products') }}"
+     style="font-size:13px;color:var(--muted);text-decoration:none;
+            display:inline-flex;align-items:center;gap:5px">
+    ← Back to Products
+  </a>
+</div>
+
+<div class="page-header" style="margin-bottom:22px">
+  <div class="section-title">
+    {{ 'Edit Product' if mode == 'edit' else 'Add New Product' }}
+  </div>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+  <div class="flash {{ cat }}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+<div class="card form-card">
+  <form method="POST"
+        enctype="multipart/form-data"
+        action="{{ url_for('portal.product_edit', product_id=product.id) if mode == 'edit' else url_for('portal.product_add') }}">
+
+    <!-- Name -->
+    <div class="form-group">
+      <label for="name">Product Name *</label>
+      <input type="text" id="name" name="name" required
+             value="{{ product.name if product else '' }}"
+             placeholder="e.g. Ankara Midi Dress">
+    </div>
+
+    <!-- Price + Stock row -->
+    <div class="form-row">
+      <div class="form-group" style="margin-bottom:0">
+        <label for="price">Price (₦) *</label>
+        <input type="text" id="price" name="price" required
+               inputmode="numeric"
+               value="{{ '{:,.0f}'.format(product.price|float) if product and product.price else '' }}"
+               placeholder="e.g. 12500">
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label for="stock_quantity">Stock Quantity</label>
+        <input type="number" id="stock_quantity" name="stock_quantity"
+               min="0" max="99999"
+               value="{{ product.stock_quantity if product else '0' }}"
+               placeholder="0">
+        <div class="stock-hint">
+          Enter 999 if you have unlimited stock.
+          Enter 0 to mark as out of stock.
+        </div>
+      </div>
+    </div>
+
+    <!-- Category -->
+    <div class="form-group" style="margin-top:16px">
+      <label for="category">Category <span style="color:var(--muted)">(optional)</span></label>
+      <input type="text" id="category" name="category"
+             list="category-suggestions"
+             value="{{ product.category if product and product.category else '' }}"
+             placeholder="e.g. Clothing, Shoes, Electronics">
+      <datalist id="category-suggestions">
+        <option value="Clothing">
+        <option value="Shoes">
+        <option value="Accessories">
+        <option value="Electronics">
+        <option value="Food & Drinks">
+        <option value="Beauty & Skincare">
+        <option value="Home & Kitchen">
+        <option value="Baby & Kids">
+        <option value="Books & Stationery">
+        <option value="Health & Wellness">
+        <option value="Sports & Fitness">
+        <option value="Auto Parts">
+      </datalist>
+    </div>
+
+    <!-- Description -->
+    <div class="form-group">
+      <label for="description">Description <span style="color:var(--muted)">(optional)</span></label>
+      <textarea id="description" name="description" rows="3"
+                placeholder="Brief product description the AI can use when answering customer questions...">{{ product.description if product and product.description else '' }}</textarea>
+    </div>
+
+    <!-- Image -->
+    <div class="form-group">
+      <label>Product Image <span style="color:var(--muted)">(optional)</span></label>
+
+      <!-- Current image preview (edit mode) -->
+      {% if mode == 'edit' and product and product.image_url %}
+      <div class="img-preview-wrap" style="margin-bottom:12px">
+        <img src="{{ product.image_url }}" alt="Current image" class="img-preview"
+             onerror="this.style.display='none'">
+        <div class="muted" style="font-size:12px;margin-top:6px">Current image</div>
+      </div>
+      {% endif %}
+
+      <!-- Upload file -->
+      <label style="font-size:12px;font-weight:600;color:var(--muted);
+                    text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">
+        Upload a photo
+      </label>
+      <input type="file" name="image_file" accept="image/*"
+             style="padding:8px;font-size:13px"
+             onchange="previewImage(this)">
+      <div id="uploadPreview" class="img-preview-wrap" style="display:none;margin-top:8px">
+        <img id="uploadPreviewImg" class="img-preview" alt="Preview">
+      </div>
+
+      <div class="img-or">— or paste a URL —</div>
+
+      <input type="url" name="image_url"
+             value="{{ product.image_url if product and product.image_url else '' }}"
+             placeholder="https://example.com/product.jpg">
+      <div class="muted" style="font-size:12px;margin-top:4px">
+        Uploaded photo takes priority over URL if both are provided.
+      </div>
+    </div>
+
+    <!-- Submit -->
+    <div style="display:flex;gap:10px;margin-top:8px;align-items:center">
+      <button type="submit" class="btn btn-primary">
+        {{ 'Save Changes' if mode == 'edit' else 'Add Product' }}
+      </button>
+      <a href="{{ url_for('portal.products') }}" class="btn">Cancel</a>
+
+      {% if mode == 'edit' %}
+      <div style="flex:1"></div>
+      <form method="POST"
+            action="{{ url_for('portal.product_delete', product_id=product.id) }}"
+            onsubmit="return confirm('Remove this product from your catalogue?')"
+            style="display:inline">
+        <button type="submit" class="btn btn-danger btn-sm">Remove Product</button>
+      </form>
+      {% endif %}
+    </div>
+
+  </form>
+</div>
+
+<script>
+function previewImage(input) {
+  const wrap = document.getElementById('uploadPreview');
+  const img  = document.getElementById('uploadPreviewImg');
+  if (input.files && input.files[0]) {
+    const reader = new FileReader();
+    reader.onload = e => { img.src = e.target.result; wrap.style.display = 'block'; };
+    reader.readAsDataURL(input.files[0]);
+  } else {
+    wrap.style.display = 'none';
+  }
+}
+</script>
+
+{% endblock %}

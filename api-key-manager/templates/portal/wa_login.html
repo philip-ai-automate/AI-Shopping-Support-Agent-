@@ -1,0 +1,48 @@
+{% extends "portal/base.html" %}
+{% block title %}Log in with WhatsApp — PhiXtra Portal{% endblock %}
+{% block wrap_class %}page-sm{% endblock %}
+
+{% block content %}
+<div class="card" style="margin-top:12px">
+
+  <!-- Logo + header -->
+  <div style="text-align:center;margin-bottom:22px">
+    <div style="display:inline-flex;align-items:center;justify-content:center;
+                width:52px;height:52px;border-radius:14px;
+                background:rgba(37,211,102,0.12);font-size:28px;margin-bottom:10px">
+      📱
+    </div>
+    <h1 style="font-size:21px;font-weight:800;margin-bottom:4px">Log in with WhatsApp</h1>
+    <p class="muted">For merchants who signed up via WhatsApp</p>
+  </div>
+
+  <form method="POST" action="{{ url_for('portal.wa_login_send') }}">
+    <div class="form-group">
+      <label>WhatsApp number</label>
+      <input type="tel" name="phone" required autofocus
+             placeholder="+234 801 234 5678"
+             style="font-size:16px;letter-spacing:.03em"
+             inputmode="tel"/>
+      <div style="font-size:12px;color:var(--muted);margin-top:5px">
+        Enter the same number you used when setting up on WhatsApp.
+        Nigerian numbers: start with 0 (e.g. 08012345678) or +234.
+      </div>
+    </div>
+
+    <button class="btn btn-primary" type="submit"
+            style="width:100%;justify-content:center;font-size:15px;padding:13px">
+      Send login code →
+    </button>
+  </form>
+
+  <div class="divider"></div>
+
+  <div style="text-align:center;font-size:13px;color:var(--muted)">
+    Have an email account?
+    <a href="{{ url_for('portal.login') }}" style="font-weight:600;color:var(--ink)">
+      Log in with email
+    </a>
+  </div>
+
+</div>
+{% endblock %}

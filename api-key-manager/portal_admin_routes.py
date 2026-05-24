@@ -1383,3 +1383,74 @@ def customer_send_reset(customer_id: int):
         flash(f"Reset token created but email could not be sent. Link: {link}", "warning")
 
     return redirect(url_for("portal_admin.customer_detail", customer_id=customer_id))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WHATSAPP MERCHANT ONBOARDING
+# ══════════════════════════════════════════════════════════════════════════════
+
+@portal_admin_bp.route("/onboard-wa", methods=["GET", "POST"])
+def onboard_wa():
+    r = _require_admin()
+    if r: return r
+
+    if request.method == "POST":
+        from portal_routes import provision_whatsapp_merchant, _normalise_phone
+        raw_phone     = (request.form.get("phone")         or "").strip()
+        business_name = (request.form.get("business_name") or "").strip()
+        notes         = (request.form.get("notes")         or "").strip()
+
+        if not raw_phone or not business_name:
+            flash("Phone number and business name are both required.", "danger")
+            return redirect(url_for("portal_admin.onboard_wa"))
+
+        phone = _normalise_phone(raw_phone)
+        if not phone:
+            flash(f"Could not parse phone number: {raw_phone!r}. Use +234… or 0801… format.", "danger")
+            return redirect(url_for("portal_admin.onboard_wa"))
+
+        try:
+            result = provision_whatsapp_merchant(phone, business_name)
+            insert_audit_log(
+                action="admin_onboarded_wa_merchant",
+                admin_username=_admin_user(),
+                tenant_id=result["tenant_id"],
+                details={"phone": phone, "business_name": business_name, "notes": notes},
+            )
+            flash(
+                f"✅ <strong>{business_name}</strong> provisioned. "
+                f"Tenant #{result['tenant_id']} · Customer #{result['customer_id']}. "
+                f"They can log in at <a href='https://portal.phixtra.com/wa-login' target='_blank'>"
+                f"portal.phixtra.com/wa-login</a> using <strong>{phone}</strong>.",
+                "success"
+            )
+        except Exception as e:
+            flash(f"Provisioning failed: {e}", "danger")
+
+        return redirect(url_for("portal_admin.onboard_wa"))
+
+    # ── GET: load existing WA merchants ──────────────────────────────────────
+    conn = get_db_connection()
+    cur  = conn.cursor(dictionary=True)
+    cur.execute("""
+        SELECT
+            t.id            AS tenant_id,
+            t.name          AS business_name,
+            t.status,
+            t.created_at    AS provisioned_at,
+            c.phone_number,
+            c.id            AS customer_id,
+            c.is_active,
+            COALESCE(tb.token_balance, 0) AS token_balance
+        FROM tenants t
+        JOIN customers c        ON c.tenant_id = t.id
+        LEFT JOIN tenant_balances tb ON tb.tenant_id = t.id
+        WHERE t.source_type = 'whatsapp'
+        ORDER BY t.created_at DESC
+        LIMIT 100
+    """)
+    merchants = cur.fetchall() or []
+    cur.close(); conn.close()
+
+    return render_template("portal/admin_onboard_wa.html",
+                           merchants=merchants)

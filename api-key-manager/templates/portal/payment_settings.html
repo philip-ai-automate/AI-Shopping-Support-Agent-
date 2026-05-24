@@ -1,0 +1,420 @@
+{% extends "portal/base.html" %}
+{% block title %}Payment Gateways — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  .gateway-card{margin-bottom:20px}
+  .gateway-header{display:flex;align-items:center;justify-content:space-between;
+    flex-wrap:wrap;gap:12px;margin-bottom:18px}
+  .gateway-logo{display:flex;align-items:center;gap:10px}
+  .gateway-logo .logo-badge{width:40px;height:40px;border-radius:10px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:20px;flex-shrink:0;border:1px solid var(--line)}
+  .gateway-name{font-size:16px;font-weight:700}
+  .gateway-status{font-size:12px;color:var(--muted);margin-top:2px}
+
+  /* ── Health dot ── */
+  .health-dot{display:inline-block;width:9px;height:9px;border-radius:50%;
+    margin-right:5px;flex-shrink:0}
+  .health-green{background:var(--good)}
+  .health-amber{background:var(--warn)}
+  .health-red  {background:var(--bad)}
+
+  /* ── Key display row ── */
+  .key-row{display:flex;align-items:center;gap:8px;background:rgba(3,12,24,0.03);
+    border:1px solid var(--line);border-radius:10px;padding:10px 13px;
+    font-family:"SF Mono","Fira Code",monospace;font-size:13px}
+  .key-value{flex:1;word-break:break-all;letter-spacing:.02em}
+  .reveal-btn{padding:5px 10px;border-radius:8px;border:1px solid var(--line);
+    background:#fff;font-size:12px;font-weight:600;cursor:pointer;
+    color:var(--txt);transition:.12s;white-space:nowrap;font-family:inherit}
+  .reveal-btn:hover{background:rgba(3,12,24,0.05)}
+
+  /* ── Section divider ── */
+  .form-section{margin-bottom:20px}
+  .form-section-title{font-size:12px;font-weight:700;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;
+    padding-bottom:8px;border-bottom:1px solid var(--line)}
+
+  /* ── Webhook health bar ── */
+  .webhook-bar{display:flex;align-items:center;gap:8px;padding:10px 13px;
+    border-radius:10px;border:1px solid var(--line);font-size:13px;
+    margin-bottom:16px}
+  .webhook-bar.health-green{border-color:rgba(18,183,106,0.30);
+    background:rgba(18,183,106,0.06)}
+  .webhook-bar.health-amber{border-color:rgba(247,144,9,0.30);
+    background:rgba(247,144,9,0.06)}
+  .webhook-bar.health-red  {border-color:rgba(240,68,56,0.30);
+    background:rgba(240,68,56,0.05)}
+
+  /* ── Not connected state ── */
+  .not-connected{text-align:center;padding:24px;color:var(--muted);
+    background:rgba(3,12,24,0.02);border-radius:12px;border:1px dashed var(--line);
+    margin-bottom:16px}
+  .not-connected .nc-icon{font-size:28px;opacity:.35;margin-bottom:8px}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="margin-bottom:22px">
+  <div>
+    <div class="section-title">Payment Gateways</div>
+    <p class="muted">Connect Paystack or Flutterwave for automatic payment confirmation.
+      Add your bank account for customers who pay by transfer.</p>
+  </div>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+  <div class="flash {{ cat }}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+<!-- ═══════════════════════════════════════════════
+     PAYSTACK
+════════════════════════════════════════════════ -->
+<div class="card gateway-card">
+  <div class="gateway-header">
+    <div class="gateway-logo">
+      <div class="logo-badge" style="background:#00c3f7;color:#fff">💳</div>
+      <div>
+        <div class="gateway-name">Paystack</div>
+        <div class="gateway-status">
+          {% if paystack and paystack.is_active %}
+            <span style="color:var(--good);font-weight:600">● Connected</span>
+          {% else %}
+            <span style="color:var(--muted)">Not connected</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% if paystack and paystack.is_active %}
+    <form method="POST"
+          action="{{ url_for('portal.payment_settings_paystack_remove') }}"
+          onsubmit="return confirm('Disconnect Paystack? Auto-confirmation will stop working.')">
+      <button type="submit" class="btn btn-danger btn-sm">Disconnect</button>
+    </form>
+    {% endif %}
+  </div>
+
+  {% if paystack and paystack.is_active %}
+
+  <!-- Webhook health -->
+  <div class="webhook-bar health-{{ paystack.health }}">
+    <span class="health-dot health-{{ paystack.health }}"></span>
+    {% if paystack.health == 'green' %}
+      Webhook active — last event received within 24 hours
+    {% elif paystack.health == 'amber' %}
+      Webhook not seen in 24–48 hours — check your Paystack dashboard
+    {% else %}
+      No webhook received yet — paste your webhook URL in Paystack dashboard
+    {% endif %}
+    {% if paystack.last_webhook_at %}
+    <span style="margin-left:auto;font-size:11px;color:var(--muted)">
+      Last: {{ paystack.last_webhook_at.strftime('%d %b %H:%M') }}
+    </span>
+    {% endif %}
+  </div>
+
+  <!-- Current keys -->
+  <div class="form-section">
+    <div class="form-section-title">Current Keys</div>
+    <div style="margin-bottom:10px">
+      <label style="margin-bottom:5px">Public Key</label>
+      <div class="key-row">
+        <span class="key-value">{{ paystack.public_key or '—' }}</span>
+      </div>
+    </div>
+    <div>
+      <label style="margin-bottom:5px">Secret Key</label>
+      <div class="key-row">
+        <span class="key-value" id="ps-secret-display">{{ paystack.secret_masked or '••••••••••••••••' }}</span>
+        <button class="reveal-btn" onclick="revealKey('paystack','ps-secret-display',this)">
+          Reveal
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Webhook URL to copy -->
+  <div class="form-section">
+    <div class="form-section-title">Webhook URL (paste this in Paystack dashboard)</div>
+    <div class="key-row" style="gap:10px">
+      <span class="key-value" id="ps-webhook-url">
+        https://api.phixtra.com/webhooks/paystack/{{ customer.tenant_id }}
+      </span>
+      <button class="reveal-btn"
+              onclick="navigator.clipboard.writeText(document.getElementById('ps-webhook-url').textContent.trim());this.textContent='Copied!'">
+        Copy
+      </button>
+    </div>
+  </div>
+
+  <!-- Update keys -->
+  <details style="margin-top:4px">
+    <summary style="font-size:13px;font-weight:600;cursor:pointer;color:var(--muted);
+                    padding:4px 0">Update Keys</summary>
+    <div style="margin-top:14px">
+
+  {% endif %}
+
+  {% if not paystack or not paystack.is_active %}
+  <div class="not-connected">
+    <div class="nc-icon">🔌</div>
+    <div style="font-weight:600;margin-bottom:4px">Not connected</div>
+    <p style="font-size:13px;margin:0">Enter your Paystack API keys below to enable automatic payment confirmation.</p>
+  </div>
+  {% endif %}
+
+  <form method="POST" action="{{ url_for('portal.payment_settings_paystack') }}">
+    <div class="form-row">
+      <div class="form-group" style="margin-bottom:0">
+        <label>Public Key</label>
+        <input type="text" name="public_key" required
+               placeholder="pk_live_xxxxxxxxxxxxxxxxxxxx"
+               value="{{ paystack.public_key if paystack and paystack.public_key else '' }}">
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label>Secret Key</label>
+        <input type="password" name="secret_key" required
+               autocomplete="new-password"
+               placeholder="sk_live_xxxxxxxxxxxxxxxxxxxx">
+      </div>
+    </div>
+    <div style="margin-top:14px">
+      <button type="submit" class="btn btn-primary btn-sm">
+        {{ 'Update Keys' if (paystack and paystack.is_active) else 'Connect Paystack' }}
+      </button>
+    </div>
+  </form>
+
+  {% if paystack and paystack.is_active %}
+    </div>
+  </details>
+  {% endif %}
+
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     FLUTTERWAVE
+════════════════════════════════════════════════ -->
+<div class="card gateway-card">
+  <div class="gateway-header">
+    <div class="gateway-logo">
+      <div class="logo-badge" style="background:#f5a623;color:#fff">💳</div>
+      <div>
+        <div class="gateway-name">Flutterwave</div>
+        <div class="gateway-status">
+          {% if flutterwave and flutterwave.is_active %}
+            <span style="color:var(--good);font-weight:600">● Connected</span>
+          {% else %}
+            <span style="color:var(--muted)">Not connected</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% if flutterwave and flutterwave.is_active %}
+    <form method="POST"
+          action="{{ url_for('portal.payment_settings_flutterwave_remove') }}"
+          onsubmit="return confirm('Disconnect Flutterwave? Auto-confirmation will stop working.')">
+      <button type="submit" class="btn btn-danger btn-sm">Disconnect</button>
+    </form>
+    {% endif %}
+  </div>
+
+  {% if flutterwave and flutterwave.is_active %}
+
+  <div class="webhook-bar health-{{ flutterwave.health }}">
+    <span class="health-dot health-{{ flutterwave.health }}"></span>
+    {% if flutterwave.health == 'green' %}
+      Webhook active — last event received within 24 hours
+    {% elif flutterwave.health == 'amber' %}
+      Webhook not seen in 24–48 hours — check your Flutterwave dashboard
+    {% else %}
+      No webhook received yet — paste your webhook URL in Flutterwave dashboard
+    {% endif %}
+    {% if flutterwave.last_webhook_at %}
+    <span style="margin-left:auto;font-size:11px;color:var(--muted)">
+      Last: {{ flutterwave.last_webhook_at.strftime('%d %b %H:%M') }}
+    </span>
+    {% endif %}
+  </div>
+
+  <div class="form-section">
+    <div class="form-section-title">Current Keys</div>
+    <div style="margin-bottom:10px">
+      <label style="margin-bottom:5px">Public Key</label>
+      <div class="key-row">
+        <span class="key-value">{{ flutterwave.public_key or '—' }}</span>
+      </div>
+    </div>
+    <div>
+      <label style="margin-bottom:5px">Secret Key</label>
+      <div class="key-row">
+        <span class="key-value" id="fw-secret-display">{{ flutterwave.secret_masked or '••••••••••••••••' }}</span>
+        <button class="reveal-btn" onclick="revealKey('flutterwave','fw-secret-display',this)">
+          Reveal
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="form-section">
+    <div class="form-section-title">Webhook URL (paste this in Flutterwave dashboard)</div>
+    <div class="key-row">
+      <span class="key-value" id="fw-webhook-url">
+        https://api.phixtra.com/webhooks/flutterwave/{{ customer.tenant_id }}
+      </span>
+      <button class="reveal-btn"
+              onclick="navigator.clipboard.writeText(document.getElementById('fw-webhook-url').textContent.trim());this.textContent='Copied!'">
+        Copy
+      </button>
+    </div>
+  </div>
+
+  <details style="margin-top:4px">
+    <summary style="font-size:13px;font-weight:600;cursor:pointer;color:var(--muted);
+                    padding:4px 0">Update Keys</summary>
+    <div style="margin-top:14px">
+  {% endif %}
+
+  {% if not flutterwave or not flutterwave.is_active %}
+  <div class="not-connected">
+    <div class="nc-icon">🔌</div>
+    <div style="font-weight:600;margin-bottom:4px">Not connected</div>
+    <p style="font-size:13px;margin:0">Enter your Flutterwave API keys below to enable automatic payment confirmation.</p>
+  </div>
+  {% endif %}
+
+  <form method="POST" action="{{ url_for('portal.payment_settings_flutterwave') }}">
+    <div class="form-row">
+      <div class="form-group" style="margin-bottom:0">
+        <label>Public Key</label>
+        <input type="text" name="public_key" required
+               placeholder="FLWPUBK-xxxxxxxxxxxxxxxxxxxx-X"
+               value="{{ flutterwave.public_key if flutterwave and flutterwave.public_key else '' }}">
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label>Secret Key</label>
+        <input type="password" name="secret_key" required
+               autocomplete="new-password"
+               placeholder="FLWSECK-xxxxxxxxxxxxxxxxxxxx-X">
+      </div>
+    </div>
+    <div style="margin-top:14px">
+      <button type="submit" class="btn btn-primary btn-sm">
+        {{ 'Update Keys' if (flutterwave and flutterwave.is_active) else 'Connect Flutterwave' }}
+      </button>
+    </div>
+  </form>
+
+  {% if flutterwave and flutterwave.is_active %}
+    </div>
+  </details>
+  {% endif %}
+
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     BANK TRANSFER
+════════════════════════════════════════════════ -->
+<div class="card gateway-card">
+  <div class="gateway-header">
+    <div class="gateway-logo">
+      <div class="logo-badge" style="background:#030C18;color:#fff">🏦</div>
+      <div>
+        <div class="gateway-name">Bank Transfer</div>
+        <div class="gateway-status">
+          {% if bank %}
+            <span style="color:var(--good);font-weight:600">● Active</span>
+            — {{ bank.bank_name }}, {{ bank.account_number }}
+          {% else %}
+            <span style="color:var(--muted)">Not set up</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="muted" style="margin-bottom:16px;font-size:13px">
+    This account is shown to customers who choose to pay by bank transfer.
+    The AI will quote these details when a customer is ready to pay.
+  </p>
+
+  <form method="POST" action="{{ url_for('portal.payment_settings_bank') }}">
+    <div class="form-row">
+      <div class="form-group" style="margin-bottom:0">
+        <label>Bank Name</label>
+        <input type="text" name="bank_name" required
+               list="bank-list"
+               placeholder="e.g. GTBank, Access Bank, Zenith"
+               value="{{ bank.bank_name if bank else '' }}">
+        <datalist id="bank-list">
+          <option value="GTBank">
+          <option value="Access Bank">
+          <option value="Zenith Bank">
+          <option value="First Bank">
+          <option value="UBA">
+          <option value="Fidelity Bank">
+          <option value="Sterling Bank">
+          <option value="Stanbic IBTC">
+          <option value="FCMB">
+          <option value="Wema Bank">
+          <option value="Polaris Bank">
+          <option value="Opay">
+          <option value="PalmPay">
+          <option value="Kuda Bank">
+          <option value="Moniepoint">
+        </datalist>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label>Account Number</label>
+        <input type="text" name="account_number" required
+               pattern="[0-9]{10}" maxlength="10" inputmode="numeric"
+               placeholder="10-digit account number"
+               value="{{ bank.account_number if bank else '' }}">
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:14px">
+      <label>Account Name</label>
+      <input type="text" name="account_name" required
+             placeholder="Exact name as it appears on the account"
+             value="{{ bank.account_name if bank else '' }}">
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm">
+      {{ 'Update Bank Account' if bank else 'Save Bank Account' }}
+    </button>
+  </form>
+</div>
+
+<script>
+function revealKey(gateway, displayId, btn) {
+  btn.textContent = 'Loading…';
+  btn.disabled = true;
+
+  fetch('/settings/payments/reveal/' + gateway, {method:'POST'})
+    .then(r => r.json())
+    .then(data => {
+      if (data.key) {
+        document.getElementById(displayId).textContent = data.key;
+        btn.textContent = 'Hide';
+        btn.disabled = false;
+        btn.onclick = function() {
+          document.getElementById(displayId).textContent = '{{ paystack.secret_masked if gateway == "paystack" else (flutterwave.secret_masked if flutterwave else "••••••••••••••••") }}';
+          btn.textContent = 'Reveal';
+          btn.onclick = function(){ revealKey(gateway, displayId, btn); };
+        };
+        // Auto-hide after 10 seconds
+        setTimeout(() => { if(btn.textContent === 'Hide') btn.click(); }, 10000);
+      } else {
+        btn.textContent = 'Error';
+        btn.disabled = false;
+      }
+    })
+    .catch(() => { btn.textContent = 'Error'; btn.disabled = false; });
+}
+</script>
+
+{% endblock %}

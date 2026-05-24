@@ -334,6 +334,38 @@
           </label>
         </div>
 
+        <!-- ── Daily WhatsApp Report ──────────────────────────────────── -->
+        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line)">
+          <div style="font-size:12px;font-weight:700;color:var(--muted);
+                      text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px">
+            WhatsApp Reports
+          </div>
+        </div>
+        <div class="toggle-row" id="dailyReportToggleRow">
+          <div class="toggle-info">
+            <strong>Daily WhatsApp Summary</strong>
+            <span>Receive yesterday's orders, revenue, and AI stats every morning at 8 AM.</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" name="daily_report_enabled" id="dailyReportToggle"
+                   {% if daily_report_enabled %}checked{% endif %}
+                   onchange="document.getElementById('reportPhoneRow').style.display=this.checked?'':'none'"/>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div id="reportPhoneRow"
+             style="margin-top:12px;{% if not daily_report_enabled %}display:none;{% endif %}">
+          <label style="font-size:13px;color:var(--muted);margin-bottom:5px;display:block">
+            Deliver report to WhatsApp number
+            <span style="font-weight:400">(leave blank to use your account phone)</span>
+          </label>
+          <input type="tel" name="report_phone"
+                 value="{{ report_phone or '' }}"
+                 placeholder="{{ customer.phone_number or '+234 801 234 5678' }}"
+                 style="max-width:280px"
+                 inputmode="tel"/>
+        </div>
+
         <div style="margin-top:18px">
           <button type="submit" class="btn btn-primary">Save Preferences</button>
         </div>

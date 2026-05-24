@@ -1,0 +1,129 @@
+{% extends "portal/base.html" %}
+{% block title %}Map Columns — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  .map-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+  @media(max-width:760px){.map-grid{grid-template-columns:1fr}}
+  .map-card{background:#fff;border:1px solid var(--line);border-radius:16px;
+    padding:22px;box-shadow:var(--shadow2)}
+
+  .field-row{display:flex;align-items:center;gap:12px;
+    padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
+  .field-row:last-child{border-bottom:none}
+  .field-label{width:130px;flex-shrink:0;font-weight:600;font-size:13px}
+  .field-required{color:var(--bad)}
+  .field-row select{flex:1}
+
+  .preview-table td,.preview-table th{font-size:12px;padding:7px 10px;
+    max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  .sample-cell{font-family:monospace;font-size:11px;color:var(--muted);
+    background:rgba(3,12,24,0.03);border-radius:6px;padding:2px 6px;
+    display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap;vertical-align:middle}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="margin-bottom:20px">
+  <div>
+    <div class="section-title">Map Columns</div>
+    <p class="muted">Tell us which column in your file matches each product field.</p>
+  </div>
+  <a class="btn" href="{{ url_for('portal.data_sources') }}">← Back</a>
+</div>
+
+<form method="post">
+
+  <!-- Display name -->
+  <div class="form-group" style="max-width:420px;margin-bottom:22px">
+    <label>Source name (for your reference)</label>
+    <input type="text" name="display_name"
+           value="{{ source.display_name or source.file_name or '' }}"
+           placeholder="e.g. August 2026 Catalog">
+  </div>
+
+  <div class="map-grid">
+
+    <!-- Left: column mapping -->
+    <div class="map-card">
+      <div class="card-title" style="margin-bottom:14px">Column Mapping</div>
+
+      {% macro col_select(field_name, label, required=False) %}
+      <div class="field-row">
+        <div class="field-label">
+          {{ label }}{% if required %} <span class="field-required">*</span>{% endif %}
+        </div>
+        <select name="col_{{ field_name }}">
+          {% if not required %}<option value="">— not mapped —</option>{% endif %}
+          {% for h in headers %}
+          <option value="{{ h }}"
+            {% if source.column_map and source.column_map.get(field_name) == h %}selected{% endif %}>
+            {{ h }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endmacro %}
+
+      {{ col_select("name",        "Product Name", required=True) }}
+      {{ col_select("price",       "Price (₦)",    required=True) }}
+      {{ col_select("category",    "Category") }}
+      {{ col_select("description", "Description") }}
+      {{ col_select("stock",       "Stock Qty") }}
+      {{ col_select("image_url",   "Image URL") }}
+
+      <div style="margin-top:20px">
+        <button class="btn btn-primary" type="submit">
+          Save Mapping &amp; Import →
+        </button>
+      </div>
+    </div>
+
+    <!-- Right: raw data preview -->
+    <div class="map-card">
+      <div class="card-title" style="margin-bottom:14px">
+        File Preview (first 3 rows)
+      </div>
+
+      {% if sample %}
+      <div style="overflow-x:auto">
+        <table class="preview-table">
+          <thead>
+            <tr>
+              {% for h in headers %}
+              <th>{{ h }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in sample %}
+            <tr>
+              {% for h in headers %}
+              <td>
+                <span class="sample-cell">{{ row.get(h, '') or '—' }}</span>
+              </td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div style="color:var(--muted);font-size:13px">No preview available.</div>
+      {% endif %}
+
+      <div class="divider"></div>
+      <div style="font-size:12px;color:var(--muted)">
+        <strong>Tips:</strong><br>
+        • Price column should contain numbers only (₦ signs and commas are handled automatically).<br>
+        • Stock column: leave blank or set 999 for unlimited stock.<br>
+        • Rows with an empty Product Name are skipped.
+      </div>
+    </div>
+
+  </div>
+
+</form>
+{% endblock %}

@@ -1,0 +1,242 @@
+{% extends "portal/base.html" %}
+{% block title %}Data Sources — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  .source-card{background:#fff;border:1px solid var(--line);border-radius:16px;
+    padding:20px 22px;box-shadow:var(--shadow2);display:flex;align-items:flex-start;
+    gap:16px;margin-bottom:14px}
+  .source-icon{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;
+    justify-content:center;font-size:22px;flex-shrink:0}
+  .source-icon-sheet{background:rgba(52,168,83,0.12)}
+  .source-icon-excel{background:rgba(33,115,70,0.10)}
+  .source-icon-csv  {background:rgba(3,12,24,0.06)}
+  .source-body{flex:1;min-width:0}
+  .source-name{font-weight:700;font-size:15px;margin-bottom:3px}
+  .source-meta{font-size:12px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap}
+  .source-actions{display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap}
+
+  .connect-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:28px}
+  @media(max-width:600px){.connect-grid{grid-template-columns:1fr}}
+  .connect-card{background:#fff;border:2px dashed var(--line);border-radius:16px;
+    padding:26px 22px;text-align:center;cursor:pointer;transition:.15s;text-decoration:none;
+    display:block}
+  .connect-card:hover{border-color:var(--ink);background:rgba(3,12,24,0.02);text-decoration:none}
+  .connect-card-icon{font-size:36px;margin-bottom:10px}
+  .connect-card-title{font-weight:700;font-size:15px;color:var(--ink);margin-bottom:4px}
+  .connect-card-desc{font-size:13px;color:var(--muted)}
+
+  .status-badge{display:inline-flex;align-items:center;gap:5px;
+    padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700}
+  .status-success{background:rgba(18,183,106,0.10);color:#0a7a3c;border:1px solid rgba(18,183,106,0.25)}
+  .status-error  {background:rgba(240,68,56,0.08); color:#b02020;border:1px solid rgba(240,68,56,0.20)}
+  .status-idle   {background:rgba(3,12,24,0.05);   color:var(--muted);border:1px solid var(--line)}
+  .status-pending{background:rgba(247,144,9,0.10); color:#7a4f00;border:1px solid rgba(247,144,9,0.25)}
+
+  .upload-drop{border:2px dashed var(--line);border-radius:14px;padding:32px;
+    text-align:center;cursor:pointer;transition:.15s;background:#fafafa}
+  .upload-drop:hover,.upload-drop.drag-over{border-color:var(--ink);background:rgba(3,12,24,0.03)}
+  .upload-drop input[type=file]{display:none}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="margin-bottom:20px">
+  <div>
+    <div class="section-title">Data Sources</div>
+    <p class="muted">Import your product catalog from Google Sheets or a spreadsheet file.</p>
+  </div>
+</div>
+
+<!-- Connect options -->
+<div class="connect-grid">
+
+  <!-- Google Sheets -->
+  {% if google_configured %}
+  <a class="connect-card" href="{{ url_for('portal.data_source_google_connect') }}">
+    <div class="connect-card-icon">📊</div>
+    <div class="connect-card-title">Google Sheets</div>
+    <div class="connect-card-desc">Connect a live spreadsheet — syncs on demand</div>
+  </a>
+  {% else %}
+  <div class="connect-card" style="opacity:.55;cursor:default"
+       title="Google OAuth credentials not yet configured">
+    <div class="connect-card-icon">📊</div>
+    <div class="connect-card-title">Google Sheets</div>
+    <div class="connect-card-desc">Coming soon — contact support to enable</div>
+  </div>
+  {% endif %}
+
+  <!-- File upload trigger -->
+  <div class="connect-card" onclick="document.getElementById('fileUploadForm').scrollIntoView({behavior:'smooth'})">
+    <div class="connect-card-icon">📁</div>
+    <div class="connect-card-title">Excel / CSV File</div>
+    <div class="connect-card-desc">Upload .xlsx or .csv — map columns and import</div>
+  </div>
+
+</div>
+
+<!-- Connected sources -->
+{% if sources %}
+<div style="margin-bottom:8px">
+  <div class="card-title">Connected Sources</div>
+</div>
+
+{% for src in sources %}
+{% set stype = src.source_type %}
+<div class="source-card">
+
+  <!-- Icon -->
+  <div class="source-icon
+    {% if stype == 'google_sheet' %}source-icon-sheet
+    {% elif stype in ('excel','xls') %}source-icon-excel
+    {% else %}source-icon-csv{% endif %}">
+    {% if stype == 'google_sheet' %}📊
+    {% elif stype in ('excel','xls') %}📗
+    {% else %}📄{% endif %}
+  </div>
+
+  <!-- Body -->
+  <div class="source-body">
+    <div class="source-name">{{ src.display_name or src.file_name or 'Untitled' }}</div>
+    <div class="source-meta">
+      <span>{{ stype|upper }}</span>
+      {% if src.last_synced_at %}
+        <span>Last sync: {{ src.last_synced_at.strftime('%d %b %Y, %H:%M') }}</span>
+      {% endif %}
+      {% if src.last_row_count is not none %}
+        <span>{{ src.last_row_count }} products</span>
+      {% endif %}
+      <span class="status-badge status-{{ src.sync_status }}">
+        {% if src.sync_status == 'success' %}✓ Synced
+        {% elif src.sync_status == 'error'   %}✕ Error
+        {% elif src.sync_status == 'pending' %}⏳ Needs setup
+        {% else %}● Idle{% endif %}
+      </span>
+    </div>
+    {% if src.sync_status == 'error' and src.sync_error %}
+      <div style="font-size:12px;color:var(--bad);margin-top:6px">{{ src.sync_error }}</div>
+    {% endif %}
+  </div>
+
+  <!-- Actions -->
+  <div class="source-actions">
+    {% if src.sync_status == 'pending' %}
+      {% if stype == 'google_sheet' %}
+        <a class="btn btn-sm btn-primary"
+           href="{{ url_for('portal.data_source_google_setup', source_id=src.id) }}">Setup</a>
+      {% else %}
+        <a class="btn btn-sm btn-primary"
+           href="{{ url_for('portal.data_source_map', source_id=src.id) }}">Map Columns</a>
+      {% endif %}
+    {% else %}
+      {% if stype == 'google_sheet' %}
+        <a class="btn btn-sm"
+           href="{{ url_for('portal.data_source_google_setup', source_id=src.id) }}">Edit</a>
+      {% else %}
+        <a class="btn btn-sm"
+           href="{{ url_for('portal.data_source_map', source_id=src.id) }}">Mapping</a>
+      {% endif %}
+      <form method="post"
+            action="{{ url_for('portal.data_source_sync', source_id=src.id) }}"
+            style="display:inline">
+        <button class="btn btn-sm btn-primary" type="submit">↻ Sync</button>
+      </form>
+    {% endif %}
+    <form method="post"
+          action="{{ url_for('portal.data_source_delete', source_id=src.id) }}"
+          style="display:inline"
+          onsubmit="return confirm('Remove this data source?')">
+      <button class="btn btn-sm btn-danger" type="submit">Remove</button>
+    </form>
+  </div>
+
+</div>
+{% endfor %}
+{% else %}
+<div style="text-align:center;padding:40px 0;color:var(--muted);font-size:14px">
+  No data sources connected yet. Upload a file or connect Google Sheets above.
+</div>
+{% endif %}
+
+<div class="divider"></div>
+
+<!-- File upload form -->
+<div id="fileUploadForm">
+  <div class="card-title" style="margin-bottom:14px">Upload a Spreadsheet</div>
+
+  <form method="post" action="{{ url_for('portal.data_source_upload') }}"
+        enctype="multipart/form-data" id="uploadForm">
+
+    <div class="upload-drop" id="dropZone" onclick="document.getElementById('fileInput').click()">
+      <input type="file" name="file" id="fileInput" accept=".xlsx,.xls,.csv"
+             onchange="handleFileSelect(this)">
+      <div style="font-size:32px;margin-bottom:10px">📂</div>
+      <div style="font-weight:600;margin-bottom:4px" id="dropText">
+        Click to choose a file, or drag &amp; drop here
+      </div>
+      <div style="font-size:13px;color:var(--muted)">Supports .xlsx, .xls, .csv</div>
+    </div>
+
+    <div style="margin-top:14px;text-align:right">
+      <button class="btn btn-primary" type="submit" id="uploadBtn" disabled>
+        Upload &amp; Map Columns →
+      </button>
+    </div>
+
+  </form>
+</div>
+
+<div class="divider"></div>
+
+<!-- Help section -->
+<div class="card" style="margin-top:4px">
+  <div class="card-title">How it works</div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:12px">
+    <div>
+      <div style="font-size:20px;margin-bottom:6px">1️⃣</div>
+      <div style="font-weight:600;font-size:14px;margin-bottom:4px">Upload or connect</div>
+      <div style="font-size:13px;color:var(--muted)">Upload your Excel/CSV file or connect Google Sheets with one click.</div>
+    </div>
+    <div>
+      <div style="font-size:20px;margin-bottom:6px">2️⃣</div>
+      <div style="font-weight:600;font-size:14px;margin-bottom:4px">Map columns</div>
+      <div style="font-size:13px;color:var(--muted)">Tell us which column is the product name, price, stock, etc.</div>
+    </div>
+    <div>
+      <div style="font-size:20px;margin-bottom:6px">3️⃣</div>
+      <div style="font-weight:600;font-size:14px;margin-bottom:4px">Import &amp; sync</div>
+      <div style="font-size:13px;color:var(--muted)">Products land in your catalog instantly. Re-sync any time you update your sheet.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+var dropZone  = document.getElementById('dropZone');
+var fileInput = document.getElementById('fileInput');
+var uploadBtn = document.getElementById('uploadBtn');
+var dropText  = document.getElementById('dropText');
+
+function handleFileSelect(input) {
+  if (input.files && input.files[0]) {
+    dropText.textContent = input.files[0].name;
+    uploadBtn.disabled = false;
+  }
+}
+
+dropZone.addEventListener('dragover', function(e) {
+  e.preventDefault(); dropZone.classList.add('drag-over');
+});
+dropZone.addEventListener('dragleave', function() {
+  dropZone.classList.remove('drag-over');
+});
+dropZone.addEventListener('drop', function(e) {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  var files = e.dataTransfer.files;
+  if (files.length) {
+    fileInput.files = files;
+    handleFileSelect(fileInput);
+  }
+});
+</script>
+{% endblock %}

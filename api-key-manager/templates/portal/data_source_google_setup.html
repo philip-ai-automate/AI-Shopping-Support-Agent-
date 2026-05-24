@@ -1,0 +1,203 @@
+{% extends "portal/base.html" %}
+{% block title %}Google Sheets Setup — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  .setup-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+  @media(max-width:760px){.setup-grid{grid-template-columns:1fr}}
+  .setup-card{background:#fff;border:1px solid var(--line);border-radius:16px;
+    padding:22px;box-shadow:var(--shadow2)}
+  .step-badge{display:inline-flex;align-items:center;justify-content:center;
+    width:26px;height:26px;border-radius:50%;background:var(--ink);color:#fff;
+    font-size:12px;font-weight:800;flex-shrink:0}
+  .how-step{display:flex;align-items:flex-start;gap:12px;margin-bottom:16px;font-size:14px}
+  .field-row{display:flex;align-items:center;gap:12px;padding:9px 0;
+    border-bottom:1px solid var(--line);font-size:14px}
+  .field-row:last-child{border-bottom:none}
+  .field-label{width:130px;flex-shrink:0;font-weight:600;font-size:13px}
+  .field-required{color:var(--bad)}
+  .field-row select,.field-row input[type=text]{flex:1}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="margin-bottom:20px">
+  <div>
+    <div class="section-title">Set Up Google Sheet</div>
+    <p class="muted">Enter your sheet details and map the columns to your product fields.</p>
+  </div>
+  <a class="btn" href="{{ url_for('portal.data_sources') }}">← Back</a>
+</div>
+
+{% if error %}
+<div class="flash danger">{{ error }}</div>
+{% endif %}
+
+<div class="setup-grid">
+
+  <!-- Left: sheet ID + tab + column mapping -->
+  <div>
+
+    <!-- Step 1: Sheet details -->
+    <div class="setup-card" style="margin-bottom:16px">
+      <div class="card-title" style="margin-bottom:14px">Step 1 — Sheet Details</div>
+
+      <div class="form-group">
+        <label>Source name (for your reference)</label>
+        <input type="text" id="displayName"
+               value="{{ source.display_name or '' }}"
+               placeholder="e.g. Main Product Catalog">
+      </div>
+
+      <div class="form-group">
+        <label>Google Sheet ID <span style="color:var(--bad)">*</span></label>
+        <input type="text" id="sheetId"
+               value="{{ source.sheet_id or '' }}"
+               placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms">
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">
+          Found in the URL: docs.google.com/spreadsheets/d/<strong>[ID here]</strong>/edit
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-bottom:0">
+        <label>Sheet tab name <span style="color:var(--muted);font-weight:400">(optional — defaults to first tab)</span></label>
+        <input type="text" id="sheetTab"
+               value="{{ source.sheet_tab or '' }}"
+               placeholder="e.g. Products, Sheet1">
+      </div>
+
+      <div style="margin-top:16px">
+        <button class="btn btn-primary" type="button" onclick="previewSheet()">
+          Preview Sheet →
+        </button>
+      </div>
+    </div>
+
+    <!-- Step 2: Column mapping (appears after preview) -->
+    <div class="setup-card" id="mapSection"
+         style="{% if not headers %}display:none{% endif %}">
+      <div class="card-title" style="margin-bottom:14px">Step 2 — Map Columns</div>
+
+      <form method="post" id="mapForm">
+        <input type="hidden" name="action"        value="save_map">
+        <input type="hidden" name="display_name"  id="hDisplayName">
+        <input type="hidden" name="sheet_id"      id="hSheetId">
+        <input type="hidden" name="sheet_tab"     id="hSheetTab">
+
+        {% macro col_sel(fname, label, req=False) %}
+        <div class="field-row">
+          <div class="field-label">
+            {{ label }}{% if req %} <span class="field-required">*</span>{% endif %}
+          </div>
+          <select name="col_{{ fname }}" id="sel_{{ fname }}">
+            {% if not req %}<option value="">— not mapped —</option>{% endif %}
+            {% for h in headers %}
+            <option value="{{ h }}"
+              {% if source.column_map and source.column_map.get(fname) == h %}selected{% endif %}>
+              {{ h }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endmacro %}
+
+        {{ col_sel("name",        "Product Name", req=True) }}
+        {{ col_sel("price",       "Price (₦)",    req=True) }}
+        {{ col_sel("category",    "Category") }}
+        {{ col_sel("description", "Description") }}
+        {{ col_sel("stock",       "Stock Qty") }}
+        {{ col_sel("image_url",   "Image URL") }}
+
+        <div style="margin-top:18px">
+          <button class="btn btn-primary" type="submit">
+            Save &amp; Run First Sync →
+          </button>
+        </div>
+      </form>
+    </div>
+
+  </div>
+
+  <!-- Right: instructions -->
+  <div class="setup-card" style="align-self:start">
+    <div class="card-title" style="margin-bottom:16px">How to find your Sheet ID</div>
+
+    <div class="how-step">
+      <span class="step-badge">1</span>
+      <div>Open your Google Sheet in a browser.</div>
+    </div>
+    <div class="how-step">
+      <span class="step-badge">2</span>
+      <div>
+        Look at the URL bar. It looks like:<br>
+        <code style="font-size:11px;word-break:break-all;color:var(--muted)">
+          docs.google.com/spreadsheets/d/<strong style="color:var(--ink)">1BxiMVs0XRA5nFM…</strong>/edit
+        </code>
+      </div>
+    </div>
+    <div class="how-step">
+      <span class="step-badge">3</span>
+      <div>Copy the long ID between <code>/d/</code> and <code>/edit</code> and paste it above.</div>
+    </div>
+
+    <div class="divider"></div>
+    <div class="card-title" style="margin-bottom:10px">Sheet format tips</div>
+    <ul style="font-size:13px;color:var(--muted);padding-left:18px;line-height:1.9">
+      <li>First row must be <strong>column headers</strong></li>
+      <li>One product per row</li>
+      <li>Price column should be numbers only (₦ signs OK)</li>
+      <li>Stock column: 999 or blank = unlimited</li>
+      <li>Make sure Phixtra's Google account can <strong>view</strong> the sheet (or make it public)</li>
+    </ul>
+
+    {% if source.last_synced_at %}
+    <div class="divider"></div>
+    <div style="font-size:13px;color:var(--muted)">
+      Last sync: <strong>{{ source.last_synced_at.strftime('%d %b %Y, %H:%M') }}</strong><br>
+      {% if source.last_row_count is not none %}
+        Products imported: <strong>{{ source.last_row_count }}</strong>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+<!-- Hidden preview form (posts to GET-like action to load headers) -->
+<form method="post" id="previewForm" style="display:none">
+  <input type="hidden" name="action"       value="preview">
+  <input type="hidden" name="display_name" id="pDisplayName">
+  <input type="hidden" name="sheet_id"     id="pSheetId">
+  <input type="hidden" name="sheet_tab"    id="pSheetTab">
+</form>
+
+<script>
+function previewSheet() {
+  var sid = document.getElementById('sheetId').value.trim();
+  if (!sid) { alert('Please enter a Sheet ID first.'); return; }
+  document.getElementById('pDisplayName').value = document.getElementById('displayName').value;
+  document.getElementById('pSheetId').value  = sid;
+  document.getElementById('pSheetTab').value = document.getElementById('sheetTab').value;
+  document.getElementById('previewForm').submit();
+}
+
+// If headers are already loaded (page reload after preview), wire up map form
+(function() {
+  var mapSection = document.getElementById('mapSection');
+  if (mapSection && mapSection.style.display !== 'none') {
+    document.getElementById('hDisplayName').value = document.getElementById('displayName').value;
+    document.getElementById('hSheetId').value     = document.getElementById('sheetId').value;
+    document.getElementById('hSheetTab').value    = document.getElementById('sheetTab').value;
+  }
+  // Keep hidden fields in sync before submit
+  var mapForm = document.getElementById('mapForm');
+  if (mapForm) {
+    mapForm.addEventListener('submit', function() {
+      document.getElementById('hDisplayName').value = document.getElementById('displayName').value;
+      document.getElementById('hSheetId').value     = document.getElementById('sheetId').value;
+      document.getElementById('hSheetTab').value    = document.getElementById('sheetTab').value;
+    });
+  }
+})();
+</script>
+{% endblock %}

@@ -14,11 +14,13 @@ from meta_sender import send_text
 from response_formatter import dispatch_response
 from interactive_handler import handle_addcart, handle_details
 from wa_db import log_message, is_handoff_active, create_handoff, cache_products
+from wa_onboarding import handle_onboarding_message
 
 router = APIRouter()
 
-_APP_SECRET = os.getenv("META_APP_SECRET", "")
-_VERIFY_TOKEN = os.getenv("WEBHOOK_VERIFY_TOKEN", "")
+_APP_SECRET             = os.getenv("META_APP_SECRET", "")
+_VERIFY_TOKEN           = os.getenv("WEBHOOK_VERIFY_TOKEN", "")
+_SETUP_PHONE_NUMBER_ID  = os.getenv("WA_SETUP_PHONE_NUMBER_ID", "")
 _AI_BACKEND_URL = os.getenv("AI_BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
 
 _HUMAN_KEYWORDS = frozenset({
@@ -91,6 +93,27 @@ async def receive_webhook(
     meta_message_id   = msg["meta_message_id"]
     action_type       = msg["action_type"]
     action_product_id = msg["action_product_id"]
+
+    # ── Route to onboarding handler if this is the setup number ──────────────
+    if _SETUP_PHONE_NUMBER_ID and phone_number_id == _SETUP_PHONE_NUMBER_ID:
+        if not _verify_signature(body, x_hub_signature_256 or ""):
+            print("⚠️ [META] HMAC mismatch on setup number")
+            return {"status": "ok"}
+        # Dedup using tenant_id=0 (sentinel for pre-provisioning messages)
+        logged = log_message(
+            tenant_id=0,
+            phone_number_id=phone_number_id,
+            customer_phone=customer_phone,
+            direction="inbound",
+            content=text,
+            message_type=msg["message_type"],
+            meta_message_id=meta_message_id,
+        )
+        if not logged:
+            return {"status": "ok", "reason": "duplicate"}
+        print(f"📋 [ONBOARDING] {customer_phone}: {text[:80]}")
+        await handle_onboarding_message(msg)
+        return {"status": "ok"}
 
     tenant = get_tenant_by_phone_number_id(phone_number_id)
     if not tenant:

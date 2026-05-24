@@ -144,6 +144,19 @@ def init_wa_tables():
               INDEX idx_scheduled (scheduled_at)
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS wa_merchant_onboarding (
+              id          BIGINT AUTO_INCREMENT PRIMARY KEY,
+              wa_phone    VARCHAR(32)  NOT NULL,
+              state       VARCHAR(64)  NOT NULL DEFAULT 'COLLECT_BIZ_NAME',
+              collected   JSON         NOT NULL,
+              tenant_id   INT          NULL,
+              created_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+              updated_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              UNIQUE KEY  uq_phone (wa_phone),
+              INDEX       idx_state (state)
+            )
+        """)
         conn.commit()
         print("✅ WA Gateway tables ready")
     except Exception as e:

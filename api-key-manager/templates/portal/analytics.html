@@ -1,0 +1,304 @@
+{% extends "portal/base.html" %}
+{% block title %}Analytics — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  /* ── Period selector ── */
+  .period-tabs{display:flex;gap:6px;margin-bottom:22px}
+  .period-tab{padding:7px 16px;border-radius:999px;font-size:13px;font-weight:600;
+    border:1px solid var(--line);background:#fff;color:var(--muted);
+    text-decoration:none;transition:.14s}
+  .period-tab:hover{background:rgba(3,12,24,0.04);text-decoration:none;color:var(--txt)}
+  .period-tab.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+  /* ── KPI grid ── */
+  .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+  @media(max-width:860px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:480px){.kpi-grid{grid-template-columns:1fr}}
+  .kpi-card{background:#fff;border:1px solid var(--line);border-radius:16px;
+    padding:18px 20px;box-shadow:var(--shadow2)}
+  .kpi-card .card-title{margin-bottom:6px}
+  .kpi-num{font-size:28px;font-weight:800;letter-spacing:-.5px;line-height:1}
+  .kpi-sub{font-size:12px;color:var(--muted);margin-top:5px}
+
+  /* ── Chart cards ── */
+  .chart-grid{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:20px}
+  @media(max-width:860px){.chart-grid{grid-template-columns:1fr}}
+  .chart-card{background:#fff;border:1px solid var(--line);border-radius:16px;
+    padding:20px;box-shadow:var(--shadow2)}
+  .chart-title{font-size:13px;font-weight:700;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.06em;margin-bottom:16px}
+
+  /* ── Top products table ── */
+  .top-products-table td{vertical-align:middle;font-size:13px}
+  .product-bar-wrap{display:flex;align-items:center;gap:8px}
+  .product-bar{height:6px;border-radius:999px;background:var(--ink);
+    min-width:4px;transition:.3s}
+
+  /* ── AI usage card ── */
+  .ai-stat-row{display:flex;justify-content:space-between;align-items:center;
+    padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .ai-stat-row:last-child{border-bottom:none}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="margin-bottom:18px">
+  <div>
+    <div class="section-title">Analytics</div>
+    <p class="muted">Revenue, orders, and AI performance for your store.</p>
+  </div>
+</div>
+
+<!-- Period selector -->
+<div class="period-tabs">
+  <a class="period-tab {% if days==7 %}active{% endif %}"
+     href="?days=7">Last 7 days</a>
+  <a class="period-tab {% if days==30 %}active{% endif %}"
+     href="?days=30">Last 30 days</a>
+  <a class="period-tab {% if days==90 %}active{% endif %}"
+     href="?days=90">Last 90 days</a>
+</div>
+
+<!-- KPI cards -->
+<div class="kpi-grid">
+
+  <div class="kpi-card">
+    <div class="card-title">Revenue</div>
+    <div class="kpi-num" style="color:var(--good)">
+      ₦{{ "{:,.0f}".format((data.revenue.period_revenue or 0)|float) }}
+    </div>
+    <div class="kpi-sub">{{ days }}-day period</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="card-title">Orders</div>
+    <div class="kpi-num">{{ data.revenue.period_orders or 0 }}</div>
+    <div class="kpi-sub">
+      {{ data.revenue.paid_orders or 0 }} paid ·
+      {{ data.revenue.cancelled_orders or 0 }} cancelled
+    </div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="card-title">Conversion Rate</div>
+    <div class="kpi-num"
+         style="color:{% if data.conversion >= 10 %}var(--good){% elif data.conversion >= 5 %}var(--warn){% else %}var(--bad){% endif %}">
+      {{ data.conversion }}%
+    </div>
+    <div class="kpi-sub">Orders paid ÷ orders placed</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="card-title">Avg Order Value</div>
+    <div class="kpi-num" style="font-size:22px">
+      {% if data.avg_order > 0 %}
+        ₦{{ "{:,.0f}".format(data.avg_order) }}
+      {% else %}
+        —
+      {% endif %}
+    </div>
+    <div class="kpi-sub">Paid orders only</div>
+  </div>
+
+</div>
+
+<!-- Revenue chart + AI summary -->
+<div class="chart-grid">
+
+  <!-- Revenue bar chart -->
+  <div class="chart-card">
+    <div class="chart-title">Daily Revenue (₦)</div>
+    {% if data.daily_chart %}
+    <canvas id="revenueChart" height="160"></canvas>
+    {% else %}
+    <div style="text-align:center;padding:40px;color:var(--muted)">
+      No order data for this period.
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- AI usage summary -->
+  <div class="chart-card">
+    <div class="chart-title">AI Performance</div>
+    <div class="ai-stat-row">
+      <span style="color:var(--muted)">Conversations</span>
+      <strong>{{ data.ai_usage.ai_sessions or 0 }}</strong>
+    </div>
+    <div class="ai-stat-row">
+      <span style="color:var(--muted)">Tokens used</span>
+      <strong>{{ "{:,.0f}".format((data.ai_usage.total_tokens or 0)|int) }}</strong>
+    </div>
+    <div class="ai-stat-row">
+      <span style="color:var(--muted)">Human handoffs</span>
+      <strong style="color:{% if data.handoff_count > 0 %}var(--warn){% else %}var(--good){% endif %}">
+        {{ data.handoff_count }}
+      </strong>
+    </div>
+    <div class="ai-stat-row">
+      <span style="color:var(--muted)">Handoff rate</span>
+      <strong style="color:{% if data.handoff_rate > 10 %}var(--bad){% elif data.handoff_rate > 5 %}var(--warn){% else %}var(--good){% endif %}">
+        {{ data.handoff_rate }}%
+      </strong>
+    </div>
+    <div class="ai-stat-row">
+      <span style="color:var(--muted)">AI resolution rate</span>
+      <strong style="color:var(--good)">
+        {{ (100 - data.handoff_rate)|round(1) }}%
+      </strong>
+    </div>
+    <div class="ai-stat-row">
+      <span style="color:var(--muted)">Unique customers</span>
+      <strong>{{ data.revenue.unique_customers or 0 }}</strong>
+    </div>
+  </div>
+
+</div>
+
+<!-- Top products + AI sessions chart -->
+<div class="chart-grid">
+
+  <!-- Top products -->
+  <div class="chart-card">
+    <div class="chart-title">Top Products by Revenue</div>
+    {% if data.top_products %}
+    {% set max_rev = data.top_products[0].revenue|float %}
+    <div class="table-wrap" style="border:none;border-radius:0">
+      <table class="top-products-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Product</th>
+            <th style="text-align:right">Units</th>
+            <th style="text-align:right">Revenue</th>
+            <th style="width:100px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in data.top_products %}
+          <tr>
+            <td style="color:var(--muted);font-weight:700">{{ loop.index }}</td>
+            <td style="font-weight:600;max-width:180px;
+                       white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+              {{ p.product_name }}
+            </td>
+            <td style="text-align:right;color:var(--muted)">{{ p.units_sold or 0 }}</td>
+            <td style="text-align:right;font-weight:700">
+              ₦{{ "{:,.0f}".format((p.revenue or 0)|float) }}
+            </td>
+            <td>
+              <div class="product-bar-wrap">
+                <div class="product-bar"
+                     style="width:{{ [((p.revenue|float / max_rev) * 90)|int, 4]|max }}px">
+                </div>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="text-align:center;padding:40px;color:var(--muted);font-size:13px">
+      No completed orders in this period yet.
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- AI sessions bar chart -->
+  <div class="chart-card">
+    <div class="chart-title">Daily Conversations</div>
+    {% if data.ai_daily %}
+    <canvas id="sessionsChart" height="200"></canvas>
+    {% else %}
+    <div style="text-align:center;padding:40px;color:var(--muted)">
+      No AI usage data for this period.
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+<script>
+(function() {
+  var INK  = '#030C18';
+  var GOOD = '#12B76A';
+  var MUTED= 'rgba(3,12,24,0.35)';
+
+  var dailyData  = {{ daily_json | safe }};
+  var aiDailyData= {{ ai_daily_json | safe }};
+
+  // Revenue chart
+  if (dailyData.length && document.getElementById('revenueChart')) {
+    new Chart(document.getElementById('revenueChart'), {
+      type: 'bar',
+      data: {
+        labels: dailyData.map(d => {
+          var dt = new Date(d.day);
+          return dt.toLocaleDateString('en-NG', {day:'numeric',month:'short'});
+        }),
+        datasets: [{
+          label: 'Revenue (₦)',
+          data: dailyData.map(d => d.revenue),
+          backgroundColor: INK,
+          borderRadius: 6,
+          borderSkipped: false,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => '₦' + ctx.raw.toLocaleString('en-NG')
+            }
+          }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: MUTED, font: { size: 11 } } },
+          y: {
+            grid: { color: 'rgba(3,12,24,0.06)' },
+            ticks: {
+              color: MUTED, font: { size: 11 },
+              callback: v => '₦' + (v >= 1000 ? (v/1000).toFixed(0)+'k' : v)
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // Sessions chart
+  if (aiDailyData.length && document.getElementById('sessionsChart')) {
+    new Chart(document.getElementById('sessionsChart'), {
+      type: 'bar',
+      data: {
+        labels: aiDailyData.map(d => {
+          var dt = new Date(d.day);
+          return dt.toLocaleDateString('en-NG', {day:'numeric',month:'short'});
+        }),
+        datasets: [{
+          label: 'Conversations',
+          data: aiDailyData.map(d => d.sessions),
+          backgroundColor: GOOD,
+          borderRadius: 5,
+          borderSkipped: false,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: MUTED, font: { size: 11 } } },
+          y: { grid: { color: 'rgba(3,12,24,0.06)' },
+               ticks: { color: MUTED, font: { size: 11 }, stepSize: 1 } }
+        }
+      }
+    });
+  }
+})();
+</script>
+
+{% endblock %}

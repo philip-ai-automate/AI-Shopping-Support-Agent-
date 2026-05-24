@@ -1,0 +1,210 @@
+{% extends "portal/base.html" %}
+{% block title %}Orders — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Status filter tabs ── */
+  .filter-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px}
+  .filter-tab{padding:7px 14px;border-radius:999px;font-size:13px;font-weight:600;
+              border:1px solid var(--line);background:#fff;color:var(--muted);
+              text-decoration:none;transition:.15s;cursor:pointer}
+  .filter-tab:hover{background:rgba(3,12,24,0.04);text-decoration:none;color:var(--txt)}
+  .filter-tab.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+  /* ── KPI row ── */
+  .kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:22px}
+  @media(max-width:860px){.kpi-row{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:480px){.kpi-row{grid-template-columns:1fr}}
+  .kpi-card{background:#fff;border:1px solid var(--line);border-radius:16px;
+            padding:16px 18px;box-shadow:var(--shadow2)}
+  .kpi-card .card-title{margin-bottom:4px}
+  .kpi-card .kpi{font-size:24px}
+
+  /* ── Table tweaks ── */
+  .orders-table td{vertical-align:middle}
+  .orders-table td.phone{font-family:"SF Mono","Fira Code",monospace;font-size:12px}
+  .orders-table td.amount{font-weight:700}
+  .action-link{font-size:12px;font-weight:600;color:var(--ink);text-decoration:none;
+               padding:4px 8px;border-radius:7px;border:1px solid var(--line);
+               background:#fff;transition:.12s;display:inline-flex;align-items:center;gap:4px}
+  .action-link:hover{background:rgba(3,12,24,0.05);text-decoration:none}
+
+  /* ── Pagination ── */
+  .pagination{display:flex;align-items:center;justify-content:center;gap:8px;
+              margin-top:24px;font-size:13px}
+  .page-btn{padding:7px 13px;border-radius:10px;border:1px solid var(--line);
+            background:#fff;color:var(--txt);text-decoration:none;font-weight:600;
+            transition:.12s}
+  .page-btn:hover{background:rgba(3,12,24,0.04);text-decoration:none}
+  .page-btn.disabled{opacity:.4;pointer-events:none}
+  .page-btn.current{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+  /* ── Empty state ── */
+  .empty-orders{text-align:center;padding:60px 20px;color:var(--muted)}
+  .empty-orders .empty-icon{font-size:42px;opacity:.35;margin-bottom:14px}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="margin-bottom:18px">
+  <div>
+    <div class="section-title">Orders</div>
+    <p class="muted">All WhatsApp orders from your customers, in real time.</p>
+  </div>
+  <a href="?status={{ status_filter }}&export=csv" class="btn btn-sm">
+    Export CSV
+  </a>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+  <div class="flash {{ cat }}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+<!-- KPI row (today's stats) -->
+<div class="kpi-row">
+  <div class="kpi-card">
+    <div class="card-title">Today's Orders</div>
+    <div class="kpi">{{ kpis.total or 0 }}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="card-title">Today's Revenue</div>
+    <div class="kpi" style="font-size:20px">
+      ₦{{ "{:,.0f}".format((kpis.revenue or 0)|float) }}
+    </div>
+  </div>
+  <div class="kpi-card">
+    <div class="card-title">Pending</div>
+    <div class="kpi" style="color:var(--warn)">{{ kpis.pending or 0 }}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="card-title">Paid</div>
+    <div class="kpi" style="color:var(--good)">{{ kpis.paid or 0 }}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="card-title">Dispatched</div>
+    <div class="kpi">{{ kpis.dispatched or 0 }}</div>
+  </div>
+</div>
+
+<!-- Status filter tabs -->
+<div class="filter-tabs">
+  {% set filters = [
+    ('all',              'All'),
+    ('PAYMENT_PENDING',  'Awaiting Payment'),
+    ('RECEIPT_RECEIVED', 'Receipt Received'),
+    ('PAYMENT_VERIFIED', 'Paid'),
+    ('PROCESSING',       'Processing'),
+    ('DISPATCHED',       'Dispatched'),
+    ('DELIVERED',        'Delivered'),
+    ('CANCELLED',        'Cancelled'),
+  ] %}
+  {% for val, label in filters %}
+  <a class="filter-tab {% if status_filter == val %}active{% endif %}"
+     href="?status={{ val }}">{{ label }}</a>
+  {% endfor %}
+</div>
+
+<!-- Orders table -->
+{% if orders %}
+<div class="table-wrap">
+  <table class="orders-table">
+    <thead>
+      <tr>
+        <th>Order</th>
+        <th>Customer</th>
+        <th>Items</th>
+        <th>Amount</th>
+        <th>Payment</th>
+        <th>Status</th>
+        <th>Date</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for o in orders %}
+      <tr>
+        <td>
+          <a href="{{ url_for('portal.order_detail', order_id=o.id) }}"
+             style="font-weight:700;font-size:13px">
+            {{ o.reference or ('#' + o.id[:8]) }}
+          </a>
+        </td>
+        <td class="phone">
+          <a href="https://wa.me/{{ o.customer_phone }}" target="_blank"
+             rel="noopener" style="color:var(--txt)">
+            +{{ o.customer_phone }}
+          </a>
+          {% if o.customer_name %}
+          <div style="font-size:11px;color:var(--muted);font-family:inherit">
+            {{ o.customer_name }}
+          </div>
+          {% endif %}
+        </td>
+        <td style="text-align:center">{{ o.item_count or 0 }}</td>
+        <td class="amount">₦{{ "{:,.0f}".format((o.total_amount or 0)|float) }}</td>
+        <td>
+          {% if o.payment_method == 'paystack' %}
+            <span title="Paystack">💳 Card</span>
+          {% elif o.payment_method == 'flutterwave' %}
+            <span title="Flutterwave">💳 Card</span>
+          {% elif o.payment_method == 'bank_transfer' %}
+            <span title="Bank Transfer">🏦 Transfer</span>
+          {% else %}
+            <span class="muted">—</span>
+          {% endif %}
+        </td>
+        <td>
+          <span class="pill {{ o.pill }}">{{ o.status_label }}</span>
+        </td>
+        <td style="color:var(--muted);font-size:12px;white-space:nowrap">
+          {{ o.created_at.strftime('%d %b %H:%M') if o.created_at else '—' }}
+        </td>
+        <td>
+          <a href="{{ url_for('portal.order_detail', order_id=o.id) }}"
+             class="action-link">View →</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<div class="pagination">
+  <a class="page-btn {% if page <= 1 %}disabled{% endif %}"
+     href="?status={{ status_filter }}&page={{ page - 1 }}">← Prev</a>
+  <span style="color:var(--muted)">Page {{ page }} of {{ total_pages }}</span>
+  <a class="page-btn {% if page >= total_pages %}disabled{% endif %}"
+     href="?status={{ status_filter }}&page={{ page + 1 }}">Next →</a>
+</div>
+{% endif %}
+
+<p class="muted" style="margin-top:14px;text-align:right;font-size:12px">
+  {{ total }} order{{ 's' if total != 1 }}
+</p>
+
+{% else %}
+<div class="card">
+  <div class="empty-orders">
+    <div class="empty-icon">📦</div>
+    {% if status_filter != 'all' %}
+    <div style="font-weight:700;font-size:17px;margin-bottom:8px">
+      No {{ status_label.get(status_filter, status_filter) | lower }} orders
+    </div>
+    <p class="muted">
+      <a href="?status=all">View all orders</a>
+    </p>
+    {% else %}
+    <div style="font-weight:700;font-size:17px;margin-bottom:8px">No orders yet</div>
+    <p class="muted" style="max-width:380px;margin:0 auto">
+      When customers place orders through your WhatsApp AI assistant, they'll appear here in real time.
+    </p>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

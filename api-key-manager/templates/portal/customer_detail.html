@@ -1,0 +1,280 @@
+{% extends "portal/base.html" %}
+{% block title %}+{{ phone }} — Customers — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  .detail-grid{display:grid;grid-template-columns:1fr 300px;gap:18px;align-items:start}
+  @media(max-width:860px){.detail-grid{grid-template-columns:1fr}}
+
+  /* ── Stat cards ── */
+  .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+  @media(max-width:680px){.stat-row{grid-template-columns:repeat(2,1fr)}}
+  .stat-card{background:#fff;border:1px solid var(--line);border-radius:14px;
+    padding:14px 16px;box-shadow:var(--shadow2)}
+  .stat-card .card-title{margin-bottom:4px;font-size:11px}
+  .stat-card .kpi{font-size:22px}
+
+  /* ── Section headers ── */
+  .sec-title{font-size:12px;font-weight:700;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px}
+
+  /* ── Message bubbles (mini chat view) ── */
+  .mini-chat{display:flex;flex-direction:column;gap:8px;
+    max-height:340px;overflow-y:auto;padding:2px}
+  .mini-bubble{max-width:78%;padding:8px 12px;border-radius:12px;
+    font-size:13px;line-height:1.45;word-break:break-word}
+  .bubble-in{background:#fff;border:1px solid var(--line);
+    align-self:flex-start;border-bottom-left-radius:3px}
+  .bubble-out{background:var(--ink);color:#fff;
+    align-self:flex-end;border-bottom-right-radius:3px}
+  .bubble-time{font-size:10px;opacity:.5;margin-top:3px}
+
+  /* ── Handoff list ── */
+  .handoff-item{display:flex;justify-content:space-between;align-items:center;
+    padding:9px 0;border-bottom:1px solid var(--line);font-size:13px;gap:8px}
+  .handoff-item:last-child{border-bottom:none}
+
+  /* ── Sticky sidebar ── */
+  .sidebar-sticky{position:sticky;top:24px;display:flex;flex-direction:column;gap:14px}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Back + header -->
+<div style="margin-bottom:20px">
+  <a href="{{ url_for('portal.customers') }}"
+     style="font-size:13px;color:var(--muted);text-decoration:none;
+            display:inline-flex;align-items:center;gap:5px;margin-bottom:12px">
+    ← Back to Customers
+  </a>
+  <div class="page-header" style="margin-bottom:0">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="font-size:22px;font-weight:800;letter-spacing:-.3px;
+                  font-family:'SF Mono','Fira Code',monospace">
+        +{{ phone }}
+      </div>
+      {% if detail.summary.first_seen %}
+      <div style="font-size:12px;color:var(--muted)">
+        Customer since {{ detail.summary.first_seen.strftime('%d %b %Y') }}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Stat row -->
+<div class="stat-row">
+  <div class="stat-card">
+    <div class="card-title">Total Spent</div>
+    <div class="kpi" style="color:var(--good);font-size:20px">
+      {% if detail.total_spent > 0 %}
+        ₦{{ "{:,.0f}".format(detail.total_spent) }}
+      {% else %}
+        ₦0
+      {% endif %}
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="card-title">Orders</div>
+    <div class="kpi">{{ detail.orders | length }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="card-title">Messages Sent</div>
+    <div class="kpi">{{ detail.summary.inbound_count or 0 }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="card-title">Handoffs</div>
+    <div class="kpi" style="{% if detail.handoffs %}color:var(--warn){% endif %}">
+      {{ detail.handoffs | length }}
+    </div>
+  </div>
+</div>
+
+<div class="detail-grid">
+
+  <!-- ═══ LEFT ═══ -->
+  <div style="display:flex;flex-direction:column;gap:18px">
+
+    <!-- Order History -->
+    <div class="card" style="padding:0">
+      <div style="padding:18px 20px 14px">
+        <div class="sec-title">Order History</div>
+      </div>
+      {% if detail.orders %}
+      <div class="table-wrap" style="border:none;border-radius:0">
+        <table>
+          <thead>
+            <tr>
+              <th>Order</th>
+              <th>Amount</th>
+              <th>Payment</th>
+              <th>Status</th>
+              <th>Date</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for o in detail.orders %}
+            <tr>
+              <td style="font-weight:700">
+                {{ o.reference or ('#' + o.id[:8]) }}
+              </td>
+              <td style="font-weight:700">
+                ₦{{ "{:,.0f}".format((o.total_amount or 0)|float) }}
+              </td>
+              <td>
+                {% if o.payment_method == 'bank_transfer' %}🏦 Transfer
+                {% elif o.payment_method in ('paystack','flutterwave') %}💳 Card
+                {% else %}<span class="muted">—</span>{% endif %}
+              </td>
+              <td><span class="pill {{ o.pill }}">{{ o.status_label }}</span></td>
+              <td style="color:var(--muted);font-size:12px;white-space:nowrap">
+                {{ o.created_at.strftime('%d %b %Y') if o.created_at else '—' }}
+              </td>
+              <td>
+                <a href="{{ url_for('portal.order_detail', order_id=o.id) }}"
+                   style="font-size:12px;font-weight:600;color:var(--ink);
+                          text-decoration:none">View →</a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">
+        No orders placed yet.
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Recent Conversation -->
+    {% if detail.recent_messages %}
+    <div class="card">
+      <div class="sec-title">Recent Conversation (last {{ detail.recent_messages|length }} messages)</div>
+      <div class="mini-chat" id="miniChat">
+        {% for msg in detail.recent_messages %}
+        <div>
+          <div class="mini-bubble {% if msg.direction == 'inbound' %}bubble-in{% else %}bubble-out{% endif %}">
+            {{ msg.content or '(media)' }}
+            <div class="bubble-time">
+              {{ '← Customer' if msg.direction == 'inbound' else 'AI →' }}
+              · {{ msg.created_at.strftime('%d %b %H:%M') if msg.created_at else '' }}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <div style="margin-top:12px">
+        <a href="{{ url_for('portal.chat_archive') }}" class="btn btn-sm">
+          Open Full Chat Archive →
+        </a>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Handoff History -->
+    {% if detail.handoffs %}
+    <div class="card">
+      <div class="sec-title">Handoff History</div>
+      {% for h in detail.handoffs %}
+      <div class="handoff-item">
+        <div>
+          <div style="font-weight:600;font-size:13px">
+            {% if h.resolved_at %}
+            <span style="color:var(--good)">✓ Resolved</span>
+            {% else %}
+            <span style="color:var(--warn)">● Open</span>
+            {% endif %}
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">
+            Escalated {{ h.escalated_at.strftime('%d %b %Y, %H:%M') if h.escalated_at else '—' }}
+            {% if h.resolved_at %}
+            · Resolved {{ h.resolved_at.strftime('%d %b %Y, %H:%M') }}
+            {% endif %}
+          </div>
+        </div>
+        <a href="{{ url_for('portal.whatsapp_inbox') }}"
+           style="font-size:12px;font-weight:600;color:var(--ink);text-decoration:none">
+          Inbox →
+        </a>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+  </div><!-- end left -->
+
+  <!-- ═══ RIGHT — Actions ═══ -->
+  <div class="sidebar-sticky">
+
+    <!-- Quick actions -->
+    <div class="card">
+      <div class="sec-title">Actions</div>
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <a href="https://wa.me/{{ phone }}" target="_blank" rel="noopener"
+           class="btn btn-primary" style="justify-content:center">
+          💬 Message on WhatsApp
+        </a>
+        <a href="{{ url_for('portal.whatsapp_campaigns') }}"
+           class="btn" style="justify-content:center">
+          📢 Send Campaign
+        </a>
+        <a href="{{ url_for('portal.orders') }}?q={{ phone }}"
+           class="btn" style="justify-content:center">
+          📦 View All Orders
+        </a>
+      </div>
+    </div>
+
+    <!-- Profile summary -->
+    <div class="card">
+      <div class="sec-title">Profile</div>
+
+      <div style="display:flex;flex-direction:column;gap:10px;font-size:13px">
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">Phone</span>
+          <span style="font-family:monospace;font-weight:600">+{{ phone }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">First seen</span>
+          <span>{{ detail.summary.first_seen.strftime('%d %b %Y') if detail.summary.first_seen else '—' }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">Last active</span>
+          <span>{{ detail.summary.last_seen.strftime('%d %b %Y') if detail.summary.last_seen else '—' }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">Total messages</span>
+          <span>{{ detail.summary.message_count or 0 }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">Lifetime spend</span>
+          <span style="font-weight:700;color:{% if detail.total_spent > 0 %}var(--good){% else %}var(--muted){% endif %}">
+            ₦{{ "{:,.0f}".format(detail.total_spent) }}
+          </span>
+        </div>
+        {% if detail.handoffs | length > 0 %}
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">Handoffs</span>
+          <span style="color:var(--warn);font-weight:600">
+            {{ detail.handoffs | length }}
+          </span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+  </div><!-- end right -->
+
+</div><!-- end detail-grid -->
+
+<script>
+  // Scroll mini chat to bottom
+  var chat = document.getElementById('miniChat');
+  if (chat) chat.scrollTop = chat.scrollHeight;
+</script>
+
+{% endblock %}

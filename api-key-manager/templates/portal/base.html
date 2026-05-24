@@ -293,6 +293,54 @@
       <span class="sb-icon">📊</span> Dashboard
     </a>
 
+    <!-- Orders -->
+    <a class="sb-link {% if request.endpoint in ('portal.orders', 'portal.order_detail') %}active{% endif %}"
+       href="{{ url_for('portal.orders') }}">
+      <span class="sb-icon">📦</span> Orders
+    </a>
+
+    <!-- Payment Gateways -->
+    <a class="sb-link {% if request.endpoint == 'portal.payment_settings' %}active{% endif %}"
+       href="{{ url_for('portal.payment_settings') }}">
+      <span class="sb-icon">💳</span> Payment Gateways
+    </a>
+
+    <!-- Analytics -->
+    <a class="sb-link {% if request.endpoint == 'portal.analytics' %}active{% endif %}"
+       href="{{ url_for('portal.analytics') }}">
+      <span class="sb-icon">📈</span> Analytics
+    </a>
+
+    <!-- Data Sources -->
+    <a class="sb-link {% if request.endpoint in ('portal.data_sources','portal.data_source_upload','portal.data_source_map','portal.data_source_sync','portal.data_source_delete','portal.data_source_google_connect','portal.data_source_google_callback','portal.data_source_google_setup') %}active{% endif %}"
+       href="{{ url_for('portal.data_sources') }}">
+      <span class="sb-icon">🗂️</span> Data Sources
+    </a>
+
+    <!-- ── Commerce group ── -->
+    {% set _commerce_group = request.endpoint in (
+        'portal.products', 'portal.product_add', 'portal.product_edit',
+        'portal.product_delete', 'portal.customers', 'portal.customer_detail') %}
+    <div class="sb-group">
+      <div class="sb-group-toggle {% if _commerce_group %}open{% endif %}"
+           onclick="sbToggle(this)">
+        <span class="sb-gtitle">
+          <span class="sb-icon">🏪</span> Commerce
+        </span>
+        <span class="sb-arrow">▾</span>
+      </div>
+      <div class="sb-sub {% if _commerce_group %}open{% endif %}">
+        <a href="{{ url_for('portal.products') }}"
+           class="{% if request.endpoint in ('portal.products','portal.product_add','portal.product_edit') %}active{% endif %}">
+          Products
+        </a>
+        <a href="{{ url_for('portal.customers') }}"
+           class="{% if request.endpoint in ('portal.customers','portal.customer_detail') %}active{% endif %}">
+          Customers
+        </a>
+      </div>
+    </div>
+
     <!-- ── AI Assistant group ── -->
     {% set _ai_group = request.endpoint in ('portal.api_keys', 'portal.ai_instruction', 'portal.handoff_rules', 'portal.verified_specs_settings') %}
     <div class="sb-group">

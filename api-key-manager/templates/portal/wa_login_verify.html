@@ -1,0 +1,57 @@
+{% extends "portal/base.html" %}
+{% block title %}Enter your code — PhiXtra Portal{% endblock %}
+{% block wrap_class %}page-sm{% endblock %}
+
+{% block content %}
+<div class="card" style="margin-top:12px">
+
+  <div style="text-align:center;margin-bottom:24px">
+    <div style="font-size:38px;margin-bottom:10px">💬</div>
+    <h1 style="font-size:21px;font-weight:800;margin-bottom:4px">Check your WhatsApp</h1>
+    <p class="muted">
+      We sent a 6-digit code to<br>
+      <strong style="color:var(--ink)">{{ phone }}</strong>
+    </p>
+  </div>
+
+  <form method="POST" action="{{ url_for('portal.wa_login_verify') }}">
+    <div class="form-group">
+      <label style="text-align:center;display:block">Enter the 6-digit code</label>
+      <input type="text" name="code" required autofocus
+             maxlength="6" inputmode="numeric" pattern="[0-9]{6}"
+             autocomplete="one-time-code"
+             placeholder="123456"
+             style="text-align:center;font-size:28px;font-weight:800;
+                    letter-spacing:.2em;padding:14px"/>
+    </div>
+
+    <button class="btn btn-primary" type="submit"
+            style="width:100%;justify-content:center;font-size:15px;padding:13px">
+      Verify &amp; log in →
+    </button>
+  </form>
+
+  <div style="margin-top:16px;text-align:center;font-size:13px;color:var(--muted)">
+    Didn't receive it?
+    <form method="POST" action="{{ url_for('portal.wa_login_resend') }}"
+          style="display:inline">
+      <button type="submit"
+              style="background:none;border:none;cursor:pointer;
+                     font-size:13px;color:var(--ink);font-weight:600;
+                     text-decoration:underline;padding:0">
+        Resend code
+      </button>
+    </form>
+    &nbsp;·&nbsp;
+    <a href="{{ url_for('portal.wa_login') }}" style="color:var(--ink)">
+      Use a different number
+    </a>
+  </div>
+
+  <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line);
+              font-size:12px;color:var(--muted);text-align:center">
+    Codes expire after 10 minutes.
+  </div>
+
+</div>
+{% endblock %}

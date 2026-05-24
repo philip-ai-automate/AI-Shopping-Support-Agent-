@@ -1,0 +1,184 @@
+{% extends "portal/base.html" %}
+{% block title %}Customers — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Search bar ── */
+  .search-bar{display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap}
+  .search-bar input{max-width:300px;padding:9px 13px;border-radius:12px;
+    border:1px solid rgba(3,12,24,0.18);font-size:14px;font-family:inherit;
+    outline:none;transition:.15s}
+  .search-bar input:focus{border-color:rgba(3,12,24,0.35);box-shadow:var(--ring)}
+
+  /* ── Table ── */
+  .customers-table td{vertical-align:middle}
+  .phone-cell{font-family:"SF Mono","Fira Code",monospace;font-size:13px;font-weight:600}
+  .wa-link{display:inline-flex;align-items:center;gap:5px;color:var(--ink);
+    text-decoration:none;transition:.12s}
+  .wa-link:hover{color:#25D366;text-decoration:none}
+
+  .stat-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;
+    border-radius:999px;font-size:11px;font-weight:600;
+    background:rgba(3,12,24,0.05);border:1px solid var(--line);color:var(--muted)}
+  .stat-chip.has-orders{background:rgba(18,183,106,0.08);
+    border-color:rgba(18,183,106,0.25);color:#0a7a3c}
+  .stat-chip.has-handoffs{background:rgba(247,144,9,0.08);
+    border-color:rgba(247,144,9,0.25);color:#7a4f00}
+
+  /* ── Pagination ── */
+  .pagination{display:flex;align-items:center;justify-content:center;
+    gap:8px;margin-top:24px;font-size:13px}
+  .page-btn{padding:7px 13px;border-radius:10px;border:1px solid var(--line);
+    background:#fff;color:var(--txt);text-decoration:none;font-weight:600;transition:.12s}
+  .page-btn:hover{background:rgba(3,12,24,0.04);text-decoration:none}
+  .page-btn.disabled{opacity:.4;pointer-events:none}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="margin-bottom:18px">
+  <div>
+    <div class="section-title">Customers</div>
+    <p class="muted">Every customer who has messaged your AI assistant on WhatsApp.</p>
+  </div>
+  {% if total %}
+  <div style="font-size:13px;color:var(--muted)">
+    <strong style="color:var(--txt)">{{ total }}</strong> customer{{ 's' if total != 1 }}
+  </div>
+  {% endif %}
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+  <div class="flash {{ cat }}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+<!-- Search -->
+<form method="GET" class="search-bar">
+  <input type="search" name="q" value="{{ q }}"
+         placeholder="Search by phone number…" autocomplete="off">
+  <button type="submit" class="btn btn-sm">Search</button>
+  {% if q %}
+  <a href="{{ url_for('portal.customers') }}" class="btn btn-sm">Clear</a>
+  {% endif %}
+</form>
+
+{% if customers %}
+<div class="table-wrap">
+  <table class="customers-table">
+    <thead>
+      <tr>
+        <th>WhatsApp Number</th>
+        <th>First Seen</th>
+        <th>Last Active</th>
+        <th>Messages</th>
+        <th>Orders</th>
+        <th>Spent</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in customers %}
+      <tr>
+        <!-- Phone -->
+        <td class="phone-cell">
+          <a class="wa-link"
+             href="https://wa.me/{{ c.customer_phone }}"
+             target="_blank" rel="noopener"
+             title="Open in WhatsApp">
+            +{{ c.customer_phone }}
+          </a>
+          {% if c.handoff_count and c.handoff_count|int > 0 %}
+          <span class="stat-chip has-handoffs" style="margin-left:6px">
+            {{ c.handoff_count }} handoff{{ 's' if c.handoff_count|int != 1 }}
+          </span>
+          {% endif %}
+        </td>
+
+        <!-- First seen -->
+        <td style="color:var(--muted);font-size:12px;white-space:nowrap">
+          {{ c.first_seen.strftime('%d %b %Y') if c.first_seen else '—' }}
+        </td>
+
+        <!-- Last seen -->
+        <td style="font-size:12px;white-space:nowrap">
+          {{ c.last_seen.strftime('%d %b %H:%M') if c.last_seen else '—' }}
+        </td>
+
+        <!-- Messages -->
+        <td style="text-align:center">
+          <span class="stat-chip">{{ c.inbound_count or 0 }} in</span>
+        </td>
+
+        <!-- Orders -->
+        <td style="text-align:center">
+          {% if c.order_count and c.order_count|int > 0 %}
+          <span class="stat-chip has-orders">{{ c.order_count }}</span>
+          {% else %}
+          <span style="color:var(--muted);font-size:13px">—</span>
+          {% endif %}
+        </td>
+
+        <!-- Spend -->
+        <td style="font-weight:{% if c.total_spent and c.total_spent|float > 0 %}700{% else %}400{% endif %}">
+          {% if c.total_spent and c.total_spent|float > 0 %}
+            ₦{{ "{:,.0f}".format(c.total_spent|float) }}
+          {% else %}
+            <span style="color:var(--muted)">—</span>
+          {% endif %}
+        </td>
+
+        <!-- View -->
+        <td>
+          <a href="{{ url_for('portal.customer_detail', phone=c.customer_phone) }}"
+             style="font-size:12px;font-weight:600;color:var(--ink);
+                    text-decoration:none;padding:4px 10px;border-radius:8px;
+                    border:1px solid var(--line);background:#fff;transition:.12s;
+                    white-space:nowrap"
+             onmouseover="this.style.background='rgba(3,12,24,0.05)'"
+             onmouseout="this.style.background='#fff'">
+            View →
+          </a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<div class="pagination">
+  <a class="page-btn {% if page <= 1 %}disabled{% endif %}"
+     href="?q={{ q }}&page={{ page - 1 }}">← Prev</a>
+  <span style="color:var(--muted)">Page {{ page }} of {{ total_pages }}</span>
+  <a class="page-btn {% if page >= total_pages %}disabled{% endif %}"
+     href="?q={{ q }}&page={{ page + 1 }}">Next →</a>
+</div>
+{% endif %}
+
+<p class="muted" style="margin-top:14px;text-align:right;font-size:12px">
+  {{ total }} customer{{ 's' if total != 1 }}{% if q %} matching "{{ q }}"{% endif %}
+</p>
+
+{% else %}
+<div class="card" style="text-align:center;padding:60px 20px">
+  <div style="font-size:42px;margin-bottom:14px;opacity:.35">👥</div>
+  {% if q %}
+  <div style="font-weight:700;font-size:17px;margin-bottom:8px">
+    No customers match "{{ q }}"
+  </div>
+  <a href="{{ url_for('portal.customers') }}" class="btn btn-sm" style="margin-top:6px">
+    Clear search
+  </a>
+  {% else %}
+  <div style="font-weight:700;font-size:17px;margin-bottom:8px">No customers yet</div>
+  <p class="muted" style="max-width:380px;margin:0 auto">
+    When customers message your AI assistant on WhatsApp, their profiles appear here automatically.
+  </p>
+  {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}
