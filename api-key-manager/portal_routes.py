@@ -487,7 +487,8 @@ def _send_welcome_trial_email_wa(
       </table>
       <p style="margin:0 0 6px"><b>What to do next:</b></p>
       <ol style="margin:0 0 20px;padding-left:20px;line-height:1.9">
-        <li>Log in to your portal using your WhatsApp number — we will send a one-time code to verify it is you</li>
+        <li>Check your inbox and click the verification link we just emailed you — then log in with your email address and password</li>
+        <li>Connect your WhatsApp number and upload your product catalogue in the portal</li>
         <li>Start sharing your WhatsApp number with customers — your AI assistant will handle their questions automatically</li>
         <li>Plan your upgrade before the trial ends</li>
       </ol>
@@ -721,18 +722,6 @@ def _register_whatsapp_merchant(
     )
 
     email_sent = _send_verify_email(email, verify_token, first_name)
-
-    # Send Day-0 welcome email for WhatsApp merchants
-    try:
-        _send_welcome_trial_email_wa(
-            email=email,
-            first_name=first_name,
-            business_name=business_name,
-            wa_phone=phone,
-            trial_expires_at=trial_expires_at,
-        )
-    except Exception as _we:
-        print("⚠️ WA welcome trial email failed:", _we)
 
     resend_url = url_for('portal.resend_verify')
     if email_sent:
@@ -998,6 +987,34 @@ def verify_email():
         print(f"[VERIFY] ERROR during email verification: {e}")
         flash("An error occurred during verification. Please try again or contact support.", "danger")
         return redirect(url_for("portal.login"))
+
+    # Send WA welcome email now that email is confirmed — only for whatsapp merchants
+    try:
+        conn2 = get_db_connection()
+        cur_wa = conn2.cursor(dictionary=True, buffered=True)
+        cur_wa.execute("""
+            SELECT c.first_name, c.email, c.phone_number,
+                   t.name AS business_name, t.source_type,
+                   k.trial_expires_at
+            FROM customers c
+            JOIN tenants t ON t.id = c.tenant_id
+            LEFT JOIN api_keys k ON k.tenant_id = c.tenant_id AND k.key_type = 'whatsapp'
+            WHERE c.id = %s
+            LIMIT 1
+        """, (customer_id,))
+        wa_row = cur_wa.fetchone()
+        cur_wa.close(); conn2.close()
+
+        if wa_row and wa_row.get("source_type") == "whatsapp":
+            _send_welcome_trial_email_wa(
+                email=wa_row["email"],
+                first_name=wa_row["first_name"] or "",
+                business_name=wa_row["business_name"] or "",
+                wa_phone=wa_row["phone_number"] or "",
+                trial_expires_at=wa_row["trial_expires_at"],
+            )
+    except Exception as _we:
+        print("⚠️ [VERIFY] WA welcome email failed:", _we)
 
     # If the plain key was stored during registration (same browser session),
     # keep it alive so it can be shown once after the customer logs in.
