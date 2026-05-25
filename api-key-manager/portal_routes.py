@@ -471,16 +471,6 @@ def _send_welcome_trial_email_wa(
       <h2 style="color:#030C18">Welcome to PhiXtra AI-powered WhatsApp Platform</h2>
       <p>Hi {greeting},</p>
       <p>Your AI-powered WhatsApp Sales Agent for <b>{business_name}</b> has been created and is ready to set up.</p>
-      <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
-        <tr>
-          <td style="padding:8px 12px;background:#f3f4f6;border:1px solid #e5e7eb;font-weight:700;width:140px">Business</td>
-          <td style="padding:8px 12px;border:1px solid #e5e7eb">{business_name}</td>
-        </tr>
-        <tr>
-          <td style="padding:8px 12px;background:#f3f4f6;border:1px solid #e5e7eb;font-weight:700">WhatsApp number</td>
-          <td style="padding:8px 12px;border:1px solid #e5e7eb">{wa_phone}</td>
-        </tr>
-      </table>
       <p style="margin:0 0 6px"><b>What to do next:</b></p>
       <ol style="margin:0 0 20px;padding-left:20px;line-height:1.9">
         <li>Log in to your portal with your email address and password</li>
