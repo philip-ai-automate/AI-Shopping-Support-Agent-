@@ -112,14 +112,6 @@
         <input type="text" name="business_name" id="businessName"
                placeholder="e.g. Sarah's Boutique"/>
       </div>
-      <div class="form-group">
-        <label>WhatsApp number * <span class="muted">(customers message this number)</span></label>
-        <input type="tel" name="wa_phone" id="waPhone"
-               placeholder="+234 801 234 5678" inputmode="tel"/>
-        <p class="muted" style="margin-top:5px;font-size:12px">
-          This is the number your AI agent will use to chat with your customers.
-        </p>
-      </div>
     </div>
 
     <!-- Honeypot -->
@@ -186,7 +178,6 @@ function setType(type) {
   // Required attributes
   document.getElementById('tenantDomain').required = (type === 'web');
   document.getElementById('businessName').required  = (type === 'whatsapp');
-  document.getElementById('waPhone').required       = (type === 'whatsapp');
 }
 </script>
 {% endblock %}

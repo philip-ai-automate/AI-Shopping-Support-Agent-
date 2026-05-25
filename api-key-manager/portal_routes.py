@@ -454,16 +454,10 @@ def _send_welcome_trial_email_wa(
     email: str,
     first_name: str,
     business_name: str,
-    wa_phone: str,
     trial_expires_at,
 ) -> None:
     """Day-0 welcome email for WhatsApp-only merchants."""
     greeting = first_name.strip() if first_name and first_name.strip() else "there"
-    exp_str = (
-        trial_expires_at.strftime("%d %B %Y")
-        if hasattr(trial_expires_at, "strftime")
-        else str(trial_expires_at)
-    )
     portal_link  = _PORTAL_BASE_URL
     upgrade_link = "https://phixtra.com/subscription-plans/"
     html = f"""
@@ -500,7 +494,7 @@ def _send_welcome_trial_email_wa(
         html,
         text_body=(
             f"Hi {greeting},\n\n"
-            f"Your AI-powered WhatsApp Sales Agent for {business_name} (WhatsApp: {wa_phone}) is now active.\n\n"
+            f"Your AI-powered WhatsApp Sales Agent for {business_name} is now active.\n\n"
             f"Next steps:\n"
             f"1. Log in to your portal with your email address and password\n"
             f"2. Connect your WhatsApp number and upload your product catalogue\n"
@@ -607,7 +601,7 @@ def _reg_rate_ok(ip):
 
 def _register_whatsapp_merchant(
     first_name: str, last_name: str, email: str, password: str,
-    business_name: str, wa_phone: str,
+    business_name: str,
 ):
     """
     Self-service registration path for WhatsApp-only merchants.
@@ -617,19 +611,8 @@ def _register_whatsapp_merchant(
     if not business_name:
         business_name = f"{first_name} {last_name}".strip()
 
-    phone = _normalise_phone(wa_phone)
-    if not phone:
-        flash("Please enter a valid WhatsApp number.", "danger")
-        return redirect(url_for("portal.register"))
-
-    # Check phone not already registered
     conn = get_db_connection()
     cur  = conn.cursor(dictionary=True, buffered=True)
-    cur.execute("SELECT id FROM customers WHERE phone_number=%s LIMIT 1", (phone,))
-    if cur.fetchone():
-        cur.close(); conn.close()
-        flash("An account with that WhatsApp number already exists. Try logging in.", "warning")
-        return redirect(url_for("portal.wa_login"))
 
     # Check email not already registered
     cur.execute("SELECT id FROM customers WHERE email=%s LIMIT 1", (email,))
@@ -665,9 +648,9 @@ def _register_whatsapp_merchant(
     cur3.execute("""
         INSERT INTO customers
             (tenant_id, first_name, last_name, email, password_hash,
-             phone_number, email_verified, verify_token)
-        VALUES (%s, %s, %s, %s, %s, %s, 0, %s)
-    """, (tenant_id, first_name, last_name, email, pw_hash, phone, verify_token))
+             email_verified, verify_token)
+        VALUES (%s, %s, %s, %s, %s, 0, %s)
+    """, (tenant_id, first_name, last_name, email, pw_hash, verify_token))
     conn.commit()
     cur3.close()
 
@@ -695,13 +678,12 @@ def _register_whatsapp_merchant(
         admin_username=f"self-register-wa:{email}",
         action="customer_registered",
         tenant_id=tenant_id,
-        details={"email": email, "phone": phone,
-                 "business_name": business_name, "source": "web-register-wa"},
+        details={"email": email, "business_name": business_name, "source": "web-register-wa"},
     )
     _send_admin_new_signup_email(
         customer_name=f"{first_name} {last_name}".strip(),
         customer_email=email,
-        domain=f"WA:{phone}",
+        domain="WA:pending",
     )
 
     email_sent = _send_verify_email(email, verify_token, first_name)
@@ -777,7 +759,6 @@ def register():
             first_name=first_name, last_name=last_name,
             email=email, password=password,
             business_name=(request.form.get("business_name") or "").strip(),
-            wa_phone=(request.form.get("wa_phone") or "").strip(),
         )
 
     # ── Web merchant registration continues below ───────────────────────────
@@ -993,7 +974,6 @@ def verify_email():
                 email=wa_row["email"],
                 first_name=wa_row["first_name"] or "",
                 business_name=wa_row["business_name"] or "",
-                wa_phone=wa_row["phone_number"] or "",
                 trial_expires_at=wa_row["trial_expires_at"],
             )
     except Exception as _we:
