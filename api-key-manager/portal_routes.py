@@ -734,17 +734,19 @@ def _register_whatsapp_merchant(
     except Exception as _we:
         print("⚠️ WA welcome trial email failed:", _we)
 
+    resend_url = url_for('portal.resend_verify')
     if email_sent:
         flash(
-            "Account created! ✅ Check your email and click the verification link to activate. "
-            "You can also log in via WhatsApp OTP at any time.",
+            f"Account created! ✅ A verification link has been sent to <strong>{email}</strong>. "
+            f"Click the link in that email to activate your account. "
+            f"Can't find it? Check spam, or "
+            f"<a href='{resend_url}' style='text-decoration:underline'>resend the email</a>.",
             "success"
         )
     else:
         flash(
-            "Account created! However we could not send the verification email — "
-            f"<a href='{url_for('portal.resend_verify')}' style='text-decoration:underline'>"
-            "Resend verification email</a>.",
+            f"Account created! However we could not send the verification email to <strong>{email}</strong>. "
+            f"<a href='{resend_url}' style='text-decoration:underline'>Click here to resend</a>.",
             "warning"
         )
     return redirect(url_for("portal.login"))
@@ -781,11 +783,16 @@ def register():
     first_name      = (request.form.get("first_name")      or "").strip()
     last_name       = (request.form.get("last_name")       or "").strip()
     email           = (request.form.get("email")           or "").strip().lower()
+    email_confirm   = (request.form.get("email_confirm")   or "").strip().lower()
     password        = (request.form.get("password")        or "").strip()
 
     # ── Common validation ───────────────────────────────────────────────────
     if not first_name or not last_name or not email or not password:
         flash("First name, last name, email, and password are all required.", "danger")
+        return redirect(url_for("portal.register"))
+
+    if email_confirm and email != email_confirm:
+        flash("Email addresses do not match. Please re-enter carefully.", "danger")
         return redirect(url_for("portal.register"))
 
     if len(password) < 8:
@@ -933,16 +940,19 @@ def register():
     except Exception as _we:
         print("⚠️ welcome trial email failed:", _we)
 
+    resend_url = url_for("portal.resend_verify")
     if email_sent:
-        flash("Account created! ✅ Check your email and click the verification link to activate your account.", "success")
-    else:
-        # SMTP failed — the account is created and the token is stored.
-        # The customer can request the email again from the login page.
         flash(
-            "Account created! However we could not send the verification email right now — "
-            "please use the "
-            "<a href=\"" + url_for("portal.resend_verify") + "\" style=\"text-decoration:underline\">Resend verification email</a>"
-            " link on this page.",
+            f"Account created! ✅ A verification link has been sent to <strong>{email}</strong>. "
+            f"Click the link in that email to activate your account. "
+            f"Can't find it? Check spam, or "
+            f"<a href='{resend_url}' style='text-decoration:underline'>resend the email</a>.",
+            "success"
+        )
+    else:
+        flash(
+            f"Account created! However we could not send the verification email to <strong>{email}</strong>. "
+            f"<a href='{resend_url}' style='text-decoration:underline'>Click here to resend</a>.",
             "warning"
         )
     return redirect(url_for("portal.login"))
@@ -1070,7 +1080,12 @@ def login():
         return redirect(url_for("portal.login"))
 
     if not int(c.get("email_verified") or 0):
-        flash("Please verify your email before logging in. Check your inbox.", "warning")
+        resend_url = url_for("portal.resend_verify")
+        flash(
+            f"Please verify your email before logging in. Check your inbox for a message to <strong>{email}</strong>. "
+            f"<a href='{resend_url}' style='text-decoration:underline'>Resend verification email →</a>",
+            "warning"
+        )
         return redirect(url_for("portal.login"))
 
     # Rescue any plain key saved during the registration/verify flow

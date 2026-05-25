@@ -70,7 +70,17 @@
 
     <div class="form-group">
       <label>Email address *</label>
-      <input type="email" name="email" required placeholder="sarah@mystore.com"/>
+      <input type="email" name="email" id="regEmail" required placeholder="sarah@mystore.com"
+             autocomplete="email"/>
+    </div>
+
+    <div class="form-group">
+      <label>Confirm email *</label>
+      <input type="email" name="email_confirm" id="regEmailConfirm" required
+             placeholder="sarah@mystore.com" autocomplete="off"/>
+      <p class="muted" id="emailMatchMsg" style="margin-top:5px;font-size:12px;display:none;color:#dc2626">
+        Email addresses do not match.
+      </p>
     </div>
 
     <div class="form-group">
@@ -138,6 +148,25 @@
 
 <script>
 var currentType = 'web';
+
+// Email match check
+document.getElementById('regEmailConfirm').addEventListener('input', checkEmailMatch);
+document.getElementById('regEmail').addEventListener('input', checkEmailMatch);
+function checkEmailMatch() {
+  var a = document.getElementById('regEmail').value;
+  var b = document.getElementById('regEmailConfirm').value;
+  var msg = document.getElementById('emailMatchMsg');
+  if (b && a !== b) { msg.style.display = ''; } else { msg.style.display = 'none'; }
+}
+document.getElementById('regForm').addEventListener('submit', function(e) {
+  var a = document.getElementById('regEmail').value.trim();
+  var b = document.getElementById('regEmailConfirm').value.trim();
+  if (a !== b) {
+    e.preventDefault();
+    document.getElementById('emailMatchMsg').style.display = '';
+    document.getElementById('regEmailConfirm').focus();
+  }
+});
 
 function setType(type) {
   currentType = type;
