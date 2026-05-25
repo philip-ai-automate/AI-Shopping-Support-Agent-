@@ -114,44 +114,243 @@
 {# ── MAIN DASHBOARD CONTENT (hidden when trial has expired) ─────────────── #}
 {% if not (trial_info.is_trial and trial_info.expired) %}
 
-{# ── ONBOARDING WIZARD ─────────────────────────────────────────────────── #}
-{% if not onboarding.wizard_dismissed and not onboarding.complete %}
-<div class="card" style="border-color:rgba(37,99,235,0.25);background:rgba(37,99,235,0.03);margin-bottom:22px">
-  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
-    <div>
-      <div class="card-title" style="color:#2563EB">Getting started</div>
-      <p style="font-size:14px;margin-bottom:14px">Complete all steps below to get your AI assistant live.</p>
-    </div>
-  </div>
+{# ══════════════════════════════════════════════════════════════════════
+   ONBOARDING WIZARD — branched by merchant type
+   WhatsApp merchants: WA-specific checklist + optional website card
+   Web merchants:      existing plugin wizard (unchanged)
+══════════════════════════════════════════════════════════════════════ #}
 
-  <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:14px">
-    {% set steps = [
-      (onboarding.account_verified,          "Email verified"),
-      (onboarding.key_active,                "Trial API key active"),
-      (onboarding.ai_plugin_confirmed,       "PhiXtra AI Assistant plugin installed & configured"),
-      (onboarding.export_plugin_confirmed,   "PhiXtra Export plugin installed"),
-      (onboarding.sync_configured_confirmed, "PhiXtra Sync configured"),
-      (onboarding.synced,                    "First full sync completed"),
-      (onboarding.kb_configured,             "Knowledge base setup by PhiXtra team"),
-      (onboarding.ai_live,                   "AI assistant verified live"),
-    ] %}
-    {% for done, label in steps %}
-    <div style="display:flex;align-items:center;gap:10px;font-size:14px">
-      {% if done %}
+{% if customer.tenant_source_type == 'whatsapp' %}
+
+  {# ── WA GETTING STARTED CARD ─────────────────────────────────────── #}
+  {% if not onboarding.wa_wizard_dismissed and not onboarding.wa_complete %}
+  <div class="card" style="border-color:rgba(37,211,102,0.30);background:rgba(37,211,102,0.03);margin-bottom:22px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+      <div>
+        <div class="card-title" style="color:#128C7E">Getting started — WhatsApp</div>
+        <p style="font-size:14px">Complete these steps to get your AI assistant live on WhatsApp.</p>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px">
+
+      {# Step 1: Email verified #}
+      <div style="display:flex;align-items:center;gap:10px;font-size:14px">
         <span style="color:var(--good);font-size:16px;flex-shrink:0">✓</span>
-      {% else %}
-        <span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0"></span>
-      {% endif %}
-      <span style="{% if done %}color:var(--muted);text-decoration:line-through{% endif %}">{{ label }}</span>
-    </div>
-    {% endfor %}
-  </div>
+        <span style="color:var(--muted);text-decoration:line-through">Email verified</span>
+      </div>
 
-  <a href="{{ url_for('portal.onboarding') }}" class="btn btn-sm" style="background:#2563EB;color:#fff;border-color:#2563EB">
-    View setup guide →
-  </a>
-</div>
-{% endif %}
+      {# Step 2: API key #}
+      <div style="display:flex;align-items:flex-start;gap:10px;font-size:14px">
+        {% if onboarding.key_active %}
+          <span style="color:var(--good);font-size:16px;flex-shrink:0;margin-top:1px">✓</span>
+          <span style="color:var(--muted);text-decoration:line-through">API key active</span>
+        {% else %}
+          <span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0;margin-top:2px"></span>
+          <div>
+            <div>API key active</div>
+            <a href="{{ url_for('portal.api_keys') }}" class="btn btn-sm" style="margin-top:6px">View API Keys →</a>
+          </div>
+        {% endif %}
+      </div>
+
+      {# Step 3: Connect WhatsApp #}
+      <div style="display:flex;align-items:flex-start;gap:10px;font-size:14px">
+        {% if onboarding.wa_connected %}
+          <span style="color:var(--good);font-size:16px;flex-shrink:0;margin-top:1px">✓</span>
+          <span style="color:var(--muted);text-decoration:line-through">WhatsApp number connected</span>
+        {% else %}
+          <span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0;margin-top:2px"></span>
+          <div>
+            <div style="margin-bottom:3px">Connect your WhatsApp number</div>
+            <div class="muted" style="font-size:12px;margin-bottom:6px">
+              You will need your API key from step 2 — copy it from the
+              <a href="{{ url_for('portal.api_keys') }}">API Keys page</a> first,
+              then paste it on the Connect page.
+            </div>
+            <a href="{{ url_for('portal.whatsapp_connect') }}" class="btn btn-sm">Go to WhatsApp Connect →</a>
+          </div>
+        {% endif %}
+      </div>
+
+      {# Step 4: Upload product catalogue #}
+      <div style="display:flex;align-items:flex-start;gap:10px;font-size:14px">
+        {% if onboarding.catalogue_uploaded %}
+          <span style="color:var(--good);font-size:16px;flex-shrink:0;margin-top:1px">✓</span>
+          <span style="color:var(--muted);text-decoration:line-through">Product catalogue uploaded</span>
+        {% else %}
+          <span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0;margin-top:2px"></span>
+          <div>
+            <div style="margin-bottom:3px">Upload your product catalogue</div>
+            <div class="muted" style="font-size:12px;margin-bottom:6px">
+              Upload an Excel / CSV file or connect a Google Sheet so your AI knows your products.
+            </div>
+            <a href="{{ url_for('portal.data_sources') }}" class="btn btn-sm">Go to Data Sources →</a>
+          </div>
+        {% endif %}
+      </div>
+
+      {# Step 5: Knowledge base (admin action) #}
+      <div style="display:flex;align-items:flex-start;gap:10px;font-size:14px">
+        {% if onboarding.kb_configured %}
+          <span style="color:var(--good);font-size:16px;flex-shrink:0;margin-top:1px">✓</span>
+          <span style="color:var(--muted);text-decoration:line-through">Knowledge base configured by PhiXtra team</span>
+        {% else %}
+          <span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0;margin-top:2px"></span>
+          <div>
+            <div style="margin-bottom:4px">Knowledge base setup by PhiXtra team</div>
+            <div style="font-size:12px;color:#92400E;background:rgba(247,144,9,0.07);
+                        border:1px solid rgba(247,144,9,0.30);border-radius:10px;
+                        padding:8px 12px;line-height:1.5">
+              ⏳ No action needed — our team has been notified and will complete this shortly.
+              We'll email you when your AI assistant is ready.
+            </div>
+          </div>
+        {% endif %}
+      </div>
+
+      {# Step 6: Live confirmation — only shown once all prior steps done #}
+      {% if onboarding.key_active and onboarding.wa_connected and onboarding.catalogue_uploaded %}
+      <div style="display:flex;align-items:flex-start;gap:10px;font-size:14px">
+        {% if onboarding.kb_configured %}
+          <span style="color:var(--good);font-size:16px;flex-shrink:0;margin-top:1px">✓</span>
+          <div>
+            <div style="color:var(--good);font-weight:700">Your AI assistant is live on WhatsApp! 🎉</div>
+            <div class="muted" style="font-size:12px;margin-top:2px">
+              Share your WhatsApp number with customers — the AI will handle their questions automatically.
+            </div>
+          </div>
+        {% else %}
+          <span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0;margin-top:2px"></span>
+          <span style="color:var(--muted)">Verify your AI assistant is live (complete step 5 first)</span>
+        {% endif %}
+      </div>
+      {% endif %}
+
+    </div>
+
+    {% if onboarding.wa_complete %}
+    <form method="POST" action="{{ url_for('portal.onboarding_dismiss_wa') }}" style="display:inline">
+      <button type="submit" class="btn btn-ghost muted btn-sm">Dismiss this guide ✕</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# ── OPTIONAL: WEBSITE EXPANSION CARD ────────────────────────────── #}
+  {% if not onboarding.website_wizard_dismissed %}
+  <details style="margin-bottom:22px" {% if onboarding.ai_plugin_confirmed or onboarding.export_plugin_confirmed or onboarding.sync_configured_confirmed %}open{% endif %}>
+    <summary style="list-style:none;cursor:pointer;outline:none">
+      <div class="card" style="border-color:rgba(3,12,24,0.10);display:flex;align-items:center;
+                               justify-content:space-between;gap:12px;flex-wrap:wrap;
+                               padding:16px 22px;margin-bottom:0">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:18px">🌐</span>
+          <div>
+            <div style="font-size:14px;font-weight:700">Have a website? Expand your AI to a web chat widget</div>
+            <div class="muted" style="font-size:12px">Optional — install the PhiXtra plugin on your WooCommerce store</div>
+          </div>
+        </div>
+        <span class="muted" style="font-size:18px;flex-shrink:0" id="webExpandArrow">▾</span>
+      </div>
+    </summary>
+
+    <div class="card" style="border-top:none;border-radius:0 0 18px 18px;
+                             border-color:rgba(3,12,24,0.10);padding-top:4px;margin-top:-4px">
+      <p style="font-size:14px;color:var(--muted);margin-bottom:16px">
+        Install the PhiXtra AI chat widget on your WooCommerce store so customers can also chat directly from your website.
+        Your WhatsApp AI assistant will continue to work as normal — this adds a second channel.
+      </p>
+
+      <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:16px">
+        {% set web_steps = [
+          (onboarding.ai_plugin_confirmed,       "Download & install the PhiXtra AI Assistant plugin"),
+          (onboarding.export_plugin_confirmed,   "Download & install the PhiXtra Export plugin"),
+          (onboarding.sync_configured_confirmed, "Configure PhiXtra Sync"),
+          (onboarding.synced,                    "First full product sync completed"),
+          (onboarding.kb_configured,             "Knowledge base configured by PhiXtra team"),
+        ] %}
+        {% for done, label in web_steps %}
+        <div style="display:flex;align-items:center;gap:10px;font-size:14px">
+          {% if done %}
+            <span style="color:var(--good);font-size:16px;flex-shrink:0">✓</span>
+            <span style="color:var(--muted);text-decoration:line-through">{{ label }}</span>
+          {% else %}
+            <span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0"></span>
+            <span>{{ label }}</span>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <a href="{{ url_for('portal.onboarding') }}" class="btn btn-sm"
+           style="background:#030C18;color:#fff;border-color:#030C18">
+          View plugin setup guide →
+        </a>
+        <form method="POST" action="{{ url_for('portal.onboarding_dismiss_website') }}" style="display:inline">
+          <button type="submit" class="btn btn-ghost muted btn-sm"
+                  onclick="return confirm('Hide this card? You can still find the plugin guide via the setup guide link anytime.')">
+            Dismiss ✕
+          </button>
+        </form>
+      </div>
+    </div>
+  </details>
+  <script>
+    (function(){
+      var det = document.querySelector('details[style*="margin-bottom:22px"]');
+      if(!det) return;
+      det.addEventListener('toggle', function(){
+        var arrow = document.getElementById('webExpandArrow');
+        if(arrow) arrow.style.transform = det.open ? 'rotate(180deg)' : '';
+      });
+    })();
+  </script>
+  {% endif %}
+
+{% else %}
+
+  {# ── ORIGINAL PLUGIN WIZARD — web merchants only ──────────────────── #}
+  {% if not onboarding.wizard_dismissed and not onboarding.complete %}
+  <div class="card" style="border-color:rgba(37,99,235,0.25);background:rgba(37,99,235,0.03);margin-bottom:22px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div>
+        <div class="card-title" style="color:#2563EB">Getting started</div>
+        <p style="font-size:14px;margin-bottom:14px">Complete all steps below to get your AI assistant live.</p>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:14px">
+      {% set steps = [
+        (onboarding.account_verified,          "Email verified"),
+        (onboarding.key_active,                "Trial API key active"),
+        (onboarding.ai_plugin_confirmed,       "PhiXtra AI Assistant plugin installed & configured"),
+        (onboarding.export_plugin_confirmed,   "PhiXtra Export plugin installed"),
+        (onboarding.sync_configured_confirmed, "PhiXtra Sync configured"),
+        (onboarding.synced,                    "First full sync completed"),
+        (onboarding.kb_configured,             "Knowledge base setup by PhiXtra team"),
+        (onboarding.ai_live,                   "AI assistant verified live"),
+      ] %}
+      {% for done, label in steps %}
+      <div style="display:flex;align-items:center;gap:10px;font-size:14px">
+        {% if done %}
+          <span style="color:var(--good);font-size:16px;flex-shrink:0">✓</span>
+        {% else %}
+          <span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0"></span>
+        {% endif %}
+        <span style="{% if done %}color:var(--muted);text-decoration:line-through{% endif %}">{{ label }}</span>
+      </div>
+      {% endfor %}
+    </div>
+
+    <a href="{{ url_for('portal.onboarding') }}" class="btn btn-sm" style="background:#2563EB;color:#fff;border-color:#2563EB">
+      View setup guide →
+    </a>
+  </div>
+  {% endif %}
+
+{% endif %}{# end merchant type branch #}
 
 {# ── NEEDS ATTENTION PANEL ─────────────────────────────────────────────── #}
 {% if handoffs %}

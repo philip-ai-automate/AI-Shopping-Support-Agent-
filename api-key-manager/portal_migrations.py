@@ -540,6 +540,17 @@ def ensure_portal_tables():
 
         # ── END STAGE 1 ────────────────────────────────────────────────────────
 
+        # ── onboarding_state: WA wizard and website expansion dismiss flags ──
+        for col, sql in [
+            ("wa_wizard_dismissed",
+             "ALTER TABLE onboarding_state ADD COLUMN wa_wizard_dismissed      TINYINT(1) NOT NULL DEFAULT 0"),
+            ("website_wizard_dismissed",
+             "ALTER TABLE onboarding_state ADD COLUMN website_wizard_dismissed TINYINT(1) NOT NULL DEFAULT 0"),
+        ]:
+            if not _column_exists(cur, "onboarding_state", col):
+                cur2.execute(sql)
+        conn.commit()
+
     finally:
         for obj in (cur, cur2):
             try: obj.close()
