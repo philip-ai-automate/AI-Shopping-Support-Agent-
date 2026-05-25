@@ -64,7 +64,7 @@
     <div class="section-title">WhatsApp Integration</div>
     <p class="muted">Connect your Meta WhatsApp Business account so your AI assistant can reply on WhatsApp.</p>
   </div>
-  {% if connection %}
+  {% if connection and connection.active %}
   <a href="{{ url_for('portal.whatsapp_inbox') }}" class="btn btn-primary">Open Agent Inbox</a>
   {% endif %}
 </div>
@@ -77,10 +77,16 @@
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
       <div>
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-          <span class="dot {% if token_expiry_status == 'expired' %}dot-red{% else %}dot-green{% endif %}"></span>
-          <span style="font-weight:700;color:{% if token_expiry_status == 'expired' %}var(--bad){% else %}var(--good){% endif %}">
-            {% if token_expiry_status == 'expired' %}Token Expired — Reconnect Required{% else %}Connected{% endif %}
-          </span>
+          {% if not connection.active %}
+            <span class="dot dot-grey"></span>
+            <span style="font-weight:700;color:var(--muted)">Disconnected</span>
+          {% elif token_expiry_status == 'expired' %}
+            <span class="dot dot-red"></span>
+            <span style="font-weight:700;color:var(--bad)">Token Expired — Reconnect Required</span>
+          {% else %}
+            <span class="dot dot-green"></span>
+            <span style="font-weight:700;color:var(--good)">Connected</span>
+          {% endif %}
           {% if connection.signup_method == 'embedded' %}
             <span class="pill pill-green" style="font-size:11px">Embedded Signup</span>
           {% else %}
@@ -98,7 +104,7 @@
           {% if connection.waba_id %}
           <div>WABA ID: <code>{{ connection.waba_id }}</code></div>
           {% endif %}
-          {% if connection.token_expires_at %}
+          {% if connection.active and connection.token_expires_at %}
             <div style="margin-top:6px">
               {% if token_expiry_status == 'expired' %}
                 <span class="token-badge token-expired">Token expired {{ connection.token_expires_at.strftime('%d %b %Y') if connection.token_expires_at }}</span>
@@ -113,15 +119,21 @@
       </div>
 
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        {% if connection.active %}
         <button onclick="checkToken()" class="btn btn-sm" id="checkTokenBtn">Check Token</button>
         <form method="POST" action="{{ url_for('portal.whatsapp_disconnect') }}"
               onsubmit="return confirm('Disconnect WhatsApp? The AI will stop replying until you reconnect.')">
           <button type="submit" class="btn btn-sm btn-danger">Disconnect</button>
         </form>
+        {% endif %}
+        <form method="POST" action="{{ url_for('portal.whatsapp_delete') }}"
+              onsubmit="return confirm('Permanently delete this WhatsApp connection? This cannot be undone. The phone number ID will be freed so you can register it again.')">
+          <button type="submit" class="btn btn-sm" style="background:rgba(240,68,56,.1);color:#b02020;border:1px solid rgba(240,68,56,.35)">Delete</button>
+        </form>
       </div>
     </div>
 
-    {% if token_expiry_status in ('expired', 'expiring') %}
+    {% if connection.active and token_expiry_status in ('expired', 'expiring') %}
     <div class="flash {% if token_expiry_status == 'expired' %}danger{% else %}warning{% endif %}"
          style="margin-top:16px;margin-bottom:0">
       {% if token_expiry_status == 'expired' %}

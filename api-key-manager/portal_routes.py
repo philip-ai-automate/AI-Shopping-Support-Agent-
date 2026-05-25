@@ -5207,6 +5207,25 @@ def _get_wa_connection(tenant_id: int) -> dict | None:
         return None
 
 
+def _get_wa_connection_any(tenant_id: int) -> dict | None:
+    """Return the wa_tenants row for this tenant regardless of active status, or None."""
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur.execute("""
+            SELECT id, phone_number_id, waba_id, verify_token, active, created_at,
+                   signup_method, display_phone_number, verified_name, token_expires_at,
+                   app_secret
+            FROM wa_tenants WHERE tenant_id = %s ORDER BY id DESC LIMIT 1
+        """, (tenant_id,))
+        row = cur.fetchone()
+        cur.close(); conn.close()
+        return row
+    except Exception as e:
+        print("⚠️ _get_wa_connection_any error:", e)
+        return None
+
+
 def _get_wa_templates(tenant_id: int) -> dict:
     """Return tenant's configured wa_templates keyed by template_type."""
     try:
@@ -5254,7 +5273,7 @@ def whatsapp_connect():
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    connection = _get_wa_connection(tenant_id)
+    connection = _get_wa_connection_any(tenant_id)
     templates  = _get_wa_templates(tenant_id)
 
     meta_app_id    = os.getenv("META_APP_ID", "")
@@ -5267,9 +5286,9 @@ def whatsapp_connect():
     # Meta calls one webhook URL; routing is by phone_number_id in the payload.
     suggested_verify_token = os.getenv("WEBHOOK_VERIFY_TOKEN", "")
 
-    # Token expiry warning state
+    # Token expiry warning state (only meaningful for active connections)
     token_expiry_status = None  # None | 'ok' | 'expiring' | 'expired'
-    if connection and connection.get("token_expires_at"):
+    if connection and connection.get("active") and connection.get("token_expires_at"):
         exp = connection["token_expires_at"]
         delta = exp - datetime.utcnow() if hasattr(exp, "year") else None
         if delta is not None:
@@ -5279,7 +5298,7 @@ def whatsapp_connect():
                 token_expiry_status = "expiring"
             else:
                 token_expiry_status = "ok"
-    elif connection:
+    elif connection and connection.get("active"):
         token_expiry_status = "ok"  # Manual connections have no expiry
 
     return render_template("portal/whatsapp.html",
@@ -5370,6 +5389,28 @@ def whatsapp_disconnect():
     except Exception as e:
         print("⚠️ whatsapp_disconnect error:", e)
         flash("Could not disconnect. Please try again.", "danger")
+
+    return redirect(url_for("portal.whatsapp_connect"))
+
+
+@portal_bp.route("/whatsapp/delete", methods=["POST"])
+def whatsapp_delete():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(buffered=True)
+        cur.execute("DELETE FROM wa_tenants WHERE tenant_id = %s", (tenant_id,))
+        conn.commit()
+        cur.close(); conn.close()
+        insert_audit_log(action="wa_deleted", tenant_id=tenant_id)
+        flash("WhatsApp phone number deleted. You can now register the same number again.", "success")
+    except Exception as e:
+        print("⚠️ whatsapp_delete error:", e)
+        flash("Could not delete. Please try again.", "danger")
 
     return redirect(url_for("portal.whatsapp_connect"))
 
