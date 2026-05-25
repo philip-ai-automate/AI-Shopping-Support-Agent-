@@ -468,9 +468,9 @@ def _send_welcome_trial_email_wa(
     upgrade_link = "https://phixtra.com/subscription-plans/"
     html = f"""
     <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto">
-      <h2 style="color:#030C18">Your PhiXtra 14-day free trial is now live 🎉</h2>
+      <h2 style="color:#030C18">Welcome to PhiXtra AI-powered WhatsApp Platform</h2>
       <p>Hi {greeting},</p>
-      <p>Your AI shopping assistant for <b>{business_name}</b> has been created and is ready to set up.</p>
+      <p>Your AI-powered WhatsApp Sales Agent for <b>{business_name}</b> has been created and is ready to set up.</p>
       <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
         <tr>
           <td style="padding:8px 12px;background:#f3f4f6;border:1px solid #e5e7eb;font-weight:700;width:140px">Business</td>
@@ -480,17 +480,12 @@ def _send_welcome_trial_email_wa(
           <td style="padding:8px 12px;background:#f3f4f6;border:1px solid #e5e7eb;font-weight:700">WhatsApp number</td>
           <td style="padding:8px 12px;border:1px solid #e5e7eb">{wa_phone}</td>
         </tr>
-        <tr>
-          <td style="padding:8px 12px;background:#f3f4f6;border:1px solid #e5e7eb;font-weight:700">Trial ends</td>
-          <td style="padding:8px 12px;border:1px solid #e5e7eb">{exp_str}</td>
-        </tr>
       </table>
       <p style="margin:0 0 6px"><b>What to do next:</b></p>
       <ol style="margin:0 0 20px;padding-left:20px;line-height:1.9">
-        <li>Check your inbox and click the verification link we just emailed you — then log in with your email address and password</li>
-        <li>Connect your WhatsApp number and upload your product catalogue in the portal</li>
-        <li>Start sharing your WhatsApp number with customers — your AI assistant will handle their questions automatically</li>
-        <li>Plan your upgrade before the trial ends</li>
+        <li>Log in to your portal with your email address and password</li>
+        <li>Connect your WhatsApp number and upload your product catalogue</li>
+        <li>Start sharing your WhatsApp number with customers — your AI Sales Agent will handle their questions automatically</li>
       </ol>
       <p style="margin-bottom:20px">
         <a href="{portal_link}"
@@ -506,22 +501,20 @@ def _send_welcome_trial_email_wa(
         </a>
       </p>
       <p style="color:#6b7280;font-size:13px">
-        We'll send you a reminder as your trial end date approaches.<br>
         Questions? Contact <a href="mailto:support@phixtra.com" style="color:#030C18">support@phixtra.com</a>
       </p>
     </div>"""
     send_email(
         email,
-        "Your PhiXtra 14-day free trial is now live 🎉",
+        "Welcome to PhiXtra AI-powered WhatsApp Platform",
         html,
         text_body=(
             f"Hi {greeting},\n\n"
-            f"Your PhiXtra AI assistant for {business_name} (WhatsApp: {wa_phone}) is now active.\n"
-            f"Trial ends: {exp_str}\n\n"
+            f"Your AI-powered WhatsApp Sales Agent for {business_name} (WhatsApp: {wa_phone}) is now active.\n\n"
             f"Next steps:\n"
-            f"1. Log in to your portal using your WhatsApp number (we'll send a one-time code)\n"
-            f"2. Share your WhatsApp number with customers\n"
-            f"3. Plan your upgrade before the trial ends\n\n"
+            f"1. Log in to your portal with your email address and password\n"
+            f"2. Connect your WhatsApp number and upload your product catalogue\n"
+            f"3. Start sharing your WhatsApp number with customers\n\n"
             f"Log in: {portal_link}\nView plans: {upgrade_link}"
         ),
     )
