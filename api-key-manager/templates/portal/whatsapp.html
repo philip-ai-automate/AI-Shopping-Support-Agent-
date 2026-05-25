@@ -43,6 +43,68 @@
   #signupStatus { display: none; align-items: center; gap: 10px; margin-top: 14px; font-size: 14px; color: var(--muted); }
   #signupError  { display: none; margin-top: 12px; }
 
+  /* ── Pre-flight checklist ── */
+  .preflight-item {
+    display: flex; gap: 14px; align-items: flex-start;
+    padding: 14px 0; border-bottom: 1px solid var(--line);
+  }
+  .preflight-item:last-of-type { border-bottom: none; }
+  .preflight-tick {
+    width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0; margin-top: 1px;
+    border: 2px solid rgba(3,12,24,0.2); background: #fff; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: .15s;
+    padding: 0;
+  }
+  .preflight-tick:hover { border-color: var(--ink); }
+  .preflight-tick.done { background: var(--good); border-color: var(--good); }
+  .preflight-tick.done svg { display: block; }
+  .preflight-tick svg { display: none; width: 11px; height: 11px; }
+  .preflight-title { font-size: 14px; font-weight: 700; color: var(--txt); margin-bottom: 3px; }
+  .preflight-sub   { font-size: 12px; color: var(--muted); margin-bottom: 7px; line-height: 1.5; }
+  .preflight-link  {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 12px; font-weight: 700; color: var(--ink);
+    padding: 4px 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: rgba(3,12,24,0.03); text-decoration: none; transition: .15s;
+  }
+  .preflight-link:hover { background: rgba(3,12,24,0.07); text-decoration: none; }
+
+  /* ── Setup guide ── */
+  .setup-guide-summary {
+    cursor: pointer; list-style: none; display: flex;
+    align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .setup-guide-summary::-webkit-details-marker { display: none; }
+  .setup-chevron { font-size: 18px; color: var(--muted); transition: transform .2s; flex-shrink: 0; }
+  details[open] .setup-chevron { transform: rotate(180deg); }
+  .setup-step {
+    display: flex; gap: 16px; padding: 16px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .setup-step:last-child { border-bottom: none; }
+  .step-num {
+    width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+    background: var(--ink); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 800; margin-top: 1px;
+  }
+  .step-title { font-size: 14px; font-weight: 700; color: var(--txt); margin-bottom: 4px; }
+  .step-desc  { font-size: 12px; color: var(--muted); line-height: 1.55; margin-bottom: 8px; }
+  .step-field {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line);
+    background: rgba(3,12,24,0.04); font-size: 11px; font-weight: 650;
+    color: var(--muted); margin-bottom: 8px;
+  }
+  .step-links { display: flex; flex-wrap: wrap; gap: 6px; }
+  .step-link {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 12px; font-weight: 700; color: var(--ink);
+    padding: 4px 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: rgba(3,12,24,0.03); text-decoration: none; transition: .15s;
+  }
+  .step-link:hover { background: rgba(3,12,24,0.07); text-decoration: none; }
+
   /* Phone selection modal */
   .modal-overlay {
     display: none; position: fixed; inset: 0; background: rgba(3,12,24,.55);
@@ -151,6 +213,185 @@
     </div>
   {% endif %}
 </div>
+
+<!-- ── Option 3: Pre-flight Checklist ────────────────────────────────────── -->
+{% if not connection %}
+<div class="card" id="preflightCard" style="margin-bottom:20px">
+  <div class="card-title">Before You Start — Checklist</div>
+  <p class="muted" style="margin-bottom:4px;font-size:13px">
+    Complete all three steps in Meta first. Tick each one off as you go.
+  </p>
+
+  <div class="preflight-item">
+    <button class="preflight-tick" onclick="togglePreflight(this,'pf_biz_{{ customer.id }}')" aria-label="Mark done">
+      <svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="1.5,6 4.5,9 10.5,3"/>
+      </svg>
+    </button>
+    <div>
+      <div class="preflight-title">Meta Business Account created and verified</div>
+      <div class="preflight-sub">You need a verified Meta Business Manager before you can use the WhatsApp API. Verification usually takes 1–2 business days — start this first.</div>
+      <a href="https://business.facebook.com/" target="_blank" rel="noopener" class="preflight-link">
+        Open Meta Business Manager ↗
+      </a>
+    </div>
+  </div>
+
+  <div class="preflight-item">
+    <button class="preflight-tick" onclick="togglePreflight(this,'pf_app_{{ customer.id }}')" aria-label="Mark done">
+      <svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="1.5,6 4.5,9 10.5,3"/>
+      </svg>
+    </button>
+    <div>
+      <div class="preflight-title">Meta Developer App created with WhatsApp product added</div>
+      <div class="preflight-sub">In Meta for Developers, create a new "Business" app. Inside the app, click "Add Product" and choose WhatsApp. This unlocks the API Setup section where you'll get your credentials.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener" class="preflight-link">
+          Open Meta Developer Apps ↗
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="preflight-item">
+    <button class="preflight-tick" onclick="togglePreflight(this,'pf_phone_{{ customer.id }}')" aria-label="Mark done">
+      <svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="1.5,6 4.5,9 10.5,3"/>
+      </svg>
+    </button>
+    <div>
+      <div class="preflight-title">WhatsApp phone number added to your WABA</div>
+      <div class="preflight-sub">In WhatsApp API Setup, add or verify a phone number under your WhatsApp Business Account (WABA). This is the number your customers will message.</div>
+      <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener" class="preflight-link">
+        Go to WhatsApp API Setup ↗
+      </a>
+    </div>
+  </div>
+
+  <div id="preflightDone" style="display:none;margin-top:16px">
+    <div class="flash success" style="margin-bottom:0">
+      All prerequisites done — you're ready to connect below.
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Option 2: Step-by-Step Setup Guide ────────────────────────────────── -->
+{% if not connection or not connection.active %}
+<details class="card" style="margin-bottom:20px" {% if not connection %}open{% endif %} id="setupGuide">
+  <summary class="setup-guide-summary">
+    <div>
+      <div class="card-title" style="margin-bottom:2px">Step-by-Step Setup Guide</div>
+      <div class="muted" style="font-size:13px">Exactly where to find each credential in Meta's dashboard</div>
+    </div>
+    <span class="setup-chevron">&#8964;</span>
+  </summary>
+
+  <div style="margin-top:20px">
+
+    <div class="setup-step">
+      <div class="step-num">1</div>
+      <div>
+        <div class="step-title">Create and verify your Meta Business Account</div>
+        <div class="step-desc">
+          Go to Meta Business Manager and create an account if you don't have one.
+          Then go to <strong>Business Settings → Security Centre</strong> and submit
+          your business for verification. You'll need to provide business documents.
+          WhatsApp API access is gated behind this — it typically takes 1–2 business days.
+        </div>
+        <div class="step-links">
+          <a href="https://business.facebook.com/" target="_blank" rel="noopener" class="step-link">Meta Business Manager ↗</a>
+          <a href="https://business.facebook.com/settings/security" target="_blank" rel="noopener" class="step-link">Security Centre ↗</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="setup-step">
+      <div class="step-num">2</div>
+      <div>
+        <div class="step-title">Create a Meta Developer App</div>
+        <div class="step-desc">
+          Go to Meta for Developers and click <strong>Create App</strong>.
+          When asked for the app type, choose <strong>Business</strong>.
+          Give it a name (e.g. "YourBusiness WhatsApp") and link it to your Business Account.
+          Once created, click <strong>Add Product</strong> on the app dashboard and select
+          <strong>WhatsApp</strong>.
+        </div>
+        <div class="step-links">
+          <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener" class="step-link">Meta for Developers — My Apps ↗</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="setup-step">
+      <div class="step-num">3</div>
+      <div>
+        <div class="step-title">Find your Phone Number ID and WABA ID</div>
+        <div class="step-desc">
+          In your app dashboard, go to <strong>WhatsApp → API Setup</strong>.
+          You'll see your test or production phone number listed.
+          Click on the phone number to reveal the <strong>Phone Number ID</strong>.
+          Just below the number list you'll see the <strong>WhatsApp Business Account ID (WABA ID)</strong>.
+          Copy both — they map directly to the fields in the connect form below.
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+          <span class="step-field">→ Phone Number ID field</span>
+          <span class="step-field">→ WABA ID field</span>
+        </div>
+        <div class="step-links">
+          <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener" class="step-link">Open API Setup ↗</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="setup-step">
+      <div class="step-num">4</div>
+      <div>
+        <div class="step-title">Generate a permanent System User access token</div>
+        <div class="step-desc">
+          The default token shown in API Setup expires in 24 hours and will break your
+          integration overnight. To avoid this, go to <strong>Meta Business Manager →
+          Business Settings → System Users</strong>, create a System User with
+          <strong>Admin</strong> role, then click <strong>Add Assets</strong> and grant it
+          access to your WhatsApp App with <strong>Manage</strong> permission. Finally,
+          click <strong>Generate Token</strong>, select your app, tick
+          <strong>whatsapp_business_messaging</strong> and
+          <strong>whatsapp_business_management</strong>, and copy the token.
+          This token never expires.
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+          <span class="step-field">→ Access Token field</span>
+        </div>
+        <div class="step-links">
+          <a href="https://business.facebook.com/settings/system-users" target="_blank" rel="noopener" class="step-link">Business Settings — System Users ↗</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="setup-step">
+      <div class="step-num">5</div>
+      <div>
+        <div class="step-title">Copy your App Secret (recommended)</div>
+        <div class="step-desc">
+          In your Meta Developer App, go to <strong>App Settings → Basic</strong>.
+          Your App Secret is listed there — click <strong>Show</strong> to reveal it.
+          Pasting it into PhiXtra lets us verify that webhook messages genuinely
+          came from Meta and reject any forged requests.
+          This is optional but strongly recommended for production.
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+          <span class="step-field">→ App Secret field</span>
+        </div>
+        <div class="step-links">
+          <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener" class="step-link">App Settings — Basic ↗</a>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</details>
+{% endif %}
 
 <!-- ── Connect Section ───────────────────────────────────────────────────── -->
 {% if embedded_enabled %}
@@ -532,6 +773,40 @@ function copyText(id, btn) {
     setTimeout(function() { btn.textContent = orig; }, 1800);
   });
 }
+
+/* ── Pre-flight checklist ── */
+var _PF_KEYS = [
+  'pf_biz_{{ customer.id }}',
+  'pf_app_{{ customer.id }}',
+  'pf_phone_{{ customer.id }}'
+];
+
+function togglePreflight(btn, key) {
+  var done = btn.classList.toggle('done');
+  try { localStorage.setItem(key, done ? '1' : '0'); } catch(e) {}
+  _checkAllPreflight();
+}
+
+function _checkAllPreflight() {
+  var allDone = _PF_KEYS.every(function(k) {
+    return localStorage.getItem(k) === '1';
+  });
+  var el = document.getElementById('preflightDone');
+  if (el) el.style.display = allDone ? 'block' : 'none';
+}
+
+function _restorePreflight() {
+  var btns = document.querySelectorAll('.preflight-tick');
+  btns.forEach(function(btn, i) {
+    var key = _PF_KEYS[i];
+    if (key && localStorage.getItem(key) === '1') {
+      btn.classList.add('done');
+    }
+  });
+  _checkAllPreflight();
+}
+
+document.addEventListener('DOMContentLoaded', _restorePreflight);
 </script>
 
 {% endblock %}
