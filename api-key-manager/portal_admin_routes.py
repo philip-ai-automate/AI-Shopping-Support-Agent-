@@ -2,13 +2,18 @@
 portal_admin_routes.py  — Phase 1 admin portal (/admin/*)
 admin_users table and db.py are UNCHANGED. app.py (keys.phixtra.com) is UNTOUCHED.
 """
+import psycopg2
+import psycopg2.extras
+import psycopg2.errors
 import os
 import secrets
 import string
 import json as _json
+import csv
+import io
 import bcrypt
 from flask import (Blueprint, render_template, request, redirect,
-                   url_for, session, flash, send_file)
+                   url_for, session, flash, send_file, Response)
 
 from db import get_db_connection, insert_audit_log
 from portal_utils import money_fmt, tokens_to_credits, credits_to_tokens
@@ -41,7 +46,7 @@ def login():
     password = (request.form.get("password") or "").strip()
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT * FROM admin_users WHERE username=%s", (username,))
     admin = cur.fetchone()
     cur.close(); conn.close()
@@ -75,7 +80,7 @@ def customers():
 
     q = (request.args.get("q") or "").strip().lower()
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     if q:
         cur.execute("""
@@ -121,7 +126,7 @@ def customer_detail(customer_id: int):
     if r: return r
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     # NOTE: t.features is NOT included in this JOIN.
     # Fetching it here caused the 500 error because the `features` column
@@ -174,6 +179,20 @@ def customer_detail(customer_id: int):
         FROM audit_logs WHERE tenant_id=%s ORDER BY created_at DESC LIMIT 100""", (tenant_id,))
     audit = cur.fetchall() or []
 
+    # Document counts per type for the index management panel
+    doc_counts = {}
+    try:
+        cur.execute("""
+            SELECT type, COUNT(*) AS cnt
+            FROM documents
+            WHERE tenant_id=%s
+            GROUP BY type
+            ORDER BY type""", (tenant_id,))
+        for dc_row in cur.fetchall():
+            doc_counts[dc_row["type"]] = int(dc_row["cnt"])
+    except Exception:
+        doc_counts = {}
+
     cur.close(); conn.close()
 
     customer["balance_credits"] = tokens_to_credits(int(customer.get("token_balance") or 0))
@@ -190,6 +209,7 @@ def customer_detail(customer_id: int):
                            customer=customer, keys=keys,
                            invoices=invs, audit=audit,
                            tenant_features=tenant_features,
+                           doc_counts=doc_counts,
                            admin_new_plain_key=session.pop("admin_new_plain_key", None))
 
 
@@ -206,7 +226,7 @@ def customer_credit_adjust(customer_id: int):
         return redirect(url_for("portal_admin.customer_detail", customer_id=customer_id))
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT tenant_id FROM customers WHERE id=%s", (customer_id,))
     row = cur.fetchone()
     if not row:
@@ -217,8 +237,8 @@ def customer_credit_adjust(customer_id: int):
     tenant_id   = int(row["tenant_id"])
     delta_tokens = int(delta_credits * 5000)
 
-    cur2 = conn.cursor(buffered=True)
-    cur2.execute("INSERT IGNORE INTO tenant_balances (tenant_id, token_balance) VALUES (%s, 0)", (tenant_id,))
+    cur2 = conn.cursor()
+    cur2.execute("INSERT INTO tenant_balances (tenant_id, token_balance) VALUES (%s, 0) ON CONFLICT (tenant_id) DO NOTHING", (tenant_id,))
     cur2.execute("""
         UPDATE tenant_balances
         SET token_balance = GREATEST(0, token_balance + %s)
@@ -244,7 +264,7 @@ def customer_toggle_active(customer_id: int):
     if r: return r
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT is_active FROM customers WHERE id=%s", (customer_id,))
     row = cur.fetchone()
     if not row:
@@ -253,7 +273,7 @@ def customer_toggle_active(customer_id: int):
         return redirect(url_for("portal_admin.customers"))
 
     new_val = 0 if int(row.get("is_active") or 0) else 1
-    cur2 = conn.cursor(buffered=True)
+    cur2 = conn.cursor()
     cur2.execute("UPDATE customers SET is_active=%s WHERE id=%s", (new_val, customer_id))
     conn.commit()
     cur2.close(); cur.close(); conn.close()
@@ -321,7 +341,7 @@ def customer_set_features(customer_id: int):
     features_json = _json.dumps(features) if features else None
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT tenant_id FROM customers WHERE id=%s", (customer_id,))
     row = cur.fetchone()
     if not row:
@@ -330,7 +350,7 @@ def customer_set_features(customer_id: int):
         return redirect(url_for("portal_admin.customers"))
 
     tenant_id = int(row["tenant_id"])
-    cur2 = conn.cursor(buffered=True)
+    cur2 = conn.cursor()
     cur2.execute(
         "UPDATE tenants SET features=%s WHERE id=%s",
         (features_json, tenant_id)
@@ -365,7 +385,7 @@ def customer_trial_adjust(customer_id: int):
         return redirect(url_for("portal_admin.customer_detail", customer_id=customer_id))
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT tenant_id FROM customers WHERE id=%s", (customer_id,))
     row = cur.fetchone()
     if not row:
@@ -393,9 +413,9 @@ def customer_trial_adjust(customer_id: int):
 
     new_expiry = activated + timedelta(days=trial_days)
 
-    cur2 = conn.cursor(buffered=True)
+    cur2 = conn.cursor()
     cur2.execute(
-        "UPDATE api_keys SET trial_expires_at=%s, is_active=1 WHERE id=%s",
+        "UPDATE api_keys SET trial_expires_at=%s, is_active=TRUE WHERE id=%s",
         (new_expiry, key["id"])
     )
     conn.commit()
@@ -418,7 +438,7 @@ def customer_trial_reset(customer_id: int):
     if r: return r
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT tenant_id FROM customers WHERE id=%s", (customer_id,))
     row = cur.fetchone()
     if not row:
@@ -444,9 +464,9 @@ def customer_trial_reset(customer_id: int):
     now = _dt.utcnow()
     new_expiry = now + timedelta(days=default_days)
 
-    cur2 = conn.cursor(buffered=True)
+    cur2 = conn.cursor()
     cur2.execute(
-        "UPDATE api_keys SET trial_activated_at=%s, trial_expires_at=%s, is_active=1, tokens_used=0 WHERE id=%s",
+        "UPDATE api_keys SET trial_activated_at=%s, trial_expires_at=%s, is_active=TRUE, tokens_used=0 WHERE id=%s",
         (now, new_expiry, key["id"])
     )
     conn.commit()
@@ -500,7 +520,7 @@ def api_keys():
     q = (request.args.get("q") or "").strip().lower()
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     # Read api_key_plain from audit_logs WHERE action='create_key'
     # This is the same table that app.py (keys.phixtra.com) writes to.
@@ -558,12 +578,12 @@ def api_keys_revoke(key_id: int):
     if r: return r
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT id, tenant_id, website, key_type FROM api_keys WHERE id=%s", (key_id,))
     k = cur.fetchone()
     if k:
-        cur2 = conn.cursor(buffered=True)
-        cur2.execute("UPDATE api_keys SET is_active=0 WHERE id=%s", (key_id,))
+        cur2 = conn.cursor()
+        cur2.execute("UPDATE api_keys SET is_active=FALSE WHERE id=%s", (key_id,))
         conn.commit()
         cur2.close()
         insert_audit_log(admin_username=_admin_user(), action="admin_revoke_key",
@@ -580,12 +600,12 @@ def api_keys_reactivate(key_id: int):
     if r: return r
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT id, tenant_id, website, key_type FROM api_keys WHERE id=%s", (key_id,))
     k = cur.fetchone()
     if k:
-        cur2 = conn.cursor(buffered=True)
-        cur2.execute("UPDATE api_keys SET is_active=1 WHERE id=%s", (key_id,))
+        cur2 = conn.cursor()
+        cur2.execute("UPDATE api_keys SET is_active=TRUE WHERE id=%s", (key_id,))
         conn.commit()
         cur2.close()
         insert_audit_log(admin_username=_admin_user(), action="admin_reactivate_key",
@@ -610,7 +630,7 @@ def customer_api_key_create(customer_id: int):
     if r: return r
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     # Look up customer → tenant
     cur.execute("""
@@ -630,7 +650,7 @@ def customer_api_key_create(customer_id: int):
     # Safety: refuse if an active paid key already exists for this tenant
     cur.execute("""
         SELECT id FROM api_keys
-        WHERE tenant_id=%s AND key_type='paid' AND is_active=1
+        WHERE tenant_id=%s AND key_type='paid' AND is_active=TRUE
         LIMIT 1""", (tenant_id,))
     if cur.fetchone():
         cur.close(); conn.close()
@@ -641,13 +661,14 @@ def customer_api_key_create(customer_id: int):
     last4 = plain_key[-4:]
 
     try:
-        cur2 = conn.cursor(buffered=True)
+        cur2 = conn.cursor()
         cur2.execute("""
             INSERT INTO api_keys
                 (tenant_id, api_key_hash, api_key_plain, is_active, website, key_type, token_limit, tokens_used)
-            VALUES (%s, %s, %s, 1, %s, 'paid', NULL, 0)""",
+            VALUES (%s, %s, %s, TRUE, %s, 'paid', NULL, 0)
+            RETURNING id""",
             (tenant_id, hashed_key, plain_key, domain))
-        api_key_id = cur2.lastrowid
+        api_key_id = cur2.fetchone()[0]
         conn.commit()
         cur2.close()
     except Exception as e:
@@ -686,14 +707,14 @@ def credit_packages():
     if r: return r
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     if request.method == "POST":
         name        = (request.form.get("name")        or "").strip()
         credits     = int(request.form.get("credits")  or 0)
         price_pence = int(float(request.form.get("price_gbp") or 0) * 100)
         vat_rate    = float(request.form.get("vat_rate")   or 20.0)
-        is_active   = 1 if request.form.get("is_active") == "on" else 0
+        is_active=TRUE if request.form.get("is_active") == "on" else 0
         sort_order  = int(request.form.get("sort_order")   or 0)
 
         # Stage 3 — package type and billing period
@@ -741,7 +762,7 @@ def credit_packages():
         if not name or credits <= 0 or price_pence <= 0:
             flash("Name, credits and price are required.", "danger")
         else:
-            cur2 = conn.cursor(buffered=True)
+            cur2 = conn.cursor()
             cur2.execute("""
                 INSERT INTO credit_packages (name, credits, price_pence, vat_rate, is_active, sort_order, features, package_type, billing_period)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
@@ -776,11 +797,11 @@ def credit_packages_toggle(pkg_id: int):
     if r: return r
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT is_active FROM credit_packages WHERE id=%s", (pkg_id,))
     row = cur.fetchone() or {}
     new_val = 0 if int(row.get("is_active") or 0) else 1
-    cur2 = conn.cursor(buffered=True)
+    cur2 = conn.cursor()
     cur2.execute("UPDATE credit_packages SET is_active=%s WHERE id=%s", (new_val, pkg_id))
     conn.commit()
     cur2.close(); cur.close(); conn.close()
@@ -794,11 +815,11 @@ def credit_packages_delete(pkg_id: int):
     if r: return r
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT name FROM credit_packages WHERE id=%s", (pkg_id,))
     row = cur.fetchone()
     if row:
-        cur2 = conn.cursor(buffered=True)
+        cur2 = conn.cursor()
         cur2.execute("DELETE FROM credit_packages WHERE id=%s", (pkg_id,))
         conn.commit()
         cur2.close()
@@ -823,7 +844,7 @@ def credit_packages_edit(pkg_id: int):
     credits     = int(request.form.get("credits")  or 0)
     price_pence = int(float(request.form.get("price_gbp") or 0) * 100)
     vat_rate    = float(request.form.get("vat_rate")   or 20.0)
-    is_active   = 1 if request.form.get("is_active") == "on" else 0
+    is_active=TRUE if request.form.get("is_active") == "on" else 0
     sort_order  = int(request.form.get("sort_order")   or 0)
 
     # Stage 3 — package type and billing period
@@ -866,7 +887,7 @@ def credit_packages_edit(pkg_id: int):
         return redirect(url_for("portal_admin.credit_packages"))
 
     conn = get_db_connection()
-    cur = conn.cursor(buffered=True)
+    cur = conn.cursor()
     cur.execute("""
         UPDATE credit_packages
         SET name=%s, credits=%s, price_pence=%s, vat_rate=%s,
@@ -906,7 +927,7 @@ def plugins():
     if r: return r
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     if request.method == "POST":
         action = (request.form.get("action") or "").strip()
@@ -927,15 +948,15 @@ def plugins():
                 dest_path = _os.path.join(PLUGIN_UPLOAD_DIR, safe_name)
                 f.save(dest_path)
 
-                cur2 = conn.cursor(buffered=True)
+                cur2 = conn.cursor()
                 cur2.execute("""
                     INSERT INTO plugin_downloads (plugin_key, display_name, filename, file_path, version)
                     VALUES (%s, %s, %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE
-                        display_name=%s, filename=%s, file_path=%s, version=%s,
+                    ON CONFLICT (plugin_key) DO UPDATE SET
+                        display_name=EXCLUDED.display_name, filename=EXCLUDED.filename,
+                        file_path=EXCLUDED.file_path, version=EXCLUDED.version,
                         uploaded_at=CURRENT_TIMESTAMP""",
-                    (plugin_key, display_name, safe_name, dest_path, version or None,
-                     display_name, safe_name, dest_path, version or None))
+                    (plugin_key, display_name, safe_name, dest_path, version or None))
                 conn.commit()
                 cur2.close()
 
@@ -954,7 +975,7 @@ def plugins():
                         _os.remove(row["file_path"])
                 except Exception:
                     pass
-                cur2 = conn.cursor(buffered=True)
+                cur2 = conn.cursor()
                 cur2.execute("DELETE FROM plugin_downloads WHERE plugin_key=%s", (plugin_key,))
                 conn.commit()
                 cur2.close()
@@ -981,7 +1002,7 @@ def invoices():
     if r: return r
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
         SELECT i.id, i.invoice_number, i.credits, i.amount_pence, i.vat_pence,
                i.currency, i.status, i.created_at,
@@ -1008,7 +1029,7 @@ def invoice_download(invoice_id: int):
     if r: return r
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT * FROM invoices WHERE id=%s", (invoice_id,))
     inv = cur.fetchone()
     cur.close(); conn.close()
@@ -1040,7 +1061,7 @@ def recovery_queue():
     tenant_id_filter = int(tenant_filter) if tenant_filter.isdigit() else None
 
     conn = get_db_connection()
-    cur  = conn.cursor(dictionary=True, buffered=True)
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     try:
         # ── KPI counts ────────────────────────────────────────────────────────
@@ -1165,7 +1186,7 @@ def _get_trial_default_days() -> int:
     Falls back to 14 if the table doesn't exist yet or the key is missing."""
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
             "SELECT setting_value FROM portal_settings WHERE setting_key='trial_default_days'")
         row = cur.fetchone()
@@ -1205,12 +1226,12 @@ def admin_save_trial_days():
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         cur.execute("""
             INSERT INTO portal_settings (setting_key, setting_value)
             VALUES ('trial_default_days', %s)
-            ON DUPLICATE KEY UPDATE setting_value = %s
-        """, (str(days), str(days)))
+            ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value
+        """, (str(days),))
         conn.commit()
         cur.close(); conn.close()
         insert_audit_log(
@@ -1250,7 +1271,7 @@ def admin_change_password():
         return redirect(url_for("portal_admin.admin_settings"))
 
     conn = get_db_connection()
-    cur  = conn.cursor(dictionary=True, buffered=True)
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT * FROM admin_users WHERE username=%s", (username,))
     admin = cur.fetchone()
 
@@ -1265,7 +1286,7 @@ def admin_change_password():
         return redirect(url_for("portal_admin.admin_settings"))
 
     new_hash = _hash_admin_password(new_pw)
-    cur2 = conn.cursor(buffered=True)
+    cur2 = conn.cursor()
     # Update both password (legacy) and password_hash (bcrypt)
     cur2.execute(
         "UPDATE admin_users SET password=%s, password_hash=%s WHERE username=%s",
@@ -1293,7 +1314,7 @@ def customer_change_email(customer_id: int):
         return redirect(url_for("portal_admin.customer_detail", customer_id=customer_id))
 
     conn = get_db_connection()
-    cur  = conn.cursor(dictionary=True, buffered=True)
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     # Check the customer exists
     cur.execute("SELECT id, email, tenant_id FROM customers WHERE id=%s", (customer_id,))
@@ -1313,7 +1334,7 @@ def customer_change_email(customer_id: int):
         flash(f"Email address {new_email} is already in use by another account.", "danger")
         return redirect(url_for("portal_admin.customer_detail", customer_id=customer_id))
 
-    cur2 = conn.cursor(buffered=True)
+    cur2 = conn.cursor()
     cur2.execute("UPDATE customers SET email=%s WHERE id=%s", (new_email, customer_id))
     conn.commit()
     cur2.close(); cur.close(); conn.close()
@@ -1335,7 +1356,7 @@ def customer_send_reset(customer_id: int):
     if r: return r
 
     conn = get_db_connection()
-    cur  = conn.cursor(dictionary=True, buffered=True)
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT id, first_name, email FROM customers WHERE id=%s", (customer_id,))
     c = cur.fetchone()
 
@@ -1350,7 +1371,7 @@ def customer_send_reset(customer_id: int):
     token   = make_token(24)
     expires = utc_now_naive() + timedelta(hours=2)
 
-    cur2 = conn.cursor(buffered=True)
+    cur2 = conn.cursor()
     cur2.execute("UPDATE customers SET reset_token=%s, reset_expires_at=%s WHERE id=%s",
                  (token, expires, customer_id))
     conn.commit()
@@ -1381,6 +1402,81 @@ def customer_send_reset(customer_id: int):
         flash(f"Password reset email sent to {c['email']} ✅", "success")
     else:
         flash(f"Reset token created but email could not be sent. Link: {link}", "warning")
+
+    return redirect(url_for("portal_admin.customer_detail", customer_id=customer_id))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SEARCH INDEX MANAGEMENT (admin-only)
+# Deletes documents from the pgvector documents table for a specific tenant.
+# After deleting, the customer must run Full Sync from their WordPress plugin.
+# ══════════════════════════════════════════════════════════════════════════════
+
+_VALID_DOC_TYPES = {"product", "post", "page", "order", "customer"}
+
+
+@portal_admin_bp.route("/customers/<int:customer_id>/rebuild-index", methods=["POST"])
+def customer_rebuild_index(customer_id: int):
+    r = _require_admin()
+    if r: return r
+
+    doc_type = (request.form.get("doc_type") or "").strip().lower()
+
+    if doc_type and doc_type not in _VALID_DOC_TYPES:
+        flash(f"Invalid document type: {doc_type!r}. Must be one of: {', '.join(sorted(_VALID_DOC_TYPES))}.", "danger")
+        return redirect(url_for("portal_admin.customer_detail", customer_id=customer_id))
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT tenant_id FROM customers WHERE id=%s", (customer_id,))
+    row = cur.fetchone()
+    if not row:
+        cur.close(); conn.close()
+        flash("Customer not found.", "danger")
+        return redirect(url_for("portal_admin.customers"))
+
+    tenant_id = int(row["tenant_id"])
+
+    cur2 = conn.cursor()
+    if doc_type:
+        cur2.execute(
+            "DELETE FROM documents WHERE tenant_id = %s AND type = %s",
+            (tenant_id, doc_type),
+        )
+    else:
+        # Delete all types except verified_spec (same rule as /sync/rebuild-index endpoint)
+        cur2.execute(
+            "DELETE FROM documents WHERE tenant_id = %s AND type != 'verified_spec'",
+            (tenant_id,),
+        )
+
+    deleted = cur2.rowcount
+    conn.commit()
+    cur2.close(); cur.close(); conn.close()
+
+    insert_audit_log(
+        admin_username=_admin_user(),
+        action="admin_rebuild_index",
+        tenant_id=tenant_id,
+        details={
+            "customer_id": customer_id,
+            "doc_type": doc_type or "all",
+            "deleted_count": deleted,
+        },
+    )
+
+    if doc_type:
+        flash(
+            f"Deleted {deleted:,} '{doc_type}' documents for this tenant. "
+            f"Ask them to run Full Sync from WordPress → PhiXtra Export → PhiXtra Sync tab.",
+            "success",
+        )
+    else:
+        flash(
+            f"Deleted {deleted:,} documents (all types) for this tenant. "
+            f"Ask them to run Full Sync from WordPress → PhiXtra Export → PhiXtra Sync tab.",
+            "success",
+        )
 
     return redirect(url_for("portal_admin.customer_detail", customer_id=customer_id))
 
@@ -1431,7 +1527,7 @@ def onboard_wa():
 
     # ── GET: load existing WA merchants ──────────────────────────────────────
     conn = get_db_connection()
-    cur  = conn.cursor(dictionary=True)
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
         SELECT
             t.id            AS tenant_id,
@@ -1454,3 +1550,503 @@ def onboard_wa():
 
     return render_template("portal/admin_onboard_wa.html",
                            merchants=merchants)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PHONE CATALOGUE
+# ══════════════════════════════════════════════════════════════════════════════
+
+_CAT_COLS = [
+    "product_id","brand","model_name","variant_name","release_year",
+    "price_category","network_type","screen_size_inches","display_type",
+    "refresh_rate_hz","screen_resolution","chipset_model","ram","storage",
+    "battery_capacity_mah","fast_charging_watts","rear_camera_main_mp",
+    "front_camera_mp","video_recording","gaming_rating","battery_performance",
+    "camera_quality_rating","wifi_version","bluetooth_version","nfc",
+    "body_material","water_resistance","fingerprint_type","available_colors",
+    "nigeria_market_price_naira","best_for","search_intent_tags",
+    "ai_summary","ai_sales_pitch","is_active",
+]
+
+_FILTER_COLS = ["brand","price_category","network_type","display_type","nfc","is_active"]
+
+PAGE_SIZE = 50
+
+
+def _catalogue_brands(cur):
+    cur.execute("SELECT DISTINCT brand FROM phone_catalogue WHERE brand IS NOT NULL ORDER BY brand")
+    return [r["brand"] for r in (cur.fetchall() or [])]
+
+
+@portal_admin_bp.route("/catalogue")
+def catalogue():
+    r = _require_admin()
+    if r: return r
+
+    q       = (request.args.get("q") or "").strip()
+    brand   = (request.args.get("brand") or "").strip()
+    pcat    = (request.args.get("price_category") or "").strip()
+    network = (request.args.get("network_type") or "").strip()
+    nfc     = (request.args.get("nfc") or "").strip()
+    active  = request.args.get("is_active", "")
+    page    = max(1, int(request.args.get("page", 1)))
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    conditions = []
+    params     = []
+
+    if q:
+        conditions.append(
+            "to_tsvector('english', COALESCE(brand,'') || ' ' || COALESCE(model_name,'') || ' ' || COALESCE(variant_name,'') || ' ' || COALESCE(search_intent_tags,'')) @@ plainto_tsquery('english', %s)"
+        )
+        params.append(q)
+    if brand:
+        conditions.append("brand = %s"); params.append(brand)
+    if pcat:
+        conditions.append("price_category = %s"); params.append(pcat)
+    if network:
+        conditions.append("network_type = %s"); params.append(network)
+    if nfc:
+        conditions.append("nfc = %s"); params.append(nfc)
+    if active in ("true", "false"):
+        conditions.append("is_active = %s"); params.append(active == "true")
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    cur.execute(f"SELECT COUNT(*) AS n FROM phone_catalogue {where}", params)
+    total = cur.fetchone()["n"]
+
+    offset = (page - 1) * PAGE_SIZE
+    cur.execute(
+        f"""SELECT id, product_id, brand, model_name, variant_name, release_year,
+                   price_category, network_type, nigeria_market_price_naira, is_active
+            FROM phone_catalogue {where}
+            ORDER BY brand, model_name, variant_name
+            LIMIT %s OFFSET %s""",
+        params + [PAGE_SIZE, offset],
+    )
+    rows = cur.fetchall() or []
+
+    brands   = _catalogue_brands(cur)
+    cur.execute("SELECT DISTINCT price_category FROM phone_catalogue WHERE price_category IS NOT NULL ORDER BY price_category")
+    pcats = [r["price_category"] for r in (cur.fetchall() or [])]
+    cur.execute("SELECT DISTINCT network_type FROM phone_catalogue WHERE network_type IS NOT NULL ORDER BY network_type")
+    networks = [r["network_type"] for r in (cur.fetchall() or [])]
+
+    cur.close(); conn.close()
+
+    pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
+
+    return render_template(
+        "portal/admin_catalogue.html",
+        rows=rows, total=total, page=page, pages=pages,
+        brands=brands, pcats=pcats, networks=networks,
+        q=q, brand=brand, price_category=pcat,
+        network_type=network, nfc=nfc, is_active=active,
+    )
+
+
+@portal_admin_bp.route("/catalogue/<int:phone_id>/edit", methods=["GET", "POST"])
+def catalogue_edit(phone_id: int):
+    r = _require_admin()
+    if r: return r
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    if request.method == "POST":
+        data = request.form
+        cur.execute(
+            """UPDATE phone_catalogue SET
+                brand=%s, model_name=%s, variant_name=%s, release_year=%s,
+                price_category=%s, network_type=%s, screen_size_inches=%s,
+                display_type=%s, refresh_rate_hz=%s, screen_resolution=%s,
+                chipset_model=%s, ram=%s, storage=%s, battery_capacity_mah=%s,
+                fast_charging_watts=%s, rear_camera_main_mp=%s, front_camera_mp=%s,
+                video_recording=%s, gaming_rating=%s, battery_performance=%s,
+                camera_quality_rating=%s, wifi_version=%s, bluetooth_version=%s,
+                nfc=%s, body_material=%s, water_resistance=%s, fingerprint_type=%s,
+                available_colors=%s, nigeria_market_price_naira=%s, best_for=%s,
+                search_intent_tags=%s, ai_summary=%s, ai_sales_pitch=%s,
+                is_active=%s, updated_at=NOW()
+               WHERE id=%s""",
+            (
+                data.get("brand") or None,
+                data.get("model_name") or None,
+                data.get("variant_name") or None,
+                int(data["release_year"]) if data.get("release_year") else None,
+                data.get("price_category") or None,
+                data.get("network_type") or None,
+                float(data["screen_size_inches"]) if data.get("screen_size_inches") else None,
+                data.get("display_type") or None,
+                int(data["refresh_rate_hz"]) if data.get("refresh_rate_hz") else None,
+                data.get("screen_resolution") or None,
+                data.get("chipset_model") or None,
+                data.get("ram") or None,
+                data.get("storage") or None,
+                int(data["battery_capacity_mah"]) if data.get("battery_capacity_mah") else None,
+                int(data["fast_charging_watts"]) if data.get("fast_charging_watts") else None,
+                int(data["rear_camera_main_mp"]) if data.get("rear_camera_main_mp") else None,
+                int(data["front_camera_mp"]) if data.get("front_camera_mp") else None,
+                data.get("video_recording") or None,
+                data.get("gaming_rating") or None,
+                data.get("battery_performance") or None,
+                data.get("camera_quality_rating") or None,
+                data.get("wifi_version") or None,
+                data.get("bluetooth_version") or None,
+                data.get("nfc") or None,
+                data.get("body_material") or None,
+                data.get("water_resistance") or None,
+                data.get("fingerprint_type") or None,
+                data.get("available_colors") or None,
+                float(data["nigeria_market_price_naira"]) if data.get("nigeria_market_price_naira") else None,
+                data.get("best_for") or None,
+                data.get("search_intent_tags") or None,
+                data.get("ai_summary") or None,
+                data.get("ai_sales_pitch") or None,
+                "is_active" in data,
+                phone_id,
+            ),
+        )
+        conn.commit()
+        insert_audit_log(action="catalogue_edit", admin_username=_admin_user(),
+                         details={"phone_id": phone_id})
+        cur.close(); conn.close()
+        flash("Phone updated.", "success")
+        return redirect(url_for("portal_admin.catalogue"))
+
+    cur.execute("SELECT * FROM phone_catalogue WHERE id=%s", (phone_id,))
+    phone = cur.fetchone()
+    cur.close(); conn.close()
+
+    if not phone:
+        flash("Phone not found.", "danger")
+        return redirect(url_for("portal_admin.catalogue"))
+
+    return render_template("portal/admin_catalogue_edit.html", phone=phone)
+
+
+@portal_admin_bp.route("/catalogue/<int:phone_id>/delete", methods=["POST"])
+def catalogue_delete(phone_id: int):
+    r = _require_admin()
+    if r: return r
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("DELETE FROM phone_catalogue WHERE id=%s", (phone_id,))
+    conn.commit()
+    cur.close(); conn.close()
+
+    insert_audit_log(action="catalogue_delete", admin_username=_admin_user(),
+                     details={"phone_id": phone_id})
+    flash("Phone deleted.", "success")
+    return redirect(url_for("portal_admin.catalogue"))
+
+
+@portal_admin_bp.route("/catalogue/bulk", methods=["POST"])
+def catalogue_bulk():
+    r = _require_admin()
+    if r: return r
+
+    action  = request.form.get("bulk_action", "")
+    ids_raw = request.form.getlist("selected_ids")
+    ids     = [int(i) for i in ids_raw if i.isdigit()]
+
+    if not ids:
+        flash("No rows selected.", "warning")
+        return redirect(url_for("portal_admin.catalogue"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+
+    if action == "delete":
+        cur.execute("DELETE FROM phone_catalogue WHERE id = ANY(%s)", (ids,))
+        conn.commit()
+        insert_audit_log(action="catalogue_bulk_delete", admin_username=_admin_user(),
+                         details={"count": len(ids)})
+        flash(f"{len(ids)} phone(s) deleted.", "success")
+
+    elif action == "activate":
+        cur.execute("UPDATE phone_catalogue SET is_active=TRUE, updated_at=NOW() WHERE id = ANY(%s)", (ids,))
+        conn.commit()
+        flash(f"{len(ids)} phone(s) activated.", "success")
+
+    elif action == "deactivate":
+        cur.execute("UPDATE phone_catalogue SET is_active=FALSE, updated_at=NOW() WHERE id = ANY(%s)", (ids,))
+        conn.commit()
+        flash(f"{len(ids)} phone(s) deactivated.", "success")
+
+    elif action == "set_field":
+        field  = request.form.get("bulk_field", "").strip()
+        value  = request.form.get("bulk_value", "").strip()
+        allowed = {"brand","price_category","network_type","display_type","nfc",
+                   "body_material","water_resistance","fingerprint_type","gaming_rating",
+                   "battery_performance","camera_quality_rating","best_for"}
+        if field not in allowed:
+            flash("Invalid field for bulk update.", "danger")
+        else:
+            cur.execute(
+                f"UPDATE phone_catalogue SET {field}=%s, updated_at=NOW() WHERE id = ANY(%s)",
+                (value or None, ids),
+            )
+            conn.commit()
+            insert_audit_log(action="catalogue_bulk_field_update", admin_username=_admin_user(),
+                             details={"field": field, "value": value, "count": len(ids)})
+            flash(f"{len(ids)} phone(s) updated — {field} set to '{value}'.", "success")
+
+    cur.close(); conn.close()
+    return redirect(url_for("portal_admin.catalogue"))
+
+
+@portal_admin_bp.route("/catalogue/export")
+def catalogue_export():
+    r = _require_admin()
+    if r: return r
+
+    q       = (request.args.get("q") or "").strip()
+    brand   = (request.args.get("brand") or "").strip()
+    pcat    = (request.args.get("price_category") or "").strip()
+    network = (request.args.get("network_type") or "").strip()
+    nfc     = (request.args.get("nfc") or "").strip()
+    active  = request.args.get("is_active", "")
+
+    conditions, params = [], []
+    if q:
+        conditions.append(
+            "to_tsvector('english', COALESCE(brand,'') || ' ' || COALESCE(model_name,'') || ' ' || COALESCE(variant_name,'') || ' ' || COALESCE(search_intent_tags,'')) @@ plainto_tsquery('english', %s)"
+        )
+        params.append(q)
+    if brand:
+        conditions.append("brand = %s"); params.append(brand)
+    if pcat:
+        conditions.append("price_category = %s"); params.append(pcat)
+    if network:
+        conditions.append("network_type = %s"); params.append(network)
+    if nfc:
+        conditions.append("nfc = %s"); params.append(nfc)
+    if active in ("true", "false"):
+        conditions.append("is_active = %s"); params.append(active == "true")
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        f"SELECT {', '.join(_CAT_COLS)} FROM phone_catalogue {where} ORDER BY brand, model_name, variant_name",
+        params,
+    )
+    rows = cur.fetchall() or []
+    cur.close(); conn.close()
+
+    out = io.StringIO()
+    writer = csv.DictWriter(out, fieldnames=_CAT_COLS)
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({k: row.get(k, "") for k in _CAT_COLS})
+
+    return Response(
+        out.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=phone_catalogue_export.csv"},
+    )
+
+
+@portal_admin_bp.route("/catalogue/import", methods=["GET", "POST"])
+def catalogue_import():
+    r = _require_admin()
+    if r: return r
+
+    if request.method == "GET":
+        return render_template("portal/admin_catalogue_import.html")
+
+    file = request.files.get("file")
+    if not file or not file.filename:
+        flash("No file selected.", "danger")
+        return redirect(url_for("portal_admin.catalogue_import"))
+
+    filename = file.filename.lower()
+    inserted = updated = errors = 0
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+
+    try:
+        if filename.endswith(".csv"):
+            stream = io.StringIO(file.stream.read().decode("utf-8-sig"))
+            reader = csv.DictReader(stream)
+            rows_iter = reader
+        elif filename.endswith((".xlsx", ".xls")):
+            import openpyxl
+            wb = openpyxl.load_workbook(file, read_only=True, data_only=True)
+            ws = wb.active
+            headers = [c.value for c in next(ws.iter_rows(min_row=1, max_row=1))]
+            rows_iter = (dict(zip(headers, [c for c in row])) for row in ws.iter_rows(min_row=2, values_only=True))
+        else:
+            flash("Only .csv or .xlsx files are supported.", "danger")
+            cur.close(); conn.close()
+            return redirect(url_for("portal_admin.catalogue_import"))
+
+        for row in rows_iter:
+            pid = str(row.get("product_id") or "").strip()
+            if not pid:
+                errors += 1
+                continue
+            try:
+                cur.execute(
+                    """INSERT INTO phone_catalogue (
+                        product_id,brand,model_name,variant_name,release_year,price_category,
+                        network_type,screen_size_inches,display_type,refresh_rate_hz,screen_resolution,
+                        chipset_model,ram,storage,battery_capacity_mah,fast_charging_watts,
+                        rear_camera_main_mp,front_camera_mp,video_recording,gaming_rating,
+                        battery_performance,camera_quality_rating,wifi_version,bluetooth_version,
+                        nfc,body_material,water_resistance,fingerprint_type,available_colors,
+                        nigeria_market_price_naira,best_for,search_intent_tags,ai_summary,ai_sales_pitch
+                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (product_id) DO UPDATE SET
+                        brand=%s,model_name=%s,variant_name=%s,updated_at=NOW()""",
+                    (
+                        pid,
+                        row.get("brand"), row.get("model_name"), row.get("variant_name"),
+                        int(row["release_year"]) if row.get("release_year") else None,
+                        row.get("price_category"), row.get("network_type"),
+                        float(row["screen_size_inches"]) if row.get("screen_size_inches") else None,
+                        row.get("display_type"),
+                        int(row["refresh_rate_hz"]) if row.get("refresh_rate_hz") else None,
+                        row.get("screen_resolution"), row.get("chipset_model"),
+                        row.get("ram"), row.get("storage"),
+                        int(row["battery_capacity_mah"]) if row.get("battery_capacity_mah") else None,
+                        int(row["fast_charging_watts"]) if row.get("fast_charging_watts") else None,
+                        int(row["rear_camera_main_mp"]) if row.get("rear_camera_main_mp") else None,
+                        int(row["front_camera_mp"]) if row.get("front_camera_mp") else None,
+                        row.get("video_recording"), row.get("gaming_rating"),
+                        row.get("battery_performance"), row.get("camera_quality_rating"),
+                        row.get("wifi_version"), row.get("bluetooth_version"), row.get("nfc"),
+                        row.get("body_material"), row.get("water_resistance"),
+                        row.get("fingerprint_type"), row.get("available_colors"),
+                        float(row["nigeria_market_price_naira"]) if row.get("nigeria_market_price_naira") else None,
+                        row.get("best_for"), row.get("search_intent_tags"),
+                        row.get("ai_summary"), row.get("ai_sales_pitch"),
+                        # ON CONFLICT update fields
+                        row.get("brand"), row.get("model_name"), row.get("variant_name"),
+                    ),
+                )
+                if cur.rowcount == 1:
+                    inserted += 1
+                else:
+                    updated += 1
+            except Exception:
+                errors += 1
+
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        flash(f"Import failed: {e}", "danger")
+        cur.close(); conn.close()
+        return redirect(url_for("portal_admin.catalogue_import"))
+
+    cur.close(); conn.close()
+    insert_audit_log(action="catalogue_import", admin_username=_admin_user(),
+                     details={"inserted": inserted, "updated": updated, "errors": errors})
+    flash(f"Import complete — {inserted} added, {updated} updated, {errors} skipped.", "success")
+    return redirect(url_for("portal_admin.catalogue"))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PHONE BRANDS
+# ══════════════════════════════════════════════════════════════════════════════
+
+@portal_admin_bp.route("/brands")
+def brands():
+    r = _require_admin()
+    if r: return r
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT pb.id, pb.brand, pb.priority, pb.created_at, pb.updated_at,
+               COUNT(pc.id) AS phone_count
+        FROM phone_brands pb
+        LEFT JOIN phone_catalogue pc ON pc.brand = pb.brand
+        GROUP BY pb.id, pb.brand, pb.priority, pb.created_at, pb.updated_at
+        ORDER BY pb.brand
+    """)
+    rows = cur.fetchall() or []
+    cur.close(); conn.close()
+    return render_template("portal/admin_brands.html", brands=rows)
+
+
+@portal_admin_bp.route("/brands/add", methods=["POST"])
+def brands_add():
+    r = _require_admin()
+    if r: return r
+
+    brand    = (request.form.get("brand") or "").strip()
+    priority = (request.form.get("priority") or "Medium").strip()
+
+    if not brand:
+        flash("Brand name is required.", "danger")
+        return redirect(url_for("portal_admin.brands"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    try:
+        cur.execute(
+            "INSERT INTO phone_brands (brand, priority) VALUES (%s, %s) ON CONFLICT (brand) DO NOTHING",
+            (brand, priority),
+        )
+        conn.commit()
+        flash(f"Brand '{brand}' added.", "success")
+    except Exception as e:
+        flash(f"Error: {e}", "danger")
+    finally:
+        cur.close(); conn.close()
+
+    return redirect(url_for("portal_admin.brands"))
+
+
+@portal_admin_bp.route("/brands/<int:brand_id>/edit", methods=["GET", "POST"])
+def brands_edit(brand_id: int):
+    r = _require_admin()
+    if r: return r
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    if request.method == "POST":
+        brand    = (request.form.get("brand") or "").strip()
+        priority = (request.form.get("priority") or "Medium").strip()
+        cur2 = conn.cursor()
+        cur2.execute(
+            "UPDATE phone_brands SET brand=%s, priority=%s, updated_at=NOW() WHERE id=%s",
+            (brand, priority, brand_id),
+        )
+        conn.commit()
+        cur2.close(); cur.close(); conn.close()
+        flash("Brand updated.", "success")
+        return redirect(url_for("portal_admin.brands"))
+
+    cur.execute("SELECT * FROM phone_brands WHERE id=%s", (brand_id,))
+    brand_row = cur.fetchone()
+    cur.close(); conn.close()
+
+    if not brand_row:
+        flash("Brand not found.", "danger")
+        return redirect(url_for("portal_admin.brands"))
+
+    return render_template("portal/admin_brands.html", edit_brand=brand_row, brands=[])
+
+
+@portal_admin_bp.route("/brands/<int:brand_id>/delete", methods=["POST"])
+def brands_delete(brand_id: int):
+    r = _require_admin()
+    if r: return r
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("DELETE FROM phone_brands WHERE id=%s", (brand_id,))
+    conn.commit()
+    cur.close(); conn.close()
+    flash("Brand deleted.", "success")
+    return redirect(url_for("portal_admin.brands"))

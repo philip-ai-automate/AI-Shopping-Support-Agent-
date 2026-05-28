@@ -1,0 +1,234 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Phone Catalogue — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+  .filter-bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;align-items:flex-end}
+  .filter-bar select,.filter-bar input{width:auto;min-width:130px;padding:7px 10px;font-size:12px}
+  .filter-bar .btn{align-self:flex-end}
+  .bulk-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;padding:10px 14px;
+            background:rgba(3,12,24,0.03);border-top:1px solid var(--line);border-radius:0 0 12px 12px}
+  .bulk-bar select,.bulk-bar input{width:auto;min-width:120px;padding:7px 10px;font-size:12px}
+  .cb-all{cursor:pointer}
+  #bulk-field-row{display:none}
+  .pagination{display:flex;gap:6px;align-items:center;margin-top:16px;flex-wrap:wrap}
+  .pagination a,.pagination span{padding:6px 11px;border-radius:9px;border:1px solid var(--line);
+      font-size:12px;font-weight:600;background:#fff;color:var(--txt);text-decoration:none}
+  .pagination .current{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .pagination a:hover{background:rgba(3,12,24,0.05);text-decoration:none}
+  .pill-active{border-color:rgba(18,183,106,.3);background:rgba(18,183,106,.1);color:#0a7a3c}
+  .pill-inactive{border-color:rgba(240,68,56,.3);background:rgba(240,68,56,.08);color:#b02020}
+  td.price{text-align:right;font-variant-numeric:tabular-nums}
+</style>
+
+<div class="page-header">
+  <h1 class="section-title">📱 Phone Catalogue
+    <span class="muted" style="font-size:14px;font-weight:500">{{ total }} phones</span>
+  </h1>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <a href="{{ url_for('portal_admin.catalogue_import') }}" class="btn btn-sm">⬆ Import CSV/XLSX</a>
+    <a href="{{ url_for('portal_admin.catalogue_export',
+         q=q, brand=brand, price_category=price_category,
+         network_type=network_type, nfc=nfc, is_active=is_active) }}"
+       class="btn btn-sm">⬇ Export CSV</a>
+    <a href="{{ url_for('portal_admin.brands') }}" class="btn btn-sm">🏷 Brands</a>
+  </div>
+</div>
+
+{# ── Filter bar ── #}
+<form method="GET" id="filter-form">
+  <div class="filter-bar">
+    <div>
+      <label>Search</label>
+      <input name="q" value="{{ q }}" placeholder="model, brand, tags…" style="min-width:200px"/>
+    </div>
+    <div>
+      <label>Brand</label>
+      <select name="brand">
+        <option value="">All brands</option>
+        {% for b in brands %}<option value="{{ b }}" {% if b==brand %}selected{% endif %}>{{ b }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>Tier</label>
+      <select name="price_category">
+        <option value="">All tiers</option>
+        {% for p in pcats %}<option value="{{ p }}" {% if p==price_category %}selected{% endif %}>{{ p }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>Network</label>
+      <select name="network_type">
+        <option value="">Any</option>
+        {% for n in networks %}<option value="{{ n }}" {% if n==network_type %}selected{% endif %}>{{ n }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>NFC</label>
+      <select name="nfc">
+        <option value="">Any</option>
+        <option value="Yes" {% if nfc=='Yes' %}selected{% endif %}>Yes</option>
+        <option value="No"  {% if nfc=='No'  %}selected{% endif %}>No</option>
+      </select>
+    </div>
+    <div>
+      <label>Status</label>
+      <select name="is_active">
+        <option value="">All</option>
+        <option value="true"  {% if is_active=='true'  %}selected{% endif %}>Active</option>
+        <option value="false" {% if is_active=='false' %}selected{% endif %}>Inactive</option>
+      </select>
+    </div>
+    <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+    <a href="{{ url_for('portal_admin.catalogue') }}" class="btn btn-sm">Clear</a>
+  </div>
+</form>
+
+{# ── Table + bulk form ── #}
+<form method="POST" action="{{ url_for('portal_admin.catalogue_bulk') }}" id="bulk-form">
+  <div class="card" style="padding:0">
+    <div class="table-wrap" style="border:none;border-radius:16px 16px 0 0">
+      <table>
+        <thead>
+          <tr>
+            <th><input type="checkbox" class="cb-all" title="Select all"/></th>
+            <th>Brand</th>
+            <th>Model</th>
+            <th>Variant</th>
+            <th>Year</th>
+            <th>Tier</th>
+            <th>Network</th>
+            <th>Price (₦)</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td><input type="checkbox" name="selected_ids" value="{{ row.id }}"/></td>
+            <td><strong>{{ row.brand or '—' }}</strong></td>
+            <td>{{ row.model_name or '—' }}</td>
+            <td class="muted">{{ row.variant_name or '—' }}</td>
+            <td class="muted">{{ row.release_year or '—' }}</td>
+            <td>
+              {% if row.price_category %}
+                <span class="pill pill-grey">{{ row.price_category }}</span>
+              {% else %}—{% endif %}
+            </td>
+            <td class="muted">{{ row.network_type or '—' }}</td>
+            <td class="price">
+              {% if row.nigeria_market_price_naira %}
+                ₦{{ "{:,.0f}".format(row.nigeria_market_price_naira) }}
+              {% else %}—{% endif %}
+            </td>
+            <td>
+              {% if row.is_active %}
+                <span class="pill pill-active">Active</span>
+              {% else %}
+                <span class="pill pill-inactive">Inactive</span>
+              {% endif %}
+            </td>
+            <td style="white-space:nowrap;display:flex;gap:5px">
+              <a href="{{ url_for('portal_admin.catalogue_edit', phone_id=row.id) }}"
+                 class="btn btn-sm">Edit</a>
+              <form method="POST"
+                    action="{{ url_for('portal_admin.catalogue_delete', phone_id=row.id) }}"
+                    style="display:inline"
+                    onsubmit="return confirm('Delete this phone?')">
+                <button type="submit" class="btn btn-sm btn-danger">Del</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="10" class="muted" style="text-align:center;padding:24px">
+            No phones found{% if q %} matching "{{ q }}"{% endif %}.
+          </td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {# ── Bulk action bar ── #}
+    <div class="bulk-bar">
+      <div>
+        <label>Bulk action</label>
+        <select name="bulk_action" id="bulk-action-sel" onchange="toggleFieldRow()">
+          <option value="">— choose —</option>
+          <option value="activate">Activate selected</option>
+          <option value="deactivate">Deactivate selected</option>
+          <option value="set_field">Set field value…</option>
+          <option value="delete">Delete selected</option>
+        </select>
+      </div>
+      <div id="bulk-field-row" style="display:flex;gap:8px">
+        <div>
+          <label>Field</label>
+          <select name="bulk_field">
+            <option value="brand">Brand</option>
+            <option value="price_category">Tier</option>
+            <option value="network_type">Network</option>
+            <option value="display_type">Display type</option>
+            <option value="nfc">NFC</option>
+            <option value="body_material">Body material</option>
+            <option value="water_resistance">Water resistance</option>
+            <option value="fingerprint_type">Fingerprint type</option>
+            <option value="gaming_rating">Gaming rating</option>
+            <option value="battery_performance">Battery performance</option>
+            <option value="camera_quality_rating">Camera rating</option>
+            <option value="best_for">Best for</option>
+          </select>
+        </div>
+        <div>
+          <label>New value</label>
+          <input name="bulk_value" placeholder="value to set" style="min-width:160px"/>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-sm btn-primary"
+              onclick="return confirmBulk()">Apply to selected</button>
+    </div>
+  </div>
+</form>
+
+{# ── Pagination ── #}
+{% if pages > 1 %}
+<div class="pagination">
+  {% set base_args = {'q': q, 'brand': brand, 'price_category': price_category,
+                      'network_type': network_type, 'nfc': nfc, 'is_active': is_active} %}
+  {% if page > 1 %}
+    <a href="{{ url_for('portal_admin.catalogue', page=page-1, **base_args) }}">‹ Prev</a>
+  {% endif %}
+  {% for p in range([1, page-3]|max, [pages+1, page+4]|min) %}
+    {% if p == page %}
+      <span class="current">{{ p }}</span>
+    {% else %}
+      <a href="{{ url_for('portal_admin.catalogue', page=p, **base_args) }}">{{ p }}</a>
+    {% endif %}
+  {% endfor %}
+  {% if page < pages %}
+    <a href="{{ url_for('portal_admin.catalogue', page=page+1, **base_args) }}">Next ›</a>
+  {% endif %}
+  <span class="muted">Page {{ page }} of {{ pages }}</span>
+</div>
+{% endif %}
+
+<script>
+// Select-all checkbox
+document.querySelector('.cb-all').addEventListener('change', function(){
+  document.querySelectorAll('input[name="selected_ids"]').forEach(cb => cb.checked = this.checked);
+});
+
+function toggleFieldRow(){
+  var sel = document.getElementById('bulk-action-sel').value;
+  document.getElementById('bulk-field-row').style.display = sel === 'set_field' ? 'flex' : 'none';
+}
+
+function confirmBulk(){
+  var action = document.getElementById('bulk-action-sel').value;
+  if(!action){ alert('Please choose a bulk action.'); return false; }
+  var checked = document.querySelectorAll('input[name="selected_ids"]:checked').length;
+  if(checked === 0){ alert('No rows selected.'); return false; }
+  if(action === 'delete') return confirm('Permanently delete ' + checked + ' phone(s)?');
+  return true;
+}
+</script>
+{% endblock %}

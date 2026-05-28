@@ -1,0 +1,96 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Phone Brands — PhiXtra Admin{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="section-title">🏷 Phone Brands</h1>
+  <a href="{{ url_for('portal_admin.catalogue') }}" class="btn btn-sm">← Back to catalogue</a>
+</div>
+
+{# ── Add / Edit form ── #}
+<div class="card" style="max-width:480px;margin-bottom:20px">
+  {% if edit_brand %}
+    <p class="card-title">Edit Brand</p>
+    <form method="POST" action="{{ url_for('portal_admin.brands_edit', brand_id=edit_brand.id) }}">
+  {% else %}
+    <p class="card-title">Add New Brand</p>
+    <form method="POST" action="{{ url_for('portal_admin.brands_add') }}">
+  {% endif %}
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div class="form-group" style="flex:1;min-width:160px">
+        <label>Brand Name</label>
+        <input name="brand" value="{{ edit_brand.brand if edit_brand else '' }}"
+               placeholder="e.g. Nokia" required/>
+      </div>
+      <div class="form-group" style="flex:1;min-width:120px">
+        <label>Priority in Nigeria</label>
+        <select name="priority">
+          {% set cur_pri = edit_brand.priority if edit_brand else 'Medium' %}
+          <option value="High"   {% if cur_pri=='High'   %}selected{% endif %}>High</option>
+          <option value="Medium" {% if cur_pri=='Medium' %}selected{% endif %}>Medium</option>
+          <option value="Low"    {% if cur_pri=='Low'    %}selected{% endif %}>Low</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <button type="submit" class="btn btn-primary btn-sm">
+        {{ 'Save Changes' if edit_brand else 'Add Brand' }}
+      </button>
+      {% if edit_brand %}
+        <a href="{{ url_for('portal_admin.brands') }}" class="btn btn-sm">Cancel</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+{# ── Brands table — load fresh list if we are in edit mode ── #}
+{% if not edit_brand %}
+<div class="card" style="padding:0">
+  <div class="table-wrap" style="border:none;border-radius:16px">
+    <table>
+      <thead>
+        <tr>
+          <th>Brand</th>
+          <th>Priority</th>
+          <th>Phones in catalogue</th>
+          <th>Added</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in brands %}
+        <tr>
+          <td><strong>{{ b.brand }}</strong></td>
+          <td>
+            {% if b.priority == 'High' %}
+              <span class="pill pill-green">High</span>
+            {% elif b.priority == 'Low' %}
+              <span class="pill pill-grey">Low</span>
+            {% else %}
+              <span class="pill pill-warn">Medium</span>
+            {% endif %}
+          </td>
+          <td>{{ b.phone_count }}</td>
+          <td class="muted">{{ b.created_at.strftime('%Y-%m-%d') if b.created_at else '—' }}</td>
+          <td style="display:flex;gap:5px">
+            <a href="{{ url_for('portal_admin.brands_edit', brand_id=b.id) }}"
+               class="btn btn-sm">Edit</a>
+            <form method="POST"
+                  action="{{ url_for('portal_admin.brands_delete', brand_id=b.id) }}"
+                  onsubmit="return confirm('Delete brand {{ b.brand }}?')">
+              <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="muted" style="text-align:center;padding:24px">
+          No brands yet.
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

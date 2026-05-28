@@ -1,0 +1,201 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Edit Phone — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+  .edit-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  @media(max-width:900px){.edit-grid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:600px){.edit-grid{grid-template-columns:1fr}}
+  .full-col{grid-column:1/-1}
+  .section-hdr{font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;
+               letter-spacing:.08em;margin:18px 0 8px;border-bottom:1px solid var(--line);
+               padding-bottom:6px;grid-column:1/-1}
+</style>
+
+<div class="page-header">
+  <h1 class="section-title">Edit Phone</h1>
+  <a href="{{ url_for('portal_admin.catalogue') }}" class="btn btn-sm">← Back to catalogue</a>
+</div>
+
+<div class="card">
+  <p class="muted" style="margin-bottom:14px">ID: <code>{{ phone.product_id }}</code></p>
+  <form method="POST">
+
+    <div class="edit-grid">
+      <div class="section-hdr">Identity</div>
+
+      <div class="form-group">
+        <label>Brand</label>
+        <input name="brand" value="{{ phone.brand or '' }}"/>
+      </div>
+      <div class="form-group">
+        <label>Model Name</label>
+        <input name="model_name" value="{{ phone.model_name or '' }}"/>
+      </div>
+      <div class="form-group">
+        <label>Variant Name</label>
+        <input name="variant_name" value="{{ phone.variant_name or '' }}"/>
+      </div>
+      <div class="form-group">
+        <label>Release Year</label>
+        <input name="release_year" type="number" value="{{ phone.release_year or '' }}"/>
+      </div>
+      <div class="form-group">
+        <label>Price Category / Tier</label>
+        <input name="price_category" value="{{ phone.price_category or '' }}"/>
+      </div>
+      <div class="form-group">
+        <label>Nigeria Market Price (₦)</label>
+        <input name="nigeria_market_price_naira" type="number" step="1"
+               value="{{ phone.nigeria_market_price_naira or '' }}"/>
+      </div>
+
+      <div class="section-hdr">Display &amp; Network</div>
+
+      <div class="form-group">
+        <label>Network Type</label>
+        <input name="network_type" value="{{ phone.network_type or '' }}"/>
+      </div>
+      <div class="form-group">
+        <label>Screen Size (inches)</label>
+        <input name="screen_size_inches" type="number" step="0.1"
+               value="{{ phone.screen_size_inches or '' }}"/>
+      </div>
+      <div class="form-group">
+        <label>Display Type</label>
+        <input name="display_type" value="{{ phone.display_type or '' }}"/>
+      </div>
+      <div class="form-group">
+        <label>Refresh Rate (Hz)</label>
+        <input name="refresh_rate_hz" type="number" value="{{ phone.refresh_rate_hz or '' }}"/>
+      </div>
+      <div class="form-group">
+        <label>Screen Resolution</label>
+        <input name="screen_resolution" value="{{ phone.screen_resolution or '' }}"/>
+      </div>
+
+      <div class="section-hdr">Processor &amp; Memory</div>
+
+      <div class="form-group">
+        <label>Chipset Model</label>
+        <input name="chipset_model" value="{{ phone.chipset_model or '' }}"/>
+      </div>
+      <div class="form-group">
+        <label>RAM</label>
+        <input name="ram" value="{{ phone.ram or '' }}"/>
+      </div>
+      <div class="form-group">
+        <label>Storage</label>
+        <input name="storage" value="{{ phone.storage or '' }}"/>
+      </div>
+
+      <div class="section-hdr">Battery &amp; Charging</div>
+
+      <div class="form-group">
+        <label>Battery Capacity (mAh)</label>
+        <input name="battery_capacity_mah" type="number" value="{{ phone.battery_capacity_mah or '' }}"/>
+      </div>
+      <div class="form-group">
+        <label>Fast Charging (W)</label>
+        <input name="fast_charging_watts" type="number" value="{{ phone.fast_charging_watts or '' }}"/>
+      </div>
+      <div class="form-group">
+        <label>Battery Performance</label>
+        <input name="battery_performance" value="{{ phone.battery_performance or '' }}"/>
+      </div>
+
+      <div class="section-hdr">Camera</div>
+
+      <div class="form-group">
+        <label>Rear Camera (MP)</label>
+        <input name="rear_camera_main_mp" type="number" value="{{ phone.rear_camera_main_mp or '' }}"/>
+      </div>
+      <div class="form-group">
+        <label>Front Camera (MP)</label>
+        <input name="front_camera_mp" type="number" value="{{ phone.front_camera_mp or '' }}"/>
+      </div>
+      <div class="form-group">
+        <label>Video Recording</label>
+        <input name="video_recording" value="{{ phone.video_recording or '' }}"/>
+      </div>
+      <div class="form-group">
+        <label>Camera Quality Rating</label>
+        <input name="camera_quality_rating" value="{{ phone.camera_quality_rating or '' }}"/>
+      </div>
+
+      <div class="section-hdr">Connectivity &amp; Build</div>
+
+      <div class="form-group">
+        <label>Wi-Fi Version</label>
+        <input name="wifi_version" value="{{ phone.wifi_version or '' }}"/>
+      </div>
+      <div class="form-group">
+        <label>Bluetooth Version</label>
+        <input name="bluetooth_version" value="{{ phone.bluetooth_version or '' }}"/>
+      </div>
+      <div class="form-group">
+        <label>NFC</label>
+        <select name="nfc">
+          <option value="">—</option>
+          <option value="Yes" {% if phone.nfc=='Yes' %}selected{% endif %}>Yes</option>
+          <option value="No"  {% if phone.nfc=='No'  %}selected{% endif %}>No</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Body Material</label>
+        <input name="body_material" value="{{ phone.body_material or '' }}"/>
+      </div>
+      <div class="form-group">
+        <label>Water Resistance</label>
+        <input name="water_resistance" value="{{ phone.water_resistance or '' }}"/>
+      </div>
+      <div class="form-group">
+        <label>Fingerprint Type</label>
+        <input name="fingerprint_type" value="{{ phone.fingerprint_type or '' }}"/>
+      </div>
+      <div class="form-group">
+        <label>Gaming Rating</label>
+        <input name="gaming_rating" value="{{ phone.gaming_rating or '' }}"/>
+      </div>
+      <div class="form-group full-col">
+        <label>Available Colors</label>
+        <input name="available_colors" value="{{ phone.available_colors or '' }}"/>
+      </div>
+
+      <div class="section-hdr">AI &amp; Marketing</div>
+
+      <div class="form-group">
+        <label>Best For</label>
+        <input name="best_for" value="{{ phone.best_for or '' }}"/>
+      </div>
+      <div class="form-group full-col">
+        <label>Search Intent Tags <span class="muted">(comma-separated)</span></label>
+        <input name="search_intent_tags" value="{{ phone.search_intent_tags or '' }}"/>
+      </div>
+      <div class="form-group full-col">
+        <label>AI Summary</label>
+        <textarea name="ai_summary" rows="2">{{ phone.ai_summary or '' }}</textarea>
+      </div>
+      <div class="form-group full-col">
+        <label>AI Sales Pitch</label>
+        <textarea name="ai_sales_pitch" rows="2">{{ phone.ai_sales_pitch or '' }}</textarea>
+      </div>
+
+      <div class="section-hdr">Visibility</div>
+
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" name="is_active" style="width:auto"
+                 {% if phone.is_active %}checked{% endif %}/>
+          Active (shown in onboarding search)
+        </label>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;display:flex;gap:10px">
+      <button type="submit" class="btn btn-primary">Save changes</button>
+      <a href="{{ url_for('portal_admin.catalogue') }}" class="btn">Cancel</a>
+    </div>
+
+  </form>
+</div>
+{% endblock %}

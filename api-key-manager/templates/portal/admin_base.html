@@ -90,6 +90,7 @@
     <div class="navlinks">
       <a href="{{ url_for('portal_admin.customers') }}"       {% if 'customers' in request.endpoint %}class="active"{% endif %}>Customers</a>
       <a href="{{ url_for('portal_admin.onboard_wa') }}"     {% if request.endpoint=='portal_admin.onboard_wa' %}class="active"{% endif %}>📱 Onboard WA</a>
+      <a href="{{ url_for('portal_admin.catalogue') }}"      {% if 'catalogue' in (request.endpoint or '') or 'brands' in (request.endpoint or '') %}class="active"{% endif %}>📂 Catalogue</a>
       <a href="{{ url_for('portal_admin.api_keys') }}"        {% if request.endpoint=='portal_admin.api_keys' %}class="active"{% endif %}>API Keys</a>
       <a href="{{ url_for('portal_admin.invoices') }}"        {% if request.endpoint=='portal_admin.invoices' %}class="active"{% endif %}>Invoices</a>
       <a href="{{ url_for('portal_admin.credit_packages') }}" {% if request.endpoint=='portal_admin.credit_packages' %}class="active"{% endif %}>Packages</a>

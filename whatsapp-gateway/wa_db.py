@@ -1,6 +1,6 @@
 import os
-import mysql.connector
-from mysql.connector import Error
+import psycopg2
+import psycopg2.extras
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -8,159 +8,66 @@ load_dotenv()
 
 def get_db_connection():
     try:
-        conn = mysql.connector.connect(
-            host=os.getenv("DB_HOST"),
-            user=os.getenv("DB_USER"),
-            password=os.getenv("DB_PASSWORD"),
-            database=os.getenv("DB_NAME"),
+        conn = psycopg2.connect(
+            host=os.getenv("PG_HOST", "localhost"),
+            port=int(os.getenv("PG_PORT", "5432")),
+            user=os.getenv("PG_USER"),
+            password=os.getenv("PG_PASSWORD"),
+            dbname=os.getenv("PG_DB"),
         )
         return conn
-    except Error as e:
+    except Exception as e:
         print("❌ WA Gateway DB connection error:", e)
         return None
 
 
 def init_wa_tables():
+    """No-op: all tables already exist in PostgreSQL from pg_schema.sql."""
+    pass
+
+
+def search_catalogue(keyword: str, limit: int = 5) -> list[dict]:
+    """
+    Full-text search on the shared phone_catalogue table (no tenant scope —
+    this is a global reference catalogue used during merchant onboarding only).
+    Returns up to `limit` results with title and price_min.
+    """
     conn = get_db_connection()
     if not conn:
-        print("⚠️ Could not init WA tables — no DB connection")
-        return
-    cur = conn.cursor()
+        return []
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS wa_tenants (
-              id                   INT AUTO_INCREMENT PRIMARY KEY,
-              tenant_id            INT NOT NULL,
-              phone_number_id      VARCHAR(64) NOT NULL,
-              access_token         TEXT NOT NULL,
-              waba_id              VARCHAR(64),
-              verify_token         VARCHAR(128) NOT NULL,
-              phixtra_api_key      VARCHAR(128) NOT NULL,
-              active               BOOLEAN DEFAULT TRUE,
-              signup_method        ENUM('manual','embedded') DEFAULT 'manual',
-              display_phone_number VARCHAR(32),
-              verified_name        VARCHAR(128),
-              token_expires_at     TIMESTAMP NULL,
-              created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-              UNIQUE KEY uq_phone_number_id (phone_number_id)
-            )
-        """)
-        # Migrate existing tables that are missing the new columns
-        for col_sql in [
-            "ALTER TABLE wa_tenants ADD COLUMN signup_method ENUM('manual','embedded') DEFAULT 'manual'",
-            "ALTER TABLE wa_tenants ADD COLUMN display_phone_number VARCHAR(32)",
-            "ALTER TABLE wa_tenants ADD COLUMN verified_name VARCHAR(128)",
-            "ALTER TABLE wa_tenants ADD COLUMN token_expires_at TIMESTAMP NULL",
-            "ALTER TABLE wa_tenants ADD COLUMN app_secret VARCHAR(256)",
-        ]:
-            try:
-                cur.execute(col_sql)
-                conn.commit()
-            except Exception:
-                pass  # Column already exists
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS wa_message_log (
-              id              BIGINT AUTO_INCREMENT PRIMARY KEY,
-              tenant_id       INT NOT NULL,
-              phone_number_id VARCHAR(64) NOT NULL,
-              customer_phone  VARCHAR(32) NOT NULL,
-              direction       ENUM('inbound', 'outbound') NOT NULL,
-              content         TEXT,
-              message_type    VARCHAR(32) DEFAULT 'text',
-              meta_message_id VARCHAR(128) UNIQUE,
-              created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-              INDEX idx_tenant_customer (tenant_id, customer_phone),
-              INDEX idx_created (created_at)
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS wa_handoff_state (
-              id             BIGINT AUTO_INCREMENT PRIMARY KEY,
-              session_id     VARCHAR(128) NOT NULL UNIQUE,
-              tenant_id      INT NOT NULL,
-              customer_phone VARCHAR(32) NOT NULL,
-              escalated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-              resolved_at    TIMESTAMP NULL,
-              INDEX idx_session (session_id)
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS wa_product_cache (
-              session_id   VARCHAR(128) NOT NULL,
-              product_id   VARCHAR(64)  NOT NULL,
-              product_name VARCHAR(512),
-              product_url  TEXT,
-              cart_url     TEXT,
-              price        VARCHAR(64),
-              created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-              PRIMARY KEY (session_id, product_id)
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS wa_templates (
-              id            INT AUTO_INCREMENT PRIMARY KEY,
-              tenant_id     INT NOT NULL,
-              template_type VARCHAR(64) NOT NULL,
-              template_name VARCHAR(128) NOT NULL,
-              language_code VARCHAR(16) DEFAULT 'en',
-              active        BOOLEAN DEFAULT TRUE,
-              created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-              UNIQUE KEY uq_tenant_type (tenant_id, template_type)
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS wa_proactive_log (
-              id              BIGINT AUTO_INCREMENT PRIMARY KEY,
-              tenant_id       INT NOT NULL,
-              phone_number_id VARCHAR(64) NOT NULL,
-              customer_phone  VARCHAR(32) NOT NULL,
-              event_type      VARCHAR(64) NOT NULL,
-              template_name   VARCHAR(128),
-              status          ENUM('sent', 'failed', 'skipped') NOT NULL,
-              notes           TEXT,
-              created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-              INDEX idx_tenant (tenant_id),
-              INDEX idx_customer (customer_phone)
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS wa_campaigns (
-              id              BIGINT AUTO_INCREMENT PRIMARY KEY,
-              tenant_id       INT NOT NULL,
-              name            VARCHAR(128) NOT NULL,
-              campaign_type   ENUM('broadcast','cart_recovery') DEFAULT 'broadcast',
-              template_name   VARCHAR(128) NOT NULL,
-              language_code   VARCHAR(16) DEFAULT 'en',
-              status          ENUM('draft','scheduled','running','done','failed') DEFAULT 'draft',
-              scheduled_at    TIMESTAMP NULL,
-              completed_at    TIMESTAMP NULL,
-              total_count     INT DEFAULT 0,
-              sent_count      INT DEFAULT 0,
-              failed_count    INT DEFAULT 0,
-              recipients      MEDIUMTEXT,
-              created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-              INDEX idx_tenant (tenant_id),
-              INDEX idx_status (status),
-              INDEX idx_scheduled (scheduled_at)
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS wa_merchant_onboarding (
-              id          BIGINT AUTO_INCREMENT PRIMARY KEY,
-              wa_phone    VARCHAR(32)  NOT NULL,
-              state       VARCHAR(64)  NOT NULL DEFAULT 'COLLECT_BIZ_NAME',
-              collected   JSON         NOT NULL,
-              tenant_id   INT          NULL,
-              created_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-              updated_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-              UNIQUE KEY  uq_phone (wa_phone),
-              INDEX       idx_state (state)
-            )
-        """)
-        conn.commit()
-        print("✅ WA Gateway tables ready")
+        cur.execute(
+            """
+            SELECT
+                model_name || COALESCE(' ' || variant_name, '')  AS title,
+                nigeria_market_price_naira                        AS price_min
+            FROM phone_catalogue
+            WHERE is_active = TRUE
+              AND to_tsvector('english',
+                      COALESCE(brand,'') || ' ' ||
+                      COALESCE(model_name,'') || ' ' ||
+                      COALESCE(variant_name,'') || ' ' ||
+                      COALESCE(search_intent_tags,'')
+                  ) @@ plainto_tsquery('english', %s)
+            ORDER BY ts_rank(
+                to_tsvector('english',
+                    COALESCE(brand,'') || ' ' ||
+                    COALESCE(model_name,'') || ' ' ||
+                    COALESCE(variant_name,'') || ' ' ||
+                    COALESCE(search_intent_tags,'')
+                ),
+                plainto_tsquery('english', %s)
+            ) DESC
+            LIMIT %s
+            """,
+            (keyword, keyword, limit),
+        )
+        rows = cur.fetchall() or []
+        return [dict(r) for r in rows]
     except Exception as e:
-        print("⚠️ init_wa_tables error:", e)
+        print("⚠️ search_catalogue error:", e)
+        return []
     finally:
         cur.close()
         conn.close()
@@ -177,7 +84,7 @@ def log_message(
 ) -> bool:
     """
     Insert a message into wa_message_log.
-    Returns False if the meta_message_id already exists (dedup via INSERT IGNORE).
+    Returns False if the meta_message_id already exists (dedup via ON CONFLICT DO NOTHING).
     """
     conn = get_db_connection()
     if not conn:
@@ -186,9 +93,10 @@ def log_message(
     try:
         cur.execute(
             """
-            INSERT IGNORE INTO wa_message_log
+            INSERT INTO wa_message_log
               (tenant_id, phone_number_id, customer_phone, direction, content, message_type, meta_message_id)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (meta_message_id) DO NOTHING
             """,
             (tenant_id, phone_number_id, customer_phone, direction, content, message_type, meta_message_id),
         )
@@ -221,11 +129,11 @@ def cache_products(session_id: str, products: list):
                 INSERT INTO wa_product_cache
                   (session_id, product_id, product_name, product_url, cart_url, price)
                 VALUES (%s, %s, %s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE
-                  product_name = VALUES(product_name),
-                  product_url  = VALUES(product_url),
-                  cart_url     = VALUES(cart_url),
-                  price        = VALUES(price)
+                ON CONFLICT (session_id, product_id) DO UPDATE SET
+                  product_name = EXCLUDED.product_name,
+                  product_url  = EXCLUDED.product_url,
+                  cart_url     = EXCLUDED.cart_url,
+                  price        = EXCLUDED.price
                 """,
                 (
                     session_id,
@@ -249,7 +157,7 @@ def get_cached_product(session_id: str, product_id: str) -> dict | None:
     conn = get_db_connection()
     if not conn:
         return None
-    cur = conn.cursor(dictionary=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cur.execute(
             """
@@ -276,7 +184,7 @@ def get_wa_template(tenant_id: int, template_type: str) -> dict | None:
     conn = get_db_connection()
     if not conn:
         return None
-    cur = conn.cursor(dictionary=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cur.execute(
             """
@@ -330,7 +238,7 @@ def is_handoff_active(session_id: str) -> bool:
     conn = get_db_connection()
     if not conn:
         return False
-    cur = conn.cursor(dictionary=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cur.execute(
             "SELECT id FROM wa_handoff_state WHERE session_id = %s AND resolved_at IS NULL",
@@ -346,7 +254,7 @@ def is_handoff_active(session_id: str) -> bool:
 
 
 def create_handoff(session_id: str, tenant_id: int, customer_phone: str):
-    """Record a new human handoff. INSERT IGNORE is safe if already exists."""
+    """Record a new human handoff. ON CONFLICT DO NOTHING is safe if already exists."""
     conn = get_db_connection()
     if not conn:
         return
@@ -354,14 +262,225 @@ def create_handoff(session_id: str, tenant_id: int, customer_phone: str):
     try:
         cur.execute(
             """
-            INSERT IGNORE INTO wa_handoff_state (session_id, tenant_id, customer_phone)
+            INSERT INTO wa_handoff_state (session_id, tenant_id, customer_phone)
             VALUES (%s, %s, %s)
+            ON CONFLICT (session_id) DO NOTHING
             """,
             (session_id, tenant_id, customer_phone),
         )
         conn.commit()
     except Exception as e:
         print("⚠️ create_handoff error:", e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ── WhatsApp shopping session ─────────────────────────────────────────────────
+
+def get_wa_shop_session(session_id: str) -> dict | None:
+    conn = get_db_connection()
+    if not conn:
+        return None
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            "SELECT * FROM wa_shop_session WHERE session_id = %s",
+            (session_id,),
+        )
+        return cur.fetchone()
+    except Exception as e:
+        print("⚠️ get_wa_shop_session error:", e)
+        return None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def save_wa_shop_session(
+    session_id: str,
+    tenant_id: int,
+    customer_phone: str,
+    state: str,
+    cart: dict,
+    order_id: str = None,
+):
+    import json as _json
+    conn = get_db_connection()
+    if not conn:
+        return
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            INSERT INTO wa_shop_session
+                (session_id, tenant_id, customer_phone, state, cart, order_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (session_id) DO UPDATE SET
+                state      = EXCLUDED.state,
+                cart       = EXCLUDED.cart,
+                order_id   = COALESCE(EXCLUDED.order_id, wa_shop_session.order_id),
+                updated_at = NOW()
+            """,
+            (session_id, tenant_id, customer_phone, state, _json.dumps(cart), order_id),
+        )
+        conn.commit()
+    except Exception as e:
+        print("⚠️ save_wa_shop_session error:", e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def delete_wa_shop_session(session_id: str):
+    conn = get_db_connection()
+    if not conn:
+        return
+    cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM wa_shop_session WHERE session_id = %s", (session_id,))
+        conn.commit()
+    except Exception as e:
+        print("⚠️ delete_wa_shop_session error:", e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_merchant_bank(tenant_id: int) -> dict | None:
+    conn = get_db_connection()
+    if not conn:
+        return None
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            """
+            SELECT bank_name, account_number, account_name
+            FROM merchant_bank_accounts
+            WHERE tenant_id = %s AND is_primary = TRUE
+            LIMIT 1
+            """,
+            (tenant_id,),
+        )
+        return cur.fetchone()
+    except Exception as e:
+        print("⚠️ get_merchant_bank error:", e)
+        return None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_wa_merchant_settings(tenant_id: int) -> dict:
+    conn = get_db_connection()
+    if not conn:
+        return {"discount_mode": "merchant_only"}
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            "SELECT discount_mode FROM wa_merchant_settings WHERE tenant_id = %s",
+            (tenant_id,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else {"discount_mode": "merchant_only"}
+    except Exception as e:
+        print("⚠️ get_wa_merchant_settings error:", e)
+        return {"discount_mode": "merchant_only"}
+    finally:
+        cur.close()
+        conn.close()
+
+
+def search_tenant_products(tenant_id: int, query: str) -> list[dict]:
+    conn = get_db_connection()
+    if not conn:
+        return []
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            """
+            SELECT id, name, price, stock_quantity, discount_type, discount_value, description
+            FROM products
+            WHERE tenant_id = %s AND is_active = TRUE
+              AND LOWER(name) LIKE LOWER(%s)
+            ORDER BY name ASC
+            LIMIT 5
+            """,
+            (tenant_id, f"%{query}%"),
+        )
+        return [dict(r) for r in (cur.fetchall() or [])]
+    except Exception as e:
+        print("⚠️ search_tenant_products error:", e)
+        return []
+    finally:
+        cur.close()
+        conn.close()
+
+
+def create_wa_order(
+    tenant_id: int,
+    customer_phone: str,
+    customer_name: str,
+    cart: dict,
+    delivery_type: str,
+    delivery_address: str | None,
+    receipt_image_url: str | None,
+) -> tuple[str, str]:
+    """Create order + order_items rows. Returns (order_id, reference)."""
+    import uuid as _uuid
+    conn = get_db_connection()
+    if not conn:
+        raise RuntimeError("DB unavailable")
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            INSERT INTO order_reference_seq (tenant_id, last_seq) VALUES (%s, 1)
+            ON CONFLICT (tenant_id) DO UPDATE SET last_seq = order_reference_seq.last_seq + 1
+            RETURNING last_seq
+            """,
+            (tenant_id,),
+        )
+        seq = cur.fetchone()[0]
+        reference   = f"PHX-{seq:06d}"
+        order_id    = str(_uuid.uuid4())
+        final_price = float(cart.get("final_price") or cart.get("unit_price") or 0)
+
+        cur.execute(
+            """
+            INSERT INTO orders
+                (id, tenant_id, reference, customer_phone, customer_name,
+                 delivery_address, total_amount, status,
+                 payment_method, receipt_image_url)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'RECEIPT_RECEIVED', 'bank_transfer', %s)
+            """,
+            (
+                order_id, tenant_id, reference,
+                customer_phone, customer_name,
+                delivery_address, final_price, receipt_image_url,
+            ),
+        )
+        cur.execute(
+            """
+            INSERT INTO order_items
+                (order_id, product_id, product_name, quantity, unit_price, subtotal)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (
+                order_id,
+                cart.get("product_id"),
+                cart.get("product_name", ""),
+                int(cart.get("quantity", 1)),
+                float(cart.get("unit_price", 0)),
+                final_price,
+            ),
+        )
+        conn.commit()
+        return order_id, reference
+    except Exception as e:
+        print("⚠️ create_wa_order error:", e)
+        conn.rollback()
+        raise
     finally:
         cur.close()
         conn.close()

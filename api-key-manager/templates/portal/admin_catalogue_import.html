@@ -1,0 +1,38 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Import Phones — PhiXtra Admin{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="section-title">⬆ Import Phone Catalogue</h1>
+  <a href="{{ url_for('portal_admin.catalogue') }}" class="btn btn-sm">← Back to catalogue</a>
+</div>
+
+<div class="card" style="max-width:600px">
+  <p style="margin-bottom:16px;line-height:1.6">
+    Upload a <strong>CSV</strong> or <strong>Excel (.xlsx)</strong> file to add or update phones.
+    Existing rows are matched by <code>product_id</code> and updated in place.
+    New rows are inserted.
+  </p>
+
+  <div class="card" style="background:rgba(3,12,24,0.02);margin-bottom:16px">
+    <p class="card-title">Required column headers</p>
+    <p class="muted" style="line-height:1.8;font-size:12px">
+      product_id, brand, model_name, variant_name, release_year, price_category,
+      network_type, screen_size_inches, display_type, refresh_rate_hz, screen_resolution,
+      chipset_model, ram, storage, battery_capacity_mah, fast_charging_watts,
+      rear_camera_main_mp, front_camera_mp, video_recording, gaming_rating,
+      battery_performance, camera_quality_rating, wifi_version, bluetooth_version,
+      nfc, body_material, water_resistance, fingerprint_type, available_colors,
+      nigeria_market_price_naira, best_for, search_intent_tags, ai_summary, ai_sales_pitch
+    </p>
+  </div>
+
+  <form method="POST" enctype="multipart/form-data">
+    <div class="form-group">
+      <label>File (CSV or XLSX)</label>
+      <input type="file" name="file" accept=".csv,.xlsx,.xls" required style="padding:6px"/>
+    </div>
+    <button type="submit" class="btn btn-primary">Upload &amp; Import</button>
+  </form>
+</div>
+{% endblock %}
