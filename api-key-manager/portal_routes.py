@@ -145,7 +145,7 @@ def _usage_summary(tenant_id: int, days: int = 30):
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
         SELECT COALESCE(SUM(used_tokens),0) AS tokens
-        FROM usage_events WHERE tenant_id=%s AND created_at >= UTC_DATE()""", (tenant_id,))
+        FROM usage_events WHERE tenant_id=%s AND created_at >= CURRENT_DATE""", (tenant_id,))
     today_tokens = int((cur.fetchone() or {}).get("tokens") or 0)
     cur.execute("""
         SELECT COALESCE(SUM(used_tokens),0) AS tokens
@@ -2863,7 +2863,7 @@ def _get_usage_report_data(tenant_id: int, days: int) -> dict:
         cur.execute("""
             SELECT COALESCE(SUM(used_tokens), 0) AS t
             FROM usage_events
-            WHERE tenant_id = %s AND created_at >= UTC_DATE()
+            WHERE tenant_id = %s AND created_at >= CURRENT_DATE
         """, (tenant_id,))
         today_tokens  = int((cur.fetchone() or {}).get("t") or 0)
         today_credits = tokens_to_credits(today_tokens)
