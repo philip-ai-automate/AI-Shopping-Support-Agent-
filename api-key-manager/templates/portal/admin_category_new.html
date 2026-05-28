@@ -1,0 +1,60 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}{{ 'Edit' if cat else 'New' }} Category — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+  .icon-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+  .icon-opt{display:flex;align-items:center;justify-content:center;width:46px;height:46px;
+            border-radius:12px;border:2px solid var(--line);cursor:pointer;font-size:22px;
+            transition:.15s;user-select:none}
+  .icon-opt:hover{border-color:rgba(3,12,24,.35);background:rgba(3,12,24,.04)}
+  .icon-opt.selected{border-color:var(--ink);background:rgba(3,12,24,.08)}
+  #icon-hidden{display:none}
+</style>
+
+<div class="page-header">
+  <h1 class="section-title">{{ '✏️ Edit Category' if cat else '+ New Category' }}</h1>
+  <a href="{{ url_for('portal_admin.catalogue_dashboard') }}" class="btn btn-sm">← Back</a>
+</div>
+
+<div class="card" style="max-width:560px">
+  <form method="POST">
+    <div class="form-group">
+      <label>Category Name *</label>
+      <input name="name" value="{{ cat.name if cat else '' }}" placeholder="e.g. Laptops, Smart TVs, Tablets" required autofocus/>
+    </div>
+
+    <div class="form-group">
+      <label>Icon *</label>
+      <input type="hidden" name="icon" id="icon-hidden" value="{{ cat.icon if cat else (icons[0] if icons else '📦') }}"/>
+      <div class="icon-grid" id="icon-grid">
+        {% for ic in icons %}
+        <div class="icon-opt {% if (cat and cat.icon == ic) or (not cat and loop.first) %}selected{% endif %}"
+             data-icon="{{ ic }}" title="{{ ic }}">{{ ic }}</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Description <span class="muted">(optional)</span></label>
+      <textarea name="description" rows="2" style="resize:vertical">{{ cat.description if cat else '' }}</textarea>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:4px">
+      <button type="submit" class="btn btn-primary">
+        {{ 'Save Changes' if cat else 'Next: Define Attributes →' }}
+      </button>
+      <a href="{{ url_for('portal_admin.catalogue_dashboard') }}" class="btn">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<script>
+document.querySelectorAll('.icon-opt').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.icon-opt').forEach(o => o.classList.remove('selected'));
+    el.classList.add('selected');
+    document.getElementById('icon-hidden').value = el.dataset.icon;
+  });
+});
+</script>
+{% endblock %}

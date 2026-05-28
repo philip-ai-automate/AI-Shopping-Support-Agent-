@@ -1,0 +1,203 @@
+{% extends "portal/base.html" %}
+{% block title %}{{ cat.name }} — My Catalogue{% endblock %}
+{% block content %}
+<style>
+  .filter-bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;align-items:flex-end}
+  .filter-bar select,.filter-bar input{width:auto;min-width:120px;padding:7px 10px;font-size:12px;border-radius:9px;border:1px solid rgba(3,12,24,0.18)}
+  .prod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+  .prod-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;
+             box-shadow:0 4px 12px rgba(3,12,24,0.05);display:flex;flex-direction:column;gap:6px;
+             transition:.15s;position:relative}
+  .prod-card.selected{border-color:rgba(18,183,106,0.50);background:rgba(18,183,106,0.03)}
+  .prod-brand{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+  .prod-name{font-size:13px;font-weight:700;line-height:1.35}
+  .prod-sku{font-size:10px;color:var(--muted);font-family:monospace}
+  .prod-attrs{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
+  .attr-chip{font-size:10px;padding:2px 6px;background:rgba(3,12,24,0.05);
+             border:1px solid var(--line);border-radius:5px;color:var(--muted)}
+  .toggle-btn{margin-top:auto;padding-top:10px;display:flex;align-items:center;gap:8px}
+  .toggle-btn button{flex:1;padding:8px;border-radius:10px;border:1px solid var(--line);
+                     font-size:12px;font-weight:700;cursor:pointer;transition:.15s;font-family:inherit}
+  .btn-add{background:#fff;color:var(--ink)}
+  .btn-add:hover{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .btn-remove{background:rgba(18,183,106,0.10);color:#0a7a3c;border-color:rgba(18,183,106,0.35)}
+  .btn-remove:hover{background:rgba(240,68,56,0.08);color:#b02020;border-color:rgba(240,68,56,0.3)}
+  .selected-check{position:absolute;top:12px;right:12px;font-size:16px}
+  .pagination{display:flex;gap:6px;align-items:center;margin-top:18px;flex-wrap:wrap}
+  .pagination a,.pagination span{padding:6px 11px;border-radius:9px;border:1px solid var(--line);
+      font-size:12px;font-weight:600;background:#fff;color:var(--txt);text-decoration:none}
+  .pagination .current{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .pagination a:hover{background:rgba(3,12,24,.05);text-decoration:none}
+</style>
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title" style="margin:0">{{ cat.icon }} {{ cat.name }}</h1>
+    <p class="muted">{{ total }} product{{ 's' if total != 1 }}
+      {% if selected_in_cat %} · <span style="color:var(--good);font-weight:700">{{ selected_in_cat }} in your store</span>{% endif %}
+    </p>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    {% if selected_in_cat %}
+    <a href="{{ url_for('portal.catalogue_selections') }}" class="btn btn-sm">
+      View My Selections ({{ selected_in_cat }})
+    </a>
+    {% endif %}
+    <a href="{{ url_for('portal.catalogue_browse') }}" class="btn btn-sm">← All Categories</a>
+  </div>
+</div>
+
+{# ── Filter bar ── #}
+<form method="GET" id="filter-form">
+  <div class="filter-bar">
+    <div>
+      <label style="display:block;font-size:11px;color:var(--muted);margin-bottom:3px">Search</label>
+      <input name="q" value="{{ q }}" placeholder="model, brand…" style="min-width:190px"/>
+    </div>
+    {% if brands %}
+    <div>
+      <label style="display:block;font-size:11px;color:var(--muted);margin-bottom:3px">Brand</label>
+      <select name="brand">
+        <option value="">All brands</option>
+        {% for b in brands %}<option value="{{ b }}" {% if b==brand_f %}selected{% endif %}>{{ b }}</option>{% endfor %}
+      </select>
+    </div>
+    {% endif %}
+    {% for a in filter_attrs %}
+    {% if attr_values.get(a.attribute_key) %}
+    <div>
+      <label style="display:block;font-size:11px;color:var(--muted);margin-bottom:3px">{{ a.attribute_label }}</label>
+      <select name="attr_{{ a.attribute_key }}">
+        <option value="">Any</option>
+        {% for v in attr_values[a.attribute_key] %}
+        <option value="{{ v }}" {% if attr_filters.get(a.attribute_key)==v %}selected{% endif %}>
+          {{ v }}{% if a.unit %} {{ a.unit }}{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+    {% endfor %}
+    <div style="align-self:flex-end">
+      <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+      <a href="{{ url_for('portal.catalogue_category', category_id=cat.id) }}" class="btn btn-sm">Clear</a>
+    </div>
+  </div>
+</form>
+
+{# ── Product grid ── #}
+{% if products %}
+<div class="prod-grid" id="product-grid">
+  {% for p in products %}
+  {% set is_sel = p.id in selected_ids %}
+  <div class="prod-card {% if is_sel %}selected{% endif %}" id="card-{{ p.id }}">
+    {% if is_sel %}<div class="selected-check">✅</div>{% endif %}
+
+    <div class="prod-brand">{{ p.brand or '' }}</div>
+    <div class="prod-name">{{ p.model_name }}</div>
+    {% if p.model_number %}
+    <div class="prod-sku">{{ p.model_number }}</div>
+    {% endif %}
+
+    {% if p.attrs %}
+    <div class="prod-attrs">
+      {% for a in attrs[:5] %}
+      {% if p.attrs.get(a.attribute_key) %}
+      <span class="attr-chip">{{ p.attrs[a.attribute_key] }}{% if a.unit %} {{ a.unit }}{% endif %}</span>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="toggle-btn">
+      <button class="{% if is_sel %}btn-remove{% else %}btn-add{% endif %}"
+              data-product-id="{{ p.id }}"
+              data-category-id="{{ cat.id }}"
+              data-selected="{{ 'true' if is_sel else 'false' }}"
+              onclick="toggleProduct(this)">
+        {% if is_sel %}✓ In My Store{% else %}+ Add to Store{% endif %}
+      </button>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card" style="text-align:center;padding:36px">
+  <div style="font-size:32px;margin-bottom:10px">🔍</div>
+  <div style="font-weight:700;margin-bottom:6px">No products found</div>
+  <div class="muted">Try adjusting your search or filters.</div>
+</div>
+{% endif %}
+
+{# ── Pagination ── #}
+{% if pages > 1 %}
+{% set base_args = {'q': q, 'brand': brand_f} %}
+{% for key, val in attr_filters.items() %}{% if val %}{% set _ = base_args.update({'attr_' + key: val}) %}{% endif %}{% endfor %}
+<div class="pagination">
+  {% if page > 1 %}
+  <a href="{{ url_for('portal.catalogue_category', category_id=cat.id, page=page-1, **base_args) }}">‹ Prev</a>
+  {% endif %}
+  {% for p in range(1, pages+1) %}
+    {% if p == page %}<span class="current">{{ p }}</span>
+    {% elif p <= 3 or p >= pages-2 or (p >= page-2 and p <= page+2) %}
+      <a href="{{ url_for('portal.catalogue_category', category_id=cat.id, page=p, **base_args) }}">{{ p }}</a>
+    {% elif p == 4 or p == pages-3 %}<span>…</span>{% endif %}
+  {% endfor %}
+  {% if page < pages %}
+  <a href="{{ url_for('portal.catalogue_category', category_id=cat.id, page=page+1, **base_args) }}">Next ›</a>
+  {% endif %}
+</div>
+{% endif %}
+
+{# ── AJAX toggle ── #}
+<script>
+async function toggleProduct(btn) {
+  btn.disabled = true;
+  const productId  = btn.dataset.productId;
+  const categoryId = btn.dataset.categoryId;
+  const isSelected = btn.dataset.selected === 'true';
+
+  try {
+    const res = await fetch(
+      `/catalogue/categories/${categoryId}/toggle/${productId}?page={{ page }}&q={{ q|urlencode }}&brand={{ brand_f|urlencode }}`,
+      {
+        method: 'POST',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({'csrf_token': ''}),
+      }
+    );
+
+    const data = await res.json();
+    if (!data.ok) { btn.disabled = false; return; }
+
+    const card  = document.getElementById('card-' + productId);
+    const check = card.querySelector('.selected-check');
+
+    if (data.selected) {
+      btn.dataset.selected = 'true';
+      btn.className = 'btn-remove';
+      btn.textContent = '✓ In My Store';
+      card.classList.add('selected');
+      if (!check) {
+        const el = document.createElement('div');
+        el.className = 'selected-check';
+        el.textContent = '✅';
+        card.prepend(el);
+      }
+    } else {
+      btn.dataset.selected = 'false';
+      btn.className = 'btn-add';
+      btn.textContent = '+ Add to Store';
+      card.classList.remove('selected');
+      if (check) check.remove();
+    }
+  } catch(e) {
+    console.error(e);
+  }
+  btn.disabled = false;
+}
+</script>
+{% endblock %}

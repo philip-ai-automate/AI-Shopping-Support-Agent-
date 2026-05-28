@@ -1,0 +1,100 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Edit Product — {{ cat.name }} — PhiXtra Admin{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title">✏️ Edit Product</h1>
+    <div class="muted" style="margin-top:4px">{{ cat.icon }} {{ cat.name }}</div>
+  </div>
+  <a href="{{ url_for('portal_admin.catalogue_category_products', category_id=cat.id) }}" class="btn btn-sm">← Back to Products</a>
+</div>
+
+<form method="POST">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+
+    {# ── Core fields ── #}
+    <div class="card">
+      <div class="card-title">Core Details</div>
+
+      <div class="form-group">
+        <label>Brand</label>
+        <input name="brand" value="{{ product.brand or '' }}" placeholder="e.g. Samsung, Apple"/>
+      </div>
+      <div class="form-group">
+        <label>Model Name *</label>
+        <input name="model_name" value="{{ product.model_name }}" required/>
+      </div>
+      <div class="form-group">
+        <label>Model Number</label>
+        <input name="model_number" value="{{ product.model_number or '' }}" placeholder="Official model/part number"/>
+      </div>
+      <div class="form-group">
+        <label>SKU</label>
+        <input name="sku" value="{{ product.sku or '' }}" placeholder="Unique identifier"/>
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <textarea name="description" rows="3" style="resize:vertical">{{ product.description or '' }}</textarea>
+      </div>
+      <div class="form-group">
+        <label>Image URL</label>
+        <input name="image_url" type="url" value="{{ product.image_url or '' }}" placeholder="https://…"/>
+      </div>
+      <div class="form-group">
+        <label>Status</label>
+        <select name="is_active">
+          <option value="1" {% if product.is_active %}selected{% endif %}>Active</option>
+          <option value="0" {% if not product.is_active %}selected{% endif %}>Inactive</option>
+        </select>
+      </div>
+    </div>
+
+    {# ── Dynamic attributes ── #}
+    <div class="card">
+      <div class="card-title">{{ cat.name }} Attributes</div>
+      {% if attrs %}
+        {% for a in attrs %}
+        <div class="form-group">
+          <label>
+            {{ a.attribute_label }}
+            {% if a.unit %}<span class="muted">({{ a.unit }})</span>{% endif %}
+            {% if a.is_required %}<span style="color:var(--bad)">*</span>{% endif %}
+          </label>
+          {% if a.data_type == 'boolean' %}
+          <select name="attr_{{ a.attribute_key }}">
+            <option value="">—</option>
+            <option value="Yes" {% if attr_vals.get(a.attribute_key)=='Yes' %}selected{% endif %}>Yes</option>
+            <option value="No"  {% if attr_vals.get(a.attribute_key)=='No'  %}selected{% endif %}>No</option>
+          </select>
+          {% elif a.data_type == 'number' %}
+          <input name="attr_{{ a.attribute_key }}" type="text" inputmode="decimal"
+                 value="{{ attr_vals.get(a.attribute_key) or '' }}"
+                 placeholder="{{ a.unit or '' }}"/>
+          {% else %}
+          <input name="attr_{{ a.attribute_key }}"
+                 value="{{ attr_vals.get(a.attribute_key) or '' }}"/>
+          {% endif %}
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="muted">No custom attributes defined for this category.
+          <a href="{{ url_for('portal_admin.catalogue_category_attributes', category_id=cat.id) }}">Add attributes</a>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div style="margin-top:10px;display:flex;gap:10px">
+    <button type="submit" class="btn btn-primary">Save Changes</button>
+    <a href="{{ url_for('portal_admin.catalogue_category_products', category_id=cat.id) }}" class="btn">Cancel</a>
+    <form method="POST"
+          action="{{ url_for('portal_admin.catalogue_product_delete', category_id=cat.id, product_id=product.id) }}"
+          style="display:inline;margin-left:auto"
+          onsubmit="return confirm('Delete this product permanently?')">
+      <button type="submit" class="btn btn-danger">Delete Product</button>
+    </form>
+  </div>
+</form>
+
+{% endblock %}

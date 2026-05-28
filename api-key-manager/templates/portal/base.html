@@ -293,6 +293,27 @@
       <span class="sb-icon">📊</span> Dashboard
     </a>
 
+    <!-- My Inbox -->
+    <a class="sb-link {% if request.endpoint in ('portal.my_inbox', 'portal.inbox_reply') %}active{% endif %}"
+       href="{{ url_for('portal.my_inbox') }}"
+       style="justify-content:space-between">
+      <span style="display:flex;align-items:center;gap:10px">
+        <span class="sb-icon">📩</span> My Inbox
+      </span>
+      <span id="sidebarInboxBadge"
+            style="background:#F04438;color:#fff;font-size:11px;font-weight:700;
+                   padding:2px 7px;border-radius:999px;line-height:1.4;flex-shrink:0;
+                   {% if not _inbox_unread_count %}display:none{% endif %}">
+        {{ _inbox_unread_count if _inbox_unread_count and _inbox_unread_count < 100 else ('99+' if _inbox_unread_count else '0') }}
+      </span>
+    </a>
+
+    <!-- Leads -->
+    <a class="sb-link {% if request.endpoint == 'portal.leads_page' %}active{% endif %}"
+       href="{{ url_for('portal.leads_page') }}">
+      <span class="sb-icon">🔥</span> Leads
+    </a>
+
     <!-- Orders -->
     <a class="sb-link {% if request.endpoint in ('portal.orders', 'portal.order_detail') %}active{% endif %}"
        href="{{ url_for('portal.orders') }}">
@@ -320,7 +341,8 @@
     <!-- ── Commerce group ── -->
     {% set _commerce_group = request.endpoint in (
         'portal.products', 'portal.product_add', 'portal.product_edit',
-        'portal.product_delete', 'portal.customers', 'portal.customer_detail') %}
+        'portal.product_delete', 'portal.customers', 'portal.customer_detail',
+        'portal.catalogue_browse', 'portal.catalogue_category', 'portal.catalogue_selections') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _commerce_group %}open{% endif %}"
            onclick="sbToggle(this)">
@@ -333,6 +355,10 @@
         <a href="{{ url_for('portal.products') }}"
            class="{% if request.endpoint in ('portal.products','portal.product_add','portal.product_edit') %}active{% endif %}">
           Products
+        </a>
+        <a href="{{ url_for('portal.catalogue_browse') }}"
+           class="{% if request.endpoint in ('portal.catalogue_browse','portal.catalogue_category','portal.catalogue_selections') %}active{% endif %}">
+          📦 My Catalogue
         </a>
         <a href="{{ url_for('portal.customers') }}"
            class="{% if request.endpoint in ('portal.customers','portal.customer_detail') %}active{% endif %}">
@@ -587,10 +613,12 @@
 
     {% block content %}{% endblock %}
 
+    {% block footer %}
     <div class="footer">
       © 2026 PhiXtra &nbsp;·&nbsp;
       <a href="mailto:support@phixtra.com">support@phixtra.com</a>
     </div>
+    {% endblock %}
   </div>
 </div>
 

@@ -1,0 +1,132 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Attributes — {{ cat.name }} — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+  .attr-table th,.attr-table td{padding:10px 12px;font-size:12px}
+  .attr-table td.center{text-align:center}
+  .inline-form{display:inline}
+  .toggle-pill{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;
+               font-size:11px;font-weight:700;border:1px solid var(--line);cursor:pointer;background:#fff}
+  .toggle-pill.on{border-color:rgba(18,183,106,.3);background:rgba(18,183,106,.1);color:#0a7a3c}
+  .toggle-pill.off{border-color:var(--line);background:rgba(3,12,24,.04);color:var(--muted)}
+  .add-row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;
+           padding:16px;background:rgba(3,12,24,.025);border-top:1px solid var(--line);
+           border-radius:0 0 12px 12px}
+  .add-row .form-group{margin:0;min-width:130px}
+  .add-row .form-group.wide{min-width:190px}
+</style>
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title">{{ cat.icon }} {{ cat.name }} — Attributes</h1>
+    <div class="muted" style="margin-top:4px">
+      These become columns in the CSV upload template for this category.
+    </div>
+  </div>
+  <div style="display:flex;gap:8px">
+    <a href="{{ url_for('portal_admin.catalogue_category_products', category_id=cat.id) }}" class="btn btn-sm">View Products</a>
+    <a href="{{ url_for('portal_admin.catalogue_category_upload', category_id=cat.id) }}" class="btn btn-sm btn-primary">⬆ Upload CSV</a>
+    <a href="{{ url_for('portal_admin.catalogue_dashboard') }}" class="btn btn-sm">← Dashboard</a>
+  </div>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden">
+  {% if attrs %}
+  <div class="table-wrap" style="border:none;border-radius:0">
+    <table class="attr-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Label</th>
+          <th>CSV Column Key</th>
+          <th>Type</th>
+          <th>Unit</th>
+          <th class="center">Filterable</th>
+          <th class="center">Required</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in attrs %}
+        <tr>
+          <td class="muted">{{ loop.index }}</td>
+          <td><strong>{{ a.attribute_label }}</strong></td>
+          <td><code style="font-family:monospace;font-size:11px;background:rgba(3,12,24,.05);padding:2px 6px;border-radius:5px">{{ a.attribute_key }}</code></td>
+          <td>{{ a.data_type }}</td>
+          <td>{{ a.unit or '—' }}</td>
+          <td class="center">
+            <form method="POST" class="inline-form">
+              <input type="hidden" name="action" value="toggle_filterable"/>
+              <input type="hidden" name="attr_id" value="{{ a.id }}"/>
+              <button type="submit" class="toggle-pill {{ 'on' if a.is_filterable else 'off' }}">
+                {{ 'Yes' if a.is_filterable else 'No' }}
+              </button>
+            </form>
+          </td>
+          <td class="center">
+            <form method="POST" class="inline-form">
+              <input type="hidden" name="action" value="toggle_required"/>
+              <input type="hidden" name="attr_id" value="{{ a.id }}"/>
+              <button type="submit" class="toggle-pill {{ 'on' if a.is_required else 'off' }}">
+                {{ 'Yes' if a.is_required else 'No' }}
+              </button>
+            </form>
+          </td>
+          <td>
+            <form method="POST" class="inline-form"
+                  onsubmit="return confirm('Remove attribute {{ a.attribute_label }}? This will delete its values from all products.')">
+              <input type="hidden" name="action" value="delete"/>
+              <input type="hidden" name="attr_id" value="{{ a.id }}"/>
+              <button type="submit" class="btn btn-sm btn-danger">Remove</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div style="text-align:center;padding:32px;color:var(--muted)">
+    No attributes yet — add your first one below.
+  </div>
+  {% endif %}
+
+  {# ── Add attribute row ── #}
+  <form method="POST" class="add-row">
+    <input type="hidden" name="action" value="add"/>
+    <div class="form-group wide">
+      <label>Attribute Label *</label>
+      <input name="attribute_label" placeholder="e.g. RAM, Screen Size" required/>
+    </div>
+    <div class="form-group">
+      <label>Type</label>
+      <select name="data_type">
+        {% for dt in DATA_TYPES %}
+        <option value="{{ dt }}">{{ dt }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Unit</label>
+      <input name="unit" placeholder="GB, inches, GHz…" style="max-width:100px"/>
+    </div>
+    <div class="form-group" style="display:flex;align-items:center;gap:6px;padding-top:18px">
+      <input type="checkbox" name="is_filterable" value="1" id="flt" style="width:auto"/>
+      <label for="flt" style="margin:0;cursor:pointer">Filterable</label>
+    </div>
+    <div class="form-group" style="display:flex;align-items:center;gap:6px;padding-top:18px">
+      <input type="checkbox" name="is_required" value="1" id="req" style="width:auto"/>
+      <label for="req" style="margin:0;cursor:pointer">Required</label>
+    </div>
+    <div style="padding-top:18px">
+      <button type="submit" class="btn btn-primary btn-sm">+ Add Attribute</button>
+    </div>
+  </form>
+</div>
+
+<div style="margin-top:16px;display:flex;gap:10px">
+  <a href="{{ url_for('portal_admin.catalogue_category_upload', category_id=cat.id) }}" class="btn btn-primary">⬆ Upload Products CSV →</a>
+  <a href="{{ url_for('portal_admin.catalogue_category_template', category_id=cat.id) }}" class="btn btn-sm">⬇ Download Template</a>
+</div>
+
+{% endblock %}

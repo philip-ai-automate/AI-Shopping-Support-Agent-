@@ -2,6 +2,9 @@
 portal_routes.py  — Phase 1 customer portal (portal.phixtra.com)
 Extends the existing Flask app. db.py, app.py, invoice_pdf.py, portal_utils.py are UNCHANGED.
 """
+import psycopg2
+import psycopg2.extras
+import psycopg2.errors
 import os, secrets, string, json as _json
 from datetime import datetime, timedelta
 
@@ -97,7 +100,7 @@ def _get_customer(customer_id: int):
     Returns None (does NOT raise) if the row is not found or the DB is unavailable."""
     try:
         conn = get_db_connection()
-        cur = conn.cursor(dictionary=True, buffered=True)
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             SELECT c.*, t.name AS tenant_name, t.domain AS tenant_domain,
                    t.source_type AS tenant_source_type
@@ -113,7 +116,7 @@ def _get_customer(customer_id: int):
 
 def _get_tenant_balance_tokens(tenant_id: int) -> int:
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT token_balance FROM tenant_balances WHERE tenant_id=%s", (tenant_id,))
     row = cur.fetchone() or {}
     cur.close(); conn.close()
@@ -121,14 +124,14 @@ def _get_tenant_balance_tokens(tenant_id: int) -> int:
 
 def _ensure_tenant_balance_row(tenant_id: int):
     conn = get_db_connection()
-    cur = conn.cursor(buffered=True)
-    cur.execute("INSERT IGNORE INTO tenant_balances (tenant_id, token_balance) VALUES (%s, 0)", (tenant_id,))
+    cur = conn.cursor()
+    cur.execute("INSERT INTO tenant_balances (tenant_id, token_balance) VALUES (%s, 0) ON CONFLICT (tenant_id) DO NOTHING", (tenant_id,))
     conn.commit()
     cur.close(); conn.close()
 
 def _get_api_keys(tenant_id: int):
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
         SELECT id, website, key_type, is_active, token_limit, tokens_used,
                trial_activated_at, trial_expires_at, created_at, api_key_plain
@@ -139,19 +142,19 @@ def _get_api_keys(tenant_id: int):
 
 def _usage_summary(tenant_id: int, days: int = 30):
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
         SELECT COALESCE(SUM(used_tokens),0) AS tokens
         FROM usage_events WHERE tenant_id=%s AND created_at >= UTC_DATE()""", (tenant_id,))
     today_tokens = int((cur.fetchone() or {}).get("tokens") or 0)
     cur.execute("""
         SELECT COALESCE(SUM(used_tokens),0) AS tokens
-        FROM usage_events WHERE tenant_id=%s AND created_at >= (UTC_TIMESTAMP() - INTERVAL %s DAY)""",
+        FROM usage_events WHERE tenant_id=%s AND created_at >= (NOW() - (INTERVAL '1 day' * %s))""",
         (tenant_id, days))
     range_tokens = int((cur.fetchone() or {}).get("tokens") or 0)
     cur.execute("""
         SELECT COUNT(DISTINCT session_id) AS c
-        FROM usage_events WHERE tenant_id=%s AND created_at >= (UTC_TIMESTAMP() - INTERVAL 30 DAY)""",
+        FROM usage_events WHERE tenant_id=%s AND created_at >= (NOW() - INTERVAL '30 days')""",
         (tenant_id,))
     sessions_30d = int((cur.fetchone() or {}).get("c") or 0)
     cur.close(); conn.close()
@@ -159,11 +162,11 @@ def _usage_summary(tenant_id: int, days: int = 30):
 
 def _usage_timeseries(tenant_id: int, days: int = 30):
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
         SELECT DATE(created_at) AS d, COALESCE(SUM(used_tokens),0) AS tokens
         FROM usage_events
-        WHERE tenant_id=%s AND created_at >= (UTC_TIMESTAMP() - INTERVAL %s DAY)
+        WHERE tenant_id=%s AND created_at >= (NOW() - (INTERVAL '1 day' * %s))
         GROUP BY DATE(created_at) ORDER BY d ASC""", (tenant_id, days))
     rows = cur.fetchall() or []
     cur.close(); conn.close()
@@ -178,6 +181,8 @@ def _onboarding_status(tenant_id: int, customer_id: int):
     _safe = {
         "account_verified":           True,
         "key_active":                 False,
+        "catalogue_selected":         False,
+        "catalogue_selection_count":  0,
         "ai_plugin_confirmed":        False,
         "export_plugin_confirmed":    False,
         "sync_configured_confirmed":  False,
@@ -198,10 +203,10 @@ def _onboarding_status(tenant_id: int, customer_id: int):
     cur  = None
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         # Step 2: has any active api key
-        cur.execute("SELECT COUNT(*) AS c FROM api_keys WHERE tenant_id=%s AND is_active=1", (tenant_id,))
+        cur.execute("SELECT COUNT(*) AS c FROM api_keys WHERE tenant_id=%s AND is_active=TRUE", (tenant_id,))
         has_key = int((cur.fetchone() or {}).get("c") or 0) > 0
 
         # Step 6: full sync completed — last_full_sync_at is stamped by phixtra-data-sync
@@ -287,9 +292,23 @@ def _onboarding_status(tenant_id: int, customer_id: int):
 
         wa_complete = has_key and wa_connected and catalogue_uploaded and kb_configured
 
+        # ── Merchant catalogue selections ──────────────────────────────────
+        catalogue_selection_count = 0
+        try:
+            cur.execute(
+                "SELECT COUNT(*) AS c FROM merchant_product_catalogue WHERE merchant_id=%s AND is_active=TRUE",
+                (customer_id,)
+            )
+            catalogue_selection_count = int((cur.fetchone() or {}).get("c") or 0)
+        except Exception:
+            pass
+        catalogue_selected = catalogue_selection_count > 0
+
         return {
             "account_verified":           True,
             "key_active":                 has_key,
+            "catalogue_selected":         catalogue_selected,
+            "catalogue_selection_count":  catalogue_selection_count,
             "ai_plugin_confirmed":        ai_plugin_confirmed,
             "export_plugin_confirmed":    export_plugin_confirmed,
             "sync_configured_confirmed":  sync_configured_confirmed,
@@ -358,7 +377,7 @@ def _get_or_create_stripe_customer(customer: dict) -> str | None:
 
         # Persist so we never create a duplicate.
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         cur.execute(
             "UPDATE customers SET stripe_customer_id=%s WHERE id=%s",
             (stripe_cus_id, int(customer["id"])),
@@ -612,7 +631,7 @@ def _register_whatsapp_merchant(
         business_name = f"{first_name} {last_name}".strip()
 
     conn = get_db_connection()
-    cur  = conn.cursor(dictionary=True, buffered=True)
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     # Check email not already registered
     cur.execute("SELECT id FROM customers WHERE email=%s LIMIT 1", (email,))
@@ -632,19 +651,20 @@ def _register_whatsapp_merchant(
     })
 
     # Create tenant
-    cur2 = conn.cursor(buffered=True)
+    cur2 = conn.cursor()
     cur2.execute("""
         INSERT INTO tenants (name, domain, status, source_type, features, system_prompt)
         VALUES (%s, NULL, 'pending', 'whatsapp', %s, %s)
+        RETURNING id
     """, (business_name, trial_features, system_prompt_text))
+    tenant_id = int(cur2.fetchone()[0])
     conn.commit()
-    tenant_id = int(cur2.lastrowid)
     cur2.close()
 
     # Create customer with real email + password (email_verified=0, needs email click)
     verify_token = make_token(24)
     pw_hash      = hash_password(password)
-    cur3 = conn.cursor(buffered=True)
+    cur3 = conn.cursor()
     cur3.execute("""
         INSERT INTO customers
             (tenant_id, first_name, last_name, email, password_hash,
@@ -659,16 +679,17 @@ def _register_whatsapp_merchant(
     trial_activated_at = datetime.utcnow()
     trial_expires_at   = trial_activated_at + timedelta(days=TRIAL_DAYS)
     TRIAL_TOKEN_LIMIT  = 250000
-    cur4 = conn.cursor(buffered=True)
+    cur4 = conn.cursor()
     cur4.execute("""
         INSERT INTO api_keys
             (tenant_id, api_key_hash, api_key_plain, is_active, website,
              key_type, trial_activated_at, trial_expires_at, token_limit, tokens_used)
-        VALUES (%s, %s, %s, 1, NULL, 'whatsapp', %s, %s, %s, 0)
+        VALUES (%s, %s, %s, TRUE, NULL, 'whatsapp', %s, %s, %s, 0)
+        RETURNING id
     """, (tenant_id, hashed_key, plain_key,
           trial_activated_at, trial_expires_at, TRIAL_TOKEN_LIMIT))
+    api_key_id = int(cur4.fetchone()[0])
     conn.commit()
-    api_key_id = int(cur4.lastrowid)
     cur4.close()
 
     cur.close(); conn.close()
@@ -773,7 +794,7 @@ def register():
     tenant_domain = tenant_domain.replace("https://","").replace("http://","").rstrip("/")
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     # ── Find or auto-create the tenant for this domain ─────────────────────
     # Customers arrive from phixtra.com and register themselves — no admin
@@ -793,12 +814,12 @@ def register():
             "chat_archive_unlimited":    True,
         })
         system_prompt_text = DEFAULT_SYSTEM_PROMPT.replace("{{business_name}}", tenant_name)
-        cur2 = conn.cursor(buffered=True)
+        cur2 = conn.cursor()
         cur2.execute(
-            "INSERT INTO tenants (name, domain, status, features, system_prompt) VALUES (%s, %s, 'pending', %s, %s)",
+            "INSERT INTO tenants (name, domain, status, features, system_prompt) VALUES (%s, %s, 'pending', %s, %s) RETURNING id",
             (tenant_name, tenant_domain, trial_features, system_prompt_text)
         )
-        new_tenant_id = cur2.lastrowid
+        new_tenant_id = cur2.fetchone()[0]
         conn.commit()
         cur2.close()
         tenant = {"id": new_tenant_id, "name": tenant_name}
@@ -822,7 +843,7 @@ def register():
 
     # ── Create the customer account ────────────────────────────────────────
     try:
-        cur2 = conn.cursor(buffered=True)
+        cur2 = conn.cursor()
         cur2.execute("""
             INSERT INTO customers
                 (tenant_id, first_name, last_name, email, password_hash,
@@ -846,15 +867,16 @@ def register():
     trial_expires_at   = trial_activated_at + timedelta(days=TRIAL_DAYS)
     TRIAL_TOKEN_LIMIT  = 250000  # 50 credits (1 credit = 5,000 tokens)
 
-    cur3 = conn.cursor(buffered=True)
+    cur3 = conn.cursor()
     cur3.execute("""
         INSERT INTO api_keys
             (tenant_id, api_key_hash, api_key_plain, is_active, website, key_type,
              trial_activated_at, trial_expires_at, token_limit, tokens_used)
-        VALUES (%s, %s, %s, 1, %s, 'trial', %s, %s, %s, 0)""",
+        VALUES (%s, %s, %s, TRUE, %s, 'trial', %s, %s, %s, 0)
+        RETURNING id""",
         (int(tenant["id"]), hashed_key, plain_key, tenant_domain,
          trial_activated_at, trial_expires_at, TRIAL_TOKEN_LIMIT))
-    api_key_id = cur3.lastrowid
+    api_key_id = cur3.fetchone()[0]
     conn.commit()
     cur3.close()
 
@@ -920,7 +942,7 @@ def verify_email():
 
     try:
         conn = get_db_connection()
-        cur = conn.cursor(dictionary=True, buffered=True)
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("SELECT id, email, email_verified FROM customers WHERE verify_token=%s", (token,))
         c = cur.fetchone()
         if not c:
@@ -932,15 +954,15 @@ def verify_email():
         customer_id = int(c["id"])
         print(f"[VERIFY] Found customer id={customer_id} email={c.get('email')} already_verified={c.get('email_verified')}")
 
-        cur2 = conn.cursor(buffered=True)
-        cur2.execute("UPDATE customers SET email_verified=1, verify_token=NULL WHERE id=%s", (customer_id,))
-        conn.cursor(buffered=True).execute("UPDATE tenants SET status='active' WHERE id=(SELECT tenant_id FROM customers WHERE id=%s)", (customer_id,))
+        cur2 = conn.cursor()
+        cur2.execute("UPDATE customers SET email_verified=TRUE, verify_token=NULL WHERE id=%s", (customer_id,))
+        conn.cursor().execute("UPDATE tenants SET status='active' WHERE id=(SELECT tenant_id FROM customers WHERE id=%s)", (customer_id,))
         rows_affected = cur2.rowcount
         conn.commit()
         print(f"[VERIFY] UPDATE rows_affected={rows_affected} for customer id={customer_id}")
 
         # Confirm the update actually took effect
-        cur3 = conn.cursor(dictionary=True, buffered=True)
+        cur3 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur3.execute("SELECT email_verified FROM customers WHERE id=%s", (customer_id,))
         confirm = cur3.fetchone()
         print(f"[VERIFY] Confirmation SELECT: email_verified={confirm.get('email_verified') if confirm else 'NO ROW FOUND'}")
@@ -955,7 +977,7 @@ def verify_email():
     # Send WA welcome email now that email is confirmed — only for whatsapp merchants
     try:
         conn2 = get_db_connection()
-        cur_wa = conn2.cursor(dictionary=True, buffered=True)
+        cur_wa = conn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur_wa.execute("""
             SELECT c.first_name, c.email, c.phone_number,
                    t.name AS business_name, t.source_type,
@@ -1001,7 +1023,7 @@ def resend_verify():
         return redirect(url_for("portal.resend_verify"))
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT id, first_name, email_verified, verify_token FROM customers WHERE email=%s", (email,))
     c = cur.fetchone()
 
@@ -1018,7 +1040,7 @@ def resend_verify():
 
     # Re-generate a fresh token so old links (from previous emails) stop working
     new_token = make_token(24)
-    cur2 = conn.cursor(buffered=True)
+    cur2 = conn.cursor()
     cur2.execute("UPDATE customers SET verify_token=%s WHERE id=%s", (new_token, int(c["id"])))
     conn.commit()
     cur2.close(); cur.close(); conn.close()
@@ -1046,7 +1068,7 @@ def login():
     password = (request.form.get("password") or "").strip()
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT * FROM customers WHERE email=%s ORDER BY email_verified DESC, id DESC LIMIT 1", (email,))
     c = cur.fetchone()
     cur.close(); conn.close()
@@ -1076,10 +1098,27 @@ def login():
     session["portal_logged_in"] = True
     session["customer_id"]      = int(c["id"])
 
-    # If a plain key was saved during email verification (e.g. self-registration
-    # trial flow), keep it so it can be shown once on the API keys page.
     if pending_key:
         session["new_plain_key"] = pending_key
+
+    # ── Catalogue onboarding: redirect new accounts that haven't set up yet ──
+    try:
+        _ob_conn = get_db_connection()
+        _ob_cur  = _ob_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        _ob_cur.execute(
+            "SELECT catalogue_setup_done FROM onboarding_state WHERE customer_id=%s",
+            (int(c["id"]),)
+        )
+        _ob_row = _ob_cur.fetchone()
+        _ob_cur.close(); _ob_conn.close()
+
+        _setup_done = bool((_ob_row or {}).get("catalogue_setup_done"))
+        _account_age = (datetime.utcnow() - c["created_at"].replace(tzinfo=None)).days
+
+        if not _setup_done and _account_age < 30:
+            return redirect(url_for("portal.onboarding_catalogue_start"))
+    except Exception as _e:
+        print("⚠️ login catalogue_setup check error:", _e)
 
     return redirect(url_for("portal.dashboard"))
 
@@ -1101,14 +1140,14 @@ def forgot_password():
         return redirect(url_for("portal.forgot_password"))
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT id, first_name FROM customers WHERE email=%s", (email,))
     c = cur.fetchone()
 
     if c:
         token   = make_token(24)
         expires = utc_now_naive() + timedelta(hours=2)
-        cur2 = conn.cursor(buffered=True)
+        cur2 = conn.cursor()
         cur2.execute("UPDATE customers SET reset_token=%s, reset_expires_at=%s WHERE id=%s",
                      (token, expires, int(c["id"])))
         conn.commit()
@@ -1132,7 +1171,7 @@ def reset_password():
         return redirect(url_for("portal.reset_password", token=token))
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT id, reset_expires_at FROM customers WHERE reset_token=%s", (token,))
     c = cur.fetchone()
     if not c:
@@ -1142,14 +1181,14 @@ def reset_password():
 
     exp = c.get("reset_expires_at")
     if not exp or utc_now_naive() > exp:
-        cur2 = conn.cursor(buffered=True)
+        cur2 = conn.cursor()
         cur2.execute("UPDATE customers SET reset_token=NULL, reset_expires_at=NULL WHERE id=%s", (int(c["id"]),))
         conn.commit()
         cur2.close(); cur.close(); conn.close()
         flash("Reset link expired. Request a new one.", "warning")
         return redirect(url_for("portal.forgot_password"))
 
-    cur2 = conn.cursor(buffered=True)
+    cur2 = conn.cursor()
     cur2.execute("UPDATE customers SET password_hash=%s, reset_token=NULL, reset_expires_at=NULL WHERE id=%s",
                  (hash_password(password), int(c["id"])))
     conn.commit()
@@ -1168,7 +1207,7 @@ def _get_pending_handoffs(tenant_id: int) -> list:
     Returns an empty list on any error — never crashes the dashboard."""
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         # Select visitor_name and visitor_email too — filled in when the visitor
         # submits the in-widget contact form after a handoff is triggered.
         # Use COALESCE so the query still works if the columns don't exist yet.
@@ -1209,11 +1248,11 @@ def handoff_mark_handled(handoff_id: int):
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         # Security: only update rows belonging to this tenant
         cur.execute("""
             UPDATE handoff_requests
-            SET status = 'handled', handled_at = UTC_TIMESTAMP()
+            SET status = 'handled', handled_at = NOW()
             WHERE id = %s AND tenant_id = %s AND status = 'pending'
         """, (handoff_id, tenant_id))
         conn.commit()
@@ -1255,6 +1294,24 @@ def dashboard():
     # ── Pending handoff requests for the "Needs Attention" panel ─────────────
     handoffs = _get_pending_handoffs(tenant_id)
 
+    # ── WhatsApp connection + stats ───────────────────────────────────────
+    wa_connection = _get_wa_connection(tenant_id)
+    wa_stats      = _get_wa_stats(tenant_id) if wa_connection else {
+        "today_in":0,"today_out":0,"month_in":0,"month_out":0,
+        "active_convos":0,"awaiting_reply":0,"series":[],
+    }
+
+    # ── Lead counts for dashboard KPI card ────────────────────────────────
+    lead_hot_count  = 0
+    lead_warm_count = 0
+    try:
+        if wa_connection:
+            _convs = _get_inbox_conversations(tenant_id)
+            lead_hot_count  = sum(1 for c in _convs if c.get("lead_tier") == "hot")
+            lead_warm_count = sum(1 for c in _convs if c.get("lead_tier") == "warm")
+    except Exception:
+        pass
+
     # ── Trial status for the banner ────────────────────────────────────────
     trial_info = {
         "is_trial": False,
@@ -1289,6 +1346,10 @@ def dashboard():
         keys            = keys,
         handoffs        = handoffs,
         trial_info      = trial_info,
+        lead_hot_count  = lead_hot_count,
+        lead_warm_count = lead_warm_count,
+        wa_connection   = wa_connection,
+        wa_stats        = wa_stats,
     )
 
 
@@ -1299,10 +1360,10 @@ def onboarding_dismiss():
     if r: return r
     cid = _customer_id()
     conn = get_db_connection()
-    cur = conn.cursor(buffered=True)
+    cur = conn.cursor()
     cur.execute("""
-        INSERT INTO onboarding_state (customer_id, wizard_dismissed) VALUES (%s, 1)
-        ON DUPLICATE KEY UPDATE wizard_dismissed=1""", (cid,))
+        INSERT INTO onboarding_state (customer_id, wizard_dismissed) VALUES (%s, TRUE)
+        ON CONFLICT (customer_id) DO UPDATE SET wizard_dismissed=TRUE""", (cid,))
     conn.commit()
     cur.close(); conn.close()
     return redirect(url_for("portal.dashboard"))
@@ -1315,11 +1376,11 @@ def onboarding_dismiss_wa():
     if r: return r
     cid = _customer_id()
     conn = get_db_connection()
-    cur = conn.cursor(buffered=True)
+    cur = conn.cursor()
     try:
         cur.execute("""
-            INSERT INTO onboarding_state (customer_id, wa_wizard_dismissed) VALUES (%s, 1)
-            ON DUPLICATE KEY UPDATE wa_wizard_dismissed=1""", (cid,))
+            INSERT INTO onboarding_state (customer_id, wa_wizard_dismissed) VALUES (%s, TRUE)
+            ON CONFLICT (customer_id) DO UPDATE SET wa_wizard_dismissed=TRUE""", (cid,))
         conn.commit()
     except Exception as e:
         print("⚠️ onboarding_dismiss_wa error:", e)
@@ -1334,11 +1395,11 @@ def onboarding_dismiss_website():
     if r: return r
     cid = _customer_id()
     conn = get_db_connection()
-    cur = conn.cursor(buffered=True)
+    cur = conn.cursor()
     try:
         cur.execute("""
-            INSERT INTO onboarding_state (customer_id, website_wizard_dismissed) VALUES (%s, 1)
-            ON DUPLICATE KEY UPDATE website_wizard_dismissed=1""", (cid,))
+            INSERT INTO onboarding_state (customer_id, website_wizard_dismissed) VALUES (%s, TRUE)
+            ON CONFLICT (customer_id) DO UPDATE SET website_wizard_dismissed=TRUE""", (cid,))
         conn.commit()
     except Exception as e:
         print("⚠️ onboarding_dismiss_website error:", e)
@@ -1366,10 +1427,10 @@ def onboarding_confirm_step():
         return redirect(url_for("portal.onboarding"))
 
     conn = get_db_connection()
-    cur = conn.cursor(buffered=True)
+    cur = conn.cursor()
     cur.execute(f"""
-        INSERT INTO onboarding_state (customer_id, {col}) VALUES (%s, 1)
-        ON DUPLICATE KEY UPDATE {col}=1""", (cid,))
+        INSERT INTO onboarding_state (customer_id, {col}) VALUES (%s, TRUE)
+        ON CONFLICT (customer_id) DO UPDATE SET {col}=TRUE""", (cid,))
     conn.commit()
     cur.close(); conn.close()
 
@@ -1385,7 +1446,7 @@ def plugin_download(plugin_key: str):
 
     import os as _os
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT * FROM plugin_downloads WHERE plugin_key=%s", (plugin_key,))
     row = cur.fetchone()
     cur.close(); conn.close()
@@ -1415,7 +1476,7 @@ def onboarding():
 
     # Load available plugin downloads so the template can show download buttons
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT * FROM plugin_downloads")
     rows = cur.fetchall() or []
     cur.close(); conn.close()
@@ -1439,14 +1500,14 @@ def api_keys():
     keys      = _get_api_keys(tenant_id)
     # Attach usage per key
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     now = datetime.utcnow()
     for k in keys:
         kid = int(k["id"])
         cur.execute("""
             SELECT COALESCE(SUM(used_tokens),0) AS t30
             FROM usage_events
-            WHERE api_key_id=%s AND created_at >= (UTC_TIMESTAMP() - INTERVAL 30 DAY)""", (kid,))
+            WHERE api_key_id=%s AND created_at >= (NOW() - INTERVAL '30 days')""", (kid,))
         k["credits_30d"] = tokens_to_credits(int((cur.fetchone() or {}).get("t30") or 0))
 
         # Trial days remaining
@@ -1478,11 +1539,14 @@ def api_keys_revoke(key_id: int):
     r = _require_login()
     if r: return r
 
+    flash("API keys can only be revoked by an administrator. Please contact support.", "danger")
+    return redirect(url_for("portal.api_keys"))
+
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     # Security: only revoke keys that belong to this tenant
     cur.execute("SELECT id, website, key_type FROM api_keys WHERE id=%s AND tenant_id=%s",
                 (key_id, tenant_id))
@@ -1492,8 +1556,8 @@ def api_keys_revoke(key_id: int):
         flash("Key not found.", "danger")
         return redirect(url_for("portal.api_keys"))
 
-    cur2 = conn.cursor(buffered=True)
-    cur2.execute("UPDATE api_keys SET is_active=0 WHERE id=%s", (key_id,))
+    cur2 = conn.cursor()
+    cur2.execute("UPDATE api_keys SET is_active=FALSE WHERE id=%s", (key_id,))
     conn.commit()
     cur2.close(); cur.close(); conn.close()
 
@@ -1526,13 +1590,13 @@ def billing():
     balance_credits = tokens_to_credits(_get_tenant_balance_tokens(tenant_id))
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     # Stage 7: only show one-time top-up packages on this page.
     # Subscription plans are shown on /billing/subscribe.
     # The OR handles existing packages created before Stage 3 added package_type.
     cur.execute("""
         SELECT * FROM credit_packages
-        WHERE is_active=1
+        WHERE is_active=TRUE
           AND (package_type='topup' OR package_type IS NULL)
         ORDER BY sort_order ASC, id ASC
     """)
@@ -1600,8 +1664,8 @@ def billing_checkout():
     tenant_id = int(customer["tenant_id"])
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
-    cur.execute("SELECT * FROM credit_packages WHERE id=%s AND is_active=1", (pkg_id,))
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM credit_packages WHERE id=%s AND is_active=TRUE", (pkg_id,))
     pkg = cur.fetchone()
     if not pkg:
         cur.close(); conn.close()
@@ -1615,15 +1679,16 @@ def billing_checkout():
     total_pence  = amount_pence + vat_pence
     inv_num      = next_invoice_number()
 
-    cur2 = conn.cursor(buffered=True)
+    cur2 = conn.cursor()
     cur2.execute("""
         INSERT INTO invoices
             (invoice_number, tenant_id, customer_id, package_id, credits,
              amount_pence, vat_pence, currency, status)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending')""",
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending')
+        RETURNING id""",
         (inv_num, tenant_id, int(customer["id"]), pkg_id, credits,
          amount_pence, vat_pence, pkg.get("currency") or "gbp"))
-    invoice_id = cur2.lastrowid
+    invoice_id = cur2.fetchone()[0]
     conn.commit()
     cur2.close(); cur.close(); conn.close()
 
@@ -1669,7 +1734,7 @@ def billing_checkout():
     )
 
     conn = get_db_connection()
-    cur = conn.cursor(buffered=True)
+    cur = conn.cursor()
     cur.execute("UPDATE invoices SET stripe_session_id=%s WHERE id=%s", (sess.id, invoice_id))
     conn.commit()
     cur.close(); conn.close()
@@ -1707,7 +1772,7 @@ def stripe_webhook():
     pi          = sess_obj.get("payment_intent")
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT * FROM invoices WHERE id=%s", (invoice_id,))
     inv = cur.fetchone()
     if not inv or inv.get("status") == "paid":
@@ -1716,8 +1781,8 @@ def stripe_webhook():
 
     tokens_add = credits_to_tokens(credits)
 
-    cur2 = conn.cursor(buffered=True)
-    cur2.execute("INSERT IGNORE INTO tenant_balances (tenant_id, token_balance) VALUES (%s, 0)", (tenant_id,))
+    cur2 = conn.cursor()
+    cur2.execute("INSERT INTO tenant_balances (tenant_id, token_balance) VALUES (%s, 0) ON CONFLICT (tenant_id) DO NOTHING", (tenant_id,))
     cur2.execute("UPDATE tenant_balances SET token_balance = token_balance + %s WHERE tenant_id=%s",
                  (tokens_add, tenant_id))
 
@@ -1726,13 +1791,13 @@ def stripe_webhook():
     # reactivate the key, and clear the trial expiry date.
     cur2.execute("""
         UPDATE api_keys
-        SET key_type='paid', is_active=1, trial_expires_at=NULL
+        SET key_type='paid', is_active=TRUE, trial_expires_at=NULL
         WHERE tenant_id=%s AND key_type='trial'
     """, (tenant_id,))
     was_trial = cur2.rowcount > 0
 
     # Also reactivate any existing paid keys (handles non-trial top-ups)
-    cur2.execute("UPDATE api_keys SET is_active=1 WHERE tenant_id=%s AND key_type='paid'", (tenant_id,))
+    cur2.execute("UPDATE api_keys SET is_active=TRUE WHERE tenant_id=%s AND key_type='paid'", (tenant_id,))
 
     # ── Apply the package's features to the tenant ────────────────────────────
     # Look up the package that was purchased via the invoice, then merge its
@@ -1740,7 +1805,7 @@ def stripe_webhook():
     # features included in the package are activated immediately on payment.
     package_id = int(inv.get("package_id") or 0)
     if package_id:
-        cur3 = conn.cursor(dictionary=True, buffered=True)
+        cur3 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur3.execute("SELECT features FROM credit_packages WHERE id=%s", (package_id,))
         pkg_row = cur3.fetchone()
         cur3.close()
@@ -1752,7 +1817,7 @@ def stripe_webhook():
             if pkg_features:
                 # Load the tenant's current features, merge the package features in,
                 # then save back. This preserves any features already on the tenant.
-                cur4 = conn.cursor(dictionary=True, buffered=True)
+                cur4 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                 cur4.execute("SELECT features FROM tenants WHERE id=%s", (tenant_id,))
                 tenant_row = cur4.fetchone()
                 cur4.close()
@@ -1762,7 +1827,7 @@ def stripe_webhook():
                     existing = {}
                 # Merge: package features are added on top of existing features
                 existing.update(pkg_features)
-                cur5 = conn.cursor(buffered=True)
+                cur5 = conn.cursor()
                 cur5.execute("UPDATE tenants SET features=%s WHERE id=%s",
                              (_json_mod.dumps(existing), tenant_id))
                 cur5.close()
@@ -1850,7 +1915,7 @@ def invoices():
     customer    = _get_customer(_customer_id())
     customer_id = int(customer["id"])
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     # Original top-up invoices
     cur.execute("""
@@ -1898,7 +1963,7 @@ def invoice_download(invoice_id: int):
     customer    = _get_customer(_customer_id())
     customer_id = int(customer["id"])
     conn = get_db_connection()
-    cur  = conn.cursor(dictionary=True, buffered=True)
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     # Try the original top-up invoices table first
     cur.execute("SELECT * FROM invoices WHERE id=%s AND customer_id=%s",
@@ -1960,7 +2025,7 @@ def _get_cart_recovery_data(tenant_id: int, days: int = 30) -> dict:
     cur  = None
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         # ── 1. Feature flag ────────────────────────────────────────────────
         cur.execute("SELECT features FROM tenants WHERE id=%s", (tenant_id,))
@@ -1988,7 +2053,7 @@ def _get_cart_recovery_data(tenant_id: int, days: int = 30) -> dict:
                                                                                       AS avg_recovered_value
             FROM abandonment_queue
             WHERE tenant_id = %s
-              AND created_at >= (UTC_TIMESTAMP() - INTERVAL %s DAY)
+              AND created_at >= (NOW() - (INTERVAL '1 day' * %s))
         """, (tenant_id, days))
         s = cur.fetchone() or {}
 
@@ -2017,7 +2082,7 @@ def _get_cart_recovery_data(tenant_id: int, days: int = 30) -> dict:
             FROM recovery_log rl
             JOIN abandonment_queue aq ON aq.id = rl.queue_id
             WHERE aq.tenant_id = %s
-              AND rl.created_at >= (UTC_TIMESTAMP() - INTERVAL %s DAY)
+              AND rl.created_at >= (NOW() - (INTERVAL '1 day' * %s))
             GROUP BY rl.action_type
         """, (tenant_id, days))
         touches: dict = {"popup_queued": 0, "push_sent": 0, "email_sent": 0, "final_email_sent": 0}
@@ -2066,7 +2131,7 @@ def _get_cart_recovery_data(tenant_id: int, days: int = 30) -> dict:
             FROM abandonment_queue
             WHERE tenant_id = %s
               AND status     = 'recovered'
-              AND updated_at >= (UTC_TIMESTAMP() - INTERVAL %s DAY)
+              AND updated_at >= (NOW() - (INTERVAL '1 day' * %s))
             GROUP BY DATE(updated_at)
             ORDER BY d ASC
         """, (tenant_id, days))
@@ -2125,7 +2190,7 @@ def cart_recovery_save_settings():
     cur  = None
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         # Read the existing features JSON — we must NOT overwrite unrelated keys
         cur.execute("SELECT features FROM tenants WHERE id=%s", (tenant_id,))
@@ -2153,7 +2218,7 @@ def cart_recovery_save_settings():
         else:
             features.pop("cart_recovery_popup_message", None)
 
-        cur2 = conn.cursor(buffered=True)
+        cur2 = conn.cursor()
         cur2.execute(
             "UPDATE tenants SET features=%s WHERE id=%s",
             (_json.dumps(features), tenant_id)
@@ -2212,7 +2277,7 @@ def cart_recovery_dashboard():
     recovery_settings: dict = {}
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("SELECT features FROM tenants WHERE id=%s", (tenant_id,))
         t_row = cur.fetchone() or {}
         cur.close(); conn.close()
@@ -2258,7 +2323,7 @@ def ai_instruction():
     if request.method == "GET":
         try:
             conn = get_db_connection()
-            cur = conn.cursor(dictionary=True, buffered=True)
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("SELECT system_prompt FROM tenants WHERE id=%s", (tenant_id,))
             row = cur.fetchone() or {}
             cur.close(); conn.close()
@@ -2287,7 +2352,7 @@ def ai_instruction():
 
     try:
         conn = get_db_connection()
-        cur = conn.cursor(buffered=True)
+        cur = conn.cursor()
         cur.execute(
             "UPDATE tenants SET system_prompt=%s WHERE id=%s",
             (system_prompt_text, tenant_id)
@@ -2325,7 +2390,7 @@ def _load_spec_settings(tenant_id: int) -> dict:
     """
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("SELECT features FROM tenants WHERE id=%s", (tenant_id,))
         row  = cur.fetchone() or {}
         cur.close(); conn.close()
@@ -2348,14 +2413,14 @@ def _save_spec_settings(tenant_id: int, domains: list, specs: list) -> None:
     """
     import json as _j
     conn = get_db_connection()
-    cur  = conn.cursor(dictionary=True, buffered=True)
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT features FROM tenants WHERE id=%s", (tenant_id,))
     row  = cur.fetchone() or {}
     cur.close()
     feat = _j.loads(row.get("features") or "{}") if isinstance(row.get("features"), str) else (row.get("features") or {})
     feat["verified_specs_trusted_domains"] = domains
     feat["verified_specs_custom_specs"]    = specs
-    cur2 = conn.cursor(buffered=True)
+    cur2 = conn.cursor()
     cur2.execute("UPDATE tenants SET features=%s WHERE id=%s", (_j.dumps(feat), tenant_id))
     conn.commit()
     cur2.close(); conn.close()
@@ -2376,7 +2441,7 @@ def verified_specs_settings():
     # Only available when the feature is enabled for this tenant
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("SELECT features FROM tenants WHERE id=%s", (tenant_id,))
         row  = cur.fetchone() or {}
         cur.close(); conn.close()
@@ -2622,7 +2687,7 @@ def _get_recovery_features(tenant_id: int) -> dict:
     """
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("SELECT features FROM tenants WHERE id=%s", (tenant_id,))
         row  = cur.fetchone() or {}
         cur.close(); conn.close()
@@ -2645,7 +2710,7 @@ def _save_recovery_features(tenant_id: int, features: dict) -> None:
     Raises on DB error so callers can catch and flash a message.
     """
     conn = get_db_connection()
-    cur  = conn.cursor(buffered=True)
+    cur  = conn.cursor()
     cur.execute(
         "UPDATE tenants SET features=%s WHERE id=%s",
         (_json.dumps(features), tenant_id)
@@ -2765,7 +2830,7 @@ def _get_usage_report_data(tenant_id: int, days: int) -> dict:
     }
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         # Daily breakdown — sessions + tokens per day
         cur.execute("""
@@ -2775,7 +2840,7 @@ def _get_usage_report_data(tenant_id: int, days: int) -> dict:
                 COALESCE(SUM(used_tokens), 0) AS tokens
             FROM usage_events
             WHERE tenant_id = %s
-              AND created_at >= (UTC_TIMESTAMP() - INTERVAL %s DAY)
+              AND created_at >= (NOW() - (INTERVAL '1 day' * %s))
             GROUP BY DATE(created_at)
             ORDER BY d ASC
         """, (tenant_id, days))
@@ -2839,7 +2904,7 @@ def _get_billing_report_data(tenant_id: int, customer_id: int, days: int) -> dic
     }
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         # Balance
         cur.execute("SELECT token_balance FROM tenant_balances WHERE tenant_id=%s", (tenant_id,))
@@ -2855,7 +2920,7 @@ def _get_billing_report_data(tenant_id: int, customer_id: int, days: int) -> dic
         else:
             cur.execute("""
                 SELECT * FROM invoices
-                WHERE customer_id=%s AND created_at >= (UTC_TIMESTAMP() - INTERVAL %s DAY)
+                WHERE customer_id=%s AND created_at >= (NOW() - (INTERVAL '1 day' * %s))
                 ORDER BY created_at DESC
             """, (customer_id, days))
             safe["period_label"] = f"Last {days} days"
@@ -3433,7 +3498,7 @@ def _get_chat_sessions(tenant_id: int, date_from=None, date_to=None, q=None, lim
     safe = []
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         where  = ["cs.tenant_id = %s"]
         params = [tenant_id]
@@ -3441,7 +3506,7 @@ def _get_chat_sessions(tenant_id: int, date_from=None, date_to=None, q=None, lim
         # Retention-window enforcement — applied unconditionally when set so
         # free-tier users cannot bypass it via the date_from query parameter.
         if days_limit is not None:
-            where.append("cs.created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)")
+            where.append("cs.created_at >= (NOW() - (INTERVAL '1 day' * %s))")
             params.append(int(days_limit))
 
         if date_from:
@@ -3518,7 +3583,7 @@ def _get_session_messages(tenant_id: int, session_id: str):
     """Fetch all messages for a specific session."""
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             SELECT role, content, created_at
             FROM chat_messages
@@ -3540,7 +3605,7 @@ def _get_session_summary(tenant_id: int, session_id: str):
     """Fetch AI-generated summary for a session if it exists."""
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             SELECT summary_text FROM chat_summaries
             WHERE session_id = %s AND tenant_id = %s
@@ -3830,7 +3895,7 @@ def _get_handoff_rules(tenant_id: int) -> list:
     """Fetch all handoff rules for a tenant ordered by sort_order."""
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             SELECT id, trigger_text, trigger_type, is_active, sort_order
             FROM handoff_rules
@@ -3849,7 +3914,7 @@ def _seed_default_rules(tenant_id: int) -> None:
     """Insert the default rule set for a tenant that has no rules yet."""
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         for text, ttype, active, order in _DEFAULT_HANDOFF_RULES:
             cur.execute("""
                 INSERT INTO handoff_rules
@@ -3916,16 +3981,16 @@ def handoff_rules_add():
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         # Place new rule at the end
         cur.execute("SELECT COALESCE(MAX(sort_order),0) AS m FROM handoff_rules WHERE tenant_id=%s",
                     (tenant_id,))
-        max_order = int((conn.cursor(dictionary=True, buffered=True) and 0) or 0)
+        max_order = int((conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) and 0) or 0)
         # Simpler: just use 999 so it always goes to the bottom
         cur.execute("""
             INSERT INTO handoff_rules
                 (tenant_id, trigger_text, trigger_type, is_active, sort_order)
-            VALUES (%s, %s, %s, 1, 999)
+            VALUES (%s, %s, %s, TRUE, 999)
         """, (tenant_id, trigger_text, trigger_type))
         conn.commit()
         cur.close(); conn.close()
@@ -3947,11 +4012,11 @@ def handoff_rules_toggle(rule_id: int):
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         # Security: only update rules that belong to this tenant
         cur.execute("""
             UPDATE handoff_rules
-            SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END
+            SET is_active = CASE WHEN is_active=TRUE THEN 0 ELSE 1 END
             WHERE id = %s AND tenant_id = %s
         """, (rule_id, tenant_id))
         conn.commit()
@@ -3973,7 +4038,7 @@ def handoff_rules_delete(rule_id: int):
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         # Security: only delete rules that belong to this tenant
         cur.execute(
             "DELETE FROM handoff_rules WHERE id = %s AND tenant_id = %s",
@@ -4047,7 +4112,7 @@ def settings():
     plan_features = []
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("SELECT features, daily_report_enabled, report_phone FROM tenants WHERE id=%s", (tenant_id,))
         row = cur.fetchone() or {}
         cur.close(); conn.close()
@@ -4100,7 +4165,7 @@ def settings_profile():
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         cur.execute("""
             UPDATE customers
             SET first_name=%s, last_name=%s, phone_number=%s, timezone=%s
@@ -4150,7 +4215,7 @@ def settings_password():
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         cur.execute("UPDATE customers SET password_hash=%s WHERE id=%s",
                     (hash_password(new_pw), cid))
         conn.commit()
@@ -4177,7 +4242,7 @@ def settings_avatar():
     if action == "remove":
         try:
             conn = get_db_connection()
-            cur  = conn.cursor(buffered=True)
+            cur  = conn.cursor()
             cur.execute("UPDATE customers SET avatar_data=NULL WHERE id=%s", (cid,))
             conn.commit()
             cur.close(); conn.close()
@@ -4210,7 +4275,7 @@ def settings_avatar():
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         cur.execute("UPDATE customers SET avatar_data=%s WHERE id=%s", (data_uri, cid))
         conn.commit()
         cur.close(); conn.close()
@@ -4244,7 +4309,7 @@ def settings_notifications():
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
 
         # Try saving with new handoff columns; if migration hasn't run yet,
         # fall back gracefully to saving just the original three.
@@ -4320,10 +4385,10 @@ def settings_cancel_plan():
     reason    = (request.form.get("cancel_reason") or "").strip()[:500]
 
     conn = get_db_connection()
-    cur  = conn.cursor(dictionary=True, buffered=True)
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
         SELECT id, key_type, is_active, trial_expires_at
-        FROM api_keys WHERE tenant_id=%s AND is_active=1
+        FROM api_keys WHERE tenant_id=%s AND is_active=TRUE
         ORDER BY created_at DESC LIMIT 1
     """, (tenant_id,))
     key_row = cur.fetchone()
@@ -4338,8 +4403,8 @@ def settings_cancel_plan():
 
     if key_type == "trial":
         # Deactivate trial immediately
-        cur2 = conn.cursor(buffered=True)
-        cur2.execute("UPDATE api_keys SET is_active=0 WHERE id=%s", (key_id,))
+        cur2 = conn.cursor()
+        cur2.execute("UPDATE api_keys SET is_active=FALSE WHERE id=%s", (key_id,))
         conn.commit()
         cur2.close()
         insert_audit_log(
@@ -4361,10 +4426,10 @@ def settings_cancel_plan():
             period_end_s9 = active_sub_s9.get("current_period_end")
             try:
                 conn2_s9 = get_db_connection()
-                cur_s9   = conn2_s9.cursor(buffered=True)
+                cur_s9   = conn2_s9.cursor()
                 cur_s9.execute(
                     "UPDATE subscriptions SET cancel_at_period_end=1, "
-                    "updated_at=UTC_TIMESTAMP() WHERE id=%s",
+                    "updated_at=NOW() WHERE id=%s",
                     (sub_id_s9,)
                 )
                 conn2_s9.commit()
@@ -4475,7 +4540,7 @@ def _get_saved_payment_methods(customer_id: int) -> list:
     Never raises — returns [] on any error."""
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             SELECT id, stripe_payment_method, card_brand, card_last4,
                    card_exp_month, card_exp_year, is_default
@@ -4585,7 +4650,7 @@ def billing_save_card():
         exp_year    = card.get("exp_year")
 
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
 
         # If this is the customer's first card, make it default
         cur.execute(
@@ -4601,12 +4666,11 @@ def billing_save_card():
                 (customer_id, stripe_payment_method, card_brand, card_last4,
                  card_exp_month, card_exp_year, is_default)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ON DUPLICATE KEY UPDATE
-                card_brand=%s, card_last4=%s,
-                card_exp_month=%s, card_exp_year=%s
+            ON CONFLICT (stripe_payment_method) DO UPDATE SET
+                card_brand=EXCLUDED.card_brand, card_last4=EXCLUDED.card_last4,
+                card_exp_month=EXCLUDED.card_exp_month, card_exp_year=EXCLUDED.card_exp_year
         """, (
             customer_id, pm_id, brand, last4, exp_month, exp_year, is_default,
-            brand, last4, exp_month, exp_year,
         ))
         conn.commit()
         cur.close(); conn.close()
@@ -4637,7 +4701,7 @@ def billing_remove_card(method_id: int):
     customer_id = int(customer["id"])
 
     conn = get_db_connection()
-    cur  = conn.cursor(dictionary=True, buffered=True)
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     # Security: only touch rows belonging to this customer
     cur.execute(
@@ -4655,7 +4719,7 @@ def billing_remove_card(method_id: int):
     was_default  = int(row.get("is_default") or 0)
     pm_id        = row.get("stripe_payment_method", "")
 
-    cur2 = conn.cursor(buffered=True)
+    cur2 = conn.cursor()
     cur2.execute(
         "DELETE FROM saved_payment_methods WHERE id=%s AND customer_id=%s",
         (method_id, customer_id)
@@ -4701,7 +4765,7 @@ def billing_set_default_card(method_id: int):
     customer_id = int(customer["id"])
 
     conn = get_db_connection()
-    cur  = conn.cursor(buffered=True)
+    cur  = conn.cursor()
 
     # Verify ownership
     cur.execute(
@@ -4739,7 +4803,7 @@ def _get_active_subscription(customer_id: int) -> dict | None:
     or None if they have no active subscription. Never raises."""
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             SELECT s.*, cp.name AS plan_name, cp.credits AS plan_credits,
                    cp.price_pence AS plan_price_pence, cp.billing_period,
@@ -4800,10 +4864,10 @@ def billing_subscribe():
 
     # Load subscription plans (active only)
     conn = get_db_connection()
-    cur  = conn.cursor(dictionary=True, buffered=True)
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
         SELECT * FROM credit_packages
-        WHERE is_active=1 AND package_type='subscription'
+        WHERE is_active=TRUE AND package_type='subscription'
         ORDER BY sort_order ASC, price_pence ASC
     """)
     plans = cur.fetchall() or []
@@ -4867,10 +4931,10 @@ def billing_subscribe_post():
 
     # ── Validate plan ────────────────────────────────────────────────────────
     conn = get_db_connection()
-    cur  = conn.cursor(dictionary=True, buffered=True)
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
         SELECT * FROM credit_packages
-        WHERE id=%s AND is_active=1 AND package_type='subscription'
+        WHERE id=%s AND is_active=TRUE AND package_type='subscription'
     """, (plan_id,))
     plan = cur.fetchone()
 
@@ -4947,7 +5011,7 @@ def billing_subscribe_post():
         period_end = now + timedelta(days=30)
 
     conn = get_db_connection()
-    cur  = conn.cursor(buffered=True)
+    cur  = conn.cursor()
 
     try:
         # ── Create subscription row ──────────────────────────────────────────
@@ -4957,8 +5021,9 @@ def billing_subscribe_post():
                  status, current_period_start, current_period_end,
                  cancel_at_period_end)
             VALUES (%s, %s, %s, %s, 'active', %s, %s, 0)
+            RETURNING id
         """, (customer_id, tenant_id, plan_id, method_id, now, period_end))
-        subscription_id = cur.lastrowid
+        subscription_id = cur.fetchone()[0]
 
         # ── Create subscription invoice row ──────────────────────────────────
         cur.execute("""
@@ -4976,7 +5041,7 @@ def billing_subscribe_post():
         # ── Top up credit balance ─────────────────────────────────────────────
         tokens_add = credits_to_tokens(credits)
         cur.execute(
-            "INSERT IGNORE INTO tenant_balances (tenant_id, token_balance) VALUES (%s, 0)",
+            "INSERT INTO tenant_balances (tenant_id, token_balance) VALUES (%s, 0) ON CONFLICT (tenant_id) DO NOTHING",
             (tenant_id,)
         )
         cur.execute(
@@ -4988,14 +5053,14 @@ def billing_subscribe_post():
         # api_key_plain is already stored from trial creation; no change needed.
         cur.execute("""
             UPDATE api_keys
-            SET key_type='paid', is_active=1, trial_expires_at=NULL
+            SET key_type='paid', is_active=TRUE, trial_expires_at=NULL
             WHERE tenant_id=%s AND key_type='trial'
         """, (tenant_id,))
         was_trial = cur.rowcount > 0
 
         # Reactivate any existing paid keys too
         cur.execute(
-            "UPDATE api_keys SET is_active=1 WHERE tenant_id=%s AND key_type='paid'",
+            "UPDATE api_keys SET is_active=TRUE WHERE tenant_id=%s AND key_type='paid'",
             (tenant_id,)
         )
 
@@ -5040,7 +5105,7 @@ def billing_subscribe_post():
         )
         # Save PDF path back to the subscription invoice row
         conn2 = get_db_connection()
-        cur2  = conn2.cursor(buffered=True)
+        cur2  = conn2.cursor()
         cur2.execute(
             "UPDATE subscription_invoices SET pdf_path=%s WHERE invoice_number=%s",
             (pdf_path, inv_num)
@@ -5163,10 +5228,10 @@ def billing_switch_plan():
 
     # ── Validate the new plan ─────────────────────────────────────────────────
     conn = get_db_connection()
-    cur  = conn.cursor(dictionary=True, buffered=True)
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
         SELECT * FROM credit_packages
-        WHERE id=%s AND is_active=1 AND package_type='subscription'
+        WHERE id=%s AND is_active=TRUE AND package_type='subscription'
     """, (new_plan_id,))
     new_plan = cur.fetchone()
     cur.close(); conn.close()
@@ -5185,12 +5250,12 @@ def billing_switch_plan():
     extra_credits   = max(0, new_credits - current_credits)   # 0 on downgrade
 
     conn = get_db_connection()
-    cur  = conn.cursor(buffered=True)
+    cur  = conn.cursor()
     try:
         # Update the subscription to the new plan
         cur.execute("""
             UPDATE subscriptions
-            SET package_id=%s, updated_at=UTC_TIMESTAMP()
+            SET package_id=%s, updated_at=NOW()
             WHERE id=%s AND customer_id=%s
         """, (new_plan_id, sub_id, customer_id))
 
@@ -5319,7 +5384,7 @@ def settings_business():
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         cur.execute("""
             UPDATE customers
             SET company_name          = %s,
@@ -5363,7 +5428,7 @@ def _get_wa_connection(tenant_id: int) -> dict | None:
     """Return the active wa_tenants row for this tenant, or None."""
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             SELECT id, phone_number_id, waba_id, verify_token, active, created_at,
                    signup_method, display_phone_number, verified_name, token_expires_at,
@@ -5382,7 +5447,7 @@ def _get_wa_connection_any(tenant_id: int) -> dict | None:
     """Return the wa_tenants row for this tenant regardless of active status, or None."""
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             SELECT id, phone_number_id, waba_id, verify_token, active, created_at,
                    signup_method, display_phone_number, verified_name, token_expires_at,
@@ -5401,7 +5466,7 @@ def _get_wa_templates(tenant_id: int) -> dict:
     """Return tenant's configured wa_templates keyed by template_type."""
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             SELECT template_type, template_name, language_code
             FROM wa_templates WHERE tenant_id = %s AND active = TRUE
@@ -5472,6 +5537,9 @@ def whatsapp_connect():
     elif connection and connection.get("active"):
         token_expiry_status = "ok"  # Manual connections have no expiry
 
+    api_keys = _get_api_keys(tenant_id)
+    portal_api_key = next((k["api_key_plain"] for k in api_keys if k.get("api_key_plain") and k.get("is_active")), None)
+
     return render_template("portal/whatsapp.html",
                            customer=customer,
                            connection=connection,
@@ -5481,7 +5549,8 @@ def whatsapp_connect():
                            meta_config_id=meta_config_id,
                            token_expiry_status=token_expiry_status,
                            webhook_url=webhook_url,
-                           suggested_verify_token=suggested_verify_token)
+                           suggested_verify_token=suggested_verify_token,
+                           portal_api_key=portal_api_key)
 
 
 @portal_bp.route("/whatsapp/connect", methods=["POST"])
@@ -5491,53 +5560,107 @@ def whatsapp_save_connection():
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
+    action          = (request.form.get("action") or "connect").strip()
     phone_number_id = (request.form.get("phone_number_id") or "").strip()
     access_token    = (request.form.get("access_token")    or "").strip()
     waba_id         = (request.form.get("waba_id")         or "").strip()
     app_secret      = (request.form.get("app_secret")      or "").strip()
     phixtra_api_key = (request.form.get("phixtra_api_key") or "").strip()
-    # Always use the platform-wide verify token — tenants don't manage this
     verify_token    = os.getenv("WEBHOOK_VERIFY_TOKEN", "")
 
-    if not phone_number_id or not access_token:
-        flash("Phone Number ID and Access Token are required.", "danger")
+    is_save = (action == "save")
+
+    if not phone_number_id:
+        flash("Phone Number ID is required.", "danger")
         return redirect(url_for("portal.whatsapp_connect"))
 
-    # Require API key for new connections; allow blank on updates to keep existing
-    if not phixtra_api_key and not connection:
+    # Connect mode requires the full credentials
+    if not is_save and not access_token:
+        flash("Access Token is required to activate the connection.", "danger")
+        return redirect(url_for("portal.whatsapp_connect"))
+
+    # Look up any existing row for this tenant so we can preserve fields left blank
+    existing = _get_wa_connection_any(tenant_id)
+
+    # Keep existing access_token if none provided (updates only)
+    if not access_token and existing:
+        access_token = existing.get("access_token") or ""
+
+    # Keep existing api key if none provided
+    if not phixtra_api_key and existing:
+        phixtra_api_key = existing.get("phixtra_api_key") or ""
+
+    # New connection in connect mode must supply api key
+    if not is_save and not phixtra_api_key:
         flash("PhiXtra API Key is required.", "danger")
         return redirect(url_for("portal.whatsapp_connect"))
 
-    api_key = phixtra_api_key
-
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
-        cur.execute("""
-            INSERT INTO wa_tenants
-              (tenant_id, phone_number_id, access_token, waba_id, verify_token,
-               phixtra_api_key, active, signup_method, app_secret)
-            VALUES (%s, %s, %s, %s, %s, %s, TRUE, 'manual', %s)
-            ON DUPLICATE KEY UPDATE
-              tenant_id       = VALUES(tenant_id),
-              access_token    = VALUES(access_token),
-              waba_id         = VALUES(waba_id),
-              verify_token    = VALUES(verify_token),
-              phixtra_api_key = VALUES(phixtra_api_key),
-              active          = TRUE,
-              signup_method   = 'manual',
-              token_expires_at = NULL,
-              app_secret       = IF(VALUES(app_secret) IS NOT NULL, VALUES(app_secret), app_secret),
-              phixtra_api_key  = IF(VALUES(phixtra_api_key) != '', VALUES(phixtra_api_key), phixtra_api_key)
-        """, (tenant_id, phone_number_id, access_token, waba_id or None, verify_token, api_key or '', app_secret or None))
-        conn.commit()
-        cur.close(); conn.close()
-        insert_audit_log(action="wa_connected", tenant_id=tenant_id,
-                         details={"phone_number_id": phone_number_id, "method": "manual"})
-        flash("WhatsApp connected successfully! ✅", "success")
+        cur  = conn.cursor()
+
+        if is_save:
+            # Save mode: update the tenant's existing row in-place (by tenant_id),
+            # preserving active status. If no row exists yet, insert as inactive.
+            if existing:
+                cur.execute("""
+                    UPDATE wa_tenants SET
+                      phone_number_id = %s,
+                      waba_id         = IF(%s IS NOT NULL, %s, waba_id),
+                      verify_token    = %s,
+                      phixtra_api_key = IF(%s != '', %s, phixtra_api_key),
+                      access_token    = IF(%s != '', %s, access_token),
+                      app_secret      = IF(%s IS NOT NULL AND %s != '', %s, app_secret),
+                      signup_method   = 'manual'
+                    WHERE tenant_id = %s
+                    ORDER BY id DESC LIMIT 1
+                """, (phone_number_id,
+                      waba_id or None, waba_id or None,
+                      verify_token,
+                      phixtra_api_key, phixtra_api_key,
+                      access_token, access_token,
+                      app_secret or None, app_secret or None, app_secret or None,
+                      tenant_id))
+            else:
+                cur.execute("""
+                    INSERT INTO wa_tenants
+                      (tenant_id, phone_number_id, access_token, waba_id, verify_token,
+                       phixtra_api_key, active, signup_method, app_secret)
+                    VALUES (%s, %s, %s, %s, %s, %s, FALSE, 'manual', %s)
+                """, (tenant_id, phone_number_id, access_token, waba_id or None,
+                      verify_token, phixtra_api_key or '', app_secret or None))
+            conn.commit()
+            cur.close(); conn.close()
+            flash("Progress saved. Come back and click 'Connect WhatsApp' once you have all credentials.", "success")
+
+        else:
+            # Connect mode: upsert by phone_number_id, always activate
+            cur.execute("""
+                INSERT INTO wa_tenants
+                  (tenant_id, phone_number_id, access_token, waba_id, verify_token,
+                   phixtra_api_key, active, signup_method, app_secret)
+                VALUES (%s, %s, %s, %s, %s, %s, TRUE, 'manual', %s)
+                ON CONFLICT (phone_number_id) DO UPDATE SET
+                  tenant_id        = EXCLUDED.tenant_id,
+                  access_token     = EXCLUDED.access_token,
+                  waba_id          = COALESCE(EXCLUDED.waba_id, wa_tenants.waba_id),
+                  verify_token     = EXCLUDED.verify_token,
+                  phixtra_api_key  = CASE WHEN EXCLUDED.phixtra_api_key != '' THEN EXCLUDED.phixtra_api_key ELSE wa_tenants.phixtra_api_key END,
+                  active           = TRUE,
+                  signup_method    = 'manual',
+                  token_expires_at = NULL,
+                  app_secret       = COALESCE(EXCLUDED.app_secret, wa_tenants.app_secret)
+            """, (tenant_id, phone_number_id, access_token, waba_id or None,
+                  verify_token, phixtra_api_key or '', app_secret or None))
+            conn.commit()
+            cur.close(); conn.close()
+            insert_audit_log(action="wa_connected", tenant_id=tenant_id,
+                             details={"phone_number_id": phone_number_id, "method": "manual"})
+            flash("WhatsApp connected successfully! ✅", "success")
+
     except Exception as e:
         print("⚠️ whatsapp_save_connection error:", e)
-        flash("Could not save connection. Please try again.", "danger")
+        flash("Could not save. Please try again.", "danger")
 
     return redirect(url_for("portal.whatsapp_connect"))
 
@@ -5551,7 +5674,7 @@ def whatsapp_disconnect():
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         cur.execute("UPDATE wa_tenants SET active = FALSE WHERE tenant_id = %s", (tenant_id,))
         conn.commit()
         cur.close(); conn.close()
@@ -5573,7 +5696,7 @@ def whatsapp_delete():
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         cur.execute("DELETE FROM wa_tenants WHERE tenant_id = %s", (tenant_id,))
         conn.commit()
         cur.close(); conn.close()
@@ -5686,24 +5809,24 @@ def _save_wa_embedded_connection(tenant_id: int, phone_number_id: str, waba_id: 
     verify_token = secrets.token_urlsafe(20)
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         cur.execute("""
             INSERT INTO wa_tenants
               (tenant_id, phone_number_id, access_token, waba_id, verify_token,
                phixtra_api_key, active, signup_method,
                display_phone_number, verified_name, token_expires_at)
             VALUES (%s, %s, %s, %s, %s, %s, TRUE, 'embedded', %s, %s, %s)
-            ON DUPLICATE KEY UPDATE
-              tenant_id            = VALUES(tenant_id),
-              access_token         = VALUES(access_token),
-              waba_id              = VALUES(waba_id),
-              verify_token         = VALUES(verify_token),
-              phixtra_api_key      = VALUES(phixtra_api_key),
+            ON CONFLICT (phone_number_id) DO UPDATE SET
+              tenant_id            = EXCLUDED.tenant_id,
+              access_token         = EXCLUDED.access_token,
+              waba_id              = EXCLUDED.waba_id,
+              verify_token         = EXCLUDED.verify_token,
+              phixtra_api_key      = EXCLUDED.phixtra_api_key,
               active               = TRUE,
               signup_method        = 'embedded',
-              display_phone_number = VALUES(display_phone_number),
-              verified_name        = VALUES(verified_name),
-              token_expires_at     = VALUES(token_expires_at)
+              display_phone_number = EXCLUDED.display_phone_number,
+              verified_name        = EXCLUDED.verified_name,
+              token_expires_at     = EXCLUDED.token_expires_at
         """, (tenant_id, phone_number_id, token, waba_id, verify_token,
               api_key, display_phone or None, verified_name or None,
               token_expires_at))
@@ -5754,8 +5877,8 @@ def whatsapp_embedded_callback():
 
     # Fetch tenant API key
     conn = get_db_connection()
-    cur  = conn.cursor(dictionary=True, buffered=True)
-    cur.execute("SELECT api_key_plain FROM api_keys WHERE tenant_id=%s AND is_active=1 LIMIT 1", (tenant_id,))
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT api_key_plain FROM api_keys WHERE tenant_id=%s AND is_active=TRUE LIMIT 1", (tenant_id,))
     key_row = cur.fetchone()
     cur.close(); conn.close()
     if not key_row:
@@ -5863,7 +5986,7 @@ def whatsapp_check_token():
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("SELECT access_token, phone_number_id FROM wa_tenants WHERE tenant_id=%s AND active=TRUE LIMIT 1",
                     (tenant_id,))
         row = cur.fetchone()
@@ -5918,14 +6041,14 @@ def whatsapp_save_templates():
             continue
         try:
             conn = get_db_connection()
-            cur  = conn.cursor(buffered=True)
+            cur  = conn.cursor()
             cur.execute("""
                 INSERT INTO wa_templates
                   (tenant_id, template_type, template_name, language_code, active)
                 VALUES (%s, %s, %s, %s, TRUE)
-                ON DUPLICATE KEY UPDATE
-                  template_name = VALUES(template_name),
-                  language_code = VALUES(language_code),
+                ON CONFLICT (tenant_id, template_type) DO UPDATE SET
+                  template_name = EXCLUDED.template_name,
+                  language_code = EXCLUDED.language_code,
                   active        = TRUE
             """, (tenant_id, ttype, tname, lang))
             conn.commit()
@@ -5948,7 +6071,7 @@ def whatsapp_inbox():
     handoffs = []
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             SELECT session_id, customer_phone, escalated_at
             FROM wa_handoff_state
@@ -5992,7 +6115,7 @@ def whatsapp_inbox_reply(session_id: str):
     # Verify handoff belongs to this tenant and pull credentials
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             SELECT h.customer_phone, t.phone_number_id, t.access_token
             FROM wa_handoff_state h
@@ -6017,7 +6140,7 @@ def whatsapp_inbox_reply(session_id: str):
     if ok:
         try:
             conn = get_db_connection()
-            cur  = conn.cursor(buffered=True)
+            cur  = conn.cursor()
             cur.execute("""
                 INSERT INTO wa_message_log
                   (tenant_id, phone_number_id, customer_phone, direction, content, message_type)
@@ -6043,10 +6166,10 @@ def whatsapp_inbox_resolve(session_id: str):
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         cur.execute("""
             UPDATE wa_handoff_state
-            SET resolved_at = UTC_TIMESTAMP()
+            SET resolved_at = NOW()
             WHERE session_id = %s AND tenant_id = %s AND resolved_at IS NULL
         """, (session_id, tenant_id))
         conn.commit()
@@ -6076,7 +6199,7 @@ def _send_campaign_now(campaign_id: int, tenant_id: int):
     try:
         import requests as _req
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         cur.execute(
             "UPDATE wa_campaigns SET status='running', completed_at=NULL "
@@ -6128,9 +6251,9 @@ def _send_campaign_now(campaign_id: int, tenant_id: int):
                 failed += 1
 
         conn2 = get_db_connection()
-        cur2  = conn2.cursor(buffered=True)
+        cur2  = conn2.cursor()
         cur2.execute(
-            "UPDATE wa_campaigns SET status='done', completed_at=UTC_TIMESTAMP(), "
+            "UPDATE wa_campaigns SET status='done', completed_at=NOW(), "
             "sent_count=%s, failed_count=%s WHERE id=%s",
             (sent, failed, campaign_id),
         )
@@ -6140,7 +6263,7 @@ def _send_campaign_now(campaign_id: int, tenant_id: int):
         print(f"⚠️ _send_campaign_now error (campaign {campaign_id}):", e)
         try:
             conn3 = get_db_connection()
-            cur3  = conn3.cursor(buffered=True)
+            cur3  = conn3.cursor()
             cur3.execute("UPDATE wa_campaigns SET status='failed' WHERE id=%s", (campaign_id,))
             conn3.commit()
             cur3.close(); conn3.close()
@@ -6154,10 +6277,10 @@ def _campaign_scheduler_loop():
         try:
             conn = get_db_connection()
             if conn:
-                cur = conn.cursor(dictionary=True, buffered=True)
+                cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                 cur.execute(
                     "SELECT id, tenant_id FROM wa_campaigns "
-                    "WHERE status='scheduled' AND scheduled_at <= UTC_TIMESTAMP()"
+                    "WHERE status='scheduled' AND scheduled_at <= NOW()"
                 )
                 due = cur.fetchall()
                 cur.close(); conn.close()
@@ -6192,7 +6315,7 @@ def whatsapp_campaigns():
     proactive_log = []
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
             "SELECT * FROM wa_campaigns WHERE tenant_id=%s ORDER BY created_at DESC LIMIT 100",
             (tenant_id,),
@@ -6252,19 +6375,20 @@ def whatsapp_campaigns_create():
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         cur.execute(
             """
             INSERT INTO wa_campaigns
               (tenant_id, name, template_name, language_code, status,
                scheduled_at, total_count, recipients)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
             """,
             (tenant_id, name, template_name, language_code, status,
              scheduled_at, len(phones), "\n".join(phones)),
         )
+        campaign_id = cur.fetchone()[0]
         conn.commit()
-        campaign_id = cur.lastrowid
         cur.close(); conn.close()
     except Exception as e:
         print("⚠️ whatsapp_campaigns_create error:", e)
@@ -6308,7 +6432,7 @@ def whatsapp_campaigns_delete(campaign_id: int):
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         cur.execute(
             "DELETE FROM wa_campaigns WHERE id=%s AND tenant_id=%s AND status IN ('draft','scheduled')",
             (campaign_id, tenant_id),
@@ -6363,7 +6487,7 @@ def _get_orders_list(tenant_id: int, status_filter: str = "all", page: int = 1):
     """Return (orders, total_count) for the orders list page."""
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         base_where  = "WHERE o.tenant_id = %s"
         base_params = [tenant_id]
@@ -6401,7 +6525,7 @@ def _get_order_kpis(tenant_id: int) -> dict:
     """Today's KPI stats for the orders page header."""
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             SELECT
               COUNT(*) AS total,
@@ -6432,7 +6556,7 @@ def _get_single_order(tenant_id: int, order_id: str):
     """Return (order_row, [item_rows]) or (None, [])."""
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
             "SELECT * FROM orders WHERE id = %s AND tenant_id = %s",
             (order_id, tenant_id),
@@ -6511,24 +6635,103 @@ def order_detail(order_id: str):
     _annotate_order(order)
     s = order.get("status", "")
 
-    can_dispatch = s in ("PAYMENT_VERIFIED", "PROCESSING")
-    can_deliver  = s == "DISPATCHED"
-    can_cancel   = s in (
+    can_verify_payment = s == "RECEIPT_RECEIVED"
+    can_dispatch       = s in ("PAYMENT_VERIFIED", "PROCESSING")
+    can_deliver        = s == "DISPATCHED"
+    can_cancel         = s in (
         "INTENT_CAPTURED", "PAYMENT_PENDING",
         "RECEIPT_RECEIVED", "PAYMENT_VERIFIED", "PROCESSING",
     )
 
     return render_template(
         "portal/order_detail.html",
-        customer     = customer,
-        order        = order,
-        items        = items,
-        can_dispatch = can_dispatch,
-        can_deliver  = can_deliver,
-        can_cancel   = can_cancel,
-        status_pill  = _ORDER_STATUS_PILL,
-        status_label = _ORDER_STATUS_LABEL,
+        customer           = customer,
+        order              = order,
+        items              = items,
+        can_verify_payment = can_verify_payment,
+        can_dispatch       = can_dispatch,
+        can_deliver        = can_deliver,
+        can_cancel         = can_cancel,
+        status_pill        = _ORDER_STATUS_PILL,
+        status_label       = _ORDER_STATUS_LABEL,
     )
+
+
+def _get_tenant_wa_creds(tenant_id: int) -> dict | None:
+    """Return phone_number_id + access_token for the tenant's active WA number."""
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT phone_number_id, access_token
+            FROM wa_tenants WHERE tenant_id = %s AND active = TRUE LIMIT 1
+        """, (tenant_id,))
+        row = cur.fetchone()
+        cur.close(); conn.close()
+        return row
+    except Exception as e:
+        print("⚠️ _get_tenant_wa_creds error:", e)
+        return None
+
+
+def _notify_customer_wa(tenant_id: int, customer_phone: str, message: str):
+    """Send a plain-text WA message to the customer using the tenant's Meta number."""
+    creds = _get_tenant_wa_creds(tenant_id)
+    if not creds:
+        return
+    _send_wa_text_from_portal(
+        creds["phone_number_id"],
+        creds["access_token"],
+        customer_phone,
+        message,
+    )
+
+
+@portal_bp.route("/orders/<order_id>/verify-payment", methods=["POST"])
+def order_verify_payment(order_id: str):
+    r = _require_login()
+    if r: return r
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            UPDATE orders
+               SET status = 'PAYMENT_VERIFIED', paid_at = NOW(), updated_at = NOW()
+             WHERE id = %s AND tenant_id = %s AND status = 'RECEIPT_RECEIVED'
+            RETURNING customer_phone, reference, customer_name
+        """, (order_id, tenant_id))
+        row = cur.fetchone()
+        if row:
+            # Advance the WA shopping session so the customer sees the right state
+            cur2 = conn.cursor()
+            cur2.execute(
+                "UPDATE wa_shop_session SET state = 'COMPLETE', updated_at = NOW() WHERE order_id = %s",
+                (order_id,)
+            )
+            cur2.close()
+        conn.commit()
+        cur.close(); conn.close()
+        if row:
+            flash("Payment verified — order is now confirmed.", "success")
+            _notify_customer_wa(
+                tenant_id,
+                row["customer_phone"],
+                f"✅ *Payment Confirmed!*\n\n"
+                f"Hi {row.get('customer_name') or 'there'}, your payment for order "
+                f"*{row['reference']}* has been verified.\n\n"
+                "We're preparing your order now. You'll receive another message when it's dispatched.",
+            )
+        else:
+            flash("Order status could not be updated.", "warning")
+    except Exception as e:
+        print("⚠️ order_verify_payment error:", e)
+        flash("Update failed — please try again.", "danger")
+
+    return redirect(url_for("portal.order_detail", order_id=order_id))
 
 
 @portal_bp.route("/orders/<order_id>/dispatch", methods=["POST"])
@@ -6543,7 +6746,7 @@ def order_dispatch(order_id: str):
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         cur.execute("""
             UPDATE orders
                SET status = 'DISPATCHED',
@@ -6557,6 +6760,26 @@ def order_dispatch(order_id: str):
         conn.commit()
         if cur.rowcount:
             flash("Order marked as dispatched.", "success")
+            # Fetch details to notify customer
+            cur2 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur2.execute(
+                "SELECT customer_phone, reference, customer_name FROM orders WHERE id = %s",
+                (order_id,)
+            )
+            row = cur2.fetchone(); cur2.close()
+            if row:
+                tracking_line = (
+                    f"\n🚚 Courier: {courier}\n📦 Tracking: {tracking}"
+                    if courier or tracking else ""
+                )
+                _notify_customer_wa(
+                    tenant_id,
+                    row["customer_phone"],
+                    f"🚚 *Order Dispatched!*\n\n"
+                    f"Hi {row.get('customer_name') or 'there'}, your order *{row['reference']}* "
+                    f"is on its way!{tracking_line}\n\n"
+                    "Reply here if you have any questions.",
+                )
         else:
             flash("Order status could not be updated.", "warning")
         cur.close(); conn.close()
@@ -6577,7 +6800,7 @@ def order_deliver(order_id: str):
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         cur.execute("""
             UPDATE orders
                SET status = 'DELIVERED', delivered_at = NOW(), updated_at = NOW()
@@ -6586,6 +6809,21 @@ def order_deliver(order_id: str):
         conn.commit()
         if cur.rowcount:
             flash("Order marked as delivered.", "success")
+            cur2 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur2.execute(
+                "SELECT customer_phone, reference, customer_name FROM orders WHERE id = %s",
+                (order_id,)
+            )
+            row = cur2.fetchone(); cur2.close()
+            if row:
+                _notify_customer_wa(
+                    tenant_id,
+                    row["customer_phone"],
+                    f"🎉 *Order Delivered!*\n\n"
+                    f"Hi {row.get('customer_name') or 'there'}, your order *{row['reference']}* "
+                    "has been marked as delivered.\n\n"
+                    "We hope you love it! Feel free to order again anytime. 😊",
+                )
         else:
             flash("Order status could not be updated.", "warning")
         cur.close(); conn.close()
@@ -6606,7 +6844,7 @@ def order_cancel(order_id: str):
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         cur.execute("""
             SELECT id FROM orders
@@ -6681,7 +6919,7 @@ def _save_product_image(file_storage):
 def _get_tenant_azure_index(tenant_id: int):
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
             "SELECT azure_search_index FROM tenants WHERE id = %s", (tenant_id,)
         )
@@ -6697,9 +6935,9 @@ def _get_products(tenant_id, q="", category="", page=1, per_page=40):
     """Return (products, total, categories_list)."""
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-        where  = "WHERE tenant_id = %s AND is_active = 1"
+        where  = "WHERE tenant_id = %s AND is_active=TRUE"
         params = [tenant_id]
         if q:
             like = f"%{q}%"
@@ -6714,7 +6952,7 @@ def _get_products(tenant_id, q="", category="", page=1, per_page=40):
 
         cur.execute(
             "SELECT DISTINCT category FROM products "
-            "WHERE tenant_id = %s AND is_active = 1 AND category IS NOT NULL "
+            "WHERE tenant_id = %s AND is_active=TRUE AND category IS NOT NULL "
             "ORDER BY category",
             (tenant_id,),
         )
@@ -6739,7 +6977,7 @@ def _get_products(tenant_id, q="", category="", page=1, per_page=40):
 def _get_product(tenant_id, product_id):
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
             "SELECT * FROM products WHERE id = %s AND tenant_id = %s",
             (product_id, tenant_id),
@@ -6755,7 +6993,7 @@ def _get_product(tenant_id, product_id):
 def _get_wa_product_stats(tenant_id):
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             SELECT COUNT(DISTINCT wpc.product_id) AS total_products,
                    MAX(wpc.created_at) AS last_seen
@@ -6851,7 +7089,7 @@ def product_add():
         product_id = str(_uuid.uuid4())
         try:
             conn = get_db_connection()
-            cur  = conn.cursor(buffered=True)
+            cur  = conn.cursor()
             cur.execute("""
                 INSERT INTO products
                   (id, tenant_id, name, description, price,
@@ -6919,7 +7157,7 @@ def product_edit(product_id: str):
 
         try:
             conn = get_db_connection()
-            cur  = conn.cursor(buffered=True)
+            cur  = conn.cursor()
             cur.execute("""
                 UPDATE products
                    SET name=%s, description=%s, price=%s,
@@ -6950,9 +7188,9 @@ def product_delete(product_id: str):
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         cur.execute(
-            "UPDATE products SET is_active=0, updated_at=NOW() WHERE id=%s AND tenant_id=%s",
+            "UPDATE products SET is_active=FALSE, updated_at=NOW() WHERE id=%s AND tenant_id=%s",
             (product_id, tenant_id),
         )
         conn.commit()
@@ -6979,7 +7217,7 @@ def product_toggle_stock(product_id: str):
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         cur.execute(
             "UPDATE products SET stock_quantity=%s, updated_at=NOW() WHERE id=%s AND tenant_id=%s",
             (new_qty, product_id, tenant_id),
@@ -6991,6 +7229,673 @@ def product_toggle_stock(product_id: str):
         flash("Update failed.", "danger")
 
     return redirect(url_for("portal.products"))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CATALOGUE ONBOARDING WIZARD  (/onboarding/catalogue/*)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _wizard_mark_done(customer_id: int):
+    """Stamp catalogue_setup_done=TRUE in onboarding_state (idempotent)."""
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("""
+            INSERT INTO onboarding_state (customer_id, catalogue_setup_done)
+            VALUES (%s, TRUE)
+            ON CONFLICT (customer_id)
+            DO UPDATE SET catalogue_setup_done = TRUE, updated_at = NOW()
+        """, (customer_id,))
+        conn.commit()
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ _wizard_mark_done error:", e)
+
+
+def _wizard_state(customer_id: int) -> dict:
+    """Read wizard progress from session."""
+    return {
+        "cat_ids":   session.get("ob_cat_ids", []),      # list of int — chosen categories
+        "cats_done": set(session.get("ob_cats_done", [])),  # set of int — categories browsed
+    }
+
+
+@portal_bp.route("/onboarding/catalogue", methods=["GET", "POST"])
+def onboarding_catalogue_start():
+    """Step 1 — pick which categories your store carries."""
+    r = _require_login()
+    if r: return r
+
+    customer    = _get_customer(_customer_id())
+    merchant_id = int(customer["id"])
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT c.*,
+               COUNT(DISTINCT p.id) AS product_count
+        FROM catalogue_categories c
+        LEFT JOIN catalogue_products p ON p.category_id = c.id AND p.is_active
+        WHERE c.is_active
+        GROUP BY c.id
+        ORDER BY c.sort_order, c.name
+    """)
+    categories = cur.fetchall()
+    cur.close(); conn.close()
+
+    if request.method == "POST":
+        action = request.form.get("action", "")
+
+        if action == "skip":
+            _wizard_mark_done(merchant_id)
+            session.pop("ob_cat_ids", None)
+            session.pop("ob_cats_done", None)
+            flash("You can set up your catalogue any time from the My Catalogue page.", "info")
+            return redirect(url_for("portal.dashboard"))
+
+        raw_ids = request.form.getlist("cat_ids")
+        chosen  = [int(x) for x in raw_ids if x.isdigit()]
+
+        if not chosen:
+            flash("Please select at least one category — or skip to set up later.", "warning")
+            return render_template(
+                "portal/onboarding_catalogue_step1.html",
+                customer=customer, categories=categories,
+            )
+
+        session["ob_cat_ids"]   = chosen
+        session["ob_cats_done"] = []
+        return redirect(url_for("portal.onboarding_catalogue_products",
+                                category_id=chosen[0]))
+
+    # GET — reset any partial wizard state
+    session.pop("ob_cat_ids", None)
+    session.pop("ob_cats_done", None)
+    return render_template(
+        "portal/onboarding_catalogue_step1.html",
+        customer=customer, categories=categories,
+    )
+
+
+@portal_bp.route("/onboarding/catalogue/products/<int:category_id>", methods=["GET", "POST"])
+def onboarding_catalogue_products(category_id: int):
+    """Step 2 — browse & select products for one category."""
+    r = _require_login()
+    if r: return r
+
+    customer    = _get_customer(_customer_id())
+    merchant_id = int(customer["id"])
+    ws          = _wizard_state(merchant_id)
+
+    # Guard: must have come through step 1
+    if not ws["cat_ids"]:
+        return redirect(url_for("portal.onboarding_catalogue_start"))
+
+    if request.method == "POST":
+        # Mark this category done and advance
+        done_set = set(ws["cats_done"])
+        done_set.add(category_id)
+        session["ob_cats_done"] = list(done_set)
+
+        remaining = [cid for cid in ws["cat_ids"] if cid not in done_set]
+        if remaining:
+            return redirect(url_for("portal.onboarding_catalogue_products",
+                                    category_id=remaining[0]))
+        return redirect(url_for("portal.onboarding_catalogue_review"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cur.execute("SELECT * FROM catalogue_categories WHERE id=%s AND is_active=TRUE", (category_id,))
+    cat = cur.fetchone()
+    if not cat or category_id not in ws["cat_ids"]:
+        cur.close(); conn.close()
+        return redirect(url_for("portal.onboarding_catalogue_start"))
+
+    attrs = []
+    cur.execute(
+        "SELECT * FROM catalogue_attribute_definitions WHERE category_id=%s ORDER BY sort_order",
+        (category_id,)
+    )
+    attrs = cur.fetchall()
+    filter_attrs = [a for a in attrs if a["is_filterable"]]
+
+    q       = (request.args.get("q") or "").strip()
+    brand_f = (request.args.get("brand") or "").strip()
+    try:
+        page = max(1, int(request.args.get("page") or 1))
+    except (ValueError, TypeError):
+        page = 1
+    per_page = 24
+    attr_filters = {a["attribute_key"]: (request.args.get(f"attr_{a['attribute_key']}") or "").strip()
+                    for a in filter_attrs}
+
+    where  = ["p.category_id = %s", "p.is_active = TRUE"]
+    params: list = [category_id]
+
+    if q:
+        where.append("(p.brand ILIKE %s OR p.model_name ILIKE %s OR p.model_number ILIKE %s)")
+        params += [f"%{q}%", f"%{q}%", f"%{q}%"]
+    if brand_f:
+        where.append("p.brand = %s")
+        params.append(brand_f)
+    for key, val in attr_filters.items():
+        if val:
+            where.append("""EXISTS (
+                SELECT 1 FROM catalogue_product_attributes pa2
+                JOIN catalogue_attribute_definitions ad2 ON ad2.id = pa2.attribute_def_id
+                WHERE pa2.product_id = p.id AND ad2.attribute_key=%s AND pa2.value=%s
+            )""")
+            params += [key, val]
+
+    where_sql = "WHERE " + " AND ".join(where)
+    cur.execute(f"SELECT COUNT(*) AS n FROM catalogue_products p {where_sql}", params)
+    total = (cur.fetchone() or {}).get("n", 0)
+    pages = max(1, (total + per_page - 1) // per_page)
+
+    cur.execute(
+        f"SELECT p.* FROM catalogue_products p {where_sql} "
+        f"ORDER BY p.brand, p.model_name LIMIT %s OFFSET %s",
+        params + [per_page, (page - 1) * per_page]
+    )
+    products = cur.fetchall()
+
+    if products:
+        pids = [p["id"] for p in products]
+        cur.execute(
+            """SELECT pa.product_id, ad.attribute_key, pa.value
+               FROM catalogue_product_attributes pa
+               JOIN catalogue_attribute_definitions ad ON ad.id = pa.attribute_def_id
+               WHERE pa.product_id = ANY(%s)""",
+            (pids,)
+        )
+        amap: dict = {}
+        for row in cur.fetchall():
+            amap.setdefault(row["product_id"], {})[row["attribute_key"]] = row["value"]
+        products = [dict(p, attrs=amap.get(p["id"], {})) for p in products]
+
+    selected_ids = _merchant_selection_ids(cur, merchant_id)
+
+    cur.execute(
+        "SELECT DISTINCT brand FROM catalogue_products WHERE category_id=%s AND brand IS NOT NULL ORDER BY brand",
+        (category_id,)
+    )
+    brands = [r["brand"] for r in cur.fetchall()]
+
+    attr_values: dict = {}
+    for a in filter_attrs:
+        cur.execute(
+            """SELECT DISTINCT pa.value FROM catalogue_product_attributes pa
+               JOIN catalogue_attribute_definitions ad ON ad.id = pa.attribute_def_id
+               WHERE ad.category_id=%s AND ad.attribute_key=%s AND pa.value IS NOT NULL ORDER BY pa.value""",
+            (category_id, a["attribute_key"])
+        )
+        attr_values[a["attribute_key"]] = [r["value"] for r in cur.fetchall()]
+
+    # Wizard progress counters
+    cat_ids   = ws["cat_ids"]
+    cats_done = ws["cats_done"]
+    step_num  = cat_ids.index(category_id) + 1 if category_id in cat_ids else 1
+    step_total = len(cat_ids)
+
+    # How many selected in this category so far
+    cur.execute(
+        """SELECT COUNT(*) AS n FROM merchant_product_catalogue mpc
+           JOIN catalogue_products p ON p.id=mpc.product_id
+           WHERE p.category_id=%s AND mpc.merchant_id=%s AND mpc.is_active""",
+        (category_id, merchant_id)
+    )
+    selected_in_cat = (cur.fetchone() or {}).get("n", 0)
+
+    cur.close(); conn.close()
+    return render_template(
+        "portal/onboarding_catalogue_step2.html",
+        customer=customer, cat=cat, attrs=attrs, filter_attrs=filter_attrs,
+        products=products, selected_ids=selected_ids,
+        brands=brands, attr_values=attr_values, attr_filters=attr_filters,
+        total=total, page=page, pages=pages, per_page=per_page,
+        q=q, brand_f=brand_f, selected_in_cat=selected_in_cat,
+        step_num=step_num, step_total=step_total,
+        cat_ids=cat_ids, cats_done=cats_done,
+    )
+
+
+@portal_bp.route("/onboarding/catalogue/review")
+def onboarding_catalogue_review():
+    """Step 3 — review all selected products before finishing."""
+    r = _require_login()
+    if r: return r
+
+    customer    = _get_customer(_customer_id())
+    merchant_id = int(customer["id"])
+    ws          = _wizard_state(merchant_id)
+
+    if not ws["cat_ids"]:
+        return redirect(url_for("portal.onboarding_catalogue_start"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cur.execute("""
+        SELECT c.id AS cat_id, c.name AS cat_name, c.icon AS cat_icon,
+               COUNT(*) AS product_count
+        FROM merchant_product_catalogue mpc
+        JOIN catalogue_products p   ON p.id  = mpc.product_id
+        JOIN catalogue_categories c ON c.id  = p.category_id
+        WHERE mpc.merchant_id=%s AND mpc.is_active=TRUE
+        GROUP BY c.id, c.name, c.icon
+        ORDER BY c.sort_order, c.name
+    """, (merchant_id,))
+    by_category = cur.fetchall()
+
+    cur.execute("""
+        SELECT p.*, c.id AS cat_id, c.name AS cat_name, c.icon AS cat_icon
+        FROM merchant_product_catalogue mpc
+        JOIN catalogue_products p   ON p.id  = mpc.product_id
+        JOIN catalogue_categories c ON c.id  = p.category_id
+        WHERE mpc.merchant_id=%s AND mpc.is_active=TRUE
+        ORDER BY c.sort_order, p.brand, p.model_name
+    """, (merchant_id,))
+    all_products = cur.fetchall()
+    total = len(all_products)
+
+    if all_products:
+        pids = [p["id"] for p in all_products]
+        cur.execute(
+            """SELECT pa.product_id, ad.attribute_key, pa.value
+               FROM catalogue_product_attributes pa
+               JOIN catalogue_attribute_definitions ad ON ad.id=pa.attribute_def_id
+               WHERE pa.product_id=ANY(%s)""",
+            (pids,)
+        )
+        amap: dict = {}
+        for row in cur.fetchall():
+            amap.setdefault(row["product_id"], {})[row["attribute_key"]] = row["value"]
+        all_products = [dict(p, attrs=amap.get(p["id"], {})) for p in all_products]
+
+    cur.close(); conn.close()
+    return render_template(
+        "portal/onboarding_catalogue_review.html",
+        customer=customer, by_category=by_category,
+        all_products=all_products, total=total,
+        cat_ids=ws["cat_ids"],
+    )
+
+
+@portal_bp.route("/onboarding/catalogue/finish", methods=["POST"])
+def onboarding_catalogue_finish():
+    """Mark catalogue onboarding done → dashboard."""
+    r = _require_login()
+    if r: return r
+
+    merchant_id = _customer_id()
+    _wizard_mark_done(merchant_id)
+    session.pop("ob_cat_ids", None)
+    session.pop("ob_cats_done", None)
+    flash("Your store catalogue is set up! 🎉", "success")
+    return redirect(url_for("portal.dashboard"))
+
+
+@portal_bp.route("/onboarding/catalogue/skip", methods=["POST"])
+def onboarding_catalogue_skip():
+    """Skip the wizard — mark done so we don't show it again."""
+    r = _require_login()
+    if r: return r
+
+    _wizard_mark_done(_customer_id())
+    session.pop("ob_cat_ids", None)
+    session.pop("ob_cats_done", None)
+    return redirect(url_for("portal.dashboard"))
+
+
+# Toggle during wizard (AJAX or form POST) — reuses the same endpoint as the main catalogue
+@portal_bp.route("/onboarding/catalogue/toggle/<int:category_id>/<int:product_id>", methods=["POST"])
+def onboarding_catalogue_toggle(category_id: int, product_id: int):
+    """Same as catalogue_toggle but stays within the wizard URL space."""
+    r = _require_login()
+    if r: return r
+
+    customer    = _get_customer(_customer_id())
+    merchant_id = int(customer["id"])
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        "SELECT id FROM catalogue_products WHERE id=%s AND category_id=%s AND is_active=TRUE",
+        (product_id, category_id)
+    )
+    if not cur.fetchone():
+        cur.close(); conn.close()
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return {"ok": False, "error": "Product not found"}, 404
+        return redirect(url_for("portal.onboarding_catalogue_products", category_id=category_id))
+
+    cur.execute(
+        "SELECT is_active FROM merchant_product_catalogue WHERE merchant_id=%s AND product_id=%s",
+        (merchant_id, product_id)
+    )
+    existing = cur.fetchone()
+
+    if existing is None:
+        cur.execute(
+            "INSERT INTO merchant_product_catalogue (merchant_id, product_id) VALUES (%s,%s)",
+            (merchant_id, product_id)
+        )
+        new_state = True
+    else:
+        new_state = not existing["is_active"]
+        cur.execute(
+            "UPDATE merchant_product_catalogue SET is_active=%s WHERE merchant_id=%s AND product_id=%s",
+            (new_state, merchant_id, product_id)
+        )
+
+    conn.commit()
+    cur.close(); conn.close()
+
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return {"ok": True, "selected": new_state}
+
+    return redirect(url_for("portal.onboarding_catalogue_products",
+                             category_id=category_id,
+                             page=request.args.get("page", 1),
+                             q=request.args.get("q", ""),
+                             brand=request.args.get("brand", "")))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MERCHANT CATALOGUE SELECTION
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _merchant_selection_ids(cur, merchant_id: int) -> set:
+    """Return set of catalogue_product IDs the merchant has selected."""
+    cur.execute(
+        "SELECT product_id FROM merchant_product_catalogue WHERE merchant_id=%s AND is_active=TRUE",
+        (merchant_id,)
+    )
+    return {r["product_id"] for r in cur.fetchall()}
+
+
+@portal_bp.route("/catalogue")
+def catalogue_browse():
+    r = _require_login()
+    if r: return r
+
+    customer    = _get_customer(_customer_id())
+    merchant_id = int(customer["id"])
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # All active categories with product count and how many merchant selected
+    cur.execute("""
+        SELECT c.*,
+               COUNT(DISTINCT p.id)                                    AS total_products,
+               COUNT(DISTINCT mpc.product_id) FILTER (WHERE mpc.is_active)  AS selected_count
+        FROM catalogue_categories c
+        LEFT JOIN catalogue_products p   ON p.category_id = c.id AND p.is_active
+        LEFT JOIN merchant_product_catalogue mpc
+               ON mpc.product_id = p.id AND mpc.merchant_id = %s AND mpc.is_active
+        WHERE c.is_active
+        GROUP BY c.id
+        ORDER BY c.sort_order, c.name
+    """, (merchant_id,))
+    categories = cur.fetchall()
+
+    total_selected = sum(c["selected_count"] for c in categories)
+
+    cur.close(); conn.close()
+    return render_template(
+        "portal/catalogue_browse.html",
+        customer=customer,
+        categories=categories,
+        total_selected=total_selected,
+    )
+
+
+@portal_bp.route("/catalogue/categories/<int:category_id>")
+def catalogue_category(category_id: int):
+    r = _require_login()
+    if r: return r
+
+    customer    = _get_customer(_customer_id())
+    merchant_id = int(customer["id"])
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # Fetch category
+    cur.execute("SELECT * FROM catalogue_categories WHERE id=%s AND is_active=TRUE", (category_id,))
+    cat = cur.fetchone()
+    if not cat:
+        cur.close(); conn.close()
+        flash("Category not found.", "danger")
+        return redirect(url_for("portal.catalogue_browse"))
+
+    # Attributes (filterable ones for the filter bar)
+    cur.execute(
+        "SELECT * FROM catalogue_attribute_definitions WHERE category_id=%s ORDER BY sort_order",
+        (category_id,)
+    )
+    attrs       = cur.fetchall()
+    filter_attrs = [a for a in attrs if a["is_filterable"]]
+
+    # Filters from query string
+    q        = (request.args.get("q") or "").strip()
+    brand_f  = (request.args.get("brand") or "").strip()
+    try:
+        page = max(1, int(request.args.get("page") or 1))
+    except (ValueError, TypeError):
+        page = 1
+    per_page = 24
+    attr_filters = {a["attribute_key"]: (request.args.get(f"attr_{a['attribute_key']}") or "").strip()
+                    for a in filter_attrs}
+
+    where  = ["p.category_id = %s", "p.is_active = TRUE"]
+    params: list = [category_id]
+
+    if q:
+        where.append("(p.brand ILIKE %s OR p.model_name ILIKE %s OR p.model_number ILIKE %s)")
+        params += [f"%{q}%", f"%{q}%", f"%{q}%"]
+    if brand_f:
+        where.append("p.brand = %s")
+        params.append(brand_f)
+    # Attribute filters via EXISTS subquery
+    for key, val in attr_filters.items():
+        if val:
+            where.append("""EXISTS (
+                SELECT 1 FROM catalogue_product_attributes pa2
+                JOIN catalogue_attribute_definitions ad2 ON ad2.id = pa2.attribute_def_id
+                WHERE pa2.product_id = p.id AND ad2.attribute_key = %s AND pa2.value = %s
+            )""")
+            params += [key, val]
+
+    where_sql = "WHERE " + " AND ".join(where)
+
+    cur.execute(f"SELECT COUNT(*) AS n FROM catalogue_products p {where_sql}", params)
+    total = (cur.fetchone() or {}).get("n", 0)
+    pages = max(1, (total + per_page - 1) // per_page)
+
+    cur.execute(
+        f"SELECT p.* FROM catalogue_products p {where_sql} "
+        f"ORDER BY p.brand, p.model_name LIMIT %s OFFSET %s",
+        params + [per_page, (page - 1) * per_page]
+    )
+    products = cur.fetchall()
+
+    # Enrich products with attribute values
+    if products:
+        pids = [p["id"] for p in products]
+        cur.execute(
+            """SELECT pa.product_id, ad.attribute_key, pa.value
+               FROM catalogue_product_attributes pa
+               JOIN catalogue_attribute_definitions ad ON ad.id = pa.attribute_def_id
+               WHERE pa.product_id = ANY(%s)""",
+            (pids,)
+        )
+        amap: dict = {}
+        for row in cur.fetchall():
+            amap.setdefault(row["product_id"], {})[row["attribute_key"]] = row["value"]
+        products = [dict(p, attrs=amap.get(p["id"], {})) for p in products]
+
+    # Which products has this merchant already selected?
+    selected_ids = _merchant_selection_ids(cur, merchant_id)
+
+    # Brand list for filter dropdown
+    cur.execute(
+        "SELECT DISTINCT brand FROM catalogue_products WHERE category_id=%s AND brand IS NOT NULL ORDER BY brand",
+        (category_id,)
+    )
+    brands = [r["brand"] for r in cur.fetchall()]
+
+    # Distinct values for each filterable attribute (for filter dropdowns)
+    attr_values: dict = {}
+    for a in filter_attrs:
+        cur.execute(
+            """SELECT DISTINCT pa.value FROM catalogue_product_attributes pa
+               JOIN catalogue_attribute_definitions ad ON ad.id = pa.attribute_def_id
+               WHERE ad.category_id = %s AND ad.attribute_key = %s
+                 AND pa.value IS NOT NULL ORDER BY pa.value""",
+            (category_id, a["attribute_key"])
+        )
+        attr_values[a["attribute_key"]] = [r["value"] for r in cur.fetchall()]
+
+    # How many selected in this category
+    cur.execute(
+        """SELECT COUNT(*) AS n FROM merchant_product_catalogue mpc
+           JOIN catalogue_products p ON p.id = mpc.product_id
+           WHERE p.category_id = %s AND mpc.merchant_id = %s AND mpc.is_active""",
+        (category_id, merchant_id)
+    )
+    selected_in_cat = (cur.fetchone() or {}).get("n", 0)
+
+    cur.close(); conn.close()
+    return render_template(
+        "portal/catalogue_category.html",
+        customer=customer, cat=cat, attrs=attrs, filter_attrs=filter_attrs,
+        products=products, selected_ids=selected_ids, brands=brands,
+        attr_values=attr_values, attr_filters=attr_filters,
+        total=total, page=page, pages=pages, per_page=per_page,
+        q=q, brand_f=brand_f, selected_in_cat=selected_in_cat,
+    )
+
+
+@portal_bp.route("/catalogue/categories/<int:category_id>/toggle/<int:product_id>", methods=["POST"])
+def catalogue_toggle(category_id: int, product_id: int):
+    """Add or remove a product from the merchant's store catalogue."""
+    r = _require_login()
+    if r: return r
+
+    customer    = _get_customer(_customer_id())
+    merchant_id = int(customer["id"])
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # Verify product belongs to this category and is active
+    cur.execute(
+        "SELECT id FROM catalogue_products WHERE id=%s AND category_id=%s AND is_active=TRUE",
+        (product_id, category_id)
+    )
+    if not cur.fetchone():
+        cur.close(); conn.close()
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return {"ok": False, "error": "Product not found"}, 404
+        flash("Product not found.", "danger")
+        return redirect(url_for("portal.catalogue_category", category_id=category_id))
+
+    # Check current state
+    cur.execute(
+        "SELECT is_active FROM merchant_product_catalogue WHERE merchant_id=%s AND product_id=%s",
+        (merchant_id, product_id)
+    )
+    existing = cur.fetchone()
+
+    if existing is None:
+        # Insert as selected
+        cur.execute(
+            "INSERT INTO merchant_product_catalogue (merchant_id, product_id) VALUES (%s, %s)",
+            (merchant_id, product_id)
+        )
+        new_state = True
+    else:
+        # Toggle
+        new_state = not existing["is_active"]
+        cur.execute(
+            "UPDATE merchant_product_catalogue SET is_active=%s WHERE merchant_id=%s AND product_id=%s",
+            (new_state, merchant_id, product_id)
+        )
+
+    conn.commit()
+    cur.close(); conn.close()
+
+    # AJAX response for JS-driven toggle buttons
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return {"ok": True, "selected": new_state}
+
+    return redirect(url_for("portal.catalogue_category", category_id=category_id,
+                             page=request.args.get("page", 1),
+                             q=request.args.get("q", ""),
+                             brand=request.args.get("brand", "")))
+
+
+@portal_bp.route("/catalogue/my-selections")
+def catalogue_selections():
+    r = _require_login()
+    if r: return r
+
+    customer    = _get_customer(_customer_id())
+    merchant_id = int(customer["id"])
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # All selected products grouped by category
+    cur.execute("""
+        SELECT c.id AS cat_id, c.name AS cat_name, c.icon AS cat_icon,
+               COUNT(*) AS product_count
+        FROM merchant_product_catalogue mpc
+        JOIN catalogue_products p  ON p.id  = mpc.product_id
+        JOIN catalogue_categories c ON c.id = p.category_id
+        WHERE mpc.merchant_id = %s AND mpc.is_active = TRUE
+        GROUP BY c.id, c.name, c.icon
+        ORDER BY c.sort_order, c.name
+    """, (merchant_id,))
+    by_category = cur.fetchall()
+
+    # Full product list with category info
+    cur.execute("""
+        SELECT p.*, c.id AS cat_id, c.name AS cat_name, c.icon AS cat_icon
+        FROM merchant_product_catalogue mpc
+        JOIN catalogue_products p   ON p.id  = mpc.product_id
+        JOIN catalogue_categories c ON c.id  = p.category_id
+        WHERE mpc.merchant_id = %s AND mpc.is_active = TRUE
+        ORDER BY c.sort_order, p.brand, p.model_name
+    """, (merchant_id,))
+    all_products = cur.fetchall()
+
+    total = len(all_products)
+
+    # Enrich with attribute values
+    if all_products:
+        pids = [p["id"] for p in all_products]
+        cur.execute(
+            """SELECT pa.product_id, ad.attribute_key, ad.attribute_label, pa.value
+               FROM catalogue_product_attributes pa
+               JOIN catalogue_attribute_definitions ad ON ad.id = pa.attribute_def_id
+               WHERE pa.product_id = ANY(%s)""",
+            (pids,)
+        )
+        amap: dict = {}
+        for row in cur.fetchall():
+            amap.setdefault(row["product_id"], {})[row["attribute_key"]] = row["value"]
+        all_products = [dict(p, attrs=amap.get(p["id"], {})) for p in all_products]
+
+    cur.close(); conn.close()
+    return render_template(
+        "portal/catalogue_selections.html",
+        customer=customer, by_category=by_category,
+        all_products=all_products, total=total,
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -7006,7 +7911,7 @@ def _get_customers_list(tenant_id: int, q: str = "", page: int = 1, per_page: in
     """
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         q_filter = ""
         params   = [tenant_id]
@@ -7067,7 +7972,7 @@ def _get_customer_detail(tenant_id: int, phone: str):
     """Full profile for one customer: summary + orders + handoffs + recent messages."""
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         # Summary stats
         cur.execute("""
@@ -7229,7 +8134,7 @@ def _decrypt_key(ciphertext: str) -> str:
 def _get_gateway(tenant_id: int, gateway: str) -> dict:
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
             "SELECT * FROM payment_gateways WHERE tenant_id=%s AND gateway=%s",
             (tenant_id, gateway),
@@ -7245,7 +8150,7 @@ def _get_gateway(tenant_id: int, gateway: str) -> dict:
 def _get_bank_account(tenant_id: int) -> dict:
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
             "SELECT * FROM merchant_bank_accounts WHERE tenant_id=%s AND is_primary=1 LIMIT 1",
             (tenant_id,),
@@ -7326,14 +8231,14 @@ def payment_settings_paystack():
     secret_enc = _encrypt_key(secret_key)
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         cur.execute("""
             INSERT INTO payment_gateways (tenant_id, gateway, public_key, secret_key_enc)
             VALUES (%s, 'paystack', %s, %s)
-            ON DUPLICATE KEY UPDATE
-              public_key     = VALUES(public_key),
-              secret_key_enc = VALUES(secret_key_enc),
-              is_active      = 1,
+            ON CONFLICT (tenant_id, gateway) DO UPDATE SET
+              public_key     = EXCLUDED.public_key,
+              secret_key_enc = EXCLUDED.secret_key_enc,
+              is_active=TRUE,
               updated_at     = NOW()
         """, (tenant_id, public_key, secret_enc))
         conn.commit()
@@ -7355,7 +8260,7 @@ def payment_settings_paystack_remove():
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         cur.execute(
             "DELETE FROM payment_gateways WHERE tenant_id=%s AND gateway='paystack'",
             (tenant_id,),
@@ -7387,14 +8292,14 @@ def payment_settings_flutterwave():
     secret_enc = _encrypt_key(secret_key)
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         cur.execute("""
             INSERT INTO payment_gateways (tenant_id, gateway, public_key, secret_key_enc)
             VALUES (%s, 'flutterwave', %s, %s)
-            ON DUPLICATE KEY UPDATE
-              public_key     = VALUES(public_key),
-              secret_key_enc = VALUES(secret_key_enc),
-              is_active      = 1,
+            ON CONFLICT (tenant_id, gateway) DO UPDATE SET
+              public_key     = EXCLUDED.public_key,
+              secret_key_enc = EXCLUDED.secret_key_enc,
+              is_active=TRUE,
               updated_at     = NOW()
         """, (tenant_id, public_key, secret_enc))
         conn.commit()
@@ -7416,7 +8321,7 @@ def payment_settings_flutterwave_remove():
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         cur.execute(
             "DELETE FROM payment_gateways WHERE tenant_id=%s AND gateway='flutterwave'",
             (tenant_id,),
@@ -7448,7 +8353,7 @@ def payment_settings_bank():
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(buffered=True)
+        cur  = conn.cursor()
         # Upsert: one primary bank account per tenant
         cur.execute(
             "SELECT id FROM merchant_bank_accounts WHERE tenant_id=%s AND is_primary=1 LIMIT 1",
@@ -7508,27 +8413,27 @@ def _analytics_data(tenant_id: int, days: int = 30) -> dict:
     """Collect all analytics data for the given tenant and day window."""
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True, buffered=True)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         # ── Revenue KPIs ──────────────────────────────────────────────────────
         cur.execute("""
             SELECT
               COALESCE(SUM(CASE WHEN DATE(created_at)=CURDATE()
                 THEN total_amount END), 0)                      AS today_revenue,
-              COALESCE(SUM(CASE WHEN created_at >= DATE_SUB(NOW(),INTERVAL 7 DAY)
+              COALESCE(SUM(CASE WHEN created_at >= (NOW() - INTERVAL '7 days')
                 AND status IN ('PAYMENT_VERIFIED','PROCESSING','DISPATCHED','DELIVERED','COMPLETED')
                 THEN total_amount END), 0)                      AS week_revenue,
-              COALESCE(SUM(CASE WHEN created_at >= DATE_SUB(NOW(),INTERVAL %s DAY)
+              COALESCE(SUM(CASE WHEN created_at >= (NOW() - (INTERVAL '1 day' * %s))
                 AND status IN ('PAYMENT_VERIFIED','PROCESSING','DISPATCHED','DELIVERED','COMPLETED')
                 THEN total_amount END), 0)                      AS period_revenue,
-              COUNT(CASE WHEN created_at >= DATE_SUB(NOW(),INTERVAL %s DAY)
+              COUNT(CASE WHEN created_at >= (NOW() - (INTERVAL '1 day' * %s))
                 THEN 1 END)                                     AS period_orders,
-              COUNT(CASE WHEN created_at >= DATE_SUB(NOW(),INTERVAL %s DAY)
+              COUNT(CASE WHEN created_at >= (NOW() - (INTERVAL '1 day' * %s))
                 AND status IN ('PAYMENT_VERIFIED','PROCESSING','DISPATCHED','DELIVERED','COMPLETED')
                 THEN 1 END)                                     AS paid_orders,
-              COUNT(CASE WHEN created_at >= DATE_SUB(NOW(),INTERVAL %s DAY)
+              COUNT(CASE WHEN created_at >= (NOW() - (INTERVAL '1 day' * %s))
                 AND status IN ('CANCELLED','FAILED') THEN 1 END) AS cancelled_orders,
-              COUNT(DISTINCT CASE WHEN created_at >= DATE_SUB(NOW(),INTERVAL %s DAY)
+              COUNT(DISTINCT CASE WHEN created_at >= (NOW() - (INTERVAL '1 day' * %s))
                 THEN customer_phone END)                        AS unique_customers
             FROM orders WHERE tenant_id = %s
         """, (days, days, days, days, days, tenant_id))
@@ -7551,7 +8456,7 @@ def _analytics_data(tenant_id: int, days: int = 30) -> dict:
                      THEN total_amount ELSE 0 END), 0) AS revenue,
                    COUNT(*) AS orders
             FROM orders
-            WHERE tenant_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+            WHERE tenant_id = %s AND created_at >= (NOW() - (INTERVAL '1 day' * %s))
             GROUP BY DATE(created_at)
             ORDER BY day ASC
         """, (tenant_id, days))
@@ -7569,7 +8474,7 @@ def _analytics_data(tenant_id: int, days: int = 30) -> dict:
             FROM order_items oi
             JOIN orders o ON o.id = oi.order_id
             WHERE o.tenant_id = %s
-              AND o.created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+              AND o.created_at >= (NOW() - (INTERVAL '1 day' * %s))
               AND o.status IN ('PAYMENT_VERIFIED','PROCESSING','DISPATCHED','DELIVERED','COMPLETED')
             GROUP BY oi.product_name
             ORDER BY revenue DESC
@@ -7582,7 +8487,7 @@ def _analytics_data(tenant_id: int, days: int = 30) -> dict:
             SELECT COUNT(DISTINCT session_id) AS ai_sessions,
                    COALESCE(SUM(used_tokens), 0) AS total_tokens
             FROM usage_events
-            WHERE tenant_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+            WHERE tenant_id = %s AND created_at >= (NOW() - (INTERVAL '1 day' * %s))
         """, (tenant_id, days))
         ai_usage = cur.fetchone() or {}
 
@@ -7592,7 +8497,7 @@ def _analytics_data(tenant_id: int, days: int = 30) -> dict:
                    COUNT(DISTINCT session_id) AS sessions,
                    SUM(used_tokens)           AS tokens
             FROM usage_events
-            WHERE tenant_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+            WHERE tenant_id = %s AND created_at >= (NOW() - (INTERVAL '1 day' * %s))
             GROUP BY DATE(created_at)
             ORDER BY day ASC
         """, (tenant_id, days))
@@ -7605,7 +8510,7 @@ def _analytics_data(tenant_id: int, days: int = 30) -> dict:
         cur.execute("""
             SELECT COUNT(*) AS handoffs
             FROM wa_handoff_state
-            WHERE tenant_id = %s AND escalated_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+            WHERE tenant_id = %s AND escalated_at >= (NOW() - (INTERVAL '1 day' * %s))
         """, (tenant_id, days))
         handoffs_row = cur.fetchone() or {}
         handoff_count   = int(handoffs_row.get("handoffs") or 0)
@@ -7787,7 +8692,7 @@ def _preview_rows(rows: list[dict], column_map: dict) -> list[dict]:
 def _import_rows(tenant_id: int, rows: list[dict], column_map: dict) -> int:
     """Import rows into the products table. Returns count of rows upserted."""
     conn = get_db_connection()
-    cur  = conn.cursor(dictionary=True)
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     count = 0
     for raw in rows:
         name_col  = column_map.get("name", "")
@@ -7813,14 +8718,14 @@ def _import_rows(tenant_id: int, rows: list[dict], column_map: dict) -> int:
         cur.execute("""
             INSERT INTO products (tenant_id, name, price, description, category,
                                   stock_quantity, image_url, is_active)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, 1)
-            ON DUPLICATE KEY UPDATE
-                price        = VALUES(price),
-                description  = VALUES(description),
-                category     = VALUES(category),
-                stock_quantity = VALUES(stock_quantity),
-                image_url    = VALUES(image_url),
-                is_active    = 1
+            VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE)
+            ON CONFLICT (tenant_id, name) DO UPDATE SET
+                price          = EXCLUDED.price,
+                description    = EXCLUDED.description,
+                category       = EXCLUDED.category,
+                stock_quantity = EXCLUDED.stock_quantity,
+                image_url      = EXCLUDED.image_url,
+                is_active      = TRUE
         """, (tenant_id, name, price, description, category, stock_val, image_url or None))
         count += 1
     conn.commit()
@@ -7831,13 +8736,13 @@ def _import_rows(tenant_id: int, rows: list[dict], column_map: dict) -> int:
 # ─── DB helpers ───────────────────────────────────────────────────────────
 def _get_data_sources(tenant_id: int) -> list[dict]:
     conn = get_db_connection()
-    cur  = conn.cursor(dictionary=True)
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
         SELECT id, source_type, display_name, sheet_id, sheet_tab,
                file_name, column_map, last_synced_at, last_row_count,
                sync_status, sync_error, is_active, created_at
         FROM data_sources
-        WHERE tenant_id = %s AND is_active = 1
+        WHERE tenant_id = %s AND is_active=TRUE
         ORDER BY created_at DESC
     """, (tenant_id,))
     rows = cur.fetchall() or []
@@ -7853,9 +8758,9 @@ def _get_data_sources(tenant_id: int) -> list[dict]:
 
 def _get_data_source(tenant_id: int, source_id: int) -> dict | None:
     conn = get_db_connection()
-    cur  = conn.cursor(dictionary=True)
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
-        SELECT * FROM data_sources WHERE id = %s AND tenant_id = %s AND is_active = 1
+        SELECT * FROM data_sources WHERE id = %s AND tenant_id = %s AND is_active=TRUE
     """, (source_id, tenant_id))
     row = cur.fetchone()
     cur.close(); conn.close()
@@ -7930,10 +8835,11 @@ def data_source_upload():
         INSERT INTO data_sources (tenant_id, source_type, display_name,
                                   file_name, file_path, sync_status)
         VALUES (%s, %s, %s, %s, %s, 'pending')
+        RETURNING id
     """, (tenant_id, ext if ext != "xls" else "excel",
           f.filename, f.filename, fpath))
+    source_id = cur.fetchone()[0]
     conn.commit()
-    source_id = cur.lastrowid
     cur.close(); conn.close()
 
     # Redirect to column mapping
@@ -8052,7 +8958,7 @@ def data_source_delete(source_id: int):
     conn = get_db_connection()
     cur  = conn.cursor()
     cur.execute("""
-        UPDATE data_sources SET is_active = 0
+        UPDATE data_sources SET is_active=FALSE
         WHERE id = %s AND tenant_id = %s
     """, (source_id, tenant_id))
     conn.commit()
@@ -8112,9 +9018,10 @@ def data_source_google_callback():
         INSERT INTO data_sources (tenant_id, source_type, display_name,
                                   refresh_token_enc, sync_status)
         VALUES (%s, 'google_sheet', 'Google Sheet', %s, 'pending')
+        RETURNING id
     """, (tenant_id, refresh_token_enc))
+    source_id = cur.fetchone()[0]
     conn.commit()
-    source_id = cur.lastrowid
     cur.close(); conn.close()
 
     flash("Google account connected. Now enter the Sheet ID and set up column mapping.", "success")
@@ -8241,7 +9148,7 @@ def _store_otp(phone: str, code: str) -> None:
     cur.execute("UPDATE wa_portal_otp SET used=1 WHERE phone=%s AND used=0", (phone,))
     cur.execute("""
         INSERT INTO wa_portal_otp (phone, otp_code, expires_at)
-        VALUES (%s, %s, DATE_ADD(NOW(), INTERVAL 10 MINUTE))
+        VALUES (%s, %s, DATE_ADD(NOW(), INTERVAL '10 minutes'))
     """, (phone, code))
     conn.commit()
     cur.close(); conn.close()
@@ -8249,7 +9156,7 @@ def _store_otp(phone: str, code: str) -> None:
 
 def _verify_otp(phone: str, code: str) -> bool:
     conn = get_db_connection()
-    cur  = conn.cursor(dictionary=True)
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
         SELECT id FROM wa_portal_otp
         WHERE phone=%s AND otp_code=%s AND used=0 AND expires_at > NOW()
@@ -8266,10 +9173,10 @@ def _verify_otp(phone: str, code: str) -> bool:
 def _otp_rate_ok(phone: str) -> bool:
     """Allow at most 1 OTP request per 60 seconds per phone."""
     conn = get_db_connection()
-    cur  = conn.cursor(dictionary=True)
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
         SELECT COUNT(*) AS c FROM wa_portal_otp
-        WHERE phone=%s AND created_at > DATE_SUB(NOW(), INTERVAL 60 SECOND)
+        WHERE phone=%s AND created_at > (NOW() - INTERVAL '60 seconds')
     """, (phone,))
     row = cur.fetchone() or {}
     cur.close(); conn.close()
@@ -8336,7 +9243,7 @@ def provision_whatsapp_merchant(wa_phone: str, business_name: str) -> dict:
 
     synth_email = _synthetic_email(phone)
     conn  = get_db_connection()
-    cur   = conn.cursor(dictionary=True, buffered=True)
+    cur   = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     # ── Idempotency check ────────────────────────────────────────────────
     cur.execute("SELECT id, tenant_id FROM customers WHERE email=%s LIMIT 1", (synth_email,))
@@ -8357,28 +9264,30 @@ def provision_whatsapp_merchant(wa_phone: str, business_name: str) -> dict:
         "verified_specs_web_lookup": True,
         "chat_archive_unlimited":    True,
     })
-    cur2 = conn.cursor(buffered=True)
+    cur2 = conn.cursor()
     cur2.execute("""
         INSERT INTO tenants (name, domain, status, source_type, features)
         VALUES (%s, %s, 'active', 'whatsapp', %s)
+        RETURNING id
     """, (business_name or f"WA Merchant {phone[-4:]}", synth_email, trial_features))
+    tenant_id = int(cur2.fetchone()[0])
     conn.commit()
-    tenant_id = int(cur2.lastrowid)
     cur2.close()
 
     # ── Create customer account ───────────────────────────────────────────
     # Email verified = 1 (authenticated via WhatsApp, no email link needed)
     # Password hash is a random unusable token — WA merchants log in via OTP only
     unusable_pw = hash_password(make_token(32))
-    cur3 = conn.cursor(buffered=True)
+    cur3 = conn.cursor()
     cur3.execute("""
         INSERT INTO customers
             (tenant_id, first_name, last_name, email, password_hash,
              phone_number, email_verified, is_active)
-        VALUES (%s, %s, '', %s, %s, %s, 1, 1)
+        VALUES (%s, %s, '', %s, %s, %s, TRUE, TRUE)
+        RETURNING id
     """, (tenant_id, business_name or "Merchant", synth_email, unusable_pw, phone))
+    customer_id = int(cur3.fetchone()[0])
     conn.commit()
-    customer_id = int(cur3.lastrowid)
     cur3.close()
 
     # ── Auto-generate internal WhatsApp API key ───────────────────────────
@@ -8386,14 +9295,16 @@ def provision_whatsapp_merchant(wa_phone: str, business_name: str) -> dict:
     trial_activated_at = datetime.utcnow()
     trial_expires_at   = trial_activated_at + timedelta(days=TRIAL_DAYS)
     TRIAL_TOKEN_LIMIT  = 250000
-    cur4 = conn.cursor(buffered=True)
+    cur4 = conn.cursor()
     cur4.execute("""
         INSERT INTO api_keys
             (tenant_id, api_key_hash, api_key_plain, is_active, website,
              key_type, trial_activated_at, trial_expires_at, token_limit, tokens_used)
-        VALUES (%s, %s, %s, 1, NULL, 'whatsapp', %s, %s, %s, 0)
+        VALUES (%s, %s, %s, TRUE, NULL, 'whatsapp', %s, %s, %s, 0)
+        RETURNING id
     """, (tenant_id, hashed_key, plain_key,
           trial_activated_at, trial_expires_at, TRIAL_TOKEN_LIMIT))
+    cur4.fetchone()  # consume RETURNING result
     conn.commit()
     cur4.close()
 
@@ -8466,10 +9377,10 @@ def wa_login_send():
 
     # Check the account exists
     conn = get_db_connection()
-    cur  = conn.cursor(dictionary=True)
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
         SELECT id FROM customers
-        WHERE phone_number = %s AND is_active = 1
+        WHERE phone_number = %s AND is_active=TRUE
         LIMIT 1
     """, (phone,))
     account = cur.fetchone()
@@ -8531,10 +9442,10 @@ def wa_login_verify():
 
     # Code verified — find the customer
     conn = get_db_connection()
-    cur  = conn.cursor(dictionary=True)
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
         SELECT id FROM customers
-        WHERE phone_number = %s AND is_active = 1
+        WHERE phone_number = %s AND is_active=TRUE
         LIMIT 1
     """, (phone,))
     c = cur.fetchone()
@@ -8574,3 +9485,419 @@ def wa_login_resend():
             "warning"
         )
     return redirect(url_for("portal.wa_login_verify"))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WHATSAPP STATS — aggregates for dashboard
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _get_wa_stats(tenant_id: int) -> dict:
+    """Return WhatsApp message counts and per-day series for dashboard."""
+    empty = {
+        "today_in": 0, "today_out": 0,
+        "month_in": 0, "month_out": 0,
+        "active_convos": 0, "awaiting_reply": 0,
+        "series": [],
+    }
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        cur.execute("""
+            SELECT
+                SUM(direction='inbound')  AS today_in,
+                SUM(direction='outbound') AS today_out
+            FROM wa_message_log
+            WHERE tenant_id=%s AND DATE(created_at)=CURDATE()
+        """, (tenant_id,))
+        today = cur.fetchone() or {}
+
+        cur.execute("""
+            SELECT
+                SUM(direction='inbound')  AS month_in,
+                SUM(direction='outbound') AS month_out
+            FROM wa_message_log
+            WHERE tenant_id=%s AND created_at >= (NOW() - INTERVAL '30 days')
+        """, (tenant_id,))
+        month = cur.fetchone() or {}
+
+        cur.execute("""
+            SELECT COUNT(DISTINCT customer_phone) AS active_convos
+            FROM wa_message_log
+            WHERE tenant_id=%s AND created_at >= (NOW() - INTERVAL '48 hours')
+        """, (tenant_id,))
+        active = cur.fetchone() or {}
+
+        cur.execute("""
+            SELECT COUNT(*) AS awaiting
+            FROM (
+                SELECT customer_phone,
+                    (SELECT direction FROM wa_message_log
+                     WHERE tenant_id=%s AND customer_phone=m.customer_phone
+                     ORDER BY created_at DESC LIMIT 1) AS last_dir
+                FROM wa_message_log m
+                WHERE tenant_id=%s
+                GROUP BY customer_phone
+            ) sub WHERE last_dir='inbound'
+        """, (tenant_id, tenant_id))
+        awaiting = cur.fetchone() or {}
+
+        cur.execute("""
+            SELECT DATE(created_at)           AS d,
+                   SUM(direction='inbound')   AS inbound,
+                   SUM(direction='outbound')  AS outbound
+            FROM wa_message_log
+            WHERE tenant_id=%s AND created_at >= (NOW() - INTERVAL '30 days')
+            GROUP BY DATE(created_at)
+            ORDER BY d ASC
+        """, (tenant_id,))
+        series = cur.fetchall() or []
+
+        cur.close(); conn.close()
+        return {
+            "today_in":      int(today.get("today_in")  or 0),
+            "today_out":     int(today.get("today_out") or 0),
+            "month_in":      int(month.get("month_in")  or 0),
+            "month_out":     int(month.get("month_out") or 0),
+            "active_convos": int(active.get("active_convos") or 0),
+            "awaiting_reply":int(awaiting.get("awaiting") or 0),
+            "series": [{"d": str(r["d"]),
+                        "in":  int(r["inbound"]  or 0),
+                        "out": int(r["outbound"] or 0)} for r in series],
+        }
+    except Exception as e:
+        print("⚠️ _get_wa_stats error:", e)
+        return empty
+
+
+# MY INBOX — all WhatsApp conversations for this tenant
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Lead scoring keyword signals (keyword → points)
+_LEAD_SIGNALS = [
+    # Purchase intent — highest value
+    (["i want to buy","want to buy","i'd like to buy","id like to buy",
+      "i want to order","want to order","i'd like to order","place an order",
+      "can i buy","how do i buy","ready to buy","how to purchase",
+      "i want to purchase","looking to buy"], 30),
+    # Price / cost inquiry
+    (["how much","what's the price","what is the price","price of",
+      "cost of","how much does","what does it cost","pricing",
+      "total price","how much is","what's the cost"], 25),
+    # Availability / stock check
+    (["is it available","do you have","do you still have","in stock",
+      "available now","is there stock","do you carry","got any"], 20),
+    # Delivery / location
+    (["can you deliver","delivery","shipping","do you ship","how long to deliver",
+      "where are you located","where are you based","can i pick up",
+      "collection available"], 15),
+    # Awaiting reply — last message was inbound (no response yet)
+    (["__AWAITING__"], 15),
+    # High engagement — 5+ total inbound messages
+    (["__HIGH_ENGAGEMENT__"], 10),
+    # First contact was inbound
+    (["__FIRST_INBOUND__"], 5),
+]
+
+def _score_lead(conv: dict, messages: list | None = None) -> dict:
+    """
+    Score a conversation for lead potential.
+    conv  — row from _get_inbox_conversations (has last_content, last_direction, inbound_count)
+    messages — optional list of message dicts for deeper analysis; if None, only conv fields used
+    Returns dict: score (int), tier ('hot'|'warm'|''), signals (list of matched labels)
+    """
+    score   = 0
+    matched = []
+
+    # Build full text corpus to scan
+    texts = []
+    if conv.get("last_content"):
+        texts.append((conv["last_content"] or "").lower())
+    if messages:
+        for m in messages:
+            if m.get("direction") == "inbound" and m.get("content"):
+                texts.append(m["content"].lower())
+
+    full_text = " ".join(texts)
+
+    for keywords, pts in _LEAD_SIGNALS:
+        kw = keywords[0]
+        if kw == "__AWAITING__":
+            if conv.get("last_direction") == "inbound":
+                score += pts; matched.append("Awaiting reply")
+        elif kw == "__HIGH_ENGAGEMENT__":
+            if int(conv.get("inbound_count") or 0) >= 5:
+                score += pts; matched.append("High engagement")
+        elif kw == "__FIRST_INBOUND__":
+            score += pts; matched.append("Initiated contact")
+        else:
+            for kw2 in keywords:
+                if kw2 in full_text:
+                    score += pts
+                    matched.append(keywords[0].title())
+                    break
+
+    if score >= 60:
+        tier = "hot"
+    elif score >= 30:
+        tier = "warm"
+    else:
+        tier = ""
+
+    return {"score": min(score, 100), "tier": tier, "signals": matched}
+
+
+def _get_inbox_conversations(tenant_id: int) -> list:
+    """Return one row per contact, sorted by most recent message, with display name."""
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT
+                m.customer_phone,
+                MAX(m.created_at)                              AS last_message_at,
+                SUM(m.direction = 'inbound')                   AS inbound_count,
+                COUNT(*)                                       AS total_count,
+                (SELECT content FROM wa_message_log
+                 WHERE tenant_id = %s AND customer_phone = m.customer_phone
+                 ORDER BY created_at DESC LIMIT 1)             AS last_content,
+                (SELECT direction FROM wa_message_log
+                 WHERE tenant_id = %s AND customer_phone = m.customer_phone
+                 ORDER BY created_at DESC LIMIT 1)             AS last_direction,
+                COALESCE(
+                    wc.display_name,
+                    NULLIF(TRIM(CONCAT(
+                        COALESCE(cu.first_name,''), ' ',
+                        COALESCE(cu.last_name,'')
+                    )),'')
+                )                                              AS display_name
+            FROM wa_message_log m
+            LEFT JOIN wa_contacts wc
+                   ON wc.tenant_id = m.tenant_id
+                  AND wc.phone     = m.customer_phone
+            LEFT JOIN customers cu
+                   ON cu.tenant_id = m.tenant_id
+                  AND REPLACE(REPLACE(COALESCE(cu.phone_number,''), '+', ''), ' ', '')
+                      = CONVERT(m.customer_phone USING utf8mb4) COLLATE utf8mb4_general_ci
+            WHERE m.tenant_id = %s
+            GROUP BY m.customer_phone, wc.display_name, cu.first_name, cu.last_name
+            ORDER BY last_message_at DESC
+        """, (tenant_id, tenant_id, tenant_id))
+        rows = cur.fetchall() or []
+        cur.close(); conn.close()
+        # Attach lead scores (lightweight — no extra DB queries)
+        result = []
+        for row in rows:
+            d = dict(row)
+            lead = _score_lead(d)
+            d["lead_score"] = lead["score"]
+            d["lead_tier"]  = lead["tier"]
+            d["lead_signals"] = lead["signals"]
+            result.append(d)
+        return result
+    except Exception as e:
+        print("⚠️ _get_inbox_conversations error:", e)
+        return []
+
+
+def _get_inbox_messages(tenant_id: int, phone: str, limit: int = 100) -> list:
+    """Return messages for a specific contact ordered oldest→newest."""
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT direction, content, message_type, created_at
+            FROM wa_message_log
+            WHERE tenant_id = %s AND customer_phone = %s
+            ORDER BY created_at ASC
+            LIMIT %s
+        """, (tenant_id, phone, limit))
+        rows = cur.fetchall() or []
+        cur.close(); conn.close()
+        return rows
+    except Exception as e:
+        print("⚠️ _get_inbox_messages error:", e)
+        return []
+
+
+@portal_bp.route("/inbox")
+def my_inbox():
+    r = _require_login()
+    if r: return r
+    customer   = _get_customer(_customer_id())
+    tenant_id  = int(customer["tenant_id"])
+    connection = _get_wa_connection(tenant_id)
+
+    # Mark all current messages as seen (stamp now so badge resets)
+    from datetime import datetime as _dt
+    session["inbox_last_seen"] = _dt.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+    conversations = []
+    messages      = []
+    active_phone  = None
+
+    if connection:
+        conversations = _get_inbox_conversations(tenant_id)
+        active_phone  = request.args.get("phone")
+        if not active_phone and conversations:
+            active_phone = conversations[0]["customer_phone"]
+        if active_phone:
+            messages = _get_inbox_messages(tenant_id, active_phone)
+
+    return render_template(
+        "portal/inbox.html",
+        customer=customer,
+        connection=connection,
+        conversations=conversations,
+        messages=messages,
+        active_phone=active_phone,
+    )
+
+
+@portal_bp.route("/inbox/<path:phone>/reply", methods=["POST"])
+def inbox_reply(phone: str):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    reply_text = (request.form.get("reply") or "").strip()
+    if not reply_text:
+        flash("Reply cannot be empty.", "danger")
+        return redirect(url_for("portal.my_inbox", phone=phone))
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT phone_number_id, access_token FROM wa_tenants "
+            "WHERE tenant_id=%s AND active=TRUE LIMIT 1",
+            (tenant_id,)
+        )
+        wa = cur.fetchone()
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ inbox_reply lookup error:", e)
+        wa = None
+
+    if not wa:
+        flash("WhatsApp connection not found.", "danger")
+        return redirect(url_for("portal.my_inbox", phone=phone))
+
+    ok = _send_wa_text_from_portal(
+        wa["phone_number_id"], wa["access_token"], phone, reply_text
+    )
+
+    if ok:
+        try:
+            conn = get_db_connection()
+            cur  = conn.cursor()
+            cur.execute("""
+                INSERT INTO wa_message_log
+                  (tenant_id, phone_number_id, customer_phone, direction, content, message_type)
+                VALUES (%s, %s, %s, 'outbound', %s, 'agent_reply')
+            """, (tenant_id, wa["phone_number_id"], phone, reply_text))
+            conn.commit()
+            cur.close(); conn.close()
+        except Exception as e:
+            print("⚠️ inbox_reply log error:", e)
+        flash("Message sent. ✅", "success")
+    else:
+        flash("Failed to send — check your WhatsApp credentials.", "danger")
+
+    return redirect(url_for("portal.my_inbox", phone=phone))
+
+
+@portal_bp.route("/inbox/api/poll")
+def inbox_api_poll():
+    """JSON endpoint: returns latest conversations + messages for a phone."""
+    from flask import jsonify
+    r = _require_login()
+    if r: return jsonify({"error": "login_required"}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    phone     = request.args.get("phone", "")
+
+    convs = _get_inbox_conversations(tenant_id)
+    msgs  = _get_inbox_messages(tenant_id, phone) if phone else []
+
+    def _fmt(row):
+        d = dict(row)
+        if d.get("created_at"):
+            d["created_at"] = d["created_at"].strftime("%Y-%m-%dT%H:%M:%S")
+        if d.get("last_message_at"):
+            d["last_message_at"] = d["last_message_at"].strftime("%Y-%m-%dT%H:%M:%S")
+        return d
+
+    return jsonify({
+        "conversations": [_fmt(c) for c in convs],
+        "messages":      [_fmt(m) for m in msgs],
+    })
+
+
+@portal_bp.route("/inbox/<path:phone>/contact", methods=["POST"])
+def inbox_save_contact(phone: str):
+    """Save or update a display name for a WhatsApp contact."""
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    display_name = (request.form.get("display_name") or "").strip()[:200]
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        if display_name:
+            cur.execute("""
+                INSERT INTO wa_contacts (tenant_id, phone, display_name)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (tenant_id, phone) DO UPDATE SET display_name = EXCLUDED.display_name, updated_at = NOW()
+            """, (tenant_id, phone, display_name))
+        else:
+            cur.execute(
+                "DELETE FROM wa_contacts WHERE tenant_id=%s AND phone=%s",
+                (tenant_id, phone)
+            )
+        conn.commit()
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ inbox_save_contact error:", e)
+        return (request.form.get("display_name") or ""), 500
+
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        from flask import jsonify as _j
+        return _j({"ok": True, "display_name": display_name})
+    return redirect(url_for("portal.my_inbox", phone=phone))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LEADS — conversations flagged as hot / warm leads
+# ══════════════════════════════════════════════════════════════════════════════
+
+@portal_bp.route("/leads")
+def leads_page():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    connection    = _get_wa_connection(tenant_id)
+    conversations = _get_inbox_conversations(tenant_id) if connection else []
+
+    # Only keep scored conversations; sort hot first, then warm, then by recency
+    tier_order = {"hot": 0, "warm": 1, "": 2}
+    leads = [c for c in conversations if c.get("lead_tier") in ("hot", "warm")]
+    leads.sort(key=lambda c: (tier_order[c["lead_tier"]], -(c["lead_score"] or 0)))
+
+    hot_count  = sum(1 for c in leads if c["lead_tier"] == "hot")
+    warm_count = sum(1 for c in leads if c["lead_tier"] == "warm")
+
+    return render_template(
+        "portal/leads.html",
+        customer   = customer,
+        connection = connection,
+        leads      = leads,
+        hot_count  = hot_count,
+        warm_count = warm_count,
+    )

@@ -4,6 +4,7 @@ This file only wires blueprints together. No business logic here.
 app.py (keys.phixtra.com) is completely separate and untouched.
 """
 import os
+import psycopg2.extras
 from flask import Flask
 from dotenv import load_dotenv
 
@@ -41,7 +42,7 @@ def create_app():
             try:
                 from db import get_db_connection
                 conn = get_db_connection()
-                cur  = conn.cursor(dictionary=True, buffered=True)
+                cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                 cur.execute("""
                     SELECT c.id, c.first_name, c.last_name, c.email,
                            c.avatar_data, c.phone_number, c.timezone,
@@ -59,6 +60,45 @@ def create_app():
                 print("⚠️ inject_current_customer error:", e)
                 _g._cached_portal_customer = None
         return {"_portal_customer": _g._cached_portal_customer}
+
+    @flask_app.context_processor
+    def inject_inbox_unread():
+        """Count unread inbound WhatsApp messages for the sidebar badge."""
+        if not _session.get('portal_logged_in'):
+            return {'_inbox_unread_count': 0}
+        cid = _session.get('impersonate_customer_id') or _session.get('customer_id')
+        if not cid:
+            return {'_inbox_unread_count': 0}
+        last_seen = _session.get('inbox_last_seen')  # ISO string or None
+        try:
+            from db import get_db_connection
+            import datetime
+            conn = get_db_connection()
+            cur  = conn.cursor()
+            # Resolve tenant_id from customer
+            cur.execute("SELECT tenant_id FROM customers WHERE id=%s", (int(cid),))
+            row = cur.fetchone()
+            if not row:
+                cur.close(); conn.close()
+                return {'_inbox_unread_count': 0}
+            tenant_id = int(row[0])
+            if last_seen:
+                cur.execute("""
+                    SELECT COUNT(*) FROM wa_message_log
+                    WHERE tenant_id=%s AND direction='inbound'
+                      AND created_at > %s
+                """, (tenant_id, last_seen))
+            else:
+                cur.execute("""
+                    SELECT COUNT(*) FROM wa_message_log
+                    WHERE tenant_id=%s AND direction='inbound'
+                """, (tenant_id,))
+            count = int((cur.fetchone() or [0])[0])
+            cur.close(); conn.close()
+            return {'_inbox_unread_count': count}
+        except Exception as e:
+            print("⚠️ inject_inbox_unread error:", e)
+            return {'_inbox_unread_count': 0}
 
     return flask_app
 

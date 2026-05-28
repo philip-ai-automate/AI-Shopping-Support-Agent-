@@ -1,0 +1,165 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}{{ cat.name }} Products — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+  .filter-bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;align-items:flex-end}
+  .filter-bar select,.filter-bar input{width:auto;min-width:130px;padding:7px 10px;font-size:12px}
+  .bulk-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;padding:10px 14px;
+            background:rgba(3,12,24,.03);border-top:1px solid var(--line);border-radius:0 0 12px 12px}
+  .bulk-bar select{width:auto;min-width:140px;padding:7px 10px;font-size:12px}
+  .cb-all{cursor:pointer}
+  .pagination{display:flex;gap:6px;align-items:center;margin-top:16px;flex-wrap:wrap}
+  .pagination a,.pagination span{padding:6px 11px;border-radius:9px;border:1px solid var(--line);
+      font-size:12px;font-weight:600;background:#fff;color:var(--txt);text-decoration:none}
+  .pagination .current{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .pagination a:hover{background:rgba(3,12,24,.05);text-decoration:none}
+  .attr-chip{display:inline-block;font-size:10px;background:rgba(3,12,24,.05);
+             border:1px solid var(--line);border-radius:5px;padding:1px 5px;
+             margin:1px;font-family:monospace;color:var(--muted)}
+</style>
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title">{{ cat.icon }} {{ cat.name }}
+      <span class="muted" style="font-size:14px;font-weight:500">{{ total }} products</span>
+    </h1>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <a href="{{ url_for('portal_admin.catalogue_category_upload', category_id=cat.id) }}" class="btn btn-sm btn-primary">⬆ Upload CSV</a>
+    <a href="{{ url_for('portal_admin.catalogue_category_template', category_id=cat.id) }}" class="btn btn-sm">⬇ Template</a>
+    <a href="{{ url_for('portal_admin.catalogue_category_export', category_id=cat.id) }}" class="btn btn-sm">⬇ Export</a>
+    <a href="{{ url_for('portal_admin.catalogue_category_attributes', category_id=cat.id) }}" class="btn btn-sm">⚙ Attributes</a>
+    <a href="{{ url_for('portal_admin.catalogue_dashboard') }}" class="btn btn-sm">← Dashboard</a>
+  </div>
+</div>
+
+{# ── Filter bar ── #}
+<form method="GET" id="filter-form">
+  <div class="filter-bar">
+    <div>
+      <label>Search</label>
+      <input name="q" value="{{ q }}" placeholder="model, brand…" style="min-width:200px"/>
+    </div>
+    {% if brands %}
+    <div>
+      <label>Brand</label>
+      <select name="brand">
+        <option value="">All brands</option>
+        {% for b in brands %}<option value="{{ b }}" {% if b==brand_f %}selected{% endif %}>{{ b }}</option>{% endfor %}
+      </select>
+    </div>
+    {% endif %}
+    <div>
+      <label>Status</label>
+      <select name="is_active">
+        <option value="">All</option>
+        <option value="true"  {% if status_f=='true'  %}selected{% endif %}>Active</option>
+        <option value="false" {% if status_f=='false' %}selected{% endif %}>Inactive</option>
+      </select>
+    </div>
+    <div style="align-self:flex-end">
+      <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+      <a href="{{ url_for('portal_admin.catalogue_category_products', category_id=cat.id) }}" class="btn btn-sm">Clear</a>
+    </div>
+  </div>
+</form>
+
+{% if products %}
+<form method="POST" action="{{ url_for('portal_admin.catalogue_products_bulk', category_id=cat.id) }}" id="bulk-form">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th><input type="checkbox" class="cb-all" title="Select all"/></th>
+          <th>Brand</th>
+          <th>Model</th>
+          <th>SKU</th>
+          {% for a in attrs[:4] %}<th>{{ a.attribute_label }}</th>{% endfor %}
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in products %}
+        <tr>
+          <td><input type="checkbox" name="ids" value="{{ p.id }}"/></td>
+          <td>{{ p.brand or '—' }}</td>
+          <td>
+            <strong>{{ p.model_name }}</strong>
+            {% if p.model_number %}<div class="muted">{{ p.model_number }}</div>{% endif %}
+          </td>
+          <td class="muted">{{ p.sku or '—' }}</td>
+          {% for a in attrs[:4] %}
+          <td>{{ p.attrs.get(a.attribute_key, '—') }}</td>
+          {% endfor %}
+          <td>
+            {% if p.is_active %}
+              <span class="pill pill-green">Active</span>
+            {% else %}
+              <span class="pill pill-red">Inactive</span>
+            {% endif %}
+          </td>
+          <td>
+            <a href="{{ url_for('portal_admin.catalogue_product_edit', category_id=cat.id, product_id=p.id) }}"
+               class="btn btn-sm">Edit</a>
+            <form method="POST"
+                  action="{{ url_for('portal_admin.catalogue_product_delete', category_id=cat.id, product_id=p.id) }}"
+                  style="display:inline"
+                  onsubmit="return confirm('Delete {{ p.model_name }}?')">
+              <button class="btn btn-sm btn-danger" type="submit">Del</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="bulk-bar">
+    <select name="bulk_action">
+      <option value="">Bulk action…</option>
+      <option value="activate">Activate selected</option>
+      <option value="deactivate">Deactivate selected</option>
+      <option value="delete">Delete selected</option>
+    </select>
+    <button type="submit" class="btn btn-sm"
+            onclick="return confirm('Apply bulk action to selected products?')">Apply</button>
+  </div>
+</form>
+{% else %}
+<div class="card" style="text-align:center;padding:36px">
+  <div style="font-size:32px;margin-bottom:10px">📭</div>
+  <div style="font-weight:700;margin-bottom:6px">No products yet</div>
+  <div class="muted" style="margin-bottom:16px">Upload a CSV to add products to this category</div>
+  <a href="{{ url_for('portal_admin.catalogue_category_upload', category_id=cat.id) }}" class="btn btn-primary">⬆ Upload CSV</a>
+</div>
+{% endif %}
+
+{# ── Pagination ── #}
+{% if pages > 1 %}
+{% set base_args = {'q': q, 'brand': brand_f, 'is_active': status_f} %}
+<div class="pagination">
+  {% if page > 1 %}
+  <a href="{{ url_for('portal_admin.catalogue_category_products', category_id=cat.id, page=page-1, **base_args) }}">‹ Prev</a>
+  {% endif %}
+  {% for p in range(1, pages+1) %}
+    {% if p == page %}
+      <span class="current">{{ p }}</span>
+    {% elif p <= 3 or p >= pages-2 or (p >= page-2 and p <= page+2) %}
+      <a href="{{ url_for('portal_admin.catalogue_category_products', category_id=cat.id, page=p, **base_args) }}">{{ p }}</a>
+    {% elif p == 4 or p == pages-3 %}
+      <span>…</span>
+    {% endif %}
+  {% endfor %}
+  {% if page < pages %}
+  <a href="{{ url_for('portal_admin.catalogue_category_products', category_id=cat.id, page=page+1, **base_args) }}">Next ›</a>
+  {% endif %}
+</div>
+{% endif %}
+
+<script>
+document.querySelector('.cb-all')?.addEventListener('change', function(){
+  document.querySelectorAll('[name="ids"]').forEach(cb => cb.checked = this.checked);
+});
+</script>
+{% endblock %}

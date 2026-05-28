@@ -32,8 +32,26 @@
     <p class="muted" style="font-size:14px">✅ Done — you are logged in and verified.</p>
   {% endcall %}
 
-  {# ── Step 2: API key active ─────────────────────────────────────────────── #}
-  {% call step(2, "Your trial API key is active", onboarding.key_active) %}
+  {# ── Step 2: Select product catalogue ──────────────────────────────────── #}
+  {% call step(2, "Select the products you sell", onboarding.catalogue_selected) %}
+    {% if onboarding.catalogue_selected %}
+      <p class="muted" style="font-size:14px">
+        ✅ {{ onboarding.catalogue_selection_count }} product{{ 's' if onboarding.catalogue_selection_count != 1 }} added to your store.
+        <a href="{{ url_for('portal.catalogue_browse') }}" style="margin-left:6px">Add more →</a>
+      </p>
+    {% else %}
+      <div style="font-size:14px">
+        <p style="margin-bottom:12px">Browse the PhiXtra product catalogue and select the items your store sells. Your AI assistant uses these for product recommendations and ordering.</p>
+        <a href="{{ url_for('portal.onboarding_catalogue_start') }}" class="btn btn-primary btn-sm">
+          📦 Select My Products →
+        </a>
+        <p class="muted" style="margin-top:10px;font-size:12px">Takes about 2 minutes. You can always change your selection later from <strong>My Catalogue</strong>.</p>
+      </div>
+    {% endif %}
+  {% endcall %}
+
+  {# ── Step 3: API key active ─────────────────────────────────────────────── #}
+  {% call step(3, "Your trial API key is active", onboarding.key_active) %}
     {% if onboarding.key_active %}
       <p class="muted" style="font-size:14px">✅ Your API key is active. You can view it on the <a href="{{ url_for('portal.api_keys') }}">API Keys page</a>.</p>
     {% else %}
@@ -42,8 +60,8 @@
     {% endif %}
   {% endcall %}
 
-  {# ── Step 3: Download & install AI assistant plugin ─────────────────────── #}
-  {% call step(3, "Download & install the PhiXtra AI Assistant plugin", onboarding.ai_plugin_confirmed) %}
+  {# ── Step 4: Download & install AI assistant plugin ─────────────────────── #}
+  {% call step(4, "Download & install the PhiXtra AI Assistant plugin", onboarding.ai_plugin_confirmed) %}
     {% if onboarding.ai_plugin_confirmed %}
       <p class="muted" style="font-size:14px">✅ Confirmed — plugin installed.</p>
     {% else %}
@@ -90,8 +108,8 @@
     {% endif %}
   {% endcall %}
 
-  {# ── Step 4: Download & install Export plugin ───────────────────────────── #}
-  {% call step(4, "Download & install the PhiXtra Export plugin", onboarding.export_plugin_confirmed) %}
+  {# ── Step 5: Download & install Export plugin ───────────────────────────── #}
+  {% call step(5, "Download & install the PhiXtra Export plugin", onboarding.export_plugin_confirmed) %}
     {% if onboarding.export_plugin_confirmed %}
       <p class="muted" style="font-size:14px">✅ Confirmed — export plugin installed.</p>
     {% else %}
@@ -128,8 +146,8 @@
     {% endif %}
   {% endcall %}
 
-  {# ── Step 5: Configure PhiXtra Sync ────────────────────────────────────── #}
-  {% call step(5, "Configure PhiXtra Sync", onboarding.sync_configured_confirmed) %}
+  {# ── Step 6: Configure PhiXtra Sync ────────────────────────────────────── #}
+  {% call step(6, "Configure PhiXtra Sync", onboarding.sync_configured_confirmed) %}
     {% if onboarding.sync_configured_confirmed %}
       <p class="muted" style="font-size:14px">✅ Confirmed — sync configured.</p>
     {% else %}
@@ -137,14 +155,14 @@
         <ol style="padding-left:20px;line-height:2.2;color:var(--txt);margin-bottom:14px">
           <li>In WordPress go to <strong>WooCommerce → PhiXtra Export → PhiXtra Sync</strong></li>
           <li>Copy your API key from the <a href="{{ url_for('portal.api_keys') }}" target="_blank">API Keys page</a></li>
-          <li>Paste it into the <strong>Bearer Token</strong> field — this is the same key as step 3</li>
+          <li>Paste it into the <strong>Bearer Token</strong> field — this is the same key as step 4</li>
           <li>Tick <strong>Enable Sync</strong></li>
           <li>Select what to sync: <strong>Products</strong> (required), Posts and Pages (optional)</li>
           <li>Click <strong>Save Settings</strong></li>
         </ol>
         {% if keys %}
         <div style="background:rgba(3,12,24,0.04);border:1px solid var(--line);border-radius:10px;padding:11px 14px;margin-bottom:14px;font-size:13px">
-          Your API key ends in: <strong>…{{ keys[0].website[-4:] if keys else '' }}</strong>
+          Your API key ends in: <strong>…{{ (keys[0].website or '')[-4:] if keys else '' }}</strong>
           &nbsp;— copy the full key from the <a href="{{ url_for('portal.api_keys') }}">API Keys page</a>
         </div>
         {% endif %}
@@ -158,8 +176,8 @@
     {% endif %}
   {% endcall %}
 
-  {# ── Step 6: Run first full sync ───────────────────────────────────────── #}
-  {% call step(6, "Run your first full sync", onboarding.synced) %}
+  {# ── Step 7: Run first full sync ───────────────────────────────────────── #}
+  {% call step(7, "Run your first full sync", onboarding.synced) %}
     {% if onboarding.synced %}
       <p class="muted" style="font-size:14px">✅ Full sync complete — your products have been sent to the knowledge base.</p>
     {% else %}
@@ -181,8 +199,8 @@
     {% endif %}
   {% endcall %}
 
-  {# ── Step 7: Knowledge base setup (admin action) ──────────────────────── #}
-  {% call step(7, "Knowledge base setup", onboarding.kb_configured) %}
+  {# ── Step 8: Knowledge base setup (admin action) ──────────────────────── #}
+  {% call step(8, "Knowledge base setup", onboarding.kb_configured) %}
     {% if onboarding.kb_configured %}
       <p class="muted" style="font-size:14px">✅ Your knowledge base has been configured by the PhiXtra team.</p>
     {% else %}
@@ -197,11 +215,11 @@
     {% endif %}
   {% endcall %}
 
-  {# ── Step 8: Verify AI is live ─────────────────────────────────────────── #}
+  {# ── Step 9: Verify AI is live ─────────────────────────────────────────── #}
   {%  set all_prev_done = onboarding.key_active and onboarding.ai_plugin_confirmed
       and onboarding.export_plugin_confirmed and onboarding.sync_configured_confirmed
       and onboarding.synced and onboarding.kb_configured %}
-  {% call step(8, "Verify your AI assistant is live", all_prev_done) %}
+  {% call step(9, "Verify your AI assistant is live", all_prev_done) %}
     {% if all_prev_done %}
       <p class="muted" style="font-size:14px">✅ All steps complete — your AI assistant is live!</p>
     {% else %}

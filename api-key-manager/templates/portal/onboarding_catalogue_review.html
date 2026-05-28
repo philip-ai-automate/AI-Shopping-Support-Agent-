@@ -1,0 +1,139 @@
+{% extends "portal/base.html" %}
+{% block title %}Review your catalogue — PhiXtra{% endblock %}
+{% block content %}
+<style>
+  .wizard-header{background:linear-gradient(135deg,#030C18 0%,#1a2744 100%);
+    border-radius:16px;padding:20px 28px;color:#fff;margin-bottom:24px;
+    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px}
+  .wizard-title{font-size:17px;font-weight:800;letter-spacing:-.2px}
+  .wizard-sub{font-size:12px;opacity:.65;margin-top:2px}
+  .wizard-steps{display:flex;align-items:center;gap:0}
+  .wstep{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;opacity:.55}
+  .wstep.active{opacity:1}
+  .wstep.done{opacity:.7}
+  .wstep-num{width:24px;height:24px;border-radius:50%;border:2px solid rgba(255,255,255,.4);
+    display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800}
+  .wstep.active .wstep-num{border-color:#fff;background:#fff;color:#030C18}
+  .wstep.done .wstep-num{border-color:rgba(18,183,106,.8);background:rgba(18,183,106,.2);color:#6effc3}
+  .wstep-div{width:28px;height:2px;background:rgba(255,255,255,.2);margin:0 3px}
+  .summary-bar{background:#fff;border:1px solid var(--line);border-radius:14px;
+    padding:16px 20px;margin-bottom:22px;display:flex;align-items:center;
+    justify-content:space-between;flex-wrap:wrap;gap:10px}
+  .cat-section{margin-bottom:22px}
+  .cat-hdr{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .prod-table th,.prod-table td{font-size:12px;padding:9px 12px}
+  .attr-chips{display:flex;flex-wrap:wrap;gap:3px}
+  .chip{font-size:10px;padding:2px 5px;background:rgba(3,12,24,.05);
+    border:1px solid var(--line);border-radius:4px;color:var(--muted)}
+  .finish-bar{background:#fff;border:1px solid var(--line);border-radius:14px;
+    padding:20px 24px;margin-top:24px;display:flex;align-items:center;
+    justify-content:space-between;flex-wrap:wrap;gap:14px}
+</style>
+
+{# ── Wizard header ── #}
+<div class="wizard-header">
+  <div>
+    <div class="wizard-title">Almost there! Review your catalogue</div>
+    <div class="wizard-sub">Here's what you've added. You can change it any time from My Catalogue.</div>
+  </div>
+  <div class="wizard-steps">
+    <div class="wstep done"><div class="wstep-num">✓</div><span>Categories</span></div>
+    <div class="wstep-div"></div>
+    <div class="wstep done"><div class="wstep-num">✓</div><span>Products</span></div>
+    <div class="wstep-div"></div>
+    <div class="wstep active"><div class="wstep-num">3</div><span>Review</span></div>
+  </div>
+</div>
+
+{% if total == 0 %}
+<div class="card" style="text-align:center;padding:40px">
+  <div style="font-size:36px;margin-bottom:12px">📭</div>
+  <div style="font-size:16px;font-weight:700;margin-bottom:6px">No products added yet</div>
+  <div class="muted" style="margin-bottom:20px">Go back and add products from your categories.</div>
+  <a href="{{ url_for('portal.onboarding_catalogue_start') }}" class="btn btn-primary">← Go Back</a>
+</div>
+{% else %}
+
+<div class="summary-bar">
+  <div>
+    <span style="font-size:24px;font-weight:800">{{ total }}</span>
+    <span class="muted" style="margin-left:6px">
+      product{{ 's' if total != 1 }} across {{ by_category|length }} categor{{ 'y' if by_category|length == 1 else 'ies' }}
+    </span>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    {% for cat_row in by_category %}
+    <span style="background:rgba(3,12,24,.07);border-radius:999px;padding:4px 12px;font-size:12px;font-weight:700">
+      {{ cat_row.cat_icon }} {{ cat_row.cat_name }}
+      <span style="opacity:.6">({{ cat_row.product_count }})</span>
+    </span>
+    {% endfor %}
+  </div>
+</div>
+
+{# ── Products grouped by category ── #}
+{% set ns = namespace(current_cat=None) %}
+{% for p in all_products %}
+{% if p.cat_name != ns.current_cat %}
+  {% if ns.current_cat is not none %}</tbody></table></div></div>{% endif %}
+  {% set ns.current_cat = p.cat_name %}
+  <div class="cat-section">
+  <div class="cat-hdr">
+    <span style="font-size:20px">{{ p.cat_icon }}</span>
+    <span style="font-size:15px;font-weight:800">{{ p.cat_name }}</span>
+    <span class="muted" style="font-size:12px">
+      ({{ by_category|selectattr('cat_name','eq',p.cat_name)|map(attribute='product_count')|first }})
+    </span>
+  </div>
+  <div class="table-wrap">
+  <table class="prod-table">
+    <thead><tr><th>Brand</th><th>Model</th><th>Specs</th></tr></thead>
+    <tbody>
+{% endif %}
+<tr>
+  <td>{{ p.brand or '—' }}</td>
+  <td>
+    <strong>{{ p.model_name }}</strong>
+    {% if p.model_number %}<div class="muted" style="font-size:10px">{{ p.model_number }}</div>{% endif %}
+  </td>
+  <td>
+    <div class="attr-chips">
+      {% for key, val in (p.attrs or {}).items() %}{% if val %}
+      <span class="chip">{{ key }}: {{ val }}</span>
+      {% endif %}{% endfor %}
+    </div>
+  </td>
+</tr>
+{% endfor %}
+{% if all_products %}</tbody></table></div></div>{% endif %}
+
+{% endif %}
+
+{# ── Finish / back bar ── #}
+<div class="finish-bar">
+  <div>
+    {% if total > 0 %}
+    <div style="font-size:15px;font-weight:700;margin-bottom:2px">Ready to go! 🎉</div>
+    <div class="muted">Your AI assistant will use these products for recommendations and ordering.</div>
+    {% else %}
+    <div class="muted">You haven't selected any products yet.</div>
+    {% endif %}
+  </div>
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <a href="{{ url_for('portal.onboarding_catalogue_start') }}" class="btn btn-sm" style="color:var(--muted)">← Back</a>
+    {% if total > 0 %}
+    <form method="POST" action="{{ url_for('portal.onboarding_catalogue_finish') }}" style="margin:0">
+      <button type="submit" class="btn btn-primary" style="font-size:14px;padding:10px 20px">
+        Launch My Store →
+      </button>
+    </form>
+    {% endif %}
+    <form method="POST" action="{{ url_for('portal.onboarding_catalogue_skip') }}" style="margin:0">
+      <button type="submit" class="btn" style="color:var(--muted);font-size:12px">
+        {{ 'Finish without products' if total == 0 else 'Skip for now' }}
+      </button>
+    </form>
+  </div>
+</div>
+
+{% endblock %}

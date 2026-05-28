@@ -1,0 +1,155 @@
+{% extends "portal/base.html" %}
+{% block title %}Set up your catalogue — PhiXtra{% endblock %}
+{% block content %}
+<style>
+  .wizard-header{background:linear-gradient(135deg,#030C18 0%,#1a2744 100%);
+    border-radius:16px;padding:28px 32px;color:#fff;margin-bottom:28px;
+    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px}
+  .wizard-title{font-size:22px;font-weight:800;letter-spacing:-.3px;margin-bottom:4px}
+  .wizard-sub{font-size:13px;opacity:.7}
+  .wizard-steps{display:flex;align-items:center;gap:0}
+  .wstep{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;opacity:.55}
+  .wstep.active{opacity:1}
+  .wstep.done{opacity:.7}
+  .wstep-num{width:26px;height:26px;border-radius:50%;border:2px solid rgba(255,255,255,.4);
+    display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800}
+  .wstep.active .wstep-num{border-color:#fff;background:#fff;color:#030C18}
+  .wstep.done .wstep-num{border-color:rgba(18,183,106,.8);background:rgba(18,183,106,.2);color:#6effc3}
+  .wstep-div{width:32px;height:2px;background:rgba(255,255,255,.2);margin:0 4px}
+  .cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
+  .cat-card{border:2px solid var(--line);border-radius:14px;padding:18px;background:#fff;
+    cursor:pointer;transition:.15s;display:flex;flex-direction:column;gap:6px;
+    user-select:none;position:relative}
+  .cat-card:hover{border-color:rgba(3,12,24,.3);transform:translateY(-1px);
+    box-shadow:0 6px 20px rgba(3,12,24,.08)}
+  .cat-card.selected{border-color:var(--ink);background:rgba(3,12,24,.03)}
+  .cat-card input{position:absolute;opacity:0;width:0;height:0}
+  .cat-check{position:absolute;top:12px;right:12px;width:20px;height:20px;
+    border-radius:50%;border:2px solid var(--line);transition:.15s;
+    display:flex;align-items:center;justify-content:center}
+  .cat-card.selected .cat-check{border-color:var(--ink);background:var(--ink);color:#fff;
+    font-size:11px}
+  .cat-icon{font-size:28px}
+  .cat-name{font-size:14px;font-weight:700}
+  .cat-count{font-size:11px;color:var(--muted)}
+</style>
+
+{# ── Wizard header ── #}
+<div class="wizard-header">
+  <div>
+    <div class="wizard-title">👋 Welcome, {{ customer.first_name }}! Let's set up your store.</div>
+    <div class="wizard-sub">This takes about 2 minutes. You can always change it later.</div>
+  </div>
+  <div class="wizard-steps">
+    <div class="wstep active">
+      <div class="wstep-num">1</div>
+      <span>Categories</span>
+    </div>
+    <div class="wstep-div"></div>
+    <div class="wstep">
+      <div class="wstep-num">2</div>
+      <span>Products</span>
+    </div>
+    <div class="wstep-div"></div>
+    <div class="wstep">
+      <div class="wstep-num">3</div>
+      <span>Review</span>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div style="margin-bottom:20px">
+    <div style="font-size:17px;font-weight:800;margin-bottom:4px">
+      Which categories do you sell?
+    </div>
+    <div class="muted">Select all that apply — you'll browse products for each one.</div>
+  </div>
+
+  {% if categories %}
+  <form method="POST" id="catForm">
+    <div class="cat-grid" id="cat-grid">
+      {% for cat in categories %}
+      <label class="cat-card" id="cl-{{ cat.id }}" onclick="toggleCard(this, '{{ cat.id }}')">
+        <input type="checkbox" name="cat_ids" value="{{ cat.id }}" id="cb-{{ cat.id }}"/>
+        <div class="cat-check" id="ck-{{ cat.id }}"></div>
+        <div class="cat-icon">{{ cat.icon }}</div>
+        <div class="cat-name">{{ cat.name }}</div>
+        <div class="cat-count">{{ cat.product_count }} product{{ 's' if cat.product_count != 1 }}</div>
+      </label>
+      {% endfor %}
+    </div>
+
+    <div style="margin-top:24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div id="sel-count" class="muted" style="font-size:13px"></div>
+      <div style="display:flex;gap:10px">
+        <button type="submit" name="action" value="next" class="btn btn-primary" id="nextBtn" disabled>
+          Next: Select Products →
+        </button>
+        <button type="submit" name="action" value="skip" class="btn" style="color:var(--muted)">
+          Skip for now
+        </button>
+      </div>
+    </div>
+  </form>
+  {% else %}
+  <div style="text-align:center;padding:32px">
+    <div style="font-size:32px;margin-bottom:10px">📭</div>
+    <div style="font-weight:700;margin-bottom:8px">No product categories available yet</div>
+    <div class="muted" style="margin-bottom:20px">The PhiXtra team is loading the catalogue. Check back soon.</div>
+    <form method="POST">
+      <button type="submit" name="action" value="skip" class="btn btn-primary">Go to Dashboard →</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+function toggleCard(label, id) {
+  const cb   = document.getElementById('cb-' + id);
+  const card = document.getElementById('cl-' + id);
+  const ck   = document.getElementById('ck-' + id);
+  // checkbox is toggled by the label click naturally — read state after event
+  setTimeout(() => {
+    if (cb.checked) {
+      card.classList.add('selected');
+      ck.textContent = '✓';
+    } else {
+      card.classList.remove('selected');
+      ck.textContent = '';
+    }
+    updateCount();
+  }, 0);
+}
+
+function updateCount() {
+  const checked = document.querySelectorAll('[name="cat_ids"]:checked').length;
+  const btn     = document.getElementById('nextBtn');
+  const lbl     = document.getElementById('sel-count');
+  btn.disabled  = checked === 0;
+  lbl.textContent = checked > 0
+    ? checked + ' categor' + (checked === 1 ? 'y' : 'ies') + ' selected'
+    : '';
+}
+
+// Prevent label double-firing
+document.querySelectorAll('.cat-card').forEach(lbl => {
+  lbl.addEventListener('click', e => {
+    // Let the click propagate to the checkbox naturally
+    e.preventDefault();
+    const cbId = lbl.querySelector('input').id;
+    const cb = document.getElementById(cbId);
+    cb.checked = !cb.checked;
+    const card = lbl;
+    const ck   = lbl.querySelector('.cat-check');
+    if (cb.checked) {
+      card.classList.add('selected'); ck.textContent = '✓';
+    } else {
+      card.classList.remove('selected'); ck.textContent = '';
+    }
+    updateCount();
+  });
+});
+updateCount();
+</script>
+{% endblock %}

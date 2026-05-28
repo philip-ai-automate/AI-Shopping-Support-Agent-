@@ -1,0 +1,164 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Upload — {{ cat.name }} — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+  .drop-zone{border:2px dashed rgba(3,12,24,.18);border-radius:16px;padding:48px 24px;
+             text-align:center;cursor:pointer;transition:.2s;background:#fff}
+  .drop-zone.over{border-color:var(--ink);background:rgba(3,12,24,.03)}
+  .drop-zone-icon{font-size:40px;margin-bottom:10px}
+  .drop-zone-label{font-size:15px;font-weight:700;margin-bottom:4px}
+  .cols-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .col-chip{display:inline-block;font-family:monospace;font-size:11px;padding:3px 8px;
+            border-radius:6px;border:1px solid var(--line);background:rgba(3,12,24,.04)}
+  .col-chip.required{border-color:rgba(240,68,56,.3);background:rgba(240,68,56,.06);color:#b02020}
+</style>
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title">{{ cat.icon }} Upload — {{ cat.name }}</h1>
+    <div class="muted" style="margin-top:4px">Import products via CSV or Excel file</div>
+  </div>
+  <div style="display:flex;gap:8px">
+    <a href="{{ url_for('portal_admin.catalogue_category_template', category_id=cat.id) }}" class="btn btn-sm">⬇ Download Template</a>
+    <a href="{{ url_for('portal_admin.catalogue_category_products', category_id=cat.id) }}" class="btn btn-sm">← Products</a>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start">
+
+  {# ── Upload form ── #}
+  <div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <form method="POST" enctype="multipart/form-data" id="upload-form">
+        <div style="padding:24px">
+
+          <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+            <div class="drop-zone-icon">☁</div>
+            <div class="drop-zone-label">Drag & drop your file here</div>
+            <div class="muted" style="margin-bottom:12px">or click to browse</div>
+            <span class="btn btn-sm" style="pointer-events:none">Browse File</span>
+            <input type="file" id="file-input" name="file" accept=".csv,.xlsx,.xls"
+                   style="display:none" required/>
+          </div>
+
+          <div id="file-name" style="margin-top:10px;font-size:13px;color:var(--muted);display:none"></div>
+
+          <div style="margin-top:18px" class="form-group">
+            <label>If a product SKU already exists:</label>
+            <select name="on_conflict" style="max-width:280px">
+              <option value="skip">Skip — keep existing record</option>
+              <option value="update">Update — overwrite with new data</option>
+            </select>
+          </div>
+
+          <div style="margin-top:6px">
+            <div class="muted" style="font-size:12px">Supported: .csv, .xlsx — Max size: 10 MB</div>
+          </div>
+        </div>
+
+        <div style="padding:14px 24px;border-top:1px solid var(--line);background:rgba(3,12,24,.025);
+                    display:flex;gap:10px;align-items:center">
+          <button type="submit" class="btn btn-primary" id="submit-btn">⬆ Import Products</button>
+          <a href="{{ url_for('portal_admin.catalogue_category_products', category_id=cat.id) }}" class="btn">Cancel</a>
+          <span id="uploading-msg" style="display:none;font-size:12px;color:var(--muted)">Uploading…</span>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# ── Required columns sidebar ── #}
+  <div>
+    <div class="card">
+      <div class="card-title">CSV Columns for {{ cat.name }}</div>
+
+      <div style="margin-bottom:12px">
+        <div style="font-size:12px;font-weight:700;margin-bottom:6px">Base columns (always required)</div>
+        <div class="cols-list">
+          <span class="col-chip required">brand</span>
+          <span class="col-chip required">model_name</span>
+          <span class="col-chip">model_number</span>
+          <span class="col-chip">sku</span>
+          <span class="col-chip">description</span>
+          <span class="col-chip">image_url</span>
+        </div>
+      </div>
+
+      {% if attrs %}
+      <div>
+        <div style="font-size:12px;font-weight:700;margin-bottom:6px">Category attributes</div>
+        <div class="cols-list">
+          {% for a in attrs %}
+          <span class="col-chip {% if a.is_required %}required{% endif %}"
+                title="{{ a.attribute_label }}{% if a.unit %} ({{ a.unit }}){% endif %}{% if a.is_required %} — REQUIRED{% endif %}">
+            {{ a.attribute_key }}{% if a.unit %} <span style="opacity:.6">({{ a.unit }})</span>{% endif %}
+          </span>
+          {% endfor %}
+        </div>
+        <div class="muted" style="margin-top:8px;font-size:11px">
+          <span style="color:#b02020">Red</span> = required in CSV
+        </div>
+      </div>
+      {% else %}
+      <div class="muted" style="font-size:12px">
+        No custom attributes defined.
+        <a href="{{ url_for('portal_admin.catalogue_category_attributes', category_id=cat.id) }}">Add attributes</a> first.
+      </div>
+      {% endif %}
+
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
+        <a href="{{ url_for('portal_admin.catalogue_category_template', category_id=cat.id) }}"
+           class="btn btn-sm" style="width:100%;justify-content:center">
+          ⬇ Download Template with Examples
+        </a>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:0">
+      <div class="card-title">Tips</div>
+      <ul style="font-size:12px;color:var(--muted);padding-left:16px;line-height:1.9">
+        <li>First row must be column headers</li>
+        <li>Use the template as your starting point</li>
+        <li>Rows with missing <em>model_name</em> are skipped</li>
+        <li>SKU must be unique across all categories</li>
+        <li>Leave optional columns blank — don't delete them</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+const dropZone  = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const fileName  = document.getElementById('file-name');
+
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) {
+    fileName.textContent = '📄 ' + fileInput.files[0].name;
+    fileName.style.display = 'block';
+  }
+});
+
+['dragenter','dragover'].forEach(e => {
+  dropZone.addEventListener(e, ev => { ev.preventDefault(); dropZone.classList.add('over'); });
+});
+['dragleave','drop'].forEach(e => {
+  dropZone.addEventListener(e, ev => { dropZone.classList.remove('over'); });
+});
+dropZone.addEventListener('drop', ev => {
+  ev.preventDefault();
+  const f = ev.dataTransfer.files[0];
+  if (f) {
+    const dt = new DataTransfer();
+    dt.items.add(f);
+    fileInput.files = dt.files;
+    fileName.textContent = '📄 ' + f.name;
+    fileName.style.display = 'block';
+  }
+});
+
+document.getElementById('upload-form').addEventListener('submit', () => {
+  document.getElementById('submit-btn').disabled = true;
+  document.getElementById('uploading-msg').style.display = 'inline';
+});
+</script>
+{% endblock %}

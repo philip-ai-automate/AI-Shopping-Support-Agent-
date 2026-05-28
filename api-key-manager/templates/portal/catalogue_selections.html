@@ -1,0 +1,105 @@
+{% extends "portal/base.html" %}
+{% block title %}My Selected Products — PhiXtra Portal{% endblock %}
+{% block content %}
+<style>
+  .cat-section{margin-bottom:28px}
+  .cat-header{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .cat-label{font-size:15px;font-weight:800}
+  .prod-table th,.prod-table td{font-size:12px;padding:10px 12px}
+  .attr-chips{display:flex;flex-wrap:wrap;gap:3px}
+  .attr-chip{font-size:10px;padding:2px 6px;background:rgba(3,12,24,0.05);
+             border:1px solid var(--line);border-radius:5px;color:var(--muted)}
+  .summary-bar{background:#fff;border:1px solid var(--line);border-radius:14px;
+               padding:16px 20px;margin-bottom:24px;display:flex;
+               align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
+               box-shadow:0 4px 16px rgba(3,12,24,0.06)}
+</style>
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title" style="margin:0">My Selected Products</h1>
+    <p class="muted">Products you've added to your store catalogue</p>
+  </div>
+  <a href="{{ url_for('portal.catalogue_browse') }}" class="btn btn-sm">← Browse More</a>
+</div>
+
+{% if total == 0 %}
+<div class="card" style="text-align:center;padding:48px">
+  <div style="font-size:40px;margin-bottom:12px">📭</div>
+  <div style="font-size:15px;font-weight:700;margin-bottom:8px">No products selected yet</div>
+  <div class="muted" style="margin-bottom:20px">Browse the catalogue and add products you sell in your store</div>
+  <a href="{{ url_for('portal.catalogue_browse') }}" class="btn btn-primary">Browse Catalogue →</a>
+</div>
+{% else %}
+
+<div class="summary-bar">
+  <div>
+    <span style="font-size:22px;font-weight:800">{{ total }}</span>
+    <span class="muted" style="margin-left:6px">products across
+      {{ by_category|length }} categor{{ 'y' if by_category|length == 1 else 'ies' }}
+    </span>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap">
+    {% for cat_row in by_category %}
+    <a href="{{ url_for('portal.catalogue_category', category_id=cat_row.cat_id) }}"
+       class="btn btn-sm">
+      {{ cat_row.cat_icon }} {{ cat_row.cat_name }}
+      <span style="background:rgba(3,12,24,.1);border-radius:999px;padding:1px 7px;font-size:10px">
+        {{ cat_row.product_count }}
+      </span>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+
+{% set ns = namespace(current_cat=None) %}
+{% for p in all_products %}
+{% if p.cat_name != ns.current_cat %}
+  {% if ns.current_cat is not none %}</tbody></table></div></div>{% endif %}
+  {% set ns.current_cat = p.cat_name %}
+  <div class="cat-section">
+  <div class="cat-header">
+    <span style="font-size:20px">{{ p.cat_icon }}</span>
+    <span class="cat-label">{{ p.cat_name }}</span>
+    <span class="muted" style="font-size:12px">
+      ({{ by_category|selectattr('cat_name','eq',p.cat_name)|map(attribute='product_count')|first }} products)
+    </span>
+    <a href="{{ url_for('portal.catalogue_category', category_id=p.cat_id) }}"
+       class="btn btn-sm" style="margin-left:auto">+ Add more</a>
+  </div>
+  <div class="table-wrap">
+  <table class="prod-table">
+    <thead>
+      <tr>
+        <th>Brand</th><th>Model</th><th>SKU</th><th>Specs</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+{% endif %}
+<tr>
+  <td>{{ p.brand or '—' }}</td>
+  <td>
+    <strong>{{ p.model_name }}</strong>
+    {% if p.model_number %}<div class="muted" style="font-size:10px">{{ p.model_number }}</div>{% endif %}
+  </td>
+  <td class="muted">{{ p.sku or '—' }}</td>
+  <td>
+    <div class="attr-chips">
+      {% for key, val in (p.attrs or {}).items() %}
+      {% if val %}<span class="attr-chip">{{ key }}: {{ val }}</span>{% endif %}
+      {% endfor %}
+    </div>
+  </td>
+  <td>
+    <form method="POST"
+          action="{{ url_for('portal.catalogue_toggle', category_id=p.cat_id, product_id=p.id) }}"
+          onsubmit="return confirm('Remove {{ p.model_name }} from your store?')">
+      <button type="submit" class="btn btn-sm btn-danger" style="font-size:11px">Remove</button>
+    </form>
+  </td>
+</tr>
+{% endfor %}
+{% if all_products %}</tbody></table></div></div>{% endif %}
+
+{% endif %}
+{% endblock %}

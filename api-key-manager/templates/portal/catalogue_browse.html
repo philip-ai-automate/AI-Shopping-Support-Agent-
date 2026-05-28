@@ -1,0 +1,72 @@
+{% extends "portal/base.html" %}
+{% block title %}My Catalogue — PhiXtra Portal{% endblock %}
+{% block content %}
+<style>
+  .cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:28px}
+  .cat-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px;
+            box-shadow:0 4px 16px rgba(3,12,24,0.06);display:flex;flex-direction:column;
+            gap:8px;text-decoration:none;color:var(--txt);transition:.15s;position:relative}
+  .cat-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(3,12,24,0.10);text-decoration:none}
+  .cat-icon{font-size:30px;line-height:1}
+  .cat-name{font-size:15px;font-weight:800;letter-spacing:-.2px}
+  .cat-count{font-size:12px;color:var(--muted)}
+  .cat-badge{position:absolute;top:14px;right:14px;background:var(--ink);color:#fff;
+             font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px}
+  .summary-bar{background:#fff;border:1px solid var(--line);border-radius:14px;
+               padding:16px 20px;margin-bottom:24px;display:flex;align-items:center;
+               justify-content:space-between;flex-wrap:wrap;gap:10px;
+               box-shadow:0 4px 16px rgba(3,12,24,0.06)}
+</style>
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title" style="margin:0">📦 My Catalogue</h1>
+    <p class="muted">Select products you sell in your store</p>
+  </div>
+  {% if total_selected > 0 %}
+  <a href="{{ url_for('portal.catalogue_selections') }}" class="btn btn-primary btn-sm">
+    View My {{ total_selected }} Selected Products →
+  </a>
+  {% endif %}
+</div>
+
+{% if total_selected > 0 %}
+<div class="summary-bar">
+  <div>
+    <span style="font-size:20px;font-weight:800">{{ total_selected }}</span>
+    <span class="muted" style="margin-left:6px">products selected across {{ categories|selectattr('selected_count','gt',0)|list|length }} categories</span>
+  </div>
+  <a href="{{ url_for('portal.catalogue_selections') }}" class="btn btn-sm">Review My Selections →</a>
+</div>
+{% endif %}
+
+{% if categories %}
+<div style="font-size:12px;color:var(--muted);margin-bottom:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em">
+  Browse by category
+</div>
+<div class="cat-grid">
+  {% for cat in categories %}
+  <a href="{{ url_for('portal.catalogue_category', category_id=cat.id) }}" class="cat-card">
+    {% if cat.selected_count > 0 %}
+    <div class="cat-badge">{{ cat.selected_count }} ✓</div>
+    {% endif %}
+    <div class="cat-icon">{{ cat.icon }}</div>
+    <div class="cat-name">{{ cat.name }}</div>
+    <div class="cat-count">
+      {{ cat.total_products }} product{{ 's' if cat.total_products != 1 }}
+      {% if cat.selected_count > 0 %}
+        · <span style="color:var(--good);font-weight:700">{{ cat.selected_count }} selected</span>
+      {% endif %}
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card" style="text-align:center;padding:48px">
+  <div style="font-size:40px;margin-bottom:12px">📭</div>
+  <div style="font-size:15px;font-weight:700;margin-bottom:8px">No product categories yet</div>
+  <div class="muted">The Phixtra team is loading the product catalogue. Check back soon.</div>
+</div>
+{% endif %}
+
+{% endblock %}
