@@ -64,7 +64,13 @@ def search_catalogue(keyword: str, limit: int = 5) -> list[dict]:
             (keyword, keyword, limit),
         )
         rows = cur.fetchall() or []
-        return [dict(r) for r in rows]
+        return [
+            {
+                "title":     r["title"],
+                "price_min": float(r["price_min"]) if r["price_min"] is not None else None,
+            }
+            for r in rows
+        ]
     except Exception as e:
         print("⚠️ search_catalogue error:", e)
         return []
