@@ -6,6 +6,28 @@
   <h1 style="font-size:22px;font-weight:800;margin-bottom:6px">Admin Settings</h1>
   <p class="muted" style="margin-bottom:28px">Manage your admin account security.</p>
 
+  <!-- ══ WhatsApp Onboarding QR ══ -->
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">📱 WhatsApp Onboarding QR Code</div>
+    <p class="muted" style="font-size:13px;margin-bottom:16px">
+      Share this QR code with merchants. Scanning it opens WhatsApp and pre-fills
+      the <strong>SETUP</strong> message to <strong>+44 7467 786954</strong>.
+    </p>
+    <div style="display:flex;align-items:flex-start;gap:24px;flex-wrap:wrap">
+      <img src="{{ url_for('static', filename='portal/whatsapp_setup_qr_card.png') }}"
+           alt="WhatsApp Setup QR" style="width:200px;border-radius:12px;border:1px solid var(--line)"/>
+      <div style="flex:1;min-width:180px">
+        <div style="font-size:13px;margin-bottom:12px">
+          <div style="font-weight:700;margin-bottom:4px">wa.me link</div>
+          <code style="font-size:12px;background:rgba(3,12,24,.05);padding:6px 10px;border-radius:8px;border:1px solid var(--line);display:block;word-break:break-all">https://wa.me/447467786954?text=SETUP</code>
+        </div>
+        <a href="{{ url_for('portal_admin.onboarding_qr') }}" class="btn btn-primary btn-sm">
+          ⬇ Download QR PNG
+        </a>
+      </div>
+    </div>
+  </div>
+
   <!-- ══ Trial Default Duration ══ -->
   <div class="card" style="margin-bottom:20px">
     <div class="card-title">⏱️ Default Trial Duration</div>

@@ -1209,6 +1209,19 @@ def admin_settings():
                            trial_default_days=trial_default_days)
 
 
+@portal_admin_bp.route("/onboarding-qr")
+def onboarding_qr():
+    """Serve the WhatsApp onboarding QR code card as a downloadable PNG."""
+    r = _require_admin()
+    if r: return r
+    import os
+    qr_path = os.path.join(
+        os.path.dirname(__file__), "static", "portal", "whatsapp_setup_qr_card.png"
+    )
+    return send_file(qr_path, mimetype="image/png",
+                     as_attachment=True, download_name="phixtra_whatsapp_setup_qr.png")
+
+
 @portal_admin_bp.route("/settings/trial-days", methods=["POST"])
 def admin_save_trial_days():
     """Save the default trial duration (days) into portal_settings."""
