@@ -1326,7 +1326,7 @@ def dashboard():
             trial_info["website"]  = k.get("website", "")
             exp = k.get("trial_expires_at")
             if k.get("is_active") and exp:
-                diff = exp - _now
+                diff = exp.replace(tzinfo=None) - _now
                 trial_info["days_left"] = max(0, diff.days)
                 trial_info["expired"]   = False
             else:
@@ -1512,7 +1512,7 @@ def api_keys():
 
         # Trial days remaining
         if k.get("key_type") == "trial" and k.get("trial_expires_at"):
-            diff = k["trial_expires_at"] - now
+            diff = k["trial_expires_at"].replace(tzinfo=None) - now
             k["trial_days_left"] = max(0, diff.days)
         else:
             k["trial_days_left"] = None
@@ -1520,7 +1520,7 @@ def api_keys():
         # Status label
         if not k.get("is_active"):
             k["status"] = "Revoked"
-        elif k.get("key_type") == "trial" and k.get("trial_expires_at") and k["trial_expires_at"] < now:
+        elif k.get("key_type") == "trial" and k.get("trial_expires_at") and k["trial_expires_at"].replace(tzinfo=None) < now:
             k["status"] = "Expired"
         elif k.get("key_type") == "trial":
             k["status"] = "Trial"
@@ -1624,7 +1624,7 @@ def billing():
             is_trial_customer = True
             exp = k.get("trial_expires_at")
             if k.get("is_active") and exp:
-                diff = exp - datetime.utcnow()
+                diff = exp.replace(tzinfo=None) - datetime.utcnow()
                 trial_days_left = max(0, diff.days)
             elif not k.get("is_active"):
                 trial_expired_billing = True
@@ -4093,7 +4093,7 @@ def settings():
         if k.get("is_active"):
             plan_key = k
             if k.get("key_type") == "trial" and k.get("trial_expires_at"):
-                diff = k["trial_expires_at"] - _now
+                diff = k["trial_expires_at"].replace(tzinfo=None) - _now
                 plan_days_left = max(0, diff.days)
             break
     # Fall back to most recent key even if inactive
