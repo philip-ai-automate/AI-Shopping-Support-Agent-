@@ -1,0 +1,424 @@
+{% extends "portal/base.html" %}
+{% block title %}Plans & Billing — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+/* Usage meter */
+.usage-card { background:#fff; border:1px solid var(--line); border-radius:14px; padding:24px; margin-bottom:28px }
+.usage-header { display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px; margin-bottom:18px }
+.usage-plan-name { font-size:20px; font-weight:800 }
+.usage-cycle  { font-size:12px; color:var(--muted); margin-top:3px }
+.usage-counts { text-align:right }
+.usage-num    { font-size:24px; font-weight:800 }
+.usage-denom  { font-size:14px; color:var(--muted) }
+
+.meter-bar { height:12px; background:#f0f0f2; border-radius:999px; overflow:hidden; margin-bottom:8px }
+.meter-fill { height:100%; border-radius:999px; transition:width .4s ease;
+              background: linear-gradient(90deg, #12B76A, #027A48) }
+.meter-fill.warn  { background: linear-gradient(90deg, #F79009, #B54708) }
+.meter-fill.danger{ background: linear-gradient(90deg, #F04438, #B42318) }
+.meter-labels { display:flex; justify-content:space-between; font-size:12px; color:var(--muted) }
+
+.quota-alert { background:#FEF3F2; border:1px solid #FDA29B; border-radius:10px;
+               padding:12px 16px; font-size:13px; color:#B42318; margin-top:14px;
+               display:flex; gap:10px; align-items:flex-start }
+
+/* Plans grid */
+.plans-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:16px }
+@media(max-width:900px){ .plans-grid { grid-template-columns:repeat(2,1fr) } }
+@media(max-width:480px){ .plans-grid { grid-template-columns:1fr } }
+
+.plan-card {
+  background:#fff; border:2px solid var(--line); border-radius:16px;
+  padding:24px 20px; display:flex; flex-direction:column; gap:0;
+  transition:.15s; position:relative;
+}
+.plan-card.current { border-color:var(--ink); box-shadow:0 0 0 3px rgba(3,12,24,.06) }
+.plan-card.popular { border-color:#7C3AED }
+
+.plan-badge {
+  position:absolute; top:-12px; left:50%; transform:translateX(-50%);
+  background:#7C3AED; color:#fff; font-size:11px; font-weight:700;
+  padding:3px 12px; border-radius:999px; white-space:nowrap;
+}
+.current-badge {
+  position:absolute; top:-12px; left:50%; transform:translateX(-50%);
+  background:var(--ink); color:#fff; font-size:11px; font-weight:700;
+  padding:3px 12px; border-radius:999px; white-space:nowrap;
+}
+.plan-name  { font-size:16px; font-weight:800; margin-bottom:4px }
+.plan-price { font-size:28px; font-weight:800; letter-spacing:-.5px; line-height:1 }
+.plan-currency { font-size:13px; font-weight:600; color:var(--muted) }
+.plan-period { font-size:12px; color:var(--muted); margin-top:4px; margin-bottom:18px }
+.plan-annual { font-size:11px; color:var(--good); font-weight:600 }
+
+.plan-divider { height:1px; background:var(--line); margin:16px 0 }
+
+.plan-features { list-style:none; padding:0; margin:0 0 20px; display:flex; flex-direction:column; gap:8px }
+.plan-features li { display:flex; gap:8px; font-size:13px; align-items:flex-start }
+.feat-yes { color:#12B76A; font-size:14px; flex-shrink:0; margin-top:1px }
+.feat-no  { color:#d1d5db; font-size:14px; flex-shrink:0; margin-top:1px }
+.feat-lbl { color:var(--txt) }
+.feat-lbl.muted { color:var(--muted) }
+
+.plan-cta { margin-top:auto }
+.btn-upgrade {
+  width:100%; padding:11px; border-radius:10px; font-size:14px; font-weight:700;
+  border:none; cursor:pointer; transition:.15s; text-align:center; display:block;
+  text-decoration:none;
+}
+.btn-upgrade-primary { background:var(--ink); color:#fff }
+.btn-upgrade-primary:hover { background:#000; text-decoration:none; color:#fff }
+.btn-upgrade-purple { background:#7C3AED; color:#fff }
+.btn-upgrade-purple:hover { background:#6D28D9; text-decoration:none; color:#fff }
+.btn-upgrade-outline { background:#fff; color:var(--txt); border:2px solid var(--line) }
+.btn-current { background:#f4f4f5; color:var(--muted); cursor:default }
+
+.overage-note { font-size:11px; color:var(--muted); text-align:center; margin-top:10px }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header" style="margin-bottom:24px">
+  <div>
+    <div class="section-title">Plans &amp; Billing</div>
+    <p class="muted">Manage your subscription and view usage</p>
+  </div>
+</div>
+
+{# ── Current plan usage meter ──────────────────────────────────────────────── #}
+<div class="usage-card">
+  <div class="usage-header">
+    <div>
+      <div class="usage-plan-name">
+        {{ current.plan_name }} Plan
+        {% if current.is_trial %}
+        <span style="background:#7C3AED;color:#fff;font-size:12px;font-weight:700;
+                     padding:3px 10px;border-radius:999px;margin-left:8px;vertical-align:middle">
+          Trial — {{ current.trial_days_left }} day{{ 's' if current.trial_days_left != 1 }} left
+        </span>
+        {% endif %}
+      </div>
+      <div class="usage-cycle">
+        {% if current.is_trial %}
+          Free 30-day Pro trial
+          &nbsp;·&nbsp; Ends {{ current.trial_ends_at.strftime('%-d %b %Y') if current.trial_ends_at }}
+        {% else %}
+          {{ current.billing_cycle | capitalize }} billing
+          &nbsp;·&nbsp; Period from {{ current.period_start.strftime('%-d %b %Y') if current.period_start }}
+        {% endif %}
+      </div>
+    </div>
+    <div class="usage-counts">
+      <span class="usage-num">{{ current.messages_used }}</span>
+      <span class="usage-denom"> / {{ current.ai_messages_limit if current.ai_messages_limit != -1 else '∞' }} AI messages</span>
+    </div>
+  </div>
+
+  {% set pct = current.usage_pct %}
+  <div class="meter-bar">
+    <div class="meter-fill {% if pct >= 100 %}danger{% elif pct >= 80 %}warn{% endif %}"
+         style="width:{{ pct }}%"></div>
+  </div>
+  <div class="meter-labels">
+    <span>{{ pct }}% used</span>
+    <span>
+      {% if current.ai_messages_limit == -1 %}Unlimited
+      {% elif current.messages_remaining == 0 %}0 remaining
+      {% else %}{{ current.messages_remaining }} remaining{% endif %}
+    </span>
+  </div>
+
+  {% if current.is_trial and current.trial_days_left <= 7 %}
+  <div style="background:#FDF4FF;border:1px solid #E9D5FF;border-radius:10px;
+              padding:12px 16px;font-size:13px;color:#6D28D9;margin-top:14px">
+    ⏳ Your free Pro trial ends in <strong>{{ current.trial_days_left }} day{{ 's' if current.trial_days_left != 1 }}</strong>.
+    After that your account moves to the Free plan (100 AI messages/mo).
+    Upgrade now to keep Pro features.
+  </div>
+  {% endif %}
+
+  {% if current.is_over_quota %}
+  <div class="quota-alert">
+    <span>🚫</span>
+    <div>
+      <strong>Quota exceeded.</strong> Your AI assistant is paused.
+      Upgrade your plan to resume service — or wait until your next billing period resets.
+      <br><br>
+      <strong>Overage rate:</strong> ₦{{ current.overage_per_msg_ngn }} per message
+      (${{ "%.4f"|format(current.overage_per_msg_usd|float) }})
+    </div>
+  </div>
+  {% elif pct >= 80 %}
+  <div style="background:#FFFAEB;border:1px solid #FEC84B;border-radius:10px;
+              padding:10px 14px;font-size:13px;color:#B54708;margin-top:14px">
+    ⚠️ You've used {{ pct }}% of your monthly AI messages. Consider upgrading before you run out.
+  </div>
+  {% endif %}
+</div>
+
+{# ── Plans grid ────────────────────────────────────────────────────────────── #}
+<div class="plans-grid">
+{% for plan in all_plans %}
+{% set is_current = plan.slug == current.plan_slug %}
+{% set annual_ngn = (plan.price_ngn * 0.95)|int %}
+{% set annual_usd = (plan.price_usd|float * 0.95)|round(2) %}
+
+<div class="plan-card {% if is_current %}current{% elif plan.slug == 'growth' %}popular{% endif %}">
+  {% if is_current %}<span class="current-badge">Current plan</span>
+  {% elif plan.slug == 'growth' %}<span class="plan-badge">Most popular</span>{% endif %}
+
+  <div class="plan-name">{{ plan.name }}</div>
+  <div class="plan-price">
+    {% if plan.price_ngn == 0 %}Free
+    {% else %}₦{{ "{:,}".format(plan.price_ngn) }}{% endif %}
+  </div>
+  {% if plan.price_ngn > 0 %}
+  <div class="plan-currency">${{ plan.price_usd }} / month</div>
+  <div class="plan-period">
+    billed monthly
+    <span class="plan-annual"> · ₦{{ "{:,}".format(annual_ngn) }}/mo if annual (5% off)</span>
+  </div>
+  {% else %}
+  <div class="plan-period">forever free</div>
+  {% endif %}
+
+  <div class="plan-divider"></div>
+
+  <ul class="plan-features">
+    <li>
+      <span class="feat-yes">✓</span>
+      <span class="feat-lbl">
+        <strong>{{ plan.ai_messages_limit if plan.ai_messages_limit != -1 else 'Unlimited' }}</strong>
+        AI messages/mo
+      </span>
+    </li>
+    <li>
+      <span class="feat-yes">✓</span>
+      <span class="feat-lbl">
+        <strong>{{ plan.agents_limit if plan.agents_limit != -1 else 'Unlimited' }}</strong>
+        agent{{ 's' if plan.agents_limit != 1 }}
+      </span>
+    </li>
+
+    {% if plan.feat_broadcasts %}
+    <li>
+      <span class="feat-yes">✓</span>
+      <span class="feat-lbl">
+        {% if plan.broadcasts_limit == -1 %}Unlimited{% else %}{{ "{:,}".format(plan.broadcasts_limit) }}{% endif %}
+        broadcasts/mo
+      </span>
+    </li>
+    {% else %}
+    <li><span class="feat-no">✗</span><span class="feat-lbl muted">Broadcasts</span></li>
+    {% endif %}
+
+    {% for flag, label in [
+        ('feat_crm',         'Full CRM'),
+        ('feat_advanced_ai', 'Advanced AI'),
+        ('feat_integrations','Integrations'),
+    ] %}
+    <li>
+      {% if plan[flag] %}
+      <span class="feat-yes">✓</span><span class="feat-lbl">{{ label }}</span>
+      {% else %}
+      <span class="feat-no">✗</span><span class="feat-lbl muted">{{ label }}</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+
+    <li>
+      <span class="feat-yes">✓</span>
+      <span class="feat-lbl">Overage: ₦{{ plan.overage_per_msg_ngn|int }}/msg</span>
+    </li>
+  </ul>
+
+  <div class="plan-cta">
+    {% if is_current %}
+    <span class="btn-upgrade btn-current">Current plan</span>
+    {% elif plan.slug == 'free' %}
+    <span class="btn-upgrade btn-upgrade-outline" style="cursor:default">Downgrade</span>
+    {% elif plan.slug == 'growth' %}
+    <button type="button" onclick="openUpgradeModal('{{ plan.slug }}','{{ plan.name }}',{{ plan.price_ngn }},{{ plan.price_usd }})"
+            class="btn-upgrade btn-upgrade-purple">
+      Upgrade to {{ plan.name }}
+    </button>
+    {% else %}
+    <button type="button" onclick="openUpgradeModal('{{ plan.slug }}','{{ plan.name }}',{{ plan.price_ngn }},{{ plan.price_usd }})"
+            class="btn-upgrade btn-upgrade-primary">
+      Upgrade to {{ plan.name }}
+    </button>
+    {% endif %}
+    {% if plan.price_ngn > 0 %}
+    <div class="overage-note">Overage charged at ₦{{ plan.overage_per_msg_ngn|int }}/msg</div>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+</div>
+
+<p style="font-size:12px;color:var(--muted);margin-top:20px;text-align:center">
+  Payments are processed securely via Flutterwave (NGN) and Stripe (USD). Annual billing saves 5%.
+</p>
+
+{# ── Flash messages from callback ─────────────────────────────────────────── #}
+{% if request.args.get('sub_success') %}
+<div style="position:fixed;top:20px;right:20px;background:#ECFDF3;border:1px solid #6CE9A6;
+            border-radius:12px;padding:14px 20px;font-size:14px;color:#027A48;z-index:9999;
+            box-shadow:0 4px 16px rgba(0,0,0,.12)">
+  🎉 Subscription activated! Welcome to your new plan.
+</div>
+{% endif %}
+
+{# ── Upgrade modal ────────────────────────────────────────────────────────── #}
+<div id="upgradeModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);
+     z-index:9000;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:20px;padding:32px;width:100%;max-width:440px;
+              margin:16px;box-shadow:0 20px 60px rgba(0,0,0,.25);position:relative">
+
+    <button onclick="closeUpgradeModal()" style="position:absolute;top:16px;right:16px;
+            background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted)">✕</button>
+
+    <div style="font-size:18px;font-weight:800;margin-bottom:4px">Upgrade to <span id="modalPlanName"></span></div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:24px">Choose your billing cycle and currency</div>
+
+    <form method="POST" action="/billing/plan-upgrade" id="upgradeForm">
+      <input type="hidden" name="plan_slug" id="modalPlanSlug">
+
+      {# Billing cycle #}
+      <div style="margin-bottom:20px">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;
+                    letter-spacing:.5px;color:var(--muted);margin-bottom:8px">Billing cycle</div>
+        <div style="display:flex;gap:10px">
+          <label style="flex:1;cursor:pointer">
+            <input type="radio" name="cycle" value="monthly" checked onchange="updatePrices()"
+                   style="display:none" id="cycleMonthly">
+            <div class="cycle-btn" id="btnMonthly" style="border:2px solid var(--ink);background:#f9fafb;
+                 border-radius:10px;padding:12px;text-align:center">
+              <div style="font-weight:700;font-size:14px">Monthly</div>
+              <div id="priceMonthlyNGN" style="font-size:13px;color:var(--muted)"></div>
+            </div>
+          </label>
+          <label style="flex:1;cursor:pointer">
+            <input type="radio" name="cycle" value="annual" onchange="updatePrices()"
+                   style="display:none" id="cycleAnnual">
+            <div class="cycle-btn" id="btnAnnual" style="border:2px solid var(--line);background:#f9fafb;
+                 border-radius:10px;padding:12px;text-align:center">
+              <div style="font-weight:700;font-size:14px">Annual <span style="font-size:11px;color:var(--good);font-weight:600">5% off</span></div>
+              <div id="priceAnnualNGN" style="font-size:13px;color:var(--muted)"></div>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      {# Currency #}
+      <div style="margin-bottom:24px">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;
+                    letter-spacing:.5px;color:var(--muted);margin-bottom:8px">Pay with</div>
+        <div style="display:flex;gap:10px">
+          <label style="flex:1;cursor:pointer">
+            <input type="radio" name="currency" value="NGN" checked onchange="updatePrices()"
+                   style="display:none" id="currNGN">
+            <div class="curr-btn" id="btnNGN" style="border:2px solid var(--ink);background:#f9fafb;
+                 border-radius:10px;padding:12px;text-align:center">
+              <div style="font-weight:700;font-size:14px">🇳🇬 Flutterwave</div>
+              <div style="font-size:12px;color:var(--muted)">Pay in NGN</div>
+            </div>
+          </label>
+          <label style="flex:1;cursor:pointer">
+            <input type="radio" name="currency" value="USD" onchange="updatePrices()"
+                   style="display:none" id="currUSD">
+            <div class="curr-btn" id="btnUSD" style="border:2px solid var(--line);background:#f9fafb;
+                 border-radius:10px;padding:12px;text-align:center">
+              <div style="font-weight:700;font-size:14px">💳 Stripe</div>
+              <div style="font-size:12px;color:var(--muted)">Pay in USD</div>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      {# Price summary #}
+      <div id="priceSummary" style="background:#f9fafb;border-radius:10px;
+           padding:14px 16px;margin-bottom:20px;font-size:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="color:var(--muted)">You'll be charged</span>
+          <span style="font-weight:800;font-size:18px" id="summaryPrice"></span>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px" id="summaryNote">
+          Recurring. Cancel anytime.
+        </div>
+      </div>
+
+      <button type="submit" class="btn-upgrade btn-upgrade-primary" style="width:100%;padding:14px;font-size:15px">
+        Proceed to Payment →
+      </button>
+    </form>
+  </div>
+</div>
+
+<script>
+var _modalPlanNGN = 0, _modalPlanUSD = 0;
+
+function openUpgradeModal(slug, name, priceNGN, priceUSD) {
+  _modalPlanNGN = priceNGN;
+  _modalPlanUSD = priceUSD;
+  document.getElementById('modalPlanName').textContent = name;
+  document.getElementById('modalPlanSlug').value = slug;
+  // Reset to defaults
+  document.getElementById('cycleMonthly').checked = true;
+  document.getElementById('currNGN').checked = true;
+  updatePrices();
+  document.getElementById('upgradeModal').style.display = 'flex';
+}
+
+function closeUpgradeModal() {
+  document.getElementById('upgradeModal').style.display = 'none';
+}
+
+function updatePrices() {
+  var cycle    = document.querySelector('input[name="cycle"]:checked').value;
+  var currency = document.querySelector('input[name="currency"]:checked').value;
+  var ngn = _modalPlanNGN, usd = _modalPlanUSD;
+
+  var annualNGN = Math.round(ngn * 12 * 0.95);
+  var annualUSD = Math.round(usd * 12 * 0.95 * 100) / 100;
+
+  document.getElementById('priceMonthlyNGN').textContent = '₦' + ngn.toLocaleString() + '/mo';
+  document.getElementById('priceAnnualNGN').textContent  = '₦' + Math.round(ngn*0.95).toLocaleString() + '/mo';
+
+  // Highlight selected cycle
+  document.getElementById('btnMonthly').style.borderColor = cycle === 'monthly' ? 'var(--ink)' : 'var(--line)';
+  document.getElementById('btnAnnual').style.borderColor  = cycle === 'annual'  ? 'var(--ink)' : 'var(--line)';
+  document.getElementById('btnNGN').style.borderColor     = currency === 'NGN'  ? 'var(--ink)' : 'var(--line)';
+  document.getElementById('btnUSD').style.borderColor     = currency === 'USD'  ? 'var(--ink)' : 'var(--line)';
+
+  var summary, note;
+  if (currency === 'NGN') {
+    if (cycle === 'monthly') {
+      summary = '₦' + ngn.toLocaleString() + '/month';
+      note    = 'Charged monthly via Flutterwave. Cancel anytime.';
+    } else {
+      summary = '₦' + annualNGN.toLocaleString() + '/year';
+      note    = '5% off — billed annually via Flutterwave.';
+    }
+  } else {
+    if (cycle === 'monthly') {
+      summary = '$' + usd.toFixed(2) + '/month';
+      note    = 'Charged monthly via Stripe. Cancel anytime.';
+    } else {
+      summary = '$' + annualUSD.toFixed(2) + '/year';
+      note    = '5% off — billed annually via Stripe.';
+    }
+  }
+  document.getElementById('summaryPrice').textContent = summary;
+  document.getElementById('summaryNote').textContent  = note;
+}
+
+// Close modal on backdrop click
+document.getElementById('upgradeModal').addEventListener('click', function(e) {
+  if (e.target === this) closeUpgradeModal();
+});
+</script>
+
+{% endblock %}
