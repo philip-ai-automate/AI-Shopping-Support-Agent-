@@ -6375,6 +6375,272 @@ def whatsapp_inbox_resolve(session_id: str):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# WHATSAPP CONTACTS
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _normalise_phone(raw: str) -> str:
+    """Strip +, spaces, dashes, parens from a phone number string."""
+    import re
+    return re.sub(r"[^\d]", "", raw)
+
+
+@portal_bp.route("/whatsapp/contacts")
+def whatsapp_contacts():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    search = (request.args.get("q") or "").strip()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        if search:
+            cur.execute("""
+                SELECT * FROM wa_contacts
+                WHERE tenant_id=%s
+                  AND (phone ILIKE %s OR display_name ILIKE %s)
+                ORDER BY display_name ASC NULLS LAST, created_at DESC
+                LIMIT 500
+            """, (tenant_id, f"%{search}%", f"%{search}%"))
+        else:
+            cur.execute("""
+                SELECT * FROM wa_contacts
+                WHERE tenant_id=%s
+                ORDER BY display_name ASC NULLS LAST, created_at DESC
+                LIMIT 500
+            """, (tenant_id,))
+        contacts = cur.fetchall()
+
+        cur.execute("SELECT COUNT(*) AS total FROM wa_contacts WHERE tenant_id=%s", (tenant_id,))
+        total = cur.fetchone()["total"]
+
+        cur.execute("""
+            SELECT COUNT(*) AS new_week FROM wa_contacts
+            WHERE tenant_id=%s AND created_at >= NOW() - INTERVAL '7 days'
+        """, (tenant_id,))
+        new_week = cur.fetchone()["new_week"]
+
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ whatsapp_contacts error:", e)
+        contacts, total, new_week = [], 0, 0
+
+    return render_template(
+        "portal/whatsapp_contacts.html",
+        contacts=contacts,
+        total=total,
+        new_week=new_week,
+        search=search,
+    )
+
+
+@portal_bp.route("/whatsapp/contacts/add", methods=["POST"])
+def whatsapp_contacts_add():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    phone        = _normalise_phone(request.form.get("phone") or "")
+    display_name = (request.form.get("display_name") or "").strip()[:200]
+    notes        = (request.form.get("notes") or "").strip()
+
+    if not phone or len(phone) < 7:
+        flash("A valid phone number with country code is required.", "danger")
+        return redirect(url_for("portal.whatsapp_contacts"))
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("""
+            INSERT INTO wa_contacts (tenant_id, phone, display_name, notes)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (tenant_id, phone)
+            DO UPDATE SET display_name=EXCLUDED.display_name,
+                          notes=EXCLUDED.notes,
+                          updated_at=NOW()
+        """, (tenant_id, phone, display_name or None, notes or None))
+        conn.commit()
+        cur.close(); conn.close()
+        flash(f"Contact {display_name or phone} saved.", "success")
+    except Exception as e:
+        print("⚠️ whatsapp_contacts_add error:", e)
+        flash("Could not save contact. Please try again.", "danger")
+
+    return redirect(url_for("portal.whatsapp_contacts"))
+
+
+@portal_bp.route("/whatsapp/contacts/<int:contact_id>/edit", methods=["POST"])
+def whatsapp_contacts_edit(contact_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    display_name = (request.form.get("display_name") or "").strip()[:200]
+    notes        = (request.form.get("notes") or "").strip()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("""
+            UPDATE wa_contacts
+            SET display_name=%s, notes=%s, updated_at=NOW()
+            WHERE id=%s AND tenant_id=%s
+        """, (display_name or None, notes or None, contact_id, tenant_id))
+        conn.commit()
+        cur.close(); conn.close()
+        flash("Contact updated.", "success")
+    except Exception as e:
+        print("⚠️ whatsapp_contacts_edit error:", e)
+        flash("Could not update contact.", "danger")
+
+    return redirect(url_for("portal.whatsapp_contacts"))
+
+
+@portal_bp.route("/whatsapp/contacts/<int:contact_id>/delete", methods=["POST"])
+def whatsapp_contacts_delete(contact_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("DELETE FROM wa_contacts WHERE id=%s AND tenant_id=%s", (contact_id, tenant_id))
+        conn.commit()
+        deleted = cur.rowcount
+        cur.close(); conn.close()
+        if deleted:
+            flash("Contact deleted.", "success")
+        else:
+            flash("Contact not found.", "warning")
+    except Exception as e:
+        print("⚠️ whatsapp_contacts_delete error:", e)
+        flash("Could not delete contact.", "danger")
+
+    return redirect(url_for("portal.whatsapp_contacts"))
+
+
+@portal_bp.route("/whatsapp/contacts/import", methods=["POST"])
+def whatsapp_contacts_import():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    f = request.files.get("csv_file")
+    if not f or not f.filename:
+        flash("Please select a CSV file to upload.", "danger")
+        return redirect(url_for("portal.whatsapp_contacts"))
+
+    import csv, io
+    try:
+        stream = io.StringIO(f.stream.read().decode("utf-8-sig", errors="replace"))
+        reader = csv.reader(stream)
+        rows   = list(reader)
+    except Exception:
+        flash("Could not read the CSV file. Ensure it is UTF-8 encoded.", "danger")
+        return redirect(url_for("portal.whatsapp_contacts"))
+
+    if not rows:
+        flash("The CSV file is empty.", "warning")
+        return redirect(url_for("portal.whatsapp_contacts"))
+
+    # Auto-detect header row
+    first = [c.strip().lower() for c in rows[0]]
+    has_header = any(h in first for h in ("phone", "name", "mobile", "number", "contact"))
+    data_rows  = rows[1:] if has_header else rows
+
+    # Detect column positions
+    phone_col = next((i for i, h in enumerate(first) if h in ("phone","mobile","number","tel","whatsapp")), 0)
+    name_col  = next((i for i, h in enumerate(first) if h in ("name","display_name","contact","full_name","customer")), 1 if len(first) > 1 else None)
+    notes_col = next((i for i, h in enumerate(first) if h in ("notes","note","comment","remarks")), None)
+
+    imported = skipped = errors = 0
+    conn = get_db_connection()
+    cur  = conn.cursor()
+
+    for row in data_rows:
+        if not row: continue
+        raw_phone = row[phone_col].strip() if phone_col < len(row) else ""
+        phone = _normalise_phone(raw_phone)
+        if not phone or len(phone) < 7:
+            skipped += 1
+            continue
+
+        name  = row[name_col].strip()[:200] if name_col is not None and name_col < len(row) else None
+        notes = row[notes_col].strip() if notes_col is not None and notes_col < len(row) else None
+
+        try:
+            cur.execute("""
+                INSERT INTO wa_contacts (tenant_id, phone, display_name, notes)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (tenant_id, phone)
+                DO UPDATE SET display_name=COALESCE(EXCLUDED.display_name, wa_contacts.display_name),
+                              notes=COALESCE(EXCLUDED.notes, wa_contacts.notes),
+                              updated_at=NOW()
+            """, (tenant_id, phone, name or None, notes or None))
+            imported += 1
+        except Exception:
+            errors += 1
+
+    conn.commit()
+    cur.close(); conn.close()
+
+    parts = [f"{imported} contact{'s' if imported != 1 else ''} imported"]
+    if skipped: parts.append(f"{skipped} skipped (invalid number)")
+    if errors:  parts.append(f"{errors} errors")
+    flash(" · ".join(parts) + ".", "success" if imported else "warning")
+
+    return redirect(url_for("portal.whatsapp_contacts"))
+
+
+@portal_bp.route("/whatsapp/contacts/export")
+def whatsapp_contacts_export():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    import csv, io
+    from flask import Response
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT phone, display_name, notes, created_at
+            FROM wa_contacts WHERE tenant_id=%s
+            ORDER BY display_name ASC NULLS LAST
+        """, (tenant_id,))
+        rows = cur.fetchall()
+        cur.close(); conn.close()
+    except Exception as e:
+        flash("Could not export contacts.", "danger")
+        return redirect(url_for("portal.whatsapp_contacts"))
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["phone", "name", "notes", "added"])
+    for row in rows:
+        writer.writerow([
+            row["phone"],
+            row["display_name"] or "",
+            row["notes"] or "",
+            row["created_at"].strftime("%Y-%m-%d") if row["created_at"] else "",
+        ])
+
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=contacts.csv"},
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # WHATSAPP CAMPAIGNS
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -7607,7 +7873,7 @@ def onboarding_catalogue_products(category_id: int):
     selected_ids = _merchant_selection_ids(cur, merchant_id)
 
     cur.execute(
-        "SELECT DISTINCT brand FROM catalogue_products WHERE category_id=%s AND brand IS NOT NULL ORDER BY brand",
+        "SELECT DISTINCT brand FROM catalogue_products WHERE category_id=%s AND brand IS NOT NULL AND is_active=TRUE ORDER BY brand",
         (category_id,)
     )
     brands = [r["brand"] for r in cur.fetchall()]
@@ -7932,7 +8198,7 @@ def catalogue_category(category_id: int):
 
     # Brand list for filter dropdown
     cur.execute(
-        "SELECT DISTINCT brand FROM catalogue_products WHERE category_id=%s AND brand IS NOT NULL ORDER BY brand",
+        "SELECT DISTINCT brand FROM catalogue_products WHERE category_id=%s AND brand IS NOT NULL AND is_active=TRUE ORDER BY brand",
         (category_id,)
     )
     brands = [r["brand"] for r in cur.fetchall()]
