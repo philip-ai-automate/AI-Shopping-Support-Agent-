@@ -223,6 +223,10 @@
     <p class="modal-sub">Customers scan this to open WhatsApp and send SETUP automatically.</p>
     <img src="{{ url_for('portal.whatsapp_qr_code') }}" alt="WhatsApp QR Code"
          style="width:220px;height:220px;border:1px solid var(--line);border-radius:12px;margin-bottom:20px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;background:rgba(3,12,24,.04);border:1px solid var(--line);border-radius:10px;padding:8px 10px">
+      <span id="qrLinkText" style="font-size:12px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left">{{ wa_onboarding_link }}</span>
+      <button onclick="copyQrLink()" id="qrCopyBtn" class="btn btn-sm" style="flex-shrink:0;padding:4px 10px;font-size:12px">Copy Link</button>
+    </div>
     <div style="display:flex;gap:10px;justify-content:center">
       <a href="{{ url_for('portal.whatsapp_qr_code', download='1') }}" class="btn btn-primary btn-sm" download>Download PNG</a>
       <button onclick="document.getElementById('qrModal').classList.remove('open')" class="btn btn-sm">Close</button>
@@ -825,6 +829,15 @@ var _PF_KEYS = [
   'pf_app_{{ customer.id }}',
   'pf_phone_{{ customer.id }}'
 ];
+
+function copyQrLink() {
+  var link = document.getElementById('qrLinkText').textContent.trim();
+  navigator.clipboard.writeText(link).then(function() {
+    var btn = document.getElementById('qrCopyBtn');
+    btn.textContent = 'Copied!';
+    setTimeout(function() { btn.textContent = 'Copy Link'; }, 2000);
+  });
+}
 
 function togglePreflight(btn, key) {
   var done = btn.classList.toggle('done');

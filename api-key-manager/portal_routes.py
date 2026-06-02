@@ -5689,6 +5689,12 @@ def whatsapp_connect():
     except Exception:
         report_phone = ""
 
+    wa_onboarding_link = ""
+    if connection and connection.get("active") and connection.get("display_phone_number"):
+        import re as _re
+        _digits = _re.sub(r"[^\d]", "", connection["display_phone_number"])
+        wa_onboarding_link = f"https://wa.me/{_digits}?text=SETUP"
+
     return render_template("portal/whatsapp.html",
                            customer=customer,
                            connection=connection,
@@ -5700,7 +5706,8 @@ def whatsapp_connect():
                            webhook_url=webhook_url,
                            suggested_verify_token=suggested_verify_token,
                            portal_api_key=portal_api_key,
-                           report_phone=report_phone)
+                           report_phone=report_phone,
+                           wa_onboarding_link=wa_onboarding_link)
 
 
 @portal_bp.route("/whatsapp/save-notify-phone", methods=["POST"])
