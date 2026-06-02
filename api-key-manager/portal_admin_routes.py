@@ -134,10 +134,15 @@ def customer_detail(customer_id: int):
     # We fetch it separately below with a safe try/except instead.
     cur.execute("""
         SELECT c.*, t.name AS tenant_name, t.domain,
-               COALESCE(tb.token_balance,0) AS token_balance
+               COALESCE(tb.token_balance,0) AS token_balance,
+               t.plan_id, t.billing_cycle, t.plan_period_start,
+               COALESCE(p.slug,'free') AS plan_slug,
+               COALESCE(p.name,'Free') AS plan_name,
+               COALESCE(p.ai_messages_limit,100) AS ai_messages_limit
         FROM customers c
         JOIN tenants t ON t.id=c.tenant_id
         LEFT JOIN tenant_balances tb ON tb.tenant_id=t.id
+        LEFT JOIN plans p ON p.id = t.plan_id
         WHERE c.id=%s""", (customer_id,))
     customer = cur.fetchone()
     if not customer:
@@ -193,6 +198,22 @@ def customer_detail(customer_id: int):
     except Exception:
         doc_counts = {}
 
+    # Plan data for assignment panel
+    cur.execute("SELECT id, slug, name FROM plans WHERE is_active=TRUE ORDER BY sort_order")
+    all_plans = cur.fetchall() or []
+
+    # Messages used this billing period
+    from datetime import date as _d
+    period_start = customer.get("plan_period_start") or _d.today().replace(day=1)
+    try:
+        cur.execute("""
+            SELECT COUNT(*) AS used FROM usage_events
+            WHERE tenant_id=%s AND created_at >= %s
+        """, (tenant_id, period_start))
+        msgs_used = int((cur.fetchone() or {}).get("used") or 0)
+    except Exception:
+        msgs_used = 0
+
     cur.close(); conn.close()
 
     customer["balance_credits"] = tokens_to_credits(int(customer.get("token_balance") or 0))
@@ -210,6 +231,8 @@ def customer_detail(customer_id: int):
                            invoices=invs, audit=audit,
                            tenant_features=tenant_features,
                            doc_counts=doc_counts,
+                           all_plans=all_plans,
+                           msgs_used=msgs_used,
                            admin_new_plain_key=session.pop("admin_new_plain_key", None))
 
 
@@ -2857,3 +2880,181 @@ def catalogue_category_upload(category_id: int):
     msg = f"Import complete — {inserted} added, {updated} updated, {errors} skipped."
     flash(msg, "success" if errors == 0 else "warning")
     return redirect(url_for("portal_admin.catalogue_category_products", category_id=category_id))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PLANS MANAGEMENT — admin view/assign plans to tenants
+# ══════════════════════════════════════════════════════════════════════════════
+
+@portal_admin_bp.route("/plans")
+def admin_plans():
+    _require_admin()
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cur.execute("SELECT * FROM plans ORDER BY sort_order")
+    plans = cur.fetchall() or []
+
+    cur.execute("""
+        SELECT t.id AS tenant_id, t.name AS business_name,
+               t.billing_cycle, t.plan_period_start,
+               COALESCE(p.slug, 'free') AS plan_slug,
+               COALESCE(p.name, 'Free') AS plan_name,
+               (SELECT COUNT(*) FROM usage_events ue
+                WHERE ue.tenant_id=t.id AND ue.created_at >= COALESCE(t.plan_period_start, CURRENT_DATE - 30))
+                    AS msgs_used,
+               COALESCE(p.ai_messages_limit, 100) AS msgs_limit
+        FROM tenants t
+        LEFT JOIN plans p ON p.id = t.plan_id
+        WHERE t.status != 'cancelled'
+        ORDER BY t.name
+    """)
+    tenants = cur.fetchall() or []
+    cur.close(); conn.close()
+
+    return render_template("portal/admin_plans.html",
+                           plans=plans, tenants=tenants)
+
+
+@portal_admin_bp.route("/plans/assign/<int:tenant_id>", methods=["POST"])
+def admin_plans_assign(tenant_id: int):
+    _require_admin()
+    plan_id       = int(request.form.get("plan_id") or 1)
+    billing_cycle = request.form.get("billing_cycle", "monthly")
+    from datetime import date as _d
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("""
+        UPDATE tenants
+        SET plan_id=%s, billing_cycle=%s, plan_period_start=%s, quota_notified_at=NULL
+        WHERE id=%s
+    """, (plan_id, billing_cycle, _d.today(), tenant_id))
+    conn.commit()
+    cur.close(); conn.close()
+    insert_audit_log(action="plan_assign", admin_username=_admin_user(),
+                     details={"tenant_id": tenant_id, "plan_id": plan_id, "billing_cycle": billing_cycle})
+    flash(f"Plan updated for tenant #{tenant_id}.", "success")
+    # Redirect back to wherever the form was submitted from
+    referrer = request.referrer or ""
+    if "customers" in referrer:
+        # Find the customer id for this tenant and go back to their detail page
+        try:
+            conn2 = get_db_connection()
+            cur2  = conn2.cursor()
+            cur2.execute("SELECT id FROM customers WHERE tenant_id=%s AND is_active=TRUE ORDER BY id LIMIT 1", (tenant_id,))
+            row = cur2.fetchone()
+            cur2.close(); conn2.close()
+            if row:
+                return redirect(url_for("portal_admin.customer_detail", customer_id=row[0]))
+        except Exception:
+            pass
+    return redirect(url_for("portal_admin.admin_plans"))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WHATSAPP DIAGNOSTICS — admin troubleshooting tool
+# ══════════════════════════════════════════════════════════════════════════════
+
+@portal_admin_bp.route("/wa-diagnostics")
+def wa_diagnostics():
+    _require_admin()
+    from datetime import datetime as _dt, timezone as _tz
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cur.execute("""
+        SELECT
+            wt.id,
+            wt.tenant_id,
+            wt.phone_number_id,
+            wt.display_phone_number,
+            wt.verified_name,
+            wt.waba_id,
+            wt.active,
+            wt.token_expires_at,
+            wt.signup_method,
+            wt.created_at,
+            t.name          AS business_name,
+            t.status        AS tenant_status,
+            MAX(wml.created_at) FILTER (WHERE wml.direction = 'inbound')   AS last_inbound_at,
+            MAX(wml.created_at)                                             AS last_any_at,
+            COUNT(wml.id)   FILTER (WHERE wml.created_at >= NOW() - INTERVAL '24 hours') AS msgs_24h,
+            COUNT(wml.id)   FILTER (WHERE wml.created_at >= NOW() - INTERVAL '7 days')   AS msgs_7d,
+            COUNT(DISTINCT wml.customer_phone)
+                            FILTER (WHERE wml.created_at >= NOW() - INTERVAL '7 days')   AS customers_7d
+        FROM wa_tenants wt
+        JOIN tenants t ON t.id = wt.tenant_id
+        LEFT JOIN wa_message_log wml ON wml.tenant_id = wt.tenant_id
+        GROUP BY wt.id, wt.tenant_id, wt.phone_number_id, wt.display_phone_number,
+                 wt.verified_name, wt.waba_id, wt.active, wt.token_expires_at,
+                 wt.signup_method, wt.created_at, t.name, t.status
+        ORDER BY t.name
+    """)
+    rows = cur.fetchall() or []
+    cur.close(); conn.close()
+
+    now = _dt.now(_tz.utc)
+
+    tenants = []
+    for r in rows:
+        d = dict(r)
+
+        # Token status
+        exp = d.get("token_expires_at")
+        if exp is None:
+            d["token_status"] = "permanent"
+            d["token_label"]  = "Permanent"
+        elif exp < now:
+            d["token_status"] = "expired"
+            d["token_label"]  = f"Expired {exp.strftime('%-d %b %Y')}"
+        elif (exp - now).days < 7:
+            d["token_status"] = "expiring"
+            d["token_label"]  = f"Expires {exp.strftime('%-d %b %Y')}"
+        else:
+            d["token_status"] = "ok"
+            d["token_label"]  = f"OK until {exp.strftime('%-d %b %Y')}"
+
+        # Webhook health (based on last inbound message)
+        last = d.get("last_inbound_at")
+        if last is None:
+            d["webhook_status"] = "none"
+            d["webhook_label"]  = "No messages yet"
+        else:
+            age_h = (now - last).total_seconds() / 3600
+            if age_h < 1:
+                d["webhook_status"] = "active"
+                d["webhook_label"]  = "Active (< 1h ago)"
+            elif age_h < 24:
+                d["webhook_status"] = "recent"
+                d["webhook_label"]  = f"Recent ({int(age_h)}h ago)"
+            elif age_h < 168:
+                d["webhook_status"] = "quiet"
+                d["webhook_label"]  = f"Quiet ({int(age_h/24)}d ago)"
+            else:
+                d["webhook_status"] = "stale"
+                d["webhook_label"]  = f"Stale ({int(age_h/24)}d ago)"
+
+        tenants.append(d)
+
+    return render_template("portal/admin_wa_diagnostics.html", tenants=tenants)
+
+
+@portal_admin_bp.route("/merchant-signup-qr")
+def merchant_signup_qr():
+    r = _require_admin()
+    if r: return r
+    import qrcode
+    from flask import send_file
+    signup_url = os.getenv("PORTAL_BASE_URL", "https://portal.phixtra.com") + "/register"
+    qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=10, border=4)
+    qr.add_data(signup_url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    as_dl = request.args.get("download") == "1"
+    return send_file(buf, mimetype="image/png",
+                     as_attachment=as_dl,
+                     download_name="phixtra-merchant-signup-qr.png")

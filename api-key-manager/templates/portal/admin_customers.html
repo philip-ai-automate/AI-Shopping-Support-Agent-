@@ -1,9 +1,35 @@
 {% extends "portal/admin_base.html" %}
 {% block title %}Customers — PhiXtra Admin{% endblock %}
 {% block content %}
+<style>
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(3,12,24,.55);z-index:1000;align-items:center;justify-content:center}
+  .modal-overlay.open{display:flex}
+  .modal-box{background:#fff;border-radius:20px;padding:28px;max-width:480px;width:100%;margin:20px;box-shadow:0 24px 60px rgba(3,12,24,.22)}
+  .modal-title{font-size:18px;font-weight:800;margin-bottom:6px}
+  .modal-sub{font-size:13px;color:var(--muted);margin-bottom:20px}
+</style>
 
 <div class="page-header">
   <h1 class="section-title">Customers</h1>
+  <button onclick="document.getElementById('signupQrModal').classList.add('open')" class="btn btn-sm">Merchant Signup QR</button>
+</div>
+
+<!-- ── Merchant Signup QR Modal ───────────────────────────────────────────── -->
+<div class="modal-overlay" id="signupQrModal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal-box" style="max-width:360px;text-align:center">
+    <div class="modal-title">Merchant Signup QR Code</div>
+    <p class="modal-sub">New merchants scan this to go directly to the Phixtra signup page.</p>
+    <img src="{{ url_for('portal_admin.merchant_signup_qr') }}" alt="Merchant Signup QR Code"
+         style="width:220px;height:220px;border:1px solid var(--line);border-radius:12px;margin-bottom:20px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;background:rgba(3,12,24,.04);border:1px solid var(--line);border-radius:10px;padding:8px 10px">
+      <span style="font-size:12px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left">https://portal.phixtra.com/register</span>
+      <button onclick="navigator.clipboard.writeText('https://portal.phixtra.com/register').then(function(){var b=this;b.textContent='Copied!';setTimeout(function(){b.textContent='Copy Link';},2000);}.bind(this))" class="btn btn-sm" style="flex-shrink:0;padding:4px 10px;font-size:12px">Copy Link</button>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <a href="{{ url_for('portal_admin.merchant_signup_qr', download='1') }}" class="btn btn-primary btn-sm" download>Download PNG</a>
+      <button onclick="document.getElementById('signupQrModal').classList.remove('open')" class="btn btn-sm">Close</button>
+    </div>
+  </div>
 </div>
 
 <form method="GET" class="search-bar">
