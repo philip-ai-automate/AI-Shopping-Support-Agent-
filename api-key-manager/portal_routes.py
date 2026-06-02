@@ -783,6 +783,37 @@ def _register_whatsapp_merchant(
         )
     return redirect(url_for("portal.login"))
 
+@portal_bp.route("/register/whatsapp-setup-qr")
+def register_whatsapp_setup_qr():
+    """Public QR code — encodes the Phixtra setup WhatsApp number with SETUP pre-typed."""
+    import re as _re, io, qrcode
+    from flask import send_file
+    setup_phone_id = os.getenv("WA_SETUP_PHONE_NUMBER_ID") or os.getenv("WA_OTP_PHONE_NUMBER_ID", "")
+    display_number = ""
+    if setup_phone_id:
+        try:
+            conn = get_db_connection()
+            cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("SELECT display_phone_number FROM wa_tenants WHERE phone_number_id=%s LIMIT 1", (setup_phone_id,))
+            row = cur.fetchone()
+            cur.close(); conn.close()
+            if row and row.get("display_phone_number"):
+                display_number = _re.sub(r"[^\d]", "", row["display_phone_number"])
+        except Exception:
+            pass
+    if not display_number:
+        return ("Setup number not configured", 404)
+    wa_url = f"https://wa.me/{display_number}?text=SETUP"
+    qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=10, border=4)
+    qr.add_data(wa_url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return send_file(buf, mimetype="image/png", as_attachment=False)
+
+
 @portal_bp.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "GET":

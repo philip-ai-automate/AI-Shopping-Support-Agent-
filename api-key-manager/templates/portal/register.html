@@ -112,6 +112,12 @@
         <input type="text" name="business_name" id="businessName"
                placeholder="e.g. Sarah's Boutique"/>
       </div>
+      <div style="border:1px solid var(--line);border-radius:14px;padding:18px;text-align:center;background:rgba(3,12,24,.02);margin-bottom:16px">
+        <p style="font-size:13px;font-weight:700;margin-bottom:4px">Already on WhatsApp? Onboard instantly</p>
+        <p class="muted" style="font-size:12px;margin-bottom:14px">Scan this QR code to open WhatsApp and send SETUP — no form needed.</p>
+        <img src="{{ url_for('portal.register_whatsapp_setup_qr') }}" alt="WhatsApp SETUP QR Code"
+             style="width:160px;height:160px;border-radius:10px;border:1px solid var(--line)">
+      </div>
     </div>
 
     <!-- Honeypot -->
