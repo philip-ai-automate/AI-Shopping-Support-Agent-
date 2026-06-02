@@ -1,65 +1,88 @@
 # search.py
 """
-Hybrid retrieval (Option B):
-- Generates an embedding for the user's query (Azure OpenAI)
-- Runs hybrid search against Azure AI Search:
-    - keyword search over searchable text fields
-    - vector search over content_vector
-- Optionally uses semantic query type if a semantic config name is provided.
+pgvector-based hybrid retrieval replacing Azure AI Search.
 
-This module returns "context chunks" as short, human-readable snippets for the LLM.
+- Generates an embedding for the user's query (OpenAI API)
+- Runs vector similarity search against the `documents` table (pgvector)
+- Applies SQL WHERE filters for price, stock, brand when detected in query
+- Falls back to keyword-only search if embedding fails
 """
 
 import os
 import re
 import json
-from typing import Any, Dict, List, Optional
+import time
+from typing import Any, Dict, List, Optional, Tuple
 
-import requests
-from openai import AzureOpenAI
+import httpx
+import psycopg2
+import psycopg2.extras
+from openai import OpenAI
 from dotenv import load_dotenv
+
+# ── Currency conversion (GBP ↔ NGN) ─────────────────────────────────────────
+# Products are stored in GBP. Customers query in NGN. We convert at query time.
+_GBP_NGN_RATE: float = 2050.0   # fallback
+_GBP_NGN_FETCHED_AT: float = 0.0
+_GBP_NGN_TTL: int = 3600        # refresh every hour
+
+
+def _get_gbp_ngn_rate() -> float:
+    global _GBP_NGN_RATE, _GBP_NGN_FETCHED_AT
+    if time.time() - _GBP_NGN_FETCHED_AT < _GBP_NGN_TTL:
+        return _GBP_NGN_RATE
+    try:
+        with httpx.Client(timeout=5) as client:
+            resp = client.get("https://api.exchangerate-api.com/v4/latest/GBP")
+            resp.raise_for_status()
+            rate = float(resp.json()["rates"]["NGN"])
+            _GBP_NGN_RATE = rate
+            _GBP_NGN_FETCHED_AT = time.time()
+            print(f"   [CURRENCY] live GBP→NGN rate: {rate:,.2f}")
+            return rate
+    except Exception as exc:
+        print(f"   [CURRENCY] rate fetch failed ({exc}), using fallback GBP→NGN={_GBP_NGN_RATE}")
+        _GBP_NGN_FETCHED_AT = time.time()   # don't hammer the API on every request
+        return _GBP_NGN_RATE
+
+
+def _ngn_to_gbp(ngn: float) -> float:
+    return round(ngn / _get_gbp_ngn_rate(), 2)
+
+
+def _gbp_to_ngn(gbp: float) -> float:
+    return round(gbp * _get_gbp_ngn_rate(), 0)
 
 load_dotenv()
 
+_openai_client: Optional[OpenAI] = None
 
-def _client() -> AzureOpenAI:
-    return AzureOpenAI(
-        api_key=os.getenv("AZURE_OPENAI_KEY"),
-        api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-06-01"),
-        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+
+def _get_openai_client() -> OpenAI:
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    return _openai_client
+
+
+def _get_pg_conn():
+    return psycopg2.connect(
+        host=os.getenv("PG_HOST", "localhost"),
+        port=int(os.getenv("PG_PORT", "5432")),
+        user=os.getenv("PG_USER"),
+        password=os.getenv("PG_PASSWORD"),
+        dbname=os.getenv("PG_DB"),
     )
 
 
 def _embed_query(text: str) -> List[float]:
-    deployment = os.getenv("AZURE_OPENAI_EMBED_DEPLOYMENT") or os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT") or ""
-    if not deployment:
-        raise RuntimeError("AZURE_OPENAI_EMBED_DEPLOYMENT is not set")
-
-    text = (text or "").strip()
-    if not text:
-        text = "empty"
-
-    resp = _client().embeddings.create(model=deployment, input=[text])
-    emb = resp.data[0].embedding
-    return [float(x) for x in emb]
-
-
-def _search_endpoint(index_name: str) -> str:
-    ep = (os.getenv("AZURE_SEARCH_ENDPOINT") or "").rstrip("/")
-    if not ep:
-        raise RuntimeError("AZURE_SEARCH_ENDPOINT is not set")
-    return f"{ep}/indexes/{index_name}/docs/search"
-
-
-def _search_headers() -> Dict[str, str]:
-    key = os.getenv("AZURE_SEARCH_KEY") or os.getenv("AZURE_SEARCH_ADMIN_KEY") or ""
-    if not key:
-        raise RuntimeError("AZURE_SEARCH_KEY is not set")
-    return {"Content-Type": "application/json", "api-key": key}
+    model = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")
+    text = (text or "").strip() or "empty"
+    resp = _get_openai_client().embeddings.create(model=model, input=[text])
+    return [float(x) for x in resp.data[0].embedding]
 
 
 def _format_doc(doc: Dict[str, Any], max_chars: int) -> str:
-    # Build a compact snippet for the LLM context
     title = (doc.get("title") or "").strip()
     sku = (doc.get("sku") or "").strip()
     brand = (doc.get("brand") or "").strip()
@@ -79,12 +102,22 @@ def _format_doc(doc: Dict[str, Any], max_chars: int) -> str:
         try:
             pmin = float(price_min) if price_min is not None else None
             pmax = float(price_max) if price_max is not None else None
-            if pmin is not None and pmax is not None and pmin != pmax:
-                parts.append(f"Price: {pmin}–{pmax}")
+            if pmin is not None and pmin <= 0:
+                pmin = None
+            if pmax is not None and pmax <= 0:
+                pmax = None
+            # Show both GBP (stored value) and NGN equivalent so the AI can
+            # accurately answer price questions from Nigerian customers
+            if pmin is not None and pmax is not None and abs(pmax - pmin) > 0.01:
+                ngn_lo = int(_gbp_to_ngn(pmin))
+                ngn_hi = int(_gbp_to_ngn(pmax))
+                parts.append(f"Price: £{pmin:,.2f}–£{pmax:,.2f} (₦{ngn_lo:,}–₦{ngn_hi:,})")
             elif pmin is not None:
-                parts.append(f"Price: {pmin}")
+                ngn = int(_gbp_to_ngn(pmin))
+                parts.append(f"Price: £{pmin:,.2f} (≈ ₦{ngn:,})")
             elif pmax is not None:
-                parts.append(f"Price: {pmax}")
+                ngn = int(_gbp_to_ngn(pmax))
+                parts.append(f"Price: £{pmax:,.2f} (≈ ₦{ngn:,})")
         except Exception:
             pass
 
@@ -100,20 +133,31 @@ def _format_doc(doc: Dict[str, Any], max_chars: int) -> str:
     return "\n".join(parts).strip()
 
 
-def _parse_filters(query: str) -> Optional[str]:
+def _parse_filters_sql(query: str) -> Tuple[List[str], List[Any]]:
     """
-    Extracts OData $filter expressions from a natural language query.
-    Handles: price (min/max), stock/quantity (in_stock), brand, category, tag.
-    Returns a combined OData filter string, or None if nothing was detected.
+    Parse natural language query into SQL WHERE clause parts + params.
+    Returns (parts, params) where parts are SQL condition strings with %s placeholders.
     """
     parts: List[str] = []
+    params: List[Any] = []
     q = (query or "").lower()
 
-    # ── Price ─────────────────────────────────────────────────────────────────
-    # Match a monetary number, optionally preceded by a currency symbol
-    _n = r'(?:[\$£€]\s*)?(\d[\d,]*(?:\.\d{1,2})?)'
+    # Expand k shorthand before any parsing: "400k" → "400000", "1.5k" → "1500"
+    q = re.sub(r'(\d+(?:\.\d+)?)\s*k\b', lambda m: str(int(float(m.group(1)) * 1000)), q)
 
-    # Range: "between £10 and £50" | "£10 - £50" | "10 to 50"
+    # Include ₦ in symbol detection so NGN budgets are captured
+    _n = r'(?:[\$£€₦]\s*)?(\d[\d,]*(?:\.\d{1,2})?)'
+
+    def _to_gbp(val: float) -> float:
+        """Convert to GBP if the value looks like NGN (explicit ₦ or number > 5000).
+        Products are stored in GBP (£100–£2000 range), so anything > 5000 is NGN."""
+        if '₦' in q or val > 5000:
+            converted = _ngn_to_gbp(val)
+            print(f"   [CURRENCY] ₦{val:,.0f} → £{converted:,.2f} (budget conversion)")
+            return converted
+        return val
+
+    # Price range: "between £10 and £50" | "₦100,000 - ₦300,000"
     _range = re.search(
         rf'between\s+{_n}\s+(?:and|to)\s+{_n}|{_n}\s*(?:-|–|—|to)\s*{_n}(?=\s|$)',
         q,
@@ -122,68 +166,53 @@ def _parse_filters(query: str) -> Optional[str]:
         gs = [g for g in _range.groups() if g is not None]
         if len(gs) >= 2:
             try:
-                lo = float(gs[0].replace(',', ''))
-                hi = float(gs[1].replace(',', ''))
+                lo = _to_gbp(float(gs[0].replace(',', '')))
+                hi = _to_gbp(float(gs[1].replace(',', '')))
                 if 0 < lo <= hi:
-                    # Variable products: price_min = cheapest variant, price_max = most expensive.
-                    # Simple products:   price_min = the price,         price_max = NULL.
-                    # Require price_min gt 0 to exclude WooCommerce products where price = 0
-                    # (unpriced products). Include if cheapest variant is within range AND
-                    # the most expensive variant doesn't exceed the upper bound (or no price_max).
                     parts.append(
-                        f"price_min ge {lo} and price_min le {hi} and price_min gt 0 and "
-                        f"(price_max le {hi} or price_max eq null)"
+                        "price_min >= %s AND price_min <= %s AND price_min > 0 "
+                        "AND (price_max <= %s OR price_max IS NULL)"
                     )
+                    params.extend([lo, hi, hi])
             except Exception:
                 pass
     else:
-        # Upper bound: "under £50", "below 100", "less than £30", "up to £200", "max £50"
+        # Upper bound: "under £50", "below ₦300,000", "less than 200000"
         _max_m = re.search(
             rf'(?:under|below|less than|cheaper than|up to|no more than|max(?:imum)?(?:\s+price)?(?:\s+of)?)\s+{_n}',
             q,
         )
         if _max_m:
             try:
-                hi = float(_max_m.group(1).replace(',', ''))
-                # Use price_min as the anchor for upper-bound queries:
-                # - Variable product: price_min is the cheapest variant price.
-                #   If price_min <= hi, at least one variant is within budget.
-                # - Simple product:   price_min is the only price.
-                # Require price_min gt 0 to exclude products where WooCommerce
-                # stored 0 because no real price was set (those slip through otherwise).
-                parts.append(f"price_min le {hi} and price_min gt 0")
+                hi = _to_gbp(float(_max_m.group(1).replace(',', '')))
+                parts.append("price_min <= %s AND price_min > 0")
+                params.append(hi)
             except Exception:
                 pass
 
-        # Lower bound: "over £50", "above £100", "more than £30", "at least £20", "from £50"
+        # Lower bound: "over £50", "above ₦100,000", "more than 200000"
         _min_m = re.search(
             rf'(?:over|above|more than|at least|starting (?:at|from)|from)\s+{_n}',
             q,
         )
         if _min_m:
             try:
-                lo = float(_min_m.group(1).replace(',', ''))
-                # Use price_max as the anchor for lower-bound queries:
-                # - Variable product: price_max is the most expensive variant.
-                #   If price_max >= lo, at least one variant meets the minimum.
-                # - Simple product (price_max NULL): fall back to price_min.
-                parts.append(
-                    f"(price_max ge {lo} or (price_max eq null and price_min ge {lo}))"
-                )
+                lo = _to_gbp(float(_min_m.group(1).replace(',', '')))
+                parts.append("(price_max >= %s OR (price_max IS NULL AND price_min >= %s))")
+                params.extend([lo, lo])
             except Exception:
                 pass
 
-    # ── Stock / Quantity ──────────────────────────────────────────────────────
+    # Stock filter
     if re.search(
         r'\bin[\s-]?stock\b|\bonly\s+(?:items?\s+)?(?:in\s+stock|available)\b|\bavailable\s+(?:now|only|items?)\b',
         q,
     ):
-        parts.append("in_stock eq true")
+        parts.append("in_stock = TRUE")
     elif re.search(r'\bout[\s-]?of[\s-]?stock\b', q):
-        parts.append("in_stock eq false")
+        parts.append("in_stock = FALSE")
 
-    # ── Brand ─────────────────────────────────────────────────────────────────
-    # "brand: Samsung" | "Samsung brand" | "by Samsung"
+    # Brand filter
     _brand_m = re.search(
         r'(?:brand[:\s]+|by\s+)([a-z0-9][a-z0-9 &\-]{0,30})(?=\s|$|,|\.)',
         q,
@@ -194,157 +223,212 @@ def _parse_filters(query: str) -> Optional[str]:
             q,
         )
     if _brand_m:
-        bv = _brand_m.group(1).strip().replace("'", "").strip()
+        bv = _brand_m.group(1).strip()
         if bv and len(bv) > 1:
-            parts.append(f"search.ismatch('{bv}', 'brand')")
+            parts.append("brand ILIKE %s")
+            params.append(f"%{bv}%")
 
-    # ── Category ──────────────────────────────────────────────────────────────
-    # "category: Electronics" | "in category laptops"
-    _cat_m = re.search(
-        r'(?:category[:\s]+|in\s+category\s+)([a-z0-9][a-z0-9 \-]{1,40})(?=\s|$|,|\.)',
-        q,
-    )
-    if _cat_m:
-        cv = _cat_m.group(1).strip().replace("'", "")
-        if cv:
-            parts.append(f"search.ismatch('{cv}', 'title,content')")
-
-    # ── Tag ───────────────────────────────────────────────────────────────────
-    # "tagged as sale" | "tag: wireless" | "tagged with gaming"
-    _tag_m = re.search(
-        r'(?:tag(?:ged)?(?:\s+(?:as|with))?[:\s]+)([a-z0-9][a-z0-9 \-]{1,40})(?=\s|$|,|\.)',
-        q,
-    )
-    if _tag_m:
-        tv = _tag_m.group(1).strip().replace("'", "")
-        if tv:
-            parts.append(f"search.ismatch('{tv}', 'title,content')")
-
-    return " and ".join(parts) if parts else None
+    return parts, params
 
 
-def search_documents(query: str, index_name: str, semantic_config: Optional[str] = None) -> List[str]:
+def _run_vector_search(
+    conn,
+    tenant_id: int,
+    q_vec: List[float],
+    top_k: int,
+    extra_parts: List[str],
+    extra_params: List[Any],
+) -> List[Dict[str, Any]]:
+    """Run a pgvector cosine similarity query."""
+    where = "WHERE tenant_id = %s AND embedding IS NOT NULL"
+    qparams: List[Any] = [tenant_id]
+    if extra_parts:
+        where += " AND " + " AND ".join(extra_parts)
+        qparams.extend(extra_params)
+
+    vec_literal = "[" + ",".join(str(x) for x in q_vec) + "]"
+    sql = f"""
+        SELECT id, title, content, url, sku, brand,
+               price_min, price_max, in_stock, type,
+               categories_text, site_url, tenant_id, image_url
+        FROM documents
+        {where}
+        ORDER BY embedding <=> %s::vector
+        LIMIT %s
+    """
+    qparams.extend([vec_literal, top_k])
+
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(sql, qparams)
+    rows = cur.fetchall() or []
+    cur.close()
+    return [dict(r) for r in rows]
+
+
+def _run_keyword_search(
+    conn,
+    tenant_id: int,
+    query: str,
+    top_k: int,
+    extra_parts: List[str],
+    extra_params: List[Any],
+) -> List[Dict[str, Any]]:
+    """Full-text keyword search using the pre-computed search_vector GIN index."""
+    where = "WHERE tenant_id = %s AND search_vector @@ plainto_tsquery('english', %s)"
+    qparams: List[Any] = [tenant_id, query]
+    if extra_parts:
+        where += " AND " + " AND ".join(extra_parts)
+        qparams.extend(extra_params)
+
+    sql = f"""
+        SELECT id, title, content, url, sku, brand,
+               price_min, price_max, in_stock, type,
+               categories_text, site_url, tenant_id, image_url
+        FROM documents
+        {where}
+        ORDER BY ts_rank(search_vector, plainto_tsquery('english', %s)) DESC
+        LIMIT %s
+    """
+    qparams.extend([query, top_k])
+
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(sql, qparams)
+    rows = cur.fetchall() or []
+    cur.close()
+    return [dict(r) for r in rows]
+
+
+def _rrf_merge(
+    vec_rows: List[Dict[str, Any]],
+    kw_rows: List[Dict[str, Any]],
+    top_k: int,
+    k: int = 60,
+) -> List[Dict[str, Any]]:
+    """Reciprocal Rank Fusion: score = 1/(k+rank_vec) + 1/(k+rank_kw).
+
+    Docs that appear in both result sets are boosted; docs in only one list
+    still get a partial score. k=60 is the standard RRF constant.
+    """
+    scores: Dict[str, float] = {}
+    docs: Dict[str, Dict[str, Any]] = {}
+    for rank, doc in enumerate(vec_rows):
+        did = doc["id"]
+        scores[did] = scores.get(did, 0.0) + 1.0 / (k + rank + 1)
+        docs[did] = doc
+    for rank, doc in enumerate(kw_rows):
+        did = doc["id"]
+        scores[did] = scores.get(did, 0.0) + 1.0 / (k + rank + 1)
+        docs[did] = doc
+    sorted_ids = sorted(scores, key=lambda x: scores[x], reverse=True)
+    return [docs[i] for i in sorted_ids[:top_k]]
+
+
+def search_documents(query: str, tenant_id: int, semantic_config: Optional[str] = None) -> List[str]:
     """
     Returns a list[str] of compact context chunks.
     Wrapper kept for backward compatibility — calls the full function and discards raw docs.
     """
-    chunks, _ = search_documents_with_meta(query, index_name, semantic_config)
+    chunks, _ = search_documents_with_meta(query, tenant_id, semantic_config)
     return chunks
 
 
+def _clean_search_query(query: str) -> str:
+    """
+    Strip the gateway-injected background context before filter parsing and
+    keyword search. The gateway format is:
+      [Background reference only — ...]\n\n{actual customer message}
+    The bracket can contain nested [] (e.g. [UK Used]) so regex won't work —
+    we split on the first double-newline instead, which is the reliable separator.
+    The embedding still uses the full message for better semantic recall.
+    """
+    q = (query or "").strip()
+    if q.startswith("[Background reference"):
+        parts = q.split("\n\n", 1)
+        if len(parts) == 2:
+            return parts[1].strip() or q
+    return q
+
+
 def search_documents_with_meta(
-    query: str, index_name: str, semantic_config: Optional[str] = None
+    query: str, tenant_id: int, semantic_config: Optional[str] = None,
+    precomputed_embedding: Optional[List[float]] = None,
 ) -> tuple:
     """
     Returns (chunks: List[str], raw_docs: List[Dict])
 
-    raw_docs contains the actual Azure Search document fields needed to build
-    product cards: id, title, url, price_min, price_max, in_stock, type, sku, brand.
+    When OpenAI is available: runs both vector search and keyword search then
+    merges with Reciprocal Rank Fusion (RRF). This catches exact-match queries
+    (e.g. SKU lookups) that pure vector search can miss.
 
-    IMPORTANT:
-    - Requires documents in the index to have content_vector populated.
-    - If vector search fails for any reason, we fall back to keyword+semantic.
+    When OpenAI is unavailable: falls back to keyword-only search so chat still
+    works during an OpenAI outage.
     """
     top_k = int(os.getenv("RAG_TOP_K", "6"))
     max_chars = int(os.getenv("RAG_CHUNK_MAX_CHARS", "900"))
-    api_version = os.getenv("AZURE_SEARCH_API_VERSION", "2025-09-01")
 
-    # 1) Build query embedding
-    try:
-        q_vec = _embed_query(query)
-    except Exception:
-        q_vec = None
+    # Use only the customer's actual text for filter parsing and keyword search.
+    # The full query (with background context) is still used for embeddings.
+    clean_query = _clean_search_query(query)
 
-    def do_request(payload: Dict[str, Any]) -> Dict[str, Any]:
-        url = _search_endpoint(index_name) + f"?api-version={api_version}"
-        r = requests.post(url, headers=_search_headers(), data=json.dumps(payload), timeout=30)
-        if r.status_code != 200:
-            raise RuntimeError(f"Azure Search query failed: {r.status_code} {r.text}")
-        return r.json() or {}
+    filter_parts, filter_params = _parse_filters_sql(clean_query)
+    if filter_parts:
+        print(f"   🔍 pgvector filter applied: {' AND '.join(filter_parts)}")
 
-    # 2) Parse any filter constraints from the user's natural language query
-    filter_expr = _parse_filters(query)
-    if filter_expr:
-        print(f"   🔍 Azure Search filter applied: {filter_expr}")
-
-    # 3) Hybrid (vector + keyword)
-    results_json: Dict[str, Any] = {}
-    try:
-        payload: Dict[str, Any] = {
-            "search": query or "*",
-            "top": top_k,
-            "select": "id,title,content,url,sku,brand,price_min,price_max,in_stock,type,categories_text,site_url,tenant_id,image_url",
-        }
-
-        if filter_expr:
-            payload["filter"] = filter_expr
-
-        if semantic_config:
-            payload["queryType"] = "semantic"
-            payload["semanticConfiguration"] = semantic_config
-
-        if q_vec is not None:
-            payload["vectors"] = [
-                {"value": q_vec, "fields": "content_vector", "k": max(top_k, 10)}
-            ]
-
-        results_json = do_request(payload)
-    except Exception:
-        # 4) Fallback: keyword/semantic only (keep filter if we have one)
-        payload = {
-            "search": query or "*",
-            "top": top_k,
-            "select": "id,title,content,url,sku,brand,price_min,price_max,in_stock,type,categories_text,site_url,tenant_id,image_url",
-        }
-        if filter_expr:
-            payload["filter"] = filter_expr
-        if semantic_config:
-            payload["queryType"] = "semantic"
-            payload["semanticConfiguration"] = semantic_config
+    if precomputed_embedding:
+        q_vec = precomputed_embedding
+    else:
         try:
-            results_json = do_request(payload)
-        except Exception:
-            # If both hybrid and fallback search fail, return empty results
-            # rather than crashing the /chat endpoint entirely.
-            return [], []
+            q_vec = _embed_query(query)
+        except Exception as e:
+            print(f"   ⚠️ embedding failed — keyword-only search: {e}")
+            q_vec = None
 
-    values = results_json.get("value") or []
+    try:
+        conn = _get_pg_conn()
+        try:
+            if q_vec is not None:
+                # Fetch more candidates from each leg so RRF has room to rerank
+                vec_rows = _run_vector_search(conn, tenant_id, q_vec, top_k * 2, filter_parts, filter_params)
+                try:
+                    kw_rows = _run_keyword_search(conn, tenant_id, clean_query, top_k * 2, filter_parts, filter_params)
+                except Exception as kw_err:
+                    print(f"   ⚠️ keyword search failed (vector-only fallback): {kw_err}")
+                    kw_rows = []
+                rows = _rrf_merge(vec_rows, kw_rows, top_k)
+                print(f"   🔀 hybrid RRF: {len(vec_rows)} vec + {len(kw_rows)} kw → {len(rows)} merged")
+            else:
+                rows = _run_keyword_search(conn, tenant_id, clean_query, top_k, filter_parts, filter_params)
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"   ⚠️ search failed: {e}")
+        return [], []
+
     chunks: List[str] = []
     raw_docs: List[Dict[str, Any]] = []
-
-    for v in values:
-        if not isinstance(v, dict):
-            continue
-        chunk = _format_doc(v, max_chars=max_chars)
+    for row in rows:
+        chunk = _format_doc(row, max_chars=max_chars)
         if chunk:
             chunks.append(chunk)
-            raw_docs.append(v)
+            raw_docs.append(row)
 
-    return chunks[: max(0, top_k)], raw_docs[: max(0, top_k)]
+    return chunks[:top_k], raw_docs[:top_k]
 
 
 def search_related_products(
-    index_name: str,
+    tenant_id: int,
     exclude_names: set,
     prod_type: str = "",
     category: str = "",
     top: int = 2,
     search_hint: str = "",
+    max_price_gbp: Optional[float] = None,
+    # Legacy kwarg — ignored but kept so existing callers don't break
+    index_name: str = "",
 ) -> List[Dict]:
     """
     Returns up to `top` related products for cross-selling.
-    Used by Feature 5 (Automated Cross-selling / Related Product Cards).
-
-    Cross-sells by CATEGORY and TYPE — NOT by price.
-
-    - prod_type: hard equality filter (e.g. type eq 'Laptop') — the primary
-      fence that prevents phones appearing when the user asked about laptops.
-    - category: additional search.ismatch filter on categories_text when available.
-    - search_hint: the first recommended product's title, used as the semantic
-      search query so Azure finds genuinely similar products by name.
-    - Always filters to in_stock eq true.
-    - Excludes products already recommended (exclude_names — lowercased set).
-    - Falls back gracefully: returns [] if the search fails for any reason.
+    Filters by type, category, and in_stock=TRUE. Never shows excluded names.
     """
 
     def _fmt_price(price_min_val, price_max_val) -> str:
@@ -366,65 +450,74 @@ def search_related_products(
         return ""
 
     def _extract_pid(doc_id: str) -> str:
-        """Extract WooCommerce product ID from Azure doc key e.g. 'product-123' → '123'."""
         parts = (doc_id or "").split("-")
         return parts[1] if len(parts) >= 2 and parts[0] == "product" else ""
 
-    api_version = os.getenv("AZURE_SEARCH_API_VERSION", "2025-09-01")
+    where_parts = ["tenant_id = %s", "in_stock = TRUE", "embedding IS NOT NULL"]
+    qparams: List[Any] = [tenant_id]
 
-    # ── Build filter: type + category + in_stock. NO price filtering. ────────
-    # Cross-selling is about relevance (same kind of product), not price proximity.
-    # Price-based filtering was causing phones to appear for laptop queries because
-    # simple products have price_max=null which broke the range filter entirely.
+    # Respect the customer's budget — never show related products above it
+    if max_price_gbp is not None and max_price_gbp > 0:
+        where_parts.append("price_min <= %s AND price_min > 0")
+        qparams.append(max_price_gbp)
 
-    # Strip single quotes from all user-controlled strings to prevent filter injection
-    safe_type     = (prod_type or "").replace("'", "")
-    safe_category = (category  or "").replace("'", "")
+    safe_type = (prod_type or "").replace("'", "")
+    safe_category = (category or "").replace("'", "")
 
-    # in_stock is always required — never show out-of-stock cross-sell suggestions
-    filter_parts = ["in_stock eq true"]
-
-    # type is the primary hard fence: 'Laptop' can never match 'Mobile Phone'
     if safe_type:
-        filter_parts.append(f"type eq '{safe_type}'")
+        where_parts.append("type = %s")
+        qparams.append(safe_type)
 
-    # categories_text as additional refinement when the field is populated
     if safe_category:
-        filter_parts.append(f"search.ismatch('{safe_category}', 'categories_text')")
+        where_parts.append("categories_text ILIKE %s")
+        qparams.append(f"%{safe_category}%")
 
-    filter_expr = " and ".join(filter_parts)
+    where_clause = "WHERE " + " AND ".join(where_parts)
 
-    # Use the first recommended product's title as the search query.
-    # This drives Azure semantic matching toward genuinely similar products
-    # (e.g. other laptops when the first result is a ThinkPad).
-    # searchFields restricts matching to title only so a phone description
-    # that mentions "laptop" in its body text cannot cause a false match.
+    # Try to get embedding for semantic-like ordering
     safe_hint = (search_hint or safe_category or safe_type or "").strip()
-    payload: Dict[str, Any] = {
-        "search": safe_hint or "*",
-        "searchFields": "title",
-        "top": max(top * 3, 6),   # fetch extras so we have room to exclude
-        "select": "id,title,url,sku,brand,price_min,price_max,in_stock,type,image_url",
-        "filter": filter_expr,
-    }
+    try:
+        q_vec = _embed_query(safe_hint) if safe_hint else None
+    except Exception:
+        q_vec = None
+
+    fetch_n = max(top * 3, 6)
+
+    if q_vec is not None:
+        vec_literal = "[" + ",".join(str(x) for x in q_vec) + "]"
+        sql = f"""
+            SELECT id, title, url, sku, brand, price_min, price_max, in_stock, type, image_url
+            FROM documents
+            {where_clause}
+            ORDER BY embedding <=> %s::vector
+            LIMIT %s
+        """
+        qparams.extend([vec_literal, fetch_n])
+    else:
+        sql = f"""
+            SELECT id, title, url, sku, brand, price_min, price_max, in_stock, type, image_url
+            FROM documents
+            {where_clause}
+            LIMIT %s
+        """
+        qparams.append(fetch_n)
 
     try:
-        url = _search_endpoint(index_name) + f"?api-version={api_version}"
-        r = requests.post(url, headers=_search_headers(), data=json.dumps(payload), timeout=15)
-        if r.status_code != 200:
-            print(f"   ⚠️ search_related_products: Azure Search returned {r.status_code}")
-            return []
+        conn = _get_pg_conn()
+        try:
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute(sql, qparams)
+            values = cur.fetchall() or []
+            cur.close()
+        finally:
+            conn.close()
 
-        values = (r.json() or {}).get("value") or []
         related: List[Dict] = []
-
         for doc in values:
-            if not isinstance(doc, dict):
-                continue
+            doc = dict(doc)
             name = (doc.get("title") or "").strip()
             if not name:
                 continue
-            # Skip products already in the main recommendation set
             if name.lower() in exclude_names:
                 continue
 
@@ -456,59 +549,88 @@ def search_related_products(
 
 
 def upsert_verified_spec(
-    index_name: str,
     tenant_id: int,
     model_hint: str,
     spec_key: str,
     spec_value: str,
     qualifier: str = "",
     sources: Optional[List[Dict[str, Any]]] = None,
+    # Legacy kwarg — ignored
+    index_name: str = "",
 ) -> None:
-    """Write a small verified spec document into Azure AI Search.
+    """Write a small verified spec document into the documents table.
 
-    This allows future queries to be answered from RAG without web lookup.
-    Uses mergeOrUpload with a stable id to avoid index bloat.
-
-    Requires AZURE_SEARCH_ENDPOINT + AZURE_SEARCH_KEY (admin key).
+    Uses INSERT ... ON CONFLICT DO UPDATE with a stable id to avoid bloat.
     """
     from web_spec_lookup import make_verified_spec_doc_id
 
-    api_version = os.getenv("AZURE_SEARCH_API_VERSION", "2025-09-01")
-    ep = (os.getenv("AZURE_SEARCH_ENDPOINT") or "").rstrip("/")
-    if not ep:
-        return
-
-    doc_id = make_verified_spec_doc_id(tenant_id=int(tenant_id), model_hint=model_hint or "", spec_key=spec_key or "")
+    doc_id = make_verified_spec_doc_id(
+        tenant_id=int(tenant_id),
+        model_hint=model_hint or "",
+        spec_key=spec_key or "",
+    )
     srcs = sources or []
     src_urls = [s.get("url") for s in srcs if isinstance(s, dict) and s.get("url")]
 
-    # Put the important info in 'content' for hybrid retrieval
     text = f"Verified spec: {model_hint} {spec_key}: {spec_value}. {qualifier}".strip()
+    title = f"{model_hint} — {spec_key}".strip(" —")
+    url = src_urls[0] if src_urls else ""
+    spec_sources_json = json.dumps(src_urls)[:2000]
 
-    doc = {
-        "id": doc_id,
-        "tenant_id": int(tenant_id),
-        "type": "verified_spec",
-        "title": f"{model_hint} — {spec_key}".strip(" —"),
-        "content": text,
-        "url": (src_urls[0] if src_urls else ""),
-        "brand": "",
-        "sku": "",
-        "price_min": None,
-        "price_max": None,
-        "in_stock": None,
-        "site_url": "",
-        "spec_key": spec_key,
-        "spec_value": spec_value,
-        "spec_sources": json.dumps(src_urls)[:2000],
-    }
-
-    # NOTE: content_vector will be auto-generated by your existing sync pipeline.
-    # If your index requires it at write-time, you can extend this later.
-
-    url = f"{ep}/indexes/{index_name}/docs/index?api-version={api_version}"
-    payload = {"value": [{"@search.action": "mergeOrUpload", **doc}]}
+    # Generate embedding for future searches (best-effort)
+    embedding = None
     try:
-        requests.post(url, headers=_search_headers(), data=json.dumps(payload), timeout=30)
+        embedding = _embed_query(text)
     except Exception:
-        return
+        pass
+
+    try:
+        conn = _get_pg_conn()
+        try:
+            cur = conn.cursor()
+            if embedding is not None:
+                vec_literal = "[" + ",".join(str(x) for x in embedding) + "]"
+                cur.execute(
+                    """
+                    INSERT INTO documents
+                        (id, tenant_id, type, title, content, url, brand, sku,
+                         price_min, price_max, in_stock, site_url,
+                         spec_key, spec_value, spec_sources, embedding, updated_at)
+                    VALUES (%s, %s, 'verified_spec', %s, %s, %s, '', '',
+                            NULL, NULL, NULL, '',
+                            %s, %s, %s, %s::vector, NOW())
+                    ON CONFLICT (id) DO UPDATE SET
+                        content = EXCLUDED.content,
+                        spec_value = EXCLUDED.spec_value,
+                        spec_sources = EXCLUDED.spec_sources,
+                        embedding = EXCLUDED.embedding,
+                        updated_at = NOW()
+                    """,
+                    (doc_id, tenant_id, title, text, url,
+                     spec_key, spec_value, spec_sources_json, vec_literal),
+                )
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO documents
+                        (id, tenant_id, type, title, content, url, brand, sku,
+                         price_min, price_max, in_stock, site_url,
+                         spec_key, spec_value, spec_sources, updated_at)
+                    VALUES (%s, %s, 'verified_spec', %s, %s, %s, '', '',
+                            NULL, NULL, NULL, '',
+                            %s, %s, %s, NOW())
+                    ON CONFLICT (id) DO UPDATE SET
+                        content = EXCLUDED.content,
+                        spec_value = EXCLUDED.spec_value,
+                        spec_sources = EXCLUDED.spec_sources,
+                        updated_at = NOW()
+                    """,
+                    (doc_id, tenant_id, title, text, url,
+                     spec_key, spec_value, spec_sources_json),
+                )
+            conn.commit()
+            cur.close()
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"   ⚠️ upsert_verified_spec failed: {e}")
