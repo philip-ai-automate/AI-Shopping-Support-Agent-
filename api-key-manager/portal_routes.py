@@ -817,7 +817,22 @@ def register_whatsapp_setup_qr():
 @portal_bp.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "GET":
-        return render_template("portal/register.html")
+        import re as _re
+        setup_phone_id = os.getenv("WA_SETUP_PHONE_NUMBER_ID") or os.getenv("WA_OTP_PHONE_NUMBER_ID", "")
+        wa_setup_link = ""
+        if setup_phone_id:
+            try:
+                conn = get_db_connection()
+                cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cur.execute("SELECT display_phone_number FROM wa_tenants WHERE phone_number_id=%s LIMIT 1", (setup_phone_id,))
+                row = cur.fetchone()
+                cur.close(); conn.close()
+                if row and row.get("display_phone_number"):
+                    digits = _re.sub(r"[^\d]", "", row["display_phone_number"])
+                    wa_setup_link = f"https://wa.me/{digits}?text=SETUP"
+            except Exception:
+                pass
+        return render_template("portal/register.html", wa_setup_link=wa_setup_link)
 
     if request.form.get("website"): return redirect(url_for("portal.register"))
     client_ip = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()

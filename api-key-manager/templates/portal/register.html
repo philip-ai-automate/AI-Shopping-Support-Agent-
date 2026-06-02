@@ -116,7 +116,13 @@
         <p style="font-size:13px;font-weight:700;margin-bottom:4px">Already on WhatsApp? Onboard instantly</p>
         <p class="muted" style="font-size:12px;margin-bottom:14px">Scan this QR code to open WhatsApp and send SETUP — no form needed.</p>
         <img src="{{ url_for('portal.register_whatsapp_setup_qr') }}" alt="WhatsApp SETUP QR Code"
-             style="width:160px;height:160px;border-radius:10px;border:1px solid var(--line)">
+             style="width:160px;height:160px;border-radius:10px;border:1px solid var(--line);margin-bottom:14px">
+        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+          {% if wa_setup_link %}
+          <button type="button" onclick="shareWaLink()" class="btn btn-primary btn-sm">Share Link</button>
+          {% endif %}
+          <a href="{{ url_for('portal.register_whatsapp_setup_qr') }}" download="phixtra-whatsapp-qr.png" class="btn btn-sm">Download QR</a>
+        </div>
       </div>
     </div>
 
@@ -165,6 +171,21 @@ document.getElementById('regForm').addEventListener('submit', function(e) {
     document.getElementById('regEmailConfirm').focus();
   }
 });
+
+var _waSetupLink = {{ wa_setup_link | tojson }};
+function shareWaLink() {
+  if (navigator.share) {
+    navigator.share({
+      title: 'Get started on WhatsApp',
+      text: 'Tap this link to connect with us on WhatsApp and send SETUP to get started.',
+      url: _waSetupLink
+    }).catch(function() {});
+  } else {
+    navigator.clipboard.writeText(_waSetupLink).then(function() {
+      alert('Link copied to clipboard!');
+    });
+  }
+}
 
 function setType(type) {
   currentType = type;
