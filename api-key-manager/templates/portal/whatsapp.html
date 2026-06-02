@@ -182,6 +182,7 @@
 
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         {% if connection.active %}
+        <button onclick="document.getElementById('qrModal').classList.add('open')" class="btn btn-sm">QR Code</button>
         <button onclick="checkToken()" class="btn btn-sm" id="checkTokenBtn">Check Token</button>
         <form method="POST" action="{{ url_for('portal.whatsapp_disconnect') }}"
               onsubmit="return confirm('Disconnect WhatsApp? The AI will stop replying until you reconnect.')">
@@ -213,6 +214,22 @@
     </div>
   {% endif %}
 </div>
+
+<!-- ── QR Code Modal ──────────────────────────────────────────────────────── -->
+{% if connection and connection.active %}
+<div class="modal-overlay" id="qrModal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal-box" style="max-width:360px;text-align:center">
+    <div class="modal-title">Customer Onboarding QR Code</div>
+    <p class="modal-sub">Customers scan this to open WhatsApp and send SETUP automatically.</p>
+    <img src="{{ url_for('portal.whatsapp_qr_code') }}" alt="WhatsApp QR Code"
+         style="width:220px;height:220px;border:1px solid var(--line);border-radius:12px;margin-bottom:20px">
+    <div style="display:flex;gap:10px;justify-content:center">
+      <a href="{{ url_for('portal.whatsapp_qr_code', download='1') }}" class="btn btn-primary btn-sm" download>Download PNG</a>
+      <button onclick="document.getElementById('qrModal').classList.remove('open')" class="btn btn-sm">Close</button>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <!-- ── Option 3: Pre-flight Checklist ────────────────────────────────────── -->
 {% if not connection %}
@@ -629,14 +646,36 @@
 
       <div class="form-group">
         <label>PhiXtra API Key <span style="color:var(--bad)">*</span></label>
+
+        {% if portal_api_key %}
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;
+                    background:rgba(37,211,102,.06);border:1px solid rgba(37,211,102,.25);
+                    border-radius:10px;padding:10px 12px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:11px;font-weight:700;color:#128C7E;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Your API Key</div>
+            <code id="waApiKeyDisplay"
+                  style="font-size:12px;letter-spacing:.03em;word-break:break-all;color:var(--ink)">{{ portal_api_key }}</code>
+          </div>
+          <button type="button" onclick="copyWaApiKey(this)"
+                  style="flex-shrink:0;padding:6px 12px;border-radius:8px;border:1px solid rgba(37,211,102,.4);
+                         background:rgba(37,211,102,.12);color:#128C7E;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">
+            📋 Copy
+          </button>
+        </div>
+        <input type="password" name="phixtra_api_key" id="waApiKeyInput"
+               placeholder="•••••••• (leave blank to keep current)">
+        <p class="muted" style="margin-top:4px;font-size:12px">
+          Your key is shown above — click <strong>Copy</strong> then paste it into the field, or
+          <a href="#" onclick="useApiKey(event)" style="color:var(--ink);font-weight:600">click here to fill it in automatically</a>.
+        </p>
+        {% else %}
         <input type="password" name="phixtra_api_key"
                placeholder="{{ '•••••••• (leave blank to keep current)' if connection else 'Paste your PhiXtra API key' }}"
                {{ 'required' if not connection else '' }}>
         <p class="muted" style="margin-top:4px;font-size:12px">
-          The same API key you use for the WooCommerce plugin. Found in
-          <a href="{{ url_for('portal.api_keys') }}" style="color:var(--ink)">API Keys</a>
-          in this portal. This lets the WhatsApp gateway bill usage to your account.
+          Find your key in <a href="{{ url_for('portal.api_keys') }}" style="color:var(--ink)">API Keys</a> in this portal.
         </p>
+        {% endif %}
       </div>
 
       <div class="form-row" style="margin-bottom:14px">
@@ -686,9 +725,15 @@
         </p>
       </div>
 
-      <button type="submit" class="btn btn-primary">
-        {{ 'Update Connection' if connection else 'Connect WhatsApp' }}
-      </button>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <button type="submit" name="action" value="connect" class="btn btn-primary">
+          {{ 'Update Connection' if connection else 'Connect WhatsApp' }}
+        </button>
+        <button type="submit" name="action" value="save" class="btn btn-sm"
+                style="border-color:rgba(3,12,24,.2);color:var(--muted)">
+          💾 Save progress
+        </button>
+      </div>
     </form>
 
 {% if embedded_enabled %}
@@ -807,6 +852,67 @@ function _restorePreflight() {
 }
 
 document.addEventListener('DOMContentLoaded', _restorePreflight);
+
+function copyWaApiKey(btn) {
+  var key = document.getElementById('waApiKeyDisplay');
+  if (!key) return;
+  navigator.clipboard.writeText(key.textContent.trim()).then(function() {
+    var orig = btn.textContent;
+    btn.textContent = '✅ Copied!';
+    setTimeout(function() { btn.textContent = orig; }, 2000);
+  });
+}
+
+function useApiKey(evt) {
+  evt.preventDefault();
+  var key  = document.getElementById('waApiKeyDisplay');
+  var input = document.getElementById('waApiKeyInput');
+  if (!key || !input) return;
+  input.value = key.textContent.trim();
+  input.type  = 'text';
+  input.focus();
+}
 </script>
+
+{# ── Personal WhatsApp notification number ────────────────────────────────── #}
+<div class="card" style="margin-top:24px">
+  <div class="card-title">🔔 Alert Notifications</div>
+
+  <div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;
+              padding:12px 16px;margin-bottom:18px;font-size:13px;color:#0369A1;
+              display:flex;gap:10px;align-items:flex-start">
+    <span style="font-size:16px;flex-shrink:0">💡</span>
+    <div>
+      <strong>What this is for:</strong> Enter your <em>personal</em> WhatsApp number (not your business number).
+      When a customer requests a human agent, you'll instantly receive a WhatsApp message on this number
+      with the customer's details and a direct link to reply in your portal.
+      This number is also used for your daily business report.
+    </div>
+  </div>
+
+  <form method="POST" action="{{ url_for('portal.whatsapp_save_notify_phone') }}">
+    <div class="form-group" style="max-width:380px">
+      <label style="font-weight:700;font-size:13px;display:block;margin-bottom:6px">
+        Personal WhatsApp number
+      </label>
+      <input type="tel" name="report_phone"
+             value="{{ report_phone or '' }}"
+             placeholder="+2348012345678"
+             style="width:100%;padding:10px 13px;border-radius:10px;
+                    border:1px solid rgba(3,12,24,.18);font-size:14px;
+                    font-family:inherit;outline:none;transition:.15s;box-sizing:border-box"
+             onfocus="this.style.borderColor='rgba(3,12,24,.35)'"
+             onblur="this.style.borderColor='rgba(3,12,24,.18)'"
+      />
+      <div style="font-size:12px;color:var(--muted);margin-top:6px">
+        Include your country code — e.g. <strong>+234</strong> for Nigeria, <strong>+44</strong> for UK.
+        Leave blank to disable alerts.
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm" style="margin-top:14px">
+      Save Number
+    </button>
+  </form>
+</div>
 
 {% endblock %}

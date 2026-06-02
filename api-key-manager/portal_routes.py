@@ -5741,6 +5741,41 @@ def whatsapp_save_notify_phone():
     return redirect(url_for("portal.whatsapp_connect"))
 
 
+@portal_bp.route("/whatsapp/qr-code")
+def whatsapp_qr_code():
+    """Return a QR code PNG for the tenant's WhatsApp click-to-chat onboarding link."""
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    connection = _get_wa_connection_any(tenant_id)
+
+    if not connection or not connection.get("active") or not connection.get("display_phone_number"):
+        return ("No active WhatsApp connection", 404)
+
+    import re as _re
+    import io
+    import qrcode
+
+    digits = _re.sub(r"[^\d]", "", connection["display_phone_number"])
+    wa_url = f"https://wa.me/{digits}?text=SETUP"
+
+    qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=10, border=4)
+    qr.add_data(wa_url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+
+    from flask import send_file
+    as_dl = request.args.get("download") == "1"
+    return send_file(buf, mimetype="image/png",
+                     as_attachment=as_dl,
+                     download_name=f"whatsapp-qr-{digits}.png")
+
+
 @portal_bp.route("/whatsapp/connect", methods=["POST"])
 def whatsapp_save_connection():
     r = _require_login()
@@ -9690,11 +9725,10 @@ def _generate_otp() -> str:
 def _store_otp(phone: str, code: str) -> None:
     conn = get_db_connection()
     cur  = conn.cursor()
-    # Expire any previous unused codes for this phone
-    cur.execute("UPDATE wa_portal_otp SET used=1 WHERE phone=%s AND used=0", (phone,))
+    cur.execute("UPDATE wa_portal_otp SET used=TRUE WHERE phone=%s AND used=FALSE", (phone,))
     cur.execute("""
         INSERT INTO wa_portal_otp (phone, otp_code, expires_at)
-        VALUES (%s, %s, DATE_ADD(NOW(), INTERVAL '10 minutes'))
+        VALUES (%s, %s, NOW() + INTERVAL '10 minutes')
     """, (phone, code))
     conn.commit()
     cur.close(); conn.close()
@@ -9705,12 +9739,12 @@ def _verify_otp(phone: str, code: str) -> bool:
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
         SELECT id FROM wa_portal_otp
-        WHERE phone=%s AND otp_code=%s AND used=0 AND expires_at > NOW()
+        WHERE phone=%s AND otp_code=%s AND used=FALSE AND expires_at > NOW()
         ORDER BY id DESC LIMIT 1
     """, (phone, code))
     row = cur.fetchone()
     if row:
-        cur.execute("UPDATE wa_portal_otp SET used=1 WHERE id=%s", (row["id"],))
+        cur.execute("UPDATE wa_portal_otp SET used=TRUE WHERE id=%s", (row["id"],))
         conn.commit()
     cur.close(); conn.close()
     return bool(row)
