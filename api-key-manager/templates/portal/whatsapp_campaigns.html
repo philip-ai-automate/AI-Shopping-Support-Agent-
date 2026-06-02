@@ -3,109 +3,593 @@
 
 {% block head %}
 <style>
-  /* ── Status badges ─────────────────────────────────────────── */
-  .badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;
-         border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.04em}
-  .badge-draft    {background:rgba(3,12,24,0.07);color:var(--muted)}
-  .badge-scheduled{background:rgba(247,144,9,0.12);color:#B45309}
-  .badge-running  {background:rgba(18,183,106,0.12);color:#047857}
-  .badge-done     {background:rgba(18,183,106,0.10);color:#065F46}
-  .badge-failed   {background:rgba(240,68,56,0.10);color:#B91C1C}
-  .badge-sent     {background:rgba(18,183,106,0.10);color:#065F46}
-  .badge-skipped  {background:rgba(3,12,24,0.07);color:var(--muted)}
+/* ── Page layout ─────────────────────────────────────────────────────── */
+.camp-hero {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  border-radius: 16px;
+  padding: 28px 32px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.camp-hero-left h1 {
+  font-size: 22px;
+  font-weight: 800;
+  color: #fff;
+  margin: 0 0 4px;
+  letter-spacing: -.3px;
+}
+.camp-hero-left p {
+  font-size: 13px;
+  color: rgba(255,255,255,.55);
+  margin: 0;
+}
+.btn-new-camp {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #25D366;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 11px 22px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  transition: .15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.btn-new-camp:hover { background: #1ebe58; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(37,211,102,.35); }
+.btn-new-camp svg { flex-shrink: 0; }
 
-  /* ── Campaign table ────────────────────────────────────────── */
-  .camp-table{width:100%;border-collapse:collapse}
-  .camp-table th{font-size:11px;font-weight:700;color:var(--muted);
-                 text-transform:uppercase;letter-spacing:.06em;
-                 padding:8px 12px;text-align:left;border-bottom:1px solid var(--line)}
-  .camp-table td{padding:11px 12px;font-size:13px;border-bottom:1px solid var(--line);
-                 vertical-align:middle}
-  .camp-table tr:last-child td{border-bottom:none}
-  .camp-table tr:hover td{background:rgba(3,12,24,0.02)}
+/* ── Stats row ───────────────────────────────────────────────────────── */
+.camp-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 24px;
+}
+.stat-card {
+  background: #fff;
+  border: 1px solid rgba(3,12,24,.08);
+  border-radius: 14px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.stat-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.stat-value { font-size: 26px; font-weight: 800; color: var(--ink); line-height: 1; }
+.stat-sub   { font-size: 11px; color: var(--muted); }
 
-  /* ── Progress bar ──────────────────────────────────────────── */
-  .prog-wrap{background:rgba(3,12,24,0.07);border-radius:99px;height:6px;
-             min-width:80px;overflow:hidden}
-  .prog-fill{height:6px;border-radius:99px;background:var(--good);transition:.3s}
+/* ── Campaign table ──────────────────────────────────────────────────── */
+.section-card {
+  background: #fff;
+  border: 1px solid rgba(3,12,24,.08);
+  border-radius: 16px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+.section-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid rgba(3,12,24,.07);
+}
+.section-card-header h2 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0;
+}
+.camp-table { width: 100%; border-collapse: collapse; }
+.camp-table th {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  padding: 11px 20px;
+  text-align: left;
+  background: #f8fafc;
+  border-bottom: 1px solid rgba(3,12,24,.07);
+}
+.camp-table td {
+  padding: 14px 20px;
+  font-size: 13px;
+  border-bottom: 1px solid rgba(3,12,24,.05);
+  vertical-align: middle;
+}
+.camp-table tr:last-child td { border-bottom: none; }
+.camp-table tbody tr:hover td { background: #fafbfc; }
 
-  /* ── Create modal ──────────────────────────────────────────── */
-  .modal-backdrop{display:none;position:fixed;inset:0;background:rgba(3,12,24,0.45);
-                  z-index:900;align-items:center;justify-content:center}
-  .modal-backdrop.open{display:flex}
-  .modal-box{background:#fff;border-radius:18px;padding:30px 28px;width:100%;
-             max-width:540px;box-shadow:var(--shadow);max-height:90vh;overflow-y:auto}
-  .modal-title{font-size:17px;font-weight:700;margin-bottom:20px}
+/* ── Badges ──────────────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .03em;
+}
+.badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.badge-draft     { background: #f1f5f9; color: #64748b; }
+.badge-draft::before { background: #94a3b8; }
+.badge-scheduled { background: #fef3c7; color: #92400e; }
+.badge-scheduled::before { background: #f59e0b; }
+.badge-running   { background: #dcfce7; color: #166534; }
+.badge-running::before { background: #22c55e; animation: pulse 1s infinite; }
+.badge-done      { background: #dcfce7; color: #166534; }
+.badge-done::before { background: #16a34a; }
+.badge-failed    { background: #fee2e2; color: #991b1b; }
+.badge-failed::before { background: #ef4444; }
+.badge-sent      { background: #dcfce7; color: #166534; }
+.badge-sent::before { background: #16a34a; }
 
-  .form-row{margin-bottom:14px}
-  .form-row label{display:block;font-size:12px;font-weight:600;
-                  color:var(--muted);margin-bottom:5px}
-  .form-row input,.form-row select,.form-row textarea{
-    width:100%;padding:9px 12px;border-radius:10px;font-size:14px;
-    border:1px solid rgba(3,12,24,0.18);font-family:inherit;
-    outline:none;transition:.15s}
-  .form-row input:focus,.form-row select:focus,.form-row textarea:focus{
-    border-color:rgba(3,12,24,0.35);box-shadow:var(--ring)}
-  .form-row textarea{resize:vertical;min-height:90px}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 
-  .send-opts{display:flex;gap:10px;margin-bottom:6px}
-  .send-opt{flex:1;padding:10px;border:1px solid var(--line);border-radius:10px;
-            cursor:pointer;text-align:center;font-size:13px;transition:.15s}
-  .send-opt:hover{background:rgba(3,12,24,0.03)}
-  .send-opt.selected{border-color:var(--ink);background:rgba(3,12,24,0.05)}
-  .send-opt strong{display:block;font-size:14px;margin-bottom:2px}
-  .send-opt small{color:var(--muted)}
+/* ── Progress bar ────────────────────────────────────────────────────── */
+.prog-wrap { background: #e2e8f0; border-radius: 99px; height: 5px; min-width: 80px; overflow: hidden; }
+.prog-fill  { height: 5px; border-radius: 99px; background: #22c55e; transition: width .3s; }
 
-  #scheduleField{display:none}
+/* ── Action buttons ──────────────────────────────────────────────────── */
+.act-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 7px;
+  border: 1px solid;
+  cursor: pointer;
+  background: #fff;
+  transition: .12s;
+}
+.act-btn-send  { color: #16a34a; border-color: rgba(22,163,74,.3); }
+.act-btn-send:hover  { background: #f0fdf4; }
+.act-btn-del   { color: #dc2626; border-color: rgba(220,38,38,.25); }
+.act-btn-del:hover   { background: #fef2f2; }
 
-  /* ── Empty state ───────────────────────────────────────────── */
-  .empty-state{text-align:center;padding:48px 20px;color:var(--muted)}
-  .empty-icon{font-size:38px;opacity:.35;margin-bottom:12px}
+/* ── Empty state ─────────────────────────────────────────────────────── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 64px 20px;
+  color: var(--muted);
+  text-align: center;
+}
+.empty-icon-wrap {
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  font-size: 30px;
+}
+.empty-state h3 { font-size: 15px; font-weight: 700; color: var(--ink); margin: 0 0 6px; }
+.empty-state p  { font-size: 13px; margin: 0; max-width: 300px; }
+
+/* ── Proactive log badges ────────────────────────────────────────────── */
+.badge-event { background: #f1f5f9; color: #475569; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 6px; font-family: monospace; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   DRAWER (slide-in from right)
+═══════════════════════════════════════════════════════════════════════ */
+.drawer-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 800;
+  backdrop-filter: blur(2px);
+}
+.drawer-overlay.open { display: block; }
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: -680px;
+  width: 640px;
+  max-width: 96vw;
+  height: 100vh;
+  background: #fff;
+  z-index: 801;
+  box-shadow: -8px 0 40px rgba(0,0,0,.18);
+  display: flex;
+  flex-direction: column;
+  transition: right .3s cubic-bezier(.4,0,.2,1);
+  overflow: hidden;
+}
+.drawer.open { right: 0; }
+
+/* Drawer header */
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 28px;
+  border-bottom: 1px solid rgba(3,12,24,.08);
+  flex-shrink: 0;
+  background: #0f172a;
+}
+.drawer-head-left h2 {
+  font-size: 17px;
+  font-weight: 800;
+  color: #fff;
+  margin: 0 0 2px;
+}
+.drawer-head-left p {
+  font-size: 12px;
+  color: rgba(255,255,255,.5);
+  margin: 0;
+}
+.drawer-close {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.15);
+  background: rgba(255,255,255,.08);
+  color: rgba(255,255,255,.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: .12s;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.drawer-close:hover { background: rgba(255,255,255,.15); color: #fff; }
+
+/* Steps bar */
+.steps-bar {
+  display: flex;
+  padding: 0 28px;
+  border-bottom: 1px solid rgba(3,12,24,.08);
+  flex-shrink: 0;
+  background: #f8fafc;
+}
+.step-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 4px;
+  margin-right: 24px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #94a3b8;
+  border-bottom: 2px solid transparent;
+  cursor: default;
+  transition: .15s;
+  white-space: nowrap;
+}
+.step-tab.active { color: #0f172a; border-bottom-color: #25D366; }
+.step-tab.done   { color: #16a34a; }
+.step-num {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.step-tab.active .step-num { background: #25D366; color: #fff; }
+.step-tab.done   .step-num { background: #16a34a; color: #fff; }
+
+/* Drawer body */
+.drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 28px;
+}
+
+/* Step panels */
+.step-panel { display: none; }
+.step-panel.active { display: block; }
+
+/* Form elements */
+.field { margin-bottom: 22px; }
+.field-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: #374151;
+  margin-bottom: 7px;
+  letter-spacing: .02em;
+}
+.field-hint { font-size: 11px; color: #94a3b8; font-weight: 400; margin-left: 6px; }
+.field-input, .field-textarea, .field-select {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--ink);
+  background: #fff;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+  box-sizing: border-box;
+}
+.field-input:focus, .field-textarea:focus, .field-select:focus {
+  border-color: #25D366;
+  box-shadow: 0 0 0 3px rgba(37,211,102,.12);
+}
+.field-textarea { resize: vertical; min-height: 130px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; }
+
+.field-row { display: grid; gap: 16px; }
+.field-row.cols-2 { grid-template-columns: 1fr 1fr; }
+
+/* Recipient counter */
+.recip-wrap { position: relative; }
+.recip-counter {
+  position: absolute;
+  bottom: 10px;
+  right: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  background: #fff;
+  padding: 2px 6px;
+  border-radius: 6px;
+  pointer-events: none;
+}
+.recip-counter.has-nums { color: #16a34a; }
+
+/* Send options */
+.send-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+.send-opt {
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  transition: .15s;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.send-opt:hover { border-color: #cbd5e1; background: #f8fafc; }
+.send-opt.selected { border-color: #25D366; background: #f0fdf4; }
+.send-opt-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+  transition: .15s;
+}
+.send-opt.selected .send-opt-icon { background: #dcfce7; }
+.send-opt-text strong { display: block; font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 2px; }
+.send-opt-text small  { font-size: 11px; color: #94a3b8; }
+
+#scheduleField {
+  display: none;
+  margin-top: 4px;
+}
+#scheduleField.show { display: block; }
+
+/* Review panel */
+.review-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(3,12,24,.06);
+  gap: 16px;
+}
+.review-row:last-child { border-bottom: none; }
+.review-key { font-size: 12px; font-weight: 600; color: #64748b; flex-shrink: 0; min-width: 130px; }
+.review-val { font-size: 13px; font-weight: 600; color: var(--ink); text-align: right; word-break: break-word; }
+.review-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #f0fdf4;
+  color: #16a34a;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+
+/* Drawer footer */
+.drawer-foot {
+  padding: 18px 28px;
+  border-top: 1px solid rgba(3,12,24,.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+  background: #f8fafc;
+}
+.drawer-foot-right { display: flex; gap: 10px; }
+
+.btn-ghost {
+  padding: 10px 18px;
+  border-radius: 9px;
+  border: 1.5px solid #e2e8f0;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: .12s;
+}
+.btn-ghost:hover { border-color: #cbd5e1; color: #374151; }
+.btn-next {
+  padding: 10px 22px;
+  border-radius: 9px;
+  border: none;
+  background: #0f172a;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: .15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-next:hover { background: #1e293b; }
+.btn-launch {
+  padding: 10px 22px;
+  border-radius: 9px;
+  border: none;
+  background: #25D366;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: .15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-launch:hover { background: #1ebe58; box-shadow: 0 4px 16px rgba(37,211,102,.3); }
+
+/* Section heading inside drawer */
+.drawer-section-head {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.drawer-section-head::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(3,12,24,.07);
+}
+
+/* Warning box */
+.warn-box {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 12px;
+  color: #92400e;
+  display: flex;
+  gap: 9px;
+  margin-top: -6px;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+@media (max-width: 680px) {
+  .camp-stats { grid-template-columns: 1fr 1fr; }
+  .camp-hero { flex-direction: column; align-items: flex-start; }
+  .drawer { width: 100%; max-width: 100%; }
+  .field-row.cols-2 { grid-template-columns: 1fr; }
+  .send-options { grid-template-columns: 1fr; }
+}
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="page-header" style="margin-bottom:20px">
-  <div>
-    <div class="section-title">Campaigns</div>
-    <p class="muted">Send WhatsApp template messages to your customers at scale.</p>
+
+<!-- ── Hero header ──────────────────────────────────────────────────────── -->
+<div class="camp-hero">
+  <div class="camp-hero-left">
+    <h1>Campaigns</h1>
+    <p>Send WhatsApp template messages to your customers at scale.</p>
   </div>
   {% if connection %}
-  <button class="btn btn-primary" onclick="openModal()">+ New Campaign</button>
+  <button class="btn-new-camp" onclick="openDrawer()">
+    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+    New Campaign
+  </button>
   {% endif %}
 </div>
 
+<!-- ── Stats cards ──────────────────────────────────────────────────────── -->
+{% set total_camps = campaigns|length %}
+{% set sent_camps  = campaigns|selectattr('status','equalto','done')|list|length %}
+{% set sched_camps = campaigns|selectattr('status','equalto','scheduled')|list|length %}
+{% set total_msgs  = campaigns|sum(attribute='sent_count') %}
+
+<div class="camp-stats">
+  <div class="stat-card">
+    <div class="stat-label">Total Campaigns</div>
+    <div class="stat-value">{{ total_camps }}</div>
+    <div class="stat-sub">All time</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Completed</div>
+    <div class="stat-value" style="color:#16a34a">{{ sent_camps }}</div>
+    <div class="stat-sub">Successfully sent</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Scheduled</div>
+    <div class="stat-value" style="color:#d97706">{{ sched_camps }}</div>
+    <div class="stat-sub">Queued to send</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Messages Sent</div>
+    <div class="stat-value" style="color:#2563eb">{{ total_msgs }}</div>
+    <div class="stat-sub">Total recipients reached</div>
+  </div>
+</div>
+
 {% if not connection %}
-<div class="card" style="text-align:center;padding:40px">
-  <div style="font-size:36px;margin-bottom:12px;opacity:.4">📵</div>
-  <div style="font-weight:700;margin-bottom:6px">WhatsApp not connected</div>
-  <p class="muted" style="margin-bottom:18px">Connect your WhatsApp account before sending campaigns.</p>
-  <a href="{{ url_for('portal.whatsapp_connect') }}" class="btn btn-primary">Connect WhatsApp</a>
+<!-- ── No WhatsApp connected ────────────────────────────────────────────── -->
+<div class="section-card">
+  <div class="empty-state">
+    <div class="empty-icon-wrap">📵</div>
+    <h3>WhatsApp not connected</h3>
+    <p>Connect your WhatsApp Business account to start sending campaigns.</p>
+    <a href="{{ url_for('portal.whatsapp_connect') }}" class="btn-new-camp" style="margin-top:18px;text-decoration:none">
+      Connect WhatsApp
+    </a>
+  </div>
 </div>
 {% else %}
 
-<!-- ── Campaigns list ──────────────────────────────────────────────────── -->
-<div class="card" style="margin-bottom:24px">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-    <div style="font-weight:700">All Campaigns</div>
-    <span class="muted" style="font-size:12px">{{ campaigns|length }} total</span>
+<!-- ── Campaigns list ────────────────────────────────────────────────────── -->
+<div class="section-card">
+  <div class="section-card-header">
+    <h2>All Campaigns</h2>
+    <span style="font-size:12px;color:var(--muted)">{{ campaigns|length }} total</span>
   </div>
 
   {% if not campaigns %}
   <div class="empty-state">
-    <div class="empty-icon">📣</div>
-    <div>No campaigns yet — create your first one above.</div>
+    <div class="empty-icon-wrap">📣</div>
+    <h3>No campaigns yet</h3>
+    <p>Create your first campaign to start reaching customers on WhatsApp at scale.</p>
   </div>
   {% else %}
   <div style="overflow-x:auto">
     <table class="camp-table">
       <thead>
         <tr>
-          <th>Name</th>
+          <th>Campaign</th>
           <th>Template</th>
           <th>Status</th>
           <th>Recipients</th>
-          <th>Sent / Failed</th>
+          <th>Delivery</th>
           <th>Scheduled</th>
           <th>Created</th>
           <th></th>
@@ -114,37 +598,45 @@
       <tbody>
         {% for c in campaigns %}
         <tr>
-          <td style="font-weight:600">{{ c.name }}</td>
-          <td><code style="font-size:12px">{{ c.template_name }}</code>
-              <span class="muted" style="font-size:11px">({{ c.language_code }})</span></td>
+          <td>
+            <div style="font-weight:700;font-size:13px">{{ c.name }}</div>
+          </td>
+          <td>
+            <div style="font-family:monospace;font-size:12px;background:#f1f5f9;
+                        display:inline-block;padding:3px 8px;border-radius:6px;color:#475569">
+              {{ c.template_name }}
+            </div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">{{ c.language_code }}</div>
+          </td>
           <td>
             <span class="badge badge-{{ c.status }}">
               {% if c.status == 'draft' %}Draft
               {% elif c.status == 'scheduled' %}Scheduled
-              {% elif c.status == 'running' %}Running…
-              {% elif c.status == 'done' %}Done
+              {% elif c.status == 'running' %}Sending…
+              {% elif c.status == 'done' %}Completed
               {% elif c.status == 'failed' %}Failed
               {% endif %}
             </span>
           </td>
-          <td>{{ c.total_count }}</td>
-          <td>
-            {% if c.status in ('done','running','failed') %}
-            <div style="display:flex;align-items:center;gap:8px">
+          <td style="font-weight:600">{{ c.total_count }}</td>
+          <td style="min-width:120px">
+            {% if c.status in ('done','running','failed') and c.total_count %}
+            {% set pct = ((c.sent_count / c.total_count * 100)|int) %}
+            <div style="margin-bottom:5px">
               <div class="prog-wrap">
-                <div class="prog-fill"
-                     style="width:{{ ((c.sent_count / c.total_count * 100)|int if c.total_count else 0) }}%"></div>
+                <div class="prog-fill" style="width:{{ pct }}%{% if c.failed_count %};background:#ef4444{% endif %}"></div>
               </div>
-              <span style="font-size:12px;white-space:nowrap">
-                {{ c.sent_count }} / <span style="color:var(--bad)">{{ c.failed_count }}</span>
-              </span>
+            </div>
+            <div style="font-size:11px;color:var(--muted)">
+              <span style="color:#16a34a;font-weight:600">{{ c.sent_count }} sent</span>
+              {% if c.failed_count %} · <span style="color:#ef4444">{{ c.failed_count }} failed</span>{% endif %}
             </div>
             {% else %}—{% endif %}
           </td>
-          <td style="font-size:12px;color:var(--muted)">
+          <td style="font-size:12px;color:var(--muted);white-space:nowrap">
             {% if c.scheduled_at %}{{ c.scheduled_at.strftime('%d %b %Y %H:%M') }}{% else %}—{% endif %}
           </td>
-          <td style="font-size:12px;color:var(--muted)">
+          <td style="font-size:12px;color:var(--muted);white-space:nowrap">
             {{ c.created_at.strftime('%d %b %Y') if c.created_at else '' }}
           </td>
           <td style="white-space:nowrap">
@@ -152,15 +644,20 @@
             <form method="POST"
                   action="{{ url_for('portal.whatsapp_campaigns_send', campaign_id=c.id) }}"
                   style="display:inline"
-                  onsubmit="return confirm('Send this campaign now?')">
-              <button type="submit" class="btn btn-sm btn-primary">Send Now</button>
+                  onsubmit="return confirm('Send this campaign now to {{ c.total_count }} recipient(s)?')"
+              <button type="submit" class="act-btn act-btn-send">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+                Send
+              </button>
             </form>
             <form method="POST"
                   action="{{ url_for('portal.whatsapp_campaigns_delete', campaign_id=c.id) }}"
                   style="display:inline;margin-left:6px"
-                  onsubmit="return confirm('Delete this campaign?')">
-              <button type="submit" class="btn btn-sm"
-                      style="color:var(--bad);border-color:rgba(240,68,56,0.25)">Delete</button>
+                  onsubmit="return confirm('Delete \"{{ c.name }}\"?')">
+              <button type="submit" class="act-btn act-btn-del">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M3 6h18M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2"/></svg>
+                Delete
+              </button>
             </form>
             {% endif %}
           </td>
@@ -172,20 +669,18 @@
   {% endif %}
 </div>
 
-<!-- ── Proactive / cart recovery log ──────────────────────────────────── -->
-<div class="card">
-  <div style="font-weight:700;margin-bottom:16px">Proactive Message Log
-    <span class="muted" style="font-size:12px;font-weight:400;margin-left:8px">
-      Cart recovery &amp; order updates sent by the AI
-    </span>
+<!-- ── Proactive Message Log ─────────────────────────────────────────────── -->
+<div class="section-card">
+  <div class="section-card-header">
+    <h2>Proactive Message Log</h2>
+    <span style="font-size:12px;color:var(--muted)">Cart recovery &amp; order updates sent by the AI</span>
   </div>
 
   {% if not proactive_log %}
-  <div class="empty-state">
-    <div class="empty-icon">🔔</div>
-    <div>No proactive messages sent yet.<br>
-         <span style="font-size:13px">Cart recovery and order update messages will appear here once triggered by your WooCommerce store.</span>
-    </div>
+  <div class="empty-state" style="padding:40px 20px">
+    <div class="empty-icon-wrap">🔔</div>
+    <h3>No proactive messages yet</h3>
+    <p>Cart recovery and order update messages will appear here once triggered by your WooCommerce store.</p>
   </div>
   {% else %}
   <div style="overflow-x:auto">
@@ -203,16 +698,22 @@
       <tbody>
         {% for p in proactive_log %}
         <tr>
-          <td style="font-size:13px">+{{ p.customer_phone }}</td>
-          <td><span class="badge badge-draft">{{ p.event_type }}</span></td>
-          <td><code style="font-size:12px">{{ p.template_name or '—' }}</code></td>
+          <td style="font-size:13px;font-weight:600">+{{ p.customer_phone }}</td>
+          <td><span class="badge-event">{{ p.event_type }}</span></td>
           <td>
-            <span class="badge badge-{{ p.status }}">{{ p.status|capitalize }}</span>
+            {% if p.template_name %}
+            <span style="font-family:monospace;font-size:12px;background:#f1f5f9;
+                         display:inline-block;padding:3px 8px;border-radius:6px;color:#475569">
+              {{ p.template_name }}
+            </span>
+            {% else %}—{% endif %}
           </td>
+          <td><span class="badge badge-{{ p.status }}">{{ p.status|capitalize }}</span></td>
           <td style="font-size:12px;color:var(--muted);max-width:200px;
                      overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-            {{ p.notes or '—' }}</td>
-          <td style="font-size:12px;color:var(--muted)">
+            {{ p.notes or '—' }}
+          </td>
+          <td style="font-size:12px;color:var(--muted);white-space:nowrap">
             {{ p.created_at.strftime('%d %b %H:%M') if p.created_at else '' }}
           </td>
         </tr>
@@ -223,80 +724,351 @@
   {% endif %}
 </div>
 
-<!-- ── New Campaign modal ──────────────────────────────────────────────── -->
-<div class="modal-backdrop" id="campModal" onclick="closeModalOutside(event)">
-  <div class="modal-box">
-    <div class="modal-title">New Campaign</div>
+{% endif %}{# end: connection #}
 
-    <form method="POST" action="{{ url_for('portal.whatsapp_campaigns_create') }}"
-          onsubmit="prepareForm(this)">
+<!-- ═══════════════════════════════════════════════════════════════════════
+     NEW CAMPAIGN DRAWER
+═══════════════════════════════════════════════════════════════════════ -->
+<div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
 
-      <div class="form-row">
-        <label>Campaign Name</label>
-        <input type="text" name="name" placeholder="e.g. May Flash Sale" required>
-      </div>
+<div class="drawer" id="campDrawer">
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div class="form-row">
-          <label>Template Name <span class="muted">(must exist in Meta)</span></label>
-          <input type="text" name="template_name" placeholder="hello_world" required>
+  <!-- Drawer header -->
+  <div class="drawer-head">
+    <div class="drawer-head-left">
+      <h2>New Campaign</h2>
+      <p>Set up your WhatsApp broadcast in 3 steps</p>
+    </div>
+    <button class="drawer-close" onclick="closeDrawer()">✕</button>
+  </div>
+
+  <!-- Steps bar -->
+  <div class="steps-bar">
+    <div class="step-tab active" id="stab-1">
+      <span class="step-num">1</span> Campaign Info
+    </div>
+    <div class="step-tab" id="stab-2">
+      <span class="step-num">2</span> Recipients
+    </div>
+    <div class="step-tab" id="stab-3">
+      <span class="step-num">3</span> Schedule &amp; Launch
+    </div>
+  </div>
+
+  <!-- Drawer body -->
+  <div class="drawer-body" id="drawerBody">
+    <form id="campForm" method="POST" action="{{ url_for('portal.whatsapp_campaigns_create') }}">
+
+      <!-- ── Step 1: Campaign Info ── -->
+      <div class="step-panel active" id="panel-1">
+        <div class="drawer-section-head">Campaign details</div>
+
+        <div class="field">
+          <label class="field-label">Campaign Name</label>
+          <input class="field-input" type="text" name="name" id="f-name"
+                 placeholder="e.g. May Flash Sale, Ramadan Promo…" autocomplete="off">
         </div>
-        <div class="form-row">
-          <label>Language Code</label>
-          <input type="text" name="language_code" value="en" placeholder="en">
+
+        <div class="field">
+          <label class="field-label">
+            Template
+            <span class="field-hint" id="templateHint">Loading from Meta…</span>
+          </label>
+          <select class="field-select" name="template_name" id="f-template" onchange="onTemplateChange(this)">
+            <option value="">— loading templates —</option>
+          </select>
+          <input type="hidden" name="language_code" id="f-lang" value="en">
+        </div>
+
+        <div class="warn-box">
+          <span style="font-size:16px;flex-shrink:0">⚠️</span>
+          <span>Only <strong>Meta-approved</strong> templates appear in this list. If you don't see a template, check its status in <strong>Meta Business Suite → WhatsApp Manager → Message Templates</strong>.</span>
         </div>
       </div>
 
-      <div class="form-row">
-        <label>Recipients <span class="muted">(one phone number per line, with country code)</span></label>
-        <textarea name="recipients" placeholder="2348012345678&#10;2347098765432&#10;447911123456" required></textarea>
-      </div>
+      <!-- ── Step 2: Recipients ── -->
+      <div class="step-panel" id="panel-2">
+        <div class="drawer-section-head">Who receives this campaign</div>
 
-      <div class="form-row">
-        <label>When to send</label>
-        <div class="send-opts">
-          <div class="send-opt selected" id="optNow" onclick="selectOpt('now')">
-            <strong>Send Now</strong>
-            <small>Sends immediately</small>
+        <div class="field">
+          <label class="field-label">
+            Phone Numbers
+            <span class="field-hint">One per line · Include country code · No + or spaces</span>
+          </label>
+          <div class="recip-wrap">
+            <textarea class="field-textarea" name="recipients" id="f-recipients"
+                      placeholder="2348012345678&#10;2347098765432&#10;447911123456&#10;19175551234"
+                      oninput="countRecipients(this)" rows="10"></textarea>
+            <div class="recip-counter" id="recipCounter">0 numbers</div>
           </div>
-          <div class="send-opt" id="optSchedule" onclick="selectOpt('schedule')">
-            <strong>Schedule</strong>
-            <small>Pick a date &amp; time</small>
+        </div>
+
+        <div class="warn-box">
+          <span style="font-size:16px;flex-shrink:0">⚠️</span>
+          <span>Only send to customers who have <strong>opted in</strong> to receive WhatsApp messages from your business. Sending to unverified numbers may result in your WhatsApp account being flagged by Meta.</span>
+        </div>
+      </div>
+
+      <!-- ── Step 3: Schedule & Launch ── -->
+      <div class="step-panel" id="panel-3">
+        <div class="drawer-section-head">When to send</div>
+
+        <div class="send-options">
+          <div class="send-opt selected" id="optNow" onclick="selectTiming('now')">
+            <div class="send-opt-icon">⚡</div>
+            <div class="send-opt-text">
+              <strong>Send Now</strong>
+              <small>Launch immediately after confirming</small>
+            </div>
+          </div>
+          <div class="send-opt" id="optSched" onclick="selectTiming('schedule')">
+            <div class="send-opt-icon">🕐</div>
+            <div class="send-opt-text">
+              <strong>Schedule</strong>
+              <small>Pick a specific date &amp; time</small>
+            </div>
           </div>
         </div>
+
         <div id="scheduleField">
-          <input type="datetime-local" name="scheduled_at" id="scheduledAt">
+          <div class="field">
+            <label class="field-label">Send Date &amp; Time</label>
+            <input class="field-input" type="datetime-local" name="scheduled_at" id="f-scheddt">
+          </div>
         </div>
-        <input type="hidden" name="send_now" id="sendNowHidden" value="1">
+
+        <input type="hidden" name="send_now" id="f-sendnow" value="1">
+
+        <!-- Review summary -->
+        <div class="drawer-section-head" style="margin-top:8px">Review &amp; confirm</div>
+        <div style="background:#f8fafc;border:1px solid rgba(3,12,24,.07);border-radius:12px;padding:4px 16px">
+          <div class="review-row">
+            <span class="review-key">Campaign name</span>
+            <span class="review-val" id="rv-name">—</span>
+          </div>
+          <div class="review-row">
+            <span class="review-key">Template</span>
+            <span class="review-val" id="rv-template">—</span>
+          </div>
+          <div class="review-row">
+            <span class="review-key">Language</span>
+            <span class="review-val" id="rv-lang">—</span>
+          </div>
+          <div class="review-row">
+            <span class="review-key">Recipients</span>
+            <span class="review-val"><span class="review-chip" id="rv-recip">0 numbers</span></span>
+          </div>
+          <div class="review-row">
+            <span class="review-key">Send time</span>
+            <span class="review-val" id="rv-time">Send immediately</span>
+          </div>
+        </div>
       </div>
 
-      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:6px">
-        <button type="button" class="btn" onclick="closeModal()">Cancel</button>
-        <button type="submit" class="btn btn-primary">Create Campaign</button>
-      </div>
     </form>
   </div>
+
+  <!-- Drawer footer -->
+  <div class="drawer-foot">
+    <button class="btn-ghost" id="btnBack" style="display:none" onclick="prevStep()">
+      ← Back
+    </button>
+    <div></div>
+    <div class="drawer-foot-right">
+      <button class="btn-ghost" onclick="closeDrawer()">Cancel</button>
+      <button class="btn-next" id="btnNext" onclick="nextStep()">
+        Continue →
+      </button>
+      <button class="btn-launch" id="btnLaunch" style="display:none" onclick="submitCampaign()">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+        Launch Campaign
+      </button>
+    </div>
+  </div>
+
 </div>
 
 <script>
-function openModal()  { document.getElementById('campModal').classList.add('open') }
-function closeModal() { document.getElementById('campModal').classList.remove('open') }
-function closeModalOutside(e) { if(e.target===document.getElementById('campModal')) closeModal() }
+/* ── Load Meta templates into dropdown ──────────────────────────────── */
+function loadTemplates() {
+  const sel  = document.getElementById('f-template')
+  const hint = document.getElementById('templateHint')
+  sel.innerHTML = '<option value="">— loading… —</option>'
+  hint.textContent = 'Loading from Meta…'
 
-function selectOpt(mode) {
-  document.getElementById('optNow').classList.toggle('selected', mode==='now')
-  document.getElementById('optSchedule').classList.toggle('selected', mode==='schedule')
-  document.getElementById('scheduleField').style.display = mode==='schedule' ? 'block' : 'none'
-  document.getElementById('sendNowHidden').value = mode==='now' ? '1' : '0'
-  if(mode==='schedule') document.getElementById('scheduledAt').required = true
-  else document.getElementById('scheduledAt').required = false
+  fetch('{{ url_for("portal.whatsapp_campaigns_templates") }}')
+    .then(r => r.json())
+    .then(templates => {
+      if (!templates.length) {
+        sel.innerHTML = '<option value="">No approved templates found</option>'
+        hint.textContent = 'No approved templates in your Meta account'
+        return
+      }
+      sel.innerHTML = '<option value="">— select a template —</option>' +
+        templates.map(t =>
+          `<option value="${t.name}" data-lang="${t.language}" data-cat="${t.category}">`
+          + `${t.name}  ·  ${t.category.toLowerCase().replace('_',' ')}`
+          + `</option>`
+        ).join('')
+      hint.textContent = templates.length + ' approved template' + (templates.length !== 1 ? 's' : '') + ' loaded'
+    })
+    .catch(() => {
+      sel.innerHTML = '<option value="">Could not load templates</option>'
+      hint.textContent = 'Failed to load — try refreshing'
+    })
 }
 
-function prepareForm(form) {
-  // count recipients live
+function onTemplateChange(sel) {
+  const opt = sel.options[sel.selectedIndex]
+  document.getElementById('f-lang').value = opt.getAttribute('data-lang') || 'en'
+}
+
+/* ── Drawer open/close ──────────────────────────────────────────────── */
+function openDrawer() {
+  document.getElementById('drawerOverlay').classList.add('open')
+  document.getElementById('campDrawer').classList.add('open')
+  document.body.style.overflow = 'hidden'
+  resetDrawer()
+  loadTemplates()
+}
+function closeDrawer() {
+  document.getElementById('drawerOverlay').classList.remove('open')
+  document.getElementById('campDrawer').classList.remove('open')
+  document.body.style.overflow = ''
+}
+
+/* ── Step management ─────────────────────────────────────────────────── */
+let currentStep = 1
+const TOTAL_STEPS = 3
+
+function goStep(n) {
+  for (let i = 1; i <= TOTAL_STEPS; i++) {
+    const panel = document.getElementById('panel-' + i)
+    const tab   = document.getElementById('stab-' + i)
+    if (panel) panel.classList.toggle('active', i === n)
+    if (tab) {
+      tab.classList.remove('active', 'done')
+      if (i === n) tab.classList.add('active')
+      else if (i < n) tab.classList.add('done')
+    }
+  }
+  currentStep = n
+  document.getElementById('btnBack').style.display = n > 1 ? 'inline-flex' : 'none'
+  document.getElementById('btnNext').style.display   = n < TOTAL_STEPS ? 'inline-flex' : 'none'
+  document.getElementById('btnLaunch').style.display = n === TOTAL_STEPS ? 'inline-flex' : 'none'
+  document.getElementById('drawerBody').scrollTop = 0
+  if (n === TOTAL_STEPS) populateReview()
+}
+
+function nextStep() {
+  if (!validateStep(currentStep)) return
+  goStep(currentStep + 1)
+}
+function prevStep() {
+  goStep(currentStep - 1)
+}
+function resetDrawer() {
+  document.getElementById('campForm').reset()
+  document.getElementById('recipCounter').textContent = '0 numbers'
+  document.getElementById('recipCounter').classList.remove('has-nums')
+  document.getElementById('scheduleField').classList.remove('show')
+  selectTiming('now')
+  goStep(1)
+}
+
+/* ── Validation ─────────────────────────────────────────────────────── */
+function validateStep(n) {
+  if (n === 1) {
+    const name = document.getElementById('f-name').value.trim()
+    const tmpl = document.getElementById('f-template').value.trim()
+    if (!name) { shake('f-name'); return false }
+    if (!tmpl) { shake('f-template'); return false }
+  }
+  if (n === 2) {
+    const phones = parsePhones()
+    if (phones.length === 0) { shake('f-recipients'); return false }
+  }
+  if (n === 3) {
+    const isSchedule = document.getElementById('f-sendnow').value === '0'
+    if (isSchedule && !document.getElementById('f-scheddt').value) {
+      shake('f-scheddt'); return false
+    }
+  }
   return true
 }
-</script>
+function shake(id) {
+  const el = document.getElementById(id)
+  if (!el) return
+  el.style.borderColor = '#ef4444'
+  el.style.boxShadow   = '0 0 0 3px rgba(239,68,68,.15)'
+  el.focus()
+  setTimeout(() => {
+    el.style.borderColor = ''
+    el.style.boxShadow   = ''
+  }, 1800)
+}
 
-{% endif %}
+/* ── Recipients counter ─────────────────────────────────────────────── */
+function parsePhones() {
+  const raw = document.getElementById('f-recipients').value
+  return raw.split('\n').map(l => l.trim()).filter(l => l.length > 6)
+}
+function countRecipients(el) {
+  const n = parsePhones().length
+  const counter = document.getElementById('recipCounter')
+  counter.textContent = n + (n === 1 ? ' number' : ' numbers')
+  counter.classList.toggle('has-nums', n > 0)
+}
+
+/* ── Send timing toggle ─────────────────────────────────────────────── */
+function selectTiming(mode) {
+  document.getElementById('optNow').classList.toggle('selected', mode === 'now')
+  document.getElementById('optSched').classList.toggle('selected', mode === 'schedule')
+  const sf = document.getElementById('scheduleField')
+  const dt = document.getElementById('f-scheddt')
+  if (mode === 'schedule') {
+    sf.classList.add('show')
+    dt.required = true
+  } else {
+    sf.classList.remove('show')
+    dt.required = false
+  }
+  document.getElementById('f-sendnow').value = mode === 'now' ? '1' : '0'
+}
+
+/* ── Populate review panel ──────────────────────────────────────────── */
+function populateReview() {
+  const name   = document.getElementById('f-name').value.trim()
+  const sel    = document.getElementById('f-template')
+  const tmpl   = sel.value.trim()
+  const opt    = sel.options[sel.selectedIndex]
+  const cat    = (opt && opt.getAttribute('data-cat')) || ''
+  const lang   = document.getElementById('f-lang').value.trim() || 'en'
+  const count  = parsePhones().length
+  const isNow  = document.getElementById('f-sendnow').value === '1'
+  const dt     = document.getElementById('f-scheddt').value
+
+  document.getElementById('rv-name').textContent     = name || '—'
+  document.getElementById('rv-template').textContent = tmpl ? (tmpl + (cat ? '  (' + cat.toLowerCase().replace('_',' ') + ')' : '')) : '—'
+  document.getElementById('rv-lang').textContent     = lang
+  document.getElementById('rv-recip').textContent    = count + (count === 1 ? ' recipient' : ' recipients')
+
+  let timeText = 'Send immediately'
+  if (!isNow && dt) {
+    const d = new Date(dt)
+    timeText = d.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })
+             + ' at ' + d.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' })
+  }
+  document.getElementById('rv-time').textContent = timeText
+}
+
+/* ── Submit ─────────────────────────────────────────────────────────── */
+function submitCampaign() {
+  if (!validateStep(3)) return
+  const btn = document.getElementById('btnLaunch')
+  btn.disabled = true
+  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/></svg> Launching…'
+  document.getElementById('campForm').submit()
+}
+</script>
 {% endblock %}

@@ -6994,6 +6994,56 @@ def whatsapp_campaigns_delete(campaign_id: int):
     return redirect(url_for("portal.whatsapp_campaigns"))
 
 
+@portal_bp.route("/whatsapp/campaigns/templates-json")
+def whatsapp_campaigns_templates():
+    """Return the tenant's APPROVED Meta message templates as JSON for the drawer dropdown."""
+    r = _require_login()
+    if r:
+        return jsonify([])
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT waba_id, access_token FROM wa_tenants WHERE tenant_id=%s AND active=TRUE LIMIT 1",
+            (tenant_id,),
+        )
+        row = cur.fetchone()
+        cur.close(); conn.close()
+    except Exception:
+        return jsonify([])
+
+    if not row or not row.get("waba_id") or not row.get("access_token"):
+        return jsonify([])
+
+    try:
+        import requests as _req
+        resp = _req.get(
+            f"https://graph.facebook.com/v19.0/{row['waba_id']}/message_templates",
+            params={
+                "access_token": row["access_token"],
+                "fields": "name,status,category,language",
+                "limit": 100,
+            },
+            timeout=8,
+        )
+        data = resp.json().get("data", [])
+        approved = [
+            {
+                "name":     t["name"],
+                "language": t.get("language", "en"),
+                "category": t.get("category", ""),
+            }
+            for t in data if t.get("status") == "APPROVED"
+        ]
+        return jsonify(approved)
+    except Exception as e:
+        print("⚠️ whatsapp_campaigns_templates error:", e)
+        return jsonify([])
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # ORDERS
 # ══════════════════════════════════════════════════════════════════════════════
