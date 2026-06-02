@@ -21,6 +21,7 @@ import uuid
 import os
 import json as _json
 import re as _re
+import psycopg2.extras
 
 from auth import verify_api_key
 from search import search_documents, search_documents_with_meta, search_related_products, upsert_verified_spec
@@ -32,6 +33,7 @@ from memory_store import (
     add_message,
     maybe_summarize_session,
     get_history_with_summary,
+    get_semantic_history,
 )
 from billing import ensure_billing_tables, deduct_tokens, maybe_send_low_balance_alert
 from cart_db import (
@@ -77,6 +79,7 @@ class ChatRequest(BaseModel):
     api_key: str
     message: str
     session_id: str | None = None
+    system_addon: str | None = None  # injected by WA gateway for pending-order context
 
 
 def record_usage_event(
@@ -140,7 +143,7 @@ def record_token_usage(
     if not conn:
         return
 
-    cur = conn.cursor(dictionary=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         # 1) Always add to cumulative tokens_used
         cur.execute(
@@ -166,7 +169,7 @@ def record_token_usage(
 
             if not ok:
                 # Balance hit 0 → deactivate this paid key
-                cur.execute("UPDATE api_keys SET is_active=0 WHERE id=%s", (api_key_id,))
+                cur.execute("UPDATE api_keys SET is_active=FALSE WHERE id=%s", (api_key_id,))
                 conn.commit()
 
                 insert_audit_log(
@@ -186,7 +189,7 @@ def record_token_usage(
 
         # 4) Deactivate trial if it crosses token_limit
         if key_type_db == "trial" and token_limit_db is not None and tokens_used_total >= int(token_limit_db):
-            cur.execute("UPDATE api_keys SET is_active=0 WHERE id=%s", (api_key_id,))
+            cur.execute("UPDATE api_keys SET is_active=FALSE WHERE id=%s", (api_key_id,))
             conn.commit()
             insert_audit_log(
                 action="trial_token_limit_deactivated",
@@ -242,21 +245,104 @@ _PRODUCT_TAG_PATTERN = r'<<<PHIXTRA_PRODUCTS:(\[.*?\])>>>'
 
 # ── System prompt instruction appended when feature is enabled ────────────────
 _PRODUCT_REC_INSTRUCTION = (
-    "\n\n[PRODUCT RECOMMENDATION INSTRUCTION]\n"
-    "You are a shopping assistant for a WooCommerce store. "
-    "When a customer asks about products or you want to recommend specific items, "
-    "write a SHORT conversational reply (1-2 sentences maximum — do NOT list products, "
-    "prices or URLs in your text; the system displays product cards automatically), "
-    "then append this exact tag at the very END of your reply:\n"
-    '<<<PHIXTRA_PRODUCTS:["Exact Product Name One","Exact Product Name Two"]>>>\n'
-    "Rules:\n"
+    "\n\n[PRODUCT DISPLAY — CRITICAL RULE]\n"
+    "The system automatically sends the customer rich product cards with images, full specs, "
+    "prices, and an order button. YOU MUST NEVER write product names, prices, model numbers, "
+    "or URLs in your text reply. If you list products in text, the customer sees them TWICE "
+    "(your text AND the automatic cards) which looks broken and unprofessional.\n\n"
+    "When a customer asks about a product or wants to buy something:\n"
+    "1. Write ONE short sentence introducing the results (e.g. 'Here are some great iPhone 13 options for you!')\n"
+    "2. Append this exact tag at the very END of your message with up to 3 product names:\n"
+    '<<<PHIXTRA_PRODUCTS:["Exact Title One","Exact Title Two"]>>>\n\n'
+    "CORRECT example:\n"
+    "Customer: 'I want iPhone 13'\n"
+    "Your reply: 'Great choice — here are the iPhone 13 options we have in stock for you! "
+    '<<<PHIXTRA_PRODUCTS:["Apple iPhone 13 128gb [UK Used] Midnight","Apple iPhone 13 - [UK Used] - starlight / very-good / 128GB"]>>>\'\n\n'
+    "WRONG — NEVER do this:\n"
+    "Customer: 'I want iPhone 13'\n"
+    "Your reply: '1. Apple iPhone 13 Midnight — ₦740,000\\n2. Apple iPhone 13 512GB — ₦777,000\\nWhich would you like?'\n\n"
+    "Additional rules:\n"
     "- Copy product names EXACTLY as they appear in the Title: field of the store data.\n"
-    "- Include a maximum of 3 product names.\n"
-    "- Never write the tag in the middle of your reply — always at the very end.\n"
-    "- Never show this tag text to the customer — it is stripped automatically.\n"
-    "- If you are NOT recommending specific products in this reply, omit the tag entirely.\n"
-    "- Do NOT list products, prices, or links in your text — the cards handle that."
+    "- Maximum 3 products in the tag.\n"
+    "- The tag must always be at the very END — never in the middle.\n"
+    "- The tag is stripped automatically before the customer sees your message.\n"
+    "- If you are NOT recommending a specific product, omit the tag entirely."
 )
+
+
+def _check_quota(tenant_id: int) -> dict:
+    """
+    Returns quota state for a tenant.
+    dict keys: allowed, messages_used, messages_limit, is_overage, plan_slug, overage_rate_ngn
+    """
+    from datetime import date as _date
+    conn = get_db_connection()
+    if not conn:
+        return {"allowed": True, "messages_used": 0, "messages_limit": -1,
+                "is_overage": False, "plan_slug": "free", "overage_rate_ngn": 10.0}
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("""
+            SELECT t.plan_period_start, t.quota_notified_at,
+                   COALESCE(p.slug, 'free')              AS plan_slug,
+                   COALESCE(p.ai_messages_limit, 100)    AS ai_messages_limit,
+                   COALESCE(p.overage_per_msg_ngn, 10)   AS overage_rate_ngn
+            FROM tenants t
+            LEFT JOIN plans p ON p.id = t.plan_id
+            WHERE t.id = %s
+        """, (tenant_id,))
+        row = cur.fetchone()
+        if not row:
+            return {"allowed": True, "messages_used": 0, "messages_limit": 100,
+                    "is_overage": False, "plan_slug": "free", "overage_rate_ngn": 10.0}
+
+        limit       = int(row["ai_messages_limit"])
+        period_start = row["plan_period_start"] or _date.today().replace(day=1)
+
+        cur.execute("""
+            SELECT COUNT(*) AS used FROM usage_events
+            WHERE tenant_id=%s AND created_at >= %s
+        """, (tenant_id, period_start))
+        used = int((cur.fetchone() or {}).get("used") or 0)
+
+        allowed   = limit == -1 or used < limit
+        is_over   = limit != -1 and used >= limit
+
+        return {
+            "allowed":          allowed,
+            "messages_used":    used,
+            "messages_limit":   limit,
+            "is_overage":       is_over,
+            "plan_slug":        row["plan_slug"],
+            "overage_rate_ngn": float(row["overage_rate_ngn"]),
+        }
+    except Exception as e:
+        print("⚠️ _check_quota error:", e)
+        return {"allowed": True, "messages_used": 0, "messages_limit": -1,
+                "is_overage": False, "plan_slug": "free", "overage_rate_ngn": 10.0}
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _log_overage_event(tenant_id: int, quota: dict) -> None:
+    """Record one overage event for billing. Never throws."""
+    conn = get_db_connection()
+    if not conn:
+        return
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO quota_overage_log (tenant_id, plan_slug, msgs_used, msgs_limit, rate_ngn)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (tenant_id, quota.get("plan_slug"), quota.get("messages_used"),
+              quota.get("messages_limit"), quota.get("overage_rate_ngn")))
+        conn.commit()
+    except Exception as e:
+        print("⚠️ _log_overage_event error:", e)
+    finally:
+        cur.close()
+        conn.close()
 
 
 @app.post("/chat")
@@ -266,9 +352,28 @@ def chat(req: ChatRequest):
         raise HTTPException(status_code=401, detail=error)
 
     tenant_id = tenant["tenant_id"]
+
+    # ── Quota check ───────────────────────────────────────────────────────────
+    _quota = _check_quota(int(tenant_id))
+    if not _quota["allowed"]:
+        print(f"🚫 [QUOTA] tenant={tenant_id} BLOCKED — {_quota['messages_used']}/{_quota['messages_limit']} msgs used")
+        _log_overage_event(int(tenant_id), _quota)
+        return {
+            "reply": "",
+            "session_id": req.session_id or "",
+            "product_recommendations": [],
+            "quota_exceeded": True,
+            "plan_slug": _quota["plan_slug"],
+            "messages_used": _quota["messages_used"],
+            "messages_limit": _quota["messages_limit"],
+        }
+    # ─────────────────────────────────────────────────────────────────────────
     system_prompt = tenant["system_prompt"] or ""
-    index_name = tenant["azure_search_index"]
-    semantic_config = tenant.get("azure_semantic_config") or "phixtra-semantic"
+    semantic_config = tenant.get("azure_semantic_config") or ""
+
+    # Pending-order context from WA gateway — goes into system prompt, NOT the search query
+    if req.system_addon:
+        system_prompt = system_prompt + "\n\n" + req.system_addon
 
     session_id = req.session_id or uuid.uuid4().hex
 
@@ -290,7 +395,8 @@ def chat(req: ChatRequest):
     rec_enabled = bool(_features.get("product_recommendation", True))
     related_enabled = bool(_features.get("related_products", False))
 
-    # If product recommendation is active, add the instruction to the system prompt
+    # Product recommendation instruction goes FIRST — before handoff rules —
+    # so it carries maximum weight with the model.
     if rec_enabled:
         system_prompt = system_prompt + _PRODUCT_REC_INSTRUCTION
 
@@ -318,18 +424,61 @@ def chat(req: ChatRequest):
     except Exception:
         pass
 
-    history = get_history_with_summary(
-        session_id,
-        tenant_id,
-        keep_last_n=int(os.getenv("HISTORY_KEEP_LAST_N", "4")),
+    # Generate embedding once — reused for semantic history + product search
+    msg_embedding = None
+    try:
+        from search import _embed_query as _emb
+        msg_embedding = _emb(req.message)
+    except Exception as _emb_err:
+        print(f"⚠️ embedding for memory failed (semantic history disabled this turn): {_emb_err}")
+
+    if msg_embedding:
+        history = get_semantic_history(
+            session_id, tenant_id,
+            query_embedding=msg_embedding,
+            keep_last_n=int(os.getenv("HISTORY_KEEP_LAST_N", "4")),
+            semantic_top_k=int(os.getenv("SEMANTIC_HISTORY_TOP_K", "4")),
+        )
+    else:
+        history = get_history_with_summary(
+            session_id, tenant_id,
+            keep_last_n=int(os.getenv("HISTORY_KEEP_LAST_N", "4")),
+        )
+
+    # Store user message with its embedding (free — already computed above)
+    add_message(session_id, tenant_id, "user", req.message, embedding=msg_embedding)
+
+    # Reuse precomputed embedding for product search — no second API call
+    context_chunks, raw_docs = search_documents_with_meta(
+        req.message, tenant_id,
+        precomputed_embedding=msg_embedding,
     )
 
-    add_message(session_id, tenant_id, "user", req.message)
-
-    # Use the meta-aware search so we can build rich product cards later
-    context_chunks, raw_docs = search_documents_with_meta(req.message, index_name, semantic_config)
-
-
+    # ── No-hallucination guard ────────────────────────────────────────────────
+    # When the store search returns nothing, explicitly forbid the AI from
+    # inventing product names from its own training knowledge. Without this
+    # guard the LLM recommends phones that are not in the store.
+    if not context_chunks and rec_enabled:
+        if raw_docs:
+            # Products were found in the catalog but carry no text description —
+            # the product cards will show automatically via the fallback. Tell the
+            # AI to give a brief positive intro and let the cards do the talking.
+            system_prompt += (
+                "\n\nNOTE: The store catalog found matching products for this query. "
+                "Write ONE brief intro sentence (e.g. 'Here are some options for you!'). "
+                "Do NOT name any specific product, price, or model in your text — "
+                "the product cards are sent automatically."
+            )
+        else:
+            system_prompt += (
+                "\n\nCRITICAL — PRODUCT SAFETY RULE: The store database returned NO products "
+                "for this query. You MUST NOT mention, recommend, or suggest any product by name. "
+                "Do not use your own knowledge to suggest products. "
+                "Tell the customer honestly that you don't currently have matching products in stock, "
+                "suggest they ask about a specific model (e.g. iPhone 11, iPhone 12, iPhone 13), "
+                "and offer to show them what is available in the store."
+            )
+    # ─────────────────────────────────────────────────────────────────────────
 
     # ── Verified Specs Web Lookup (No Hallucination) ───────────────────────
     # If the user asks for a numeric spec (e.g., weight) and it is NOT present
@@ -371,7 +520,6 @@ def chat(req: ChatRequest):
                     try:
                         model_hint = req.message
                         upsert_verified_spec(
-                            index_name=index_name,
                             tenant_id=tenant_id,
                             model_hint=model_hint,
                             spec_key=verified.get("spec_key") or "spec",
@@ -525,6 +673,7 @@ def chat(req: ChatRequest):
                             "product_id": product_id,
                             "id": matched_doc.get("id") or "",
                             "image_url": matched_doc.get("image_url") or "",
+                            "description": (matched_doc.get("content") or "")[:600],
                         })
                     else:
                         # Name not in current search results — do a targeted search
@@ -533,7 +682,7 @@ def chat(req: ChatRequest):
                         # conversation history that aren't in the current query's results.
                         try:
                             _, fallback_docs = search_documents_with_meta(
-                                name, index_name, semantic_config
+                                name, tenant_id
                             )
                             # Strip all punctuation before comparing so that
                             # "Apple iPhone 11 [UK Used]" matches
@@ -570,6 +719,7 @@ def chat(req: ChatRequest):
                                 "product_id": product_id,
                                 "id": matched_doc.get("id") or "",
                                 "image_url": matched_doc.get("image_url") or "",
+                                "description": (matched_doc.get("content") or "")[:600],
                             })
                         else:
                             # Still not found — show card with name only, no buttons
@@ -604,13 +754,26 @@ def chat(req: ChatRequest):
                     prod_type = first_doc.get("type") or ""
                     already_recommended = {p["name"].lower() for p in product_recommendations}
 
+                    # Derive budget cap from the most expensive already-recommended
+                    # product (all of which passed the customer's price filter).
+                    # This prevents related products from exceeding the customer's budget.
+                    _gbp_prices = []
+                    for _p in product_recommendations:
+                        _raw = (_p.get("price") or "").replace("£", "").replace(",", "")
+                        try:
+                            _gbp_prices.append(float(_raw.split("–")[-1].strip()))
+                        except (ValueError, IndexError):
+                            pass
+                    _max_price_gbp = max(_gbp_prices) if _gbp_prices else None
+
                     related = search_related_products(
-                        index_name=index_name,
+                        tenant_id=tenant_id,
                         exclude_names=already_recommended,
                         prod_type=prod_type,
                         category=cat,
                         top=2,
                         search_hint=first["name"],
+                        max_price_gbp=_max_price_gbp,
                     )
                     for r in related:
                         product_recommendations.append({**r, "related": True})
@@ -618,6 +781,62 @@ def chat(req: ChatRequest):
                     print(f"   related_products: appended {len(related)} related card(s)")
             except Exception as rel_err:
                 print(f"   ⚠️ related_products failed: {rel_err}")
+        # ─────────────────────────────────────────────────────────────────────
+
+        # ── Fallback: AI skipped the tag — build list from raw search results ─
+        # This fires when the search found real products but the AI forgot to
+        # include <<<PHIXTRA_PRODUCTS:...>>> in its reply. Without this, the
+        # customer sees a plain-text product list instead of the View Options list.
+        # Guard: only fire if the AI reply actually sounds like a product recommendation.
+        # Without this, greetings like "hello" trigger the fallback because the vector
+        # search always returns something regardless of query relevance.
+        _PRODUCT_SIGNALS = (
+            "here are", "here is", "i found", "we have", "available",
+            "in stock", "option", "match", "result", "take a look",
+            "product", "model", "item", "check out",
+        )
+        _reply_suggests_products = any(p in answer.lower() for p in _PRODUCT_SIGNALS)
+        if not product_recommendations and raw_docs and _reply_suggests_products:
+            def _pid_fb(doc_id):
+                p = (doc_id or "").split("-")
+                return p[1] if len(p) >= 2 and p[0] == "product" else ""
+
+            def _price_fb(pmin, pmax):
+                try:
+                    mn = float(pmin) if pmin is not None else None
+                    mx = float(pmax) if pmax is not None else None
+                    if mn is not None and mn <= 0: mn = None
+                    if mx is not None and mx <= 0: mx = None
+                    if mn and mx and abs(mx - mn) > 0.01: return f"£{mn:,.2f} – £{mx:,.2f}"
+                    elif mn: return f"£{mn:,.2f}"
+                    elif mx: return f"£{mx:,.2f}"
+                except Exception: pass
+                return ""
+
+            for _doc in raw_docs[:3]:
+                _pid  = _pid_fb(_doc.get("id", ""))
+                _url  = _doc.get("url") or ""
+                _cart = f"{_url}?add-to-cart={_pid}" if _pid and _url else _url
+                product_recommendations.append({
+                    "name":        _doc.get("title") or "",
+                    "price":       _price_fb(_doc.get("price_min"), _doc.get("price_max")),
+                    "url":         _url,
+                    "cart_url":    _cart,
+                    "in_stock":    bool(_doc.get("in_stock", True)),
+                    "sku":         _doc.get("sku") or "",
+                    "brand":       _doc.get("brand") or "",
+                    "product_id":  _pid,
+                    "id":          _doc.get("id") or "",
+                    "image_url":   _doc.get("image_url") or "",
+                    "description": (_doc.get("content") or "")[:600],
+                })
+
+            if product_recommendations:
+                print(f"   ⚡ tag-fallback: {len(product_recommendations)} product(s) from raw_docs")
+                # Strip any numbered or bulleted product list the AI wrote so
+                # the customer only sees the intro sentence + the View Options list
+                answer = _re.sub(r'\n\d+\.\s+\*.*', '', answer, flags=_re.DOTALL).strip()
+                answer = _re.sub(r'\n[-•]\s+\*.*', '', answer, flags=_re.DOTALL).strip()
         # ─────────────────────────────────────────────────────────────────────
 
     # Token accounting
@@ -703,11 +922,11 @@ def notify_when_in_stock(req: NotifyStockRequest):
             INSERT INTO stock_notifications
                 (tenant_id, product_id, product_name, product_url, email, status)
             VALUES (%s, %s, %s, %s, %s, 'pending')
-            ON DUPLICATE KEY UPDATE
-                product_name = VALUES(product_name),
-                product_url  = VALUES(product_url),
-                status       = IF(status = 'notified', 'pending', status),
-                notified_at  = IF(status = 'notified', NULL, notified_at)
+            ON CONFLICT (tenant_id, product_id, email) DO UPDATE SET
+                product_name = EXCLUDED.product_name,
+                product_url  = EXCLUDED.product_url,
+                status       = CASE WHEN stock_notifications.status = 'notified' THEN 'pending' ELSE stock_notifications.status END,
+                notified_at  = CASE WHEN stock_notifications.status = 'notified' THEN NULL ELSE stock_notifications.notified_at END
             """,
             (
                 tenant_id,
@@ -764,7 +983,7 @@ def stock_back_in(req: StockBackInRequest):
     if not conn:
         raise HTTPException(status_code=500, detail="Database unavailable")
 
-    cur = conn.cursor(dictionary=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     notified_count = 0
     failed_count   = 0
 
@@ -1282,7 +1501,7 @@ def cart_recovery_reply(req: CartRecoveryReplyRequest):
         f"The cart URL is: {store_url.rstrip('/')}/cart"
     )
 
-    context_chunks, _ = search_documents_with_meta(req.message, tenant.get("azure_search_index") or "", tenant.get("azure_semantic_config") or "phixtra-semantic")
+    context_chunks, _ = search_documents_with_meta(req.message, tenant_id)
 
     answer, usage = ask_llm(
         system_prompt=recovery_system_prompt,
