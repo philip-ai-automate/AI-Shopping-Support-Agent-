@@ -1,0 +1,325 @@
+{% extends "portal/base.html" %}
+{% block title %}WooCommerce Sync — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+/* ── Stats row ─────────────────────────────────────────── */
+.ws-stats {
+  display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:24px;
+}
+@media(max-width:700px){ .ws-stats { grid-template-columns:1fr 1fr } }
+.ws-stat {
+  background:#fff; border:1px solid var(--line); border-radius:14px;
+  padding:16px 18px;
+}
+.ws-stat-val { font-size:26px; font-weight:800; letter-spacing:-.5px; line-height:1.1 }
+.ws-stat-lbl { font-size:12px; color:var(--muted); margin-top:3px }
+
+/* ── Type tabs ─────────────────────────────────────────── */
+.ws-tabs {
+  display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap;
+}
+.ws-tab {
+  padding:6px 16px; border-radius:999px; border:1px solid var(--line);
+  font-size:13px; font-weight:600; text-decoration:none; color:var(--txt);
+  background:#fff; transition:.12s;
+}
+.ws-tab:hover { border-color:rgba(3,12,24,.3); background:#f5f5f5 }
+.ws-tab.active { background:var(--txt); color:#fff; border-color:var(--txt) }
+
+/* ── Filter bar ────────────────────────────────────────── */
+.ws-filters {
+  display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+  padding:12px 18px; background:#fafafa;
+  border:1px solid var(--line); border-radius:14px 14px 0 0;
+  border-bottom:none;
+}
+.ws-filters input[type=text] {
+  padding:7px 12px; border-radius:10px; border:1px solid rgba(3,12,24,.14);
+  font-size:13px; font-family:inherit; outline:none; background:#fff;
+  min-width:220px; transition:.15s;
+}
+.ws-filters input[type=text]:focus { border-color:rgba(3,12,24,.3); box-shadow:0 0 0 3px rgba(3,12,24,.05) }
+.ws-filters select {
+  padding:7px 28px 7px 10px; border-radius:10px; border:1px solid rgba(3,12,24,.14);
+  font-size:13px; font-family:inherit; font-weight:600; outline:none;
+  background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E") no-repeat right 9px center;
+  appearance:none; -webkit-appearance:none; cursor:pointer; color:var(--txt);
+}
+.ws-count { font-size:12px; color:var(--muted); margin-left:auto }
+
+/* ── Table ─────────────────────────────────────────────── */
+.ws-wrap {
+  background:#fff; border:1px solid var(--line); border-radius:0 0 14px 14px;
+  overflow:hidden;
+}
+.ws-table { width:100%; border-collapse:collapse }
+.ws-table th {
+  padding:10px 14px; text-align:left; font-size:11px; font-weight:700;
+  color:var(--muted); text-transform:uppercase; letter-spacing:.05em;
+  background:#fafafa; border-bottom:1px solid var(--line);
+}
+.ws-table td { padding:11px 14px; border-bottom:1px solid rgba(3,12,24,.05); vertical-align:middle }
+.ws-table tr:last-child td { border-bottom:none }
+.ws-table tr:hover td { background:#fafafe }
+
+.ws-thumb {
+  width:44px; height:44px; object-fit:cover; border-radius:8px;
+  border:1px solid var(--line); background:#f5f5f5;
+}
+.ws-thumb-ph {
+  width:44px; height:44px; border-radius:8px; border:1px solid var(--line);
+  background:#f5f5f5; display:flex; align-items:center; justify-content:center;
+  font-size:20px;
+}
+.ws-title { font-weight:600; font-size:13px; line-height:1.35; max-width:320px }
+.ws-sub   { font-size:11px; color:var(--muted); margin-top:2px }
+.ws-price { font-weight:700; font-size:13px; white-space:nowrap }
+.ws-price-na { color:var(--muted); font-size:12px }
+
+/* ── Pills ─────────────────────────────────────────────── */
+.pill-type {
+  display:inline-block; padding:2px 9px; border-radius:999px;
+  font-size:11px; font-weight:700; text-transform:capitalize;
+}
+.pill-product { background:#e8f4fd; color:#1a73e8 }
+.pill-page    { background:#f0f0f0; color:#555 }
+.pill-post    { background:#fff3e0; color:#e65c00 }
+
+/* ── Pagination ────────────────────────────────────────── */
+.ws-pager {
+  display:flex; gap:6px; justify-content:center; align-items:center;
+  margin-top:20px; flex-wrap:wrap;
+}
+.ws-pager a, .ws-pager span {
+  padding:5px 12px; border-radius:8px; border:1px solid var(--line);
+  font-size:13px; font-weight:600; text-decoration:none; color:var(--txt);
+  background:#fff;
+}
+.ws-pager a:hover { background:#f5f5f5 }
+.ws-pager span.current { background:var(--txt); color:#fff; border-color:var(--txt) }
+.ws-pager span.ellipsis { border:none; background:none; color:var(--muted) }
+
+/* ── Banner ─────────────────────────────────────────────── */
+.ws-info-banner {
+  background:#f0f7ff; border:1px solid #c5ddf9; border-radius:12px;
+  padding:12px 18px; font-size:13px; color:#1a5299; margin-bottom:20px;
+  display:flex; gap:10px; align-items:flex-start;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="margin-bottom:20px">
+  <div class="section-title">WooCommerce Sync</div>
+  <div style="font-size:13px;color:var(--muted)">
+    Read-only view of all content synced from your WooCommerce store via the PhiXtra Export plugin.
+  </div>
+</div>
+
+{# ── Info banner ── #}
+<div class="ws-info-banner">
+  <span style="font-size:16px">ℹ️</span>
+  <div>
+    This data is <strong>read-only</strong>. To add, edit, or remove products, log into your WooCommerce store
+    and run a <strong>Full Sync</strong> from the PhiXtra Export plugin settings.
+    {% if last_sync %}
+      Last sync: <strong>{{ last_sync.strftime('%d %b %Y, %H:%M') }}</strong>.
+    {% endif %}
+  </div>
+</div>
+
+{# ── Stats ── #}
+<div class="ws-stats">
+  <div class="ws-stat">
+    <div class="ws-stat-val">{{ total_all }}</div>
+    <div class="ws-stat-lbl">Total synced items</div>
+  </div>
+  <div class="ws-stat">
+    <div class="ws-stat-val">{{ type_counts.get('product', 0) }}</div>
+    <div class="ws-stat-lbl">Products / variants</div>
+  </div>
+  <div class="ws-stat">
+    <div class="ws-stat-val">{{ type_counts.get('page', 0) }}</div>
+    <div class="ws-stat-lbl">Pages</div>
+  </div>
+  <div class="ws-stat">
+    <div class="ws-stat-val">{{ type_counts.get('post', 0) }}</div>
+    <div class="ws-stat-lbl">Posts</div>
+  </div>
+</div>
+
+{# ── Type tabs ── #}
+<div class="ws-tabs">
+  <a href="{{ url_for('portal.woo_sync', q=q, stock=stock_f) }}"
+     class="ws-tab {% if not type_f %}active{% endif %}">All ({{ total_all }})</a>
+  {% if type_counts.get('product') %}
+  <a href="{{ url_for('portal.woo_sync', type='product', q=q, stock=stock_f) }}"
+     class="ws-tab {% if type_f == 'product' %}active{% endif %}">
+    Products ({{ type_counts.get('product', 0) }})
+  </a>
+  {% endif %}
+  {% if type_counts.get('page') %}
+  <a href="{{ url_for('portal.woo_sync', type='page', q=q, stock=stock_f) }}"
+     class="ws-tab {% if type_f == 'page' %}active{% endif %}">
+    Pages ({{ type_counts.get('page', 0) }})
+  </a>
+  {% endif %}
+  {% if type_counts.get('post') %}
+  <a href="{{ url_for('portal.woo_sync', type='post', q=q, stock=stock_f) }}"
+     class="ws-tab {% if type_f == 'post' %}active{% endif %}">
+    Posts ({{ type_counts.get('post', 0) }})
+  </a>
+  {% endif %}
+</div>
+
+{# ── Filters ── #}
+<form method="GET" action="{{ url_for('portal.woo_sync') }}">
+  {% if type_f %}<input type="hidden" name="type" value="{{ type_f }}">{% endif %}
+  <div class="ws-filters">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search by title…" autocomplete="off">
+    {% if not type_f or type_f == 'product' %}
+    <select name="stock" onchange="this.form.submit()">
+      <option value="" {% if not stock_f %}selected{% endif %}>All stock</option>
+      <option value="in"  {% if stock_f == 'in'  %}selected{% endif %}>In stock</option>
+      <option value="out" {% if stock_f == 'out' %}selected{% endif %}>Out of stock</option>
+    </select>
+    {% endif %}
+    <button type="submit" class="btn btn-sm btn-primary">Search</button>
+    {% if q or stock_f %}
+    <a href="{{ url_for('portal.woo_sync', type=type_f) }}" class="btn btn-sm">Clear</a>
+    {% endif %}
+    <span class="ws-count">{{ total }} item{{ 's' if total != 1 else '' }}</span>
+  </div>
+</form>
+
+{# ── Table ── #}
+<div class="ws-wrap">
+  {% if docs %}
+  <table class="ws-table">
+    <thead>
+      <tr>
+        <th style="width:54px"></th>
+        <th>Title</th>
+        <th>Type</th>
+        <th>Price</th>
+        <th>Stock</th>
+        <th>Categories</th>
+        <th>Last synced</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in docs %}
+      <tr>
+        <td>
+          {% if d.image_url %}
+            <img src="{{ d.image_url }}" alt="" class="ws-thumb" loading="lazy">
+          {% else %}
+            <div class="ws-thumb-ph">
+              {% if d.type == 'product' %}📦
+              {% elif d.type == 'post' %}📝
+              {% else %}📄{% endif %}
+            </div>
+          {% endif %}
+        </td>
+        <td>
+          <div class="ws-title">{{ d.title or '—' }}</div>
+          {% if d.sku %}
+          <div class="ws-sub">SKU: {{ d.sku }}</div>
+          {% endif %}
+        </td>
+        <td>
+          <span class="pill-type pill-{{ d.type }}">{{ d.type }}</span>
+        </td>
+        <td>
+          {% if d.price_min is not none %}
+            <div class="ws-price">
+              ₦{{ '{:,.0f}'.format(d.price_min) }}
+              {% if d.price_max and d.price_max != d.price_min %}
+                – ₦{{ '{:,.0f}'.format(d.price_max) }}
+              {% endif %}
+            </div>
+          {% else %}
+            <span class="ws-price-na">—</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if d.type == 'product' %}
+            {% if d.in_stock %}
+              <span class="pill pill-green">In stock</span>
+            {% elif d.in_stock is not none %}
+              <span class="pill pill-red">Out of stock</span>
+            {% else %}
+              <span class="pill pill-grey">Unknown</span>
+            {% endif %}
+          {% else %}
+            <span style="color:var(--muted);font-size:12px">—</span>
+          {% endif %}
+        </td>
+        <td style="max-width:200px">
+          {% if d.categories_text %}
+            <div style="font-size:12px;color:var(--muted);line-height:1.4">
+              {{ d.categories_text | replace('&amp;', '&') | truncate(60, true, '…') }}
+            </div>
+          {% else %}
+            <span style="color:var(--muted);font-size:12px">—</span>
+          {% endif %}
+        </td>
+        <td style="white-space:nowrap;font-size:12px;color:var(--muted)">
+          {% if d.updated_at %}
+            {{ d.updated_at.strftime('%d %b %Y') }}
+          {% else %}—{% endif %}
+        </td>
+        <td>
+          {% if d.url %}
+          <a href="{{ d.url }}" target="_blank" rel="noopener"
+             class="btn btn-sm" title="View on store">↗</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {# ── Pagination ── #}
+  {% if pages > 1 %}
+  <div style="padding:16px 0">
+  <div class="ws-pager">
+    {% if page > 1 %}
+      <a href="{{ url_for('portal.woo_sync', type=type_f, q=q, stock=stock_f, page=page-1) }}">&laquo; Prev</a>
+    {% endif %}
+
+    {% for p in range(1, pages + 1) %}
+      {% if p == page %}
+        <span class="current">{{ p }}</span>
+      {% elif p == 1 or p == pages or (p >= page - 2 and p <= page + 2) %}
+        <a href="{{ url_for('portal.woo_sync', type=type_f, q=q, stock=stock_f, page=p) }}">{{ p }}</a>
+      {% elif p == page - 3 or p == page + 3 %}
+        <span class="ellipsis">…</span>
+      {% endif %}
+    {% endfor %}
+
+    {% if page < pages %}
+      <a href="{{ url_for('portal.woo_sync', type=type_f, q=q, stock=stock_f, page=page+1) }}">Next &raquo;</a>
+    {% endif %}
+  </div>
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div style="text-align:center;padding:60px 20px;color:var(--muted)">
+    <div style="font-size:36px;margin-bottom:12px">🔍</div>
+    {% if q or stock_f %}
+      <div style="font-size:15px;font-weight:600">No results match your filters.</div>
+      <a href="{{ url_for('portal.woo_sync', type=type_f) }}" class="btn btn-sm" style="margin-top:12px">Clear filters</a>
+    {% else %}
+      <div style="font-size:15px;font-weight:600">No synced content yet.</div>
+      <div style="font-size:13px;margin-top:6px">
+        Install the PhiXtra Export plugin on your WooCommerce store and run a Full Sync.
+      </div>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,123 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Plans Management — PhiXtra Admin{% endblock %}
+
+{% block content %}
+<style>
+.plans-table { width:100%; border-collapse:collapse; background:#fff;
+               border:1px solid var(--line); border-radius:14px; overflow:hidden }
+.plans-table th { padding:10px 14px; text-align:left; font-size:11px; font-weight:700;
+                  color:var(--muted); text-transform:uppercase; letter-spacing:.05em;
+                  background:#fafafa; border-bottom:1px solid var(--line) }
+.plans-table td { padding:11px 14px; border-bottom:1px solid rgba(3,12,24,.05);
+                  font-size:13px; vertical-align:middle }
+.plans-table tr:last-child td { border-bottom:none }
+.feat-y { color:#12B76A; font-weight:700 }
+.feat-n { color:#d1d5db }
+
+.tenant-table { width:100%; border-collapse:collapse; background:#fff;
+                border:1px solid var(--line); border-radius:14px; overflow:hidden; margin-top:28px }
+.tenant-table th { padding:10px 14px; text-align:left; font-size:11px; font-weight:700;
+                   color:var(--muted); text-transform:uppercase; letter-spacing:.05em;
+                   background:#fafafa; border-bottom:1px solid var(--line) }
+.tenant-table td { padding:10px 14px; border-bottom:1px solid rgba(3,12,24,.05);
+                   font-size:13px; vertical-align:middle }
+.tenant-table tr:last-child td { border-bottom:none }
+
+.meter-sm { height:6px; background:#f0f0f2; border-radius:999px; width:80px; display:inline-block; vertical-align:middle; margin-right:6px }
+.meter-sm-fill { height:100%; border-radius:999px; background:#12B76A }
+.meter-sm-fill.warn   { background:#F79009 }
+.meter-sm-fill.danger { background:#F04438 }
+</style>
+
+<div class="page-header" style="margin-bottom:24px">
+  <div><div class="section-title">Plans Management</div>
+  <p class="muted">View plan definitions and assign plans to tenants</p></div>
+</div>
+
+{# ── Plan definitions ──────────────────────────────────────────────────────── #}
+<div class="section-title" style="font-size:13px;margin-bottom:12px">Plan Definitions</div>
+<div style="overflow-x:auto">
+<table class="plans-table">
+  <thead>
+    <tr>
+      <th>Plan</th>
+      <th>Price NGN</th>
+      <th>Price USD</th>
+      <th>AI Msgs</th>
+      <th>Agents</th>
+      <th>Broadcasts</th>
+      <th>CRM</th>
+      <th>Adv AI</th>
+      <th>Integrations</th>
+      <th>Overage NGN</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in plans %}
+    <tr>
+      <td><strong>{{ p.name }}</strong> <span style="font-size:11px;color:var(--muted)">({{ p.slug }})</span></td>
+      <td>₦{{ "{:,}".format(p.price_ngn) }}</td>
+      <td>${{ p.price_usd }}</td>
+      <td>{{ p.ai_messages_limit if p.ai_messages_limit != -1 else '∞' }}</td>
+      <td>{{ p.agents_limit if p.agents_limit != -1 else '∞' }}</td>
+      <td>{{ p.broadcasts_limit if p.broadcasts_limit != -1 else '∞' }}</td>
+      <td><span class="{% if p.feat_crm %}feat-y{% else %}feat-n{% endif %}">{{ '✓' if p.feat_crm else '✗' }}</span></td>
+      <td><span class="{% if p.feat_advanced_ai %}feat-y{% else %}feat-n{% endif %}">{{ '✓' if p.feat_advanced_ai else '✗' }}</span></td>
+      <td><span class="{% if p.feat_integrations %}feat-y{% else %}feat-n{% endif %}">{{ '✓' if p.feat_integrations else '✗' }}</span></td>
+      <td>₦{{ p.overage_per_msg_ngn|int }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{# ── Tenant plan assignment ─────────────────────────────────────────────────── #}
+<div class="section-title" style="font-size:13px;margin:28px 0 12px">Tenant Plans</div>
+<div style="overflow-x:auto">
+<table class="tenant-table">
+  <thead>
+    <tr>
+      <th>Business</th>
+      <th>Current Plan</th>
+      <th>Usage this period</th>
+      <th>Cycle</th>
+      <th>Change plan</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for t in tenants %}
+    {% set pct = [((t.msgs_used / t.msgs_limit * 100)|int if t.msgs_limit > 0 else 0), 100]|min %}
+    <tr>
+      <td><strong>{{ t.business_name }}</strong> <span style="font-size:11px;color:var(--muted)">#{{ t.tenant_id }}</span></td>
+      <td><span class="pill {% if t.plan_slug == 'pro' %}pill-green{% elif t.plan_slug == 'growth' %}pill-green{% elif t.plan_slug == 'starter' %}pill-warn{% else %}pill-grey{% endif %}">
+        {{ t.plan_name }}
+      </span></td>
+      <td>
+        <div class="meter-sm">
+          <div class="meter-sm-fill {% if pct >= 100 %}danger{% elif pct >= 80 %}warn{% endif %}"
+               style="width:{{ pct }}%"></div>
+        </div>
+        {{ t.msgs_used }} / {{ t.msgs_limit if t.msgs_limit != -1 else '∞' }}
+      </td>
+      <td>{{ t.billing_cycle | capitalize }}</td>
+      <td>
+        <form method="POST" action="{{ url_for('portal_admin.admin_plans_assign', tenant_id=t.tenant_id) }}"
+              style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select name="plan_id" style="padding:5px 8px;border-radius:8px;border:1px solid var(--line);font-size:12px">
+            {% for p in plans %}
+            <option value="{{ p.id }}" {% if p.slug == t.plan_slug %}selected{% endif %}>{{ p.name }}</option>
+            {% endfor %}
+          </select>
+          <select name="billing_cycle" style="padding:5px 8px;border-radius:8px;border:1px solid var(--line);font-size:12px">
+            <option value="monthly" {% if t.billing_cycle == 'monthly' %}selected{% endif %}>Monthly</option>
+            <option value="annual"  {% if t.billing_cycle == 'annual'  %}selected{% endif %}>Annual</option>
+          </select>
+          <button type="submit" class="btn btn-sm btn-primary">Save</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

@@ -2,20 +2,45 @@
 {% block title %}My Catalogue — PhiXtra Portal{% endblock %}
 {% block content %}
 <style>
-  .cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:28px}
-  .cat-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px;
-            box-shadow:0 4px 16px rgba(3,12,24,0.06);display:flex;flex-direction:column;
-            gap:8px;text-decoration:none;color:var(--txt);transition:.15s;position:relative}
-  .cat-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(3,12,24,0.10);text-decoration:none}
-  .cat-icon{font-size:30px;line-height:1}
-  .cat-name{font-size:15px;font-weight:800;letter-spacing:-.2px}
-  .cat-count{font-size:12px;color:var(--muted)}
-  .cat-badge{position:absolute;top:14px;right:14px;background:var(--ink);color:#fff;
-             font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px}
-  .summary-bar{background:#fff;border:1px solid var(--line);border-radius:14px;
-               padding:16px 20px;margin-bottom:24px;display:flex;align-items:center;
-               justify-content:space-between;flex-wrap:wrap;gap:10px;
-               box-shadow:0 4px 16px rgba(3,12,24,0.06)}
+  .cat-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:14px; margin-bottom:24px }
+  .cat-card {
+    background:#fff; border:1px solid var(--line); border-radius:16px; padding:20px;
+    box-shadow:0 4px 16px rgba(3,12,24,0.06); display:flex; flex-direction:column;
+    gap:8px; text-decoration:none; color:var(--txt); transition:.15s; position:relative;
+  }
+  .cat-card:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(3,12,24,0.10); text-decoration:none }
+  .cat-icon  { font-size:30px; line-height:1 }
+  .cat-name  { font-size:15px; font-weight:800; letter-spacing:-.2px }
+  .cat-count { font-size:12px; color:var(--muted) }
+  .cat-badge {
+    position:absolute; top:14px; right:14px; background:var(--ink); color:#fff;
+    font-size:11px; font-weight:700; padding:3px 8px; border-radius:999px;
+  }
+  .summary-bar {
+    background:#fff; border:1px solid var(--line); border-radius:14px;
+    padding:16px 20px; margin-bottom:24px; display:flex; align-items:center;
+    justify-content:space-between; flex-wrap:wrap; gap:10px;
+    box-shadow:0 4px 16px rgba(3,12,24,0.06);
+  }
+  .cat-search-bar {
+    display:flex; gap:10px; align-items:center; margin-bottom:20px; flex-wrap:wrap;
+  }
+  .cat-search-bar input[type=text] {
+    padding:8px 14px; border-radius:10px; border:1px solid rgba(3,12,24,.14);
+    font-size:13px; font-family:inherit; outline:none; background:#fff;
+    min-width:240px; transition:.15s;
+  }
+  .cat-search-bar input[type=text]:focus { border-color:rgba(3,12,24,.3); box-shadow:0 0 0 3px rgba(3,12,24,.05) }
+  .cat-pager {
+    display:flex; gap:6px; justify-content:center; flex-wrap:wrap; margin-top:8px;
+  }
+  .cat-pager a, .cat-pager span {
+    padding:5px 12px; border-radius:8px; border:1px solid var(--line);
+    font-size:13px; font-weight:600; text-decoration:none; color:var(--txt); background:#fff;
+  }
+  .cat-pager a:hover { background:#f5f5f5 }
+  .cat-pager span.current { background:var(--txt); color:#fff; border-color:var(--txt) }
+  .cat-pager span.ellipsis { border:none; background:none; color:var(--muted) }
 </style>
 
 <div class="page-header">
@@ -34,16 +59,26 @@
 <div class="summary-bar">
   <div>
     <span style="font-size:20px;font-weight:800">{{ total_selected }}</span>
-    <span class="muted" style="margin-left:6px">products selected across {{ categories|selectattr('selected_count','gt',0)|list|length }} categories</span>
+    <span class="muted" style="margin-left:6px">products selected</span>
   </div>
   <a href="{{ url_for('portal.catalogue_selections') }}" class="btn btn-sm">Review My Selections →</a>
 </div>
 {% endif %}
 
+{# ── Search bar ── #}
+<form method="GET" action="{{ url_for('portal.catalogue_browse') }}" class="cat-search-bar">
+  <input type="text" name="q" value="{{ q }}" placeholder="Search categories…" autocomplete="off">
+  <button type="submit" class="btn btn-sm btn-primary">Search</button>
+  {% if q %}
+  <a href="{{ url_for('portal.catalogue_browse') }}" class="btn btn-sm">Clear</a>
+  {% endif %}
+  <span style="font-size:12px;color:var(--muted);margin-left:4px">
+    {{ total_cats }} categor{{ 'y' if total_cats == 1 else 'ies' }}
+    {% if q %}matching &ldquo;{{ q }}&rdquo;{% endif %}
+  </span>
+</form>
+
 {% if categories %}
-<div style="font-size:12px;color:var(--muted);margin-bottom:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em">
-  Browse by category
-</div>
 <div class="cat-grid">
   {% for cat in categories %}
   <a href="{{ url_for('portal.catalogue_category', category_id=cat.id) }}" class="cat-card">
@@ -60,6 +95,34 @@
     </div>
   </a>
   {% endfor %}
+</div>
+
+{# ── Pagination ── #}
+{% if pages > 1 %}
+<div class="cat-pager">
+  {% if page > 1 %}
+    <a href="{{ url_for('portal.catalogue_browse', q=q, page=page-1) }}">&laquo; Prev</a>
+  {% endif %}
+  {% for p in range(1, pages + 1) %}
+    {% if p == page %}
+      <span class="current">{{ p }}</span>
+    {% elif p == 1 or p == pages or (p >= page - 2 and p <= page + 2) %}
+      <a href="{{ url_for('portal.catalogue_browse', q=q, page=p) }}">{{ p }}</a>
+    {% elif p == page - 3 or p == page + 3 %}
+      <span class="ellipsis">…</span>
+    {% endif %}
+  {% endfor %}
+  {% if page < pages %}
+    <a href="{{ url_for('portal.catalogue_browse', q=q, page=page+1) }}">Next &raquo;</a>
+  {% endif %}
+</div>
+{% endif %}
+
+{% elif q %}
+<div class="card" style="text-align:center;padding:48px">
+  <div style="font-size:36px;margin-bottom:12px">🔍</div>
+  <div style="font-size:15px;font-weight:700;margin-bottom:8px">No categories match &ldquo;{{ q }}&rdquo;</div>
+  <a href="{{ url_for('portal.catalogue_browse') }}" class="btn btn-sm" style="margin-top:8px">Clear search</a>
 </div>
 {% else %}
 <div class="card" style="text-align:center;padding:48px">

@@ -101,7 +101,7 @@
     .sb-sub a{
       display:flex; align-items:center; gap:8px;
       padding:7px 10px; border-radius:8px;
-      font-size:13px; font-weight:500; color:rgba(255,255,255,0.60);
+      font-size:13px; font-weight:500; color:#fff;
       text-decoration:none; transition:.15s; margin-bottom:1px;
     }
     .sb-sub a:before{content:""; width:5px; height:5px; border-radius:50%;
@@ -293,12 +293,12 @@
       <span class="sb-icon">📊</span> Dashboard
     </a>
 
-    <!-- My Inbox -->
+    <!-- Conversations -->
     <a class="sb-link {% if request.endpoint in ('portal.my_inbox', 'portal.inbox_reply') %}active{% endif %}"
        href="{{ url_for('portal.my_inbox') }}"
        style="justify-content:space-between">
       <span style="display:flex;align-items:center;gap:10px">
-        <span class="sb-icon">📩</span> My Inbox
+        <span class="sb-icon">💬</span> Conversations
       </span>
       <span id="sidebarInboxBadge"
             style="background:#F04438;color:#fff;font-size:11px;font-weight:700;
@@ -308,28 +308,126 @@
       </span>
     </a>
 
+    <!-- Campaigns -->
+    {% set _camp_group = request.endpoint in ('portal.whatsapp_campaigns','portal.whatsapp_campaign_report') %}
+    <div class="sb-group">
+      <div class="sb-group-toggle {% if _camp_group %}open{% endif %}"
+           onclick="sbToggle(this)">
+        <span class="sb-gtitle">
+          <span class="sb-icon">📣</span> Campaigns
+        </span>
+        <span class="sb-arrow">▾</span>
+      </div>
+      <div class="sb-sub {% if _camp_group %}open{% endif %}">
+        <a href="{{ url_for('portal.whatsapp_campaigns') }}"
+           class="{% if request.endpoint == 'portal.whatsapp_campaigns' %}active{% endif %}">
+          All Campaigns
+        </a>
+        <a href="{{ url_for('portal.whatsapp_campaigns') }}#reports"
+           class="{% if request.endpoint == 'portal.whatsapp_campaign_report' %}active{% endif %}">
+          Reports
+        </a>
+      </div>
+    </div>
+
+    <!-- Contacts -->
+    <a class="sb-link {% if request.endpoint == 'portal.whatsapp_contacts' %}active{% endif %}"
+       href="{{ url_for('portal.whatsapp_contacts') }}">
+      <span class="sb-icon">👥</span> Contacts
+    </a>
+
     <!-- Leads -->
     <a class="sb-link {% if request.endpoint == 'portal.leads_page' %}active{% endif %}"
        href="{{ url_for('portal.leads_page') }}">
       <span class="sb-icon">🔥</span> Leads
     </a>
 
+    <!-- Products -->
+    <a class="sb-link {% if request.endpoint in ('portal.products_page', 'portal.products_toggle') %}active{% endif %}"
+       href="{{ url_for('portal.products_page') }}">
+      <span class="sb-icon">📦</span> Products
+    </a>
+
     <!-- Orders -->
     <a class="sb-link {% if request.endpoint in ('portal.orders', 'portal.order_detail') %}active{% endif %}"
        href="{{ url_for('portal.orders') }}">
-      <span class="sb-icon">📦</span> Orders
+      <span class="sb-icon">🧾</span> Orders
     </a>
 
-    <!-- Payment Gateways -->
-    <a class="sb-link {% if request.endpoint == 'portal.payment_settings' %}active{% endif %}"
-       href="{{ url_for('portal.payment_settings') }}">
-      <span class="sb-icon">💳</span> Payment Gateways
-    </a>
+    <!-- ── WhatsApp group ── -->
+    {% set _wa_group = request.endpoint in ('portal.whatsapp_connect', 'portal.whatsapp_inbox') or (request.endpoint == 'portal.whatsapp_templates' and _tenant_features.get('whatsapp_message_templates')) %}
+    <div class="sb-group">
+      <div class="sb-group-toggle {% if _wa_group %}open{% endif %}"
+           onclick="sbToggle(this)">
+        <span class="sb-gtitle">
+          <span class="sb-icon">📱</span> WhatsApp
+        </span>
+        <span class="sb-arrow">▾</span>
+      </div>
+      <div class="sb-sub {% if _wa_group %}open{% endif %}">
+        <a href="{{ url_for('portal.whatsapp_connect') }}"
+           class="{% if request.endpoint == 'portal.whatsapp_connect' %}active{% endif %}">
+          Connect
+        </a>
+        <a href="{{ url_for('portal.whatsapp_inbox') }}"
+           class="{% if request.endpoint == 'portal.whatsapp_inbox' %}active{% endif %}">
+          Agent Inbox
+        </a>
+        {% if _tenant_features.get('whatsapp_message_templates') %}
+        <a href="{{ url_for('portal.whatsapp_templates') }}"
+           class="{% if request.endpoint == 'portal.whatsapp_templates' %}active{% endif %}">
+          Message Templates
+        </a>
+        {% endif %}
+        <a href="{{ url_for('portal.reports_page') }}"
+           class="{% if request.endpoint == 'portal.reports_page' %}active{% endif %}">
+          WhatsApp Report
+        </a>
+      </div>
+    </div>
 
-    <!-- Analytics -->
-    <a class="sb-link {% if request.endpoint == 'portal.analytics' %}active{% endif %}"
-       href="{{ url_for('portal.analytics') }}">
-      <span class="sb-icon">📈</span> Analytics
+    <!-- ── Ecommerce group ── -->
+    {% set _commerce_group = request.endpoint in (
+        'portal.products', 'portal.product_add', 'portal.product_edit',
+        'portal.product_delete', 'portal.customers', 'portal.customer_detail',
+        'portal.catalogue_browse', 'portal.catalogue_category', 'portal.catalogue_selections',
+        'portal.woo_sync') %}
+    <div class="sb-group">
+      <div class="sb-group-toggle {% if _commerce_group %}open{% endif %}"
+           onclick="sbToggle(this)">
+        <span class="sb-gtitle">
+          <span class="sb-icon">🏪</span> Ecommerce
+        </span>
+        <span class="sb-arrow">▾</span>
+      </div>
+      <div class="sb-sub {% if _commerce_group %}open{% endif %}">
+        <a href="{{ url_for('portal.products') }}"
+           class="{% if request.endpoint in ('portal.products','portal.product_add','portal.product_edit') %}active{% endif %}">
+          My Products
+        </a>
+        {% if not _has_woocommerce %}
+        <a href="{{ url_for('portal.catalogue_browse') }}"
+           class="{% if request.endpoint in ('portal.catalogue_browse','portal.catalogue_category','portal.catalogue_selections') %}active{% endif %}">
+          My Catalogue
+        </a>
+        {% endif %}
+        <a href="{{ url_for('portal.customers') }}"
+           class="{% if request.endpoint in ('portal.customers','portal.customer_detail') %}active{% endif %}">
+          Customers
+        </a>
+        {% if _has_woocommerce %}
+        <a href="{{ url_for('portal.woo_sync') }}"
+           class="{% if request.endpoint == 'portal.woo_sync' %}active{% endif %}">
+          WooCommerce Sync
+        </a>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Discount Settings -->
+    <a class="sb-link {% if request.endpoint == 'portal.wa_discount_settings' %}active{% endif %}"
+       href="{{ url_for('portal.wa_discount_settings') }}">
+      <span class="sb-icon">💰</span> Discount Settings
     </a>
 
     <!-- Data Sources -->
@@ -338,34 +436,11 @@
       <span class="sb-icon">🗂️</span> Data Sources
     </a>
 
-    <!-- ── Commerce group ── -->
-    {% set _commerce_group = request.endpoint in (
-        'portal.products', 'portal.product_add', 'portal.product_edit',
-        'portal.product_delete', 'portal.customers', 'portal.customer_detail',
-        'portal.catalogue_browse', 'portal.catalogue_category', 'portal.catalogue_selections') %}
-    <div class="sb-group">
-      <div class="sb-group-toggle {% if _commerce_group %}open{% endif %}"
-           onclick="sbToggle(this)">
-        <span class="sb-gtitle">
-          <span class="sb-icon">🏪</span> Commerce
-        </span>
-        <span class="sb-arrow">▾</span>
-      </div>
-      <div class="sb-sub {% if _commerce_group %}open{% endif %}">
-        <a href="{{ url_for('portal.products') }}"
-           class="{% if request.endpoint in ('portal.products','portal.product_add','portal.product_edit') %}active{% endif %}">
-          Products
-        </a>
-        <a href="{{ url_for('portal.catalogue_browse') }}"
-           class="{% if request.endpoint in ('portal.catalogue_browse','portal.catalogue_category','portal.catalogue_selections') %}active{% endif %}">
-          📦 My Catalogue
-        </a>
-        <a href="{{ url_for('portal.customers') }}"
-           class="{% if request.endpoint in ('portal.customers','portal.customer_detail') %}active{% endif %}">
-          Customers
-        </a>
-      </div>
-    </div>
+    <!-- Payment Gateways -->
+    <a class="sb-link {% if request.endpoint == 'portal.payment_settings' %}active{% endif %}"
+       href="{{ url_for('portal.payment_settings') }}">
+      <span class="sb-icon">💳</span> Payment Gateways
+    </a>
 
     <!-- ── AI Assistant group ── -->
     {% set _ai_group = request.endpoint in ('portal.api_keys', 'portal.ai_instruction', 'portal.handoff_rules', 'portal.verified_specs_settings') %}
@@ -397,6 +472,9 @@
       </div>
     </div>
 
+    {# ── WooCommerce-only items — hidden for WhatsApp-only tenants ── #}
+    {% if _has_woocommerce %}
+
     <!-- ── Cart Recovery group ── -->
     {% set _cr_group = request.endpoint in ('portal.cart_recovery_dashboard',
                                              'portal.cart_recovery_save_settings',
@@ -420,6 +498,12 @@
         </a>
       </div>
     </div>
+
+    <!-- Analytics -->
+    <a class="sb-link {% if request.endpoint == 'portal.analytics' %}active{% endif %}"
+       href="{{ url_for('portal.analytics') }}">
+      <span class="sb-icon">📈</span> Analytics
+    </a>
 
     <!-- ── Billing group ── -->
     {% set _bill_group = request.endpoint in ('portal.billing', 'portal.invoices') %}
@@ -469,51 +553,37 @@
       </div>
     </div>
 
-    <!-- ── Chat Archive ── -->
+    <!-- Chat Archive -->
     <a class="sb-link {% if request.endpoint in ('portal.chat_archive', 'portal.chat_archive_session') %}active{% endif %}"
        href="{{ url_for('portal.chat_archive') }}">
       <span class="sb-icon">💬</span> Chat Archive
     </a>
 
-    <!-- ── WhatsApp group ── -->
-    {% set _wa_group = request.endpoint in ('portal.whatsapp_connect', 'portal.whatsapp_inbox', 'portal.whatsapp_campaigns', 'portal.whatsapp_templates') %}
-    <div class="sb-group">
-      <div class="sb-group-toggle {% if _wa_group %}open{% endif %}"
-           onclick="sbToggle(this)">
-        <span class="sb-gtitle">
-          <span class="sb-icon">📱</span> WhatsApp
-        </span>
-        <span class="sb-arrow">▾</span>
-      </div>
-      <div class="sb-sub {% if _wa_group %}open{% endif %}">
-        <a href="{{ url_for('portal.whatsapp_connect') }}"
-           class="{% if request.endpoint == 'portal.whatsapp_connect' %}active{% endif %}">
-          Connect
-        </a>
-        <a href="{{ url_for('portal.whatsapp_templates') }}"
-           class="{% if request.endpoint == 'portal.whatsapp_templates' %}active{% endif %}">
-          Message Templates
-        </a>
-        <a href="{{ url_for('portal.whatsapp_inbox') }}"
-           class="{% if request.endpoint == 'portal.whatsapp_inbox' %}active{% endif %}">
-          Agent Inbox
-        </a>
-        <a href="{{ url_for('portal.whatsapp_campaigns') }}"
-           class="{% if request.endpoint == 'portal.whatsapp_campaigns' %}active{% endif %}">
-          Campaigns
-        </a>
-      </div>
-    </div>
+    {% endif %}{# end _has_woocommerce #}
 
     <div class="sb-divider"></div>
 
-    <!-- ── Account Settings ── -->
+    <!-- Plans & Billing -->
+    <a class="sb-link {% if request.endpoint == 'portal.billing_plans' %}active{% endif %}"
+       href="{{ url_for('portal.billing_plans') }}"
+       style="justify-content:space-between">
+      <span style="display:flex;align-items:center;gap:10px">
+        <span class="sb-icon">💳</span> Plans &amp; Billing
+      </span>
+      {% set _tp = _tenant_plan if _tenant_plan is defined else none %}
+      {% if _tp and _tp.is_over_quota %}
+      <span style="background:#F04438;color:#fff;font-size:10px;font-weight:700;
+                   padding:2px 6px;border-radius:999px;flex-shrink:0">!</span>
+      {% endif %}
+    </a>
+
+    <!-- Account Settings -->
     <a class="sb-link {% if request.endpoint == 'portal.settings' %}active{% endif %}"
        href="{{ url_for('portal.settings') }}">
       <span class="sb-icon">⚙️</span> Account Settings
     </a>
 
-    <!-- Phixtra Home -->
+    <!-- PhiXtra Home -->
     <a class="sb-link" href="https://phixtra.com" target="_blank" rel="noopener">
       <span class="sb-icon">🏠</span> PhiXtra Home
     </a>

@@ -1,280 +1,245 @@
 {% extends "portal/base.html" %}
-{% block title %}Products — PhiXtra Portal{% endblock %}
+{% block title %}My Products — PhiXtra Portal{% endblock %}
 
 {% block head %}
 <style>
-  /* ── Search & Filter bar ── */
-  .filter-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:20px}
-  .filter-bar input[type=search]{max-width:260px;padding:9px 13px;border-radius:12px;
-    border:1px solid rgba(3,12,24,0.18);font-size:14px;font-family:inherit;
-    outline:none;transition:.15s}
-  .filter-bar input[type=search]:focus{border-color:rgba(3,12,24,0.35);box-shadow:var(--ring)}
-  .filter-bar select{padding:9px 12px;border-radius:12px;border:1px solid rgba(3,12,24,0.18);
-    font-size:14px;font-family:inherit;background:#fff;cursor:pointer;outline:none}
+.prod-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:24px }
+@media(max-width:640px){ .prod-stats { grid-template-columns:1fr 1fr } }
+.stat-card {
+  background:#fff; border:1px solid var(--line); border-radius:14px;
+  padding:18px 20px;
+}
+.stat-val  { font-size:28px; font-weight:800; letter-spacing:-.5px; line-height:1.1 }
+.stat-lbl  { font-size:12px; color:var(--muted); margin-top:4px }
 
-  /* ── Product grid ── */
-  .product-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
-  @media(max-width:480px){.product-grid{grid-template-columns:1fr 1fr}}
+/* Filters bar */
+.prod-filters {
+  display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+  padding:14px 20px; border-bottom:1px solid var(--line); background:#fafafa;
+  border-radius:14px 14px 0 0;
+}
+.prod-filters input[type=text] {
+  padding:8px 12px; border-radius:10px; border:1px solid rgba(3,12,24,.14);
+  font-size:13px; font-family:inherit; outline:none; transition:.15s;
+  background:#fff; min-width:220px;
+}
+.prod-filters input[type=text]:focus { border-color:rgba(3,12,24,.3); box-shadow:0 0 0 3px rgba(3,12,24,.05) }
+.prod-filters select {
+  padding:8px 28px 8px 10px; border-radius:10px; border:1px solid rgba(3,12,24,.14);
+  font-size:13px; font-family:inherit; font-weight:600; outline:none;
+  background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E") no-repeat right 9px center;
+  appearance:none; -webkit-appearance:none; cursor:pointer; transition:.15s; color:var(--txt);
+}
+.prod-filters select:focus { border-color:rgba(3,12,24,.3) }
+.prod-count { font-size:12px; color:var(--muted); margin-left:auto }
 
-  .product-card{background:#fff;border:1px solid var(--line);border-radius:16px;
-    overflow:hidden;box-shadow:var(--shadow2);transition:.15s;display:flex;flex-direction:column}
-  .product-card:hover{box-shadow:var(--shadow);transform:translateY(-1px)}
+/* Table */
+.prod-table-wrap {
+  background:#fff; border:1px solid var(--line); border-radius:14px; overflow:hidden;
+}
+.prod-table { width:100%; border-collapse:collapse }
+.prod-table th {
+  padding:10px 16px; text-align:left; font-size:11px; font-weight:700;
+  color:var(--muted); text-transform:uppercase; letter-spacing:.05em;
+  background:#fafafa; border-bottom:1px solid var(--line);
+}
+.prod-table td { padding:12px 16px; border-bottom:1px solid rgba(3,12,24,.05); vertical-align:middle }
+.prod-table tr:last-child td { border-bottom:none }
+.prod-table tr.prod-row.inactive td { opacity:.45 }
+.prod-table tr:hover td { background:#fafafe }
 
-  .product-img{width:100%;height:150px;object-fit:cover;background:rgba(3,12,24,0.04);
-    display:flex;align-items:center;justify-content:center;font-size:36px;color:var(--muted);
-    flex-shrink:0}
-  .product-img img{width:100%;height:100%;object-fit:cover}
+.prod-name  { font-weight:700; font-size:14px }
+.prod-brand { font-size:12px; color:var(--muted) }
+.prod-cat   { display:inline-flex; align-items:center; gap:5px; font-size:12px;
+              font-weight:600; color:var(--muted) }
 
-  .product-body{padding:12px 14px;flex:1;display:flex;flex-direction:column;gap:6px}
-  .product-name{font-weight:700;font-size:14px;line-height:1.3;
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .product-cat{font-size:11px;color:var(--muted);text-transform:uppercase;
-    letter-spacing:.04em;font-weight:600}
-  .product-price{font-size:16px;font-weight:800;letter-spacing:-.3px}
-  .product-stock{font-size:12px;font-weight:600}
-  .stock-ok{color:var(--good)}
-  .stock-low{color:var(--warn)}
-  .stock-out{color:var(--bad)}
+/* View count badge */
+.views-badge {
+  display:inline-block; padding:3px 9px; border-radius:999px;
+  font-size:12px; font-weight:700; white-space:nowrap;
+}
+.views-0    { background:#f4f4f5; color:#999 }
+.views-low  { background:#EFF8FF; color:#1570EF }
+.views-mid  { background:#ECFDF3; color:#027A48 }
+.views-high { background:#FFF4ED; color:#B93815 }
 
-  .product-actions{display:flex;gap:6px;padding:10px 14px;border-top:1px solid var(--line);
-    background:rgba(3,12,24,0.015)}
-  .product-actions a,.product-actions button{flex:1;text-align:center;padding:6px 8px;
-    border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;
-    transition:.12s;text-decoration:none;border:1px solid var(--line);
-    background:#fff;color:var(--txt);font-family:inherit}
-  .product-actions a:hover,.product-actions button:hover{background:rgba(3,12,24,0.04);
-    text-decoration:none}
-  .product-actions .del-btn{color:var(--bad);border-color:rgba(240,68,56,0.25)}
-  .product-actions .del-btn:hover{background:rgba(240,68,56,0.06)}
+/* Toggle switch */
+.toggle-wrap { display:flex; align-items:center; gap:8px; justify-content:center }
+.toggle-switch {
+  position:relative; display:inline-block; width:40px; height:22px; cursor:pointer;
+}
+.toggle-switch input { opacity:0; width:0; height:0; position:absolute }
+.toggle-slider {
+  position:absolute; inset:0; border-radius:999px; background:#d1d5db; transition:.2s;
+}
+.toggle-slider::before {
+  content:''; position:absolute; width:16px; height:16px; border-radius:50%;
+  background:#fff; top:3px; left:3px; transition:.2s;
+  box-shadow:0 1px 3px rgba(0,0,0,.25);
+}
+.toggle-switch input:checked + .toggle-slider { background:#12B76A }
+.toggle-switch input:checked + .toggle-slider::before { transform:translateX(18px) }
+.toggle-lbl { font-size:12px; font-weight:600; color:var(--muted); min-width:30px }
 
-  /* ── Stock toggle quick-form ── */
-  .stock-toggle-form{display:inline}
-
-  /* ── Pagination ── */
-  .pagination{display:flex;align-items:center;justify-content:center;gap:8px;
-    margin-top:28px;font-size:13px}
-  .page-btn{padding:7px 13px;border-radius:10px;border:1px solid var(--line);
-    background:#fff;color:var(--txt);text-decoration:none;font-weight:600;transition:.12s}
-  .page-btn:hover{background:rgba(3,12,24,0.04);text-decoration:none}
-  .page-btn.disabled{opacity:.4;pointer-events:none}
-  .page-btn.current{background:var(--ink);color:#fff;border-color:var(--ink)}
-
-  /* ── WooCommerce sync card ── */
-  .sync-card{border-left:4px solid var(--good)}
+.empty-row td { text-align:center; padding:48px; color:var(--muted) }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="page-header" style="margin-bottom:18px">
+
+<div class="page-header" style="margin-bottom:20px">
   <div>
     <div class="section-title">Products</div>
-    <p class="muted">
-      {% if has_azure_index %}
-        Your catalogue is synced from WooCommerce via AI Search.
-      {% else %}
-        Manage the products your AI assistant sells on WhatsApp.
-      {% endif %}
-    </p>
+    <p class="muted">Products your AI recommends on WhatsApp · toggle to pause/resume</p>
   </div>
-  {% if not has_azure_index %}
-  <a href="{{ url_for('portal.product_add') }}" class="btn btn-primary">
-    + Add Product
-  </a>
-  {% endif %}
+  <a href="{{ url_for('portal.catalogue_browse') }}" class="btn btn-sm">Browse Catalogue</a>
 </div>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% for cat, msg in messages %}
-  <div class="flash {{ cat }}">{{ msg }}</div>
-  {% endfor %}
-{% endwith %}
+{# ── Stats ─────────────────────────────────────────────────────────────────── #}
+<div class="prod-stats">
+  <div class="stat-card">
+    <div class="stat-val">{{ active_count }}</div>
+    <div class="stat-lbl">Active products</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-val">{{ products|length }}</div>
+    <div class="stat-lbl">Total in catalogue</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-val">{{ total_views }}</div>
+    <div class="stat-lbl">WhatsApp views (all time)</div>
+  </div>
+</div>
 
-<!-- ─── WooCommerce / Azure AI Search Merchants ─── -->
-{% if has_azure_index %}
-<div class="card sync-card" style="margin-bottom:20px">
-  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
-    <div>
-      <div style="font-weight:700;margin-bottom:4px">
-        <span class="dot dot-green" style="margin-right:6px"></span>
-        WooCommerce Sync Active
-      </div>
-      <p class="muted" style="margin:0">
-        {% if wa_stats.total_products %}
-          {{ wa_stats.total_products }} products indexed via Azure AI Search.
-          {% if wa_stats.last_seen %}
-            Last activity: {{ wa_stats.last_seen.strftime('%d %b %Y, %H:%M') if wa_stats.last_seen else '—' }}.
-          {% endif %}
-        {% else %}
-          Products are served directly from your WooCommerce store via Azure AI Search.
+{# ── Table ─────────────────────────────────────────────────────────────────── #}
+<div class="prod-table-wrap">
+
+  <div class="prod-filters">
+    <input type="text" id="prodSearch" placeholder="🔍  Search product or brand…" oninput="applyFilters()"/>
+    <select id="catFilter" onchange="applyFilters()">
+      <option value="">All categories</option>
+      {% for cat in categories %}
+      <option value="{{ cat.id }}">{{ cat.icon }} {{ cat.name }}</option>
+      {% endfor %}
+    </select>
+    <select id="statusFilter" onchange="applyFilters()">
+      <option value="">All statuses</option>
+      <option value="active">Active only</option>
+      <option value="paused">Paused only</option>
+    </select>
+    <span class="prod-count" id="prodCount">{{ products|length }} product{{ 's' if products|length != 1 }}</span>
+  </div>
+
+  <div style="overflow-x:auto">
+    <table class="prod-table">
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th>Category</th>
+          <th style="text-align:center">WhatsApp Views</th>
+          <th style="text-align:center">Active</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if not products %}
+        <tr class="empty-row">
+          <td colspan="4">
+            <div style="font-size:32px;margin-bottom:10px;opacity:.25">📦</div>
+            <div style="font-weight:700;margin-bottom:6px">No products yet</div>
+            <a href="{{ url_for('portal.catalogue_browse') }}" class="btn btn-primary btn-sm" style="margin-top:6px">Browse Catalogue</a>
+          </td>
+        </tr>
         {% endif %}
-      </p>
-    </div>
-    <div style="display:flex;gap:8px">
-      <a href="{{ url_for('portal.chat_archive') }}" class="btn btn-sm">
-        View Conversations
-      </a>
-    </div>
+
+        {% for p in products %}
+        {% set vc = p.view_count %}
+        <tr class="prod-row {% if not p.is_active %}inactive{% endif %}"
+            data-name="{{ ((p.brand or '') ~ ' ' ~ p.model_name)|lower }}"
+            data-cat="{{ p.cat_id }}"
+            data-status="{{ 'active' if p.is_active else 'paused' }}">
+          <td>
+            <div class="prod-name">{{ p.model_name }}</div>
+            <div class="prod-brand">
+              {% if p.brand %}{{ p.brand }}{% if p.sku %} &middot; {{ p.sku }}{% endif %}{% elif p.sku %}{{ p.sku }}{% endif %}
+            </div>
+          </td>
+          <td>
+            <span class="prod-cat">{{ p.cat_icon or '' }} {{ p.cat_name }}</span>
+          </td>
+          <td style="text-align:center">
+            <span class="views-badge {% if vc == 0 %}views-0{% elif vc < 10 %}views-low{% elif vc < 50 %}views-mid{% else %}views-high{% endif %}">
+              {{ vc }} view{{ 's' if vc != 1 }}
+            </span>
+          </td>
+          <td style="text-align:center">
+            <div class="toggle-wrap">
+              <label class="toggle-switch">
+                <input type="checkbox" {% if p.is_active %}checked{% endif %}
+                       onchange="toggleProduct(this, {{ p.id }})"/>
+                <span class="toggle-slider"></span>
+              </label>
+              <span class="toggle-lbl" id="lbl-{{ p.id }}">{{ 'On' if p.is_active else 'Off' }}</span>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
 
-<div class="card" style="text-align:center;padding:50px 20px">
-  <div style="font-size:36px;margin-bottom:12px;opacity:.35">🛍</div>
-  <div style="font-weight:700;margin-bottom:8px">Products managed by WooCommerce</div>
-  <p class="muted" style="max-width:420px;margin:0 auto">
-    Your product catalogue, prices, and stock levels are pulled directly from your WooCommerce store.
-    To add or edit products, go to your WooCommerce admin panel.
-    The AI assistant stays in sync automatically.
-  </p>
+<div id="noResults" style="display:none;text-align:center;padding:32px;color:var(--muted);font-size:14px">
+  No products match your filter.
 </div>
 
-{% else %}
-<!-- ─── Manual / WhatsApp Merchants — Full CRUD ─── -->
+<script>
+function applyFilters() {
+  var q      = (document.getElementById('prodSearch').value || '').toLowerCase().trim();
+  var cat    = document.getElementById('catFilter').value;
+  var status = document.getElementById('statusFilter').value;
+  var rows   = document.querySelectorAll('.prod-row');
+  var visible = 0;
 
-<!-- Search + filter bar -->
-<form method="GET" class="filter-bar">
-  <input type="search" name="q" value="{{ q }}"
-         placeholder="Search products…" autocomplete="off">
-  {% if categories %}
-  <select name="category" onchange="this.form.submit()">
-    <option value="">All categories</option>
-    {% for cat in categories %}
-    <option value="{{ cat }}" {% if category == cat %}selected{% endif %}>{{ cat }}</option>
-    {% endfor %}
-  </select>
-  {% endif %}
-  <button type="submit" class="btn btn-sm">Search</button>
-  {% if q or category %}
-  <a href="{{ url_for('portal.products') }}" class="btn btn-sm">Clear</a>
-  {% endif %}
-</form>
+  rows.forEach(function(row) {
+    var name   = row.getAttribute('data-name') || '';
+    var rowCat = row.getAttribute('data-cat') || '';
+    var rowSt  = row.getAttribute('data-status') || '';
+    var show   = true;
+    if (q      && !name.includes(q))    show = false;
+    if (cat    && rowCat !== cat)        show = false;
+    if (status && rowSt  !== status)     show = false;
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
 
-{% if products %}
+  var cnt = document.getElementById('prodCount');
+  if (cnt) cnt.textContent = visible + ' product' + (visible !== 1 ? 's' : '');
+  var nr = document.getElementById('noResults');
+  if (nr) nr.style.display = (visible === 0 && rows.length > 0) ? 'block' : 'none';
+}
 
-<!-- KPI strip -->
-<div style="display:flex;gap:16px;margin-bottom:18px;flex-wrap:wrap">
-  <span class="muted" style="font-size:13px">
-    <strong style="color:var(--txt)">{{ total }}</strong> product{{ 's' if total != 1 }}
-    {% if q or category %} matching filters{% endif %}
-  </span>
-  {% set out_of_stock = products | selectattr('stock_quantity', 'equalto', 0) | list | length %}
-  {% if out_of_stock %}
-  <span style="font-size:13px;color:var(--bad);font-weight:600">
-    ⚠ {{ out_of_stock }} out of stock on this page
-  </span>
-  {% endif %}
-</div>
+function toggleProduct(checkbox, productId) {
+  var row = checkbox.closest('tr');
+  var lbl = document.getElementById('lbl-' + productId);
+  checkbox.disabled = true;
 
-<!-- Product grid -->
-<div class="product-grid">
-  {% for p in products %}
-  <div class="product-card">
-
-    <!-- Image -->
-    <div class="product-img">
-      {% if p.image_url %}
-        <img src="{{ p.image_url }}" alt="{{ p.name }}"
-             onerror="this.parentElement.innerHTML='📦'">
-      {% else %}
-        📦
-      {% endif %}
-    </div>
-
-    <!-- Body -->
-    <div class="product-body">
-      {% if p.category %}
-      <div class="product-cat">{{ p.category }}</div>
-      {% endif %}
-      <div class="product-name" title="{{ p.name }}">{{ p.name }}</div>
-      <div class="product-price">₦{{ "{:,.0f}".format((p.price or 0)|float) }}</div>
-
-      <!-- Stock indicator -->
-      {% set qty = (p.stock_quantity or 0)|int %}
-      {% if qty == 0 %}
-        <div class="product-stock stock-out">Out of stock</div>
-      {% elif qty <= 5 %}
-        <div class="product-stock stock-low">Low stock — {{ qty }} left</div>
-      {% elif qty >= 999 %}
-        <div class="product-stock stock-ok">In stock</div>
-      {% else %}
-        <div class="product-stock stock-ok">{{ qty }} in stock</div>
-      {% endif %}
-
-      {% if p.description %}
-      <div class="muted" style="font-size:12px;line-height:1.4;
-           white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-        {{ p.description }}
-      </div>
-      {% endif %}
-    </div>
-
-    <!-- Actions -->
-    <div class="product-actions">
-      <a href="{{ url_for('portal.product_edit', product_id=p.id) }}">Edit</a>
-
-      <!-- Quick stock toggle -->
-      {% if qty == 0 %}
-      <form class="stock-toggle-form" method="POST"
-            action="{{ url_for('portal.product_toggle_stock', product_id=p.id) }}">
-        <input type="hidden" name="action" value="in_stock">
-        <button type="submit" style="color:var(--good);border-color:rgba(18,183,106,0.3)">
-          Mark In Stock
-        </button>
-      </form>
-      {% else %}
-      <form class="stock-toggle-form" method="POST"
-            action="{{ url_for('portal.product_toggle_stock', product_id=p.id) }}">
-        <input type="hidden" name="action" value="out_of_stock">
-        <button type="submit" style="color:var(--warn);border-color:rgba(247,144,9,0.3)">
-          Mark Out
-        </button>
-      </form>
-      {% endif %}
-
-      <form method="POST"
-            action="{{ url_for('portal.product_delete', product_id=p.id) }}"
-            onsubmit="return confirm('Remove \'{{ p.name }}\' from your catalogue?')">
-        <button type="submit" class="del-btn">Remove</button>
-      </form>
-    </div>
-
-  </div>
-  {% endfor %}
-</div>
-
-<!-- Pagination -->
-{% if total_pages > 1 %}
-<div class="pagination">
-  <a class="page-btn {% if page <= 1 %}disabled{% endif %}"
-     href="?q={{ q }}&category={{ category }}&page={{ page - 1 }}">← Prev</a>
-  <span style="color:var(--muted)">Page {{ page }} of {{ total_pages }}</span>
-  <a class="page-btn {% if page >= total_pages %}disabled{% endif %}"
-     href="?q={{ q }}&category={{ category }}&page={{ page + 1 }}">Next →</a>
-</div>
-{% endif %}
-
-{% else %}
-<!-- Empty state -->
-<div class="card" style="text-align:center;padding:60px 20px">
-  <div style="font-size:42px;margin-bottom:14px;opacity:.35">🏪</div>
-  {% if q or category %}
-  <div style="font-weight:700;font-size:17px;margin-bottom:8px">No products match your search</div>
-  <a href="{{ url_for('portal.products') }}" class="btn btn-sm" style="margin-top:8px">
-    Clear search
-  </a>
-  {% else %}
-  <div style="font-weight:700;font-size:17px;margin-bottom:8px">
-    No products in your catalogue yet
-  </div>
-  <p class="muted" style="max-width:380px;margin:0 auto 20px">
-    Add your first product and your AI assistant will immediately start selling it on WhatsApp.
-  </p>
-  <a href="{{ url_for('portal.product_add') }}" class="btn btn-primary">
-    + Add Your First Product
-  </a>
-  {% endif %}
-</div>
-{% endif %}
-
-{% endif %}{# end not has_azure_index #}
-
+  fetch('/products/' + productId + '/toggle', {
+    method: 'POST',
+    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (!d.ok) { checkbox.checked = !checkbox.checked; return; }
+    checkbox.checked = d.active;
+    if (lbl) lbl.textContent = d.active ? 'On' : 'Off';
+    if (row) {
+      row.classList.toggle('inactive', !d.active);
+      row.setAttribute('data-status', d.active ? 'active' : 'paused');
+    }
+    applyFilters();
+  })
+  .catch(function() { checkbox.checked = !checkbox.checked; })
+  .finally(function() { checkbox.disabled = false; });
+}
+</script>
 {% endblock %}

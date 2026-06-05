@@ -1,0 +1,163 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}WhatsApp Diagnostics — PhiXtra Admin{% endblock %}
+
+{% block content %}
+<style>
+.diag-grid { display:flex; flex-direction:column; gap:16px }
+
+.diag-card {
+  background:#fff; border:1px solid var(--line); border-radius:14px; overflow:hidden;
+}
+.diag-header {
+  display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;
+  padding:14px 20px; background:#fafafa; border-bottom:1px solid var(--line);
+}
+.diag-biz    { font-size:15px; font-weight:800 }
+.diag-phone  { font-size:13px; color:var(--muted); margin-top:2px }
+.diag-body   { display:grid; grid-template-columns:repeat(4,1fr); gap:0 }
+@media(max-width:860px){ .diag-body { grid-template-columns:repeat(2,1fr) } }
+@media(max-width:480px){ .diag-body { grid-template-columns:1fr 1fr } }
+
+.diag-cell {
+  padding:14px 18px; border-right:1px solid var(--line); border-top:1px solid var(--line);
+}
+.diag-cell:last-child { border-right:none }
+@media(max-width:860px){
+  .diag-cell:nth-child(2n) { border-right:none }
+  .diag-cell:nth-child(n+3) { border-top:1px solid var(--line) }
+}
+.diag-cell-lbl { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px }
+.diag-cell-val { font-size:13px; font-weight:600 }
+.diag-cell-sub { font-size:11px; color:var(--muted); margin-top:3px }
+
+.diag-footer {
+  padding:10px 18px; border-top:1px solid var(--line); background:#fafafa;
+  display:flex; gap:20px; flex-wrap:wrap;
+}
+.diag-meta { font-size:11px; color:var(--muted) }
+.diag-meta strong { color:var(--txt) }
+
+/* Status pills */
+.spill {
+  display:inline-flex; align-items:center; gap:5px;
+  padding:3px 9px; border-radius:999px; font-size:12px; font-weight:700;
+}
+.spill::before { content:''; width:7px; height:7px; border-radius:50%; flex-shrink:0 }
+
+.spill-green  { background:#ECFDF3; color:#027A48 }
+.spill-green::before  { background:#12B76A }
+.spill-blue   { background:#EFF8FF; color:#1570EF }
+.spill-blue::before   { background:#1570EF }
+.spill-yellow { background:#FFFAEB; color:#B54708 }
+.spill-yellow::before { background:#F79009 }
+.spill-red    { background:#FEF3F2; color:#B42318 }
+.spill-red::before    { background:#F04438 }
+.spill-grey   { background:#F4F4F5; color:#888 }
+.spill-grey::before   { background:#ccc }
+
+.mono { font-family:monospace; font-size:12px; color:var(--muted); word-break:break-all }
+</style>
+
+<div class="page-header" style="margin-bottom:24px">
+  <div>
+    <div class="section-title">WhatsApp Diagnostics</div>
+    <p class="muted">Technical account health for all connected WhatsApp Business numbers</p>
+  </div>
+  <span style="font-size:12px;color:var(--muted)">{{ tenants|length }} account{{ 's' if tenants|length != 1 }}</span>
+</div>
+
+{% if not tenants %}
+<div class="card" style="text-align:center;padding:48px">
+  <div style="font-size:36px;opacity:.3;margin-bottom:12px">📵</div>
+  <div style="font-weight:700">No WhatsApp accounts connected yet</div>
+</div>
+{% endif %}
+
+<div class="diag-grid">
+{% for t in tenants %}
+
+{% if t.token_status == 'expired' %}{% set tok_cls = 'spill-red' %}
+{% elif t.token_status == 'expiring' %}{% set tok_cls = 'spill-yellow' %}
+{% elif t.token_status == 'permanent' %}{% set tok_cls = 'spill-green' %}
+{% else %}{% set tok_cls = 'spill-green' %}{% endif %}
+
+{% if t.webhook_status == 'active' %}{% set wh_cls = 'spill-green' %}
+{% elif t.webhook_status == 'recent' %}{% set wh_cls = 'spill-blue' %}
+{% elif t.webhook_status == 'quiet' %}{% set wh_cls = 'spill-yellow' %}
+{% elif t.webhook_status == 'stale' %}{% set wh_cls = 'spill-red' %}
+{% else %}{% set wh_cls = 'spill-grey' %}{% endif %}
+
+<div class="diag-card">
+
+  {# Header #}
+  <div class="diag-header">
+    <div>
+      <div class="diag-biz">{{ t.business_name }}</div>
+      <div class="diag-phone">
+        {% if t.display_phone_number %}+{{ t.display_phone_number }}{% else %}No display number{% endif %}
+        &nbsp;·&nbsp; tenant #{{ t.tenant_id }}
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      {% if t.active %}
+      <span class="spill spill-green">Active</span>
+      {% else %}
+      <span class="spill spill-red">Inactive</span>
+      {% endif %}
+      {% if t.tenant_status == 'cancelled' %}
+      <span class="spill spill-red">Cancelled</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {# Diagnostic cells #}
+  <div class="diag-body">
+
+    <div class="diag-cell">
+      <div class="diag-cell-lbl">Token</div>
+      <div class="diag-cell-val"><span class="spill {{ tok_cls }}">{{ t.token_label }}</span></div>
+      <div class="diag-cell-sub">{{ t.signup_method | capitalize }} signup</div>
+    </div>
+
+    <div class="diag-cell">
+      <div class="diag-cell-lbl">Webhook Health</div>
+      <div class="diag-cell-val"><span class="spill {{ wh_cls }}">{{ t.webhook_label }}</span></div>
+      <div class="diag-cell-sub">
+        {{ t.msgs_24h }} msg{{ 's' if t.msgs_24h != 1 }} last 24h &nbsp;·&nbsp;
+        {{ t.msgs_7d }} last 7d
+      </div>
+    </div>
+
+    <div class="diag-cell">
+      <div class="diag-cell-lbl">Number Verification</div>
+      {% if t.verified_name %}
+      <div class="diag-cell-val"><span class="spill spill-green">Verified</span></div>
+      <div class="diag-cell-sub">{{ t.verified_name }}</div>
+      {% else %}
+      <div class="diag-cell-val"><span class="spill spill-yellow">Pending</span></div>
+      <div class="diag-cell-sub">Display name not approved</div>
+      {% endif %}
+    </div>
+
+    <div class="diag-cell">
+      <div class="diag-cell-lbl">Activity (7 days)</div>
+      <div class="diag-cell-val">{{ t.customers_7d }} customer{{ 's' if t.customers_7d != 1 }}</div>
+      <div class="diag-cell-sub">{{ t.msgs_7d }} messages total</div>
+    </div>
+
+  </div>
+
+  {# Footer — IDs for copy-paste debugging #}
+  <div class="diag-footer">
+    <span class="diag-meta"><strong>phone_number_id</strong> <span class="mono">{{ t.phone_number_id }}</span></span>
+    {% if t.waba_id %}
+    <span class="diag-meta"><strong>waba_id</strong> <span class="mono">{{ t.waba_id }}</span></span>
+    {% endif %}
+    <span class="diag-meta"><strong>connected</strong> {{ t.created_at.strftime('%-d %b %Y') if t.created_at }}</span>
+  </div>
+
+</div>
+{% endfor %}
+</div>
+
+{% endblock %}

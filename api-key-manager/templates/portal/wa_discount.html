@@ -1,0 +1,320 @@
+{% extends "portal/base.html" %}
+{% block title %}Discount Settings — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  .ds-header { display:flex; align-items:flex-start; justify-content:space-between;
+               flex-wrap:wrap; gap:12px; margin-bottom:26px }
+  .ds-title  { font-size:22px; font-weight:800; letter-spacing:-.3px }
+  .ds-sub    { font-size:14px; color:var(--muted); margin-top:4px }
+
+  .how-box { background:rgba(37,99,235,0.04); border:1px solid rgba(37,99,235,0.18);
+             border-radius:16px; padding:18px 20px; margin-bottom:26px }
+  .how-box h3 { font-size:14px; font-weight:700; color:#2563EB; margin-bottom:10px }
+  .how-box p  { font-size:13px; color:var(--txt); margin-bottom:6px; line-height:1.6 }
+  .how-box p:last-child { margin-bottom:0 }
+
+  .ds-section       { margin-bottom:28px }
+  .ds-section-head  { display:flex; align-items:center; gap:10px; margin-bottom:14px }
+  .ds-section-icon  { font-size:22px }
+  .ds-section-title { font-size:16px; font-weight:800 }
+  .ds-section-sub   { font-size:13px; color:var(--muted); margin-top:1px }
+
+  .card { background:#fff; border:1px solid var(--line); border-radius:18px; padding:22px 24px }
+
+  /* Mode cards */
+  .mode-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:20px }
+  @media(max-width:560px){ .mode-grid { grid-template-columns:1fr } }
+  .mode-card {
+    border:2px solid var(--line); border-radius:16px; padding:18px 20px;
+    cursor:pointer; transition:.15s; position:relative; background:#fff;
+  }
+  .mode-card:hover { border-color:rgba(3,12,24,.3); box-shadow:var(--shadow2) }
+  .mode-card.selected { border-color:#030C18; background:rgba(3,12,24,0.03) }
+  .mode-card input[type=radio] { position:absolute; opacity:0; pointer-events:none }
+  .mode-card-icon  { font-size:26px; margin-bottom:8px }
+  .mode-card-title { font-size:15px; font-weight:700; margin-bottom:4px }
+  .mode-card-desc  { font-size:13px; color:var(--muted); line-height:1.5 }
+  .mode-check {
+    position:absolute; top:14px; right:14px; width:20px; height:20px;
+    border-radius:50%; border:2px solid var(--line); background:#fff;
+    display:flex; align-items:center; justify-content:center;
+    font-size:11px; color:#fff; transition:.15s;
+  }
+  .mode-card.selected .mode-check { background:#030C18; border-color:#030C18 }
+
+  /* Inline field row */
+  .field-row { display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; margin-bottom:16px }
+  .field-group label {
+    display:block; font-size:12px; font-weight:600; color:var(--muted);
+    text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px
+  }
+  .select-field, .number-field {
+    padding:8px 12px; border:1px solid var(--line); border-radius:10px;
+    font-size:14px; background:#fff; cursor:pointer;
+  }
+  .select-field:focus, .number-field:focus {
+    outline:none; border-color:rgba(3,12,24,.4); box-shadow:0 0 0 3px rgba(3,12,24,.06);
+  }
+  .number-field { width:120px; text-align:right }
+
+  /* Products table */
+  .prod-wrap { border-radius:16px; overflow:hidden; border:1px solid var(--line) }
+  .prod-table { width:100%; border-collapse:collapse; background:#fff }
+  .prod-table th {
+    text-align:left; font-size:12px; font-weight:600; color:var(--muted);
+    text-transform:uppercase; letter-spacing:.05em;
+    padding:11px 16px; border-bottom:2px solid var(--line); background:#fafafa;
+  }
+  .prod-table td { padding:11px 16px; border-bottom:1px solid var(--line); vertical-align:middle }
+  .prod-table tr:last-child td { border-bottom:none }
+  .prod-table tr:hover td { background:rgba(3,12,24,.02) }
+  .prod-name  { font-size:14px; font-weight:600 }
+  .prod-price { font-size:12px; color:var(--muted); margin-top:2px }
+
+  .disc-select { padding:6px 10px; border:1px solid var(--line); border-radius:8px; font-size:13px }
+  .disc-input  { width:80px; padding:6px 10px; border:1px solid var(--line); border-radius:8px;
+                 font-size:13px; text-align:right }
+  .disc-select:focus, .disc-input:focus {
+    outline:none; border-color:rgba(3,12,24,.4); box-shadow:0 0 0 3px rgba(3,12,24,.06);
+  }
+
+  /* Buttons */
+  .btn-primary {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:10px 22px; background:#030C18; color:#fff;
+    border:none; border-radius:10px; font-size:14px; font-weight:600;
+    cursor:pointer; transition:.15s;
+  }
+  .btn-primary:hover { background:#1a2535 }
+  .btn-sm { padding:6px 14px; font-size:13px; border-radius:8px }
+
+  /* Flash */
+  .flash { padding:12px 16px; border-radius:12px; font-size:14px; font-weight:500;
+           margin-bottom:20px; display:flex; align-items:center; gap:8px }
+  .flash.success { background:rgba(18,183,106,0.10); color:#065f46; border:1px solid rgba(18,183,106,0.25) }
+  .flash.error   { background:rgba(240,68,56,0.08);  color:#991b1b; border:1px solid rgba(240,68,56,0.20) }
+
+  .empty-box { text-align:center; padding:40px 20px; color:var(--muted) }
+  .empty-box .empty-icon { font-size:36px; margin-bottom:10px }
+  .empty-box p { font-size:14px; line-height:1.6 }
+
+  .hint { font-size:12px; color:var(--muted); margin-top:10px; line-height:1.6 }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="ds-header">
+  <div>
+    <div class="ds-title">💰 Discount Settings</div>
+    <div class="ds-sub">Control how discounts are offered to customers on WhatsApp</div>
+  </div>
+</div>
+
+{% if flash_msg %}
+<div class="flash {{ flash_type }}">
+  {{ '✅' if flash_type == 'success' else '⚠️' }} {{ flash_msg }}
+</div>
+{% endif %}
+
+<div class="how-box">
+  <h3>How WhatsApp Discounts Work</h3>
+  <p><strong>Merchant Only:</strong> AI never offers a discount. Any discount request → immediate handoff to you.</p>
+  <p><strong>AI Then Merchant:</strong> AI offers your configured discount automatically. If the customer wants more → escalated to you.</p>
+  <p>Customers trigger discounts by replying <strong>DISCOUNT</strong> during the ordering flow.</p>
+</div>
+
+<!-- ── Section 1: Discount Mode ─────────────────────────────────── -->
+<div class="ds-section">
+  <div class="ds-section-head">
+    <span class="ds-section-icon">⚙️</span>
+    <div>
+      <div class="ds-section-title">Discount Mode</div>
+      <div class="ds-section-sub">Choose how discount requests are handled</div>
+    </div>
+  </div>
+
+  <form method="POST" action="{{ url_for('portal.wa_discount_settings') }}">
+    <input type="hidden" name="form_type" value="mode">
+    <div class="mode-grid">
+      <label class="mode-card {% if settings.discount_mode == 'merchant_only' %}selected{% endif %}"
+             onclick="selectMode(this)">
+        <input type="radio" name="discount_mode" value="merchant_only"
+               {% if settings.discount_mode == 'merchant_only' %}checked{% endif %}>
+        <div class="mode-check">✓</div>
+        <div class="mode-card-icon">🤝</div>
+        <div class="mode-card-title">Merchant Only</div>
+        <div class="mode-card-desc">All discount requests go straight to you. AI never negotiates.</div>
+      </label>
+      <label class="mode-card {% if settings.discount_mode == 'ai_then_merchant' %}selected{% endif %}"
+             onclick="selectMode(this)">
+        <input type="radio" name="discount_mode" value="ai_then_merchant"
+               {% if settings.discount_mode == 'ai_then_merchant' %}checked{% endif %}>
+        <div class="mode-check">✓</div>
+        <div class="mode-card-icon">🤖</div>
+        <div class="mode-card-title">AI Then Merchant</div>
+        <div class="mode-card-desc">AI offers your set discount first. Pushback → you're brought in.</div>
+      </label>
+    </div>
+    <button type="submit" class="btn-primary">Save Mode</button>
+  </form>
+</div>
+
+<!-- ── Section 2: Default Discount ──────────────────────────────── -->
+<div class="ds-section">
+  <div class="ds-section-head">
+    <span class="ds-section-icon">💸</span>
+    <div>
+      <div class="ds-section-title">Default Discount</div>
+      <div class="ds-section-sub">Applied to all products unless a per-product override is set below</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <form method="POST" action="{{ url_for('portal.wa_discount_settings') }}">
+      <input type="hidden" name="form_type" value="default">
+      <div class="field-row">
+        <div class="field-group">
+          <label>Discount Type</label>
+          <select name="default_discount_type" class="select-field">
+            <option value="percent" {% if settings.default_discount_type == 'percent' %}selected{% endif %}>Percent (%)</option>
+            <option value="flat"    {% if settings.default_discount_type == 'flat'    %}selected{% endif %}>Flat Amount (₦)</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label>Value</label>
+          <input type="number" name="default_discount_value" class="number-field"
+                 value="{{ settings.default_discount_value | int if settings.default_discount_type == 'percent' else settings.default_discount_value }}"
+                 min="0" step="0.01" placeholder="e.g. 5">
+        </div>
+        <div style="padding-bottom:8px; font-size:13px; color:var(--muted)">
+          {% if settings.default_discount_type == 'percent' and settings.default_discount_value > 0 %}
+            → AI offers <strong>{{ settings.default_discount_value | int }}% off</strong>
+          {% elif settings.default_discount_type == 'flat' and settings.default_discount_value > 0 %}
+            → AI offers <strong>₦{{ "{:,.0f}".format(settings.default_discount_value) }} off</strong>
+          {% else %}
+            → No default discount (set a value above 0 to enable)
+          {% endif %}
+        </div>
+      </div>
+      <button type="submit" class="btn-primary">Save Default Discount</button>
+    </form>
+    <p class="hint">Set to 0 to disable AI auto-discounts. The AI will then always escalate to you when a customer asks.</p>
+  </div>
+</div>
+
+<!-- ── Section 3: Per-Product Overrides ─────────────────────────── -->
+<div class="ds-section">
+  <div class="ds-section-head">
+    <span class="ds-section-icon">🏷️</span>
+    <div>
+      <div class="ds-section-title">Per-Product Discount Overrides</div>
+      <div class="ds-section-sub">Set a different discount for specific products — overrides the default above</div>
+    </div>
+  </div>
+
+  {% if products %}
+  <!-- Search bar -->
+  <div style="display:flex; gap:10px; margin-bottom:12px">
+    <input type="text" id="prod-search" class="select-field" placeholder="Search products…"
+           style="flex:1; max-width:380px"
+           oninput="filterProducts(this.value)">
+    <button type="button" class="btn-primary btn-sm" onclick="filterProducts(document.getElementById('prod-search').value)">
+      🔍 Search
+    </button>
+    <button type="button" class="btn-primary btn-sm" style="background:rgba(3,12,24,0.12); color:var(--txt)"
+            onclick="document.getElementById('prod-search').value=''; filterProducts('')">
+      Clear
+    </button>
+  </div>
+  <div id="prod-count" style="font-size:12px; color:var(--muted); margin-bottom:10px">
+    Showing all {{ products|length }} products
+  </div>
+
+  <div class="prod-wrap">
+    <table class="prod-table" id="prod-table">
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th>Store Price</th>
+          <th>Discount Type</th>
+          <th>Discount Value</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in products %}
+        <tr>
+          <td>
+            <div class="prod-name">{{ p.name }}</div>
+            <div class="prod-price">ID: {{ p.product_id }}</div>
+          </td>
+          <td style="font-size:13px; color:var(--muted)">
+            £{{ "%.2f"|format(p.price_gbp) }}
+          </td>
+          <td>
+            <form method="POST"
+                  action="{{ url_for('portal.wa_discount_product_save', product_id=p.product_id) }}"
+                  id="pf-{{ loop.index }}">
+              <select name="discount_type" class="disc-select">
+                <option value="percent" {% if p.discount_type == 'percent' %}selected{% endif %}>% Percent</option>
+                <option value="flat"    {% if p.discount_type == 'flat'    %}selected{% endif %}>₦ Flat</option>
+              </select>
+          </td>
+          <td>
+              <input type="number" name="discount_value" class="disc-input"
+                     value="{{ p.discount_value | int if p.discount_type == 'percent' else p.discount_value }}"
+                     min="0" step="0.01">
+              <input type="hidden" name="product_name" value="{{ p.name }}">
+          </td>
+          <td>
+              <button type="submit" class="btn-primary btn-sm">Save</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card">
+    <div class="empty-box">
+      <div class="empty-icon">📦</div>
+      <p>No products found.<br>Products appear here once synced from your store.</p>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+function selectMode(card) {
+  document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('selected'));
+  card.classList.add('selected');
+}
+
+function filterProducts(q) {
+  const term  = q.trim().toLowerCase();
+  const rows  = document.querySelectorAll('#prod-table tbody tr');
+  const count = document.getElementById('prod-count');
+  let visible = 0;
+  rows.forEach(row => {
+    const name = (row.querySelector('.prod-name')?.textContent || '').toLowerCase();
+    const show = !term || name.includes(term);
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  if (count) {
+    count.textContent = term
+      ? `Showing ${visible} of {{ products|length }} products`
+      : `Showing all {{ products|length }} products`;
+  }
+}
+
+// Focus search on page load
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('prod-search')?.focus();
+});
+</script>
+
+{% endblock %}

@@ -1,0 +1,247 @@
+{% extends "portal/base.html" %}
+{% block title %}{{ campaign.name }} — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+.rpt-back {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 600; color: var(--muted);
+  text-decoration: none; margin-bottom: 20px;
+  transition: color .12s;
+}
+.rpt-back:hover { color: var(--ink); }
+
+.rpt-hero {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  border-radius: 16px; padding: 28px 32px; margin-bottom: 24px;
+}
+.rpt-hero h1 { font-size: 20px; font-weight: 800; color: #fff; margin: 0 0 4px; }
+.rpt-hero-meta { font-size: 12px; color: rgba(255,255,255,.5); display: flex; gap: 16px; flex-wrap: wrap; }
+.rpt-hero-meta span { display: flex; align-items: center; gap: 5px; }
+
+.rpt-stats {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px;
+}
+.rpt-stat {
+  background: #fff; border: 1px solid rgba(3,12,24,.08); border-radius: 14px;
+  padding: 20px 22px;
+}
+.rpt-stat-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+.rpt-stat-value { font-size: 30px; font-weight: 800; color: var(--ink); line-height: 1; }
+.rpt-stat-sub   { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+.rate-bar-wrap { background: #e2e8f0; border-radius: 99px; height: 8px; margin-top: 8px; overflow: hidden; }
+.rate-bar-fill { height: 8px; border-radius: 99px; background: #22c55e; }
+
+.section-card {
+  background: #fff; border: 1px solid rgba(3,12,24,.08); border-radius: 16px; overflow: hidden; margin-bottom: 24px;
+}
+.section-card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 24px; border-bottom: 1px solid rgba(3,12,24,.07);
+}
+.section-card-header h2 { font-size: 15px; font-weight: 700; color: var(--ink); margin: 0; }
+
+.rpt-table { width: 100%; border-collapse: collapse; }
+.rpt-table th {
+  font-size: 11px; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .06em;
+  padding: 11px 20px; text-align: left;
+  background: #f8fafc; border-bottom: 1px solid rgba(3,12,24,.07);
+}
+.rpt-table td { padding: 12px 20px; font-size: 13px; border-bottom: 1px solid rgba(3,12,24,.05); vertical-align: middle; }
+.rpt-table tr:last-child td { border-bottom: none; }
+.rpt-table tbody tr:hover td { background: #fafbfc; }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700;
+}
+.badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.badge-sent   { background: #dcfce7; color: #166534; }
+.badge-sent::before { background: #16a34a; }
+.badge-failed { background: #fee2e2; color: #991b1b; }
+.badge-failed::before { background: #ef4444; }
+.badge-pending { background: #f1f5f9; color: #64748b; }
+.badge-pending::before { background: #94a3b8; }
+
+.empty-state {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 48px 20px; color: var(--muted); text-align: center;
+}
+.empty-state h3 { font-size: 14px; font-weight: 700; color: var(--ink); margin: 12px 0 4px; }
+.empty-state p  { font-size: 13px; margin: 0; max-width: 300px; }
+
+.badge-status {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700;
+}
+.badge-done     { background: #dcfce7; color: #166534; }
+.badge-running  { background: #dcfce7; color: #166534; }
+.badge-draft    { background: #f1f5f9; color: #64748b; }
+.badge-scheduled{ background: #fef3c7; color: #92400e; }
+.badge-campaign-failed { background: #fee2e2; color: #991b1b; }
+
+.search-bar {
+  display: flex; gap: 10px; align-items: center;
+}
+.search-bar input {
+  padding: 8px 12px; border: 1.5px solid #e2e8f0; border-radius: 9px;
+  font-size: 13px; outline: none; width: 220px; transition: border-color .15s;
+}
+.search-bar input:focus { border-color: #25D366; }
+
+.filter-btns { display: flex; gap: 6px; }
+.filter-btn {
+  padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
+  border: 1.5px solid #e2e8f0; background: #fff; color: #64748b; cursor: pointer; transition: .12s;
+}
+.filter-btn.active-all    { border-color: #0f172a; background: #0f172a; color: #fff; }
+.filter-btn.active-sent   { border-color: #16a34a; background: #dcfce7; color: #166534; }
+.filter-btn.active-failed { border-color: #ef4444; background: #fee2e2; color: #991b1b; }
+
+@media (max-width: 680px) {
+  .rpt-stats { grid-template-columns: 1fr 1fr; }
+  .rpt-hero  { padding: 20px; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<a href="{{ url_for('portal.whatsapp_campaigns') }}" class="rpt-back">
+  <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+  Back to Campaigns
+</a>
+
+<!-- Hero -->
+<div class="rpt-hero">
+  <h1>{{ campaign.name }}</h1>
+  <div class="rpt-hero-meta">
+    <span>
+      <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+      {{ campaign.created_at.strftime('%d %b %Y') if campaign.created_at else '—' }}
+    </span>
+    <span>
+      <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      Template: <strong style="color:#fff">{{ campaign.template_name }}</strong>
+    </span>
+    {% if campaign.completed_at %}
+    <span>
+      <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+      Completed {{ campaign.completed_at.strftime('%d %b %Y %H:%M') }}
+    </span>
+    {% endif %}
+    <span>
+      <span class="badge-status badge-{{ 'campaign-failed' if campaign.status == 'failed' else campaign.status }}">
+        {{ campaign.status|capitalize }}
+      </span>
+    </span>
+  </div>
+</div>
+
+<!-- Stats -->
+<div class="rpt-stats">
+  <div class="rpt-stat">
+    <div class="rpt-stat-label">Total Recipients</div>
+    <div class="rpt-stat-value">{{ total }}</div>
+    <div class="rpt-stat-sub">Phone numbers targeted</div>
+  </div>
+  <div class="rpt-stat">
+    <div class="rpt-stat-label">Sent</div>
+    <div class="rpt-stat-value" style="color:#16a34a">{{ sent }}</div>
+    <div class="rpt-stat-sub">Successfully delivered to Meta</div>
+  </div>
+  <div class="rpt-stat">
+    <div class="rpt-stat-label">Failed</div>
+    <div class="rpt-stat-value" style="color:#dc2626">{{ failed }}</div>
+    <div class="rpt-stat-sub">Rejected or errored</div>
+  </div>
+  <div class="rpt-stat">
+    <div class="rpt-stat-label">Delivery Rate</div>
+    <div class="rpt-stat-value" style="color:{% if rate >= 90 %}#16a34a{% elif rate >= 60 %}#d97706{% else %}#dc2626{% endif %}">{{ rate }}%</div>
+    <div class="rpt-stat-sub">
+      <div class="rate-bar-wrap">
+        <div class="rate-bar-fill" style="width:{{ rate }}%;background:{% if rate >= 90 %}#22c55e{% elif rate >= 60 %}#f59e0b{% else %}#ef4444{% endif %}"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Recipient detail -->
+<div class="section-card">
+  <div class="section-card-header">
+    <h2>Recipient Breakdown</h2>
+    {% if recipients %}
+    <div class="search-bar">
+      <input type="text" id="srch" placeholder="Search number…" oninput="filterTable()" autocomplete="off">
+      <div class="filter-btns">
+        <button class="filter-btn active-all" id="fAll"    onclick="setFilter('all')">All ({{ recipients|length }})</button>
+        <button class="filter-btn"            id="fSent"   onclick="setFilter('sent')">Sent ({{ recipients|selectattr('status','equalto','sent')|list|length }})</button>
+        <button class="filter-btn"            id="fFailed" onclick="setFilter('failed')">Failed ({{ recipients|selectattr('status','equalto','failed')|list|length }})</button>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if not recipients %}
+  <div class="empty-state">
+    <svg width="36" height="36" fill="none" stroke="#cbd5e1" stroke-width="1.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    <h3>No recipient data</h3>
+    <p>Per-recipient tracking is recorded for campaigns sent going forward. Older campaigns only show aggregate counts above.</p>
+  </div>
+  {% else %}
+  <div style="overflow-x:auto">
+    <table class="rpt-table" id="recipTable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Phone Number</th>
+          <th>Status</th>
+          <th>Sent At</th>
+          <th>Error</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in recipients %}
+        <tr data-status="{{ r.status }}" data-phone="{{ r.phone }}">
+          <td style="color:var(--muted);font-size:12px">{{ loop.index }}</td>
+          <td style="font-weight:600;font-family:monospace">+{{ r.phone }}</td>
+          <td><span class="badge badge-{{ r.status }}">{{ r.status|capitalize }}</span></td>
+          <td style="font-size:12px;color:var(--muted);white-space:nowrap">
+            {{ r.sent_at.strftime('%d %b %Y %H:%M:%S') if r.sent_at else '—' }}
+          </td>
+          <td style="font-size:12px;color:#dc2626;max-width:260px;
+                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+              title="{{ r.error_msg or '' }}">
+            {{ r.error_msg or '—' }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+let _filter = 'all'
+
+function setFilter(f) {
+  _filter = f
+  document.getElementById('fAll').className    = 'filter-btn' + (f === 'all'    ? ' active-all'    : '')
+  document.getElementById('fSent').className   = 'filter-btn' + (f === 'sent'   ? ' active-sent'   : '')
+  document.getElementById('fFailed').className = 'filter-btn' + (f === 'failed' ? ' active-failed' : '')
+  filterTable()
+}
+
+function filterTable() {
+  const q = (document.getElementById('srch').value || '').toLowerCase()
+  document.querySelectorAll('#recipTable tbody tr').forEach(row => {
+    const matchStatus = _filter === 'all' || row.dataset.status === _filter
+    const matchSearch = !q || row.dataset.phone.includes(q)
+    row.style.display = (matchStatus && matchSearch) ? '' : 'none'
+  })
+}
+</script>
+{% endblock %}

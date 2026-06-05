@@ -28,6 +28,8 @@ except Exception:
 portal_bp = Blueprint("portal", __name__)
 BRAND = "#030C18"
 TRIAL_DAYS = 14          # mirrors app.py — keep in sync
+FOUNDER_SPOTS_LIMIT   = 50
+FOUNDER_DISPLAY_OFFSET = 27  # pre-claimed spots shown for urgency; real sign-ups add on top
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are a helpful AI shopping assistant for {{business_name}}.\n\n"
@@ -576,6 +578,119 @@ def _send_welcome_trial_email_wa(
     )
 
 
+def _get_founder_spots_claimed() -> int:
+    """Return how many WhatsApp founder spots have been claimed so far."""
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM tenants WHERE is_founder=TRUE")
+        count = int((cur.fetchone() or [0])[0])
+        cur.close(); conn.close()
+        return count
+    except Exception:
+        return 0
+
+
+@portal_bp.route("/api/founder-spots")
+def api_founder_spots():
+    """Public endpoint — returns remaining founder spots as JSON.
+    Used by the marketing site to show a live spot count.
+    No authentication required; reveals only the remaining count.
+    claimed/remaining include FOUNDER_DISPLAY_OFFSET for urgency display.
+    """
+    from flask import jsonify
+    real_claimed      = _get_founder_spots_claimed()
+    display_claimed   = min(FOUNDER_SPOTS_LIMIT, real_claimed + FOUNDER_DISPLAY_OFFSET)
+    display_remaining = max(0, FOUNDER_SPOTS_LIMIT - display_claimed)
+    return jsonify({"remaining": display_remaining, "total": FOUNDER_SPOTS_LIMIT, "claimed": display_claimed})
+
+
+def _send_founder_welcome_email_wa(
+    email: str,
+    first_name: str,
+    business_name: str,
+    year1_ends: str,
+) -> None:
+    """Day-0 welcome email for Founder offer sign-ups (WhatsApp)."""
+    greeting    = first_name.strip() if first_name and first_name.strip() else "there"
+    portal_link = _PORTAL_BASE_URL
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto">
+      <div style="background:#030C18;padding:20px 24px;border-radius:12px 12px 0 0">
+        <p style="color:#25D366;font-size:11px;font-weight:800;letter-spacing:.1em;
+                  text-transform:uppercase;margin:0 0 6px">Founder\'s Offer</p>
+        <h2 style="color:#fff;margin:0;font-size:22px">Your free year starts now.</h2>
+      </div>
+      <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;
+                  padding:24px">
+        <p>Hi {greeting},</p>
+        <p>You\'ve claimed one of the 50 Founder spots. <b>{business_name}</b> has full access
+           to every PhiXtra feature — completely free until <b>{year1_ends}</b>.</p>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0">
+          <tr>
+            <td style="padding:9px 12px;background:#f3f4f6;border:1px solid #e5e7eb;
+                        font-weight:700;width:110px">Year 1</td>
+            <td style="padding:9px 12px;border:1px solid #e5e7eb">
+                <b style="color:#1DA851">Free</b> — every feature, no credit card</td>
+          </tr>
+          <tr>
+            <td style="padding:9px 12px;background:#f3f4f6;border:1px solid #e5e7eb;
+                        font-weight:700">Year 2</td>
+            <td style="padding:9px 12px;border:1px solid #e5e7eb">
+                50% off your annual plan<br>
+                <span style="font-size:12px;color:#6b7280">
+                  Starter: &#8358;7,125/mo &middot; Growth: &#8358;22,800/mo (billed annually)
+                </span></td>
+          </tr>
+          <tr>
+            <td style="padding:9px 12px;background:#f3f4f6;border:1px solid #e5e7eb;
+                        font-weight:700">Year 3+</td>
+            <td style="padding:9px 12px;border:1px solid #e5e7eb">
+                Standard annual pricing<br>
+                <span style="font-size:12px;color:#6b7280">
+                  Starter: &#8358;14,250/mo &middot; Growth: &#8358;45,600/mo (billed annually)
+                </span></td>
+          </tr>
+        </table>
+        <p style="margin-bottom:20px"><b>What to do next:</b></p>
+        <ol style="margin:0 0 20px;padding-left:20px;line-height:1.9">
+          <li>Log in to your portal</li>
+          <li>Connect your WhatsApp Business number</li>
+          <li>Upload your product catalogue</li>
+          <li>Share your WhatsApp number — your AI Sales Agent handles the rest</li>
+        </ol>
+        <p>
+          <a href="{portal_link}"
+             style="display:inline-block;background:#030C18;color:#fff;padding:12px 22px;
+                    border-radius:12px;text-decoration:none;font-weight:700;font-size:15px">
+            Go to Portal
+          </a>
+        </p>
+        <p style="color:#6b7280;font-size:13px;margin-top:20px">
+          Questions? Contact
+          <a href="mailto:support@phixtra.com" style="color:#030C18">support@phixtra.com</a>
+        </p>
+      </div>
+    </div>"""
+    send_email(
+        email,
+        "You've claimed a PhiXtra Founder spot — Year 1 is free",
+        html,
+        text_body=(
+            f"Hi {greeting},\n\n"
+            f"You've claimed a Founder spot. {business_name} has full access until {year1_ends}.\n\n"
+            f"Year 1: Free (every feature, no credit card)\n"
+            f"Year 2: 50% off your annual plan\n"
+            f"Year 3+: Standard annual pricing\n\n"
+            f"Next steps:\n"
+            f"1. Log in to your portal\n"
+            f"2. Connect your WhatsApp Business number\n"
+            f"3. Upload your product catalogue\n\n"
+            f"Log in: {portal_link}"
+        ),
+    )
+
+
 def _send_welcome_trial_email(
     email: str,
     first_name: str,
@@ -674,14 +789,27 @@ def _reg_rate_ok(ip):
 def _register_whatsapp_merchant(
     first_name: str, last_name: str, email: str, password: str,
     business_name: str,
+    is_founder: bool = False,
 ):
     """
     Self-service registration path for WhatsApp-only merchants.
     Creates tenant (source_type='whatsapp') + customer (real email/password)
     + whatsapp api_key.  Sends email verification like the web path.
+    Pass is_founder=True to claim a Founder spot (1-year free, tracked separately).
     """
     if not business_name:
         business_name = f"{first_name} {last_name}".strip()
+
+    # ── Founder spot check ───────────────────────────────────────────────────
+    if is_founder:
+        spots_claimed = _get_founder_spots_claimed()
+        if spots_claimed >= FOUNDER_SPOTS_LIMIT:
+            flash(
+                "All 50 Founder spots have been claimed. "
+                "You've been signed up for our standard 30-day free trial instead.",
+                "info",
+            )
+            is_founder = False
 
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -703,18 +831,30 @@ def _register_whatsapp_merchant(
         "chat_archive_unlimited":    True,
     })
 
-    # Create tenant — Pro trial for 30 days
+    # ── Create tenant ────────────────────────────────────────────────────────
+    # Founders get 1 year free (365 days). Regular sign-ups get 30-day Pro trial.
+    if is_founder:
+        trial_interval = "INTERVAL '1 year'"
+        founder_flags  = ", is_founder, founder_year"
+        founder_vals   = ", TRUE, 1"
+    else:
+        trial_interval = "INTERVAL '30 days'"
+        founder_flags  = ""
+        founder_vals   = ""
+
     cur2 = conn.cursor()
-    cur2.execute("""
+    cur2.execute(f"""
         INSERT INTO tenants (name, domain, status, source_type, features, system_prompt,
-                             plan_id, plan_period_start, trial_ends_at)
+                             plan_id, plan_period_start, trial_ends_at{founder_flags})
         VALUES (%s, NULL, 'pending', 'whatsapp', %s, %s,
                 (SELECT id FROM plans WHERE slug='pro' LIMIT 1),
                 CURRENT_DATE,
-                CURRENT_DATE + INTERVAL '30 days')
-        RETURNING id
+                CURRENT_DATE + {trial_interval}{founder_vals})
+        RETURNING id, trial_ends_at
     """, (business_name, trial_features, system_prompt_text))
-    tenant_id = int(cur2.fetchone()[0])
+    row = cur2.fetchone()
+    tenant_id      = int(row[0])
+    trial_ends_at  = row[1]
     conn.commit()
     cur2.close()
 
@@ -756,13 +896,27 @@ def _register_whatsapp_merchant(
         admin_username=f"self-register-wa:{email}",
         action="customer_registered",
         tenant_id=tenant_id,
-        details={"email": email, "business_name": business_name, "source": "web-register-wa"},
+        details={"email": email, "business_name": business_name,
+                 "source": "web-register-wa", "is_founder": is_founder},
     )
     _send_admin_new_signup_email(
         customer_name=f"{first_name} {last_name}".strip(),
         customer_email=email,
-        domain="WA:pending",
+        domain="WA:founder" if is_founder else "WA:pending",
     )
+
+    # Send welcome email — founder gets a dedicated email with offer details
+    if is_founder and trial_ends_at:
+        try:
+            year1_ends_str = trial_ends_at.strftime("%d %B %Y") if hasattr(trial_ends_at, "strftime") else str(trial_ends_at)
+        except Exception:
+            year1_ends_str = str(trial_ends_at)
+        _send_founder_welcome_email_wa(
+            email=email,
+            first_name=first_name,
+            business_name=business_name,
+            year1_ends=year1_ends_str,
+        )
 
     email_sent = _send_verify_email(email, verify_token, first_name)
 
@@ -832,7 +986,12 @@ def register():
                     wa_setup_link = f"https://wa.me/{digits}?text=SETUP"
             except Exception:
                 pass
-        return render_template("portal/register.html", wa_setup_link=wa_setup_link)
+        offer = (request.args.get("offer") or "").strip().lower()
+        spots_left = max(0, FOUNDER_SPOTS_LIMIT - _get_founder_spots_claimed() - FOUNDER_DISPLAY_OFFSET) if offer == "founder" else None
+        return render_template("portal/register.html",
+                               wa_setup_link=wa_setup_link,
+                               offer=offer,
+                               founder_spots_left=spots_left)
 
     if request.form.get("website"): return redirect(url_for("portal.register"))
     client_ip = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
@@ -879,10 +1038,12 @@ def register():
 
     # ── WhatsApp-only merchant registration ─────────────────────────────────
     if merchant_type == "whatsapp":
+        offer_type = (request.form.get("offer_type") or "").strip().lower()
         return _register_whatsapp_merchant(
             first_name=first_name, last_name=last_name,
             email=email, password=password,
             business_name=(request.form.get("business_name") or "").strip(),
+            is_founder=(offer_type == "founder"),
         )
 
     # ── Web merchant registration continues below ───────────────────────────
@@ -4292,6 +4453,7 @@ def settings():
         "verified_specs_web_lookup": "Verified Specs Web Lookup",
         "chat_archive_unlimited":    "Chat Archive (Unlimited)",
         "chat_archive_30days":       "Chat Archive (30 days)",
+        "whatsapp_message_templates": "WhatsApp Message Templates",
     }
     plan_features = []
     try:
@@ -5627,6 +5789,23 @@ def _get_wa_connection(tenant_id: int) -> dict | None:
         return None
 
 
+def _has_woocommerce_integration(tenant_id: int) -> bool:
+    """Return True if the tenant has a WooCommerce site connected (paid or trial API key).
+    WhatsApp-only tenants have no such key and return False."""
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute(
+            "SELECT 1 FROM api_keys WHERE tenant_id=%s AND key_type IN ('paid','trial') AND is_active=TRUE LIMIT 1",
+            (tenant_id,)
+        )
+        result = cur.fetchone() is not None
+        cur.close(); conn.close()
+        return result
+    except Exception:
+        return False
+
+
 def _get_wa_connection_any(tenant_id: int) -> dict | None:
     """Return the wa_tenants row for this tenant regardless of active status, or None."""
     try:
@@ -5635,7 +5814,7 @@ def _get_wa_connection_any(tenant_id: int) -> dict | None:
         cur.execute("""
             SELECT id, phone_number_id, waba_id, verify_token, active, created_at,
                    signup_method, display_phone_number, verified_name, token_expires_at,
-                   app_secret
+                   app_secret, typing_ack_text
             FROM wa_tenants WHERE tenant_id = %s ORDER BY id DESC LIMIT 1
         """, (tenant_id,))
         row = cur.fetchone()
@@ -5790,6 +5969,33 @@ def whatsapp_save_notify_phone():
     except Exception as e:
         print("⚠️ whatsapp_save_notify_phone error:", e)
         flash("Could not save the number. Please try again.", "danger")
+
+    return redirect(url_for("portal.whatsapp_connect"))
+
+
+@portal_bp.route("/whatsapp/save-ack-text", methods=["POST"])
+def whatsapp_save_ack_text():
+    """Save the instant acknowledgement message sent before the AI replies."""
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    ack_text = (request.form.get("typing_ack_text") or "").strip()[:200]
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute(
+            "UPDATE wa_tenants SET typing_ack_text=%s WHERE tenant_id=%s",
+            (ack_text or None, tenant_id)
+        )
+        conn.commit()
+        cur.close(); conn.close()
+        flash("Acknowledgement message saved.", "success")
+    except Exception as e:
+        print("⚠️ whatsapp_save_ack_text error:", e)
+        flash("Could not save. Please try again.", "danger")
 
     return redirect(url_for("portal.whatsapp_connect"))
 
@@ -6294,6 +6500,23 @@ def whatsapp_templates():
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+
+    import json as _json
+    try:
+        _fc = get_db_connection()
+        _cur = _fc.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        _cur.execute("SELECT features FROM tenants WHERE id=%s", (tenant_id,))
+        _feat_row = _cur.fetchone() or {}
+        _cur.close(); _fc.close()
+        _raw = _feat_row.get("features") or {}
+        _feats = _json.loads(_raw) if isinstance(_raw, str) else _raw
+    except Exception:
+        _feats = {}
+
+    if not _feats.get("whatsapp_message_templates"):
+        flash("WhatsApp Message Templates is not enabled on your account. Contact support to upgrade.", "warning")
+        return redirect(url_for("portal.whatsapp_connect"))
+
     connection = _get_wa_connection(tenant_id)
     templates  = _get_wa_templates(tenant_id)
     return render_template(
@@ -6309,6 +6532,21 @@ def whatsapp_save_templates():
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+
+    import json as _j2
+    try:
+        _fc2 = get_db_connection()
+        _cur2 = _fc2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        _cur2.execute("SELECT features FROM tenants WHERE id=%s", (tenant_id,))
+        _feat2 = (_cur2.fetchone() or {}).get("features") or {}
+        _cur2.close(); _fc2.close()
+        _feats2 = _j2.loads(_feat2) if isinstance(_feat2, str) else _feat2
+    except Exception:
+        _feats2 = {}
+
+    if not _feats2.get("whatsapp_message_templates"):
+        flash("WhatsApp Message Templates is not enabled on your account.", "warning")
+        return redirect(url_for("portal.whatsapp_connect"))
 
     for ttype in ("cart_recovery", "order_update"):
         tname = (request.form.get(f"template_{ttype}") or "").strip()
@@ -6768,29 +7006,103 @@ def _send_campaign_now(campaign_id: int, tenant_id: int):
         phones = [p.strip() for p in (row["recipients"] or "").splitlines() if p.strip()]
         sent = failed = 0
         graph = os.getenv("META_GRAPH_URL", "https://graph.facebook.com/v19.0")
+
+        # Build template header component based on header_type
+        components = []
+        htype = (row.get("header_type") or "").upper()
+        if htype in ("IMAGE", "VIDEO") and row.get("header_image_url"):
+            media_key = "image" if htype == "IMAGE" else "video"
+            components.append({
+                "type": "header",
+                "parameters": [{
+                    "type": media_key,
+                    media_key: {"link": row["header_image_url"]},
+                }],
+            })
+        elif htype == "DOCUMENT" and row.get("header_image_url"):
+            components.append({
+                "type": "header",
+                "parameters": [{
+                    "type": "document",
+                    "document": {"link": row["header_image_url"], "filename": "document.pdf"},
+                }],
+            })
+        elif htype == "TEXT" and row.get("header_text"):
+            components.append({
+                "type": "header",
+                "parameters": [{"type": "text", "text": row["header_text"]}],
+            })
+        elif htype == "LOCATION" and row.get("header_location"):
+            import json as _json
+            loc = _json.loads(row["header_location"]) if isinstance(row["header_location"], str) else row["header_location"]
+            components.append({
+                "type": "header",
+                "parameters": [{
+                    "type": "location",
+                    "location": {
+                        "latitude":  str(loc.get("latitude", "")),
+                        "longitude": str(loc.get("longitude", "")),
+                        "name":      loc.get("name", ""),
+                        "address":   loc.get("address", ""),
+                    },
+                }],
+            })
+
         for phone in phones:
+            # Strip leading + then normalise Nigerian formats:
+            # 07XXXXXXXXX (11 digits) → 2347XXXXXXXXX
+            # 08XXXXXXXXX (11 digits) → 2348XXXXXXXXX
+            # 2347XXXXXXXXX / 2348XXXXXXXXX (13 digits) → kept as-is
+            norm_phone = phone.strip().lstrip("+").strip()
+            if norm_phone.startswith("0") and len(norm_phone) == 11:
+                norm_phone = "234" + norm_phone[1:]
+            rec_status = "failed"
+            rec_error  = None
             try:
+                template_payload = {
+                    "name": row["template_name"],
+                    "language": {"code": row["language_code"]},
+                }
+                if components:
+                    template_payload["components"] = components
                 resp = _req.post(
                     f"{graph}/{row['phone_number_id']}/messages",
                     headers={"Authorization": f"Bearer {row['access_token']}",
                              "Content-Type": "application/json"},
                     json={
                         "messaging_product": "whatsapp",
-                        "to": phone,
+                        "to": norm_phone,
                         "type": "template",
-                        "template": {
-                            "name": row["template_name"],
-                            "language": {"code": row["language_code"]},
-                        },
+                        "template": template_payload,
                     },
                     timeout=10,
                 )
                 if resp.status_code == 200:
                     sent += 1
+                    rec_status = "sent"
                 else:
+                    print(f"⚠️ [CAMPAIGN {campaign_id}] failed to={norm_phone} "
+                          f"status={resp.status_code} body={resp.text[:400]}")
                     failed += 1
-            except Exception:
+                    rec_error = resp.text[:400]
+            except Exception as exc:
+                print(f"⚠️ [CAMPAIGN {campaign_id}] exception to={norm_phone}: {exc}")
                 failed += 1
+                rec_error = str(exc)[:400]
+
+            try:
+                rc = get_db_connection()
+                rcc = rc.cursor()
+                rcc.execute(
+                    """INSERT INTO wa_campaign_recipients
+                           (campaign_id, tenant_id, phone, status, error_msg, sent_at)
+                       VALUES (%s, %s, %s, %s, %s, NOW())""",
+                    (campaign_id, tenant_id, norm_phone, rec_status, rec_error),
+                )
+                rc.commit()
+                rcc.close(); rc.close()
+            except Exception:
+                pass
 
         conn2 = get_db_connection()
         cur2  = conn2.cursor()
@@ -6889,12 +7201,24 @@ def whatsapp_campaigns_create():
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
-    name          = (request.form.get("name") or "").strip()
-    template_name = (request.form.get("template_name") or "").strip()
-    language_code = (request.form.get("language_code") or "en").strip()
-    recipients    = (request.form.get("recipients") or "").strip()
-    schedule_str  = (request.form.get("scheduled_at") or "").strip()
-    send_now      = request.form.get("send_now") == "1"
+    name             = (request.form.get("name") or "").strip()
+    template_name    = (request.form.get("template_name") or "").strip()
+    language_code    = (request.form.get("language_code") or "en").strip()
+    recipients       = (request.form.get("recipients") or "").strip()
+    schedule_str     = (request.form.get("scheduled_at") or "").strip()
+    send_now         = request.form.get("send_now") == "1"
+    header_type      = (request.form.get("header_type") or "").strip().upper() or None
+    header_image_url = (request.form.get("header_image_url") or "").strip() or None
+    header_text      = (request.form.get("header_text") or "").strip() or None
+    loc_lat          = (request.form.get("header_loc_lat") or "").strip()
+    loc_lng          = (request.form.get("header_loc_lng") or "").strip()
+    loc_name         = (request.form.get("header_loc_name") or "").strip()
+    loc_address      = (request.form.get("header_loc_address") or "").strip()
+    header_location  = None
+    if loc_lat and loc_lng:
+        import json as _json
+        header_location = _json.dumps({"latitude": loc_lat, "longitude": loc_lng,
+                                        "name": loc_name, "address": loc_address})
 
     if not name or not template_name or not recipients:
         flash("Campaign name, template name, and at least one recipient are required.", "danger")
@@ -6924,12 +7248,14 @@ def whatsapp_campaigns_create():
             """
             INSERT INTO wa_campaigns
               (tenant_id, name, template_name, language_code, status,
-               scheduled_at, total_count, recipients)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+               scheduled_at, total_count, recipients,
+               header_type, header_image_url, header_text, header_location)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (tenant_id, name, template_name, language_code, status,
-             scheduled_at, len(phones), "\n".join(phones)),
+             scheduled_at, len(phones), "\n".join(phones),
+             header_type, header_image_url, header_text, header_location),
         )
         campaign_id = cur.fetchone()[0]
         conn.commit()
@@ -7024,24 +7350,125 @@ def whatsapp_campaigns_templates():
             f"https://graph.facebook.com/v19.0/{row['waba_id']}/message_templates",
             params={
                 "access_token": row["access_token"],
-                "fields": "name,status,category,language",
+                "fields": "name,status,category,language,components",
                 "limit": 100,
             },
             timeout=8,
         )
         data = resp.json().get("data", [])
-        approved = [
-            {
-                "name":     t["name"],
-                "language": t.get("language", "en"),
-                "category": t.get("category", ""),
-            }
-            for t in data if t.get("status") == "APPROVED"
-        ]
+        approved = []
+        for t in data:
+            if t.get("status") != "APPROVED":
+                continue
+            header_type = ""
+            for comp in t.get("components", []):
+                if comp.get("type") == "HEADER":
+                    header_type = comp.get("format", "")
+                    break
+            approved.append({
+                "name":        t["name"],
+                "language":    t.get("language", "en"),
+                "category":    t.get("category", ""),
+                "header_type": header_type,
+            })
         return jsonify(approved)
     except Exception as e:
         print("⚠️ whatsapp_campaigns_templates error:", e)
         return jsonify([])
+
+
+@portal_bp.route("/whatsapp/campaigns/upload-image", methods=["POST"])
+def whatsapp_campaigns_upload_image():
+    """Upload a campaign header media file (image, video, document) and return its public URL."""
+    r = _require_login()
+    if r:
+        return jsonify({"error": "Unauthorised"}), 401
+
+    f = request.files.get("image")
+    if not f or not f.filename:
+        return jsonify({"error": "No file provided"}), 400
+
+    ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else ""
+
+    type_rules = {
+        "image":    ({"jpg", "jpeg", "png"},        5  * 1024 * 1024, "JPG or PNG · max 5MB"),
+        "video":    ({"mp4"},                        16 * 1024 * 1024, "MP4 · max 16MB"),
+        "document": ({"pdf"},                        100 * 1024 * 1024, "PDF · max 100MB"),
+    }
+    media_type = None
+    for mtype, (exts, _, _) in type_rules.items():
+        if ext in exts:
+            media_type = mtype
+            break
+
+    if not media_type:
+        return jsonify({"error": "Unsupported file type. Allowed: JPG, PNG, MP4, PDF"}), 400
+
+    allowed_exts, max_size, _ = type_rules[media_type]
+    data = f.read()
+    if len(data) > max_size:
+        return jsonify({"error": f"File too large. {type_rules[media_type][2]}"}), 400
+
+    import uuid
+    filename = f"{uuid.uuid4().hex}.{ext}"
+    save_dir = os.path.join(os.path.dirname(__file__), "static", "uploads", "campaign_images")
+    os.makedirs(save_dir, exist_ok=True)
+    with open(os.path.join(save_dir, filename), "wb") as out:
+        out.write(data)
+
+    public_url = f"https://portal.phixtra.com/static/uploads/campaign_images/{filename}"
+    return jsonify({"url": public_url, "media_type": media_type, "filename": f.filename})
+
+
+@portal_bp.route("/whatsapp/campaigns/<int:campaign_id>/report")
+def whatsapp_campaign_report(campaign_id: int):
+    r = _require_login()
+    if r: return r
+    customer = _get_customer(_customer_id())
+    tenant_id = customer["tenant_id"]
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        cur.execute(
+            "SELECT * FROM wa_campaigns WHERE id=%s AND tenant_id=%s",
+            (campaign_id, tenant_id),
+        )
+        campaign = cur.fetchone()
+        if not campaign:
+            cur.close(); conn.close()
+            flash("Campaign not found.", "danger")
+            return redirect(url_for("portal.whatsapp_campaigns"))
+
+        cur.execute(
+            """SELECT phone, status, error_msg, sent_at
+               FROM wa_campaign_recipients
+               WHERE campaign_id=%s
+               ORDER BY sent_at ASC NULLS LAST""",
+            (campaign_id,),
+        )
+        recipients = cur.fetchall()
+        cur.close(); conn.close()
+
+        total   = campaign["total_count"] or 0
+        sent    = campaign["sent_count"]  or 0
+        failed  = campaign["failed_count"] or 0
+        rate    = round(sent / total * 100) if total else 0
+
+        return render_template(
+            "portal/whatsapp_campaign_report.html",
+            campaign=campaign,
+            recipients=recipients,
+            total=total,
+            sent=sent,
+            failed=failed,
+            rate=rate,
+        )
+    except Exception as e:
+        print("⚠️ whatsapp_campaign_report error:", e)
+        flash("Could not load report.", "danger")
+        return redirect(url_for("portal.whatsapp_campaigns"))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -8217,25 +8644,52 @@ def catalogue_browse():
     customer    = _get_customer(_customer_id())
     merchant_id = int(customer["id"])
 
+    q = (request.args.get("q") or "").strip()
+    try:
+        page = max(1, int(request.args.get("page") or 1))
+    except (ValueError, TypeError):
+        page = 1
+    per_page = 24
+
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    # All active categories with product count and how many merchant selected
+    # Total selected across ALL categories (unaffected by search/pagination)
     cur.execute("""
+        SELECT COUNT(*) AS n FROM merchant_product_catalogue mpc
+        JOIN catalogue_products p ON p.id = mpc.product_id
+        JOIN catalogue_categories c ON c.id = p.category_id AND c.is_active
+        WHERE mpc.merchant_id = %s AND mpc.is_active
+    """, (merchant_id,))
+    total_selected = int((cur.fetchone() or {}).get("n", 0))
+
+    # Filtered + paginated categories
+    name_filter = f"%{q}%" if q else None
+    where = "WHERE c.is_active" + (" AND c.name ILIKE %s" if q else "")
+    count_params = [merchant_id] + ([name_filter] if q else [])
+
+    cur.execute(f"""
+        SELECT COUNT(DISTINCT c.id) AS n
+        FROM catalogue_categories c {where}
+    """, ([name_filter] if q else []))
+    total_cats = int((cur.fetchone() or {}).get("n", 0))
+    pages = max(1, (total_cats + per_page - 1) // per_page)
+    offset = (page - 1) * per_page
+
+    cur.execute(f"""
         SELECT c.*,
-               COUNT(DISTINCT p.id)                                    AS total_products,
+               COUNT(DISTINCT p.id)                                         AS total_products,
                COUNT(DISTINCT mpc.product_id) FILTER (WHERE mpc.is_active)  AS selected_count
         FROM catalogue_categories c
         LEFT JOIN catalogue_products p   ON p.category_id = c.id AND p.is_active
         LEFT JOIN merchant_product_catalogue mpc
                ON mpc.product_id = p.id AND mpc.merchant_id = %s AND mpc.is_active
-        WHERE c.is_active
+        {where}
         GROUP BY c.id
         ORDER BY c.sort_order, c.name
-    """, (merchant_id,))
+        LIMIT %s OFFSET %s
+    """, [merchant_id] + ([name_filter] if q else []) + [per_page, offset])
     categories = cur.fetchall()
-
-    total_selected = sum(c["selected_count"] for c in categories)
 
     cur.close(); conn.close()
     return render_template(
@@ -8243,6 +8697,10 @@ def catalogue_browse():
         customer=customer,
         categories=categories,
         total_selected=total_selected,
+        total_cats=total_cats,
+        pages=pages,
+        page=page,
+        q=q,
     )
 
 
@@ -9782,6 +10240,92 @@ def data_source_google_setup(source_id: int):
         source   = source,
         headers  = headers,
         error    = error,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# WOO SYNC — read-only view of documents synced from WooCommerce plugin
+# ═══════════════════════════════════════════════════════════════════════════
+
+@portal_bp.route("/woo-sync")
+def woo_sync():
+    r = _require_login()
+    if r: return r
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    type_f  = (request.args.get("type") or "").strip().lower()
+    stock_f = (request.args.get("stock") or "").strip().lower()
+    q       = (request.args.get("q") or "").strip()
+    try:
+        page = max(1, int(request.args.get("page") or 1))
+    except (ValueError, TypeError):
+        page = 1
+    per_page = 40
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # ── stats ──────────────────────────────────────────────────────────────
+    cur.execute("""
+        SELECT type, COUNT(*) AS cnt,
+               MAX(updated_at) AS last_sync
+        FROM documents WHERE tenant_id = %s
+        GROUP BY type ORDER BY cnt DESC
+    """, (tenant_id,))
+    type_rows  = cur.fetchall() or []
+    total_all  = sum(r["cnt"] for r in type_rows)
+    last_sync  = max((r["last_sync"] for r in type_rows), default=None)
+    type_counts = {r["type"]: r["cnt"] for r in type_rows}
+
+    # ── filtered query ─────────────────────────────────────────────────────
+    where  = ["tenant_id = %s"]
+    params: list = [tenant_id]
+
+    if type_f:
+        where.append("type = %s")
+        params.append(type_f)
+    if q:
+        where.append("title ILIKE %s")
+        params.append(f"%{q}%")
+    if stock_f == "in":
+        where.append("in_stock = TRUE")
+    elif stock_f == "out":
+        where.append("in_stock = FALSE")
+
+    where_sql = "WHERE " + " AND ".join(where)
+
+    cur.execute(f"SELECT COUNT(*) AS n FROM documents {where_sql}", params)
+    total = int((cur.fetchone() or {}).get("n", 0))
+    pages = max(1, (total + per_page - 1) // per_page)
+    offset = (page - 1) * per_page
+
+    cur.execute(f"""
+        SELECT id, type, title, brand, sku, price_min, price_max,
+               in_stock, categories_text, url, image_url, site_url,
+               updated_at
+        FROM documents {where_sql}
+        ORDER BY type, updated_at DESC
+        LIMIT %s OFFSET %s
+    """, params + [per_page, offset])
+    docs = cur.fetchall() or []
+
+    cur.close(); conn.close()
+
+    return render_template(
+        "portal/woo_sync.html",
+        customer    = customer,
+        docs        = docs,
+        total       = total,
+        total_all   = total_all,
+        type_counts = type_counts,
+        last_sync   = last_sync,
+        pages       = pages,
+        page        = page,
+        type_f      = type_f,
+        stock_f     = stock_f,
+        q           = q,
     )
 
 
