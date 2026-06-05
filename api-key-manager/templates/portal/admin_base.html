@@ -14,17 +14,32 @@
          color:var(--txt);background:#f8f9fb;min-height:100vh;font-size:14px}
     a{color:var(--ink);text-decoration:none}
     a:hover{text-decoration:underline}
-    .topbar{background:var(--ink);position:sticky;top:0;z-index:50}
+    .topbar{
+      background:#fff;position:sticky;top:0;z-index:50;
+      border-bottom:1px solid var(--line);
+      box-shadow:0 2px 8px rgba(3,12,24,0.06);
+    }
     .nav-inner{max-width:1300px;margin:0 auto;padding:0 20px;display:flex;
-               align-items:center;justify-content:space-between;height:52px;gap:12px}
-    .brand{display:flex;align-items:center;gap:10px;color:#fff}
-    .brand img{height:26px;filter:invert(1)}
-    .brand-label{font-size:12px;color:rgba(255,255,255,0.55)}
-    .navlinks{display:flex;align-items:center;gap:2px}
-    .navlinks a{color:rgba(255,255,255,0.7);padding:7px 11px;border-radius:9px;
-                font-size:13px;font-weight:500;transition:.15s}
-    .navlinks a:hover{color:#fff;background:rgba(255,255,255,0.10);text-decoration:none}
-    .navlinks a.active{color:#fff;background:rgba(255,255,255,0.12)}
+               align-items:center;justify-content:space-between;height:56px;gap:12px}
+    .brand{display:flex;align-items:center;gap:10px;color:var(--ink);flex-shrink:0}
+    .brand img{height:26px}
+    .brand-label{font-size:12px;color:var(--muted);font-weight:600}
+    .navlinks{
+      display:flex;align-items:center;gap:2px;
+      overflow-x:auto;-webkit-overflow-scrolling:touch;
+      scrollbar-width:none;padding-bottom:2px;
+    }
+    .navlinks::-webkit-scrollbar{display:none}
+    .navlinks a{
+      color:rgba(3,12,24,0.60);padding:8px 11px;border-radius:9px;
+      font-size:13px;font-weight:500;transition:.15s;white-space:nowrap;
+      border-bottom:2px solid transparent;
+    }
+    .navlinks a:hover{color:var(--ink);background:rgba(3,12,24,0.05);text-decoration:none}
+    .navlinks a.active{
+      color:var(--ink);background:rgba(3,12,24,0.09);font-weight:650;
+      border-bottom-color:var(--ink);
+    }
     .page{max-width:1300px;margin:0 auto;padding:28px 20px 60px}
     .card{background:#fff;border:1px solid var(--line);border-radius:16px;
           padding:20px;box-shadow:var(--shadow);margin-bottom:16px}
@@ -95,9 +110,11 @@
       <a href="{{ url_for('portal_admin.invoices') }}"        {% if request.endpoint=='portal_admin.invoices' %}class="active"{% endif %}>Invoices</a>
       <a href="{{ url_for('portal_admin.credit_packages') }}" {% if request.endpoint=='portal_admin.credit_packages' %}class="active"{% endif %}>Packages</a>
       <a href="{{ url_for('portal_admin.plugins') }}"         {% if request.endpoint=='portal_admin.plugins' %}class="active"{% endif %}>Plugins</a>
+      <a href="{{ url_for('portal_admin.admin_plans') }}"      {% if request.endpoint in ('portal_admin.admin_plans','portal_admin.admin_plans_assign') %}class="active"{% endif %}>📋 Plans</a>
+      <a href="{{ url_for('portal_admin.wa_diagnostics') }}"  {% if request.endpoint=='portal_admin.wa_diagnostics' %}class="active"{% endif %}>📡 WA Diagnostics</a>
       <a href="{{ url_for('portal_admin.admin_settings') }}"  {% if request.endpoint=='portal_admin.admin_settings' %}class="active"{% endif %}>⚙️ Settings</a>
       <a href="{{ url_for('portal_admin.recovery_queue') }}"  {% if request.endpoint=='portal_admin.recovery_queue' %}class="active"{% endif %}>🛒 Recovery</a>
-      <a href="{{ url_for('portal_admin.logout') }}" style="color:rgba(255,255,255,0.4)">Log out</a>
+      <a href="{{ url_for('portal_admin.logout') }}" style="color:var(--muted)">Log out</a>
     </div>
   </div>
 </div>
