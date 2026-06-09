@@ -7739,6 +7739,35 @@ def whatsapp_campaigns_upload_image():
     return jsonify({"url": public_url, "media_type": media_type, "filename": f.filename})
 
 
+@portal_bp.route("/whatsapp/campaigns/reports")
+def whatsapp_campaigns_reports():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    gate = _require_plan_feature(customer, "feat_broadcasts", "Starter")
+    if gate:
+        return gate
+    campaigns = []
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT * FROM wa_campaigns WHERE tenant_id=%s AND status IN ('done','failed','running') "
+            "ORDER BY created_at DESC LIMIT 200",
+            (tenant_id,),
+        )
+        campaigns = cur.fetchall()
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ whatsapp_campaigns_reports error:", e)
+    return render_template(
+        "portal/whatsapp_campaigns_reports.html",
+        campaigns=campaigns,
+        connection=customer.get("tenant_id"),
+    )
+
+
 @portal_bp.route("/whatsapp/campaigns/<int:campaign_id>/report")
 def whatsapp_campaign_report(campaign_id: int):
     r = _require_login()

@@ -357,7 +357,7 @@
     </a>
 
     <!-- Campaigns -->
-    {% set _camp_group = request.endpoint in ('portal.whatsapp_campaigns','portal.whatsapp_campaign_report') %}
+    {% set _camp_group = request.endpoint in ('portal.whatsapp_campaigns','portal.whatsapp_campaign_report','portal.whatsapp_campaigns_reports') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _camp_group %}open{% endif %}"
            onclick="sbToggle(this)">
@@ -371,8 +371,8 @@
            class="{% if request.endpoint == 'portal.whatsapp_campaigns' %}active{% endif %}">
           All Campaigns
         </a>
-        <a href="{{ url_for('portal.whatsapp_campaigns') }}#reports"
-           class="{% if request.endpoint == 'portal.whatsapp_campaign_report' %}active{% endif %}">
+        <a href="{{ url_for('portal.whatsapp_campaigns_reports') }}"
+           class="{% if request.endpoint in ('portal.whatsapp_campaigns_reports','portal.whatsapp_campaign_report') %}active{% endif %}">
           Reports
         </a>
       </div>
@@ -390,12 +390,6 @@
       <span class="sb-icon">🔥</span> Leads
     </a>
 
-    <!-- Products -->
-    <a class="sb-link {% if request.endpoint in ('portal.products_page', 'portal.products_toggle') %}active{% endif %}"
-       href="{{ url_for('portal.products_page') }}">
-      <span class="sb-icon">📦</span> Products
-    </a>
-
     <!-- Orders -->
     <a class="sb-link {% if request.endpoint in ('portal.orders', 'portal.order_detail') %}active{% endif %}"
        href="{{ url_for('portal.orders') }}">
@@ -403,7 +397,7 @@
     </a>
 
     <!-- ── WhatsApp group ── -->
-    {% set _wa_group = request.endpoint in ('portal.whatsapp_connect', 'portal.whatsapp_inbox') or (request.endpoint == 'portal.whatsapp_templates' and _tenant_features.get('whatsapp_message_templates')) %}
+    {% set _wa_group = request.endpoint in ('portal.whatsapp_connect', 'portal.whatsapp_inbox', 'portal.billing_plans') or (request.endpoint == 'portal.whatsapp_templates' and _tenant_features.get('whatsapp_message_templates')) %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _wa_group %}open{% endif %}"
            onclick="sbToggle(this)">
@@ -430,6 +424,15 @@
         <a href="{{ url_for('portal.reports_page') }}"
            class="{% if request.endpoint == 'portal.reports_page' %}active{% endif %}">
           WhatsApp Report
+        </a>
+        <a href="{{ url_for('portal.billing_plans') }}"
+           class="{% if request.endpoint == 'portal.billing_plans' %}active{% endif %}">
+          WhatsApp Plan
+          {% set _tp = _tenant_plan if _tenant_plan is defined else none %}
+          {% if _tp and _tp.is_over_quota %}
+          <span style="background:#F04438;color:#fff;font-size:10px;font-weight:700;
+                       padding:2px 6px;border-radius:999px;margin-left:auto;">!</span>
+          {% endif %}
         </a>
       </div>
     </div>
@@ -553,28 +556,6 @@
       <span class="sb-icon">📈</span> Analytics
     </a>
 
-    <!-- ── Billing group ── -->
-    {% set _bill_group = request.endpoint in ('portal.billing', 'portal.invoices') %}
-    <div class="sb-group">
-      <div class="sb-group-toggle {% if _bill_group %}open{% endif %}"
-           onclick="sbToggle(this)">
-        <span class="sb-gtitle">
-          <span class="sb-icon">💳</span> Billing
-        </span>
-        <span class="sb-arrow">▾</span>
-      </div>
-      <div class="sb-sub {% if _bill_group %}open{% endif %}">
-        <a href="{{ url_for('portal.billing') }}"
-           class="{% if request.endpoint == 'portal.billing' %}active{% endif %}">
-          Buy Credits
-        </a>
-        <a href="{{ url_for('portal.invoices') }}"
-           class="{% if request.endpoint == 'portal.invoices' %}active{% endif %}">
-          Invoices
-        </a>
-      </div>
-    </div>
-
     <!-- ── Reports group ── -->
     {% set _rep_group = request.endpoint in ('portal.reports', 'portal.report_usage', 'portal.report_cart', 'portal.report_billing', 'portal.report_ai_performance') %}
     <div class="sb-group">
@@ -611,19 +592,31 @@
 
     <div class="sb-divider"></div>
 
-    <!-- Plans & Billing -->
-    <a class="sb-link {% if request.endpoint == 'portal.billing_plans' %}active{% endif %}"
-       href="{{ url_for('portal.billing_plans') }}"
-       style="justify-content:space-between">
-      <span style="display:flex;align-items:center;gap:10px">
-        <span class="sb-icon">💳</span> Plans &amp; Billing
-      </span>
-      {% set _tp = _tenant_plan if _tenant_plan is defined else none %}
-      {% if _tp and _tp.is_over_quota %}
-      <span style="background:#F04438;color:#fff;font-size:10px;font-weight:700;
-                   padding:2px 6px;border-radius:999px;flex-shrink:0">!</span>
-      {% endif %}
-    </a>
+    <!-- ── Billing group ── -->
+    {% set _bill_group = request.endpoint in ('portal.billing', 'portal.invoices', 'portal.billing_subscribe', 'portal.billing_subscribe_checkout') %}
+    <div class="sb-group">
+      <div class="sb-group-toggle {% if _bill_group %}open{% endif %}"
+           onclick="sbToggle(this)">
+        <span class="sb-gtitle">
+          <span class="sb-icon">💳</span> Credits &amp; Billing
+        </span>
+        <span class="sb-arrow">▾</span>
+      </div>
+      <div class="sb-sub {% if _bill_group %}open{% endif %}">
+        <a href="{{ url_for('portal.billing_subscribe') }}"
+           class="{% if request.endpoint in ('portal.billing_subscribe', 'portal.billing_subscribe_checkout') %}active{% endif %}">
+          Subscription Plans
+        </a>
+        <a href="{{ url_for('portal.billing') }}"
+           class="{% if request.endpoint == 'portal.billing' %}active{% endif %}">
+          Buy Credits
+        </a>
+        <a href="{{ url_for('portal.invoices') }}"
+           class="{% if request.endpoint == 'portal.invoices' %}active{% endif %}">
+          Invoices
+        </a>
+      </div>
+    </div>
 
     <!-- Account Settings -->
     <a class="sb-link {% if request.endpoint == 'portal.settings' %}active{% endif %}"
