@@ -498,6 +498,26 @@
   line-height: 1.5;
 }
 
+/* ── Upload button ───────────────────────────────────────────────────── */
+.btn-upload {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 16px;
+  border-radius: 9px;
+  border: 1.5px solid #25D366;
+  background: #f0fdf4;
+  color: #16a34a;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: .15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.btn-upload:hover { background: #dcfce7; }
+.btn-upload.uploading { opacity: .6; pointer-events: none; }
+
 @media (max-width: 680px) {
   .camp-stats { grid-template-columns: 1fr 1fr; }
   .camp-hero { flex-direction: column; align-items: flex-start; }
@@ -568,7 +588,7 @@
 {% else %}
 
 <!-- ── Campaigns list ────────────────────────────────────────────────────── -->
-<div class="section-card">
+<div class="section-card" id="reports">
   <div class="section-card-header">
     <h2>All Campaigns</h2>
     <span style="font-size:12px;color:var(--muted)">{{ campaigns|length }} total</span>
@@ -644,7 +664,7 @@
             <form method="POST"
                   action="{{ url_for('portal.whatsapp_campaigns_send', campaign_id=c.id) }}"
                   style="display:inline"
-                  onsubmit="return confirm('Send this campaign now to {{ c.total_count }} recipient(s)?')"
+                  onsubmit="return confirm('Send this campaign now to {{ c.total_count }} recipient(s)?')">
               <button type="submit" class="act-btn act-btn-send">
                 <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
                 Send
@@ -659,6 +679,13 @@
                 Delete
               </button>
             </form>
+            {% endif %}
+            {% if c.status in ('done','failed','running') %}
+            <a href="{{ url_for('portal.whatsapp_campaign_report', campaign_id=c.id) }}"
+               class="act-btn" style="color:#2563eb;border-color:rgba(37,99,235,.25);text-decoration:none;margin-left:{% if c.status in ('draft','scheduled') %}6{% else %}0{% endif %}px">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+              Report
+            </a>
             {% endif %}
           </td>
         </tr>
@@ -780,6 +807,73 @@
           <input type="hidden" name="language_code" id="f-lang" value="en">
         </div>
 
+        <!-- Dynamic header field — shown and adapted based on template header type -->
+        <input type="hidden" name="header_type" id="f-header-type" value="">
+
+        <!-- IMAGE / VIDEO / DOCUMENT upload -->
+        <div class="field" id="headerMediaField" style="display:none">
+          <label class="field-label">
+            Header <span id="headerMediaLabel">Image</span>
+            <span class="field-hint">Required — this template has a <span id="headerMediaHint">image</span> header</span>
+          </label>
+
+          <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+            <button type="button" class="btn-upload" id="btnUpload" onclick="document.getElementById('f-media-file').click()">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+              Upload from computer
+            </button>
+            <span style="font-size:12px;color:#94a3b8">or paste a URL below</span>
+            <input type="file" id="f-media-file" accept="" style="display:none" onchange="uploadHeaderMedia(this)">
+          </div>
+
+          <div id="uploadProgress" style="display:none;margin-bottom:10px">
+            <div style="background:#e2e8f0;border-radius:99px;height:5px;overflow:hidden">
+              <div id="uploadBar" style="height:5px;background:#25D366;border-radius:99px;width:0%;transition:width .3s"></div>
+            </div>
+            <div id="uploadStatus" style="font-size:11px;color:#64748b;margin-top:5px">Uploading…</div>
+          </div>
+
+          <div id="imgPreviewWrap" style="display:none;margin-bottom:10px">
+            <img id="imgPreview" src="" alt="preview"
+                 style="max-width:100%;max-height:160px;border-radius:10px;border:1.5px solid #e2e8f0;object-fit:cover">
+          </div>
+
+          <input class="field-input" type="url" name="header_image_url" id="f-header-image"
+                 placeholder="https://yoursite.com/images/promo-banner.jpg"
+                 autocomplete="off" oninput="onImageUrlInput(this)">
+          <div id="headerMediaHints" style="margin-top:6px;font-size:11px;color:#94a3b8"></div>
+        </div>
+
+        <!-- TEXT header -->
+        <div class="field" id="headerTextField" style="display:none">
+          <label class="field-label">
+            Header Text
+            <span class="field-hint">Required — this template has a text variable header</span>
+          </label>
+          <input class="field-input" type="text" name="header_text" id="f-header-text"
+                 placeholder="e.g. Flash Sale Today!" autocomplete="off">
+        </div>
+
+        <!-- LOCATION header -->
+        <div class="field" id="headerLocationField" style="display:none">
+          <label class="field-label">
+            Header Location
+            <span class="field-hint">Required — this template has a location header</span>
+          </label>
+          <div class="field-row cols-2" style="margin-bottom:10px">
+            <input class="field-input" type="text" name="header_loc_lat" id="f-loc-lat"
+                   placeholder="Latitude e.g. 6.5244" autocomplete="off">
+            <input class="field-input" type="text" name="header_loc_lng" id="f-loc-lng"
+                   placeholder="Longitude e.g. 3.3792" autocomplete="off">
+          </div>
+          <input class="field-input" type="text" name="header_loc_name" id="f-loc-name"
+                 placeholder="Location name e.g. ProfitBuyz Lagos Store"
+                 autocomplete="off" style="margin-bottom:10px">
+          <input class="field-input" type="text" name="header_loc_address" id="f-loc-address"
+                 placeholder="Full address e.g. 12 Broad Street, Lagos Island"
+                 autocomplete="off">
+        </div>
+
         <div class="warn-box">
           <span style="font-size:16px;flex-shrink:0">⚠️</span>
           <span>Only <strong>Meta-approved</strong> templates appear in this list. If you don't see a template, check its status in <strong>Meta Business Suite → WhatsApp Manager → Message Templates</strong>.</span>
@@ -854,6 +948,10 @@
             <span class="review-key">Language</span>
             <span class="review-val" id="rv-lang">—</span>
           </div>
+          <div class="review-row" id="rv-img-row" style="display:none">
+            <span class="review-key">Header Image</span>
+            <span class="review-val" id="rv-img" style="font-size:11px;word-break:break-all">—</span>
+          </div>
           <div class="review-row">
             <span class="review-key">Recipients</span>
             <span class="review-val"><span class="review-chip" id="rv-recip">0 numbers</span></span>
@@ -906,8 +1004,12 @@ function loadTemplates() {
       }
       sel.innerHTML = '<option value="">— select a template —</option>' +
         templates.map(t =>
-          `<option value="${t.name}" data-lang="${t.language}" data-cat="${t.category}">`
+          `<option value="${t.name}" data-lang="${t.language}" data-cat="${t.category}" data-header="${t.header_type || ''}">`
           + `${t.name}  ·  ${t.category.toLowerCase().replace('_',' ')}`
+          + (t.header_type === 'IMAGE'    ? '  \u{1F4F7}' :
+             t.header_type === 'VIDEO'    ? '  \u{1F3AC}' :
+             t.header_type === 'DOCUMENT' ? '  \u{1F4C4}' :
+             t.header_type === 'LOCATION' ? '  \u{1F4CD}' : '')
           + `</option>`
         ).join('')
       hint.textContent = templates.length + ' approved template' + (templates.length !== 1 ? 's' : '') + ' loaded'
@@ -919,8 +1021,41 @@ function loadTemplates() {
 }
 
 function onTemplateChange(sel) {
-  const opt = sel.options[sel.selectedIndex]
-  document.getElementById('f-lang').value = opt.getAttribute('data-lang') || 'en'
+  const opt        = sel.options[sel.selectedIndex]
+  const headerType = (opt && opt.getAttribute('data-header')) || ''
+  document.getElementById('f-lang').value    = (opt && opt.getAttribute('data-lang')) || 'en'
+  document.getElementById('f-header-type').value = headerType
+
+  // Hide all header fields first
+  document.getElementById('headerMediaField').style.display    = 'none'
+  document.getElementById('headerTextField').style.display     = 'none'
+  document.getElementById('headerLocationField').style.display = 'none'
+  document.getElementById('f-header-image').required = false
+  document.getElementById('f-header-text').required  = false
+  document.getElementById('f-loc-lat').required      = false
+
+  const mediaConfigs = {
+    IMAGE:    { label: 'Image',    hint: 'image',    accept: 'image/jpeg,image/png', tips: 'JPG or PNG · Max 5MB · Landscape images look best', placeholder: 'https://yoursite.com/promo-banner.jpg' },
+    VIDEO:    { label: 'Video',    hint: 'video',    accept: 'video/mp4',             tips: 'MP4 only · Max 16MB',                                  placeholder: 'https://yoursite.com/promo-video.mp4'  },
+    DOCUMENT: { label: 'Document', hint: 'document', accept: 'application/pdf',       tips: 'PDF only · Max 100MB',                                 placeholder: 'https://yoursite.com/brochure.pdf'      },
+  }
+
+  if (mediaConfigs[headerType]) {
+    const cfg = mediaConfigs[headerType]
+    document.getElementById('headerMediaLabel').textContent = cfg.label
+    document.getElementById('headerMediaHint').textContent  = cfg.hint
+    document.getElementById('headerMediaHints').textContent = cfg.tips
+    document.getElementById('f-header-image').placeholder  = cfg.placeholder
+    document.getElementById('f-media-file').accept         = cfg.accept
+    document.getElementById('headerMediaField').style.display = 'block'
+    document.getElementById('f-header-image').required = true
+  } else if (headerType === 'TEXT') {
+    document.getElementById('headerTextField').style.display = 'block'
+    document.getElementById('f-header-text').required = true
+  } else if (headerType === 'LOCATION') {
+    document.getElementById('headerLocationField').style.display = 'block'
+    document.getElementById('f-loc-lat').required = true
+  }
 }
 
 /* ── Drawer open/close ──────────────────────────────────────────────── */
@@ -972,6 +1107,22 @@ function resetDrawer() {
   document.getElementById('recipCounter').textContent = '0 numbers'
   document.getElementById('recipCounter').classList.remove('has-nums')
   document.getElementById('scheduleField').classList.remove('show')
+  document.getElementById('headerMediaField').style.display    = 'none'
+  document.getElementById('headerTextField').style.display     = 'none'
+  document.getElementById('headerLocationField').style.display = 'none'
+  document.getElementById('f-header-type').value  = ''
+  document.getElementById('f-header-image').required = false
+  document.getElementById('f-header-image').value = ''
+  document.getElementById('f-header-text').value  = ''
+  document.getElementById('f-loc-lat').value = ''
+  document.getElementById('f-loc-lng').value = ''
+  document.getElementById('f-loc-name').value = ''
+  document.getElementById('f-loc-address').value = ''
+  document.getElementById('uploadProgress').style.display = 'none'
+  document.getElementById('imgPreviewWrap').style.display = 'none'
+  document.getElementById('uploadBar').style.width = '0%'
+  document.getElementById('uploadBar').style.background = '#25D366'
+  document.getElementById('uploadStatus').style.color = '#64748b'
   selectTiming('now')
   goStep(1)
 }
@@ -979,10 +1130,21 @@ function resetDrawer() {
 /* ── Validation ─────────────────────────────────────────────────────── */
 function validateStep(n) {
   if (n === 1) {
-    const name = document.getElementById('f-name').value.trim()
-    const tmpl = document.getElementById('f-template').value.trim()
+    const name       = document.getElementById('f-name').value.trim()
+    const tmpl       = document.getElementById('f-template').value.trim()
+    const headerType = document.getElementById('f-header-type').value
     if (!name) { shake('f-name'); return false }
     if (!tmpl) { shake('f-template'); return false }
+    if (['IMAGE','VIDEO','DOCUMENT'].includes(headerType) && !document.getElementById('f-header-image').value.trim()) {
+      shake('f-header-image'); return false
+    }
+    if (headerType === 'TEXT' && !document.getElementById('f-header-text').value.trim()) {
+      shake('f-header-text'); return false
+    }
+    if (headerType === 'LOCATION') {
+      if (!document.getElementById('f-loc-lat').value.trim()) { shake('f-loc-lat'); return false }
+      if (!document.getElementById('f-loc-lng').value.trim()) { shake('f-loc-lng'); return false }
+    }
   }
   if (n === 2) {
     const phones = parsePhones()
@@ -1048,10 +1210,33 @@ function populateReview() {
   const isNow  = document.getElementById('f-sendnow').value === '1'
   const dt     = document.getElementById('f-scheddt').value
 
+  const headerType = document.getElementById('f-header-type').value
+  const imgRow     = document.getElementById('rv-img-row')
+  let   headerSummary = ''
+
+  if (['IMAGE','VIDEO','DOCUMENT'].includes(headerType)) {
+    const url = document.getElementById('f-header-image').value.trim()
+    headerSummary = url ? url.split('/').pop() : ''
+  } else if (headerType === 'TEXT') {
+    headerSummary = document.getElementById('f-header-text').value.trim()
+  } else if (headerType === 'LOCATION') {
+    const n = document.getElementById('f-loc-name').value.trim()
+    const lat = document.getElementById('f-loc-lat').value.trim()
+    const lng = document.getElementById('f-loc-lng').value.trim()
+    headerSummary = n ? `${n} (${lat}, ${lng})` : `${lat}, ${lng}`
+  }
+
   document.getElementById('rv-name').textContent     = name || '—'
   document.getElementById('rv-template').textContent = tmpl ? (tmpl + (cat ? '  (' + cat.toLowerCase().replace('_',' ') + ')' : '')) : '—'
   document.getElementById('rv-lang').textContent     = lang
   document.getElementById('rv-recip').textContent    = count + (count === 1 ? ' recipient' : ' recipients')
+
+  if (headerType && headerSummary) {
+    imgRow.style.display = 'flex'
+    document.getElementById('rv-img').textContent = `[${headerType}] ${headerSummary}`
+  } else {
+    imgRow.style.display = 'none'
+  }
 
   let timeText = 'Send immediately'
   if (!isNow && dt) {
@@ -1061,6 +1246,87 @@ function populateReview() {
   }
   document.getElementById('rv-time').textContent = timeText
 }
+
+/* ── Header media upload ─────────────────────────────────────────────── */
+function uploadHeaderMedia(input) {
+  const file = input.files[0]
+  if (!file) return
+
+  const btn      = document.getElementById('btnUpload')
+  const progress = document.getElementById('uploadProgress')
+  const bar      = document.getElementById('uploadBar')
+  const status   = document.getElementById('uploadStatus')
+  const urlInput = document.getElementById('f-header-image')
+  const headerType = document.getElementById('f-header-type').value
+
+  btn.classList.add('uploading')
+  btn.innerHTML = '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg> Uploading…'
+  progress.style.display = 'block'
+  bar.style.width = '30%'
+  status.textContent = 'Uploading…'
+  status.style.color  = '#64748b'
+  bar.style.background = '#25D366'
+
+  const formData = new FormData()
+  formData.append('image', file)
+
+  fetch('{{ url_for("portal.whatsapp_campaigns_upload_image") }}', {
+    method: 'POST',
+    body: formData,
+  })
+  .then(r => r.json())
+  .then(data => {
+    bar.style.width = '100%'
+    if (data.url) {
+      urlInput.value = data.url
+      status.textContent = 'Upload complete!'
+      status.style.color = '#16a34a'
+      if (headerType === 'IMAGE') showImagePreview(data.url)
+      else {
+        document.getElementById('imgPreviewWrap').style.display = 'none'
+      }
+    } else {
+      status.textContent = 'Error: ' + (data.error || 'Upload failed')
+      status.style.color = '#dc2626'
+      bar.style.background = '#ef4444'
+    }
+    btn.classList.remove('uploading')
+    btn.innerHTML = '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg> Upload from computer'
+    input.value = ''
+  })
+  .catch(() => {
+    status.textContent = 'Upload failed — check your connection'
+    status.style.color = '#dc2626'
+    bar.style.background = '#ef4444'
+    btn.classList.remove('uploading')
+    btn.innerHTML = '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg> Upload from computer'
+    input.value = ''
+  })
+}
+
+function showImagePreview(url) {
+  const wrap = document.getElementById('imgPreviewWrap')
+  const img  = document.getElementById('imgPreview')
+  img.src = url
+  wrap.style.display = 'block'
+}
+
+function onImageUrlInput(input) {
+  const url = input.value.trim()
+  if (url.match(/^https?:\/\/.+\.(jpg|jpeg|png)(\?.*)?$/i)) {
+    showImagePreview(url)
+  } else {
+    document.getElementById('imgPreviewWrap').style.display = 'none'
+  }
+}
+
+/* ── Auto-refresh while any campaign is running ──────────────────────── */
+(function() {
+  const hasRunning = document.querySelector('.badge-running') !== null
+  if (hasRunning) {
+    setTimeout(() => { window.location.reload() }, 3000)
+  }
+})()
 
 /* ── Submit ─────────────────────────────────────────────────────────── */
 function submitCampaign() {
