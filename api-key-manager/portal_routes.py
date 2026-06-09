@@ -5228,20 +5228,16 @@ def billing_subscribe():
             p["features_parsed"] = {}
         p["price_fmt"] = money_fmt(int(p.get("price_pence") or 0), p.get("currency") or "gbp")
 
-    active_sub    = _get_active_subscription(customer_id)
-    saved_methods = _get_saved_payment_methods(customer_id)
+    active_sub      = _get_active_subscription(customer_id)
     balance_credits = tokens_to_credits(_get_tenant_balance_tokens(tenant_id))
-    stripe_pub_key  = os.getenv("STRIPE_PUBLISHABLE_KEY", "")
 
     return render_template(
         "portal/subscribe.html",
         customer        = customer,
         plans           = plans,
         active_sub      = active_sub,
-        saved_methods   = saved_methods,
         balance_credits = balance_credits,
         stripe_ready    = _stripe_ok(),
-        stripe_pub_key  = stripe_pub_key,
     )
 
 
@@ -5530,6 +5526,322 @@ def billing_subscribe_post():
         "success",
     )
     return redirect(url_for("portal.billing_subscribe"))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SUBSCRIPTION CHECKOUT — select plan → enter card → subscribed in one step
+# ══════════════════════════════════════════════════════════════════════════════
+
+@portal_bp.route("/billing/subscribe/checkout", methods=["GET"])
+def billing_subscribe_checkout():
+    """
+    Checkout page for a specific plan.
+    - If customer has a saved card: shows it with a one-click subscribe form.
+    - If no saved card: creates a Stripe PaymentIntent and shows the card input.
+    """
+    r = _require_login()
+    if r: return r
+
+    if not _stripe_ok():
+        flash("Payments are not configured. Contact support.", "warning")
+        return redirect(url_for("portal.billing_subscribe"))
+
+    customer = _get_customer(_customer_id())
+    if not customer:
+        session.clear()
+        return redirect(url_for("portal.login"))
+
+    customer_id = int(customer["id"])
+    tenant_id   = int(customer["tenant_id"])
+
+    plan_id = request.args.get("plan_id", type=int)
+    if not plan_id:
+        return redirect(url_for("portal.billing_subscribe"))
+
+    import json as _j
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT * FROM credit_packages
+        WHERE id=%s AND is_active=TRUE AND package_type='subscription'
+    """, (plan_id,))
+    plan = cur.fetchone()
+    cur.close(); conn.close()
+
+    if not plan:
+        flash("Invalid plan. Please select a plan.", "danger")
+        return redirect(url_for("portal.billing_subscribe"))
+
+    raw = plan.get("features")
+    try:
+        plan["features_parsed"] = _j.loads(raw) if isinstance(raw, str) else (raw or {})
+    except Exception:
+        plan["features_parsed"] = {}
+    plan["price_fmt"] = money_fmt(int(plan.get("price_pence") or 0), plan.get("currency") or "gbp")
+
+    active_sub = _get_active_subscription(customer_id)
+    if active_sub and int(active_sub.get("package_id") or 0) == plan_id:
+        flash("You are already subscribed to this plan.", "info")
+        return redirect(url_for("portal.billing_subscribe"))
+
+    saved_methods  = _get_saved_payment_methods(customer_id)
+    stripe_pub_key = os.getenv("STRIPE_PUBLISHABLE_KEY", "")
+    client_secret  = None
+
+    if not saved_methods and not stripe_pub_key:
+        flash("Online card payment is not available right now. Contact support@phixtra.com.", "warning")
+        return redirect(url_for("portal.billing_subscribe"))
+
+    stripe_cus_id = _get_or_create_stripe_customer(customer)
+
+    if not saved_methods:
+        # No saved card — create a PaymentIntent so the customer can pay and
+        # save a card in one step.
+        try:
+            stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+            pi = stripe.PaymentIntent.create(
+                amount               = int(plan["price_pence"]),
+                currency             = plan.get("currency") or "gbp",
+                customer             = stripe_cus_id,
+                setup_future_usage   = "off_session",
+                payment_method_types = ["card"],
+                description          = f"PhiXtra {plan['name']} subscription",
+                metadata             = {
+                    "customer_id": str(customer_id),
+                    "tenant_id":   str(tenant_id),
+                    "plan_id":     str(plan_id),
+                    "type":        "subscription_checkout",
+                },
+            )
+            client_secret = pi["client_secret"]
+        except Exception as e:
+            print("⚠️ billing_subscribe_checkout PI error:", e)
+            flash("Could not initialise payment. Please try again.", "danger")
+            return redirect(url_for("portal.billing_subscribe"))
+
+    return render_template(
+        "portal/subscribe_checkout.html",
+        plan          = plan,
+        saved_methods = saved_methods,
+        client_secret = client_secret,
+        stripe_pub_key= stripe_pub_key,
+        stripe_ready  = _stripe_ok(),
+    )
+
+
+@portal_bp.route("/billing/subscribe/complete", methods=["POST"])
+def billing_subscribe_complete():
+    """
+    AJAX endpoint called by Stripe.js after the customer confirms a new-card
+    PaymentIntent on the checkout page.  Saves the card and activates the
+    subscription — same DB logic as billing_subscribe_post.
+    """
+    r = _require_login()
+    if r: return jsonify({"ok": False, "error": "Not logged in"}), 401
+
+    if not _stripe_ok():
+        return jsonify({"ok": False, "error": "Payments not configured"}), 400
+
+    customer = _get_customer(_customer_id())
+    if not customer:
+        return jsonify({"ok": False, "error": "Not logged in"}), 401
+
+    customer_id = int(customer["id"])
+    tenant_id   = int(customer["tenant_id"])
+
+    data    = request.json or {}
+    plan_id = int(data.get("plan_id") or 0)
+    pi_id   = (data.get("payment_intent_id") or "").strip()
+
+    if not plan_id or not pi_id:
+        return jsonify({"ok": False, "error": "Missing plan or payment details"}), 400
+
+    import json as _j
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT * FROM credit_packages
+        WHERE id=%s AND is_active=TRUE AND package_type='subscription'
+    """, (plan_id,))
+    plan = cur.fetchone()
+    cur.close(); conn.close()
+
+    if not plan:
+        return jsonify({"ok": False, "error": "Invalid plan"}), 400
+
+    # Verify PaymentIntent succeeded in Stripe
+    try:
+        stripe.api_key  = os.getenv("STRIPE_SECRET_KEY")
+        pi              = stripe.PaymentIntent.retrieve(pi_id)
+        if pi["status"] != "succeeded":
+            return jsonify({"ok": False, "error": "Payment not completed. Please try again."}), 400
+        pm_stripe_id = pi.get("payment_method")
+        if not pm_stripe_id:
+            return jsonify({"ok": False, "error": "No payment method on intent"}), 400
+    except Exception as e:
+        print("⚠️ billing_subscribe_complete PI retrieve error:", e)
+        return jsonify({"ok": False, "error": "Could not verify payment. Contact support."}), 500
+
+    # Save card to saved_payment_methods
+    try:
+        pm        = stripe.PaymentMethod.retrieve(pm_stripe_id)
+        card      = pm.get("card") or {}
+        brand     = card.get("brand", "")
+        last4     = card.get("last4", "")
+        exp_month = card.get("exp_month")
+        exp_year  = card.get("exp_year")
+
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM saved_payment_methods WHERE customer_id=%s", (customer_id,))
+        existing_count = int((cur.fetchone() or (0,))[0])
+        is_default = 1 if existing_count == 0 else 0
+
+        cur.execute("""
+            INSERT INTO saved_payment_methods
+                (customer_id, stripe_payment_method, card_brand, card_last4,
+                 card_exp_month, card_exp_year, is_default)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (stripe_payment_method) DO UPDATE SET
+                card_brand=EXCLUDED.card_brand, card_last4=EXCLUDED.card_last4,
+                card_exp_month=EXCLUDED.card_exp_month, card_exp_year=EXCLUDED.card_exp_year
+            RETURNING id
+        """, (customer_id, pm_stripe_id, brand, last4, exp_month, exp_year, is_default))
+        method_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ billing_subscribe_complete card save error:", e)
+        return jsonify({"ok": False, "error": "Payment taken but card could not be saved. Contact support@phixtra.com."}), 500
+
+    # Create subscription record
+    credits        = int(plan["credits"])
+    amount_pence   = int(plan["price_pence"])
+    currency       = plan.get("currency") or "gbp"
+    billing_period = plan.get("billing_period") or "monthly"
+    inv_num        = next_invoice_number()
+    now            = datetime.utcnow()
+    period_end     = now + timedelta(days=365 if billing_period == "annual" else 30)
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO subscriptions
+                (customer_id, tenant_id, package_id, payment_method_id,
+                 status, current_period_start, current_period_end, cancel_at_period_end)
+            VALUES (%s, %s, %s, %s, 'active', %s, %s, 0)
+            RETURNING id
+        """, (customer_id, tenant_id, plan_id, method_id, now, period_end))
+        subscription_id = cur.fetchone()[0]
+
+        cur.execute("""
+            INSERT INTO subscription_invoices
+                (invoice_number, subscription_id, customer_id, tenant_id,
+                 package_id, credits, amount_pence, vat_pence, currency,
+                 status, period_start, period_end, stripe_payment_intent)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 0, %s, 'paid', %s, %s, %s)
+        """, (inv_num, subscription_id, customer_id, tenant_id,
+              plan_id, credits, amount_pence, currency, now, period_end, pi_id))
+
+        tokens_add = credits_to_tokens(credits)
+        cur.execute(
+            "INSERT INTO tenant_balances (tenant_id, token_balance) VALUES (%s, 0) ON CONFLICT (tenant_id) DO NOTHING",
+            (tenant_id,)
+        )
+        cur.execute(
+            "UPDATE tenant_balances SET token_balance = token_balance + %s WHERE tenant_id=%s",
+            (tokens_add, tenant_id)
+        )
+        cur.execute("""
+            UPDATE api_keys SET key_type='paid', is_active=TRUE, trial_expires_at=NULL
+            WHERE tenant_id=%s AND key_type='trial'
+        """, (tenant_id,))
+        was_trial = cur.rowcount > 0
+        cur.execute("UPDATE api_keys SET is_active=TRUE WHERE tenant_id=%s AND key_type='paid'", (tenant_id,))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        cur.close(); conn.close()
+        print("⚠️ billing_subscribe_complete DB error:", e)
+        insert_audit_log(
+            action="subscription_db_error_after_charge",
+            tenant_id=tenant_id,
+            details={"error": str(e), "payment_intent": pi_id,
+                     "customer_id": customer_id, "plan_id": plan_id},
+        )
+        return jsonify({"ok": False,
+                        "error": f"Payment taken but activation failed. Contact support@phixtra.com with ref: {inv_num}"}), 500
+
+    cur.close(); conn.close()
+
+    # Generate invoice PDF
+    try:
+        pdf_path = generate_invoice_pdf(
+            invoice_number = inv_num,
+            customer_email = customer.get("email") or "",
+            tenant_name    = customer.get("tenant_name") or "",
+            credits        = credits,
+            amount_pence   = amount_pence,
+            vat_pence      = 0,
+            currency       = currency,
+            created_at     = now,
+        )
+        conn2 = get_db_connection()
+        cur2  = conn2.cursor()
+        cur2.execute("UPDATE subscription_invoices SET pdf_path=%s WHERE invoice_number=%s", (pdf_path, inv_num))
+        conn2.commit()
+        cur2.close(); conn2.close()
+    except Exception:
+        pass
+
+    insert_audit_log(
+        action    = "subscription_created",
+        tenant_id = tenant_id,
+        details   = {"plan": plan.get("name"), "billing_period": billing_period,
+                     "credits": credits, "amount_pence": amount_pence,
+                     "invoice": inv_num, "was_trial": was_trial, "via": "checkout_new_card"},
+    )
+    if was_trial:
+        insert_audit_log(
+            action    = "trial_converted_to_paid",
+            tenant_id = tenant_id,
+            details   = {"converted_by": "subscription_checkout", "invoice": inv_num},
+        )
+
+    # Send receipt email
+    try:
+        email = customer.get("email")
+        name  = (customer.get("first_name") or "there").strip()
+        if email:
+            end_str = period_end.strftime("%d %B %Y")
+            subject = "PhiXtra subscription activated ✅"
+            html = f"""
+            <div style="font-family:Arial,sans-serif;max-width:520px">
+              <h2 style="color:{BRAND}">Subscription activated 🎉</h2>
+              <p>Hi {name},</p>
+              <p>Your <b>{plan['name']}</b> plan is now active.</p>
+              <table style="width:100%;border-collapse:collapse;margin:16px 0">
+                <tr><td style="padding:8px 12px;background:#f3f4f6;border:1px solid #e5e7eb;font-weight:700;width:140px">Plan</td>
+                    <td style="padding:8px 12px;border:1px solid #e5e7eb">{plan['name']} ({billing_period})</td></tr>
+                <tr><td style="padding:8px 12px;background:#f3f4f6;border:1px solid #e5e7eb;font-weight:700">Credits added</td>
+                    <td style="padding:8px 12px;border:1px solid #e5e7eb">{credits} credits</td></tr>
+                <tr><td style="padding:8px 12px;background:#f3f4f6;border:1px solid #e5e7eb;font-weight:700">Amount charged</td>
+                    <td style="padding:8px 12px;border:1px solid #e5e7eb">{money_fmt(amount_pence, currency)}</td></tr>
+                <tr><td style="padding:8px 12px;background:#f3f4f6;border:1px solid #e5e7eb;font-weight:700">Next renewal</td>
+                    <td style="padding:8px 12px;border:1px solid #e5e7eb">{end_str}</td></tr>
+              </table>
+              <p><a href="{_PORTAL_BASE_URL}/billing/subscribe"
+                    style="background:{BRAND};color:#fff;padding:10px 18px;border-radius:12px;text-decoration:none;display:inline-block">
+                View subscription
+              </a></p>
+            </div>"""
+            send_email(email, subject, html)
+    except Exception:
+        pass
+
+    flash(f"✅ Subscription activated! {credits} credits have been added to your account.", "success")
+    return jsonify({"ok": True, "redirect": url_for("portal.billing_subscribe")})
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -7363,7 +7675,14 @@ def whatsapp_campaigns_templates():
             header_type = ""
             for comp in t.get("components", []):
                 if comp.get("type") == "HEADER":
-                    header_type = comp.get("format", "")
+                    fmt = comp.get("format", "")
+                    if fmt == "TEXT":
+                        # Only expose as dynamic TEXT if the header contains a {{variable}}.
+                        # Static TEXT headers need no parameter — sending one causes Meta error #132000.
+                        if "{{" in comp.get("text", ""):
+                            header_type = "TEXT"
+                    else:
+                        header_type = fmt
                     break
             approved.append({
                 "name":        t["name"],
