@@ -109,6 +109,157 @@
 
 {% endif %}
 
+{# ── My own products (custom / non-catalogue) ── #}
+<div class="card" style="margin-top:22px" id="custom-products-card">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px">
+    <div>
+      <div style="font-size:15px;font-weight:800;margin-bottom:2px">
+        Add your own products
+        {% if custom_products %}<span class="muted" style="font-size:12px;font-weight:500;margin-left:8px">({{ custom_products|length }} added)</span>{% endif %}
+      </div>
+      <div class="muted" style="font-size:12px">Products not in the PhiXtra catalogue — fashion, food, custom items, etc.</div>
+    </div>
+    <button type="button" class="btn btn-sm" id="toggleCustomForm" onclick="toggleCustomForm()">+ Add product</button>
+  </div>
+
+  {# Form (hidden by default) #}
+  <div id="customForm" style="display:none;background:var(--off,#f8fafc);border-radius:12px;padding:18px;margin-bottom:16px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div style="grid-column:1/-1">
+        <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">Product name *</label>
+        <input type="text" id="cpName" placeholder="e.g. Ankara Maxi Dress (Size 12)" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--line,#e5e7eb);font-size:13px;font-family:inherit" />
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">Price *</label>
+        <input type="number" id="cpPrice" placeholder="0.00" min="0" step="0.01" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--line,#e5e7eb);font-size:13px;font-family:inherit" />
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">Stock quantity</label>
+        <input type="number" id="cpStock" placeholder="999 (unlimited)" min="0" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--line,#e5e7eb);font-size:13px;font-family:inherit" />
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">Category (optional)</label>
+        <input type="text" id="cpCat" placeholder="e.g. Fashion, Food, Beauty" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--line,#e5e7eb);font-size:13px;font-family:inherit" />
+      </div>
+      <div style="grid-column:1/-1">
+        <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">Description (optional)</label>
+        <input type="text" id="cpDesc" placeholder="Brief description for the AI to use" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--line,#e5e7eb);font-size:13px;font-family:inherit" />
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button type="button" class="btn btn-primary btn-sm" onclick="saveCustomProduct()">Save product</button>
+      <button type="button" class="btn btn-sm" onclick="toggleCustomForm()" style="color:var(--muted)">Cancel</button>
+      <span id="cpMsg" style="font-size:12px;color:var(--muted)"></span>
+    </div>
+  </div>
+
+  {# List of already-added custom products #}
+  <div id="customList">
+    {% if custom_products %}
+    <table class="prod-table" style="width:100%">
+      <thead><tr><th>Product</th><th>Price</th><th>Stock</th><th>Category</th></tr></thead>
+      <tbody id="customListBody">
+        {% for p in custom_products %}
+        <tr>
+          <td><strong>{{ p.name }}</strong></td>
+          <td>{{ '{:,.0f}'.format(p.price) if p.price else '—' }}</td>
+          <td>{{ p.stock_quantity if p.stock_quantity < 999999 else '∞' }}</td>
+          <td>{{ p.category or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div id="emptyCustomMsg" class="muted" style="font-size:13px">None added yet — click "+ Add product" above to add your own.</div>
+    <table class="prod-table" style="display:none;width:100%" id="customTable">
+      <thead><tr><th>Product</th><th>Price</th><th>Stock</th><th>Category</th></tr></thead>
+      <tbody id="customListBody"></tbody>
+    </table>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+function toggleCustomForm() {
+  var f = document.getElementById('customForm');
+  f.style.display = f.style.display === 'none' ? '' : 'none';
+  if (f.style.display !== 'none') document.getElementById('cpName').focus();
+}
+
+function saveCustomProduct() {
+  var name  = document.getElementById('cpName').value.trim();
+  var price = document.getElementById('cpPrice').value.trim();
+  var stock = document.getElementById('cpStock').value.trim() || '999';
+  var cat   = document.getElementById('cpCat').value.trim();
+  var desc  = document.getElementById('cpDesc').value.trim();
+  var msg   = document.getElementById('cpMsg');
+
+  if (!name) { msg.textContent = 'Product name is required.'; msg.style.color = '#b02020'; return; }
+  if (!price || isNaN(parseFloat(price))) { msg.textContent = 'Enter a valid price.'; msg.style.color = '#b02020'; return; }
+
+  msg.textContent = 'Saving…'; msg.style.color = 'var(--muted)';
+
+  var fd = new FormData();
+  fd.append('name', name);
+  fd.append('price', price);
+  fd.append('stock_quantity', stock);
+  fd.append('category', cat);
+  fd.append('description', desc);
+
+  fetch('{{ url_for("portal.onboarding_manual_product") }}', {
+    method: 'POST',
+    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    body: fd,
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (!data.ok) { msg.textContent = data.error || 'Error saving.'; msg.style.color = '#b02020'; return; }
+
+    // Clear form
+    ['cpName','cpPrice','cpStock','cpCat','cpDesc'].forEach(id => document.getElementById(id).value = '');
+    msg.textContent = 'Saved!'; msg.style.color = '#0a7a3c';
+    setTimeout(() => { msg.textContent = ''; }, 2000);
+
+    // Add to list
+    var empty = document.getElementById('emptyCustomMsg');
+    if (empty) empty.style.display = 'none';
+    var tbl = document.getElementById('customTable');
+    if (tbl) tbl.style.display = '';
+    var tbody = document.getElementById('customListBody');
+    if (tbody) {
+      var priceStr = parseFloat(data.product.price).toLocaleString(undefined, {minimumFractionDigits:0,maximumFractionDigits:0});
+      var stockStr = parseInt(data.product.stock) >= 999999 ? '∞' : data.product.stock;
+      tbody.insertAdjacentHTML('beforeend',
+        '<tr><td><strong>' + data.product.name + '</strong></td><td>' + priceStr + '</td><td>' + stockStr + '</td><td>' + (data.product.category || '—') + '</td></tr>'
+      );
+    }
+
+    // Update count badge
+    var badge = document.querySelector('#custom-products-card .muted[style*="margin-left"]');
+    if (!badge) {
+      var title = document.querySelector('#custom-products-card div[style*="font-weight:800"]');
+      if (title) title.insertAdjacentHTML('beforeend', '<span class="muted" style="font-size:12px;font-weight:500;margin-left:8px" id="cpCount">(1 added)</span>');
+    } else {
+      var n = (tbody ? tbody.querySelectorAll('tr').length : 1);
+      badge.textContent = '(' + n + ' added)';
+    }
+  })
+  .catch(() => { msg.textContent = 'Network error. Try again.'; msg.style.color = '#b02020'; });
+}
+</script>
+
+{# ── WhatsApp connection notice ── #}
+<div style="background:#fffbeb;border:1.5px solid #fcd34d;border-radius:12px;padding:16px 20px;margin-top:22px;display:flex;align-items:flex-start;gap:14px">
+  <div style="font-size:22px;flex-shrink:0">⚠️</div>
+  <div>
+    <div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:3px">One more step after this</div>
+    <div style="font-size:13px;color:#78350f;line-height:1.6">
+      Your store will be set up, but <strong>no messages will be sent or received</strong> until you connect your Meta-approved WhatsApp Business number.
+      After launching, go to <strong>WhatsApp Settings</strong> in your dashboard to complete the connection.
+    </div>
+  </div>
+</div>
+
 {# ── Finish / back bar ── #}
 <div class="finish-bar">
   <div>

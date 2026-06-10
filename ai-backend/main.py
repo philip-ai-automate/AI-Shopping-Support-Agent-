@@ -252,8 +252,8 @@ _PRODUCT_REC_INSTRUCTION = (
     "(your text AND the automatic cards) which looks broken and unprofessional.\n\n"
     "When a customer asks about a product or wants to buy something:\n"
     "1. Write ONE short sentence introducing the results (e.g. 'Here are some great iPhone 13 options for you!')\n"
-    "2. Append this exact tag at the very END of your message with up to 3 product names:\n"
-    '<<<PHIXTRA_PRODUCTS:["Exact Title One","Exact Title Two"]>>>\n\n'
+    "2. Append this exact tag at the very END of your message with up to 6 product names:\n"
+    '<<<PHIXTRA_PRODUCTS:["Exact Title One","Exact Title Two","Exact Title Three"]>>>\n\n'
     "CORRECT example:\n"
     "Customer: 'I want iPhone 13'\n"
     "Your reply: 'Great choice — here are the iPhone 13 options we have in stock for you! "
@@ -263,7 +263,7 @@ _PRODUCT_REC_INSTRUCTION = (
     "Your reply: '1. Apple iPhone 13 Midnight — ₦740,000\\n2. Apple iPhone 13 512GB — ₦777,000\\nWhich would you like?'\n\n"
     "Additional rules:\n"
     "- Copy product names EXACTLY as they appear in the Title: field of the store data.\n"
-    "- Maximum 3 products in the tag.\n"
+    "- Maximum 6 products in the tag. Always include as many relevant matches as you find, up to 6.\n"
     "- The tag must always be at the very END — never in the middle.\n"
     "- The tag is stripped automatically before the customer sees your message.\n"
     "- If you are NOT recommending a specific product, omit the tag entirely."
@@ -611,7 +611,8 @@ def chat(req: ChatRequest):
                         pass
                     return ""
 
-                def _format_price(price_min, price_max) -> str:
+                def _format_price(price_min, price_max, currency: str = "") -> str:
+                    from search import _fmt_currency_val
                     try:
                         mn = float(price_min) if price_min is not None else None
                         mx = float(price_max) if price_max is not None else None
@@ -619,12 +620,14 @@ def chat(req: ChatRequest):
                             mn = None
                         if mx is not None and mx <= 0:
                             mx = None
-                        if mn is not None and mx is not None and abs(mx - mn) > 0.01:
-                            return f"£{mn:,.2f} – £{mx:,.2f}"
-                        elif mn is not None:
-                            return f"£{mn:,.2f}"
-                        elif mx is not None:
-                            return f"£{mx:,.2f}"
+                        ref = mn if mn is not None else mx
+                        if ref is not None:
+                            if mn is not None and mx is not None and abs(mx - mn) > 0.01:
+                                return f"{_fmt_currency_val(mn, currency)} – {_fmt_currency_val(mx, currency)}"
+                            elif mn is not None:
+                                return _fmt_currency_val(mn, currency)
+                            elif mx is not None:
+                                return _fmt_currency_val(mx, currency)
                     except Exception:
                         pass
                     return ""
@@ -664,7 +667,7 @@ def chat(req: ChatRequest):
 
                         product_recommendations.append({
                             "name": matched_doc.get("title") or name,
-                            "price": _format_price(matched_doc.get("price_min"), matched_doc.get("price_max")),
+                            "price": _format_price(matched_doc.get("price_min"), matched_doc.get("price_max"), matched_doc.get("currency") or ""),
                             "url": url,
                             "cart_url": cart_url,
                             "in_stock": bool(matched_doc.get("in_stock", True)),
@@ -710,7 +713,7 @@ def chat(req: ChatRequest):
                             cart_url = f"{url}?add-to-cart={product_id}" if product_id and url else url
                             product_recommendations.append({
                                 "name": matched_doc.get("title") or name,
-                                "price": _format_price(matched_doc.get("price_min"), matched_doc.get("price_max")),
+                                "price": _format_price(matched_doc.get("price_min"), matched_doc.get("price_max"), matched_doc.get("currency") or ""),
                                 "url": url,
                                 "cart_url": cart_url,
                                 "in_stock": bool(matched_doc.get("in_stock", True)),
@@ -757,14 +760,14 @@ def chat(req: ChatRequest):
                     # Derive budget cap from the most expensive already-recommended
                     # product (all of which passed the customer's price filter).
                     # This prevents related products from exceeding the customer's budget.
-                    _gbp_prices = []
+                    _prices = []
                     for _p in product_recommendations:
-                        _raw = (_p.get("price") or "").replace("£", "").replace(",", "")
+                        _raw = (_p.get("price") or "").replace("£", "").replace("₦", "").replace(",", "")
                         try:
-                            _gbp_prices.append(float(_raw.split("–")[-1].strip()))
+                            _prices.append(float(_raw.split("–")[-1].strip()))
                         except (ValueError, IndexError):
                             pass
-                    _max_price_gbp = max(_gbp_prices) if _gbp_prices else None
+                    _max_price_gbp = max(_prices) if _prices else None
 
                     related = search_related_products(
                         tenant_id=tenant_id,
@@ -790,10 +793,20 @@ def chat(req: ChatRequest):
         # Guard: only fire if the AI reply actually sounds like a product recommendation.
         # Without this, greetings like "hello" trigger the fallback because the vector
         # search always returns something regardless of query relevance.
+        # Only fire the fallback when the AI reply is unambiguously a product
+        # recommendation — not on generic words like "available" or "option"
+        # that appear in any helpful answer (e.g. "I'm available to help").
         _PRODUCT_SIGNALS = (
-            "here are", "here is", "i found", "we have", "available",
-            "in stock", "option", "match", "result", "take a look",
-            "product", "model", "item", "check out",
+            "here are some", "here are a few", "here are the",
+            "here is a", "here is an",
+            "i found some", "i found a few", "i found these",
+            "take a look at these", "take a look at this",
+            "check out these", "check out this",
+            "currently in stock", "these are available",
+            "options for you", "choices for you",
+            "products for you", "items for you",
+            "we currently have", "we have the following",
+            "following products", "following items", "following options",
         )
         _reply_suggests_products = any(p in answer.lower() for p in _PRODUCT_SIGNALS)
         if not product_recommendations and raw_docs and _reply_suggests_products:
@@ -801,25 +814,28 @@ def chat(req: ChatRequest):
                 p = (doc_id or "").split("-")
                 return p[1] if len(p) >= 2 and p[0] == "product" else ""
 
-            def _price_fb(pmin, pmax):
+            def _price_fb(pmin, pmax, currency: str = ""):
+                from search import _fmt_currency_val
                 try:
                     mn = float(pmin) if pmin is not None else None
                     mx = float(pmax) if pmax is not None else None
                     if mn is not None and mn <= 0: mn = None
                     if mx is not None and mx <= 0: mx = None
-                    if mn and mx and abs(mx - mn) > 0.01: return f"£{mn:,.2f} – £{mx:,.2f}"
-                    elif mn: return f"£{mn:,.2f}"
-                    elif mx: return f"£{mx:,.2f}"
+                    ref = mn if mn is not None else mx
+                    if ref is not None:
+                        if mn and mx and abs(mx - mn) > 0.01: return f"{_fmt_currency_val(mn, currency)} – {_fmt_currency_val(mx, currency)}"
+                        elif mn: return _fmt_currency_val(mn, currency)
+                        elif mx: return _fmt_currency_val(mx, currency)
                 except Exception: pass
                 return ""
 
-            for _doc in raw_docs[:3]:
+            for _doc in raw_docs[:6]:
                 _pid  = _pid_fb(_doc.get("id", ""))
                 _url  = _doc.get("url") or ""
                 _cart = f"{_url}?add-to-cart={_pid}" if _pid and _url else _url
                 product_recommendations.append({
                     "name":        _doc.get("title") or "",
-                    "price":       _price_fb(_doc.get("price_min"), _doc.get("price_max")),
+                    "price":       _price_fb(_doc.get("price_min"), _doc.get("price_max"), _doc.get("currency") or ""),
                     "url":         _url,
                     "cart_url":    _cart,
                     "in_stock":    bool(_doc.get("in_stock", True)),

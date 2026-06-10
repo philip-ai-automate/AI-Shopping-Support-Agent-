@@ -4,26 +4,176 @@
 
 <div class="page-header">
   <h1 class="section-title">Credit Packages</h1>
+  <button type="button" class="btn btn-primary" onclick="openAddModal()">+ Add Package</button>
 </div>
 
-<div class="grid g2">
+{# ══════════════════ PACKAGES TABLE ══════════════════ #}
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Package</th>
+          <th>Credits</th>
+          <th>Price</th>
+          <th>Features</th>
+          <th>Status</th>
+          <th style="text-align:right">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in packages %}
+        {% set fp = p.features_parsed %}
+        <tr>
+          <td>
+            <strong style="font-size:13px">{{ p.name }}</strong>
+            <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">
+              {% if p.get('package_type') == 'subscription' %}
+                <span class="pill" style="background:rgba(37,99,235,0.10);color:#1d4ed8;border-color:rgba(37,99,235,0.30);">
+                  🔁 {{ p.get('billing_period','monthly')|capitalize }}
+                </span>
+              {% else %}
+                <span class="pill pill-grey">One-time</span>
+              {% endif %}
+              <span class="pill pill-grey" style="color:var(--muted)" title="Display sort order">{{ p.sort_order or 0 }}</span>
+            </div>
+          </td>
+          <td>
+            <strong>{{ p.credits }}</strong>
+            <div class="muted">credits</div>
+          </td>
+          <td>
+            <strong>{{ p.price_fmt }}</strong>
+            <div class="muted">+{{ p.vat_rate or 20 }}% VAT</div>
+          </td>
+          <td style="max-width:260px">
+            <div style="display:flex;gap:4px;flex-wrap:wrap">
+              {% if fp.get('product_recommendation') %}
+                <span class="pill pill-green" title="Product Recommendation: AI suggests relevant products as clickable cards during chat">🛍️ Rec</span>
+              {% endif %}
+              {% if fp.get('related_products') %}
+                <span class="pill pill-green" title="Automated Cross-selling: Appends up to 2 related items. Requires Product Recommendation">🔗 Cross-sell</span>
+              {% endif %}
+              {% if fp.get('cart_recovery') %}
+                <span class="pill" style="background:rgba(139,92,246,0.10);color:#6d28d9;border-color:rgba(139,92,246,0.35);" title="Intelligent Cart Recovery: Detects abandonment and runs a 3-touch recovery sequence">🛒 Recovery</span>
+              {% endif %}
+              {% if fp.get('verified_specs_web_lookup') %}
+                <span class="pill" style="background:rgba(251,146,60,0.10);color:#c2410c;border-color:rgba(251,146,60,0.35);" title="Verified Specs Lookup: AI browses trusted manufacturer sources for numeric product specs">🔎 Specs</span>
+              {% endif %}
+              {% if fp.get('chat_archive_unlimited') %}
+                <span class="pill" style="background:rgba(22,163,74,0.10);color:#15803d;border-color:rgba(22,163,74,0.35);" title="Chat Archive Unlimited: Full history, fulltext search, PDF/Excel/Word export + AI summaries">♾️ Archive</span>
+              {% elif fp.get('chat_archive_30days') %}
+                <span class="pill" style="background:rgba(14,165,233,0.10);color:#0369a1;border-color:rgba(14,165,233,0.35);" title="Chat Archive 30 Days: 30-day history, fulltext search, PDF export + AI summaries">📅 30d</span>
+              {% endif %}
+              {% if fp.get('whatsapp_message_templates') %}
+                <span class="pill" style="background:rgba(37,211,102,0.10);color:#128c3e;border-color:rgba(37,211,102,0.30);" title="WhatsApp Message Templates: Cart abandonment & order status via Meta-approved templates">📩 WA Tpl</span>
+              {% endif %}
+              {% if fp.get('custom_features') %}
+                <span class="pill pill-grey" title="{{ fp.get('custom_features') | join(', ') }}">+{{ fp.get('custom_features') | length }} custom</span>
+              {% endif %}
+              {% if not fp.get('product_recommendation') and not fp.get('cart_recovery') and not fp.get('verified_specs_web_lookup') and not fp.get('chat_archive_unlimited') and not fp.get('chat_archive_30days') and not fp.get('whatsapp_message_templates') and not fp.get('custom_features') %}
+                <span class="pill pill-grey">Basic</span>
+              {% endif %}
+            </div>
+          </td>
+          <td>
+            {% if p.is_active %}
+              <span class="pill pill-green">Active</span>
+            {% else %}
+              <span class="pill pill-grey">Inactive</span>
+            {% endif %}
+          </td>
+          <td style="text-align:right;white-space:nowrap">
+            <button type="button"
+                    class="btn btn-sm btn-edit-pkg"
+                    style="background:#2563eb;color:#fff;border-color:#2563eb;"
+                    data-id="{{ p.id }}"
+                    data-action="{{ url_for('portal_admin.credit_packages_edit', pkg_id=p.id) }}"
+                    data-name="{{ p.name | e }}"
+                    data-credits="{{ p.credits or 0 }}"
+                    data-price="{{ '%.2f' | format((p.price_pence or 0) / 100) }}"
+                    data-vat="{{ p.vat_rate or 20 }}"
+                    data-sort="{{ p.sort_order or 0 }}"
+                    data-active="{{ '1' if p.is_active else '0' }}"
+                    data-pkgtype="{{ p.get('package_type') or 'topup' }}"
+                    data-billingperiod="{{ p.get('billing_period') or 'monthly' }}"
+                    data-prod="{{ '1' if fp.get('product_recommendation') else '0' }}"
+                    data-related="{{ '1' if fp.get('related_products') else '0' }}"
+                    data-cart="{{ '1' if fp.get('cart_recovery') else '0' }}"
+                    data-specs="{{ '1' if fp.get('verified_specs_web_lookup') else '0' }}"
+                    data-archive30="{{ '1' if fp.get('chat_archive_30days') else '0' }}"
+                    data-archiveunl="{{ '1' if fp.get('chat_archive_unlimited') else '0' }}"
+                    data-watpl="{{ '1' if fp.get('whatsapp_message_templates') else '0' }}"
+                    data-custom="{{ fp.get('custom_features', []) | join('\n') | e }}">
+              ✏️ Edit
+            </button>
+            <a href="{{ url_for('portal_admin.credit_packages_toggle', pkg_id=p.id) }}"
+               class="btn btn-sm" style="margin-left:4px;"
+               title="{{ 'Disable — hide from customers' if p.is_active else 'Enable — show to customers' }}">
+              {{ '⏸ Disable' if p.is_active else '▶ Enable' }}
+            </a>
+            <form method="POST"
+                  action="{{ url_for('portal_admin.credit_packages_delete', pkg_id=p.id) }}"
+                  style="display:inline;margin-left:4px;"
+                  onsubmit="return confirm('Delete \'{{ p.name | e }}\'?\nThis cannot be undone.');">
+              <button type="submit" class="btn btn-sm btn-danger">🗑 Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" style="text-align:center;padding:40px 20px;color:var(--muted)">
+            No packages yet — click <strong>+ Add Package</strong> above to create one.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
 
-  {# ══════════════════ ADD PACKAGE FORM ══════════════════ #}
-  <div class="card">
-    <div class="card-title">Add package</div>
-    <form method="POST">
-      <div class="form-group"><label>Package name</label><input name="name" required placeholder="Growth"/></div>
-      <div class="form-group"><label>Credits</label><input type="number" name="credits" required min="1" placeholder="200"/></div>
-      <div class="form-group"><label>Price (£)</label><input type="number" step="0.01" name="price_gbp" required placeholder="45.00"/></div>
-      <div class="form-group"><label>VAT rate (%)</label><input type="number" step="0.01" name="vat_rate" value="20.00"/></div>
-      <div class="form-group"><label>Sort order</label><input type="number" name="sort_order" value="0"/></div>
-      <div class="form-group" style="display:flex;align-items:center;gap:8px">
-        <input type="checkbox" name="is_active" checked style="width:auto"/>
-        <label style="margin:0">Active (shown to customers)</label>
+
+{# ═══════════════════════════ ADD MODAL ═══════════════════════════ #}
+<div id="addModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.55);z-index:9999;padding:20px;overflow-y:auto;">
+  <div style="background:#fff;border-radius:12px;width:100%;max-width:580px;margin:40px auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+
+    <div style="padding:20px 24px 16px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;">
+      <h2 style="margin:0;font-size:18px;font-weight:700;">+ New Package</h2>
+      <button type="button" id="closeAddBtn" style="background:none;border:none;font-size:26px;cursor:pointer;color:#6b7280;line-height:1;padding:0 4px;">×</button>
+    </div>
+
+    <form method="POST" style="padding:20px 24px 24px;">
+
+      <div class="form-group">
+        <label>Package name</label>
+        <input name="name" required placeholder="Growth"/>
       </div>
 
-      {# ── Stage 3: Package Type ── #}
-      <div class="form-group" style="margin-top:16px;padding-top:16px;border-top:2px solid #e5e7eb;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-group">
+          <label>Credits</label>
+          <input type="number" name="credits" required min="1" placeholder="200"/>
+        </div>
+        <div class="form-group">
+          <label>Price (£)</label>
+          <input type="number" step="0.01" name="price_gbp" required placeholder="45.00"/>
+        </div>
+        <div class="form-group">
+          <label>VAT rate (%)</label>
+          <input type="number" step="0.01" name="vat_rate" value="20.00"/>
+        </div>
+        <div class="form-group">
+          <label>Sort order</label>
+          <input type="number" name="sort_order" value="0"/>
+        </div>
+      </div>
+
+      <div class="form-group" style="display:flex;align-items:center;gap:8px;margin-bottom:20px;">
+        <input type="checkbox" name="is_active" id="add_is_active" checked style="width:auto;"/>
+        <label for="add_is_active" style="margin:0;cursor:pointer;">Active (shown to customers)</label>
+      </div>
+
+      <div class="form-group" style="padding-top:16px;border-top:2px solid #e5e7eb;margin-bottom:12px;">
         <label style="font-weight:700;font-size:14px;display:block;margin-bottom:8px;">📦 Package Type</label>
         <div style="display:flex;gap:20px;align-items:center;">
           <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;font-weight:600;">
@@ -42,7 +192,7 @@
         </p>
       </div>
 
-      <div id="add_billing_period_row" class="form-group" style="display:none;">
+      <div id="add_billing_period_row" class="form-group" style="display:none;margin-bottom:16px;">
         <label style="font-weight:700;font-size:14px;">🔁 Billing Period</label>
         <select name="billing_period" style="width:100%;padding:9px 12px;border-radius:10px;border:1px solid rgba(3,12,24,0.18);font-size:13px;">
           <option value="monthly">Monthly</option>
@@ -50,162 +200,80 @@
         </select>
       </div>
 
-      <div class="form-group" style="margin-top:20px;padding-top:16px;border-top:2px solid #e5e7eb;">
+      <div style="padding-top:16px;border-top:2px solid #e5e7eb;margin-bottom:16px;">
         <label style="font-weight:700;font-size:14px;display:block;margin-bottom:10px;">🔌 Plugin Features</label>
         <p style="font-size:12px;color:#6b7280;margin:0 0 12px 0;">Select which advanced features are included in this package.</p>
 
         <div style="display:flex;align-items:flex-start;gap:10px;padding:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;margin-bottom:8px;">
-          <input type="checkbox" name="feature_product_recommendation" id="feat_prod_rec_add" style="width:auto;margin-top:2px;"/>
+          <input type="checkbox" name="feature_product_recommendation" id="add_feat_prod_rec" style="width:auto;margin-top:2px;"/>
           <div>
-            <label for="feat_prod_rec_add" style="margin:0;font-weight:600;cursor:pointer;">🛍️ Product Recommendation</label>
+            <label for="add_feat_prod_rec" style="margin:0;font-weight:600;cursor:pointer;">🛍️ Product Recommendation</label>
             <p style="margin:4px 0 0 0;font-size:12px;color:#374151;">AI suggests relevant products during chat as clickable cards.</p>
           </div>
         </div>
 
         <div style="display:flex;align-items:flex-start;gap:10px;padding:12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;margin-bottom:8px;">
-          <input type="checkbox" name="feature_related_products" id="feat_related_add" style="width:auto;margin-top:2px;"/>
+          <input type="checkbox" name="feature_related_products" id="add_feat_related" style="width:auto;margin-top:2px;"/>
           <div>
-            <label for="feat_related_add" style="margin:0;font-weight:600;cursor:pointer;">🔗 Automated Cross-selling</label>
+            <label for="add_feat_related" style="margin:0;font-weight:600;cursor:pointer;">🔗 Automated Cross-selling</label>
             <p style="margin:4px 0 0 0;font-size:12px;color:#374151;">Appends up to 2 related items. Requires Product Recommendation.</p>
           </div>
         </div>
 
         <div style="display:flex;align-items:flex-start;gap:10px;padding:12px;background:#fdf4ff;border:1px solid #e9d5ff;border-radius:8px;margin-bottom:8px;">
-          <input type="checkbox" name="feature_cart_recovery" id="feat_cart_add" style="width:auto;margin-top:2px;"/>
+          <input type="checkbox" name="feature_cart_recovery" id="add_feat_cart" style="width:auto;margin-top:2px;"/>
           <div>
-            <label for="feat_cart_add" style="margin:0;font-weight:600;cursor:pointer;">🛒 Intelligent Cart Revenue Recovery</label>
+            <label for="add_feat_cart" style="margin:0;font-weight:600;cursor:pointer;">🛒 Intelligent Cart Revenue Recovery</label>
             <p style="margin:4px 0 0 0;font-size:12px;color:#374151;">Detects abandonment and runs a 3-touch recovery sequence.</p>
           </div>
         </div>
 
         <div style="display:flex;align-items:flex-start;gap:10px;padding:12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;margin-bottom:8px;">
-          <input type="checkbox" name="feature_verified_specs_web_lookup" id="feat_specs_add" style="width:auto;margin-top:2px;"/>
+          <input type="checkbox" name="feature_verified_specs_web_lookup" id="add_feat_specs" style="width:auto;margin-top:2px;"/>
           <div>
-            <label for="feat_specs_add" style="margin:0;font-weight:600;cursor:pointer;">🔎 Verified Specs Lookup (Web)</label>
+            <label for="add_feat_specs" style="margin:0;font-weight:600;cursor:pointer;">🔎 Verified Specs Lookup (Web)</label>
             <p style="margin:4px 0 0 0;font-size:12px;color:#374151;">AI browses trusted manufacturer sources for numeric specs.</p>
           </div>
         </div>
 
         <div style="display:flex;align-items:flex-start;gap:10px;padding:12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;margin-bottom:8px;">
-          <input type="checkbox" name="feature_chat_archive_30days" id="feat_chat_archive_30d_add" style="width:auto;margin-top:2px;"/>
+          <input type="checkbox" name="feature_chat_archive_30days" id="add_feat_archive30" style="width:auto;margin-top:2px;"/>
           <div>
-            <label for="feat_chat_archive_30d_add" style="margin:0;font-weight:600;cursor:pointer;">📅 Chat Archive — 30 Days</label>
-            <p style="margin:4px 0 0 0;font-size:12px;color:#374151;">30-day conversation history, fulltext search, PDF export, and AI summaries. Excel/Word export not included.</p>
+            <label for="add_feat_archive30" style="margin:0;font-weight:600;cursor:pointer;">📅 Chat Archive — 30 Days</label>
+            <p style="margin:4px 0 0 0;font-size:12px;color:#374151;">30-day conversation history, fulltext search, PDF export, and AI summaries.</p>
           </div>
         </div>
 
         <div style="display:flex;align-items:flex-start;gap:10px;padding:12px;background:#f0fdf4;border:1px solid #6ee7b7;border-radius:8px;margin-bottom:8px;">
-          <input type="checkbox" name="feature_chat_archive_unlimited" id="feat_chat_archive_unl_add" style="width:auto;margin-top:2px;"/>
+          <input type="checkbox" name="feature_chat_archive_unlimited" id="add_feat_archiveunl" style="width:auto;margin-top:2px;"/>
           <div>
-            <label for="feat_chat_archive_unl_add" style="margin:0;font-weight:600;cursor:pointer;">♾️ Chat Archive — Unlimited</label>
-            <p style="margin:4px 0 0 0;font-size:12px;color:#374151;">Unlimited conversation history, fulltext search, PDF/Excel/Word export, and AI summaries. If both tiers are selected, Unlimited wins.</p>
+            <label for="add_feat_archiveunl" style="margin:0;font-weight:600;cursor:pointer;">♾️ Chat Archive — Unlimited</label>
+            <p style="margin:4px 0 0 0;font-size:12px;color:#374151;">Unlimited history, fulltext search, PDF/Excel/Word export, and AI summaries. Overrides 30-Day if both ticked.</p>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:flex-start;gap:10px;padding:12px;background:#ecfdf5;border:1px solid #6ee7b7;border-radius:8px;margin-bottom:8px;">
+          <input type="checkbox" name="feature_wa_message_templates" id="add_feat_wa_tpl" style="width:auto;margin-top:2px;"/>
+          <div>
+            <label for="add_feat_wa_tpl" style="margin:0;font-weight:600;cursor:pointer;">📩 WhatsApp Message Templates</label>
+            <p style="margin:4px 0 0 0;font-size:12px;color:#374151;">Unlocks the Message Templates page — cart abandonment & order status via Meta-approved templates. Requires WooCommerce plugin.</p>
           </div>
         </div>
       </div>
 
       <div class="form-group">
-        <p style="font-size:12px;color:#6b7280;margin:0 0 6px 0;">Type one feature per line, e.g. "Live Support" or "Telephone Support Available". These are display-only labels shown to customers.</p>
-        <textarea name="custom_features_text" rows="4" placeholder="Live Support&#10;Telephone Support Available&#10;Dedicated Account Manager" style="width:100%;padding:9px 12px;border-radius:10px;border:1px solid rgba(3,12,24,0.18);font-size:13px;font-family:inherit;resize:vertical;"></textarea>
+        <label style="font-weight:700;font-size:13px;">✨ Custom Features (optional)</label>
+        <p style="font-size:12px;color:#6b7280;margin:0 0 6px 0;">One feature per line. Display-only labels shown to customers on the subscribe page.</p>
+        <textarea name="custom_features_text" rows="3"
+                  placeholder="Live Support&#10;Telephone Support Available&#10;Dedicated Account Manager"
+                  style="width:100%;padding:9px 12px;border-radius:10px;border:1px solid rgba(3,12,24,0.18);font-size:13px;font-family:inherit;resize:vertical;"></textarea>
       </div>
 
-      <button type="submit" class="btn btn-primary btn-sm">Add package</button>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px;">
+        <button type="button" id="cancelAddBtn" class="btn btn-sm">Cancel</button>
+        <button type="submit" class="btn btn-primary btn-sm">+ Add Package</button>
+      </div>
     </form>
-  </div>
-
-  {# ══════════════════ EXISTING PACKAGES TABLE ══════════════════ #}
-  <div class="card">
-    <div class="card-title">Existing packages</div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Credits</th>
-            <th>Price</th>
-            <th>Sort</th>
-            <th>Features</th>
-            <th>Active</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for p in packages %}
-          {% set fp = p.features_parsed %}
-          <tr>
-            <td><strong>{{ p.name }}</strong></td>
-            <td>
-              {% if p.get('package_type') == 'subscription' %}
-                <span class="pill" style="background:rgba(37,99,235,0.10);color:#1d4ed8;border-color:rgba(37,99,235,0.35);">
-                  🔁 {{ p.get('billing_period','monthly')|capitalize }}
-                </span>
-              {% else %}
-                <span class="pill pill-grey">One-time</span>
-              {% endif %}
-            </td>
-            <td>{{ p.credits }}</td>
-            <td>{{ p.price_fmt }}</td>
-            <td>{{ p.sort_order or 0 }}</td>
-            <td>
-              {% if fp.get('product_recommendation') %}<span class="pill pill-green">🛍️ Rec</span>{% endif %}
-              {% if fp.get('related_products') %}<span class="pill pill-green">🔗</span>{% endif %}
-              {% if fp.get('cart_recovery') %}<span class="pill" style="background:rgba(139,92,246,0.10);color:#6d28d9;border-color:rgba(139,92,246,0.35);">🛒</span>{% endif %}
-              {% if fp.get('verified_specs_web_lookup') %}<span class="pill" style="background:rgba(251,146,60,0.10);color:#c2410c;border-color:rgba(251,146,60,0.35);">🔎</span>{% endif %}
-              {% if fp.get('chat_archive_unlimited') %}<span class="pill" style="background:rgba(22,163,74,0.10);color:#15803d;border-color:rgba(22,163,74,0.35);">♾️ Archive</span>{% endif %}
-              {% if fp.get('chat_archive_30days') and not fp.get('chat_archive_unlimited') %}<span class="pill" style="background:rgba(14,165,233,0.10);color:#0369a1;border-color:rgba(14,165,233,0.35);">📅 Archive 30d</span>{% endif %}
-              {% if not fp.get('product_recommendation') and not fp.get('cart_recovery') and not fp.get('verified_specs_web_lookup') and not fp.get('chat_archive_unlimited') and not fp.get('chat_archive_30days') %}
-                <span class="pill pill-grey">Basic</span>
-              {% endif %}
-              {% if fp.get('custom_features') %}
-                <span class="pill" style="background:rgba(6,182,212,0.10);color:#0e7490;border-color:rgba(6,182,212,0.35);">+{{ fp.get('custom_features')|length }} custom</span>
-              {% endif %}
-            </td>
-            <td>{% if p.is_active %}<span class="pill pill-green">Yes</span>{% else %}<span class="pill pill-grey">No</span>{% endif %}</td>
-            <td style="white-space:nowrap">
-              <a href="{{ url_for('portal_admin.credit_packages_toggle', pkg_id=p.id) }}"
-                 class="btn btn-sm" style="margin-right:4px;">
-                {{ '⏸ Disable' if p.is_active else '▶ Enable' }}
-              </a>
-
-              {# Edit button — all data stored safely as data-* attributes #}
-              <button type="button"
-                      class="btn btn-sm btn-edit-pkg"
-                      style="background:#2563eb;color:#fff;border-color:#2563eb;margin-right:4px;"
-                      data-id="{{ p.id }}"
-                      data-action="{{ url_for('portal_admin.credit_packages_edit', pkg_id=p.id) }}"
-                      data-name="{{ p.name | e }}"
-                      data-credits="{{ p.credits or 0 }}"
-                      data-price="{{ '%.2f' | format((p.price_pence or 0) / 100) }}"
-                      data-vat="{{ p.vat_rate or 20 }}"
-                      data-sort="{{ p.sort_order or 0 }}"
-                      data-active="{{ '1' if p.is_active else '0' }}"
-                      data-pkgtype="{{ p.get('package_type') or 'topup' }}"
-                      data-billingperiod="{{ p.get('billing_period') or 'monthly' }}"
-                      data-prod="{{ '1' if fp.get('product_recommendation') else '0' }}"
-                      data-related="{{ '1' if fp.get('related_products') else '0' }}"
-                      data-cart="{{ '1' if fp.get('cart_recovery') else '0' }}"
-                      data-specs="{{ '1' if fp.get('verified_specs_web_lookup') else '0' }}"
-                      data-archive30="{{ '1' if fp.get('chat_archive_30days') else '0' }}"
-                      data-archiveunl="{{ '1' if fp.get('chat_archive_unlimited') else '0' }}"
-                      data-custom="{{ fp.get('custom_features', []) | join('\n') | e }}">
-                ✏️ Edit
-              </button>
-
-              {# Delete button #}
-              <form method="POST"
-                    action="{{ url_for('portal_admin.credit_packages_delete', pkg_id=p.id) }}"
-                    style="display:inline;"
-                    onsubmit="return confirm('Delete the package \'{{ p.name | e }}\'?\nThis cannot be undone.');">
-                <button type="submit" class="btn btn-sm" style="background:#dc2626;color:#fff;border-color:#dc2626;">
-                  🗑 Delete
-                </button>
-              </form>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
   </div>
 </div>
 
@@ -250,7 +318,6 @@
         <label for="edit_is_active" style="margin:0;cursor:pointer;">Active (shown to customers)</label>
       </div>
 
-      {# Stage 3: Package Type in edit modal #}
       <div class="form-group" style="padding-top:16px;border-top:2px solid #e5e7eb;margin-bottom:12px;">
         <label style="font-weight:700;font-size:14px;display:block;margin-bottom:8px;">📦 Package Type</label>
         <div style="display:flex;gap:20px;align-items:center;">
@@ -266,6 +333,7 @@
           </label>
         </div>
       </div>
+
       <div id="edit_billing_period_row" class="form-group" style="display:none;margin-bottom:16px;">
         <label style="font-weight:700;font-size:14px;">🔁 Billing Period</label>
         <select id="edit_billing_period" name="billing_period"
@@ -325,12 +393,22 @@
             <p style="margin:4px 0 0 0;font-size:12px;color:#374151;">Unlimited history, fulltext search, PDF/Excel/Word export, AI summaries. Overrides 30-Day if both ticked.</p>
           </div>
         </div>
+
+        <div style="display:flex;align-items:flex-start;gap:10px;padding:12px;background:#ecfdf5;border:1px solid #6ee7b7;border-radius:8px;margin-bottom:8px;">
+          <input type="checkbox" name="feature_wa_message_templates" id="edit_feat_wa_tpl" style="width:auto;margin-top:2px;"/>
+          <div>
+            <label for="edit_feat_wa_tpl" style="margin:0;font-weight:600;cursor:pointer;">📩 WhatsApp Message Templates</label>
+            <p style="margin:4px 0 0 0;font-size:12px;color:#374151;">Unlocks the Message Templates page — cart abandonment & order status via Meta-approved templates. Requires WooCommerce plugin.</p>
+          </div>
+        </div>
       </div>
 
       <div class="form-group">
         <label style="font-weight:700;font-size:13px;">✨ Custom Features (optional)</label>
-        <p style="font-size:12px;color:#6b7280;margin:0 0 6px 0;">One feature per line. These are display-only labels shown to customers.</p>
-        <textarea id="edit_custom" name="custom_features_text" rows="4" style="width:100%;padding:9px 12px;border-radius:10px;border:1px solid rgba(3,12,24,0.18);font-size:13px;font-family:inherit;resize:vertical;" placeholder="Live Support&#10;Telephone Support Available"></textarea>
+        <p style="font-size:12px;color:#6b7280;margin:0 0 6px 0;">One feature per line. Display-only labels shown to customers.</p>
+        <textarea id="edit_custom" name="custom_features_text" rows="3"
+                  style="width:100%;padding:9px 12px;border-radius:10px;border:1px solid rgba(3,12,24,0.18);font-size:13px;font-family:inherit;resize:vertical;"
+                  placeholder="Live Support&#10;Telephone Support Available"></textarea>
       </div>
 
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px;">
@@ -341,68 +419,74 @@
   </div>
 </div>
 
+
 <script>
 (function () {
-  var modal    = document.getElementById('editModal');
-  var form     = document.getElementById('editForm');
-  var closeBtn = document.getElementById('closeModalBtn');
-  var cancelBtn = document.getElementById('cancelModalBtn');
+  /* ── Add modal ── */
+  var addModal   = document.getElementById('addModal');
+  var closeAddBtn  = document.getElementById('closeAddBtn');
+  var cancelAddBtn = document.getElementById('cancelAddBtn');
 
-  function openModal(btn) {
+  window.openAddModal = function () {
+    addModal.style.display = 'block';
+    document.body.style.overflow = 'hidden';
+  };
+  function closeAddModal() {
+    addModal.style.display = 'none';
+    document.body.style.overflow = '';
+  }
+  closeAddBtn.addEventListener('click', closeAddModal);
+  cancelAddBtn.addEventListener('click', closeAddModal);
+  addModal.addEventListener('click', function (e) { if (e.target === addModal) closeAddModal(); });
+
+  /* ── Edit modal ── */
+  var editModal  = document.getElementById('editModal');
+  var editForm   = document.getElementById('editForm');
+  var closeBtn   = document.getElementById('closeModalBtn');
+  var cancelBtn  = document.getElementById('cancelModalBtn');
+
+  function openEditModal(btn) {
     var d = btn.dataset;
-    form.action = d.action;
+    editForm.action = d.action;
     document.getElementById('edit_name').value        = d.name;
     document.getElementById('edit_credits').value     = d.credits;
     document.getElementById('edit_price_gbp').value   = d.price;
     document.getElementById('edit_vat_rate').value    = d.vat;
     document.getElementById('edit_sort_order').value  = d.sort;
-    document.getElementById('edit_is_active').checked       = d.active === '1';
-    document.getElementById('edit_feat_prod_rec').checked   = d.prod === '1';
-    document.getElementById('edit_feat_related').checked    = d.related === '1';
-    document.getElementById('edit_feat_cart').checked       = d.cart === '1';
-    document.getElementById('edit_feat_specs').checked      = d.specs === '1';
-    document.getElementById('edit_feat_chat_archive_30d').checked  = d.archive30 === '1';
-    document.getElementById('edit_feat_chat_archive_unl').checked  = d.archiveunl === '1';
-    document.getElementById('edit_custom').value            = d.custom || '';
-
-    // Stage 3 — package type and billing period
+    document.getElementById('edit_is_active').checked            = d.active === '1';
+    document.getElementById('edit_feat_prod_rec').checked        = d.prod === '1';
+    document.getElementById('edit_feat_related').checked         = d.related === '1';
+    document.getElementById('edit_feat_cart').checked            = d.cart === '1';
+    document.getElementById('edit_feat_specs').checked           = d.specs === '1';
+    document.getElementById('edit_feat_chat_archive_30d').checked = d.archive30 === '1';
+    document.getElementById('edit_feat_chat_archive_unl').checked = d.archiveunl === '1';
+    document.getElementById('edit_feat_wa_tpl').checked          = d.watpl === '1';
+    document.getElementById('edit_custom').value                 = d.custom || '';
     var pkgType = d.pkgtype || 'topup';
     document.getElementById('edit_pkgtype_topup').checked = (pkgType === 'topup');
     document.getElementById('edit_pkgtype_sub').checked   = (pkgType === 'subscription');
     document.getElementById('edit_billing_period').value  = d.billingperiod || 'monthly';
     toggleBillingPeriod('edit', pkgType);
-
-    modal.style.display = 'block';
+    editModal.style.display = 'block';
     document.body.style.overflow = 'hidden';
   }
-
-  function closeModal() {
-    modal.style.display = 'none';
+  function closeEditModal() {
+    editModal.style.display = 'none';
     document.body.style.overflow = '';
   }
 
-  // Wire up all Edit buttons
-  document.querySelectorAll('.btn-edit-pkg').forEach(function(btn) {
-    btn.addEventListener('click', function() { openModal(btn); });
+  document.querySelectorAll('.btn-edit-pkg').forEach(function (btn) {
+    btn.addEventListener('click', function () { openEditModal(btn); });
   });
-
-  closeBtn.addEventListener('click', closeModal);
-  cancelBtn.addEventListener('click', closeModal);
-
-  // Click dark backdrop to close
-  modal.addEventListener('click', function(e) {
-    if (e.target === modal) { closeModal(); }
-  });
+  closeBtn.addEventListener('click', closeEditModal);
+  cancelBtn.addEventListener('click', closeEditModal);
+  editModal.addEventListener('click', function (e) { if (e.target === editModal) closeEditModal(); });
 }());
 
-// Stage 3 — show/hide billing period row based on package type selection.
-// Works for both the Add form (prefix='add') and the Edit modal (prefix='edit').
 function toggleBillingPeriod(prefix, value) {
   var rowId = prefix === 'add' ? 'add_billing_period_row' : 'edit_billing_period_row';
   var row = document.getElementById(rowId);
-  if (row) {
-    row.style.display = (value === 'subscription') ? 'block' : 'none';
-  }
+  if (row) row.style.display = (value === 'subscription') ? 'block' : 'none';
 }
 </script>
 

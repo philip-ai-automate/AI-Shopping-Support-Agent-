@@ -140,6 +140,101 @@ def ensure_portal_tables():
                 ON merchant_product_catalogue(merchant_id)
         """)
 
+        # ── plans ─────────────────────────────────────────────────────────────
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS plans (
+                id                  SERIAL PRIMARY KEY,
+                slug                VARCHAR(32)   UNIQUE NOT NULL,
+                name                VARCHAR(64)   NOT NULL,
+                price_ngn           INTEGER       NOT NULL DEFAULT 0,
+                price_usd           NUMERIC(10,2) NOT NULL DEFAULT 0,
+                ai_messages_limit   INTEGER       NOT NULL DEFAULT 100,
+                agents_limit        INTEGER       NOT NULL DEFAULT 1,
+                broadcasts_limit    INTEGER       NOT NULL DEFAULT 0,
+                products_limit      INTEGER       NOT NULL DEFAULT 50,
+                data_sources_limit  INTEGER       NOT NULL DEFAULT 1,
+                feat_crm            BOOLEAN       NOT NULL DEFAULT FALSE,
+                feat_advanced_ai    BOOLEAN       NOT NULL DEFAULT FALSE,
+                feat_integrations   BOOLEAN       NOT NULL DEFAULT FALSE,
+                feat_broadcasts     BOOLEAN       NOT NULL DEFAULT FALSE,
+                feat_full_reports   BOOLEAN       NOT NULL DEFAULT FALSE,
+                feat_multi_agents   BOOLEAN       NOT NULL DEFAULT FALSE,
+                overage_per_msg_ngn NUMERIC(10,4) NOT NULL DEFAULT 10,
+                overage_per_msg_usd NUMERIC(10,6) NOT NULL DEFAULT 0.006000,
+                is_active           BOOLEAN       NOT NULL DEFAULT TRUE,
+                sort_order          INTEGER       NOT NULL DEFAULT 0,
+                created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+            )
+        """)
+
+        # Seed the 4 plans (idempotent — slug is UNIQUE)
+        cur.execute("""
+            INSERT INTO plans
+                (slug, name, price_ngn, price_usd,
+                 ai_messages_limit, agents_limit, broadcasts_limit,
+                 products_limit, data_sources_limit,
+                 feat_crm, feat_advanced_ai, feat_integrations,
+                 feat_broadcasts, feat_full_reports, feat_multi_agents,
+                 overage_per_msg_ngn, overage_per_msg_usd, sort_order)
+            VALUES
+              ('free',    'Free',    0,      0,     100,    1,  0,    50,   1,  FALSE,FALSE,FALSE,FALSE,FALSE,FALSE, 10,     0.006000, 0),
+              ('starter', 'Starter', 15000,  10.00, 2000,   2,  500,  500,  3,  TRUE, FALSE,TRUE, TRUE, TRUE, TRUE,   5,     0.003000, 1),
+              ('growth',  'Growth',  48000,  30.00, 10000,  5,  5000, 2000, 10, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE,   3,     0.002000, 2),
+              ('pro',     'Pro',     120000, 75.00, 50000, -1,  -1,   -1,   -1, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE,   2,     0.001200, 3)
+            ON CONFLICT (slug) DO NOTHING
+        """)
+
+        # ── quota_overage_log ──────────────────────────────────────────────────
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS quota_overage_log (
+                id          BIGSERIAL PRIMARY KEY,
+                tenant_id   INTEGER      NOT NULL,
+                logged_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                plan_slug   VARCHAR(32),
+                msgs_used   INTEGER,
+                msgs_limit  INTEGER,
+                rate_ngn    NUMERIC(10,4),
+                notified    BOOLEAN      NOT NULL DEFAULT FALSE
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_quota_overage_tenant
+                ON quota_overage_log(tenant_id, logged_at)
+        """)
+
+        # ── tenants: add plan columns ──────────────────────────────────────────
+        if not _column_exists(cur, "tenants", "plan_id"):
+            cur.execute("ALTER TABLE tenants ADD COLUMN plan_id INTEGER REFERENCES plans(id) DEFAULT 1")
+        if not _column_exists(cur, "tenants", "billing_cycle"):
+            cur.execute("ALTER TABLE tenants ADD COLUMN billing_cycle VARCHAR(10) NOT NULL DEFAULT 'monthly'")
+        if not _column_exists(cur, "tenants", "plan_period_start"):
+            cur.execute("ALTER TABLE tenants ADD COLUMN plan_period_start DATE NOT NULL DEFAULT CURRENT_DATE")
+        if not _column_exists(cur, "tenants", "quota_notified_at"):
+            cur.execute("ALTER TABLE tenants ADD COLUMN quota_notified_at TIMESTAMPTZ DEFAULT NULL")
+        if not _column_exists(cur, "tenants", "trial_ends_at"):
+            cur.execute("ALTER TABLE tenants ADD COLUMN trial_ends_at DATE DEFAULT NULL")
+        if not _column_exists(cur, "tenants", "is_founder"):
+            cur.execute("ALTER TABLE tenants ADD COLUMN is_founder BOOLEAN NOT NULL DEFAULT FALSE")
+        if not _column_exists(cur, "tenants", "founder_year"):
+            cur.execute("ALTER TABLE tenants ADD COLUMN founder_year SMALLINT NOT NULL DEFAULT 0")
+
+        # ── wa_campaign_recipients ─────────────────────────────────────────────
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS wa_campaign_recipients (
+                id          BIGSERIAL PRIMARY KEY,
+                campaign_id BIGINT      NOT NULL REFERENCES wa_campaigns(id) ON DELETE CASCADE,
+                tenant_id   INTEGER     NOT NULL,
+                phone       VARCHAR(30) NOT NULL,
+                status      VARCHAR(20) NOT NULL DEFAULT 'pending',
+                error_msg   TEXT,
+                sent_at     TIMESTAMPTZ
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_wcr_campaign
+                ON wa_campaign_recipients(campaign_id)
+        """)
+
         conn.commit()
     except Exception as e:
         conn.rollback()

@@ -1,3 +1,4 @@
+import psycopg2.extras
 """
 subscription_maintenance.py — recurring subscription billing cron job.
 
@@ -66,7 +67,7 @@ def _process_renewals(conn) -> None:
     now      = _utcnow()
     deadline = now + timedelta(hours=RENEW_AHEAD_HRS)
 
-    cur = conn.cursor(dictionary=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
         SELECT
             s.id              AS sub_id,
@@ -192,7 +193,7 @@ def _attempt_renewal(conn, sub: dict, now: datetime) -> None:
         # Top up credit balance
         tokens_add = credits_to_tokens(credits)
         cur.execute(
-            "INSERT IGNORE INTO tenant_balances (tenant_id, token_balance) VALUES (%s, 0)",
+            "INSERT INTO tenant_balances (tenant_id, token_balance) VALUES (%s, 0) ON CONFLICT DO NOTHING",
             (tenant_id,)
         )
         cur.execute(
@@ -360,7 +361,7 @@ def _process_suspensions(conn) -> None:
     now           = _utcnow()
     grace_cutoff  = now - timedelta(days=GRACE_DAYS)
 
-    cur = conn.cursor(dictionary=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
         SELECT s.id AS sub_id, s.tenant_id, s.customer_id,
                s.current_period_end,
@@ -390,7 +391,7 @@ def _process_suspensions(conn) -> None:
                 (sub_id,)
             )
             cur2.execute(
-                "UPDATE api_keys SET is_active=0 WHERE tenant_id=%s AND key_type='paid'",
+                "UPDATE api_keys SET is_active=FALSE WHERE tenant_id=%s AND key_type='paid'",
                 (tenant_id,)
             )
             conn.commit()
@@ -437,7 +438,7 @@ def _process_cancellations(conn) -> None:
     """Cancel subscriptions where cancel_at_period_end=1 and period has ended."""
     now = _utcnow()
 
-    cur = conn.cursor(dictionary=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
         SELECT s.id AS sub_id, s.tenant_id, s.customer_id,
                c.email AS customer_email,
@@ -467,7 +468,7 @@ def _process_cancellations(conn) -> None:
                 (sub_id,)
             )
             cur2.execute(
-                "UPDATE api_keys SET is_active=0 WHERE tenant_id=%s AND key_type='paid'",
+                "UPDATE api_keys SET is_active=FALSE WHERE tenant_id=%s AND key_type='paid'",
                 (tenant_id,)
             )
             conn.commit()

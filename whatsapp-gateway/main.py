@@ -11,15 +11,27 @@ from wa_db import init_wa_tables
 from meta_webhook import router as meta_router
 from wa_proactive import router as proactive_router
 from wa_daily_report import router as daily_report_router, run_daily_reports
+from wa_plan_reset import router as plan_reset_router, run_plan_resets
 
-# ── Scheduler: 07:00 UTC daily = 08:00 WAT ───────────────────────────────────
+# ── Scheduler ─────────────────────────────────────────────────────────────────
 _scheduler = AsyncIOScheduler()
+
+# Daily reports: 07:00 UTC = 08:00 WAT
 _scheduler.add_job(
     run_daily_reports,
     CronTrigger(hour=7, minute=0, timezone="UTC"),
     id="daily_reports",
     replace_existing=True,
-    misfire_grace_time=3600,   # run even if up to 1 hour late
+    misfire_grace_time=3600,
+)
+
+# Billing period reset: 00:05 UTC daily (just after midnight)
+_scheduler.add_job(
+    run_plan_resets,
+    CronTrigger(hour=0, minute=5, timezone="UTC"),
+    id="plan_period_reset",
+    replace_existing=True,
+    misfire_grace_time=3600,
 )
 
 
@@ -27,7 +39,7 @@ _scheduler.add_job(
 async def lifespan(app: FastAPI):
     init_wa_tables()
     _scheduler.start()
-    print("✅ [SCHEDULER] Daily reports scheduled at 07:00 UTC")
+    print("✅ [SCHEDULER] Daily reports: 07:00 UTC | Plan resets: 00:05 UTC")
     yield
     _scheduler.shutdown(wait=False)
     print("🛑 [SCHEDULER] Scheduler stopped")
@@ -38,6 +50,7 @@ app = FastAPI(title="Phixtra WhatsApp Gateway", lifespan=lifespan)
 app.include_router(meta_router)
 app.include_router(proactive_router)
 app.include_router(daily_report_router)
+app.include_router(plan_reset_router)
 
 
 @app.get("/health")

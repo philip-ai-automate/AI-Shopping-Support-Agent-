@@ -277,6 +277,24 @@
   <!-- ═══ RIGHT COLUMN — Actions ═══ -->
   <div class="action-card" style="display:flex;flex-direction:column;gap:14px">
 
+    <!-- Verify Payment -->
+    {% if can_verify_payment %}
+    <div class="card">
+      <div class="detail-section-title">Verify Payment</div>
+      <p class="muted" style="margin-bottom:14px;font-size:13px">
+        The customer has submitted a payment receipt. Confirm that the transfer
+        has arrived in your account before verifying.
+      </p>
+      <form method="POST"
+            action="{{ url_for('portal.order_verify_payment', order_id=order.id) }}"
+            onsubmit="return confirm('Confirm that payment has been received?')">
+        <button type="submit" class="btn btn-primary" style="width:100%;background:var(--good)">
+          ✅ Verify Payment
+        </button>
+      </form>
+    </div>
+    {% endif %}
+
     <!-- Dispatch -->
     {% if can_dispatch %}
     <div class="card">
@@ -362,7 +380,7 @@
     {% endif %}
 
     <!-- If no actions available -->
-    {% if not can_dispatch and not can_deliver and not can_cancel %}
+    {% if not can_verify_payment and not can_dispatch and not can_deliver and not can_cancel %}
     <div style="text-align:center;padding:12px;color:var(--muted);font-size:13px">
       No actions available for this order status.
     </div>

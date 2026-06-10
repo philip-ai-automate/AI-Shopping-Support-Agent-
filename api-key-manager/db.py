@@ -1,19 +1,24 @@
 import os
 import json
-import mysql.connector
-from mysql.connector import Error
+import psycopg2
+import psycopg2.extras
 from dotenv import load_dotenv
 
 load_dotenv()
 
 def get_db_connection():
-    # Simple helper used by both GUI and backend tools
-    return mysql.connector.connect(
-        host=os.getenv("DB_HOST"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        database=os.getenv("DB_NAME"),
-    )
+    try:
+        conn = psycopg2.connect(
+            host=os.getenv("PG_HOST", "localhost"),
+            port=int(os.getenv("PG_PORT", "5432")),
+            user=os.getenv("PG_USER"),
+            password=os.getenv("PG_PASSWORD"),
+            dbname=os.getenv("PG_DB"),
+        )
+        return conn
+    except Exception as e:
+        print("❌ Database connection error:", e)
+        return None
 
 def insert_audit_log(
     admin_username: str | None = None,
@@ -44,7 +49,6 @@ def insert_audit_log(
         cur.close()
         conn.close()
     except Exception:
-        # Intentionally swallow errors: audit logs should never block core operations
         try:
             if 'cur' in locals(): cur.close()
         except Exception:

@@ -1,3 +1,6 @@
+import psycopg2
+import psycopg2.extras
+
 from wa_db import get_db_connection
 
 
@@ -10,11 +13,11 @@ def get_tenant_by_api_key(api_key: str) -> dict | None:
     conn = get_db_connection()
     if not conn:
         return None
-    cur = conn.cursor(dictionary=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cur.execute(
             """
-            SELECT tenant_id, phone_number_id, phixtra_api_key, access_token, verify_token, waba_id
+            SELECT tenant_id, phone_number_id, phixtra_api_key, access_token, verify_token, waba_id, typing_ack_text
             FROM wa_tenants
             WHERE phixtra_api_key = %s AND active = TRUE
             LIMIT 1
@@ -38,11 +41,11 @@ def get_tenant_by_phone_number_id(phone_number_id: str) -> dict | None:
     conn = get_db_connection()
     if not conn:
         return None
-    cur = conn.cursor(dictionary=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cur.execute(
             """
-            SELECT tenant_id, phixtra_api_key, access_token, verify_token, waba_id, app_secret
+            SELECT tenant_id, phixtra_api_key, access_token, verify_token, waba_id, app_secret, typing_ack_text
             FROM wa_tenants
             WHERE phone_number_id = %s AND active = TRUE
             """,

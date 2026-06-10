@@ -1,0 +1,161 @@
+{% extends "portal/base.html" %}
+{% block title %}WhatsApp Report — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+/* ── Stats grid ─────────────────────────────────────────────────────────────── */
+.rpt-stats {
+  display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:28px;
+}
+@media(max-width:860px){ .rpt-stats { grid-template-columns:repeat(2,1fr) } }
+@media(max-width:480px){ .rpt-stats { grid-template-columns:1fr 1fr } }
+
+.rpt-card {
+  background:#fff; border:1px solid var(--line); border-radius:14px; padding:18px 20px;
+}
+.rpt-val  { font-size:30px; font-weight:800; letter-spacing:-.6px; line-height:1.1 }
+.rpt-sub  { font-size:12px; color:var(--muted); margin-top:5px }
+.rpt-pill {
+  display:inline-block; margin-top:8px; font-size:11px; font-weight:700;
+  padding:2px 8px; border-radius:999px;
+}
+.pill-red  { background:#FEF3F2; color:#B42318 }
+.pill-grn  { background:#ECFDF3; color:#027A48 }
+
+/* ── Two-column layout ──────────────────────────────────────────────────────── */
+.rpt-grid { display:grid; grid-template-columns:1fr 320px; gap:20px; align-items:start }
+@media(max-width:860px){ .rpt-grid { grid-template-columns:1fr } }
+
+/* ── Bar chart ──────────────────────────────────────────────────────────────── */
+.chart-card {
+  background:#fff; border:1px solid var(--line); border-radius:14px; padding:20px 24px;
+}
+.chart-title { font-size:13px; font-weight:700; margin-bottom:16px; color:var(--txt) }
+.chart-wrap  { display:flex; align-items:flex-end; gap:5px; height:120px }
+.bar-col     { flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; height:100% }
+.bar-body    { width:100%; border-radius:4px 4px 0 0; background:var(--ink);
+               transition:height .3s ease; min-height:2px; }
+.bar-zero    { background:#e5e7eb }
+.bar-lbl     { font-size:9px; color:var(--muted); white-space:nowrap; transform:rotate(-45deg);
+               transform-origin:top left; margin-top:4px; display:block }
+.bar-col-wrap{ flex:1; display:flex; flex-direction:column; justify-content:flex-end; height:100% }
+
+/* ── Top products ────────────────────────────────────────────────────────────── */
+.prod-rank-card {
+  background:#fff; border:1px solid var(--line); border-radius:14px; overflow:hidden;
+}
+.prod-rank-header {
+  padding:14px 18px; border-bottom:1px solid var(--line);
+  font-size:13px; font-weight:700; background:#fafafa;
+}
+.prod-rank-row {
+  display:flex; align-items:center; gap:12px;
+  padding:11px 18px; border-bottom:1px solid rgba(3,12,24,.05);
+}
+.prod-rank-row:last-child { border-bottom:none }
+.rank-num   { font-size:12px; font-weight:800; color:var(--muted); min-width:18px; text-align:right }
+.rank-name  { flex:1; font-size:13px; font-weight:600; min-width:0;
+              white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.rank-views {
+  font-size:12px; font-weight:700; background:#EFF8FF; color:#1570EF;
+  padding:2px 8px; border-radius:999px; flex-shrink:0;
+}
+.rank-empty { padding:28px; text-align:center; font-size:13px; color:var(--muted) }
+
+.section-hdr { font-size:13px; font-weight:700; margin-bottom:12px; color:var(--txt) }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header" style="margin-bottom:24px">
+  <div>
+    <div class="section-title">WhatsApp Report</div>
+    <p class="muted">Last 30 days · WhatsApp activity summary</p>
+  </div>
+</div>
+
+{# ── Summary cards ─────────────────────────────────────────────────────────── #}
+<div class="rpt-stats">
+
+  <div class="rpt-card">
+    <div class="rpt-val">{{ conversations_30d }}</div>
+    <div class="rpt-sub">Conversations</div>
+  </div>
+
+  <div class="rpt-card">
+    <div class="rpt-val">{{ handoffs_30d }}</div>
+    <div class="rpt-sub">Handoffs to agent</div>
+    {% if conversations_30d %}
+    <span class="rpt-pill {% if handoff_rate > 30 %}pill-red{% else %}pill-grn{% endif %}">
+      {{ handoff_rate }}% of conversations
+    </span>
+    {% endif %}
+  </div>
+
+  <div class="rpt-card">
+    <div class="rpt-val">{{ new_customers_30d }}</div>
+    <div class="rpt-sub">New customers</div>
+  </div>
+
+  <div class="rpt-card">
+    <div class="rpt-val">{{ orders_30d }}</div>
+    <div class="rpt-sub">Orders placed</div>
+    {% if revenue_30d %}
+    <div style="font-size:13px;font-weight:700;color:var(--good);margin-top:6px">
+      ₦{{ "{:,.0f}".format(revenue_30d) }}
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+{# ── Chart + Top products ──────────────────────────────────────────────────── #}
+<div class="rpt-grid">
+
+  {# Daily bar chart #}
+  <div class="chart-card">
+    <div class="chart-title">Daily conversations — last 14 days</div>
+    {% if chart_max == 0 %}
+    <div style="height:120px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px">
+      No conversations yet
+    </div>
+    {% else %}
+    <div class="chart-wrap">
+      {% for d in daily_chart %}
+      {% set pct = (d.conversations / chart_max * 100)|int %}
+      <div class="bar-col">
+        <div class="bar-col-wrap">
+          <div class="bar-body {% if d.conversations == 0 %}bar-zero{% endif %}"
+               style="height:{{ [pct, 2]|max }}%"
+               title="{{ d.day.strftime('%d %b') }}: {{ d.conversations }} conversation{{ 's' if d.conversations != 1 }}">
+          </div>
+        </div>
+        <span class="bar-lbl">{{ d.day.strftime('%-d %b') }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  {# Top products #}
+  <div class="prod-rank-card">
+    <div class="prod-rank-header">Top products browsed on WhatsApp</div>
+    {% if not top_products %}
+    <div class="rank-empty">No product views recorded yet</div>
+    {% else %}
+    {% for p in top_products %}
+    <div class="prod-rank-row">
+      <span class="rank-num">{{ loop.index }}</span>
+      <span class="rank-name" title="{{ p.product_name or p.product_id }}">
+        {{ p.product_name or p.product_id }}
+      </span>
+      <span class="rank-views">{{ p.views }} view{{ 's' if p.views != 1 }}</span>
+    </div>
+    {% endfor %}
+    {% endif %}
+  </div>
+
+</div>
+
+{% endblock %}

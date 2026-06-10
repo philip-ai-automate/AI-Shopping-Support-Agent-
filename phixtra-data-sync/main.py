@@ -4,75 +4,64 @@ import re
 import time
 import threading
 from typing import Any, Dict, List, Optional, Tuple
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import pymysql
-import requests
+import psycopg2
+import psycopg2.extras
 import bcrypt
+from openai import OpenAI
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
 # ─────────────────────────────────────────────────────────────────────
-# PhiXtra Data Sync — PURE PUSH MODE (NO BLOB, NO INDEXER)
+# PhiXtra Data Sync — pgvector edition
 #
-# ✅ Keeps your existing tenant auth + /sync/batch contract
-# ✅ Creates Azure AI Search index with Semantic + Vector profiles
-# ✅ Parallel upload (much faster)
-# ✅ Auto-retry on transient upload errors
-# ✅ Live progress monitor: GET /sync/progress
-# ✅ Optional (protected) rebuild: POST /sync/rebuild-index
+# Same HTTP API contract as before — WordPress plugin unchanged.
+# Products/content now stored in PostgreSQL `documents` table
+# with OpenAI embeddings (text-embedding-3-small, dim=1536).
 # ─────────────────────────────────────────────────────────────────────
 
 load_dotenv()
 
-MYSQL_HOST = os.getenv("DB_HOST", "127.0.0.1")
-MYSQL_USER = os.getenv("DB_USER", "root")
-MYSQL_PASS = os.getenv("DB_PASSWORD", "")
-MYSQL_DB   = os.getenv("DB_NAME", "ai_support")
+PG_HOST = os.getenv("PG_HOST", "localhost")
+PG_PORT = int(os.getenv("PG_PORT", "5432"))
+PG_USER = os.getenv("PG_USER")
+PG_PASS = os.getenv("PG_PASSWORD")
+PG_DB   = os.getenv("PG_DB")
 
-AZ_ENDPOINT = os.getenv("AZURE_SEARCH_ENDPOINT", "").rstrip("/")
-AZ_ADMIN_KEY = os.getenv("AZURE_SEARCH_ADMIN_KEY", "")
-AZ_API_VERSION = os.getenv("AZURE_SEARCH_API_VERSION", "2025-09-01")
+OPENAI_API_KEY   = os.getenv("OPENAI_API_KEY", "")
+OPENAI_EMBED_MODEL = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")
 
-# Azure OpenAI (optional; used for integrated vectorization config and/or dim probe)
-AOAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "").rstrip("/")
-AOAI_KEY = os.getenv("AZURE_OPENAI_KEY", "")
-AOAI_EMBED_DEPLOYMENT = os.getenv("AZURE_OPENAI_EMBED_DEPLOYMENT", "")
-AOAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2024-06-01")
+SYNC_BATCH_SIZE  = int(os.getenv("SYNC_BATCH_SIZE", "500"))
+INTERNAL_ADMIN_SECRET = os.getenv("INTERNAL_ADMIN_SECRET", os.getenv("INTERNAL_CRON_SECRET", "")).strip()
 
-# Embedding dimension (recommended to set explicitly in .env)
-AZURE_SEARCH_EMBED_DIM = os.getenv("AZURE_SEARCH_EMBED_DIM", "").strip()
-
-# Batch handling
-SYNC_BATCH_SIZE = int(os.getenv("SYNC_BATCH_SIZE", "5000"))  # used only for queue warnings
-AZURE_UPLOAD_CHUNK_SIZE = int(os.getenv("AZURE_UPLOAD_CHUNK_SIZE", "500"))  # keep <=1000
-AZURE_UPLOAD_WORKERS = int(os.getenv("AZURE_UPLOAD_WORKERS", "10"))
-AZURE_UPLOAD_RETRIES = int(os.getenv("AZURE_UPLOAD_RETRIES", "3"))
-
-# Protected rebuild endpoint (optional)
-INTERNAL_ADMIN_SECRET = os.getenv("INTERNAL_ADMIN_SECRET", "").strip()
-
-app = FastAPI(title="PhiXtra Data Sync (Pure Push)")
+app = FastAPI(title="PhiXtra Data Sync (pgvector)")
 
 SAFE_KEY_RE = re.compile(r"^[A-Za-z0-9_\-=]+$")
-_EMBED_DIM_CACHE: Optional[int] = None
 
-# Progress store (in-memory, keyed by tenant domain)
 _progress_lock = threading.Lock()
 _progress: Dict[str, Dict[str, Any]] = {}
-
-# Last error store per tenant — shown by Check Sync Status button
 _last_sync_error: Dict[str, str] = {}
 
+_openai_client: Optional[OpenAI] = None
 
-# ─────────────────────── DB / Auth helpers ───────────────────────────
 
-def db():
+def _get_openai() -> OpenAI:
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = OpenAI(api_key=OPENAI_API_KEY)
+    return _openai_client
+
+
+# ─────────────────────────────────────────────────────────────────────
+# DB helpers
+# ─────────────────────────────────────────────────────────────────────
+
+def _pg():
     try:
-        return pymysql.connect(
-            host=MYSQL_HOST, user=MYSQL_USER, password=MYSQL_PASS,
-            database=MYSQL_DB, cursorclass=pymysql.cursors.DictCursor, autocommit=True,
+        return psycopg2.connect(
+            host=PG_HOST, port=PG_PORT, user=PG_USER,
+            password=PG_PASS, dbname=PG_DB,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"DB connection failed: {str(e)}")
@@ -95,24 +84,29 @@ def validate_bearer(authorization: Optional[str], x_phixtra_tenant: Optional[str
     tenant_domain = clean_domain(x_phixtra_tenant) if x_phixtra_tenant else None
 
     try:
-        with db().cursor() as cur:
-            if tenant_domain:
-                cur.execute("""
-                    SELECT k.id, k.tenant_id, k.is_active, k.api_key_hash, t.domain, t.status
-                    FROM api_keys k
-                    JOIN tenants t ON t.id = k.tenant_id
-                    WHERE k.is_active = 1 AND t.status IN ('active', 'pending') AND LOWER(t.domain) = %s
-                    LIMIT 500
-                """, (tenant_domain,))
-            else:
-                cur.execute("""
-                    SELECT k.id, k.tenant_id, k.is_active, k.api_key_hash, t.domain, t.status
-                    FROM api_keys k
-                    JOIN tenants t ON t.id = k.tenant_id
-                    WHERE k.is_active = 1 AND t.status IN ('active', 'pending')
-                    LIMIT 2000
-                """)
-            rows = cur.fetchall()
+        conn = _pg()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        if tenant_domain:
+            cur.execute("""
+                SELECT k.id, k.tenant_id, k.is_active, k.api_key_hash, t.domain, t.status
+                FROM api_keys k
+                JOIN tenants t ON t.id = k.tenant_id
+                WHERE k.is_active = TRUE AND t.status IN ('active', 'pending') AND LOWER(t.domain) = %s
+                LIMIT 500
+            """, (tenant_domain,))
+        else:
+            cur.execute("""
+                SELECT k.id, k.tenant_id, k.is_active, k.api_key_hash, t.domain, t.status
+                FROM api_keys k
+                JOIN tenants t ON t.id = k.tenant_id
+                WHERE k.is_active = TRUE AND t.status IN ('active', 'pending')
+                LIMIT 2000
+            """)
+        rows = cur.fetchall() or []
+        cur.close()
+        conn.close()
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"DB query failed: {str(e)}")
 
@@ -121,20 +115,11 @@ def validate_bearer(authorization: Optional[str], x_phixtra_tenant: Optional[str
         h = row.get("api_key_hash") or ""
         try:
             if bcrypt.checkpw(token_bytes, h.encode("utf-8")):
-                return row
+                return dict(row)
         except Exception:
             continue
 
     raise HTTPException(status_code=401, detail="Invalid or inactive API key")
-
-
-def tenant_index_name(domain: str) -> str:
-    safe = clean_domain(domain)
-    safe = re.sub(r"[^a-z0-9\-]", "-", safe)
-    safe = re.sub(r"-+", "-", safe).strip("-")
-    if not safe or not safe[0].isalpha():
-        safe = "t-" + (safe or "site")
-    return f"phixtra-{safe}"[:128]
 
 
 def make_safe_doc_key(original_id: str, doc_type: str, wp_id: int) -> str:
@@ -150,437 +135,294 @@ def make_safe_doc_key(original_id: str, doc_type: str, wp_id: int) -> str:
     return f"{t}-{wp_id}"
 
 
-def az_headers():
-    return {"Content-Type": "application/json", "api-key": AZ_ADMIN_KEY}
+def stamp_sync_complete(tenant_id: int):
+    try:
+        conn = _pg()
+        cur = conn.cursor()
+        cur.execute("UPDATE tenants SET last_full_sync_at = NOW() WHERE id = %s", (tenant_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"[SYNC] stamp_sync_complete failed (non-fatal): {e}")
 
 
-def aoai_headers():
-    return {"Content-Type": "application/json", "api-key": AOAI_KEY}
+def update_tenant_search_settings(tenant_id: int, index_name: str, semantic_config_name: str = "phixtra-semantic"):
+    """No-op in pgvector mode — tenant uses documents table directly via tenant_id."""
+    pass
 
 
-def _strip_readonly_index_props(index_def: Dict[str, Any]) -> Dict[str, Any]:
-    cleaned = {}
-    for k, v in index_def.items():
-        if k.startswith("@odata.") or k.lower() in ("etag",):
-            continue
-        cleaned[k] = v
-    return cleaned
+# ─────────────────────────────────────────────────────────────────────
+# Embedding
+# ─────────────────────────────────────────────────────────────────────
 
+def _embed_texts(texts: List[str]) -> List[List[float]]:
+    """Generate embeddings for a list of texts.
 
-def _as_text_list(values: Any) -> List[str]:
-    if values is None:
+    Retries up to 3 times with exponential backoff before giving up.
+    On total failure returns empty vectors so documents still save (without
+    semantic search) and the re-embed worker picks them up later.
+    """
+    if not texts:
         return []
-    if isinstance(values, list):
-        return [s for x in values if x is not None and (s := str(x).strip())]
-    s = str(values).strip()
-    return [s] if s else []
+    if not OPENAI_API_KEY:
+        return [[] for _ in texts]
 
-
-def _join_for_semantic(values: Any) -> str:
-    return ", ".join(_as_text_list(values))
-
-
-# ─────────────────────── Embedding dimension ─────────────────────────
-
-def _embed_texts_direct(texts: List[str]) -> List[List[float]]:
-    if not (AOAI_ENDPOINT and AOAI_KEY and AOAI_EMBED_DEPLOYMENT):
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "Cannot determine embedding dimensions. "
-                "Set AZURE_SEARCH_EMBED_DIM in .env (recommended), OR configure "
-                "AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_KEY / AZURE_OPENAI_EMBED_DEPLOYMENT."
-            ),
-        )
-
-    url = f"{AOAI_ENDPOINT}/openai/deployments/{AOAI_EMBED_DEPLOYMENT}/embeddings?api-version={AOAI_API_VERSION}"
-    r = requests.post(url, headers=aoai_headers(), data=json.dumps({"input": texts}), timeout=60)
-    if r.status_code not in (200, 201):
-        raise HTTPException(status_code=500, detail=f"Azure OpenAI embeddings failed: {r.status_code} {r.text}")
-
-    data = r.json()
-    items_sorted = sorted(data.get("data", []), key=lambda x: x.get("index", 0))
-    vectors: List[List[float]] = []
-    for it in items_sorted:
-        emb = it.get("embedding")
-        if not isinstance(emb, list) or not emb:
-            raise HTTPException(status_code=500, detail="Azure OpenAI returned empty embedding")
-        vectors.append([float(x) for x in emb])
-
-    if len(vectors) != len(texts):
-        raise HTTPException(status_code=500, detail="Azure OpenAI returned unexpected embeddings count")
-    return vectors
-
-
-def _ensure_embed_dim() -> int:
-    """Returns the embedding dimension — never raises. Falls back to 1536 (ada-002)."""
-    global _EMBED_DIM_CACHE
-    if _EMBED_DIM_CACHE is not None:
-        return _EMBED_DIM_CACHE
-
-    if AZURE_SEARCH_EMBED_DIM:
+    safe_texts = [(t or "empty")[:8000] for t in texts]
+    last_err = None
+    max_attempts = 3
+    for attempt in range(max_attempts):
         try:
-            d = int(AZURE_SEARCH_EMBED_DIM)
-            if d > 0:
-                _EMBED_DIM_CACHE = d
-                return d
-        except Exception:
-            pass
-
-    if AOAI_ENDPOINT and AOAI_KEY and AOAI_EMBED_DEPLOYMENT:
-        try:
-            vec = _embed_texts_direct(["probe"])[0]
-            _EMBED_DIM_CACHE = len(vec)
-            return _EMBED_DIM_CACHE
-        except Exception:
-            pass
-
-    # Safe default — works for ada-002 and text-embedding-3-small
-    _EMBED_DIM_CACHE = 1536
-    return _EMBED_DIM_CACHE
-
-
-# ─────────────────────── Index schema ────────────────────────────────
-
-def build_index_schema(index_name: str, embed_dim: int) -> Dict[str, Any]:
-    schema: Dict[str, Any] = {
-        "name": index_name,
-        "fields": [
-            {"name": "id", "type": "Edm.String", "key": True, "filterable": True},
-            {"name": "type", "type": "Edm.String", "filterable": True, "facetable": True},
-            {"name": "tenant_id", "type": "Edm.String", "filterable": True},
-            {"name": "site_url", "type": "Edm.String", "filterable": True},
-            {"name": "title", "type": "Edm.String", "searchable": True, "sortable": True, "retrievable": True},
-            {"name": "content", "type": "Edm.String", "searchable": True, "retrievable": True},
-            {"name": "url", "type": "Edm.String", "filterable": True, "retrievable": True},
-            {"name": "updated_at_utc", "type": "Edm.DateTimeOffset", "filterable": True, "sortable": True, "retrievable": True},
-            {"name": "sku", "type": "Edm.String", "searchable": True, "filterable": True, "sortable": True, "retrievable": True},
-            {"name": "brand", "type": "Edm.String", "searchable": True, "filterable": True, "facetable": True, "retrievable": True},
-            {"name": "categories", "type": "Collection(Edm.String)", "searchable": True, "filterable": True, "facetable": True, "retrievable": True},
-            {"name": "tags", "type": "Collection(Edm.String)", "searchable": True, "filterable": True, "facetable": True, "retrievable": True},
-            {"name": "categories_text", "type": "Edm.String", "searchable": True, "retrievable": True},
-            {"name": "tags_text", "type": "Edm.String", "searchable": True, "retrievable": True},
-            {"name": "attributes_text", "type": "Edm.String", "searchable": True, "retrievable": True},
-            {"name": "variants_text", "type": "Edm.String", "searchable": True, "retrievable": True},
-            {"name": "product_type", "type": "Edm.String", "filterable": True, "facetable": True, "retrievable": True},
-            {"name": "in_stock", "type": "Edm.Boolean", "filterable": True, "facetable": True, "retrievable": True},
-            {"name": "price_min", "type": "Edm.Double", "filterable": True, "sortable": True, "facetable": True, "retrievable": True},
-            {"name": "price_max", "type": "Edm.Double", "filterable": True, "sortable": True, "facetable": True, "retrievable": True},
-            {"name": "order_number", "type": "Edm.String", "searchable": True, "filterable": True, "retrievable": True},
-            {"name": "order_status", "type": "Edm.String", "searchable": True, "filterable": True, "facetable": True, "retrievable": True},
-            {"name": "order_total", "type": "Edm.Double", "filterable": True, "sortable": True, "facetable": True, "retrievable": True},
-            {"name": "customer_email", "type": "Edm.String", "searchable": True, "filterable": True, "retrievable": True},
-            {"name": "customer_name", "type": "Edm.String", "searchable": True, "filterable": True, "retrievable": True},
-            {"name": "image_url", "type": "Edm.String", "retrievable": True},
-            {"name": "doc_json", "type": "Edm.String", "retrievable": True},
-            {"name": "raw_json", "type": "Edm.String", "retrievable": True},
-            {
-                "name": "content_vector",
-                "type": "Collection(Edm.Single)",
-                "searchable": True,
-                "retrievable": True,
-                "dimensions": embed_dim,
-                "vectorSearchProfile": "phixtra-vprof",
-            },
-        ],
-        "suggesters": [
-            {
-                "name": "sg",
-                "searchMode": "analyzingInfixMatching",
-                "sourceFields": ["title", "sku", "brand", "categories_text", "tags_text"],
-            }
-        ],
-        "semantic": {
-            "configurations": [
-                {
-                    "name": "phixtra-semantic",
-                    "prioritizedFields": {
-                        "titleField": {"fieldName": "title"},
-                        "prioritizedContentFields": [
-                            {"fieldName": "content"},
-                            {"fieldName": "attributes_text"},
-                            {"fieldName": "variants_text"},
-                        ],
-                        "prioritizedKeywordsFields": [
-                            {"fieldName": "brand"},
-                            {"fieldName": "categories_text"},
-                            {"fieldName": "tags_text"},
-                            {"fieldName": "sku"},
-                            {"fieldName": "order_status"},
-                        ],
-                    },
-                }
-            ]
-        },
-        "vectorSearch": {
-            "profiles": [
-                {"name": "phixtra-vprof", "algorithm": "phixtra-hnsw", "vectorizer": "phixtra-aoai-vec"}
-            ],
-            "algorithms": [
-                {"name": "phixtra-hnsw", "kind": "hnsw"}
-            ],
-        },
-    }
-
-    if AOAI_ENDPOINT and AOAI_KEY and AOAI_EMBED_DEPLOYMENT:
-        schema["vectorSearch"]["vectorizers"] = [
-            {
-                "name": "phixtra-aoai-vec",
-                "kind": "azureOpenAI",
-                "azureOpenAIParameters": {
-                    "resourceUri": AOAI_ENDPOINT,
-                    "deploymentId": AOAI_EMBED_DEPLOYMENT,
-                    "apiKey": AOAI_KEY,
-                    "modelName": AOAI_EMBED_DEPLOYMENT,
-                },
-            }
-        ]
-    else:
-        schema["vectorSearch"]["profiles"][0].pop("vectorizer", None)
-
-    return schema
-
-
-# ─────────────────────── Index CRUD ──────────────────────────────────
-
-def _azure_get_index(index_name: str) -> Tuple[int, str, Optional[Dict[str, Any]]]:
-    r = requests.get(
-        f"{AZ_ENDPOINT}/indexes/{index_name}?api-version={AZ_API_VERSION}",
-        headers=az_headers(), timeout=30,
-    )
-    if r.status_code == 200:
-        try:
-            return r.status_code, r.text, r.json()
-        except Exception:
-            return r.status_code, r.text, None
-    return r.status_code, r.text, None
-
-
-def _schema_without_vectorizer(index_name: str, embed_dim: int) -> Dict[str, Any]:
-    """Index schema with no vectorizer — text + semantic search only. Used as fallback."""
-    schema = build_index_schema(index_name, embed_dim)
-    schema["fields"] = [f for f in schema["fields"] if f["name"] != "content_vector"]
-    vs = schema.get("vectorSearch") or {}
-    vs.pop("vectorizers", None)
-    if vs.get("profiles"):
-        for p in vs["profiles"]:
-            p.pop("vectorizer", None)
-    schema["vectorSearch"] = vs
-    return schema
-
-
-def ensure_index(index_name: str):
-    """
-    Creates or updates the Azure AI Search index for this tenant.
-    Always succeeds — falls back to text-only index if vectorizer config is wrong.
-    """
-    if not AZ_ENDPOINT or not AZ_ADMIN_KEY:
-        raise HTTPException(
-            status_code=500,
-            detail="Azure Search not configured. Check AZURE_SEARCH_ENDPOINT and AZURE_SEARCH_ADMIN_KEY in .env"
-        )
-
-    status, body, current = _azure_get_index(index_name)
-    embed_dim = _ensure_embed_dim()
-
-    if status == 200:
-        # Index exists — add any missing fields and refresh semantic/vector config
-        if not isinstance(current, dict):
-            raise HTTPException(status_code=500, detail="Azure returned invalid index definition")
-        desired = build_index_schema(index_name, embed_dim)
-        current_clean = _strip_readonly_index_props(current)
-        existing_fields = {f.get("name") for f in (current_clean.get("fields") or []) if isinstance(f, dict)}
-        fields = list(current_clean.get("fields") or [])
-        for f in desired["fields"]:
-            if f["name"] not in existing_fields:
-                fields.append(f)
-        current_clean["fields"] = fields
-        current_clean["semantic"] = desired["semantic"]
-        current_clean["vectorSearch"] = desired["vectorSearch"]
-        r_put = requests.put(
-            f"{AZ_ENDPOINT}/indexes/{index_name}?api-version={AZ_API_VERSION}",
-            headers=az_headers(), data=json.dumps(current_clean), timeout=60,
-        )
-        if r_put.status_code not in (200, 201, 204):
-            raise HTTPException(status_code=500, detail=f"Azure index update failed: {r_put.status_code} {r_put.text[:400]}")
-        return
-
-    if status != 404:
-        raise HTTPException(status_code=500, detail=f"Azure index check failed: {status} {body[:400]}")
-
-    # Index does not exist — create it
-    schema = build_index_schema(index_name, embed_dim)
-    r2 = requests.post(
-        f"{AZ_ENDPOINT}/indexes?api-version={AZ_API_VERSION}",
-        headers=az_headers(), data=json.dumps(schema), timeout=60,
-    )
-    if r2.status_code in (200, 201):
-        print(f"[INDEX] Created with vectorizer: {index_name}")
-        return
-
-    # First attempt failed — if 400, the vectorizer config is wrong, try without it
-    if r2.status_code == 400:
-        print(f"[INDEX] Vectorizer rejected (400) — retrying without vectorizer: {r2.text[:200]}")
-        schema_plain = _schema_without_vectorizer(index_name, embed_dim)
-        r3 = requests.post(
-            f"{AZ_ENDPOINT}/indexes?api-version={AZ_API_VERSION}",
-            headers=az_headers(), data=json.dumps(schema_plain), timeout=60,
-        )
-        if r3.status_code in (200, 201):
-            print(f"[INDEX] Created without vectorizer (check AOAI config in .env): {index_name}")
-            return
-        raise HTTPException(
-            status_code=500,
-            detail=f"Azure index create failed. With vectorizer: {r2.status_code} {r2.text[:300]}. Without vectorizer: {r3.status_code} {r3.text[:300]}. Check AZURE_SEARCH_ENDPOINT and AZURE_SEARCH_ADMIN_KEY in .env."
-        )
-
-    raise HTTPException(
-        status_code=500,
-        detail=f"Azure index create failed: {r2.status_code} {r2.text[:400]}"
-    )
-
-
-def delete_index(index_name: str):
-    r = requests.delete(
-        f"{AZ_ENDPOINT}/indexes/{index_name}?api-version={AZ_API_VERSION}",
-        headers=az_headers(), timeout=60,
-    )
-    if r.status_code not in (200, 204, 404):
-        raise HTTPException(status_code=500, detail=f"Azure index delete failed: {r.status_code} {r.text}")
-
-
-# ─────────────────────── Upload (parallel + retry) ───────────────────
-
-def _chunk_list(items: List[Dict[str, Any]], size: int) -> List[List[Dict[str, Any]]]:
-    return [items[i:i + size] for i in range(0, len(items), size)]
-
-
-def _should_retry(status_code: int) -> bool:
-    return status_code in (408, 409, 429, 500, 502, 503, 504)
-
-
-def _az_upload_once(index_name: str, docs: List[Dict[str, Any]]) -> requests.Response:
-    url = f"{AZ_ENDPOINT}/indexes/{index_name}/docs/index?api-version={AZ_API_VERSION}"
-    payload = {"value": docs}
-    return requests.post(url, headers=az_headers(), data=json.dumps(payload), timeout=60)
-
-
-def _az_upload_with_retry(index_name: str, docs: List[Dict[str, Any]], retries: int) -> Tuple[bool, str]:
-    last_err = ""
-    for attempt in range(0, retries + 1):
-        try:
-            r = _az_upload_once(index_name, docs)
-            if r.status_code in (200, 201):
-                return True, ""
-            if r.status_code == 207:
-                try:
-                    data = r.json()
-                except Exception:
-                    data = {"raw": r.text}
-                return False, f"Partial failure (207): {json.dumps(data)[:2000]}"
-            if _should_retry(r.status_code) and attempt < retries:
-                time.sleep(min(8.0, 0.5 * (2 ** attempt)))
-                continue
-            last_err = f"{r.status_code} {r.text}"
-            break
+            resp = _get_openai().embeddings.create(
+                model=OPENAI_EMBED_MODEL,
+                input=safe_texts,
+            )
+            items = sorted(resp.data, key=lambda x: x.index)
+            return [[float(v) for v in item.embedding] for item in items]
         except Exception as e:
-            last_err = str(e)
-            if attempt < retries:
-                time.sleep(min(8.0, 0.5 * (2 ** attempt)))
-                continue
-            break
-    return False, last_err
+            last_err = e
+            if attempt < max_attempts - 1:
+                wait = 2 ** attempt  # 1s, 2s
+                print(f"[SYNC] embedding attempt {attempt + 1}/{max_attempts} failed: {e}. Retrying in {wait}s…")
+                time.sleep(wait)
+    print(f"[SYNC] embedding failed after {max_attempts} attempts — documents stored without embeddings. Error: {last_err}")
+    return [[] for _ in texts]
 
 
-def az_upload_parallel(index_name: str, docs: List[Dict[str, Any]], tenant_domain: str) -> None:
+def _ensure_hybrid_search_schema() -> None:
+    """Idempotent migration: add search_vector column + GIN index + trigger.
+
+    Also backfills any existing rows that have search_vector IS NULL so the
+    keyword side of hybrid search works immediately after a deploy.
+    """
+    try:
+        conn = psycopg2.connect(
+            host=PG_HOST, port=PG_PORT, user=PG_USER,
+            password=PG_PASS, dbname=PG_DB,
+        )
+        cur = conn.cursor()
+        cur.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS currency VARCHAR(3)")
+        cur.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS search_vector tsvector")
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_documents_search_vector ON documents USING GIN(search_vector)"
+        )
+        cur.execute("""
+            CREATE OR REPLACE FUNCTION documents_search_vector_trigger()
+            RETURNS trigger AS $$
+            BEGIN
+                NEW.search_vector := to_tsvector('english',
+                    COALESCE(NEW.title, '')          || ' ' ||
+                    COALESCE(NEW.content, '')        || ' ' ||
+                    COALESCE(NEW.sku, '')            || ' ' ||
+                    COALESCE(NEW.brand, '')          || ' ' ||
+                    COALESCE(NEW.categories_text, '')
+                );
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql
+        """)
+        cur.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_trigger
+                    WHERE tgname = 'tsvector_update'
+                      AND tgrelid = 'documents'::regclass
+                ) THEN
+                    CREATE TRIGGER tsvector_update
+                    BEFORE INSERT OR UPDATE ON documents
+                    FOR EACH ROW EXECUTE FUNCTION documents_search_vector_trigger();
+                END IF;
+            END;
+            $$
+        """)
+        # Backfill rows written before this migration
+        cur.execute("""
+            UPDATE documents
+               SET search_vector = to_tsvector('english',
+                       COALESCE(title, '')          || ' ' ||
+                       COALESCE(content, '')        || ' ' ||
+                       COALESCE(sku, '')            || ' ' ||
+                       COALESCE(brand, '')          || ' ' ||
+                       COALESCE(categories_text, ''))
+             WHERE search_vector IS NULL
+        """)
+        conn.commit()
+        cur.close()
+        conn.close()
+        print("[STARTUP] hybrid search schema ready (search_vector + GIN index + trigger)")
+    except Exception as e:
+        print(f"[STARTUP] _ensure_hybrid_search_schema warning (non-fatal): {e}")
+
+
+_ensure_hybrid_search_schema()
+
+
+def _make_embed_text(d: Dict[str, Any], doc_type: str, title: str) -> str:
+    """Build the text to embed for a document."""
+    parts = []
+    if title:
+        parts.append(title)
+    sku = (d.get("sku") or "").strip()
+    brand = (d.get("brand") or "").strip()
+    cats = (d.get("categories_text") or "").strip()
+    content = (d.get("content") or "").strip()
+    if brand:
+        parts.append(f"Brand: {brand}")
+    if sku:
+        parts.append(f"SKU: {sku}")
+    if cats:
+        parts.append(cats)
+    if content:
+        parts.append(content[:2000])
+    return " | ".join(parts) or "empty"
+
+
+# ─────────────────────────────────────────────────────────────────────
+# PostgreSQL upsert
+# ─────────────────────────────────────────────────────────────────────
+
+def _pg_upsert_docs(tenant_id: int, site_url: str, docs: List[Dict[str, Any]], tenant_domain: str) -> None:
+    """Upsert documents into PostgreSQL documents table with embeddings."""
     total = len(docs)
     if total == 0:
         return
-
-    chunks = _chunk_list(docs, max(1, min(1000, AZURE_UPLOAD_CHUNK_SIZE)))
-    total_chunks = len(chunks)
 
     with _progress_lock:
         _progress[tenant_domain] = {
             "status": "running",
             "total_docs": total,
             "uploaded_docs": 0,
-            "total_chunks": total_chunks,
+            "total_chunks": 1,
             "done_chunks": 0,
             "failed_chunks": 0,
             "last_error": "",
             "updated_at": time.time(),
         }
 
-    def worker(chunk: List[Dict[str, Any]]) -> Tuple[int, bool, str]:
-        ok, err = _az_upload_with_retry(index_name, chunk, AZURE_UPLOAD_RETRIES)
-        return len(chunk), ok, err
-
-    with ThreadPoolExecutor(max_workers=max(1, AZURE_UPLOAD_WORKERS)) as ex:
-        futures = [ex.submit(worker, c) for c in chunks]
-        for fut in as_completed(futures):
-            chunk_len, ok, err = fut.result()
-            with _progress_lock:
-                st = _progress.get(tenant_domain) or {}
-                st["done_chunks"] = int(st.get("done_chunks", 0)) + 1
-                if ok:
-                    st["uploaded_docs"] = int(st.get("uploaded_docs", 0)) + chunk_len
-                else:
-                    st["failed_chunks"] = int(st.get("failed_chunks", 0)) + 1
-                    st["last_error"] = (err or "")[:2000]
-                st["updated_at"] = time.time()
-                _progress[tenant_domain] = st
-
-            if not ok:
-                raise HTTPException(status_code=500, detail=f"Azure upload failed: {err}")
-
-    with _progress_lock:
-        st = _progress.get(tenant_domain) or {}
-        st["status"] = "completed"
-        st["updated_at"] = time.time()
-        _progress[tenant_domain] = st
-
-
-# ─────────────────────── Tenant helpers ──────────────────────────────
-
-def update_tenant_search_settings(tenant_id: int, index_name: str, semantic_config_name: str = "phixtra-semantic"):
     try:
-        conn = db()
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE tenants SET azure_search_index=%s, azure_semantic_config=%s WHERE id=%s",
-                (index_name, semantic_config_name, int(tenant_id)),
-            )
-        try:
-            conn.close()
-        except Exception:
-            pass
-    except Exception:
-        pass
+        # Build embedding texts
+        embed_texts = [d["_embed_text"] for d in docs]
+        vectors = _embed_texts(embed_texts)
 
+        conn = _pg()
+        cur = conn.cursor()
 
-def stamp_sync_complete(tenant_id: int):
-    """
-    Writes last_full_sync_at = NOW() to the tenants row so the onboarding
-    portal can mark Step 6 (Run your first full sync) as complete.
-    Same pattern as update_tenant_search_settings — never raises to the caller.
-    """
-    try:
-        conn = db()
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE tenants SET last_full_sync_at = NOW() WHERE id = %s",
-                (int(tenant_id),)
-            )
-        try:
-            conn.close()
-        except Exception:
-            pass
+        upsert_sql = """
+            INSERT INTO documents
+                (id, tenant_id, type, title, content, url, sku, brand,
+                 price_min, price_max, in_stock, categories_text, site_url,
+                 image_url, currency, embedding, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector, NOW())
+            ON CONFLICT (id) DO UPDATE SET
+                type = EXCLUDED.type,
+                title = EXCLUDED.title,
+                content = EXCLUDED.content,
+                url = EXCLUDED.url,
+                sku = EXCLUDED.sku,
+                brand = EXCLUDED.brand,
+                price_min = EXCLUDED.price_min,
+                price_max = EXCLUDED.price_max,
+                in_stock = EXCLUDED.in_stock,
+                categories_text = EXCLUDED.categories_text,
+                site_url = EXCLUDED.site_url,
+                image_url = EXCLUDED.image_url,
+                currency = EXCLUDED.currency,
+                embedding = EXCLUDED.embedding,
+                updated_at = NOW()
+        """
+
+        upsert_sql_no_vec = """
+            INSERT INTO documents
+                (id, tenant_id, type, title, content, url, sku, brand,
+                 price_min, price_max, in_stock, categories_text, site_url,
+                 image_url, currency, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            ON CONFLICT (id) DO UPDATE SET
+                type = EXCLUDED.type,
+                title = EXCLUDED.title,
+                content = EXCLUDED.content,
+                url = EXCLUDED.url,
+                sku = EXCLUDED.sku,
+                brand = EXCLUDED.brand,
+                price_min = EXCLUDED.price_min,
+                price_max = EXCLUDED.price_max,
+                in_stock = EXCLUDED.in_stock,
+                categories_text = EXCLUDED.categories_text,
+                site_url = EXCLUDED.site_url,
+                image_url = EXCLUDED.image_url,
+                currency = EXCLUDED.currency,
+                updated_at = NOW()
+        """
+
+        for i, doc in enumerate(docs):
+            vec = vectors[i] if i < len(vectors) else []
+            price_min = doc.get("price_min")
+            price_max = doc.get("price_max")
+            in_stock = doc.get("in_stock")
+            currency = (doc.get("currency") or "").strip().upper()[:3] or None
+
+            if vec:
+                vec_literal = "[" + ",".join(str(x) for x in vec) + "]"
+                cur.execute(upsert_sql, (
+                    doc["id"], tenant_id, doc["type"],
+                    doc["title"], doc["content"], doc["url"],
+                    doc["sku"], doc["brand"],
+                    price_min, price_max, in_stock,
+                    doc["categories_text"], site_url,
+                    doc["image_url"], currency, vec_literal,
+                ))
+            else:
+                cur.execute(upsert_sql_no_vec, (
+                    doc["id"], tenant_id, doc["type"],
+                    doc["title"], doc["content"], doc["url"],
+                    doc["sku"], doc["brand"],
+                    price_min, price_max, in_stock,
+                    doc["categories_text"], site_url,
+                    doc["image_url"], currency,
+                ))
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        with _progress_lock:
+            st = _progress.get(tenant_domain) or {}
+            st["uploaded_docs"] = total
+            st["done_chunks"] = 1
+            st["status"] = "completed"
+            st["updated_at"] = time.time()
+            _progress[tenant_domain] = st
+
     except Exception as e:
-        print(f"[SYNC] stamp_sync_complete failed (non-fatal): {e}")
+        with _progress_lock:
+            st = _progress.get(tenant_domain) or {}
+            st["status"] = "failed"
+            st["failed_chunks"] = 1
+            st["last_error"] = str(e)[:2000]
+            st["updated_at"] = time.time()
+            _progress[tenant_domain] = st
+        raise HTTPException(status_code=500, detail=f"pgvector upsert failed: {e}")
 
 
-# ─────────────────────── Request models ──────────────────────────────
+def _pg_delete_docs(tenant_id: int, doc_ids: List[str]) -> None:
+    """Delete documents from the documents table by id list."""
+    if not doc_ids:
+        return
+    conn = _pg()
+    cur = conn.cursor()
+    cur.execute(
+        "DELETE FROM documents WHERE tenant_id = %s AND id = ANY(%s)",
+        (tenant_id, doc_ids),
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Request models
+# ─────────────────────────────────────────────────────────────────────
 
 class SyncItem(BaseModel):
     id: str
@@ -598,7 +440,9 @@ class BatchRequest(BaseModel):
     items: List[SyncItem]
 
 
-# ─────────────────────── Endpoints ───────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────
+# Endpoints
+# ─────────────────────────────────────────────────────────────────────
 
 @app.post("/sync/test")
 def sync_test(
@@ -611,17 +455,30 @@ def sync_test(
 
 @app.get("/health")
 def health():
-    """Public health check — no auth required. Use to verify server is running."""
-    az_ok = bool(AZ_ENDPOINT and AZ_ADMIN_KEY)
-    aoai_ok = bool(AOAI_ENDPOINT and AOAI_KEY and AOAI_EMBED_DEPLOYMENT)
+    """Public health check — no auth required."""
     issues = []
-    if not az_ok:
-        issues.append("AZURE_SEARCH_ENDPOINT or AZURE_SEARCH_ADMIN_KEY missing from .env")
-    if not aoai_ok:
-        issues.append("Azure OpenAI not configured — vector search disabled")
-    if not AZURE_SEARCH_EMBED_DIM:
-        issues.append("AZURE_SEARCH_EMBED_DIM not set — add AZURE_SEARCH_EMBED_DIM=1536 to .env")
-    return {"ok": az_ok, "status": "ready" if az_ok else "misconfigured", "issues": issues}
+    pg_ok = False
+    try:
+        conn = _pg()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM documents")
+        doc_count = cur.fetchone()[0]
+        cur.close()
+        conn.close()
+        pg_ok = True
+    except Exception as e:
+        issues.append(f"PostgreSQL unavailable: {e}")
+        doc_count = None
+
+    if not OPENAI_API_KEY:
+        issues.append("OPENAI_API_KEY missing — embeddings disabled")
+
+    return {
+        "ok": pg_ok,
+        "status": "ready" if pg_ok else "misconfigured",
+        "document_count": doc_count,
+        "issues": issues,
+    }
 
 
 @app.get("/sync/progress")
@@ -640,37 +497,29 @@ def sync_status(
     authorization: Optional[str] = Header(default=None),
     x_phixtra_tenant: Optional[str] = Header(default=None),
 ):
-    """
-    Returns index status for this tenant — called by the WordPress
-    'Check Sync Status' button to show document count and any errors.
-    """
+    """Returns document count for this tenant from the documents table."""
     auth = validate_bearer(authorization, x_phixtra_tenant)
     tenant_domain = clean_domain(auth["domain"])
-    index_name = tenant_index_name(tenant_domain)
+    tenant_id = int(auth.get("tenant_id") or 0)
 
-    az_status, _, az_index = _azure_get_index(index_name)
-    index_exists = az_status == 200
     doc_count = None
-
-    if index_exists:
-        try:
-            r = requests.get(
-                f"{AZ_ENDPOINT}/indexes/{index_name}/stats?api-version={AZ_API_VERSION}",
-                headers=az_headers(), timeout=15,
-            )
-            if r.status_code == 200:
-                doc_count = r.json().get("documentCount")
-        except Exception:
-            pass
-
-    # Retrieve last stored error for this tenant (stored by sync_batch on failure)
     last_error = _last_sync_error.get(tenant_domain, "")
+
+    try:
+        conn = _pg()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM documents WHERE tenant_id = %s", (tenant_id,))
+        doc_count = cur.fetchone()[0]
+        cur.close()
+        conn.close()
+    except Exception as e:
+        last_error = str(e)
 
     return {
         "ok": True,
         "tenant_domain": tenant_domain,
-        "index_name": index_name,
-        "index_exists": index_exists,
+        "index_name": f"pg-tenant-{tenant_id}",
+        "index_exists": doc_count is not None,
         "document_count": doc_count,
         "last_error": last_error,
     }
@@ -681,19 +530,12 @@ def sync_complete(
     authorization: Optional[str] = Header(default=None),
     x_phixtra_tenant: Optional[str] = Header(default=None),
 ):
-    """
-    Called by the WordPress PhiXtra Export plugin after it has finished
-    queuing all sync batches. Stamps last_full_sync_at on the tenant row
-    so the onboarding portal marks Step 6 (Run your first full sync) as
-    complete with a green tick — without relying on chat activity.
-    """
     auth = validate_bearer(authorization, x_phixtra_tenant)
     tenant_id = int(auth.get("tenant_id") or 0)
     tenant_domain = clean_domain(auth["domain"])
 
     stamp_sync_complete(tenant_id)
 
-    # Update in-memory progress to reflect explicit completion
     with _progress_lock:
         st = _progress.get(tenant_domain) or {}
         st["status"] = "completed"
@@ -716,93 +558,117 @@ def sync_batch(
     if clean_domain(req.tenant_id) != tenant_domain:
         raise HTTPException(status_code=403, detail="tenant_id mismatch")
 
-    index_name = tenant_index_name(tenant_domain)
-
-    try:
-        ensure_index(index_name)
-    except HTTPException as e:
-        _last_sync_error[tenant_domain] = f"Index error: {str(e.detail)[:600]}"
-        raise
-    update_tenant_search_settings(int(auth.get("tenant_id") or 0), index_name, "phixtra-semantic")
+    tenant_id = int(auth.get("tenant_id") or 0)
 
     if req.mode not in ("upsert", "delete"):
         raise HTTPException(status_code=400, detail="mode must be upsert or delete")
 
-    azure_docs: List[Dict[str, Any]] = []
+    if req.mode == "delete":
+        doc_ids = [make_safe_doc_key(it.id, it.type, it.wp_id) for it in req.items]
+        try:
+            _pg_delete_docs(tenant_id, doc_ids)
+            _last_sync_error[tenant_domain] = ""
+        except Exception as e:
+            _last_sync_error[tenant_domain] = str(e)[:600]
+            raise HTTPException(status_code=500, detail=str(e))
+        return {"ok": True, "index": f"pg-tenant-{tenant_id}", "count": len(doc_ids), "queue_has_more": False}
+
+    # Build document rows for upsert
+    pg_docs: List[Dict[str, Any]] = []
     for it in req.items:
         d = it.doc or {}
-        r = it.raw or {}
 
         safe_key = make_safe_doc_key(it.id, it.type, it.wp_id)
-        action = "delete" if req.mode == "delete" else "mergeOrUpload"
+        title = (d.get("title") or it.raw.get("name") or it.raw.get("title") or "").strip()
+        content = (d.get("content") or "").strip()
+        categories_text = (
+            d.get("categories_text")
+            or ", ".join([str(c) for c in (d.get("categories") or []) if c])
+        ).strip()
 
-        categories = d.get("categories") or []
-        tags = d.get("tags") or []
+        price_min_raw = d.get("price_min")
+        price_max_raw = d.get("price_max")
+        try:
+            price_min = float(price_min_raw) if price_min_raw not in (None, "", 0, "0") else None
+        except Exception:
+            price_min = None
+        try:
+            price_max = float(price_max_raw) if price_max_raw not in (None, "", 0, "0") else None
+        except Exception:
+            price_max = None
 
-        doc_out: Dict[str, Any] = {
-            "@search.action": action,
+        in_stock = bool(d.get("in_stock")) if it.type == "product" else None
+
+        pg_docs.append({
             "id": safe_key,
             "type": it.type,
-            "tenant_id": req.tenant_id,
-            "site_url": req.site_url,
-            "updated_at_utc": it.updated_at_utc,
-            "url": d.get("url") or r.get("permalink") or "",
-            "title": d.get("title") or r.get("name") or r.get("title") or "",
-            "content": d.get("content") or "",
-            "sku": d.get("sku") or "",
-            "brand": d.get("brand") or "",
-            "categories": categories,
-            "tags": tags,
-            "categories_text": d.get("categories_text") or _join_for_semantic(categories),
-            "tags_text": d.get("tags_text") or _join_for_semantic(tags),
-            "attributes_text": d.get("attributes_text") or "",
-            "variants_text": d.get("variants_text") or "",
-            "product_type": d.get("product_type") or "",
-            "in_stock": bool(d.get("in_stock")) if it.type == "product" else False,
-            "price_min": float(d.get("price_min") or 0.0),
-            "price_max": float(d.get("price_max") or 0.0),
-            "order_number": d.get("order_number") or "",
-            "order_status": d.get("order_status") or "",
-            "order_total": float(d.get("order_total") or 0.0),
-            "customer_email": d.get("customer_email") or "",
-            "customer_name": d.get("customer_name") or "",
-            "image_url": d.get("image_url") or "",
-            "doc_json": json.dumps({"_source_id": it.id, **d}, ensure_ascii=False),
-            "raw_json": json.dumps(r, ensure_ascii=False),
-        }
-
-        vec = d.get("content_vector")
-        if isinstance(vec, list) and len(vec) > 0:
-            try:
-                doc_out["content_vector"] = [float(x) for x in vec]
-            except Exception:
-                pass
-
-        azure_docs.append(doc_out)
+            "title": title,
+            "content": content,
+            "url": (d.get("url") or it.raw.get("permalink") or "").strip(),
+            "sku": (d.get("sku") or "").strip(),
+            "brand": (d.get("brand") or "").strip(),
+            "price_min": price_min,
+            "price_max": price_max,
+            "in_stock": in_stock,
+            "categories_text": categories_text,
+            "image_url": (d.get("image_url") or "").strip(),
+            "currency": (d.get("currency") or "").strip().upper()[:3],
+            "_embed_text": _make_embed_text(d, it.type, title),
+        })
 
     try:
-        az_upload_parallel(index_name, azure_docs, tenant_domain)
-        _last_sync_error[tenant_domain] = ""  # clear on success
+        _pg_upsert_docs(tenant_id, req.site_url, pg_docs, tenant_domain)
+        _last_sync_error[tenant_domain] = ""
     except HTTPException as e:
         _last_sync_error[tenant_domain] = str(e.detail)[:600]
         raise
 
-    queue_has_more = (req.mode == "upsert" and len(azure_docs) >= SYNC_BATCH_SIZE)
+    queue_has_more = (req.mode == "upsert" and len(pg_docs) >= SYNC_BATCH_SIZE)
 
-    # ── Passive completion stamp ──────────────────────────────────────────────
-    # If queue_has_more is False this batch was smaller than SYNC_BATCH_SIZE,
-    # meaning it was the final (or only) batch. Stamp last_full_sync_at now as
-    # a safety net in case the WordPress plugin does not call /sync/complete.
     if not queue_has_more:
-        stamp_sync_complete(int(auth.get("tenant_id") or 0))
-    # ─────────────────────────────────────────────────────────────────────────
+        stamp_sync_complete(tenant_id)
 
-    resp: Dict[str, Any] = {"ok": True, "index": index_name, "count": len(azure_docs), "queue_has_more": queue_has_more}
+    resp: Dict[str, Any] = {
+        "ok": True,
+        "index": f"pg-tenant-{tenant_id}",
+        "count": len(pg_docs),
+        "queue_has_more": queue_has_more,
+    }
     if queue_has_more:
-        resp["warning"] = (
-            f"Batch was very large ({len(azure_docs)} items). If your WordPress host times out, reduce batch size slightly."
-        )
+        resp["warning"] = f"Batch was very large ({len(pg_docs)} items). Consider reducing batch size."
     return resp
+
+
+@app.post("/sync/clear")
+def sync_clear(
+    authorization: Optional[str] = Header(default=None),
+    x_phixtra_tenant: Optional[str] = Header(default=None),
+):
+    """
+    Delete all product/content documents for this tenant (keeps verified_spec rows).
+    Authenticated with the same bearer token used for /sync/batch.
+    Called by the export plugin's Clean Rebuild action before re-sending all products.
+    """
+    auth = validate_bearer(authorization, x_phixtra_tenant)
+    tenant_id = int(auth.get("tenant_id") or 0)
+    tenant_domain = clean_domain(auth.get("domain") or "")
+
+    conn = _pg()
+    cur = conn.cursor()
+    cur.execute(
+        "DELETE FROM documents WHERE tenant_id = %s AND type != 'verified_spec'",
+        (tenant_id,),
+    )
+    conn.commit()
+    deleted = cur.rowcount
+    cur.close()
+    conn.close()
+
+    with _progress_lock:
+        _progress[tenant_domain] = {"status": "idle", "updated_at": time.time()}
+
+    print(f"[SYNC] /sync/clear tenant_id={tenant_id} deleted={deleted} docs")
+    return {"ok": True, "deleted": deleted, "index": f"pg-tenant-{tenant_id}"}
 
 
 @app.post("/sync/rebuild-index")
@@ -811,17 +677,25 @@ def rebuild_index(
     x_phixtra_tenant: Optional[str] = Header(default=None),
     x_internal_admin_secret: Optional[str] = Header(default=None),
 ):
+    """Delete all documents for this tenant and reset progress."""
     if not INTERNAL_ADMIN_SECRET:
         raise HTTPException(status_code=403, detail="INTERNAL_ADMIN_SECRET is not set")
-
     if x_internal_admin_secret != INTERNAL_ADMIN_SECRET:
         raise HTTPException(status_code=403, detail="Forbidden")
 
     auth = validate_bearer(authorization, x_phixtra_tenant)
     tenant_domain = clean_domain(auth["domain"])
-    index_name = tenant_index_name(tenant_domain)
+    tenant_id = int(auth.get("tenant_id") or 0)
 
-    delete_index(index_name)
-    ensure_index(index_name)
+    conn = _pg()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM documents WHERE tenant_id = %s AND type != 'verified_spec'", (tenant_id,))
+    conn.commit()
+    deleted = cur.rowcount
+    cur.close()
+    conn.close()
 
-    return {"ok": True, "message": "Index rebuilt", "index": index_name}
+    with _progress_lock:
+        _progress[tenant_domain] = {"status": "idle", "updated_at": time.time()}
+
+    return {"ok": True, "message": f"Deleted {deleted} documents for tenant {tenant_id}", "index": f"pg-tenant-{tenant_id}"}

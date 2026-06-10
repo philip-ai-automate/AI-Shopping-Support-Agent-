@@ -7,6 +7,7 @@ Table used (created by portal_migrations.py):
 
 This module NEVER raises to the caller — failures are printed and swallowed.
 """
+import psycopg2.extras
 from db import get_db_connection
 
 
@@ -22,10 +23,6 @@ def save_push_subscription(
     Insert a push subscription if one with the same p256dh key doesn't already
     exist for this (tenant_id, session_id) pair.
 
-    p256dh is the browser-generated public encryption key and uniquely identifies
-    a single browser subscription, so we use the first 255 characters as a
-    deduplication key (full value is stored in the endpoint TEXT column).
-
     Returns:
         int   — the row id of the new (or existing) subscription
         None  — on DB error
@@ -33,10 +30,9 @@ def save_push_subscription(
     conn = get_db_connection()
     if not conn:
         return None
-    cur  = conn.cursor(dictionary=True, buffered=True)
-    cur2 = conn.cursor(buffered=True)
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur2 = conn.cursor()
     try:
-        # Deduplication: same browser tab will try to subscribe on every cart action
         p256dh_key = p256dh[:255]
         cur.execute(
             """
@@ -55,11 +51,13 @@ def save_push_subscription(
             INSERT INTO push_subscriptions
                 (tenant_id, session_id, endpoint, p256dh, auth, user_agent)
             VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id
             """,
             (tenant_id, session_id, endpoint, p256dh, auth, user_agent),
         )
         conn.commit()
-        return cur2.lastrowid
+        row = cur2.fetchone()
+        return int(row[0]) if row else None
 
     except Exception as e:
         print("⚠️ save_push_subscription failed:", e)
@@ -86,7 +84,7 @@ def get_push_subscriptions_for_session(
     conn = get_db_connection()
     if not conn:
         return []
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cur.execute(
             """
@@ -98,7 +96,7 @@ def get_push_subscriptions_for_session(
             """,
             (tenant_id, session_id),
         )
-        return cur.fetchall() or []
+        return [dict(r) for r in (cur.fetchall() or [])]
     except Exception as e:
         print("⚠️ get_push_subscriptions_for_session failed:", e)
         return []

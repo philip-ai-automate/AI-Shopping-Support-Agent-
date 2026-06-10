@@ -14,6 +14,7 @@ All operations are best-effort — failures are logged but never crash /chat.
 import os
 import re
 import smtplib
+import psycopg2.extras
 from email.message import EmailMessage
 from db import get_db_connection
 
@@ -70,6 +71,7 @@ def _log_handoff_db(
             INSERT INTO handoff_requests
                 (tenant_id, session_id, whatsapp_number, visitor_message, status)
             VALUES (%s, %s, %s, %s, 'pending')
+            RETURNING id
             """,
             (
                 tenant_id,
@@ -79,7 +81,8 @@ def _log_handoff_db(
             ),
         )
         conn.commit()
-        new_id = cur.lastrowid
+        row = cur.fetchone()
+        new_id = int(row[0]) if row else None
         cur.close()
         conn.close()
         return new_id
@@ -104,14 +107,14 @@ def _get_tenant_contact_email(tenant_id: int) -> str:
         if not conn:
             print(f"⚠️ [HANDOFF] DB connection failed — cannot fetch tenant email for tenant_id={tenant_id}")
             return ""
-        cur = conn.cursor(dictionary=True)
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         # First try: dedicated handoff notification email column (may not exist yet)
         try:
             cur.execute(
                 """
                 SELECT handoff_notify_email, email FROM customers
-                WHERE tenant_id = %s AND is_active = 1
+                WHERE tenant_id = %s AND is_active = TRUE
                 ORDER BY email_verified DESC, id ASC LIMIT 1
                 """,
                 (tenant_id,),
@@ -132,7 +135,7 @@ def _get_tenant_contact_email(tenant_id: int) -> str:
                 cur.execute(
                     """
                     SELECT email FROM customers
-                    WHERE tenant_id = %s AND is_active = 1
+                    WHERE tenant_id = %s AND is_active = TRUE
                     ORDER BY email_verified DESC, id ASC LIMIT 1
                     """,
                     (tenant_id,),
@@ -162,7 +165,7 @@ def _get_chat_summary(tenant_id: int, session_id: str) -> str:
         conn = get_db_connection()
         if not conn:
             return ""
-        cur = conn.cursor(dictionary=True)
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
             "SELECT summary_text FROM chat_summaries WHERE session_id=%s AND tenant_id=%s",
             (session_id, tenant_id),
@@ -191,11 +194,11 @@ def build_handoff_instruction(tenant_id: int) -> str:
         conn = get_db_connection()
         if not conn:
             return ""
-        cur = conn.cursor(dictionary=True)
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             SELECT trigger_text, trigger_type
             FROM handoff_rules
-            WHERE tenant_id = %s AND is_active = 1
+            WHERE tenant_id = %s AND is_active = TRUE
             ORDER BY sort_order ASC, id ASC
         """, (tenant_id,))
         rows = cur.fetchall() or []
@@ -325,7 +328,7 @@ def update_handoff_contact(
     try:
         conn = get_db_connection()
         if conn:
-            cur = conn.cursor(dictionary=True)
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute(
                 """
                 SELECT visitor_message, whatsapp_number
@@ -361,9 +364,11 @@ def update_handoff_contact(
                     SET visitor_name    = %s,
                         visitor_email   = %s,
                         whatsapp_number = COALESCE(NULLIF(%s,''), whatsapp_number)
-                    WHERE session_id = %s AND tenant_id = %s AND status = 'pending'
-                    ORDER BY id DESC
-                    LIMIT 1
+                    WHERE id = (
+                        SELECT id FROM handoff_requests
+                        WHERE session_id = %s AND tenant_id = %s AND status = 'pending'
+                        ORDER BY id DESC LIMIT 1
+                    )
                     """,
                     (
                         (visitor_name  or "")[:200],
@@ -379,9 +384,11 @@ def update_handoff_contact(
                     """
                     UPDATE handoff_requests
                     SET whatsapp_number = COALESCE(NULLIF(%s,''), whatsapp_number)
-                    WHERE session_id = %s AND tenant_id = %s AND status = 'pending'
-                    ORDER BY id DESC
-                    LIMIT 1
+                    WHERE id = (
+                        SELECT id FROM handoff_requests
+                        WHERE session_id = %s AND tenant_id = %s AND status = 'pending'
+                        ORDER BY id DESC LIMIT 1
+                    )
                     """,
                     (
                         final_phone,

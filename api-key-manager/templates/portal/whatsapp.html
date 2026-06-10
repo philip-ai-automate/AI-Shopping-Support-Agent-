@@ -215,6 +215,34 @@
   {% endif %}
 </div>
 
+<!-- ── Agent Behaviour Settings ──────────────────────────────────────────── -->
+{% if connection and connection.active %}
+<div class="card" style="margin-bottom:20px">
+  <div class="card-title">Agent Behaviour</div>
+  <p class="muted" style="font-size:13px;margin-bottom:16px">
+    Customise how your AI agent responds to customers on WhatsApp.
+  </p>
+
+  <form method="POST" action="{{ url_for('portal.whatsapp_save_ack_text') }}">
+    <div class="form-group" style="margin-bottom:12px">
+      <label style="font-weight:600;font-size:13px;display:block;margin-bottom:6px">
+        Instant acknowledgement message
+      </label>
+      <p class="muted" style="font-size:12px;margin-bottom:8px">
+        Sent immediately when a customer messages, before the AI finishes thinking. Gives instant feedback that the bot is active. Leave blank to disable.
+      </p>
+      <div style="display:flex;gap:10px;align-items:center">
+        <input type="text" name="typing_ack_text" maxlength="200"
+               value="{{ connection.typing_ack_text or '' }}"
+               placeholder="e.g.  ⏳  or  Got it, one moment..."
+               style="flex:1;padding:8px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px;background:var(--bg)">
+        <button type="submit" class="btn btn-sm btn-primary">Save</button>
+      </div>
+    </div>
+  </form>
+</div>
+{% endif %}
+
 <!-- ── QR Code Modal ──────────────────────────────────────────────────────── -->
 {% if connection and connection.active %}
 <div class="modal-overlay" id="qrModal" onclick="if(event.target===this)this.classList.remove('open')">

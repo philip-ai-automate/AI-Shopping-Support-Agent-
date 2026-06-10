@@ -266,6 +266,49 @@
 </div>
 
 {# ── FEATURE MANAGEMENT (NEW) ───────────────────────────────────────────────── #}
+<div class="card" style="margin-bottom:16px; border:2px solid #d1fae5;">
+  <div class="card-title" style="color:#065f46;">📋 Plan Assignment</div>
+  <p style="font-size:13px;color:#6b7280;margin:0 0 16px 0">
+    Current plan: <strong>{{ customer.plan_name }}</strong>
+    &nbsp;·&nbsp;
+    {{ msgs_used }} / {{ customer.ai_messages_limit if customer.ai_messages_limit != -1 else '∞' }}
+    AI messages used this period
+    &nbsp;·&nbsp;
+    {{ customer.billing_cycle | capitalize }} billing
+  </p>
+  <form method="POST"
+        action="{{ url_for('portal_admin.admin_plans_assign', tenant_id=customer.tenant_id) }}"
+        style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+    <div>
+      <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">Plan</label>
+      <select name="plan_id"
+              style="padding:8px 12px;border-radius:9px;border:1px solid rgba(3,12,24,.18);
+                     font-size:13px;font-family:inherit;background:#fff;min-width:140px">
+        {% for p in all_plans %}
+        <option value="{{ p.id }}" {% if p.slug == customer.plan_slug %}selected{% endif %}>
+          {{ p.name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">Billing cycle</label>
+      <select name="billing_cycle"
+              style="padding:8px 12px;border-radius:9px;border:1px solid rgba(3,12,24,.18);
+                     font-size:13px;font-family:inherit;background:#fff">
+        <option value="monthly" {% if customer.billing_cycle == 'monthly' %}selected{% endif %}>Monthly</option>
+        <option value="annual"  {% if customer.billing_cycle == 'annual'  %}selected{% endif %}>Annual (5% off)</option>
+      </select>
+    </div>
+    <div style="align-self:flex-end">
+      <button type="submit" class="btn btn-primary btn-sm"
+              onclick="return confirm('Update plan for {{ customer.tenant_name }}?')">
+        Save Plan
+      </button>
+    </div>
+  </form>
+</div>
+
 <div class="card" style="margin-bottom:16px; border:2px solid #dbeafe;">
   <div class="card-title" style="color:#1d4ed8;">🔌 Feature Management</div>
   <p style="font-size:13px; color:#6b7280; margin:0 0 16px 0;">
@@ -467,11 +510,131 @@
       </div>
     </div>
 
+    {# WhatsApp Message Templates #}
+    <div style="display:flex; align-items:flex-start; gap:12px; padding:14px;
+                background:#f0fdf4; border:1px solid #6ee7b7; border-radius:8px; margin-bottom:10px;">
+      <input type="checkbox"
+             name="feat_wa_message_templates"
+             id="feat_wa_message_templates"
+             style="width:auto; margin-top:3px;"
+             {% if tenant_features.get('whatsapp_message_templates') %}checked{% endif %}/>
+      <div style="flex:1">
+        <label for="feat_wa_message_templates" style="margin:0; font-weight:700; cursor:pointer; font-size:14px;">
+          📩 WhatsApp Message Templates
+        </label>
+        <p style="margin:4px 0 0 0; font-size:12px; color:#374151;">
+          Enables the Message Templates page in the WhatsApp section of the portal. Lets the merchant
+          map Meta-approved templates to automated events — cart abandonment and order status updates.
+          Requires the WooCommerce plugin to be installed on the merchant's site.
+        </p>
+        <p style="margin:6px 0 0 0; font-size:11px; color:#6b7280;">
+          Current status:
+          {% if tenant_features.get('whatsapp_message_templates') %}
+            <span style="color:#059669; font-weight:700;">✓ ACTIVE</span>
+          {% else %}
+            <span style="color:#9ca3af; font-weight:700;">✗ Inactive</span>
+          {% endif %}
+        </p>
+      </div>
+    </div>
+
 <button type="submit" class="btn btn-primary btn-sm"
             onclick="return confirm('Save feature settings for this customer?')">
       💾 Save Feature Settings
     </button>
   </form>
+</div>
+{# ──────────────────────────────────────────────────────────────────────────── #}
+
+{# ── SEARCH INDEX MANAGEMENT (admin-only) ─────────────────────────────────── #}
+<div class="card" style="margin-bottom:16px; border:2px solid #fca5a5;">
+  <div class="card-title" style="color:#991b1b;">🗄️ Search Index Management</div>
+  <p style="font-size:13px; color:#6b7280; margin:0 0 12px 0;">
+    Delete this tenant's imported documents from the PostgreSQL / pgvector index.
+    Deleted documents are <strong>permanently removed</strong> until the customer runs a Full Sync
+    from their WordPress plugin (<em>PhiXtra AI → PhiXtra Export → PhiXtra Sync tab</em>).
+    The <strong>verified_spec</strong> type is never deleted here.
+  </p>
+
+  {# ── Document count table ── #}
+  {% set total_docs = doc_counts.values()|sum %}
+  <div class="table-wrap" style="margin-bottom:18px;">
+    <table>
+      <thead>
+        <tr>
+          <th>Document type</th>
+          <th style="text-align:right;">Count</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for dtype in ['product', 'post', 'page', 'order', 'customer'] %}
+        {% set cnt = doc_counts.get(dtype, 0) %}
+        <tr>
+          <td>
+            {% if dtype == 'product' %}🛍️{% elif dtype == 'post' %}📝{% elif dtype == 'page' %}📄{% elif dtype == 'order' %}🧾{% elif dtype == 'customer' %}👤{% endif %}
+            {{ dtype | capitalize }}s
+          </td>
+          <td style="text-align:right; font-family:monospace;">
+            {% if cnt > 0 %}<strong>{{ "{:,}".format(cnt) }}</strong>{% else %}<span class="muted">0</span>{% endif %}
+          </td>
+          <td>
+            {% if cnt > 0 %}
+            <form method="POST"
+                  action="{{ url_for('portal_admin.customer_rebuild_index', customer_id=customer.id) }}"
+                  style="display:inline"
+                  onsubmit="return confirm('Delete all {{ "{:,}".format(cnt) }} {{ dtype }} documents for {{ customer.domain }}?\n\nThe customer will need to run Full Sync to re-import them.')">
+              <input type="hidden" name="doc_type" value="{{ dtype }}"/>
+              <button class="btn btn-danger btn-sm" style="font-size:11px;padding:3px 10px;">
+                Delete {{ dtype }}s
+              </button>
+            </form>
+            {% else %}
+            <span class="muted" style="font-size:12px;">nothing to delete</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+
+        {# Other types (e.g. verified_spec shown read-only) #}
+        {% for dtype, cnt in doc_counts.items() %}
+          {% if dtype not in ['product', 'post', 'page', 'order', 'customer'] %}
+          <tr style="background:rgba(0,0,0,0.02)">
+            <td><span class="muted">{{ dtype }}</span> <span style="font-size:10px;color:#9ca3af">(preserved)</span></td>
+            <td style="text-align:right; font-family:monospace;" class="muted">{{ "{:,}".format(cnt) }}</td>
+            <td><span class="muted" style="font-size:12px;">—</span></td>
+          </tr>
+          {% endif %}
+        {% endfor %}
+
+        <tr style="border-top:2px solid var(--line); font-weight:700;">
+          <td>Total (deletable)</td>
+          <td style="text-align:right; font-family:monospace;">
+            {% set deletable = doc_counts.get('product',0) + doc_counts.get('post',0) + doc_counts.get('page',0) + doc_counts.get('order',0) + doc_counts.get('customer',0) %}
+            {{ "{:,}".format(deletable) }}
+          </td>
+          <td>
+            {% if deletable > 0 %}
+            <form method="POST"
+                  action="{{ url_for('portal_admin.customer_rebuild_index', customer_id=customer.id) }}"
+                  style="display:inline"
+                  onsubmit="return confirm('⚠️ DELETE ALL {{ "{:,}".format(deletable) }} documents for {{ customer.domain }}?\n\nThis clears all products, posts, pages, orders and customers from the index.\n\nThe customer will need to run a Full Sync to re-import everything.\n\nAre you sure?')">
+              <input type="hidden" name="doc_type" value=""/>
+              <button class="btn btn-danger btn-sm">🗑️ Delete All</button>
+            </form>
+            {% else %}
+            <span class="muted" style="font-size:12px;">index is empty</span>
+            {% endif %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p style="font-size:11px; color:#9ca3af; margin:0;">
+    After deleting, the customer re-imports by going to <strong>WordPress → PhiXtra AI → PhiXtra Export → PhiXtra Sync tab → Full Sync</strong>.
+    All actions are recorded in the audit log below.
+  </p>
 </div>
 {# ──────────────────────────────────────────────────────────────────────────── #}
 

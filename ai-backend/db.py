@@ -1,21 +1,22 @@
 import os
 import json
-import mysql.connector
-from mysql.connector import Error
+import psycopg2
+import psycopg2.extras
 from dotenv import load_dotenv
 
 load_dotenv()
 
 def get_db_connection():
     try:
-        conn = mysql.connector.connect(
-            host=os.getenv("DB_HOST"),
-            user=os.getenv("DB_USER"),
-            password=os.getenv("DB_PASSWORD"),
-            database=os.getenv("DB_NAME"),
+        conn = psycopg2.connect(
+            host=os.getenv("PG_HOST", "localhost"),
+            port=int(os.getenv("PG_PORT", "5432")),
+            user=os.getenv("PG_USER"),
+            password=os.getenv("PG_PASSWORD"),
+            dbname=os.getenv("PG_DB"),
         )
         return conn
-    except Error as e:
+    except Exception as e:
         print("❌ Database connection error:", e)
         return None
 

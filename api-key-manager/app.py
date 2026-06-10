@@ -1,9 +1,11 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 import bcrypt
+import psycopg2
+import psycopg2.extras
+import psycopg2.errors
 import secrets
 import string
 from datetime import datetime, timedelta
-import mysql.connector
 
 from db import get_db_connection, insert_audit_log
 
@@ -14,7 +16,7 @@ def _get_trial_default_days() -> int:
     """Read trial_default_days from system_settings. Returns 14 if not found."""
     try:
         conn = get_db_connection()
-        cur = conn.cursor(dictionary=True)
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("SELECT setting_value FROM system_settings WHERE setting_key='trial_default_days'")
         row = cur.fetchone()
         cur.close(); conn.close()
@@ -50,7 +52,7 @@ def login():
         if not conn:
             return render_template("login.html", error="Database unavailable")
 
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("SELECT * FROM admin_users WHERE username=%s", (username,))
         admin = cursor.fetchone()
         cursor.close()
@@ -123,7 +125,7 @@ def index():
 
         try:
             # 1) Verify tenant exists (so staff can't mistype tenant_id)
-            cur = conn.cursor(dictionary=True)
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("SELECT id, name, domain FROM tenants WHERE id=%s", (tenant_id,))
             tenant = cur.fetchone()
             cur.close()
@@ -133,7 +135,7 @@ def index():
                 return render_template("index.html", plain_key=None, created_at=None, error=error)
 
             # 2) BLOCK duplicates: if same tenant+website+key_type exists, don't create a new one.
-            cur = conn.cursor(dictionary=True)
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute(
                 """
                 SELECT id, is_active, key_type, website, tenant_id, tokens_used, token_limit, trial_expires_at
@@ -156,8 +158,7 @@ def index():
                 return redirect(url_for("edit_key", key_id=existing_same_type["id"]))
 
             # 3) Enforce the business rule: at most 1 trial and 1 paid per website (per tenant).
-            # Your DB unique constraint already enforces this by type; this check provides a friendly message.
-            cur = conn.cursor(dictionary=True)
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute(
                 """
                 SELECT key_type, id
@@ -197,13 +198,14 @@ def index():
                     INSERT INTO api_keys
                       (tenant_id, api_key_hash, is_active, website, key_type, trial_activated_at, trial_expires_at, token_limit, tokens_used)
                     VALUES
-                      (%s, %s, 1, %s, %s, %s, %s, %s, 0)
+                      (%s, %s, TRUE, %s, %s, %s, %s, %s, 0)
+                    RETURNING id
                     """,
                     (tenant_id, hashed_key, website, key_type, trial_activated_at, trial_expires_at, token_limit_int),
                 )
-                api_key_id = cur.lastrowid
+                api_key_id = cur.fetchone()[0]
                 conn.commit()
-            except mysql.connector.errors.IntegrityError:
+            except psycopg2.errors.UniqueViolation:
                 # In case someone clicks twice / race condition. DB unique constraint blocks duplicates.
                 conn.rollback()
                 cur.close()
@@ -230,7 +232,7 @@ def index():
                 key_type=key_type,
                 api_key_id=api_key_id,
                 api_key_last4=last4,
-                api_key_plain=plain_key,  # NOTE: storing plaintext keys is risky; keep only if you truly need recovery.
+                api_key_plain=plain_key,
                 details={"activate_now": activate_now, "token_limit": token_limit_int},
             )
 
@@ -254,8 +256,7 @@ def keys():
     if not conn:
         return render_template("keys.html", keys=[], error="Database unavailable")
 
-    cur = conn.cursor(dictionary=True)
-    # IMPORTANT: no joins here; avoids duplicate rows caused by joins.
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute(
         """
         SELECT
@@ -286,7 +287,7 @@ def edit_key(key_id: int):
     admin_username = session.get("admin_username", "unknown")
     error = None
 
-    cur = conn.cursor(dictionary=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute(
         """
         SELECT id, tenant_id, website, key_type, is_active,
@@ -306,7 +307,7 @@ def edit_key(key_id: int):
 
     if request.method == "POST":
         # Allowed edits: is_active, token_limit (trial), activate_now (trial), deactivate_now
-        new_is_active = 1 if request.form.get("is_active") == "on" else 0
+        new_is_active = True if request.form.get("is_active") == "on" else False
         new_token_limit = request.form.get("token_limit", "").strip()
         reset_tokens = request.form.get("reset_tokens") == "on"
         activate_now = request.form.get("activate_now") == "on"
@@ -321,7 +322,6 @@ def edit_key(key_id: int):
                 except Exception:
                     error = "Token limit must be a number greater than 0"
             else:
-                # Keep current
                 token_limit_int = key_row.get("token_limit")
 
         if not error:
@@ -395,7 +395,7 @@ def tenants():
         tenant_id = request.form.get("tenant_id", "").strip()
 
         try:
-            cur = conn.cursor(dictionary=True)
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             if action == "add":
                 if not name or not domain:
@@ -433,12 +433,12 @@ def tenants():
                         insert_audit_log(admin_username=admin_username, action="tenant_update", tenant_id=tid, details={"name": name, "domain": domain})
 
             cur.close()
-        except mysql.connector.errors.IntegrityError:
+        except psycopg2.errors.UniqueViolation:
             error = "Duplicate blocked ✅ This domain already exists."
         except Exception as e:
             error = str(e)
 
-    cur = conn.cursor(dictionary=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT id, name, domain, status, created_at FROM tenants ORDER BY id DESC LIMIT 300")
     tenants_list = cur.fetchall()
     cur.close()
@@ -455,7 +455,7 @@ def admins():
     if not conn:
         return render_template("admins.html", admins=[], error="Database unavailable")
 
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     error = None
     try:
         if request.method == "POST":
@@ -498,7 +498,7 @@ def audit():
     if not conn:
         return render_template("audit.html", logs=[], error="Database unavailable")
 
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cursor.execute(
         """
         SELECT id, admin_username, action, tenant_id, website, key_type,

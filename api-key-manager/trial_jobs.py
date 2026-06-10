@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import psycopg2.extras
+
 from db import get_db_connection, insert_audit_log
 from portal_utils import send_email
 
@@ -26,7 +28,7 @@ def _pick_customer_email(cur, tenant_id: int) -> str | None:
         """
         SELECT email
         FROM customers
-        WHERE tenant_id=%s AND email_verified=1 AND is_active=1
+        WHERE tenant_id=%s AND email_verified=TRUE AND is_active=TRUE
         ORDER BY created_at ASC
         LIMIT 1
         """,
@@ -43,7 +45,7 @@ def run():
         print("DB unavailable")
         return
 
-    cur = conn.cursor(dictionary=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     # 1) Deactivate expired trials
     cur.execute(
@@ -51,9 +53,9 @@ def run():
         SELECT id, tenant_id, website, trial_expires_at
         FROM api_keys
         WHERE key_type='trial'
-          AND is_active=1
+          AND is_active=TRUE
           AND trial_expires_at IS NOT NULL
-          AND trial_expires_at <= UTC_TIMESTAMP()
+          AND trial_expires_at <= NOW()
         """
     )
     expired = cur.fetchall() or []
@@ -63,7 +65,7 @@ def run():
         website = r.get("website")
 
         cur2 = conn.cursor()
-        cur2.execute("UPDATE api_keys SET is_active=0 WHERE id=%s", (api_key_id,))
+        cur2.execute("UPDATE api_keys SET is_active=FALSE WHERE id=%s", (api_key_id,))
         conn.commit()
         cur2.close()
 
@@ -133,9 +135,9 @@ def run():
             LEFT JOIN trial_reminders tr
               ON tr.api_key_id = ak.id AND tr.days_before = %s
             WHERE ak.key_type='trial'
-              AND ak.is_active=1
+              AND ak.is_active=TRUE
               AND ak.trial_expires_at IS NOT NULL
-              AND DATE(ak.trial_expires_at) = DATE(UTC_TIMESTAMP() + INTERVAL %s DAY)
+              AND DATE(ak.trial_expires_at) = DATE(NOW() + (INTERVAL '1 day' * %s))
               AND tr.id IS NULL
             """,
             (days_before, days_before),

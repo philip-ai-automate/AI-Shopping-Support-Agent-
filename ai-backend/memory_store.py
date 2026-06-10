@@ -1,83 +1,29 @@
+import os
+import psycopg2
+import psycopg2.extras
 from db import get_db_connection
 
-import os
-
-# NOTE: We keep summarisation as BEST-EFFORT.
-# If Azure OpenAI credentials are missing or the SDK is unavailable,
-# the chat endpoint must still work normally.
 try:
-    from openai import AzureOpenAI  # type: ignore
-except Exception:  # pragma: no cover
-    AzureOpenAI = None  # type: ignore
+    from openai import OpenAI
+except Exception:
+    OpenAI = None  # type: ignore
 
 
 def _get_summary_client():
-    if AzureOpenAI is None:
+    if OpenAI is None:
         return None
-    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-    api_key = os.getenv("AZURE_OPENAI_KEY")
-    if not endpoint or not api_key:
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
         return None
-    api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01")
     try:
-        return AzureOpenAI(api_key=api_key, api_version=api_version, azure_endpoint=endpoint)
+        return OpenAI(api_key=api_key)
     except Exception:
         return None
 
+
 def init_memory_tables():
-    """
-    Creates memory tables if they do not exist.
-    This prevents 'nothing saved' when tables were never created.
-    """
-    conn = get_db_connection()
-    if not conn:
-        print("? [MEMORY] Cannot init tables: DB connection failed")
-        return
-
-    try:
-        cur = conn.cursor()
-
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS chat_sessions (
-              session_id VARCHAR(64) PRIMARY KEY,
-              tenant_id INT NOT NULL,
-              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-              last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-              INDEX (tenant_id)
-            )
-        """)
-
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS chat_messages (
-              id BIGINT AUTO_INCREMENT PRIMARY KEY,
-              session_id VARCHAR(64) NOT NULL,
-              tenant_id INT NOT NULL,
-              role ENUM('user','assistant') NOT NULL,
-              content TEXT NOT NULL,
-              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-              INDEX (session_id),
-              INDEX (tenant_id)
-            )
-        """)
-
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS chat_summaries (
-              session_id VARCHAR(64) NOT NULL,
-              tenant_id INT NOT NULL,
-              summary_text TEXT NOT NULL,
-              summarized_message_count INT NOT NULL DEFAULT 0,
-              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-              PRIMARY KEY (session_id, tenant_id)
-            )
-        """)
-
-        conn.commit()
-        cur.close()
-        print("? [MEMORY] Tables ready")
-    except Exception as e:
-        print("? [MEMORY] init_memory_tables error:", str(e))
-    finally:
-        conn.close()
+    """No-op: tables are created by pg_schema.sql at deploy time."""
+    pass
 
 
 def _count_messages(cur, session_id: str, tenant_id: int) -> int:
@@ -98,7 +44,7 @@ def get_summary(session_id: str, tenant_id: int):
     if not conn:
         return None
     try:
-        cur = conn.cursor(dictionary=True)
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
             """
             SELECT summary_text, summarized_message_count
@@ -109,7 +55,7 @@ def get_summary(session_id: str, tenant_id: int):
         )
         row = cur.fetchone()
         cur.close()
-        return row
+        return dict(row) if row else None
     except Exception as e:
         print("? [MEMORY] get_summary error:", str(e))
         return None
@@ -122,27 +68,23 @@ def _upsert_summary(cur, session_id: str, tenant_id: int, summary_text: str, sum
         """
         INSERT INTO chat_summaries (session_id, tenant_id, summary_text, summarized_message_count)
         VALUES (%s, %s, %s, %s)
-        ON DUPLICATE KEY UPDATE
-            summary_text = VALUES(summary_text),
-            summarized_message_count = VALUES(summarized_message_count)
+        ON CONFLICT (session_id, tenant_id) DO UPDATE SET
+            summary_text = EXCLUDED.summary_text,
+            summarized_message_count = EXCLUDED.summarized_message_count,
+            updated_at = NOW()
         """,
         (session_id, tenant_id, summary_text, summarized_message_count),
     )
 
 
 def maybe_summarize_session(session_id: str, tenant_id: int, keep_last_n: int = 4):
-    """Summarise history after ~3 turns to reduce token usage.
-
-    - Trigger when total messages >= 6 (3 user+assistant turns).
-    - Summary will cover everything except the last keep_last_n messages.
-    - Optionally prune older messages after successful summarisation.
-    """
+    """Summarise history after ~3 turns to reduce token usage."""
     conn = get_db_connection()
     if not conn:
         return
 
     try:
-        cur = conn.cursor(dictionary=True)
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         total = _count_messages(cur, session_id, tenant_id)
         if total < 6:
             cur.close()
@@ -164,16 +106,12 @@ def maybe_summarize_session(session_id: str, tenant_id: int, keep_last_n: int = 
 
         summarized_count = int((existing or {}).get("summarized_message_count") or 0)
 
-        # Only resummarise when there is new material worth it.
-        # (At least 2 new messages since the last summary.)
         if total - summarized_count < 2 and summarized_count > 0:
             cur.close()
             return
 
-        # Fetch messages to summarise (everything except the last keep_last_n)
         to_summarise_count = max(0, total - keep_last_n)
         if to_summarise_count < 6:
-            # Don't summarise too early; we want meaning.
             cur.close()
             return
 
@@ -204,7 +142,6 @@ def maybe_summarize_session(session_id: str, tenant_id: int, keep_last_n: int = 
 
         transcript = "\n".join(transcript_lines)
 
-        # Summarise with a small, structured summary.
         max_out = int(os.getenv("SUMMARY_MAX_TOKENS", "220"))
 
         client = _get_summary_client()
@@ -213,7 +150,7 @@ def maybe_summarize_session(session_id: str, tenant_id: int, keep_last_n: int = 
             return
 
         resp = client.chat.completions.create(
-            model=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
+            model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"),
             temperature=0.2,
             max_tokens=max_out,
             messages=[
@@ -238,16 +175,18 @@ def maybe_summarize_session(session_id: str, tenant_id: int, keep_last_n: int = 
         _upsert_summary(cur, session_id, tenant_id, summary_text, total)
         conn.commit()
 
-        # Prune old messages to enforce "replace with summary" behavior.
         prune = os.getenv("MEMORY_PRUNE_OLD_MESSAGES", "1").strip() not in ("0", "false", "False")
         if prune:
-            # Keep only the last keep_last_n messages.
+            # PostgreSQL doesn't support DELETE ... ORDER BY ... LIMIT directly
             cur.execute(
                 """
                 DELETE FROM chat_messages
-                WHERE session_id=%s AND tenant_id=%s
-                ORDER BY id ASC
-                LIMIT %s
+                WHERE id IN (
+                    SELECT id FROM chat_messages
+                    WHERE session_id=%s AND tenant_id=%s
+                    ORDER BY id ASC
+                    LIMIT %s
+                )
                 """,
                 (session_id, tenant_id, to_summarise_count),
             )
@@ -264,13 +203,12 @@ def get_history_with_summary(session_id: str, tenant_id: int, keep_last_n: int =
     """Returns OpenAI chat history with a summary (if exists) + last N messages."""
     summary = get_summary(session_id, tenant_id)
 
-    # Always fetch the last N messages (chronological)
     conn = get_db_connection()
     if not conn:
         last_msgs = []
     else:
         try:
-            cur = conn.cursor(dictionary=True)
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute(
                 """
                 SELECT role, content
@@ -283,7 +221,7 @@ def get_history_with_summary(session_id: str, tenant_id: int, keep_last_n: int =
             )
             rows = cur.fetchall() or []
             cur.close()
-            rows.reverse()
+            rows = list(reversed(rows))
             last_msgs = [{"role": r["role"], "content": r["content"]} for r in rows]
         except Exception as e:
             print("? [MEMORY] get_history_with_summary error:", str(e))
@@ -315,7 +253,7 @@ def ensure_session(session_id: str, tenant_id: int):
         cur.execute("""
             INSERT INTO chat_sessions (session_id, tenant_id)
             VALUES (%s, %s)
-            ON DUPLICATE KEY UPDATE last_seen = CURRENT_TIMESTAMP
+            ON CONFLICT (session_id) DO UPDATE SET last_seen = NOW()
         """, (session_id, tenant_id))
         conn.commit()
         cur.close()
@@ -325,7 +263,8 @@ def ensure_session(session_id: str, tenant_id: int):
         conn.close()
 
 
-def add_message(session_id: str, tenant_id: int, role: str, content: str):
+def add_message(session_id: str, tenant_id: int, role: str,
+                content: str, embedding: list = None):
     conn = get_db_connection()
     if not conn:
         print("? [MEMORY] add_message: DB connection failed")
@@ -333,16 +272,114 @@ def add_message(session_id: str, tenant_id: int, role: str, content: str):
 
     try:
         cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO chat_messages (session_id, tenant_id, role, content)
-            VALUES (%s, %s, %s, %s)
-        """, (session_id, tenant_id, role, content))
+        if embedding:
+            vec_literal = "[" + ",".join(str(x) for x in embedding) + "]"
+            cur.execute("""
+                INSERT INTO chat_messages
+                    (session_id, tenant_id, role, content, embedding)
+                VALUES (%s, %s, %s, %s, %s::vector)
+            """, (session_id, tenant_id, role, content, vec_literal))
+        else:
+            cur.execute("""
+                INSERT INTO chat_messages (session_id, tenant_id, role, content)
+                VALUES (%s, %s, %s, %s)
+            """, (session_id, tenant_id, role, content))
         conn.commit()
         cur.close()
     except Exception as e:
         print("? [MEMORY] add_message error:", str(e))
     finally:
         conn.close()
+
+
+def get_semantic_history(session_id: str, tenant_id: int,
+                         query_embedding: list,
+                         keep_last_n: int = 4,
+                         semantic_top_k: int = 4) -> list:
+    """
+    Returns chat history combining:
+      1. Summary (if exists) as a system message
+      2. Top semantic_top_k relevant older user+reply pairs
+      3. Last keep_last_n messages for conversational continuity
+    Deduplicated and sorted chronologically.
+    Falls back to get_history_with_summary() if semantic search fails.
+    """
+    summary = get_summary(session_id, tenant_id)
+
+    conn = get_db_connection()
+    if not conn:
+        return get_history_with_summary(session_id, tenant_id, keep_last_n)
+
+    try:
+        cur = conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor)
+
+        # ── Step 1: fetch last N messages ────────────────────────────────────
+        cur.execute("""
+            SELECT id, role, content FROM chat_messages
+            WHERE session_id = %s AND tenant_id = %s
+            ORDER BY id DESC LIMIT %s
+        """, (session_id, tenant_id, keep_last_n))
+        last_rows = list(reversed(cur.fetchall() or []))
+        last_ids  = {r["id"] for r in last_rows}
+
+        # ── Step 2: semantic search for relevant older user messages ─────────
+        semantic_rows = []
+        if query_embedding and last_ids:
+            vec_literal = "[" + ",".join(str(x) for x in query_embedding) + "]"
+            exclude_ids = list(last_ids)
+            cur.execute("""
+                SELECT id, role, content FROM chat_messages
+                WHERE session_id = %s AND tenant_id = %s
+                  AND embedding IS NOT NULL
+                  AND role = 'user'
+                  AND id != ALL(%s)
+                ORDER BY embedding <=> %s::vector
+                LIMIT %s
+            """, (session_id, tenant_id, exclude_ids, vec_literal, semantic_top_k))
+            matched_user_rows = cur.fetchall() or []
+
+            # For each matched user message, also fetch the next assistant reply
+            for row in matched_user_rows:
+                semantic_rows.append(dict(row))
+                cur.execute("""
+                    SELECT id, role, content FROM chat_messages
+                    WHERE session_id = %s AND tenant_id = %s
+                      AND id > %s AND role = 'assistant'
+                    ORDER BY id ASC LIMIT 1
+                """, (session_id, tenant_id, row["id"]))
+                reply = cur.fetchone()
+                if reply and reply["id"] not in last_ids:
+                    semantic_rows.append(dict(reply))
+
+        cur.close()
+        conn.close()
+
+        # ── Step 3: merge, deduplicate, sort chronologically ─────────────────
+        seen_ids = set()
+        merged   = []
+        for row in semantic_rows + last_rows:
+            if row["id"] not in seen_ids:
+                seen_ids.add(row["id"])
+                merged.append(row)
+        merged.sort(key=lambda r: r["id"])
+
+        # ── Step 4: build OpenAI messages list ───────────────────────────────
+        out = []
+        if summary and summary.get("summary_text"):
+            out.append({
+                "role": "system",
+                "content": "Conversation summary (use as memory):\n" + summary["summary_text"],
+            })
+        out.extend({"role": r["role"], "content": r["content"]} for r in merged)
+        return out
+
+    except Exception as e:
+        print("? [MEMORY] get_semantic_history error:", str(e))
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return get_history_with_summary(session_id, tenant_id, keep_last_n)
 
 
 def get_recent_history(session_id: str, tenant_id: int, limit: int = 12):
@@ -356,7 +393,7 @@ def get_recent_history(session_id: str, tenant_id: int, limit: int = 12):
         return []
 
     try:
-        cur = conn.cursor(dictionary=True)
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             SELECT role, content
             FROM chat_messages
@@ -366,7 +403,7 @@ def get_recent_history(session_id: str, tenant_id: int, limit: int = 12):
         """, (session_id, tenant_id, limit))
         rows = cur.fetchall()
         cur.close()
-        rows.reverse()
+        rows = list(reversed(rows))
         return [{"role": r["role"], "content": r["content"]} for r in rows]
     except Exception as e:
         print("? [MEMORY] get_recent_history error:", str(e))

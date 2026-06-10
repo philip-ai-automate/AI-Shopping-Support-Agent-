@@ -1,7 +1,7 @@
 fastapi
 uvicorn[standard]
 pydantic
-mysql-connector-python
+psycopg2-binary
 python-dotenv
 bcrypt
 openai

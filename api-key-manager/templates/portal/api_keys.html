@@ -23,7 +23,6 @@
           <th>API Key</th>
           <th>Credits used (30d)</th>
           <th>Created</th>
-          <th>Action</th>
         </tr>
       </thead>
       <tbody>
@@ -45,7 +44,6 @@
             {% endif %}
           </td>
           <td>
-            {% if k.api_key_plain %}
             <div style="display:flex;align-items:center;gap:8px">
               <code id="key-{{ k.id }}" class="code-box"
                     style="font-size:12px;padding:4px 8px;letter-spacing:0.03em;
@@ -58,23 +56,9 @@
                       class="btn btn-sm"
                       style="flex-shrink:0;white-space:nowrap">📋 Copy</button>
             </div>
-            {% else %}
-            <span class="muted" style="font-size:12px">Contact support to retrieve key</span>
-            {% endif %}
           </td>
           <td>{{ "%.2f"|format(k.credits_30d) }}</td>
           <td class="muted">{{ k.created_at.strftime('%Y-%m-%d') if k.created_at else '—' }}</td>
-          <td>
-            {% if k.is_active %}
-            <form method="POST" action="{{ url_for('portal.api_keys_revoke', key_id=k.id) }}"
-                  style="display:inline"
-                  onsubmit="return confirm('Revoke this key? Your AI assistant will stop working until you create a new one.')">
-              <button type="submit" class="btn btn-danger btn-sm">Revoke</button>
-            </form>
-            {% else %}
-              <span class="muted">—</span>
-            {% endif %}
-          </td>
         </tr>
         {% endfor %}
       </tbody>

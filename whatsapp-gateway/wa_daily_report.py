@@ -32,6 +32,9 @@ from datetime import date, timedelta, datetime
 from fastapi import APIRouter, Header, HTTPException
 import httpx
 
+import psycopg2
+import psycopg2.extras
+
 from wa_db import get_db_connection, log_proactive
 from meta_sender import send_text
 
@@ -49,7 +52,7 @@ def _get_active_wa_tenants() -> list[dict]:
     conn = get_db_connection()
     if not conn:
         return []
-    cur = conn.cursor(dictionary=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cur.execute("""
             SELECT
@@ -61,8 +64,8 @@ def _get_active_wa_tenants() -> list[dict]:
                 t.last_report_sent_at
             FROM wa_tenants wt
             JOIN tenants t ON t.id = wt.tenant_id
-            WHERE wt.active = 1
-              AND t.daily_report_enabled = 1
+            WHERE wt.active = TRUE
+              AND t.daily_report_enabled = TRUE
               AND t.status != 'cancelled'
         """)
         return cur.fetchall() or []
@@ -84,11 +87,11 @@ def _get_merchant_phone(tenant_id: int, report_phone_override: str | None) -> st
     conn = get_db_connection()
     if not conn:
         return None
-    cur = conn.cursor(dictionary=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cur.execute("""
             SELECT phone_number FROM customers
-            WHERE tenant_id = %s AND is_active = 1 AND phone_number IS NOT NULL
+            WHERE tenant_id = %s AND is_active = TRUE AND phone_number IS NOT NULL
             ORDER BY id ASC LIMIT 1
         """, (tenant_id,))
         row = cur.fetchone()
@@ -106,7 +109,7 @@ def _get_daily_stats(tenant_id: int, report_date: date) -> dict:
     conn = get_db_connection()
     if not conn:
         return {}
-    cur = conn.cursor(dictionary=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     stats: dict = {}
 
     try:
@@ -184,7 +187,7 @@ def _get_daily_stats(tenant_id: int, report_date: date) -> dict:
                 SELECT name, stock_quantity
                 FROM products
                 WHERE tenant_id = %s
-                  AND is_active = 1
+                  AND is_active = TRUE
                   AND stock_quantity <= %s
                   AND stock_quantity < 999
                 ORDER BY stock_quantity ASC
@@ -243,11 +246,11 @@ def _get_wa_template_for_report(tenant_id: int) -> dict | None:
     conn = get_db_connection()
     if not conn:
         return None
-    cur = conn.cursor(dictionary=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cur.execute("""
             SELECT template_name, language_code FROM wa_templates
-            WHERE tenant_id = %s AND template_type = 'daily_report' AND active = 1
+            WHERE tenant_id = %s AND template_type = 'daily_report' AND active = TRUE
             LIMIT 1
         """, (tenant_id,))
         return cur.fetchone()

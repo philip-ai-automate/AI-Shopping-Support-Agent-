@@ -22,8 +22,24 @@ def get_db_connection():
 
 
 def init_wa_tables():
-    """No-op: all tables already exist in PostgreSQL from pg_schema.sql."""
-    pass
+    """Ensure wa_product_cache has all required columns (idempotent)."""
+    conn = get_db_connection()
+    if not conn:
+        return
+    cur = conn.cursor()
+    try:
+        cur.execute("ALTER TABLE wa_product_cache ADD COLUMN IF NOT EXISTS image_url TEXT DEFAULT ''")
+        cur.execute("ALTER TABLE wa_product_cache ADD COLUMN IF NOT EXISTS in_stock BOOLEAN DEFAULT TRUE")
+        cur.execute("ALTER TABLE wa_product_cache ADD COLUMN IF NOT EXISTS description TEXT DEFAULT ''")
+        cur.execute("ALTER TABLE wa_product_cache ADD COLUMN IF NOT EXISTS list_order INTEGER DEFAULT 0")
+        cur.execute("ALTER TABLE wa_product_cache ADD COLUMN IF NOT EXISTS is_related BOOLEAN DEFAULT FALSE")
+        cur.execute("ALTER TABLE wa_product_cache ADD COLUMN IF NOT EXISTS last_viewed_at TIMESTAMP DEFAULT NULL")
+        conn.commit()
+    except Exception as e:
+        print("⚠️ init_wa_tables migration warning:", e)
+    finally:
+        cur.close()
+        conn.close()
 
 
 def search_catalogue(keyword: str, limit: int = 5) -> list[dict]:
@@ -102,7 +118,7 @@ def log_message(
             INSERT INTO wa_message_log
               (tenant_id, phone_number_id, customer_phone, direction, content, message_type, meta_message_id)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (meta_message_id) DO NOTHING
+            ON CONFLICT (meta_message_id) WHERE meta_message_id IS NOT NULL DO NOTHING
             """,
             (tenant_id, phone_number_id, customer_phone, direction, content, message_type, meta_message_id),
         )
@@ -126,20 +142,26 @@ def cache_products(session_id: str, products: list):
         return
     cur = conn.cursor()
     try:
-        for p in products:
+        for idx, p in enumerate(products):
             product_id = str(p.get("product_id") or p.get("id") or "").strip()
             if not product_id:
                 continue
             cur.execute(
                 """
                 INSERT INTO wa_product_cache
-                  (session_id, product_id, product_name, product_url, cart_url, price)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                  (session_id, product_id, product_name, product_url, cart_url, price,
+                   image_url, in_stock, description, list_order, is_related)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (session_id, product_id) DO UPDATE SET
                   product_name = EXCLUDED.product_name,
                   product_url  = EXCLUDED.product_url,
                   cart_url     = EXCLUDED.cart_url,
-                  price        = EXCLUDED.price
+                  price        = EXCLUDED.price,
+                  image_url    = EXCLUDED.image_url,
+                  in_stock     = EXCLUDED.in_stock,
+                  description  = EXCLUDED.description,
+                  list_order   = EXCLUDED.list_order,
+                  is_related   = EXCLUDED.is_related
                 """,
                 (
                     session_id,
@@ -148,6 +170,11 @@ def cache_products(session_id: str, products: list):
                     (p.get("url") or "")[:1024],
                     (p.get("cart_url") or "")[:1024],
                     (p.get("price") or "")[:64],
+                    (p.get("image_url") or "")[:1024],
+                    bool(p.get("in_stock", True)),
+                    (p.get("description") or "")[:600],
+                    idx,
+                    bool(p.get("related", False)),
                 ),
             )
         conn.commit()
@@ -167,7 +194,7 @@ def get_cached_product(session_id: str, product_id: str) -> dict | None:
     try:
         cur.execute(
             """
-            SELECT product_name, product_url, cart_url, price
+            SELECT product_name, product_url, cart_url, price, image_url, in_stock, description
             FROM wa_product_cache
             WHERE session_id = %s AND product_id = %s
             """,
@@ -176,6 +203,137 @@ def get_cached_product(session_id: str, product_id: str) -> dict | None:
         return cur.fetchone()
     except Exception as e:
         print("⚠️ get_cached_product error:", e)
+        return None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_session_products(session_id: str) -> list:
+    """Return all cached products for a session in the original list order."""
+    conn = get_db_connection()
+    if not conn:
+        return []
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            """
+            SELECT product_id, product_name, product_url, cart_url, price,
+                   image_url, in_stock, is_related
+            FROM wa_product_cache
+            WHERE session_id = %s
+            ORDER BY list_order ASC
+            """,
+            (session_id,),
+        )
+        rows = cur.fetchall() or []
+        return [dict(r) for r in rows]
+    except Exception as e:
+        print("⚠️ get_session_products error:", e)
+        return []
+    finally:
+        cur.close()
+        conn.close()
+
+
+def mark_product_viewed(session_id: str, product_id: str) -> None:
+    """Record that the customer viewed/selected this product in the session."""
+    conn = get_db_connection()
+    if not conn:
+        return
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            UPDATE wa_product_cache
+               SET last_viewed_at = NOW()
+             WHERE session_id = %s AND product_id = %s
+            """,
+            (session_id, product_id),
+        )
+        conn.commit()
+    except Exception as e:
+        print("⚠️ mark_product_viewed error:", e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_viewed_products(session_id: str) -> list:
+    """Return products the customer has selected/viewed, most recent first."""
+    conn = get_db_connection()
+    if not conn:
+        return []
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            """
+            SELECT product_id, product_name, price, in_stock
+            FROM wa_product_cache
+            WHERE session_id = %s
+              AND last_viewed_at IS NOT NULL
+              AND last_viewed_at > NOW() - INTERVAL '24 hours'
+            ORDER BY last_viewed_at ASC
+            """,
+            (session_id,),
+        )
+        rows = cur.fetchall() or []
+        return [dict(r) for r in rows]
+    except Exception as e:
+        print("⚠️ get_viewed_products error:", e)
+        return []
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_document_for_product(product_id: str) -> dict | None:
+    """Look up the documents table entry matching a wa_product_cache product_id."""
+    conn = get_db_connection()
+    if not conn:
+        return None
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            """
+            SELECT title, image_url, content, categories_text,
+                   price_min, price_max, spec_key, spec_value
+            FROM documents
+            WHERE id = %s
+            """,
+            (f"product-{product_id}",),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        print("⚠️ get_document_for_product error:", e)
+        return None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_product_by_id(tenant_id: int, product_id) -> dict | None:
+    """Return full product row from the products table by id."""
+    conn = get_db_connection()
+    if not conn:
+        return None
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            """
+            SELECT id, name, price, stock_quantity, discount_type, discount_value
+            FROM products
+            WHERE tenant_id = %s AND id = %s AND is_active = TRUE
+            """,
+            (tenant_id, product_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return {**dict(row), "price": float(row["price"]), "discount_value": float(row["discount_value"] or 0)}
+    except Exception as e:
+        print("⚠️ get_product_by_id error:", e)
         return None
     finally:
         cur.close()
@@ -277,6 +435,29 @@ def create_handoff(session_id: str, tenant_id: int, customer_phone: str):
         conn.commit()
     except Exception as e:
         print("⚠️ create_handoff error:", e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def cancel_handoff(session_id: str):
+    """Mark an active handoff as resolved (customer cancelled the discount request)."""
+    conn = get_db_connection()
+    if not conn:
+        return
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            UPDATE wa_handoff_state
+               SET resolved_at = NOW()
+             WHERE session_id = %s AND resolved_at IS NULL
+            """,
+            (session_id,),
+        )
+        conn.commit()
+    except Exception as e:
+        print("⚠️ cancel_handoff error:", e)
     finally:
         cur.close()
         conn.close()
@@ -384,14 +565,46 @@ def get_wa_merchant_settings(tenant_id: int) -> dict:
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cur.execute(
-            "SELECT discount_mode FROM wa_merchant_settings WHERE tenant_id = %s",
+            """
+            SELECT discount_mode, default_discount_type, default_discount_value
+            FROM wa_merchant_settings WHERE tenant_id = %s
+            """,
             (tenant_id,),
         )
         row = cur.fetchone()
-        return dict(row) if row else {"discount_mode": "merchant_only"}
+        return dict(row) if row else {
+            "discount_mode":           "merchant_only",
+            "default_discount_type":   "percent",
+            "default_discount_value":  0.0,
+        }
     except Exception as e:
         print("⚠️ get_wa_merchant_settings error:", e)
         return {"discount_mode": "merchant_only"}
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_product_discount_override(tenant_id: int, product_id: str) -> dict | None:
+    """Return per-product discount override, or None if not set."""
+    conn = get_db_connection()
+    if not conn:
+        return None
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            """
+            SELECT discount_type, discount_value
+            FROM wa_product_discounts
+            WHERE tenant_id = %s AND product_id = %s
+            """,
+            (tenant_id, str(product_id)),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        print("⚠️ get_product_discount_override error:", e)
+        return None
     finally:
         cur.close()
         conn.close()
@@ -414,7 +627,11 @@ def search_tenant_products(tenant_id: int, query: str) -> list[dict]:
             """,
             (tenant_id, f"%{query}%"),
         )
-        return [dict(r) for r in (cur.fetchall() or [])]
+        rows = cur.fetchall() or []
+        return [
+            {**dict(r), "price": float(r["price"]), "discount_value": float(r["discount_value"] or 0)}
+            for r in rows
+        ]
     except Exception as e:
         print("⚠️ search_tenant_products error:", e)
         return []

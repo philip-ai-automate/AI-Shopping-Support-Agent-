@@ -9,6 +9,7 @@ Tables used (created by portal_migrations.py):
 This module NEVER raises to the caller — failures are printed and swallowed.
 """
 import json as _json
+import psycopg2.extras
 from db import get_db_connection
 
 
@@ -32,7 +33,7 @@ def log_cart_event(
     conn = get_db_connection()
     if not conn:
         return None
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor()
     try:
         items_json = _json.dumps(cart_items) if cart_items is not None else None
         cur.execute(
@@ -40,11 +41,13 @@ def log_cart_event(
             INSERT INTO cart_events
                 (tenant_id, session_id, event_type, cart_value, cart_items, page_url, customer_email)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
             """,
             (tenant_id, session_id, event_type, cart_value, items_json, page_url, customer_email),
         )
         conn.commit()
-        return cur.lastrowid
+        row = cur.fetchone()
+        return int(row[0]) if row else None
     except Exception as e:
         print("⚠️ log_cart_event failed:", e)
         return None
@@ -63,7 +66,7 @@ def get_session_events(tenant_id: int, session_id: str) -> list[dict]:
     conn = get_db_connection()
     if not conn:
         return []
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cur.execute(
             """
@@ -74,7 +77,7 @@ def get_session_events(tenant_id: int, session_id: str) -> list[dict]:
             """,
             (tenant_id, session_id),
         )
-        return cur.fetchall() or []
+        return [dict(r) for r in (cur.fetchall() or [])]
     except Exception as e:
         print("⚠️ get_session_events failed:", e)
         return []
@@ -111,8 +114,8 @@ def upsert_abandonment_queue(
     conn = get_db_connection()
     if not conn:
         return None
-    cur  = conn.cursor(dictionary=True, buffered=True)
-    cur2 = conn.cursor(buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur2 = conn.cursor()
     try:
         items_json = _json.dumps(cart_items) if cart_items is not None else None
 
@@ -123,25 +126,25 @@ def upsert_abandonment_queue(
         existing = cur.fetchone()
 
         if not existing:
-            # New entry — expires in 48 hours
             cur2.execute(
                 """
                 INSERT INTO abandonment_queue
                     (tenant_id, session_id, intent_score, priority,
                      cart_value, cart_items, customer_email,
                      status, touches_sent, expires_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, 'pending', 0, NOW() + INTERVAL 48 HOUR)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'pending', 0, NOW() + INTERVAL '48 hours')
+                RETURNING id
                 """,
                 (tenant_id, session_id, intent_score, priority,
                  cart_value, items_json, customer_email),
             )
             conn.commit()
-            return cur2.lastrowid
+            row = cur2.fetchone()
+            return int(row[0]) if row else None
 
         queue_id = int(existing["id"])
         status   = existing.get("status") or "pending"
 
-        # Only update score/cart data while still in the 'pending' state
         if status == "pending":
             cur2.execute(
                 """
@@ -176,10 +179,11 @@ def get_queue_row(queue_id: int) -> dict | None:
     conn = get_db_connection()
     if not conn:
         return None
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cur.execute("SELECT * FROM abandonment_queue WHERE id=%s", (queue_id,))
-        return cur.fetchone()
+        row = cur.fetchone()
+        return dict(row) if row else None
     except Exception as e:
         print("⚠️ get_queue_row failed:", e)
         return None
@@ -195,13 +199,14 @@ def get_queue_row_by_session(tenant_id: int, session_id: str) -> dict | None:
     conn = get_db_connection()
     if not conn:
         return None
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cur.execute(
             "SELECT * FROM abandonment_queue WHERE tenant_id=%s AND session_id=%s",
             (tenant_id, session_id),
         )
-        return cur.fetchone()
+        row = cur.fetchone()
+        return dict(row) if row else None
     except Exception as e:
         print("⚠️ get_queue_row_by_session failed:", e)
         return None
@@ -220,7 +225,7 @@ def mark_queue_status(queue_id: int, status: str) -> None:
     conn = get_db_connection()
     if not conn:
         return
-    cur = conn.cursor(buffered=True)
+    cur = conn.cursor()
     try:
         cur.execute(
             "UPDATE abandonment_queue SET status=%s, updated_at=NOW() WHERE id=%s",
@@ -241,7 +246,7 @@ def increment_touches(queue_id: int) -> None:
     conn = get_db_connection()
     if not conn:
         return
-    cur = conn.cursor(buffered=True)
+    cur = conn.cursor()
     try:
         cur.execute(
             "UPDATE abandonment_queue SET touches_sent = touches_sent + 1, updated_at=NOW() WHERE id=%s",
@@ -266,7 +271,7 @@ def expire_stale_queue_entries() -> int:
     conn = get_db_connection()
     if not conn:
         return 0
-    cur = conn.cursor(buffered=True)
+    cur = conn.cursor()
     try:
         cur.execute(
             """
@@ -306,7 +311,7 @@ def log_recovery_action(
     conn = get_db_connection()
     if not conn:
         return
-    cur = conn.cursor(buffered=True)
+    cur = conn.cursor()
     try:
         cur.execute(
             """
@@ -342,7 +347,7 @@ def get_recovery_queue_for_admin(
     conn = get_db_connection()
     if not conn:
         return []
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         params: list = []
         where_parts: list[str] = []
@@ -372,7 +377,7 @@ def get_recovery_queue_for_admin(
             """,
             params,
         )
-        return cur.fetchall() or []
+        return [dict(r) for r in (cur.fetchall() or [])]
     except Exception as e:
         print("⚠️ get_recovery_queue_for_admin failed:", e)
         return []
@@ -391,7 +396,7 @@ def get_recovery_stats(tenant_id: int | None = None) -> dict:
     conn = get_db_connection()
     if not conn:
         return {"total": 0, "pending": 0, "in_progress": 0, "recovered": 0, "expired": 0}
-    cur = conn.cursor(dictionary=True, buffered=True)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         where = "WHERE q.tenant_id = %s" if tenant_id is not None else ""
         params = [tenant_id] if tenant_id is not None else []
@@ -408,7 +413,7 @@ def get_recovery_stats(tenant_id: int | None = None) -> dict:
             """,
             params,
         )
-        row = cur.fetchone() or {}
+        row = dict(cur.fetchone() or {})
         return {
             "total":       int(row.get("total")       or 0),
             "pending":     int(row.get("pending")     or 0),

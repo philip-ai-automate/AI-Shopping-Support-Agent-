@@ -1,0 +1,251 @@
+{% extends "portal/base.html" %}
+{% block title %}Subscribe to {{ plan.name }} — PhiXtra Portal{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title" style="margin:0">Subscribe</h1>
+    <p class="muted" style="margin-top:4px;">Review your plan and complete payment below.</p>
+  </div>
+  <a href="{{ url_for('portal.billing_subscribe') }}" class="btn btn-sm">← Back to Plans</a>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+    <div class="flash {{ cat }}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+<div class="grid g2" style="align-items:start;gap:20px;">
+
+  {# ══ LEFT: Plan summary ══ #}
+  <div class="card" style="padding:24px;">
+    <div style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;
+                letter-spacing:0.07em;margin-bottom:8px;">You're subscribing to</div>
+
+    <div style="font-size:24px;font-weight:900;letter-spacing:-.5px;color:var(--ink);margin-bottom:2px;">
+      {{ plan.name }}
+    </div>
+    <div style="display:flex;align-items:baseline;gap:5px;margin-bottom:4px;">
+      <span style="font-size:32px;font-weight:900;letter-spacing:-1px;color:var(--ink);">{{ plan.price_fmt }}</span>
+      <span class="muted" style="font-size:14px;">/ {{ plan.billing_period or 'month' }}</span>
+    </div>
+    <div style="font-size:14px;font-weight:600;color:var(--ink);margin-bottom:16px;">
+      {{ plan.credits }} credits / {{ plan.billing_period or 'month' }}
+    </div>
+
+    <div style="height:1px;background:var(--line);margin-bottom:16px;"></div>
+
+    {% set fp = plan.features_parsed %}
+    <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px;">
+      <li style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#374151;">
+        <span style="color:var(--good);font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+        <span>{{ plan.credits }} AI credits per {{ plan.billing_period or 'month' }}</span>
+      </li>
+      <li style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#374151;">
+        <span style="color:var(--good);font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+        <span>AI Chat Support</span>
+      </li>
+      {% if fp.get('product_recommendation') %}
+      <li style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#374151;">
+        <span style="color:var(--good);font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+        <span>🛍️ Product Recommendations</span>
+      </li>
+      {% endif %}
+      {% if fp.get('related_products') %}
+      <li style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#374151;">
+        <span style="color:var(--good);font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+        <span>🔗 Automated Cross-selling</span>
+      </li>
+      {% endif %}
+      {% if fp.get('cart_recovery') %}
+      <li style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#374151;">
+        <span style="color:var(--good);font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+        <span>🛒 Cart Revenue Recovery</span>
+      </li>
+      {% endif %}
+      {% if fp.get('verified_specs_web_lookup') %}
+      <li style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#374151;">
+        <span style="color:var(--good);font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+        <span>🔎 Verified Specs Lookup</span>
+      </li>
+      {% endif %}
+      {% if fp.get('chat_archive_unlimited') %}
+      <li style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#374151;">
+        <span style="color:var(--good);font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+        <span>♾️ Chat Archive — Unlimited</span>
+      </li>
+      {% elif fp.get('chat_archive_30days') %}
+      <li style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#374151;">
+        <span style="color:var(--good);font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+        <span>📅 Chat Archive — 30 days</span>
+      </li>
+      {% endif %}
+      {% if fp.get('whatsapp_message_templates') %}
+      <li style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#374151;">
+        <span style="color:var(--good);font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+        <span>📩 WhatsApp Message Templates</span>
+      </li>
+      {% endif %}
+      {% for feat in fp.get('custom_features', []) %}
+      <li style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#374151;">
+        <span style="color:var(--good);font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+        <span>{{ feat }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+
+    <div style="margin-top:18px;padding:12px 14px;border-radius:10px;
+                background:rgba(3,12,24,0.03);border:1px solid var(--line);font-size:12px;color:var(--muted);">
+      Your card will be charged <strong style="color:var(--txt);">{{ plan.price_fmt }}</strong>
+      today and automatically renewed every {{ plan.billing_period or 'month' }}.
+      Cancel any time from your billing page.
+    </div>
+  </div>
+
+  {# ══ RIGHT: Payment ══ #}
+  <div class="card" style="padding:24px;">
+    <div style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;
+                letter-spacing:0.07em;margin-bottom:16px;">Payment</div>
+
+    {% if saved_methods %}
+      {# Customer has a saved card — one-click subscribe ─────────────────── #}
+      {% set default_method = saved_methods | selectattr('is_default', 'equalto', 1) | list %}
+      {% set pm = default_method[0] if default_method else saved_methods[0] %}
+
+      <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;
+                  border-radius:12px;border:2px solid var(--ink);background:rgba(3,12,24,0.02);
+                  margin-bottom:16px;">
+        <span style="font-size:24px;">
+          {% if pm.card_brand == 'visa' %}💙
+          {% elif pm.card_brand == 'mastercard' %}🔴
+          {% elif pm.card_brand == 'amex' %}💛
+          {% else %}💳{% endif %}
+        </span>
+        <div>
+          <div style="font-weight:700;font-size:14px;text-transform:capitalize;">
+            {{ pm.card_brand or 'Card' }} •••• {{ pm.card_last4 }}
+          </div>
+          <div class="muted" style="font-size:12px;">
+            Expires {{ '%02d'|format(pm.card_exp_month or 0) }}/{{ pm.card_exp_year or '—' }}
+          </div>
+        </div>
+        <span class="pill pill-green" style="margin-left:auto;">Default</span>
+      </div>
+
+      <form method="POST" action="{{ url_for('portal.billing_subscribe_post') }}">
+        <input type="hidden" name="plan_id" value="{{ plan.id }}"/>
+        <input type="hidden" name="payment_method_id" value="{{ pm.id }}"/>
+        <button type="submit" class="btn btn-primary"
+                style="width:100%;justify-content:center;font-size:15px;padding:13px 20px;">
+          Subscribe — {{ plan.price_fmt }}/{{ plan.billing_period or 'month' }}
+        </button>
+      </form>
+
+      <div style="margin-top:12px;text-align:center;">
+        <a href="{{ url_for('portal.billing_add_card') }}" class="muted" style="font-size:13px;">
+          Use a different card →
+        </a>
+      </div>
+
+    {% elif client_secret and stripe_pub_key %}
+      {# No saved card — collect card via Stripe Elements ────────────────── #}
+      <script src="https://js.stripe.com/v3/"></script>
+
+      <div id="checkout-error" style="display:none;padding:12px 14px;margin-bottom:14px;
+           border-radius:10px;background:rgba(220,38,38,0.07);
+           border:1px solid rgba(220,38,38,0.30);color:#b91c1c;font-size:13px;"></div>
+
+      <div id="payment-element" style="margin-bottom:20px;"></div>
+
+      <button id="subscribe-btn" class="btn btn-primary"
+              style="width:100%;justify-content:center;font-size:15px;padding:13px 20px;">
+        Subscribe — {{ plan.price_fmt }}/{{ plan.billing_period or 'month' }}
+      </button>
+
+      <p style="font-size:12px;color:var(--muted);margin-top:12px;text-align:center;">
+        🔒 Card details handled by Stripe. PhiXtra never sees your card number.
+        Your card will be saved for future renewals.
+      </p>
+
+      <script>
+      (function() {
+        var stripe   = Stripe('{{ stripe_pub_key }}');
+        var elements = stripe.elements({
+          clientSecret: '{{ client_secret }}',
+          appearance: {
+            theme: 'stripe',
+            variables: {
+              colorPrimary: '#030C18',
+              borderRadius: '10px',
+              fontFamily: 'inherit',
+            }
+          }
+        });
+
+        var paymentEl = elements.create('payment');
+        paymentEl.mount('#payment-element');
+
+        var btn    = document.getElementById('subscribe-btn');
+        var errDiv = document.getElementById('checkout-error');
+
+        btn.addEventListener('click', async function() {
+          btn.disabled    = true;
+          btn.textContent = 'Processing…';
+          errDiv.style.display = 'none';
+
+          var result = await stripe.confirmPayment({
+            elements: elements,
+            redirect: 'if_required',
+            confirmParams: { return_url: window.location.href }
+          });
+
+          if (result.error) {
+            errDiv.textContent   = result.error.message || 'Payment failed. Please try again.';
+            errDiv.style.display = 'block';
+            btn.disabled    = false;
+            btn.textContent = 'Subscribe — {{ plan.price_fmt }}/{{ plan.billing_period or "month" }}';
+            return;
+          }
+
+          // Payment confirmed — tell the backend to activate the subscription
+          var pi = result.paymentIntent;
+          try {
+            var resp = await fetch('{{ url_for("portal.billing_subscribe_complete") }}', {
+              method:  'POST',
+              headers: {'Content-Type': 'application/json'},
+              body:    JSON.stringify({
+                plan_id:            {{ plan.id }},
+                payment_intent_id:  pi.id,
+              })
+            });
+            var data = await resp.json();
+            if (data.ok) {
+              window.location.href = data.redirect || '{{ url_for("portal.billing_subscribe") }}';
+            } else {
+              errDiv.textContent   = data.error || 'Activation failed. Contact support@phixtra.com.';
+              errDiv.style.display = 'block';
+              btn.disabled    = false;
+              btn.textContent = 'Subscribe — {{ plan.price_fmt }}/{{ plan.billing_period or "month" }}';
+            }
+          } catch(e) {
+            errDiv.textContent   = 'Network error. Please contact support@phixtra.com.';
+            errDiv.style.display = 'block';
+            btn.disabled    = false;
+            btn.textContent = 'Subscribe — {{ plan.price_fmt }}/{{ plan.billing_period or "month" }}';
+          }
+        });
+      }());
+      </script>
+
+    {% else %}
+      <div class="flash warning">
+        Payment is not available right now. Contact
+        <a href="mailto:support@phixtra.com">support@phixtra.com</a>.
+      </div>
+    {% endif %}
+
+  </div>
+</div>
+
+{% endblock %}

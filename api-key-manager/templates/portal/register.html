@@ -23,13 +23,29 @@
 
 {% block content %}
 <div class="card" style="margin-top:12px;max-width:680px;margin-left:auto;margin-right:auto">
-  <h1 style="font-size:22px;font-weight:800;margin-bottom:4px">Create your account</h1>
+
+  {% if offer == 'founder' %}
+  <div style="background:#030C18;border-radius:10px;padding:16px 20px;margin-bottom:20px">
+    <p style="color:#25D366;font-size:10px;font-weight:800;letter-spacing:.1em;
+              text-transform:uppercase;margin:0 0 4px">Founder's Offer</p>
+    <p style="color:#fff;font-weight:700;font-size:15px;margin:0 0 4px">
+      Year 1 completely free — {{ founder_spots_left }} spot{{ 's' if founder_spots_left != 1 else '' }} left
+    </p>
+    <p style="color:rgba(255,255,255,0.55);font-size:12px;margin:0">
+      Annual billing required. Year 2 at 50% off, Year 3+ at standard rates.
+    </p>
+  </div>
+  {% endif %}
+
+  <h1 style="font-size:22px;font-weight:800;margin-bottom:4px">
+    {% if offer == 'founder' %}Claim your Founder spot{% else %}Create your account{% endif %}
+  </h1>
   <p class="muted" style="margin-bottom:22px">No credit card required.</p>
 
   <form method="POST" action="{{ url_for('portal.register') }}" novalidate id="regForm">
 
     <!-- ── Merchant type selector ──────────────────────────────── -->
-    <div style="margin-bottom:22px">
+    <div style="margin-bottom:22px"{% if offer == 'founder' %} hidden{% endif %}>
       <label style="margin-bottom:10px;display:block">How do you sell? *</label>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
 
@@ -126,6 +142,11 @@
       </div>
     </div>
 
+    <!-- Offer type (founder vs standard) -->
+    {% if offer == 'founder' %}
+    <input type="hidden" name="offer_type" value="founder"/>
+    {% endif %}
+
     <!-- Honeypot -->
     <div style="display:none;visibility:hidden;position:absolute;left:-9999px">
       <input type="text" name="website" tabindex="-1" autocomplete="off"/>
@@ -138,7 +159,7 @@
 
     <button type="submit" class="btn btn-primary" id="submitBtn"
             style="width:100%;justify-content:center;margin-top:4px">
-      Create account &amp; start free trial
+      {% if offer == 'founder' %}Claim my free Founder spot{% else %}Create account &amp; start free trial{% endif %}
     </button>
   </form>
 
@@ -151,7 +172,7 @@
 </div>
 
 <script>
-var currentType = 'web';
+var currentType = '{{ "whatsapp" if offer in ("founder", "whatsapp") else "web" }}';
 
 // Email match check
 document.getElementById('regEmailConfirm').addEventListener('input', checkEmailMatch);
@@ -171,6 +192,9 @@ document.getElementById('regForm').addEventListener('submit', function(e) {
     document.getElementById('regEmailConfirm').focus();
   }
 });
+
+// Apply initial type state (founder offer pre-selects WhatsApp)
+setType(currentType);
 
 var _waSetupLink = {{ wa_setup_link | tojson }};
 function shareWaLink() {

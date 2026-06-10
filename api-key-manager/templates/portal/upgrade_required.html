@@ -1,0 +1,82 @@
+{% extends "portal/base.html" %}
+{% block title %}Upgrade Required — PhiXtra Portal{% endblock %}
+
+{% block content %}
+<style>
+.upgrade-wrap {
+  display:flex; align-items:center; justify-content:center;
+  min-height:60vh; padding:40px 20px;
+}
+.upgrade-card {
+  background:#fff; border:1px solid var(--line); border-radius:20px;
+  padding:48px 40px; max-width:480px; width:100%; text-align:center;
+  box-shadow:0 4px 24px rgba(3,12,24,.07);
+}
+.upgrade-icon { font-size:52px; margin-bottom:16px; line-height:1 }
+.upgrade-title { font-size:22px; font-weight:800; margin-bottom:8px; letter-spacing:-.3px }
+.upgrade-sub   { font-size:14px; color:var(--muted); line-height:1.6; margin-bottom:28px }
+
+.upgrade-badge {
+  display:inline-flex; align-items:center; gap:8px;
+  background:#F4F3FF; color:#5B21B6; border:1px solid #DDD6FE;
+  padding:8px 18px; border-radius:999px; font-size:13px; font-weight:700;
+  margin-bottom:28px;
+}
+
+.upgrade-divider { height:1px; background:var(--line); margin:24px 0 }
+
+.upgrade-current {
+  font-size:12px; color:var(--muted); margin-bottom:20px;
+}
+.upgrade-current strong { color:var(--txt) }
+
+.upgrade-actions { display:flex; flex-direction:column; gap:12px }
+.btn-upgrade-main {
+  display:block; padding:14px; background:var(--ink); color:#fff;
+  border-radius:12px; font-size:15px; font-weight:700; text-decoration:none;
+  transition:.15s;
+}
+.btn-upgrade-main:hover { background:#000; text-decoration:none; color:#fff }
+.btn-upgrade-back {
+  display:block; padding:12px; background:#f4f4f5; color:var(--txt);
+  border-radius:12px; font-size:14px; font-weight:600; text-decoration:none;
+  transition:.15s;
+}
+.btn-upgrade-back:hover { background:#ebebeb; text-decoration:none; color:var(--txt) }
+</style>
+
+<div class="upgrade-wrap">
+  <div class="upgrade-card">
+
+    <div class="upgrade-icon">🔒</div>
+    <div class="upgrade-title">Upgrade to unlock this feature</div>
+    <div class="upgrade-sub">
+      <strong>{{ feature_label }}</strong> is not included in your current
+      {% if is_trial %}trial{% endif %} plan.
+      Upgrade to <strong>{{ min_plan_name }}</strong> or above to access it.
+    </div>
+
+    <div class="upgrade-badge">
+      ✦ Available on {{ min_plan_name }} and above
+    </div>
+
+    <div class="upgrade-current">
+      You are currently on the <strong>{{ current_plan }}</strong> plan
+      {% if is_trial %}(trial){% endif %}
+    </div>
+
+    <div class="upgrade-divider"></div>
+
+    <div class="upgrade-actions">
+      <a href="{{ url_for('portal.billing_plans') }}" class="btn-upgrade-main">
+        View Plans &amp; Upgrade
+      </a>
+      <a href="javascript:history.back()" class="btn-upgrade-back">
+        ← Go back
+      </a>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}

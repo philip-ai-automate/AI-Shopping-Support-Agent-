@@ -18,12 +18,14 @@ def create_app():
     from portal_migrations import ensure_portal_tables
     from portal_routes import portal_bp
     from portal_admin_routes import portal_admin_bp
+    from portal_facebook_routes import facebook_bp
 
     # Run DB migrations on startup (all idempotent — safe)
     ensure_portal_tables()
 
     flask_app.register_blueprint(portal_bp)
     flask_app.register_blueprint(portal_admin_bp, url_prefix="/admin")
+    flask_app.register_blueprint(facebook_bp)
 
     # ── Global template context: inject current customer so every template,
     #    including base.html, can access avatar_data, first_name, etc.
@@ -60,6 +62,76 @@ def create_app():
                 print("⚠️ inject_current_customer error:", e)
                 _g._cached_portal_customer = None
         return {"_portal_customer": _g._cached_portal_customer}
+
+    @flask_app.context_processor
+    def inject_has_woocommerce():
+        """Detect whether tenant has a WooCommerce plugin connected.
+        Tenants with key_type='paid' or 'trial' have a WooCommerce site (Profile B).
+        WhatsApp-only tenants (key_type='whatsapp' only) get Profile A — simplified sidebar.
+        """
+        if not _session.get("portal_logged_in"):
+            return {"_has_woocommerce": False}
+        cid = _session.get("impersonate_customer_id") or _session.get("customer_id")
+        if not cid:
+            return {"_has_woocommerce": False}
+        if not hasattr(_g, "_cached_has_woocommerce"):
+            try:
+                from db import get_db_connection
+                conn = get_db_connection()
+                cur  = conn.cursor()
+                cur.execute("SELECT tenant_id FROM customers WHERE id=%s", (int(cid),))
+                row = cur.fetchone()
+                if not row:
+                    cur.close(); conn.close()
+                    _g._cached_has_woocommerce = False
+                else:
+                    tenant_id = int(row[0])
+                    cur.execute("""
+                        SELECT 1 FROM api_keys
+                        WHERE tenant_id=%s AND key_type IN ('paid','trial') AND is_active=TRUE
+                        LIMIT 1
+                    """, (tenant_id,))
+                    _g._cached_has_woocommerce = cur.fetchone() is not None
+                    cur.close(); conn.close()
+            except Exception as e:
+                print("⚠️ inject_has_woocommerce error:", e)
+                _g._cached_has_woocommerce = False
+        return {"_has_woocommerce": _g._cached_has_woocommerce}
+
+    @flask_app.context_processor
+    def inject_tenant_features():
+        """Inject _tenant_features dict into every template so the nav can gate feature links."""
+        if not _session.get("portal_logged_in"):
+            return {"_tenant_features": {}}
+        cid = _session.get("impersonate_customer_id") or _session.get("customer_id")
+        if not cid:
+            return {"_tenant_features": {}}
+        if not hasattr(_g, "_cached_tenant_features"):
+            try:
+                import json as _json
+                from db import get_db_connection
+                conn = get_db_connection()
+                cur  = conn.cursor()
+                cur.execute("SELECT tenant_id FROM customers WHERE id=%s", (int(cid),))
+                row = cur.fetchone()
+                if not row:
+                    cur.close(); conn.close()
+                    _g._cached_tenant_features = {}
+                else:
+                    cur.execute("SELECT features FROM tenants WHERE id=%s", (int(row[0]),))
+                    feat_row = cur.fetchone()
+                    cur.close(); conn.close()
+                    raw = (feat_row or [None])[0]
+                    if isinstance(raw, str):
+                        _g._cached_tenant_features = _json.loads(raw) if raw else {}
+                    elif isinstance(raw, dict):
+                        _g._cached_tenant_features = raw
+                    else:
+                        _g._cached_tenant_features = {}
+            except Exception as e:
+                print("⚠️ inject_tenant_features error:", e)
+                _g._cached_tenant_features = {}
+        return {"_tenant_features": _g._cached_tenant_features}
 
     @flask_app.context_processor
     def inject_inbox_unread():

@@ -1,236 +1,266 @@
 {% extends "portal/base.html" %}
-{% block title %}Billing — PhiXtra Portal{% endblock %}
+{% block title %}Buy Credits — PhiXtra Portal{% endblock %}
 {% block content %}
 
 <div class="page-header">
   <div>
-    <h1 class="section-title" style="margin:0">Billing</h1>
-    <p class="muted">Current balance: <strong>{{ "%.1f"|format(balance_credits) }} credits</strong>
-      &nbsp;(1 credit = 5,000 AI tokens ≈ 30–35 chat messages)</p>
+    <h1 class="section-title" style="margin:0">Buy Credits</h1>
+    <p class="muted" style="margin-top:4px;">One-time top-ups. Credits never expire.</p>
   </div>
 </div>
 
 {% if not stripe_ready %}
 <div class="flash warning">
-  Online payments are not yet configured. Contact <a href="mailto:support@phixtra.com">support@phixtra.com</a> to top up your credits manually.
+  Online payments are not yet configured. Contact <a href="mailto:support@phixtra.com">support@phixtra.com</a> to top up manually.
 </div>
 {% endif %}
-
-{# ══ STAGE 7: subscription status card (only when subscribed) ══ #}
-{% if active_sub %}
-<div style="padding:20px;margin-bottom:22px;border-radius:14px;
-            background:rgba(3,12,24,0.04);border:2px solid rgba(3,12,24,0.12);">
-  <div style="display:flex;align-items:flex-start;justify-content:space-between;
-              flex-wrap:wrap;gap:12px;">
-    <div>
-      <div style="font-size:11px;font-weight:800;color:var(--muted);
-                  text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">
-        Active subscription
-      </div>
-      <div style="font-size:20px;font-weight:800;">{{ active_sub.plan_name }}</div>
-      <div class="muted" style="font-size:13px;margin-top:4px;">
-        {{ active_sub.plan_credits }} credits / {{ active_sub.billing_period or 'month' }}
-        &nbsp;·&nbsp;
-        {% if active_sub.current_period_end %}
-          Renews {{ active_sub.current_period_end.strftime('%d %b %Y') }}
-        {% endif %}
-      </div>
-    </div>
-    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
-      {% if active_sub.status == 'active' %}
-        <span class="pill pill-green">● Active</span>
-      {% elif active_sub.status == 'past_due' %}
-        <span class="pill" style="background:rgba(220,38,38,0.10);color:#b91c1c;
-              border-color:rgba(220,38,38,0.35);">⚠️ Payment overdue</span>
-      {% endif %}
-      <a href="{{ url_for('portal.billing_subscribe') }}" class="btn btn-sm">
-        Manage plan →
-      </a>
-    </div>
-  </div>
-</div>
-{% endif %}
-
-{# ══ STAGE 7: quick nav links ══ #}
-<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px;">
-  <a href="{{ url_for('portal.billing_subscribe') }}" class="btn btn-sm">
-    🔁 Subscription plans
-  </a>
-  <a href="{{ url_for('portal.billing_add_card') }}" class="btn btn-sm">
-    💳 Payment cards
-    {% if saved_methods %}
-      <span style="background:#16a34a;color:#fff;border-radius:10px;
-                   font-size:11px;padding:1px 7px;margin-left:4px;">
-        {{ saved_methods|length }}
-      </span>
-    {% endif %}
-  </a>
-</div>
-{# ══ END STAGE 7 — everything below is the original unmodified billing.html ══ #}
-
-{# ── TRIAL CUSTOMER BANNER ─────────────────────────────────────────────── #}
-{% if is_trial_customer %}
-  {% if trial_expired_billing %}
-  <div style="padding:18px 20px;margin-bottom:22px;border-radius:14px;
-              background:rgba(220,38,38,0.07);border:1px solid rgba(220,38,38,0.35)">
-    <div style="display:flex;align-items:flex-start;gap:12px">
-      <span style="font-size:22px;flex-shrink:0">⏰</span>
-      <div>
-        <div style="font-size:15px;font-weight:800;color:#b91c1c;margin-bottom:4px">
-          Your free trial has ended
-        </div>
-        <p style="font-size:13px;color:#374151;margin:0">
-          Your AI assistant is currently paused. Purchasing any credit package below will
-          <b>immediately reactivate your AI assistant</b> and convert your account to a paid plan.
-          All your existing setup and instructions are preserved.
-        </p>
-      </div>
-    </div>
-  </div>
-  {% else %}
-  <div style="padding:18px 20px;margin-bottom:22px;border-radius:14px;
-              background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.25)">
-    <div style="display:flex;align-items:flex-start;gap:12px">
-      <span style="font-size:22px;flex-shrink:0">ℹ️</span>
-      <div>
-        <div style="font-size:15px;font-weight:800;color:#1e40af;margin-bottom:4px">
-          Upgrading from your free trial
-          {% if trial_days_left is not none %}
-            — {{ trial_days_left }} day{{ 's' if trial_days_left != 1 else '' }} remaining
-          {% endif %}
-        </div>
-        <p style="font-size:13px;color:#374151;margin:0">
-          Purchasing any package below upgrades you to a paid plan instantly.
-          Your API key will automatically convert from trial to paid,
-          your credits will be added, and your AI assistant will continue running without interruption.
-          Credits never expire.
-        </p>
-      </div>
-    </div>
-  </div>
-  {% endif %}
-{% endif %}
-{# ── END TRIAL BANNER ──────────────────────────────────────────────────── #}
 
 {% if request.args.get('success') %}
-<div class="flash success">✅ Payment received — your credits have been added. Allow a few seconds, then refresh.</div>
+<div class="flash success">✅ Payment received — your credits have been added. Refresh in a few seconds to see the updated balance.</div>
 {% endif %}
 {% if request.args.get('canceled') %}
 <div class="flash warning">Payment was cancelled. No charge was made.</div>
 {% endif %}
 
+{# ══ TRIAL BANNERS ══ #}
+{% if is_trial_customer %}
+  {% if trial_expired_billing %}
+  <div style="display:flex;align-items:flex-start;gap:12px;padding:16px 18px;margin-bottom:22px;
+              border-radius:12px;background:rgba(220,38,38,0.07);border:1px solid rgba(220,38,38,0.30);">
+    <span style="font-size:20px;flex-shrink:0;">⏰</span>
+    <div>
+      <div style="font-size:14px;font-weight:800;color:#b91c1c;margin-bottom:3px;">Your free trial has ended</div>
+      <p style="font-size:13px;color:#374151;margin:0;">
+        Your AI assistant is currently paused. Purchasing any package below will
+        <strong>immediately reactivate it</strong>. All your setup and instructions are preserved.
+      </p>
+    </div>
+  </div>
+  {% else %}
+  <div style="display:flex;align-items:flex-start;gap:12px;padding:16px 18px;margin-bottom:22px;
+              border-radius:12px;background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.22);">
+    <span style="font-size:20px;flex-shrink:0;">ℹ️</span>
+    <div>
+      <div style="font-size:14px;font-weight:800;color:#1e40af;margin-bottom:3px;">
+        Upgrading from your free trial
+        {% if trial_days_left is not none %}— {{ trial_days_left }} day{{ 's' if trial_days_left != 1 else '' }} remaining{% endif %}
+      </div>
+      <p style="font-size:13px;color:#374151;margin:0;">
+        Any purchase below instantly upgrades you to a paid plan. Your API key converts from trial to paid,
+        credits are added, and your AI assistant keeps running without interruption.
+      </p>
+    </div>
+  </div>
+  {% endif %}
+{% endif %}
+
+{# ══ BALANCE + SUBSCRIPTION SUMMARY ══ #}
+<div class="grid g2" style="margin-bottom:24px;">
+
+  {# Credit balance card #}
+  <div class="card" style="padding:20px;">
+    <div style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;
+                letter-spacing:0.07em;margin-bottom:8px;">Credit Balance</div>
+    <div style="font-size:38px;font-weight:900;letter-spacing:-1.5px;color:var(--ink);line-height:1;">
+      {{ "%.1f"|format(balance_credits) }}
+    </div>
+    <div class="muted" style="margin-top:4px;font-size:13px;">
+      credits &nbsp;·&nbsp; ≈ {{ (balance_credits * 6.5)|int }} conversations
+    </div>
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);
+                font-size:12px;color:var(--muted);">
+      1 credit = 5,000 AI tokens ≈ 30–35 chat messages
+    </div>
+  </div>
+
+  {# Subscription / quick-nav card #}
+  <div class="card" style="padding:20px;">
+    {% if active_sub %}
+    <div style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;
+                letter-spacing:0.07em;margin-bottom:8px;">Active Subscription</div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
+      <span style="font-size:17px;font-weight:800;color:var(--ink);">{{ active_sub.plan_name }}</span>
+      {% if active_sub.status == 'active' %}
+        <span class="pill pill-green">● Active</span>
+      {% elif active_sub.status == 'past_due' %}
+        <span class="pill" style="background:rgba(220,38,38,0.10);color:#b91c1c;border-color:rgba(220,38,38,0.35);">⚠️ Overdue</span>
+      {% endif %}
+    </div>
+    <div class="muted" style="font-size:13px;margin-bottom:14px;">
+      {{ active_sub.plan_credits }} credits / {{ active_sub.billing_period or 'month' }}
+      {% if active_sub.current_period_end %}
+        &nbsp;·&nbsp; Renews {{ active_sub.current_period_end.strftime('%d %b %Y') }}
+      {% endif %}
+      {% if active_sub.cancel_at_period_end %}
+        &nbsp;·&nbsp; <span style="color:#b91c1c;">Cancels at period end</span>
+      {% endif %}
+    </div>
+    {% else %}
+    <div style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;
+                letter-spacing:0.07em;margin-bottom:8px;">Subscription</div>
+    <div style="font-size:14px;color:var(--muted);margin-bottom:14px;">No active subscription.</div>
+    {% endif %}
+    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+      <a href="{{ url_for('portal.billing_subscribe') }}" class="btn btn-sm">
+        🔁 {% if active_sub %}Manage plan{% else %}View plans{% endif %}
+      </a>
+      <a href="{{ url_for('portal.billing_add_card') }}" class="btn btn-sm">
+        💳 Payment cards
+        {% if saved_methods %}
+          <span style="background:#16a34a;color:#fff;border-radius:8px;
+                       font-size:11px;padding:1px 6px;margin-left:2px;">{{ saved_methods|length }}</span>
+        {% endif %}
+      </a>
+    </div>
+  </div>
+
+</div>
+
+{# ══ PACKAGE CARDS ══ #}
 {% if packages %}
 <div class="grid g3">
   {% for pkg in packages %}
   {% set fp = pkg.features_parsed %}
-  <div class="card" style="display:flex;flex-direction:column;">
-    <div class="card-title">{{ pkg.name }}</div>
-    <div class="kpi">{{ pkg.credits }}</div>
-    <div class="muted" style="margin-bottom:14px;">credits&nbsp;&nbsp;·&nbsp;&nbsp;
-      {{ (pkg.credits * 6)|int }}–{{ (pkg.credits * 7)|int }} conversations</div>
 
-    {# ── What's included ── #}
-    <div style="margin-bottom:16px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;flex-grow:1;">
-      <p style="margin:0 0 8px 0;font-size:11px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:0.06em;">
-        What's included
-      </p>
-      <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;">
+  <div style="background:#fff;border:1px solid var(--line);border-radius:18px;
+              box-shadow:var(--shadow);display:flex;flex-direction:column;">
+    <div style="padding:22px 22px 0;">
 
-        <li style="font-size:13px;color:#374151;display:flex;align-items:flex-start;gap:7px;">
-          <span style="color:#16a34a;font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+      {# Package name #}
+      <div style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;
+                  letter-spacing:0.07em;margin-bottom:6px;">{{ pkg.name }}</div>
+
+      {# Price — hero #}
+      <div style="display:flex;align-items:baseline;gap:4px;margin-bottom:4px;">
+        <span style="font-size:32px;font-weight:900;letter-spacing:-1px;color:var(--ink);">
+          £{{ "%.2f"|format(pkg.price_pence / 100) }}
+        </span>
+        <span class="muted" style="font-size:13px;">one-time</span>
+      </div>
+
+      {# Credits + conversation estimate #}
+      <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:2px;">
+        {{ pkg.credits }} credits
+      </div>
+      <div class="muted" style="font-size:12px;margin-bottom:14px;">
+        ≈ {{ (pkg.credits * 6)|int }}–{{ (pkg.credits * 7)|int }} conversations
+      </div>
+
+      <div style="height:1px;background:var(--line);margin-bottom:14px;"></div>
+
+      {# Feature list #}
+      <ul style="margin:0 0 18px 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px;">
+        <li style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#374151;">
+          <span style="color:var(--good);font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
           <span>AI Chat Support</span>
         </li>
-
         {% if fp.get('product_recommendation') %}
-        <li style="font-size:13px;color:#374151;display:flex;align-items:flex-start;gap:7px;">
-          <span style="color:#16a34a;font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+        <li style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#374151;">
+          <span style="color:var(--good);font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
           <span>🛍️ Product Recommendations</span>
         </li>
         {% endif %}
-
         {% if fp.get('related_products') %}
-        <li style="font-size:13px;color:#374151;display:flex;align-items:flex-start;gap:7px;">
-          <span style="color:#16a34a;font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+        <li style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#374151;">
+          <span style="color:var(--good);font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
           <span>🔗 Automated Cross-selling</span>
         </li>
         {% endif %}
-
         {% if fp.get('cart_recovery') %}
-        <li style="font-size:13px;color:#374151;display:flex;align-items:flex-start;gap:7px;">
-          <span style="color:#16a34a;font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+        <li style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#374151;">
+          <span style="color:var(--good);font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
           <span>🛒 Cart Revenue Recovery</span>
         </li>
         {% endif %}
-
         {% if fp.get('verified_specs_web_lookup') %}
-        <li style="font-size:13px;color:#374151;display:flex;align-items:flex-start;gap:7px;">
-          <span style="color:#16a34a;font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+        <li style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#374151;">
+          <span style="color:var(--good);font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
           <span>🔎 Verified Specs Lookup</span>
         </li>
         {% endif %}
-
         {% if fp.get('chat_archive_unlimited') %}
-        <li style="font-size:13px;color:#374151;display:flex;align-items:flex-start;gap:7px;">
-          <span style="color:#16a34a;font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
-          <span>♾️ Chat Archive — Unlimited history, search, PDF/Excel/Word export &amp; AI summaries</span>
+        <li style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#374151;">
+          <span style="color:var(--good);font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+          <span>♾️ Chat Archive — Unlimited</span>
         </li>
         {% elif fp.get('chat_archive_30days') %}
-        <li style="font-size:13px;color:#374151;display:flex;align-items:flex-start;gap:7px;">
-          <span style="color:#16a34a;font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
-          <span>📅 Chat Archive — 30-day history, search, PDF export &amp; AI summaries</span>
+        <li style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#374151;">
+          <span style="color:var(--good);font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+          <span>📅 Chat Archive — 30 days</span>
         </li>
         {% endif %}
-
+        {% if fp.get('whatsapp_message_templates') %}
+        <li style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#374151;">
+          <span style="color:var(--good);font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+          <span>📩 WhatsApp Message Templates</span>
+        </li>
+        {% endif %}
         {% for feat in fp.get('custom_features', []) %}
-        <li style="font-size:13px;color:#374151;display:flex;align-items:flex-start;gap:7px;">
-          <span style="color:#16a34a;font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
+        <li style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#374151;">
+          <span style="color:var(--good);font-weight:800;flex-shrink:0;margin-top:1px;">✓</span>
           <span>{{ feat }}</span>
         </li>
         {% endfor %}
-
       </ul>
+
     </div>
 
-    {% if stripe_ready %}
-    <form method="POST" action="{{ url_for('portal.billing_checkout') }}" style="margin-top:auto;">
-      <input type="hidden" name="package_id" value="{{ pkg.id }}"/>
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
-        <span style="font-size:18px;font-weight:800;">
-          £{{ "%.2f"|format(pkg.price_pence/100) }}
-        </span>
-        <label style="display:flex;align-items:center;gap:5px;font-size:13px;margin:0;">
-          <input type="checkbox" name="add_vat" style="width:auto;"/>
-          Add 20% VAT
-        </label>
+    {# Purchase area — pinned to bottom #}
+    <div style="padding:0 22px 22px;margin-top:auto;">
+      {% if stripe_ready %}
+      <form method="POST" action="{{ url_for('portal.billing_checkout') }}">
+        <input type="hidden" name="package_id" value="{{ pkg.id }}"/>
+
+        {# VAT toggle #}
+        <div style="margin-bottom:10px;">
+          <label style="display:flex;align-items:center;gap:7px;font-size:13px;
+                        color:var(--muted);cursor:pointer;margin:0;">
+            <input type="checkbox" name="add_vat" style="width:auto;"
+                   onchange="toggleVat(this, '{{ pkg.id }}')"/>
+            Add 20% VAT
+            <span style="font-size:12px;">(+£{{ "%.2f"|format(pkg.price_pence / 100 * 0.20) }})</span>
+          </label>
+          <div id="vat_num_{{ pkg.id }}" style="display:none;margin-top:8px;">
+            <input type="text" name="vat_number" placeholder="VAT number (optional, e.g. GB123456789)"
+                   style="font-size:13px;padding:8px 11px;border-radius:10px;"/>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;">
+          Buy {{ pkg.credits }} credits
+        </button>
+      </form>
+      {% else %}
+      <div class="muted" style="font-size:13px;text-align:center;">
+        £{{ "%.2f"|format(pkg.price_pence / 100) }} — contact support to purchase
       </div>
-      <div style="margin-bottom:10px;">
-        <label style="margin-bottom:4px;">VAT number (optional)</label>
-        <input type="text" name="vat_number" placeholder="GB123456789" style="width:100%;"/>
-      </div>
-      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;">
-        Buy {{ pkg.credits }} credits
-      </button>
-    </form>
-    {% else %}
-      <div class="muted" style="font-size:13px;margin-top:auto;">
-        £{{ "%.2f"|format(pkg.price_pence/100) }} — contact support to purchase
-      </div>
-    {% endif %}
+      {% endif %}
+    </div>
+
   </div>
   {% endfor %}
 </div>
+
 {% else %}
 <div class="card">
-  <p class="muted">No credit packages are available right now. Contact support.</p>
+  <p class="muted">No credit packages are available right now. Contact <a href="mailto:support@phixtra.com">support@phixtra.com</a>.</p>
 </div>
 {% endif %}
 
-<div class="card" style="margin-top:18px;background:rgba(3,12,24,0.02);border-color:rgba(3,12,24,0.07);">
-  <p style="font-size:13px;color:var(--muted);">
-    <strong>ℹ️ How credits work:</strong> 1 credit = 5,000 AI tokens.
-    A typical short conversation uses ~0.2 credits. Credits do not expire.
-    Your balance is deducted per message by the AI engine.
+<div style="margin-top:16px;padding:14px 16px;border-radius:12px;
+            background:rgba(3,12,24,0.02);border:1px solid rgba(3,12,24,0.07);">
+  <p style="font-size:13px;color:var(--muted);margin:0;">
+    <strong style="color:var(--txt);">ℹ️ How credits work:</strong>
+    1 credit = 5,000 AI tokens. A typical short conversation uses ~0.2 credits. Credits never expire
+    and stack on top of any subscription credits you already have.
   </p>
 </div>
+
+<script>
+function toggleVat(checkbox, pkgId) {
+  var el = document.getElementById('vat_num_' + pkgId);
+  if (el) el.style.display = checkbox.checked ? 'block' : 'none';
+}
+</script>
 
 {% endblock %}

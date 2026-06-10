@@ -1,0 +1,184 @@
+{% extends "portal/base.html" %}
+{% block title %}Leads — PhiXtra Portal{% endblock %}
+{% block content %}
+
+<style>
+.leads-header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:24px }
+.leads-kpi-row { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:24px }
+@media(max-width:640px){ .leads-kpi-row { grid-template-columns:1fr 1fr } }
+.leads-kpi { background:#fff; border:1px solid var(--line); border-radius:18px; padding:18px 20px }
+.leads-kpi-val { font-size:32px; font-weight:800; letter-spacing:-.5px; line-height:1 }
+.leads-kpi-label { font-size:13px; color:var(--muted); margin-top:4px }
+
+.lead-card {
+  background:#fff; border:1px solid var(--line); border-radius:18px;
+  padding:18px 20px; margin-bottom:14px;
+  display:flex; align-items:flex-start; gap:16px;
+  transition:.15s; cursor:pointer; text-decoration:none; color:inherit;
+}
+.lead-card:hover { border-color:rgba(3,12,24,.22); box-shadow:0 4px 18px rgba(3,12,24,.07); text-decoration:none; color:inherit }
+.lead-card.hot  { border-left:4px solid #F04438 }
+.lead-card.warm { border-left:4px solid #F79009 }
+
+.lead-avatar {
+  width:46px; height:46px; border-radius:50%; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  font-size:15px; font-weight:700; color:#fff;
+}
+.lead-body { flex:1; min-width:0 }
+.lead-top { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:4px }
+.lead-name { font-size:15px; font-weight:700 }
+.lead-phone { font-size:12px; color:var(--muted) }
+.lead-tier-badge {
+  font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px;
+  display:inline-flex; align-items:center; gap:3px; flex-shrink:0;
+}
+.lead-tier-badge.hot  { background:rgba(240,68,56,.10); color:#b91c1c }
+.lead-tier-badge.warm { background:rgba(247,144,9,.10); color:#92400e }
+.lead-preview { font-size:13px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:520px; margin-bottom:6px }
+.lead-signals { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:4px }
+.lead-signal-tag {
+  font-size:11px; background:rgba(3,12,24,.05); border:1px solid var(--line);
+  border-radius:999px; padding:2px 8px; color:var(--muted);
+}
+.lead-meta { font-size:12px; color:var(--muted) }
+.lead-score-ring {
+  flex-shrink:0; width:44px; height:44px;
+  display:flex; align-items:center; justify-content:center;
+  flex-direction:column;
+}
+.lead-score-num { font-size:16px; font-weight:800; line-height:1 }
+.lead-score-lbl { font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em }
+
+.empty-leads { text-align:center; padding:60px 20px; color:var(--muted) }
+.empty-leads-icon { font-size:48px; margin-bottom:14px }
+
+.filter-bar { display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap }
+.filter-btn {
+  padding:7px 16px; border-radius:999px; font-size:13px; font-weight:600;
+  border:1px solid var(--line); background:#fff; cursor:pointer; transition:.12s;
+}
+.filter-btn:hover { background:rgba(3,12,24,.05) }
+.filter-btn.active { background:var(--ink); color:#fff; border-color:var(--ink) }
+</style>
+
+<div class="leads-header">
+  <div>
+    <h1 style="font-size:22px;font-weight:800;letter-spacing:-.3px;margin:0">🔥 Leads</h1>
+    <p class="muted" style="margin:3px 0 0;font-size:14px">Conversations with buying signals — prioritise these chats</p>
+  </div>
+  <a href="{{ url_for('portal.my_inbox') }}" class="btn btn-sm">← Back to Inbox</a>
+</div>
+
+{% if not connection %}
+<div class="card" style="text-align:center;padding:48px 24px">
+  <div style="font-size:40px;margin-bottom:12px">📵</div>
+  <div style="font-size:16px;font-weight:700;margin-bottom:6px">No WhatsApp connection</div>
+  <p class="muted">Connect your WhatsApp number to start receiving and scoring leads.</p>
+  <a href="{{ url_for('portal.whatsapp_connect') }}" class="btn btn-primary" style="margin-top:14px">Connect WhatsApp →</a>
+</div>
+
+{% else %}
+
+{# KPI strip #}
+<div class="leads-kpi-row">
+  <div class="leads-kpi" style="border-top:3px solid #F04438">
+    <div class="leads-kpi-val" style="color:#b91c1c">{{ hot_count }}</div>
+    <div class="leads-kpi-label">🔥 Hot leads — reply now</div>
+  </div>
+  <div class="leads-kpi" style="border-top:3px solid #F79009">
+    <div class="leads-kpi-val" style="color:#92400e">{{ warm_count }}</div>
+    <div class="leads-kpi-label">⭐ Warm leads — worth reading</div>
+  </div>
+  <div class="leads-kpi" style="border-top:3px solid var(--line)">
+    <div class="leads-kpi-val">{{ leads|length }}</div>
+    <div class="leads-kpi-label">Total leads identified</div>
+  </div>
+</div>
+
+{# Filter bar #}
+<div class="filter-bar">
+  <button class="filter-btn active" data-tier="all" onclick="filterLeads(this,'all')">All ({{ leads|length }})</button>
+  <button class="filter-btn" data-tier="hot"  onclick="filterLeads(this,'hot')">🔥 Hot ({{ hot_count }})</button>
+  <button class="filter-btn" data-tier="warm" onclick="filterLeads(this,'warm')">⭐ Warm ({{ warm_count }})</button>
+</div>
+
+{% if not leads %}
+<div class="empty-leads">
+  <div class="empty-leads-icon">🔍</div>
+  <div style="font-size:17px;font-weight:700;margin-bottom:8px">No leads yet</div>
+  <p style="max-width:380px;margin:0 auto">When customers send messages with buying signals — price enquiries, stock checks, purchase intent — they'll appear here.</p>
+</div>
+
+{% else %}
+
+{% macro avatar_color(phone) %}{% set _p=['#5C6BC0','#26A69A','#0288D1','#388E3C','#F57C00','#8E24AA','#E53935','#00838F'] %}{{ _p[(phone[-1:]|int(default=0))%8] }}{% endmacro %}
+{% macro avatar_initials(name, phone) %}{% if name %}{% set _w=name.split() %}{% if _w|length>=2 %}{{ _w[0][0]|upper }}{{ _w[1][0]|upper }}{% else %}{{ _w[0][:2]|upper }}{% endif %}{% else %}{{ phone[-4:] }}{% endif %}{% endmacro %}
+
+<div id="leadsList">
+{% for c in leads %}
+{% set _col = avatar_color(c.customer_phone) %}
+{% set _ini = avatar_initials(c.display_name, c.customer_phone) %}
+{% set _name = c.display_name if c.display_name else '+' + c.customer_phone %}
+<a class="lead-card {{ c.lead_tier }}" data-tier="{{ c.lead_tier }}"
+   href="{{ url_for('portal.my_inbox') }}?phone={{ c.customer_phone }}">
+
+  <div class="lead-avatar" style="background:{{ _col }}">{{ _ini }}</div>
+
+  <div class="lead-body">
+    <div class="lead-top">
+      <span class="lead-name">{{ _name }}</span>
+      {% if c.display_name %}<span class="lead-phone">+{{ c.customer_phone }}</span>{% endif %}
+      <span class="lead-tier-badge {{ c.lead_tier }}">
+        {% if c.lead_tier == 'hot' %}🔥 Hot lead{% else %}⭐ Warm lead{% endif %}
+      </span>
+    </div>
+
+    {% if c.last_content %}
+    <div class="lead-preview">
+      {% if c.last_direction == 'outbound' %}↗ {% else %}↙ {% endif %}{{ c.last_content }}
+    </div>
+    {% endif %}
+
+    {% if c.lead_signals %}
+    <div class="lead-signals">
+      {% for sig in c.lead_signals[:5] %}
+      <span class="lead-signal-tag">{{ sig }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="lead-meta">
+      {{ c.inbound_count }} inbound message{{ 's' if c.inbound_count != 1 else '' }}
+      {% if c.last_message_at %}· {{ c.last_message_at.strftime('%d %b %H:%M') }}{% endif %}
+      {% if c.last_direction == 'inbound' %}
+        · <span style="color:#b91c1c;font-weight:600">Awaiting your reply</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="lead-score-ring">
+    <div class="lead-score-num" style="color:{% if c.lead_tier=='hot' %}#b91c1c{% elif c.lead_tier=='warm' %}#92400e{% else %}var(--muted){% endif %}">
+      {{ c.lead_score }}
+    </div>
+    <div class="lead-score-lbl">score</div>
+  </div>
+
+</a>
+{% endfor %}
+</div>
+
+{% endif %}{# leads #}
+{% endif %}{# connection #}
+
+<script>
+function filterLeads(btn, tier) {
+  document.querySelectorAll('.filter-btn').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  document.querySelectorAll('.lead-card').forEach(function(el){
+    el.style.display = (tier === 'all' || el.getAttribute('data-tier') === tier) ? '' : 'none';
+  });
+}
+</script>
+
+{% endblock %}

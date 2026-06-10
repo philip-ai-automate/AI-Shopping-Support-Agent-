@@ -325,6 +325,7 @@ def customer_set_features(customer_id: int):
     feat_verified_specs   = request.form.get("feat_verified_specs_web_lookup") == "on"
     feat_chat_archive_30d = request.form.get("feat_chat_archive_30days") == "on"
     feat_chat_archive_unl = request.form.get("feat_chat_archive_unlimited") == "on"
+    feat_wa_templates     = request.form.get("feat_wa_message_templates") == "on"
 
     # Cart recovery sub-settings
     recovery_popup_message = (request.form.get("cart_recovery_popup_message") or "").strip()
@@ -360,6 +361,10 @@ def customer_set_features(customer_id: int):
         features["chat_archive_unlimited"] = True
     elif feat_chat_archive_30d:
         features["chat_archive_30days"] = True
+
+    # WhatsApp Message Templates — cart abandonment & order status via Meta-approved templates
+    if feat_wa_templates:
+        features["whatsapp_message_templates"] = True
 
     features_json = _json.dumps(features) if features else None
 
@@ -737,7 +742,7 @@ def credit_packages():
         credits     = int(request.form.get("credits")  or 0)
         price_pence = int(float(request.form.get("price_gbp") or 0) * 100)
         vat_rate    = float(request.form.get("vat_rate")   or 20.0)
-        is_active=TRUE if request.form.get("is_active") == "on" else 0
+        is_active = 1 if request.form.get("is_active") == "on" else 0
         sort_order  = int(request.form.get("sort_order")   or 0)
 
         # Stage 3 — package type and billing period
@@ -758,6 +763,7 @@ def credit_packages():
         feat_verified_specs  = request.form.get("feature_verified_specs_web_lookup") == "on"
         feat_chat_archive_30d = request.form.get("feature_chat_archive_30days") == "on"
         feat_chat_archive_unl = request.form.get("feature_chat_archive_unlimited") == "on"
+        feat_wa_templates     = request.form.get("feature_wa_message_templates") == "on"
         features_dict = {}
         if feat_product_rec:
             features_dict["product_recommendation"] = True
@@ -775,6 +781,9 @@ def credit_packages():
             features_dict["chat_archive_unlimited"] = True
         elif feat_chat_archive_30d:
             features_dict["chat_archive_30days"] = True
+        # WhatsApp Message Templates
+        if feat_wa_templates:
+            features_dict["whatsapp_message_templates"] = True
         # Custom features — one per line entered by admin
         custom_text = (request.form.get("custom_features_text") or "").strip()
         custom_list = [line.strip() for line in custom_text.splitlines() if line.strip()]
@@ -884,6 +893,7 @@ def credit_packages_edit(pkg_id: int):
     feat_verified_specs   = request.form.get("feature_verified_specs_web_lookup") == "on"
     feat_chat_archive_30d = request.form.get("feature_chat_archive_30days") == "on"
     feat_chat_archive_unl = request.form.get("feature_chat_archive_unlimited") == "on"
+    feat_wa_templates     = request.form.get("feature_wa_message_templates") == "on"
     features_dict = {}
     if feat_product_rec:
         features_dict["product_recommendation"] = True
@@ -898,6 +908,9 @@ def credit_packages_edit(pkg_id: int):
         features_dict["chat_archive_unlimited"] = True
     elif feat_chat_archive_30d:
         features_dict["chat_archive_30days"] = True
+    # WhatsApp Message Templates
+    if feat_wa_templates:
+        features_dict["whatsapp_message_templates"] = True
     # Custom features — one per line entered by admin
     custom_text = (request.form.get("custom_features_text") or "").strip()
     custom_list = [line.strip() for line in custom_text.splitlines() if line.strip()]

@@ -1,14 +1,16 @@
-from openai import AzureOpenAI
+from openai import OpenAI
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
-client = AzureOpenAI(
-    api_key=os.getenv("AZURE_OPENAI_KEY"),
-    api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview"),
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
-)
+_client = None
+
+def _get_client() -> OpenAI:
+    global _client
+    if _client is None:
+        _client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    return _client
 
 
 def _compact_system_prompt(tenant_system_prompt: str) -> str:
@@ -51,7 +53,6 @@ def _compact_system_prompt(tenant_system_prompt: str) -> str:
 def _format_context(context_chunks) -> str:
     if not context_chunks:
         return ""
-    # Keep it tight: numbered chunks only.
     lines = []
     for i, c in enumerate(context_chunks, start=1):
         c = (c or "").strip()
@@ -89,8 +90,8 @@ def ask_llm(system_prompt, user_message, context_chunks, history=None):
 
     max_out = int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "1200"))
 
-    response = client.chat.completions.create(
-        model=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
+    response = _get_client().chat.completions.create(
+        model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"),
         messages=messages,
         temperature=0.3,
         max_tokens=max_out

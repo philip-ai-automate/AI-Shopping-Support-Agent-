@@ -82,6 +82,49 @@ def _embed_query(text: str) -> List[float]:
     return [float(x) for x in resp.data[0].embedding]
 
 
+_TENANT_CURRENCY_CACHE: Dict[int, Tuple[str, float]] = {}
+_TENANT_CURRENCY_TTL: int = 3600
+
+
+def _get_tenant_currency(tenant_id: int) -> str:
+    """Fetch the sell currency for a tenant from their stored products (cached 1 hour)."""
+    now = time.time()
+    cached = _TENANT_CURRENCY_CACHE.get(tenant_id)
+    if cached is not None:
+        currency, fetched_at = cached
+        if now - fetched_at < _TENANT_CURRENCY_TTL:
+            return currency
+    try:
+        conn = _get_pg_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT currency FROM documents WHERE tenant_id = %s "
+                "AND currency IS NOT NULL AND currency != '' LIMIT 1",
+                (tenant_id,),
+            )
+            row = cur.fetchone()
+            cur.close()
+        finally:
+            conn.close()
+        currency = (row[0] or "").upper() if row else ""
+    except Exception:
+        currency = ""
+    _TENANT_CURRENCY_CACHE[tenant_id] = (currency, now)
+    return currency
+
+
+def _fmt_currency_val(val: float, currency: str) -> str:
+    """Format a price value with the correct symbol and decimal places."""
+    _sym = {"GBP": "£", "USD": "$", "EUR": "€", "NGN": "₦"}
+    cur = (currency or "").upper()
+    if cur:
+        sym = _sym.get(cur, cur + " ")
+        return f"{sym}{val:,.0f}" if cur == "NGN" else f"{sym}{val:,.2f}"
+    # Fallback heuristic for docs without currency field
+    return f"₦{val:,.0f}" if val > 5000 else f"£{val:,.2f}"
+
+
 def _format_doc(doc: Dict[str, Any], max_chars: int) -> str:
     title = (doc.get("title") or "").strip()
     sku = (doc.get("sku") or "").strip()
@@ -106,18 +149,15 @@ def _format_doc(doc: Dict[str, Any], max_chars: int) -> str:
                 pmin = None
             if pmax is not None and pmax <= 0:
                 pmax = None
-            # Show both GBP (stored value) and NGN equivalent so the AI can
-            # accurately answer price questions from Nigerian customers
-            if pmin is not None and pmax is not None and abs(pmax - pmin) > 0.01:
-                ngn_lo = int(_gbp_to_ngn(pmin))
-                ngn_hi = int(_gbp_to_ngn(pmax))
-                parts.append(f"Price: £{pmin:,.2f}–£{pmax:,.2f} (₦{ngn_lo:,}–₦{ngn_hi:,})")
-            elif pmin is not None:
-                ngn = int(_gbp_to_ngn(pmin))
-                parts.append(f"Price: £{pmin:,.2f} (≈ ₦{ngn:,})")
-            elif pmax is not None:
-                ngn = int(_gbp_to_ngn(pmax))
-                parts.append(f"Price: £{pmax:,.2f} (≈ ₦{ngn:,})")
+            currency = (doc.get("currency") or "").upper()
+            ref = pmin if pmin is not None else pmax
+            if ref is not None:
+                if pmin is not None and pmax is not None and abs(pmax - pmin) > 0.01:
+                    parts.append(f"Price: {_fmt_currency_val(pmin, currency)}–{_fmt_currency_val(pmax, currency)}")
+                elif pmin is not None:
+                    parts.append(f"Price: {_fmt_currency_val(pmin, currency)}")
+                elif pmax is not None:
+                    parts.append(f"Price: {_fmt_currency_val(pmax, currency)}")
         except Exception:
             pass
 
@@ -133,7 +173,7 @@ def _format_doc(doc: Dict[str, Any], max_chars: int) -> str:
     return "\n".join(parts).strip()
 
 
-def _parse_filters_sql(query: str) -> Tuple[List[str], List[Any]]:
+def _parse_filters_sql(query: str, tenant_currency: str = "") -> Tuple[List[str], List[Any]]:
     """
     Parse natural language query into SQL WHERE clause parts + params.
     Returns (parts, params) where parts are SQL condition strings with %s placeholders.
@@ -148,16 +188,36 @@ def _parse_filters_sql(query: str) -> Tuple[List[str], List[Any]]:
     # Include ₦ in symbol detection so NGN budgets are captured
     _n = r'(?:[\$£€₦]\s*)?(\d[\d,]*(?:\.\d{1,2})?)'
 
-    def _to_gbp(val: float) -> float:
-        """Convert to GBP if the value looks like NGN (explicit ₦ or number > 5000).
-        Products are stored in GBP (£100–£2000 range), so anything > 5000 is NGN."""
-        if '₦' in q or val > 5000:
+    def _normalise_budget(val: float) -> float:
+        """Convert the user's stated budget to match the currency stored in the DB."""
+        stored = (tenant_currency or "").upper()
+        # Detect user's stated currency from symbols in the query
+        if '£' in q:
+            user_cur = 'GBP'
+        elif '₦' in q:
+            user_cur = 'NGN'
+        elif '$' in q:
+            user_cur = 'USD'
+        elif '€' in q:
+            user_cur = 'EUR'
+        else:
+            return val  # no symbol — assume same currency as stored
+
+        if not stored or user_cur == stored:
+            return val
+
+        # Convert between known pairs
+        if user_cur == 'GBP' and stored == 'NGN':
+            converted = _gbp_to_ngn(val)
+            print(f"   [CURRENCY] £{val:,.2f} → ₦{converted:,.0f} (GBP budget → NGN for filter)")
+            return converted
+        elif user_cur == 'NGN' and stored == 'GBP':
             converted = _ngn_to_gbp(val)
-            print(f"   [CURRENCY] ₦{val:,.0f} → £{converted:,.2f} (budget conversion)")
+            print(f"   [CURRENCY] ₦{val:,.0f} → £{converted:,.2f} (NGN budget → GBP for filter)")
             return converted
         return val
 
-    # Price range: "between £10 and £50" | "₦100,000 - ₦300,000"
+    # Price range: "between ₦100,000 and ₦300,000" | "between £10 and £50"
     _range = re.search(
         rf'between\s+{_n}\s+(?:and|to)\s+{_n}|{_n}\s*(?:-|–|—|to)\s*{_n}(?=\s|$)',
         q,
@@ -166,8 +226,8 @@ def _parse_filters_sql(query: str) -> Tuple[List[str], List[Any]]:
         gs = [g for g in _range.groups() if g is not None]
         if len(gs) >= 2:
             try:
-                lo = _to_gbp(float(gs[0].replace(',', '')))
-                hi = _to_gbp(float(gs[1].replace(',', '')))
+                lo = _normalise_budget(float(gs[0].replace(',', '')))
+                hi = _normalise_budget(float(gs[1].replace(',', '')))
                 if 0 < lo <= hi:
                     parts.append(
                         "price_min >= %s AND price_min <= %s AND price_min > 0 "
@@ -184,7 +244,7 @@ def _parse_filters_sql(query: str) -> Tuple[List[str], List[Any]]:
         )
         if _max_m:
             try:
-                hi = _to_gbp(float(_max_m.group(1).replace(',', '')))
+                hi = _normalise_budget(float(_max_m.group(1).replace(',', '')))
                 parts.append("price_min <= %s AND price_min > 0")
                 params.append(hi)
             except Exception:
@@ -197,7 +257,7 @@ def _parse_filters_sql(query: str) -> Tuple[List[str], List[Any]]:
         )
         if _min_m:
             try:
-                lo = _to_gbp(float(_min_m.group(1).replace(',', '')))
+                lo = _normalise_budget(float(_min_m.group(1).replace(',', '')))
                 parts.append("(price_max >= %s OR (price_max IS NULL AND price_min >= %s))")
                 params.extend([lo, lo])
             except Exception:
@@ -250,7 +310,8 @@ def _run_vector_search(
     sql = f"""
         SELECT id, title, content, url, sku, brand,
                price_min, price_max, in_stock, type,
-               categories_text, site_url, tenant_id, image_url
+               categories_text, site_url, tenant_id, image_url,
+               COALESCE(currency, '') AS currency
         FROM documents
         {where}
         ORDER BY embedding <=> %s::vector
@@ -283,7 +344,8 @@ def _run_keyword_search(
     sql = f"""
         SELECT id, title, content, url, sku, brand,
                price_min, price_max, in_stock, type,
-               categories_text, site_url, tenant_id, image_url
+               categories_text, site_url, tenant_id, image_url,
+               COALESCE(currency, '') AS currency
         FROM documents
         {where}
         ORDER BY ts_rank(search_vector, plainto_tsquery('english', %s)) DESC
@@ -349,6 +411,11 @@ def _clean_search_query(query: str) -> str:
     return q
 
 
+def _price_filter_parts(filter_parts: List[str]) -> List[str]:
+    """Return only the price-related SQL parts from a filter list."""
+    return [p for p in filter_parts if "price_min" in p or "price_max" in p]
+
+
 def search_documents_with_meta(
     query: str, tenant_id: int, semantic_config: Optional[str] = None,
     precomputed_embedding: Optional[List[float]] = None,
@@ -362,6 +429,11 @@ def search_documents_with_meta(
 
     When OpenAI is unavailable: falls back to keyword-only search so chat still
     works during an OpenAI outage.
+
+    Price-filter fallback: if a price filter is active but returns 0 results
+    (common when price_min is NULL for products not yet re-synced), we retry
+    without the price SQL filter so the AI can still find semantically-matching
+    products and reason about prices from the context text.
     """
     top_k = int(os.getenv("RAG_TOP_K", "6"))
     max_chars = int(os.getenv("RAG_CHUNK_MAX_CHARS", "900"))
@@ -370,7 +442,8 @@ def search_documents_with_meta(
     # The full query (with background context) is still used for embeddings.
     clean_query = _clean_search_query(query)
 
-    filter_parts, filter_params = _parse_filters_sql(clean_query)
+    tenant_currency = _get_tenant_currency(tenant_id)
+    filter_parts, filter_params = _parse_filters_sql(clean_query, tenant_currency)
     if filter_parts:
         print(f"   🔍 pgvector filter applied: {' AND '.join(filter_parts)}")
 
@@ -383,23 +456,40 @@ def search_documents_with_meta(
             print(f"   ⚠️ embedding failed — keyword-only search: {e}")
             q_vec = None
 
-    try:
+    def _run_search(fp: List[str], pp: List[Any]) -> List[Dict[str, Any]]:
         conn = _get_pg_conn()
         try:
             if q_vec is not None:
-                # Fetch more candidates from each leg so RRF has room to rerank
-                vec_rows = _run_vector_search(conn, tenant_id, q_vec, top_k * 2, filter_parts, filter_params)
+                vec_rows = _run_vector_search(conn, tenant_id, q_vec, top_k * 2, fp, pp)
                 try:
-                    kw_rows = _run_keyword_search(conn, tenant_id, clean_query, top_k * 2, filter_parts, filter_params)
+                    kw_rows = _run_keyword_search(conn, tenant_id, clean_query, top_k * 2, fp, pp)
                 except Exception as kw_err:
                     print(f"   ⚠️ keyword search failed (vector-only fallback): {kw_err}")
                     kw_rows = []
-                rows = _rrf_merge(vec_rows, kw_rows, top_k)
-                print(f"   🔀 hybrid RRF: {len(vec_rows)} vec + {len(kw_rows)} kw → {len(rows)} merged")
+                merged = _rrf_merge(vec_rows, kw_rows, top_k)
+                print(f"   🔀 hybrid RRF: {len(vec_rows)} vec + {len(kw_rows)} kw → {len(merged)} merged")
+                return merged
             else:
-                rows = _run_keyword_search(conn, tenant_id, clean_query, top_k, filter_parts, filter_params)
+                return _run_keyword_search(conn, tenant_id, clean_query, top_k, fp, pp)
         finally:
             conn.close()
+
+    try:
+        rows = _run_search(filter_parts, filter_params)
+
+        # If a price filter was active but returned nothing, products may have
+        # NULL price_min (not yet re-synced). Retry without the price filter so
+        # the AI can still find semantically-matching products.
+        has_price_filter = any("price_min" in p or "price_max" in p for p in filter_parts)
+        if not rows and has_price_filter:
+            non_price_parts = [p for p in filter_parts if "price_min" not in p and "price_max" not in p]
+            # Rebuild params: count %s placeholders in removed parts to drop correct params
+            removed_parts = [p for p in filter_parts if "price_min" in p or "price_max" in p]
+            n_removed = sum(p.count("%s") for p in removed_parts)
+            non_price_params = filter_params[n_removed:] if n_removed else filter_params
+            print(f"   ⚡ price filter returned 0 — retrying without price filter (products may need re-sync)")
+            rows = _run_search(non_price_parts, non_price_params)
+
     except Exception as e:
         print(f"   ⚠️ search failed: {e}")
         return [], []
@@ -431,7 +521,7 @@ def search_related_products(
     Filters by type, category, and in_stock=TRUE. Never shows excluded names.
     """
 
-    def _fmt_price(price_min_val, price_max_val) -> str:
+    def _fmt_price(price_min_val, price_max_val, currency: str = "") -> str:
         try:
             mn = float(price_min_val) if price_min_val is not None else None
             mx = float(price_max_val) if price_max_val is not None else None
@@ -439,12 +529,14 @@ def search_related_products(
                 mn = None
             if mx is not None and mx <= 0:
                 mx = None
-            if mn is not None and mx is not None and abs(mx - mn) > 0.01:
-                return f"£{mn:,.2f} – £{mx:,.2f}"
-            elif mn is not None:
-                return f"£{mn:,.2f}"
-            elif mx is not None:
-                return f"£{mx:,.2f}"
+            ref = mn if mn is not None else mx
+            if ref is not None:
+                if mn is not None and mx is not None and abs(mx - mn) > 0.01:
+                    return f"{_fmt_currency_val(mn, currency)} – {_fmt_currency_val(mx, currency)}"
+                elif mn is not None:
+                    return _fmt_currency_val(mn, currency)
+                elif mx is not None:
+                    return _fmt_currency_val(mx, currency)
         except Exception:
             pass
         return ""
@@ -486,7 +578,8 @@ def search_related_products(
     if q_vec is not None:
         vec_literal = "[" + ",".join(str(x) for x in q_vec) + "]"
         sql = f"""
-            SELECT id, title, url, sku, brand, price_min, price_max, in_stock, type, image_url
+            SELECT id, title, url, sku, brand, price_min, price_max, in_stock, type, image_url,
+                   COALESCE(currency, '') AS currency
             FROM documents
             {where_clause}
             ORDER BY embedding <=> %s::vector
@@ -495,7 +588,8 @@ def search_related_products(
         qparams.extend([vec_literal, fetch_n])
     else:
         sql = f"""
-            SELECT id, title, url, sku, brand, price_min, price_max, in_stock, type, image_url
+            SELECT id, title, url, sku, brand, price_min, price_max, in_stock, type, image_url,
+                   COALESCE(currency, '') AS currency
             FROM documents
             {where_clause}
             LIMIT %s
@@ -527,7 +621,7 @@ def search_related_products(
             cart_url = f"{url}?add-to-cart={product_id}" if product_id and url else url
             related.append({
                 "name": name,
-                "price": _fmt_price(doc.get("price_min"), doc.get("price_max")),
+                "price": _fmt_price(doc.get("price_min"), doc.get("price_max"), doc.get("currency") or ""),
                 "url": url,
                 "cart_url": cart_url,
                 "in_stock": bool(doc.get("in_stock", True)),
