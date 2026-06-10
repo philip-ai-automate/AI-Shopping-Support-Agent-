@@ -257,6 +257,7 @@ def _onboarding_status(tenant_id: int, customer_id: int):
         "wa_wizard_dismissed":        False,
         "wa_complete":                False,
         "website_wizard_dismissed":   False,
+        "products_step_skipped":      False,
     }
 
     conn = None
@@ -311,10 +312,11 @@ def _onboarding_status(tenant_id: int, customer_id: int):
                     and sync_configured_confirmed and sync_done and kb_configured)
 
         # ── WA-specific checks ─────────────────────────────────────────────
-        wa_connected       = False
-        catalogue_uploaded = False
-        wa_wizard_dismissed    = False
+        wa_connected             = False
+        catalogue_uploaded       = False
+        wa_wizard_dismissed      = False
         website_wizard_dismissed = False
+        products_step_skipped    = False
         try:
             cur.execute(
                 "SELECT COUNT(*) AS c FROM wa_tenants WHERE tenant_id=%s AND active=TRUE",
@@ -341,13 +343,14 @@ def _onboarding_status(tenant_id: int, customer_id: int):
             print("⚠️ _onboarding_status: catalogue check failed:", e)
 
         try:
-            cur.execute("""SELECT wa_wizard_dismissed, website_wizard_dismissed
+            cur.execute("""SELECT wa_wizard_dismissed, website_wizard_dismissed,
+                                  products_step_skipped
                            FROM onboarding_state WHERE customer_id=%s""", (customer_id,))
             row2 = cur.fetchone() or {}
             wa_wizard_dismissed      = bool(int(row2.get("wa_wizard_dismissed") or 0))
             website_wizard_dismissed = bool(int(row2.get("website_wizard_dismissed") or 0))
+            products_step_skipped    = bool(int(row2.get("products_step_skipped") or 0))
         except Exception:
-            # Columns may not exist yet on older DBs — silently ignore
             pass
 
         wa_complete = has_key and wa_connected and catalogue_uploaded and kb_configured
@@ -383,6 +386,7 @@ def _onboarding_status(tenant_id: int, customer_id: int):
             "wa_wizard_dismissed":        wa_wizard_dismissed,
             "wa_complete":                wa_complete,
             "website_wizard_dismissed":   website_wizard_dismissed,
+            "products_step_skipped":      products_step_skipped,
         }
 
     except Exception as e:

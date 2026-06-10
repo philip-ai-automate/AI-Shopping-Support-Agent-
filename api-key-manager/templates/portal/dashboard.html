@@ -453,41 +453,126 @@
 {% if customer.tenant_source_type == 'whatsapp' %}
 
   {% if not onboarding.wa_wizard_dismissed and not onboarding.wa_complete %}
+  {# Progress count for header #}
+  {% set _s1 = 1 %}
+  {% set _s2 = 1 if onboarding.key_active else 0 %}
+  {% set _s3 = 1 if (onboarding.catalogue_uploaded or onboarding.products_step_skipped) else 0 %}
+  {% set _s4 = 1 if onboarding.wa_connected else 0 %}
+  {% set _s5 = 1 if onboarding.catalogue_uploaded else 0 %}
+  {% set _s6 = 1 if onboarding.kb_configured else 0 %}
+  {% set _done_count = _s1 + _s2 + _s3 + _s4 + _s5 + _s6 %}
+
   <div class="card" style="border-color:rgba(37,211,102,.30);background:rgba(37,211,102,.03);margin-bottom:20px">
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div>
-        <div class="card-title" style="color:#128C7E">Getting started — WhatsApp</div>
-        <p style="font-size:14px">Complete these steps to get your AI assistant live on WhatsApp.</p>
+        <div class="card-title" style="color:#128C7E">Getting started — WhatsApp store</div>
+        <p style="font-size:13px;color:var(--muted);margin-top:2px">{{ _done_count }} of 6 steps complete</p>
+      </div>
+      <div style="background:rgba(37,211,102,.12);border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700;color:#128C7E;white-space:nowrap">
+        {{ _done_count }}/6
       </div>
     </div>
-    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px">
+
+    {# Progress bar #}
+    <div style="height:4px;background:rgba(37,211,102,.15);border-radius:2px;margin-bottom:20px">
+      <div style="height:4px;background:#25D366;border-radius:2px;width:{{ (_done_count / 6 * 100)|int }}%"></div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:18px">
+
+      {# Step 1: Account created #}
       <div style="display:flex;align-items:center;gap:10px;font-size:14px">
         <span style="color:var(--good);font-size:16px;flex-shrink:0">✓</span>
-        <span style="color:var(--muted);text-decoration:line-through">Email verified</span>
+        <span style="color:var(--muted);text-decoration:line-through">Account created &amp; email verified</span>
       </div>
+
+      {# Step 2: API key active #}
       <div style="display:flex;align-items:flex-start;gap:10px;font-size:14px">
-        {% if onboarding.key_active %}<span style="color:var(--good);font-size:16px;flex-shrink:0;margin-top:1px">✓</span><span style="color:var(--muted);text-decoration:line-through">API key active</span>
-        {% else %}<span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0;margin-top:2px"></span><div>API key active<br><a href="{{ url_for('portal.api_keys') }}" class="btn btn-sm" style="margin-top:6px">View API Keys →</a></div>{% endif %}
+        {% if onboarding.key_active %}
+          <span style="color:var(--good);font-size:16px;flex-shrink:0;margin-top:1px">✓</span>
+          <span style="color:var(--muted);text-decoration:line-through">AI key active</span>
+        {% else %}
+          <span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0;margin-top:2px"></span>
+          <div>
+            <div style="font-weight:600;margin-bottom:4px">Activate your AI key</div>
+            <div class="muted" style="font-size:12px;margin-bottom:6px">Your API key was created automatically — it activates on first use.</div>
+            <a href="{{ url_for('portal.api_keys') }}" class="btn btn-sm">View API Keys →</a>
+          </div>
+        {% endif %}
       </div>
+
+      {# Step 3: Products added #}
+      {% set _products_done = onboarding.catalogue_uploaded or onboarding.products_step_skipped %}
       <div style="display:flex;align-items:flex-start;gap:10px;font-size:14px">
-        {% if onboarding.wa_connected %}<span style="color:var(--good);font-size:16px;flex-shrink:0;margin-top:1px">✓</span><span style="color:var(--muted);text-decoration:line-through">WhatsApp number connected</span>
-        {% else %}<span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0;margin-top:2px"></span><div><div style="margin-bottom:3px">Connect your WhatsApp number</div><div class="muted" style="font-size:12px;margin-bottom:6px">You will need your API key from step 2 — copy it from the <a href="{{ url_for('portal.api_keys') }}">API Keys page</a> first.</div><a href="{{ url_for('portal.whatsapp_connect') }}" class="btn btn-sm">Go to WhatsApp Connect →</a></div>{% endif %}
+        {% if onboarding.catalogue_uploaded %}
+          <span style="color:var(--good);font-size:16px;flex-shrink:0;margin-top:1px">✓</span>
+          <span style="color:var(--muted);text-decoration:line-through">Products added</span>
+        {% elif onboarding.products_step_skipped %}
+          <span style="color:#f59e0b;font-size:16px;flex-shrink:0;margin-top:1px">⤷</span>
+          <div>
+            <div style="font-weight:600;margin-bottom:4px">Add your products <span style="font-size:11px;font-weight:400;color:var(--muted)">(skipped during setup)</span></div>
+            <div class="muted" style="font-size:12px;margin-bottom:6px">Upload a CSV / Excel file with your product list so your AI knows what you sell.</div>
+            <a href="{{ url_for('portal.data_sources') }}" class="btn btn-sm">Upload Products →</a>
+          </div>
+        {% else %}
+          <span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0;margin-top:2px"></span>
+          <div>
+            <div style="font-weight:600;margin-bottom:4px">Add your products</div>
+            <div class="muted" style="font-size:12px;margin-bottom:6px">Upload a CSV / Excel file with your product list so your AI knows what you sell.</div>
+            <a href="{{ url_for('portal.data_sources') }}" class="btn btn-sm">Upload Products →</a>
+          </div>
+        {% endif %}
       </div>
+
+      {# Step 4: WhatsApp number connected #}
       <div style="display:flex;align-items:flex-start;gap:10px;font-size:14px">
-        {% if onboarding.catalogue_uploaded %}<span style="color:var(--good);font-size:16px;flex-shrink:0;margin-top:1px">✓</span><span style="color:var(--muted);text-decoration:line-through">Product catalogue uploaded</span>
-        {% else %}<span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0;margin-top:2px"></span><div><div style="margin-bottom:3px">Upload your product catalogue</div><div class="muted" style="font-size:12px;margin-bottom:6px">Upload an Excel / CSV file or connect a Google Sheet so your AI knows your products.</div><a href="{{ url_for('portal.data_sources') }}" class="btn btn-sm">Go to Data Sources →</a></div>{% endif %}
+        {% if onboarding.wa_connected %}
+          <span style="color:var(--good);font-size:16px;flex-shrink:0;margin-top:1px">✓</span>
+          <span style="color:var(--muted);text-decoration:line-through">WhatsApp Business number connected</span>
+        {% else %}
+          <span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0;margin-top:2px"></span>
+          <div>
+            <div style="font-weight:600;margin-bottom:4px">Connect your WhatsApp Business number</div>
+            <div class="muted" style="font-size:12px;margin-bottom:6px">Link your WhatsApp Business number via Meta — this is the number your customers will chat with.</div>
+            <a href="{{ url_for('portal.whatsapp_connect') }}" class="btn btn-sm">Connect WhatsApp →</a>
+          </div>
+        {% endif %}
       </div>
+
+      {# Step 5: Full product catalogue in portal #}
       <div style="display:flex;align-items:flex-start;gap:10px;font-size:14px">
-        {% if onboarding.kb_configured %}<span style="color:var(--good);font-size:16px;flex-shrink:0;margin-top:1px">✓</span><span style="color:var(--muted);text-decoration:line-through">Knowledge base configured by PhiXtra team</span>
-        {% else %}<span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0;margin-top:2px"></span><div><div style="margin-bottom:4px">Knowledge base setup by PhiXtra team</div><div style="font-size:12px;color:#92400E;background:rgba(247,144,9,.07);border:1px solid rgba(247,144,9,.30);border-radius:10px;padding:8px 12px;line-height:1.5">⏳ No action needed — our team has been notified and will complete this shortly.</div></div>{% endif %}
+        {% if onboarding.catalogue_uploaded %}
+          <span style="color:var(--good);font-size:16px;flex-shrink:0;margin-top:1px">✓</span>
+          <span style="color:var(--muted);text-decoration:line-through">Product catalogue uploaded to portal</span>
+        {% else %}
+          <span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0;margin-top:2px"></span>
+          <div>
+            <div style="font-weight:600;margin-bottom:4px">Upload your full product catalogue</div>
+            <div class="muted" style="font-size:12px;margin-bottom:6px">Import all your products via CSV or Excel — your AI will search this catalogue to answer customer questions.</div>
+            <a href="{{ url_for('portal.data_sources') }}" class="btn btn-sm">Go to Data Sources →</a>
+          </div>
+        {% endif %}
       </div>
-      {% if onboarding.key_active and onboarding.wa_connected and onboarding.catalogue_uploaded %}
+
+      {# Step 6: Knowledge base / AI live #}
       <div style="display:flex;align-items:flex-start;gap:10px;font-size:14px">
-        {% if onboarding.kb_configured %}<span style="color:var(--good);font-size:16px;flex-shrink:0;margin-top:1px">✓</span><div><div style="color:var(--good);font-weight:700">Your AI assistant is live on WhatsApp! 🎉</div><div class="muted" style="font-size:12px;margin-top:2px">Share your WhatsApp number with customers — the AI will handle their questions automatically.</div></div>
-        {% else %}<span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0;margin-top:2px"></span><span style="color:var(--muted)">Verify your AI assistant is live (complete step 5 first)</span>{% endif %}
+        {% if onboarding.kb_configured %}
+          <span style="color:var(--good);font-size:16px;flex-shrink:0;margin-top:1px">✓</span>
+          <div>
+            <div style="color:var(--good);font-weight:700">Your AI assistant is live on WhatsApp! 🎉</div>
+            <div class="muted" style="font-size:12px;margin-top:2px">Share your WhatsApp number with customers — your AI will handle their questions automatically.</div>
+          </div>
+        {% else %}
+          <span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0;margin-top:2px"></span>
+          <div>
+            <div style="font-weight:600;margin-bottom:4px">PhiXtra team activates your AI</div>
+            <div style="font-size:12px;color:#92400E;background:rgba(247,144,9,.07);border:1px solid rgba(247,144,9,.30);border-radius:10px;padding:8px 12px;line-height:1.5">⏳ No action needed — our team has been notified and will configure your AI assistant shortly.</div>
+          </div>
+        {% endif %}
       </div>
-      {% endif %}
+
     </div>
+
     {% if onboarding.wa_complete %}
     <form method="POST" action="{{ url_for('portal.onboarding_dismiss_wa') }}" style="display:inline">
       <button type="submit" class="btn btn-ghost muted btn-sm">Dismiss this guide ✕</button>
