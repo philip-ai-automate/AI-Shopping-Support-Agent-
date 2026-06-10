@@ -1,15 +1,16 @@
 """
-WhatsApp-first merchant onboarding — Option 1 of 3 entry points.
+WhatsApp-first merchant onboarding.
 
-A new merchant messages the Phixtra setup number. We walk them through:
+Flow:
   1. Business name
   2. Category (what they sell)
   3. Customer-facing sales number
-  4. Bank transfer details
-  5. Product catalog (name → price → stock → description → photo, repeating)
+  4. Products — search catalogue, pick + set price, or type MANUAL, or SKIP
 
-On completion we call /internal/provision-wa-merchant via the portal API,
-then persist bank account + products directly to the shared DB.
+Bank account collection is NOT part of this flow (not yet planned).
+
+On completion, /internal/provision-wa-merchant is called to create the
+tenant + customer account, then products are saved to the products table.
 
 Required env vars:
   WA_SETUP_PHONE_NUMBER_ID  — Meta phone_number_id of the PhiXtra setup number
@@ -27,13 +28,15 @@ import uuid
 import httpx
 
 from meta_sender import send_text
-from wa_db import get_db_connection
+from wa_db import get_db_connection, search_catalogue
 
 _SETUP_PHONE_NUMBER_ID = os.getenv("WA_SETUP_PHONE_NUMBER_ID", "")
 _SETUP_ACCESS_TOKEN    = os.getenv("WA_SETUP_ACCESS_TOKEN", "")
 _PORTAL_URL            = os.getenv("PORTAL_BASE_URL", "https://portal.phixtra.com")
 _INTERNAL_TOKEN        = os.getenv("PHIXTRA_INTERNAL_TOKEN", "")
 _PORTAL_INTERNAL_URL   = os.getenv("PORTAL_INTERNAL_URL", "http://127.0.0.1:5055")
+
+_NUMBER_EMOJI = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
 
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
@@ -42,7 +45,7 @@ def _get_session(phone: str) -> dict | None:
     conn = get_db_connection()
     if not conn:
         return None
-    cur = conn.cursor(dictionary=True)
+    cur = conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor)
     try:
         cur.execute(
             "SELECT id, state, collected, tenant_id FROM wa_merchant_onboarding WHERE wa_phone=%s",
@@ -70,10 +73,10 @@ def _save_session(phone: str, state: str, collected: dict, tenant_id: int = None
             """
             INSERT INTO wa_merchant_onboarding (wa_phone, state, collected, tenant_id)
             VALUES (%s, %s, %s, %s)
-            ON DUPLICATE KEY UPDATE
-              state      = VALUES(state),
-              collected  = VALUES(collected),
-              tenant_id  = COALESCE(VALUES(tenant_id), tenant_id),
+            ON CONFLICT (wa_phone) DO UPDATE SET
+              state      = EXCLUDED.state,
+              collected  = EXCLUDED.collected,
+              tenant_id  = COALESCE(EXCLUDED.tenant_id, wa_merchant_onboarding.tenant_id),
               updated_at = CURRENT_TIMESTAMP
             """,
             (phone, state, json.dumps(collected), tenant_id),
@@ -87,7 +90,6 @@ def _save_session(phone: str, state: str, collected: dict, tenant_id: int = None
 
 
 def _reset_session(phone: str):
-    """Delete session so the merchant can start fresh."""
     conn = get_db_connection()
     if not conn:
         return
@@ -97,32 +99,6 @@ def _reset_session(phone: str):
         conn.commit()
     except Exception as e:
         print("⚠️ [ONBOARDING] _reset_session:", e)
-    finally:
-        cur.close()
-        conn.close()
-
-
-def _save_bank_account(tenant_id: int, bank_name: str, account_number: str, account_name: str):
-    conn = get_db_connection()
-    if not conn:
-        return
-    cur = conn.cursor()
-    try:
-        cur.execute(
-            """
-            INSERT INTO merchant_bank_accounts
-                (tenant_id, bank_name, account_number, account_name, is_primary)
-            VALUES (%s, %s, %s, %s, 1)
-            ON DUPLICATE KEY UPDATE
-              bank_name      = VALUES(bank_name),
-              account_number = VALUES(account_number),
-              account_name   = VALUES(account_name)
-            """,
-            (tenant_id, bank_name, account_number, account_name),
-        )
-        conn.commit()
-    except Exception as e:
-        print("⚠️ [ONBOARDING] _save_bank_account:", e)
     finally:
         cur.close()
         conn.close()
@@ -142,7 +118,7 @@ def _save_products(tenant_id: int, products: list, default_category: str = None)
                 INSERT INTO products
                     (id, tenant_id, name, description, price,
                      stock_quantity, category, image_url, is_active)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 1)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE)
                 """,
                 (
                     str(uuid.uuid4()),
@@ -164,10 +140,9 @@ def _save_products(tenant_id: int, products: list, default_category: str = None)
         conn.close()
 
 
-# ── Portal provisioning call ──────────────────────────────────────────────────
+# ── Portal provisioning ───────────────────────────────────────────────────────
 
 async def _provision_merchant(phone: str, business_name: str) -> dict | None:
-    """POST /internal/provision-wa-merchant. Returns {tenant_id, customer_id} or None."""
     if not _INTERNAL_TOKEN:
         print("⚠️ [ONBOARDING] PHIXTRA_INTERNAL_TOKEN not set — cannot provision")
         return None
@@ -188,7 +163,6 @@ async def _provision_merchant(phone: str, business_name: str) -> dict | None:
 # ── Parsing helpers ───────────────────────────────────────────────────────────
 
 def _parse_price(text: str) -> float | None:
-    """Accept '12500', '₦12,500', '12.5k', '12.5K'."""
     cleaned = re.sub(r"[₦,\s]", "", text.strip().lower())
     k = re.fullmatch(r"(\d+(?:\.\d+)?)k", cleaned)
     if k:
@@ -201,7 +175,6 @@ def _parse_price(text: str) -> float | None:
 
 
 def _parse_stock(text: str) -> int | None:
-    """'unlimited' / 'plenty' → 999999; otherwise parse integer."""
     lower = text.strip().lower()
     if lower in ("unlimited", "plenty", "many", "lots", "infinite", "∞", "na", "no limit"):
         return 999999
@@ -211,21 +184,12 @@ def _parse_stock(text: str) -> int | None:
         return None
 
 
-def _parse_bank(text: str) -> tuple[str, str, str] | None:
-    """
-    Parse 'GTBank | 0123456789 | John Doe'.
-    Tries pipe, comma, and semicolon as separators.
-    Returns (bank_name, account_number, account_name) or None.
-    """
-    for sep in ("|", ",", ";"):
-        parts = [p.strip() for p in text.split(sep)]
-        if len(parts) >= 3:
-            bank = parts[0]
-            acct = re.sub(r"\s", "", parts[1])
-            name = " ".join(parts[2:]).strip()
-            if bank and acct and name:
-                return bank, acct, name
-    return None
+def _fmt_price(amount) -> str:
+    """Format a numeric price as ₦1,234,000"""
+    try:
+        return f"₦{float(amount):,.0f}"
+    except Exception:
+        return str(amount)
 
 
 def _yes(text: str) -> bool:
@@ -240,6 +204,22 @@ def _wants_restart(text: str) -> bool:
     return text.strip().lower() in {"restart", "start over", "reset", "start again", "begin again"}
 
 
+def _wants_manual(text: str) -> bool:
+    return text.strip().lower() in {"manual", "add manual", "custom", "other"}
+
+
+def _wants_skip(text: str) -> bool:
+    return text.strip().lower() in {"skip", "later", "add later", "no products", "skip products"}
+
+
+def _wants_new_search(text: str) -> bool:
+    return text.strip().lower() in {"new search", "search again", "try again", "back", "other"}
+
+
+def _wants_setup(text: str) -> bool:
+    return text.strip().lower() in {"setup", "set up", "register", "start", "hi setup", "hello setup"}
+
+
 # ── Reply helper ──────────────────────────────────────────────────────────────
 
 async def _reply(phone: str, message: str):
@@ -247,6 +227,53 @@ async def _reply(phone: str, message: str):
         print(f"   [ONBOARDING] (no creds) → {phone}: {message[:80]}")
         return
     await send_text(_SETUP_PHONE_NUMBER_ID, _SETUP_ACCESS_TOKEN, phone, message)
+
+
+# ── Completion helper ─────────────────────────────────────────────────────────
+
+async def _complete_registration(phone: str, collected: dict):
+    """Provision the merchant, save their products, send success message."""
+    biz_name = collected.get("business_name", f"WA Merchant {phone[-4:]}")
+    products = collected.get("products", [])
+    category = collected.get("category")
+
+    await _reply(phone, "⏳ Setting up your store now — just a moment...")
+
+    result = await _provision_merchant(phone, biz_name)
+    if not result:
+        await _reply(
+            phone,
+            "⚠️ There was a technical issue setting up your account.\n"
+            "Please contact support@phixtra.com and mention your number.",
+        )
+        return
+
+    tenant_id = int(result["tenant_id"])
+
+    if products:
+        _save_products(tenant_id, products, default_category=category)
+
+    n_products   = len(products)
+    product_line = (
+        f"• {n_products} product{'s' if n_products != 1 else ''} added to your catalogue\n"
+        if n_products else
+        "• No products added yet — add them anytime from your dashboard\n"
+    )
+
+    await _reply(
+        phone,
+        f"🎉 *Your store is set up!*\n\n"
+        f"{product_line}\n"
+        f"📊 *Log in to your dashboard:*\n{_PORTAL_URL}\n\n"
+        "Use this WhatsApp number to log in — we'll send you an OTP.\n\n"
+        "*Next step:* Go to *WhatsApp Settings* in your dashboard to connect "
+        "your Meta-approved WhatsApp Business number and go live.\n\n"
+        "_You can also add more products, upload an Excel file, and manage "
+        "your store from your dashboard at any time._",
+    )
+
+    _save_session(phone, "COMPLETE", collected, tenant_id)
+    print(f"✅ [ONBOARDING] {phone} → tenant {tenant_id} | {n_products} products")
 
 
 # ── Main entry point ──────────────────────────────────────────────────────────
@@ -258,16 +285,17 @@ async def handle_onboarding_message(msg: dict):
     """
     phone     = msg["customer_phone"]
     text      = (msg.get("text") or "").strip()
-    media_url = msg.get("media_url") or ""
     msg_type  = msg.get("message_type", "text")
+    media_url = msg.get("media_url") or ""
 
     # Allow restart at any point
     if _wants_restart(text):
         _reset_session(phone)
-        await _reply(phone,
+        await _reply(
+            phone,
             "OK, let's start fresh! 🔄\n\n"
             "Welcome to *Phixtra*! I'll help you set up your AI-powered WhatsApp store.\n\n"
-            "What's your *business name*?"
+            "What's your *business name*?",
         )
         _save_session(phone, "COLLECT_BIZ_NAME", {})
         return
@@ -276,11 +304,21 @@ async def handle_onboarding_message(msg: dict):
 
     # ── First contact ─────────────────────────────────────────────────────────
     if session is None:
-        await _reply(phone,
+        if not _wants_setup(text):
+            await _reply(
+                phone,
+                "👋 Hello! This is the *Phixtra* merchant registration line.\n\n"
+                "To set up your AI-powered WhatsApp store, send the word:\n\n"
+                "*SETUP*",
+            )
+            return
+        await _reply(
+            phone,
             "👋 Welcome to *Phixtra*!\n\n"
             "I'll help you set up your AI-powered WhatsApp store in just a few minutes. "
             "Your customers will be able to browse products, place orders, and pay — all on WhatsApp.\n\n"
-            "Let's begin! What's your *business name*?"
+            "_At any point, type *RESTART* to start over._\n\n"
+            "Let's begin! What's your *business name*?",
         )
         _save_session(phone, "COLLECT_BIZ_NAME", {})
         return
@@ -290,11 +328,12 @@ async def handle_onboarding_message(msg: dict):
 
     # ── Already complete ──────────────────────────────────────────────────────
     if state == "COMPLETE":
-        await _reply(phone,
+        await _reply(
+            phone,
             f"✅ Your store is already live!\n\n"
             f"Log in to your dashboard at:\n{_PORTAL_URL}\n\n"
             "Enter this WhatsApp number and we'll send you a login code.\n\n"
-            "_Need help? Contact support@phixtra.com_"
+            "_Need help? Contact support@phixtra.com_",
         )
         return
 
@@ -304,9 +343,10 @@ async def handle_onboarding_message(msg: dict):
             await _reply(phone, "Please enter your business name (at least 2 characters).")
             return
         collected["business_name"] = text
-        await _reply(phone,
+        await _reply(
+            phone,
             f"Love it — *{text}*! 🎉\n\n"
-            "What do you *sell*? _(e.g. clothes, shoes, electronics, food, cosmetics, accessories)_"
+            "What do you *sell*? _(e.g. phones, accessories, electronics, clothing)_",
         )
         _save_session(phone, "COLLECT_CATEGORY", collected)
         return
@@ -314,80 +354,155 @@ async def handle_onboarding_message(msg: dict):
     # ── COLLECT_CATEGORY ─────────────────────────────────────────────────────
     if state == "COLLECT_CATEGORY":
         if len(text) < 2:
-            await _reply(phone, "Please describe what you sell _(e.g. clothes, food, shoes)_.")
+            await _reply(phone, "Please describe what you sell _(e.g. phones, accessories)_.")
             return
         collected["category"] = text
-        await _reply(phone,
+        await _reply(
+            phone,
             "Got it! 📦\n\n"
-            "What *WhatsApp number* will customers message to shop?\n\n"
-            "_(This can be this same number — reply *same* if so)_"
+            "Now let's add the products you sell.\n\n"
+            "Search for a model — e.g. *iPhone 15* or *Samsung A54*\n\n"
+            "Type *MANUAL* to add a custom product not in our catalogue.\n"
+            "Type *SKIP* to finish now and add products later from your dashboard.",
         )
-        _save_session(phone, "COLLECT_SALES_NUMBER", collected)
+        _save_session(phone, "PRODUCT_SEARCH", collected)
         return
 
-    # ── COLLECT_SALES_NUMBER ──────────────────────────────────────────────────
-    if state == "COLLECT_SALES_NUMBER":
-        if text.lower() in ("same", "this", "this number", "same number", "my number"):
-            collected["sales_number"] = phone
-        else:
-            digits = re.sub(r"[^\d+]", "", text)
-            if len(digits) < 7:
-                await _reply(phone,
-                    "Please send a valid phone number _(e.g. +2348012345678 or 08012345678)_,\n"
-                    "or reply *same* if customers will use this number."
-                )
-                return
-            collected["sales_number"] = digits
-        await _reply(phone,
-            "💳 Do you accept *bank transfers*?\n\n"
-            "Send your bank details in this format:\n"
-            "*BankName | AccountNumber | AccountName*\n\n"
-            "_Example: GTBank | 0123456789 | Sarah Jones_\n\n"
-            "Or reply *skip* to set this up later in your dashboard."
+    # ── PRODUCT_SEARCH ────────────────────────────────────────────────────────
+    if state == "PRODUCT_SEARCH":
+        if _wants_skip(text):
+            await _complete_registration(phone, collected)
+            return
+
+        if _wants_manual(text):
+            await _reply(phone, "What is the *name* of the product?")
+            _save_session(phone, "PRODUCT_NAME", collected)
+            return
+
+        # Run catalogue search
+        results = search_catalogue(text, limit=5)
+
+        if not results:
+            await _reply(
+                phone,
+                f"No matches found for *{text}*.\n\n"
+                "Try a different search term, or:\n"
+                "• Type *MANUAL* to add the product yourself\n"
+                "• Type *SKIP* to finish setup and add products from your dashboard",
+            )
+            return
+
+        # Store results in session so user can pick by number
+        collected["catalogue_results"] = results
+
+        lines = [f"Here are matching phones:\n"]
+        for i, r in enumerate(results):
+            emoji = _NUMBER_EMOJI[i] if i < len(_NUMBER_EMOJI) else f"{i+1}."
+            price_str = f" — est. {_fmt_price(r['price_min'])}" if r.get("price_min") else ""
+            lines.append(f"{emoji}  {r['title']}{price_str}")
+
+        lines.append(
+            "\nReply with a *number* to select.\n"
+            "Type *NEW SEARCH* to try a different model.\n"
+            "Type *MANUAL* to add a product not listed."
         )
-        _save_session(phone, "COLLECT_BANK", collected)
+
+        await _reply(phone, "\n".join(lines))
+        _save_session(phone, "PRODUCT_RESULTS", collected)
         return
 
-    # ── COLLECT_BANK ─────────────────────────────────────────────────────────
-    if state == "COLLECT_BANK":
-        if text.lower() == "skip":
-            collected["bank"] = None
-        else:
-            parsed = _parse_bank(text)
-            if not parsed:
-                await _reply(phone,
-                    "I couldn't read that format. Please try:\n\n"
-                    "*BankName | AccountNumber | AccountName*\n\n"
-                    "_Example: GTBank | 0123456789 | Sarah Jones_\n\n"
-                    "Or reply *skip* to do this later."
-                )
-                return
-            collected["bank"] = {
-                "bank_name":      parsed[0],
-                "account_number": parsed[1],
-                "account_name":   parsed[2],
-            }
+    # ── PRODUCT_RESULTS ───────────────────────────────────────────────────────
+    if state == "PRODUCT_RESULTS":
+        if _wants_new_search(text):
+            await _reply(
+                phone,
+                "Search for a model — e.g. *iPhone 15* or *Samsung A54*\n\n"
+                "Type *MANUAL* to add a custom product.\n"
+                "Type *SKIP* to finish now and add products later.",
+            )
+            collected.pop("catalogue_results", None)
+            _save_session(phone, "PRODUCT_SEARCH", collected)
+            return
 
-        await _reply(phone,
-            "Now let's add your products. 🛍\n\n"
-            "What is the *name* of your first product?"
+        if _wants_manual(text):
+            await _reply(phone, "What is the *name* of the product?")
+            _save_session(phone, "PRODUCT_NAME", collected)
+            return
+
+        if _wants_skip(text):
+            await _complete_registration(phone, collected)
+            return
+
+        # Try to parse a selection number
+        try:
+            choice = int(text.strip()) - 1
+        except ValueError:
+            await _reply(
+                phone,
+                "Please reply with a *number* from the list above.\n"
+                "Or type *NEW SEARCH* to search again, or *MANUAL* to add manually.",
+            )
+            return
+
+        results = collected.get("catalogue_results", [])
+        if choice < 0 or choice >= len(results):
+            await _reply(
+                phone,
+                f"Please pick a number between 1 and {len(results)}.",
+            )
+            return
+
+        picked = results[choice]
+        collected["current_product"] = {
+            "name": picked["title"],
+            "recommended_price": picked.get("price_min"),
+            "source": "catalogue",
+        }
+
+        price_line = (
+            f"\n💡 Recommended retail price: {_fmt_price(picked['price_min'])}\n"
+            if picked.get("price_min") else "\n"
         )
-        _save_session(phone, "PRODUCT_NAME", collected)
+
+        await _reply(
+            phone,
+            f"📱 *{picked['title']}*{price_line}\n"
+            "What price will *you* charge your customers?\n"
+            "_(e.g. 650000 or 650k)_",
+        )
+        _save_session(phone, "PRODUCT_PRICE_CAT", collected)
         return
 
-    # ── PRODUCT_NAME ─────────────────────────────────────────────────────────
+    # ── PRODUCT_PRICE_CAT (catalogue path) ────────────────────────────────────
+    if state == "PRODUCT_PRICE_CAT":
+        price = _parse_price(text)
+        if price is None:
+            rec = collected.get("current_product", {}).get("recommended_price")
+            hint = f" _(recommended: {_fmt_price(rec)})_" if rec else ""
+            await _reply(phone, f"Please enter a valid price{hint} — e.g. *650000* or *650k*.")
+            return
+        collected["current_product"]["price"] = price
+        await _reply(
+            phone,
+            "📦 How many do you have in stock?\n_(Enter a number or reply *UNLIMITED*)_",
+        )
+        _save_session(phone, "PRODUCT_STOCK", collected)
+        return
+
+    # ── PRODUCT_NAME (manual path) ────────────────────────────────────────────
     if state == "PRODUCT_NAME":
         if len(text) < 1:
             await _reply(phone, "Please enter the product name.")
             return
-        collected["current_product"] = {"name": text}
-        await _reply(phone,
-            f"💰 What is the *price* of *{text}*?\n_(Numbers only — e.g. 12500)_"
+        collected["current_product"] = {"name": text, "source": "manual"}
+        await _reply(
+            phone,
+            f"💰 What is the *price* of *{text}*?\n_(Numbers only — e.g. 12500)_",
         )
         _save_session(phone, "PRODUCT_PRICE", collected)
         return
 
-    # ── PRODUCT_PRICE ─────────────────────────────────────────────────────────
+    # ── PRODUCT_PRICE (manual path) ───────────────────────────────────────────
     if state == "PRODUCT_PRICE":
         price = _parse_price(text)
         if price is None:
@@ -395,59 +510,81 @@ async def handle_onboarding_message(msg: dict):
             return
         collected["current_product"]["price"] = price
         pname = collected["current_product"].get("name", "this product")
-        await _reply(phone,
-            f"📦 How many *{pname}* do you have in stock?\n_(Enter a number or reply *unlimited*)_"
+        await _reply(
+            phone,
+            f"📦 How many *{pname}* do you have in stock?\n"
+            "_(Enter a number or reply *UNLIMITED*)_",
         )
         _save_session(phone, "PRODUCT_STOCK", collected)
         return
 
-    # ── PRODUCT_STOCK ─────────────────────────────────────────────────────────
+    # ── PRODUCT_STOCK (shared by both paths) ─────────────────────────────────
     if state == "PRODUCT_STOCK":
         stock = _parse_stock(text)
         if stock is None:
-            await _reply(phone, "Please enter a number _(e.g. 50)_ or reply *unlimited*.")
+            await _reply(phone, "Please enter a number _(e.g. 50)_ or reply *UNLIMITED*.")
             return
         collected["current_product"]["stock"] = stock
-        pname = collected["current_product"].get("name", "this product")
-        await _reply(phone,
-            f"📝 Add a short *description* for *{pname}*?\n"
-            "_(One line — or reply *skip*)_"
-        )
-        _save_session(phone, "PRODUCT_DESC", collected)
+        source = collected.get("current_product", {}).get("source", "manual")
+
+        if source == "catalogue":
+            # Catalogue path: skip desc/image, go straight to confirm
+            cp    = collected["current_product"]
+            price_str = _fmt_price(cp.get("price", 0))
+            stock_str = "Unlimited" if stock == 999999 else str(stock)
+            await _reply(
+                phone,
+                f"Product preview:\n"
+                f"• Model: {cp.get('name', '—')}\n"
+                f"• Your price: {price_str}\n"
+                f"• Stock: {stock_str}\n\n"
+                "Save this product? Reply *YES* or *NO*",
+            )
+            _save_session(phone, "PRODUCT_CONFIRM", collected)
+        else:
+            # Manual path: collect description next
+            pname = collected["current_product"].get("name", "this product")
+            await _reply(
+                phone,
+                f"📝 Add a short *description* for *{pname}*?\n"
+                "_(One line — or reply *SKIP*)_",
+            )
+            _save_session(phone, "PRODUCT_DESC", collected)
         return
 
-    # ── PRODUCT_DESC ─────────────────────────────────────────────────────────
+    # ── PRODUCT_DESC (manual path only) ──────────────────────────────────────
     if state == "PRODUCT_DESC":
         collected["current_product"]["description"] = None if text.lower() == "skip" else text
         pname = collected["current_product"].get("name", "this product")
-        await _reply(phone,
+        await _reply(
+            phone,
             f"📸 Send a *photo* of *{pname}*?\n"
-            "_(Attach an image to this message — or reply *skip*)_"
+            "_(Attach an image — or reply *SKIP*)_",
         )
         _save_session(phone, "PRODUCT_IMAGE", collected)
         return
 
-    # ── PRODUCT_IMAGE ─────────────────────────────────────────────────────────
+    # ── PRODUCT_IMAGE (manual path only) ─────────────────────────────────────
     if state == "PRODUCT_IMAGE":
         if msg_type == "image" and media_url:
-            # media_url here is the Meta media_id — stored as reference
             collected["current_product"]["image_url"] = media_url
         else:
             collected["current_product"]["image_url"] = None
 
         cp        = collected["current_product"]
-        price_str = f"₦{cp['price']:,.0f}" if cp.get("price") is not None else "—"
+        price_str = _fmt_price(cp.get("price", 0))
         stock_str = "Unlimited" if cp.get("stock") == 999999 else str(cp.get("stock", 0))
         photo_str = "✅ Received" if cp.get("image_url") else "—"
 
-        await _reply(phone,
-            f"*Product preview:*\n"
+        await _reply(
+            phone,
+            f"Product preview:\n"
             f"• Name: {cp.get('name', '—')}\n"
             f"• Price: {price_str}\n"
             f"• Stock: {stock_str}\n"
             f"• Description: {cp.get('description') or '—'}\n"
             f"• Photo: {photo_str}\n\n"
-            "Save this product? Reply *YES* or *NO*"
+            "Save this product? Reply *YES* or *NO*",
         )
         _save_session(phone, "PRODUCT_CONFIRM", collected)
         return
@@ -455,81 +592,48 @@ async def handle_onboarding_message(msg: dict):
     # ── PRODUCT_CONFIRM ───────────────────────────────────────────────────────
     if state == "PRODUCT_CONFIRM":
         if _yes(text):
-            cp = dict(collected.pop("current_product", {}))
+            cp       = dict(collected.pop("current_product", {}))
             cp["category"] = collected.get("category")
             products = collected.get("products", [])
             products.append(cp)
             collected["products"] = products
-            await _reply(phone,
-                f"✅ *{cp.get('name')}* saved!\n\n"
-                "Add another product? Reply *YES* or *NO*"
+            collected.pop("catalogue_results", None)
+
+            await _reply(
+                phone,
+                f"✅ *{cp.get('name')}* saved!\n\nAdd another product? Reply *YES* or *NO*",
             )
             _save_session(phone, "ADD_MORE", collected)
+
         elif _no(text):
-            await _reply(phone,
-                "No problem — let's redo that one.\n\n"
-                "What is the *product name*?"
-            )
             collected.pop("current_product", None)
-            _save_session(phone, "PRODUCT_NAME", collected)
+            collected.pop("catalogue_results", None)
+            await _reply(
+                phone,
+                "No problem — let's try again.\n\n"
+                "Search for a model — e.g. *iPhone 15* or *Samsung A54*\n\n"
+                "Type *MANUAL* to add a custom product.\n"
+                "Type *SKIP* to finish now and add products later.",
+            )
+            _save_session(phone, "PRODUCT_SEARCH", collected)
         else:
-            await _reply(phone, "Please reply *YES* to save or *NO* to redo this product.")
+            await _reply(phone, "Please reply *YES* to save or *NO* to try again.")
         return
 
     # ── ADD_MORE ──────────────────────────────────────────────────────────────
     if state == "ADD_MORE":
         if _yes(text):
-            await _reply(phone, "What is the *name* of the next product?")
-            _save_session(phone, "PRODUCT_NAME", collected)
+            await _reply(
+                phone,
+                "Search for a model — e.g. *iPhone 15* or *Samsung A54*\n\n"
+                "Type *MANUAL* to add a custom product.\n"
+                "Type *SKIP* to finish now and add products later.",
+            )
+            _save_session(phone, "PRODUCT_SEARCH", collected)
             return
 
         if _no(text):
-            biz_name  = collected.get("business_name", f"WA Merchant {phone[-4:]}")
-            products  = collected.get("products", [])
-            bank      = collected.get("bank")
-            category  = collected.get("category")
-
-            await _reply(phone, "⏳ Setting up your store now — just a moment...")
-
-            result = await _provision_merchant(phone, biz_name)
-            if not result:
-                await _reply(phone,
-                    "⚠️ There was a technical issue setting up your account.\n"
-                    "Please contact support@phixtra.com and mention your number."
-                )
-                return
-
-            tenant_id = int(result["tenant_id"])
-
-            if bank:
-                _save_bank_account(
-                    tenant_id,
-                    bank["bank_name"],
-                    bank["account_number"],
-                    bank["account_name"],
-                )
-
-            if products:
-                _save_products(tenant_id, products, default_category=category)
-
-            sales_num    = collected.get("sales_number") or phone
-            n_products   = len(products)
-            product_line = (
-                f"• {n_products} product{'s' if n_products != 1 else ''} added to your catalog\n"
-                if n_products else ""
-            )
-
-            await _reply(phone,
-                f"🎉 *Your store is live!*\n\n"
-                f"Customers can now message *{sales_num}* to shop.\n\n"
-                f"{product_line}"
-                f"📊 View your dashboard:\n{_PORTAL_URL}\n\n"
-                "Log in with this WhatsApp number — we'll send you an OTP.\n\n"
-                "_You can add more products, manage orders, and track sales from your dashboard at any time._"
-            )
-
-            _save_session(phone, "COMPLETE", collected, tenant_id)
-            print(f"✅ [ONBOARDING] {phone} → tenant {tenant_id} | {n_products} products | bank={'yes' if bank else 'no'}")
+            await _complete_registration(phone, collected)
             return
 
         await _reply(phone, "Please reply *YES* to add another product or *NO* to finish setup.")
@@ -539,18 +643,20 @@ async def handle_onboarding_message(msg: dict):
     step_labels = {
         "COLLECT_BIZ_NAME":    "business name",
         "COLLECT_CATEGORY":    "what you sell",
-        "COLLECT_SALES_NUMBER":"sales WhatsApp number",
-        "COLLECT_BANK":        "bank details",
+        "PRODUCT_SEARCH":      "product search (type a model name, MANUAL, or SKIP)",
+        "PRODUCT_RESULTS":     "a number from the list, NEW SEARCH, or MANUAL",
+        "PRODUCT_PRICE_CAT":   "your selling price (e.g. 650000 or 650k)",
         "PRODUCT_NAME":        "product name",
         "PRODUCT_PRICE":       "product price",
-        "PRODUCT_STOCK":       "stock quantity",
-        "PRODUCT_DESC":        "product description",
-        "PRODUCT_IMAGE":       "product photo",
+        "PRODUCT_STOCK":       "stock quantity (a number or UNLIMITED)",
+        "PRODUCT_DESC":        "product description (or SKIP)",
+        "PRODUCT_IMAGE":       "product photo (or SKIP)",
         "PRODUCT_CONFIRM":     "YES or NO to confirm product",
         "ADD_MORE":            "YES or NO to add another product",
     }
     step = step_labels.get(state, state)
-    await _reply(phone,
+    await _reply(
+        phone,
         f"I'm waiting for your *{step}*.\n\n"
-        "Please follow the prompts above, or reply *restart* to begin again."
+        "Please follow the prompts above, or reply *RESTART* to begin again.",
     )
