@@ -2,233 +2,492 @@
 {% block title %}Dashboard — PhiXtra Portal{% endblock %}
 {% block content %}
 
-<div class="page-header">
+<style>
+/* ── Dashboard layout ─────────────────────────────────────────────────────── */
+.dash-greeting { font-size:22px; font-weight:800; letter-spacing:-.3px; margin:0 }
+.dash-sub      { font-size:13px; color:var(--muted); margin:3px 0 0 }
+
+/* WhatsApp hero strip */
+.wa-hero {
+  display:flex; align-items:center; justify-content:space-between;
+  flex-wrap:wrap; gap:12px;
+  background:#fff; border:1px solid var(--line); border-radius:18px;
+  padding:16px 22px; margin-bottom:20px;
+  border-left:4px solid #25D366;
+}
+.wa-hero-left  { display:flex; align-items:center; gap:14px }
+.wa-status-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0 }
+.wa-status-dot.live { background:#25D366; box-shadow:0 0 0 3px rgba(37,211,102,.20) }
+.wa-status-dot.off  { background:#9ca3af }
+.wa-number     { font-size:17px; font-weight:800; letter-spacing:-.2px }
+.wa-status-lbl { font-size:12px; color:var(--muted); margin-top:1px }
+.wa-actions    { display:flex; gap:8px; flex-wrap:wrap }
+
+/* KPI cards */
+.kpi-grid-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:20px }
+.kpi-grid-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:20px }
+@media(max-width:900px){ .kpi-grid-4 { grid-template-columns:repeat(2,1fr) } }
+@media(max-width:900px){ .kpi-grid-3 { grid-template-columns:repeat(3,1fr) } }
+@media(max-width:600px){ .kpi-grid-3 { grid-template-columns:1fr } }
+@media(max-width:480px){ .kpi-grid-4 { grid-template-columns:1fr } }
+
+.kpi-card {
+  background:#fff; border:1px solid var(--line); border-radius:18px;
+  padding:18px 20px; position:relative; overflow:hidden;
+}
+.kpi-card-icon {
+  width:38px; height:38px; border-radius:12px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:18px; margin-bottom:12px; flex-shrink:0;
+}
+.kpi-card-val  { font-size:28px; font-weight:800; letter-spacing:-.5px; line-height:1 }
+.kpi-card-label{ font-size:12px; color:var(--muted); margin-top:4px; font-weight:500 }
+.kpi-card-sub  { font-size:12px; color:var(--muted); margin-top:8px; padding-top:8px; border-top:1px solid var(--line) }
+.kpi-card-sub b{ color:var(--ink) }
+.kpi-card-action { margin-top:10px }
+
+/* Urgent pulse on awaiting */
+.kpi-urgent .kpi-card-val { color:#b91c1c }
+.kpi-urgent { border-top:3px solid #F04438 }
+.kpi-green  { border-top:3px solid #25D366 }
+.kpi-blue   { border-top:3px solid #0288D1 }
+.kpi-amber  { border-top:3px solid #F79009 }
+.kpi-ink    { border-top:3px solid var(--ink) }
+
+/* Chart */
+.chart-card { background:#fff; border:1px solid var(--line); border-radius:18px; padding:20px 22px; margin-bottom:20px }
+.chart-header{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:14px }
+.chart-legend{ display:flex; gap:16px }
+.chart-legend-item{ display:flex; align-items:center; gap:5px; font-size:12px; color:var(--muted) }
+.chart-legend-dot { width:10px; height:10px; border-radius:50% }
+
+/* Section header */
+.section-hd {
+  display:flex; align-items:center; justify-content:space-between;
+  flex-wrap:wrap; gap:8px; margin-bottom:14px;
+}
+.section-hd-title { font-size:13px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.06em }
+</style>
+
+{# ═══════════════════════════════════════════════════════════════
+   PLAN / QUOTA BANNER
+═══════════════════════════════════════════════════════════════ #}
+{% set _pct = plan_info.usage_pct | default(0) %}
+{% set _used = plan_info.messages_used | default(0) %}
+{% set _limit = plan_info.ai_messages_limit | default(100) %}
+{% set _plan = plan_info.plan_name | default('Free') %}
+{% set _over = plan_info.is_over_quota | default(false) %}
+
+{% if _over %}
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
+            padding:14px 18px;margin-bottom:18px;border-radius:14px;
+            background:rgba(220,38,38,0.07);border:1px solid rgba(220,38,38,0.35);">
+  <div style="display:flex;align-items:center;gap:10px">
+    <span style="font-size:18px">🔴</span>
+    <span style="font-size:14px;font-weight:700;color:#b91c1c">
+      AI quota reached — {{ _used }} of {{ _limit }} messages used this month.
+      Your AI assistant is paused until next month or you upgrade.
+    </span>
+  </div>
+  <a href="{{ url_for('portal.billing_plans') }}" style="display:inline-block;background:#b91c1c;color:#fff;padding:8px 16px;border-radius:10px;text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap">Upgrade Now →</a>
+</div>
+{% elif _pct >= 80 %}
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
+            padding:14px 18px;margin-bottom:18px;border-radius:14px;
+            background:rgba(217,119,6,0.07);border:1px solid rgba(217,119,6,0.35);">
+  <div style="display:flex;align-items:center;gap:10px">
+    <span style="font-size:18px">⚠️</span>
+    <div>
+      <span style="font-size:14px;font-weight:700;color:#92400e">{{ _used }} of {{ _limit }} AI messages used this month ({{ _pct }}%)</span>
+      <div style="height:4px;background:rgba(217,119,6,0.2);border-radius:2px;margin-top:6px;width:200px">
+        <div style="height:4px;background:#d97706;border-radius:2px;width:{{ _pct }}%"></div>
+      </div>
+    </div>
+  </div>
+  <a href="{{ url_for('portal.billing_plans') }}" style="display:inline-block;background:#b45309;color:#fff;padding:8px 16px;border-radius:10px;text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap">View Plans →</a>
+</div>
+{% else %}
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
+            padding:14px 18px;margin-bottom:18px;border-radius:14px;
+            background:rgba(37,99,235,0.04);border:1px solid rgba(37,99,235,0.18);">
+  <div style="display:flex;align-items:center;gap:12px">
+    <span style="font-size:16px">✅</span>
+    <div>
+      <span style="font-size:13px;font-weight:600;color:#1e40af">{{ _plan }} plan — {{ _used }} of {{ _limit }} AI messages used this month</span>
+      <div style="height:4px;background:rgba(37,99,235,0.12);border-radius:2px;margin-top:5px;width:160px">
+        <div style="height:4px;background:#3b82f6;border-radius:2px;width:{{ [_pct,100]|min }}%"></div>
+      </div>
+    </div>
+  </div>
+  <a href="{{ url_for('portal.billing_plans') }}" style="font-size:12px;color:#6b7280;text-decoration:none">View Plans</a>
+</div>
+{% endif %}
+
+{% if true %}
+
+{# ═══════════════════════════════════════════════════════════════
+   GREETING
+═══════════════════════════════════════════════════════════════ #}
+<div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
   <div>
-    <h1 style="font-size:24px;font-weight:800;letter-spacing:-.3px">
-      Hi {% if customer.first_name %}{{ customer.first_name }}{% else %}there{% endif %} 👋
-    </h1>
-    <p class="muted" style="margin-top:3px">{{ customer.tenant_domain }}</p>
+    <h1 class="dash-greeting">Hi {% if customer.first_name %}{{ customer.first_name }}{% else %}there{% endif %} 👋</h1>
+    <p class="dash-sub">{{ customer.tenant_domain }}</p>
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
     <a href="{{ url_for('portal.api_keys') }}" class="btn btn-sm">🔑 API Keys</a>
-    <a href="{{ url_for('portal.billing') }}"  class="btn btn-primary btn-sm">+ Buy Credits</a>
+    <a href="{{ url_for('portal.billing') }}" class="btn btn-primary btn-sm">+ Buy Credits</a>
   </div>
 </div>
 
-{# ── TRIAL STATUS BANNER ───────────────────────────────────────────────── #}
-{% if trial_info.is_trial and not trial_info.expired %}
-  {% if trial_info.days_left is not none and trial_info.days_left <= 2 %}
-  {# RED: 0-2 days — urgent #}
-  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
-              padding:14px 18px;margin-bottom:18px;border-radius:14px;
-              background:rgba(220,38,38,0.07);border:1px solid rgba(220,38,38,0.35);">
-    <div style="display:flex;align-items:center;gap:10px">
-      <span style="font-size:18px">🔴</span>
-      <span style="font-size:14px;font-weight:700;color:#b91c1c">
-        {% if trial_info.days_left == 0 %}
-          Your trial ends today — upgrade now to keep your AI assistant running!
-        {% else %}
-          Urgent — your trial ends in {{ trial_info.days_left }} day{{ 's' if trial_info.days_left != 1 else '' }}!
-        {% endif %}
-      </span>
+{# ═══════════════════════════════════════════════════════════════
+   WHATSAPP HERO — connection status + quick actions
+═══════════════════════════════════════════════════════════════ #}
+<div class="wa-hero">
+  <div class="wa-hero-left">
+    {% if wa_connection %}
+    <div class="wa-status-dot live"></div>
+    <div>
+      <div class="wa-number">+{{ wa_connection.display_phone_number or wa_connection.phone_number_id }}</div>
+      <div class="wa-status-lbl">WhatsApp connected · AI assistant active</div>
     </div>
-    <a href="{{ url_for('portal.billing') }}"
-       style="display:inline-block;background:#b91c1c;color:#fff;padding:8px 16px;
-              border-radius:10px;text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap">
-      Upgrade Now →
-    </a>
+    {% else %}
+    <div class="wa-status-dot off"></div>
+    <div>
+      <div class="wa-number" style="color:var(--muted)">Not connected</div>
+      <div class="wa-status-lbl">Connect a WhatsApp number to get started</div>
+    </div>
+    {% endif %}
+  </div>
+  <div class="wa-actions">
+    {% if wa_connection %}
+    <a href="{{ url_for('portal.my_inbox') }}" class="btn btn-sm" style="background:#25D366;color:#fff;border-color:#25D366">💬 Open Inbox{% if _inbox_unread_count %} ({{ _inbox_unread_count }}){% endif %}</a>
+    {% if lead_hot_count or lead_warm_count %}
+    <a href="{{ url_for('portal.leads_page') }}" class="btn btn-sm" style="background:rgba(240,68,56,.08);border-color:rgba(240,68,56,.3);color:#b91c1c">🔥 {{ lead_hot_count + lead_warm_count }} Lead{{ 's' if (lead_hot_count+lead_warm_count)!=1 }}</a>
+    {% endif %}
+    {% else %}
+    <a href="{{ url_for('portal.whatsapp_connect') }}" class="btn btn-primary btn-sm">Connect WhatsApp →</a>
+    {% endif %}
+    <a href="{{ url_for('portal.billing') }}" class="btn btn-sm">+ Buy Credits</a>
+  </div>
+</div>
+
+{# ═══════════════════════════════════════════════════════════════
+   WHATSAPP STATS — 4 cards
+═══════════════════════════════════════════════════════════════ #}
+{% if wa_connection %}
+<div class="kpi-grid-4">
+
+  {# Messages received #}
+  <div class="kpi-card kpi-green">
+    <div class="kpi-card-icon" style="background:rgba(37,211,102,.10)">📥</div>
+    <div class="kpi-card-val">{{ wa_stats.today_in }}</div>
+    <div class="kpi-card-label">Messages received today</div>
+    <div class="kpi-card-sub"><b>{{ wa_stats.month_in }}</b> in last 30 days</div>
   </div>
 
-  {% elif trial_info.days_left is not none and trial_info.days_left <= 5 %}
-  {# AMBER: 3-5 days — warning #}
-  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
-              padding:14px 18px;margin-bottom:18px;border-radius:14px;
-              background:rgba(217,119,6,0.07);border:1px solid rgba(217,119,6,0.35);">
-    <div style="display:flex;align-items:center;gap:10px">
-      <span style="font-size:18px">⚠️</span>
-      <span style="font-size:14px;font-weight:700;color:#92400e">
-        Your trial ends in {{ trial_info.days_left }} day{{ 's' if trial_info.days_left != 1 else '' }} — don't lose access!
-      </span>
-    </div>
-    <a href="{{ url_for('portal.billing') }}"
-       style="display:inline-block;background:#b45309;color:#fff;padding:8px 16px;
-              border-radius:10px;text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap">
-      Upgrade Now →
-    </a>
+  {# Messages sent #}
+  <div class="kpi-card kpi-blue">
+    <div class="kpi-card-icon" style="background:rgba(2,136,209,.10)">📤</div>
+    <div class="kpi-card-val">{{ wa_stats.today_out }}</div>
+    <div class="kpi-card-label">Messages sent today</div>
+    <div class="kpi-card-sub"><b>{{ wa_stats.month_out }}</b> in last 30 days</div>
   </div>
 
-  {% else %}
-  {# BLUE: 6+ days — informational #}
-  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
-              padding:14px 18px;margin-bottom:18px;border-radius:14px;
-              background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.25);">
-    <div style="display:flex;align-items:center;gap:10px">
-      <span style="font-size:18px">🔵</span>
-      <span style="font-size:14px;font-weight:600;color:#1e40af">
-        You are on a free trial
-        {% if trial_info.days_left is not none %}
-          — {{ trial_info.days_left }} day{{ 's' if trial_info.days_left != 1 else '' }} remaining.
-        {% endif %}
-      </span>
-    </div>
-    <a href="{{ url_for('portal.billing') }}"
-       style="display:inline-block;background:#1d4ed8;color:#fff;padding:8px 16px;
-              border-radius:10px;text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap">
-      View Plans →
-    </a>
+  {# Active conversations #}
+  <div class="kpi-card kpi-ink">
+    <div class="kpi-card-icon" style="background:rgba(3,12,24,.06)">💬</div>
+    <div class="kpi-card-val">{{ wa_stats.active_convos }}</div>
+    <div class="kpi-card-label">Active conversations</div>
+    <div class="kpi-card-sub">Contacts messaged in <b>last 48h</b></div>
   </div>
-  {% endif %}
 
-{% elif trial_info.is_trial and trial_info.expired %}
-{# ── POST-EXPIRY SCREEN ────────────────────────────────────────────────── #}
-<div class="card" style="text-align:center;padding:48px 24px;margin-bottom:22px;
-            border-color:rgba(220,38,38,0.30);background:rgba(220,38,38,0.03);">
-  <div style="font-size:48px;margin-bottom:16px">⏰</div>
-  <h2 style="font-size:22px;font-weight:800;color:#b91c1c;margin:0 0 10px">
-    Your free trial has ended
-  </h2>
-  <p style="color:#6b7280;font-size:15px;max-width:480px;margin:0 auto 24px">
-    Your AI assistant for <b>{{ trial_info.website }}</b> has been paused.
-    Upgrade to reactivate it instantly — all your setup and instructions are preserved.
-  </p>
-  <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
-    <a href="{{ url_for('portal.billing') }}"
-       style="display:inline-block;background:#030C18;color:#fff;padding:13px 28px;
-              border-radius:12px;text-decoration:none;font-weight:700;font-size:15px">
-      Upgrade Now →
-    </a>
-    <a href="mailto:support@phixtra.com"
-       style="display:inline-block;background:#fff;color:#030C18;padding:13px 28px;
-              border-radius:12px;text-decoration:none;font-weight:700;font-size:15px;
-              border:2px solid #e5e7eb">
-      Contact Support
-    </a>
+  {# Awaiting reply #}
+  <div class="kpi-card {% if wa_stats.awaiting_reply > 0 %}kpi-urgent{% else %}kpi-ink{% endif %}">
+    <div class="kpi-card-icon" style="background:rgba(240,68,56,.08)">🔴</div>
+    <div class="kpi-card-val">{{ wa_stats.awaiting_reply }}</div>
+    <div class="kpi-card-label">Awaiting your reply</div>
+    <div class="kpi-card-sub">
+      {% if wa_stats.awaiting_reply > 0 %}
+        <a href="{{ url_for('portal.my_inbox') }}" style="color:#b91c1c;font-weight:600">Open inbox →</a>
+      {% else %}
+        All conversations <b>replied</b> ✓
+      {% endif %}
+    </div>
   </div>
-  <p style="color:#9ca3af;font-size:12px;margin-top:20px">
-    Questions? Email <a href="mailto:support@phixtra.com" style="color:#6b7280">support@phixtra.com</a>
-  </p>
+
 </div>
 {% endif %}
-{# ── END TRIAL BANNERS ─────────────────────────────────────────────────── #}
 
-{# ── MAIN DASHBOARD CONTENT (hidden when trial has expired) ─────────────── #}
-{% if not (trial_info.is_trial and trial_info.expired) %}
+{# ── WhatsApp Handoffs ─────────────────────────────────────── #}
+{% if handoffs %}
+<div style="background:#fff;border:1px solid var(--line);border-left:4px solid #25D366;border-radius:18px;padding:18px 22px;margin-bottom:20px">
 
-{# ══════════════════════════════════════════════════════════════════════
-   ONBOARDING WIZARD — branched by merchant type
-   WhatsApp merchants: WA-specific checklist + optional website card
-   Web merchants:      existing plugin wizard (unchanged)
-══════════════════════════════════════════════════════════════════════ #}
+  {# Header #}
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="width:38px;height:38px;border-radius:12px;background:rgba(37,211,102,.12);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">💬</div>
+      <div>
+        <div style="font-size:15px;font-weight:800;color:var(--ink)">Customers waiting for you</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:1px">
+          {{ handoffs|length }} customer{{ 's' if handoffs|length != 1 else '' }} asked to speak with a person
+        </div>
+      </div>
+    </div>
+    <a href="{{ url_for('portal.chat_archive') }}" class="btn btn-sm" style="font-size:12px">View Chat Archive →</a>
+  </div>
 
+  {# Handoff cards #}
+  <div style="display:flex;flex-direction:column;gap:10px">
+    {% for hf in handoffs %}
+
+    {# Avatar color + initials #}
+    {% set _av_colors = ['#25D366','#128C7E','#0288D1','#26A69A','#388E3C','#5C6BC0','#00838F','#0277BD'] %}
+    {% set _av_col = _av_colors[(loop.index0 % 8)] %}
+    {% if hf.get('visitor_name') %}
+      {% set _nw = hf.visitor_name.split() %}
+      {% set _ini = (_nw[0][0] ~ _nw[1][0])|upper if _nw|length >= 2 else _nw[0][:2]|upper %}
+    {% elif hf.whatsapp_number %}
+      {% set _ini = hf.whatsapp_number[-4:] %}
+    {% else %}
+      {% set _ini = '?' %}
+    {% endif %}
+
+    {% if hf.whatsapp_number %}
+      {% set _wa_digits = hf.whatsapp_number | replace(' ','') | replace('-','') | replace('(','') | replace(')','') %}
+    {% endif %}
+
+    <div style="background:#f9fafb;border:1px solid var(--line);border-radius:14px;padding:14px 16px;
+                display:flex;align-items:flex-start;gap:14px">
+
+      {# Avatar #}
+      <div style="width:44px;height:44px;border-radius:50%;background:{{ _av_col }};flex-shrink:0;
+                  display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff">
+        {{ _ini }}
+      </div>
+
+      {# Body #}
+      <div style="flex:1;min-width:0">
+
+        {# Name + number row #}
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+          {% if hf.get('visitor_name') %}
+          <span style="font-size:15px;font-weight:700;color:var(--ink)">{{ hf.visitor_name }}</span>
+          {% endif %}
+          {% if hf.whatsapp_number %}
+          <a href="https://wa.me/{{ _wa_digits.lstrip('+') }}" target="_blank" rel="noopener"
+             style="font-size:13px;font-weight:700;color:#25D366;text-decoration:none;
+                    display:inline-flex;align-items:center;gap:4px;
+                    background:rgba(37,211,102,.10);border:1px solid rgba(37,211,102,.25);
+                    border-radius:999px;padding:2px 10px">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="#25D366" style="flex-shrink:0"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 0C5.372 0 0 5.373 0 12c0 2.117.554 4.103 1.523 5.828L0 24l6.335-1.508A11.944 11.944 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.004-1.371l-.36-.213-3.76.895.952-3.656-.235-.375A9.79 9.79 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182c5.43 0 9.818 4.388 9.818 9.818 0 5.43-4.388 9.818-9.819 9.818z"/></svg>
+            {{ hf.whatsapp_number }}
+          </a>
+          {% endif %}
+          {% if hf.get('visitor_email') %}
+          <a href="mailto:{{ hf.visitor_email }}"
+             style="font-size:12px;color:var(--muted);text-decoration:none;display:inline-flex;align-items:center;gap:3px">
+            ✉ {{ hf.visitor_email }}
+          </a>
+          {% endif %}
+        </div>
+
+        {# Message preview #}
+        {% if hf.visitor_message %}
+        <div style="font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:480px;margin-bottom:6px">
+          "{{ hf.visitor_message }}"
+        </div>
+        {% endif %}
+
+        {# Footer: time + archive link #}
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <span style="font-size:11px;color:var(--muted)">
+            {{ hf.created_at.strftime('%d %b · %H:%M') if hf.created_at else '' }}
+          </span>
+          <a href="{{ url_for('portal.chat_archive') }}?open={{ hf.session_id }}"
+             style="font-size:12px;color:var(--ink);font-weight:600;text-decoration:underline">
+            Read full chat →
+          </a>
+        </div>
+      </div>
+
+      {# Handled button #}
+      <form method="post" action="{{ url_for('portal.handoff_mark_handled', handoff_id=hf.id) }}"
+            style="flex-shrink:0;align-self:center" onsubmit="return confirm('Mark this customer as handled?')">
+        <button type="submit" class="btn btn-sm"
+                style="background:rgba(37,211,102,.10);border-color:rgba(37,211,102,.35);color:#128C7E;font-weight:700;white-space:nowrap">
+          ✓ Done
+        </button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+
+</div>
+{% endif %}
+
+{# ═══════════════════════════════════════════════════════════════
+   AI & BUSINESS ROW — 3 cards
+═══════════════════════════════════════════════════════════════ #}
+<div class="kpi-grid-3">
+
+  {# AI sessions #}
+  <div class="kpi-card kpi-ink">
+    <div class="kpi-card-icon" style="background:rgba(3,12,24,.06)">🤖</div>
+    <div class="kpi-card-val">{{ sessions_30d }}</div>
+    <div class="kpi-card-label">AI sessions (last 30 days)</div>
+    <div class="kpi-card-sub">
+      Credits today: <b>{{ "%.2f"|format(today_credits) }}</b> &nbsp;·&nbsp; 30d: <b>{{ "%.1f"|format(month_credits) }}</b>
+    </div>
+  </div>
+
+  {# Leads #}
+  <div class="kpi-card {% if lead_hot_count %}kpi-urgent{% elif lead_warm_count %}kpi-amber{% else %}kpi-ink{% endif %}">
+    <div class="kpi-card-icon" style="background:rgba(240,68,56,.08)">🔥</div>
+    <div class="kpi-card-val" style="{% if lead_hot_count %}color:#b91c1c{% elif lead_warm_count %}color:#92400e{% endif %}">
+      {{ lead_hot_count + lead_warm_count }}
+    </div>
+    <div class="kpi-card-label">Leads identified</div>
+    <div class="kpi-card-sub">
+      {% if lead_hot_count or lead_warm_count %}
+        {% if lead_hot_count %}<span style="color:#b91c1c;font-weight:700">{{ lead_hot_count }} hot</span>{% endif %}
+        {% if lead_hot_count and lead_warm_count %} · {% endif %}
+        {% if lead_warm_count %}<span style="color:#92400e;font-weight:700">{{ lead_warm_count }} warm</span>{% endif %}
+        &nbsp;—&nbsp;<a href="{{ url_for('portal.leads_page') }}" style="font-weight:600">View leads →</a>
+      {% else %}
+        <a href="{{ url_for('portal.leads_page') }}" style="color:var(--muted)">No leads yet</a>
+      {% endif %}
+    </div>
+  </div>
+
+  {# Credits balance #}
+  <div class="kpi-card {% if balance_credits <= 20 %}kpi-urgent{% else %}kpi-ink{% endif %}">
+    <div class="kpi-card-icon" style="background:rgba(3,12,24,.06)">💳</div>
+    <div class="kpi-card-val" style="{% if balance_credits <= 20 %}color:#b91c1c{% endif %}">{{ "%.1f"|format(balance_credits) }}</div>
+    <div class="kpi-card-label">Credits remaining{% if balance_credits <= 20 %} — Low balance{% endif %}</div>
+    <div class="kpi-card-sub">
+      <div class="progress" style="margin-bottom:8px"><div style="width:{{ [balance_credits/200*100,100]|min }}%"></div></div>
+      <a href="{{ url_for('portal.billing') }}" class="btn btn-primary btn-sm" style="font-size:12px;padding:5px 12px">Buy credits</a>
+    </div>
+  </div>
+
+</div>
+
+{# ═══════════════════════════════════════════════════════════════
+   MESSAGE VOLUME CHART — inbound vs outbound per day
+═══════════════════════════════════════════════════════════════ #}
+<div class="chart-card">
+  <div class="chart-header">
+    <div>
+      <div style="font-size:15px;font-weight:700">WhatsApp message volume</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">Last 30 days</div>
+    </div>
+    <div class="chart-legend">
+      <div class="chart-legend-item"><div class="chart-legend-dot" style="background:#25D366"></div>Received</div>
+      <div class="chart-legend-item"><div class="chart-legend-dot" style="background:#030C18"></div>Sent</div>
+    </div>
+  </div>
+  {% set wa_series = wa_stats.series if wa_connection else [] %}
+  {% if wa_series %}
+  <canvas id="msgChart" style="width:100%;height:160px"></canvas>
+  <script>
+  (function(){
+    const raw = {{ wa_series | tojson }};
+    const canvas = document.getElementById('msgChart');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.offsetWidth; canvas.width = W; canvas.height = 160;
+    if(!raw.length){ ctx.fillStyle='#aaa'; ctx.fillText('No data',W/2-20,80); return; }
+    const inVals  = raw.map(p=>p.in);
+    const outVals = raw.map(p=>p.out);
+    const maxV = Math.max(...inVals, ...outVals, 1);
+    const pad  = {t:14, r:10, b:28, l:34};
+    const cw = W-pad.l-pad.r, ch = 160-pad.t-pad.b;
+    // Grid + y labels
+    ctx.fillStyle='rgba(3,12,24,.35)'; ctx.font='10px system-ui';
+    [0,.25,.5,.75,1].forEach(f=>{
+      const y=pad.t+ch*(1-f);
+      ctx.beginPath(); ctx.strokeStyle='rgba(3,12,24,.06)'; ctx.lineWidth=1;
+      ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+cw,y); ctx.stroke();
+      if(f>0) ctx.fillText(Math.round(maxV*f), 2, y+3);
+    });
+    // Axes
+    ctx.beginPath(); ctx.strokeStyle='rgba(3,12,24,.10)'; ctx.lineWidth=1;
+    ctx.moveTo(pad.l,pad.t); ctx.lineTo(pad.l,pad.t+ch); ctx.lineTo(pad.l+cw,pad.t+ch); ctx.stroke();
+    // Helper: draw line + fill
+    function drawLine(vals, color, fillColor){
+      const pts = vals.map((v,i)=>({
+        x: pad.l + i/(raw.length-1||1)*cw,
+        y: pad.t + ch*(1 - v/maxV)
+      }));
+      // Fill
+      ctx.beginPath();
+      pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
+      ctx.lineTo(pts[pts.length-1].x, pad.t+ch);
+      ctx.lineTo(pts[0].x, pad.t+ch);
+      ctx.closePath();
+      ctx.fillStyle = fillColor; ctx.fill();
+      // Line
+      ctx.beginPath();
+      pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
+      ctx.strokeStyle=color; ctx.lineWidth=2; ctx.lineJoin='round'; ctx.stroke();
+      return pts;
+    }
+    drawLine(outVals, '#030C18', 'rgba(3,12,24,.04)');
+    const inPts = drawLine(inVals, '#25D366', 'rgba(37,211,102,.08)');
+    // X labels
+    ctx.fillStyle='rgba(3,12,24,.35)'; ctx.font='10px system-ui';
+    const step = Math.ceil(raw.length/6);
+    raw.forEach((p,i)=>{ if(i%step===0) ctx.fillText(p.d.slice(5), inPts[i].x-10, pad.t+ch+16); });
+  })();
+  </script>
+  {% else %}
+  <p class="muted" style="padding:32px 0;text-align:center">
+    {% if wa_connection %}No messages yet — your chart will appear once WhatsApp activity starts.
+    {% else %}Connect WhatsApp to see message volume here.{% endif %}
+  </p>
+  {% endif %}
+</div>
+
+{# ═══════════════════════════════════════════════════════════════
+   ONBOARDING WIZARD
+═══════════════════════════════════════════════════════════════ #}
 {% if customer.tenant_source_type == 'whatsapp' %}
 
-  {# ── WA GETTING STARTED CARD ─────────────────────────────────────── #}
   {% if not onboarding.wa_wizard_dismissed and not onboarding.wa_complete %}
-  <div class="card" style="border-color:rgba(37,211,102,0.30);background:rgba(37,211,102,0.03);margin-bottom:22px">
+  <div class="card" style="border-color:rgba(37,211,102,.30);background:rgba(37,211,102,.03);margin-bottom:20px">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">
       <div>
         <div class="card-title" style="color:#128C7E">Getting started — WhatsApp</div>
         <p style="font-size:14px">Complete these steps to get your AI assistant live on WhatsApp.</p>
       </div>
     </div>
-
     <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px">
-
-      {# Step 1: Email verified #}
       <div style="display:flex;align-items:center;gap:10px;font-size:14px">
         <span style="color:var(--good);font-size:16px;flex-shrink:0">✓</span>
         <span style="color:var(--muted);text-decoration:line-through">Email verified</span>
       </div>
-
-      {# Step 2: API key #}
       <div style="display:flex;align-items:flex-start;gap:10px;font-size:14px">
-        {% if onboarding.key_active %}
-          <span style="color:var(--good);font-size:16px;flex-shrink:0;margin-top:1px">✓</span>
-          <span style="color:var(--muted);text-decoration:line-through">API key active</span>
-        {% else %}
-          <span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0;margin-top:2px"></span>
-          <div>
-            <div>API key active</div>
-            <a href="{{ url_for('portal.api_keys') }}" class="btn btn-sm" style="margin-top:6px">View API Keys →</a>
-          </div>
-        {% endif %}
+        {% if onboarding.key_active %}<span style="color:var(--good);font-size:16px;flex-shrink:0;margin-top:1px">✓</span><span style="color:var(--muted);text-decoration:line-through">API key active</span>
+        {% else %}<span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0;margin-top:2px"></span><div>API key active<br><a href="{{ url_for('portal.api_keys') }}" class="btn btn-sm" style="margin-top:6px">View API Keys →</a></div>{% endif %}
       </div>
-
-      {# Step 3: Connect WhatsApp #}
       <div style="display:flex;align-items:flex-start;gap:10px;font-size:14px">
-        {% if onboarding.wa_connected %}
-          <span style="color:var(--good);font-size:16px;flex-shrink:0;margin-top:1px">✓</span>
-          <span style="color:var(--muted);text-decoration:line-through">WhatsApp number connected</span>
-        {% else %}
-          <span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0;margin-top:2px"></span>
-          <div>
-            <div style="margin-bottom:3px">Connect your WhatsApp number</div>
-            <div class="muted" style="font-size:12px;margin-bottom:6px">
-              You will need your API key from step 2 — copy it from the
-              <a href="{{ url_for('portal.api_keys') }}">API Keys page</a> first,
-              then paste it on the Connect page.
-            </div>
-            <a href="{{ url_for('portal.whatsapp_connect') }}" class="btn btn-sm">Go to WhatsApp Connect →</a>
-          </div>
-        {% endif %}
+        {% if onboarding.wa_connected %}<span style="color:var(--good);font-size:16px;flex-shrink:0;margin-top:1px">✓</span><span style="color:var(--muted);text-decoration:line-through">WhatsApp number connected</span>
+        {% else %}<span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0;margin-top:2px"></span><div><div style="margin-bottom:3px">Connect your WhatsApp number</div><div class="muted" style="font-size:12px;margin-bottom:6px">You will need your API key from step 2 — copy it from the <a href="{{ url_for('portal.api_keys') }}">API Keys page</a> first.</div><a href="{{ url_for('portal.whatsapp_connect') }}" class="btn btn-sm">Go to WhatsApp Connect →</a></div>{% endif %}
       </div>
-
-      {# Step 4: Upload product catalogue #}
       <div style="display:flex;align-items:flex-start;gap:10px;font-size:14px">
-        {% if onboarding.catalogue_uploaded %}
-          <span style="color:var(--good);font-size:16px;flex-shrink:0;margin-top:1px">✓</span>
-          <span style="color:var(--muted);text-decoration:line-through">Product catalogue uploaded</span>
-        {% else %}
-          <span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0;margin-top:2px"></span>
-          <div>
-            <div style="margin-bottom:3px">Upload your product catalogue</div>
-            <div class="muted" style="font-size:12px;margin-bottom:6px">
-              Upload an Excel / CSV file or connect a Google Sheet so your AI knows your products.
-            </div>
-            <a href="{{ url_for('portal.data_sources') }}" class="btn btn-sm">Go to Data Sources →</a>
-          </div>
-        {% endif %}
+        {% if onboarding.catalogue_uploaded %}<span style="color:var(--good);font-size:16px;flex-shrink:0;margin-top:1px">✓</span><span style="color:var(--muted);text-decoration:line-through">Product catalogue uploaded</span>
+        {% else %}<span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0;margin-top:2px"></span><div><div style="margin-bottom:3px">Upload your product catalogue</div><div class="muted" style="font-size:12px;margin-bottom:6px">Upload an Excel / CSV file or connect a Google Sheet so your AI knows your products.</div><a href="{{ url_for('portal.data_sources') }}" class="btn btn-sm">Go to Data Sources →</a></div>{% endif %}
       </div>
-
-      {# Step 5: Knowledge base (admin action) #}
       <div style="display:flex;align-items:flex-start;gap:10px;font-size:14px">
-        {% if onboarding.kb_configured %}
-          <span style="color:var(--good);font-size:16px;flex-shrink:0;margin-top:1px">✓</span>
-          <span style="color:var(--muted);text-decoration:line-through">Knowledge base configured by PhiXtra team</span>
-        {% else %}
-          <span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0;margin-top:2px"></span>
-          <div>
-            <div style="margin-bottom:4px">Knowledge base setup by PhiXtra team</div>
-            <div style="font-size:12px;color:#92400E;background:rgba(247,144,9,0.07);
-                        border:1px solid rgba(247,144,9,0.30);border-radius:10px;
-                        padding:8px 12px;line-height:1.5">
-              ⏳ No action needed — our team has been notified and will complete this shortly.
-              We'll email you when your AI assistant is ready.
-            </div>
-          </div>
-        {% endif %}
+        {% if onboarding.kb_configured %}<span style="color:var(--good);font-size:16px;flex-shrink:0;margin-top:1px">✓</span><span style="color:var(--muted);text-decoration:line-through">Knowledge base configured by PhiXtra team</span>
+        {% else %}<span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0;margin-top:2px"></span><div><div style="margin-bottom:4px">Knowledge base setup by PhiXtra team</div><div style="font-size:12px;color:#92400E;background:rgba(247,144,9,.07);border:1px solid rgba(247,144,9,.30);border-radius:10px;padding:8px 12px;line-height:1.5">⏳ No action needed — our team has been notified and will complete this shortly.</div></div>{% endif %}
       </div>
-
-      {# Step 6: Live confirmation — only shown once all prior steps done #}
       {% if onboarding.key_active and onboarding.wa_connected and onboarding.catalogue_uploaded %}
       <div style="display:flex;align-items:flex-start;gap:10px;font-size:14px">
-        {% if onboarding.kb_configured %}
-          <span style="color:var(--good);font-size:16px;flex-shrink:0;margin-top:1px">✓</span>
-          <div>
-            <div style="color:var(--good);font-weight:700">Your AI assistant is live on WhatsApp! 🎉</div>
-            <div class="muted" style="font-size:12px;margin-top:2px">
-              Share your WhatsApp number with customers — the AI will handle their questions automatically.
-            </div>
-          </div>
-        {% else %}
-          <span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0;margin-top:2px"></span>
-          <span style="color:var(--muted)">Verify your AI assistant is live (complete step 5 first)</span>
-        {% endif %}
+        {% if onboarding.kb_configured %}<span style="color:var(--good);font-size:16px;flex-shrink:0;margin-top:1px">✓</span><div><div style="color:var(--good);font-weight:700">Your AI assistant is live on WhatsApp! 🎉</div><div class="muted" style="font-size:12px;margin-top:2px">Share your WhatsApp number with customers — the AI will handle their questions automatically.</div></div>
+        {% else %}<span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0;margin-top:2px"></span><span style="color:var(--muted)">Verify your AI assistant is live (complete step 5 first)</span>{% endif %}
       </div>
       {% endif %}
-
     </div>
-
     {% if onboarding.wa_complete %}
     <form method="POST" action="{{ url_for('portal.onboarding_dismiss_wa') }}" style="display:inline">
       <button type="submit" class="btn btn-ghost muted btn-sm">Dismiss this guide ✕</button>
@@ -237,13 +496,10 @@
   </div>
   {% endif %}
 
-  {# ── OPTIONAL: WEBSITE EXPANSION CARD ────────────────────────────── #}
   {% if not onboarding.website_wizard_dismissed %}
-  <details style="margin-bottom:22px" {% if onboarding.ai_plugin_confirmed or onboarding.export_plugin_confirmed or onboarding.sync_configured_confirmed %}open{% endif %}>
+  <details style="margin-bottom:20px">
     <summary style="list-style:none;cursor:pointer;outline:none">
-      <div class="card" style="border-color:rgba(3,12,24,0.10);display:flex;align-items:center;
-                               justify-content:space-between;gap:12px;flex-wrap:wrap;
-                               padding:16px 22px;margin-bottom:0">
+      <div class="card" style="border-color:rgba(3,12,24,.10);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:16px 22px;margin-bottom:0">
         <div style="display:flex;align-items:center;gap:10px">
           <span style="font-size:18px">🌐</span>
           <div>
@@ -254,287 +510,47 @@
         <span class="muted" style="font-size:18px;flex-shrink:0" id="webExpandArrow">▾</span>
       </div>
     </summary>
-
-    <div class="card" style="border-top:none;border-radius:0 0 18px 18px;
-                             border-color:rgba(3,12,24,0.10);padding-top:4px;margin-top:-4px">
-      <p style="font-size:14px;color:var(--muted);margin-bottom:16px">
-        Install the PhiXtra AI chat widget on your WooCommerce store so customers can also chat directly from your website.
-        Your WhatsApp AI assistant will continue to work as normal — this adds a second channel.
-      </p>
-
-      <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:16px">
-        {% set web_steps = [
-          (onboarding.ai_plugin_confirmed,       "Download & install the PhiXtra AI Assistant plugin"),
-          (onboarding.export_plugin_confirmed,   "Download & install the PhiXtra Export plugin"),
-          (onboarding.sync_configured_confirmed, "Configure PhiXtra Sync"),
-          (onboarding.synced,                    "First full product sync completed"),
-          (onboarding.kb_configured,             "Knowledge base configured by PhiXtra team"),
-        ] %}
-        {% for done, label in web_steps %}
-        <div style="display:flex;align-items:center;gap:10px;font-size:14px">
-          {% if done %}
-            <span style="color:var(--good);font-size:16px;flex-shrink:0">✓</span>
-            <span style="color:var(--muted);text-decoration:line-through">{{ label }}</span>
-          {% else %}
-            <span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0"></span>
-            <span>{{ label }}</span>
-          {% endif %}
-        </div>
-        {% endfor %}
-      </div>
-
+    <div class="card" style="border-top:none;border-radius:0 0 18px 18px;border-color:rgba(3,12,24,.10);padding-top:4px;margin-top:-4px">
+      <p style="font-size:14px;color:var(--muted);margin-bottom:16px">Install the PhiXtra AI chat widget on your WooCommerce store. Your WhatsApp AI continues to work — this adds a second channel.</p>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <a href="{{ url_for('portal.onboarding') }}" class="btn btn-sm"
-           style="background:#030C18;color:#fff;border-color:#030C18">
-          View plugin setup guide →
-        </a>
+        <a href="{{ url_for('portal.onboarding') }}" class="btn btn-sm" style="background:#030C18;color:#fff;border-color:#030C18">View plugin setup guide →</a>
         <form method="POST" action="{{ url_for('portal.onboarding_dismiss_website') }}" style="display:inline">
-          <button type="submit" class="btn btn-ghost muted btn-sm"
-                  onclick="return confirm('Hide this card? You can still find the plugin guide via the setup guide link anytime.')">
-            Dismiss ✕
-          </button>
+          <button type="submit" class="btn btn-ghost muted btn-sm" onclick="return confirm('Hide this card?')">Dismiss ✕</button>
         </form>
       </div>
     </div>
   </details>
   <script>
-    (function(){
-      var det = document.querySelector('details[style*="margin-bottom:22px"]');
-      if(!det) return;
-      det.addEventListener('toggle', function(){
-        var arrow = document.getElementById('webExpandArrow');
-        if(arrow) arrow.style.transform = det.open ? 'rotate(180deg)' : '';
-      });
-    })();
+  (function(){
+    var det=document.querySelector('details[style*="margin-bottom:20px"]');
+    if(!det) return;
+    det.addEventListener('toggle',function(){ var a=document.getElementById('webExpandArrow'); if(a) a.style.transform=det.open?'rotate(180deg)':''; });
+  })();
   </script>
   {% endif %}
 
 {% else %}
-
-  {# ── ORIGINAL PLUGIN WIZARD — web merchants only ──────────────────── #}
   {% if not onboarding.wizard_dismissed and not onboarding.complete %}
-  <div class="card" style="border-color:rgba(37,99,235,0.25);background:rgba(37,99,235,0.03);margin-bottom:22px">
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
-      <div>
-        <div class="card-title" style="color:#2563EB">Getting started</div>
-        <p style="font-size:14px;margin-bottom:14px">Complete all steps below to get your AI assistant live.</p>
-      </div>
-    </div>
-
+  <div class="card" style="border-color:rgba(37,99,235,.25);background:rgba(37,99,235,.03);margin-bottom:20px">
+    <div class="card-title" style="color:#2563EB">Getting started</div>
+    <p style="font-size:14px;margin-bottom:14px">Complete all steps below to get your AI assistant live.</p>
     <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:14px">
-      {% set steps = [
-        (onboarding.account_verified,          "Email verified"),
-        (onboarding.key_active,                "Trial API key active"),
-        (onboarding.ai_plugin_confirmed,       "PhiXtra AI Assistant plugin installed & configured"),
-        (onboarding.export_plugin_confirmed,   "PhiXtra Export plugin installed"),
-        (onboarding.sync_configured_confirmed, "PhiXtra Sync configured"),
-        (onboarding.synced,                    "First full sync completed"),
-        (onboarding.kb_configured,             "Knowledge base setup by PhiXtra team"),
-        (onboarding.ai_live,                   "AI assistant verified live"),
-      ] %}
+      {% set steps = [(onboarding.account_verified,"Email verified"),(onboarding.key_active,"Trial API key active"),(onboarding.ai_plugin_confirmed,"PhiXtra AI Assistant plugin installed & configured"),(onboarding.export_plugin_confirmed,"PhiXtra Export plugin installed"),(onboarding.sync_configured_confirmed,"PhiXtra Sync configured"),(onboarding.synced,"First full sync completed"),(onboarding.kb_configured,"Knowledge base setup by PhiXtra team"),(onboarding.ai_live,"AI assistant verified live")] %}
       {% for done, label in steps %}
       <div style="display:flex;align-items:center;gap:10px;font-size:14px">
-        {% if done %}
-          <span style="color:var(--good);font-size:16px;flex-shrink:0">✓</span>
-        {% else %}
-          <span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0"></span>
-        {% endif %}
+        {% if done %}<span style="color:var(--good);font-size:16px;flex-shrink:0">✓</span>{% else %}<span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0"></span>{% endif %}
         <span style="{% if done %}color:var(--muted);text-decoration:line-through{% endif %}">{{ label }}</span>
       </div>
       {% endfor %}
     </div>
-
-    <a href="{{ url_for('portal.onboarding') }}" class="btn btn-sm" style="background:#2563EB;color:#fff;border-color:#2563EB">
-      View setup guide →
-    </a>
+    <a href="{{ url_for('portal.onboarding') }}" class="btn btn-sm" style="background:#2563EB;color:#fff;border-color:#2563EB">View setup guide →</a>
   </div>
   {% endif %}
-
-{% endif %}{# end merchant type branch #}
-
-{# ── NEEDS ATTENTION PANEL ─────────────────────────────────────────────── #}
-{% if handoffs %}
-<div class="card" style="border-color:rgba(240,68,56,0.30);background:rgba(240,68,56,0.03);margin-bottom:22px">
-  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
-    <div style="display:flex;align-items:center;gap:10px">
-      <span style="font-size:20px">🙋</span>
-      <div>
-        <div style="font-size:15px;font-weight:800;color:var(--bad)">Needs Attention</div>
-        <div class="muted" style="font-size:13px">
-          {{ handoffs|length }} visitor{{ 's' if handoffs|length != 1 else '' }} requested human help
-        </div>
-      </div>
-    </div>
-    <a href="{{ url_for('portal.chat_archive') }}" class="btn btn-sm">View all in Chat Archive →</a>
-  </div>
-
-  <div style="display:flex;flex-direction:column;gap:10px">
-    {% for hf in handoffs %}
-    <div style="background:#fff;border:1px solid rgba(240,68,56,0.18);border-radius:14px;padding:14px 16px;
-                display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px">
-      <div style="flex:1;min-width:0">
-
-        {# Visitor name — shown if collected via the contact form #}
-        {% if hf.get('visitor_name') %}
-        <div style="margin-bottom:6px">
-          <span style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Name</span>
-          <div style="font-size:15px;font-weight:800;color:var(--ink);margin-top:2px">{{ hf.visitor_name }}</div>
-        </div>
-        {% endif %}
-
-        {# Mobile / WhatsApp number with click-to-chat link #}
-        {% if hf.whatsapp_number %}
-          {% set wa_digits = hf.whatsapp_number | replace(' ','') | replace('-','') | replace('(','') | replace(')','') %}
-          <div style="margin-bottom:6px">
-            <span style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Mobile / WhatsApp</span>
-            <div style="margin-top:2px">
-              <a href="https://wa.me/{{ wa_digits.lstrip('+') }}" target="_blank" rel="noopener"
-                 style="font-size:15px;font-weight:800;color:#25D366;text-decoration:none;display:inline-flex;align-items:center;gap:5px">
-                💬 {{ hf.whatsapp_number }}
-              </a>
-            </div>
-          </div>
-        {% else %}
-          <div style="margin-bottom:6px">
-            <span style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Mobile / WhatsApp</span>
-            <div style="font-size:13px;color:var(--muted);margin-top:2px;font-style:italic">Not yet provided</div>
-          </div>
-        {% endif %}
-
-        {# Email address — shown if collected via the contact form #}
-        {% if hf.get('visitor_email') %}
-        <div style="margin-bottom:6px">
-          <span style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Email</span>
-          <div style="margin-top:2px">
-            <a href="mailto:{{ hf.visitor_email }}"
-               style="font-size:14px;font-weight:700;color:var(--ink);text-decoration:none">
-              ✉️ {{ hf.visitor_email }}
-            </a>
-          </div>
-        </div>
-        {% endif %}
-
-        {# Visitor's last message #}
-        {% if hf.visitor_message %}
-        <div style="margin-bottom:6px">
-          <span style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Their Message</span>
-          <div style="font-size:13px;color:var(--txt);margin-top:2px;max-width:500px;
-                      white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-            {{ hf.visitor_message }}
-          </div>
-        </div>
-        {% endif %}
-
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:4px">
-          <span style="font-size:12px;color:var(--muted)">
-            {{ hf.created_at.strftime('%d %b %Y %H:%M') if hf.created_at else '' }}
-          </span>
-          <a href="{{ url_for('portal.chat_archive') }}?open={{ hf.session_id }}"
-             style="font-size:12px;color:var(--ink);font-weight:600;text-decoration:underline">
-            Read full conversation
-          </a>
-        </div>
-      </div>
-
-      {# Mark as handled button #}
-      <form method="post" action="{{ url_for('portal.handoff_mark_handled', handoff_id=hf.id) }}"
-            style="flex-shrink:0" onsubmit="return confirm('Mark this as handled?')">
-        <button type="submit" class="btn btn-sm"
-                style="border-color:rgba(18,183,106,0.4);color:#0a7a3c;background:rgba(18,183,106,0.07)">
-          ✅ Handled
-        </button>
-      </form>
-    </div>
-    {% endfor %}
-  </div>
-</div>
 {% endif %}
 
-{# ── KPI CARDS ─────────────────────────────────────────────────────────── #}
-<div class="grid g3" style="margin-bottom:22px">
-  <div class="card">
-    <div class="card-title">Credit balance</div>
-    <div class="kpi">{{ "%.1f"|format(balance_credits) }}</div>
-    <div class="muted" style="margin-top:4px">credits remaining</div>
-    {% if balance_credits <= 20 %}
-    <div class="pill pill-warn" style="margin-top:10px">Low balance</div>
-    {% endif %}
-    <div class="divider" style="margin:14px 0 10px"></div>
-    <div class="progress"><div style="width:{{ [balance_credits/200*100, 100]|min }}%"></div></div>
-    <div style="margin-top:10px">
-      <a href="{{ url_for('portal.billing') }}" class="btn btn-primary btn-sm">Buy credits</a>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-title">Used today</div>
-    <div class="kpi">{{ "%.2f"|format(today_credits) }}</div>
-    <div class="muted" style="margin-top:4px">credits</div>
-    <div class="divider" style="margin:14px 0 10px"></div>
-    <div class="card-title" style="margin-bottom:4px">Last 30 days</div>
-    <div class="kpi-sm">{{ "%.1f"|format(month_credits) }}</div>
-  </div>
-
-  <div class="card">
-    <div class="card-title">AI conversations</div>
-    <div class="kpi">{{ sessions_30d }}</div>
-    <div class="muted" style="margin-top:4px">sessions (last 30 days)</div>
-    <div class="divider" style="margin:14px 0 10px"></div>
-    <a href="{{ url_for('portal.api_keys') }}" class="btn btn-sm">Manage API keys</a>
-  </div>
-</div>
-
-{# ── SPARKLINE CHART ───────────────────────────────────────────────────── #}
-<div class="card" style="margin-bottom:22px">
-  <div class="card-title">Credits used per day — last 30 days</div>
-  {% if chart_points %}
-  <canvas id="usageChart" style="width:100%;height:160px"></canvas>
-  <script>
-  (function(){
-    const raw = {{ chart_points|tojson }};
-    const canvas = document.getElementById("usageChart");
-    const ctx = canvas.getContext("2d");
-    const W = canvas.offsetWidth; canvas.width = W; canvas.height = 160;
-    if(!raw.length){ctx.fillStyle="#aaa";ctx.fillText("No data yet",W/2-30,80);return;}
-    const vals = raw.map(p=>p.credits);
-    const maxV = Math.max(...vals, 1);
-    const pad = {t:14,r:10,b:28,l:38};
-    const cw = W-pad.l-pad.r, ch = 160-pad.t-pad.b;
-    // Axes
-    ctx.strokeStyle="rgba(3,12,24,0.08)";ctx.lineWidth=1;
-    ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,pad.t+ch);
-    ctx.lineTo(pad.l+cw,pad.t+ch);ctx.stroke();
-    // Grid & y labels
-    ctx.fillStyle="rgba(3,12,24,0.40)";ctx.font="10px system-ui";
-    [0,.25,.5,.75,1].forEach(f=>{
-      const y=pad.t+ch*(1-f);
-      ctx.beginPath();ctx.strokeStyle="rgba(3,12,24,0.06)";
-      ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+cw,y);ctx.stroke();
-      ctx.fillText((maxV*f).toFixed(1),2,y+3);
-    });
-    // Line
-    const pts = raw.map((p,i)=>({
-      x: pad.l + i/(raw.length-1||1)*cw,
-      y: pad.t + ch*(1 - p.credits/maxV)
-    }));
-    ctx.beginPath();ctx.strokeStyle="#030C18";ctx.lineWidth=2;ctx.lineJoin="round";
-    pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
-    ctx.stroke();
-    // Fill
-    ctx.lineTo(pts[pts.length-1].x,pad.t+ch);ctx.lineTo(pts[0].x,pad.t+ch);ctx.closePath();
-    ctx.fillStyle="rgba(3,12,24,0.05)";ctx.fill();
-    // X labels
-    ctx.fillStyle="rgba(3,12,24,0.40)";ctx.font="10px system-ui";
-    const step=Math.ceil(raw.length/6);
-    raw.forEach((p,i)=>{if(i%step===0)ctx.fillText(p.d.slice(5),pts[i].x-10,pad.t+ch+16)});
-  })();
-  </script>
-  {% else %}
-    <p class="muted" style="padding:28px 0;text-align:center">No usage data yet. Once your AI assistant receives its first chat, data will appear here.</p>
-  {% endif %}
-</div>
-
-{# ── API KEYS SUMMARY ─────────────────────────────────────────────────── #}
+{# ═══════════════════════════════════════════════════════════════
+   API KEYS TABLE
+═══════════════════════════════════════════════════════════════ #}
 <div class="card">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
     <div class="card-title" style="margin:0">API keys</div>
@@ -549,13 +565,7 @@
         <tr>
           <td>{{ k.website }}</td>
           <td><span class="pill">{{ k.key_type }}</span></td>
-          <td>
-            {% if k.is_active %}
-              <span class="pill pill-green"><span class="dot dot-green"></span>Active</span>
-            {% else %}
-              <span class="pill pill-red"><span class="dot dot-red"></span>Revoked</span>
-            {% endif %}
-          </td>
+          <td>{% if k.is_active %}<span class="pill pill-green"><span class="dot dot-green"></span>Active</span>{% else %}<span class="pill pill-red"><span class="dot dot-red"></span>Revoked</span>{% endif %}</td>
           <td class="muted">{{ k.created_at.strftime('%Y-%m-%d') if k.created_at else '—' }}</td>
         </tr>
         {% endfor %}
@@ -563,10 +573,9 @@
     </table>
   </div>
   {% else %}
-    <p class="muted">No API keys yet. <a href="{{ url_for('portal.api_keys') }}">Create one →</a></p>
+  <p class="muted">No API keys yet. <a href="{{ url_for('portal.api_keys') }}">Create one →</a></p>
   {% endif %}
 </div>
 
-{% endif %}{# end: not trial expired #}
-
+{% endif %}{# end: always-show dashboard #}
 {% endblock %}

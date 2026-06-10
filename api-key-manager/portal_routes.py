@@ -125,6 +125,11 @@ def _require_plan_feature(customer: dict, plan_flag: str, min_plan_name: str):
 
     if not _has_wa:
         return None  # no WA connection — web account, skip gate
+
+    # Product-discovery period: CRM/broadcast access is free for all tenants
+    if plan_flag == "feat_broadcasts" and os.getenv("CRM_OPEN_ACCESS", "").strip() == "1":
+        return None
+
     plan = _get_tenant_plan(tenant_id)
 
     if plan.get(plan_flag):
@@ -528,7 +533,7 @@ def _send_welcome_trial_email_wa(
     email: str,
     first_name: str,
     business_name: str,
-    trial_expires_at,
+    trial_expires_at=None,  # kept for backwards compat — no longer used
 ) -> None:
     """Day-0 welcome email for WhatsApp-only merchants."""
     greeting = first_name.strip() if first_name and first_name.strip() else "there"
@@ -695,30 +700,25 @@ def _send_welcome_trial_email(
     email: str,
     first_name: str,
     website: str,
-    trial_expires_at,
+    trial_expires_at=None,  # kept for backwards compat — no longer used
 ) -> None:
-    """Send the Day-0 welcome email when a trial account is created."""
+    """Send the Day-0 welcome email when an account is created."""
     greeting = first_name.strip() if first_name and first_name.strip() else "there"
-    exp_str = (
-        trial_expires_at.strftime("%d %B %Y")
-        if hasattr(trial_expires_at, "strftime")
-        else str(trial_expires_at)
-    )
-    portal_link    = _PORTAL_BASE_URL
-    upgrade_link   = "https://phixtra.com/subscription-plans/"
+    portal_link  = _PORTAL_BASE_URL
+    upgrade_link = "https://phixtra.com/subscription-plans/"
     html = f"""
     <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto">
-      <h2 style="color:#030C18">Your PhiXtra 14-day free trial is now live 🎉</h2>
+      <h2 style="color:#030C18">Your PhiXtra account is now live 🎉</h2>
       <p>Hi {greeting},</p>
-      <p>Your trial AI assistant for <b>{website}</b> has been created and is ready to go.</p>
+      <p>Your AI assistant for <b>{website}</b> has been created and is ready to go.</p>
       <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
         <tr>
           <td style="padding:8px 12px;background:#f3f4f6;border:1px solid #e5e7eb;font-weight:700;width:130px">Store</td>
           <td style="padding:8px 12px;border:1px solid #e5e7eb">{website}</td>
         </tr>
         <tr>
-          <td style="padding:8px 12px;background:#f3f4f6;border:1px solid #e5e7eb;font-weight:700">Trial ends</td>
-          <td style="padding:8px 12px;border:1px solid #e5e7eb">{exp_str}</td>
+          <td style="padding:8px 12px;background:#f3f4f6;border:1px solid #e5e7eb;font-weight:700">Plan</td>
+          <td style="padding:8px 12px;border:1px solid #e5e7eb">Free — 100 AI messages per month</td>
         </tr>
       </table>
       <p style="margin:0 0 6px"><b>What to do next:</b></p>
@@ -727,7 +727,6 @@ def _send_welcome_trial_email(
         <li>Log in to your portal and follow the setup guide</li>
         <li>Install the PhiXtra plugins on your store</li>
         <li>Watch your AI assistant go live</li>
-        <li>Plan your upgrade before the trial ends</li>
       </ol>
       <p style="margin-bottom:20px">
         <a href="{portal_link}"
@@ -743,17 +742,17 @@ def _send_welcome_trial_email(
         </a>
       </p>
       <p style="color:#6b7280;font-size:13px">
-        We'll send you a reminder as your trial end date approaches.<br>
         Questions? Contact <a href="mailto:support@phixtra.com" style="color:#030C18">support@phixtra.com</a>
       </p>
     </div>"""
     send_email(
         email,
-        "Your PhiXtra 14-day free trial is now live 🎉",
+        "Your PhiXtra account is now live 🎉",
         html,
         text_body=(
             f"Hi {greeting},\n\n"
-            f"Your PhiXtra trial for {website} is now active. Trial ends: {exp_str}\n\n"
+            f"Your PhiXtra AI assistant for {website} is now active.\n"
+            f"Plan: Free — 100 AI messages/month\n\n"
             f"Log in: {portal_link}\nView plans: {upgrade_link}"
         ),
     )
@@ -871,20 +870,16 @@ def _register_whatsapp_merchant(
     conn.commit()
     cur3.close()
 
-    # Create whatsapp api_key
+    # Create whatsapp api_key (no expiry — plan quota is the only enforcement)
     plain_key, hashed_key = _generate_api_key_and_hash()
-    trial_activated_at = datetime.utcnow()
-    trial_expires_at   = trial_activated_at + timedelta(days=TRIAL_DAYS)
-    TRIAL_TOKEN_LIMIT  = 250000
     cur4 = conn.cursor()
     cur4.execute("""
         INSERT INTO api_keys
             (tenant_id, api_key_hash, api_key_plain, is_active, website,
-             key_type, trial_activated_at, trial_expires_at, token_limit, tokens_used)
-        VALUES (%s, %s, %s, TRUE, NULL, 'whatsapp', %s, %s, %s, 0)
+             key_type, tokens_used)
+        VALUES (%s, %s, %s, TRUE, NULL, 'whatsapp', 0)
         RETURNING id
-    """, (tenant_id, hashed_key, plain_key,
-          trial_activated_at, trial_expires_at, TRIAL_TOKEN_LIMIT))
+    """, (tenant_id, hashed_key, plain_key))
     api_key_id = int(cur4.fetchone()[0])
     conn.commit()
     cur4.close()
@@ -1123,23 +1118,18 @@ def register():
         flash("An account with that email already exists. Please log in.", "warning")
         return redirect(url_for("portal.login"))
 
-    # ── Auto-create a 14-day trial API key ────────────────────────────────
-    # Key is active immediately. token_limit=50000 = 50 credits shown to customer.
+    # ── Auto-create trial API key (no expiry — plan quota is the only enforcement)
     plain_key, hashed_key = _generate_api_key_and_hash()
     last4 = plain_key[-4:]
-    trial_activated_at = datetime.utcnow()
-    trial_expires_at   = trial_activated_at + timedelta(days=TRIAL_DAYS)
-    TRIAL_TOKEN_LIMIT  = 250000  # 50 credits (1 credit = 5,000 tokens)
 
     cur3 = conn.cursor()
     cur3.execute("""
         INSERT INTO api_keys
             (tenant_id, api_key_hash, api_key_plain, is_active, website, key_type,
-             trial_activated_at, trial_expires_at, token_limit, tokens_used)
-        VALUES (%s, %s, %s, TRUE, %s, 'trial', %s, %s, %s, 0)
+             tokens_used)
+        VALUES (%s, %s, %s, TRUE, %s, 'trial', 0)
         RETURNING id""",
-        (int(tenant["id"]), hashed_key, plain_key, tenant_domain,
-         trial_activated_at, trial_expires_at, TRIAL_TOKEN_LIMIT))
+        (int(tenant["id"]), hashed_key, plain_key, tenant_domain))
     api_key_id = cur3.fetchone()[0]
     conn.commit()
     cur3.close()
@@ -1576,27 +1566,8 @@ def dashboard():
     except Exception:
         pass
 
-    # ── Trial status for the banner ────────────────────────────────────────
-    trial_info = {
-        "is_trial": False,
-        "days_left": None,
-        "expired":   False,
-        "website":   None,
-    }
-    _now = datetime.utcnow()
-    for k in keys:
-        if k.get("key_type") == "trial":
-            trial_info["is_trial"] = True
-            trial_info["website"]  = k.get("website", "")
-            exp = k.get("trial_expires_at")
-            if k.get("is_active") and exp:
-                diff = exp.replace(tzinfo=None) - _now
-                trial_info["days_left"] = max(0, diff.days)
-                trial_info["expired"]   = False
-            else:
-                trial_info["days_left"] = 0
-                trial_info["expired"]   = True
-            break
+    # ── Plan quota for the banner ──────────────────────────────────────────
+    plan_info = _get_tenant_plan(tenant_id)
 
     return render_template(
         "portal/dashboard.html",
@@ -1609,7 +1580,7 @@ def dashboard():
         onboarding      = ob,
         keys            = keys,
         handoffs        = handoffs,
-        trial_info      = trial_info,
+        plan_info       = plan_info,
         lead_hot_count  = lead_hot_count,
         lead_warm_count = lead_warm_count,
         wa_connection   = wa_connection,
@@ -8882,12 +8853,24 @@ def onboarding_catalogue_review():
             amap.setdefault(row["product_id"], {})[row["attribute_key"]] = row["value"]
         all_products = [dict(p, attrs=amap.get(p["id"], {})) for p in all_products]
 
+    # Also fetch any manually-added custom products for this tenant
+    tenant_id = int(customer["tenant_id"])
+    conn2 = get_db_connection()
+    cur2  = conn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur2.execute(
+        "SELECT id, name, price, stock_quantity, category FROM products WHERE tenant_id=%s AND is_active=TRUE ORDER BY created_at",
+        (tenant_id,)
+    )
+    custom_products = cur2.fetchall()
+    cur2.close(); conn2.close()
+
     cur.close(); conn.close()
     return render_template(
         "portal/onboarding_catalogue_review.html",
         customer=customer, by_category=by_category,
         all_products=all_products, total=total,
         cat_ids=ws["cat_ids"],
+        custom_products=custom_products,
     )
 
 
@@ -8901,7 +8884,11 @@ def onboarding_catalogue_finish():
     _wizard_mark_done(merchant_id)
     session.pop("ob_cat_ids", None)
     session.pop("ob_cats_done", None)
-    flash("Your store catalogue is set up! 🎉", "success")
+    flash(
+        "Your store is set up! 🎉 "
+        "To go live, connect your WhatsApp Business number under <strong>WhatsApp Settings</strong> in the menu.",
+        "success"
+    )
     return redirect(url_for("portal.dashboard"))
 
 
@@ -8915,6 +8902,49 @@ def onboarding_catalogue_skip():
     session.pop("ob_cat_ids", None)
     session.pop("ob_cats_done", None)
     return redirect(url_for("portal.dashboard"))
+
+
+@portal_bp.route("/onboarding/manual-product", methods=["POST"])
+def onboarding_manual_product():
+    """Add a custom (non-catalogue) product during the onboarding wizard."""
+    r = _require_login()
+    if r:
+        return {"ok": False, "error": "Not logged in"}, 401
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    name  = (request.form.get("name") or "").strip()[:255]
+    price = (request.form.get("price") or "0").strip()
+    stock = (request.form.get("stock_quantity") or "999").strip()
+    desc  = (request.form.get("description") or "").strip() or None
+    cat   = (request.form.get("category") or "").strip()[:100] or None
+
+    if not name:
+        return {"ok": False, "error": "Product name is required"}, 400
+
+    try:
+        price_f = float(price)
+        stock_i = int(stock)
+    except (ValueError, TypeError):
+        return {"ok": False, "error": "Invalid price or stock"}, 400
+
+    import uuid as _ob_uuid
+    product_id = str(_ob_uuid.uuid4())
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("""
+            INSERT INTO products (id, tenant_id, name, description, price, stock_quantity, category, is_active)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE)
+        """, (product_id, tenant_id, name, desc, price_f, stock_i, cat))
+        conn.commit()
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ onboarding_manual_product:", e)
+        return {"ok": False, "error": "Database error"}, 500
+
+    return {"ok": True, "product": {"id": product_id, "name": name, "price": price_f, "stock": stock_i, "category": cat or ""}}
 
 
 # Toggle during wizard (AJAX or form POST) — reuses the same endpoint as the main catalogue
@@ -10869,20 +10899,16 @@ def provision_whatsapp_merchant(wa_phone: str, business_name: str) -> dict:
     conn.commit()
     cur3.close()
 
-    # ── Auto-generate internal WhatsApp API key ───────────────────────────
+    # ── Auto-generate internal WhatsApp API key (no expiry — plan quota only)
     plain_key, hashed_key = _generate_api_key_and_hash()
-    trial_activated_at = datetime.utcnow()
-    trial_expires_at   = trial_activated_at + timedelta(days=TRIAL_DAYS)
-    TRIAL_TOKEN_LIMIT  = 250000
     cur4 = conn.cursor()
     cur4.execute("""
         INSERT INTO api_keys
             (tenant_id, api_key_hash, api_key_plain, is_active, website,
-             key_type, trial_activated_at, trial_expires_at, token_limit, tokens_used)
-        VALUES (%s, %s, %s, TRUE, NULL, 'whatsapp', %s, %s, %s, 0)
+             key_type, tokens_used)
+        VALUES (%s, %s, %s, TRUE, NULL, 'whatsapp', 0)
         RETURNING id
-    """, (tenant_id, hashed_key, plain_key,
-          trial_activated_at, trial_expires_at, TRIAL_TOKEN_LIMIT))
+    """, (tenant_id, hashed_key, plain_key))
     cur4.fetchone()  # consume RETURNING result
     conn.commit()
     cur4.close()
