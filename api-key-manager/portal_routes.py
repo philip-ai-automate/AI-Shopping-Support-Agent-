@@ -545,14 +545,24 @@ def _send_welcome_trial_email_wa(
     upgrade_link = "https://phixtra.com/subscription-plans/"
     html = f"""
     <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto">
-      <h2 style="color:#030C18">Welcome to PhiXtra AI-powered WhatsApp Platform</h2>
+      <h2 style="color:#030C18">Welcome to PhiXtra — Your WhatsApp CRM &amp; Sales Agent</h2>
       <p>Hi {greeting},</p>
-      <p>Your AI-powered WhatsApp Sales Agent for <b>{business_name}</b> has been created and is ready to set up.</p>
+      <p>Your AI-powered WhatsApp CRM and Sales Agent for <b>{business_name}</b> has been created and is ready to set up.</p>
+      <p><b>Important — How it works:</b><br>
+      PhiXtra connects to the <b>WhatsApp Business API</b>, the official Meta platform for businesses. This is different from the regular WhatsApp app. To go live, you will need a <b>Meta-approved WhatsApp Business API number</b> — a one-time setup that PhiXtra will guide you through inside the portal.</p>
+      <p style="margin:0 0 6px"><b>What you get:</b></p>
+      <ul style="margin:0 0 20px;padding-left:20px;line-height:1.9">
+        <li><b>AI Sales Agent</b> — automatically answers customer questions, recommends products, and handles enquiries 24/7 over WhatsApp</li>
+        <li><b>Built-in CRM</b> — every customer conversation is tracked, contacts are saved automatically, and you get a full view of your customer interactions in one place</li>
+        <li><b>Bulk Messaging</b> — send promotions, announcements, and updates to all your customers or targeted segments directly over WhatsApp</li>
+        <li><b>Product Catalogue</b> — upload your products once and your AI Agent uses them to answer customer queries instantly</li>
+      </ul>
       <p style="margin:0 0 6px"><b>What to do next:</b></p>
       <ol style="margin:0 0 20px;padding-left:20px;line-height:1.9">
-        <li>Log in to your portal with your email address and password</li>
-        <li>Connect your WhatsApp number and upload your product catalogue</li>
-        <li>Start sharing your WhatsApp number with customers — your AI Sales Agent will handle their questions automatically</li>
+        <li>Log in to your portal with your email and password</li>
+        <li>Follow the WhatsApp Business API setup steps to connect your business number via Meta</li>
+        <li>Upload your product catalogue and configure your AI Sales Agent</li>
+        <li>Start messaging your customers — individually, in bulk, or let the AI handle it automatically</li>
       </ol>
       <p style="margin-bottom:20px">
         <a href="{portal_link}"
@@ -573,15 +583,25 @@ def _send_welcome_trial_email_wa(
     </div>"""
     send_email(
         email,
-        "Welcome to PhiXtra AI-powered WhatsApp Platform",
+        "Welcome to PhiXtra — Your WhatsApp CRM & Sales Agent",
         html,
         text_body=(
             f"Hi {greeting},\n\n"
-            f"Your AI-powered WhatsApp Sales Agent for {business_name} is now active.\n\n"
-            f"Next steps:\n"
-            f"1. Log in to your portal with your email address and password\n"
-            f"2. Connect your WhatsApp number and upload your product catalogue\n"
-            f"3. Start sharing your WhatsApp number with customers\n\n"
+            f"Your AI-powered WhatsApp CRM and Sales Agent for {business_name} has been created and is ready to set up.\n\n"
+            f"Important — How it works:\n"
+            f"PhiXtra connects to the WhatsApp Business API, the official Meta platform for businesses. "
+            f"This is different from the regular WhatsApp app. To go live, you will need a Meta-approved "
+            f"WhatsApp Business API number — a one-time setup that PhiXtra will guide you through inside the portal.\n\n"
+            f"What you get:\n"
+            f"- AI Sales Agent: automatically answers customer questions, recommends products, and handles enquiries 24/7 over WhatsApp\n"
+            f"- Built-in CRM: every customer conversation is tracked, contacts are saved automatically, and you get a full view of your customer interactions in one place\n"
+            f"- Bulk Messaging: send promotions, announcements, and updates to all your customers or targeted segments directly over WhatsApp\n"
+            f"- Product Catalogue: upload your products once and your AI Agent uses them to answer customer queries instantly\n\n"
+            f"What to do next:\n"
+            f"1. Log in to your portal with your email and password\n"
+            f"2. Follow the WhatsApp Business API setup steps to connect your business number via Meta\n"
+            f"3. Upload your product catalogue and configure your AI Sales Agent\n"
+            f"4. Start messaging your customers — individually, in bulk, or let the AI handle it automatically\n\n"
             f"Log in: {portal_link}\nView plans: {upgrade_link}"
         ),
     )
@@ -869,7 +889,7 @@ def _register_whatsapp_merchant(
         INSERT INTO customers
             (tenant_id, first_name, last_name, email, password_hash,
              email_verified, verify_token)
-        VALUES (%s, %s, %s, %s, %s, 0, %s)
+        VALUES (%s, %s, %s, %s, %s, FALSE, %s)
     """, (tenant_id, first_name, last_name, email, pw_hash, verify_token))
     conn.commit()
     cur3.close()
@@ -967,30 +987,35 @@ def register_whatsapp_setup_qr():
     return send_file(buf, mimetype="image/png", as_attachment=False)
 
 
+def _build_register_ctx(form_data=None):
+    """Build template context for register.html — used by GET and POST re-renders on error."""
+    import re as _re
+    setup_phone_id = os.getenv("WA_SETUP_PHONE_NUMBER_ID") or os.getenv("WA_OTP_PHONE_NUMBER_ID", "")
+    wa_setup_link = ""
+    if setup_phone_id:
+        try:
+            conn = get_db_connection()
+            cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("SELECT display_phone_number FROM wa_tenants WHERE phone_number_id=%s LIMIT 1", (setup_phone_id,))
+            row = cur.fetchone()
+            cur.close(); conn.close()
+            if row and row.get("display_phone_number"):
+                digits = _re.sub(r"[^\d]", "", row["display_phone_number"])
+                wa_setup_link = f"https://wa.me/{digits}?text=SETUP"
+        except Exception:
+            pass
+    if form_data is not None:
+        offer = "founder" if (form_data.get("offer_type") or "").strip().lower() == "founder" else ""
+    else:
+        offer = (request.args.get("offer") or "").strip().lower()
+    spots_left = max(0, FOUNDER_SPOTS_LIMIT - _get_founder_spots_claimed() - FOUNDER_DISPLAY_OFFSET) if offer == "founder" else None
+    return dict(wa_setup_link=wa_setup_link, offer=offer, founder_spots_left=spots_left)
+
+
 @portal_bp.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "GET":
-        import re as _re
-        setup_phone_id = os.getenv("WA_SETUP_PHONE_NUMBER_ID") or os.getenv("WA_OTP_PHONE_NUMBER_ID", "")
-        wa_setup_link = ""
-        if setup_phone_id:
-            try:
-                conn = get_db_connection()
-                cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-                cur.execute("SELECT display_phone_number FROM wa_tenants WHERE phone_number_id=%s LIMIT 1", (setup_phone_id,))
-                row = cur.fetchone()
-                cur.close(); conn.close()
-                if row and row.get("display_phone_number"):
-                    digits = _re.sub(r"[^\d]", "", row["display_phone_number"])
-                    wa_setup_link = f"https://wa.me/{digits}?text=SETUP"
-            except Exception:
-                pass
-        offer = (request.args.get("offer") or "").strip().lower()
-        spots_left = max(0, FOUNDER_SPOTS_LIMIT - _get_founder_spots_claimed() - FOUNDER_DISPLAY_OFFSET) if offer == "founder" else None
-        return render_template("portal/register.html",
-                               wa_setup_link=wa_setup_link,
-                               offer=offer,
-                               founder_spots_left=spots_left)
+        return render_template("portal/register.html", **_build_register_ctx())
 
     if request.form.get("website"): return redirect(url_for("portal.register"))
     client_ip = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
@@ -1019,21 +1044,16 @@ def register():
     first_name      = (request.form.get("first_name")      or "").strip()
     last_name       = (request.form.get("last_name")       or "").strip()
     email           = (request.form.get("email")           or "").strip().lower()
-    email_confirm   = (request.form.get("email_confirm")   or "").strip().lower()
     password        = (request.form.get("password")        or "").strip()
 
     # ── Common validation ───────────────────────────────────────────────────
     if not first_name or not last_name or not email or not password:
         flash("First name, last name, email, and password are all required.", "danger")
-        return redirect(url_for("portal.register"))
-
-    if email_confirm and email != email_confirm:
-        flash("Email addresses do not match. Please re-enter carefully.", "danger")
-        return redirect(url_for("portal.register"))
+        return render_template("portal/register.html", **_build_register_ctx(request.form), form_data=request.form)
 
     if len(password) < 8:
         flash("Password must be at least 8 characters.", "danger")
-        return redirect(url_for("portal.register"))
+        return render_template("portal/register.html", **_build_register_ctx(request.form), form_data=request.form)
 
     # ── WhatsApp-only merchant registration ─────────────────────────────────
     if merchant_type == "whatsapp":
@@ -1051,7 +1071,7 @@ def register():
 
     if not tenant_domain:
         flash("Store domain is required for web merchants.", "danger")
-        return redirect(url_for("portal.register"))
+        return render_template("portal/register.html", **_build_register_ctx(request.form), form_data=request.form)
 
     # Strip https:// or http:// if user pastes full URL
     tenant_domain = tenant_domain.replace("https://","").replace("http://","").rstrip("/")
@@ -1111,7 +1131,7 @@ def register():
             INSERT INTO customers
                 (tenant_id, first_name, last_name, email, password_hash,
                  phone_number, email_verified, verify_token)
-            VALUES (%s, %s, %s, %s, %s, %s, 0, %s)""",
+            VALUES (%s, %s, %s, %s, %s, %s, FALSE, %s)""",
             (int(tenant["id"]), first_name, last_name, email,
              pw_hash, phone_number or None, verify_token))
         conn.commit()
@@ -1358,25 +1378,6 @@ def login():
 
     if pending_key:
         session["new_plain_key"] = pending_key
-
-    # ── Catalogue onboarding: redirect new accounts that haven't set up yet ──
-    try:
-        _ob_conn = get_db_connection()
-        _ob_cur  = _ob_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        _ob_cur.execute(
-            "SELECT catalogue_setup_done FROM onboarding_state WHERE customer_id=%s",
-            (int(c["id"]),)
-        )
-        _ob_row = _ob_cur.fetchone()
-        _ob_cur.close(); _ob_conn.close()
-
-        _setup_done = bool((_ob_row or {}).get("catalogue_setup_done"))
-        _account_age = (datetime.utcnow() - c["created_at"].replace(tzinfo=None)).days
-
-        if not _setup_done and _account_age < 30:
-            return redirect(url_for("portal.onboarding_catalogue_start"))
-    except Exception as _e:
-        print("⚠️ login catalogue_setup check error:", _e)
 
     return redirect(url_for("portal.dashboard"))
 
@@ -4391,6 +4392,14 @@ ALLOWED_TIMEZONES = [
 ]
 
 
+@portal_bp.route("/tutorials", methods=["GET"])
+def tutorials():
+    r = _require_login()
+    if r: return r
+    customer = _get_customer(_customer_id())
+    return render_template("portal/tutorials.html", customer=customer)
+
+
 @portal_bp.route("/settings", methods=["GET"])
 def settings():
     r = _require_login()
@@ -6334,7 +6343,6 @@ def whatsapp_save_connection():
     access_token    = (request.form.get("access_token")    or "").strip()
     waba_id         = (request.form.get("waba_id")         or "").strip()
     app_secret      = (request.form.get("app_secret")      or "").strip()
-    phixtra_api_key = (request.form.get("phixtra_api_key") or "").strip()
     verify_token    = os.getenv("WEBHOOK_VERIFY_TOKEN", "")
 
     is_save = (action == "save")
@@ -6355,13 +6363,19 @@ def whatsapp_save_connection():
     if not access_token and existing:
         access_token = existing.get("access_token") or ""
 
-    # Keep existing api key if none provided
-    if not phixtra_api_key and existing:
-        phixtra_api_key = existing.get("phixtra_api_key") or ""
+    # Auto-fetch API key from the tenant's account — user is already logged in
+    try:
+        _conn = get_db_connection()
+        _cur  = _conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        _cur.execute("SELECT api_key_plain FROM api_keys WHERE tenant_id=%s AND is_active=TRUE LIMIT 1", (tenant_id,))
+        _key_row = _cur.fetchone()
+        _cur.close(); _conn.close()
+        phixtra_api_key = (_key_row["api_key_plain"] if _key_row else "") or ""
+    except Exception:
+        phixtra_api_key = (existing.get("phixtra_api_key") or "") if existing else ""
 
-    # New connection in connect mode must supply api key
     if not is_save and not phixtra_api_key:
-        flash("PhiXtra API Key is required.", "danger")
+        flash("No active PhiXtra API key found for your account. Please contact support.", "danger")
         return redirect(url_for("portal.whatsapp_connect"))
 
     try:
@@ -7367,6 +7381,21 @@ def _send_campaign_now(campaign_id: int, tenant_id: int):
                 if resp.status_code == 200:
                     sent += 1
                     rec_status = "sent"
+                    # Log the campaign send to wa_message_log so it appears in the inbox conversation
+                    try:
+                        _lc = get_db_connection()
+                        _lcc = _lc.cursor()
+                        _lcc.execute(
+                            """INSERT INTO wa_message_log
+                                   (tenant_id, phone_number_id, customer_phone, direction, content, message_type)
+                               VALUES (%s, %s, %s, 'outbound', %s, 'campaign')""",
+                            (tenant_id, row["phone_number_id"], norm_phone,
+                             f"📣 Campaign: \"{row['name']}\" (template: {row['template_name']})"),
+                        )
+                        _lc.commit()
+                        _lcc.close(); _lc.close()
+                    except Exception as _le:
+                        print(f"⚠️ [CAMPAIGN] message_log insert error: {_le}")
                 else:
                     print(f"⚠️ [CAMPAIGN {campaign_id}] failed to={norm_phone} "
                           f"status={resp.status_code} body={resp.text[:400]}")
@@ -8604,6 +8633,30 @@ def _wizard_state(customer_id: int) -> dict:
     }
 
 
+@portal_bp.route("/onboarding/whatsapp-connect", methods=["GET"])
+def onboarding_wa_connect():
+    """Final onboarding step — connect WhatsApp via Embedded Signup."""
+    r = _require_login()
+    if r: return r
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    connection = _get_wa_connection_any(tenant_id)
+
+    meta_app_id    = os.getenv("META_APP_ID", "")
+    meta_config_id = os.getenv("META_CONFIG_ID", "")
+    embedded_enabled = bool(meta_app_id and meta_config_id)
+
+    return render_template(
+        "portal/onboarding_wa_connect.html",
+        customer=customer,
+        connection=connection,
+        embedded_enabled=embedded_enabled,
+        meta_app_id=meta_app_id,
+        meta_config_id=meta_config_id,
+    )
+
+
 @portal_bp.route("/onboarding/catalogue", methods=["GET", "POST"])
 def onboarding_catalogue_start():
     """Step 1 — pick which categories your store carries."""
@@ -8616,12 +8669,9 @@ def onboarding_catalogue_start():
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
-        SELECT c.*,
-               COUNT(DISTINCT p.id) AS product_count
+        SELECT c.*
         FROM catalogue_categories c
-        LEFT JOIN catalogue_products p ON p.category_id = c.id AND p.is_active
         WHERE c.is_active
-        GROUP BY c.id
         ORDER BY c.sort_order, c.name
     """)
     categories = cur.fetchall()
@@ -8634,18 +8684,37 @@ def onboarding_catalogue_start():
             _wizard_mark_done(merchant_id)
             session.pop("ob_cat_ids", None)
             session.pop("ob_cats_done", None)
-            flash("You can set up your catalogue any time from the My Catalogue page.", "info")
-            return redirect(url_for("portal.dashboard"))
+            return redirect(url_for("portal.onboarding_wa_connect"))
 
-        raw_ids = request.form.getlist("cat_ids")
-        chosen  = [int(x) for x in raw_ids if x.isdigit()]
+        raw_ids      = request.form.getlist("cat_ids")
+        chosen       = [int(x) for x in raw_ids if x.isdigit()]
+        other_text   = (request.form.get("other_category_text") or "").strip()
 
-        if not chosen:
+        if not chosen and not other_text:
             flash("Please select at least one category — or skip to set up later.", "warning")
             return render_template(
                 "portal/onboarding_catalogue_step1.html",
                 customer=customer, categories=categories,
             )
+
+        # Save "Other" text so admin can see what merchants are selling
+        if other_text:
+            try:
+                conn2 = get_db_connection()
+                cur2  = conn2.cursor()
+                cur2.execute("UPDATE tenants SET onboarding_other=%s WHERE id=%s",
+                             (other_text, customer["tenant_id"]))
+                conn2.commit(); cur2.close(); conn2.close()
+            except Exception:
+                pass
+
+        # If only "Other" selected with no real categories, skip product browse
+        if not chosen:
+            _wizard_mark_done(merchant_id)
+            session.pop("ob_cat_ids", None)
+            session.pop("ob_cats_done", None)
+            flash("Thanks — we've noted your category. The PhiXtra team will be in touch to set up your catalogue.", "info")
+            return redirect(url_for("portal.onboarding_wa_connect"))
 
         session["ob_cat_ids"]   = chosen
         session["ob_cats_done"] = []
@@ -8704,61 +8773,11 @@ def onboarding_catalogue_products(category_id: int):
     attrs = cur.fetchall()
     filter_attrs = [a for a in attrs if a["is_filterable"]]
 
-    q       = (request.args.get("q") or "").strip()
-    brand_f = (request.args.get("brand") or "").strip()
-    try:
-        page = max(1, int(request.args.get("page") or 1))
-    except (ValueError, TypeError):
-        page = 1
-    per_page = 24
+    q        = (request.args.get("q") or "").strip()
+    brand_f  = (request.args.get("brand") or "").strip()
+    colour_f = (request.args.get("colour") or "").strip()
     attr_filters = {a["attribute_key"]: (request.args.get(f"attr_{a['attribute_key']}") or "").strip()
                     for a in filter_attrs}
-
-    where  = ["p.category_id = %s", "p.is_active = TRUE"]
-    params: list = [category_id]
-
-    if q:
-        where.append("(p.brand ILIKE %s OR p.model_name ILIKE %s OR p.model_number ILIKE %s)")
-        params += [f"%{q}%", f"%{q}%", f"%{q}%"]
-    if brand_f:
-        where.append("p.brand = %s")
-        params.append(brand_f)
-    for key, val in attr_filters.items():
-        if val:
-            where.append("""EXISTS (
-                SELECT 1 FROM catalogue_product_attributes pa2
-                JOIN catalogue_attribute_definitions ad2 ON ad2.id = pa2.attribute_def_id
-                WHERE pa2.product_id = p.id AND ad2.attribute_key=%s AND pa2.value=%s
-            )""")
-            params += [key, val]
-
-    where_sql = "WHERE " + " AND ".join(where)
-    cur.execute(f"SELECT COUNT(*) AS n FROM catalogue_products p {where_sql}", params)
-    total = (cur.fetchone() or {}).get("n", 0)
-    pages = max(1, (total + per_page - 1) // per_page)
-
-    cur.execute(
-        f"SELECT p.* FROM catalogue_products p {where_sql} "
-        f"ORDER BY p.brand, p.model_name LIMIT %s OFFSET %s",
-        params + [per_page, (page - 1) * per_page]
-    )
-    products = cur.fetchall()
-
-    if products:
-        pids = [p["id"] for p in products]
-        cur.execute(
-            """SELECT pa.product_id, ad.attribute_key, pa.value
-               FROM catalogue_product_attributes pa
-               JOIN catalogue_attribute_definitions ad ON ad.id = pa.attribute_def_id
-               WHERE pa.product_id = ANY(%s)""",
-            (pids,)
-        )
-        amap: dict = {}
-        for row in cur.fetchall():
-            amap.setdefault(row["product_id"], {})[row["attribute_key"]] = row["value"]
-        products = [dict(p, attrs=amap.get(p["id"], {})) for p in products]
-
-    selected_ids = _merchant_selection_ids(cur, merchant_id)
 
     cur.execute(
         "SELECT DISTINCT brand FROM catalogue_products WHERE category_id=%s AND brand IS NOT NULL AND is_active=TRUE ORDER BY brand",
@@ -8776,29 +8795,74 @@ def onboarding_catalogue_products(category_id: int):
         )
         attr_values[a["attribute_key"]] = [r["value"] for r in cur.fetchall()]
 
-    # Wizard progress counters
-    cat_ids   = ws["cat_ids"]
-    cats_done = ws["cats_done"]
-    step_num  = cat_ids.index(category_id) + 1 if category_id in cat_ids else 1
-    step_total = len(cat_ids)
+    # Only fetch products when a search has been submitted
+    products     = []
+    selected_ids = set()
+    searched     = bool(q or brand_f or colour_f or any(attr_filters.values()))
 
-    # How many selected in this category so far
-    cur.execute(
-        """SELECT COUNT(*) AS n FROM merchant_product_catalogue mpc
-           JOIN catalogue_products p ON p.id=mpc.product_id
-           WHERE p.category_id=%s AND mpc.merchant_id=%s AND mpc.is_active""",
-        (category_id, merchant_id)
-    )
-    selected_in_cat = (cur.fetchone() or {}).get("n", 0)
+    if searched:
+        where  = ["p.category_id = %s", "p.is_active = TRUE"]
+        params: list = [category_id]
+
+        if q:
+            where.append("(p.brand ILIKE %s OR p.model_name ILIKE %s OR p.model_number ILIKE %s)")
+            params += [f"%{q}%", f"%{q}%", f"%{q}%"]
+        if brand_f:
+            where.append("p.brand = %s")
+            params.append(brand_f)
+        if colour_f:
+            where.append("""EXISTS (
+                SELECT 1 FROM catalogue_product_attributes pa2
+                JOIN catalogue_attribute_definitions ad2 ON ad2.id = pa2.attribute_def_id
+                WHERE pa2.product_id = p.id
+                  AND ad2.attribute_key ILIKE 'colour'
+                  AND pa2.value ILIKE %s
+            )""")
+            params.append(f"%{colour_f}%")
+        for key, val in attr_filters.items():
+            if val:
+                where.append("""EXISTS (
+                    SELECT 1 FROM catalogue_product_attributes pa2
+                    JOIN catalogue_attribute_definitions ad2 ON ad2.id = pa2.attribute_def_id
+                    WHERE pa2.product_id = p.id AND ad2.attribute_key=%s AND pa2.value=%s
+                )""")
+                params += [key, val]
+
+        where_sql = "WHERE " + " AND ".join(where)
+        cur.execute(
+            f"SELECT p.* FROM catalogue_products p {where_sql} ORDER BY p.brand, p.model_name LIMIT 50",
+            params
+        )
+        products = cur.fetchall()
+
+        if products:
+            pids = [p["id"] for p in products]
+            cur.execute(
+                """SELECT pa.product_id, ad.attribute_key, pa.value
+                   FROM catalogue_product_attributes pa
+                   JOIN catalogue_attribute_definitions ad ON ad.id = pa.attribute_def_id
+                   WHERE pa.product_id = ANY(%s)""",
+                (pids,)
+            )
+            amap: dict = {}
+            for row in cur.fetchall():
+                amap.setdefault(row["product_id"], {})[row["attribute_key"]] = row["value"]
+            products = [dict(p, attrs=amap.get(p["id"], {})) for p in products]
+
+        selected_ids = _merchant_selection_ids(cur, merchant_id)
+
+    cat_ids    = ws["cat_ids"]
+    cats_done  = ws["cats_done"]
+    step_num   = cat_ids.index(category_id) + 1 if category_id in cat_ids else 1
+    step_total = len(cat_ids)
 
     cur.close(); conn.close()
     return render_template(
         "portal/onboarding_catalogue_step2.html",
         customer=customer, cat=cat, attrs=attrs, filter_attrs=filter_attrs,
-        products=products, selected_ids=selected_ids,
         brands=brands, attr_values=attr_values, attr_filters=attr_filters,
-        total=total, page=page, pages=pages, per_page=per_page,
-        q=q, brand_f=brand_f, selected_in_cat=selected_in_cat,
+        q=q, brand_f=brand_f, colour_f=colour_f,
+        products=products, selected_ids=selected_ids, searched=searched,
         step_num=step_num, step_total=step_total,
         cat_ids=cat_ids, cats_done=cats_done,
     )
@@ -8880,7 +8944,7 @@ def onboarding_catalogue_review():
 
 @portal_bp.route("/onboarding/catalogue/finish", methods=["POST"])
 def onboarding_catalogue_finish():
-    """Mark catalogue onboarding done → dashboard."""
+    """Mark catalogue onboarding done → store info step."""
     r = _require_login()
     if r: return r
 
@@ -8888,12 +8952,88 @@ def onboarding_catalogue_finish():
     _wizard_mark_done(merchant_id)
     session.pop("ob_cat_ids", None)
     session.pop("ob_cats_done", None)
-    flash(
-        "Your store is set up! 🎉 "
-        "To go live, connect your WhatsApp Business number under <strong>WhatsApp Settings</strong> in the menu.",
-        "success"
+    return redirect(url_for("portal.onboarding_store_info"))
+
+
+@portal_bp.route("/onboarding/store-info", methods=["GET", "POST"])
+def onboarding_store_info():
+    """Optional onboarding step — add store information for the AI."""
+    r = _require_login()
+    if r: return r
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    if request.method == "POST":
+        action = request.form.get("action", "save")
+
+        if action == "skip":
+            return redirect(url_for("portal.onboarding_wa_connect"))
+
+        if action == "upload_doc":
+            uploaded  = request.files.get("doc_file")
+            doc_title = (request.form.get("doc_title") or "").strip()
+            allowed   = {".pdf", ".docx", ".txt"}
+            ext = ("." + uploaded.filename.rsplit(".", 1)[-1].lower()) if uploaded and "." in (uploaded.filename or "") else ""
+            if not uploaded or ext not in allowed:
+                flash("Please upload a PDF, DOCX, or TXT file.", "warning")
+            elif not doc_title:
+                flash("Please give the document a title.", "warning")
+            else:
+                try:
+                    text = _extract_file_text(uploaded)
+                    if not text:
+                        flash("Could not extract text from that file. Make sure it is not a scanned image.", "warning")
+                    else:
+                        import uuid
+                        conn = get_db_connection(); cur = conn.cursor()
+                        cur.execute("""
+                            INSERT INTO documents (id, tenant_id, type, title, content, updated_at)
+                            VALUES (%s, %s, 'store_info', %s, %s, NOW())
+                        """, (f"store_info-{tenant_id}-upload-{uuid.uuid4().hex[:8]}", tenant_id, doc_title, text))
+                        conn.commit(); cur.close(); conn.close()
+                        flash(f"'{doc_title}' uploaded and will be indexed within 5 minutes.", "success")
+                except Exception as e:
+                    print("⚠️ onboarding_store_info upload error:", e)
+                    flash("Error reading the file. Please try again.", "danger")
+            return redirect(url_for("portal.onboarding_store_info"))
+
+        # Save text sections then go to dashboard
+        conn = get_db_connection(); cur = conn.cursor()
+        for key, label, _ in _STORE_INFO_SECTIONS:
+            text   = (request.form.get(key) or "").strip()
+            doc_id = f"store_info-{tenant_id}-{key}"
+            if text:
+                cur.execute("""
+                    INSERT INTO documents (id, tenant_id, type, title, content, updated_at)
+                    VALUES (%s, %s, 'store_info', %s, %s, NOW())
+                    ON CONFLICT (id) DO UPDATE SET
+                        title=EXCLUDED.title, content=EXCLUDED.content,
+                        embedding=NULL, updated_at=NOW()
+                """, (doc_id, tenant_id, label, text))
+            else:
+                cur.execute("DELETE FROM documents WHERE id=%s", (doc_id,))
+        conn.commit(); cur.close(); conn.close()
+        flash("Store information saved.", "success")
+        return redirect(url_for("portal.onboarding_wa_connect"))
+
+    # GET — load any already-saved sections
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        "SELECT id, content FROM documents WHERE tenant_id=%s AND type='store_info'",
+        (tenant_id,)
     )
-    return redirect(url_for("portal.dashboard"))
+    rows     = {r["id"]: r["content"] for r in cur.fetchall()}
+    cur.close(); conn.close()
+    existing = {key: rows.get(f"store_info-{tenant_id}-{key}", "") for key, _, _ in _STORE_INFO_SECTIONS}
+
+    return render_template(
+        "portal/onboarding_store_info.html",
+        customer=customer,
+        sections=_STORE_INFO_SECTIONS,
+        existing=existing,
+    )
 
 
 @portal_bp.route("/onboarding/catalogue/skip", methods=["POST"])
@@ -8905,7 +9045,7 @@ def onboarding_catalogue_skip():
     _wizard_mark_done(_customer_id())
     session.pop("ob_cat_ids", None)
     session.pop("ob_cats_done", None)
-    return redirect(url_for("portal.dashboard"))
+    return redirect(url_for("portal.onboarding_wa_connect"))
 
 
 @portal_bp.route("/onboarding/manual-product", methods=["POST"])
@@ -10298,6 +10438,147 @@ def _get_data_source(tenant_id: int, source_id: int) -> dict | None:
 
 # ─── Routes ───────────────────────────────────────────────────────────────
 
+_STORE_INFO_SECTIONS = [
+    ("about_us",       "About Us",              "Tell customers who you are and what makes your store special."),
+    ("delivery",       "Delivery Information",  "Delivery areas, estimated times, costs, and any conditions."),
+    ("returns",        "Returns & Refunds",      "Your returns policy — how long customers have, what's eligible, how to start a return."),
+    ("contact",        "Contact Information",    "Phone number, email, address, opening hours."),
+    ("payment",        "Payment Methods",        "Payment options you accept — bank transfer, card, cash on delivery, etc."),
+    ("faqs",           "FAQs",                   "Common questions and answers your customers ask."),
+    ("custom",         "Other Information",      "Anything else customers or the AI should know about your store."),
+]
+
+
+def _extract_file_text(file_storage) -> str:
+    """Extract plain text from an uploaded PDF, DOCX, or TXT file."""
+    import io
+    filename = (file_storage.filename or "").lower()
+    data = file_storage.read()
+
+    if filename.endswith(".pdf"):
+        import PyPDF2
+        reader = PyPDF2.PdfReader(io.BytesIO(data))
+        return "\n".join(
+            (page.extract_text() or "") for page in reader.pages
+        ).strip()
+
+    if filename.endswith(".docx"):
+        import docx
+        doc = docx.Document(io.BytesIO(data))
+        return "\n".join(p.text for p in doc.paragraphs if p.text.strip()).strip()
+
+    # Plain text / fallback
+    for enc in ("utf-8", "latin-1"):
+        try:
+            return data.decode(enc).strip()
+        except UnicodeDecodeError:
+            continue
+    return ""
+
+
+@portal_bp.route("/store-info", methods=["GET", "POST"])
+def store_info():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    if request.method == "POST":
+        action = request.form.get("action", "save_text")
+
+        # ── File upload ──────────────────────────────────────────────────────
+        if action == "upload_doc":
+            uploaded = request.files.get("doc_file")
+            doc_title = (request.form.get("doc_title") or "").strip()
+            allowed = {".pdf", ".docx", ".txt"}
+            ext = ""
+            if uploaded and uploaded.filename:
+                ext = "." + uploaded.filename.rsplit(".", 1)[-1].lower() if "." in uploaded.filename else ""
+
+            if not uploaded or not uploaded.filename or ext not in allowed:
+                flash("Please upload a PDF, DOCX, or TXT file.", "warning")
+            elif not doc_title:
+                flash("Please give the document a title.", "warning")
+            else:
+                try:
+                    text = _extract_file_text(uploaded)
+                    if not text:
+                        flash("Could not extract text from that file. Make sure it's not a scanned image.", "warning")
+                    else:
+                        import uuid
+                        doc_id = f"store_info-{tenant_id}-upload-{uuid.uuid4().hex[:8]}"
+                        cur.execute("""
+                            INSERT INTO documents (id, tenant_id, type, title, content, updated_at)
+                            VALUES (%s, %s, 'store_info', %s, %s, NOW())
+                        """, (doc_id, tenant_id, doc_title, text))
+                        conn.commit()
+                        flash(f"'{doc_title}' uploaded. The AI will index it within 5 minutes.", "success")
+                except Exception as e:
+                    print("⚠️ store_info upload error:", e)
+                    flash("Error reading the file. Please try again.", "danger")
+            cur.close(); conn.close()
+            return redirect(url_for("portal.store_info"))
+
+        # ── Delete uploaded document ─────────────────────────────────────────
+        if action == "delete_doc":
+            doc_id = request.form.get("doc_id", "")
+            if doc_id.startswith(f"store_info-{tenant_id}-upload-"):
+                cur.execute("DELETE FROM documents WHERE id=%s AND tenant_id=%s", (doc_id, tenant_id))
+                conn.commit()
+                flash("Document deleted.", "success")
+            cur.close(); conn.close()
+            return redirect(url_for("portal.store_info"))
+
+        # ── Save text sections ───────────────────────────────────────────────
+        for key, label, _ in _STORE_INFO_SECTIONS:
+            text = (request.form.get(key) or "").strip()
+            doc_id = f"store_info-{tenant_id}-{key}"
+            if text:
+                cur.execute("""
+                    INSERT INTO documents (id, tenant_id, type, title, content, updated_at)
+                    VALUES (%s, %s, 'store_info', %s, %s, NOW())
+                    ON CONFLICT (id) DO UPDATE SET
+                        title      = EXCLUDED.title,
+                        content    = EXCLUDED.content,
+                        embedding  = NULL,
+                        updated_at = NOW()
+                """, (doc_id, tenant_id, label, text))
+            else:
+                cur.execute("DELETE FROM documents WHERE id=%s", (doc_id,))
+        conn.commit()
+        cur.close(); conn.close()
+        flash("Store information saved. The AI will use it to answer customer questions.", "success")
+        return redirect(url_for("portal.store_info"))
+
+    # ── GET: load existing sections + uploaded docs ──────────────────────────
+    cur.execute(
+        "SELECT id, title, content FROM documents WHERE tenant_id=%s AND type='store_info' ORDER BY updated_at",
+        (tenant_id,)
+    )
+    all_docs = cur.fetchall()
+    cur.close(); conn.close()
+
+    rows = {r["id"]: r["content"] for r in all_docs}
+    existing = {
+        key: rows.get(f"store_info-{tenant_id}-{key}", "")
+        for key, _, _ in _STORE_INFO_SECTIONS
+    }
+    uploaded_docs = [
+        r for r in all_docs
+        if r["id"].startswith(f"store_info-{tenant_id}-upload-")
+    ]
+    return render_template(
+        "portal/store_info.html",
+        customer=customer,
+        sections=_STORE_INFO_SECTIONS,
+        existing=existing,
+        uploaded_docs=uploaded_docs,
+    )
+
+
 @portal_bp.route("/data-sources")
 def data_sources():
     r = _require_login()
@@ -11332,10 +11613,14 @@ def _get_inbox_messages(tenant_id: int, phone: str, limit: int = 100) -> list:
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             SELECT direction, content, message_type, created_at
-            FROM wa_message_log
-            WHERE tenant_id = %s AND customer_phone = %s
+            FROM (
+                SELECT direction, content, message_type, created_at
+                FROM wa_message_log
+                WHERE tenant_id = %s AND customer_phone = %s
+                ORDER BY created_at DESC
+                LIMIT %s
+            ) recent
             ORDER BY created_at ASC
-            LIMIT %s
         """, (tenant_id, phone, limit))
         rows = cur.fetchall() or []
         cur.close(); conn.close()

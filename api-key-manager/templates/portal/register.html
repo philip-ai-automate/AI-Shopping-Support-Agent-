@@ -4,6 +4,8 @@
 
 {% block head %}
 <style>
+  label { color: var(--ink) }
+
   .type-card{border:2px solid var(--line);border-radius:14px;padding:16px 18px;
     cursor:pointer;transition:.15s;display:flex;align-items:center;gap:14px;
     background:#fff;position:relative}
@@ -18,6 +20,21 @@
   .type-icon{font-size:24px;flex-shrink:0}
   .type-label{font-weight:700;font-size:14px;margin-bottom:2px}
   .type-desc{font-size:12px;color:var(--muted)}
+
+  .input-wrap{position:relative;display:flex;align-items:center}
+  .input-wrap input{width:100%;padding-right:42px}
+  .input-toggle{position:absolute;right:10px;background:none;border:none;cursor:pointer;
+    padding:4px;color:var(--muted);display:flex;align-items:center;line-height:1;flex-shrink:0}
+  .input-toggle:hover{color:var(--ink)}
+
+  .field-hint{font-size:12px;margin-top:4px}
+  .field-hint.err{color:#dc2626}
+  .field-hint.info{color:var(--muted)}
+  input.f-invalid{border-color:#dc2626 !important;outline-color:#dc2626}
+  input.f-valid{border-color:var(--good) !important}
+
+  .trust-strip{display:flex;align-items:center;justify-content:center;gap:6px;
+    font-size:12px;color:var(--muted);margin-top:10px}
 </style>
 {% endblock %}
 
@@ -44,9 +61,10 @@
 
   <form method="POST" action="{{ url_for('portal.register') }}" novalidate id="regForm">
 
-    <!-- ── Merchant type selector ──────────────────────────────── -->
-    <div style="margin-bottom:22px"{% if offer == 'founder' %} hidden{% endif %}>
-      <label style="margin-bottom:10px;display:block">How do you sell? *</label>
+    <!-- ── Merchant type selector ─────────────────────────────── -->
+    <div style="margin-bottom:22px">
+      <label style="margin-bottom:4px;display:block">What's your primary sales channel? *</label>
+      <p class="field-hint info" style="margin-bottom:10px">Pick your main channel — you can add others later.</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
 
         <label class="type-card selected" id="card-web" onclick="setType('web')">
@@ -72,65 +90,80 @@
       </div>
     </div>
 
-    <!-- ── Name + email (always shown) ───────────────────────── -->
+    <!-- ── Name ──────────────────────────────────────────────── -->
     <div class="form-row">
       <div class="form-group">
         <label>First name *</label>
-        <input type="text" name="first_name" required autofocus placeholder="Sarah"/>
+        <input type="text" name="first_name" id="fFirstName" required autofocus placeholder="Sarah"
+               value="{{ form_data.get('first_name', '') if form_data else '' }}"/>
+        <p class="field-hint err" id="hFirstName" style="display:none">First name is required.</p>
       </div>
       <div class="form-group">
         <label>Last name *</label>
-        <input type="text" name="last_name" required placeholder="Jones"/>
+        <input type="text" name="last_name" id="fLastName" required placeholder="Jones"
+               value="{{ form_data.get('last_name', '') if form_data else '' }}"/>
+        <p class="field-hint err" id="hLastName" style="display:none">Last name is required.</p>
       </div>
     </div>
 
+    <!-- ── Email ─────────────────────────────────────────────── -->
     <div class="form-group">
       <label>Email address *</label>
-      <input type="email" name="email" id="regEmail" required placeholder="sarah@mystore.com"
-             autocomplete="email"/>
+      <div class="input-wrap">
+        <input type="email" name="email" id="fEmail" required placeholder="sarah@mystore.com"
+               autocomplete="email"
+               value="{{ form_data.get('email', '') if form_data else '' }}"/>
+        <button type="button" class="input-toggle" onclick="toggleReveal('fEmail',this,'email')"
+                aria-label="Show email address">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+      </div>
+      <p class="field-hint err" id="hEmail" style="display:none">A valid email address is required.</p>
     </div>
 
-    <div class="form-group">
-      <label>Confirm email *</label>
-      <input type="email" name="email_confirm" id="regEmailConfirm" required
-             placeholder="sarah@mystore.com" autocomplete="off"/>
-      <p class="muted" id="emailMatchMsg" style="margin-top:5px;font-size:12px;display:none;color:#dc2626">
-        Email addresses do not match.
-      </p>
-    </div>
-
+    <!-- ── Password ──────────────────────────────────────────── -->
     <div class="form-group">
       <label>Password * <span class="muted">(minimum 8 characters)</span></label>
-      <input type="password" name="password" required minlength="8" placeholder="••••••••"/>
+      <div class="input-wrap">
+        <input type="password" name="password" id="fPassword" required minlength="8" placeholder="••••••••"/>
+        <button type="button" class="input-toggle" onclick="toggleReveal('fPassword',this,'password')"
+                aria-label="Show password">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+      </div>
+      <p class="field-hint err" id="hPassword" style="display:none">Password must be at least 8 characters.</p>
     </div>
 
-    <!-- ── WEB fields ──────────────────────────────────────────── -->
+    <!-- ── WEB fields ─────────────────────────────────────────── -->
     <div id="web-fields">
       <div class="form-group">
-        <label>Mobile phone <span class="muted">(optional — credit alerts &amp; 2FA)</span></label>
-        <input type="tel" name="phone_number" placeholder="+234 801 234 5678"/>
+        <label>Your store domain * <span class="muted">(e.g. mystore.com)</span></label>
+        <input type="text" name="tenant_domain" id="fDomain"
+               placeholder="mystore.com"
+               pattern="[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,}"
+               value="{{ form_data.get('tenant_domain', '') if form_data else '' }}"/>
+        <p class="field-hint info" style="margin-top:4px">Enter just the domain — no https://, no trailing slash.</p>
+        <p class="field-hint err" id="hDomain" style="display:none">A valid store domain is required (e.g. mystore.com).</p>
       </div>
       <div class="form-group">
-        <label>Your store domain * <span class="muted">(e.g. mystore.com)</span></label>
-        <input type="text" name="tenant_domain" id="tenantDomain"
-               placeholder="mystore.com"
-               pattern="[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,}"/>
-        <p class="muted" style="margin-top:5px;font-size:12px">
-          Enter just the domain — no https://, no trailing slash.
-        </p>
+        <label>Mobile phone <span class="muted">(optional)</span></label>
+        <input type="tel" name="phone_number" placeholder="+234 801 234 5678"
+               value="{{ form_data.get('phone_number', '') if form_data else '' }}"/>
+        <p class="field-hint info" style="margin-top:4px">For billing alerts and optional two-factor authentication.</p>
       </div>
     </div>
 
-    <!-- ── WHATSAPP fields ─────────────────────────────────────── -->
+    <!-- ── WHATSAPP fields ────────────────────────────────────── -->
     <div id="wa-fields" style="display:none">
       <div class="form-group">
         <label>Business name *</label>
-        <input type="text" name="business_name" id="businessName"
-               placeholder="e.g. Sarah's Boutique"/>
+        <input type="text" name="business_name" id="fBusinessName"
+               placeholder="e.g. Sarah's Boutique"
+               value="{{ form_data.get('business_name', '') if form_data else '' }}"/>
+        <p class="field-hint err" id="hBusinessName" style="display:none">Business name is required.</p>
       </div>
     </div>
 
-    <!-- Offer type (founder vs standard) -->
     {% if offer == 'founder' %}
     <input type="hidden" name="offer_type" value="founder"/>
     {% endif %}
@@ -147,8 +180,20 @@
 
     <button type="submit" class="btn btn-primary" id="submitBtn"
             style="width:100%;justify-content:center;margin-top:4px">
-      {% if offer == 'founder' %}Claim my free Founder spot{% else %}Create account &amp; start free trial{% endif %}
+      {% if offer == 'founder' %}Claim my free Founder spot{% else %}Create free account{% endif %}
     </button>
+
+    <p class="field-hint info" style="text-align:center;margin-top:8px">
+      We'll send a verification link to your email — check your inbox after submitting.
+    </p>
+
+    <div class="trust-strip">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      </svg>
+      Your data is encrypted and never shared.
+    </div>
   </form>
 
   <div style="margin-top:18px;font-size:13px;text-align:center">
@@ -156,67 +201,85 @@
     <a href="{{ url_for('portal.login') }}">Log in</a>
     &nbsp;·&nbsp;
     <a href="{{ url_for('portal.wa_login') }}">Log in with WhatsApp</a>
+    <span class="muted" style="font-size:12px">(WhatsApp-only accounts)</span>
   </div>
 </div>
 
 <script>
-var currentType = '{{ "whatsapp" if offer in ("founder", "whatsapp") else "web" }}';
+var currentType = '{{ "whatsapp" if offer == "whatsapp" else "web" }}';
+{% if form_data and form_data.get('merchant_type') %}
+currentType = {{ form_data.get('merchant_type') | tojson }};
+{% endif %}
 
-// Email match check
-document.getElementById('regEmailConfirm').addEventListener('input', checkEmailMatch);
-document.getElementById('regEmail').addEventListener('input', checkEmailMatch);
-function checkEmailMatch() {
-  var a = document.getElementById('regEmail').value;
-  var b = document.getElementById('regEmailConfirm').value;
-  var msg = document.getElementById('emailMatchMsg');
-  if (b && a !== b) { msg.style.display = ''; } else { msg.style.display = 'none'; }
+var EYE_OPEN  = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+var EYE_SHUT  = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
+
+function toggleReveal(inputId, btn, originalType) {
+  var inp = document.getElementById(inputId);
+  var revealed = inp.type === 'text';
+  inp.type = revealed ? originalType : 'text';
+  btn.querySelector('svg').innerHTML = revealed ? EYE_OPEN : EYE_SHUT;
+  btn.setAttribute('aria-label', revealed ? 'Show' : 'Hide');
 }
-document.getElementById('regForm').addEventListener('submit', function(e) {
-  var a = document.getElementById('regEmail').value.trim();
-  var b = document.getElementById('regEmailConfirm').value.trim();
-  if (a !== b) {
-    e.preventDefault();
-    document.getElementById('emailMatchMsg').style.display = '';
-    document.getElementById('regEmailConfirm').focus();
-  }
-});
 
-// Apply initial type state (founder offer pre-selects WhatsApp)
-setType(currentType);
+function markErr(id, hintId) {
+  var el = document.getElementById(id);
+  if (el) { el.classList.add('f-invalid'); el.classList.remove('f-valid'); }
+  var h = document.getElementById(hintId);
+  if (h) h.style.display = '';
+}
+function markOk(id, hintId) {
+  var el = document.getElementById(id);
+  if (el) { el.classList.remove('f-invalid'); el.classList.add('f-valid'); }
+  var h = document.getElementById(hintId);
+  if (h) h.style.display = 'none';
+}
+
+function addBlur(id, hintId, validator) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('blur', function() {
+    if (!this.value && !this.required) return;
+    if (validator(this.value)) markOk(id, hintId); else markErr(id, hintId);
+  });
+}
+
+addBlur('fFirstName', 'hFirstName', function(v){ return v.trim().length > 0; });
+addBlur('fLastName',  'hLastName',  function(v){ return v.trim().length > 0; });
+addBlur('fEmail',     'hEmail',     function(v){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()); });
+addBlur('fPassword',  'hPassword',  function(v){ return v.length >= 8; });
+addBlur('fDomain',    'hDomain',    function(v){
+  if (currentType !== 'web') return true;
+  return /^[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,}$/.test(v.replace(/^https?:\/\//,'').replace(/\/.*$/,''));
+});
+addBlur('fBusinessName', 'hBusinessName', function(v){
+  if (currentType !== 'whatsapp') return true;
+  return v.trim().length > 0;
+});
 
 var _waSetupLink = {{ wa_setup_link | tojson }};
 function shareWaLink() {
   if (navigator.share) {
-    navigator.share({
-      title: 'Get started on WhatsApp',
-      text: 'Tap this link to connect with us on WhatsApp and send SETUP to get started.',
-      url: _waSetupLink
-    }).catch(function() {});
+    navigator.share({ title:'Get started on WhatsApp',
+      text:'Tap this link to connect with us on WhatsApp and send SETUP to get started.',
+      url:_waSetupLink }).catch(function(){});
   } else {
-    navigator.clipboard.writeText(_waSetupLink).then(function() {
-      alert('Link copied to clipboard!');
-    });
+    navigator.clipboard.writeText(_waSetupLink).then(function(){ alert('Link copied to clipboard!'); });
   }
 }
 
 function setType(type) {
   currentType = type;
-
-  // Card styles
   document.getElementById('card-web').classList.toggle('selected', type === 'web');
   document.getElementById('card-whatsapp').classList.toggle('selected', type === 'whatsapp');
-
-  // Radios
   document.querySelector('input[value="web"]').checked      = (type === 'web');
   document.querySelector('input[value="whatsapp"]').checked = (type === 'whatsapp');
-
-  // Show/hide fields
   document.getElementById('web-fields').style.display = type === 'web' ? '' : 'none';
   document.getElementById('wa-fields').style.display  = type === 'whatsapp' ? '' : 'none';
-
-  // Required attributes
-  document.getElementById('tenantDomain').required = (type === 'web');
-  document.getElementById('businessName').required  = (type === 'whatsapp');
+  document.getElementById('fDomain').required        = (type === 'web');
+  document.getElementById('fBusinessName').required  = (type === 'whatsapp');
 }
+
+setType(currentType);
 </script>
 {% endblock %}
