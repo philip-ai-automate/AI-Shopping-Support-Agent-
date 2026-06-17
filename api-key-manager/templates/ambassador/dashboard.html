@@ -1,0 +1,314 @@
+{% extends "ambassador/base.html" %}
+{% block title %}Dashboard — Ambassador Hub{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:2px">
+      👋 Welcome back,
+    </div>
+    <h1 class="section-title">{{ amb.first_name }} {{ amb.last_name }}</h1>
+    <div style="font-size:13px;color:var(--muted);margin-top:4px">
+      {{ tier.name }}
+      {% if amb.partnership_start %}
+        &nbsp;•&nbsp; Partner since {{ amb.partnership_start.strftime('%d %b %Y') }}
+      {% endif %}
+      {% if tier.months %}
+        &nbsp;•&nbsp; {{ tier.months }}-month commission window
+      {% else %}
+        &nbsp;•&nbsp; <span style="color:var(--good);font-weight:700">Lifetime</span>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- ── Stat cards ─────────────────────────────────────────────────────── -->
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="stat-label">Tier</div>
+    <div class="stat-value" style="font-size:16px;padding-top:4px">{{ tier.name }}</div>
+    <div class="stat-sub">
+      {% if tier.months %}{{ tier.months }} months{% else %}Lifetime{% endif %}
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Active Clients</div>
+    <div class="stat-value">{{ active_clients }}</div>
+    <div class="stat-sub">paying subscribers</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Total Earnings</div>
+    <div class="stat-value" style="font-size:20px">₦{{ "{:,.0f}".format(total_earnings) }}</div>
+    <div class="stat-sub">all time</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">This Month</div>
+    <div class="stat-value" style="font-size:20px">₦{{ "{:,.0f}".format(month_earnings) }}</div>
+    <div class="stat-sub">commission earned</div>
+  </div>
+</div>
+
+<!-- ── Tier progress ──────────────────────────────────────────────────── -->
+<div class="card" style="margin-bottom:20px">
+  <div style="font-size:13px;font-weight:700;margin-bottom:12px">Tier Progress</div>
+  <div class="tier-bar-wrap">
+    <div class="tier-labels">
+      <span>Standard<br><span style="font-weight:400">1 client</span></span>
+      <span style="text-align:center">Elite<br><span style="font-weight:400">10 clients</span></span>
+      <span style="text-align:right">Master<br><span style="font-weight:400">20 clients</span></span>
+    </div>
+    <div class="tier-track">
+      <div class="tier-fill" style="width:{{ [tier.progress_pct, 100]|min }}%"></div>
+    </div>
+    {% if tier.next_name %}
+    <div style="font-size:12px;color:var(--muted);margin-top:4px">
+      {{ active_clients }}/{{ tier.next_min }} clients to <strong>{{ tier.next_name }}</strong>
+      — {{ tier.next_min - active_clients }} more to go
+    </div>
+    {% else %}
+    <div style="font-size:12px;color:var(--good);font-weight:700;margin-top:4px">
+      🏆 You've reached Master Ambassador — Lifetime commission status!
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ── QR + link ──────────────────────────────────────────────────────── -->
+<div class="card" style="margin-bottom:20px">
+  <div style="font-size:13px;font-weight:700;margin-bottom:16px">Your Referral QR Code</div>
+  <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
+    <img src="{{ url_for('ambassador.qr_image') }}" alt="Your QR code"
+         style="width:140px;height:140px;border:1px solid var(--line);border-radius:12px;flex-shrink:0"/>
+    <div style="flex:1;min-width:200px">
+      <div style="font-size:13px;color:var(--muted);margin-bottom:10px">
+        Share this QR code or link with businesses. When they scan and sign up, they're tracked under your account automatically.
+      </div>
+      <div style="background:rgba(3,12,24,.04);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+        <span id="refLink" style="font-size:12px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+          {{ base_url }}/register?ref={{ amb.ref_code }}
+        </span>
+        <button onclick="copyLink(this)" class="btn btn-sm" style="flex-shrink:0">Copy</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a href="{{ url_for('ambassador.qr_image', download='1') }}" class="btn btn-primary btn-sm" download>Download QR</a>
+        <a href="{{ url_for('ambassador.qr_page') }}" class="btn btn-sm">Full QR Page →</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Client Requirements Checklist ─────────────────────────────────── -->
+<div class="card" style="margin-bottom:20px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:8px">
+    <div style="font-size:13px;font-weight:700">📋 Client Requirements Checklist</div>
+    <button onclick="copyChecklist(this)" class="btn btn-sm">Copy Checklist</button>
+  </div>
+  <p style="font-size:12.5px;color:var(--muted);margin-bottom:16px;line-height:1.5">
+    Before you pitch PhiXtra AI to a business, make sure they have all four of these things ready.
+    Tap each one to see how to help them get it if they don't have it yet.
+  </p>
+
+  <div style="display:flex;flex-direction:column;gap:8px" id="clientChecklist">
+
+    <!-- Req 1 -->
+    <div class="req-item" style="border:1px solid var(--line);border-radius:12px;overflow:hidden">
+      <button onclick="toggleReq(this)" style="width:100%;background:#f8f9fb;border:none;padding:13px 16px;
+              display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;font-family:inherit">
+        <span style="font-size:18px;flex-shrink:0">📱</span>
+        <div style="flex:1">
+          <div style="font-size:13.5px;font-weight:700;color:#030C18">A phone number only for the business</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">Not a personal number — just for business WhatsApp</div>
+        </div>
+        <span class="req-arrow" style="font-size:12px;color:var(--muted);flex-shrink:0;transition:transform .2s">▼</span>
+      </button>
+      <div class="req-steps" style="display:none;padding:14px 16px 16px;border-top:1px solid var(--line);background:#fff">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:10px">How to help them get it</div>
+        <ol style="font-size:13px;line-height:1.7;color:#030C18;padding-left:18px;margin:0;display:flex;flex-direction:column;gap:6px">
+          <li>Ask the business to get a <strong>brand new SIM card</strong> or a phone number that has <strong>never been used on WhatsApp</strong> before. This number is just for business — not for personal calls or chats.</li>
+          <li>If that number is already active on WhatsApp or WhatsApp Business, they must <strong>delete the WhatsApp account</strong> on that number first before moving on.</li>
+          <li>Tell them to <strong>keep the SIM card active and available</strong> — they will need to receive a one-time code (OTP) on it during the setup process.</li>
+          <li>Once they have the number ready, <strong>share it with PhiXtra</strong>. PhiXtra will connect it to the WhatsApp Business API during onboarding.</li>
+        </ol>
+        <div style="margin-top:12px;padding:10px 12px;background:#fef9c3;border-radius:8px;border:1px solid #fde68a;font-size:12px;color:#92400e">
+          💡 <strong>Tip:</strong> The number must belong to the business — not a personal line. MTN, Glo, Airtel, and 9mobile SIMs all work.
+        </div>
+      </div>
+    </div>
+
+    <!-- Req 2 -->
+    <div class="req-item" style="border:1px solid var(--line);border-radius:12px;overflow:hidden">
+      <button onclick="toggleReq(this)" style="width:100%;background:#f8f9fb;border:none;padding:13px 16px;
+              display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;font-family:inherit">
+        <span style="font-size:18px;flex-shrink:0">🏢</span>
+        <div style="flex:1">
+          <div style="font-size:13.5px;font-weight:700;color:#030C18">A Meta Business Account</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">A free account that proves the business is real to Meta (Facebook)</div>
+        </div>
+        <span class="req-arrow" style="font-size:12px;color:var(--muted);flex-shrink:0;transition:transform .2s">▼</span>
+      </button>
+      <div class="req-steps" style="display:none;padding:14px 16px 16px;border-top:1px solid var(--line);background:#fff">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:10px">How to help them get it</div>
+        <ol style="font-size:13px;line-height:1.7;color:#030C18;padding-left:18px;margin:0;display:flex;flex-direction:column;gap:6px">
+          <li>Open a computer (a phone can work but a computer is easier) and go to <strong>business.facebook.com</strong>.</li>
+          <li>Click <strong>"Create Account"</strong> at the top right of the page.</li>
+          <li>Type in the <strong>business name</strong>, the <strong>owner's full name</strong>, and the <strong>business email address</strong>. Click Submit.</li>
+          <li>Check that email inbox — Meta will send a <strong>confirmation email</strong>. Click the link inside that email to verify the account.</li>
+          <li>The business now has a Meta Business Account. Tell them to <strong>write down the email and password</strong> somewhere safe — they will need it again.</li>
+          <li>Ask them to send you their <strong>Meta Business ID</strong> — they can find it by going to business.facebook.com, clicking Settings, then Business Info. The ID is a long number at the top.</li>
+        </ol>
+        <div style="margin-top:12px;padding:10px 12px;background:#fef9c3;border-radius:8px;border:1px solid #fde68a;font-size:12px;color:#92400e">
+          💡 <strong>Tip:</strong> They need a personal Facebook account to create a Meta Business Account. If they don't have one, they need to create a Facebook account first — it's free.
+        </div>
+      </div>
+    </div>
+
+    <!-- Req 3 -->
+    <div class="req-item" style="border:1px solid var(--line);border-radius:12px;overflow:hidden">
+      <button onclick="toggleReq(this)" style="width:100%;background:#f8f9fb;border:none;padding:13px 16px;
+              display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;font-family:inherit">
+        <span style="font-size:18px;flex-shrink:0">🔗</span>
+        <div style="flex:1">
+          <div style="font-size:13.5px;font-weight:700;color:#030C18">WhatsApp number connected to Meta</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">The business phone number must be linked to their Meta Business Account</div>
+        </div>
+        <span class="req-arrow" style="font-size:12px;color:var(--muted);flex-shrink:0;transition:transform .2s">▼</span>
+      </button>
+      <div class="req-steps" style="display:none;padding:14px 16px 16px;border-top:1px solid var(--line);background:#fff">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:10px">How to help them get it</div>
+        <ol style="font-size:13px;line-height:1.7;color:#030C18;padding-left:18px;margin:0;display:flex;flex-direction:column;gap:6px">
+          <li>Log in to <strong>business.facebook.com</strong> with the Meta Business Account created in Step 2.</li>
+          <li>On the left-hand side menu, click <strong>"Settings"</strong> (the gear icon), then click <strong>"Business Assets"</strong>.</li>
+          <li>Look for <strong>"WhatsApp Accounts"</strong> and click <strong>"Add"</strong>.</li>
+          <li>Enter the <strong>business phone number</strong> from Requirement 1. Make sure the SIM card is nearby — Meta will send a <strong>one-time code (OTP)</strong> to that number.</li>
+          <li>Enter the OTP code when asked. The number is now linked to Meta.</li>
+          <li>The business is now ready for PhiXtra to complete the connection. Share the phone number and Meta Business ID with PhiXtra support to finish the setup.</li>
+        </ol>
+        <div style="margin-top:12px;padding:10px 12px;background:#fef9c3;border-radius:8px;border:1px solid #fde68a;font-size:12px;color:#92400e">
+          💡 <strong>Tip:</strong> This step can take 1–2 days if Meta asks for extra business verification. Reassure the business that this is normal and PhiXtra support will guide them through it.
+        </div>
+      </div>
+    </div>
+
+    <!-- Req 4 -->
+    <div class="req-item" style="border:1px solid var(--line);border-radius:12px;overflow:hidden">
+      <button onclick="toggleReq(this)" style="width:100%;background:#f8f9fb;border:none;padding:13px 16px;
+              display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;font-family:inherit">
+        <span style="font-size:18px;flex-shrink:0">📊</span>
+        <div style="flex:1">
+          <div style="font-size:13.5px;font-weight:700;color:#030C18">A product list in a spreadsheet</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">An Excel or Google Sheets file with all their products and prices</div>
+        </div>
+        <span class="req-arrow" style="font-size:12px;color:var(--muted);flex-shrink:0;transition:transform .2s">▼</span>
+      </button>
+      <div class="req-steps" style="display:none;padding:14px 16px 16px;border-top:1px solid var(--line);background:#fff">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:10px">How to help them get it</div>
+        <ol style="font-size:13px;line-height:1.7;color:#030C18;padding-left:18px;margin:0;display:flex;flex-direction:column;gap:6px">
+          <li>Open <strong>Microsoft Excel</strong> or <strong>Google Sheets</strong> (Google Sheets is free at sheets.google.com).</li>
+          <li>In the very first row, create these headings in separate columns: <strong>Product Name | Price | Description | In Stock (Yes or No)</strong>.</li>
+          <li>Starting from the second row, <strong>fill in one product per row</strong>. For example: iPhone 14 | ₦850,000 | Brand new, 128GB, Black | Yes.</li>
+          <li>Make sure every product has a <strong>correct price</strong> and a short description. The AI uses this to answer customer questions.</li>
+          <li>When all products are added, save the file as <strong>.xlsx (Excel format)</strong> or <strong>.csv</strong>. In Google Sheets, click File → Download → Microsoft Excel.</li>
+          <li>This file will be <strong>uploaded to PhiXtra</strong> during their portal onboarding under "Product Import".</li>
+        </ol>
+        <div style="margin-top:12px;padding:10px 12px;background:#fef9c3;border-radius:8px;border:1px solid #fde68a;font-size:12px;color:#92400e">
+          💡 <strong>Tip:</strong> The more detail in the description, the smarter the AI will be when answering customer questions. Encourage businesses to be as specific as possible — sizes, colours, conditions, warranties, etc.
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /clientChecklist -->
+</div>
+
+<!-- ── Recent referrals ───────────────────────────────────────────────── -->
+<div class="card" style="padding:0">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 0">
+    <div style="font-size:13px;font-weight:700">Recent Referrals</div>
+    <a href="{{ url_for('ambassador.referrals') }}" class="btn btn-sm">View All →</a>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Business</th>
+          <th>Plan</th>
+          <th>Status</th>
+          <th>Monthly Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if not recent_referrals %}
+        <tr><td colspan="4" style="text-align:center;color:var(--muted);padding:28px">
+          No referrals yet — share your QR code to get started!
+        </td></tr>
+        {% endif %}
+        {% for r in recent_referrals %}
+        <tr>
+          <td><strong>{{ r.name }}</strong></td>
+          <td>
+            {{ r.plan_name or 'Free' }}
+            {% if r.has_bonus %}
+              <span title="Upsell bonus earned" style="color:#f59e0b;font-size:14px">★</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if r.status == 'active' %}
+              <span class="pill pill-green">Active</span>
+            {% elif r.status == 'pending' %}
+              <span class="pill pill-warn">Pending</span>
+            {% else %}
+              <span class="pill pill-grey">{{ r.status|title }}</span>
+            {% endif %}
+          </td>
+          <td class="muted">
+            {% if r.price_ngn and r.status == 'active' %}
+              ₦{{ "{:,.0f}".format(r.price_ngn) }}/mo
+            {% else %}
+              —
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+function copyLink(btn) {
+  var text = document.getElementById("refLink").textContent.trim();
+  navigator.clipboard.writeText(text).then(function() {
+    var orig = btn.textContent;
+    btn.textContent = "Copied!";
+    setTimeout(function(){ btn.textContent = orig; }, 2000);
+  });
+}
+
+function toggleReq(btn) {
+  var steps = btn.closest('.req-item').querySelector('.req-steps');
+  var arrow = btn.querySelector('.req-arrow');
+  var open  = steps.style.display !== 'none';
+  steps.style.display = open ? 'none' : 'block';
+  arrow.style.transform = open ? '' : 'rotate(180deg)';
+}
+
+function copyChecklist(btn) {
+  var text =
+    "✅ PhiXtra AI WhatsApp — Client Requirements Checklist\n\n" +
+    "Before your business can go live with PhiXtra AI, make sure you have all 4 of these ready:\n\n" +
+    "📱 1. A phone number only for the business\n" +
+    "   A brand new or dedicated number never used on WhatsApp before.\n\n" +
+    "🏢 2. A Meta Business Account\n" +
+    "   Create one free at business.facebook.com using your business email.\n\n" +
+    "🔗 3. WhatsApp number connected to Meta\n" +
+    "   Link your business number to your Meta Business Account via Business Settings → WhatsApp Accounts.\n\n" +
+    "📊 4. A product list in a spreadsheet\n" +
+    "   An Excel or CSV file with your product names, prices, descriptions and stock status.\n\n" +
+    "Need help with any of these steps? Contact your PhiXtra Ambassador.";
+  navigator.clipboard.writeText(text).then(function() {
+    var orig = btn.textContent;
+    btn.textContent = "Copied!";
+    setTimeout(function(){ btn.textContent = orig; }, 2000);
+  });
+}
+</script>
+{% endblock %}
