@@ -1,0 +1,777 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Ambassadors — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+@media print {
+  body > *:not(#checklistModal), .admin-sidebar, nav,
+  .page-header, .amb-tabs, .card, .sp-backdrop,
+  .side-panel, .modal-over:not(#checklistModal) { display: none !important; }
+  #checklistModal { position:static !important; background:none !important;
+                    display:block !important; padding:0 !important; }
+  #checklistModal .modal-card { box-shadow:none !important; border:none !important;
+                                max-height:none !important; max-width:100% !important; }
+  .adm-steps  { display: block !important; }
+  .adm-arrow  { display: none !important; }
+  button      { display: none !important; }
+  body { background: #fff; font-size: 12pt; }
+}
+</style>
+<style>
+  /* ── Filter tabs ── */
+  .amb-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px}
+  .amb-tab{padding:7px 14px;border-radius:9px;border:1.5px solid var(--line);
+           background:#fff;font-size:12px;font-weight:700;color:var(--muted);
+           cursor:pointer;transition:.15s;white-space:nowrap}
+  .amb-tab:hover{border-color:var(--ink);color:var(--ink)}
+  .amb-tab.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .amb-tab .tab-count{display:inline-block;background:rgba(255,255,255,0.2);
+                      border-radius:20px;padding:1px 7px;font-size:10px;margin-left:4px}
+  .amb-tab:not(.active) .tab-count{background:rgba(3,12,24,0.07);color:var(--ink)}
+
+  /* ── Search ── */
+  .amb-search{position:relative;margin-bottom:16px}
+  .amb-search input{width:100%;padding:9px 13px 9px 36px;border:1.5px solid var(--line);
+                    border-radius:10px;font-size:13px;outline:none;font-family:inherit;
+                    transition:border-color .15s}
+  .amb-search input:focus{border-color:var(--ink)}
+  .amb-search-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);
+                   color:var(--muted);font-size:15px;pointer-events:none}
+
+  /* ── Table ── */
+  .amb-table-wrap{overflow-x:auto}
+  .amb-table{width:100%;border-collapse:collapse;font-size:13px}
+  .amb-table th{padding:10px 12px;text-align:left;font-size:11px;font-weight:700;
+                text-transform:uppercase;letter-spacing:.05em;color:var(--muted);
+                border-bottom:1px solid var(--line);white-space:nowrap}
+  .amb-table td{padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+  .amb-table tr:last-child td{border-bottom:none}
+  .amb-table tr.amb-row{cursor:pointer;transition:background .12s}
+  .amb-table tr.amb-row:hover{background:rgba(3,12,24,0.025)}
+  .amb-table tr.amb-row.selected{background:rgba(3,12,24,0.05)}
+  .amb-name{font-weight:700;font-size:13px}
+  .amb-email{font-size:12px;color:var(--muted)}
+  .ref-chip{background:rgba(3,12,24,0.06);padding:2px 8px;border-radius:6px;
+            font-family:monospace;font-size:11px}
+  .pill-terminated{border-color:rgba(3,12,24,0.25);background:rgba(3,12,24,0.07);color:#030C18}
+  .pill-rejected{border-color:rgba(240,68,56,0.3);background:rgba(240,68,56,0.07);color:#991b1b}
+  .empty-row td{text-align:center;color:var(--muted);padding:40px 20px!important}
+
+  /* ── Side panel ── */
+  .sp-backdrop{position:fixed;inset:0;background:rgba(3,12,24,0.25);z-index:300;
+               opacity:0;pointer-events:none;transition:opacity .25s}
+  .sp-backdrop.open{opacity:1;pointer-events:auto}
+  .side-panel{position:fixed;top:0;right:0;bottom:0;width:440px;max-width:100%;
+              background:#fff;z-index:301;box-shadow:-8px 0 40px rgba(3,12,24,0.12);
+              transform:translateX(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);
+              display:flex;flex-direction:column;overflow:hidden}
+  .side-panel.open{transform:translateX(0)}
+
+  .sp-head{padding:20px 22px 16px;border-bottom:1px solid var(--line);
+           display:flex;align-items:center;gap:14px;flex-shrink:0}
+  .sp-avatar{width:48px;height:48px;border-radius:50%;background:var(--ink);
+             color:#fff;font-size:17px;font-weight:800;display:flex;
+             align-items:center;justify-content:center;flex-shrink:0}
+  .sp-head-info{flex:1;min-width:0}
+  .sp-head-name{font-size:16px;font-weight:800;letter-spacing:-.3px}
+  .sp-head-meta{font-size:12px;color:var(--muted);margin-top:2px}
+  .sp-close{background:none;border:none;color:var(--muted);cursor:pointer;
+            font-size:18px;padding:4px 8px;border-radius:6px;transition:.15s;line-height:1}
+  .sp-close:hover{background:rgba(3,12,24,0.06);color:var(--ink)}
+
+  .sp-body{flex:1;overflow-y:auto;padding:20px 22px}
+  .sp-section{margin-bottom:22px}
+  .sp-section-title{font-size:10.5px;font-weight:700;text-transform:uppercase;
+                    letter-spacing:.07em;color:var(--muted);margin-bottom:10px}
+  .sp-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .sp-item{background:#f8f9fb;border-radius:9px;padding:9px 12px}
+  .sp-item.full{grid-column:span 2}
+  .sp-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+            color:#9ca3af;margin-bottom:3px}
+  .sp-val{font-size:13px;font-weight:600;color:var(--ink);word-break:break-word}
+  .sp-val.mono{font-family:monospace;font-size:12px}
+  .sp-doc-link{display:inline-flex;align-items:center;gap:6px;font-size:12px;
+               font-weight:700;color:var(--ink);text-decoration:none;
+               padding:6px 12px;border:1.5px solid var(--line);border-radius:8px;
+               transition:.15s;margin-top:4px}
+  .sp-doc-link:hover{border-color:var(--ink);text-decoration:none}
+
+  .sp-foot{padding:16px 22px;border-top:1px solid var(--line);
+           display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0;background:#fafafa}
+  .sp-btn{flex:1;padding:9px 12px;border-radius:10px;font-size:13px;font-weight:700;
+          cursor:pointer;border:1.5px solid var(--line);background:#fff;
+          color:var(--ink);transition:.15s;font-family:inherit;white-space:nowrap;text-align:center}
+  .sp-btn:hover{background:#f3f4f6;border-color:var(--ink)}
+  .sp-btn.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .sp-btn.primary:hover{background:#1a2535}
+  .sp-btn.danger{color:var(--bad);border-color:rgba(240,68,56,0.3)}
+  .sp-btn.danger:hover{background:rgba(240,68,56,0.05)}
+  .sp-btn.warn{color:var(--warn);border-color:rgba(247,144,9,0.3)}
+  .sp-btn.warn:hover{background:rgba(247,144,9,0.05)}
+
+  /* ── Modals (reason + edit) ── */
+  .modal-over{position:fixed;inset:0;background:rgba(3,12,24,0.35);z-index:400;
+              display:none;align-items:center;justify-content:center;padding:20px}
+  .modal-over.open{display:flex}
+  .modal-card{background:#fff;border-radius:18px;padding:28px;width:100%;max-width:420px;
+              box-shadow:0 20px 60px rgba(3,12,24,0.18)}
+  .modal-card.large{max-width:640px;max-height:90vh;overflow-y:auto}
+  .modal-title{font-size:17px;font-weight:800;margin-bottom:6px;letter-spacing:-.3px}
+  .modal-sub{font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.5}
+  .modal-field{margin-bottom:14px}
+  .modal-label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;
+               letter-spacing:.05em;color:var(--muted);margin-bottom:5px}
+  .modal-input{width:100%;padding:9px 12px;border:1.5px solid var(--line);border-radius:9px;
+               font-size:13px;font-family:inherit;outline:none;transition:border-color .15s}
+  .modal-input:focus{border-color:var(--ink)}
+  textarea.modal-input{resize:vertical;min-height:80px}
+  .modal-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .modal-actions{display:flex;gap:8px;margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}
+  .modal-cancel{flex:0 0 auto;padding:9px 16px;background:#fff;border:1.5px solid var(--line);
+                border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+  .modal-cancel:hover{background:#f3f4f6}
+  .modal-confirm{flex:1;padding:9px;border:none;border-radius:9px;font-size:13px;
+                 font-weight:700;cursor:pointer;font-family:inherit;color:#fff;background:var(--ink)}
+  .modal-confirm.danger{background:var(--bad)}
+  .modal-confirm:hover{opacity:.9}
+</style>
+
+<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+  <h1 class="section-title">Ambassadors</h1>
+  <button onclick="openChecklistModal()" class="btn btn-sm">📋 Client Checklist</button>
+</div>
+
+<!-- ── Client Requirements Checklist Modal ── -->
+<div class="modal-over" id="checklistModal" style="z-index:500">
+  <div class="modal-card large" style="max-width:600px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <div class="modal-title">📋 Client Requirements Checklist</div>
+      <button onclick="closeChecklistModal()" style="background:none;border:none;cursor:pointer;
+              font-size:18px;color:var(--muted);padding:4px 8px;border-radius:6px">✕</button>
+    </div>
+    <div class="modal-sub">What a business must have before they can go live with PhiXtra AI WhatsApp.</div>
+
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px">
+
+      <div style="border:1px solid var(--line);border-radius:12px;overflow:hidden">
+        <button type="button" onclick="toggleAdminReq(this)"
+                style="width:100%;background:#f8f9fb;border:none;padding:13px 14px;
+                       display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;font-family:inherit">
+          <span style="font-size:18px;flex-shrink:0">📱</span>
+          <div style="flex:1">
+            <div style="font-size:13.5px;font-weight:700;color:#030C18">A phone number only for the business</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">Not a personal number — just for business WhatsApp</div>
+          </div>
+          <span class="adm-arrow" style="font-size:12px;color:var(--muted);flex-shrink:0;transition:transform .2s">▼</span>
+        </button>
+        <div class="adm-steps" style="display:none;padding:14px 16px 16px;border-top:1px solid var(--line);background:#fff">
+          <ol style="font-size:13px;line-height:1.7;color:#030C18;padding-left:18px;margin:0;display:flex;flex-direction:column;gap:5px">
+            <li>Get a <strong>brand new SIM card</strong> or a number that has <strong>never been used on WhatsApp</strong>. This number is just for business.</li>
+            <li>If it's already on WhatsApp, they must <strong>delete that WhatsApp account</strong> on the number first.</li>
+            <li>Keep the SIM active — they'll need to receive a <strong>one-time code (OTP)</strong> during setup.</li>
+            <li>Share the number with PhiXtra — we'll connect it to the WhatsApp Business API during onboarding.</li>
+          </ol>
+          <div style="margin-top:10px;padding:9px 11px;background:#fef9c3;border-radius:8px;border:1px solid #fde68a;font-size:12px;color:#92400e">
+            💡 MTN, Glo, Airtel, and 9mobile SIMs all work.
+          </div>
+        </div>
+      </div>
+
+      <div style="border:1px solid var(--line);border-radius:12px;overflow:hidden">
+        <button type="button" onclick="toggleAdminReq(this)"
+                style="width:100%;background:#f8f9fb;border:none;padding:13px 14px;
+                       display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;font-family:inherit">
+          <span style="font-size:18px;flex-shrink:0">🏢</span>
+          <div style="flex:1">
+            <div style="font-size:13.5px;font-weight:700;color:#030C18">A Meta Business Account</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">A free account that proves the business is real to Meta (Facebook)</div>
+          </div>
+          <span class="adm-arrow" style="font-size:12px;color:var(--muted);flex-shrink:0;transition:transform .2s">▼</span>
+        </button>
+        <div class="adm-steps" style="display:none;padding:14px 16px 16px;border-top:1px solid var(--line);background:#fff">
+          <ol style="font-size:13px;line-height:1.7;color:#030C18;padding-left:18px;margin:0;display:flex;flex-direction:column;gap:5px">
+            <li>Go to <strong>business.facebook.com</strong> on a computer and click <strong>"Create Account"</strong>.</li>
+            <li>Enter the business name, owner's full name, and business email. Click Submit.</li>
+            <li>Check the email inbox — click the <strong>confirmation link</strong> Meta sends.</li>
+            <li>Save the login details safely — they'll need them again during setup.</li>
+            <li>Find their <strong>Meta Business ID</strong>: Settings → Business Info — it's a long number at the top.</li>
+          </ol>
+          <div style="margin-top:10px;padding:9px 11px;background:#fef9c3;border-radius:8px;border:1px solid #fde68a;font-size:12px;color:#92400e">
+            💡 They need a personal Facebook account first. It's free to create one.
+          </div>
+        </div>
+      </div>
+
+      <div style="border:1px solid var(--line);border-radius:12px;overflow:hidden">
+        <button type="button" onclick="toggleAdminReq(this)"
+                style="width:100%;background:#f8f9fb;border:none;padding:13px 14px;
+                       display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;font-family:inherit">
+          <span style="font-size:18px;flex-shrink:0">🔗</span>
+          <div style="flex:1">
+            <div style="font-size:13.5px;font-weight:700;color:#030C18">WhatsApp number connected to Meta</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">The business number must be linked to their Meta Business Account</div>
+          </div>
+          <span class="adm-arrow" style="font-size:12px;color:var(--muted);flex-shrink:0;transition:transform .2s">▼</span>
+        </button>
+        <div class="adm-steps" style="display:none;padding:14px 16px 16px;border-top:1px solid var(--line);background:#fff">
+          <ol style="font-size:13px;line-height:1.7;color:#030C18;padding-left:18px;margin:0;display:flex;flex-direction:column;gap:5px">
+            <li>Log in to <strong>business.facebook.com</strong> and go to Settings → Business Assets → WhatsApp Accounts.</li>
+            <li>Click <strong>"Add"</strong> and enter the business phone number.</li>
+            <li>Meta will send an <strong>OTP to that number</strong> — enter it to confirm.</li>
+            <li>Share the phone number and Meta Business ID with PhiXtra to complete the connection.</li>
+          </ol>
+          <div style="margin-top:10px;padding:9px 11px;background:#fef9c3;border-radius:8px;border:1px solid #fde68a;font-size:12px;color:#92400e">
+            💡 Meta verification can take 1–2 days. This is normal — PhiXtra support will guide them through it.
+          </div>
+        </div>
+      </div>
+
+      <div style="border:1px solid var(--line);border-radius:12px;overflow:hidden">
+        <button type="button" onclick="toggleAdminReq(this)"
+                style="width:100%;background:#f8f9fb;border:none;padding:13px 14px;
+                       display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;font-family:inherit">
+          <span style="font-size:18px;flex-shrink:0">📊</span>
+          <div style="flex:1">
+            <div style="font-size:13.5px;font-weight:700;color:#030C18">A product list in a spreadsheet</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">An Excel or Google Sheets file with all their products and prices</div>
+          </div>
+          <span class="adm-arrow" style="font-size:12px;color:var(--muted);flex-shrink:0;transition:transform .2s">▼</span>
+        </button>
+        <div class="adm-steps" style="display:none;padding:14px 16px 16px;border-top:1px solid var(--line);background:#fff">
+          <ol style="font-size:13px;line-height:1.7;color:#030C18;padding-left:18px;margin:0;display:flex;flex-direction:column;gap:5px">
+            <li>Open <strong>Microsoft Excel</strong> or <strong>Google Sheets</strong> (free at sheets.google.com).</li>
+            <li>Add these headings in the first row: <strong>Product Name | Price | Description | In Stock (Yes or No)</strong>.</li>
+            <li>Fill in one product per row — e.g. iPhone 14 | ₦850,000 | Brand new, 128GB, Black | Yes.</li>
+            <li>Save as <strong>.xlsx or .csv</strong>. In Google Sheets: File → Download → Microsoft Excel.</li>
+            <li>This file gets uploaded to PhiXtra during onboarding under <strong>"Product Import"</strong>.</li>
+          </ol>
+          <div style="margin-top:10px;padding:9px 11px;background:#fef9c3;border-radius:8px;border:1px solid #fde68a;font-size:12px;color:#92400e">
+            💡 The more detail in the description, the smarter the AI. Encourage: sizes, colours, conditions, warranties.
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div style="display:flex;gap:8px;padding-top:4px">
+      <button onclick="downloadAdminPDF()" class="btn btn-sm">Download PDF</button>
+      <button onclick="closeChecklistModal()" class="btn btn-sm">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Filter tabs -->
+{% set counts = {} %}
+{% set _ = counts.update({'all': ambassadors|length,
+  'pending':    ambassadors|selectattr('status','eq','pending')|list|length,
+  'active':     ambassadors|selectattr('status','eq','active')|list|length,
+  'suspended':  ambassadors|selectattr('status','eq','suspended')|list|length,
+  'rejected':   ambassadors|selectattr('status','eq','rejected')|list|length,
+  'terminated': ambassadors|selectattr('status','eq','terminated')|list|length
+}) %}
+
+<div class="amb-tabs">
+  <div class="amb-tab active" data-filter="all" onclick="setFilter('all',this)">
+    All <span class="tab-count">{{ counts.all }}</span>
+  </div>
+  <div class="amb-tab" data-filter="pending" onclick="setFilter('pending',this)">
+    Pending <span class="tab-count">{{ counts.pending }}</span>
+  </div>
+  <div class="amb-tab" data-filter="active" onclick="setFilter('active',this)">
+    Active <span class="tab-count">{{ counts.active }}</span>
+  </div>
+  <div class="amb-tab" data-filter="suspended" onclick="setFilter('suspended',this)">
+    Suspended <span class="tab-count">{{ counts.suspended }}</span>
+  </div>
+  <div class="amb-tab" data-filter="rejected" onclick="setFilter('rejected',this)">
+    Rejected <span class="tab-count">{{ counts.rejected }}</span>
+  </div>
+  <div class="amb-tab" data-filter="terminated" onclick="setFilter('terminated',this)">
+    Terminated <span class="tab-count">{{ counts.terminated }}</span>
+  </div>
+</div>
+
+<div class="card" style="padding:0">
+  <div style="padding:14px 16px 0">
+    <div class="amb-search">
+      <span class="amb-search-icon">🔍</span>
+      <input type="text" id="searchInput" placeholder="Search by name, email or location…"
+             oninput="applyFilter()"/>
+    </div>
+  </div>
+
+  <div class="amb-table-wrap">
+    <table class="amb-table" id="ambTable">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Location</th>
+          <th>Ref Code</th>
+          <th>Clients</th>
+          <th>Earned</th>
+          <th>Status</th>
+          <th>Applied</th>
+        </tr>
+      </thead>
+      <tbody id="ambTbody">
+        {% if not ambassadors %}
+        <tr class="empty-row"><td colspan="8">No ambassadors yet.</td></tr>
+        {% endif %}
+        {% for a in ambassadors %}
+        {% set ac = a.active_clients or 0 %}
+        <tr class="amb-row" data-id="{{ a.id }}" data-status="{{ a.status }}"
+            data-name="{{ (a.first_name ~ ' ' ~ a.last_name)|lower }}"
+            data-email="{{ a.email|lower }}"
+            data-location="{{ (a.location or '')|lower }}"
+            onclick="openPanel({{ a.id }})">
+          <td>
+            <div class="amb-name">{{ a.first_name }} {{ a.last_name }}</div>
+            <div class="amb-email">{{ a.phone or '' }}</div>
+          </td>
+          <td style="font-size:12px">{{ a.email }}</td>
+          <td style="font-size:12px;color:var(--muted)">{{ a.location or '—' }}</td>
+          <td><span class="ref-chip">{{ a.ref_code }}</span></td>
+          <td style="text-align:center;font-weight:700">{{ ac }}</td>
+          <td style="font-weight:700">₦{{ "{:,.0f}".format(a.total_earned or 0) }}</td>
+          <td>
+            {% if a.status == 'active' %}
+              <span class="pill pill-green">Active</span>
+            {% elif a.status == 'pending' %}
+              <span class="pill pill-warn">Pending</span>
+            {% elif a.status == 'suspended' %}
+              <span class="pill pill-red">Suspended</span>
+            {% elif a.status == 'rejected' %}
+              <span class="pill pill-rejected">Rejected</span>
+            {% elif a.status == 'terminated' %}
+              <span class="pill pill-terminated">Terminated</span>
+            {% else %}
+              <span class="pill pill-grey">{{ a.status|title }}</span>
+            {% endif %}
+          </td>
+          <td style="font-size:12px;color:var(--muted);white-space:nowrap">
+            {{ a.created_at.strftime('%d %b %Y') if a.created_at else '—' }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Side panel ── -->
+<div class="sp-backdrop" id="spBackdrop" onclick="closePanel()"></div>
+<div class="side-panel" id="sidePanel">
+  <div class="sp-head">
+    <div class="sp-avatar" id="spAvatar">?</div>
+    <div class="sp-head-info">
+      <div class="sp-head-name" id="spName">—</div>
+      <div class="sp-head-meta" id="spMeta">—</div>
+    </div>
+    <button class="sp-close" onclick="closePanel()">✕</button>
+  </div>
+  <div class="sp-body" id="spBody">
+    <div style="text-align:center;padding:40px 0;color:var(--muted)">Loading…</div>
+  </div>
+  <div class="sp-foot" id="spFoot"></div>
+</div>
+
+<!-- ── Reason modal (reject / terminate) ── -->
+<div class="modal-over" id="reasonModal">
+  <div class="modal-card">
+    <div class="modal-title" id="reasonModalTitle">Confirm Action</div>
+    <div class="modal-sub" id="reasonModalSub">Please provide a reason.</div>
+    <form method="POST" id="reasonForm">
+      <div class="modal-field">
+        <label class="modal-label">Reason <span style="color:#9ca3af;font-weight:400;font-size:10px">(optional)</span></label>
+        <textarea name="reason" class="modal-input" placeholder="Enter reason…" rows="3"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="modal-cancel" onclick="closeReasonModal()">Cancel</button>
+        <button type="submit" class="modal-confirm danger" id="reasonConfirmBtn">Confirm</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Edit modal ── -->
+<div class="modal-over" id="editModal">
+  <div class="modal-card large">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <div class="modal-title">Edit Ambassador</div>
+      <button onclick="closeEditModal()" style="background:none;border:none;cursor:pointer;
+              font-size:18px;color:var(--muted);padding:4px 8px;border-radius:6px">✕</button>
+    </div>
+    <div class="modal-sub" style="margin-bottom:20px">Changes are saved immediately.</div>
+    <form method="POST" id="editForm">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+                  color:var(--muted);margin-bottom:10px">Personal</div>
+      <div class="modal-row">
+        <div class="modal-field">
+          <label class="modal-label">First Name</label>
+          <input type="text" name="first_name" id="ef_first_name" class="modal-input"/>
+        </div>
+        <div class="modal-field">
+          <label class="modal-label">Last Name</label>
+          <input type="text" name="last_name" id="ef_last_name" class="modal-input"/>
+        </div>
+      </div>
+      <div class="modal-row">
+        <div class="modal-field">
+          <label class="modal-label">Date of Birth</label>
+          <input type="date" name="date_of_birth" id="ef_dob" class="modal-input"/>
+        </div>
+        <div class="modal-field">
+          <label class="modal-label">Gender</label>
+          <select name="gender" id="ef_gender" class="modal-input" style="appearance:none;-webkit-appearance:none;
+            background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='7' viewBox='0 0 12 7'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7280' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E\");
+            background-repeat:no-repeat;background-position:right 12px center;padding-right:34px;cursor:pointer">
+            <option value="">—</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+            <option value="Prefer not to say">Prefer not to say</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-row">
+        <div class="modal-field">
+          <label class="modal-label">Nationality</label>
+          <input type="text" name="nationality" id="ef_nationality" class="modal-input"/>
+        </div>
+        <div class="modal-field">
+          <label class="modal-label">Qualification</label>
+          <input type="text" name="highest_qualification" id="ef_qualification" class="modal-input"/>
+        </div>
+      </div>
+
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+                  color:var(--muted);margin:14px 0 10px">Contact &amp; Location</div>
+      <div class="modal-row">
+        <div class="modal-field">
+          <label class="modal-label">Email</label>
+          <input type="email" name="email" id="ef_email" class="modal-input"/>
+        </div>
+        <div class="modal-field">
+          <label class="modal-label">Phone</label>
+          <input type="tel" name="phone" id="ef_phone" class="modal-input"/>
+        </div>
+      </div>
+      <div class="modal-row">
+        <div class="modal-field">
+          <label class="modal-label">WhatsApp</label>
+          <input type="tel" name="whatsapp_number" id="ef_whatsapp" class="modal-input"/>
+        </div>
+        <div class="modal-field">
+          <label class="modal-label">Operating Location</label>
+          <input type="text" name="location" id="ef_location" class="modal-input"/>
+        </div>
+      </div>
+      <div class="modal-field">
+        <label class="modal-label">Address</label>
+        <textarea name="address" id="ef_address" class="modal-input" rows="2"></textarea>
+      </div>
+
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+                  color:var(--muted);margin:14px 0 10px">Bank Details</div>
+      <div class="modal-row">
+        <div class="modal-field">
+          <label class="modal-label">Bank Name</label>
+          <input type="text" name="bank_name" id="ef_bank_name" class="modal-input"/>
+        </div>
+        <div class="modal-field">
+          <label class="modal-label">Account Number</label>
+          <input type="text" name="account_number" id="ef_account_number" class="modal-input"/>
+        </div>
+      </div>
+      <div class="modal-row">
+        <div class="modal-field">
+          <label class="modal-label">Account Name</label>
+          <input type="text" name="account_name" id="ef_account_name" class="modal-input"/>
+        </div>
+        <div class="modal-field">
+          <label class="modal-label">Sort Code <span style="font-weight:400;color:#9ca3af">(opt)</span></label>
+          <input type="text" name="sort_code" id="ef_sort_code" class="modal-input"/>
+        </div>
+      </div>
+      <div class="modal-field">
+        <label class="modal-label">SWIFT Code <span style="font-weight:400;color:#9ca3af">(opt)</span></label>
+        <input type="text" name="swift_code" id="ef_swift_code" class="modal-input"/>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="modal-cancel" onclick="closeEditModal()">Cancel</button>
+        <button type="submit" class="modal-confirm">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+let activeFilter = 'all';
+let currentAmbId = null;
+let currentAmbData = null;
+
+/* ── Filter & search ── */
+function setFilter(f, el) {
+  activeFilter = f;
+  document.querySelectorAll('.amb-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  applyFilter();
+}
+function applyFilter() {
+  const q = (document.getElementById('searchInput').value || '').toLowerCase().trim();
+  document.querySelectorAll('#ambTbody .amb-row').forEach(row => {
+    const matchFilter = activeFilter === 'all' || row.dataset.status === activeFilter;
+    const matchSearch = !q ||
+      row.dataset.name.includes(q) ||
+      row.dataset.email.includes(q) ||
+      row.dataset.location.includes(q);
+    row.style.display = (matchFilter && matchSearch) ? '' : 'none';
+  });
+}
+
+/* ── Side panel ── */
+function openPanel(id) {
+  currentAmbId = id;
+  document.querySelectorAll('.amb-row').forEach(r => {
+    r.classList.toggle('selected', parseInt(r.dataset.id) === id);
+  });
+  document.getElementById('spBackdrop').classList.add('open');
+  document.getElementById('sidePanel').classList.add('open');
+  document.getElementById('spBody').innerHTML =
+    '<div style="text-align:center;padding:40px 0;color:var(--muted)">Loading…</div>';
+  document.getElementById('spFoot').innerHTML = '';
+
+  fetch(`/admin/ambassadors/${id}/detail`)
+    .then(r => r.json())
+    .then(d => { currentAmbData = d; renderPanel(d); })
+    .catch(() => {
+      document.getElementById('spBody').innerHTML =
+        '<div style="color:var(--bad);padding:20px">Failed to load details.</div>';
+    });
+}
+
+function closePanel() {
+  document.getElementById('spBackdrop').classList.remove('open');
+  document.getElementById('sidePanel').classList.remove('open');
+  document.querySelectorAll('.amb-row').forEach(r => r.classList.remove('selected'));
+  currentAmbId = null;
+}
+
+function initials(first, last) {
+  return ((first||'?')[0] + (last||'?')[0]).toUpperCase();
+}
+
+function renderPanel(d) {
+  /* Avatar */
+  document.getElementById('spAvatar').textContent = initials(d.first_name, d.last_name);
+  document.getElementById('spName').textContent = `${d.first_name} ${d.last_name}`;
+  document.getElementById('spMeta').textContent = d.email;
+
+  /* Status badge */
+  const STATUS_COLORS = {
+    active:'#0a7a3c', pending:'#7a4f00', suspended:'#b02020',
+    rejected:'#991b1b', terminated:'#030C18'
+  };
+  const statusColor = STATUS_COLORS[d.status] || '#555';
+
+  /* Body */
+  const docLink = d.id_document_path
+    ? `<a href="/admin/ambassadors/${d.id}/id-doc" target="_blank" class="sp-doc-link">
+         📄 View ${d.id_document_type || 'Document'}
+       </a>`
+    : '<span style="color:var(--muted);font-size:12px">No document uploaded</span>';
+
+  document.getElementById('spBody').innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;
+                padding:10px 12px;border-radius:10px;background:#f8f9fb">
+      <span style="width:8px;height:8px;border-radius:50%;background:${statusColor};flex-shrink:0;display:inline-block"></span>
+      <span style="font-size:12px;font-weight:700;color:${statusColor};text-transform:capitalize">${d.status}</span>
+      <span style="color:var(--muted);font-size:12px;margin-left:auto">Applied ${fmtDate(d.created_at)}</span>
+    </div>
+
+    <div class="sp-section">
+      <div class="sp-section-title">Personal</div>
+      <div class="sp-grid">
+        <div class="sp-item"><div class="sp-label">First Name</div><div class="sp-val">${d.first_name||'—'}</div></div>
+        <div class="sp-item"><div class="sp-label">Last Name</div><div class="sp-val">${d.last_name||'—'}</div></div>
+        <div class="sp-item"><div class="sp-label">Date of Birth</div><div class="sp-val">${fmtDate(d.date_of_birth)||'—'}</div></div>
+        <div class="sp-item"><div class="sp-label">Gender</div><div class="sp-val">${d.gender||'—'}</div></div>
+        <div class="sp-item full"><div class="sp-label">Nationality</div><div class="sp-val">${d.nationality||'—'}</div></div>
+      </div>
+    </div>
+
+    <div class="sp-section">
+      <div class="sp-section-title">Contact &amp; Location</div>
+      <div class="sp-grid">
+        <div class="sp-item"><div class="sp-label">Phone</div><div class="sp-val">${d.phone||'—'}</div></div>
+        <div class="sp-item"><div class="sp-label">WhatsApp</div><div class="sp-val">${d.whatsapp_number||'—'}</div></div>
+        <div class="sp-item full"><div class="sp-label">Operating Location</div><div class="sp-val">${d.location||'—'}</div></div>
+        <div class="sp-item full"><div class="sp-label">Address</div><div class="sp-val">${d.address||'—'}</div></div>
+      </div>
+    </div>
+
+    <div class="sp-section">
+      <div class="sp-section-title">Qualifications &amp; Identity</div>
+      <div class="sp-grid">
+        <div class="sp-item full"><div class="sp-label">Highest Qualification</div><div class="sp-val">${d.highest_qualification||'—'}</div></div>
+      </div>
+      <div style="margin-top:8px">${docLink}</div>
+    </div>
+
+    <div class="sp-section">
+      <div class="sp-section-title">Bank Details</div>
+      <div class="sp-grid">
+        <div class="sp-item full"><div class="sp-label">Bank Name</div><div class="sp-val">${d.bank_name||'—'}</div></div>
+        <div class="sp-item"><div class="sp-label">Account Number</div><div class="sp-val mono">${d.account_number||'—'}</div></div>
+        <div class="sp-item"><div class="sp-label">Account Name</div><div class="sp-val">${d.account_name||'—'}</div></div>
+        ${d.sort_code ? `<div class="sp-item"><div class="sp-label">Sort Code</div><div class="sp-val mono">${d.sort_code}</div></div>` : ''}
+        ${d.swift_code ? `<div class="sp-item"><div class="sp-label">SWIFT</div><div class="sp-val mono">${d.swift_code}</div></div>` : ''}
+      </div>
+    </div>
+
+    <div class="sp-section">
+      <div class="sp-section-title">Performance</div>
+      <div class="sp-grid">
+        <div class="sp-item"><div class="sp-label">Active Clients</div><div class="sp-val">${d.active_clients||0}</div></div>
+        <div class="sp-item"><div class="sp-label">Total Earned</div><div class="sp-val">₦${Number(d.total_earned||0).toLocaleString()}</div></div>
+        <div class="sp-item"><div class="sp-label">Ref Code</div><div class="sp-val mono">${d.ref_code||'—'}</div></div>
+        ${d.partnership_start ? `<div class="sp-item"><div class="sp-label">Partner Since</div><div class="sp-val">${fmtDate(d.partnership_start)}</div></div>` : ''}
+      </div>
+    </div>
+
+    ${d.rejected_reason ? `<div class="sp-section"><div class="sp-section-title" style="color:var(--bad)">Rejection Reason</div>
+      <div style="font-size:13px;color:var(--ink);background:#fff5f5;border:1px solid #fecaca;border-radius:8px;padding:10px 12px">${d.rejected_reason}</div></div>` : ''}
+    ${d.terminated_reason ? `<div class="sp-section"><div class="sp-section-title" style="color:var(--bad)">Termination Reason</div>
+      <div style="font-size:13px;color:var(--ink);background:#fff5f5;border:1px solid #fecaca;border-radius:8px;padding:10px 12px">${d.terminated_reason}</div></div>` : ''}
+  `;
+
+  /* Foot buttons based on status */
+  renderFootButtons(d.status, d.id);
+}
+
+function renderFootButtons(status, id) {
+  const foot = document.getElementById('spFoot');
+  let btns = '';
+  if (status === 'pending') {
+    btns = `
+      <button class="sp-btn primary" onclick="doApprove(${id})">Approve</button>
+      <button class="sp-btn danger" onclick="openReasonModal(${id},'reject','Reject Application','This will mark the application as rejected.')">Reject</button>
+    `;
+  } else if (status === 'active') {
+    btns = `
+      <button class="sp-btn" onclick="openEditModal()">Edit</button>
+      <button class="sp-btn warn" onclick="doSuspend(${id})">Suspend</button>
+      <button class="sp-btn danger" onclick="openReasonModal(${id},'terminate','Terminate Ambassador','This will permanently end their ambassador status.')">Terminate</button>
+    `;
+  } else if (status === 'suspended') {
+    btns = `
+      <button class="sp-btn primary" onclick="doReactivate(${id})">Reactivate</button>
+      <button class="sp-btn" onclick="openEditModal()">Edit</button>
+      <button class="sp-btn danger" onclick="openReasonModal(${id},'terminate','Terminate Ambassador','This will permanently end their ambassador status.')">Terminate</button>
+    `;
+  } else if (status === 'rejected') {
+    btns = `
+      <button class="sp-btn primary" onclick="doApprove(${id})">Approve</button>
+      <button class="sp-btn" onclick="openEditModal()">Edit</button>
+    `;
+  } else if (status === 'terminated') {
+    btns = `
+      <button class="sp-btn primary" onclick="doReactivate(${id})">Reactivate</button>
+      <button class="sp-btn" onclick="openEditModal()">Edit</button>
+    `;
+  }
+  foot.innerHTML = btns;
+}
+
+/* ── Form actions (simple POST) ── */
+function postTo(url) {
+  const f = document.createElement('form');
+  f.method = 'POST'; f.action = url;
+  document.body.appendChild(f); f.submit();
+}
+function doApprove(id)    { postTo(`/admin/ambassadors/${id}/approve`); }
+function doSuspend(id)    { postTo(`/admin/ambassadors/${id}/suspend`); }
+function doReactivate(id) { postTo(`/admin/ambassadors/${id}/reactivate`); }
+
+/* ── Reason modal ── */
+function openReasonModal(id, action, title, sub) {
+  document.getElementById('reasonModalTitle').textContent = title;
+  document.getElementById('reasonModalSub').textContent   = sub;
+  document.getElementById('reasonForm').action = `/admin/ambassadors/${id}/${action}`;
+  document.getElementById('reasonModal').classList.add('open');
+}
+function closeReasonModal() {
+  document.getElementById('reasonModal').classList.remove('open');
+}
+
+/* ── Edit modal ── */
+function openEditModal() {
+  const d = currentAmbData;
+  if (!d) return;
+  document.getElementById('editForm').action = `/admin/ambassadors/${d.id}/edit`;
+  document.getElementById('ef_first_name').value    = d.first_name    || '';
+  document.getElementById('ef_last_name').value     = d.last_name     || '';
+  document.getElementById('ef_dob').value           = (d.date_of_birth||'').split('T')[0];
+  document.getElementById('ef_gender').value        = d.gender        || '';
+  document.getElementById('ef_nationality').value   = d.nationality   || '';
+  document.getElementById('ef_qualification').value = d.highest_qualification || '';
+  document.getElementById('ef_email').value         = d.email         || '';
+  document.getElementById('ef_phone').value         = d.phone         || '';
+  document.getElementById('ef_whatsapp').value      = d.whatsapp_number || '';
+  document.getElementById('ef_location').value      = d.location      || '';
+  document.getElementById('ef_address').value       = d.address       || '';
+  document.getElementById('ef_bank_name').value     = d.bank_name     || '';
+  document.getElementById('ef_account_number').value = d.account_number || '';
+  document.getElementById('ef_account_name').value  = d.account_name  || '';
+  document.getElementById('ef_sort_code').value     = d.sort_code     || '';
+  document.getElementById('ef_swift_code').value    = d.swift_code    || '';
+  document.getElementById('editModal').classList.add('open');
+}
+function closeEditModal() {
+  document.getElementById('editModal').classList.remove('open');
+}
+
+/* ── Helpers ── */
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  return d.toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'});
+}
+
+/* Close modals on backdrop click */
+document.getElementById('reasonModal').addEventListener('click', function(e) {
+  if (e.target === this) closeReasonModal();
+});
+document.getElementById('editModal').addEventListener('click', function(e) {
+  if (e.target === this) closeEditModal();
+});
+
+/* Keyboard close */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closePanel(); closeReasonModal(); closeEditModal(); closeChecklistModal(); }
+});
+
+/* ── Client Checklist Modal ── */
+function openChecklistModal()  { document.getElementById('checklistModal').classList.add('open'); }
+function closeChecklistModal() { document.getElementById('checklistModal').classList.remove('open'); }
+document.getElementById('checklistModal').addEventListener('click', function(e) {
+  if (e.target === this) closeChecklistModal();
+});
+
+function toggleAdminReq(btn) {
+  var item  = btn.closest('div[style*="border:1px solid var(--line)"]');
+  var steps = item.querySelector('.adm-steps');
+  var arrow = btn.querySelector('.adm-arrow');
+  var open  = steps.style.display !== 'none';
+  steps.style.display = open ? 'none' : 'block';
+  arrow.style.transform = open ? '' : 'rotate(180deg)';
+}
+
+function downloadAdminPDF() {
+  document.querySelectorAll('.adm-steps').forEach(function(el) { el.style.display = 'block'; });
+  document.querySelectorAll('.adm-arrow').forEach(function(el)  { el.style.transform = 'rotate(180deg)'; });
+  window.print();
+}
+</script>
+{% endblock %}
