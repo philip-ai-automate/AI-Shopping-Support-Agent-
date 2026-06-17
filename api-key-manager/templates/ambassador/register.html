@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Join as an Ambassador — PhiXtra AI</title>
+  {% if turnstile_site_key %}
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  {% endif %}
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{height:100%}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+         background:#030C18;color:#030C18;display:flex;min-height:100vh}
+
+    /* ── Left panel ── */
+    .left-panel{width:360px;flex-shrink:0;background:#030C18;padding:48px 36px;
+                display:flex;flex-direction:column;position:sticky;top:0;
+                height:100vh;overflow-y:auto}
+    .brand-logo{font-size:20px;font-weight:900;color:#fff;letter-spacing:-.5px;margin-bottom:44px;
+                display:flex;align-items:center;gap:8px}
+    .brand-dot{width:8px;height:8px;border-radius:50%;background:#4fd1c5;display:inline-block}
+    .left-headline{font-size:26px;font-weight:800;color:#fff;line-height:1.25;margin-bottom:12px;letter-spacing:-.5px}
+    .left-sub{font-size:13.5px;color:rgba(255,255,255,0.55);line-height:1.65;margin-bottom:36px}
+    .perks{display:flex;flex-direction:column;gap:18px}
+    .perk-item{display:flex;gap:14px;align-items:flex-start}
+    .perk-icon{width:38px;height:38px;border-radius:10px;background:rgba(255,255,255,0.08);
+               display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+    .perk-title{font-size:13.5px;font-weight:700;color:#fff;margin-bottom:3px}
+    .perk-desc{font-size:12px;color:rgba(255,255,255,0.5);line-height:1.45}
+    .left-footer{margin-top:auto;padding-top:28px;font-size:11.5px;color:rgba(255,255,255,0.25);line-height:1.6}
+    .left-footer a{color:rgba(255,255,255,0.35)}
+
+    /* ── Right panel ── */
+    .right-panel{flex:1;background:#f5f6fa;display:flex;flex-direction:column;
+                 align-items:center;padding:44px 24px 60px;min-height:100vh;overflow-y:auto}
+    .form-card{background:#fff;border-radius:22px;border:1px solid rgba(3,12,24,0.08);
+               padding:36px 32px;max-width:500px;width:100%;
+               box-shadow:0 8px 40px rgba(3,12,24,0.07)}
+
+    /* ── Progress ── */
+    .progress-wrap{display:flex;align-items:center;margin-bottom:30px}
+    .prog-step{display:flex;flex-direction:column;align-items:center;flex:0 0 auto;z-index:1}
+    .prog-circle{width:30px;height:30px;border-radius:50%;border:2px solid #e5e7eb;
+                 background:#fff;display:flex;align-items:center;justify-content:center;
+                 font-size:11px;font-weight:700;color:#9ca3af;transition:all .3s}
+    .prog-circle.done{background:#030C18;border-color:#030C18;color:#fff;font-size:13px}
+    .prog-circle.active{border-color:#030C18;color:#030C18;box-shadow:0 0 0 4px rgba(3,12,24,0.08)}
+    .prog-line{flex:1;height:2px;background:#e5e7eb;transition:background .3s}
+    .prog-line.done{background:#030C18}
+
+    /* ── Step header ── */
+    .step-num{font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;
+              letter-spacing:.08em;margin-bottom:6px}
+    .step-title{font-size:21px;font-weight:800;letter-spacing:-.4px;margin-bottom:5px}
+    .step-sub{font-size:13px;color:#6b7280;line-height:1.5;margin-bottom:24px}
+
+    /* ── Fields ── */
+    .field-row{display:grid;gap:14px;grid-template-columns:1fr 1fr;margin-bottom:14px}
+    .field-row.single{grid-template-columns:1fr}
+    .field{margin-bottom:14px}
+    .field:last-child{margin-bottom:0}
+    .lbl{display:block;font-size:11px;font-weight:700;letter-spacing:.05em;
+         text-transform:uppercase;color:#6b7280;margin-bottom:5px}
+    .req{color:#f04438}
+    .opt{color:#9ca3af;font-weight:400;font-size:10px;letter-spacing:0;text-transform:none}
+    input,select,textarea{
+      width:100%;padding:10px 13px;border:1.5px solid #e5e7eb;border-radius:10px;
+      font-size:13.5px;color:#030C18;outline:none;transition:border-color .15s;
+      font-family:inherit;background:#fff;-webkit-appearance:none;appearance:none}
+    select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='7' viewBox='0 0 12 7'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7280' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+           background-repeat:no-repeat;background-position:right 12px center;padding-right:36px;cursor:pointer}
+    textarea{resize:vertical;min-height:82px}
+    input:focus,select:focus,textarea:focus{border-color:#030C18;box-shadow:0 0 0 3px rgba(3,12,24,0.06)}
+    input.err-field,select.err-field,textarea.err-field{border-color:#f04438!important}
+    .err-msg{font-size:11px;color:#f04438;margin-top:4px;display:none}
+    .err-msg.show{display:block}
+
+    /* ── File upload ── */
+    .file-zone{border:2px dashed #e5e7eb;border-radius:12px;padding:32px 20px;
+               text-align:center;cursor:pointer;transition:all .2s;position:relative;
+               background:#fafafa}
+    .file-zone:hover,.file-zone.drag{border-color:#030C18;background:#f3f4f6}
+    .file-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;
+                                width:100%;height:100%}
+    .file-zone-icon{font-size:26px;margin-bottom:8px}
+    .file-zone-text{font-size:13px;color:#6b7280;line-height:1.55}
+    .file-zone-text strong{color:#030C18}
+    .file-chosen{display:none;align-items:center;gap:10px;padding:11px 14px;
+                 background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;margin-top:10px}
+    .file-chosen.show{display:flex}
+    .file-chosen-name{font-size:13px;font-weight:600;color:#15803d;flex:1;
+                      overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .file-rm{background:none;border:none;color:#6b7280;cursor:pointer;font-size:12px;padding:0}
+
+    /* ── Navigation ── */
+    .step-nav{display:flex;gap:10px;margin-top:26px;padding-top:22px;border-top:1px solid #f3f4f6}
+    .btn-back{flex:0 0 auto;padding:10px 18px;background:#fff;color:#030C18;
+              border:1.5px solid #e5e7eb;border-radius:11px;font-size:13.5px;
+              font-weight:700;cursor:pointer;transition:all .15s;font-family:inherit}
+    .btn-back:hover{background:#f3f4f6;border-color:#030C18}
+    .btn-next{flex:1;padding:11px;background:#030C18;color:#fff;border:none;
+              border-radius:11px;font-size:14.5px;font-weight:700;cursor:pointer;
+              letter-spacing:-.2px;transition:background .15s;font-family:inherit}
+    .btn-next:hover{background:#1a2535}
+
+    /* ── Review ── */
+    .review-sec{margin-bottom:18px}
+    .review-sec-title{font-size:10.5px;font-weight:700;text-transform:uppercase;
+                      letter-spacing:.07em;color:#9ca3af;margin-bottom:8px}
+    .review-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+    .review-item{background:#f8f9fb;border-radius:8px;padding:8px 11px}
+    .review-item.full{grid-column:span 2}
+    .ri-label{font-size:10px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
+    .ri-val{font-size:13px;font-weight:600;color:#030C18;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+    /* ── Flash / Success ── */
+    .flash{padding:11px 14px;border-radius:10px;margin-bottom:18px;font-size:13px;font-weight:500}
+    .flash.danger{background:#fee2e2;color:#991b1b;border:1px solid #fecaca}
+    .flash.warning{background:#fef9c3;color:#92400e;border:1px solid #fde68a}
+    .success-wrap{text-align:center;padding:12px 0}
+    .success-icon{font-size:52px;margin-bottom:14px}
+    .success-wrap h2{font-size:22px;font-weight:800;margin-bottom:8px}
+    .success-wrap p{font-size:14px;color:#6b7280;line-height:1.65}
+    .success-wrap a{color:#030C18;font-weight:700}
+
+    /* ── Step animation ── */
+    .step{display:none}
+    .step.active{display:block;animation:fadeIn .22s ease}
+    @keyframes fadeIn{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:translateX(0)}}
+
+    /* ── Mobile ── */
+    @media(max-width:780px){
+      html,body{height:auto}
+      body{flex-direction:column}
+      .left-panel{width:100%;height:auto;position:relative;padding:24px 20px 20px;flex-direction:row;
+                  flex-wrap:wrap;align-items:center;gap:0}
+      .brand-logo{margin-bottom:0;flex:1}
+      .left-headline,.left-sub,.perks,.left-footer{display:none}
+      .right-panel{padding:20px 14px 40px;overflow-y:visible;min-height:0;height:auto}
+      .form-card{padding:22px 18px;border-radius:18px}
+      .field-row{grid-template-columns:1fr}
+      .review-grid{grid-template-columns:1fr}
+      .review-item.full{grid-column:span 1}
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Left panel ── -->
+<div class="left-panel">
+  <div class="brand-logo"><span class="brand-dot"></span> PhiXtra AI</div>
+  <h2 class="left-headline">Earn while you grow the PhiXtra network</h2>
+  <p class="left-sub">Join our Ambassador programme and receive 20% on every client you bring in — with lifetime earning potential.</p>
+  <div class="perks">
+    <div class="perk-item">
+      <div class="perk-icon">💸</div>
+      <div><div class="perk-title">20% Commission</div>
+           <div class="perk-desc">On all subscription payments from every client you refer</div></div>
+    </div>
+    <div class="perk-item">
+      <div class="perk-icon">⭐</div>
+      <div><div class="perk-title">Upgrade Bonuses</div>
+           <div class="perk-desc">₦5,000–₦15,000 each time a client upgrades their plan</div></div>
+    </div>
+    <div class="perk-item">
+      <div class="perk-icon">🏆</div>
+      <div><div class="perk-title">Lifetime Status</div>
+           <div class="perk-desc">Earn commissions for life once you reach 20+ active clients</div></div>
+    </div>
+    <div class="perk-item">
+      <div class="perk-icon">📲</div>
+      <div><div class="perk-title">Personal QR Code</div>
+           <div class="perk-desc">A unique referral link and QR code to share anywhere</div></div>
+    </div>
+    <div class="perk-item">
+      <div class="perk-icon">📊</div>
+      <div><div class="perk-title">Live Dashboard</div>
+           <div class="perk-desc">Track referrals, commissions, and tier progress in real time</div></div>
+    </div>
+  </div>
+  <div class="left-footer">
+    &copy; 2025 PhiXtra AI. All rights reserved.<br>
+    Questions? <a href="mailto:support@phixtra.com">support@phixtra.com</a>
+  </div>
+</div>
+
+<!-- ── Right panel ── -->
+<div class="right-panel">
+<div class="form-card">
+
+{% if submitted %}
+<div class="success-wrap">
+  <div class="success-icon">✅</div>
+  <h2>Application Submitted!</h2>
+  <p>Thank you for applying to the PhiXtra Ambassador programme.<br>
+     We'll review your application and email you within 24 hours.</p>
+  <p style="margin-top:22px"><a href="{{ url_for('ambassador.login') }}">Go to Login →</a></p>
+</div>
+
+{% else %}
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}<div class="flash {{ cat }}">{{ msg }}</div>{% endfor %}
+{% endwith %}
+
+<!-- ── Pre-screen: What you'll need ── -->
+<div id="preScreen">
+  <div style="font-size:13px;font-weight:700;color:#9ca3af;text-transform:uppercase;
+              letter-spacing:.08em;margin-bottom:10px">Before you begin</div>
+  <div style="font-size:21px;font-weight:800;letter-spacing:-.4px;margin-bottom:6px">Here's what you'll need</div>
+  <div style="font-size:13px;color:#6b7280;margin-bottom:24px;line-height:1.55">
+    Get these ready and your application will take about <strong>3–5 minutes</strong> to complete.
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:28px">
+    <div style="display:flex;align-items:flex-start;gap:13px;padding:13px 14px;
+                background:#f8f9fb;border-radius:12px;border:1px solid #f0f1f3">
+      <span style="font-size:20px;flex-shrink:0">📋</span>
+      <div>
+        <div style="font-size:13.5px;font-weight:700;margin-bottom:2px">Personal Details</div>
+        <div style="font-size:12px;color:#6b7280;line-height:1.45">Full name, date of birth, gender and nationality</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:flex-start;gap:13px;padding:13px 14px;
+                background:#f8f9fb;border-radius:12px;border:1px solid #f0f1f3">
+      <span style="font-size:20px;flex-shrink:0">📞</span>
+      <div>
+        <div style="font-size:13.5px;font-weight:700;margin-bottom:2px">Contact Information</div>
+        <div style="font-size:12px;color:#6b7280;line-height:1.45">Email address, phone number and WhatsApp number</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:flex-start;gap:13px;padding:13px 14px;
+                background:#f8f9fb;border-radius:12px;border:1px solid #f0f1f3">
+      <span style="font-size:20px;flex-shrink:0">🪪</span>
+      <div>
+        <div style="font-size:13.5px;font-weight:700;margin-bottom:2px">Government-Issued ID</div>
+        <div style="font-size:12px;color:#6b7280;line-height:1.45">
+          Voter's Card, Driver's Licence, or International Passport<br>
+          <span style="color:#9ca3af">Accepted formats: JPG, PNG or PDF</span>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:flex-start;gap:13px;padding:13px 14px;
+                background:#f8f9fb;border-radius:12px;border:1px solid #f0f1f3">
+      <span style="font-size:20px;flex-shrink:0">🏦</span>
+      <div>
+        <div style="font-size:13.5px;font-weight:700;margin-bottom:2px">Bank Account Details</div>
+        <div style="font-size:12px;color:#6b7280;line-height:1.45">Bank name, account number and account name for commission payments</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:flex-start;gap:13px;padding:13px 14px;
+                background:#f8f9fb;border-radius:12px;border:1px solid #f0f1f3">
+      <span style="font-size:20px;flex-shrink:0">🎓</span>
+      <div>
+        <div style="font-size:13.5px;font-weight:700;margin-bottom:2px">Highest Qualification</div>
+        <div style="font-size:12px;color:#6b7280;line-height:1.45">Just select your highest level of education from a list — no document needed</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- What your clients will need -->
+  <div style="margin-bottom:28px">
+    <div style="font-size:13px;font-weight:700;color:#9ca3af;text-transform:uppercase;
+                letter-spacing:.08em;margin-bottom:10px;margin-top:28px;
+                padding-top:24px;border-top:1px solid #f0f1f3">What your clients will need</div>
+    <div style="font-size:13px;color:#6b7280;margin-bottom:14px;line-height:1.55">
+      Before you pitch PhiXtra AI to a business, make sure they have all four of these. Tap each one to see how to help them get it.
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+
+      <div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
+        <button type="button" onclick="toggleReqReg(this)"
+                style="width:100%;background:#f8f9fb;border:none;padding:13px 14px;
+                       display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;font-family:inherit">
+          <span style="font-size:18px;flex-shrink:0">📱</span>
+          <div style="flex:1">
+            <div style="font-size:13.5px;font-weight:700;color:#030C18">A phone number only for the business</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:2px">Not a personal number — just for business WhatsApp</div>
+          </div>
+          <span style="font-size:12px;color:#9ca3af;flex-shrink:0;transition:transform .2s" class="reg-arrow">▼</span>
+        </button>
+        <div class="reg-steps" style="display:none;padding:14px 16px 16px;border-top:1px solid #e5e7eb;background:#fff">
+          <ol style="font-size:12.5px;line-height:1.7;color:#030C18;padding-left:18px;margin:0;display:flex;flex-direction:column;gap:5px">
+            <li>Get a <strong>brand new SIM card</strong> or a number that has <strong>never been used on WhatsApp</strong>. This number is just for business.</li>
+            <li>If it's already on WhatsApp, they must <strong>delete that WhatsApp account</strong> on the number first.</li>
+            <li>Keep the SIM active — they'll need to receive a <strong>one-time code (OTP)</strong> during setup.</li>
+            <li>Share the number with PhiXtra — we'll connect it to the WhatsApp Business API during onboarding.</li>
+          </ol>
+          <div style="margin-top:10px;padding:9px 11px;background:#fef9c3;border-radius:8px;border:1px solid #fde68a;font-size:11.5px;color:#92400e">
+            💡 MTN, Glo, Airtel, and 9mobile SIMs all work.
+          </div>
+        </div>
+      </div>
+
+      <div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
+        <button type="button" onclick="toggleReqReg(this)"
+                style="width:100%;background:#f8f9fb;border:none;padding:13px 14px;
+                       display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;font-family:inherit">
+          <span style="font-size:18px;flex-shrink:0">🏢</span>
+          <div style="flex:1">
+            <div style="font-size:13.5px;font-weight:700;color:#030C18">A Meta Business Account</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:2px">A free account that proves the business is real to Meta (Facebook)</div>
+          </div>
+          <span style="font-size:12px;color:#9ca3af;flex-shrink:0;transition:transform .2s" class="reg-arrow">▼</span>
+        </button>
+        <div class="reg-steps" style="display:none;padding:14px 16px 16px;border-top:1px solid #e5e7eb;background:#fff">
+          <ol style="font-size:12.5px;line-height:1.7;color:#030C18;padding-left:18px;margin:0;display:flex;flex-direction:column;gap:5px">
+            <li>Go to <strong>business.facebook.com</strong> on a computer and click <strong>"Create Account"</strong>.</li>
+            <li>Enter the business name, owner's full name, and business email. Click Submit.</li>
+            <li>Check the email inbox — click the <strong>confirmation link</strong> Meta sends.</li>
+            <li>Save the login details safely — they'll need them again during setup.</li>
+            <li>Find their <strong>Meta Business ID</strong>: Settings → Business Info — it's a long number at the top.</li>
+          </ol>
+          <div style="margin-top:10px;padding:9px 11px;background:#fef9c3;border-radius:8px;border:1px solid #fde68a;font-size:11.5px;color:#92400e">
+            💡 They need a personal Facebook account first. It's free to create one.
+          </div>
+        </div>
+      </div>
+
+      <div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
+        <button type="button" onclick="toggleReqReg(this)"
+                style="width:100%;background:#f8f9fb;border:none;padding:13px 14px;
+                       display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;font-family:inherit">
+          <span style="font-size:18px;flex-shrink:0">🔗</span>
+          <div style="flex:1">
+            <div style="font-size:13.5px;font-weight:700;color:#030C18">WhatsApp number connected to Meta</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:2px">The business number must be linked to their Meta Business Account</div>
+          </div>
+          <span style="font-size:12px;color:#9ca3af;flex-shrink:0;transition:transform .2s" class="reg-arrow">▼</span>
+        </button>
+        <div class="reg-steps" style="display:none;padding:14px 16px 16px;border-top:1px solid #e5e7eb;background:#fff">
+          <ol style="font-size:12.5px;line-height:1.7;color:#030C18;padding-left:18px;margin:0;display:flex;flex-direction:column;gap:5px">
+            <li>Log in to <strong>business.facebook.com</strong> and go to Settings → Business Assets → WhatsApp Accounts.</li>
+            <li>Click <strong>"Add"</strong> and enter the business phone number.</li>
+            <li>Meta will send an <strong>OTP to that number</strong> — enter it to confirm.</li>
+            <li>Share the phone number and Meta Business ID with PhiXtra to complete the connection.</li>
+          </ol>
+          <div style="margin-top:10px;padding:9px 11px;background:#fef9c3;border-radius:8px;border:1px solid #fde68a;font-size:11.5px;color:#92400e">
+            💡 Meta verification can take 1–2 days. This is normal — PhiXtra support will guide them through it.
+          </div>
+        </div>
+      </div>
+
+      <div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
+        <button type="button" onclick="toggleReqReg(this)"
+                style="width:100%;background:#f8f9fb;border:none;padding:13px 14px;
+                       display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;font-family:inherit">
+          <span style="font-size:18px;flex-shrink:0">📊</span>
+          <div style="flex:1">
+            <div style="font-size:13.5px;font-weight:700;color:#030C18">A product list in a spreadsheet</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:2px">An Excel or Google Sheets file with all their products and prices</div>
+          </div>
+          <span style="font-size:12px;color:#9ca3af;flex-shrink:0;transition:transform .2s" class="reg-arrow">▼</span>
+        </button>
+        <div class="reg-steps" style="display:none;padding:14px 16px 16px;border-top:1px solid #e5e7eb;background:#fff">
+          <ol style="font-size:12.5px;line-height:1.7;color:#030C18;padding-left:18px;margin:0;display:flex;flex-direction:column;gap:5px">
+            <li>Open <strong>Microsoft Excel</strong> or <strong>Google Sheets</strong> (free at sheets.google.com).</li>
+            <li>Add these headings in the first row: <strong>Product Name | Price | Description | In Stock (Yes or No)</strong>.</li>
+            <li>Fill in one product per row — e.g. iPhone 14 | ₦850,000 | Brand new, 128GB, Black | Yes.</li>
+            <li>Save as <strong>.xlsx or .csv</strong>. In Google Sheets: File → Download → Microsoft Excel.</li>
+            <li>This file gets uploaded to PhiXtra during onboarding under <strong>"Product Import"</strong>.</li>
+          </ol>
+          <div style="margin-top:10px;padding:9px 11px;background:#fef9c3;border-radius:8px;border:1px solid #fde68a;font-size:11.5px;color:#92400e">
+            💡 The more detail in the description, the smarter the AI. Encourage: sizes, colours, conditions, warranties.
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <button type="button" onclick="startApplication()"
+          style="width:100%;padding:13px;background:#030C18;color:#fff;border:none;
+                 border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;
+                 letter-spacing:-.2px;font-family:inherit;transition:background .15s"
+          onmouseover="this.style.background='#1a2535'"
+          onmouseout="this.style.background='#030C18'">
+    Start Application →
+  </button>
+
+  <div style="text-align:center;margin-top:16px;font-size:13px;color:#9ca3af">
+    Already approved? <a href="{{ url_for('ambassador.login') }}"
+    style="color:#030C18;font-weight:700">Log in here</a>
+  </div>
+</div>
+
+<!-- ── Main form (hidden until Start is clicked) ── -->
+<div id="mainForm" style="display:none">
+
+<!-- Progress -->
+<div class="progress-wrap" id="progressWrap">
+  <div class="prog-step"><div class="prog-circle active" id="pc1">1</div></div>
+  <div class="prog-line" id="pl1"></div>
+  <div class="prog-step"><div class="prog-circle" id="pc2">2</div></div>
+  <div class="prog-line" id="pl2"></div>
+  <div class="prog-step"><div class="prog-circle" id="pc3">3</div></div>
+  <div class="prog-line" id="pl3"></div>
+  <div class="prog-step"><div class="prog-circle" id="pc4">4</div></div>
+  <div class="prog-line" id="pl4"></div>
+  <div class="prog-step"><div class="prog-circle" id="pc5">5</div></div>
+  <div class="prog-line" id="pl5"></div>
+  <div class="prog-step"><div class="prog-circle" id="pc6">6</div></div>
+</div>
+
+<form method="POST" enctype="multipart/form-data" id="regForm" novalidate>
+
+  <!-- ── Step 1: Personal Details ── -->
+  <div class="step active" id="step1">
+    <div class="step-num">Step 1 of 6</div>
+    <div class="step-title">Personal Details</div>
+    <div class="step-sub">Tell us a little about yourself</div>
+
+    <div class="field-row">
+      <div class="field">
+        <label class="lbl">First Name <span class="req">*</span></label>
+        <input type="text" name="first_name" id="first_name" placeholder="John" autocomplete="given-name"/>
+        <div class="err-msg" id="err_first_name">Please enter your first name</div>
+      </div>
+      <div class="field">
+        <label class="lbl">Last Name <span class="req">*</span></label>
+        <input type="text" name="last_name" id="last_name" placeholder="Doe" autocomplete="family-name"/>
+        <div class="err-msg" id="err_last_name">Please enter your last name</div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="lbl">Date of Birth <span class="req">*</span></label>
+      <input type="date" name="date_of_birth" id="date_of_birth"/>
+      <div class="err-msg" id="err_date_of_birth">Please enter your date of birth</div>
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label class="lbl">Gender <span class="req">*</span></label>
+        <select name="gender" id="gender">
+          <option value="">Select gender</option>
+          <option value="Male">Male</option>
+          <option value="Female">Female</option>
+          <option value="Prefer not to say">Prefer not to say</option>
+        </select>
+        <div class="err-msg" id="err_gender">Please select your gender</div>
+      </div>
+      <div class="field">
+        <label class="lbl">Nationality <span class="req">*</span></label>
+        <select name="nationality" id="nationality">
+          <option value="">Select nationality</option>
+          <option value="Nigerian">Nigerian</option>
+          <option disabled>──────────</option>
+          <option value="Afghan">Afghan</option>
+          <option value="Albanian">Albanian</option>
+          <option value="Algerian">Algerian</option>
+          <option value="American">American</option>
+          <option value="Angolan">Angolan</option>
+          <option value="Argentine">Argentine</option>
+          <option value="Australian">Australian</option>
+          <option value="Austrian">Austrian</option>
+          <option value="Azerbaijani">Azerbaijani</option>
+          <option value="Bangladeshi">Bangladeshi</option>
+          <option value="Belgian">Belgian</option>
+          <option value="Beninese">Beninese</option>
+          <option value="Bolivian">Bolivian</option>
+          <option value="Botswanan">Botswanan</option>
+          <option value="Brazilian">Brazilian</option>
+          <option value="British">British</option>
+          <option value="Burkinabe">Burkinabe</option>
+          <option value="Burundian">Burundian</option>
+          <option value="Cameroonian">Cameroonian</option>
+          <option value="Canadian">Canadian</option>
+          <option value="Central African">Central African</option>
+          <option value="Chadian">Chadian</option>
+          <option value="Chilean">Chilean</option>
+          <option value="Chinese">Chinese</option>
+          <option value="Colombian">Colombian</option>
+          <option value="Congolese">Congolese</option>
+          <option value="Ivorian">Ivorian (Côte d'Ivoire)</option>
+          <option value="Croatian">Croatian</option>
+          <option value="Cuban">Cuban</option>
+          <option value="Czech">Czech</option>
+          <option value="Danish">Danish</option>
+          <option value="Djiboutian">Djiboutian</option>
+          <option value="DR Congolese">DR Congolese</option>
+          <option value="Ecuadorian">Ecuadorian</option>
+          <option value="Egyptian">Egyptian</option>
+          <option value="Eritrean">Eritrean</option>
+          <option value="Ethiopian">Ethiopian</option>
+          <option value="Finnish">Finnish</option>
+          <option value="French">French</option>
+          <option value="Gabonese">Gabonese</option>
+          <option value="Gambian">Gambian</option>
+          <option value="German">German</option>
+          <option value="Ghanaian">Ghanaian</option>
+          <option value="Greek">Greek</option>
+          <option value="Guinean">Guinean</option>
+          <option value="Haitian">Haitian</option>
+          <option value="Hungarian">Hungarian</option>
+          <option value="Indian">Indian</option>
+          <option value="Indonesian">Indonesian</option>
+          <option value="Iranian">Iranian</option>
+          <option value="Iraqi">Iraqi</option>
+          <option value="Irish">Irish</option>
+          <option value="Israeli">Israeli</option>
+          <option value="Italian">Italian</option>
+          <option value="Jamaican">Jamaican</option>
+          <option value="Japanese">Japanese</option>
+          <option value="Jordanian">Jordanian</option>
+          <option value="Kenyan">Kenyan</option>
+          <option value="Lesothan">Lesothan</option>
+          <option value="Liberian">Liberian</option>
+          <option value="Libyan">Libyan</option>
+          <option value="Malagasy">Malagasy</option>
+          <option value="Malawian">Malawian</option>
+          <option value="Malaysian">Malaysian</option>
+          <option value="Malian">Malian</option>
+          <option value="Mauritanian">Mauritanian</option>
+          <option value="Mauritian">Mauritian</option>
+          <option value="Mexican">Mexican</option>
+          <option value="Moroccan">Moroccan</option>
+          <option value="Mozambican">Mozambican</option>
+          <option value="Namibian">Namibian</option>
+          <option value="Dutch">Dutch (Netherlands)</option>
+          <option value="New Zealander">New Zealander</option>
+          <option value="Nigerien">Nigerien (Niger)</option>
+          <option value="Norwegian">Norwegian</option>
+          <option value="Pakistani">Pakistani</option>
+          <option value="Peruvian">Peruvian</option>
+          <option value="Filipino">Filipino</option>
+          <option value="Polish">Polish</option>
+          <option value="Portuguese">Portuguese</option>
+          <option value="Romanian">Romanian</option>
+          <option value="Russian">Russian</option>
+          <option value="Rwandan">Rwandan</option>
+          <option value="Senegalese">Senegalese</option>
+          <option value="Sierra Leonean">Sierra Leonean</option>
+          <option value="Somali">Somali</option>
+          <option value="South African">South African</option>
+          <option value="South Korean">South Korean</option>
+          <option value="South Sudanese">South Sudanese</option>
+          <option value="Spanish">Spanish</option>
+          <option value="Sri Lankan">Sri Lankan</option>
+          <option value="Sudanese">Sudanese</option>
+          <option value="Swedish">Swedish</option>
+          <option value="Swiss">Swiss</option>
+          <option value="Tanzanian">Tanzanian</option>
+          <option value="Thai">Thai</option>
+          <option value="Togolese">Togolese</option>
+          <option value="Tunisian">Tunisian</option>
+          <option value="Turkish">Turkish</option>
+          <option value="Ugandan">Ugandan</option>
+          <option value="Ukrainian">Ukrainian</option>
+          <option value="Emirati">Emirati (UAE)</option>
+          <option value="Venezuelan">Venezuelan</option>
+          <option value="Vietnamese">Vietnamese</option>
+          <option value="Zambian">Zambian</option>
+          <option value="Zimbabwean">Zimbabwean</option>
+          <option value="Other">Other</option>
+        </select>
+        <div class="err-msg" id="err_nationality">Please select your nationality</div>
+      </div>
+    </div>
+
+    <div class="step-nav">
+      <button type="button" class="btn-next" onclick="nextStep(1)">Continue →</button>
+    </div>
+  </div>
+
+  <!-- ── Step 2: Contact & Location ── -->
+  <div class="step" id="step2">
+    <div class="step-num">Step 2 of 6</div>
+    <div class="step-title">Contact &amp; Location</div>
+    <div class="step-sub">How we'll reach you and where you'll operate</div>
+
+    <div class="field">
+      <label class="lbl">Email Address <span class="req">*</span></label>
+      <input type="email" name="email" id="email" placeholder="john@example.com" autocomplete="email"/>
+      <div class="err-msg" id="err_email">Please enter a valid email address</div>
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label class="lbl">Phone Number <span class="req">*</span></label>
+        <input type="tel" name="phone" id="phone" placeholder="+234 800 000 0000"/>
+        <div class="err-msg" id="err_phone">Please enter your phone number</div>
+      </div>
+      <div class="field">
+        <label class="lbl">WhatsApp Number <span class="req">*</span></label>
+        <input type="tel" name="whatsapp_number" id="whatsapp_number" placeholder="+234 800 000 0000"/>
+        <div class="err-msg" id="err_whatsapp_number">Please enter your WhatsApp number</div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="lbl">Home Address <span class="req">*</span></label>
+      <textarea name="address" id="address" placeholder="123 Main Street, Lagos, Nigeria"></textarea>
+      <div class="err-msg" id="err_address">Please enter your home address</div>
+    </div>
+
+    <div class="field">
+      <label class="lbl">Operating Location <span class="req">*</span></label>
+      <input type="text" name="location" id="location" placeholder="e.g. Lagos Island, Abuja FCT, Port Harcourt"/>
+      <div class="err-msg" id="err_location">Please enter your operating location</div>
+    </div>
+
+    <div class="step-nav">
+      <button type="button" class="btn-back" onclick="prevStep(2)">← Back</button>
+      <button type="button" class="btn-next" onclick="nextStep(2)">Continue →</button>
+    </div>
+  </div>
+
+  <!-- ── Step 3: Qualifications ── -->
+  <div class="step" id="step3">
+    <div class="step-num">Step 3 of 6</div>
+    <div class="step-title">Qualifications</div>
+    <div class="step-sub">Your highest level of educational attainment</div>
+
+    <div class="field">
+      <label class="lbl">Highest Educational Qualification <span class="req">*</span></label>
+      <select name="highest_qualification" id="highest_qualification">
+        <option value="">Select qualification</option>
+        <option value="SSCE/WAEC/NECO">SSCE / WAEC / NECO</option>
+        <option value="OND">OND — Ordinary National Diploma</option>
+        <option value="HND">HND — Higher National Diploma</option>
+        <option value="BSc/BA/BEng">B.Sc / B.A / B.Eng (Bachelor's Degree)</option>
+        <option value="MSc/MA/MEng">M.Sc / M.A / M.Eng (Master's Degree)</option>
+        <option value="PhD">PhD — Doctorate</option>
+        <option value="Professional Certification">Professional Certification</option>
+        <option value="Other">Other</option>
+      </select>
+      <div class="err-msg" id="err_highest_qualification">Please select your qualification</div>
+    </div>
+
+    <div class="step-nav">
+      <button type="button" class="btn-back" onclick="prevStep(3)">← Back</button>
+      <button type="button" class="btn-next" onclick="nextStep(3)">Continue →</button>
+    </div>
+  </div>
+
+  <!-- ── Step 4: Identity Verification ── -->
+  <div class="step" id="step4">
+    <div class="step-num">Step 4 of 6</div>
+    <div class="step-title">Identity Verification</div>
+    <div class="step-sub">Upload a valid government-issued ID document</div>
+
+    <div class="field">
+      <label class="lbl">Document Type <span class="req">*</span></label>
+      <select name="id_document_type" id="id_document_type">
+        <option value="">Select document type</option>
+        <option value="Voter's Card">Voter's Card</option>
+        <option value="Driver's Licence">Driver's Licence</option>
+        <option value="International Passport">International Passport</option>
+      </select>
+      <div class="err-msg" id="err_id_document_type">Please select a document type</div>
+    </div>
+
+    <div class="field" style="margin-top:4px">
+      <label class="lbl">Upload Document <span class="req">*</span></label>
+      <div class="file-zone" id="fileZone">
+        <input type="file" name="id_document" id="id_document" accept=".jpg,.jpeg,.png,.pdf"
+               onchange="handleFile(this)" onclick="event.stopPropagation()"/>
+        <div class="file-zone-icon">📎</div>
+        <div class="file-zone-text">
+          <strong>Click to upload</strong> or drag &amp; drop<br>
+          JPG, PNG or PDF &nbsp;·&nbsp; Max 5MB
+        </div>
+      </div>
+      <div class="file-chosen" id="fileChosen">
+        <span>✅</span>
+        <span class="file-chosen-name" id="fileChosenName"></span>
+        <button type="button" class="file-rm" onclick="clearFile()">Remove</button>
+      </div>
+      <div class="err-msg" id="err_id_document">Please upload an identity document</div>
+    </div>
+
+    <div class="step-nav">
+      <button type="button" class="btn-back" onclick="prevStep(4)">← Back</button>
+      <button type="button" class="btn-next" onclick="nextStep(4)">Continue →</button>
+    </div>
+  </div>
+
+  <!-- ── Step 5: Bank Details ── -->
+  <div class="step" id="step5">
+    <div class="step-num">Step 5 of 6</div>
+    <div class="step-title">Bank Details</div>
+    <div class="step-sub">Where we'll send your commission payments</div>
+
+    <div class="field">
+      <label class="lbl">Bank Name <span class="req">*</span></label>
+      <input type="text" name="bank_name" id="bank_name" placeholder="e.g. First Bank, GTBank, Zenith Bank"/>
+      <div class="err-msg" id="err_bank_name">Please enter your bank name</div>
+    </div>
+
+    <div class="field">
+      <label class="lbl">Account Number <span class="req">*</span></label>
+      <input type="text" name="account_number" id="account_number" placeholder="0000000000" maxlength="20" inputmode="numeric"/>
+      <div class="err-msg" id="err_account_number">Please enter your account number</div>
+    </div>
+
+    <div class="field">
+      <label class="lbl">Account Name (Beneficiary) <span class="req">*</span></label>
+      <input type="text" name="account_name" id="account_name" placeholder="Full name as on bank account"/>
+      <div class="err-msg" id="err_account_name">Please enter the account name</div>
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label class="lbl">Sort Code <span class="opt">(optional)</span></label>
+        <input type="text" name="sort_code" id="sort_code" placeholder="00-00-00"/>
+      </div>
+      <div class="field">
+        <label class="lbl">SWIFT Code <span class="opt">(optional)</span></label>
+        <input type="text" name="swift_code" id="swift_code" placeholder="e.g. GTBINGLA"/>
+      </div>
+    </div>
+
+    <div class="step-nav">
+      <button type="button" class="btn-back" onclick="prevStep(5)">← Back</button>
+      <button type="button" class="btn-next" onclick="nextStep(5)">Continue →</button>
+    </div>
+  </div>
+
+  <!-- ── Step 6: Password & Review ── -->
+  <div class="step" id="step6">
+    <div class="step-num">Step 6 of 6</div>
+    <div class="step-title">Almost there!</div>
+    <div class="step-sub">Set your password, then review and submit your application</div>
+
+    <div class="field-row">
+      <div class="field">
+        <label class="lbl">Password <span class="req">*</span></label>
+        <input type="password" name="password" id="password" placeholder="Min. 8 characters"/>
+        <div class="err-msg" id="err_password">Minimum 8 characters required</div>
+      </div>
+      <div class="field">
+        <label class="lbl">Confirm Password <span class="req">*</span></label>
+        <input type="password" name="confirm_password" id="confirm_password" placeholder="Re-enter password"/>
+        <div class="err-msg" id="err_confirm_password">Passwords do not match</div>
+      </div>
+    </div>
+
+    <div id="reviewSummary" style="margin-top:8px"></div>
+
+    {% if turnstile_site_key %}
+    <div style="margin-top:20px">
+      <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="light"></div>
+      <div id="turnstile-err"
+           style="display:none;font-size:11px;color:#f04438;margin-top:5px;font-weight:600">
+        Please complete the security check above before submitting.
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="step-nav">
+      <button type="button" class="btn-back" onclick="prevStep(6)">← Back</button>
+      <button type="submit" class="btn-next">Submit Application</button>
+    </div>
+  </div>
+
+</form>
+
+<div style="text-align:center;margin-top:18px;font-size:13px;color:#9ca3af">
+  Already approved? <a href="{{ url_for('ambassador.login') }}"
+  style="color:#030C18;font-weight:700">Log in here</a>
+</div>
+
+</div><!-- /mainForm -->
+
+{% endif %}
+</div>
+</div>
+
+<script>
+let curStep = 1;
+
+function startApplication() {
+  document.getElementById('preScreen').style.display = 'none';
+  document.getElementById('mainForm').style.display  = 'block';
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+function updateProgress(step) {
+  for (let i = 1; i <= 6; i++) {
+    const c = document.getElementById('pc' + i);
+    if (i < step)       { c.className = 'prog-circle done'; c.innerHTML = '✓'; }
+    else if (i === step){ c.className = 'prog-circle active'; c.innerHTML = i; }
+    else                { c.className = 'prog-circle'; c.innerHTML = i; }
+  }
+  for (let i = 1; i <= 5; i++) {
+    const l = document.getElementById('pl' + i);
+    l.className = i < step ? 'prog-line done' : 'prog-line';
+  }
+}
+
+function showStep(n) {
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  document.getElementById('step' + n).classList.add('active');
+  updateProgress(n);
+  curStep = n;
+  var rp = document.querySelector('.right-panel');
+  if (rp && rp.scrollHeight > rp.clientHeight) {
+    rp.scrollTo({top: 0, behavior: 'smooth'});
+  } else {
+    window.scrollTo({top: 0, behavior: 'smooth'});
+  }
+}
+
+const RULES = {
+  1: [
+    {id:'first_name',      err:'err_first_name',      ok: v => v.trim() !== ''},
+    {id:'last_name',       err:'err_last_name',       ok: v => v.trim() !== ''},
+    {id:'date_of_birth',   err:'err_date_of_birth',   ok: v => v !== ''},
+    {id:'gender',          err:'err_gender',          ok: v => v !== ''},
+    {id:'nationality',     err:'err_nationality',     ok: v => v !== ''},
+  ],
+  2: [
+    {id:'email',           err:'err_email',           ok: v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)},
+    {id:'phone',           err:'err_phone',           ok: v => v.trim() !== ''},
+    {id:'whatsapp_number', err:'err_whatsapp_number', ok: v => v.trim() !== ''},
+    {id:'address',         err:'err_address',         ok: v => v.trim() !== ''},
+    {id:'location',        err:'err_location',        ok: v => v.trim() !== ''},
+  ],
+  3: [
+    {id:'highest_qualification', err:'err_highest_qualification', ok: v => v !== ''},
+  ],
+  4: [
+    {id:'id_document_type', err:'err_id_document_type', ok: v => v !== ''},
+    {id:'id_document',      err:'err_id_document',
+     ok: () => document.getElementById('id_document').files.length > 0, isFile: true},
+  ],
+  5: [
+    {id:'bank_name',      err:'err_bank_name',      ok: v => v.trim() !== ''},
+    {id:'account_number', err:'err_account_number', ok: v => v.trim() !== ''},
+    {id:'account_name',   err:'err_account_name',   ok: v => v.trim() !== ''},
+  ],
+  6: [
+    {id:'password',         err:'err_password',
+     ok: v => v.length >= 8, msg: 'Minimum 8 characters required'},
+    {id:'confirm_password', err:'err_confirm_password',
+     ok: () => document.getElementById('password').value === document.getElementById('confirm_password').value},
+  ],
+};
+
+function validate(step) {
+  let ok = true;
+  (RULES[step] || []).forEach(r => {
+    const el  = document.getElementById(r.id);
+    const val = r.isFile ? '' : (el ? el.value : '');
+    const pass = r.isFile ? r.ok() : r.ok(val);
+    const errEl = document.getElementById(r.err);
+    if (!pass) {
+      if (el) el.classList.add('err-field');
+      if (errEl) errEl.classList.add('show');
+      ok = false;
+    } else {
+      if (el) el.classList.remove('err-field');
+      if (errEl) errEl.classList.remove('show');
+    }
+  });
+  return ok;
+}
+
+document.addEventListener('input',  e => clearErr(e.target));
+document.addEventListener('change', e => clearErr(e.target));
+function clearErr(el) {
+  if (!el || !el.id) return;
+  el.classList.remove('err-field');
+  const e = document.getElementById('err_' + el.id);
+  if (e) e.classList.remove('show');
+}
+
+function nextStep(n) {
+  if (!validate(n)) return;
+  if (n === 5) buildReview();
+  showStep(n + 1);
+}
+function prevStep(n) { showStep(n - 1); }
+
+document.getElementById('regForm').addEventListener('submit', function(e) {
+  if (!validate(6)) {
+    e.preventDefault();
+    return;
+  }
+  var tsInput = document.querySelector('input[name="cf-turnstile-response"]');
+  if (tsInput && !tsInput.value) {
+    e.preventDefault();
+    var errEl = document.getElementById('turnstile-err');
+    if (errEl) errEl.style.display = 'block';
+  }
+});
+
+/* File upload */
+function handleFile(inp) {
+  const f = inp.files[0];
+  if (!f) return;
+  document.getElementById('fileChosenName').textContent = f.name;
+  document.getElementById('fileChosen').classList.add('show');
+  document.getElementById('fileZone').style.display = 'none';
+  clearErr(inp);
+}
+function clearFile() {
+  document.getElementById('id_document').value = '';
+  document.getElementById('fileChosen').classList.remove('show');
+  document.getElementById('fileZone').style.display = '';
+}
+
+/* Drag-and-drop */
+const zone = document.getElementById('fileZone');
+if (zone) {
+  zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('drag');
+    const f = e.dataTransfer.files[0];
+    if (f) {
+      const dt = new DataTransfer(); dt.items.add(f);
+      const inp = document.getElementById('id_document');
+      inp.files = dt.files;
+      handleFile(inp);
+    }
+  });
+}
+
+/* Review summary */
+function gv(id) {
+  const el = document.getElementById(id);
+  if (!el) return '—';
+  if (el.tagName === 'SELECT') return (el.options[el.selectedIndex]?.text || '—').trim();
+  return (el.value || '—').trim();
+}
+function buildReview() {
+  const fileEl = document.getElementById('id_document');
+  const fname  = fileEl && fileEl.files[0] ? fileEl.files[0].name : '—';
+  const secs = [
+    { t: 'Personal', rows: [
+      ['First Name', gv('first_name')], ['Last Name', gv('last_name')],
+      ['Date of Birth', gv('date_of_birth')], ['Gender', gv('gender')],
+      ['Nationality', gv('nationality')],
+    ]},
+    { t: 'Contact & Location', rows: [
+      ['Email', gv('email')], ['Phone', gv('phone')],
+      ['WhatsApp', gv('whatsapp_number')], ['Operating Location', gv('location')],
+      ['Address', gv('address'), true],
+    ]},
+    { t: 'Qualifications & Identity', rows: [
+      ['Qualification', gv('highest_qualification')],
+      ['ID Type', gv('id_document_type')],
+      ['Document', fname],
+    ]},
+    { t: 'Bank Details', rows: [
+      ['Bank Name', gv('bank_name')], ['Account Number', gv('account_number')],
+      ['Account Name', gv('account_name')],
+    ]},
+  ];
+  let h = '';
+  secs.forEach(s => {
+    h += `<div class="review-sec"><div class="review-sec-title">${s.t}</div><div class="review-grid">`;
+    s.rows.forEach(([l, v, full]) => {
+      h += `<div class="review-item${full ? ' full' : ''}">
+              <div class="ri-label">${l}</div>
+              <div class="ri-val" title="${v}">${v}</div>
+            </div>`;
+    });
+    h += '</div></div>';
+  });
+  document.getElementById('reviewSummary').innerHTML = h;
+}
+
+/* Client requirements accordion on pre-screen */
+function toggleReqReg(btn) {
+  var item  = btn.closest('div[style*="border:1px solid #e5e7eb"]');
+  var steps = item.querySelector('.reg-steps');
+  var arrow = btn.querySelector('.reg-arrow');
+  var open  = steps.style.display !== 'none';
+  steps.style.display = open ? 'none' : 'block';
+  arrow.style.transform = open ? '' : 'rotate(180deg)';
+}
+
+/* Set max DOB to 18 years ago */
+const dob = document.getElementById('date_of_birth');
+if (dob) {
+  const d = new Date(); d.setFullYear(d.getFullYear() - 18);
+  dob.max = d.toISOString().split('T')[0];
+}
+</script>
+</body>
+</html>
