@@ -1,5 +1,31 @@
 {% extends "ambassador/base.html" %}
 {% block title %}Dashboard — Ambassador Hub{% endblock %}
+
+{% block head %}
+<style>
+@media print {
+  /* Hide everything except the checklist card */
+  body > *:not(#printArea),
+  .sidebar, nav, .page-header, .stat-grid,
+  .tier-bar-wrap, .card:not(#checklistCard),
+  .table-wrap, footer { display: none !important; }
+
+  #checklistCard { box-shadow: none !important; border: none !important; }
+
+  /* Expand all steps for print */
+  .req-steps { display: block !important; }
+  .req-arrow  { display: none !important; }
+
+  /* Hide buttons */
+  .no-print { display: none !important; }
+
+  body { background: #fff; font-size: 12pt; }
+  ol { padding-left: 16pt; }
+  .req-item { break-inside: avoid; margin-bottom: 12pt; }
+}
+</style>
+{% endblock %}
+
 {% block content %}
 
 <div class="page-header">
@@ -98,10 +124,13 @@
 </div>
 
 <!-- ── Client Requirements Checklist ─────────────────────────────────── -->
-<div class="card" style="margin-bottom:20px">
+<div class="card" id="checklistCard" style="margin-bottom:20px">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:8px">
     <div style="font-size:13px;font-weight:700">📋 Client Requirements Checklist</div>
-    <button onclick="copyChecklist(this)" class="btn btn-sm">Copy Checklist</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap" class="no-print">
+      <button onclick="copyChecklist(this)" class="btn btn-sm">Copy Checklist</button>
+      <button onclick="downloadPDF()" class="btn btn-sm">Download PDF</button>
+    </div>
   </div>
   <p style="font-size:12.5px;color:var(--muted);margin-bottom:16px;line-height:1.5">
     Before you pitch PhiXtra AI to a business, make sure they have all four of these things ready.
@@ -289,6 +318,13 @@ function toggleReq(btn) {
   var open  = steps.style.display !== 'none';
   steps.style.display = open ? 'none' : 'block';
   arrow.style.transform = open ? '' : 'rotate(180deg)';
+}
+
+function downloadPDF() {
+  // Expand all sections so they appear in the print output
+  document.querySelectorAll('.req-steps').forEach(function(el) { el.style.display = 'block'; });
+  document.querySelectorAll('.req-arrow').forEach(function(el)  { el.style.transform = 'rotate(180deg)'; });
+  window.print();
 }
 
 function copyChecklist(btn) {
