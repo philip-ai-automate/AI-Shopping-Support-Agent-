@@ -1,0 +1,1007 @@
+{% extends "portal/base.html" %}
+{% block title %}Help & Tutorials — PhiXtra Portal{% endblock %}
+{% block content %}
+
+<style>
+  .tut-layout { display: flex; gap: 24px; align-items: flex-start; margin-bottom: 28px; }
+
+  .tut-nav {
+    width: 250px; flex-shrink: 0; display: flex; flex-direction: column; gap: 2px;
+    position: sticky; top: 20px; max-height: calc(100vh - 40px); overflow-y: auto;
+    background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 8px;
+  }
+  .tut-nav-item {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    padding: 10px 12px; border-radius: 10px; border: none; background: none;
+    font-family: inherit; font-size: 13px; font-weight: 650; color: var(--txt);
+    text-align: left; cursor: pointer; transition: .15s;
+  }
+  .tut-nav-item:hover { background: rgba(3,12,24,.05) }
+  .tut-nav-item.active { background: var(--ink); color: #fff }
+  .tut-nav-icon { font-size: 16px; flex-shrink: 0; width: 20px; text-align: center }
+  .tut-nav-label { flex: 1; min-width: 0; line-height: 1.3 }
+
+  .tut-content { flex: 1; min-width: 0 }
+
+  @media(max-width:860px){
+    .tut-layout { flex-direction: column }
+    .tut-nav {
+      width: 100%; position: static; max-height: none; overflow: visible;
+      flex-direction: row; flex-wrap: wrap; gap: 6px;
+    }
+    .tut-nav-item { width: auto }
+  }
+
+  .guide-section { display: none }
+  .guide-section.visible { display: block }
+
+  .preflight-item {
+    display: flex; gap: 14px; align-items: flex-start;
+    padding: 14px 0; border-bottom: 1px solid var(--line);
+  }
+  .preflight-item:last-of-type { border-bottom: none }
+  .preflight-tick {
+    width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0; margin-top: 1px;
+    border: 2px solid rgba(3,12,24,0.2); background: #fff; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: .15s; padding: 0;
+  }
+  .preflight-tick:hover { border-color: var(--ink) }
+  .preflight-tick.done  { background: var(--good); border-color: var(--good) }
+  .preflight-tick.done svg { display: block }
+  .preflight-tick svg { display: none; width: 11px; height: 11px }
+  .preflight-title { font-size: 14px; font-weight: 700; color: var(--txt); margin-bottom: 3px }
+  .preflight-sub   { font-size: 12px; color: var(--muted); margin-bottom: 7px; line-height: 1.5 }
+  .preflight-link  {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 12px; font-weight: 700; color: var(--ink);
+    padding: 4px 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: rgba(3,12,24,0.03); text-decoration: none; transition: .15s;
+  }
+  .preflight-link:hover { background: rgba(3,12,24,0.07); text-decoration: none }
+
+  .setup-step {
+    display: flex; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--line);
+  }
+  .setup-step:last-child { border-bottom: none }
+  .step-num {
+    width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+    background: var(--ink); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 800; margin-top: 1px;
+  }
+  .step-title { font-size: 14px; font-weight: 700; color: var(--txt); margin-bottom: 4px }
+  .step-desc  { font-size: 12px; color: var(--muted); line-height: 1.55; margin-bottom: 8px }
+  .step-link  {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 12px; font-weight: 700; color: var(--ink);
+    padding: 4px 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: rgba(3,12,24,0.03); text-decoration: none; transition: .15s;
+  }
+  .step-link:hover { background: rgba(3,12,24,0.07); text-decoration: none }
+  .step-links { display: flex; flex-wrap: wrap; gap: 6px }
+  .step-field {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line);
+    background: rgba(3,12,24,.04); font-size: 11px; font-weight: 650;
+    color: var(--muted); margin-bottom: 8px;
+  }
+
+  .tut-shot {
+    width: 100%; border: 1px solid var(--line); border-radius: 12px;
+    display: block; box-shadow: 0 1px 3px rgba(3,12,24,.04);
+  }
+  .tut-shot.standalone { margin-bottom: 20px; }
+  .tut-shot.in-step { margin-top: 10px; border-radius: 10px; }
+</style>
+
+<div class="page-header">
+  <div>
+    <div class="section-title">Help & Tutorials</div>
+    <p class="muted">Step-by-step guides to get the most out of PhiXtra.</p>
+  </div>
+</div>
+
+<div class="tut-layout">
+  <!-- Tutorial topic list -->
+  <nav class="tut-nav">
+    <button class="tut-nav-item active" id="card-wa" onclick="showGuide('wa')">
+      <span class="tut-nav-icon">📱</span><span class="tut-nav-label">WhatsApp Business Setup</span>
+    </button>
+    <button class="tut-nav-item" id="card-dashboard" onclick="showGuide('dashboard')">
+      <span class="tut-nav-icon">📊</span><span class="tut-nav-label">Dashboard</span>
+    </button>
+    <button class="tut-nav-item" id="card-conversations" onclick="showGuide('conversations')">
+      <span class="tut-nav-icon">💬</span><span class="tut-nav-label">Conversations</span>
+    </button>
+    <button class="tut-nav-item" id="card-contacts" onclick="showGuide('contacts')">
+      <span class="tut-nav-icon">👥</span><span class="tut-nav-label">Contacts</span>
+    </button>
+    <button class="tut-nav-item" id="card-leads" onclick="showGuide('leads')">
+      <span class="tut-nav-icon">🔥</span><span class="tut-nav-label">Leads</span>
+    </button>
+    <button class="tut-nav-item" id="card-campaigns" onclick="showGuide('campaigns')">
+      <span class="tut-nav-icon">📣</span><span class="tut-nav-label">Campaigns</span>
+    </button>
+    <button class="tut-nav-item" id="card-orders" onclick="showGuide('orders')">
+      <span class="tut-nav-icon">🧾</span><span class="tut-nav-label">Orders</span>
+    </button>
+    <button class="tut-nav-item" id="card-whatsapp-connect" onclick="showGuide('whatsapp-connect')">
+      <span class="tut-nav-icon">🔌</span><span class="tut-nav-label">WhatsApp Connect</span>
+    </button>
+    <button class="tut-nav-item" id="card-whatsapp-inbox" onclick="showGuide('whatsapp-inbox')">
+      <span class="tut-nav-icon">📥</span><span class="tut-nav-label">Agent Inbox</span>
+    </button>
+    <button class="tut-nav-item" id="card-whatsapp-handoff-reports" onclick="showGuide('whatsapp-handoff-reports')">
+      <span class="tut-nav-icon">📋</span><span class="tut-nav-label">Handoff Reports</span>
+    </button>
+    <button class="tut-nav-item" id="card-whatsapp-report" onclick="showGuide('whatsapp-report')">
+      <span class="tut-nav-icon">📈</span><span class="tut-nav-label">WhatsApp Report</span>
+    </button>
+    <button class="tut-nav-item" id="card-ecommerce" onclick="showGuide('ecommerce')">
+      <span class="tut-nav-icon">🏪</span><span class="tut-nav-label">Ecommerce & Catalogue</span>
+    </button>
+    <button class="tut-nav-item" id="card-discount-settings" onclick="showGuide('discount-settings')">
+      <span class="tut-nav-icon">💰</span><span class="tut-nav-label">Discount Settings</span>
+    </button>
+    <button class="tut-nav-item" id="card-data-sources" onclick="showGuide('data-sources')">
+      <span class="tut-nav-icon">🗂️</span><span class="tut-nav-label">Product Import</span>
+    </button>
+    <button class="tut-nav-item" id="card-store-info" onclick="showGuide('store-info')">
+      <span class="tut-nav-icon">🏪</span><span class="tut-nav-label">Store Information</span>
+    </button>
+    <button class="tut-nav-item" id="card-payment-settings" onclick="showGuide('payment-settings')">
+      <span class="tut-nav-icon">💳</span><span class="tut-nav-label">Payment Gateways</span>
+    </button>
+    <button class="tut-nav-item" id="card-ai" onclick="showGuide('ai')">
+      <span class="tut-nav-icon">🤖</span><span class="tut-nav-label">AI Assistant</span>
+    </button>
+    <button class="tut-nav-item" id="card-billing" onclick="showGuide('billing')">
+      <span class="tut-nav-icon">💳</span><span class="tut-nav-label">Credits & Billing</span>
+    </button>
+    <button class="tut-nav-item" id="card-settings" onclick="showGuide('settings')">
+      <span class="tut-nav-icon">⚙️</span><span class="tut-nav-label">Account Settings</span>
+    </button>
+  </nav>
+
+  <!-- Selected guide content -->
+  <div class="tut-content">
+
+<!-- ── WhatsApp Setup Guide ───────────────────────────────────────────────── -->
+<div class="guide-section visible" id="guide-wa">
+
+  <!-- Before You Start checklist -->
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">Before You Start — Checklist</div>
+    <p class="muted" style="margin-bottom:4px;font-size:13px">
+      Complete all three steps in Meta first. Tick each one off as you go.
+    </p>
+
+    <div class="preflight-item">
+      <button class="preflight-tick" onclick="togglePreflight(this,'pf_biz')" aria-label="Mark done">
+        <svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="1.5,6 4.5,9 10.5,3"/>
+        </svg>
+      </button>
+      <div>
+        <div class="preflight-title">Meta Business Account created and verified</div>
+        <div class="preflight-sub">You need a verified Meta Business Manager before you can use the WhatsApp API. Verification usually takes 1–2 business days — start this first.</div>
+        <a href="https://business.facebook.com/" target="_blank" rel="noopener" class="preflight-link">Open Meta Business Manager ↗</a>
+      </div>
+    </div>
+
+    <div class="preflight-item">
+      <button class="preflight-tick" onclick="togglePreflight(this,'pf_app')" aria-label="Mark done">
+        <svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="1.5,6 4.5,9 10.5,3"/>
+        </svg>
+      </button>
+      <div>
+        <div class="preflight-title">Meta Developer App created with WhatsApp product added</div>
+        <div class="preflight-sub">In Meta for Developers, create a new "Business" app. Inside the app, click "Add Product" and choose WhatsApp. This unlocks the API Setup section where you'll get your credentials.</div>
+        <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener" class="preflight-link">Open Meta Developer Apps ↗</a>
+      </div>
+    </div>
+
+    <div class="preflight-item">
+      <button class="preflight-tick" onclick="togglePreflight(this,'pf_phone')" aria-label="Mark done">
+        <svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="1.5,6 4.5,9 10.5,3"/>
+        </svg>
+      </button>
+      <div>
+        <div class="preflight-title">WhatsApp phone number added to your WABA</div>
+        <div class="preflight-sub">In WhatsApp API Setup, add or verify a phone number under your WhatsApp Business Account (WABA). This is the number your customers will message.</div>
+        <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener" class="preflight-link">Go to WhatsApp API Setup ↗</a>
+      </div>
+    </div>
+
+    <div id="preflightDone" style="display:none;margin-top:16px">
+      <div class="flash success" style="margin-bottom:0">
+        All prerequisites done — you're ready to connect your number in the
+        <a href="{{ url_for('portal.whatsapp_connect') }}" style="font-weight:700;color:inherit">WhatsApp settings page</a>.
+      </div>
+    </div>
+  </div>
+
+  <!-- Step-by-step guide -->
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">Step-by-Step Setup Guide</div>
+    <p class="muted" style="font-size:13px;margin-bottom:20px">Exactly where to find each setting in Meta's dashboard.</p>
+
+    <div class="setup-step">
+      <div class="step-num">1</div>
+      <div>
+        <div class="step-title">Create and verify your Meta Business Account</div>
+        <div class="step-desc">
+          Go to Meta Business Manager and create an account if you don't have one.
+          Then go to <strong>Business Settings → Security Centre</strong> and submit
+          your business for verification. You'll need to provide business documents.
+          WhatsApp API access is gated behind this — it typically takes 1–2 business days.
+        </div>
+        <div class="step-links">
+          <a href="https://business.facebook.com/" target="_blank" rel="noopener" class="step-link">Meta Business Manager ↗</a>
+          <a href="https://business.facebook.com/settings/security" target="_blank" rel="noopener" class="step-link">Security Centre ↗</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="setup-step">
+      <div class="step-num">2</div>
+      <div>
+        <div class="step-title">Create a Meta Developer App</div>
+        <div class="step-desc">
+          Go to Meta for Developers and click <strong>Create App</strong>.
+          When asked for the app type, choose <strong>Business</strong>.
+          Give it a name (e.g. "YourBusiness WhatsApp") and link it to your Business Account.
+          Once created, click <strong>Add Product</strong> on the app dashboard and select <strong>WhatsApp</strong>.
+        </div>
+        <div class="step-links">
+          <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener" class="step-link">Meta for Developers ↗</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="setup-step">
+      <div class="step-num">3</div>
+      <div>
+        <div class="step-title">Find your Phone Number ID and WABA ID</div>
+        <div class="step-desc">
+          In your app dashboard, go to <strong>WhatsApp → API Setup</strong>.
+          You'll see your test or production phone number listed.
+          Click on the phone number to reveal the <strong>Phone Number ID</strong>.
+          Just below the number list you'll see the <strong>WhatsApp Business Account ID (WABA ID)</strong>.
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+          <span class="step-field">→ Phone Number ID</span>
+          <span class="step-field">→ WABA ID</span>
+        </div>
+        <div class="step-links">
+          <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener" class="step-link">Open API Setup ↗</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="setup-step">
+      <div class="step-num">4</div>
+      <div>
+        <div class="step-title">Generate a permanent System User access token</div>
+        <div class="step-desc">
+          The default token shown in API Setup expires in 24 hours and will break your integration overnight.
+          Go to <strong>Meta Business Manager → Business Settings → System Users</strong>, create a System User
+          with <strong>Admin</strong> role, then click <strong>Add Assets</strong> and grant it access to your
+          WhatsApp App with <strong>Manage</strong> permission. Finally click <strong>Generate Token</strong>,
+          select your app, tick <strong>whatsapp_business_messaging</strong> and
+          <strong>whatsapp_business_management</strong>, and copy the token. This token never expires.
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+          <span class="step-field">→ Access Token</span>
+        </div>
+        <div class="step-links">
+          <a href="https://business.facebook.com/settings/system-users" target="_blank" rel="noopener" class="step-link">Business Settings — System Users ↗</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="setup-step">
+      <div class="step-num">5</div>
+      <div>
+        <div class="step-title">Connect your number in PhiXtra</div>
+        <div class="step-desc">
+          Once you have your credentials, go to the WhatsApp settings page in this portal.
+          Use the <strong>Connect with WhatsApp</strong> button for the easiest experience —
+          it handles everything automatically. If you prefer to paste credentials manually,
+          expand the "Having trouble?" section on the same page.
+        </div>
+        <div class="step-links">
+          <a href="{{ url_for('portal.whatsapp_connect') }}" class="step-link">Go to WhatsApp settings →</a>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div><!-- end guide-wa -->
+
+<!-- ── Dashboard Guide ──────────────────────────────────────────────────── -->
+<div class="guide-section" id="guide-dashboard">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">Dashboard</div>
+    <p class="muted" style="font-size:13px;margin-bottom:16px">Your command centre. See WhatsApp status, AI stats, hot leads, and customers waiting for a human agent — all at a glance.</p>
+    <img class="tut-shot standalone" src="{{ url_for('static', filename='portal/tutorial/dashboard.png') }}" alt="Dashboard screenshot">
+
+    <div class="setup-step">
+      <div class="step-num">1</div>
+      <div>
+        <div class="step-title">Check your WhatsApp connection &amp; plan</div>
+        <div class="step-desc">The green strip at the top shows your connected number, current plan, and credit balance, and lets you open the Agent Inbox or buy more credits in one click.</div>
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">2</div>
+      <div>
+        <div class="step-title">Reply to customers waiting for you</div>
+        <div class="step-desc">Customers who asked for a human are listed here with their last message. Click any card to jump straight into that conversation.</div>
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">3</div>
+      <div>
+        <div class="step-title">Track leads, credits and AI performance</div>
+        <div class="step-desc">The KPI tiles and charts below show hot leads this week, your remaining credit balance, message volume, and how often the AI hands off to a human — so you always know how your AI assistant is performing.</div>
+      </div>
+    </div>
+  </div>
+</div><!-- end guide-dashboard -->
+
+<!-- ── Conversations Guide ──────────────────────────────────────────────── -->
+<div class="guide-section" id="guide-conversations">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">Conversations</div>
+    <p class="muted" style="font-size:13px;margin-bottom:20px">Every WhatsApp conversation your AI handles appears here. Here's exactly how to find, reply to, and manage them.</p>
+
+    <div class="setup-step">
+      <div class="step-num">1</div>
+      <div>
+        <div class="step-title">Browse, search, and filter your conversations</div>
+        <div class="step-desc">The left panel lists everyone who's messaged your WhatsApp number, most recent first. Use the search box to find someone by name or number, or the filter dropdown to narrow the list to <strong>🔴 Needs agent</strong>, <strong>Unread</strong>, <strong>Replied</strong>, or <strong>🔥 Leads only</strong> — handy once you have more than a handful of chats.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/inbox.png') }}" alt="Conversations list screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">2</div>
+      <div>
+        <div class="step-title">Open a conversation and reply</div>
+        <div class="step-desc">Click a customer to open the full chat exactly as your AI assistant sees it. Type your reply in the box at the bottom and click <strong>Send</strong> — or press <strong>Ctrl+Enter</strong> — to jump into the conversation yourself. Your message goes out over WhatsApp immediately.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/conv-reply.png') }}" alt="Replying to a conversation screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">3</div>
+      <div>
+        <div class="step-title">Add an emoji to your reply</div>
+        <div class="step-desc">Click the 😊 icon above the message box to open the emoji picker. Browse by category or use the search box at the top of the picker to find one quickly, then click it to insert it into your draft.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/conv-emoji.png') }}" alt="Emoji picker screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">4</div>
+      <div>
+        <div class="step-title">Rename a contact inline</div>
+        <div class="step-desc">Click the ✏️ pencil next to a customer's name at the top of the chat to give them a proper name instead of just a phone number. Type the name and click <strong>Save</strong> — it updates everywhere they appear in the portal, including Contacts.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/conv-name-edit.png') }}" alt="Inline contact name editor screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">5</div>
+      <div>
+        <div class="step-title">Know when a customer needs you</div>
+        <div class="step-desc">A 🔴 red dot next to a customer's name means your AI has stepped aside and they're waiting for a human — usually because one of your Handoff Rules was triggered. Reply as normal, then click <strong>🔴 Mark Resolved</strong> in the top right once you're done so the AI resumes handling that conversation.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/conv-needs-agent.png') }}" alt="Conversation needing agent attention screenshot">
+      </div>
+    </div>
+  </div>
+</div><!-- end guide-conversations -->
+
+<!-- ── Contacts Guide ───────────────────────────────────────────────────── -->
+<div class="guide-section" id="guide-contacts">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">Contacts</div>
+    <p class="muted" style="font-size:13px;margin-bottom:20px">Every customer who messages you is saved automatically. Here's exactly how to add, import, search, edit, and export your audience.</p>
+
+    <div class="setup-step">
+      <div class="step-num">1</div>
+      <div>
+        <div class="step-title">See everyone who's messaged you</div>
+        <div class="step-desc">Total Contacts, Added This Week, and Named Contacts are summarised at the top, with the full list of names and phone numbers below.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/contacts.png') }}" alt="Contacts page screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">2</div>
+      <div>
+        <div class="step-title">Add a single contact manually</div>
+        <div class="step-desc">Click <strong>+ Add Contact</strong> and fill in the Phone Number (required — include the country code, no <strong>+</strong> or spaces), an optional Display Name, and optional Notes for context like "VIP customer" or where they came from. Click <strong>Save Contact</strong> when you're done.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/contact-add.png') }}" alt="Add Contact drawer screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">3</div>
+      <div>
+        <div class="step-title">Import many contacts at once</div>
+        <div class="step-desc">Click <strong>Import CSV</strong> and drop in a spreadsheet with <code>phone</code>, <code>name</code>, and <code>notes</code> columns — only phone is required, and the importer auto-detects which column is which. If a phone number already exists, that contact is updated instead of duplicated.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/contact-import.png') }}" alt="Import Contacts from CSV modal screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">4</div>
+      <div>
+        <div class="step-title">Edit a contact's name or notes</div>
+        <div class="step-desc">Click the pencil icon on any row to open Edit Contact, update the Display Name or Notes, then click <strong>Save Changes</strong>. This is also where you'd jot down context for a follow-up, like "Called about bulk order."</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/contact-edit.png') }}" alt="Edit Contact modal screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">5</div>
+      <div>
+        <div class="step-title">Search for a specific contact</div>
+        <div class="step-desc">Type a name or phone number into the search box and click Search to filter the list — useful once your audience grows beyond a quick scroll.</div>
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">6</div>
+      <div>
+        <div class="step-title">Export your contact list</div>
+        <div class="step-desc">Click <strong>Export CSV</strong> any time to download every contact as a spreadsheet — handy for backups, bulk edits elsewhere, or importing into another tool.</div>
+      </div>
+    </div>
+  </div>
+</div><!-- end guide-contacts -->
+
+<!-- ── Leads Guide ──────────────────────────────────────────────────────── -->
+<div class="guide-section" id="guide-leads">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">Leads</div>
+    <p class="muted" style="font-size:13px;margin-bottom:20px">Customers showing strong buying intent are listed here, automatically — here's how to read and use the list.</p>
+
+    <div class="setup-step">
+      <div class="step-num">1</div>
+      <div>
+        <div class="step-title">Check the KPI strip first</div>
+        <div class="step-desc">The three tiles at the top give you the headline numbers: <strong>🔥 Hot leads</strong> need a reply now, <strong>⭐ Warm leads</strong> are worth reading when you have a moment, and the third tile is your total leads identified. Every lead here was scored automatically from the conversation — you don't set anything up.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/leads.png') }}" alt="Leads page overview screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">2</div>
+      <div>
+        <div class="step-title">Filter to Hot or Warm only</div>
+        <div class="step-desc">Click the <strong>All / 🔥 Hot / ⭐ Warm</strong> pills just below the KPI strip to narrow the list — useful once you have more than a few leads and want to triage the urgent ones first. The active filter is highlighted in dark, and the count in brackets tells you how many you'll see.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/leads-filter-warm.png') }}" alt="Leads filtered to Warm screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">3</div>
+      <div>
+        <div class="step-title">Read why a customer was flagged</div>
+        <div class="step-desc">Each card shows tags like "High engagement" or "Initiated contact" explaining why that conversation was scored — plus a number in the top-right ring (the lead score) and how many messages they've sent. If you see <strong style="color:#b91c1c">Awaiting your reply</strong>, that customer's last message still hasn't been answered.</div>
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">4</div>
+      <div>
+        <div class="step-title">Follow up while interest is high</div>
+        <div class="step-desc">Click anywhere on a lead's card to jump straight into that conversation in <strong>Conversations</strong>, with the full chat history already loaded — see the Conversations guide for how to reply, add an emoji, or hand a conversation back to the AI once you're done.</div>
+      </div>
+    </div>
+  </div>
+</div><!-- end guide-leads -->
+
+<!-- ── Campaigns Guide ──────────────────────────────────────────────────── -->
+<div class="guide-section" id="guide-campaigns">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">Campaigns</div>
+    <p class="muted" style="font-size:13px;margin-bottom:20px">A complete walkthrough for sending your first WhatsApp broadcast — from opening the page to confirming launch.</p>
+
+    <div class="setup-step">
+      <div class="step-num">1</div>
+      <div>
+        <div class="step-title">Open Campaigns and start a new one</div>
+        <div class="step-desc">From the Campaigns page, click <strong>+ New Campaign</strong> in the top right. A setup panel slides in with 3 steps: Campaign Info → Recipients → Schedule &amp; Launch. The tiles above track your total campaigns, completions, and messages sent.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/campaigns.png') }}" alt="Campaigns page screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">2</div>
+      <div>
+        <div class="step-title">Step 1 of 3 — name it and choose a template</div>
+        <div class="step-desc">Give the campaign a clear name (e.g. "May Flash Sale") so you can find it later, then pick one of your Meta-approved WhatsApp templates from the dropdown — only templates already approved in Meta Business Suite show up here. If the template has an image, video, document, or text header, a matching field appears automatically; fill it in or upload the file before continuing.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/campaign-step1-info.png') }}" alt="Campaign Info step screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">3</div>
+      <div>
+        <div class="step-title">Step 2 of 3 — add who should receive it</div>
+        <div class="step-desc">Paste one phone number per line, including the country code, with no <strong>+</strong> or spaces (e.g. <code>2348012345678</code>). The counter in the corner confirms how many numbers you've entered. Only message customers who've opted in to hear from your business on WhatsApp — sending to unverified numbers can get your account flagged by Meta.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/campaign-step2-recipients.png') }}" alt="Recipients step screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">4</div>
+      <div>
+        <div class="step-title">Step 3 of 3 — review, then launch</div>
+        <div class="step-desc">Choose <strong>Send Now</strong> to launch right away, or <strong>Schedule</strong> to pick a specific date and time. The Review &amp; Confirm summary repeats your campaign name, template, recipient count, and send time so you can double-check everything. Click <strong>Launch Campaign</strong> once it looks right — there's no further confirmation after that, so this is the step to slow down on.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/campaign-step3-launch.png') }}" alt="Schedule and Launch step screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">5</div>
+      <div>
+        <div class="step-title">Check delivery performance afterwards</div>
+        <div class="step-desc">Switch to the Reports tab any time after sending to see delivery results for every campaign — useful for spotting what landed and what didn't.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/campaigns-reports.png') }}" alt="Campaign reports screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">6</div>
+      <div>
+        <div class="step-title">Know the difference: automatic AI messages</div>
+        <div class="step-desc">The Proactive Message Log further down the Campaigns page shows messages your AI sends automatically — like cart recovery nudges and order updates. These run on their own and are separate from the manual campaigns you create with the steps above.</div>
+      </div>
+    </div>
+  </div>
+</div><!-- end guide-campaigns -->
+
+<!-- ── Orders Guide ─────────────────────────────────────────────────────── -->
+<div class="guide-section" id="guide-orders">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">Orders</div>
+    <p class="muted" style="font-size:13px;margin-bottom:20px">Every order your AI assistant takes on WhatsApp lands here — here's exactly how to move one from placed to delivered.</p>
+
+    <div class="setup-step">
+      <div class="step-num">1</div>
+      <div>
+        <div class="step-title">See orders at a glance, then filter by status</div>
+        <div class="step-desc">The summary tiles show today's order count and revenue, and how many are pending, paid, or dispatched. Below that, click a status tab — <strong>Awaiting Payment</strong>, <strong>Receipt Received</strong>, <strong>Paid</strong>, <strong>Processing</strong>, <strong>Dispatched</strong>, <strong>Delivered</strong>, or <strong>Cancelled</strong> — to focus on the orders that need your attention. Click any order's reference to open its full detail page.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/orders.png') }}" alt="Orders list screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">2</div>
+      <div>
+        <div class="step-title">Verify payment once a receipt comes in</div>
+        <div class="step-desc">When a customer pays by bank transfer and submits proof, the order moves to <strong>Receipt Received</strong>. Check the transfer has actually landed in your account, then click <strong>✅ Verify Payment</strong> — this confirms the order and automatically messages the customer that their payment was received.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/order-verify-payment.png') }}" alt="Verify Payment screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">3</div>
+      <div>
+        <div class="step-title">Mark it as dispatched</div>
+        <div class="step-desc">Once an order is <strong>Paid</strong> or <strong>Processing</strong>, the <strong>Mark as Dispatched</strong> card appears. Fill in the courier and tracking number (both optional) and click <strong>🚚 Mark Dispatched</strong> — the customer is automatically notified on WhatsApp, with the tracking details included if you added them.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/order-dispatch-form.png') }}" alt="Mark as Dispatched form screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">4</div>
+      <div>
+        <div class="step-title">Confirm delivery</div>
+        <div class="step-desc">Once the customer has the item in hand, open the order and click <strong>✅ Mark Delivered</strong>. The order timeline turns fully green, the customer gets a final WhatsApp confirmation, and no further actions remain for that order.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/order-delivered.png') }}" alt="Delivered order screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">5</div>
+      <div>
+        <div class="step-title">Message the customer or cancel if needed</div>
+        <div class="step-desc"><strong>💬 Message Customer on WhatsApp</strong> is always available on the right side of an order's detail page if you need to follow up directly. <strong>Cancel Order</strong> appears for any order that hasn't shipped yet — cancelling automatically restores any reserved stock back to your catalogue.</div>
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">6</div>
+      <div>
+        <div class="step-title">Export your order data</div>
+        <div class="step-desc">Use <strong>Export CSV</strong> at the top of the Orders page to download the current filtered view for bookkeeping or reporting.</div>
+      </div>
+    </div>
+  </div>
+</div><!-- end guide-orders -->
+
+<!-- ── WhatsApp Connect Guide ───────────────────────────────────────────── -->
+<div class="guide-section" id="guide-whatsapp-connect">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">WhatsApp Connect</div>
+    <p class="muted" style="font-size:13px;margin-bottom:20px">Everything on the Connect page — linking your number, checking its health, and configuring how your AI greets customers.</p>
+
+    <div class="setup-step">
+      <div class="step-num">1</div>
+      <div>
+        <div class="step-title">Connect your WhatsApp Business number</div>
+        <div class="step-desc">Click <strong>Connect with WhatsApp</strong> — a Meta popup walks you through choosing your Business Account and phone number, no copy-pasting credentials. Once linked, the Connection Status card shows your number, WABA ID, and a token-validity badge so you know at a glance if you'll ever need to reconnect.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/wa-connect-status.png') }}" alt="WhatsApp Connection Status screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">2</div>
+      <div>
+        <div class="step-title">No Tech Provider approval yet? Connect manually</div>
+        <div class="step-desc">If the one-click button isn't available for your account, expand <strong>Having trouble? Connect manually instead</strong> to paste your Phone Number ID, WABA ID, and a permanent System User access token directly — there's a built-in step-by-step guide right below the fields showing exactly where to find each one in Meta's dashboard, plus your Webhook URL and Verify Token ready to copy into Meta.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/wa-connect-manual.png') }}" alt="Manual WhatsApp connection setup screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">3</div>
+      <div>
+        <div class="step-title">Share a QR code to start conversations</div>
+        <div class="step-desc">Click <strong>QR Code</strong> on the Connection Status card to get a scannable code that opens WhatsApp and pre-fills a message to your business — great for storefronts, flyers, or receipts. Copy the link directly or download the PNG to print.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/wa-connect-qr.png') }}" alt="WhatsApp QR code modal screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">4</div>
+      <div>
+        <div class="step-title">Set an instant acknowledgement message</div>
+        <div class="step-desc">Under <strong>Agent Behaviour</strong>, type a short message — like "One moment, checking that for you..." — that's sent the instant a customer messages, before the AI finishes thinking. It reassures customers the bot is actually active. Leave it blank to disable. Click <strong>Save</strong> to apply.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/wa-connect-ack.png') }}" alt="Agent Behaviour instant acknowledgement screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">5</div>
+      <div>
+        <div class="step-title">Get personally alerted when a customer needs you</div>
+        <div class="step-desc">Under <strong>Alert Notifications</strong>, enter your own personal WhatsApp number (not your business number) with country code. Whenever a customer asks for a human, you'll get an instant WhatsApp message with their details and a link straight into the portal. This number also receives your daily business report. Click <strong>Save Number</strong>.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/wa-connect-alerts.png') }}" alt="Alert Notifications personal number screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">6</div>
+      <div>
+        <div class="step-title">Know what else lives under WhatsApp</div>
+        <div class="step-desc">Two more items sit in the WhatsApp sidebar group you may not need right away: <strong>Message Templates</strong> is a premium add-on for cart-recovery and order-update templates — contact support to enable it if you don't see it. <strong>WhatsApp Plan</strong> shows the same subscription tiers as <strong>Credits &amp; Billing → Subscription Plans</strong>, just accessible from here too.</div>
+      </div>
+    </div>
+  </div>
+</div><!-- end guide-whatsapp-connect -->
+
+<!-- ── Agent Inbox Guide ────────────────────────────────────────────────── -->
+<div class="guide-section" id="guide-whatsapp-inbox">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">Agent Inbox</div>
+    <p class="muted" style="font-size:13px;margin-bottom:20px">The dedicated queue for conversations your AI has stepped aside from — and how to step in yourself.</p>
+
+    <div class="setup-step">
+      <div class="step-num">1</div>
+      <div>
+        <div class="step-title">Reply to conversations that need a human</div>
+        <div class="step-desc">The left panel lists every conversation currently waiting on a person — either because the customer asked for one, or one of your Handoff Rules triggered it. Click one to open the chat, type your reply in the box at the bottom, and send as normal.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/wa-inbox-handoffs.png') }}" alt="Agent Inbox active handoffs screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">2</div>
+      <div>
+        <div class="step-title">Hand the conversation back to the AI</div>
+        <div class="step-desc">Once you've sorted the customer out, click <strong>✓ Resolve &amp; Return to AI</strong> above the chat. The AI resumes replying to that customer on its very next message — there's nothing else to configure.</div>
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">3</div>
+      <div>
+        <div class="step-title">Proactively take over a conversation</div>
+        <div class="step-desc">Below the handoff queue, <strong>Recent AI Conversations</strong> lists chats the AI is still handling normally. If you want to jump into one yourself — without waiting for the customer to ask or a rule to trigger — click <strong>Take Over</strong>. It moves into the queue above tagged "Taken Over" so you can reply directly.</div>
+      </div>
+    </div>
+  </div>
+</div><!-- end guide-whatsapp-inbox -->
+
+<!-- ── Handoff Reports Guide ────────────────────────────────────────────── -->
+<div class="guide-section" id="guide-whatsapp-handoff-reports">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">Handoff Reports</div>
+    <p class="muted" style="font-size:13px;margin-bottom:16px">How well — and how fast — your team responds when the AI hands a conversation over.</p>
+    <img class="tut-shot standalone" src="{{ url_for('static', filename='portal/tutorial/whatsapp-reports.png') }}" alt="Handoff Reports screenshot">
+
+    <div class="setup-step">
+      <div class="step-num">1</div>
+      <div>
+        <div class="step-title">Pick a time range</div>
+        <div class="step-desc">Use the <strong>Last 7 / 14 / 30 / 90 days</strong> tabs at the top to change the window for every figure on the page, including the four summary tiles: total handoffs triggered, average response time, missed replies (no agent ever responded), and how many are open right now.</div>
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">2</div>
+      <div>
+        <div class="step-title">Read the day-by-day breakdown</div>
+        <div class="step-desc">The table shows, for each day, how many handoffs were triggered, resolved, and missed, plus the average response time — useful for spotting whether a particular day or shift is consistently slower to respond.</div>
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">3</div>
+      <div>
+        <div class="step-title">Jump straight to an open handoff</div>
+        <div class="step-desc">The "Open right now" tile includes an <strong>Open inbox →</strong> shortcut, and the Recent Handoffs list below shows each customer's status (Open, Missed, or Resolved) — click through to the Agent Inbox to reply.</div>
+      </div>
+    </div>
+  </div>
+</div><!-- end guide-whatsapp-handoff-reports -->
+
+<!-- ── WhatsApp Report Guide ────────────────────────────────────────────── -->
+<div class="guide-section" id="guide-whatsapp-report">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">WhatsApp Report</div>
+    <p class="muted" style="font-size:13px;margin-bottom:16px">A 30-day birds-eye view of WhatsApp activity — separate from the agent-focused Handoff Reports.</p>
+    <img class="tut-shot standalone" src="{{ url_for('static', filename='portal/tutorial/wa-report.png') }}" alt="WhatsApp Report screenshot">
+
+    <div class="setup-step">
+      <div class="step-num">1</div>
+      <div>
+        <div class="step-title">Read the four headline numbers</div>
+        <div class="step-desc">Conversations, handoffs to agent (with the percentage of conversations that needed one), new customers, and orders placed with their total revenue — all over the last 30 days.</div>
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">2</div>
+      <div>
+        <div class="step-title">Check the daily trend and top products</div>
+        <div class="step-desc">The bar chart shows conversations per day over the last 14 days, so you can spot spikes around promotions or campaigns. <strong>Top products browsed on WhatsApp</strong> alongside it shows what customers are actually asking about most.</div>
+      </div>
+    </div>
+  </div>
+</div><!-- end guide-whatsapp-report -->
+
+<!-- ── Ecommerce & Catalogue Guide ──────────────────────────────────────── -->
+<div class="guide-section" id="guide-ecommerce">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">Ecommerce &amp; Catalogue</div>
+    <p class="muted" style="font-size:13px;margin-bottom:20px">Manage your products, view customer profiles, sync your WooCommerce store, and browse your catalogue — all feeding your AI's knowledge.</p>
+
+    <div class="setup-step">
+      <div class="step-num">1</div>
+      <div>
+        <div class="step-title">Choose what your AI sells</div>
+        <div class="step-desc">My Products lists everything your AI can recommend on WhatsApp. Toggle any product active or paused, and see how many WhatsApp views each one gets.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/products.png') }}" alt="Products screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">2</div>
+      <div>
+        <div class="step-title">Browse the full product catalogue</div>
+        <div class="step-desc">My Catalogue lets you pick which products to add from the shared category catalogue — Laptops, Mobile Phones, and more. Click Browse Catalogue from the Products page to add new items.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/catalogue.png') }}" alt="Catalogue screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">3</div>
+      <div>
+        <div class="step-title">View customer profiles</div>
+        <div class="step-desc">Customers lists everyone who has messaged your AI assistant — search by phone number to find a specific customer's profile.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/customers.png') }}" alt="Customers screenshot">
+      </div>
+    </div>
+  </div>
+</div><!-- end guide-ecommerce -->
+
+<!-- ── Discount Settings Guide ──────────────────────────────────────────── -->
+<div class="guide-section" id="guide-discount-settings">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">Discount Settings</div>
+    <p class="muted" style="font-size:13px;margin-bottom:16px">Control whether your AI can offer discounts on its own, plus default and per-product discount amounts.</p>
+    <img class="tut-shot standalone" src="{{ url_for('static', filename='portal/tutorial/discount-settings.png') }}" alt="Discount Settings screenshot">
+
+    <div class="setup-step">
+      <div class="step-num">1</div>
+      <div>
+        <div class="step-title">Choose who's allowed to give discounts</div>
+        <div class="step-desc">"Merchant Only" means the AI never discounts without your approval. "AI Then Merchant" lets your AI offer a configured discount automatically, then hand off to you if the customer pushes for more.</div>
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">2</div>
+      <div>
+        <div class="step-title">Set a default and per-product discount</div>
+        <div class="step-desc">The Default Discount applies to every product unless you add a Per-Product Override for specific items that need a different rate.</div>
+      </div>
+    </div>
+  </div>
+</div><!-- end guide-discount-settings -->
+
+<!-- ── Product Import Guide ───────────────────────────────────────────────── -->
+<div class="guide-section" id="guide-data-sources">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">Product Import</div>
+    <p class="muted" style="font-size:13px;margin-bottom:16px">Import your product catalogue from Google Sheets or upload a spreadsheet file to keep your AI's pricing and stock accurate.</p>
+    <img class="tut-shot standalone" src="{{ url_for('static', filename='portal/tutorial/data-sources.png') }}" alt="Product Import screenshot">
+
+    <div class="setup-step">
+      <div class="step-num">1</div>
+      <div>
+        <div class="step-title">Prepare your spreadsheet</div>
+        <div class="step-desc">Follow the File Format Guide — columns like Product Name, Price, Description, Category, and Availability — or download the sample template to start from a working file.</div>
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">2</div>
+      <div>
+        <div class="step-title">Upload, map columns, and sync</div>
+        <div class="step-desc">Drag your file into Upload a Spreadsheet, map each column to the right field, then import — your AI's product knowledge updates as soon as the sync finishes.</div>
+      </div>
+    </div>
+  </div>
+</div><!-- end guide-data-sources -->
+
+<!-- ── Store Information Guide ──────────────────────────────────────────── -->
+<div class="guide-section" id="guide-store-info">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">Store Information</div>
+    <p class="muted" style="font-size:13px;margin-bottom:16px">What your AI reads to answer customer questions accurately — delivery, returns, payment methods, FAQs and more.</p>
+    <img class="tut-shot standalone" src="{{ url_for('static', filename='portal/tutorial/store-info.png') }}" alt="Store Information screenshot">
+
+    <div class="setup-step">
+      <div class="step-num">1</div>
+      <div>
+        <div class="step-title">Upload a document or type it directly</div>
+        <div class="step-desc">Drop in a PDF, Word, or text file and PhiXtra extracts the details automatically. Or fill in each section yourself — About Us, Delivery Information, Returns &amp; Refunds, Contact Information, Payment Methods, FAQs, and Other Information.</div>
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">2</div>
+      <div>
+        <div class="step-title">Save and your AI updates instantly</div>
+        <div class="step-desc">Click Save Store Information and your AI assistant starts using the new details on its very next reply — no waiting, no redeploying.</div>
+      </div>
+    </div>
+  </div>
+</div><!-- end guide-store-info -->
+
+<!-- ── Payment Gateways Guide ───────────────────────────────────────────── -->
+<div class="guide-section" id="guide-payment-settings">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">Payment Gateways</div>
+    <p class="muted" style="font-size:13px;margin-bottom:16px">Accept Paystack or Flutterwave payments automatically, or add your bank details so customers can pay by transfer.</p>
+    <img class="tut-shot standalone" src="{{ url_for('static', filename='portal/tutorial/payment-settings.png') }}" alt="Payment Gateways screenshot">
+
+    <div class="setup-step">
+      <div class="step-num">1</div>
+      <div>
+        <div class="step-title">Connect Paystack or Flutterwave</div>
+        <div class="step-desc">Paste your Public and Secret API keys for whichever gateway you use, then click Connect. Once connected, your AI can send customers a real payment link to complete checkout on WhatsApp.</div>
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">2</div>
+      <div>
+        <div class="step-title">Add a bank account for transfers</div>
+        <div class="step-desc">If you'd rather customers pay by bank transfer, fill in your Bank Name, Account Number, and Account Name under Bank Transfer and click Save Bank Account — your AI shares these details when a customer wants to pay that way.</div>
+      </div>
+    </div>
+  </div>
+</div><!-- end guide-payment-settings -->
+
+<!-- ── AI Assistant Guide ───────────────────────────────────────────────── -->
+<div class="guide-section" id="guide-ai">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">AI Assistant</div>
+    <p class="muted" style="font-size:13px;margin-bottom:20px">Customise your AI's personality and behaviour. Set handoff rules to decide when the AI steps aside for a human agent.</p>
+
+    <div class="setup-step">
+      <div class="step-num">1</div>
+      <div>
+        <div class="step-title">Tell your AI what you sell and how to behave</div>
+        <div class="step-desc">System Instruction lets you pick your business category, choose behaviours like "take orders &amp; collect delivery details" or "never quote prices", and preview exactly how your AI will talk to customers. Changes apply instantly.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/ai-instruction.png') }}" alt="System Instruction screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">2</div>
+      <div>
+        <div class="step-title">Decide when a human should step in</div>
+        <div class="step-desc">Handoff Rules let you list phrases or situations — like "speak to a human" or a visitor asking about an order issue — that hand the conversation to your team instead of the AI.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/handoff-rules.png') }}" alt="Handoff Rules screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">3</div>
+      <div>
+        <div class="step-title">Keep product answers accurate</div>
+        <div class="step-desc">Verified Specs Settings lets you set trusted domains and custom spec types — like load capacity or warranty — so your AI only states product facts it can verify, instead of guessing.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/verified-specs.png') }}" alt="Verified Specs screenshot">
+      </div>
+    </div>
+  </div>
+</div><!-- end guide-ai -->
+
+<!-- ── Credits & Billing Guide ──────────────────────────────────────────── -->
+<div class="guide-section" id="guide-billing">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">Credits &amp; Billing</div>
+    <p class="muted" style="font-size:13px;margin-bottom:20px">Top up credits like a prepaid account — no surprise bills. Download PDF invoices and manage your subscription plan here.</p>
+
+    <div class="setup-step">
+      <div class="step-num">1</div>
+      <div>
+        <div class="step-title">Choose a subscription plan</div>
+        <div class="step-desc">Subscription Plans shows monthly tiers with a bundled credit allowance and features like AI chat, product recommendations, and analytics — subscribe to get credits automatically each billing period.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/billing-subscribe.png') }}" alt="Subscription Plans screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">2</div>
+      <div>
+        <div class="step-title">Buy credits any time</div>
+        <div class="step-desc">Buy Credits shows your current balance and lets you top up one-time, on top of any subscription — credits never expire.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/billing.png') }}" alt="Buy Credits screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">3</div>
+      <div>
+        <div class="step-title">Download your invoices</div>
+        <div class="step-desc">Invoices lists every payment you've made with a PDF download — useful for your records or expense claims.</div>
+        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/invoices.png') }}" alt="Invoices screenshot">
+      </div>
+    </div>
+  </div>
+</div><!-- end guide-billing -->
+
+<!-- ── Account Settings Guide ───────────────────────────────────────────── -->
+<div class="guide-section" id="guide-settings">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">Account Settings</div>
+    <p class="muted" style="font-size:13px;margin-bottom:16px">Update your profile, upload a logo, change your business name, and manage notification preferences.</p>
+    <img class="tut-shot standalone" src="{{ url_for('static', filename='portal/tutorial/settings.png') }}" alt="Account Settings screenshot">
+
+    <div class="setup-step">
+      <div class="step-num">1</div>
+      <div>
+        <div class="step-title">Update your profile</div>
+        <div class="step-desc">Change your name and phone number under the Profile tab. Your email and store domain are read-only — contact support if you need those changed.</div>
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">2</div>
+      <div>
+        <div class="step-title">Manage your logo, security and plan</div>
+        <div class="step-desc">Use the side tabs to upload an Avatar, update Security, check your current Package Plan, edit Business Info, or set Notifications and Preferences.</div>
+      </div>
+    </div>
+  </div>
+</div><!-- end guide-settings -->
+
+  </div><!-- end tut-content -->
+</div><!-- end tut-layout -->
+
+<script>
+function showGuide(id) {
+  document.querySelectorAll('.guide-section').forEach(function(s) { s.classList.remove('visible'); });
+  document.querySelectorAll('.tut-nav-item').forEach(function(c) { c.classList.remove('active'); });
+  document.getElementById('guide-' + id).classList.add('visible');
+  document.getElementById('card-' + id).classList.add('active');
+  document.getElementById('card-' + id).scrollIntoView({ block: 'nearest' });
+}
+
+var _PF_KEYS = ['pf_biz', 'pf_app', 'pf_phone'];
+
+function togglePreflight(btn, key) {
+  var done = btn.classList.toggle('done');
+  try { localStorage.setItem('tut_' + key, done ? '1' : '0'); } catch(e) {}
+  _checkAllPreflight();
+}
+
+function _checkAllPreflight() {
+  var allDone = _PF_KEYS.every(function(k) { return localStorage.getItem('tut_' + k) === '1'; });
+  var el = document.getElementById('preflightDone');
+  if (el) el.style.display = allDone ? 'block' : 'none';
+}
+
+(function _restorePreflight() {
+  var btns = document.querySelectorAll('.preflight-tick');
+  btns.forEach(function(btn, i) {
+    var key = _PF_KEYS[i];
+    if (key && localStorage.getItem('tut_' + key) === '1') btn.classList.add('done');
+  });
+  _checkAllPreflight();
+})();
+</script>
+
+{% endblock %}

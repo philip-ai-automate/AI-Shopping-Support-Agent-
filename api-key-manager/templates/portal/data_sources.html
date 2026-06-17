@@ -1,5 +1,5 @@
 {% extends "portal/base.html" %}
-{% block title %}Data Sources — PhiXtra Portal{% endblock %}
+{% block title %}Product Import — PhiXtra Portal{% endblock %}
 
 {% block head %}
 <style>
@@ -42,39 +42,15 @@
 
 {% block content %}
 <div class="page-header" style="margin-bottom:20px">
-  <div>
-    <div class="section-title">Data Sources</div>
-    <p class="muted">Import your product catalog from Google Sheets or a spreadsheet file.</p>
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px">
+    <div>
+      <div class="section-title">Product Import</div>
+      <p class="muted">Import your product catalogue from Google Sheets or upload a spreadsheet file to keep your AI's pricing and stock accurate.</p>
+    </div>
+    <a href="javascript:history.back()" class="btn btn-sm" style="white-space:nowrap">← Back</a>
   </div>
 </div>
 
-<!-- Connect options -->
-<div class="connect-grid">
-
-  <!-- Google Sheets -->
-  {% if google_configured %}
-  <a class="connect-card" href="{{ url_for('portal.data_source_google_connect') }}">
-    <div class="connect-card-icon">📊</div>
-    <div class="connect-card-title">Google Sheets</div>
-    <div class="connect-card-desc">Connect a live spreadsheet — syncs on demand</div>
-  </a>
-  {% else %}
-  <div class="connect-card" style="opacity:.55;cursor:default"
-       title="Google OAuth credentials not yet configured">
-    <div class="connect-card-icon">📊</div>
-    <div class="connect-card-title">Google Sheets</div>
-    <div class="connect-card-desc">Coming soon — contact support to enable</div>
-  </div>
-  {% endif %}
-
-  <!-- File upload trigger -->
-  <div class="connect-card" onclick="document.getElementById('fileUploadForm').scrollIntoView({behavior:'smooth'})">
-    <div class="connect-card-icon">📁</div>
-    <div class="connect-card-title">Excel / CSV File</div>
-    <div class="connect-card-desc">Upload .xlsx or .csv — map columns and import</div>
-  </div>
-
-</div>
 
 <!-- Connected sources -->
 {% if sources %}
@@ -155,11 +131,59 @@
 {% endfor %}
 {% else %}
 <div style="text-align:center;padding:40px 0;color:var(--muted);font-size:14px">
-  No data sources connected yet. Upload a file or connect Google Sheets above.
+  No products imported yet. Upload a file or connect Google Sheets above.
 </div>
 {% endif %}
 
 <div class="divider"></div>
+
+<!-- File format guide -->
+<div class="card" style="margin-bottom:20px;background:rgba(37,99,235,0.03);border-color:rgba(37,99,235,0.18)">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px">
+    <div>
+      <div class="card-title" style="margin:0 0 2px">File Format Guide</div>
+      <div style="font-size:12px;color:var(--muted)">Your spreadsheet must have column headers in the first row. All columns are required.</div>
+    </div>
+    <a href="{{ url_for('static', filename='portal/phixtra_product_template.xlsx') }}"
+       download class="btn btn-sm" style="white-space:nowrap">⬇ Download Sample Template</a>
+  </div>
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead>
+      <tr style="border-bottom:2px solid var(--line)">
+        <th style="text-align:left;padding:6px 12px 6px 0;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;width:140px">Column</th>
+        <th style="text-align:left;padding:6px 0;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em">What to put</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom:1px solid var(--line)">
+        <td style="padding:8px 12px 8px 0"><span style="background:#030C18;color:#fff;border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700">Name</span></td>
+        <td style="padding:8px 0;color:var(--muted)">Product name</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--line)">
+        <td style="padding:8px 12px 8px 0"><span style="background:#030C18;color:#fff;border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700">Price</span></td>
+        <td style="padding:8px 0;color:var(--muted)">Selling price — numbers only (e.g. 25000)</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--line)">
+        <td style="padding:8px 12px 8px 0"><span style="background:#030C18;color:#fff;border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700">Description</span></td>
+        <td style="padding:8px 0;color:var(--muted)">Brief product description</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--line)">
+        <td style="padding:8px 12px 8px 0"><span style="background:#030C18;color:#fff;border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700">Category</span></td>
+        <td style="padding:8px 0;color:var(--muted)">Product category</td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px 8px 0"><span style="background:#030C18;color:#fff;border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700">Stock</span></td>
+        <td style="padding:8px 0;color:var(--muted)">Available quantity</td>
+      </tr>
+    </tbody>
+  </table>
+  <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)">
+    Need help preparing your file? Contact us:
+    📧 <a href="mailto:support@phixtra.com" style="color:var(--ink)">support@phixtra.com</a>
+    &nbsp;·&nbsp;
+    💬 <a href="https://wa.me/447467786954" target="_blank" rel="noopener" style="color:#25D366;font-weight:600">WhatsApp: +447467786954</a>
+  </div>
+</div>
 
 <!-- File upload form -->
 <div id="fileUploadForm">

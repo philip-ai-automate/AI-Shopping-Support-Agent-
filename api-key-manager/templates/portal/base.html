@@ -495,7 +495,10 @@
         'portal.products', 'portal.product_add', 'portal.product_edit',
         'portal.product_delete', 'portal.customers', 'portal.customer_detail',
         'portal.catalogue_browse', 'portal.catalogue_category', 'portal.catalogue_selections',
-        'portal.woo_sync') %}
+        'portal.woo_sync',
+        'portal.data_sources', 'portal.data_source_upload', 'portal.data_source_map',
+        'portal.data_source_sync', 'portal.data_source_delete', 'portal.data_source_google_connect',
+        'portal.data_source_google_callback', 'portal.data_source_google_setup') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _commerce_group %}open{% endif %}"
            data-tour="nav-ecommerce" onclick="sbToggle(this)">
@@ -525,6 +528,10 @@
           WooCommerce Sync
         </a>
         {% endif %}
+        <a href="{{ url_for('portal.data_sources') }}"
+           class="{% if request.endpoint in ('portal.data_sources','portal.data_source_upload','portal.data_source_map','portal.data_source_sync','portal.data_source_delete','portal.data_source_google_connect','portal.data_source_google_callback','portal.data_source_google_setup') %}active{% endif %}">
+          🗂️ Product Import
+        </a>
       </div>
     </div>
 
@@ -532,12 +539,6 @@
     <a class="sb-link {% if request.endpoint == 'portal.wa_discount_settings' %}active{% endif %}"
        href="{{ url_for('portal.wa_discount_settings') }}">
       <span class="sb-icon">💰</span> Discount Settings
-    </a>
-
-    <!-- Data Sources -->
-    <a class="sb-link {% if request.endpoint in ('portal.data_sources','portal.data_source_upload','portal.data_source_map','portal.data_source_sync','portal.data_source_delete','portal.data_source_google_connect','portal.data_source_google_callback','portal.data_source_google_setup') %}active{% endif %}"
-       href="{{ url_for('portal.data_sources') }}">
-      <span class="sb-icon">🗂️</span> Data Sources
     </a>
 
     <!-- Store Information -->
@@ -1110,7 +1111,7 @@
     { icon:'🏪', title:'My Products',            desc:'Add, edit and manage your products',           url:'{{ url_for("portal.products") }}',                   tags:'products inventory catalogue stock add edit' },
     { icon:'👤', title:'My Customers',           desc:'View your customer list and profiles',         url:'{{ url_for("portal.customers") }}',                  tags:'customers buyers profiles crm list' },
     { icon:'💰', title:'Discount Settings',      desc:'Set WhatsApp discount offers',                 url:'{{ url_for("portal.wa_discount_settings") }}',       tags:'discount promo offer coupon price sale' },
-    { icon:'🗂️', title:'Data Sources',           desc:'Upload files and knowledge base documents',    url:'{{ url_for("portal.data_sources") }}',               tags:'upload files pdf knowledge base documents train ai' },
+    { icon:'🗂️', title:'Product Import',          desc:'Import your product catalogue from Google Sheets or a spreadsheet file',    url:'{{ url_for("portal.data_sources") }}',               tags:'upload files csv excel spreadsheet google sheets product import catalogue' },
     { icon:'🏬', title:'Store Information',      desc:'Update your business name and details',        url:'{{ url_for("portal.store_info") }}',                 tags:'business name address details profile store info' },
     { icon:'💳', title:'Payment Gateways',       desc:'Connect Stripe or Paystack',                   url:'{{ url_for("portal.payment_settings") }}',           tags:'payment gateway stripe paystack checkout' },
     { icon:'🔑', title:'API Keys',               desc:'Manage your AI integration keys',              url:'{{ url_for("portal.api_keys") }}',                   tags:'api keys developer integration access token' },
