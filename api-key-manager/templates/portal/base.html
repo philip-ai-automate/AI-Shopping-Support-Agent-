@@ -311,6 +311,44 @@
                border:1px solid var(--line);background:rgba(255,255,255,0.75);color:var(--txt);
                box-shadow:var(--shadow2)}
     .home-pill:hover{background:#fff;text-decoration:none}
+
+    /* ═══════════════════════════════════════════════════════════
+       SEARCH BAR
+    ═══════════════════════════════════════════════════════════ */
+    .sb-search-wrap{padding:8px 10px 6px}
+    .sb-search-box{
+      display:flex;align-items:center;gap:8px;
+      background:rgba(3,12,24,0.04);border:1px solid var(--line);
+      border-radius:12px;padding:8px 12px;cursor:text;transition:.15s;
+    }
+    .sb-search-box:focus-within{
+      background:#fff;border-color:rgba(3,12,24,0.28);box-shadow:var(--ring);
+    }
+    .sb-search-icon{font-size:13px;flex-shrink:0;color:var(--muted);line-height:1}
+    .sb-search-input{
+      flex:1;border:none;background:none;outline:none;
+      font-size:13px;color:var(--txt);font-family:inherit;min-width:0;
+    }
+    .sb-search-input::placeholder{color:var(--muted)}
+    .sb-search-results{
+      display:none;position:fixed;
+      background:#fff;border:1px solid var(--line);border-radius:16px;
+      box-shadow:0 16px 52px rgba(3,12,24,0.16);z-index:9999;
+      overflow:hidden;max-height:360px;overflow-y:auto;
+    }
+    .sb-search-results.open{display:block}
+    .sb-search-item{
+      display:flex;align-items:flex-start;gap:10px;
+      padding:11px 14px;cursor:pointer;text-decoration:none;
+      border-bottom:1px solid rgba(3,12,24,0.06);transition:.1s;color:var(--txt);
+    }
+    .sb-search-item:last-child{border-bottom:none}
+    .sb-search-item:hover,.sb-search-item.sr-focused{background:rgba(3,12,24,0.04);text-decoration:none}
+    .sb-search-item-icon{font-size:18px;flex-shrink:0;line-height:1.3}
+    .sb-search-item-body{flex:1;min-width:0}
+    .sb-search-item-title{font-size:13px;font-weight:650;color:var(--ink);line-height:1.3}
+    .sb-search-item-desc{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.4}
+    .sb-search-empty{padding:20px 14px;text-align:center;color:var(--muted);font-size:13px}
   </style>
   {% block head %}{% endblock %}
 </head>
@@ -332,18 +370,29 @@
     <span class="sb-brand-label">Customer Portal</span>
   </a>
 
+  <!-- Search bar -->
+  <div class="sb-search-wrap">
+    <div class="sb-search-box" onclick="document.getElementById('sbSearchInput').focus()">
+      <span class="sb-search-icon">🔍</span>
+      <input type="text" class="sb-search-input" id="sbSearchInput"
+             placeholder="Search features…" autocomplete="off" spellcheck="false"/>
+    </div>
+    <div class="sb-search-results" id="sbSearchResults"></div>
+  </div>
+
   <!-- Nav links -->
   <div class="sb-nav">
 
     <!-- Dashboard -->
     <a class="sb-link {% if request.endpoint == 'portal.dashboard' %}active{% endif %}"
-       href="{{ url_for('portal.dashboard') }}">
+       href="{{ url_for('portal.dashboard') }}" data-tour="nav-dashboard">
       <span class="sb-icon">📊</span> Dashboard
     </a>
 
     <!-- Conversations -->
     <a class="sb-link {% if request.endpoint in ('portal.my_inbox', 'portal.inbox_reply') %}active{% endif %}"
        href="{{ url_for('portal.my_inbox') }}"
+       data-tour="nav-conversations"
        style="justify-content:space-between">
       <span style="display:flex;align-items:center;gap:10px">
         <span class="sb-icon">💬</span> Conversations
@@ -360,7 +409,7 @@
     {% set _camp_group = request.endpoint in ('portal.whatsapp_campaigns','portal.whatsapp_campaign_report','portal.whatsapp_campaigns_reports') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _camp_group %}open{% endif %}"
-           onclick="sbToggle(this)">
+           data-tour="nav-campaigns" onclick="sbToggle(this)">
         <span class="sb-gtitle">
           <span class="sb-icon">📣</span> Campaigns
         </span>
@@ -380,13 +429,13 @@
 
     <!-- Contacts -->
     <a class="sb-link {% if request.endpoint == 'portal.whatsapp_contacts' %}active{% endif %}"
-       href="{{ url_for('portal.whatsapp_contacts') }}">
+       href="{{ url_for('portal.whatsapp_contacts') }}" data-tour="nav-contacts">
       <span class="sb-icon">👥</span> Contacts
     </a>
 
     <!-- Leads -->
     <a class="sb-link {% if request.endpoint == 'portal.leads_page' %}active{% endif %}"
-       href="{{ url_for('portal.leads_page') }}">
+       href="{{ url_for('portal.leads_page') }}" data-tour="nav-leads">
       <span class="sb-icon">🔥</span> Leads
     </a>
 
@@ -397,10 +446,10 @@
     </a>
 
     <!-- ── WhatsApp group ── -->
-    {% set _wa_group = request.endpoint in ('portal.whatsapp_connect', 'portal.whatsapp_inbox', 'portal.billing_plans') or (request.endpoint == 'portal.whatsapp_templates' and _tenant_features.get('whatsapp_message_templates')) %}
+    {% set _wa_group = request.endpoint in ('portal.whatsapp_connect', 'portal.whatsapp_inbox', 'portal.whatsapp_reports', 'portal.billing_plans') or (request.endpoint == 'portal.whatsapp_templates' and _tenant_features.get('whatsapp_message_templates')) %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _wa_group %}open{% endif %}"
-           onclick="sbToggle(this)">
+           data-tour="nav-whatsapp" onclick="sbToggle(this)">
         <span class="sb-gtitle">
           <span class="sb-icon">📱</span> WhatsApp
         </span>
@@ -414,6 +463,10 @@
         <a href="{{ url_for('portal.whatsapp_inbox') }}"
            class="{% if request.endpoint == 'portal.whatsapp_inbox' %}active{% endif %}">
           Agent Inbox
+        </a>
+        <a href="{{ url_for('portal.whatsapp_reports') }}"
+           class="{% if request.endpoint == 'portal.whatsapp_reports' %}active{% endif %}">
+          Handoff Reports
         </a>
         {% if _tenant_features.get('whatsapp_message_templates') %}
         <a href="{{ url_for('portal.whatsapp_templates') }}"
@@ -445,7 +498,7 @@
         'portal.woo_sync') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _commerce_group %}open{% endif %}"
-           onclick="sbToggle(this)">
+           data-tour="nav-ecommerce" onclick="sbToggle(this)">
         <span class="sb-gtitle">
           <span class="sb-icon">🏪</span> Ecommerce
         </span>
@@ -487,6 +540,12 @@
       <span class="sb-icon">🗂️</span> Data Sources
     </a>
 
+    <!-- Store Information -->
+    <a class="sb-link {% if request.endpoint == 'portal.store_info' %}active{% endif %}"
+       href="{{ url_for('portal.store_info') }}">
+      <span class="sb-icon">🏪</span> Store Information
+    </a>
+
     <!-- Payment Gateways -->
     <a class="sb-link {% if request.endpoint == 'portal.payment_settings' %}active{% endif %}"
        href="{{ url_for('portal.payment_settings') }}">
@@ -494,10 +553,10 @@
     </a>
 
     <!-- ── AI Assistant group ── -->
-    {% set _ai_group = request.endpoint in ('portal.api_keys', 'portal.ai_instruction', 'portal.handoff_rules', 'portal.verified_specs_settings') %}
+    {% set _ai_group = request.endpoint in ('portal.api_keys', 'portal.ai_instruction', 'portal.handoff_rules') or (request.endpoint == 'portal.verified_specs_settings' and customer.tenant_source_type != 'whatsapp') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _ai_group %}open{% endif %}"
-           onclick="sbToggle(this)">
+           data-tour="nav-ai" onclick="sbToggle(this)">
         <span class="sb-gtitle">
           <span class="sb-icon">🤖</span> AI Assistant
         </span>
@@ -516,10 +575,12 @@
            class="{% if request.endpoint == 'portal.handoff_rules' %}active{% endif %}">
           Handoff Rules
         </a>
+        {% if customer.tenant_source_type != 'whatsapp' %}
         <a href="{{ url_for('portal.verified_specs_settings') }}"
            class="{% if request.endpoint == 'portal.verified_specs_settings' %}active{% endif %}">
           Verified Specs
         </a>
+        {% endif %}
       </div>
     </div>
 
@@ -596,7 +657,7 @@
     {% set _bill_group = request.endpoint in ('portal.billing', 'portal.invoices', 'portal.billing_subscribe', 'portal.billing_subscribe_checkout') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _bill_group %}open{% endif %}"
-           onclick="sbToggle(this)">
+           data-tour="nav-billing" onclick="sbToggle(this)">
         <span class="sb-gtitle">
           <span class="sb-icon">💳</span> Credits &amp; Billing
         </span>
@@ -618,9 +679,15 @@
       </div>
     </div>
 
+    <!-- Help & Tutorials -->
+    <a class="sb-link {% if request.endpoint == 'portal.tutorials' %}active{% endif %}"
+       href="{{ url_for('portal.tutorials') }}">
+      <span class="sb-icon">📚</span> Help & Tutorials
+    </a>
+
     <!-- Account Settings -->
     <a class="sb-link {% if request.endpoint == 'portal.settings' %}active{% endif %}"
-       href="{{ url_for('portal.settings') }}">
+       href="{{ url_for('portal.settings') }}" data-tour="nav-settings">
       <span class="sb-icon">⚙️</span> Account Settings
     </a>
 
@@ -678,6 +745,16 @@
         </div>
       </div>
     </a>
+
+    <button onclick="tourStart()" id="tourStartBtn"
+            style="display:flex;align-items:center;gap:11px;width:100%;
+                   padding:11px 12px;border-radius:10px;border:none;background:none;
+                   font-size:14px;color:rgba(3,12,24,0.50);cursor:pointer;
+                   transition:.15s;text-align:left;font-family:inherit;margin-bottom:4px;"
+            onmouseover="this.style.background='rgba(3,12,24,0.05)';this.style.color='var(--ink)'"
+            onmouseout="this.style.background='none';this.style.color='rgba(3,12,24,0.50)'">
+      <span style="font-size:16px;width:20px;text-align:center">🎯</span> Take a Tour
+    </button>
 
     <a class="sb-logout" href="{{ url_for('portal.logout') }}">
       <span class="sb-icon">🚪</span> Log out
@@ -778,6 +855,384 @@
   if (closeBtn)  closeBtn.addEventListener('click', closeSidebar);
   if (overlay)   overlay.addEventListener('click', closeSidebar);
 </script>
+
+
+{% if _logged_in %}
+<!-- ══════════════ GUIDED TOUR ══════════════ -->
+<div id="tourBackdrop"  style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(3,12,24,0);"></div>
+<div id="tourHighlight" style="display:none;position:fixed;z-index:9001;pointer-events:none;border-radius:14px;
+     box-shadow:0 0 0 4px #2563eb,0 0 0 8px rgba(37,99,235,0.25);
+     transition:top .25s,left .25s,width .25s,height .25s;"></div>
+<div id="tourTooltip"  style="display:none;position:fixed;z-index:9002;background:#fff;border-radius:20px;
+     padding:24px 26px;width:310px;box-shadow:0 24px 64px rgba(3,12,24,0.22);
+     border:1px solid rgba(3,12,24,0.09);">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+    <span id="tourStepLabel" style="font-size:11px;font-weight:700;color:rgba(3,12,24,0.40);
+          text-transform:uppercase;letter-spacing:.08em;"></span>
+    <div style="display:flex;gap:3px;" id="tourDots"></div>
+  </div>
+  <div id="tourTitle" style="font-size:18px;font-weight:800;color:#030C18;margin-bottom:8px;letter-spacing:-.3px;line-height:1.2;"></div>
+  <div id="tourBody"  style="font-size:13px;color:rgba(3,12,24,0.65);line-height:1.65;margin-bottom:20px;"></div>
+  <div style="display:flex;align-items:center;justify-content:space-between;">
+    <button onclick="tourEnd()"
+            style="font-size:12px;color:rgba(3,12,24,0.40);background:none;border:none;cursor:pointer;padding:0;font-family:inherit;">
+      Skip tour
+    </button>
+    <div style="display:flex;gap:8px;">
+      <button id="tourPrevBtn" onclick="tourPrev()"
+              style="padding:9px 16px;border-radius:11px;border:1px solid rgba(3,12,24,0.14);
+                     background:#fff;color:rgba(3,12,24,0.65);font-size:13px;font-weight:600;
+                     cursor:pointer;font-family:inherit;transition:.15s;">← Back</button>
+      <button id="tourNextBtn" onclick="tourNext()"
+              style="padding:9px 18px;border-radius:11px;border:none;
+                     background:#030C18;color:#fff;font-size:13px;font-weight:700;
+                     cursor:pointer;font-family:inherit;transition:.15s;">Next →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var STEPS = [
+    { sel: null, pos: 'center',
+      title: '👋 Welcome to PhiXtra!',
+      body:  'Let me show you around the portal in under 2 minutes. You can skip anytime by pressing Esc or clicking "Skip tour".' },
+    { sel: '[data-tour="nav-dashboard"]', pos: 'right',
+      title: '📊 Dashboard',
+      body:  'Your command centre. See WhatsApp status, AI stats, hot leads, and customers waiting for a human agent — all at a glance.' },
+    { sel: '#tour-wa-hero', pos: 'bottom',
+      title: '📱 WhatsApp Connection',
+      body:  'This strip shows your WhatsApp Business number. When the dot is green, your AI assistant is live and responding to customers 24/7.' },
+    { sel: '#tour-kpi', pos: 'bottom',
+      title: '📈 Live Stats',
+      body:  'Messages received, messages sent, active conversations, and customers awaiting a reply — all in real time.' },
+    { sel: '[data-tour="nav-conversations"]', pos: 'right',
+      title: '💬 Conversations',
+      body:  'Every WhatsApp conversation your AI handles appears here. Customers are automatically scored Hot, Warm, or Cold based on their buying intent.' },
+    { sel: '[data-tour="nav-contacts"]', pos: 'right',
+      title: '👥 Contacts',
+      body:  'Every customer who messages you is saved automatically. Add notes and view their full chat history.' },
+    { sel: '[data-tour="nav-leads"]', pos: 'right',
+      title: '🔥 Leads',
+      body:  'Customers showing strong buying intent are listed here. Focus your follow-ups where they will convert best.' },
+    { sel: '[data-tour="nav-campaigns"]', pos: 'right',
+      title: '📣 Campaigns',
+      body:  'Send WhatsApp broadcast messages to your contacts. Great for promotions, flash sales, and re-engagement.' },
+    { sel: '[data-tour="nav-whatsapp"]', pos: 'right',
+      title: '📱 WhatsApp',
+      body:  'Connect your WhatsApp Business number, manage the agent inbox, set message templates, and view your usage report.' },
+    { sel: '[data-tour="nav-ai"]', pos: 'right',
+      title: '🤖 AI Assistant',
+      body:  'Customise your AI\'s personality and behaviour. Set handoff rules to decide when the AI steps aside for a human agent.' },
+    { sel: '[data-tour="nav-ecommerce"]', pos: 'right',
+      title: '🏪 Ecommerce',
+      body:  'Manage your products, view customer profiles, sync your WooCommerce store, and browse your catalogue — all feeding your AI\'s knowledge.' },
+    { sel: '[data-tour="nav-billing"]', pos: 'right',
+      title: '💳 Credits & Billing',
+      body:  'Top up credits like a prepaid account — no surprise bills. Download PDF invoices and manage your subscription plan here.' },
+    { sel: '[data-tour="nav-settings"]', pos: 'right',
+      title: '⚙️ Account Settings',
+      body:  'Update your profile, upload a logo, change your business name, and manage notification preferences.' },
+    { sel: null, pos: 'center', last: true,
+      title: '🎉 You\'re all set!',
+      body:  'That\'s the full tour. Explore the portal at your own pace — and click "Take a Tour" in the sidebar anytime to run it again.' },
+  ];
+
+  var cur = 0;
+  var backdrop  = document.getElementById('tourBackdrop');
+  var highlight = document.getElementById('tourHighlight');
+  var tooltip   = document.getElementById('tourTooltip');
+  var sidebar   = document.getElementById('phixtraSidebar');
+
+  function validSteps() {
+    // Filter out steps whose element doesn't exist on this page
+    return STEPS.filter(function(s) {
+      if (!s.sel) return true;
+      return !!document.querySelector(s.sel);
+    });
+  }
+
+  var steps = [];
+
+  function render() {
+    var step = steps[cur];
+    var total = steps.length;
+
+    // Step label
+    document.getElementById('tourStepLabel').textContent = 'Step ' + (cur + 1) + ' of ' + total;
+
+    // Dots
+    var dotsEl = document.getElementById('tourDots');
+    dotsEl.innerHTML = '';
+    steps.forEach(function(_, i) {
+      var d = document.createElement('div');
+      d.style.cssText = 'width:6px;height:6px;border-radius:50%;background:' +
+        (i === cur ? '#030C18' : 'rgba(3,12,24,0.18)') + ';transition:.2s;';
+      dotsEl.appendChild(d);
+    });
+
+    document.getElementById('tourTitle').textContent = step.title;
+    document.getElementById('tourBody').textContent  = step.body;
+
+    // Prev button
+    var prevBtn = document.getElementById('tourPrevBtn');
+    prevBtn.style.display = cur === 0 ? 'none' : '';
+
+    // Next button
+    var nextBtn = document.getElementById('tourNextBtn');
+    nextBtn.textContent = step.last ? 'Done ✓' : 'Next →';
+
+    // Highlight + tooltip
+    var el = step.sel ? document.querySelector(step.sel) : null;
+
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      // Small delay so scroll settles before we read getBoundingClientRect
+      setTimeout(function() {
+        var r = el.getBoundingClientRect();
+        var pad = 6;
+        highlight.style.top    = (r.top  - pad) + 'px';
+        highlight.style.left   = (r.left - pad) + 'px';
+        highlight.style.width  = (r.width  + pad * 2) + 'px';
+        highlight.style.height = (r.height + pad * 2) + 'px';
+        highlight.style.display = 'block';
+        posTooltip(r, step.pos);
+      }, 120);
+    } else {
+      highlight.style.display = 'none';
+      posTooltip(null, step.pos);
+    }
+  }
+
+  function posTooltip(r, pos) {
+    var tt = tooltip;
+    var ttW = 310, margin = 14;
+    var vpW = window.innerWidth, vpH = window.innerHeight;
+
+    tt.style.transform = '';
+
+    if (pos === 'center' || !r) {
+      tt.style.top       = '50%';
+      tt.style.left      = '50%';
+      tt.style.transform = 'translate(-50%, -50%)';
+      tt.style.display   = 'block';
+      return;
+    }
+
+    var top = 0, left = 0;
+
+    if (pos === 'right') {
+      left = r.right + margin;
+      top  = r.top + r.height / 2 - 100;
+    } else if (pos === 'bottom') {
+      left = r.left;
+      top  = r.bottom + margin;
+    } else if (pos === 'top') {
+      left = r.left;
+      top  = r.top - margin - 220;
+    }
+
+    // Boundary clamp
+    if (left + ttW + margin > vpW) left = vpW - ttW - margin;
+    if (left < margin) left = margin;
+    if (top < margin) top = margin;
+    if (top + 260 > vpH) top = vpH - 260 - margin;
+
+    tt.style.left    = left + 'px';
+    tt.style.top     = top  + 'px';
+    tt.style.display = 'block';
+  }
+
+  window.tourStart = function() {
+    steps = validSteps();
+    cur   = 0;
+    backdrop.style.display  = 'block';
+    highlight.style.display = 'none';
+    tooltip.style.display   = 'block';
+    render();
+    document.addEventListener('keydown', onKey);
+  };
+
+  window.tourNext = function() {
+    if (cur >= steps.length - 1) { tourEnd(); return; }
+    cur++;
+    render();
+  };
+
+  window.tourPrev = function() {
+    if (cur <= 0) return;
+    cur--;
+    render();
+  };
+
+  window.tourEnd = function() {
+    backdrop.style.display  = 'none';
+    highlight.style.display = 'none';
+    tooltip.style.display   = 'none';
+    document.removeEventListener('keydown', onKey);
+    try { localStorage.setItem('phixtra_tour_done', '1'); } catch(e){}
+  };
+
+  function onKey(e) {
+    if (e.key === 'Escape')     { tourEnd(); }
+    if (e.key === 'ArrowRight') { tourNext(); }
+    if (e.key === 'ArrowLeft')  { tourPrev(); }
+  }
+
+  // Auto-start on dashboard for first-time visitors
+  document.addEventListener('DOMContentLoaded', function() {
+    var isDash = window.location.pathname.indexOf('/dashboard') !== -1;
+    var done   = false;
+    try { done = !!localStorage.getItem('phixtra_tour_done'); } catch(e){}
+    if (isDash && !done) {
+      setTimeout(tourStart, 800);
+    }
+  });
+})();
+</script>
+
+<!-- ══════════════ PORTAL SEARCH ══════════════ -->
+<script>
+(function(){
+  var INDEX = [
+    { icon:'📊', title:'Dashboard',             desc:'Overview, stats and WhatsApp status',           url:'{{ url_for("portal.dashboard") }}',                  tags:'home overview live stats kpi' },
+    { icon:'💬', title:'Conversations',          desc:'WhatsApp chats and customer messages',          url:'{{ url_for("portal.my_inbox") }}',                   tags:'inbox messages chat unread replies' },
+    { icon:'📣', title:'Campaigns',              desc:'Send WhatsApp broadcast messages',              url:'{{ url_for("portal.whatsapp_campaigns") }}',         tags:'broadcast blast promotions bulk send' },
+    { icon:'📊', title:'Campaign Reports',       desc:'See how your campaigns performed',              url:'{{ url_for("portal.whatsapp_campaigns_reports") }}', tags:'campaign analytics results' },
+    { icon:'👥', title:'Contacts',               desc:'View and manage all your customers',            url:'{{ url_for("portal.whatsapp_contacts") }}',          tags:'customers phone numbers contacts list' },
+    { icon:'🔥', title:'Leads',                  desc:'Customers with strong buying intent',           url:'{{ url_for("portal.leads_page") }}',                 tags:'hot warm cold intent prospects pipeline' },
+    { icon:'🧾', title:'Orders',                 desc:'View all orders and purchase history',          url:'{{ url_for("portal.orders") }}',                     tags:'sales purchases transactions history' },
+    { icon:'📱', title:'WhatsApp Connect',       desc:'Connect or manage your WhatsApp number',       url:'{{ url_for("portal.whatsapp_connect") }}',           tags:'connect phone qr code number link setup' },
+    { icon:'📥', title:'Agent Inbox',            desc:'WhatsApp messages needing a human reply',      url:'{{ url_for("portal.whatsapp_inbox") }}',             tags:'handoff human agent live reply inbox' },
+    { icon:'📊', title:'Handoff Reports',        desc:'Response times, missed handoffs, performance',  url:'{{ url_for("portal.whatsapp_reports") }}',           tags:'handoff response time missed reports analytics' },
+    { icon:'📈', title:'WhatsApp Report',        desc:'Usage stats for your WhatsApp channel',        url:'{{ url_for("portal.reports_page") }}',               tags:'usage stats messages sent received analytics' },
+    { icon:'📋', title:'WhatsApp Plan',          desc:'View or upgrade your WhatsApp plan',           url:'{{ url_for("portal.billing_plans") }}',              tags:'plan upgrade subscription quota limit whatsapp' },
+    { icon:'🏪', title:'My Products',            desc:'Add, edit and manage your products',           url:'{{ url_for("portal.products") }}',                   tags:'products inventory catalogue stock add edit' },
+    { icon:'👤', title:'My Customers',           desc:'View your customer list and profiles',         url:'{{ url_for("portal.customers") }}',                  tags:'customers buyers profiles crm list' },
+    { icon:'💰', title:'Discount Settings',      desc:'Set WhatsApp discount offers',                 url:'{{ url_for("portal.wa_discount_settings") }}',       tags:'discount promo offer coupon price sale' },
+    { icon:'🗂️', title:'Data Sources',           desc:'Upload files and knowledge base documents',    url:'{{ url_for("portal.data_sources") }}',               tags:'upload files pdf knowledge base documents train ai' },
+    { icon:'🏬', title:'Store Information',      desc:'Update your business name and details',        url:'{{ url_for("portal.store_info") }}',                 tags:'business name address details profile store info' },
+    { icon:'💳', title:'Payment Gateways',       desc:'Connect Stripe or Paystack',                   url:'{{ url_for("portal.payment_settings") }}',           tags:'payment gateway stripe paystack checkout' },
+    { icon:'🔑', title:'API Keys',               desc:'Manage your AI integration keys',              url:'{{ url_for("portal.api_keys") }}',                   tags:'api keys developer integration access token' },
+    { icon:'🤖', title:'AI System Instruction',  desc:'Customise your AI assistant personality',      url:'{{ url_for("portal.ai_instruction") }}',             tags:'ai bot personality system prompt instruction custom behaviour' },
+    { icon:'🔀', title:'Handoff Rules',          desc:'When the AI should pass to a human agent',    url:'{{ url_for("portal.handoff_rules") }}',              tags:'handoff rules human agent escalate transfer live' },
+    {% if customer.tenant_source_type != 'whatsapp' %}
+    { icon:'✅', title:'Verified Specs',         desc:'Product specs the AI can confirm accurately',  url:'{{ url_for("portal.verified_specs_settings") }}',    tags:'verified specs product guarantee confirm accuracy' },
+    {% endif %}
+    { icon:'📋', title:'Subscription Plans',     desc:'View and manage your subscription',            url:'{{ url_for("portal.billing_subscribe") }}',          tags:'subscription plan monthly upgrade downgrade' },
+    { icon:'💳', title:'Buy Credits',            desc:'Top up your AI credit balance',               url:'{{ url_for("portal.billing") }}',                    tags:'credits buy top up balance tokens recharge' },
+    { icon:'🧾', title:'Invoices',               desc:'Download your billing receipts',               url:'{{ url_for("portal.invoices") }}',                   tags:'invoice receipt billing history download pdf payment' },
+    { icon:'📚', title:'Help & Tutorials',       desc:'Guides to get the most from PhiXtra',         url:'{{ url_for("portal.tutorials") }}',                  tags:'help guide tutorial support how to faq learn' },
+    { icon:'⚙️', title:'Account Settings',       desc:'Update profile, password and preferences',    url:'{{ url_for("portal.settings") }}',                   tags:'settings account profile password email notification preferences' },
+    {% if _has_woocommerce %}
+    { icon:'📂', title:'My Catalogue',           desc:'Browse and select products from catalogue',    url:'{{ url_for("portal.catalogue_browse") }}',           tags:'catalogue browse products select' },
+    { icon:'🔄', title:'WooCommerce Sync',       desc:'Sync products from your WordPress store',     url:'{{ url_for("portal.woo_sync") }}',                   tags:'woocommerce sync wordpress products import plugin' },
+    { icon:'🛒', title:'Cart Recovery',          desc:'Recover abandoned shopping carts',             url:'{{ url_for("portal.cart_recovery_dashboard") }}',    tags:'abandoned cart recovery settings whatsapp' },
+    { icon:'✉️', title:'Cart Email Templates',   desc:'Email messages sent for cart recovery',       url:'{{ url_for("portal.cart_recovery_email_template") }}',tags:'email template cart recovery message' },
+    { icon:'📈', title:'Analytics',              desc:'Sales and performance analytics',              url:'{{ url_for("portal.analytics") }}',                  tags:'analytics performance charts graphs data sales' },
+    { icon:'📊', title:'AI Usage Report',        desc:'How many AI credits you have used',           url:'{{ url_for("portal.report_usage") }}',               tags:'usage report ai tokens credits consumption' },
+    { icon:'🛒', title:'Cart Recovery Report',   desc:'How many carts were recovered',               url:'{{ url_for("portal.report_cart") }}',                tags:'cart recovery report results conversions' },
+    { icon:'💰', title:'Billing Summary',        desc:'Revenue and billing history report',           url:'{{ url_for("portal.report_billing") }}',             tags:'billing summary revenue report' },
+    { icon:'💬', title:'Chat Archive',           desc:'Browse all past AI conversations',             url:'{{ url_for("portal.chat_archive") }}',               tags:'chat archive history past conversations log' },
+    {% endif %}
+    {% if _tenant_features and _tenant_features.get('whatsapp_message_templates') %}
+    { icon:'📝', title:'Message Templates',      desc:'WhatsApp pre-approved message templates',     url:'{{ url_for("portal.whatsapp_templates") }}',         tags:'templates whatsapp message pre-approved broadcast' },
+    {% endif %}
+  ];
+
+  var input   = document.getElementById('sbSearchInput');
+  var results = document.getElementById('sbSearchResults');
+  var focused = -1;
+
+  if (!input || !results) return;
+
+  function getItems() { return results.querySelectorAll('.sb-search-item'); }
+
+  function positionDropdown() {
+    var r = input.getBoundingClientRect();
+    results.style.top   = (r.bottom + 4) + 'px';
+    results.style.left  = r.left + 'px';
+    results.style.width = r.width + 'px';
+  }
+
+  function render(query) {
+    var q = query.toLowerCase().trim();
+    if (!q) { results.classList.remove('open'); return; }
+
+    var matches = INDEX.filter(function(item) {
+      var hay = (item.title + ' ' + item.desc + ' ' + item.tags).toLowerCase();
+      return q.split(/\s+/).every(function(w) { return hay.indexOf(w) !== -1; });
+    }).slice(0, 6);
+
+    if (!matches.length) {
+      results.innerHTML = '<div class="sb-search-empty">No results for &ldquo;<strong>' +
+        q.replace(/</g, '&lt;') + '</strong>&rdquo;</div>';
+    } else {
+      results.innerHTML = matches.map(function(m, i) {
+        return '<a class="sb-search-item" href="' + m.url + '" data-idx="' + i + '">' +
+          '<span class="sb-search-item-icon">' + m.icon + '</span>' +
+          '<span class="sb-search-item-body">' +
+            '<div class="sb-search-item-title">' + m.title + '</div>' +
+            '<div class="sb-search-item-desc">' + m.desc + '</div>' +
+          '</span></a>';
+      }).join('');
+    }
+
+    focused = -1;
+    positionDropdown();
+    results.classList.add('open');
+  }
+
+  function focusItem(idx) {
+    var all = getItems();
+    all.forEach(function(el) { el.classList.remove('sr-focused'); });
+    if (idx >= 0 && idx < all.length) {
+      all[idx].classList.add('sr-focused');
+      all[idx].scrollIntoView({ block: 'nearest' });
+    }
+    focused = idx;
+  }
+
+  function closeResults() { results.classList.remove('open'); focused = -1; }
+
+  input.addEventListener('input', function() { render(this.value); });
+
+  input.addEventListener('keydown', function(e) {
+    var all = getItems();
+    if (e.key === 'ArrowDown') {
+      e.preventDefault(); focusItem(Math.min(focused + 1, all.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault(); focusItem(Math.max(focused - 1, 0));
+    } else if (e.key === 'Enter') {
+      if (focused >= 0 && all[focused]) all[focused].click();
+    } else if (e.key === 'Escape') {
+      input.blur(); closeResults();
+    }
+  });
+
+  input.addEventListener('focus', function() {
+    if (this.value.trim()) { positionDropdown(); results.classList.add('open'); }
+  });
+
+  document.addEventListener('click', function(e) {
+    if (!input.contains(e.target) && !results.contains(e.target)) closeResults();
+  });
+
+  window.addEventListener('resize', function() {
+    if (results.classList.contains('open')) positionDropdown();
+  });
+
+  // Global Ctrl+K / Cmd+K shortcut
+  document.addEventListener('keydown', function(e) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      e.preventDefault();
+      input.focus();
+      input.select();
+    }
+  });
+})();
+</script>
+{% endif %}
 
 </body>
 </html>
