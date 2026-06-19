@@ -236,7 +236,7 @@
       <div>
         <div style="font-size:13.5px;font-weight:700;margin-bottom:2px">Government-Issued ID</div>
         <div style="font-size:12px;color:#6b7280;line-height:1.45">
-          Voter's Card, Driver's Licence, or International Passport<br>
+          NIN, Voter's Card, Driver's Licence, or International Passport<br>
           <span style="color:#9ca3af">Accepted formats: JPG, PNG or PDF</span>
         </div>
       </div>
@@ -256,117 +256,6 @@
         <div style="font-size:13.5px;font-weight:700;margin-bottom:2px">Highest Qualification</div>
         <div style="font-size:12px;color:#6b7280;line-height:1.45">Just select your highest level of education from a list — no document needed</div>
       </div>
-    </div>
-  </div>
-
-  <!-- What your clients will need -->
-  <div style="margin-bottom:28px">
-    <div style="font-size:13px;font-weight:700;color:#9ca3af;text-transform:uppercase;
-                letter-spacing:.08em;margin-bottom:10px;margin-top:28px;
-                padding-top:24px;border-top:1px solid #f0f1f3">What your clients will need</div>
-    <div style="font-size:13px;color:#6b7280;margin-bottom:14px;line-height:1.55">
-      Before you pitch PhiXtra AI to a business, make sure they have all four of these. Tap each one to see how to help them get it.
-    </div>
-    <div style="display:flex;flex-direction:column;gap:8px">
-
-      <div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
-        <button type="button" onclick="toggleReqReg(this)"
-                style="width:100%;background:#f8f9fb;border:none;padding:13px 14px;
-                       display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;font-family:inherit">
-          <span style="font-size:18px;flex-shrink:0">📱</span>
-          <div style="flex:1">
-            <div style="font-size:13.5px;font-weight:700;color:#030C18">A phone number only for the business</div>
-            <div style="font-size:12px;color:#6b7280;margin-top:2px">Not a personal number — just for business WhatsApp</div>
-          </div>
-          <span style="font-size:12px;color:#9ca3af;flex-shrink:0;transition:transform .2s" class="reg-arrow">▼</span>
-        </button>
-        <div class="reg-steps" style="display:none;padding:14px 16px 16px;border-top:1px solid #e5e7eb;background:#fff">
-          <ol style="font-size:12.5px;line-height:1.7;color:#030C18;padding-left:18px;margin:0;display:flex;flex-direction:column;gap:5px">
-            <li>Get a <strong>brand new SIM card</strong> or a number that has <strong>never been used on WhatsApp</strong>. This number is just for business.</li>
-            <li>If it's already on WhatsApp, they must <strong>delete that WhatsApp account</strong> on the number first.</li>
-            <li>Keep the SIM active — they'll need to receive a <strong>one-time code (OTP)</strong> during setup.</li>
-            <li>Share the number with PhiXtra — we'll connect it to the WhatsApp Business API during onboarding.</li>
-          </ol>
-          <div style="margin-top:10px;padding:9px 11px;background:#fef9c3;border-radius:8px;border:1px solid #fde68a;font-size:11.5px;color:#92400e">
-            💡 MTN, Glo, Airtel, and 9mobile SIMs all work.
-          </div>
-        </div>
-      </div>
-
-      <div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
-        <button type="button" onclick="toggleReqReg(this)"
-                style="width:100%;background:#f8f9fb;border:none;padding:13px 14px;
-                       display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;font-family:inherit">
-          <span style="font-size:18px;flex-shrink:0">🏢</span>
-          <div style="flex:1">
-            <div style="font-size:13.5px;font-weight:700;color:#030C18">A Meta Business Account</div>
-            <div style="font-size:12px;color:#6b7280;margin-top:2px">A free account that proves the business is real to Meta (Facebook)</div>
-          </div>
-          <span style="font-size:12px;color:#9ca3af;flex-shrink:0;transition:transform .2s" class="reg-arrow">▼</span>
-        </button>
-        <div class="reg-steps" style="display:none;padding:14px 16px 16px;border-top:1px solid #e5e7eb;background:#fff">
-          <ol style="font-size:12.5px;line-height:1.7;color:#030C18;padding-left:18px;margin:0;display:flex;flex-direction:column;gap:5px">
-            <li>Go to <strong>business.facebook.com</strong> on a computer and click <strong>"Create Account"</strong>.</li>
-            <li>Enter the business name, owner's full name, and business email. Click Submit.</li>
-            <li>Check the email inbox — click the <strong>confirmation link</strong> Meta sends.</li>
-            <li>Save the login details safely — they'll need them again during setup.</li>
-            <li>Find their <strong>Meta Business ID</strong>: Settings → Business Info — it's a long number at the top.</li>
-          </ol>
-          <div style="margin-top:10px;padding:9px 11px;background:#fef9c3;border-radius:8px;border:1px solid #fde68a;font-size:11.5px;color:#92400e">
-            💡 They need a personal Facebook account first. It's free to create one.
-          </div>
-        </div>
-      </div>
-
-      <div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
-        <button type="button" onclick="toggleReqReg(this)"
-                style="width:100%;background:#f8f9fb;border:none;padding:13px 14px;
-                       display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;font-family:inherit">
-          <span style="font-size:18px;flex-shrink:0">🔗</span>
-          <div style="flex:1">
-            <div style="font-size:13.5px;font-weight:700;color:#030C18">WhatsApp number connected to Meta</div>
-            <div style="font-size:12px;color:#6b7280;margin-top:2px">The business number must be linked to their Meta Business Account</div>
-          </div>
-          <span style="font-size:12px;color:#9ca3af;flex-shrink:0;transition:transform .2s" class="reg-arrow">▼</span>
-        </button>
-        <div class="reg-steps" style="display:none;padding:14px 16px 16px;border-top:1px solid #e5e7eb;background:#fff">
-          <ol style="font-size:12.5px;line-height:1.7;color:#030C18;padding-left:18px;margin:0;display:flex;flex-direction:column;gap:5px">
-            <li>Log in to <strong>business.facebook.com</strong> and go to Settings → Business Assets → WhatsApp Accounts.</li>
-            <li>Click <strong>"Add"</strong> and enter the business phone number.</li>
-            <li>Meta will send an <strong>OTP to that number</strong> — enter it to confirm.</li>
-            <li>Share the phone number and Meta Business ID with PhiXtra to complete the connection.</li>
-          </ol>
-          <div style="margin-top:10px;padding:9px 11px;background:#fef9c3;border-radius:8px;border:1px solid #fde68a;font-size:11.5px;color:#92400e">
-            💡 Meta verification can take 1–2 days. This is normal — PhiXtra support will guide them through it.
-          </div>
-        </div>
-      </div>
-
-      <div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
-        <button type="button" onclick="toggleReqReg(this)"
-                style="width:100%;background:#f8f9fb;border:none;padding:13px 14px;
-                       display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;font-family:inherit">
-          <span style="font-size:18px;flex-shrink:0">📊</span>
-          <div style="flex:1">
-            <div style="font-size:13.5px;font-weight:700;color:#030C18">A product list in a spreadsheet</div>
-            <div style="font-size:12px;color:#6b7280;margin-top:2px">An Excel or Google Sheets file with all their products and prices</div>
-          </div>
-          <span style="font-size:12px;color:#9ca3af;flex-shrink:0;transition:transform .2s" class="reg-arrow">▼</span>
-        </button>
-        <div class="reg-steps" style="display:none;padding:14px 16px 16px;border-top:1px solid #e5e7eb;background:#fff">
-          <ol style="font-size:12.5px;line-height:1.7;color:#030C18;padding-left:18px;margin:0;display:flex;flex-direction:column;gap:5px">
-            <li>Open <strong>Microsoft Excel</strong> or <strong>Google Sheets</strong> (free at sheets.google.com).</li>
-            <li>Add these headings in the first row: <strong>Product Name | Price | Description | In Stock (Yes or No)</strong>.</li>
-            <li>Fill in one product per row — e.g. iPhone 14 | ₦850,000 | Brand new, 128GB, Black | Yes.</li>
-            <li>Save as <strong>.xlsx or .csv</strong>. In Google Sheets: File → Download → Microsoft Excel.</li>
-            <li>This file gets uploaded to PhiXtra during onboarding under <strong>"Product Import"</strong>.</li>
-          </ol>
-          <div style="margin-top:10px;padding:9px 11px;background:#fef9c3;border-radius:8px;border:1px solid #fde68a;font-size:11.5px;color:#92400e">
-            💡 The more detail in the description, the smarter the AI. Encourage: sizes, colours, conditions, warranties.
-          </div>
-        </div>
-      </div>
-
     </div>
   </div>
 
@@ -645,6 +534,7 @@
       <label class="lbl">Document Type <span class="req">*</span></label>
       <select name="id_document_type" id="id_document_type">
         <option value="">Select document type</option>
+        <option value="NIN">National Identity Number (NIN)</option>
         <option value="Voter's Card">Voter's Card</option>
         <option value="Driver's Licence">Driver's Licence</option>
         <option value="International Passport">International Passport</option>
@@ -962,16 +852,6 @@ function buildReview() {
     h += '</div></div>';
   });
   document.getElementById('reviewSummary').innerHTML = h;
-}
-
-/* Client requirements accordion on pre-screen */
-function toggleReqReg(btn) {
-  var item  = btn.closest('div[style*="border:1px solid #e5e7eb"]');
-  var steps = item.querySelector('.reg-steps');
-  var arrow = btn.querySelector('.reg-arrow');
-  var open  = steps.style.display !== 'none';
-  steps.style.display = open ? 'none' : 'block';
-  arrow.style.transform = open ? '' : 'rotate(180deg)';
 }
 
 /* Set max DOB to 18 years ago */
