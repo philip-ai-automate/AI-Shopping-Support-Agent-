@@ -137,7 +137,10 @@
 
 <div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
   <h1 class="section-title">Ambassadors</h1>
-  <button onclick="openChecklistModal()" class="btn btn-sm">📋 Client Checklist</button>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <a href="{{ url_for('portal_admin.ambassador_report') }}" class="btn btn-sm">📊 Reports</a>
+    <button onclick="openChecklistModal()" class="btn btn-sm">📋 Client Checklist</button>
+  </div>
 </div>
 
 <!-- ── Client Requirements Checklist Modal ── -->

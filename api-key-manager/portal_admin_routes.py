@@ -16,7 +16,7 @@ from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, send_file, Response)
 
 from db import get_db_connection, insert_audit_log
-from portal_utils import money_fmt, tokens_to_credits, credits_to_tokens
+from portal_utils import money_fmt, tokens_to_credits, credits_to_tokens, send_email_with_attachment
 
 portal_admin_bp = Blueprint("portal_admin", __name__)
 
@@ -168,6 +168,14 @@ def customer_detail(customer_id: int):
     except Exception:
         tenant_features = {}
 
+    onboarding_other = None
+    try:
+        cur.execute("SELECT onboarding_other FROM tenants WHERE id=%s", (tenant_id,))
+        ob_row = cur.fetchone() or {}
+        onboarding_other = ob_row.get("onboarding_other") or None
+    except Exception:
+        onboarding_other = None
+
     cur.execute("""
         SELECT id, website, key_type, is_active, token_limit, tokens_used,
                trial_activated_at, trial_expires_at, created_at
@@ -233,6 +241,7 @@ def customer_detail(customer_id: int):
                            doc_counts=doc_counts,
                            all_plans=all_plans,
                            msgs_used=msgs_used,
+                           onboarding_other=onboarding_other,
                            admin_new_plain_key=session.pop("admin_new_plain_key", None))
 
 
@@ -550,11 +559,14 @@ def api_keys():
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    # Read api_key_plain from audit_logs WHERE action='create_key'
-    # This is the same table that app.py (keys.phixtra.com) writes to.
+    # Use ak.api_key_plain (live value from api_keys) so admin always sees
+    # the key that actually authenticates, not the audit-log snapshot which
+    # can diverge if a key was regenerated after creation.
     if q:
         cur.execute("""
-            SELECT al.id, al.api_key_plain, al.api_key_last4, al.website, al.key_type,
+            SELECT al.id,
+                   COALESCE(ak.api_key_plain, al.api_key_plain) AS api_key_plain,
+                   al.api_key_last4, al.website, al.key_type,
                    al.tenant_id, al.api_key_id, al.created_at, al.admin_username, al.details,
                    t.name AS tenant_name, t.domain,
                    ak.is_active, ak.tokens_used, ak.token_limit,
@@ -571,7 +583,9 @@ def api_keys():
             (f"%{q}%", f"%{q}%", f"%{q}%"))
     else:
         cur.execute("""
-            SELECT al.id, al.api_key_plain, al.api_key_last4, al.website, al.key_type,
+            SELECT al.id,
+                   COALESCE(ak.api_key_plain, al.api_key_plain) AS api_key_plain,
+                   al.api_key_last4, al.website, al.key_type,
                    al.tenant_id, al.api_key_id, al.created_at, al.admin_username, al.details,
                    t.name AS tenant_name, t.domain,
                    ak.is_active, ak.tokens_used, ak.token_limit,
@@ -633,7 +647,16 @@ def api_keys_reactivate(key_id: int):
     k = cur.fetchone()
     if k:
         cur2 = conn.cursor()
-        cur2.execute("UPDATE api_keys SET is_active=TRUE WHERE id=%s", (key_id,))
+        if k.get("key_type") == "trial":
+            default_days = _get_trial_default_days()
+            from datetime import datetime as _dt, timedelta
+            new_expiry = _dt.utcnow() + timedelta(days=default_days)
+            cur2.execute(
+                "UPDATE api_keys SET is_active=TRUE, trial_expires_at=%s WHERE id=%s",
+                (new_expiry, key_id)
+            )
+        else:
+            cur2.execute("UPDATE api_keys SET is_active=TRUE WHERE id=%s", (key_id,))
         conn.commit()
         cur2.close()
         insert_audit_log(admin_username=_admin_user(), action="admin_reactivate_key",
@@ -3071,3 +3094,573 @@ def merchant_signup_qr():
     return send_file(buf, mimetype="image/png",
                      as_attachment=as_dl,
                      download_name="phixtra-merchant-signup-qr.png")
+
+
+# ── Ambassador Approvals ───────────────────────────────────────────────────
+
+@portal_admin_bp.route("/ambassadors", methods=["GET"])
+def ambassadors():
+    r = _require_admin()
+    if r: return r
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT a.*,
+               (SELECT COUNT(*) FROM tenants t WHERE t.ref_code = a.ref_code AND t.status='active') AS active_clients,
+               (SELECT COALESCE(SUM(commission_amount),0) FROM ambassador_commissions ac WHERE ac.ambassador_id = a.id) AS total_earned
+        FROM ambassadors a
+        ORDER BY CASE a.status WHEN 'pending' THEN 0 WHEN 'active' THEN 1 ELSE 2 END, a.created_at DESC
+    """)
+    ambs = cur.fetchall() or []
+    cur.close(); conn.close()
+    return render_template("portal/admin_ambassadors.html", ambassadors=ambs)
+
+
+@portal_admin_bp.route("/ambassadors/report", methods=["GET"])
+def ambassador_report():
+    r = _require_admin()
+    if r: return r
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT a.id, a.first_name, a.last_name, a.email, a.status,
+               (SELECT COUNT(*) FROM tenants t WHERE t.ref_code = a.ref_code AND t.status='active') AS active_clients,
+               (SELECT COALESCE(SUM(commission_amount),0) FROM ambassador_commissions ac WHERE ac.ambassador_id = a.id) AS total_earned
+        FROM ambassadors a
+        ORDER BY CASE a.status WHEN 'pending' THEN 0 WHEN 'active' THEN 1 ELSE 2 END, a.last_name, a.first_name
+    """)
+    ambs = cur.fetchall() or []
+    cur.close(); conn.close()
+    counts = {
+        "all":       len(ambs),
+        "active":    sum(1 for a in ambs if a["status"] == "active"),
+        "pending":   sum(1 for a in ambs if a["status"] == "pending"),
+        "suspended": sum(1 for a in ambs if a["status"] == "suspended"),
+        "rejected":  sum(1 for a in ambs if a["status"] == "rejected"),
+    }
+    return render_template("portal/admin_ambassador_report.html", ambassadors=ambs, counts=counts)
+
+
+@portal_admin_bp.route("/ambassadors/report/download", methods=["POST"])
+def ambassador_report_download():
+    r = _require_admin()
+    if r: return r
+
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from datetime import date as _date
+
+    amb_ids_raw = request.form.getlist("amb_ids")
+    if not amb_ids_raw:
+        flash("No ambassadors selected.", "warning")
+        return redirect(url_for("portal_admin.ambassador_report"))
+    try:
+        amb_ids = [int(x) for x in amb_ids_raw]
+    except ValueError:
+        flash("Invalid selection.", "danger")
+        return redirect(url_for("portal_admin.ambassador_report"))
+
+    include_personal  = "col_personal"  in request.form
+    include_contact   = "col_contact"   in request.form
+    include_location  = "col_location"  in request.form
+    include_bank      = "col_bank"      in request.form
+    include_id_info   = "col_id"        in request.form
+    include_earnings  = "col_earnings"  in request.form
+    include_referrals = "col_referrals" in request.form
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    placeholders = ",".join(["%s"] * len(amb_ids))
+    cur.execute(f"""
+        SELECT a.*,
+               (SELECT COUNT(*) FROM tenants t WHERE t.ref_code = a.ref_code AND t.status='active') AS active_clients,
+               (SELECT COUNT(*) FROM tenants t WHERE t.ref_code = a.ref_code) AS total_clients,
+               (SELECT COALESCE(SUM(commission_amount),0)
+                FROM ambassador_commissions ac WHERE ac.ambassador_id = a.id) AS total_earned,
+               (SELECT COUNT(*)
+                FROM ambassador_commissions ac WHERE ac.ambassador_id = a.id) AS commission_count
+        FROM ambassadors a
+        WHERE a.id IN ({placeholders})
+        ORDER BY a.last_name, a.first_name
+    """, amb_ids)
+    ambs = cur.fetchall() or []
+    cur.close(); conn.close()
+
+    # ── Build column list ───────────────────────────────────────────────────
+    headers = ["#", "Full Name", "Status", "Ref Code", "Joined"]
+    if include_personal:  headers += ["Date of Birth", "Gender", "Nationality", "Qualification"]
+    if include_contact:   headers += ["Email", "Phone", "WhatsApp"]
+    if include_location:  headers += ["Address", "Operating Location"]
+    if include_bank:      headers += ["Bank Name", "Account Number", "Account Name", "Sort Code", "SWIFT Code"]
+    if include_id_info:   headers += ["ID Document Type"]
+    if include_earnings:  headers += ["Total Earned (NGN)", "Commission Count"]
+    if include_referrals: headers += ["Active Clients", "Total Clients"]
+
+    # ── Workbook ────────────────────────────────────────────────────────────
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Ambassadors"
+
+    ink_fill    = PatternFill("solid", fgColor="030C18")
+    ink_font    = Font(color="FFFFFF", bold=True, size=11, name="Calibri")
+    thin_side   = Side(style="thin", color="D1D5DB")
+    cell_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+
+    STATUS_FILL = {
+        "active":    PatternFill("solid", fgColor="D1FAE5"),
+        "pending":   PatternFill("solid", fgColor="FEF9C3"),
+        "suspended": PatternFill("solid", fgColor="FEE2E2"),
+        "rejected":  PatternFill("solid", fgColor="F3F4F6"),
+    }
+
+    # Title row
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
+    tc = ws.cell(row=1, column=1, value="PhiXtra AI — Ambassador Report")
+    tc.font      = Font(bold=True, size=14, color="030C18", name="Calibri")
+    tc.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 30
+
+    # Subtitle row
+    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(headers))
+    sc = ws.cell(row=2, column=1,
+                 value=f"Generated: {_date.today().strftime('%d %B %Y')}  |  {len(ambs)} ambassador(s) selected")
+    sc.font      = Font(size=10, color="6B7280", name="Calibri")
+    sc.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[2].height = 18
+
+    # Header row
+    for col, h in enumerate(headers, 1):
+        c = ws.cell(row=3, column=col, value=h)
+        c.fill      = ink_fill
+        c.font      = ink_font
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        c.border    = cell_border
+    ws.row_dimensions[3].height = 30
+
+    # Data rows
+    for ridx, amb in enumerate(ambs, 4):
+        status = (amb.get("status") or "").lower()
+        sfill  = STATUS_FILL.get(status)
+        col    = [1]
+
+        def wc(val, fmt=None, center=False):
+            c = ws.cell(row=ridx, column=col[0], value=val)
+            c.border    = cell_border
+            c.alignment = Alignment(vertical="center",
+                                    horizontal="center" if center else "left")
+            if fmt:      c.number_format = fmt
+            if sfill and col[0] == 3: c.fill = sfill   # status cell only
+            col[0] += 1
+            return c
+
+        wc(ridx - 3, center=True)
+        wc(f"{amb.get('first_name','')} {amb.get('last_name','')}".strip())
+        wc((status or "").title(), center=True)
+        wc(amb.get("ref_code") or "", center=True)
+        joined = amb.get("created_at")
+        wc(joined.strftime("%d %b %Y") if joined else "", center=True)
+
+        if include_personal:
+            dob = amb.get("date_of_birth")
+            wc(dob.strftime("%d %b %Y") if dob else "", center=True)
+            wc(amb.get("gender") or "")
+            wc(amb.get("nationality") or "")
+            wc(amb.get("highest_qualification") or "")
+        if include_contact:
+            wc(amb.get("email") or "")
+            wc(amb.get("phone") or "")
+            wc(amb.get("whatsapp_number") or "")
+        if include_location:
+            a_cell = wc(amb.get("address") or "")
+            a_cell.alignment = Alignment(vertical="center", wrap_text=True)
+            wc(amb.get("location") or "")
+        if include_bank:
+            wc(amb.get("bank_name") or "")
+            wc(amb.get("account_number") or "")
+            wc(amb.get("account_name") or "")
+            wc(amb.get("sort_code") or "")
+            wc(amb.get("swift_code") or "")
+        if include_id_info:
+            wc(amb.get("id_document_type") or "")
+        if include_earnings:
+            wc(float(amb.get("total_earned") or 0), fmt='#,##0.00', center=True)
+            wc(int(amb.get("commission_count") or 0), center=True)
+        if include_referrals:
+            wc(int(amb.get("active_clients") or 0), center=True)
+            wc(int(amb.get("total_clients") or 0), center=True)
+
+        ws.row_dimensions[ridx].height = 20
+
+    # Column widths
+    col_widths = [5, 24, 12, 12, 12]
+    if include_personal:  col_widths += [14, 10, 14, 22]
+    if include_contact:   col_widths += [26, 16, 16]
+    if include_location:  col_widths += [32, 20]
+    if include_bank:      col_widths += [20, 16, 22, 12, 12]
+    if include_id_info:   col_widths += [20]
+    if include_earnings:  col_widths += [18, 16]
+    if include_referrals: col_widths += [14, 12]
+    for i, w in enumerate(col_widths, 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+    ws.freeze_panes = "A4"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    fname = f"phixtra-ambassadors-{_date.today().strftime('%Y%m%d')}.xlsx"
+    return send_file(buf,
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name=fname)
+
+
+@portal_admin_bp.route("/ambassadors/<int:amb_id>/approve", methods=["POST"])
+def ambassador_approve(amb_id: int):
+    r = _require_admin()
+    if r: return r
+    from datetime import date as _date
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM ambassadors WHERE id=%s", (amb_id,))
+    amb = cur.fetchone()
+    if amb:
+        cur2 = conn.cursor()
+        cur2.execute("""
+            UPDATE ambassadors
+               SET status='active', approved_at=NOW(), approved_by=%s, partnership_start=%s
+             WHERE id=%s
+        """, (_admin_user(), _date.today(), amb_id))
+        conn.commit()
+        cur2.close()
+        # Also upsert into sales_reps so they appear in the existing QR system
+        try:
+            cur3 = conn.cursor()
+            cur3.execute("""
+                INSERT INTO sales_reps (name, ref_code, email, active)
+                VALUES (%s, %s, %s, TRUE)
+                ON CONFLICT (ref_code) DO UPDATE SET active=TRUE
+            """, (f"{amb['first_name']} {amb['last_name']}", amb['ref_code'], amb['email']))
+            conn.commit()
+            cur3.close()
+        except Exception as _e:
+            conn.rollback()
+            print("⚠️ ambassador_approve sales_reps sync error:", _e)
+        # Create demo portal tenant for this ambassador
+        try:
+            from ambassador_demo import create_ambassador_demo
+            create_ambassador_demo(amb['id'], amb['first_name'], amb['ref_code'])
+        except Exception as _e:
+            print("⚠️ ambassador approval demo tenant creation failed:", _e)
+        # Send approval email
+        try:
+            from ambassador_routes import _send_approved_email
+            _send_approved_email(amb['first_name'], amb['email'], amb['ref_code'])
+        except Exception as _e:
+            print("⚠️ ambassador approval email failed:", _e)
+        flash(f"{amb['first_name']} {amb['last_name']} approved as ambassador.", "success")
+    cur.close(); conn.close()
+    return redirect(url_for("portal_admin.ambassadors"))
+
+
+@portal_admin_bp.route("/ambassadors/<int:amb_id>/suspend", methods=["POST"])
+def ambassador_suspend(amb_id: int):
+    r = _require_admin()
+    if r: return r
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("UPDATE ambassadors SET status='suspended' WHERE id=%s", (amb_id,))
+    conn.commit()
+    cur.close(); conn.close()
+    flash("Ambassador suspended.", "warning")
+    return redirect(url_for("portal_admin.ambassadors"))
+
+
+@portal_admin_bp.route("/ambassadors/<int:amb_id>/reactivate", methods=["POST"])
+def ambassador_reactivate(amb_id: int):
+    r = _require_admin()
+    if r: return r
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("UPDATE ambassadors SET status='active' WHERE id=%s", (amb_id,))
+    conn.commit()
+    cur.close(); conn.close()
+    flash("Ambassador reactivated.", "success")
+    return redirect(url_for("portal_admin.ambassadors"))
+
+
+@portal_admin_bp.route("/ambassadors/<int:amb_id>/reject", methods=["POST"])
+def ambassador_reject(amb_id: int):
+    r = _require_admin()
+    if r: return r
+    reason = (request.form.get("reason") or "").strip() or None
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("UPDATE ambassadors SET status='rejected', rejected_at=NOW(), rejected_reason=%s WHERE id=%s",
+                (reason, amb_id))
+    conn.commit()
+    cur.close(); conn.close()
+    flash("Ambassador application rejected.", "warning")
+    return redirect(url_for("portal_admin.ambassadors"))
+
+
+@portal_admin_bp.route("/ambassadors/<int:amb_id>/terminate", methods=["POST"])
+def ambassador_terminate(amb_id: int):
+    r = _require_admin()
+    if r: return r
+    reason = (request.form.get("reason") or "").strip() or None
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("UPDATE ambassadors SET status='terminated', terminated_at=NOW(), terminated_reason=%s WHERE id=%s",
+                (reason, amb_id))
+    conn.commit()
+    cur.close(); conn.close()
+    flash("Ambassador terminated.", "danger")
+    return redirect(url_for("portal_admin.ambassadors"))
+
+
+@portal_admin_bp.route("/ambassadors/<int:amb_id>/edit", methods=["POST"])
+def ambassador_edit(amb_id: int):
+    r = _require_admin()
+    if r: return r
+    f = request.form
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("""
+        UPDATE ambassadors SET
+            first_name=%s, last_name=%s, email=%s, phone=%s, whatsapp_number=%s,
+            date_of_birth=%s, gender=%s, nationality=%s, address=%s, location=%s,
+            highest_qualification=%s, bank_name=%s, account_number=%s,
+            account_name=%s, sort_code=%s, swift_code=%s
+        WHERE id=%s
+    """, (
+        (f.get("first_name") or "").strip(),
+        (f.get("last_name")  or "").strip(),
+        (f.get("email")      or "").strip().lower(),
+        (f.get("phone")      or "").strip() or None,
+        (f.get("whatsapp_number") or "").strip() or None,
+        (f.get("date_of_birth")   or "").strip() or None,
+        (f.get("gender")     or "").strip() or None,
+        (f.get("nationality") or "").strip() or None,
+        (f.get("address")    or "").strip() or None,
+        (f.get("location")   or "").strip() or None,
+        (f.get("highest_qualification") or "").strip() or None,
+        (f.get("bank_name")       or "").strip() or None,
+        (f.get("account_number")  or "").strip() or None,
+        (f.get("account_name")    or "").strip() or None,
+        (f.get("sort_code")  or "").strip() or None,
+        (f.get("swift_code") or "").strip() or None,
+        amb_id,
+    ))
+    conn.commit()
+    cur.close(); conn.close()
+    flash("Ambassador details updated.", "success")
+    return redirect(url_for("portal_admin.ambassadors"))
+
+
+@portal_admin_bp.route("/ambassadors/<int:amb_id>/detail")
+def ambassador_detail(amb_id: int):
+    r = _require_admin()
+    if r: return r
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT a.*,
+               (SELECT COUNT(*) FROM tenants t WHERE t.ref_code=a.ref_code AND t.status='active') AS active_clients,
+               (SELECT COALESCE(SUM(commission_amount),0) FROM ambassador_commissions ac WHERE ac.ambassador_id=a.id) AS total_earned
+        FROM ambassadors a WHERE a.id=%s
+    """, (amb_id,))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    if not row:
+        from flask import jsonify
+        return jsonify({"error": "Not found"}), 404
+    amb = dict(row)
+    for k, v in amb.items():
+        if hasattr(v, 'isoformat'):
+            amb[k] = v.isoformat()
+        elif v is None:
+            amb[k] = ""
+    from flask import jsonify
+    return jsonify(amb)
+
+
+@portal_admin_bp.route("/ambassadors/<int:amb_id>/id-doc")
+def ambassador_id_doc(amb_id: int):
+    r = _require_admin()
+    if r: return r
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT id_document_path FROM ambassadors WHERE id=%s", (amb_id,))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    if not row or not row.get("id_document_path"):
+        return "No document found", 404
+    import os as _os
+    from flask import send_from_directory
+    static_dir = _os.path.join(_os.path.dirname(__file__), "static")
+    return send_from_directory(static_dir, row["id_document_path"])
+
+
+# ── Sales Reps & QR Codes ──────────────────────────────────────────────────
+
+@portal_admin_bp.route("/sales-reps", methods=["GET", "POST"])
+def sales_reps():
+    r = _require_admin()
+    if r: return r
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    if request.method == "POST":
+        action = request.form.get("action", "")
+
+        if action == "create":
+            name     = (request.form.get("name") or "").strip()
+            ref_code = (request.form.get("ref_code") or "").strip().lower()
+            ref_code = ''.join(c for c in ref_code if c.isalnum() or c in "-_")
+            email    = (request.form.get("email") or "").strip().lower() or None
+            if not name or not ref_code:
+                flash("Name and ref code are required.", "danger")
+            else:
+                try:
+                    cur2 = conn.cursor()
+                    cur2.execute(
+                        "INSERT INTO sales_reps (name, ref_code, email) VALUES (%s, %s, %s)",
+                        (name, ref_code, email)
+                    )
+                    conn.commit()
+                    cur2.close()
+                    flash(f"Sales ambassador '{name}' created with code '{ref_code}'.", "success")
+                except psycopg2.errors.UniqueViolation:
+                    conn.rollback()
+                    flash("That ref code is already taken. Choose a different one.", "danger")
+
+        elif action == "toggle":
+            rep_id = request.form.get("rep_id")
+            cur2 = conn.cursor()
+            cur2.execute("UPDATE sales_reps SET active = NOT active WHERE id=%s", (rep_id,))
+            conn.commit()
+            cur2.close()
+
+        elif action == "delete":
+            rep_id = request.form.get("rep_id")
+            cur2 = conn.cursor()
+            cur2.execute("DELETE FROM sales_reps WHERE id=%s", (rep_id,))
+            conn.commit()
+            cur2.close()
+            flash("Sales ambassador deleted.", "success")
+
+        cur.close(); conn.close()
+        return redirect(url_for("portal_admin.sales_reps"))
+
+    # Load reps with signup counts
+    cur.execute("""
+        SELECT s.id, s.name, s.ref_code, s.email, s.active, s.created_at,
+               COUNT(t.id) AS signup_count
+        FROM sales_reps s
+        LEFT JOIN tenants t ON t.ref_code = s.ref_code
+        GROUP BY s.id
+        ORDER BY s.created_at DESC
+    """)
+    reps = cur.fetchall() or []
+    cur.close(); conn.close()
+
+    base_url = os.getenv("PORTAL_BASE_URL", "https://portal.phixtra.com")
+    return render_template("portal/admin_sales_reps.html", reps=reps, base_url=base_url)
+
+
+@portal_admin_bp.route("/sales-reps/<int:rep_id>/qr.png")
+def sales_rep_qr(rep_id: int):
+    r = _require_admin()
+    if r: return r
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT name, ref_code FROM sales_reps WHERE id=%s", (rep_id,))
+    rep = cur.fetchone()
+    cur.close(); conn.close()
+
+    if not rep:
+        return "Not found", 404
+
+    base_url = os.getenv("PORTAL_BASE_URL", "https://portal.phixtra.com")
+    url = f"{base_url}/register?ref={rep['ref_code']}"
+
+    import qrcode
+    qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=10, border=4)
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    as_dl = request.args.get("download") == "1"
+    safe_name = rep["name"].replace(" ", "-").lower()
+    return send_file(buf, mimetype="image/png",
+                     as_attachment=as_dl,
+                     download_name=f"phixtra-qr-{safe_name}.png")
+
+
+@portal_admin_bp.route("/sales-reps/<int:rep_id>/email-qr", methods=["POST"])
+def sales_rep_email_qr(rep_id: int):
+    r = _require_admin()
+    if r: return r
+
+    to_email = (request.form.get("to_email") or "").strip().lower()
+    if not to_email:
+        return {"error": "No email address provided."}, 400
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT name, ref_code FROM sales_reps WHERE id=%s", (rep_id,))
+    rep = cur.fetchone()
+
+    # Save the email address for future use
+    cur2 = conn.cursor()
+    cur2.execute("UPDATE sales_reps SET email=%s WHERE id=%s", (to_email, rep_id))
+    conn.commit()
+    cur2.close(); cur.close(); conn.close()
+
+    if not rep:
+        return {"error": "Sales ambassador not found."}, 404
+
+    base_url = os.getenv("PORTAL_BASE_URL", "https://portal.phixtra.com")
+    url      = f"{base_url}/register?ref={rep['ref_code']}"
+
+    import qrcode
+    qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=12, border=4)
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    png_bytes = buf.getvalue()
+
+    safe_name = rep["name"].replace(" ", "-").lower()
+    BRAND = "#030C18"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:560px">
+      <h2 style="color:{BRAND}">Your PhiXtra Ambassador QR Code</h2>
+      <p>Hi {rep['name']},</p>
+      <p>Here is your personal QR code. Share it with businesses — when they scan it and sign up,
+         they'll be linked to you automatically.</p>
+      <p><strong>Your referral link:</strong><br>
+         <a href="{url}" style="color:{BRAND}">{url}</a></p>
+      <p>The QR code PNG is attached to this email. You can print it, add it to slides,
+         or share it digitally.</p>
+      <p style="color:#888;font-size:12px">Questions? Contact support@phixtra.com</p>
+    </div>"""
+
+    ok = send_email_with_attachment(
+        to_email=to_email,
+        subject=f"Your PhiXtra Ambassador QR Code — {rep['name']}",
+        html_body=html,
+        attachment_bytes=png_bytes,
+        attachment_filename=f"phixtra-qr-{safe_name}.png",
+        text_body=f"Your PhiXtra referral link: {url}",
+    )
+
+    if ok:
+        return {"success": True, "message": f"QR code emailed to {to_email}."}, 200
+    else:
+        return {"error": "Failed to send email. Check SMTP settings."}, 500

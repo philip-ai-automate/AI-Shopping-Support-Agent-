@@ -1,0 +1,344 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Ambassador Report — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+  /* ── Layout ── */
+  .rpt-wrap{display:grid;grid-template-columns:1fr 300px;gap:20px;align-items:start}
+  @media(max-width:900px){.rpt-wrap{grid-template-columns:1fr}}
+
+  /* ── Filter tabs ── */
+  .rpt-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+  .rpt-tab{padding:7px 14px;border-radius:9px;border:1.5px solid var(--line);
+           background:#fff;font-size:12px;font-weight:700;color:var(--muted);
+           cursor:pointer;transition:.15s;white-space:nowrap}
+  .rpt-tab:hover{border-color:var(--ink);color:var(--ink)}
+  .rpt-tab.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .rpt-tab .tc{display:inline-block;background:rgba(255,255,255,0.2);
+               border-radius:20px;padding:1px 7px;font-size:10px;margin-left:4px}
+  .rpt-tab:not(.active) .tc{background:rgba(3,12,24,0.07);color:var(--ink)}
+
+  /* ── Search ── */
+  .rpt-search{position:relative;margin-bottom:12px}
+  .rpt-search input{width:100%;padding:9px 13px 9px 36px;border:1.5px solid var(--line);
+                    border-radius:10px;font-size:13px;outline:none;font-family:inherit;
+                    transition:border-color .15s;background:#fff}
+  .rpt-search input:focus{border-color:var(--ink)}
+  .rpt-search-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);
+                   font-size:14px;color:var(--muted)}
+
+  /* ── Table ── */
+  .rpt-table-wrap{overflow-x:auto;border:1.5px solid var(--line);border-radius:14px;background:#fff}
+  .rpt-table{width:100%;border-collapse:collapse;font-size:13px}
+  .rpt-table th{padding:10px 12px;text-align:left;font-size:11px;font-weight:700;
+                text-transform:uppercase;letter-spacing:.04em;color:var(--muted);
+                background:#f8f9fb;border-bottom:1.5px solid var(--line)}
+  .rpt-table th:first-child{border-radius:12px 0 0 0}
+  .rpt-table th:last-child{border-radius:0 12px 0 0}
+  .rpt-table td{padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+  .rpt-table tr:last-child td{border-bottom:none}
+  .rpt-table tr.amb-row{transition:background .12s;cursor:pointer}
+  .rpt-table tr.amb-row:hover{background:rgba(3,12,24,0.025)}
+  .rpt-table tr.amb-row.is-selected{background:#EFF6FF}
+  .rpt-table tr.amb-row.hidden-row{display:none}
+
+  /* ── Status badges ── */
+  .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700}
+  .badge-active{background:#D1FAE5;color:#065F46}
+  .badge-pending{background:#FEF9C3;color:#92400E}
+  .badge-suspended{background:#FEE2E2;color:#991B1B}
+  .badge-rejected{background:#F3F4F6;color:#6B7280}
+
+  /* ── Select-all row ── */
+  .sel-bar{display:flex;align-items:center;justify-content:space-between;
+           margin-bottom:8px;font-size:13px}
+  .sel-bar label{display:flex;align-items:center;gap:7px;font-weight:600;
+                 color:var(--ink);cursor:pointer;user-select:none}
+  .sel-count{font-size:12px;color:var(--muted);font-weight:500}
+
+  /* ── Right panel ── */
+  .rpt-panel{background:#fff;border:1.5px solid var(--line);border-radius:14px;padding:20px;
+             position:sticky;top:80px}
+  .rpt-panel-title{font-size:13px;font-weight:800;color:var(--ink);
+                   text-transform:uppercase;letter-spacing:.05em;margin-bottom:16px}
+  .col-group{margin-bottom:16px}
+  .col-group-label{font-size:11px;font-weight:700;color:var(--muted);
+                   text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+  .col-check{display:flex;align-items:center;gap:8px;padding:7px 10px;
+             border-radius:9px;cursor:pointer;transition:background .12s;
+             border:1.5px solid var(--line);margin-bottom:6px;
+             font-size:13px;font-weight:600;color:var(--ink)}
+  .col-check:hover{background:#f3f4f6;border-color:var(--ink)}
+  .col-check input{accent-color:var(--ink);width:15px;height:15px;cursor:pointer;flex-shrink:0}
+  .col-check small{font-size:11px;color:var(--muted);font-weight:400;display:block;
+                   margin-top:1px}
+
+  /* ── Download btn ── */
+  .btn-dl{width:100%;padding:12px;background:var(--ink);color:#fff;border:none;
+          border-radius:11px;font-size:14px;font-weight:700;cursor:pointer;
+          letter-spacing:-.2px;font-family:inherit;transition:background .15s;
+          display:flex;align-items:center;justify-content:center;gap:8px;margin-top:18px}
+  .btn-dl:hover{background:#1a2535}
+  .btn-dl:disabled{opacity:.5;cursor:not-allowed}
+  .btn-dl-sub{font-size:11px;color:var(--muted);text-align:center;margin-top:8px}
+
+  /* ── Empty state ── */
+  .rpt-empty{text-align:center;padding:48px 20px;color:var(--muted)}
+  .rpt-empty-icon{font-size:36px;margin-bottom:10px}
+</style>
+
+<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;
+     flex-wrap:wrap;gap:10px;margin-bottom:20px">
+  <div>
+    <h1 class="section-title">Ambassador Report</h1>
+    <div style="font-size:13px;color:var(--muted);margin-top:2px">
+      Select ambassadors and columns, then download as Excel
+    </div>
+  </div>
+  <a href="{{ url_for('portal_admin.ambassadors') }}" class="btn btn-sm">← Back to Ambassadors</a>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+    <div class="flash {{ cat }}" style="margin-bottom:14px">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+<form method="POST" action="{{ url_for('portal_admin.ambassador_report_download') }}" id="reportForm">
+
+<div class="rpt-wrap">
+
+  <!-- ── Left: ambassador selector ── -->
+  <div>
+    <!-- Status tabs -->
+    <div class="rpt-tabs">
+      <div class="rpt-tab active" data-filter="all" onclick="setFilter('all',this)">
+        All <span class="tc">{{ counts.all }}</span>
+      </div>
+      <div class="rpt-tab" data-filter="active" onclick="setFilter('active',this)">
+        Active <span class="tc">{{ counts.active }}</span>
+      </div>
+      <div class="rpt-tab" data-filter="pending" onclick="setFilter('pending',this)">
+        Pending <span class="tc">{{ counts.pending }}</span>
+      </div>
+      <div class="rpt-tab" data-filter="suspended" onclick="setFilter('suspended',this)">
+        Suspended <span class="tc">{{ counts.suspended }}</span>
+      </div>
+      <div class="rpt-tab" data-filter="rejected" onclick="setFilter('rejected',this)">
+        Rejected <span class="tc">{{ counts.rejected }}</span>
+      </div>
+    </div>
+
+    <!-- Search -->
+    <div class="rpt-search">
+      <span class="rpt-search-icon">🔍</span>
+      <input type="text" id="searchBox" placeholder="Search by name or email…"
+             oninput="applyFilters()">
+    </div>
+
+    <!-- Select-all bar -->
+    <div class="sel-bar">
+      <label>
+        <input type="checkbox" id="selectAll" onchange="toggleAll(this)">
+        Select all visible
+      </label>
+      <span class="sel-count" id="selCount">0 selected</span>
+    </div>
+
+    <!-- Table -->
+    <div class="rpt-table-wrap">
+      {% if ambassadors %}
+      <table class="rpt-table">
+        <thead>
+          <tr>
+            <th style="width:40px"></th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Status</th>
+            <th style="text-align:right">Active Clients</th>
+            <th style="text-align:right">Total Earned</th>
+          </tr>
+        </thead>
+        <tbody id="ambBody">
+          {% for a in ambassadors %}
+          <tr class="amb-row" data-status="{{ a.status }}"
+              data-search="{{ (a.first_name + ' ' + a.last_name + ' ' + a.email)|lower }}"
+              onclick="toggleRow(this)">
+            <td onclick="event.stopPropagation()">
+              <input type="checkbox" name="amb_ids" value="{{ a.id }}"
+                     class="amb-check" onchange="updateCount()">
+            </td>
+            <td style="font-weight:600">{{ a.first_name }} {{ a.last_name }}</td>
+            <td style="color:var(--muted)">{{ a.email }}</td>
+            <td><span class="badge badge-{{ a.status }}">{{ a.status|title }}</span></td>
+            <td style="text-align:right">{{ a.active_clients }}</td>
+            <td style="text-align:right;font-weight:600">
+              ₦{{ "{:,.0f}".format(a.total_earned|float) }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="rpt-empty">
+        <div class="rpt-empty-icon">👥</div>
+        <div>No ambassadors found.</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ── Right: column selector + download ── -->
+  <div class="rpt-panel">
+    <div class="rpt-panel-title">Columns to include</div>
+
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:14px;
+                padding:8px 10px;background:#f8f9fb;border-radius:8px;
+                border:1px solid var(--line)">
+      Always included: Full Name, Status, Ref Code, Joined Date
+    </div>
+
+    <div class="col-group">
+      <div class="col-group-label">People</div>
+
+      <label class="col-check">
+        <input type="checkbox" name="col_personal" checked>
+        <div>
+          Personal
+          <small>DOB · Gender · Nationality · Qualification</small>
+        </div>
+      </label>
+
+      <label class="col-check">
+        <input type="checkbox" name="col_contact" checked>
+        <div>
+          Contact
+          <small>Email · Phone · WhatsApp</small>
+        </div>
+      </label>
+
+      <label class="col-check">
+        <input type="checkbox" name="col_location" checked>
+        <div>
+          Location
+          <small>Address · Operating Location</small>
+        </div>
+      </label>
+    </div>
+
+    <div class="col-group">
+      <div class="col-group-label">Verification</div>
+
+      <label class="col-check">
+        <input type="checkbox" name="col_id" checked>
+        <div>
+          ID Info
+          <small>ID Document Type</small>
+        </div>
+      </label>
+
+      <label class="col-check">
+        <input type="checkbox" name="col_bank" checked>
+        <div>
+          Bank Details
+          <small>Bank · Account Number · Account Name</small>
+        </div>
+      </label>
+    </div>
+
+    <div class="col-group">
+      <div class="col-group-label">Performance</div>
+
+      <label class="col-check">
+        <input type="checkbox" name="col_earnings" checked>
+        <div>
+          Earnings
+          <small>Total Earned (₦) · Commission Count</small>
+        </div>
+      </label>
+
+      <label class="col-check">
+        <input type="checkbox" name="col_referrals" checked>
+        <div>
+          Referrals
+          <small>Active Clients · Total Clients</small>
+        </div>
+      </label>
+    </div>
+
+    <button type="submit" class="btn-dl" id="dlBtn" disabled>
+      <span>📥</span> <span id="dlBtnLabel">Download Excel</span>
+    </button>
+    <div class="btn-dl-sub" id="dlBtnSub">Select at least one ambassador</div>
+  </div>
+
+</div>
+</form>
+
+<script>
+let currentFilter = 'all';
+
+function setFilter(f, el) {
+  currentFilter = f;
+  document.querySelectorAll('.rpt-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  applyFilters();
+}
+
+function applyFilters() {
+  const q = (document.getElementById('searchBox').value || '').toLowerCase();
+  document.querySelectorAll('#ambBody tr.amb-row').forEach(row => {
+    const statusMatch = currentFilter === 'all' || row.dataset.status === currentFilter;
+    const searchMatch = !q || row.dataset.search.includes(q);
+    const hide = !statusMatch || !searchMatch;
+    row.classList.toggle('hidden-row', hide);
+    if (hide) {
+      const cb = row.querySelector('.amb-check');
+      if (cb) cb.checked = false;
+    }
+  });
+  updateCount();
+  syncSelectAll();
+}
+
+function toggleRow(row) {
+  if (row.classList.contains('hidden-row')) return;
+  const cb = row.querySelector('.amb-check');
+  if (cb) { cb.checked = !cb.checked; updateCount(); syncSelectAll(); }
+}
+
+function toggleAll(master) {
+  document.querySelectorAll('#ambBody tr.amb-row:not(.hidden-row) .amb-check')
+    .forEach(cb => cb.checked = master.checked);
+  updateCount();
+}
+
+function syncSelectAll() {
+  const visible  = document.querySelectorAll('#ambBody tr.amb-row:not(.hidden-row) .amb-check');
+  const checked  = document.querySelectorAll('#ambBody tr.amb-row:not(.hidden-row) .amb-check:checked');
+  const sa = document.getElementById('selectAll');
+  sa.indeterminate = checked.length > 0 && checked.length < visible.length;
+  sa.checked = visible.length > 0 && checked.length === visible.length;
+}
+
+function updateCount() {
+  syncSelectAll();
+  const n = document.querySelectorAll('.amb-check:checked').length;
+  document.getElementById('selCount').textContent = n + ' selected';
+  const btn = document.getElementById('dlBtn');
+  const sub = document.getElementById('dlBtnSub');
+  btn.disabled = n === 0;
+  if (n > 0) {
+    document.getElementById('dlBtnLabel').textContent =
+      'Download Excel (' + n + ' ambassador' + (n > 1 ? 's' : '') + ')';
+    sub.textContent = 'A .xlsx file will be downloaded';
+  } else {
+    document.getElementById('dlBtnLabel').textContent = 'Download Excel';
+    sub.textContent = 'Select at least one ambassador';
+  }
+}
+
+document.querySelectorAll('.amb-check').forEach(cb =>
+  cb.addEventListener('change', () => updateCount())
+);
+</script>
+{% endblock %}
