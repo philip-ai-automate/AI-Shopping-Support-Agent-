@@ -3357,6 +3357,12 @@ def ambassador_approve(amb_id: int):
             _send_approved_email(amb['first_name'], amb['email'], amb['ref_code'])
         except Exception as _e:
             print("⚠️ ambassador approval email failed:", _e)
+        # Send WhatsApp welcome message
+        try:
+            from ambassador_routes import _send_whatsapp_welcome
+            _send_whatsapp_welcome(amb['first_name'], amb.get('whatsapp_number', ''), amb['ref_code'])
+        except Exception as _e:
+            print("⚠️ ambassador WhatsApp welcome failed:", _e)
         flash(f"{amb['first_name']} {amb['last_name']} approved as ambassador.", "success")
     cur.close(); conn.close()
     return redirect(url_for("portal_admin.ambassadors"))
