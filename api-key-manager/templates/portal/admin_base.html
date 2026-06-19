@@ -155,6 +155,42 @@
             border-top:1px solid var(--line);margin-top:32px}
     .search-bar{display:flex;gap:8px;margin-bottom:18px}
     .search-bar input{max-width:320px}
+
+    /* ── Sidebar search ── */
+    .asb-search-wrap{padding:8px 10px 6px}
+    .asb-search-box{
+      display:flex;align-items:center;gap:8px;
+      background:rgba(3,12,24,0.04);border:1px solid var(--line);
+      border-radius:12px;padding:8px 12px;cursor:text;transition:.15s;
+    }
+    .asb-search-box:focus-within{
+      background:#fff;border-color:rgba(3,12,24,0.28);box-shadow:var(--ring);
+    }
+    .asb-search-icon{font-size:13px;flex-shrink:0;color:var(--muted);line-height:1}
+    .asb-search-input{
+      flex:1;border:none;background:none;outline:none;
+      font-size:13px;color:var(--txt);font-family:inherit;min-width:0;
+    }
+    .asb-search-input::placeholder{color:var(--muted)}
+    .asb-search-results{
+      display:none;position:fixed;
+      background:#fff;border:1px solid var(--line);border-radius:16px;
+      box-shadow:0 16px 52px rgba(3,12,24,0.16);z-index:9999;
+      overflow:hidden;max-height:360px;overflow-y:auto;
+    }
+    .asb-search-results.open{display:block}
+    .asb-search-item{
+      display:flex;align-items:flex-start;gap:10px;
+      padding:11px 14px;cursor:pointer;text-decoration:none;
+      border-bottom:1px solid rgba(3,12,24,0.06);transition:.1s;color:var(--txt);
+    }
+    .asb-search-item:last-child{border-bottom:none}
+    .asb-search-item:hover,.asb-search-item.sr-focused{background:rgba(3,12,24,0.04);text-decoration:none}
+    .asb-search-item-icon{font-size:18px;flex-shrink:0;line-height:1.3}
+    .asb-search-item-body{flex:1;min-width:0}
+    .asb-search-item-title{font-size:13px;font-weight:650;color:var(--ink);line-height:1.3}
+    .asb-search-item-desc{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.4}
+    .asb-search-empty{padding:20px 14px;text-align:center;color:var(--muted);font-size:13px}
   </style>
 </head>
 <body>
@@ -168,6 +204,16 @@
     <img src="{{ url_for('static', filename='portal/phixtra-logo.png') }}" alt="PhiXtra"/>
     <span class="asb-brand-label">Admin Portal</span>
   </a>
+
+  <!-- Search bar -->
+  <div class="asb-search-wrap">
+    <div class="asb-search-box" onclick="document.getElementById('asbSearchInput').focus()">
+      <span class="asb-search-icon">🔍</span>
+      <input type="text" class="asb-search-input" id="asbSearchInput"
+             placeholder="Search admin…" autocomplete="off" spellcheck="false"/>
+    </div>
+    <div class="asb-search-results" id="asbSearchResults"></div>
+  </div>
 
   <div class="asb-nav">
     <a class="asb-link {% if 'customers' in (request.endpoint or '') %}active{% endif %}"
@@ -213,6 +259,19 @@
     <a class="asb-link {% if request.endpoint=='portal_admin.recovery_queue' %}active{% endif %}"
        href="{{ url_for('portal_admin.recovery_queue') }}">
       <span class="asb-icon">🛒</span> Recovery
+    </a>
+    <a class="asb-link {% if request.endpoint=='portal_admin.ambassadors' %}active{% endif %}"
+       href="{{ url_for('portal_admin.ambassadors') }}">
+      <span class="asb-icon">🌟</span> Ambassadors
+    </a>
+    <a class="asb-link {% if request.endpoint=='portal_admin.ambassador_report' %}active{% endif %}"
+       href="{{ url_for('portal_admin.ambassador_report') }}"
+       style="padding-left:36px;font-size:12.5px">
+      <span class="asb-icon">📊</span> Reports
+    </a>
+    <a class="asb-link {% if request.endpoint=='portal_admin.sales_reps' %}active{% endif %}"
+       href="{{ url_for('portal_admin.sales_reps') }}">
+      <span class="asb-icon">🤝</span> Sales Reps
     </a>
   </div>
 
@@ -261,6 +320,117 @@
   if (asbToggle) asbToggle.addEventListener('click', function(e){ e.stopPropagation(); asbOpen(); });
   if (asbClose)  asbClose.addEventListener('click', asbCloseFn);
   if (asbOverlay) asbOverlay.addEventListener('click', asbCloseFn);
+</script>
+
+<!-- ══════════════ ADMIN SEARCH ══════════════ -->
+<script>
+(function(){
+  var INDEX = [
+    { icon:'👥', title:'Customers',          desc:'View and manage all merchant accounts',      url:'{{ url_for("portal_admin.customers") }}',           tags:'customers users merchants tenants accounts list find' },
+    { icon:'📱', title:'Onboard WhatsApp',   desc:'Set up a new merchant WhatsApp account',    url:'{{ url_for("portal_admin.onboard_wa") }}',          tags:'onboard new merchant whatsapp setup register' },
+    { icon:'📂', title:'Catalogue',          desc:'Manage product catalogue and categories',   url:'{{ url_for("portal_admin.catalogue_dashboard") }}', tags:'catalogue products categories inventory' },
+    { icon:'🔑', title:'API Keys',           desc:'View and manage all API keys',              url:'{{ url_for("portal_admin.api_keys") }}',            tags:'api keys access developer integration' },
+    { icon:'🧾', title:'Invoices',           desc:'All merchant invoices and receipts',        url:'{{ url_for("portal_admin.invoices") }}',            tags:'invoices receipts billing history' },
+    { icon:'📦', title:'Credit Packages',    desc:'Manage top-up credit packages and pricing', url:'{{ url_for("portal_admin.credit_packages") }}',    tags:'packages credits pricing billing top up' },
+    { icon:'🔌', title:'Plugins',            desc:'Manage downloadable WooCommerce plugins',   url:'{{ url_for("portal_admin.plugins") }}',             tags:'plugins woocommerce download wordpress' },
+    { icon:'📋', title:'Plans',              desc:'Manage WhatsApp subscription plans',        url:'{{ url_for("portal_admin.admin_plans") }}',         tags:'plans subscription whatsapp quota limits assign' },
+    { icon:'📡', title:'WA Diagnostics',     desc:'Debug WhatsApp connection issues',          url:'{{ url_for("portal_admin.wa_diagnostics") }}',      tags:'whatsapp diagnostics debug connection status check' },
+    { icon:'⚙️', title:'Settings',           desc:'Trial days, password and admin config',     url:'{{ url_for("portal_admin.admin_settings") }}',      tags:'settings admin password trial days config' },
+    { icon:'🛒', title:'Recovery Queue',     desc:'View abandoned cart recovery queue',        url:'{{ url_for("portal_admin.recovery_queue") }}',      tags:'cart recovery abandoned queue' },
+    { icon:'🌟', title:'Ambassadors',        desc:'Manage ambassador referral accounts',       url:'{{ url_for("portal_admin.ambassadors") }}',         tags:'ambassadors referrals partners commission' },
+    { icon:'🤝', title:'Sales Reps',         desc:'Manage sales representative accounts',      url:'{{ url_for("portal_admin.sales_reps") }}',          tags:'sales reps team agents representatives' },
+  ];
+
+  var input   = document.getElementById('asbSearchInput');
+  var results = document.getElementById('asbSearchResults');
+  var focused = -1;
+
+  if (!input || !results) return;
+
+  function getItems() { return results.querySelectorAll('.asb-search-item'); }
+
+  function positionDropdown() {
+    var r = input.getBoundingClientRect();
+    results.style.top   = (r.bottom + 4) + 'px';
+    results.style.left  = r.left + 'px';
+    results.style.width = r.width + 'px';
+  }
+
+  function render(query) {
+    var q = query.toLowerCase().trim();
+    if (!q) { results.classList.remove('open'); return; }
+
+    var matches = INDEX.filter(function(item) {
+      var hay = (item.title + ' ' + item.desc + ' ' + item.tags).toLowerCase();
+      return q.split(/\s+/).every(function(w) { return hay.indexOf(w) !== -1; });
+    }).slice(0, 6);
+
+    if (!matches.length) {
+      results.innerHTML = '<div class="asb-search-empty">No results for &ldquo;<strong>' +
+        q.replace(/</g, '&lt;') + '</strong>&rdquo;</div>';
+    } else {
+      results.innerHTML = matches.map(function(m, i) {
+        return '<a class="asb-search-item" href="' + m.url + '" data-idx="' + i + '">' +
+          '<span class="asb-search-item-icon">' + m.icon + '</span>' +
+          '<span class="asb-search-item-body">' +
+            '<div class="asb-search-item-title">' + m.title + '</div>' +
+            '<div class="asb-search-item-desc">' + m.desc + '</div>' +
+          '</span></a>';
+      }).join('');
+    }
+
+    focused = -1;
+    positionDropdown();
+    results.classList.add('open');
+  }
+
+  function focusItem(idx) {
+    var all = getItems();
+    all.forEach(function(el) { el.classList.remove('sr-focused'); });
+    if (idx >= 0 && idx < all.length) {
+      all[idx].classList.add('sr-focused');
+      all[idx].scrollIntoView({ block: 'nearest' });
+    }
+    focused = idx;
+  }
+
+  function closeResults() { results.classList.remove('open'); focused = -1; }
+
+  input.addEventListener('input', function() { render(this.value); });
+
+  input.addEventListener('keydown', function(e) {
+    var all = getItems();
+    if (e.key === 'ArrowDown') {
+      e.preventDefault(); focusItem(Math.min(focused + 1, all.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault(); focusItem(Math.max(focused - 1, 0));
+    } else if (e.key === 'Enter') {
+      if (focused >= 0 && all[focused]) all[focused].click();
+    } else if (e.key === 'Escape') {
+      input.blur(); closeResults();
+    }
+  });
+
+  input.addEventListener('focus', function() {
+    if (this.value.trim()) { positionDropdown(); results.classList.add('open'); }
+  });
+
+  document.addEventListener('click', function(e) {
+    if (!input.contains(e.target) && !results.contains(e.target)) closeResults();
+  });
+
+  window.addEventListener('resize', function() {
+    if (results.classList.contains('open')) positionDropdown();
+  });
+
+  document.addEventListener('keydown', function(e) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      e.preventDefault();
+      input.focus();
+      input.select();
+    }
+  });
+})();
 </script>
 
 </body>
