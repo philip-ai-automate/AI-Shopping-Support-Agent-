@@ -248,7 +248,7 @@
 <div class="modal-overlay" id="qrModal" onclick="if(event.target===this)this.classList.remove('open')">
   <div class="modal-box" style="max-width:360px;text-align:center">
     <div class="modal-title">Customer Onboarding QR Code</div>
-    <p class="modal-sub">Customers scan this to open WhatsApp and send SETUP automatically.</p>
+    <p class="modal-sub">Customers scan this to open a WhatsApp chat with you directly.</p>
     <img src="{{ url_for('portal.whatsapp_qr_code') }}" alt="WhatsApp QR Code"
          style="width:220px;height:220px;border:1px solid var(--line);border-radius:12px;margin-bottom:20px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;background:rgba(3,12,24,.04);border:1px solid var(--line);border-radius:10px;padding:8px 10px">
@@ -263,183 +263,19 @@
 </div>
 {% endif %}
 
-<!-- ── Option 3: Pre-flight Checklist ────────────────────────────────────── -->
-{% if not connection %}
-<div class="card" id="preflightCard" style="margin-bottom:20px">
-  <div class="card-title">Before You Start — Checklist</div>
-  <p class="muted" style="margin-bottom:4px;font-size:13px">
-    Complete all three steps in Meta first. Tick each one off as you go.
-  </p>
-
-  <div class="preflight-item">
-    <button class="preflight-tick" onclick="togglePreflight(this,'pf_biz_{{ customer.id }}')" aria-label="Mark done">
-      <svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="1.5,6 4.5,9 10.5,3"/>
-      </svg>
-    </button>
-    <div>
-      <div class="preflight-title">Meta Business Account created and verified</div>
-      <div class="preflight-sub">You need a verified Meta Business Manager before you can use the WhatsApp API. Verification usually takes 1–2 business days — start this first.</div>
-      <a href="https://business.facebook.com/" target="_blank" rel="noopener" class="preflight-link">
-        Open Meta Business Manager ↗
-      </a>
-    </div>
-  </div>
-
-  <div class="preflight-item">
-    <button class="preflight-tick" onclick="togglePreflight(this,'pf_app_{{ customer.id }}')" aria-label="Mark done">
-      <svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="1.5,6 4.5,9 10.5,3"/>
-      </svg>
-    </button>
-    <div>
-      <div class="preflight-title">Meta Developer App created with WhatsApp product added</div>
-      <div class="preflight-sub">In Meta for Developers, create a new "Business" app. Inside the app, click "Add Product" and choose WhatsApp. This unlocks the API Setup section where you'll get your credentials.</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener" class="preflight-link">
-          Open Meta Developer Apps ↗
-        </a>
-      </div>
-    </div>
-  </div>
-
-  <div class="preflight-item">
-    <button class="preflight-tick" onclick="togglePreflight(this,'pf_phone_{{ customer.id }}')" aria-label="Mark done">
-      <svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="1.5,6 4.5,9 10.5,3"/>
-      </svg>
-    </button>
-    <div>
-      <div class="preflight-title">WhatsApp phone number added to your WABA</div>
-      <div class="preflight-sub">In WhatsApp API Setup, add or verify a phone number under your WhatsApp Business Account (WABA). This is the number your customers will message.</div>
-      <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener" class="preflight-link">
-        Go to WhatsApp API Setup ↗
-      </a>
-    </div>
-  </div>
-
-  <div id="preflightDone" style="display:none;margin-top:16px">
-    <div class="flash success" style="margin-bottom:0">
-      All prerequisites done — you're ready to connect below.
-    </div>
-  </div>
-</div>
-{% endif %}
-
-<!-- ── Option 2: Step-by-Step Setup Guide ────────────────────────────────── -->
 {% if not connection or not connection.active %}
-<details class="card" style="margin-bottom:20px" {% if not connection %}open{% endif %} id="setupGuide">
-  <summary class="setup-guide-summary">
+<!-- Help link -->
+<div style="margin-bottom:20px;padding:14px 18px;border:1px solid var(--line);border-radius:14px;
+            background:rgba(3,12,24,.02);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+  <div style="display:flex;align-items:center;gap:10px">
+    <span style="font-size:20px">📚</span>
     <div>
-      <div class="card-title" style="margin-bottom:2px">Step-by-Step Setup Guide</div>
-      <div class="muted" style="font-size:13px">Exactly where to find each credential in Meta's dashboard</div>
+      <div style="font-size:13px;font-weight:700">New to WhatsApp Business API?</div>
+      <div class="muted" style="font-size:12px">Follow our step-by-step guide to create your Meta account and get your credentials.</div>
     </div>
-    <span class="setup-chevron">&#8964;</span>
-  </summary>
-
-  <div style="margin-top:20px">
-
-    <div class="setup-step">
-      <div class="step-num">1</div>
-      <div>
-        <div class="step-title">Create and verify your Meta Business Account</div>
-        <div class="step-desc">
-          Go to Meta Business Manager and create an account if you don't have one.
-          Then go to <strong>Business Settings → Security Centre</strong> and submit
-          your business for verification. You'll need to provide business documents.
-          WhatsApp API access is gated behind this — it typically takes 1–2 business days.
-        </div>
-        <div class="step-links">
-          <a href="https://business.facebook.com/" target="_blank" rel="noopener" class="step-link">Meta Business Manager ↗</a>
-          <a href="https://business.facebook.com/settings/security" target="_blank" rel="noopener" class="step-link">Security Centre ↗</a>
-        </div>
-      </div>
-    </div>
-
-    <div class="setup-step">
-      <div class="step-num">2</div>
-      <div>
-        <div class="step-title">Create a Meta Developer App</div>
-        <div class="step-desc">
-          Go to Meta for Developers and click <strong>Create App</strong>.
-          When asked for the app type, choose <strong>Business</strong>.
-          Give it a name (e.g. "YourBusiness WhatsApp") and link it to your Business Account.
-          Once created, click <strong>Add Product</strong> on the app dashboard and select
-          <strong>WhatsApp</strong>.
-        </div>
-        <div class="step-links">
-          <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener" class="step-link">Meta for Developers — My Apps ↗</a>
-        </div>
-      </div>
-    </div>
-
-    <div class="setup-step">
-      <div class="step-num">3</div>
-      <div>
-        <div class="step-title">Find your Phone Number ID and WABA ID</div>
-        <div class="step-desc">
-          In your app dashboard, go to <strong>WhatsApp → API Setup</strong>.
-          You'll see your test or production phone number listed.
-          Click on the phone number to reveal the <strong>Phone Number ID</strong>.
-          Just below the number list you'll see the <strong>WhatsApp Business Account ID (WABA ID)</strong>.
-          Copy both — they map directly to the fields in the connect form below.
-        </div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
-          <span class="step-field">→ Phone Number ID field</span>
-          <span class="step-field">→ WABA ID field</span>
-        </div>
-        <div class="step-links">
-          <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener" class="step-link">Open API Setup ↗</a>
-        </div>
-      </div>
-    </div>
-
-    <div class="setup-step">
-      <div class="step-num">4</div>
-      <div>
-        <div class="step-title">Generate a permanent System User access token</div>
-        <div class="step-desc">
-          The default token shown in API Setup expires in 24 hours and will break your
-          integration overnight. To avoid this, go to <strong>Meta Business Manager →
-          Business Settings → System Users</strong>, create a System User with
-          <strong>Admin</strong> role, then click <strong>Add Assets</strong> and grant it
-          access to your WhatsApp App with <strong>Manage</strong> permission. Finally,
-          click <strong>Generate Token</strong>, select your app, tick
-          <strong>whatsapp_business_messaging</strong> and
-          <strong>whatsapp_business_management</strong>, and copy the token.
-          This token never expires.
-        </div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
-          <span class="step-field">→ Access Token field</span>
-        </div>
-        <div class="step-links">
-          <a href="https://business.facebook.com/settings/system-users" target="_blank" rel="noopener" class="step-link">Business Settings — System Users ↗</a>
-        </div>
-      </div>
-    </div>
-
-    <div class="setup-step">
-      <div class="step-num">5</div>
-      <div>
-        <div class="step-title">Copy your App Secret (recommended)</div>
-        <div class="step-desc">
-          In your Meta Developer App, go to <strong>App Settings → Basic</strong>.
-          Your App Secret is listed there — click <strong>Show</strong> to reveal it.
-          Pasting it into PhiXtra lets us verify that webhook messages genuinely
-          came from Meta and reject any forged requests.
-          This is optional but strongly recommended for production.
-        </div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
-          <span class="step-field">→ App Secret field</span>
-        </div>
-        <div class="step-links">
-          <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener" class="step-link">App Settings — Basic ↗</a>
-        </div>
-      </div>
-    </div>
-
   </div>
-</details>
+  <a href="{{ url_for('portal.tutorials') }}" class="btn btn-sm">View Setup Guide →</a>
+</div>
 {% endif %}
 
 <!-- ── Connect Section ───────────────────────────────────────────────────── -->
@@ -649,12 +485,29 @@
 </script>
 
 <!-- ── Manual Setup (collapsible fallback) ─────────────────────────────── -->
-<details style="margin-bottom:20px">
-  <summary style="cursor:pointer;font-size:14px;font-weight:700;color:var(--muted);
-                  padding:14px 18px;border:1px solid var(--line);border-radius:14px;
-                  list-style:none;display:flex;align-items:center;gap:8px">
-    <span>▸</span> Manual Setup (advanced — paste credentials directly)
+<details style="margin-bottom:20px" id="manualSetupDetails">
+  <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;
+                  justify-content:space-between;gap:12px;
+                  padding:13px 16px;border:1px solid var(--line);border-radius:14px;
+                  background:rgba(3,12,24,.02);user-select:none"
+           onclick="this.parentElement.querySelector('.manual-chevron').classList.toggle('open')">
+    <div style="display:flex;align-items:center;gap:10px">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+           style="color:var(--muted);flex-shrink:0">
+        <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
+      </svg>
+      <span style="font-size:13px;font-weight:700;color:var(--muted)">Having trouble? Connect manually instead</span>
+    </div>
+    <svg class="manual-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+         style="color:var(--muted);flex-shrink:0;transition:transform .2s">
+      <polyline points="6 9 12 15 18 9"/>
+    </svg>
   </summary>
+  <style>
+    .manual-chevron.open { transform: rotate(180deg); }
+  </style>
   <div style="border:1px solid var(--line);border-top:none;border-radius:0 0 14px 14px;
               padding:20px 18px;background:rgba(3,12,24,.02)">
 
@@ -675,40 +528,6 @@
     </p>
 
     <form method="POST" action="{{ url_for('portal.whatsapp_save_connection') }}">
-
-      <div class="form-group">
-        <label>PhiXtra API Key <span style="color:var(--bad)">*</span></label>
-
-        {% if portal_api_key %}
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;
-                    background:rgba(37,211,102,.06);border:1px solid rgba(37,211,102,.25);
-                    border-radius:10px;padding:10px 12px">
-          <div style="flex:1;min-width:0">
-            <div style="font-size:11px;font-weight:700;color:#128C7E;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Your API Key</div>
-            <code id="waApiKeyDisplay"
-                  style="font-size:12px;letter-spacing:.03em;word-break:break-all;color:var(--ink)">{{ portal_api_key }}</code>
-          </div>
-          <button type="button" onclick="copyWaApiKey(this)"
-                  style="flex-shrink:0;padding:6px 12px;border-radius:8px;border:1px solid rgba(37,211,102,.4);
-                         background:rgba(37,211,102,.12);color:#128C7E;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">
-            📋 Copy
-          </button>
-        </div>
-        <input type="password" name="phixtra_api_key" id="waApiKeyInput"
-               placeholder="•••••••• (leave blank to keep current)">
-        <p class="muted" style="margin-top:4px;font-size:12px">
-          Your key is shown above — click <strong>Copy</strong> then paste it into the field, or
-          <a href="#" onclick="useApiKey(event)" style="color:var(--ink);font-weight:600">click here to fill it in automatically</a>.
-        </p>
-        {% else %}
-        <input type="password" name="phixtra_api_key"
-               placeholder="{{ '•••••••• (leave blank to keep current)' if connection else 'Paste your PhiXtra API key' }}"
-               {{ 'required' if not connection else '' }}>
-        <p class="muted" style="margin-top:4px;font-size:12px">
-          Find your key in <a href="{{ url_for('portal.api_keys') }}" style="color:var(--ink)">API Keys</a> in this portal.
-        </p>
-        {% endif %}
-      </div>
 
       <div class="form-row" style="margin-bottom:14px">
         <div class="form-group" style="margin:0">
@@ -768,18 +587,12 @@
       </div>
     </form>
 
-{% if embedded_enabled %}
-  </div><!-- end details inner -->
-</details>
-{% else %}
-</div><!-- end manual card -->
-{% endif %}
-
-<!-- ── Webhook Setup Instructions ───────────────────────────────────────── -->
-<div class="card" style="margin-bottom:20px">
-  <div class="card-title">Webhook Setup</div>
+<!-- ── Webhook Setup (inside manual toggle — not needed for Embedded Signup) -->
+<div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--line)">
+  <div style="font-size:13px;font-weight:700;color:var(--txt);margin-bottom:4px">Webhook Setup</div>
   <p class="muted" style="margin-bottom:16px;font-size:13px">
-    Paste these two values into <strong>Meta App Dashboard → WhatsApp → Configuration → Webhook</strong>.
+    {% if embedded_enabled %}Only needed if you connected manually above. If you used the <strong>Connect with WhatsApp</strong> button, the webhook was registered automatically — you can skip this.
+    {% else %}Paste these two values into <strong>Meta App Dashboard → WhatsApp → Configuration → Webhook</strong>.{% endif %}
   </p>
 
   <div style="margin-bottom:14px">
@@ -840,6 +653,15 @@
     </li>
   </ol>
 </div>
+
+{% if embedded_enabled %}
+  </div><!-- end webhook div -->
+  </div><!-- end details inner -->
+</details>
+{% else %}
+</div><!-- end webhook div -->
+</div><!-- end manual card -->
+{% endif %}
 
 <script>
 function copyText(id, btn) {

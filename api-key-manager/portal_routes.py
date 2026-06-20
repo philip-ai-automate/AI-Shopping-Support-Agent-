@@ -1015,7 +1015,10 @@ def _build_register_ctx(form_data=None):
 @portal_bp.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "GET":
-        return render_template("portal/register.html", **_build_register_ctx())
+        ref = (request.args.get("ref") or "").strip().lower()[:30]
+        ctx = _build_register_ctx()
+        ctx["ref_code"] = ref
+        return render_template("portal/register.html", **ctx)
 
     if request.form.get("website"): return redirect(url_for("portal.register"))
     client_ip = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
@@ -1045,6 +1048,7 @@ def register():
     last_name       = (request.form.get("last_name")       or "").strip()
     email           = (request.form.get("email")           or "").strip().lower()
     password        = (request.form.get("password")        or "").strip()
+    ref_code        = (request.form.get("ref_code")        or "").strip().lower()[:30]
 
     # ── Common validation ───────────────────────────────────────────────────
     if not first_name or not last_name or not email or not password:
@@ -1099,8 +1103,8 @@ def register():
         system_prompt_text = DEFAULT_SYSTEM_PROMPT.replace("{{business_name}}", tenant_name)
         cur2 = conn.cursor()
         cur2.execute(
-            "INSERT INTO tenants (name, domain, status, features, system_prompt) VALUES (%s, %s, 'pending', %s, %s) RETURNING id",
-            (tenant_name, tenant_domain, trial_features, system_prompt_text)
+            "INSERT INTO tenants (name, domain, status, features, system_prompt, ref_code) VALUES (%s, %s, 'pending', %s, %s, %s) RETURNING id",
+            (tenant_name, tenant_domain, trial_features, system_prompt_text, ref_code or None)
         )
         new_tenant_id = cur2.fetchone()[0]
         conn.commit()
@@ -1388,6 +1392,52 @@ def logout():
     return redirect(url_for("portal.home"))
 
 
+@portal_bp.route("/demo-access/<token>")
+def demo_access(token: str):
+    """Auto-login for ambassador demo portal tenants."""
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT a.id, a.demo_tenant_id
+            FROM ambassadors a
+            WHERE a.demo_token = %s AND a.status = 'active'
+            LIMIT 1
+        """, (token,))
+        row = cur.fetchone()
+        if not row or not row[1]:
+            cur.close(); conn.close()
+            flash("This demo link is not valid. Please use the link from your Ambassador Hub.", "danger")
+            return redirect(url_for("portal.login"))
+
+        amb_id, tenant_id = int(row[0]), int(row[1])
+        cur.execute(
+            "SELECT id FROM customers WHERE tenant_id=%s AND is_active=TRUE LIMIT 1",
+            (tenant_id,),
+        )
+        cust = cur.fetchone()
+        if not cust:
+            cur.close(); conn.close()
+            flash("Demo account is still being set up. Please try again in a moment.", "warning")
+            return redirect(url_for("portal.login"))
+
+        customer_id = int(cust[0])
+        cur.close(); conn.close()
+
+        # Set portal session without wiping ambassador session
+        session["portal_logged_in"] = True
+        session["customer_id"]      = customer_id
+        session["demo_amb_id"]      = amb_id
+
+        return redirect(url_for("portal.dashboard"))
+    except Exception as e:
+        print(f"⚠️ demo_access error: {e}")
+        try: cur.close(); conn.close()
+        except Exception: pass
+        flash("Something went wrong. Please try again.", "danger")
+        return redirect(url_for("portal.login"))
+
+
 @portal_bp.route("/forgot", methods=["GET", "POST"])
 def forgot_password():
     if request.method == "GET":
@@ -1554,10 +1604,13 @@ def dashboard():
     handoffs = _get_pending_handoffs(tenant_id)
 
     # ── WhatsApp connection + stats ───────────────────────────────────────
-    wa_connection = _get_wa_connection(tenant_id)
-    wa_stats      = _get_wa_stats(tenant_id) if wa_connection else {
+    wa_connection   = _get_wa_connection(tenant_id)
+    wa_stats        = _get_wa_stats(tenant_id) if wa_connection else {
         "today_in":0,"today_out":0,"month_in":0,"month_out":0,
         "active_convos":0,"awaiting_reply":0,"series":[],
+    }
+    handoff_stats   = _get_wa_handoff_stats(tenant_id) if wa_connection else {
+        "handoffs_7d":0,"open_now":0,"avg_response_min":None,"missed_7d":0,"daily":[],
     }
 
     # ── Lead counts for dashboard KPI card ────────────────────────────────
@@ -1590,6 +1643,7 @@ def dashboard():
         lead_warm_count = lead_warm_count,
         wa_connection   = wa_connection,
         wa_stats        = wa_stats,
+        handoff_stats   = handoff_stats,
     )
 
 
@@ -6214,7 +6268,7 @@ def whatsapp_connect():
     if connection and connection.get("active") and connection.get("display_phone_number"):
         import re as _re
         _digits = _re.sub(r"[^\d]", "", connection["display_phone_number"])
-        wa_onboarding_link = f"https://wa.me/{_digits}?text=SETUP"
+        wa_onboarding_link = f"https://wa.me/{_digits}"
 
     return render_template("portal/whatsapp.html",
                            customer=customer,
@@ -6313,7 +6367,7 @@ def whatsapp_qr_code():
     import qrcode
 
     digits = _re.sub(r"[^\d]", "", connection["display_phone_number"])
-    wa_url = f"https://wa.me/{digits}?text=SETUP"
+    wa_url = f"https://wa.me/{digits}"
 
     qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=10, border=4)
     qr.add_data(wa_url)
@@ -6437,6 +6491,23 @@ def whatsapp_save_connection():
                   verify_token, phixtra_api_key or '', app_secret or None))
             conn.commit()
             cur.close(); conn.close()
+
+            # Fetch display_phone_number + verified_name from Meta and store them
+            if access_token and phone_number_id:
+                disp, vname = _fetch_phone_display_info(phone_number_id, access_token)
+                if disp or vname:
+                    try:
+                        _conn2 = get_db_connection()
+                        _cur2  = _conn2.cursor()
+                        _cur2.execute(
+                            "UPDATE wa_tenants SET display_phone_number=%s, verified_name=%s WHERE tenant_id=%s",
+                            (disp or None, vname or None, tenant_id),
+                        )
+                        _conn2.commit()
+                        _cur2.close(); _conn2.close()
+                    except Exception as _e:
+                        print("⚠️ wa manual connect: could not save display info:", _e)
+
             insert_audit_log(action="wa_connected", tenant_id=tenant_id,
                              details={"phone_number_id": phone_number_id, "method": "manual"})
             flash("WhatsApp connected successfully! ✅", "success")
@@ -6583,6 +6654,24 @@ def _auto_register_webhook(waba_id: str, token: str) -> bool:
     except Exception as e:
         print(f"⚠️ _auto_register_webhook error: {e}")
         return False
+
+
+def _fetch_phone_display_info(phone_number_id: str, access_token: str) -> tuple[str, str]:
+    """Fetch display_phone_number and verified_name from Meta for a phone_number_id.
+    Returns ('', '') silently on any failure."""
+    try:
+        import requests as _req
+        r = _req.get(
+            f"{_GRAPH}/{phone_number_id}",
+            params={"fields": "display_phone_number,verified_name", "access_token": access_token},
+            timeout=10,
+        )
+        if r.status_code == 200:
+            data = r.json()
+            return data.get("display_phone_number", ""), data.get("verified_name", "")
+    except Exception as e:
+        print("⚠️ _fetch_phone_display_info error:", e)
+    return "", ""
 
 
 def _save_wa_embedded_connection(tenant_id: int, phone_number_id: str, waba_id: str,
@@ -6884,11 +6973,14 @@ def whatsapp_inbox():
     connection = _get_wa_connection(tenant_id)
 
     handoffs = []
+    recent_convos = []
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # Active handoffs (AI stopped, merchant needs to reply)
         cur.execute("""
-            SELECT session_id, customer_phone, escalated_at
+            SELECT session_id, customer_phone, escalated_at, takeover
             FROM wa_handoff_state
             WHERE tenant_id = %s AND resolved_at IS NULL
             ORDER BY escalated_at DESC
@@ -6905,6 +6997,22 @@ def whatsapp_inbox():
             msgs = cur.fetchall() or []
             h["messages"] = list(reversed(msgs))
 
+        # Recent AI-handled conversations (no active handoff) — merchant can take over
+        handoff_phones = {h["customer_phone"] for h in handoffs}
+        cur.execute("""
+            SELECT customer_phone,
+                   MAX(created_at) AS last_message_at,
+                   COUNT(*) FILTER (WHERE direction='inbound') AS inbound_count
+            FROM wa_message_log
+            WHERE tenant_id = %s
+              AND created_at > NOW() - INTERVAL '48 hours'
+            GROUP BY customer_phone
+            ORDER BY last_message_at DESC
+            LIMIT 20
+        """, (tenant_id,))
+        all_recent = cur.fetchall() or []
+        recent_convos = [r for r in all_recent if r["customer_phone"] not in handoff_phones][:10]
+
         cur.close(); conn.close()
     except Exception as e:
         print("⚠️ whatsapp_inbox error:", e)
@@ -6912,7 +7020,8 @@ def whatsapp_inbox():
     return render_template("portal/whatsapp_inbox.html",
                            customer=customer,
                            connection=connection,
-                           handoffs=handoffs)
+                           handoffs=handoffs,
+                           recent_convos=recent_convos)
 
 
 @portal_bp.route("/whatsapp/inbox/<path:session_id>/reply", methods=["POST"])
@@ -6999,6 +7108,182 @@ def whatsapp_inbox_resolve(session_id: str):
         flash("Could not resolve conversation. Please try again.", "danger")
 
     return redirect(url_for("portal.whatsapp_inbox"))
+
+
+@portal_bp.route("/whatsapp/inbox/takeover", methods=["POST"])
+def whatsapp_inbox_takeover():
+    """Merchant manually takes over an AI-handled conversation."""
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    customer_phone = (request.form.get("customer_phone") or "").strip().lstrip("+")
+    if not customer_phone:
+        flash("Invalid customer phone.", "danger")
+        return redirect(url_for("portal.whatsapp_inbox"))
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # Get phone_number_id to build the correct session_id
+        cur.execute("""
+            SELECT phone_number_id FROM wa_tenants
+            WHERE tenant_id = %s AND active = TRUE LIMIT 1
+        """, (tenant_id,))
+        wa_row = cur.fetchone()
+        if not wa_row:
+            flash("No active WhatsApp connection found.", "danger")
+            cur.close(); conn.close()
+            return redirect(url_for("portal.whatsapp_inbox"))
+
+        phone_number_id = wa_row["phone_number_id"]
+        session_id = f"wa-meta-{phone_number_id}-{customer_phone}"
+
+        # Create handoff — marked as merchant takeover
+        cur2 = conn.cursor()
+        cur2.execute("""
+            INSERT INTO wa_handoff_state (session_id, tenant_id, customer_phone, takeover)
+            VALUES (%s, %s, %s, TRUE)
+            ON CONFLICT (session_id) DO UPDATE
+              SET resolved_at = NULL,
+                  escalated_at = NOW(),
+                  takeover = TRUE
+              WHERE wa_handoff_state.resolved_at IS NOT NULL
+        """, (session_id, tenant_id, customer_phone))
+        conn.commit()
+        cur.close(); cur2.close(); conn.close()
+
+        flash(f"You have taken over the conversation with +{customer_phone}. AI is paused. ✅", "success")
+        return redirect(url_for("portal.whatsapp_inbox") + f"?session={session_id}")
+
+    except Exception as e:
+        print("⚠️ whatsapp_inbox_takeover error:", e)
+        flash("Could not take over conversation. Please try again.", "danger")
+        return redirect(url_for("portal.whatsapp_inbox"))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WHATSAPP REPORTS
+# ══════════════════════════════════════════════════════════════════════════════
+
+@portal_bp.route("/whatsapp/reports")
+def whatsapp_reports():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    days = int(request.args.get("days", 30))
+    if days not in (7, 14, 30, 90):
+        days = 30
+
+    wa_connection = _get_wa_connection(tenant_id)
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # Summary totals for the selected period
+        cur.execute("""
+            SELECT
+                COUNT(*) AS total_handoffs,
+                COUNT(resolved_at) AS total_resolved,
+                ROUND(AVG(EXTRACT(EPOCH FROM (
+                    (SELECT m.created_at FROM wa_message_log m
+                     WHERE m.tenant_id = h.tenant_id
+                       AND m.customer_phone = h.customer_phone
+                       AND m.message_type = 'agent_reply'
+                       AND m.created_at > h.escalated_at
+                     ORDER BY m.created_at ASC LIMIT 1) - h.escalated_at
+                )) / 60)::numeric, 1) AS avg_response_min,
+                COUNT(*) FILTER (WHERE resolved_at IS NOT NULL AND NOT EXISTS (
+                    SELECT 1 FROM wa_message_log m2
+                    WHERE m2.tenant_id = h.tenant_id
+                      AND m2.customer_phone = h.customer_phone
+                      AND m2.message_type = 'agent_reply'
+                      AND m2.created_at > h.escalated_at
+                      AND m2.created_at <= h.resolved_at
+                )) AS missed,
+                COUNT(*) FILTER (WHERE resolved_at IS NULL) AS open_now
+            FROM wa_handoff_state h
+            WHERE h.tenant_id = %s
+              AND h.escalated_at >= NOW() - (%s || ' days')::interval
+        """, (tenant_id, days))
+        summary = dict(cur.fetchone() or {})
+
+        # Day-by-day breakdown
+        cur.execute("""
+            SELECT
+                DATE(h.escalated_at) AS day,
+                COUNT(*) AS triggered,
+                COUNT(h.resolved_at) AS resolved,
+                COUNT(*) FILTER (WHERE h.resolved_at IS NOT NULL AND NOT EXISTS (
+                    SELECT 1 FROM wa_message_log m
+                    WHERE m.tenant_id = h.tenant_id
+                      AND m.customer_phone = h.customer_phone
+                      AND m.message_type = 'agent_reply'
+                      AND m.created_at > h.escalated_at
+                      AND m.created_at <= h.resolved_at
+                )) AS missed,
+                ROUND(AVG(EXTRACT(EPOCH FROM (
+                    (SELECT m2.created_at FROM wa_message_log m2
+                     WHERE m2.tenant_id = h.tenant_id
+                       AND m2.customer_phone = h.customer_phone
+                       AND m2.message_type = 'agent_reply'
+                       AND m2.created_at > h.escalated_at
+                     ORDER BY m2.created_at ASC LIMIT 1) - h.escalated_at
+                )) / 60)::numeric, 1) AS avg_min
+            FROM wa_handoff_state h
+            WHERE h.tenant_id = %s
+              AND h.escalated_at >= NOW() - (%s || ' days')::interval
+            GROUP BY DATE(h.escalated_at)
+            ORDER BY day DESC
+        """, (tenant_id, days))
+        daily = [dict(r) for r in (cur.fetchall() or [])]
+
+        # Recent handoffs list (last 20)
+        cur.execute("""
+            SELECT h.customer_phone, h.escalated_at, h.resolved_at, h.takeover,
+                   (SELECT m.created_at FROM wa_message_log m
+                    WHERE m.tenant_id = h.tenant_id
+                      AND m.customer_phone = h.customer_phone
+                      AND m.message_type = 'agent_reply'
+                      AND m.created_at > h.escalated_at
+                    ORDER BY m.created_at ASC LIMIT 1) AS first_reply_at,
+                   EXISTS (
+                       SELECT 1 FROM wa_message_log m2
+                       WHERE m2.tenant_id = h.tenant_id
+                         AND m2.customer_phone = h.customer_phone
+                         AND m2.message_type = 'agent_reply'
+                         AND m2.created_at > h.escalated_at
+                         AND (h.resolved_at IS NULL OR m2.created_at <= h.resolved_at)
+                   ) AS was_replied
+            FROM wa_handoff_state h
+            WHERE h.tenant_id = %s
+              AND h.escalated_at >= NOW() - (%s || ' days')::interval
+            ORDER BY h.escalated_at DESC
+            LIMIT 20
+        """, (tenant_id, days))
+        recent = [dict(r) for r in (cur.fetchall() or [])]
+
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ whatsapp_reports error:", e)
+        summary = {}
+        daily   = []
+        recent  = []
+
+    return render_template(
+        "portal/whatsapp_reports.html",
+        customer      = customer,
+        wa_connection = wa_connection,
+        days          = days,
+        summary       = summary,
+        daily         = daily,
+        recent        = recent,
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -7915,7 +8200,7 @@ def _get_order_kpis(tenant_id: int) -> dict:
               SUM(CASE WHEN status = 'DISPATCHED' THEN 1 ELSE 0 END) AS dispatched,
               SUM(CASE WHEN status IN ('CANCELLED','FAILED') THEN 1 ELSE 0 END) AS cancelled
             FROM orders
-            WHERE tenant_id = %s AND DATE(created_at) = CURDATE()
+            WHERE tenant_id = %s AND DATE(created_at) = CURRENT_DATE
         """, (tenant_id,))
         row = cur.fetchone() or {}
         cur.close(); conn.close()
@@ -10082,7 +10367,7 @@ def _analytics_data(tenant_id: int, days: int = 30) -> dict:
         # ── Revenue KPIs ──────────────────────────────────────────────────────
         cur.execute("""
             SELECT
-              COALESCE(SUM(CASE WHEN DATE(created_at)=CURDATE()
+              COALESCE(SUM(CASE WHEN DATE(created_at)=CURRENT_DATE
                 THEN total_amount END), 0)                      AS today_revenue,
               COALESCE(SUM(CASE WHEN created_at >= (NOW() - INTERVAL '7 days')
                 AND status IN ('PAYMENT_VERIFIED','PROCESSING','DISPATCHED','DELIVERED','COMPLETED')
@@ -11395,17 +11680,17 @@ def _get_wa_stats(tenant_id: int) -> dict:
 
         cur.execute("""
             SELECT
-                SUM(direction='inbound')  AS today_in,
-                SUM(direction='outbound') AS today_out
+                COUNT(*) FILTER (WHERE direction='inbound')  AS today_in,
+                COUNT(*) FILTER (WHERE direction='outbound') AS today_out
             FROM wa_message_log
-            WHERE tenant_id=%s AND DATE(created_at)=CURDATE()
+            WHERE tenant_id=%s AND DATE(created_at)=CURRENT_DATE
         """, (tenant_id,))
         today = cur.fetchone() or {}
 
         cur.execute("""
             SELECT
-                SUM(direction='inbound')  AS month_in,
-                SUM(direction='outbound') AS month_out
+                COUNT(*) FILTER (WHERE direction='inbound')  AS month_in,
+                COUNT(*) FILTER (WHERE direction='outbound') AS month_out
             FROM wa_message_log
             WHERE tenant_id=%s AND created_at >= (NOW() - INTERVAL '30 days')
         """, (tenant_id,))
@@ -11433,9 +11718,9 @@ def _get_wa_stats(tenant_id: int) -> dict:
         awaiting = cur.fetchone() or {}
 
         cur.execute("""
-            SELECT DATE(created_at)           AS d,
-                   SUM(direction='inbound')   AS inbound,
-                   SUM(direction='outbound')  AS outbound
+            SELECT DATE(created_at)                                AS d,
+                   COUNT(*) FILTER (WHERE direction='inbound')     AS inbound,
+                   COUNT(*) FILTER (WHERE direction='outbound')    AS outbound
             FROM wa_message_log
             WHERE tenant_id=%s AND created_at >= (NOW() - INTERVAL '30 days')
             GROUP BY DATE(created_at)
@@ -11457,6 +11742,113 @@ def _get_wa_stats(tenant_id: int) -> dict:
         }
     except Exception as e:
         print("⚠️ _get_wa_stats error:", e)
+        return empty
+
+
+def _get_wa_handoff_stats(tenant_id: int) -> dict:
+    """Return handoff performance metrics for the dashboard widget and reports page."""
+    empty = {
+        "handoffs_7d": 0, "open_now": 0,
+        "avg_response_min": None, "missed_7d": 0,
+        "daily": [],
+    }
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        cur.execute("""
+            SELECT COUNT(*) AS handoffs_7d
+            FROM wa_handoff_state
+            WHERE tenant_id = %s AND escalated_at >= NOW() - INTERVAL '7 days'
+        """, (tenant_id,))
+        row = cur.fetchone() or {}
+        handoffs_7d = int(row.get("handoffs_7d") or 0)
+
+        cur.execute("""
+            SELECT COUNT(*) AS open_now
+            FROM wa_handoff_state
+            WHERE tenant_id = %s AND resolved_at IS NULL
+        """, (tenant_id,))
+        row = cur.fetchone() or {}
+        open_now = int(row.get("open_now") or 0)
+
+        cur.execute("""
+            SELECT AVG(EXTRACT(EPOCH FROM (first_reply - escalated_at)) / 60) AS avg_min
+            FROM (
+                SELECT h.escalated_at,
+                       (SELECT m.created_at FROM wa_message_log m
+                        WHERE m.tenant_id = h.tenant_id
+                          AND m.customer_phone = h.customer_phone
+                          AND m.message_type = 'agent_reply'
+                          AND m.created_at > h.escalated_at
+                        ORDER BY m.created_at ASC LIMIT 1) AS first_reply
+                FROM wa_handoff_state h
+                WHERE h.tenant_id = %s
+                  AND h.escalated_at >= NOW() - INTERVAL '7 days'
+            ) sub
+            WHERE first_reply IS NOT NULL
+        """, (tenant_id,))
+        row = cur.fetchone() or {}
+        raw_avg = row.get("avg_min")
+        avg_response_min = round(float(raw_avg), 1) if raw_avg is not None else None
+
+        cur.execute("""
+            SELECT COUNT(*) AS missed_7d
+            FROM wa_handoff_state h
+            WHERE h.tenant_id = %s
+              AND h.escalated_at >= NOW() - INTERVAL '7 days'
+              AND h.resolved_at IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM wa_message_log m
+                  WHERE m.tenant_id = h.tenant_id
+                    AND m.customer_phone = h.customer_phone
+                    AND m.message_type = 'agent_reply'
+                    AND m.created_at > h.escalated_at
+                    AND m.created_at <= h.resolved_at
+              )
+        """, (tenant_id,))
+        row = cur.fetchone() or {}
+        missed_7d = int(row.get("missed_7d") or 0)
+
+        cur.execute("""
+            SELECT
+                DATE(h.escalated_at) AS day,
+                COUNT(*) AS triggered,
+                COUNT(h.resolved_at) AS resolved,
+                COUNT(*) FILTER (WHERE h.resolved_at IS NOT NULL AND NOT EXISTS (
+                    SELECT 1 FROM wa_message_log m
+                    WHERE m.tenant_id = h.tenant_id
+                      AND m.customer_phone = h.customer_phone
+                      AND m.message_type = 'agent_reply'
+                      AND m.created_at > h.escalated_at
+                      AND m.created_at <= h.resolved_at
+                )) AS missed,
+                ROUND(AVG(EXTRACT(EPOCH FROM (
+                    (SELECT m2.created_at FROM wa_message_log m2
+                     WHERE m2.tenant_id = h.tenant_id
+                       AND m2.customer_phone = h.customer_phone
+                       AND m2.message_type = 'agent_reply'
+                       AND m2.created_at > h.escalated_at
+                     ORDER BY m2.created_at ASC LIMIT 1) - h.escalated_at
+                )) / 60)::numeric, 1) AS avg_min
+            FROM wa_handoff_state h
+            WHERE h.tenant_id = %s
+              AND h.escalated_at >= NOW() - INTERVAL '30 days'
+            GROUP BY DATE(h.escalated_at)
+            ORDER BY day ASC
+        """, (tenant_id,))
+        daily = [dict(r) for r in (cur.fetchall() or [])]
+
+        cur.close(); conn.close()
+        return {
+            "handoffs_7d": handoffs_7d,
+            "open_now": open_now,
+            "avg_response_min": avg_response_min,
+            "missed_7d": missed_7d,
+            "daily": daily,
+        }
+    except Exception as e:
+        print("⚠️ _get_wa_handoff_stats error:", e)
         return empty
 
 
@@ -11995,6 +12387,12 @@ def _activate_plan_subscription(tenant_id: int, plan_id: int, cycle: str,
     conn = get_db_connection()
     cur  = conn.cursor()
     period_start = _d.today()
+
+    # Capture previous plan_id before updating (needed for upsell bonus detection)
+    cur.execute("SELECT plan_id FROM tenants WHERE id=%s", (tenant_id,))
+    _prev = cur.fetchone()
+    prev_plan_id = int(_prev[0]) if _prev and _prev[0] else 0
+
     # Activate tenant plan
     cur.execute("""
         UPDATE tenants
@@ -12029,6 +12427,16 @@ def _activate_plan_subscription(tenant_id: int, plan_id: int, cycle: str,
           amount, now, period_end))
 
     conn.commit(); cur.close(); conn.close()
+
+    # Record ambassador commission if this tenant was referred by an ambassador
+    try:
+        from ambassador_routes import record_ambassador_commission
+        record_ambassador_commission(
+            tenant_id=tenant_id, plan_id=plan_id, prev_plan_id=prev_plan_id,
+            amount=amount, currency=currency,
+        )
+    except Exception as _ce:
+        print("⚠️ ambassador commission hook error:", _ce)
 
 
 @portal_bp.route("/billing/plan-upgrade", methods=["POST"])
