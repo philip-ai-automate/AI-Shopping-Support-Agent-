@@ -19,8 +19,14 @@ from werkzeug.utils import secure_filename
 from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash)
 
-UPLOAD_FOLDER    = os.path.join(os.path.dirname(__file__), 'static', 'uploads', 'ambassador_ids')
-ALLOWED_DOC_EXTS = {'jpg', 'jpeg', 'png', 'pdf'}
+UPLOAD_FOLDER      = os.path.join(os.path.dirname(__file__), 'static', 'uploads', 'ambassador_ids')
+QUAL_UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static', 'uploads', 'ambassador_quals')
+ALLOWED_DOC_EXTS   = {'jpg', 'jpeg', 'png', 'pdf'}
+
+QUAL_ORDER = [
+    'OND', 'HND', 'BSc/BA/BEng', 'MSc/MA/MEng', 'PhD',
+    'Professional Certification', 'Other',
+]
 
 def _allowed_doc(filename: str) -> bool:
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_DOC_EXTS
@@ -369,6 +375,10 @@ def register():
     if pw != pw2:
         return _bail("Passwords do not match.")
 
+    # ── Minimum education: OND ───────────────────────────────────────────────
+    if qualification not in QUAL_ORDER:
+        return _bail("Please select a valid educational qualification.")
+
     # ── Cloudflare Turnstile bot check ───────────────────────────────────────
     ts_token = request.form.get("cf-turnstile-response", "")
     if not _verify_turnstile(ts_token, request.remote_addr or ""):
@@ -391,18 +401,41 @@ def register():
         return _bail("An account with that WhatsApp number is already registered.", "warning")
     cur.close(); conn.close()
 
+    MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
+
     # ── ID document upload ───────────────────────────────────────────────────
     file = request.files.get("id_document")
     if not file or not file.filename:
         return _bail("Please upload an identity document.")
     if not _allowed_doc(file.filename):
         return _bail("Identity document must be a JPG, PNG, or PDF file.")
+    file.seek(0, 2)
+    if file.tell() > MAX_UPLOAD_BYTES:
+        return _bail("Identity document must be 5 MB or smaller.")
+    file.seek(0)
 
     ext      = file.filename.rsplit('.', 1)[1].lower()
     filename = f"{uuid.uuid4().hex}.{ext}"
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     file.save(os.path.join(UPLOAD_FOLDER, filename))
     id_doc_path = f"uploads/ambassador_ids/{filename}"
+
+    # ── Qualification proof upload ───────────────────────────────────────────
+    qual_file = request.files.get("qual_document")
+    if not qual_file or not qual_file.filename:
+        return _bail("Please upload proof of your educational qualification.")
+    if not _allowed_doc(qual_file.filename):
+        return _bail("Qualification document must be a JPG, PNG, or PDF file.")
+    qual_file.seek(0, 2)
+    if qual_file.tell() > MAX_UPLOAD_BYTES:
+        return _bail("Qualification document must be 5 MB or smaller.")
+    qual_file.seek(0)
+
+    qual_ext      = qual_file.filename.rsplit('.', 1)[1].lower()
+    qual_filename = f"{uuid.uuid4().hex}.{qual_ext}"
+    os.makedirs(QUAL_UPLOAD_FOLDER, exist_ok=True)
+    qual_file.save(os.path.join(QUAL_UPLOAD_FOLDER, qual_filename))
+    qual_doc_path = f"uploads/ambassador_quals/{qual_filename}"
 
     ref_code = _generate_ref_code(first, last)
     pw_hash  = _hash_pw(pw)
@@ -416,12 +449,14 @@ def register():
                (first_name, last_name, email, phone, whatsapp_number, password_hash, ref_code,
                 status, date_of_birth, gender, nationality, address, location,
                 highest_qualification, id_document_path, id_document_type,
-                bank_name, account_number, account_name, sort_code, swift_code)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,'pending',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                bank_name, account_number, account_name, sort_code, swift_code,
+                qual_document_path)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,'pending',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """, (first, last, email, phone, whatsapp, pw_hash, ref_code,
               dob, gender, nationality, address, location,
               qualification, id_doc_path, id_doc_type,
-              bank_name, account_num, account_name, sort_code, swift_code))
+              bank_name, account_num, account_name, sort_code, swift_code,
+              qual_doc_path))
         conn.commit()
     except psycopg2.errors.UniqueViolation as e:
         conn.rollback()

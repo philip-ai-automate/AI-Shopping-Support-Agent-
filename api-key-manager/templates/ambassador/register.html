@@ -253,8 +253,10 @@
                 background:#f8f9fb;border-radius:12px;border:1px solid #f0f1f3">
       <span style="font-size:20px;flex-shrink:0">🎓</span>
       <div>
-        <div style="font-size:13.5px;font-weight:700;margin-bottom:2px">Highest Qualification</div>
-        <div style="font-size:12px;color:#6b7280;line-height:1.45">Just select your highest level of education from a list — no document needed</div>
+        <div style="font-size:13.5px;font-weight:700;margin-bottom:2px">Education Qualification (Minimum: OND)</div>
+        <div style="font-size:12px;color:#6b7280;line-height:1.45">Select your highest level of education and upload proof (certificate or transcript)<br>
+          <span style="color:#9ca3af">Accepted formats: JPG, PNG or PDF</span>
+        </div>
       </div>
     </div>
   </div>
@@ -500,13 +502,12 @@
   <div class="step" id="step3">
     <div class="step-num">Step 3 of 6</div>
     <div class="step-title">Qualifications</div>
-    <div class="step-sub">Your highest level of educational attainment</div>
+    <div class="step-sub">Minimum qualification required: OND or equivalent</div>
 
     <div class="field">
       <label class="lbl">Highest Educational Qualification <span class="req">*</span></label>
       <select name="highest_qualification" id="highest_qualification">
         <option value="">Select qualification</option>
-        <option value="SSCE/WAEC/NECO">SSCE / WAEC / NECO</option>
         <option value="OND">OND — Ordinary National Diploma</option>
         <option value="HND">HND — Higher National Diploma</option>
         <option value="BSc/BA/BEng">B.Sc / B.A / B.Eng (Bachelor's Degree)</option>
@@ -516,6 +517,28 @@
         <option value="Other">Other</option>
       </select>
       <div class="err-msg" id="err_highest_qualification">Please select your qualification</div>
+    </div>
+
+    <div class="field" style="margin-top:4px">
+      <label class="lbl">Upload Proof of Qualification <span class="req">*</span></label>
+      <div style="font-size:11.5px;color:#6b7280;margin-bottom:8px;line-height:1.5">
+        Upload your certificate, statement of result, or official transcript
+      </div>
+      <div class="file-zone" id="qualFileZone">
+        <input type="file" name="qual_document" id="qual_document" accept=".jpg,.jpeg,.png,.pdf"
+               onchange="handleQualFile(this)" onclick="event.stopPropagation()"/>
+        <div class="file-zone-icon">🎓</div>
+        <div class="file-zone-text">
+          <strong>Click to upload</strong> or drag &amp; drop<br>
+          JPG, PNG or PDF &nbsp;·&nbsp; Max 5MB
+        </div>
+      </div>
+      <div class="file-chosen" id="qualFileChosen">
+        <span>✅</span>
+        <span class="file-chosen-name" id="qualFileChosenName"></span>
+        <button type="button" class="file-rm" onclick="clearQualFile()">Remove</button>
+      </div>
+      <div class="err-msg" id="err_qual_document">Please upload proof of your qualification</div>
     </div>
 
     <div class="step-nav">
@@ -710,6 +733,8 @@ const RULES = {
   ],
   3: [
     {id:'highest_qualification', err:'err_highest_qualification', ok: v => v !== ''},
+    {id:'qual_document', err:'err_qual_document',
+     ok: () => document.getElementById('qual_document').files.length > 0, isFile: true},
   ],
   4: [
     {id:'id_document_type', err:'err_id_document_type', ok: v => v !== ''},
@@ -792,7 +817,7 @@ function clearFile() {
   document.getElementById('fileZone').style.display = '';
 }
 
-/* Drag-and-drop */
+/* Drag-and-drop — ID */
 const zone = document.getElementById('fileZone');
 if (zone) {
   zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag'); });
@@ -809,6 +834,38 @@ if (zone) {
   });
 }
 
+/* Qual file upload */
+function handleQualFile(inp) {
+  const f = inp.files[0];
+  if (!f) return;
+  document.getElementById('qualFileChosenName').textContent = f.name;
+  document.getElementById('qualFileChosen').classList.add('show');
+  document.getElementById('qualFileZone').style.display = 'none';
+  clearErr(inp);
+}
+function clearQualFile() {
+  document.getElementById('qual_document').value = '';
+  document.getElementById('qualFileChosen').classList.remove('show');
+  document.getElementById('qualFileZone').style.display = '';
+}
+
+/* Drag-and-drop — Qualification */
+const qualZone = document.getElementById('qualFileZone');
+if (qualZone) {
+  qualZone.addEventListener('dragover',  e => { e.preventDefault(); qualZone.classList.add('drag'); });
+  qualZone.addEventListener('dragleave', () => qualZone.classList.remove('drag'));
+  qualZone.addEventListener('drop', e => {
+    e.preventDefault(); qualZone.classList.remove('drag');
+    const f = e.dataTransfer.files[0];
+    if (f) {
+      const dt = new DataTransfer(); dt.items.add(f);
+      const inp = document.getElementById('qual_document');
+      inp.files = dt.files;
+      handleQualFile(inp);
+    }
+  });
+}
+
 /* Review summary */
 function gv(id) {
   const el = document.getElementById(id);
@@ -817,8 +874,10 @@ function gv(id) {
   return (el.value || '—').trim();
 }
 function buildReview() {
-  const fileEl = document.getElementById('id_document');
-  const fname  = fileEl && fileEl.files[0] ? fileEl.files[0].name : '—';
+  const fileEl     = document.getElementById('id_document');
+  const fname      = fileEl && fileEl.files[0] ? fileEl.files[0].name : '—';
+  const qualFileEl = document.getElementById('qual_document');
+  const qualFname  = qualFileEl && qualFileEl.files[0] ? qualFileEl.files[0].name : '—';
   const secs = [
     { t: 'Personal', rows: [
       ['First Name', gv('first_name')], ['Last Name', gv('last_name')],
@@ -830,10 +889,13 @@ function buildReview() {
       ['WhatsApp', gv('whatsapp_number')], ['Operating Location', gv('location')],
       ['Address', gv('address'), true],
     ]},
-    { t: 'Qualifications & Identity', rows: [
+    { t: 'Qualifications', rows: [
       ['Qualification', gv('highest_qualification')],
+      ['Qual. Proof', qualFname],
+    ]},
+    { t: 'Identity', rows: [
       ['ID Type', gv('id_document_type')],
-      ['Document', fname],
+      ['ID Document', fname],
     ]},
     { t: 'Bank Details', rows: [
       ['Bank Name', gv('bank_name')], ['Account Number', gv('account_number')],

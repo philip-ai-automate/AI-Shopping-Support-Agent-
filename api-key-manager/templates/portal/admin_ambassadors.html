@@ -584,6 +584,12 @@ function renderPanel(d) {
        </a>`
     : '<span style="color:var(--muted);font-size:12px">No document uploaded</span>';
 
+  const qualDocLink = d.qual_document_path
+    ? `<a href="/admin/ambassadors/${d.id}/qual-doc" target="_blank" class="sp-doc-link">
+         🎓 View Qualification Proof
+       </a>`
+    : '<span style="color:var(--muted);font-size:12px">No qualification proof uploaded</span>';
+
   document.getElementById('spBody').innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;
                 padding:10px 12px;border-radius:10px;background:#f8f9fb">
@@ -618,7 +624,10 @@ function renderPanel(d) {
       <div class="sp-grid">
         <div class="sp-item full"><div class="sp-label">Highest Qualification</div><div class="sp-val">${d.highest_qualification||'—'}</div></div>
       </div>
-      <div style="margin-top:8px">${docLink}</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
+        ${qualDocLink}
+        ${docLink}
+      </div>
     </div>
 
     <div class="sp-section">

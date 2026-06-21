@@ -3507,6 +3507,23 @@ def ambassador_id_doc(amb_id: int):
     return send_from_directory(static_dir, row["id_document_path"])
 
 
+@portal_admin_bp.route("/ambassadors/<int:amb_id>/qual-doc")
+def ambassador_qual_doc(amb_id: int):
+    r = _require_admin()
+    if r: return r
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT qual_document_path FROM ambassadors WHERE id=%s", (amb_id,))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    if not row or not row.get("qual_document_path"):
+        return "No qualification document found", 404
+    import os as _os
+    from flask import send_from_directory
+    static_dir = _os.path.join(_os.path.dirname(__file__), "static")
+    return send_from_directory(static_dir, row["qual_document_path"])
+
+
 # ── Sales Reps & QR Codes ──────────────────────────────────────────────────
 
 @portal_admin_bp.route("/sales-reps", methods=["GET", "POST"])
