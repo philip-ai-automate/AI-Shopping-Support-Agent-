@@ -58,12 +58,17 @@
   .parent-dot.linked{background:#12B76A}
   .parent-dot.missing{background:#F79009}
 
-  /* ── Admin action buttons on row ── */
-  .row-actions{display:flex;gap:6px;align-items:center;flex-shrink:0}
-  .btn-icon{padding:4px 9px;font-size:12px;border-radius:7px;border:1.5px solid var(--line);
-            background:#fff;cursor:pointer;transition:.1s;color:var(--muted);font-weight:600}
-  .btn-icon:hover{border-color:var(--brand);color:var(--brand)}
-  .btn-icon.danger:hover{border-color:var(--bad);color:var(--bad)}
+  /* ── Admin action buttons ── */
+  .row-actions{display:flex;gap:4px;align-items:center;flex-shrink:0}
+  .btn-icon{
+    width:30px;height:30px;border-radius:8px;border:1.5px solid var(--line);
+    background:#fff;cursor:pointer;transition:.12s;
+    display:inline-flex;align-items:center;justify-content:center;
+    color:var(--muted);padding:0;flex-shrink:0;
+  }
+  .btn-icon:hover{border-color:#C7D9FD;background:#EEF4FF;color:var(--brand)}
+  .btn-icon.promote:hover{border-color:#A6F4C5;background:#ECFDF5;color:#027A48}
+  .btn-icon.danger:hover{border-color:#FECDCA;background:#FFF1F0;color:var(--bad)}
 
   /* ── Checkbox ── */
   .st-check{width:16px;height:16px;cursor:pointer;flex-shrink:0;accent-color:var(--brand)}
@@ -79,26 +84,62 @@
   /* ── Modals ── */
   .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);
                  z-index:200;align-items:center;justify-content:center;padding:20px}
-  .modal-box{background:#fff;border-radius:14px;padding:28px;width:100%;
+  .modal-box{background:#fff;border-radius:14px;width:100%;
              max-width:500px;max-height:90vh;overflow-y:auto}
-  .modal-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+  .modal-hd{display:flex;justify-content:space-between;align-items:center;
+            padding:20px 24px 16px;border-bottom:1px solid var(--line)}
   .modal-hd-title{font-size:16px;font-weight:750;color:var(--ink)}
   .modal-close{border:none;background:none;font-size:22px;cursor:pointer;
-               color:var(--muted);line-height:1}
+               color:var(--muted);line-height:1;padding:0}
   .modal-close:hover{color:var(--ink)}
+  .modal-body{padding:20px 24px 24px}
+
+  /* ── Delete modal danger header ── */
+  .modal-danger-head{
+    background:#FFF1F0;border-radius:14px 14px 0 0;
+    padding:20px 24px;display:flex;align-items:center;gap:12px;
+    border-bottom:1px solid #FECDCA;
+  }
+  .modal-danger-icon{
+    width:40px;height:40px;border-radius:10px;background:#FEE4E2;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  }
+  .modal-danger-title{font-size:15px;font-weight:750;color:var(--bad)}
+  .modal-danger-sub{font-size:12.5px;color:#B42318;margin-top:2px}
+
+  /* ── Promote arrow visual ── */
+  .promote-path{
+    display:flex;align-items:center;gap:10px;
+    background:#F7F9FC;border:1px solid var(--line);border-radius:10px;
+    padding:12px 16px;margin-bottom:18px;
+  }
+  .promote-from{font-size:13px;color:var(--muted);text-align:center}
+  .promote-from strong{display:block;font-size:15px;font-weight:700;color:var(--ink);margin-top:2px}
+  .promote-arrow{color:var(--brand);flex-shrink:0}
+  .promote-to-label{font-size:13px;color:var(--muted);text-align:center;flex:1}
+  .promote-to-label strong{display:block;font-size:13px;font-weight:700;
+                            color:var(--brand);margin-top:2px;font-style:italic}
 
   /* ── Floating bulk bar ── */
   .bulk-bar{
     position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
-    background:var(--ink);color:#fff;border-radius:14px;
-    padding:14px 20px;display:none;align-items:center;gap:14px;
-    box-shadow:0 8px 32px rgba(0,0,0,.3);z-index:100;flex-wrap:wrap;
-    min-width:340px;max-width:90vw;
+    background:#0A1628;color:#fff;border-radius:14px;
+    padding:12px 16px;display:none;align-items:center;gap:10px;
+    box-shadow:0 8px 32px rgba(0,0,0,.35);z-index:100;flex-wrap:wrap;
+    min-width:300px;max-width:92vw;
   }
   .bulk-bar.show{display:flex}
-  .bulk-bar select{padding:7px 10px;border-radius:8px;border:none;font-size:13px;
-                   background:#fff;color:var(--ink);font-weight:600}
-  .bulk-bar .bulk-count{font-size:14px;font-weight:700;white-space:nowrap}
+  .bulk-count-badge{
+    display:inline-flex;align-items:center;gap:5px;
+    background:var(--brand);color:#fff;border-radius:20px;
+    padding:3px 10px;font-size:12.5px;font-weight:700;white-space:nowrap;flex-shrink:0;
+  }
+  .bulk-label{font-size:12px;color:rgba(255,255,255,.55);white-space:nowrap}
+  .bulk-bar select{
+    padding:6px 10px;border-radius:8px;border:none;font-size:13px;
+    background:rgba(255,255,255,.12);color:#fff;font-weight:600;cursor:pointer;
+  }
+  .bulk-bar select option{background:#0A1628;color:#fff}
 </style>
 {% endblock %}
 
@@ -110,11 +151,11 @@
        across {{ stats.class_count or 0 }} class{{ 'es' if (stats.class_count or 0) != 1 }}</p>
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
-    <button class="btn btn-outline"
+    <button class="btn btn-outline" type="button"
             onclick="document.getElementById('import-modal').style.display='flex'">
       ⬆ Import CSV
     </button>
-    <button class="btn btn-primary"
+    <button class="btn btn-primary" type="button"
             onclick="document.getElementById('add-modal').style.display='flex'">
       + Add Student
     </button>
@@ -152,8 +193,8 @@
          oninput="filterStudents()"
          value="{{ q }}"/>
   <div class="view-tabs">
-    <button class="view-tab active" id="tab-group" onclick="setView('group')">By Class</button>
-    <button class="view-tab" id="tab-table" onclick="setView('table')">Table</button>
+    <button class="view-tab active" id="tab-group" onclick="setView('group')" type="button">By Class</button>
+    <button class="view-tab" id="tab-table" onclick="setView('table')" type="button">Table</button>
   </div>
 </div>
 
@@ -205,12 +246,19 @@
              title="{{ s.parent_count }} parent(s) linked"></div>
         {% if session.get('school_role') == 'admin' %}
         <div class="row-actions">
-          <button class="btn-icon"
-                  onclick="openPromote({{ s.id }}, {{ s.full_name | tojson }}, {{ s.class_name | tojson }}, {{ s.arm | tojson }})"
-                  title="Promote to new class">↑ Promote</button>
-          <button class="btn-icon danger"
-                  onclick="openDelete({{ s.id }}, {{ s.full_name | tojson }})"
-                  title="Remove student">✕</button>
+          {# BUG FIX: use single-quoted onclick so tojson double-quotes don't break HTML parsing #}
+          <button type="button" class="btn-icon" title="Edit student"
+                  onclick='openEdit({{ s.id }}, {{ s.full_name | tojson }}, {{ (s.student_number or "") | tojson }}, {{ s.class_name | tojson }}, {{ (s.arm or "A") | tojson }}, {{ (s.gender or "") | tojson }})'>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          <button type="button" class="btn-icon promote" title="Promote to new class"
+                  onclick='openPromote({{ s.id }}, {{ s.full_name | tojson }}, {{ s.class_name | tojson }}, {{ (s.arm or "A") | tojson }})'>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
+          </button>
+          <button type="button" class="btn-icon danger" title="Remove student"
+                  onclick='openDelete({{ s.id }}, {{ s.full_name | tojson }})'>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          </button>
         </div>
         {% endif %}
       </div>
@@ -223,11 +271,11 @@
   <div class="big">🎒</div>
   <p>No students yet.</p>
   <div style="display:flex;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap">
-    <button class="btn btn-primary"
+    <button class="btn btn-primary" type="button"
             onclick="document.getElementById('add-modal').style.display='flex'">
       Add Student
     </button>
-    <button class="btn btn-outline"
+    <button class="btn btn-outline" type="button"
             onclick="document.getElementById('import-modal').style.display='flex'">
       Import CSV
     </button>
@@ -282,13 +330,19 @@
         </td>
         {% if session.get('school_role') == 'admin' %}
         <td>
-          <div style="display:flex;gap:6px">
-            <button class="btn-icon"
-                    onclick="openPromote({{ s.id }}, {{ s.full_name | tojson }}, {{ s.class_name | tojson }}, {{ s.arm | tojson }})"
-                    title="Promote to new class">↑ Promote</button>
-            <button class="btn-icon danger"
-                    onclick="openDelete({{ s.id }}, {{ s.full_name | tojson }})"
-                    title="Remove student">✕</button>
+          <div class="row-actions">
+            <button type="button" class="btn-icon" title="Edit student"
+                    onclick='openEdit({{ s.id }}, {{ s.full_name | tojson }}, {{ (s.student_number or "") | tojson }}, {{ s.class_name | tojson }}, {{ (s.arm or "A") | tojson }}, {{ (s.gender or "") | tojson }})'>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button type="button" class="btn-icon promote" title="Promote to new class"
+                    onclick='openPromote({{ s.id }}, {{ s.full_name | tojson }}, {{ s.class_name | tojson }}, {{ (s.arm or "A") | tojson }})'>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
+            </button>
+            <button type="button" class="btn-icon danger" title="Remove student"
+                    onclick='openDelete({{ s.id }}, {{ s.full_name | tojson }})'>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+            </button>
           </div>
         </td>
         {% endif %}
@@ -303,33 +357,30 @@
 {# ════ FLOATING BULK BAR ════ #}
 {% if session.get('school_role') == 'admin' %}
 <div class="bulk-bar" id="bulk-bar">
-  <span class="bulk-count" id="bulk-count">0 selected</span>
+  <span class="bulk-count-badge" id="bulk-count">0</span>
+  <span class="bulk-label">selected — move to</span>
   <form method="POST" action="{{ url_for('school.students_promote_bulk') }}"
-        id="bulk-form" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        id="bulk-form" style="display:contents">
     <div id="bulk-ids"></div>
-    <select name="class_name" id="bulk-class" required
-            style="padding:7px 10px;border-radius:8px;border:none;font-size:13px;
-                   background:#fff;color:var(--ink);font-weight:600">
-      <option value="">Select destination class…</option>
+    <select name="class_name" id="bulk-class" required>
+      <option value="">Class…</option>
       {% for c in classes %}
-      <option value="{{ c }}">→ {{ c }}</option>
+      <option value="{{ c }}">{{ c }}</option>
       {% endfor %}
     </select>
-    <select name="arm"
-            style="padding:7px 10px;border-radius:8px;border:none;font-size:13px;
-                   background:#fff;color:var(--ink);font-weight:600;width:68px">
+    <select name="arm" style="width:60px">
       {% for a in ['A','B','C','D','E'] %}
       <option value="{{ a }}">{{ a }}</option>
       {% endfor %}
     </select>
     <button type="submit" class="btn btn-primary"
-            style="padding:8px 16px;font-size:13px;white-space:nowrap">
-      ↑ Promote Selected
+            style="padding:7px 14px;font-size:13px;white-space:nowrap;flex-shrink:0">
+      ↑ Promote
     </button>
   </form>
-  <button onclick="clearSelection()"
-          style="background:none;border:none;color:rgba(255,255,255,.5);
-                 font-size:20px;cursor:pointer;padding:0;line-height:1">✕</button>
+  <button type="button" onclick="clearSelection()"
+          style="background:none;border:none;color:rgba(255,255,255,.4);
+                 font-size:20px;cursor:pointer;padding:0;line-height:1;margin-left:4px">✕</button>
 </div>
 {% endif %}
 
@@ -340,9 +391,10 @@
   <div class="modal-box">
     <div class="modal-hd">
       <span class="modal-hd-title">Add Student</span>
-      <button class="modal-close"
+      <button type="button" class="modal-close"
               onclick="document.getElementById('add-modal').style.display='none'">×</button>
     </div>
+    <div class="modal-body">
     <form method="POST" action="{{ url_for('school.students_add') }}">
       <div class="form-row g2">
         <div class="form-group">
@@ -382,6 +434,7 @@
                 onclick="document.getElementById('add-modal').style.display='none'">Cancel</button>
       </div>
     </form>
+    </div>
   </div>
 </div>
 
@@ -390,9 +443,10 @@
   <div class="modal-box" style="max-width:460px">
     <div class="modal-hd">
       <span class="modal-hd-title">Import Students (CSV)</span>
-      <button class="modal-close"
+      <button type="button" class="modal-close"
               onclick="document.getElementById('import-modal').style.display='none'">×</button>
     </div>
+    <div class="modal-body">
     <p style="font-size:13px;color:var(--muted);margin-bottom:8px;line-height:1.6">
       Upload a CSV file. Required columns:
     </p>
@@ -417,6 +471,60 @@
                 onclick="document.getElementById('import-modal').style.display='none'">Cancel</button>
       </div>
     </form>
+    </div>
+  </div>
+</div>
+
+{# Edit student #}
+<div id="edit-modal" class="modal-overlay">
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-hd">
+      <span class="modal-hd-title">Edit Student</span>
+      <button type="button" class="modal-close"
+              onclick="document.getElementById('edit-modal').style.display='none'">×</button>
+    </div>
+    <div class="modal-body">
+    <form method="POST" id="edit-form">
+      <div class="form-row g2">
+        <div class="form-group">
+          <label>Full Name <span style="color:var(--bad)">*</span></label>
+          <input type="text" name="full_name" id="edit-name" required/>
+        </div>
+        <div class="form-group">
+          <label>Student ID / Number</label>
+          <input type="text" name="student_number" id="edit-number"/>
+        </div>
+      </div>
+      <div class="form-row g2">
+        <div class="form-group">
+          <label>Class <span style="color:var(--bad)">*</span></label>
+          <input type="text" name="class_name" id="edit-class" required list="edit-cls-dl"/>
+          <datalist id="edit-cls-dl">
+            {% for c in classes %}<option value="{{ c }}">{% endfor %}
+          </datalist>
+        </div>
+        <div class="form-group">
+          <label>Arm</label>
+          <select name="arm" id="edit-arm">
+            {% for a in ['A','B','C','D','E'] %}<option value="{{ a }}">{{ a }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Gender</label>
+        <select name="gender" id="edit-gender">
+          <option value="">—</option>
+          <option value="Male">Male</option>
+          <option value="Female">Female</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button class="btn btn-primary" type="submit">Save Changes</button>
+        <button type="button" class="btn btn-outline"
+                onclick="document.getElementById('edit-modal').style.display='none'">Cancel</button>
+      </div>
+    </form>
+    </div>
   </div>
 </div>
 
@@ -425,12 +533,22 @@
   <div class="modal-box" style="max-width:420px">
     <div class="modal-hd">
       <span class="modal-hd-title">Promote Student</span>
-      <button class="modal-close"
+      <button type="button" class="modal-close"
               onclick="document.getElementById('promote-modal').style.display='none'">×</button>
     </div>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:18px">
-      Moving <strong id="promote-name"></strong> to a new class.
-    </p>
+    <div class="modal-body">
+    <div class="promote-path">
+      <div class="promote-from">
+        <span>Current class</span>
+        <strong id="promote-current-label">—</strong>
+      </div>
+      <div class="promote-arrow">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+      </div>
+      <div class="promote-to-label">
+        <span>Promoting <strong id="promote-name"></strong> to</span>
+      </div>
+    </div>
     <form method="POST" id="promote-form">
       <div class="form-row g2">
         <div class="form-group">
@@ -444,7 +562,7 @@
         <div class="form-group">
           <label>Arm</label>
           <select name="arm" id="promote-arm">
-            {% for a in ['A','B','C','D','E'] %}<option>{{ a }}</option>{% endfor %}
+            {% for a in ['A','B','C','D','E'] %}<option value="{{ a }}">{{ a }}</option>{% endfor %}
           </select>
         </div>
       </div>
@@ -454,31 +572,40 @@
                 onclick="document.getElementById('promote-modal').style.display='none'">Cancel</button>
       </div>
     </form>
+    </div>
   </div>
 </div>
 
-{# Delete confirm #}
+{# Delete confirm — danger header design #}
 <div id="delete-modal" class="modal-overlay">
   <div class="modal-box" style="max-width:400px">
-    <div class="modal-hd">
-      <span class="modal-hd-title">Remove Student</span>
-      <button class="modal-close"
+    <div class="modal-danger-head">
+      <div class="modal-danger-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#B42318" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+      </div>
+      <div>
+        <div class="modal-danger-title">Remove Student</div>
+        <div class="modal-danger-sub">This action cannot be undone</div>
+      </div>
+      <button type="button" class="modal-close" style="margin-left:auto"
               onclick="document.getElementById('delete-modal').style.display='none'">×</button>
     </div>
+    <div class="modal-body">
     <p style="font-size:14px;color:var(--txt);margin-bottom:20px;line-height:1.6">
-      Remove <strong id="delete-name"></strong>? This will deactivate their record and
-      they will no longer appear in attendance or fee lists.
+      Remove <strong id="delete-name"></strong> from the system? Their record will be
+      deactivated and they will no longer appear in attendance or fee lists.
     </p>
     <form method="POST" id="delete-form">
       <div style="display:flex;gap:8px">
-        <button class="btn" type="submit"
-                style="background:var(--bad);color:#fff;padding:10px 20px;font-weight:700">
+        <button class="btn btn-danger" type="submit"
+                style="background:var(--bad);color:#fff;border:none;padding:10px 20px;font-weight:700">
           Yes, Remove
         </button>
         <button type="button" class="btn btn-outline"
                 onclick="document.getElementById('delete-modal').style.display='none'">Cancel</button>
       </div>
     </form>
+    </div>
   </div>
 </div>
 
@@ -524,14 +651,32 @@ function filterStudents() {
   }
 }
 
+/* ── Edit single ── */
+function openEdit(id, name, number, cls, arm, gender) {
+  document.getElementById('edit-form').action = '/school/students/' + id + '/edit';
+  document.getElementById('edit-name').value   = name;
+  document.getElementById('edit-number').value = number || '';
+  document.getElementById('edit-class').value  = cls;
+  var armSel = document.getElementById('edit-arm');
+  for (var i = 0; i < armSel.options.length; i++) {
+    if (armSel.options[i].value === (arm || 'A')) { armSel.selectedIndex = i; break; }
+  }
+  var genSel = document.getElementById('edit-gender');
+  for (var j = 0; j < genSel.options.length; j++) {
+    if (genSel.options[j].value === (gender || '')) { genSel.selectedIndex = j; break; }
+  }
+  document.getElementById('edit-modal').style.display = 'flex';
+}
+
 /* ── Promote single ── */
 function openPromote(id, name, currentClass, currentArm) {
   document.getElementById('promote-name').textContent = name;
+  document.getElementById('promote-current-label').textContent = currentClass + ' ' + (currentArm || 'A');
   document.getElementById('promote-form').action = '/school/students/' + id + '/promote';
   document.getElementById('promote-class').value = currentClass;
   var armSel = document.getElementById('promote-arm');
   for (var i = 0; i < armSel.options.length; i++) {
-    if (armSel.options[i].value === currentArm) { armSel.selectedIndex = i; break; }
+    if (armSel.options[i].value === (currentArm || 'A')) { armSel.selectedIndex = i; break; }
   }
   document.getElementById('promote-modal').style.display = 'flex';
 }
@@ -554,7 +699,7 @@ function updateBulkBar() {
   if (!bar) return;
   if (checked.length > 0) {
     bar.classList.add('show');
-    document.getElementById('bulk-count').textContent = checked.length + ' student' + (checked.length !== 1 ? 's' : '') + ' selected';
+    document.getElementById('bulk-count').textContent = checked.length;
     var container = document.getElementById('bulk-ids');
     container.innerHTML = '';
     checked.forEach(function(cb) {
@@ -568,7 +713,6 @@ function updateBulkBar() {
 }
 
 function toggleGroup(groupCb) {
-  var group = groupCb.dataset.group;
   var section = groupCb.closest('.group-section');
   var boxes = section.querySelectorAll('.student-check');
   boxes.forEach(function(cb) { cb.checked = groupCb.checked; });
@@ -592,7 +736,7 @@ function clearSelection() {
 }
 
 /* ── Close modals on overlay click ── */
-['add-modal','import-modal','promote-modal','delete-modal'].forEach(function(id) {
+['add-modal','import-modal','edit-modal','promote-modal','delete-modal'].forEach(function(id) {
   var el = document.getElementById(id);
   if (el) el.addEventListener('click', function(e) {
     if (e.target === this) this.style.display = 'none';

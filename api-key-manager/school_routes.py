@@ -424,6 +424,32 @@ def students_import():
     return redirect(url_for("school.students"))
 
 
+@school_bp.route("/students/<int:student_id>/edit", methods=["POST"])
+@require_admin
+def students_edit(student_id):
+    sid            = _school_id()
+    full_name      = request.form.get("full_name", "").strip()
+    student_number = request.form.get("student_number", "").strip()
+    class_name     = request.form.get("class_name", "").strip()
+    arm            = request.form.get("arm", "A").strip()
+    gender         = request.form.get("gender", "").strip()
+    if not full_name or not class_name:
+        flash("Name and class are required.", "danger")
+        return redirect(url_for("school.students"))
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute(
+        """UPDATE school_students
+           SET full_name=%s, student_number=%s, class_name=%s, arm=%s, gender=%s
+           WHERE id=%s AND school_id=%s AND is_active=TRUE""",
+        (full_name, student_number or None, class_name, arm, gender or None, student_id, sid)
+    )
+    conn.commit()
+    cur.close(); conn.close()
+    flash("Student updated.", "success")
+    return redirect(url_for("school.students"))
+
+
 @school_bp.route("/students/<int:student_id>/delete", methods=["POST"])
 @require_admin
 def students_delete(student_id):
