@@ -1,0 +1,154 @@
+{% extends "school/base.html" %}
+{% block title %}Connect WhatsApp — {{ school.school_name }}{% endblock %}
+
+{% block head %}
+<style>
+  .settings-card{
+    background:#fff;border:1px solid var(--line);border-radius:14px;
+    overflow:hidden; max-width:720px;
+  }
+  .settings-card-head{
+    padding:18px 22px 14px;border-bottom:1px solid var(--line);
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+  }
+  .settings-card-title{font-size:15px;font-weight:750;color:var(--ink)}
+  .settings-card-sub{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .settings-card-body{padding:22px}
+
+  .wa-status{
+    display:flex;align-items:center;gap:14px;padding:14px 16px;
+    border-radius:10px;margin-bottom:18px;
+  }
+  .wa-status.connected{background:#F0FDF4;border:1px solid #A6F4C5}
+  .wa-status.disconnected{background:#FFFAEB;border:1px solid #FEF0C7}
+  .wa-status-icon{font-size:22px;flex-shrink:0}
+  .wa-status-name{font-size:14px;font-weight:700;color:var(--ink)}
+  .wa-status-meta{font-size:12px;color:var(--muted);margin-top:2px}
+
+  .expand-toggle{
+    font-size:13px;font-weight:600;color:var(--brand);
+    background:none;border:none;cursor:pointer;padding:0;
+  }
+  .expand-toggle:hover{text-decoration:underline}
+  .expandable{display:none;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+  .expandable.open{display:block}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Connect WhatsApp</h1>
+    <p>Link your WhatsApp Business number for AI-powered parent alerts</p>
+  </div>
+</div>
+
+<div class="settings-card">
+  <div class="settings-card-head">
+    <div>
+      <div class="settings-card-title">WhatsApp Business</div>
+      <div class="settings-card-sub">The number parents message for AI-powered answers</div>
+    </div>
+  </div>
+  <div class="settings-card-body">
+
+    {# Connection status #}
+    {% if school.wa_phone_number_id %}
+    <div class="wa-status connected">
+      <div class="wa-status-icon">✅</div>
+      <div>
+        <div class="wa-status-name">
+          {{ school.wa_display_phone or school.wa_phone_number_id }}
+          {% if school.wa_verified_name %} · {{ school.wa_verified_name }}{% endif %}
+        </div>
+        <div class="wa-status-meta">
+          Phone Number ID: {{ school.wa_phone_number_id[:8] }}…
+          {% if school.wa_waba_id %} · WABA: {{ school.wa_waba_id[:8] }}…{% endif %}
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="wa-status disconnected">
+      <div class="wa-status-icon">⚠️</div>
+      <div>
+        <div class="wa-status-name" style="color:#92400E">WhatsApp not connected</div>
+        <div class="wa-status-meta">Parents won't receive any alerts or AI responses until connected.</div>
+      </div>
+    </div>
+    {% endif %}
+
+    {# Test message (only if connected) #}
+    {% if school.wa_phone_number_id %}
+    <form method="POST" action="{{ url_for('school.settings_wa_test') }}"
+          style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap">
+      <input type="tel" name="test_number"
+             placeholder="Test phone number (e.g. 08012345678)"
+             style="flex:1;min-width:200px;padding:9px 12px;border:1.5px solid var(--line);
+                    border-radius:8px;font-size:14px;"/>
+      <button class="btn btn-outline" type="submit">📲 Send test</button>
+    </form>
+    {% endif %}
+
+    {# Credentials form (admin only) #}
+    {% if is_admin %}
+    <button class="expand-toggle" onclick="toggleExpand('wa-creds')">
+      {{ 'Update credentials ▾' if school.wa_phone_number_id else 'Enter credentials ▾' }}
+    </button>
+    <div class="expandable" id="wa-creds" {% if not school.wa_phone_number_id %}style="display:block"{% endif %}>
+      <form method="POST" action="{{ url_for('school.settings_wa') }}">
+        <div class="form-row g2">
+          <div class="form-group">
+            <label>Display Phone Number</label>
+            <input type="text" name="wa_display_phone"
+                   value="{{ school.wa_display_phone or '' }}"
+                   placeholder="+234 801 234 5678"/>
+          </div>
+          <div class="form-group">
+            <label>Phone Number ID <span style="color:var(--bad)">*</span></label>
+            <input type="text" name="wa_phone_number_id"
+                   value="{{ school.wa_phone_number_id or '' }}"
+                   placeholder="123456789012345"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>WABA ID (WhatsApp Business Account ID)</label>
+          <input type="text" name="wa_waba_id"
+                 value="{{ school.wa_waba_id or '' }}"
+                 placeholder="987654321098765"/>
+        </div>
+        <div class="form-group">
+          <label>Permanent Access Token</label>
+          <div style="position:relative">
+            <input type="password" name="wa_access_token" id="wa-token-input"
+                   placeholder="EAAxxxxxxx… (leave blank to keep existing)"/>
+            <button type="button" onclick="toggleToken()"
+                    style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
+                           border:none;background:none;font-size:12px;color:var(--muted);cursor:pointer">
+              Show
+            </button>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" type="submit">Save Credentials</button>
+          <a href="{{ url_for('school.onboarding', step=2) }}" class="btn btn-outline">
+            Re-run Embedded Signup →
+          </a>
+        </div>
+      </form>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+
+<script>
+function toggleExpand(id) {
+  var el = document.getElementById(id);
+  el.classList.toggle('open');
+}
+function toggleToken() {
+  var inp = document.getElementById('wa-token-input');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+</script>
+{% endblock %}

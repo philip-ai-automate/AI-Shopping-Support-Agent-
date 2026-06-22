@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>{% block title %}PhiXtra School{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <style>
+    :root{
+      --ink:#0A1628; --bg:#F7F9FC; --card:#fff;
+      --line:rgba(10,22,40,0.10); --txt:rgba(10,22,40,0.90);
+      --muted:rgba(10,22,40,0.50); --good:#12B76A;
+      --warn:#F79009; --bad:#F04438; --brand:#1D6AF5;
+      --brand-light:#EEF4FF;
+      --shadow:0 2px 12px rgba(10,22,40,0.08);
+      --sidebar-w:230px;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    html{-webkit-font-smoothing:antialiased}
+    body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+         color:var(--txt);background:var(--bg);min-height:100vh;font-size:15px;line-height:1.55}
+    a{color:var(--ink);text-decoration:none}
+    a:hover{text-decoration:underline;text-underline-offset:3px}
+
+    /* ── Sidebar ── */
+    .sidebar{
+      position:fixed;top:0;left:0;bottom:0;width:var(--sidebar-w);
+      background:#fff;display:flex;flex-direction:column;
+      z-index:100;border-right:1px solid var(--line);
+      box-shadow:2px 0 12px rgba(10,22,40,0.06);overflow-y:auto;
+    }
+    .sb-brand{
+      display:flex;align-items:center;gap:10px;
+      padding:20px 16px 16px;border-bottom:1px solid var(--line);
+      flex-shrink:0;text-decoration:none;
+    }
+    .sb-brand:hover{text-decoration:none}
+    .sb-logo{
+      width:36px;height:36px;border-radius:10px;
+      background:var(--brand);display:flex;align-items:center;justify-content:center;
+      color:#fff;font-size:18px;font-weight:700;flex-shrink:0;
+    }
+    .sb-brand-text{display:flex;flex-direction:column;gap:1px}
+    .sb-brand-name{font-size:14px;font-weight:700;color:var(--ink);line-height:1}
+    .sb-brand-sub{font-size:10px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;font-weight:500}
+    .sb-school{
+      padding:12px 16px;border-bottom:1px solid var(--line);
+      font-size:12px;color:var(--muted);font-weight:500;
+    }
+    .sb-school strong{display:block;color:var(--txt);font-size:13px;font-weight:600;margin-bottom:2px}
+    .sb-nav{flex:1;padding:8px 10px;display:flex;flex-direction:column;gap:2px}
+    .sb-section{
+      font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+      color:var(--muted);padding:10px 10px 4px;margin-top:4px;
+    }
+    .sb-link{
+      display:flex;align-items:center;gap:10px;
+      padding:10px 12px;border-radius:8px;
+      font-size:13.5px;font-weight:500;color:rgba(10,22,40,0.65);
+      cursor:pointer;transition:.12s;text-decoration:none;
+    }
+    .sb-link:hover{background:rgba(10,22,40,0.05);color:var(--ink);text-decoration:none}
+    .sb-link.active{
+      background:var(--brand-light);color:var(--brand);font-weight:650;
+    }
+    .sb-link .icon{font-size:15px;flex-shrink:0;width:18px;text-align:center}
+    .sb-footer{padding:12px 16px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+    .sb-footer a{color:var(--muted)}
+    .sb-footer a:hover{color:var(--ink)}
+
+    /* ── Main content ── */
+    .main{margin-left:var(--sidebar-w);padding:28px 32px;min-height:100vh}
+    @media(max-width:768px){
+      .sidebar{display:none}
+      .main{margin-left:0;padding:16px}
+    }
+
+    /* ── Page header ── */
+    .page-header{display:flex;align-items:flex-start;justify-content:space-between;
+                 flex-wrap:wrap;gap:12px;margin-bottom:24px}
+    .page-header h1{font-size:22px;font-weight:700;color:var(--ink)}
+    .page-header p{font-size:13px;color:var(--muted);margin-top:3px}
+
+    /* ── Cards ── */
+    .card{background:var(--card);border-radius:14px;border:1px solid var(--line);
+          box-shadow:var(--shadow);padding:22px}
+    .card-sm{padding:14px 18px}
+
+    /* ── Stat cards ── */
+    .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:24px}
+    .stat-card{background:#fff;border:1px solid var(--line);border-radius:12px;
+               padding:18px 20px;display:flex;flex-direction:column;gap:6px}
+    .stat-label{font-size:12px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.05em}
+    .stat-value{font-size:28px;font-weight:700;color:var(--ink);line-height:1}
+    .stat-value.good{color:var(--good)}
+    .stat-value.warn{color:var(--warn)}
+    .stat-value.bad{color:var(--bad)}
+    .stat-value.brand{color:var(--brand)}
+
+    /* ── Table ── */
+    .table-wrap{overflow-x:auto;border-radius:10px;border:1px solid var(--line)}
+    .table-wrap table{width:100%;border-collapse:collapse;background:#fff}
+    .table-wrap th{background:#F7F9FC;font-size:11.5px;font-weight:700;
+                   letter-spacing:.05em;text-transform:uppercase;color:var(--muted);
+                   padding:10px 14px;text-align:left;border-bottom:1px solid var(--line)}
+    .table-wrap td{padding:11px 14px;font-size:13.5px;border-bottom:1px solid var(--line)}
+    .table-wrap tr:last-child td{border-bottom:none}
+    .table-wrap tr:hover td{background:#FAFBFD}
+
+    /* ── Buttons ── */
+    .btn{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;
+         border-radius:8px;font-size:13.5px;font-weight:600;cursor:pointer;
+         border:none;transition:.12s;text-decoration:none;white-space:nowrap}
+    .btn:hover{text-decoration:none;opacity:.9}
+    .btn-primary{background:var(--brand);color:#fff}
+    .btn-outline{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
+    .btn-outline:hover{background:rgba(10,22,40,0.04)}
+    .btn-danger{background:#FFF1F0;color:var(--bad);border:1px solid #FECDCA}
+    .btn-danger:hover{background:#FFE4E2}
+    .btn-success{background:#ECFDF5;color:#027A48;border:1px solid #A6F4C5}
+    .btn-sm{padding:6px 12px;font-size:12.5px}
+
+    /* ── Pill badges ── */
+    .pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11.5px;font-weight:600}
+    .pill-green{background:#ECFDF5;color:#027A48}
+    .pill-yellow{background:#FFFAEB;color:#B54708}
+    .pill-red{background:#FFF1F0;color:#B42318}
+    .pill-blue{background:#EEF4FF;color:#1D4ED8}
+    .pill-grey{background:#F2F4F7;color:#344054}
+
+    /* ── Form elements ── */
+    .form-group{display:flex;flex-direction:column;gap:5px;margin-bottom:14px}
+    .form-group label{font-size:12.5px;font-weight:600;color:var(--txt)}
+    .form-group input,.form-group select,.form-group textarea{
+      padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;
+      font-size:14px;color:var(--txt);background:#fff;width:100%;
+      transition:.12s;font-family:inherit;
+    }
+    .form-group input:focus,.form-group select:focus,.form-group textarea:focus{
+      outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(29,106,245,0.10)
+    }
+    .form-row{display:grid;gap:14px}
+    .form-row.g2{grid-template-columns:1fr 1fr}
+    .form-row.g3{grid-template-columns:1fr 1fr 1fr}
+    @media(max-width:600px){.form-row.g2,.form-row.g3{grid-template-columns:1fr}}
+
+    /* ── Flash messages ── */
+    .flash{padding:12px 16px;border-radius:8px;font-size:13.5px;
+           margin-bottom:18px;font-weight:500}
+    .flash.success{background:#ECFDF5;color:#027A48;border:1px solid #A6F4C5}
+    .flash.warning{background:#FFFAEB;color:#B54708;border:1px solid #FEF0C7}
+    .flash.danger{background:#FFF1F0;color:#B42318;border:1px solid #FECDCA}
+
+    /* ── Grid ── */
+    .grid{display:grid;gap:20px}
+    .g2{grid-template-columns:1fr 1fr}
+    .g3{grid-template-columns:1fr 1fr 1fr}
+    @media(max-width:768px){.g2,.g3{grid-template-columns:1fr}}
+
+    /* ── Misc ── */
+    .section-title{font-size:13px;font-weight:700;color:var(--muted);
+                   text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px}
+    .empty-state{text-align:center;padding:48px 20px;color:var(--muted)}
+    .empty-state .big{font-size:36px;margin-bottom:8px}
+    .empty-state p{font-size:14px}
+    .search-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;align-items:center}
+    .search-bar input,.search-bar select{
+      padding:8px 12px;border:1.5px solid var(--line);border-radius:8px;
+      font-size:13.5px;background:#fff;color:var(--txt);
+    }
+    .divider{height:1px;background:var(--line);margin:20px 0}
+    .text-muted{color:var(--muted)}
+    .text-sm{font-size:12.5px}
+    .mt-4{margin-top:16px}
+    .mb-4{margin-bottom:16px}
+    .wa-badge{display:inline-flex;align-items:center;gap:5px;
+              padding:3px 9px;border-radius:20px;font-size:11.5px;font-weight:600;
+              background:#ECFDF5;color:#027A48}
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+<nav class="sidebar">
+  <a class="sb-brand" href="{{ url_for('school.dashboard') }}">
+    <div class="sb-logo">S</div>
+    <div class="sb-brand-text">
+      <span class="sb-brand-name">PhiXtra</span>
+      <span class="sb-brand-sub">School</span>
+    </div>
+  </a>
+  {% if session.get('school_logged_in') %}
+  <div class="sb-school">
+    <strong>{{ session.get('school_name', 'My School') }}</strong>
+    {{ session.get('school_role', 'staff')|title }}
+  </div>
+  <div class="sb-nav">
+    <a class="sb-link {% if request.endpoint == 'school.dashboard' %}active{% endif %}"
+       href="{{ url_for('school.dashboard') }}">
+      <span class="icon">📊</span> Dashboard
+    </a>
+
+    <div class="sb-section">Students & Parents</div>
+    <a class="sb-link {% if 'student' in request.endpoint %}active{% endif %}"
+       href="{{ url_for('school.students') }}">
+      <span class="icon">🎒</span> Students
+    </a>
+    <a class="sb-link {% if 'parent' in request.endpoint %}active{% endif %}"
+       href="{{ url_for('school.parents') }}">
+      <span class="icon">👨‍👩‍👧</span> Parents
+    </a>
+
+    <div class="sb-section">Daily Operations</div>
+    <a class="sb-link {% if 'attendance' in request.endpoint %}active{% endif %}"
+       href="{{ url_for('school.attendance') }}">
+      <span class="icon">✅</span> Attendance
+    </a>
+
+    <div class="sb-section">Finance</div>
+    <a class="sb-link {% if 'fee' in request.endpoint %}active{% endif %}"
+       href="{{ url_for('school.fees') }}">
+      <span class="icon">💰</span> Fees
+    </a>
+
+    <div class="sb-section">Communication</div>
+    <a class="sb-link {% if 'broadcast' in request.endpoint %}active{% endif %}"
+       href="{{ url_for('school.broadcast') }}">
+      <span class="icon">📢</span> Broadcast
+    </a>
+    <a class="sb-link {% if 'knowledge' in request.endpoint %}active{% endif %}"
+       href="{{ url_for('school.knowledge') }}">
+      <span class="icon">🧠</span> AI Knowledge
+    </a>
+
+    {% if session.get('school_role') in ('admin', 'bursar') %}
+    <div class="sb-section">Admin</div>
+    <a class="sb-link {% if request.endpoint == 'school.wa_connect' %}active{% endif %}"
+       href="{{ url_for('school.wa_connect') }}">
+      <span class="icon">📱</span> Connect WhatsApp
+    </a>
+    <a class="sb-link {% if 'settings' in request.endpoint %}active{% endif %}"
+       href="{{ url_for('school.settings') }}">
+      <span class="icon">⚙️</span> Settings
+    </a>
+    {% endif %}
+  </div>
+  <div class="sb-footer">
+    <a href="{{ url_for('school.logout') }}">Sign out</a>
+  </div>
+  {% endif %}
+</nav>
+
+<main class="main">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+
+</body>
+</html>
