@@ -1,0 +1,155 @@
+{% extends "ambassador/gs_page.html" %}
+
+{% block gs_style %}
+.earn-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px}
+.earn-table th{text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;
+               letter-spacing:.05em;color:var(--muted);padding:8px 12px;border-bottom:2px solid var(--line)}
+.earn-table td{padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+.earn-table tr:last-child td{border-bottom:none}
+.earn-table tr.highlight td{background:#f8f9fb}
+.bonus-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:12px}
+.bonus-card{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:14px 16px}
+.bonus-amount{font-size:20px;font-weight:800;color:#15803d}
+.bonus-desc{font-size:12px;color:#166534;margin-top:4px}
+.example-row{display:flex;justify-content:space-between;align-items:center;
+             padding:10px 14px;border-bottom:1px solid var(--line);font-size:13px}
+.example-row:last-child{border-bottom:none}
+{% endblock %}
+
+{% block gs_content %}
+
+<div class="gs-section">
+  <div class="gs-section-title">Monthly commission</div>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:14px">
+    You earn <strong>20% of every monthly payment</strong> your referred shops make. This is paid automatically — you do not need to ask or send an invoice.
+  </p>
+  <table class="earn-table">
+    <thead>
+      <tr>
+        <th>Level</th>
+        <th>Active Shops</th>
+        <th>Your Cut</th>
+        <th>How Long</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Standard</strong></td>
+        <td>1 – 9</td>
+        <td>20%</td>
+        <td>12 months</td>
+      </tr>
+      <tr class="highlight">
+        <td><strong>Elite</strong></td>
+        <td>10 – 19</td>
+        <td>20%</td>
+        <td>24 months</td>
+      </tr>
+      <tr>
+        <td><strong>Master</strong> 🏆</td>
+        <td>20+</td>
+        <td>20%</td>
+        <td>Forever</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="gs-tip" style="margin-top:14px">
+    Your level goes up as more of your referred shops become paying subscribers. The more shops you bring in, the longer you keep earning from each one.
+  </div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">Upgrade bonuses</div>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:4px">
+    You also earn a one-time bonus when a shop you referred moves up to a higher plan. This is on top of your monthly commission.
+  </p>
+  <div class="bonus-grid">
+    <div class="bonus-card">
+      <div class="bonus-amount">₦5,000</div>
+      <div class="bonus-desc">Shop upgrades from Starter to Growth</div>
+    </div>
+    <div class="bonus-card">
+      <div class="bonus-amount">₦10,000</div>
+      <div class="bonus-desc">Shop upgrades from Growth to Pro</div>
+    </div>
+    <div class="bonus-card">
+      <div class="bonus-amount">₦15,000</div>
+      <div class="bonus-desc">Shop upgrades from Starter to Pro</div>
+    </div>
+  </div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">How much can you make?</div>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:14px">
+    Here are some real examples based on shops paying ₦75,000 per month on the Growth plan:
+  </p>
+  <div style="border:1px solid var(--line);border-radius:10px;overflow:hidden">
+    <div style="background:#f8f9fb;padding:10px 14px;border-bottom:1px solid var(--line)">
+      <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:700;
+                  text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">
+        <span>How many shops you have</span><span>Your monthly earnings</span>
+      </div>
+    </div>
+    <div class="example-row">
+      <div>
+        <div style="font-weight:600">3 shops on Growth plan</div>
+        <div style="font-size:12px;color:var(--muted)">3 × ₦75,000 × 20%</div>
+      </div>
+      <div style="font-weight:700;color:var(--good)">₦45,000/mo</div>
+    </div>
+    <div class="example-row" style="background:#f8f9fb">
+      <div>
+        <div style="font-weight:600">8 shops on Growth plan</div>
+        <div style="font-size:12px;color:var(--muted)">8 × ₦75,000 × 20%</div>
+      </div>
+      <div style="font-weight:700;color:var(--good)">₦120,000/mo</div>
+    </div>
+    <div class="example-row">
+      <div>
+        <div style="font-weight:600">15 shops on Growth plan</div>
+        <div style="font-size:12px;color:var(--muted)">15 × ₦75,000 × 20% — Elite level</div>
+      </div>
+      <div style="font-weight:700;color:var(--good)">₦225,000/mo</div>
+    </div>
+    <div class="example-row" style="background:#f0fdf4">
+      <div>
+        <div style="font-weight:600;color:#15803d">20+ shops — Master level</div>
+        <div style="font-size:12px;color:#166534">20 × ₦75,000 × 20% — you earn forever</div>
+      </div>
+      <div style="font-weight:800;color:#15803d">₦300,000+/mo</div>
+    </div>
+  </div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">Where to see your earnings</div>
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <a href="{{ url_for('ambassador.earnings') }}"
+       style="display:flex;align-items:center;gap:14px;padding:13px 16px;background:#f8f9fb;
+              border:1px solid var(--line);border-radius:12px;text-decoration:none;color:var(--ink);
+              transition:background .15s"
+       onmouseover="this.style.background='#f0f1f8'" onmouseout="this.style.background='#f8f9fb'">
+      <span style="font-size:20px">💰</span>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700">Earnings</div>
+        <div style="font-size:12px;color:var(--muted)">See every payment you have earned</div>
+      </div>
+      <span style="color:var(--muted)">→</span>
+    </a>
+    <a href="{{ url_for('ambassador.dashboard') }}"
+       style="display:flex;align-items:center;gap:14px;padding:13px 16px;background:#f8f9fb;
+              border:1px solid var(--line);border-radius:12px;text-decoration:none;color:var(--ink);
+              transition:background .15s"
+       onmouseover="this.style.background='#f0f1f8'" onmouseout="this.style.background='#f8f9fb'">
+      <span style="font-size:20px">🏠</span>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700">Dashboard</div>
+        <div style="font-size:12px;color:var(--muted)">Monthly totals, your level, and active shops</div>
+      </div>
+      <span style="color:var(--muted)">→</span>
+    </a>
+  </div>
+</div>
+
+{% endblock %}
