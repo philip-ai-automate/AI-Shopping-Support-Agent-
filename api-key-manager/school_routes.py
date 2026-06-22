@@ -440,6 +440,51 @@ def students_delete(student_id):
     return redirect(url_for("school.students"))
 
 
+@school_bp.route("/students/<int:student_id>/promote", methods=["POST"])
+@require_admin
+def students_promote(student_id):
+    sid       = _school_id()
+    new_class = request.form.get("class_name", "").strip()
+    new_arm   = request.form.get("arm", "A").strip()
+    if not new_class:
+        flash("Please select a destination class.", "danger")
+        return redirect(url_for("school.students"))
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute(
+        "UPDATE school_students SET class_name=%s, arm=%s WHERE id=%s AND school_id=%s AND is_active=TRUE",
+        (new_class, new_arm, student_id, sid)
+    )
+    conn.commit()
+    cur.close(); conn.close()
+    flash("Student promoted.", "success")
+    return redirect(url_for("school.students"))
+
+
+@school_bp.route("/students/promote-bulk", methods=["POST"])
+@require_admin
+def students_promote_bulk():
+    sid        = _school_id()
+    new_class  = request.form.get("class_name", "").strip()
+    new_arm    = request.form.get("arm", "").strip()
+    student_ids = request.form.getlist("student_ids")
+    if not new_class or not student_ids:
+        flash("Select students and a destination class.", "danger")
+        return redirect(url_for("school.students"))
+    ids = [int(i) for i in student_ids if i.isdigit()]
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute(
+        f"UPDATE school_students SET class_name=%s{', arm=%s' if new_arm else ''} "
+        f"WHERE id = ANY(%s) AND school_id=%s AND is_active=TRUE",
+        (new_class, new_arm, ids, sid) if new_arm else (new_class, ids, sid)
+    )
+    conn.commit()
+    cur.close(); conn.close()
+    flash(f"{len(ids)} student{'s' if len(ids) != 1 else ''} promoted to {new_class}.", "success")
+    return redirect(url_for("school.students"))
+
+
 @school_bp.route("/students/csv-template")
 @require_login
 def students_csv_template():
