@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 import bcrypt
 from flask import (Blueprint, render_template, request, redirect,
-                   url_for, session, flash, send_file, jsonify)
+                   url_for, session, flash, send_file, jsonify, send_from_directory)
 
 from db import get_db_connection, insert_audit_log
 from portal_utils import (
@@ -789,6 +789,25 @@ def home():
     if _logged_in() and _customer_id():
         return redirect(url_for("portal.dashboard"))
     return render_template("portal/home.html")
+
+
+@portal_bp.route("/sw.js")
+def service_worker():
+    """Serve SW from root so its scope covers the entire portal."""
+    return send_from_directory(
+        os.path.join(os.path.dirname(__file__), "static", "portal"),
+        "sw.js",
+        mimetype="application/javascript"
+    )
+
+
+@portal_bp.route("/try-demo")
+def try_demo():
+    """One-click public demo login — always lands on the shared demo account."""
+    session.clear()
+    session["portal_logged_in"] = True
+    session["customer_id"]      = 89   # demo@phixtra.com, tenant 85
+    return redirect(url_for("portal.dashboard"))
 
 
 
@@ -12355,7 +12374,8 @@ def _stripe_get_or_create_price(plan_id: int, plan_slug: str, plan_name: str,
             unit_amount = round(amount_usd * 100)
             interval, interval_count = "month", 1
         else:
-            unit_amount = round(amount_usd * 12 * 0.95 * 100)
+            disc = plan.get("annual_discount_pct", 5) / 100
+            unit_amount = round(amount_usd * 12 * (1 - disc) * 100)
             interval, interval_count = "year", 1
 
         price = stripe.Price.create(
@@ -12477,7 +12497,8 @@ def billing_plan_upgrade():
         if cycle == "monthly":
             amount_ngn = int(plan["price_ngn"])
         else:
-            amount_ngn = round(int(plan["price_ngn"]) * 12 * 0.95)
+            disc = plan.get("annual_discount_pct", 5) / 100
+            amount_ngn = round(int(plan["price_ngn"]) * 12 * (1 - disc))
 
         fw_plan_id = _fw_get_or_create_plan(
             plan["id"], plan_slug, plan["name"], cycle, amount_ngn

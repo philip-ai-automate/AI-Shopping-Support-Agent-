@@ -43,6 +43,7 @@
       <th>Plan</th>
       <th>Price NGN</th>
       <th>Price USD</th>
+      <th>Annual Disc</th>
       <th>AI Msgs</th>
       <th>Agents</th>
       <th>Broadcasts</th>
@@ -58,6 +59,7 @@
       <td><strong>{{ p.name }}</strong> <span style="font-size:11px;color:var(--muted)">({{ p.slug }})</span></td>
       <td>₦{{ "{:,}".format(p.price_ngn) }}</td>
       <td>${{ p.price_usd }}</td>
+      <td>{{ p.annual_discount_pct }}%</td>
       <td>{{ p.ai_messages_limit if p.ai_messages_limit != -1 else '∞' }}</td>
       <td>{{ p.agents_limit if p.agents_limit != -1 else '∞' }}</td>
       <td>{{ p.broadcasts_limit if p.broadcasts_limit != -1 else '∞' }}</td>
