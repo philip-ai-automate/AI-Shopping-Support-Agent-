@@ -2,36 +2,60 @@
 {% block title %}Connect WhatsApp — {{ school.school_name }}{% endblock %}
 
 {% block head %}
+{% if embedded_enabled %}
+<script>
+  window.fbAsyncInit = function() {
+    FB.init({ appId: '{{ meta_app_id }}', autoLogAppEvents: true, xfbml: true, version: 'v19.0' });
+  };
+</script>
+<script async defer src="https://connect.facebook.net/en_US/sdk.js"></script>
+{% endif %}
 <style>
-  .settings-card{
-    background:#fff;border:1px solid var(--line);border-radius:14px;
-    overflow:hidden; max-width:720px;
-  }
-  .settings-card-head{
-    padding:18px 22px 14px;border-bottom:1px solid var(--line);
-    display:flex;align-items:center;justify-content:space-between;gap:10px;
-  }
-  .settings-card-title{font-size:15px;font-weight:750;color:var(--ink)}
-  .settings-card-sub{font-size:12.5px;color:var(--muted);margin-top:2px}
-  .settings-card-body{padding:22px}
+  .wa-card{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;max-width:720px}
+  .wa-card-head{padding:18px 22px 14px;border-bottom:1px solid var(--line)}
+  .wa-card-title{font-size:15px;font-weight:750;color:var(--ink)}
+  .wa-card-sub{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .wa-card-body{padding:22px}
 
-  .wa-status{
-    display:flex;align-items:center;gap:14px;padding:14px 16px;
-    border-radius:10px;margin-bottom:18px;
-  }
+  .wa-status{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:10px;margin-bottom:20px}
   .wa-status.connected{background:#F0FDF4;border:1px solid #A6F4C5}
   .wa-status.disconnected{background:#FFFAEB;border:1px solid #FEF0C7}
   .wa-status-icon{font-size:22px;flex-shrink:0}
   .wa-status-name{font-size:14px;font-weight:700;color:var(--ink)}
   .wa-status-meta{font-size:12px;color:var(--muted);margin-top:2px}
 
-  .expand-toggle{
-    font-size:13px;font-weight:600;color:var(--brand);
-    background:none;border:none;cursor:pointer;padding:0;
+  .section-label{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+                 color:var(--muted);margin-bottom:10px}
+
+  .wa-signup-btn{
+    display:inline-flex;align-items:center;gap:10px;
+    background:#25D366;color:#fff;font-size:14px;font-weight:700;
+    padding:12px 22px;border-radius:10px;border:none;cursor:pointer;transition:.15s;
   }
+  .wa-signup-btn:hover{background:#1DA851}
+  .wa-signup-btn svg{width:20px;height:20px;fill:#fff;flex-shrink:0}
+
+  .divider{height:1px;background:var(--line);margin:24px 0}
+
+  .expand-toggle{font-size:13px;font-weight:600;color:var(--brand);background:none;border:none;cursor:pointer;padding:0}
   .expand-toggle:hover{text-decoration:underline}
   .expandable{display:none;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
   .expandable.open{display:block}
+
+  /* Phone modal */
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);
+                 z-index:200;align-items:center;justify-content:center;padding:20px}
+  .modal-box{background:#fff;border-radius:14px;padding:28px;width:100%;max-width:480px}
+  .modal-title{font-size:16px;font-weight:750;color:var(--ink);margin-bottom:6px}
+  .modal-sub{font-size:13px;color:var(--muted);margin-bottom:18px}
+  .phone-option{padding:12px 14px;border:2px solid var(--line);border-radius:10px;
+                cursor:pointer;margin-bottom:8px;transition:.15s}
+  .phone-option:hover{border-color:var(--brand)}
+  .phone-option.selected{border-color:var(--brand);background:#EEF4FF}
+  .phone-option strong{display:block;font-size:14px;color:var(--ink)}
+  .phone-option span{font-size:12px;color:var(--muted)}
+
+  @keyframes spin{to{transform:rotate(360deg)}}
 </style>
 {% endblock %}
 
@@ -39,20 +63,18 @@
 <div class="page-header">
   <div>
     <h1>Connect WhatsApp</h1>
-    <p>Link your WhatsApp Business number for AI-powered parent alerts</p>
+    <p>Link your WhatsApp Business number so parents can message the AI assistant</p>
   </div>
 </div>
 
-<div class="settings-card">
-  <div class="settings-card-head">
-    <div>
-      <div class="settings-card-title">WhatsApp Business</div>
-      <div class="settings-card-sub">The number parents message for AI-powered answers</div>
-    </div>
+<div class="wa-card">
+  <div class="wa-card-head">
+    <div class="wa-card-title">WhatsApp Business</div>
+    <div class="wa-card-sub">The number parents message for AI-powered answers</div>
   </div>
-  <div class="settings-card-body">
+  <div class="wa-card-body">
 
-    {# Connection status #}
+    {# ── Current connection status ── #}
     {% if school.wa_phone_number_id %}
     <div class="wa-status connected">
       <div class="wa-status-icon">✅</div>
@@ -67,6 +89,16 @@
         </div>
       </div>
     </div>
+
+    {# Test message #}
+    <form method="POST" action="{{ url_for('school.settings_wa_test') }}"
+          style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap">
+      <input type="tel" name="test_number"
+             placeholder="Test phone number (e.g. 08012345678)"
+             style="flex:1;min-width:200px;padding:9px 12px;border:1.5px solid var(--line);
+                    border-radius:8px;font-size:14px;"/>
+      <button class="btn btn-outline" type="submit">📲 Send test</button>
+    </form>
     {% else %}
     <div class="wa-status disconnected">
       <div class="wa-status-icon">⚠️</div>
@@ -77,24 +109,43 @@
     </div>
     {% endif %}
 
-    {# Test message (only if connected) #}
-    {% if school.wa_phone_number_id %}
-    <form method="POST" action="{{ url_for('school.settings_wa_test') }}"
-          style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap">
-      <input type="tel" name="test_number"
-             placeholder="Test phone number (e.g. 08012345678)"
-             style="flex:1;min-width:200px;padding:9px 12px;border:1.5px solid var(--line);
-                    border-radius:8px;font-size:14px;"/>
-      <button class="btn btn-outline" type="submit">📲 Send test</button>
-    </form>
+    {% if is_admin %}
+
+    {# ── Option 1: Embedded Signup (default) ── #}
+    {% if embedded_enabled %}
+    <div class="section-label">{{ 'Reconnect — Quickest method' if school.wa_phone_number_id else 'Option 1 — Quickest' }}</div>
+    <p style="font-size:13.5px;color:var(--txt);margin-bottom:16px;line-height:1.6">
+      Sign in with your Meta Business account. We'll discover your WhatsApp number automatically.
+    </p>
+
+    <button class="wa-signup-btn" onclick="launchWhatsAppSignup()" id="signupBtn">
+      <svg viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.553 4.113 1.522 5.842L.057 23.886l6.221-1.436A11.934 11.934 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.003-1.37l-.36-.213-3.696.853.885-3.576-.234-.369A9.818 9.818 0 012.182 12C2.182 6.578 6.578 2.182 12 2.182S21.818 6.578 21.818 12 17.422 21.818 12 21.818z"/></svg>
+      Connect with WhatsApp
+    </button>
+
+    <div id="signupStatus" style="display:none;align-items:center;gap:10px;margin-top:14px;font-size:13.5px;color:var(--muted)">
+      <div style="width:18px;height:18px;border:2px solid var(--muted);border-top-color:var(--ink);
+                  border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0"></div>
+      <span id="signupStatusText">Completing setup...</span>
+    </div>
+    <div id="signupError" class="flash danger" style="display:none;margin-top:12px"></div>
+
+    <div class="divider"></div>
+    <div class="section-label">Option 2 — Manual entry</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Already have your credentials? Enter them directly below.</p>
+    {% else %}
+    <div style="font-size:13.5px;color:var(--txt);margin-bottom:14px;line-height:1.6">
+      Enter your WhatsApp Business API credentials from
+      <a href="https://business.facebook.com/latest/whatsapp-manager" target="_blank" rel="noopener">
+        Meta Business Manager</a> → WhatsApp Manager → Phone Numbers.
+    </div>
     {% endif %}
 
-    {# Credentials form (admin only) #}
-    {% if is_admin %}
+    {# ── Manual credentials form ── #}
     <button class="expand-toggle" onclick="toggleExpand('wa-creds')">
       {{ 'Update credentials ▾' if school.wa_phone_number_id else 'Enter credentials ▾' }}
     </button>
-    <div class="expandable" id="wa-creds" {% if not school.wa_phone_number_id %}style="display:block"{% endif %}>
+    <div class="expandable" id="wa-creds" {% if not school.wa_phone_number_id and not embedded_enabled %}style="display:block"{% endif %}>
       <form method="POST" action="{{ url_for('school.settings_wa') }}">
         <div class="form-row g2">
           <div class="form-group">
@@ -128,18 +179,121 @@
             </button>
           </div>
         </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-primary" type="submit">Save Credentials</button>
-          <a href="{{ url_for('school.onboarding', step=2) }}" class="btn btn-outline">
-            Re-run Embedded Signup →
-          </a>
-        </div>
+        <button class="btn btn-primary" type="submit">Save Credentials</button>
       </form>
     </div>
-    {% endif %}
+
+    {% endif %}{# end is_admin #}
 
   </div>
 </div>
+
+{# ── Phone selection modal (embedded signup) ── #}
+{% if embedded_enabled %}
+<div class="modal-overlay" id="phoneModal">
+  <div class="modal-box">
+    <div class="modal-title">Select your WhatsApp number</div>
+    <div class="modal-sub">Your account has multiple phone numbers. Choose the one for this school.</div>
+    <div id="phoneOptions"></div>
+    <form id="phoneSelectForm" method="POST" action="{{ url_for('school.wa_embedded_complete') }}">
+      <input type="hidden" name="phone_number_id" id="selectedPhoneId">
+      <input type="hidden" name="waba_id"         id="selectedWabaId">
+      <input type="hidden" name="display_phone"   id="selectedDisplayPhone">
+      <input type="hidden" name="verified_name"   id="selectedVerifiedName">
+      <div style="display:flex;gap:10px;margin-top:18px">
+        <button type="submit" class="btn btn-primary" id="confirmPhoneBtn" disabled>Use this number</button>
+        <button type="button" class="btn btn-outline" onclick="closePhoneModal()">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+var _sessionInfo = {};
+
+window.addEventListener('message', function(event) {
+  if (event.origin !== 'https://www.facebook.com' && event.origin !== 'https://web.facebook.com') return;
+  try {
+    var d = JSON.parse(event.data);
+    if (d.type === 'WA_EMBEDDED_SIGNUP' && d.event === 'FINISH') { _sessionInfo = d.data || {}; }
+  } catch(e) {}
+});
+
+function launchWhatsAppSignup() {
+  _sessionInfo = {};
+  setStatus('connecting', 'Opening WhatsApp signup...');
+  clearError();
+  FB.login(function(resp) {
+    if (resp.authResponse && resp.authResponse.code) {
+      setStatus('connecting', 'Completing setup...');
+      sendCode(resp.authResponse.code);
+    } else {
+      setStatus('idle');
+    }
+  }, {
+    config_id: '{{ meta_config_id }}',
+    response_type: 'code',
+    override_default_response_type: true,
+    extras: { setup: {}, featureType: 'whatsapp_embedded_signup', sessionInfoVersion: '3' }
+  });
+}
+
+function sendCode(code) {
+  fetch('{{ url_for("school.wa_embedded_callback") }}', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: code, phone_number_id: _sessionInfo.phone_number_id || '', waba_id: _sessionInfo.waba_id || '' })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (data.error) { setStatus('idle'); showError(data.error); return; }
+    if (data.status === 'connected') {
+      setStatus('connecting', 'Connected! Reloading...');
+      window.location.reload();
+    } else if (data.status === 'select_phone') {
+      setStatus('idle'); showPhoneModal(data.phone_options);
+    }
+  })
+  .catch(function() { setStatus('idle'); showError('Network error. Please try again.'); });
+}
+
+function setStatus(state, text) {
+  var btn = document.getElementById('signupBtn');
+  var bar = document.getElementById('signupStatus');
+  var txt = document.getElementById('signupStatusText');
+  if (state === 'idle') { btn.disabled = false; bar.style.display = 'none'; }
+  else { btn.disabled = true; if(text) txt.textContent = text; bar.style.display = 'flex'; }
+}
+function clearError() { var e=document.getElementById('signupError'); e.style.display='none'; e.textContent=''; }
+function showError(msg) { var e=document.getElementById('signupError'); e.textContent=msg; e.style.display='block'; }
+
+function showPhoneModal(phones) {
+  var c = document.getElementById('phoneOptions'); c.innerHTML = '';
+  phones.forEach(function(pn) {
+    var el = document.createElement('div');
+    el.className = 'phone-option';
+    el.innerHTML = '<strong>' + (pn.display_phone_number || pn.phone_number_id) + '</strong>' +
+      '<span>' + (pn.verified_name || '') + (pn.waba_id ? ' · WABA: ' + pn.waba_id : '') + '</span>';
+    el.addEventListener('click', function() {
+      document.querySelectorAll('.phone-option').forEach(function(o){o.classList.remove('selected');});
+      el.classList.add('selected');
+      document.getElementById('selectedPhoneId').value = pn.phone_number_id;
+      document.getElementById('selectedWabaId').value = pn.waba_id;
+      document.getElementById('selectedDisplayPhone').value = pn.display_phone_number || '';
+      document.getElementById('selectedVerifiedName').value = pn.verified_name || '';
+      document.getElementById('confirmPhoneBtn').disabled = false;
+    });
+    c.appendChild(el);
+  });
+  document.getElementById('phoneModal').style.display = 'flex';
+}
+function closePhoneModal() { document.getElementById('phoneModal').style.display = 'none'; }
+
+document.getElementById('phoneModal').addEventListener('click', function(e) {
+  if (e.target === this) closePhoneModal();
+});
+</script>
+{% endif %}
 
 <script>
 function toggleExpand(id) {

@@ -1419,8 +1419,16 @@ def wa_connect():
     cur.execute("SELECT * FROM school_staff WHERE id=%s", (_staff_id(),))
     me = cur.fetchone()
     cur.close(); conn.close()
-    is_admin = (_school_role() == "admin")
-    return render_template("school/wa_connect.html", school=school, me=me, is_admin=is_admin)
+    is_admin       = (_school_role() == "admin")
+    meta_app_id    = os.getenv("META_APP_ID", "")
+    meta_config_id = os.getenv("META_CONFIG_ID", "")
+    embedded_enabled = bool(meta_app_id and meta_config_id)
+    return render_template("school/wa_connect.html",
+        school=school, me=me, is_admin=is_admin,
+        embedded_enabled=embedded_enabled,
+        meta_app_id=meta_app_id,
+        meta_config_id=meta_config_id,
+    )
 
 
 @school_bp.route("/settings")
