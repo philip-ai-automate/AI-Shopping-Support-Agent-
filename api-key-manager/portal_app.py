@@ -19,13 +19,31 @@ def create_app():
     from portal_routes import portal_bp
     from portal_admin_routes import portal_admin_bp
     from portal_facebook_routes import facebook_bp
+    from ambassador_routes import ambassador_bp
+    from school_routes import school_bp
+    from school_migrations import ensure_school_tables
 
     # Run DB migrations on startup (all idempotent — safe)
     ensure_portal_tables()
+    ensure_school_tables()
 
     flask_app.register_blueprint(portal_bp)
     flask_app.register_blueprint(portal_admin_bp, url_prefix="/admin")
     flask_app.register_blueprint(facebook_bp)
+    flask_app.register_blueprint(ambassador_bp)
+    flask_app.register_blueprint(school_bp, url_prefix="/school")
+
+    from flask import request, redirect
+
+    @flask_app.before_request
+    def _school_subdomain_redirect():
+        """When a request arrives from school.phixtra.com and the path doesn't
+        already start with /school, redirect so the school blueprint handles it."""
+        host = request.host.split(":")[0]
+        if host == "school.phixtra.com" and not request.path.startswith("/school"):
+            new_path = "/school" + request.path
+            qs = ("?" + request.query_string.decode()) if request.query_string else ""
+            return redirect(new_path + qs, code=302)
 
     # ── Global template context: inject current customer so every template,
     #    including base.html, can access avatar_data, first_name, etc.
@@ -132,6 +150,36 @@ def create_app():
                 print("⚠️ inject_tenant_features error:", e)
                 _g._cached_tenant_features = {}
         return {"_tenant_features": _g._cached_tenant_features}
+
+    @flask_app.context_processor
+    def inject_turnstile():
+        return {"turnstile_site_key": os.getenv("TURNSTILE_SITE_KEY", "")}
+
+    @flask_app.context_processor
+    def inject_is_demo_tenant():
+        """True when the logged-in customer belongs to a demo (ambassador sandbox) tenant."""
+        if not _session.get("portal_logged_in"):
+            return {"_is_demo_tenant": False}
+        cid = _session.get("impersonate_customer_id") or _session.get("customer_id")
+        if not cid:
+            return {"_is_demo_tenant": False}
+        if not hasattr(_g, "_cached_is_demo_tenant"):
+            try:
+                from db import get_db_connection
+                conn = get_db_connection()
+                cur  = conn.cursor()
+                cur.execute("""
+                    SELECT t.is_demo FROM tenants t
+                    JOIN customers c ON c.tenant_id = t.id
+                    WHERE c.id = %s
+                """, (int(cid),))
+                row = cur.fetchone()
+                cur.close(); conn.close()
+                _g._cached_is_demo_tenant = bool(row[0]) if row else False
+            except Exception as e:
+                print("⚠️ inject_is_demo_tenant error:", e)
+                _g._cached_is_demo_tenant = False
+        return {"_is_demo_tenant": _g._cached_is_demo_tenant}
 
     @flask_app.context_processor
     def inject_inbox_unread():

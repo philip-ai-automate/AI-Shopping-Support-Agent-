@@ -1,0 +1,71 @@
+{% extends "school/onboarding_base.html" %}
+{% block title %}Test Connection — Setup{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-title">Test your WhatsApp connection</div>
+  <div class="card-sub">
+    Send a test message to verify your WhatsApp number is working. Enter any Nigerian phone number
+    — the recipient will receive a message from your school's WhatsApp line.
+  </div>
+
+  {% if school.wa_phone_number_id %}
+  <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;
+              background:#ECFDF5;border:1px solid #A6F4C5;border-radius:10px;margin-bottom:24px">
+    <div style="width:36px;height:36px;border-radius:50%;background:#12B76A;
+                display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;flex-shrink:0">✓</div>
+    <div>
+      <div style="font-size:14px;font-weight:700;color:#027A48">WhatsApp Connected</div>
+      <div style="font-size:12.5px;color:#05603A;margin-top:2px">
+        {{ school.wa_display_phone or school.wa_phone_number_id }}
+        {% if school.wa_verified_name %} · {{ school.wa_verified_name }}{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <form method="POST">
+    <div class="form-group">
+      <label>Send a test message to this number</label>
+      <input type="tel" name="test_number" required
+             placeholder="e.g. 08012345678 or +2348012345678"
+             style="max-width:320px">
+      <span style="font-size:11.5px;color:var(--muted);margin-top:4px">
+        Enter your own number or a colleague's to verify delivery.
+      </span>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button type="submit" class="btn btn-primary">Send Test Message →</button>
+      <a href="{{ url_for('school.onboarding', step=4) }}" class="btn btn-outline">Skip test</a>
+    </div>
+  </form>
+
+  {% else %}
+  <div class="flash warning">
+    No WhatsApp number connected yet.
+    <a href="{{ url_for('school.onboarding', step=2) }}">← Go back to Step 2</a> to connect one.
+  </div>
+  <div style="margin-top:20px">
+    <a href="{{ url_for('school.onboarding', step=4) }}" class="btn btn-outline">Continue without testing →</a>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-top:18px;padding:24px">
+  <div style="font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">
+    What happens next?
+  </div>
+  <div style="display:flex;flex-direction:column;gap:10px">
+    {% for icon, text in [
+      ('📱','Parents message your WhatsApp number and get instant AI responses'),
+      ('📋','Upload your student list via CSV on the Students page'),
+      ('👨‍👩‍👧','Link parents to students so attendance alerts go to the right person'),
+      ('✅','Teachers mark attendance from their phone — parents get notified instantly'),
+    ] %}
+    <div style="display:flex;gap:12px;align-items:flex-start">
+      <span style="font-size:18px;line-height:1.4;flex-shrink:0">{{ icon }}</span>
+      <span style="font-size:13.5px;color:var(--txt);line-height:1.5">{{ text }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

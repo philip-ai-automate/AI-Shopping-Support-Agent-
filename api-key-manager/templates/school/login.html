@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>Sign In — PhiXtra School</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:ui-sans-serif,system-ui,-apple-system,sans-serif;
+         min-height:100vh;display:flex;background:#F7F9FC}
+
+    /* ── Left brand panel ── */
+    .brand-panel{
+      width:420px;flex-shrink:0;background:linear-gradient(160deg,#030C18 0%,#071428 100%);
+      padding:52px 44px;display:flex;flex-direction:column;justify-content:space-between;
+      color:#fff;position:relative;overflow:hidden;
+    }
+    .brand-panel::after{
+      content:'';position:absolute;bottom:-60px;right:-60px;
+      width:280px;height:280px;border-radius:50%;
+      background:rgba(255,255,255,.06);pointer-events:none;
+    }
+    .brand-panel::before{
+      content:'';position:absolute;top:-40px;left:-40px;
+      width:180px;height:180px;border-radius:50%;
+      background:rgba(255,255,255,.05);pointer-events:none;
+    }
+    .brand-logo{display:flex;align-items:center;gap:12px;position:relative;z-index:1}
+    .brand-icon{
+      width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,.18);
+      display:flex;align-items:center;justify-content:center;font-size:22px;
+    }
+    .brand-name{font-size:18px;font-weight:800;letter-spacing:-.3px}
+    .brand-tag{font-size:11px;opacity:.7;text-transform:uppercase;letter-spacing:.08em;margin-top:1px}
+
+    .brand-body{position:relative;z-index:1}
+    .brand-headline{font-size:26px;font-weight:800;line-height:1.25;
+                    letter-spacing:-.5px;margin-bottom:14px}
+    .brand-sub{font-size:14px;opacity:.8;line-height:1.6;margin-bottom:32px}
+
+    .feature-list{display:flex;flex-direction:column;gap:16px}
+    .feature{display:flex;align-items:flex-start;gap:12px}
+    .feature-ico{
+      width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.15);
+      display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;
+    }
+    .feature-txt strong{display:block;font-size:13px;font-weight:700;margin-bottom:2px}
+    .feature-txt span{font-size:12px;opacity:.75;line-height:1.4}
+
+    .brand-footer{font-size:12px;opacity:.55;position:relative;z-index:1}
+
+    @media(max-width:700px){
+      .brand-panel{display:none}
+    }
+
+    /* ── Right form panel ── */
+    .form-panel{
+      flex:1;display:flex;align-items:center;justify-content:center;
+      padding:40px 24px;
+    }
+    .form-box{width:100%;max-width:420px}
+
+    /* Mobile logo (shown when brand panel is hidden) */
+    .mobile-logo{
+      display:none;align-items:center;gap:10px;margin-bottom:28px;
+    }
+    .mobile-logo-ico{
+      width:38px;height:38px;border-radius:10px;background:#25D366;
+      display:flex;align-items:center;justify-content:center;font-size:19px;
+    }
+    .mobile-logo-txt strong{display:block;font-size:15px;font-weight:800;color:#0A1628}
+    .mobile-logo-txt span{font-size:11px;color:rgba(10,22,40,.45);text-transform:uppercase;letter-spacing:.06em}
+    @media(max-width:700px){.mobile-logo{display:flex}}
+
+    .form-heading{font-size:22px;font-weight:800;color:#0A1628;
+                  letter-spacing:-.4px;margin-bottom:6px}
+    .form-sub{font-size:13.5px;color:rgba(10,22,40,.5);margin-bottom:28px}
+
+    /* Flash messages */
+    .flash{
+      padding:11px 14px;border-radius:9px;font-size:13px;
+      font-weight:500;margin-bottom:18px;line-height:1.45;
+    }
+    .flash.danger,.flash.error{background:#FFF1F0;color:#B42318;border:1px solid #FECDCA}
+    .flash.success{background:#F0FDF4;color:#15803D;border:1px solid #A7F3D0}
+    .flash.warning{background:#FFFAEB;color:#92400E;border:1px solid #FDE68A}
+    .flash:not([class*=" "]){background:#FFF1F0;color:#B42318;border:1px solid #FECDCA}
+
+    /* Form */
+    .fg{display:flex;flex-direction:column;gap:5px;margin-bottom:16px}
+    .fg label{font-size:12.5px;font-weight:700;color:#0A1628}
+    .fg input{
+      padding:10px 13px;border:1.5px solid rgba(10,22,40,.12);
+      border-radius:9px;font-size:14px;font-family:inherit;
+      color:#0A1628;background:#fff;transition:.12s border-color;
+    }
+    .fg input:focus{outline:none;border-color:#25D366;
+                    box-shadow:0 0 0 3px rgba(37,211,102,.10)}
+    .fg input::placeholder{color:rgba(10,22,40,.3)}
+
+    /* Password wrapper */
+    .pw-wrap{position:relative}
+    .pw-wrap input{padding-right:44px;width:100%}
+    .pw-eye{
+      position:absolute;right:12px;top:50%;transform:translateY(-50%);
+      border:none;background:none;cursor:pointer;padding:0;
+      color:rgba(10,22,40,.4);font-size:16px;line-height:1;
+    }
+    .pw-eye:hover{color:rgba(10,22,40,.7)}
+
+    .btn-submit{
+      width:100%;padding:12px;border-radius:9px;background:#25D366;
+      color:#000;font-size:14.5px;font-weight:700;border:none;
+      cursor:pointer;margin-top:4px;letter-spacing:-.1px;
+      transition:.12s background;
+    }
+    .btn-submit:hover{background:#1DA851}
+    .btn-submit:active{background:#1a9645}
+
+    .form-footer{
+      text-align:center;margin-top:22px;font-size:13.5px;
+      color:rgba(10,22,40,.5);
+    }
+    .form-footer a{color:#25D366;font-weight:700;text-decoration:none}
+    .form-footer a:hover{text-decoration:underline}
+  </style>
+</head>
+<body>
+
+{# ── Brand panel ── #}
+<div class="brand-panel">
+  <div class="brand-logo">
+    <div class="brand-icon">🏫</div>
+    <div>
+      <div class="brand-name">PhiXtra School</div>
+      <div class="brand-tag">School Management</div>
+    </div>
+  </div>
+
+  <div class="brand-body">
+    <div class="brand-headline">WhatsApp-first school management</div>
+    <div class="brand-sub">
+      Keep parents informed automatically — attendance, fees, and announcements
+      delivered straight to their WhatsApp.
+    </div>
+    <div class="feature-list">
+      <div class="feature">
+        <div class="feature-ico">✅</div>
+        <div class="feature-txt">
+          <strong>Attendance alerts</strong>
+          <span>Parents notified the moment their child is marked absent or late</span>
+        </div>
+      </div>
+      <div class="feature">
+        <div class="feature-ico">💰</div>
+        <div class="feature-txt">
+          <strong>Fee reminders</strong>
+          <span>Automated WhatsApp payment reminders, no manual follow-up</span>
+        </div>
+      </div>
+      <div class="feature">
+        <div class="feature-ico">📢</div>
+        <div class="feature-txt">
+          <strong>Instant broadcasts</strong>
+          <span>Reach all parents or a specific class in seconds</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="brand-footer">© {{ 2026 }} PhiXtra · school.phixtra.com</div>
+</div>
+
+{# ── Form panel ── #}
+<div class="form-panel">
+  <div class="form-box">
+
+    <div class="mobile-logo">
+      <div class="mobile-logo-ico">🏫</div>
+      <div class="mobile-logo-txt">
+        <strong>PhiXtra School</strong>
+        <span>School Portal</span>
+      </div>
+    </div>
+
+    <div class="form-heading">Welcome back</div>
+    <div class="form-sub">Sign in to your school dashboard</div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}
+      <div class="flash {{ cat }}">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <form method="POST" autocomplete="on">
+      <div class="fg">
+        <label for="email">Email address</label>
+        <input type="email" name="email" id="email"
+               placeholder="admin@yourschool.edu.ng"
+               autocomplete="email" required autofocus/>
+      </div>
+      <div class="fg">
+        <label for="password">Password</label>
+        <div class="pw-wrap">
+          <input type="password" name="password" id="password"
+                 placeholder="••••••••"
+                 autocomplete="current-password" required/>
+          <button class="pw-eye" type="button" onclick="togglePw('password',this)"
+                  title="Show/hide password">👁</button>
+        </div>
+      </div>
+      <button class="btn-submit" type="submit">Sign in →</button>
+    </form>
+
+    <div class="form-footer">
+      New school? <a href="{{ url_for('school.register') }}">Register here</a>
+    </div>
+  </div>
+</div>
+
+<script>
+function togglePw(id, btn) {
+  var inp = document.getElementById(id);
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+  btn.textContent = inp.type === 'password' ? '👁' : '🙈';
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,314 @@
+{% extends "school/base.html" %}
+{% block title %}Broadcast — {{ school.school_name }}{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Layout ── */
+  .bc-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
+  @media(max-width:800px){.bc-grid{grid-template-columns:1fr}}
+
+  /* ── Compose card ── */
+  .compose-card{
+    background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px;
+    position:sticky;top:20px;
+  }
+  .compose-title{font-size:16px;font-weight:750;color:var(--ink);margin-bottom:18px}
+
+  .reach-badge{
+    display:inline-flex;align-items:center;gap:6px;
+    padding:5px 12px;border-radius:20px;background:#EEF4FF;color:var(--brand);
+    font-size:13px;font-weight:700;margin-bottom:14px;
+  }
+
+  textarea.bc-msg{
+    width:100%;resize:vertical;min-height:130px;
+    padding:11px 13px;border:1.5px solid var(--line);border-radius:9px;
+    font-size:14px;font-family:inherit;color:var(--txt);line-height:1.55;
+  }
+  textarea.bc-msg:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(29,106,245,.10)}
+
+  .char-counter{font-size:12px;color:var(--muted);text-align:right;margin-top:4px}
+  .char-counter.warn{color:var(--warn)}
+  .char-counter.over{color:var(--bad)}
+
+  /* ── Preview pane ── */
+  .preview-wrap{margin-top:14px;display:none}
+  .preview-wrap.visible{display:block}
+  .preview-label{font-size:11.5px;font-weight:700;color:var(--muted);
+                 text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px}
+  .wa-bubble{
+    background:#DCF8C6;border-radius:12px 12px 3px 12px;
+    padding:12px 14px;font-size:13.5px;line-height:1.55;
+    color:#111;white-space:pre-wrap;word-break:break-word;
+    box-shadow:0 1px 3px rgba(0,0,0,.10);max-width:320px;
+  }
+  .wa-bubble strong{font-weight:700}
+
+  /* ── Send confirm modal ── */
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);
+                 z-index:300;align-items:center;justify-content:center;padding:20px}
+  .modal-box{background:#fff;border-radius:16px;padding:28px;width:100%;max-width:480px}
+  .modal-title{font-size:17px;font-weight:750;color:var(--ink);margin-bottom:6px}
+  .modal-sub{font-size:13.5px;color:var(--muted);margin-bottom:20px;line-height:1.55}
+  .confirm-bubble{
+    background:#F0FDF4;border:1px solid #A6F4C5;border-radius:10px;
+    padding:14px;font-size:13px;line-height:1.6;white-space:pre-wrap;
+    word-break:break-word;margin-bottom:20px;max-height:200px;overflow-y:auto;
+  }
+
+  /* ── History ── */
+  .hist-list{display:flex;flex-direction:column;gap:12px}
+  .hist-card{
+    background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px;
+  }
+  .hist-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px}
+  .hist-title{font-size:14px;font-weight:700;color:var(--ink)}
+  .hist-meta{font-size:12px;color:var(--muted);margin-bottom:10px;display:flex;gap:10px;flex-wrap:wrap}
+
+  .delivery-row{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .delivery-track{flex:1;height:6px;background:#F3F4F6;border-radius:3px;overflow:hidden}
+  .delivery-fill{height:100%;border-radius:3px;background:var(--good)}
+  .delivery-pct{font-size:11.5px;font-weight:700;color:var(--muted);white-space:nowrap}
+
+  .hist-preview{font-size:13px;color:var(--muted);line-height:1.5}
+  .hist-expand{
+    font-size:12px;color:var(--brand);cursor:pointer;font-weight:600;
+    border:none;background:none;padding:0;margin-top:6px;
+  }
+  .hist-full{display:none;font-size:13px;color:var(--txt);margin-top:8px;
+             line-height:1.55;white-space:pre-wrap;padding:10px;
+             background:#F7F9FC;border-radius:8px;word-break:break-word}
+  .hist-full.open{display:block}
+
+  .bc-status{
+    font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:10px;white-space:nowrap;flex-shrink:0
+  }
+  .bc-sent   {background:#DCFCE7;color:#15803D}
+  .bc-sending{background:#FEF3C7;color:#92400E}
+  .bc-draft  {background:#F3F4F6;color:var(--muted)}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Broadcast</h1>
+    <p>Send WhatsApp messages to all parents or by class</p>
+  </div>
+</div>
+
+<div class="bc-grid">
+
+  {# ── Compose ── #}
+  <div class="compose-card">
+    <div class="compose-title">New Broadcast</div>
+
+    {% if not school.wa_phone_number_id %}
+    <div class="flash warning" style="margin-bottom:16px">
+      WhatsApp not connected.
+      <a href="{{ url_for('school.settings') }}">Set up in Settings →</a>
+    </div>
+    {% endif %}
+
+    <div class="reach-badge" id="reach-badge">
+      📱 <span id="reach-count">{{ total_parents }}</span> parents will receive this
+    </div>
+
+    <form id="compose-form"
+          method="POST" action="{{ url_for('school.broadcast_send') }}"
+          onsubmit="return openConfirm(event)">
+
+      <div class="form-group">
+        <label style="font-size:12.5px;font-weight:600;color:var(--ink)">Internal title</label>
+        <input type="text" name="title" id="bc-title" required
+               placeholder="e.g. End of Term Notice"/>
+      </div>
+
+      <div class="form-group">
+        <label style="font-size:12.5px;font-weight:600;color:var(--ink)">Send to</label>
+        <select name="target_class" id="bc-class" onchange="updateReach()">
+          <option value="">All Parents ({{ total_parents }})</option>
+          {% for c in classes %}
+          <option value="{{ c }}">
+            {{ c }} parents only ({{ class_counts.get(c, 0) }})
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label style="font-size:12.5px;font-weight:600;color:var(--ink)">Message</label>
+        <textarea class="bc-msg" name="message" id="bc-msg" required
+                  oninput="onMsgChange()"
+                  placeholder="Dear Parents, ..."></textarea>
+        <div class="char-counter" id="char-counter">0 / 4096</div>
+      </div>
+
+      {# Live preview #}
+      <div class="preview-wrap" id="preview-wrap">
+        <div class="preview-label">WhatsApp preview</div>
+        <div class="wa-bubble" id="preview-bubble"></div>
+      </div>
+
+      <div style="margin-top:18px;display:flex;gap:8px">
+        <button type="submit" class="btn btn-primary"
+                {% if not school.wa_phone_number_id %}disabled{% endif %}>
+          📲 Send Now
+        </button>
+        <button type="button" class="btn btn-outline" onclick="clearForm()">Clear</button>
+      </div>
+    </form>
+  </div>
+
+  {# ── History ── #}
+  <div>
+    <div style="font-size:15px;font-weight:750;color:var(--ink);margin-bottom:14px">
+      Broadcast History
+    </div>
+
+    {% if history %}
+    <div class="hist-list">
+      {% for b in history %}
+      {% set del_pct = ((b.delivered_count / b.sent_count * 100) | round | int) if b.sent_count else 0 %}
+      <div class="hist-card">
+        <div class="hist-top">
+          <div class="hist-title">{{ b.title }}</div>
+          <span class="bc-status bc-{{ b.status }}">
+            {% if b.status == 'sent' %}Sent
+            {% elif b.status == 'sending' %}Sending
+            {% else %}Draft{% endif %}
+          </span>
+        </div>
+
+        <div class="hist-meta">
+          <span>
+            {% if b.target_class %}{{ b.target_class }} parents{% else %}All parents{% endif %}
+          </span>
+          {% if b.sent_at %}
+          <span>{{ b.sent_at.strftime('%d %b %Y, %H:%M') }}</span>
+          {% endif %}
+        </div>
+
+        {% if b.sent_count %}
+        <div class="delivery-row">
+          <div class="delivery-track">
+            <div class="delivery-fill" style="width:{{ del_pct }}%"></div>
+          </div>
+          <div class="delivery-pct">{{ b.delivered_count or 0 }}/{{ b.sent_count }} delivered</div>
+        </div>
+        {% endif %}
+
+        <div class="hist-preview">
+          {{ b.message[:120] }}{% if b.message|length > 120 %}…{% endif %}
+        </div>
+        {% if b.message|length > 120 %}
+        <button class="hist-expand" onclick="toggleFull(this)">Show more ▾</button>
+        <div class="hist-full">{{ b.message }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    {% else %}
+    <div class="empty-state" style="padding:32px">
+      <div class="big">📢</div>
+      <p>No broadcasts sent yet.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{# ── Send confirm modal ── #}
+<div id="confirm-modal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-title">Confirm Broadcast</div>
+    <div class="modal-sub" id="confirm-sub"></div>
+    <div class="confirm-bubble" id="confirm-preview"></div>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-primary" id="confirm-send-btn"
+              onclick="submitForm()">Send Now →</button>
+      <button class="btn btn-outline"
+              onclick="document.getElementById('confirm-modal').style.display='none'">
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+var CLASS_COUNTS = {{ class_counts | tojson }};
+var TOTAL_PARENTS = {{ total_parents }};
+var SCHOOL_NAME = {{ school.school_name | tojson }};
+
+function updateReach() {
+  var cls = document.getElementById('bc-class').value;
+  var cnt = cls ? (CLASS_COUNTS[cls] || 0) : TOTAL_PARENTS;
+  document.getElementById('reach-count').textContent = cnt;
+}
+
+function onMsgChange() {
+  var msg = document.getElementById('bc-msg').value;
+  var len = msg.length;
+  var counter = document.getElementById('char-counter');
+  counter.textContent = len + ' / 4096';
+  counter.className = 'char-counter' + (len > 3000 ? ' over' : len > 1500 ? ' warn' : '');
+
+  var wrap = document.getElementById('preview-wrap');
+  var bubble = document.getElementById('preview-bubble');
+  if (msg.trim()) {
+    var preview = '\u{200B}' + SCHOOL_NAME + '\u{200B}\n\n' + msg;
+    // Bold the school name visually
+    bubble.innerHTML = '<strong>' + escHtml(SCHOOL_NAME) + '</strong>\n\n' + escHtml(msg);
+    wrap.classList.add('visible');
+  } else {
+    wrap.classList.remove('visible');
+  }
+}
+
+function escHtml(t) {
+  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+          .replace(/\n/g,'<br>');
+}
+
+function openConfirm(e) {
+  e.preventDefault();
+  var cls   = document.getElementById('bc-class').value;
+  var msg   = document.getElementById('bc-msg').value.trim();
+  var title = document.getElementById('bc-title').value.trim();
+  if (!msg || !title) return false;
+  var cnt = cls ? (CLASS_COUNTS[cls] || 0) : TOTAL_PARENTS;
+  var target = cls ? cls + ' parents' : 'all parents';
+  document.getElementById('confirm-sub').textContent =
+    'This will send to ' + cnt + ' ' + target + '.';
+  document.getElementById('confirm-preview').textContent =
+    SCHOOL_NAME + '\n\n' + msg;
+  document.getElementById('confirm-modal').style.display = 'flex';
+  return false;
+}
+
+function submitForm() {
+  document.getElementById('confirm-modal').style.display = 'none';
+  document.getElementById('compose-form').submit();
+}
+
+function clearForm() {
+  document.getElementById('bc-title').value = '';
+  document.getElementById('bc-msg').value = '';
+  document.getElementById('bc-class').value = '';
+  document.getElementById('char-counter').textContent = '0 / 4096';
+  document.getElementById('char-counter').className = 'char-counter';
+  document.getElementById('preview-wrap').classList.remove('visible');
+  updateReach();
+}
+
+function toggleFull(btn) {
+  var full = btn.nextElementSibling;
+  var open = full.classList.toggle('open');
+  btn.textContent = open ? 'Show less ▴' : 'Show more ▾';
+}
+
+document.getElementById('confirm-modal').addEventListener('click', function(e) {
+  if (e.target === this) this.style.display = 'none';
+});
+</script>
+{% endblock %}

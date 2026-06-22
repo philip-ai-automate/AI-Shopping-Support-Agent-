@@ -1,0 +1,236 @@
+{% extends "school/base.html" %}
+{% block title %}Fees — {{ school.school_name }}{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Summary cards ── */
+  .fee-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:22px}
+  @media(max-width:600px){.fee-summary{grid-template-columns:repeat(2,1fr)}}
+  .fee-stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .fee-stat .val{font-size:22px;font-weight:750;color:var(--ink);line-height:1;margin-bottom:4px}
+  .fee-stat .lbl{font-size:12px;color:var(--muted);font-weight:500}
+
+  /* ── Schedule cards ── */
+  .sched-card{
+    background:#fff;border:1px solid var(--line);border-radius:14px;
+    padding:20px 22px;margin-bottom:14px;
+  }
+  .sched-card.overdue{border-color:#FECDCA;background:#FFFAFA}
+  .sched-header{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+  .sched-name{font-size:15px;font-weight:700;color:var(--ink);margin-bottom:4px}
+  .sched-meta{font-size:12.5px;color:var(--muted)}
+  .sched-meta-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .due-badge{
+    display:inline-block;font-size:11.5px;font-weight:700;
+    padding:2px 9px;border-radius:10px;
+  }
+  .due-ok{background:#FEF3C7;color:#92400E}
+  .due-late{background:#FFE4E1;color:#B91C1C}
+
+  /* ── Progress bar ── */
+  .prog-row{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .prog-track{flex:1;height:8px;background:#F3F4F6;border-radius:4px;overflow:hidden}
+  .prog-fill{height:100%;border-radius:4px;background:var(--good);transition:.3s}
+  .prog-pct{font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap}
+
+  /* ── Count pills ── */
+  .count-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .count-pill{
+    font-size:12px;font-weight:700;padding:4px 12px;border-radius:20px;
+    display:flex;align-items:center;gap:5px;
+  }
+  .cp-paid   {background:#DCFCE7;color:#15803D}
+  .cp-partial{background:#FEF3C7;color:#92400E}
+  .cp-unpaid {background:#FFE4E1;color:#B91C1C}
+  .cp-total  {background:#EEF4FF;color:#1D6AF5}
+
+  /* ── Actions ── */
+  .sched-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+  @media(max-width:500px){
+    .sched-header{flex-direction:column}
+    .sched-actions .btn{flex:1;justify-content:center}
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Fee Management</h1>
+    <p>Create schedules, track payments, send WhatsApp reminders</p>
+  </div>
+  <button class="btn btn-primary"
+          onclick="document.getElementById('add-modal').style.display='flex'">
+    + New Schedule
+  </button>
+</div>
+
+{# ── Summary stats ── #}
+{% if schedules %}
+{% set grand_collected = summary.grand_collected or 0 %}
+{% set grand_expected  = summary.grand_expected  or 0 %}
+{% set coll_pct = ((grand_collected / grand_expected * 100) | round | int) if grand_expected else 0 %}
+<div class="fee-summary">
+  <div class="fee-stat">
+    <div class="val">{{ summary.schedule_count or 0 }}</div>
+    <div class="lbl">Fee schedules</div>
+  </div>
+  <div class="fee-stat">
+    <div class="val" style="font-size:18px">₦{{ "{:,.0f}".format(grand_collected) }}</div>
+    <div class="lbl">Total collected</div>
+  </div>
+  <div class="fee-stat">
+    <div class="val" style="color:{% if coll_pct >= 80 %}var(--good){% elif coll_pct < 50 %}var(--bad){% else %}var(--warn){% endif %}">
+      {{ coll_pct }}%
+    </div>
+    <div class="lbl">Collection rate</div>
+  </div>
+</div>
+{% endif %}
+
+{# ── Schedule list ── #}
+{% if schedules %}
+{% for s in schedules %}
+{% set expected   = (s.amount or 0) * (s.total_students or 0) %}
+{% set collected  = s.total_collected or 0 %}
+{% set pct        = ((collected / expected * 100) | round | int) if expected else 0 %}
+{% set is_overdue = s.due_date and s.due_date < today %}
+
+<div class="sched-card {% if is_overdue %}overdue{% endif %}">
+  <div class="sched-header">
+    <div style="flex:1">
+      <div class="sched-name">{{ s.name }}</div>
+      <div class="sched-meta-row" style="margin-top:5px">
+        <span class="sched-meta">₦{{ "{:,.0f}".format(s.amount) }} per student</span>
+        {% if s.class_name %}<span class="sched-meta">· {{ s.class_name }}</span>{% endif %}
+        {% if s.term %}<span class="sched-meta">· {{ s.term }} Term</span>{% endif %}
+        {% if s.session %}<span class="sched-meta">· {{ s.session }}</span>{% endif %}
+        {% if s.due_date %}
+        <span class="due-badge {% if is_overdue %}due-late{% else %}due-ok{% endif %}">
+          {% if is_overdue %}Overdue:{% else %}Due:{% endif %}
+          {{ s.due_date.strftime('%d %b %Y') }}
+        </span>
+        {% endif %}
+      </div>
+    </div>
+    <div style="text-align:right;white-space:nowrap">
+      <div style="font-size:16px;font-weight:750;color:var(--ink)">
+        ₦{{ "{:,.0f}".format(collected) }}
+      </div>
+      <div style="font-size:11.5px;color:var(--muted)">
+        of ₦{{ "{:,.0f}".format(expected) }}
+      </div>
+    </div>
+  </div>
+
+  <div class="prog-row">
+    <div class="prog-track">
+      <div class="prog-fill" style="width:{{ pct }}%;{% if pct < 50 %}background:var(--bad){% elif pct < 80 %}background:var(--warn){% endif %}"></div>
+    </div>
+    <div class="prog-pct">{{ pct }}%</div>
+  </div>
+
+  <div class="count-row">
+    <span class="count-pill cp-total">{{ s.total_students or 0 }} students</span>
+    {% if s.paid_count %}<span class="count-pill cp-paid">{{ s.paid_count }} paid</span>{% endif %}
+    {% if s.partial_count %}<span class="count-pill cp-partial">{{ s.partial_count }} partial</span>{% endif %}
+    {% if s.unpaid_count %}<span class="count-pill cp-unpaid">{{ s.unpaid_count }} unpaid</span>{% endif %}
+  </div>
+
+  <div class="sched-actions">
+    <a class="btn btn-outline"
+       href="{{ url_for('school.fee_payments', schedule_id=s.id) }}">View Payments</a>
+    <a class="btn btn-outline"
+       href="{{ url_for('school.fee_payments', schedule_id=s.id, status='unpaid') }}">Unpaid ({{ s.unpaid_count or 0 }})</a>
+    <form method="POST" action="{{ url_for('school.fee_remind', schedule_id=s.id) }}"
+          onsubmit="return confirm('Send WhatsApp reminder to {{ (s.unpaid_count or 0) + (s.partial_count or 0) }} unpaid/partial parents?')">
+      <button class="btn btn-outline" type="submit"
+              {% if not school.wa_phone_number_id %}disabled title="WhatsApp not connected"{% endif %}>
+        📲 Remind ({{ (s.unpaid_count or 0) + (s.partial_count or 0) }})
+      </button>
+    </form>
+  </div>
+</div>
+{% endfor %}
+
+{% else %}
+<div class="empty-state">
+  <div class="big">💰</div>
+  <p>No fee schedules yet.
+     <button class="btn btn-primary" style="margin-top:10px"
+             onclick="document.getElementById('add-modal').style.display='flex'">
+       Create First Schedule →
+     </button>
+  </p>
+</div>
+{% endif %}
+
+{# ── Add schedule modal ── #}
+<div id="add-modal" class="modal-overlay">
+  <div class="modal-box" style="max-width:520px">
+    <div class="modal-header">
+      <span class="modal-title">New Fee Schedule</span>
+      <button class="modal-close" onclick="document.getElementById('add-modal').style.display='none'">×</button>
+    </div>
+    <form method="POST" action="{{ url_for('school.fees_add') }}">
+      <div class="form-group">
+        <label>Fee Name <span style="color:var(--bad)">*</span></label>
+        <input type="text" name="name" required
+               placeholder="e.g. First Term 2025/2026 School Fees"/>
+      </div>
+      <div class="form-row g2">
+        <div class="form-group">
+          <label>Amount per Student (₦) <span style="color:var(--bad)">*</span></label>
+          <input type="number" name="amount" required placeholder="45000" step="0.01" min="0"/>
+        </div>
+        <div class="form-group">
+          <label>Class (blank = all classes)</label>
+          <input type="text" name="class_name" placeholder="JSS1" list="cls-dl"/>
+          <datalist id="cls-dl">
+            {% for c in classes %}<option value="{{ c }}">{% endfor %}
+          </datalist>
+        </div>
+      </div>
+      <div class="form-row g2">
+        <div class="form-group">
+          <label>Term</label>
+          <select name="term">
+            <option value="">—</option>
+            <option>First</option><option>Second</option><option>Third</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Session</label>
+          <input type="text" name="session"
+                 value="{{ school.current_session or '' }}"
+                 placeholder="2025/2026"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Due Date</label>
+        <input type="date" name="due_date"/>
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6">
+        Payment records will be auto-created for all matching students as "Unpaid"
+        so you can start tracking immediately.
+      </p>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" type="submit">Create Schedule</button>
+        <button type="button" class="btn btn-outline"
+                onclick="document.getElementById('add-modal').style.display='none'">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<style>
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);
+                 z-index:200;align-items:center;justify-content:center;padding:20px}
+  .modal-box{background:#fff;border-radius:14px;padding:28px;width:100%;max-height:90vh;overflow-y:auto}
+  .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+  .modal-title{font-size:16px;font-weight:700;color:var(--ink)}
+  .modal-close{border:none;background:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1}
+  .modal-close:hover{color:var(--ink)}
+</style>
+{% endblock %}

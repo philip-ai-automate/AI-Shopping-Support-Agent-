@@ -1,0 +1,247 @@
+{% extends "school/base.html" %}
+{% block title %}Attendance History — {{ school.school_name }}{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Stat cards ── */
+  .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+  @media(max-width:700px){.stat-row{grid-template-columns:repeat(2,1fr)}}
+  .stat-card{
+    background:#fff;border:1px solid var(--line);border-radius:12px;
+    padding:16px 18px;
+  }
+  .stat-card .val{font-size:26px;font-weight:750;color:var(--ink);line-height:1}
+  .stat-card .lbl{font-size:12px;color:var(--muted);margin-top:5px;font-weight:500}
+  .stat-card.accent-green .val{color:var(--good)}
+  .stat-card.accent-red   .val{color:var(--bad)}
+  .stat-card.accent-blue  .val{color:var(--brand)}
+
+  /* ── Filters ── */
+  .filter-bar{
+    background:#fff;border:1px solid var(--line);border-radius:12px;
+    padding:14px 18px;margin-bottom:20px;
+    display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;
+  }
+  .filter-bar .form-group{margin-bottom:0;min-width:0}
+  .filter-bar select,.filter-bar input[type=date]{
+    padding:8px 12px;border:1.5px solid var(--line);border-radius:8px;
+    font-size:13.5px;background:#fff;color:var(--ink);
+  }
+  .filter-bar select:focus,.filter-bar input[type=date]:focus{
+    outline:none;border-color:var(--brand);
+  }
+
+  /* ── Status chips ── */
+  .status-chip{display:inline-flex;align-items:center;gap:5px;
+               padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700}
+  .chip-present{background:#DCFCE7;color:#15803D}
+  .chip-absent {background:#FFE4E1;color:#B91C1C}
+  .chip-late   {background:#FEF3C7;color:#92400E}
+
+  /* ── Date group ── */
+  .date-group{margin-bottom:20px}
+  .date-header{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:10px 14px;background:#F7F9FC;border:1px solid var(--line);
+    border-radius:10px 10px 0 0;
+  }
+  .date-header-left{display:flex;align-items:center;gap:10px}
+  .date-label{font-size:14px;font-weight:700;color:var(--ink)}
+  .date-meta{font-size:12px;color:var(--muted)}
+  .date-pills{display:flex;gap:6px}
+  .date-pill{font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:12px}
+  .dp-absent{background:#FFE4E1;color:#B91C1C}
+  .dp-late  {background:#FEF3C7;color:#92400E}
+  .dp-ok    {background:#DCFCE7;color:#15803D}
+  .date-remark{font-size:12px;color:var(--brand);font-weight:600;white-space:nowrap}
+  .date-remark:hover{text-decoration:underline}
+
+  .date-rows{border:1px solid var(--line);border-top:none;border-radius:0 0 10px 10px;overflow:hidden}
+  .hist-row{
+    display:flex;align-items:center;gap:14px;
+    padding:11px 16px;border-bottom:1px solid var(--line);
+    background:#fff;
+  }
+  .hist-row:last-child{border-bottom:none}
+  .hist-row.absent-row{background:#FFF8F8}
+  .hist-row.late-row  {background:#FFFDF0}
+  .hist-name{flex:1;font-size:14px;font-weight:500;color:var(--ink)}
+  .hist-class{font-size:12px;color:var(--muted);white-space:nowrap}
+  .wa-dot{width:8px;height:8px;border-radius:50%;background:#25D366;flex-shrink:0;title:"WA sent"}
+  .wa-dot.unsent{background:var(--line)}
+
+  /* ── Frequent absentees ── */
+  .absentee-card{
+    background:#fff;border:1px solid var(--line);border-radius:12px;
+    padding:20px;margin-top:24px;
+  }
+  .absentee-row{
+    display:flex;align-items:center;gap:12px;padding:10px 0;
+    border-bottom:1px solid var(--line);
+  }
+  .absentee-row:last-child{border-bottom:none}
+  .ab-rank{width:24px;height:24px;border-radius:50%;background:#FEE2E2;
+           color:#B91C1C;font-size:12px;font-weight:700;
+           display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .ab-name{flex:1;font-size:14px;font-weight:600;color:var(--ink)}
+  .ab-class{font-size:12px;color:var(--muted)}
+  .ab-count{
+    font-size:13px;font-weight:750;color:var(--bad);
+    background:#FFE4E1;border-radius:8px;padding:3px 10px;white-space:nowrap;
+  }
+
+  @media(max-width:600px){
+    .date-header{flex-direction:column;align-items:flex-start;gap:8px}
+    .hist-class{display:none}
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Attendance History</h1>
+    <p>{{ from_d }} to {{ to_d }}{% if selected_class %} · {{ selected_class }}{% endif %}</p>
+  </div>
+  <a class="btn btn-primary" href="{{ url_for('school.attendance') }}">Mark Today →</a>
+</div>
+
+{# ── Summary stats ── #}
+<div class="stat-row">
+  <div class="stat-card accent-blue">
+    <div class="val">{{ stats.days_tracked or 0 }}</div>
+    <div class="lbl">Days tracked</div>
+  </div>
+  <div class="stat-card {% if att_pct >= 90 %}accent-green{% elif att_pct < 75 %}accent-red{% endif %}">
+    <div class="val">{{ att_pct }}%</div>
+    <div class="lbl">Attendance rate</div>
+  </div>
+  <div class="stat-card {% if (stats.total_absent or 0) > 0 %}accent-red{% endif %}">
+    <div class="val">{{ stats.total_absent or 0 }}</div>
+    <div class="lbl">Total absences</div>
+  </div>
+  <div class="stat-card">
+    <div class="val">{{ stats.wa_sent or 0 }}</div>
+    <div class="lbl">WA alerts sent</div>
+  </div>
+</div>
+
+{# ── Filters ── #}
+<form method="GET" class="filter-bar">
+  <div class="form-group">
+    <label style="font-size:12px;font-weight:600;color:var(--muted)">Class</label>
+    <select name="class">
+      <option value="">All Classes</option>
+      {% for c in classes %}
+      <option value="{{ c }}" {% if c == selected_class %}selected{% endif %}>{{ c }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="form-group">
+    <label style="font-size:12px;font-weight:600;color:var(--muted)">From</label>
+    <input type="date" name="from" value="{{ from_d }}"/>
+  </div>
+  <div class="form-group">
+    <label style="font-size:12px;font-weight:600;color:var(--muted)">To</label>
+    <input type="date" name="to" value="{{ to_d }}"/>
+  </div>
+  <div class="form-group">
+    <label style="font-size:12px;font-weight:600;color:var(--muted)">Status</label>
+    <select name="status">
+      <option value="">All</option>
+      <option value="absent" {% if selected_status == 'absent' %}selected{% endif %}>Absent only</option>
+      <option value="late"   {% if selected_status == 'late'   %}selected{% endif %}>Late only</option>
+      <option value="present"{% if selected_status == 'present'%}selected{% endif %}>Present only</option>
+    </select>
+  </div>
+  <button class="btn btn-outline" type="submit" style="padding:8px 18px;font-size:13.5px">Apply</button>
+  {% if selected_class or selected_status or from_d or to_d %}
+  <a href="{{ url_for('school.attendance_history') }}" class="btn btn-outline"
+     style="padding:8px 14px;font-size:13.5px;color:var(--muted)">Clear</a>
+  {% endif %}
+</form>
+
+{# ── Date-grouped records ── #}
+{% if grouped %}
+
+{% if total_shown == 500 %}
+<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;padding:8px 14px;
+            background:#FFFAEB;border:1px solid #FEF0C7;border-radius:8px">
+  Showing first 500 records. Narrow your date range to see all.
+</div>
+{% endif %}
+
+{% for date_str, rows in grouped.items() %}
+{% set n_absent = rows | selectattr('status','equalto','absent') | list | length %}
+{% set n_late   = rows | selectattr('status','equalto','late')   | list | length %}
+{% set n_ok     = rows | length - n_absent - n_late %}
+
+<div class="date-group">
+  <div class="date-header">
+    <div class="date-header-left">
+      <div class="date-label">{{ date_str }}</div>
+      <div class="date-pills">
+        {% if n_absent %}<span class="date-pill dp-absent">{{ n_absent }} absent</span>{% endif %}
+        {% if n_late   %}<span class="date-pill dp-late">{{ n_late }} late</span>{% endif %}
+        {% if not n_absent and not n_late %}
+        <span class="date-pill dp-ok">All present</span>
+        {% endif %}
+      </div>
+      <div class="date-meta">{{ rows|length }} students</div>
+    </div>
+    <a class="date-remark"
+       href="{{ url_for('school.attendance', **{'class': rows[0].class_name, 'date': date_str}) }}">
+      Re-mark →
+    </a>
+  </div>
+
+  <div class="date-rows">
+    {% for r in rows %}
+    <div class="hist-row {% if r.status == 'absent' %}absent-row{% elif r.status == 'late' %}late-row{% endif %}">
+      <div class="hist-name">{{ r.full_name }}</div>
+      <div class="hist-class">{{ r.class_name }} {{ r.arm }}</div>
+      <span class="status-chip {% if r.status == 'present' %}chip-present{% elif r.status == 'absent' %}chip-absent{% else %}chip-late{% endif %}">
+        {% if r.status == 'present' %}✓ Present
+        {% elif r.status == 'absent' %}✗ Absent
+        {% else %}⏰ Late{% endif %}
+      </span>
+      {% if r.status == 'absent' %}
+      <div class="wa-dot {% if not r.wa_notified %}unsent{% endif %}"
+           title="{% if r.wa_notified %}Parent notified via WhatsApp{% else %}Parent not notified{% endif %}"></div>
+      {% else %}
+      <div style="width:8px"></div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endfor %}
+
+{# ── Frequent absentees ── #}
+{% if absentees %}
+<div class="absentee-card">
+  <div style="font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px">
+    Frequent Absentees — {{ from_d }} to {{ to_d }}
+  </div>
+  {% for a in absentees %}
+  <div class="absentee-row">
+    <div class="ab-rank">{{ loop.index }}</div>
+    <div>
+      <div class="ab-name">{{ a.full_name }}</div>
+      <div class="ab-class">{{ a.class_name }} {{ a.arm }}</div>
+    </div>
+    <div class="ab-count">{{ a.absent_count }}× absent</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% else %}
+<div class="empty-state">
+  <div class="big">📋</div>
+  <p>No attendance records for this period.
+    {% if not selected_class %}<a href="{{ url_for('school.attendance') }}">Mark today's attendance →</a>{% endif %}
+  </p>
+</div>
+{% endif %}
+{% endblock %}

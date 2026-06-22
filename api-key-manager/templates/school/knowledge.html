@@ -1,0 +1,360 @@
+{% extends "school/base.html" %}
+{% block title %}AI Knowledge Base — {{ school.school_name }}{% endblock %}
+
+{% block head %}
+<style>
+  /* ── AI info strip ── */
+  .ai-strip{
+    display:flex;align-items:flex-start;gap:12px;
+    padding:14px 18px;background:#EEF4FF;border:1px solid #C7D9FD;
+    border-radius:12px;margin-bottom:20px;
+  }
+  .ai-strip-icon{font-size:22px;flex-shrink:0;line-height:1.3}
+  .ai-strip p{font-size:13px;color:#1e3a8a;line-height:1.55;margin:0}
+
+  /* ── Toolbar ── */
+  .kb-toolbar{
+    display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;
+  }
+  .kb-search{
+    flex:1;min-width:160px;padding:9px 13px;
+    border:1.5px solid var(--line);border-radius:9px;
+    font-size:14px;background:#fff;
+  }
+  .kb-search:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(29,106,245,.10)}
+
+  /* ── Category tabs ── */
+  .cat-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px}
+  .cat-tab{
+    padding:6px 14px;border-radius:20px;font-size:12.5px;font-weight:600;
+    border:1.5px solid var(--line);background:#fff;cursor:pointer;
+    color:var(--muted);transition:.1s;white-space:nowrap;
+  }
+  .cat-tab:hover{border-color:var(--brand);color:var(--brand)}
+  .cat-tab.active{background:var(--brand);border-color:var(--brand);color:#fff}
+  .cat-tab .badge{
+    display:inline-block;font-size:10.5px;font-weight:700;
+    background:rgba(255,255,255,.25);border-radius:10px;
+    padding:1px 6px;margin-left:4px;
+  }
+  .cat-tab:not(.active) .badge{background:var(--line);color:var(--muted)}
+
+  /* ── Entry cards ── */
+  .kb-list{display:flex;flex-direction:column;gap:10px}
+  .kb-entry{
+    background:#fff;border:1px solid var(--line);border-radius:12px;
+    padding:16px 18px;transition:.1s;
+  }
+  .kb-entry:hover{border-color:rgba(29,106,245,.25)}
+  .kb-entry[data-hidden=true]{display:none}
+
+  .kb-entry-top{display:flex;align-items:flex-start;gap:10px}
+  .kb-cat-icon{font-size:16px;flex-shrink:0;margin-top:1px}
+  .kb-q{font-size:14px;font-weight:700;color:var(--ink);flex:1;line-height:1.4}
+  .kb-a{font-size:13.5px;color:rgba(10,22,40,.70);margin-top:6px;line-height:1.55}
+
+  .kb-actions{display:flex;gap:6px;margin-top:10px}
+
+  /* ── Edit inline form ── */
+  .kb-edit-form{
+    display:none;margin-top:14px;padding-top:14px;
+    border-top:1px solid var(--line);
+  }
+  .kb-edit-form.open{display:block}
+
+  /* ── Starter templates ── */
+  .starter-wrap{
+    background:#F7F9FC;border:1px solid var(--line);border-radius:12px;
+    padding:18px 20px;margin-bottom:20px;
+  }
+  .starter-header{
+    display:flex;align-items:center;justify-content:space-between;cursor:pointer;
+  }
+  .starter-title{font-size:14px;font-weight:700;color:var(--ink)}
+  .starter-toggle{font-size:12px;color:var(--brand);font-weight:600}
+  .starter-body{display:none;margin-top:14px}
+  .starter-body.open{display:block}
+  .starter-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+  .starter-chip{
+    padding:10px 13px;border-radius:9px;border:1.5px solid var(--line);
+    background:#fff;cursor:pointer;transition:.1s;
+    font-size:13px;color:var(--txt);line-height:1.4;text-align:left;
+  }
+  .starter-chip:hover{border-color:var(--brand);background:#EEF4FF;color:var(--brand)}
+  .starter-chip .chip-q{font-weight:600;margin-bottom:3px}
+  .starter-chip .chip-cat{font-size:11px;color:var(--muted)}
+
+  /* ── Modals ── */
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);
+                 z-index:200;align-items:center;justify-content:center;padding:20px}
+  .modal-box{background:#fff;border-radius:14px;padding:28px;width:100%;
+             max-width:520px;max-height:90vh;overflow-y:auto}
+  .modal-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+  .modal-hd-title{font-size:16px;font-weight:750;color:var(--ink)}
+  .modal-close{border:none;background:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1}
+  .modal-close:hover{color:var(--ink)}
+
+  @media(max-width:600px){
+    .kb-entry-top{flex-wrap:wrap}
+    .starter-grid{grid-template-columns:1fr}
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>AI Knowledge Base</h1>
+    <p>{{ entries|length }} entr{{ 'ies' if entries|length != 1 else 'y' }} — parents get instant answers on WhatsApp</p>
+  </div>
+  <button class="btn btn-primary"
+          onclick="openAdd()">
+    + Add Entry
+  </button>
+</div>
+
+{# ── AI info strip ── #}
+<div class="ai-strip">
+  <div class="ai-strip-icon">🤖</div>
+  <p>
+    When a parent messages your WhatsApp number, the AI searches this knowledge base first,
+    then supplements it with live student data (attendance, fee balances) it already has access to.
+    The more complete this KB, the better the answers.
+  </p>
+</div>
+
+{# ── Starter templates ── #}
+{% if entries|length < 5 %}
+<div class="starter-wrap">
+  <div class="starter-header" onclick="toggleStarters()">
+    <span class="starter-title">⚡ Quick-start templates — click to add</span>
+    <span class="starter-toggle" id="starter-toggle-lbl">Show ▾</span>
+  </div>
+  <div class="starter-body" id="starter-body">
+    <div class="starter-grid">
+      {% set templates = [
+        ('calendar', 'When does the term start?', 'First Term begins on …, Second Term on …, Third Term on …'),
+        ('calendar', 'When does school close for holidays?', 'First Term closes on …, Second Term on …, Third Term on …'),
+        ('calendar', 'What are the school hours?', 'School opens at 7:30 AM and closes at 3:00 PM on weekdays.'),
+        ('fees', 'How much are the school fees?', 'School fees for the current term are ₦… per student. This covers …'),
+        ('fees', 'What are the accepted payment methods?', 'Fees can be paid via bank transfer to … (Account: …) or cash at the bursar\'s office.'),
+        ('fees', 'Can fees be paid in installments?', 'Yes, fees can be paid in two installments. First payment by … and balance by …'),
+        ('rules', 'What is the school uniform?', 'Students must wear … Top, … Bottom, and black shoes. No jewellery except plain earrings.'),
+        ('rules', 'What is the late arrival policy?', 'School gates close at 7:45 AM. Students arriving after that must report to the deputy principal.'),
+        ('contact', 'What is the school\'s address?', 'We are located at … Please call … before visiting.'),
+        ('contact', 'What is the school phone number?', 'You can reach us at … (office hours Mon–Fri, 8 AM – 4 PM) or via this WhatsApp line.'),
+        ('programmes', 'What subjects are offered?', 'Core subjects include … Elective subjects include … Extra-curricular activities include …'),
+        ('general', 'How do I check my child\'s attendance?', 'Simply message this WhatsApp number and ask "What is [child\'s name]\'s attendance this week?" and our AI will reply instantly.'),
+      ] %}
+      {% for cat, q, a in templates %}
+      <button class="starter-chip" type="button"
+              onclick="prefillAdd('{{ cat }}', {{ q|tojson }}, {{ a|tojson }})">
+        <div class="chip-q">{{ q }}</div>
+        <div class="chip-cat">{{ cat|capitalize }}</div>
+      </button>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── Toolbar ── #}
+<div class="kb-toolbar">
+  <input class="kb-search" type="text" id="kb-search"
+         placeholder="Search questions and answers…"
+         oninput="filterEntries()"/>
+</div>
+
+{# ── Category tabs ── #}
+{% set cat_icons = {'calendar':'📅','fees':'💰','programmes':'📚','rules':'📋','contact':'📞','general':'💬'} %}
+{% set all_cats = entries | map(attribute='category') | list | unique | sort %}
+<div class="cat-tabs" id="cat-tabs">
+  <button class="cat-tab active" data-cat="" onclick="setTab(this,'')">
+    All <span class="badge">{{ entries|length }}</span>
+  </button>
+  {% for cat in all_cats %}
+  {% set cnt = entries | selectattr('category','equalto',cat) | list | length %}
+  <button class="cat-tab" data-cat="{{ cat }}" onclick="setTab(this,'{{ cat }}')">
+    {{ cat_icons.get(cat,'💬') }} {{ cat|capitalize }}
+    <span class="badge">{{ cnt }}</span>
+  </button>
+  {% endfor %}
+</div>
+
+{# ── Entry list ── #}
+{% if entries %}
+<div class="kb-list" id="kb-list">
+  {% for e in entries %}
+  <div class="kb-entry"
+       id="entry-{{ e.id }}"
+       data-cat="{{ e.category }}"
+       data-text="{{ (e.question ~ ' ' ~ e.answer) | lower }}">
+    <div class="kb-entry-top">
+      <div class="kb-cat-icon">{{ cat_icons.get(e.category,'💬') }}</div>
+      <div style="flex:1">
+        <div class="kb-q">{{ e.question }}</div>
+        <div class="kb-a">{{ e.answer }}</div>
+      </div>
+    </div>
+
+    <div class="kb-actions">
+      <button class="btn btn-outline" style="padding:5px 12px;font-size:12.5px"
+              onclick="toggleEdit({{ e.id }})">Edit</button>
+      <form method="POST" action="{{ url_for('school.knowledge_delete', entry_id=e.id) }}"
+            onsubmit="return confirm('Delete this entry?')" style="display:inline">
+        <button class="btn btn-outline" style="padding:5px 12px;font-size:12.5px;color:var(--bad);border-color:var(--bad)">
+          Delete
+        </button>
+      </form>
+    </div>
+
+    {# Inline edit form #}
+    <div class="kb-edit-form" id="edit-{{ e.id }}">
+      <form method="POST" action="{{ url_for('school.knowledge_edit', entry_id=e.id) }}">
+        <div class="form-row g2" style="margin-bottom:10px">
+          <div class="form-group" style="margin-bottom:0">
+            <label style="font-size:12px;font-weight:600;color:var(--muted)">Category</label>
+            <select name="category">
+              {% for c,l in [('general','General'),('calendar','School Calendar'),
+                              ('fees','Fees & Payments'),('programmes','Programmes'),
+                              ('rules','School Rules'),('contact','Contact')] %}
+              <option value="{{ c }}" {% if e.category == c %}selected{% endif %}>{{ l }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label style="font-size:12px;font-weight:600;color:var(--muted)">Question</label>
+          <input type="text" name="question" required value="{{ e.question }}"/>
+        </div>
+        <div class="form-group">
+          <label style="font-size:12px;font-weight:600;color:var(--muted)">Answer</label>
+          <textarea name="answer" rows="3" required>{{ e.answer }}</textarea>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" style="padding:8px 16px;font-size:13px" type="submit">
+            Save Changes
+          </button>
+          <button type="button" class="btn btn-outline" style="padding:8px 16px;font-size:13px"
+                  onclick="toggleEdit({{ e.id }})">
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div id="no-results" style="display:none" class="empty-state">
+  <div class="big">🔍</div>
+  <p>No entries match your search.</p>
+</div>
+
+{% else %}
+<div class="empty-state">
+  <div class="big">🧠</div>
+  <p>No knowledge entries yet.</p>
+  <p style="margin-top:6px;font-size:13px;color:var(--muted)">
+    Use the quick-start templates above or add your own entries.
+  </p>
+  <button class="btn btn-primary" style="margin-top:16px" onclick="openAdd()">
+    Add First Entry
+  </button>
+</div>
+{% endif %}
+
+{# ── Add modal ── #}
+<div id="add-modal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-hd">
+      <span class="modal-hd-title">Add Knowledge Entry</span>
+      <button class="modal-close" onclick="closeAdd()">×</button>
+    </div>
+    <form method="POST" action="{{ url_for('school.knowledge_add') }}">
+      <div class="form-group">
+        <label>Category</label>
+        <select name="category" id="add-category">
+          <option value="general">General</option>
+          <option value="calendar">School Calendar</option>
+          <option value="fees">Fees &amp; Payments</option>
+          <option value="programmes">Programmes &amp; Curriculum</option>
+          <option value="rules">School Rules</option>
+          <option value="contact">Contact &amp; Location</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Question / Topic <span style="color:var(--bad)">*</span></label>
+        <input type="text" name="question" id="add-question" required
+               placeholder="When does the second term start?"/>
+      </div>
+      <div class="form-group">
+        <label>Answer <span style="color:var(--bad)">*</span></label>
+        <textarea name="answer" id="add-answer" rows="5" required
+                  placeholder="The second term begins on Monday 5th January 2026…"></textarea>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button class="btn btn-primary" type="submit">Add Entry</button>
+        <button type="button" class="btn btn-outline" onclick="closeAdd()">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+var _activeCat = '';
+
+function setTab(el, cat) {
+  document.querySelectorAll('.cat-tab').forEach(function(t){ t.classList.remove('active'); });
+  el.classList.add('active');
+  _activeCat = cat;
+  filterEntries();
+}
+
+function filterEntries() {
+  var q   = (document.getElementById('kb-search').value || '').toLowerCase();
+  var cat = _activeCat;
+  var rows = document.querySelectorAll('#kb-list .kb-entry');
+  var visible = 0;
+  rows.forEach(function(row) {
+    var catMatch  = !cat || row.dataset.cat === cat;
+    var textMatch = !q   || row.dataset.text.includes(q);
+    var show = catMatch && textMatch;
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  var noRes = document.getElementById('no-results');
+  if (noRes) noRes.style.display = visible === 0 ? 'block' : 'none';
+}
+
+function toggleEdit(id) {
+  var form = document.getElementById('edit-' + id);
+  form.classList.toggle('open');
+}
+
+function openAdd() {
+  document.getElementById('add-modal').style.display = 'flex';
+}
+function closeAdd() {
+  document.getElementById('add-modal').style.display = 'none';
+}
+
+function prefillAdd(cat, q, a) {
+  document.getElementById('add-category').value = cat;
+  document.getElementById('add-question').value = q;
+  document.getElementById('add-answer').value   = a;
+  openAdd();
+}
+
+function toggleStarters() {
+  var body = document.getElementById('starter-body');
+  var lbl  = document.getElementById('starter-toggle-lbl');
+  var open = body.classList.toggle('open');
+  lbl.textContent = open ? 'Hide ▴' : 'Show ▾';
+}
+
+document.getElementById('add-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeAdd();
+});
+</script>
+{% endblock %}

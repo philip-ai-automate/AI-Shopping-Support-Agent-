@@ -1,0 +1,343 @@
+{% extends "school/base.html" %}
+{% block title %}{{ schedule.name }} — Payments{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Top bar ── */
+  .pay-topbar{
+    background:#fff;border:1px solid var(--line);border-radius:14px;
+    padding:20px 22px;margin-bottom:18px;
+  }
+  .pay-name{font-size:17px;font-weight:750;color:var(--ink);margin-bottom:4px}
+  .pay-meta{font-size:13px;color:var(--muted)}
+
+  /* ── Progress section ── */
+  .prog-section{margin-top:16px}
+  .prog-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .prog-track{flex:1;height:10px;background:#F3F4F6;border-radius:5px;overflow:hidden}
+  .prog-fill{height:100%;border-radius:5px;transition:.3s}
+  .prog-pct{font-size:13px;font-weight:700;white-space:nowrap}
+
+  .pay-counts{display:flex;gap:8px;flex-wrap:wrap}
+  .pay-count{font-size:12px;font-weight:700;padding:4px 12px;border-radius:20px}
+  .pc-paid   {background:#DCFCE7;color:#15803D}
+  .pc-partial{background:#FEF3C7;color:#92400E}
+  .pc-unpaid {background:#FFE4E1;color:#B91C1C}
+
+  /* ── Search + filter bar ── */
+  .pay-filter{
+    display:flex;gap:10px;flex-wrap:wrap;align-items:center;
+    margin-bottom:14px;
+  }
+  .pay-filter input[type=text]{
+    padding:8px 12px;border:1.5px solid var(--line);border-radius:8px;
+    font-size:13.5px;flex:1;min-width:180px;background:#fff;
+  }
+  .pay-filter input[type=text]:focus{outline:none;border-color:var(--brand)}
+  .status-tabs{display:flex;gap:6px;flex-wrap:wrap}
+  .stab{
+    padding:6px 14px;border-radius:20px;font-size:12.5px;font-weight:600;
+    border:1.5px solid var(--line);background:#fff;cursor:pointer;
+    color:var(--muted);text-decoration:none;transition:.1s;
+  }
+  .stab:hover{border-color:var(--brand);color:var(--brand)}
+  .stab.active{background:var(--brand);border-color:var(--brand);color:#fff}
+
+  /* ── Payment rows ── */
+  .pay-list{display:flex;flex-direction:column;gap:6px}
+  .pay-row{
+    display:flex;align-items:center;gap:14px;padding:14px 16px;
+    background:#fff;border:1px solid var(--line);border-radius:10px;
+    flex-wrap:wrap;
+  }
+  .pay-row.paid-row   {border-color:#A6F4C5;background:#F0FDF4}
+  .pay-row.partial-row{border-color:#FDE68A;background:#FFFDF0}
+  .pay-row.unpaid-row {border-color:var(--line)}
+
+  .pay-info{flex:1;min-width:160px}
+  .pay-sname{font-size:14px;font-weight:600;color:var(--ink)}
+  .pay-smeta{font-size:12px;color:var(--muted);margin-top:2px}
+
+  .mini-prog{width:80px;height:6px;background:#F3F4F6;border-radius:3px;overflow:hidden;flex-shrink:0}
+  .mini-fill{height:100%;border-radius:3px;background:var(--good)}
+  .mini-fill.partial{background:var(--warn)}
+  .mini-fill.unpaid {background:var(--bad)}
+
+  .pay-amounts{text-align:right;white-space:nowrap;min-width:90px}
+  .pay-paid-amt{font-size:13.5px;font-weight:700;color:var(--ink)}
+  .pay-balance{font-size:11.5px;color:var(--muted)}
+  .pay-balance.red{color:var(--bad)}
+
+  .status-chip{
+    font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:12px;
+    white-space:nowrap;
+  }
+  .chip-paid   {background:#DCFCE7;color:#15803D}
+  .chip-partial{background:#FEF3C7;color:#92400E}
+  .chip-unpaid {background:#FFE4E1;color:#B91C1C}
+
+  .pay-date{font-size:12px;color:var(--muted);white-space:nowrap}
+
+  @media(max-width:600px){
+    .mini-prog,.pay-date{display:none}
+    .pay-amounts{min-width:70px}
+  }
+
+  /* ── Modals ── */
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);
+                 z-index:200;align-items:center;justify-content:center;padding:20px}
+  .modal-box{background:#fff;border-radius:14px;padding:28px;width:100%;max-height:90vh;overflow-y:auto}
+  .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+  .modal-title{font-size:16px;font-weight:700;color:var(--ink)}
+  .modal-close{border:none;background:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1}
+  .modal-close:hover{color:var(--ink)}
+</style>
+{% endblock %}
+
+{% block content %}
+
+{# ── Top summary bar ── #}
+<div class="pay-topbar">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
+    <div>
+      <div class="pay-name">{{ schedule.name }}</div>
+      <div class="pay-meta">
+        ₦{{ "{:,.0f}".format(schedule.amount) }} per student
+        {% if schedule.class_name %} · {{ schedule.class_name }}{% endif %}
+        {% if schedule.term %} · {{ schedule.term }} Term{% endif %}
+        {% if schedule.session %} · {{ schedule.session }}{% endif %}
+        {% if schedule.due_date %} · Due {{ schedule.due_date.strftime('%d %b %Y') }}{% endif %}
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-outline"
+              onclick="document.getElementById('import-modal').style.display='flex'">
+        ⬆ Import CSV
+      </button>
+      <form method="POST" action="{{ url_for('school.fee_remind', schedule_id=schedule.id) }}"
+            onsubmit="return confirm('Send WhatsApp reminder to {{ (pay_stats.unpaid_count or 0) + (pay_stats.partial_count or 0) }} unpaid/partial parents?')">
+        <button class="btn btn-outline" type="submit"
+                {% if not school.wa_phone_number_id %}disabled title="WhatsApp not connected"{% endif %}>
+          📲 Remind ({{ (pay_stats.unpaid_count or 0) + (pay_stats.partial_count or 0) }})
+        </button>
+      </form>
+      <a class="btn btn-outline" href="{{ url_for('school.fees') }}">← Back</a>
+    </div>
+  </div>
+
+  {# ── Collection progress ── #}
+  <div class="prog-section">
+    <div class="prog-row">
+      <div class="prog-track">
+        <div class="prog-fill"
+             style="width:{{ collect_pct }}%;background:{% if collect_pct >= 80 %}var(--good){% elif collect_pct >= 50 %}var(--warn){% else %}var(--bad){% endif %}">
+        </div>
+      </div>
+      <div class="prog-pct" style="color:{% if collect_pct >= 80 %}var(--good){% elif collect_pct >= 50 %}var(--warn){% else %}var(--bad){% endif %}">
+        {{ collect_pct }}%
+      </div>
+      <div style="font-size:12px;color:var(--muted)">
+        ₦{{ "{:,.0f}".format(pay_stats.total_collected or 0) }}
+        / ₦{{ "{:,.0f}".format(total_expected) }}
+      </div>
+    </div>
+    <div class="pay-counts">
+      <span class="pay-count pc-paid">{{ pay_stats.paid_count or 0 }} paid</span>
+      {% if pay_stats.partial_count %}
+      <span class="pay-count pc-partial">{{ pay_stats.partial_count }} partial</span>
+      {% endif %}
+      <span class="pay-count pc-unpaid">{{ pay_stats.unpaid_count or 0 }} unpaid</span>
+    </div>
+  </div>
+</div>
+
+{# ── Filter bar ── #}
+<div class="pay-filter">
+  <input type="text" id="search-box" placeholder="Search student name..."
+         oninput="filterRows()" />
+  <div class="status-tabs">
+    <a class="stab {% if not status_filter %}active{% endif %}"
+       href="{{ url_for('school.fee_payments', schedule_id=schedule.id) }}">
+      All ({{ pay_stats.total or 0 }})
+    </a>
+    <a class="stab {% if status_filter == 'unpaid' %}active{% endif %}"
+       href="{{ url_for('school.fee_payments', schedule_id=schedule.id, status='unpaid') }}">
+      Unpaid ({{ pay_stats.unpaid_count or 0 }})
+    </a>
+    {% if pay_stats.partial_count %}
+    <a class="stab {% if status_filter == 'partial' %}active{% endif %}"
+       href="{{ url_for('school.fee_payments', schedule_id=schedule.id, status='partial') }}">
+      Partial ({{ pay_stats.partial_count }})
+    </a>
+    {% endif %}
+    <a class="stab {% if status_filter == 'paid' %}active{% endif %}"
+       href="{{ url_for('school.fee_payments', schedule_id=schedule.id, status='paid') }}">
+      Paid ({{ pay_stats.paid_count or 0 }})
+    </a>
+  </div>
+</div>
+
+{# ── Payment rows ── #}
+{% if payments %}
+<div class="pay-list" id="pay-list">
+  {% for p in payments %}
+  {% set balance = schedule.amount - p.amount_paid %}
+  {% set row_pct = ((p.amount_paid / schedule.amount * 100) | round | int) if schedule.amount else 0 %}
+
+  <div class="pay-row {{ p.status }}-row" data-name="{{ p.full_name | lower }}">
+    <div class="pay-info">
+      <div class="pay-sname">{{ p.full_name }}</div>
+      <div class="pay-smeta">
+        {{ p.class_name }}{{ p.arm }}
+        {% if p.student_number %} · {{ p.student_number }}{% endif %}
+        {% if p.payment_ref %} · Ref: {{ p.payment_ref }}{% endif %}
+      </div>
+    </div>
+
+    <div class="mini-prog">
+      <div class="mini-fill {{ p.status if p.status != 'paid' else '' }}"
+           style="width:{{ row_pct }}%"></div>
+    </div>
+
+    <div class="pay-amounts">
+      <div class="pay-paid-amt">₦{{ "{:,.0f}".format(p.amount_paid) }}</div>
+      <div class="pay-balance {% if balance > 0 %}red{% endif %}">
+        {% if balance > 0 %}–₦{{ "{:,.0f}".format(balance) }}{% else %}Full{% endif %}
+      </div>
+    </div>
+
+    <span class="status-chip chip-{{ p.status }}">
+      {% if p.status == 'paid' %}✓ Paid
+      {% elif p.status == 'partial' %}½ Partial
+      {% else %}✗ Unpaid{% endif %}
+    </span>
+
+    <div class="pay-date">{{ p.payment_date.strftime('%d %b') if p.payment_date else '—' }}</div>
+
+    <button class="btn btn-outline" style="padding:6px 12px;font-size:12.5px"
+            onclick="openPayment({{ p.student_id }}, '{{ p.full_name | e }}', {{ p.amount_paid }}, {{ schedule.amount }})">
+      Record
+    </button>
+  </div>
+  {% endfor %}
+</div>
+
+<div id="no-results" style="display:none" class="empty-state">
+  <div class="big">🔍</div>
+  <p>No students match your search.</p>
+</div>
+
+{% else %}
+<div class="empty-state">
+  <div class="big">💳</div>
+  <p>No payment records.
+     {% if status_filter %}
+     <a href="{{ url_for('school.fee_payments', schedule_id=schedule.id) }}">Show all →</a>
+     {% endif %}
+  </p>
+</div>
+{% endif %}
+
+{# ── Record payment modal ── #}
+<div id="pay-modal" class="modal-overlay">
+  <div class="modal-box" style="max-width:420px">
+    <div class="modal-header">
+      <span class="modal-title">Record Payment</span>
+      <button class="modal-close" onclick="document.getElementById('pay-modal').style.display='none'">×</button>
+    </div>
+    <p id="pay-student-label"
+       style="font-size:14px;font-weight:600;margin-bottom:16px;color:var(--ink)"></p>
+    <form method="POST" action="{{ url_for('school.fee_record_payment', schedule_id=schedule.id) }}">
+      <input type="hidden" name="student_id" id="pay-student-id"/>
+      <div class="form-row g2">
+        <div class="form-group">
+          <label>Amount Paid (₦) <span style="color:var(--bad)">*</span></label>
+          <input type="number" name="amount_paid" id="pay-amount" required
+                 step="0.01" min="0" placeholder="{{ "{:,.0f}".format(schedule.amount) }}"/>
+        </div>
+        <div class="form-group">
+          <label>Date</label>
+          <input type="date" name="payment_date" id="pay-date" value="{{ today }}"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Reference</label>
+        <input type="text" name="payment_ref" placeholder="Bank teller / receipt no."/>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <input type="text" name="notes" placeholder="Optional"/>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button class="btn btn-primary" type="submit">Save</button>
+        <button type="button" class="btn btn-outline"
+                id="full-pay-btn"
+                onclick="document.getElementById('pay-amount').value = window._fullAmt;">
+          Full ₦{{ "{:,.0f}".format(schedule.amount) }}
+        </button>
+        <button type="button" class="btn btn-outline"
+                onclick="document.getElementById('pay-modal').style.display='none'">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# ── Import CSV modal ── #}
+<div id="import-modal" class="modal-overlay">
+  <div class="modal-box" style="max-width:460px">
+    <div class="modal-header">
+      <span class="modal-title">Import Payments (CSV)</span>
+      <button class="modal-close" onclick="document.getElementById('import-modal').style.display='none'">×</button>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:8px;line-height:1.6">
+      Export payments from your accounting system and upload here.
+      Required columns:
+    </p>
+    <pre style="font-size:12px;background:#F7F9FC;padding:10px 12px;border-radius:8px;
+                margin-bottom:16px;overflow-x:auto">student_number,amount_paid,payment_date,payment_ref</pre>
+    <form method="POST" action="{{ url_for('school.fee_import_payments', schedule_id=schedule.id) }}"
+          enctype="multipart/form-data">
+      <div class="form-group">
+        <label>Select CSV File</label>
+        <input type="file" name="csv_file" accept=".csv" required/>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" type="submit">Import</button>
+        <button type="button" class="btn btn-outline"
+                onclick="document.getElementById('import-modal').style.display='none'">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+window._fullAmt = {{ schedule.amount }};
+
+function openPayment(studentId, name, amountPaid, fullAmt) {
+  window._fullAmt = fullAmt;
+  document.getElementById('pay-student-id').value = studentId;
+  document.getElementById('pay-student-label').textContent = 'Student: ' + name;
+  document.getElementById('pay-amount').value = amountPaid > 0 ? amountPaid : '';
+  document.getElementById('pay-modal').style.display = 'flex';
+}
+
+function filterRows() {
+  const q = document.getElementById('search-box').value.toLowerCase();
+  const rows = document.querySelectorAll('#pay-list .pay-row');
+  let visible = 0;
+  rows.forEach(function(row) {
+    const match = !q || row.dataset.name.includes(q);
+    row.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  document.getElementById('no-results').style.display = visible === 0 ? 'block' : 'none';
+}
+
+// Close modals on overlay click
+['pay-modal','import-modal'].forEach(function(id) {
+  document.getElementById(id).addEventListener('click', function(e) {
+    if (e.target === this) this.style.display = 'none';
+  });
+});
+</script>
+{% endblock %}

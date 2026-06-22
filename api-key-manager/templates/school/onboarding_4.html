@@ -1,0 +1,60 @@
+{% extends "school/onboarding_base.html" %}
+{% block title %}You're all set — PhiXtra School{% endblock %}
+
+{% block content %}
+<div class="card" style="text-align:center;padding:48px 36px">
+  <div style="width:72px;height:72px;border-radius:50%;background:#ECFDF5;border:2px solid #A6F4C5;
+              display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto 20px">
+    🎉
+  </div>
+  <div class="card-title" style="font-size:26px">Your school is ready!</div>
+  <div class="card-sub" style="max-width:440px;margin:0 auto 32px">
+    <strong>{{ school.school_name or 'Your school' }}</strong> is now set up on PhiXtra School.
+    {% if school.wa_phone_number_id %}
+    Parents can start messaging <strong>{{ school.wa_display_phone or school.wa_phone_number_id }}</strong>
+    to get instant answers.
+    {% endif %}
+  </div>
+  <a href="{{ url_for('school.dashboard') }}" class="btn btn-primary" style="font-size:15px;padding:13px 28px">
+    Go to Dashboard →
+  </a>
+</div>
+
+<div class="card" style="margin-top:18px">
+  <div style="font-size:12.5px;font-weight:700;color:var(--muted);text-transform:uppercase;
+              letter-spacing:.5px;margin-bottom:18px">Complete your setup</div>
+
+  <div style="display:flex;flex-direction:column;gap:0">
+    {% set items = [
+      (school.wa_phone_number_id, 'Connect WhatsApp', 'Link your school WhatsApp Business number', url_for('school.onboarding', step=2), '/school/settings/wa'),
+      (false, 'Upload students', 'Import your student list via CSV', url_for('school.students'), url_for('school.students')),
+      (false, 'Add parents', 'Link parents to students so alerts reach the right person', url_for('school.parents'), url_for('school.parents')),
+      (false, 'Add knowledge base entries', 'Help the AI answer common parent questions', url_for('school.knowledge'), url_for('school.knowledge')),
+      (false, 'Invite staff', 'Add teachers and admin to the dashboard', url_for('school.settings'), url_for('school.settings')),
+    ] %}
+    {% for done, title, desc, setup_url, done_url in items %}
+    <div style="display:flex;align-items:center;gap:16px;padding:14px 0;
+                border-bottom:1px solid var(--line)">
+      <div style="width:28px;height:28px;border-radius:50%;flex-shrink:0;
+                  background:{% if done %}#ECFDF5{% else %}#F7F9FC{% endif %};
+                  border:2px solid {% if done %}#A6F4C5{% else %}var(--line){% endif %};
+                  display:flex;align-items:center;justify-content:center;font-size:13px">
+        {% if done %}✓{% endif %}
+      </div>
+      <div style="flex:1">
+        <div style="font-size:14px;font-weight:{% if done %}600{% else %}500{% endif %};
+                    color:{% if done %}#027A48{% else %}var(--ink){% endif %}">{{ title }}</div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:2px">{{ desc }}</div>
+      </div>
+      {% if not done %}
+      <a href="{{ setup_url }}" class="btn btn-outline" style="padding:7px 14px;font-size:12.5px">
+        Start →
+      </a>
+      {% else %}
+      <span style="font-size:12px;color:#027A48;font-weight:600">Done</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

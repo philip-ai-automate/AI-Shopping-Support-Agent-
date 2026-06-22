@@ -1,0 +1,335 @@
+{% extends "school/base.html" %}
+{% block title %}Dashboard — {{ school.school_name }}{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Stat cards ── */
+  .db-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+  @media(max-width:800px){.db-stats{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:420px){.db-stats{grid-template-columns:1fr 1fr}}
+  .db-stat{background:#fff;border:1px solid var(--line);border-radius:12px;
+           padding:16px 18px;position:relative;overflow:hidden}
+  .db-stat .val{font-size:28px;font-weight:800;line-height:1;margin-bottom:4px}
+  .db-stat .lbl{font-size:12px;color:var(--muted);font-weight:500}
+  .db-stat .sub{font-size:11.5px;color:var(--muted);margin-top:5px}
+  .db-stat.brand .val{color:var(--brand)}
+  .db-stat.good  .val{color:#12B76A}
+  .db-stat.warn  .val{color:#F79009}
+  .db-stat.bad   .val{color:#F04438}
+
+  /* ── WA banner ── */
+  .wa-banner{
+    background:#FFFAEB;border:1px solid #FEC84B;border-radius:12px;
+    padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:12px;
+  }
+  .wa-banner-ico{font-size:22px;flex-shrink:0}
+  .wa-banner-txt{font-size:13px;line-height:1.55;color:var(--ink)}
+  .wa-banner-txt strong{color:#92400E}
+
+  /* ── Quick actions ── */
+  .qa-grid{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px}
+  .qa-btn{
+    display:inline-flex;align-items:center;gap:7px;
+    padding:10px 16px;border-radius:10px;
+    border:1.5px solid var(--line);background:#fff;
+    font-size:13.5px;font-weight:600;color:var(--ink);
+    text-decoration:none;transition:.12s;white-space:nowrap;
+  }
+  .qa-btn:hover{border-color:var(--brand);color:var(--brand);background:#F5F8FF}
+  .qa-btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+  .qa-btn.primary:hover{background:#1558cc;border-color:#1558cc;color:#fff}
+
+  /* ── Two-col grid ── */
+  .db-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
+  @media(max-width:780px){.db-grid{grid-template-columns:1fr}}
+
+  /* ── Panel card ── */
+  .panel{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .panel-hd{
+    padding:14px 18px;border-bottom:1px solid var(--line);
+    display:flex;align-items:center;justify-content:space-between;
+  }
+  .panel-title{font-size:14px;font-weight:750;color:var(--ink)}
+  .panel-link{font-size:12.5px;font-weight:600;color:var(--brand);text-decoration:none}
+  .panel-link:hover{text-decoration:underline}
+  .panel-body{padding:0}
+
+  /* ── Attendance class rows ── */
+  .att-row{
+    display:flex;align-items:center;gap:12px;padding:11px 18px;
+    border-bottom:1px solid var(--line);
+  }
+  .att-row:last-child{border-bottom:none}
+  .att-cls{font-size:13.5px;font-weight:700;color:var(--ink);min-width:80px}
+  .att-track-wrap{flex:1}
+  .att-track{height:6px;background:#F3F4F6;border-radius:3px;overflow:hidden;margin-bottom:4px}
+  .att-fill{height:100%;border-radius:3px;background:#12B76A}
+  .att-nums{font-size:11px;color:var(--muted);display:flex;gap:8px}
+  .att-nums .ab{color:#F04438;font-weight:600}
+  .att-nums .la{color:#F79009;font-weight:600}
+  .att-mark{
+    font-size:12px;font-weight:700;padding:4px 10px;border-radius:8px;
+    white-space:nowrap;text-decoration:none;
+  }
+  .att-mark.done{background:#DCFCE7;color:#15803D}
+  .att-mark.todo{background:#EEF4FF;color:var(--brand)}
+  .att-mark.todo:hover{background:#dce8ff}
+
+  /* ── Broadcast rows ── */
+  .bc-row{
+    display:flex;align-items:center;gap:10px;padding:11px 18px;
+    border-bottom:1px solid var(--line);
+  }
+  .bc-row:last-child{border-bottom:none}
+  .bc-info{flex:1;min-width:0}
+  .bc-title{font-size:13.5px;font-weight:600;color:var(--ink);
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bc-meta{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .bc-pill{
+    font-size:11px;font-weight:700;padding:3px 9px;border-radius:10px;white-space:nowrap;
+  }
+  .bc-sent   {background:#DCFCE7;color:#15803D}
+  .bc-sending{background:#FEF3C7;color:#92400E}
+  .bc-draft  {background:#F3F4F6;color:var(--muted)}
+
+  /* ── Alert panel ── */
+  .alert-list{display:flex;flex-direction:column;gap:0}
+  .alert-item{
+    display:flex;align-items:center;gap:12px;padding:12px 18px;
+    border-bottom:1px solid var(--line);
+  }
+  .alert-item:last-child{border-bottom:none}
+  .alert-ico{font-size:18px;flex-shrink:0}
+  .alert-txt{flex:1;font-size:13px;color:var(--ink);line-height:1.45}
+  .alert-txt strong{font-weight:700}
+  .alert-lnk{font-size:12px;font-weight:700;color:var(--brand);
+              text-decoration:none;white-space:nowrap;flex-shrink:0}
+  .alert-lnk:hover{text-decoration:underline}
+
+  /* ── All-done state ── */
+  .all-done{padding:20px 18px;text-align:center;color:var(--muted);font-size:13.5px}
+  .all-done .tick{font-size:28px;display:block;margin-bottom:6px}
+</style>
+{% endblock %}
+
+{% block content %}
+{# ── Header ── #}
+<div class="page-header">
+  <div>
+    <h1>Dashboard</h1>
+    <p>{{ school.current_term }} Term &middot; {{ school.current_session }}
+      {% if school.wa_phone_number_id %}
+      &nbsp;<span style="font-size:12px;font-weight:700;padding:3px 9px;border-radius:10px;
+                         background:#DCFCE7;color:#15803D">✓ WA Connected</span>
+      {% else %}
+      &nbsp;<span style="font-size:12px;font-weight:700;padding:3px 9px;border-radius:10px;
+                         background:#FEF3C7;color:#92400E">WA Not set up</span>
+      {% endif %}
+    </p>
+  </div>
+  <a class="qa-btn primary" href="{{ url_for('school.broadcast') }}">📢 Send Broadcast</a>
+</div>
+
+{# ── WA setup banner ── #}
+{% if not school.wa_phone_number_id %}
+<div class="wa-banner">
+  <div class="wa-banner-ico">⚠️</div>
+  <div class="wa-banner-txt">
+    <strong>WhatsApp not connected.</strong>
+    Parents won't receive any alerts until you connect your WhatsApp Business number.
+    <a href="{{ url_for('school.settings') }}#wa-setup"
+       style="color:var(--brand);font-weight:700">Set up in Settings →</a>
+  </div>
+</div>
+{% endif %}
+
+{# ── Stat cards ── #}
+{% set att_present = att.present or 0 %}
+{% set att_absent  = att.absent  or 0 %}
+{% set att_total   = att.total   or 0 %}
+<div class="db-stats">
+  <div class="db-stat brand">
+    <div class="val">{{ total_students }}</div>
+    <div class="lbl">Total students</div>
+  </div>
+  <div class="db-stat {% if parents_linked < total_students %}warn{% else %}good{% endif %}">
+    <div class="val">{{ total_parents }}</div>
+    <div class="lbl">Parents on WhatsApp</div>
+    {% if total_students > 0 %}
+    <div class="sub">
+      {{ ((parents_linked / total_students) * 100) | round | int }}% student coverage
+    </div>
+    {% endif %}
+  </div>
+  <div class="db-stat {% if att_absent > 0 %}warn{% elif att_total > 0 %}good{% endif %}">
+    <div class="val">
+      {% if att_total > 0 %}{{ att_present }}/{{ att_total }}{% else %}—{% endif %}
+    </div>
+    <div class="lbl">Present today</div>
+    {% if att_absent > 0 %}
+    <div class="sub" style="color:#F04438">{{ att_absent }} absent</div>
+    {% elif att_total == 0 %}
+    <div class="sub">Not marked yet</div>
+    {% endif %}
+  </div>
+  <div class="db-stat {% if outstanding_fees > 0 %}bad{% else %}good{% endif %}">
+    <div class="val">{{ outstanding_fees }}</div>
+    <div class="lbl">Unpaid fee records</div>
+  </div>
+</div>
+
+{# ── Quick actions ── #}
+<div class="qa-grid">
+  <a class="qa-btn" href="{{ url_for('school.attendance') }}">✅ Mark Attendance</a>
+  <a class="qa-btn" href="{{ url_for('school.students') }}">🎒 Students</a>
+  <a class="qa-btn" href="{{ url_for('school.parents') }}">👨‍👩‍👧 Parents</a>
+  <a class="qa-btn" href="{{ url_for('school.fees') }}">💰 Fees</a>
+  <a class="qa-btn" href="{{ url_for('school.knowledge') }}">🧠 AI Knowledge</a>
+</div>
+
+{# ── Main two-column grid ── #}
+<div class="db-grid">
+
+  {# ── Left: Today's attendance by class ── #}
+  <div class="panel">
+    <div class="panel-hd">
+      <span class="panel-title">Today's Attendance</span>
+      <a class="panel-link" href="{{ url_for('school.attendance') }}">Mark →</a>
+    </div>
+    <div class="panel-body">
+      {% if att_by_class %}
+        {% set all_done = att_by_class | rejectattr('marked', 'equalto', 0) | list | length == att_by_class | length %}
+        {% if all_done and att_total > 0 %}
+        <div class="all-done">
+          <span class="tick">✅</span>
+          All classes marked for today
+        </div>
+        {% endif %}
+        {% for row in att_by_class %}
+        {% set pct = ((row.present / row.total * 100) | round | int) if row.total else 0 %}
+        {% set cls_key = row.class_name ~ ' ' ~ row.arm %}
+        <div class="att-row">
+          <div class="att-cls">{{ cls_key }}</div>
+          <div class="att-track-wrap">
+            <div class="att-track">
+              <div class="att-fill" style="width:{{ pct }}%"></div>
+            </div>
+            <div class="att-nums">
+              <span>{{ row.present or 0 }} present</span>
+              {% if row.absent %}<span class="ab">{{ row.absent }} absent</span>{% endif %}
+              {% if row.late %}<span class="la">{{ row.late }} late</span>{% endif %}
+            </div>
+          </div>
+          {% if row.marked %}
+          <span class="att-mark done">✓ Done</span>
+          {% else %}
+          <a class="att-mark todo"
+             href="{{ url_for('school.attendance', **{'class': row.class_name, 'arm': row.arm, 'date': today}) }}">
+            Mark
+          </a>
+          {% endif %}
+        </div>
+        {% endfor %}
+      {% else %}
+      <div class="all-done">
+        <span class="tick">🎒</span>
+        No students added yet.<br>
+        <a href="{{ url_for('school.students') }}" style="color:var(--brand);font-weight:600">
+          Add students →
+        </a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Right: Recent broadcasts ── #}
+  <div class="panel">
+    <div class="panel-hd">
+      <span class="panel-title">Recent Broadcasts</span>
+      <a class="panel-link" href="{{ url_for('school.broadcast') }}">New →</a>
+    </div>
+    <div class="panel-body">
+      {% if recent_broadcasts %}
+        {% for b in recent_broadcasts %}
+        <div class="bc-row">
+          <div class="bc-info">
+            <div class="bc-title">{{ b.title }}</div>
+            <div class="bc-meta">
+              {% if b.target_class %}{{ b.target_class }}{% else %}All parents{% endif %}
+              {% if b.sent_at %}&middot; {{ b.sent_at.strftime('%d %b') }}{% endif %}
+              {% if b.sent_count %}&middot; {{ b.sent_count }} sent{% endif %}
+            </div>
+          </div>
+          <span class="bc-pill bc-{{ b.status }}">
+            {% if b.status == 'sent' %}Sent
+            {% elif b.status == 'sending' %}Sending
+            {% else %}Draft{% endif %}
+          </span>
+        </div>
+        {% endfor %}
+      {% else %}
+      <div class="all-done">
+        <span class="tick">📢</span>
+        No broadcasts yet.<br>
+        <a href="{{ url_for('school.broadcast') }}"
+           style="color:var(--brand);font-weight:600">Send your first →</a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# ── Alerts panel (only shown when there's something to flag) ── #}
+{% set has_alerts = (no_parent_count > 0) or overdue_fees or
+                    (att_by_class | selectattr('marked', 'equalto', 0) | list | length > 0 and att_by_class) %}
+{% if has_alerts %}
+<div class="panel" style="margin-top:20px">
+  <div class="panel-hd">
+    <span class="panel-title">Needs Attention</span>
+  </div>
+  <div class="alert-list">
+
+    {# Classes not yet marked today #}
+    {% set unmarked = att_by_class | selectattr('marked', 'equalto', 0) | list %}
+    {% if unmarked %}
+    <div class="alert-item">
+      <div class="alert-ico">📋</div>
+      <div class="alert-txt">
+        <strong>{{ unmarked | length }} class{{ 'es' if unmarked | length != 1 }}</strong>
+        haven't marked attendance today —
+        {{ unmarked | map(attribute='class_name') | join(', ') }}
+      </div>
+      <a class="alert-lnk" href="{{ url_for('school.attendance') }}">Mark →</a>
+    </div>
+    {% endif %}
+
+    {# Students without parents #}
+    {% if no_parent_count > 0 %}
+    <div class="alert-item">
+      <div class="alert-ico">👤</div>
+      <div class="alert-txt">
+        <strong>{{ no_parent_count }} student{{ 's' if no_parent_count != 1 }}</strong>
+        {{ 'have' if no_parent_count != 1 else 'has' }} no parent linked —
+        they won't get WhatsApp alerts.
+      </div>
+      <a class="alert-lnk" href="{{ url_for('school.parents') }}">Fix →</a>
+    </div>
+    {% endif %}
+
+    {# Overdue fee schedules #}
+    {% for f in overdue_fees %}
+    <div class="alert-item">
+      <div class="alert-ico">💰</div>
+      <div class="alert-txt">
+        <strong>{{ f.name }}</strong> was due {{ f.due_date }} —
+        {{ f.unpaid }} unpaid record{{ 's' if f.unpaid != 1 }}
+      </div>
+      <a class="alert-lnk" href="{{ url_for('school.fees') }}">View →</a>
+    </div>
+    {% endfor %}
+
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,220 @@
+{% extends "school/onboarding_base.html" %}
+{% block title %}Connect WhatsApp — Setup{% endblock %}
+
+{% block head %}
+{% if embedded_enabled %}
+<script>
+  window.fbAsyncInit = function() {
+    FB.init({ appId: '{{ meta_app_id }}', autoLogAppEvents: true, xfbml: true, version: 'v19.0' });
+  };
+</script>
+<script async defer src="https://connect.facebook.net/en_US/sdk.js"></script>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+
+{# ── Already connected banner ── #}
+{% if school.wa_phone_number_id %}
+<div class="flash success">
+  WhatsApp connected:
+  <strong>{{ school.wa_display_phone or school.wa_phone_number_id }}</strong>
+  {% if school.wa_verified_name %} · {{ school.wa_verified_name }}{% endif %}
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-title">Connect your WhatsApp Business number</div>
+  <div class="card-sub">
+    Parents will message this number to get instant AI-powered answers about their child's attendance,
+    fees, and school news. You need a <strong>WhatsApp Business API</strong> number — not a regular
+    WhatsApp app.
+  </div>
+
+  {% if embedded_enabled %}
+  {# ── Option A: Embedded Signup ── #}
+  <div style="margin-bottom:10px;font-size:12.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">
+    Option 1 — Quickest
+  </div>
+  <p style="font-size:13.5px;color:var(--txt);margin-bottom:16px;line-height:1.6">
+    Sign in with your Meta Business account. We'll discover your WhatsApp number automatically.
+  </p>
+
+  <button class="wa-signup-btn" onclick="launchWhatsAppSignup()" id="signupBtn">
+    <svg viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.553 4.113 1.522 5.842L.057 23.886l6.221-1.436A11.934 11.934 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.003-1.37l-.36-.213-3.696.853.885-3.576-.234-.369A9.818 9.818 0 012.182 12C2.182 6.578 6.578 2.182 12 2.182S21.818 6.578 21.818 12 17.422 21.818 12 21.818z"/></svg>
+    Connect with WhatsApp
+  </button>
+
+  <div id="signupStatus" style="display:none;align-items:center;gap:10px;margin-top:14px;font-size:13.5px;color:var(--muted)">
+    <div style="width:18px;height:18px;border:2px solid var(--muted);border-top-color:var(--ink);
+                border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0"></div>
+    <span id="signupStatusText">Completing setup...</span>
+  </div>
+  <div id="signupError" class="flash danger" style="display:none;margin-top:12px"></div>
+
+  <div class="divider" style="margin:28px 0"></div>
+  <div style="margin-bottom:10px;font-size:12.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">
+    Option 2 — Manual entry
+  </div>
+  {% endif %}
+
+  {# ── Option B: Manual Entry ── #}
+  {% if not embedded_enabled %}
+  <div style="margin-bottom:14px;font-size:13.5px;color:var(--txt);line-height:1.6">
+    Enter your WhatsApp Business API credentials from your
+    <a href="https://business.facebook.com/latest/whatsapp-manager" target="_blank" rel="noopener">
+      Meta Business Manager</a> → WhatsApp Manager → Phone Numbers.
+  </div>
+  {% else %}
+  <p style="font-size:13px;color:var(--muted);margin-bottom:16px">
+    Already have your credentials? Enter them directly below.
+  </p>
+  {% endif %}
+
+  <form method="POST" action="{{ url_for('school.wa_manual_save') }}">
+    <div class="form-row g2">
+      <div class="form-group">
+        <label>Display Phone Number</label>
+        <input type="text" name="display_phone"
+               value="{{ school.wa_display_phone or '' }}"
+               placeholder="+234 801 234 5678">
+      </div>
+      <div class="form-group">
+        <label>Phone Number ID <span style="color:var(--bad)">*</span></label>
+        <input type="text" name="phone_number_id" required
+               value="{{ school.wa_phone_number_id or '' }}"
+               placeholder="e.g. 1234567890123456">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>WhatsApp Business Account ID (WABA ID) <span style="color:var(--bad)">*</span></label>
+      <input type="text" name="waba_id" required
+             value="{{ school.wa_waba_id or '' }}"
+             placeholder="e.g. 9876543210987654">
+    </div>
+    <div class="form-group">
+      <label>Permanent Access Token <span style="color:var(--bad)">*</span></label>
+      <input type="text" name="access_token" required
+             value=""
+             placeholder="EAAxxxxx...">
+      <span style="font-size:11.5px;color:var(--muted);margin-top:3px">
+        Generate in Meta Business Manager → System Users → Generate Token (never expires).
+      </span>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:18px;align-items:center">
+      <button type="submit" class="btn btn-primary">Save Credentials →</button>
+      {% if school.wa_phone_number_id %}
+      <a href="{{ url_for('school.onboarding', step=3) }}" class="btn btn-outline">Skip (already connected)</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+{# ── Phone Selection Modal ── #}
+<div class="modal-overlay" id="phoneModal">
+  <div class="modal-box">
+    <div class="modal-title">Select your WhatsApp number</div>
+    <div class="modal-sub">Your account has multiple phone numbers. Choose the one for this school.</div>
+    <div id="phoneOptions"></div>
+    <form id="phoneSelectForm" method="POST" action="{{ url_for('school.wa_embedded_complete') }}">
+      <input type="hidden" name="phone_number_id" id="selectedPhoneId">
+      <input type="hidden" name="waba_id"         id="selectedWabaId">
+      <input type="hidden" name="display_phone"   id="selectedDisplayPhone">
+      <input type="hidden" name="verified_name"   id="selectedVerifiedName">
+      <div style="display:flex;gap:10px;margin-top:18px">
+        <button type="submit" class="btn btn-primary" id="confirmPhoneBtn" disabled>Use this number</button>
+        <button type="button" class="btn btn-outline" onclick="closePhoneModal()">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if embedded_enabled %}
+<script>
+var _sessionInfo = {};
+
+window.addEventListener('message', function(event) {
+  if (event.origin !== 'https://www.facebook.com' && event.origin !== 'https://web.facebook.com') return;
+  try {
+    var d = JSON.parse(event.data);
+    if (d.type === 'WA_EMBEDDED_SIGNUP' && d.event === 'FINISH') { _sessionInfo = d.data || {}; }
+  } catch(e) {}
+});
+
+function launchWhatsAppSignup() {
+  _sessionInfo = {};
+  setStatus('connecting', 'Opening WhatsApp signup...');
+  clearError();
+  FB.login(function(resp) {
+    if (resp.authResponse && resp.authResponse.code) {
+      setStatus('connecting', 'Completing setup...');
+      sendCode(resp.authResponse.code);
+    } else {
+      setStatus('idle');
+    }
+  }, {
+    config_id: '{{ meta_config_id }}',
+    response_type: 'code',
+    override_default_response_type: true,
+    extras: { setup: {}, featureType: 'whatsapp_embedded_signup', sessionInfoVersion: '3' }
+  });
+}
+
+function sendCode(code) {
+  fetch('{{ url_for("school.wa_embedded_callback") }}', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: code, phone_number_id: _sessionInfo.phone_number_id || '', waba_id: _sessionInfo.waba_id || '' })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (data.error) { setStatus('idle'); showError(data.error); return; }
+    if (data.status === 'connected') {
+      setStatus('connecting', 'Connected! Continuing...');
+      window.location.href = '{{ url_for("school.onboarding", step=3) }}';
+    } else if (data.status === 'select_phone') {
+      setStatus('idle'); showPhoneModal(data.phone_options);
+    }
+  })
+  .catch(function() { setStatus('idle'); showError('Network error. Please try again.'); });
+}
+
+function setStatus(state, text) {
+  var btn = document.getElementById('signupBtn');
+  var bar = document.getElementById('signupStatus');
+  var txt = document.getElementById('signupStatusText');
+  if (state === 'idle') { btn.disabled = false; bar.style.display = 'none'; }
+  else { btn.disabled = true; if(text) txt.textContent = text; bar.style.display = 'flex'; }
+}
+function clearError() { var e=document.getElementById('signupError'); e.style.display='none'; e.textContent=''; }
+function showError(msg) { var e=document.getElementById('signupError'); e.textContent=msg; e.style.display='block'; }
+
+function showPhoneModal(phones) {
+  var c = document.getElementById('phoneOptions'); c.innerHTML = '';
+  phones.forEach(function(pn) {
+    var el = document.createElement('div');
+    el.className = 'phone-option';
+    el.innerHTML = '<strong>' + (pn.display_phone_number || pn.phone_number_id) + '</strong>' +
+      '<span>' + (pn.verified_name || '') + (pn.waba_id ? ' · WABA: ' + pn.waba_id : '') + '</span>';
+    el.addEventListener('click', function() {
+      document.querySelectorAll('.phone-option').forEach(function(o){o.classList.remove('selected');});
+      el.classList.add('selected');
+      document.getElementById('selectedPhoneId').value = pn.phone_number_id;
+      document.getElementById('selectedWabaId').value = pn.waba_id;
+      document.getElementById('selectedDisplayPhone').value = pn.display_phone_number || '';
+      document.getElementById('selectedVerifiedName').value = pn.verified_name || '';
+      document.getElementById('confirmPhoneBtn').disabled = false;
+    });
+    c.appendChild(el);
+  });
+  document.getElementById('phoneModal').style.display = 'flex';
+}
+function closePhoneModal() { document.getElementById('phoneModal').style.display = 'none'; }
+
+document.getElementById('phoneModal').addEventListener('click', function(e) {
+  if (e.target === this) closePhoneModal();
+});
+</script>
+{% endif %}
+{% endblock %}

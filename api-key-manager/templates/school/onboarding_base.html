@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>{% block title %}Setup — PhiXtra School{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <style>
+    :root{--brand:#1D6AF5;--ink:#0A1628;--line:rgba(10,22,40,0.10);
+          --txt:rgba(10,22,40,0.90);--muted:rgba(10,22,40,0.50);
+          --good:#12B76A;--warn:#F79009;--bad:#F04438;}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:ui-sans-serif,system-ui,-apple-system,sans-serif;
+         background:#F7F9FC;min-height:100vh;color:var(--txt);font-size:15px}
+    a{color:var(--brand);text-decoration:none}
+
+    /* ── Top bar ── */
+    .topbar{background:#fff;border-bottom:1px solid var(--line);
+            padding:14px 32px;display:flex;align-items:center;
+            justify-content:space-between}
+    .topbar-brand{display:flex;align-items:center;gap:10px}
+    .topbar-logo{width:34px;height:34px;border-radius:9px;background:var(--brand);
+                 display:flex;align-items:center;justify-content:center;
+                 color:#fff;font-size:17px;font-weight:700}
+    .topbar-name{font-size:14px;font-weight:700;color:var(--ink)}
+    .topbar-skip{font-size:13px;color:var(--muted)}
+    .topbar-skip a{color:var(--muted)}
+    .topbar-skip a:hover{color:var(--ink)}
+
+    /* ── Progress steps ── */
+    .progress-bar{background:#fff;border-bottom:1px solid var(--line);
+                  padding:0 32px}
+    .steps{display:flex;max-width:600px;margin:0 auto}
+    .step{flex:1;display:flex;flex-direction:column;align-items:center;
+          padding:16px 0;position:relative;cursor:default}
+    .step:not(:last-child)::after{
+      content:'';position:absolute;top:24px;left:50%;width:100%;
+      height:2px;background:var(--line);z-index:0;
+    }
+    .step.done:not(:last-child)::after{background:var(--brand)}
+    .step-dot{width:28px;height:28px;border-radius:50%;
+              display:flex;align-items:center;justify-content:center;
+              font-size:12px;font-weight:700;z-index:1;position:relative;
+              border:2px solid var(--line);background:#fff;color:var(--muted)}
+    .step.active .step-dot{background:var(--brand);border-color:var(--brand);color:#fff}
+    .step.done .step-dot{background:var(--good);border-color:var(--good);color:#fff}
+    .step-label{font-size:11px;color:var(--muted);margin-top:5px;font-weight:500;
+                text-align:center;white-space:nowrap}
+    .step.active .step-label{color:var(--brand);font-weight:700}
+    .step.done .step-label{color:var(--good)}
+
+    /* ── Content ── */
+    .content{max-width:600px;margin:40px auto;padding:0 20px}
+    .card{background:#fff;border-radius:16px;border:1px solid var(--line);
+          box-shadow:0 2px 12px rgba(10,22,40,0.06);padding:36px}
+    .card-title{font-size:22px;font-weight:750;color:var(--ink);margin-bottom:6px}
+    .card-sub{font-size:14px;color:var(--muted);margin-bottom:28px;line-height:1.6}
+    .divider{height:1px;background:var(--line);margin:20px 0}
+
+    /* ── Forms ── */
+    .form-group{display:flex;flex-direction:column;gap:5px;margin-bottom:16px}
+    .form-group label{font-size:12.5px;font-weight:600;color:var(--ink)}
+    .form-group input,.form-group select,.form-group textarea{
+      padding:10px 12px;border:1.5px solid var(--line);border-radius:8px;
+      font-size:14px;color:var(--txt);width:100%;font-family:inherit;background:#fff}
+    .form-group input:focus,.form-group select:focus{
+      outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(29,106,245,.10)}
+    .form-row{display:grid;gap:14px}
+    .g2{grid-template-columns:1fr 1fr}
+    @media(max-width:500px){.g2{grid-template-columns:1fr}}
+
+    /* ── Buttons ── */
+    .btn{display:inline-flex;align-items:center;gap:7px;padding:11px 22px;
+         border-radius:9px;font-size:14px;font-weight:650;cursor:pointer;
+         border:none;transition:.12s;text-decoration:none;white-space:nowrap}
+    .btn:hover{opacity:.9;text-decoration:none}
+    .btn-primary{background:var(--brand);color:#fff}
+    .btn-outline{background:#fff;color:var(--ink);border:1.5px solid var(--line)}
+    .btn-outline:hover{background:#F7F9FC}
+    .btn-full{width:100%;justify-content:center}
+
+    /* ── Flash ── */
+    .flash{padding:12px 16px;border-radius:8px;font-size:13.5px;
+           margin-bottom:18px;font-weight:500}
+    .flash.success{background:#ECFDF5;color:#027A48;border:1px solid #A6F4C5}
+    .flash.warning{background:#FFFAEB;color:#B54708;border:1px solid #FEF0C7}
+    .flash.danger{background:#FFF1F0;color:#B42318;border:1px solid #FECDCA}
+
+    /* ── WA signup button ── */
+    .wa-signup-btn{
+      display:inline-flex;align-items:center;gap:10px;
+      padding:12px 22px;border-radius:9px;
+      background:#25D366;color:#fff;border:none;cursor:pointer;
+      font-size:14px;font-weight:700;transition:.12s;
+    }
+    .wa-signup-btn svg{width:20px;height:20px;fill:#fff}
+    .wa-signup-btn:hover{background:#1ebe58}
+    .wa-signup-btn:disabled{opacity:.6;cursor:not-allowed}
+
+    #signupStatus{display:none;align-items:center;gap:10px;
+                  margin-top:14px;font-size:13.5px;color:var(--muted)}
+    #signupError{display:none;margin-top:12px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    /* ── Phone modal ── */
+    .modal-overlay{display:none;position:fixed;inset:0;
+                   background:rgba(0,0,0,0.45);z-index:500;
+                   align-items:center;justify-content:center;padding:20px}
+    .modal-box{background:#fff;border-radius:16px;padding:32px;
+               width:100%;max-width:420px}
+    .modal-title{font-size:17px;font-weight:700;margin-bottom:6px}
+    .modal-sub{font-size:13px;color:var(--muted);margin-bottom:20px}
+    .phone-option{
+      padding:14px;border:2px solid var(--line);border-radius:10px;
+      cursor:pointer;margin-bottom:10px;transition:.12s;
+    }
+    .phone-option:hover{border-color:var(--brand);background:#EEF4FF}
+    .phone-option.selected{border-color:var(--brand);background:#EEF4FF}
+    .phone-option strong{display:block;font-size:14px}
+    .phone-option span{font-size:12px;color:var(--muted)}
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-brand">
+    <div class="topbar-logo">S</div>
+    <span class="topbar-name">PhiXtra School Setup</span>
+  </div>
+  <div class="topbar-skip">
+    <a href="{{ url_for('school.onboarding_skip') }}">Skip setup →</a>
+  </div>
+</div>
+
+<div class="progress-bar">
+  <div class="steps">
+    {% set labels = ['School Profile','WhatsApp','Test','Done'] %}
+    {% for i in range(1,5) %}
+    <div class="step {% if i < step %}done{% elif i == step %}active{% endif %}">
+      <div class="step-dot">
+        {% if i < step %}✓{% else %}{{ i }}{% endif %}
+      </div>
+      <div class="step-label">{{ labels[i-1] }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="content">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</div>
+</body>
+</html>

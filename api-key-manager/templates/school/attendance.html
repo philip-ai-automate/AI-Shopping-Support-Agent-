@@ -1,0 +1,309 @@
+{% extends "school/base.html" %}
+{% block title %}Attendance — {{ school.school_name }}{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Controls bar ── */
+  .att-controls{
+    background:#fff;border:1px solid var(--line);border-radius:12px;
+    padding:16px 20px;margin-bottom:16px;
+    display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;
+  }
+  .att-controls .form-group{margin-bottom:0;min-width:0}
+  .att-controls select,.att-controls input[type=date]{
+    min-width:130px;padding:9px 12px;border:1.5px solid var(--line);
+    border-radius:8px;font-size:14px;background:#fff;color:var(--ink);
+  }
+  .att-controls select:focus,.att-controls input[type=date]:focus{
+    outline:none;border-color:var(--brand);
+  }
+
+  /* ── Arm tabs ── */
+  .arm-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+  .arm-tab{
+    padding:6px 16px;border-radius:20px;font-size:13px;font-weight:600;
+    border:1.5px solid var(--line);background:#fff;cursor:pointer;
+    color:var(--muted);text-decoration:none;transition:.1s;
+  }
+  .arm-tab:hover{border-color:var(--brand);color:var(--brand)}
+  .arm-tab.active{background:var(--brand);border-color:var(--brand);color:#fff}
+
+  /* ── Summary bar ── */
+  .att-summary{
+    display:flex;gap:16px;padding:10px 16px;
+    background:#F7F9FC;border:1px solid var(--line);border-radius:10px;
+    margin-bottom:14px;font-size:13px;font-weight:600;flex-wrap:wrap;
+  }
+  .att-summary span{display:flex;align-items:center;gap:6px}
+  .dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+  .dot.present{background:#12B76A}
+  .dot.absent{background:#F04438}
+  .dot.late{background:#F79009}
+  .dot.total{background:var(--brand)}
+
+  /* ── Student rows ── */
+  .att-list{display:flex;flex-direction:column;gap:6px;margin-bottom:80px}
+  .att-row{
+    display:flex;align-items:center;gap:14px;
+    padding:14px 16px;border-radius:12px;
+    border:2px solid var(--line);background:#fff;
+    cursor:pointer;transition:.12s;user-select:none;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .att-row[data-status=present]{background:#F0FDF4;border-color:#A6F4C5}
+  .att-row[data-status=absent] {background:#FFF1F0;border-color:#FECDCA}
+  .att-row[data-status=late]   {background:#FFFBEB;border-color:#FDE68A}
+  .att-row:active{transform:scale(.99)}
+
+  .att-status-dot{
+    width:14px;height:14px;border-radius:50%;flex-shrink:0;border:2px solid transparent;
+  }
+  [data-status=present] .att-status-dot{background:#12B76A;border-color:#12B76A}
+  [data-status=absent]  .att-status-dot{background:#F04438;border-color:#F04438}
+  [data-status=late]    .att-status-dot{background:#F79009;border-color:#F79009}
+  [data-status=]        .att-status-dot{background:var(--line);border-color:var(--line)}
+
+  .att-info{flex:1;min-width:0}
+  .att-name{font-size:15px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .att-meta{font-size:12px;color:var(--muted);margin-top:2px}
+
+  .att-label{
+    font-size:12px;font-weight:700;padding:4px 10px;border-radius:20px;
+    white-space:nowrap;text-align:right;min-width:56px;
+  }
+  [data-status=present] .att-label{color:#027A48;background:#DCFCE7}
+  [data-status=absent]  .att-label{color:#B42318;background:#FFE4E1}
+  [data-status=late]    .att-label{color:#B45309;background:#FEF3C7}
+  [data-status=]        .att-label{color:var(--muted);background:#F3F4F6}
+
+  /* ── Sticky save bar ── */
+  .save-bar{
+    position:fixed;bottom:0;left:0;right:0;
+    background:#fff;border-top:1px solid var(--line);
+    padding:14px 20px;display:flex;gap:12px;align-items:center;
+    z-index:100;box-shadow:0 -4px 16px rgba(10,22,40,0.08);
+  }
+  .save-bar .btn{min-width:180px;justify-content:center}
+  .save-bar-meta{font-size:13px;color:var(--muted);flex:1}
+  .save-bar-warn{font-size:12px;color:var(--warn)}
+
+  /* ── Mark-all shortcuts ── */
+  .quick-bar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+  .quick-btn{
+    padding:6px 14px;border-radius:8px;font-size:12.5px;font-weight:600;
+    border:1.5px solid var(--line);background:#fff;cursor:pointer;
+    color:var(--muted);transition:.1s;
+  }
+  .quick-btn:hover{border-color:var(--brand);color:var(--brand)}
+
+  @media(max-width:600px){
+    .att-controls{flex-direction:column}
+    .att-controls select,.att-controls input[type=date]{width:100%}
+    .save-bar{flex-wrap:wrap;padding:12px 16px;gap:8px}
+    .save-bar .btn{min-width:auto;flex:1}
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Mark Attendance</h1>
+    <p>Tap a student to toggle their status</p>
+  </div>
+  <a class="btn btn-outline" href="{{ url_for('school.attendance_history') }}">History</a>
+</div>
+
+{# ── Controls ── #}
+<form method="GET" id="filter-form">
+  <div class="att-controls">
+    {% if not staff_class or session.get('school_role') == 'admin' %}
+    <div class="form-group">
+      <label style="font-size:12px;font-weight:600;color:var(--muted)">Class</label>
+      <select name="class" onchange="this.form.submit()">
+        <option value="">— Select —</option>
+        {% for c in classes %}
+        <option value="{{ c }}" {% if c == selected_class %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% else %}
+    {# Teacher locked to their class — still allow admin to override #}
+    <div style="padding:9px 14px;background:#EEF4FF;border-radius:8px;font-size:14px;font-weight:600;color:var(--brand)">
+      {{ selected_class }}
+    </div>
+    <input type="hidden" name="class" value="{{ selected_class }}"/>
+    {% endif %}
+
+    <div class="form-group">
+      <label style="font-size:12px;font-weight:600;color:var(--muted)">Date</label>
+      <input type="date" name="date" value="{{ date_str }}" onchange="this.form.submit()"/>
+    </div>
+
+    {% if selected_arm %}
+    <input type="hidden" name="arm" value="{{ selected_arm }}"/>
+    {% endif %}
+  </div>
+</form>
+
+{% if selected_class %}
+
+{# ── Arm tabs (if multiple arms exist) ── #}
+{% if arms|length > 1 %}
+<div class="arm-tabs">
+  {% for a in arms %}
+  <a href="{{ url_for('school.attendance', **{'class': selected_class, 'date': date_str, 'arm': a}) }}"
+     class="arm-tab {% if a == selected_arm %}active{% endif %}">
+    {{ selected_class }} {{ a }}
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if students %}
+
+{# ── Summary bar ── #}
+<div class="att-summary" id="summary-bar">
+  <span><span class="dot total"></span><span id="cnt-total">{{ students|length }}</span> students</span>
+  <span><span class="dot present"></span><span id="cnt-present">0</span> present</span>
+  <span><span class="dot absent"></span><span id="cnt-absent">0</span> absent</span>
+  <span><span class="dot late"></span><span id="cnt-late">0</span> late</span>
+</div>
+
+{# ── Quick-mark shortcuts ── #}
+<div class="quick-bar">
+  <button type="button" class="quick-btn" onclick="markAll('present')">✓ All Present</button>
+  <button type="button" class="quick-btn" onclick="markAll('absent')">✗ All Absent</button>
+  <button type="button" class="quick-btn" onclick="resetAll()">Reset</button>
+</div>
+
+{# ── Student list ── #}
+<form method="POST" action="{{ url_for('school.attendance_save') }}" id="att-form">
+  <input type="hidden" name="date"       value="{{ date_str }}"/>
+  <input type="hidden" name="class_name" value="{{ selected_class }}"/>
+  <input type="hidden" name="arm"        value="{{ selected_arm }}"/>
+  <div id="absent-inputs"></div>
+  <div id="late-inputs"></div>
+
+  {% for s in students %}
+  {% set cur_status = existing.get(s.id, '') %}
+  <input type="hidden" name="student_ids[]" value="{{ s.id }}"/>
+  {% endfor %}
+
+  <div class="att-list" id="att-list">
+    {% for s in students %}
+    {% set cur_status = existing.get(s.id, 'present') %}
+    <div class="att-row"
+         id="row-{{ s.id }}"
+         data-id="{{ s.id }}"
+         data-status="{{ cur_status }}"
+         onclick="cycleStatus({{ s.id }})">
+      <div class="att-status-dot" id="dot-{{ s.id }}"></div>
+      <div class="att-info">
+        <div class="att-name">{{ s.full_name }}</div>
+        {% if s.student_number or (arms|length > 1) %}
+        <div class="att-meta">
+          {% if arms|length > 1 %}{{ selected_class }}{{ s.arm }}{% endif %}
+          {% if s.student_number %} · {{ s.student_number }}{% endif %}
+        </div>
+        {% endif %}
+      </div>
+      <div class="att-label" id="lbl-{{ s.id }}">Present</div>
+    </div>
+    {% endfor %}
+  </div>
+</form>
+
+{# ── Sticky save bar ── #}
+<div class="save-bar">
+  <button type="submit" form="att-form" class="btn btn-primary" id="save-btn">
+    Save &amp; Notify Parents
+  </button>
+  <div>
+    <div class="save-bar-meta" id="save-meta"></div>
+    {% if not school.wa_phone_number_id %}
+    <div class="save-bar-warn">⚠ WhatsApp not connected — parents won't be notified</div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+const CYCLE  = ['present','absent','late'];
+const LABELS = {present:'Present',absent:'Absent',late:'Late'};
+
+// Initial state from server
+const state = {};
+{% for s in students %}
+state[{{ s.id }}] = {{ ('"' + existing.get(s.id, 'present') + '"')|safe }};
+{% endfor %}
+
+function cycleStatus(id) {
+  const cur = state[id];
+  const next = CYCLE[(CYCLE.indexOf(cur) + 1) % CYCLE.length];
+  applyStatus(id, next);
+}
+
+function applyStatus(id, status) {
+  state[id] = status;
+  const row = document.getElementById('row-' + id);
+  const lbl = document.getElementById('lbl-' + id);
+  row.dataset.status = status;
+  lbl.textContent = LABELS[status] || 'Present';
+  syncHidden();
+  updateCounts();
+}
+
+function markAll(status) {
+  Object.keys(state).forEach(id => applyStatus(parseInt(id), status));
+}
+
+function resetAll() {
+  {% for s in students %}
+  applyStatus({{ s.id }}, {{ ('"' + existing.get(s.id, 'present') + '"')|safe }});
+  {% endfor %}
+}
+
+function syncHidden() {
+  document.getElementById('absent-inputs').innerHTML =
+    Object.entries(state).filter(([,s]) => s === 'absent')
+      .map(([id]) => `<input type="hidden" name="absent[]" value="${id}"/>`).join('');
+  document.getElementById('late-inputs').innerHTML =
+    Object.entries(state).filter(([,s]) => s === 'late')
+      .map(([id]) => `<input type="hidden" name="late[]" value="${id}"/>`).join('');
+}
+
+function updateCounts() {
+  const vals = Object.values(state);
+  const absent  = vals.filter(s => s === 'absent').length;
+  const late    = vals.filter(s => s === 'late').length;
+  const present = vals.filter(s => s === 'present').length;
+  document.getElementById('cnt-present').textContent = present;
+  document.getElementById('cnt-absent').textContent  = absent;
+  document.getElementById('cnt-late').textContent    = late;
+  const meta = [];
+  if (absent) meta.push(absent + ' absent');
+  if (late)   meta.push(late + ' late');
+  if (!meta.length) meta.push('All present');
+  document.getElementById('save-meta').textContent = meta.join(' · ');
+}
+
+// Initialise on load
+syncHidden();
+updateCounts();
+</script>
+
+{% else %}
+<div class="empty-state">
+  <div class="big">🎒</div>
+  <p>No students in {{ selected_class }}{% if selected_arm %} {{ selected_arm }}{% endif %}.
+     <a href="{{ url_for('school.students') }}">Add students</a> first.</p>
+</div>
+{% endif %}
+
+{% else %}
+<div class="empty-state">
+  <div class="big">✅</div>
+  <p>Select a class above to begin marking attendance.</p>
+</div>
+{% endif %}
+{% endblock %}

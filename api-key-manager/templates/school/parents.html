@@ -1,0 +1,391 @@
+{% extends "school/base.html" %}
+{% block title %}Parents — {{ school.school_name }}{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Stat cards ── */
+  .pr-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px}
+  @media(max-width:580px){.pr-stats{grid-template-columns:repeat(2,1fr)}}
+  .pr-stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .pr-stat .val{font-size:26px;font-weight:750;color:var(--ink);line-height:1;margin-bottom:4px}
+  .pr-stat .lbl{font-size:12px;color:var(--muted);font-weight:500}
+
+  /* ── Toolbar ── */
+  .pr-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+  .pr-search{
+    flex:1;min-width:180px;padding:9px 13px;
+    border:1.5px solid var(--line);border-radius:9px;font-size:14px;background:#fff;
+  }
+  .pr-search:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(29,106,245,.10)}
+
+  /* ── Parent cards ── */
+  .pr-list{display:flex;flex-direction:column;gap:10px}
+  .pr-card{
+    background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px;
+    display:grid;grid-template-columns:1fr auto;gap:12px;align-items:start;
+  }
+  .pr-card.opted-out{border-left:3px solid var(--warn)}
+  .pr-name{font-size:15px;font-weight:700;color:var(--ink);margin-bottom:3px}
+  .pr-meta{font-size:12.5px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap;
+           align-items:center;margin-bottom:10px}
+  .wa-num{font-family:monospace;font-size:12.5px}
+
+  /* ── Children chips ── */
+  .child-chips{display:flex;flex-wrap:wrap;gap:6px}
+  .child-chip{
+    display:inline-flex;align-items:center;gap:5px;
+    padding:4px 10px;background:#EEF4FF;color:var(--brand);
+    border-radius:20px;font-size:12px;font-weight:600;
+  }
+  .child-chip .unlink-btn{
+    border:none;background:none;color:var(--muted);cursor:pointer;
+    font-size:13px;line-height:1;padding:0 2px;
+  }
+  .child-chip .unlink-btn:hover{color:var(--bad)}
+  .no-child{font-size:12.5px;color:var(--warn);font-weight:600}
+
+  /* ── Link btn ── */
+  .link-toggle{
+    font-size:12px;font-weight:600;color:var(--brand);cursor:pointer;
+    border:none;background:none;padding:0;margin-top:8px;display:block;
+  }
+  .link-toggle:hover{text-decoration:underline}
+  .link-form{display:none;margin-top:8px}
+  .link-form.open{display:block}
+  .link-form select{
+    width:100%;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;
+    font-size:13px;margin-bottom:8px;
+  }
+
+  /* ── Card actions ── */
+  .pr-actions{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0}
+
+  /* ── Opted-out badge ── */
+  .opted-out-badge{
+    font-size:11px;font-weight:700;padding:3px 8px;border-radius:10px;
+    background:#FEF3C7;color:#92400E;white-space:nowrap;
+  }
+
+  /* ── Modals ── */
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);
+                 z-index:200;align-items:center;justify-content:center;padding:20px}
+  .modal-box{background:#fff;border-radius:14px;padding:28px;width:100%;
+             max-width:520px;max-height:90vh;overflow-y:auto}
+  .modal-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+  .modal-hd-title{font-size:16px;font-weight:750;color:var(--ink)}
+  .modal-close{border:none;background:none;font-size:22px;cursor:pointer;
+               color:var(--muted);line-height:1}
+  .modal-close:hover{color:var(--ink)}
+
+  /* ── Student multi-select ── */
+  .student-pick{
+    max-height:220px;overflow-y:auto;border:1.5px solid var(--line);
+    border-radius:8px;padding:6px;
+  }
+  .student-pick label{
+    display:flex;align-items:center;gap:8px;padding:6px 8px;
+    border-radius:6px;cursor:pointer;font-size:13px;
+  }
+  .student-pick label:hover{background:#F3F7FF}
+  .student-pick input[type=checkbox]{accent-color:var(--brand);width:15px;height:15px}
+  .student-cls{font-size:11.5px;color:var(--muted);margin-left:auto;white-space:nowrap}
+  .pick-search{
+    width:100%;padding:7px 10px;border:1.5px solid var(--line);border-radius:7px;
+    font-size:13px;margin-bottom:6px;box-sizing:border-box;
+  }
+  .pick-search:focus{outline:none;border-color:var(--brand)}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Parents</h1>
+    <p>{{ stats.total or 0 }} parent{{ 's' if (stats.total or 0) != 1 }}
+       registered, {{ stats.linked_count or 0 }} with children linked</p>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn btn-outline"
+            onclick="document.getElementById('import-modal').style.display='flex'">
+      ⬆ Import CSV
+    </button>
+    <button class="btn btn-primary"
+            onclick="document.getElementById('add-modal').style.display='flex'">
+      + Add Parent
+    </button>
+  </div>
+</div>
+
+{# ── Stats ── #}
+<div class="pr-stats">
+  <div class="pr-stat">
+    <div class="val">{{ stats.total or 0 }}</div>
+    <div class="lbl">Total parents</div>
+  </div>
+  <div class="pr-stat">
+    <div class="val">{{ stats.linked_count or 0 }}</div>
+    <div class="lbl">With children linked</div>
+  </div>
+  <div class="pr-stat">
+    <div class="val">{{ (stats.total or 0) - (stats.linked_count or 0) }}</div>
+    <div class="lbl">No child linked yet</div>
+  </div>
+</div>
+
+{% set unlinked_count = (stats.total or 0) - (stats.linked_count or 0) %}
+{% if unlinked_count > 0 %}
+<div class="flash warning" style="margin-bottom:16px">
+  {{ unlinked_count }} parent{{ 's are' if unlinked_count != 1 else ' is' }}
+  not linked to any student — they won't receive attendance or fee alerts.
+  Use <strong>+ Add Child</strong> on each card to link them.
+</div>
+{% endif %}
+
+{# ── Toolbar ── #}
+<div class="pr-toolbar">
+  <input class="pr-search" type="text" id="pr-search"
+         placeholder="Search by name or WhatsApp number…"
+         oninput="filterParents()"
+         value="{{ q }}"/>
+</div>
+
+{# ── Parent list ── #}
+{% if parents %}
+<div class="pr-list" id="pr-list">
+  {% for p in parents %}
+  {% set child_list = p.child_list if p.child_list else [] %}
+  <div class="pr-card {% if not p.is_opted_in %}opted-out{% endif %}"
+       data-name="{{ p.full_name | lower }}"
+       data-num="{{ p.whatsapp_number | lower }}">
+
+    <div>
+      <div class="pr-name">{{ p.full_name }}</div>
+      <div class="pr-meta">
+        <span class="wa-num">📱 {{ p.whatsapp_number }}</span>
+        <span>{{ p.relationship }}</span>
+        {% if not p.is_opted_in %}
+        <span class="opted-out-badge">Opted out</span>
+        {% endif %}
+      </div>
+
+      {# Children chips #}
+      <div class="child-chips">
+        {% if child_list %}
+          {% for child in child_list %}
+          <span class="child-chip">
+            {{ child.name }} ({{ child.class }})
+            <form method="POST"
+                  action="{{ url_for('school.parents_unlink', parent_id=p.id, student_id=child.id) }}"
+                  style="display:inline"
+                  onsubmit="return confirm('Unlink {{ child.name | e }}?')">
+              <button class="unlink-btn" type="submit" title="Unlink">×</button>
+            </form>
+          </span>
+          {% endfor %}
+        {% else %}
+          <span class="no-child">No children linked</span>
+        {% endif %}
+      </div>
+
+      {# Link student form — show students not already linked #}
+      {% set linked_ids = child_list | map(attribute='id') | list %}
+      {% set avail = [] %}
+      {% for s in student_options %}
+        {% if s.id not in linked_ids %}
+          {% set _ = avail.append(s) %}
+        {% endif %}
+      {% endfor %}
+      {% if avail %}
+      <button class="link-toggle" onclick="toggleLink(this)">+ Add Child</button>
+      <form method="POST"
+            action="{{ url_for('school.parents_link', parent_id=p.id) }}"
+            class="link-form">
+        <input class="pick-search" type="text" placeholder="Filter students…"
+               oninput="filterPick(this)"/>
+        <div class="student-pick">
+          {% for s in avail %}
+          <label data-name="{{ s.full_name | lower }}">
+            <input type="checkbox" name="student_ids" value="{{ s.id }}"/>
+            {{ s.full_name }}
+            <span class="student-cls">{{ s.class_name }} {{ s.arm }}</span>
+          </label>
+          {% endfor %}
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn btn-primary btn-sm" type="submit">Link</button>
+          <button type="button" class="btn btn-outline btn-sm"
+                  onclick="toggleLink(this.closest('.pr-card').querySelector('.link-toggle'))">
+            Cancel
+          </button>
+        </div>
+      </form>
+      {% endif %}
+    </div>
+
+    <div class="pr-actions">
+      {% if session.get('school_role') == 'admin' %}
+      <form method="POST"
+            action="{{ url_for('school.parents_delete', parent_id=p.id) }}"
+            onsubmit="return confirm('Remove {{ p.full_name | e }}? This cannot be undone.')">
+        <button class="btn btn-outline"
+                style="font-size:12px;padding:5px 10px;color:var(--bad);border-color:var(--bad)">
+          Remove
+        </button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div id="no-results" style="display:none" class="empty-state">
+  <div class="big">🔍</div>
+  <p>No parents match your search.</p>
+</div>
+
+{% else %}
+<div class="empty-state">
+  <div class="big">👨‍👩‍👧</div>
+  <p>No parents added yet.</p>
+  <div style="display:flex;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap">
+    <button class="btn btn-primary"
+            onclick="document.getElementById('add-modal').style.display='flex'">
+      Add Parent
+    </button>
+    <button class="btn btn-outline"
+            onclick="document.getElementById('import-modal').style.display='flex'">
+      Import CSV
+    </button>
+  </div>
+</div>
+{% endif %}
+
+{# ── Add parent modal ── #}
+<div id="add-modal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-hd">
+      <span class="modal-hd-title">Add Parent</span>
+      <button class="modal-close"
+              onclick="document.getElementById('add-modal').style.display='none'">×</button>
+    </div>
+    <form method="POST" action="{{ url_for('school.parents_add') }}">
+      <div class="form-row g2">
+        <div class="form-group">
+          <label>Full Name <span style="color:var(--bad)">*</span></label>
+          <input type="text" name="full_name" required placeholder="Mrs Adeyemi"/>
+        </div>
+        <div class="form-group">
+          <label>Relationship</label>
+          <select name="relationship">
+            <option>Mother</option>
+            <option>Father</option>
+            <option selected>Parent</option>
+            <option>Guardian</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>WhatsApp Number <span style="color:var(--bad)">*</span></label>
+        <input type="tel" name="whatsapp_number" required
+               placeholder="2348012345678"/>
+        <p class="field-hint">Include country code, digits only (e.g. 2348012345678).</p>
+      </div>
+      <div class="form-group">
+        <label>Link to Children (optional)</label>
+        <input class="pick-search" type="text" placeholder="Filter students…"
+               oninput="filterPick(this)"/>
+        <div class="student-pick">
+          {% for s in student_options %}
+          <label data-name="{{ s.full_name | lower }}">
+            <input type="checkbox" name="student_ids" value="{{ s.id }}"/>
+            {{ s.full_name }}
+            <span class="student-cls">{{ s.class_name }} {{ s.arm }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button class="btn btn-primary" type="submit">Add Parent</button>
+        <button type="button" class="btn btn-outline"
+                onclick="document.getElementById('add-modal').style.display='none'">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# ── Import modal ── #}
+<div id="import-modal" class="modal-overlay">
+  <div class="modal-box" style="max-width:460px">
+    <div class="modal-hd">
+      <span class="modal-hd-title">Import Parents (CSV)</span>
+      <button class="modal-close"
+              onclick="document.getElementById('import-modal').style.display='none'">×</button>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:8px;line-height:1.6">
+      Upload a CSV with parent contacts. Match to students via student number.
+    </p>
+    <pre style="font-size:12px;background:#F7F9FC;padding:10px 12px;border-radius:8px;
+                margin-bottom:8px;overflow-x:auto">full_name, whatsapp_number, relationship, student_number</pre>
+    <p style="margin-bottom:16px">
+      <a href="{{ url_for('school.parents_csv_template') }}"
+         style="font-size:13px;font-weight:600;color:var(--brand)">
+        ⬇ Download sample template
+      </a>
+    </p>
+    <form method="POST" action="{{ url_for('school.parents_import') }}"
+          enctype="multipart/form-data">
+      <div class="form-group">
+        <label>Select CSV File</label>
+        <input type="file" name="csv_file" accept=".csv" required/>
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:14px">
+        WA numbers must include country code (e.g. 234…).
+        Unmatched student numbers still add the parent without a child link.
+      </p>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" type="submit">Import</button>
+        <button type="button" class="btn btn-outline"
+                onclick="document.getElementById('import-modal').style.display='none'">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function filterParents() {
+  var q = document.getElementById('pr-search').value.toLowerCase();
+  var cards = document.querySelectorAll('#pr-list .pr-card');
+  var visible = 0;
+  cards.forEach(function(c) {
+    var match = !q || c.dataset.name.includes(q) || c.dataset.num.includes(q);
+    c.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  var nr = document.getElementById('no-results');
+  if (nr) nr.style.display = (visible === 0 && cards.length > 0) ? 'block' : 'none';
+}
+
+function toggleLink(btn) {
+  var card = btn.closest('.pr-card');
+  var form = card.querySelector('.link-form');
+  if (!form) return;
+  var open = form.classList.toggle('open');
+  btn.textContent = open ? '− Cancel' : '+ Add Child';
+}
+
+function filterPick(input) {
+  var q = input.value.toLowerCase();
+  var pick = input.nextElementSibling;
+  if (!pick) return;
+  pick.querySelectorAll('label').forEach(function(l) {
+    l.style.display = !q || (l.dataset.name || '').includes(q) ? '' : 'none';
+  });
+}
+
+['add-modal','import-modal'].forEach(function(id) {
+  document.getElementById(id).addEventListener('click', function(e) {
+    if (e.target === this) this.style.display = 'none';
+  });
+});
+</script>
+{% endblock %}
