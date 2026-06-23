@@ -1,0 +1,85 @@
+{% extends "ambassador/gs_page.html" %}
+
+{% block gs_style %}
+.checklist{display:flex;flex-direction:column;gap:12px}
+.check-item{display:flex;gap:14px;align-items:flex-start;padding:14px 16px;
+            background:#f8f9fb;border:1px solid var(--line);border-radius:12px}
+.check-num{width:24px;height:24px;background:var(--ink);color:#fff;border-radius:50%;
+           font-size:11px;font-weight:800;display:flex;align-items:center;
+           justify-content:center;flex-shrink:0;margin-top:1px}
+.check-title{font-size:13px;font-weight:700;margin-bottom:3px}
+.check-desc{font-size:12px;color:var(--muted);line-height:1.55}
+{% endblock %}
+
+{% block gs_content %}
+
+<div class="gs-section">
+  <div class="gs-section-title">Why you need to follow up</div>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6">
+    If a shop signs up but never sets up their account, they will not pay a subscription — and you will not earn anything. A short follow-up from you makes a big difference.
+  </p>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">5 things to do after they sign up</div>
+  <div class="checklist">
+    <div class="check-item">
+      <div class="check-num">1</div>
+      <div>
+        <div class="check-title">Check they got the welcome email</div>
+        <div class="check-desc">Tell them to check their spam folder if they do not see it. The email has their login link.</div>
+      </div>
+    </div>
+    <div class="check-item">
+      <div class="check-num">2</div>
+      <div>
+        <div class="check-title">Ask them to log in at portal.phixtra.com</div>
+        <div class="check-desc">Once they log in, they need to connect their WhatsApp number. This is the most important step.</div>
+      </div>
+    </div>
+    <div class="check-item">
+      <div class="check-num">3</div>
+      <div>
+        <div class="check-title">Ask them to upload their product list</div>
+        <div class="check-desc">The AI needs the product list to answer customer questions. Tell them to upload their spreadsheet under "Product Import".</div>
+      </div>
+    </div>
+    <div class="check-item">
+      <div class="check-num">4</div>
+      <div>
+        <div class="check-title">Check in after 2–3 days</div>
+        <div class="check-desc">Ask if the AI is working well for them. If they have any problems, point them to the WhatsApp support group. Shops that are happy stay subscribed longer.</div>
+      </div>
+    </div>
+    <div class="check-item">
+      <div class="check-num">5</div>
+      <div>
+        <div class="check-title">Encourage them to upgrade to a higher plan</div>
+        <div class="check-desc">Once they are happy, let them know the Growth and Pro plans unlock more features. You earn an upgrade bonus every time they move up — ₦5,000 (Starter→Growth), ₦10,000 (Growth→Pro), ₦15,000 (Starter→Pro), or ₦20,000 (Free→Pro).</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">Send them this on WhatsApp after they sign up</div>
+  <div style="background:#f8f9fb;border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:10px">
+    <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Copy & send this</div>
+    <div style="font-size:13px;line-height:1.7;white-space:pre-wrap" id="followup">Hi [Name], welcome to PhiXtra! 🎉 Here is how to get started:
+
+1. Log in at portal.phixtra.com
+2. Connect your WhatsApp number
+3. Upload your product list (Excel or CSV)
+
+Once your number is connected, the AI will start replying to customer messages for you. Let me know if you need any help — I am here!</div>
+    <div style="display:flex;justify-content:flex-end;margin-top:10px">
+      <button class="copy-btn" onclick="copyText('followup', this)">Copy message</button>
+    </div>
+  </div>
+</div>
+
+<div class="gs-tip">
+  <strong>Remember:</strong> You start earning the moment they make their first payment. The faster they set up, the faster you get paid.
+</div>
+
+{% endblock %}
