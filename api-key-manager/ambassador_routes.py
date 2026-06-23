@@ -48,6 +48,7 @@ UPSELL_BONUSES = {
     ("starter", "growth"): 5000,
     ("growth",  "pro"):   10000,
     ("starter", "pro"):   15000,
+    ("free",    "pro"):   20000,
 }
 
 
@@ -310,7 +311,8 @@ def _send_approved_email(amb_name: str, amb_email: str, ref_code: str):
          <a href="{ref_link}" style="color:{BRAND}">{ref_link}</a></p>
       <p>You earn <strong>20% commission</strong> on every subscription payment from clients
          you refer. You also earn one-time upsell bonuses: <strong>₦5,000</strong> (Starter→Growth),
-         <strong>₦10,000</strong> (Growth→Pro), or <strong>₦15,000</strong> (Starter→Pro).</p>
+         <strong>₦10,000</strong> (Growth→Pro), <strong>₦15,000</strong> (Starter→Pro),
+         or <strong>₦20,000</strong> (Free→Pro).</p>
 
       <div style="background:#dcfce7;border:1px solid #bbf7d0;border-radius:12px;padding:16px 20px;margin:20px 0">
         <p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#15803d">💬 Join the Ambassador WhatsApp Support Group</p>
@@ -788,7 +790,7 @@ def record_ambassador_commission(tenant_id: int, plan_id: int, prev_plan_id: int
     """
     Called after a successful subscription payment.
     - Records 20% commission if ambassador is eligible.
-    - Records upsell bonus for Starter→Growth (₦5k), Growth→Pro (₦10k), Starter→Pro (₦15k).
+    - Records upsell bonus for Starter→Growth (₦5k), Growth→Pro (₦10k), Starter→Pro (₦15k), Free→Pro (₦20k).
     """
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
