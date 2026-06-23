@@ -1,0 +1,44 @@
+{% extends "ambassador/base.html" %}
+{% block title %}My QR Code — Ambassador Hub{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="section-title">My QR Code</h1>
+</div>
+
+<div class="card" style="max-width:480px">
+  <div style="text-align:center;padding:8px 0 24px">
+    <img src="{{ url_for('ambassador.qr_image') }}" alt="Your referral QR code"
+         style="width:220px;height:220px;border:1px solid var(--line);border-radius:16px;margin-bottom:20px"/>
+
+    <div style="font-size:13px;color:var(--muted);margin-bottom:6px">Your referral link</div>
+    <div style="background:rgba(3,12,24,.04);border:1px solid var(--line);border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:8px;margin-bottom:20px;text-align:left">
+      <span id="refUrl" style="font-size:12px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+        {{ base_url }}/register?ref={{ amb.ref_code }}
+      </span>
+      <button onclick="copyLink(this)" class="btn btn-sm" style="flex-shrink:0">Copy</button>
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:center">
+      <a href="{{ url_for('ambassador.qr_image', download='1') }}"
+         class="btn btn-primary" download>Download PNG</a>
+    </div>
+  </div>
+
+  <div style="border-top:1px solid var(--line);padding-top:16px;font-size:12px;color:var(--muted);line-height:1.6">
+    <strong>How it works:</strong> When a business scans this QR code or visits your referral link and signs up,
+    they are automatically linked to your ambassador account. You earn 20% of every subscription payment
+    they make, and upgrade bonuses of ₦5,000–₦20,000 depending on which plan they move to.
+  </div>
+</div>
+
+<script>
+function copyLink(btn) {
+  navigator.clipboard.writeText(document.getElementById("refUrl").textContent.trim()).then(function() {
+    var orig = btn.textContent;
+    btn.textContent = "Copied!";
+    setTimeout(function(){ btn.textContent = orig; }, 2000);
+  });
+}
+</script>
+{% endblock %}

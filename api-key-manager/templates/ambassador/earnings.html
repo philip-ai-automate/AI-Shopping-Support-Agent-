@@ -1,0 +1,60 @@
+{% extends "ambassador/base.html" %}
+{% block title %}Earnings — Ambassador Hub{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="section-title">Earnings</h1>
+  <div style="text-align:right">
+    <div style="font-size:12px;color:var(--muted)">Total Balance</div>
+    <div style="font-size:26px;font-weight:800;letter-spacing:-.5px">₦{{ "{:,.0f}".format(total) }}</div>
+  </div>
+</div>
+
+<div class="card" style="padding:0">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Client</th>
+          <th>Type</th>
+          <th>Source Amount</th>
+          <th>Commission</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if not entries %}
+        <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:40px">
+          No earnings yet. Commissions appear here after a referred client makes a payment.
+        </td></tr>
+        {% endif %}
+        {% for e in entries %}
+        <tr>
+          <td class="muted">{{ e.created_at.strftime('%d %b %Y') if e.created_at else '—' }}</td>
+          <td><strong>{{ e.tenant_name }}</strong></td>
+          <td>
+            {% if e.commission_type == 'upsell_bonus' %}
+              <span class="pill pill-warn">★ Upsell Bonus</span>
+            {% else %}
+              <span class="pill pill-blue">Subscription</span>
+            {% endif %}
+          </td>
+          <td class="muted">
+            {% if e.source_amount %}
+              {{ e.currency }} {{ "{:,.2f}".format(e.source_amount) }}
+            {% else %}—{% endif %}
+          </td>
+          <td><strong style="color:var(--good)">₦{{ "{:,.2f}".format(e.commission_amount) }}</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div style="margin-top:16px;font-size:12px;color:var(--muted);text-align:center">
+  Commission rate: 20% on all subscription payments &nbsp;•&nbsp;
+  Upsell bonuses: ₦5k (Starter→Growth) · ₦10k (Growth→Pro) · ₦15k (Starter→Pro) · ₦20k (Free→Pro) &nbsp;•&nbsp;
+  Contact support@phixtra.com for payout enquiries
+</div>
+{% endblock %}
