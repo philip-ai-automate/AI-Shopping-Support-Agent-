@@ -53,25 +53,13 @@
 {% block content %}
 <div class="card" style="margin-top:12px;max-width:680px;margin-left:auto;margin-right:auto">
 
-  {% if offer == 'founder' %}
-  <div style="background:#030C18;border-radius:10px;padding:16px 20px;margin-bottom:20px">
-    <p style="color:#25D366;font-size:10px;font-weight:800;letter-spacing:.1em;
-              text-transform:uppercase;margin:0 0 4px">Founder's Offer</p>
-    <p style="color:#fff;font-weight:700;font-size:15px;margin:0 0 4px">
-      Year 1 completely free — {{ founder_spots_left }} spot{{ 's' if founder_spots_left != 1 else '' }} left
-    </p>
-    <p style="color:rgba(255,255,255,0.55);font-size:12px;margin:0">
-      Annual billing required. Year 2 at 50% off, Year 3+ at standard rates.
-    </p>
-  </div>
-  {% endif %}
-
   <h1 style="font-size:22px;font-weight:800;margin-bottom:4px">
-    {% if offer == 'founder' %}Claim your Founder spot{% else %}Create your account{% endif %}
+    Create your account
   </h1>
   <p class="muted" style="margin-bottom:22px">No credit card required.</p>
 
   <form method="POST" action="{{ url_for('portal.register') }}" novalidate id="regForm">
+    <input type="hidden" name="ref_code" value="{{ ref_code or '' }}"/>
 
     <!-- ── Merchant type selector ─────────────────────────────── -->
     <div style="margin-bottom:22px">
@@ -177,10 +165,6 @@
       </div>
     </div>
 
-    {% if offer == 'founder' %}
-    <input type="hidden" name="offer_type" value="founder"/>
-    {% endif %}
-
     <!-- Honeypot -->
     <div style="display:none;visibility:hidden;position:absolute;left:-9999px">
       <input type="text" name="website" tabindex="-1" autocomplete="off"/>
@@ -193,7 +177,7 @@
 
     <button type="submit" class="btn btn-primary" id="submitBtn"
             style="width:100%;justify-content:center;margin-top:4px">
-      {% if offer == 'founder' %}Claim my free Founder spot{% else %}Create free account{% endif %}
+      Create free account
     </button>
 
     <p class="field-hint info" style="text-align:center;margin-top:8px">

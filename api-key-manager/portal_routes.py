@@ -1023,12 +1023,7 @@ def _build_register_ctx(form_data=None):
                 wa_setup_link = f"https://wa.me/{digits}?text=SETUP"
         except Exception:
             pass
-    if form_data is not None:
-        offer = "founder" if (form_data.get("offer_type") or "").strip().lower() == "founder" else ""
-    else:
-        offer = (request.args.get("offer") or "").strip().lower()
-    spots_left = max(0, FOUNDER_SPOTS_LIMIT - _get_founder_spots_claimed() - FOUNDER_DISPLAY_OFFSET) if offer == "founder" else None
-    return dict(wa_setup_link=wa_setup_link, offer=offer, founder_spots_left=spots_left)
+    return dict(wa_setup_link=wa_setup_link, offer="", founder_spots_left=None)
 
 
 @portal_bp.route("/register", methods=["GET", "POST"])
@@ -1080,12 +1075,11 @@ def register():
 
     # ── WhatsApp-only merchant registration ─────────────────────────────────
     if merchant_type == "whatsapp":
-        offer_type = (request.form.get("offer_type") or "").strip().lower()
         return _register_whatsapp_merchant(
             first_name=first_name, last_name=last_name,
             email=email, password=password,
             business_name=(request.form.get("business_name") or "").strip(),
-            is_founder=(offer_type == "founder"),
+            is_founder=False,
         )
 
     # ── Web merchant registration continues below ───────────────────────────
@@ -2700,6 +2694,278 @@ def cart_recovery_dashboard():
 
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# AI AGENT PROFILES
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _get_ai_agents_limit(tenant_id: int) -> int:
+    """Return the tenant's plan ai_agents_limit (1 if no plan)."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT COALESCE(p.ai_agents_limit, 1) AS ai_agents_limit
+            FROM tenants t
+            LEFT JOIN plans p ON p.id = t.plan_id
+            WHERE t.id = %s
+        """, (tenant_id,))
+        row = cur.fetchone() or {}
+        cur.close(); conn.close()
+        return int(row.get("ai_agents_limit") or 1)
+    except Exception:
+        return 1
+
+
+def _get_agents_for_tenant(tenant_id: int) -> list:
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT id, name, description, system_prompt, is_active, created_at
+            FROM tenant_agents WHERE tenant_id=%s ORDER BY created_at ASC
+        """, (tenant_id,))
+        agents = list(cur.fetchall() or [])
+        # Attach assigned phone numbers to each agent
+        cur.execute("""
+            SELECT agent_id, display_phone_number, phone_number_id
+            FROM wa_tenants
+            WHERE tenant_id=%s AND agent_id IS NOT NULL AND active=TRUE
+        """, (tenant_id,))
+        assignments = cur.fetchall() or []
+        cur.close(); conn.close()
+        assign_map: dict = {}
+        for row in assignments:
+            assign_map.setdefault(row["agent_id"], []).append(
+                row["display_phone_number"] or row["phone_number_id"]
+            )
+        for ag in agents:
+            ag = dict(ag)
+        agents = [dict(ag) for ag in agents]
+        for ag in agents:
+            ag["assigned_numbers"] = assign_map.get(ag["id"], [])
+        return agents
+    except Exception as e:
+        print("⚠️ _get_agents_for_tenant error:", e)
+        return []
+
+
+@portal_bp.route("/agents", methods=["GET"])
+def ai_agents():
+    r = _require_login()
+    if r: return r
+    customer = _get_customer(_customer_id())
+    if not customer:
+        session.clear()
+        return redirect(url_for("portal.login"))
+    tenant_id = int(customer["tenant_id"])
+    agents = _get_agents_for_tenant(tenant_id)
+    limit  = _get_ai_agents_limit(tenant_id)
+    return render_template(
+        "portal/ai_agents.html",
+        customer = customer,
+        agents   = agents,
+        limit    = limit,
+        used     = len(agents),
+    )
+
+
+@portal_bp.route("/agents/new", methods=["GET", "POST"])
+def ai_agents_new():
+    r = _require_login()
+    if r: return r
+    customer = _get_customer(_customer_id())
+    if not customer:
+        session.clear()
+        return redirect(url_for("portal.login"))
+    tenant_id = int(customer["tenant_id"])
+
+    agents = _get_agents_for_tenant(tenant_id)
+    limit  = _get_ai_agents_limit(tenant_id)
+
+    if request.method == "GET":
+        if len(agents) >= limit:
+            flash(f"Your plan allows up to {limit} AI agent{'s' if limit != 1 else ''}. Upgrade to add more.", "warning")
+            return redirect(url_for("portal.ai_agents"))
+        return render_template(
+            "portal/ai_agent_form.html",
+            customer = customer,
+            agent    = None,
+            limit    = limit,
+            used     = len(agents),
+        )
+
+    # POST
+    name        = (request.form.get("name") or "").strip()
+    description = (request.form.get("description") or "").strip()
+    system_prompt = (request.form.get("system_prompt") or "").strip()
+
+    if not name:
+        flash("Agent name is required.", "danger")
+        return redirect(url_for("portal.ai_agents_new"))
+    if len(agents) >= limit:
+        flash(f"Your plan allows up to {limit} AI agent{'s' if limit != 1 else ''}. Upgrade to add more.", "warning")
+        return redirect(url_for("portal.ai_agents"))
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO tenant_agents (tenant_id, name, description, system_prompt, is_active)
+            VALUES (%s, %s, %s, %s, FALSE)
+        """, (tenant_id, name, description or None, system_prompt))
+        conn.commit()
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ ai_agents_new POST error:", e)
+        flash("Could not create agent. Please try again.", "danger")
+        return redirect(url_for("portal.ai_agents_new"))
+
+    flash(f'Agent "{name}" created.', "success")
+    return redirect(url_for("portal.ai_agents"))
+
+
+@portal_bp.route("/agents/<int:agent_id>/edit", methods=["GET", "POST"])
+def ai_agents_edit(agent_id: int):
+    r = _require_login()
+    if r: return r
+    customer = _get_customer(_customer_id())
+    if not customer:
+        session.clear()
+        return redirect(url_for("portal.login"))
+    tenant_id = int(customer["tenant_id"])
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT * FROM tenant_agents WHERE id=%s AND tenant_id=%s", (agent_id, tenant_id))
+        agent = cur.fetchone()
+        cur.close(); conn.close()
+    except Exception:
+        agent = None
+
+    if not agent:
+        flash("Agent not found.", "danger")
+        return redirect(url_for("portal.ai_agents"))
+
+    if request.method == "GET":
+        agents = _get_agents_for_tenant(tenant_id)
+        limit  = _get_ai_agents_limit(tenant_id)
+        return render_template(
+            "portal/ai_agent_form.html",
+            customer = customer,
+            agent    = agent,
+            limit    = limit,
+            used     = len(agents),
+        )
+
+    # POST
+    name          = (request.form.get("name") or "").strip()
+    description   = (request.form.get("description") or "").strip()
+    system_prompt = (request.form.get("system_prompt") or "").strip()
+
+    if not name:
+        flash("Agent name is required.", "danger")
+        return redirect(url_for("portal.ai_agents_edit", agent_id=agent_id))
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE tenant_agents
+            SET name=%s, description=%s, system_prompt=%s, updated_at=NOW()
+            WHERE id=%s AND tenant_id=%s
+        """, (name, description or None, system_prompt, agent_id, tenant_id))
+        conn.commit()
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ ai_agents_edit POST error:", e)
+        flash("Could not save changes. Please try again.", "danger")
+        return redirect(url_for("portal.ai_agents_edit", agent_id=agent_id))
+
+    flash(f'Agent "{name}" updated.', "success")
+    return redirect(url_for("portal.ai_agents"))
+
+
+@portal_bp.route("/agents/<int:agent_id>/activate", methods=["POST"])
+def ai_agents_activate(agent_id: int):
+    r = _require_login()
+    if r: return r
+    customer = _get_customer(_customer_id())
+    if not customer:
+        session.clear()
+        return redirect(url_for("portal.login"))
+    tenant_id = int(customer["tenant_id"])
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        # Deactivate all first, then activate the chosen one
+        cur.execute("UPDATE tenant_agents SET is_active=FALSE WHERE tenant_id=%s", (tenant_id,))
+        cur.execute("""
+            UPDATE tenant_agents SET is_active=TRUE, updated_at=NOW()
+            WHERE id=%s AND tenant_id=%s
+        """, (agent_id, tenant_id))
+        if cur.rowcount == 0:
+            flash("Agent not found.", "danger")
+        else:
+            # Mirror to tenants.system_prompt so legacy code stays consistent
+            cur.execute("""
+                UPDATE tenants SET system_prompt=(
+                    SELECT system_prompt FROM tenant_agents WHERE id=%s
+                ) WHERE id=%s
+            """, (agent_id, tenant_id))
+            flash("Agent activated — your WhatsApp AI is now using this profile.", "success")
+        conn.commit()
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ ai_agents_activate error:", e)
+        flash("Could not activate agent. Please try again.", "danger")
+
+    return redirect(url_for("portal.ai_agents"))
+
+
+@portal_bp.route("/agents/<int:agent_id>/delete", methods=["POST"])
+def ai_agents_delete(agent_id: int):
+    r = _require_login()
+    if r: return r
+    customer = _get_customer(_customer_id())
+    if not customer:
+        session.clear()
+        return redirect(url_for("portal.login"))
+    tenant_id = int(customer["tenant_id"])
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT is_active, name FROM tenant_agents WHERE id=%s AND tenant_id=%s", (agent_id, tenant_id))
+        agent = cur.fetchone()
+        if not agent:
+            flash("Agent not found.", "danger")
+            cur.close(); conn.close()
+            return redirect(url_for("portal.ai_agents"))
+        if agent["is_active"]:
+            flash("Cannot delete the active agent. Activate another agent first.", "danger")
+            cur.close(); conn.close()
+            return redirect(url_for("portal.ai_agents"))
+        # Ensure at least one agent remains
+        cur2 = conn.cursor()
+        cur2.execute("SELECT COUNT(*) FROM tenant_agents WHERE tenant_id=%s", (tenant_id,))
+        count = (cur2.fetchone() or [0])[0]
+        if count <= 1:
+            flash("You must have at least one AI agent.", "danger")
+            cur.close(); cur2.close(); conn.close()
+            return redirect(url_for("portal.ai_agents"))
+        cur2.execute("DELETE FROM tenant_agents WHERE id=%s AND tenant_id=%s", (agent_id, tenant_id))
+        conn.commit()
+        cur.close(); cur2.close(); conn.close()
+        flash(f'Agent "{agent["name"]}" deleted.', "success")
+    except Exception as e:
+        print("⚠️ ai_agents_delete error:", e)
+        flash("Could not delete agent. Please try again.", "danger")
+
+    return redirect(url_for("portal.ai_agents"))
+
+
 @portal_bp.route("/system-instruction", methods=["GET", "POST"])
 def ai_instruction():
     r = _require_login()
@@ -2718,7 +2984,13 @@ def ai_instruction():
         try:
             conn = get_db_connection()
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cur.execute("SELECT system_prompt FROM tenants WHERE id=%s", (tenant_id,))
+            # Prefer the active agent's prompt; fall back to tenant prompt
+            cur.execute("""
+                SELECT COALESCE(ta.system_prompt, t.system_prompt) AS system_prompt
+                FROM tenants t
+                LEFT JOIN tenant_agents ta ON ta.tenant_id = t.id AND ta.is_active = TRUE
+                WHERE t.id = %s
+            """, (tenant_id,))
             row = cur.fetchone() or {}
             cur.close(); conn.close()
         except Exception as e:
@@ -2747,10 +3019,16 @@ def ai_instruction():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute(
-            "UPDATE tenants SET system_prompt=%s WHERE id=%s",
-            (system_prompt_text, tenant_id)
-        )
+        # Write to the active agent if one exists, otherwise fall back to tenant row
+        cur.execute("""
+            UPDATE tenant_agents SET system_prompt=%s, updated_at=NOW()
+            WHERE tenant_id=%s AND is_active=TRUE
+        """, (system_prompt_text, tenant_id))
+        if cur.rowcount == 0:
+            cur.execute(
+                "UPDATE tenants SET system_prompt=%s WHERE id=%s",
+                (system_prompt_text, tenant_id)
+            )
         conn.commit()
         cur.close(); conn.close()
     except Exception as e:
@@ -6145,10 +6423,14 @@ def _get_wa_connection(tenant_id: int) -> dict | None:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
-            SELECT id, phone_number_id, waba_id, verify_token, active, created_at,
-                   signup_method, display_phone_number, verified_name, token_expires_at,
-                   app_secret
-            FROM wa_tenants WHERE tenant_id = %s AND active = TRUE LIMIT 1
+            SELECT wt.id, wt.phone_number_id, wt.waba_id, wt.verify_token, wt.active,
+                   wt.created_at, wt.signup_method, wt.display_phone_number,
+                   wt.verified_name, wt.token_expires_at, wt.app_secret, wt.agent_id,
+                   ta.name AS agent_name
+            FROM wa_tenants wt
+            LEFT JOIN tenant_agents ta ON ta.id = wt.agent_id
+            WHERE wt.tenant_id = %s AND wt.active = TRUE
+            ORDER BY wt.id DESC LIMIT 1
         """, (tenant_id,))
         row = cur.fetchone()
         cur.close(); conn.close()
@@ -6156,6 +6438,29 @@ def _get_wa_connection(tenant_id: int) -> dict | None:
     except Exception as e:
         print("⚠️ _get_wa_connection error:", e)
         return None
+
+
+def _get_wa_connections_all(tenant_id: int) -> list:
+    """Return ALL wa_tenants rows for this tenant (active and inactive), with agent name."""
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT wt.id, wt.phone_number_id, wt.waba_id, wt.verify_token, wt.active,
+                   wt.created_at, wt.signup_method, wt.display_phone_number,
+                   wt.verified_name, wt.token_expires_at, wt.app_secret,
+                   wt.typing_ack_text, wt.agent_id, ta.name AS agent_name
+            FROM wa_tenants wt
+            LEFT JOIN tenant_agents ta ON ta.id = wt.agent_id
+            WHERE wt.tenant_id = %s
+            ORDER BY wt.active DESC, wt.id ASC
+        """, (tenant_id,))
+        rows = list(cur.fetchall() or [])
+        cur.close(); conn.close()
+        return rows
+    except Exception as e:
+        print("⚠️ _get_wa_connections_all error:", e)
+        return []
 
 
 def _has_woocommerce_integration(tenant_id: int) -> bool:
@@ -6176,15 +6481,18 @@ def _has_woocommerce_integration(tenant_id: int) -> bool:
 
 
 def _get_wa_connection_any(tenant_id: int) -> dict | None:
-    """Return the wa_tenants row for this tenant regardless of active status, or None."""
+    """Return the most recent wa_tenants row for this tenant regardless of active status, or None."""
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
-            SELECT id, phone_number_id, waba_id, verify_token, active, created_at,
-                   signup_method, display_phone_number, verified_name, token_expires_at,
-                   app_secret, typing_ack_text
-            FROM wa_tenants WHERE tenant_id = %s ORDER BY id DESC LIMIT 1
+            SELECT wt.id, wt.phone_number_id, wt.waba_id, wt.verify_token, wt.active,
+                   wt.created_at, wt.signup_method, wt.display_phone_number,
+                   wt.verified_name, wt.token_expires_at, wt.app_secret, wt.typing_ack_text,
+                   wt.agent_id, ta.name AS agent_name
+            FROM wa_tenants wt
+            LEFT JOIN tenant_agents ta ON ta.id = wt.agent_id
+            WHERE wt.tenant_id = %s ORDER BY wt.id DESC LIMIT 1
         """, (tenant_id,))
         row = cur.fetchone()
         cur.close(); conn.close()
@@ -6241,8 +6549,10 @@ def whatsapp_connect():
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    connection = _get_wa_connection_any(tenant_id)
-    templates  = _get_wa_templates(tenant_id)
+    connections = _get_wa_connections_all(tenant_id)
+    connection  = connections[0] if connections else None  # primary (for backward-compat)
+    templates   = _get_wa_templates(tenant_id)
+    agents      = _get_agents_for_tenant(tenant_id)
 
     meta_app_id    = os.getenv("META_APP_ID", "")
     meta_config_id = os.getenv("META_CONFIG_ID", "")
@@ -6292,6 +6602,8 @@ def whatsapp_connect():
     return render_template("portal/whatsapp.html",
                            customer=customer,
                            connection=connection,
+                           connections=connections,
+                           agents=agents,
                            templates=templates,
                            embedded_enabled=embedded_enabled,
                            meta_app_id=meta_app_id,
@@ -6351,14 +6663,21 @@ def whatsapp_save_ack_text():
     tenant_id = int(customer["tenant_id"])
 
     ack_text = (request.form.get("typing_ack_text") or "").strip()[:200]
+    wa_id    = request.form.get("wa_id")
 
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
-        cur.execute(
-            "UPDATE wa_tenants SET typing_ack_text=%s WHERE tenant_id=%s",
-            (ack_text or None, tenant_id)
-        )
+        if wa_id and wa_id.isdigit():
+            cur.execute(
+                "UPDATE wa_tenants SET typing_ack_text=%s WHERE id=%s AND tenant_id=%s",
+                (ack_text or None, int(wa_id), tenant_id)
+            )
+        else:
+            cur.execute(
+                "UPDATE wa_tenants SET typing_ack_text=%s WHERE tenant_id=%s",
+                (ack_text or None, tenant_id)
+            )
         conn.commit()
         cur.close(); conn.close()
         flash("Acknowledgement message saved.", "success")
@@ -6544,15 +6863,19 @@ def whatsapp_disconnect():
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    wa_id     = request.form.get("wa_id", type=int)
 
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
-        cur.execute("UPDATE wa_tenants SET active = FALSE WHERE tenant_id = %s", (tenant_id,))
+        if wa_id:
+            cur.execute("UPDATE wa_tenants SET active = FALSE WHERE id = %s AND tenant_id = %s", (wa_id, tenant_id))
+        else:
+            cur.execute("UPDATE wa_tenants SET active = FALSE WHERE tenant_id = %s", (tenant_id,))
         conn.commit()
         cur.close(); conn.close()
         insert_audit_log(action="wa_disconnected", tenant_id=tenant_id)
-        flash("WhatsApp disconnected.", "success")
+        flash("WhatsApp number disconnected.", "success")
     except Exception as e:
         print("⚠️ whatsapp_disconnect error:", e)
         flash("Could not disconnect. Please try again.", "danger")
@@ -6566,18 +6889,55 @@ def whatsapp_delete():
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    wa_id     = request.form.get("wa_id", type=int)
 
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
-        cur.execute("DELETE FROM wa_tenants WHERE tenant_id = %s", (tenant_id,))
+        if wa_id:
+            cur.execute("DELETE FROM wa_tenants WHERE id = %s AND tenant_id = %s", (wa_id, tenant_id))
+        else:
+            cur.execute("DELETE FROM wa_tenants WHERE tenant_id = %s", (tenant_id,))
         conn.commit()
         cur.close(); conn.close()
         insert_audit_log(action="wa_deleted", tenant_id=tenant_id)
-        flash("WhatsApp phone number deleted. You can now register the same number again.", "success")
+        flash("WhatsApp number deleted. You can now register the same number again.", "success")
     except Exception as e:
         print("⚠️ whatsapp_delete error:", e)
         flash("Could not delete. Please try again.", "danger")
+
+    return redirect(url_for("portal.whatsapp_connect"))
+
+
+@portal_bp.route("/whatsapp/<int:wa_id>/assign-agent", methods=["POST"])
+def whatsapp_assign_agent(wa_id: int):
+    """Assign an AI agent profile to a specific WhatsApp number."""
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    agent_id  = request.form.get("agent_id", type=int)  # None/0 = unassign
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        if agent_id:
+            # Verify the agent belongs to this tenant
+            cur.execute("SELECT 1 FROM tenant_agents WHERE id=%s AND tenant_id=%s", (agent_id, tenant_id))
+            if not cur.fetchone():
+                flash("Agent not found.", "danger")
+                cur.close(); conn.close()
+                return redirect(url_for("portal.whatsapp_connect"))
+            cur.execute("UPDATE wa_tenants SET agent_id=%s WHERE id=%s AND tenant_id=%s", (agent_id, wa_id, tenant_id))
+            flash("AI agent assigned to this number.", "success")
+        else:
+            cur.execute("UPDATE wa_tenants SET agent_id=NULL WHERE id=%s AND tenant_id=%s", (wa_id, tenant_id))
+            flash("Agent unassigned — number will use the tenant default.", "success")
+        conn.commit()
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ whatsapp_assign_agent error:", e)
+        flash("Could not assign agent. Please try again.", "danger")
 
     return redirect(url_for("portal.whatsapp_connect"))
 
@@ -8963,45 +9323,117 @@ def onboarding_wa_connect():
 
 @portal_bp.route("/onboarding/catalogue", methods=["GET", "POST"])
 def onboarding_catalogue_start():
-    """Step 1 — pick which categories your store carries."""
+    """Step 1 — pick your business department/vertical."""
     r = _require_login()
     if r: return r
 
     customer    = _get_customer(_customer_id())
     merchant_id = int(customer["id"])
 
+    # Check if admin pre-assigned a department — skip dept step if so
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("""
-        SELECT c.*
-        FROM catalogue_categories c
-        WHERE c.is_active
-        ORDER BY c.sort_order, c.name
-    """)
-    categories = cur.fetchall()
+    cur.execute("SELECT default_department_id FROM onboarding_state WHERE customer_id=%s", (merchant_id,))
+    ob_row = cur.fetchone()
+    preset_dept_id = (ob_row or {}).get("default_department_id")
+
+    if preset_dept_id:
+        # Admin assigned a dept — skip straight to category picker
+        session["ob_dept_id"]   = preset_dept_id
+        session.pop("ob_cat_ids", None)
+        session.pop("ob_cats_done", None)
+        cur.close(); conn.close()
+        return redirect(url_for("portal.onboarding_catalogue_categories"))
+
+    cur.execute("SELECT * FROM catalogue_departments WHERE is_active ORDER BY sort_order, name")
+    departments = cur.fetchall()
     cur.close(); conn.close()
 
     if request.method == "POST":
         action = request.form.get("action", "")
-
         if action == "skip":
             _wizard_mark_done(merchant_id)
+            session.pop("ob_dept_id", None)
             session.pop("ob_cat_ids", None)
             session.pop("ob_cats_done", None)
             return redirect(url_for("portal.onboarding_wa_connect"))
 
-        raw_ids      = request.form.getlist("cat_ids")
-        chosen       = [int(x) for x in raw_ids if x.isdigit()]
-        other_text   = (request.form.get("other_category_text") or "").strip()
+        dept_id_raw = request.form.get("department_id") or ""
+        if not dept_id_raw.isdigit():
+            flash("Please select your business type — or skip to set up later.", "warning")
+            return render_template("portal/onboarding_catalogue_dept.html",
+                                   customer=customer, departments=departments)
+
+        session["ob_dept_id"]   = int(dept_id_raw)
+        session.pop("ob_cat_ids", None)
+        session.pop("ob_cats_done", None)
+        return redirect(url_for("portal.onboarding_catalogue_categories"))
+
+    # GET — reset wizard state
+    session.pop("ob_dept_id", None)
+    session.pop("ob_cat_ids", None)
+    session.pop("ob_cats_done", None)
+    return render_template("portal/onboarding_catalogue_dept.html",
+                           customer=customer, departments=departments)
+
+
+@portal_bp.route("/onboarding/catalogue/categories", methods=["GET", "POST"])
+def onboarding_catalogue_categories():
+    """Step 2 — pick which categories within the chosen department."""
+    r = _require_login()
+    if r: return r
+
+    customer    = _get_customer(_customer_id())
+    merchant_id = int(customer["id"])
+    dept_id     = session.get("ob_dept_id")
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # Load selected department info (if any)
+    dept = None
+    if dept_id:
+        cur.execute("SELECT * FROM catalogue_departments WHERE id=%s", (dept_id,))
+        dept = cur.fetchone()
+
+    # Load categories — filtered by department if one is set
+    if dept_id:
+        cur.execute("""
+            SELECT c.* FROM catalogue_categories c
+            WHERE c.is_active AND c.department_id=%s
+            ORDER BY c.sort_order, c.name
+        """, (dept_id,))
+    else:
+        cur.execute("""
+            SELECT c.* FROM catalogue_categories c
+            WHERE c.is_active
+            ORDER BY c.sort_order, c.name
+        """)
+    categories = cur.fetchall()
+    cur.close(); conn.close()
+
+    if request.method == "POST":
+        action     = request.form.get("action", "")
+
+        if action == "back":
+            return redirect(url_for("portal.onboarding_catalogue_start"))
+
+        if action == "skip":
+            _wizard_mark_done(merchant_id)
+            session.pop("ob_dept_id", None)
+            session.pop("ob_cat_ids", None)
+            session.pop("ob_cats_done", None)
+            return redirect(url_for("portal.onboarding_wa_connect"))
+
+        raw_ids    = request.form.getlist("cat_ids")
+        chosen     = [int(x) for x in raw_ids if x.isdigit()]
+        other_text = (request.form.get("other_category_text") or "").strip()
 
         if not chosen and not other_text:
             flash("Please select at least one category — or skip to set up later.", "warning")
-            return render_template(
-                "portal/onboarding_catalogue_step1.html",
-                customer=customer, categories=categories,
-            )
+            return render_template("portal/onboarding_catalogue_step1.html",
+                                   customer=customer, categories=categories, dept=dept)
 
-        # Save "Other" text so admin can see what merchants are selling
         if other_text:
             try:
                 conn2 = get_db_connection()
@@ -9012,9 +9444,9 @@ def onboarding_catalogue_start():
             except Exception:
                 pass
 
-        # If only "Other" selected with no real categories, skip product browse
         if not chosen:
             _wizard_mark_done(merchant_id)
+            session.pop("ob_dept_id", None)
             session.pop("ob_cat_ids", None)
             session.pop("ob_cats_done", None)
             flash("Thanks — we've noted your category. The PhiXtra team will be in touch to set up your catalogue.", "info")
@@ -9022,16 +9454,10 @@ def onboarding_catalogue_start():
 
         session["ob_cat_ids"]   = chosen
         session["ob_cats_done"] = []
-        return redirect(url_for("portal.onboarding_catalogue_products",
-                                category_id=chosen[0]))
+        return redirect(url_for("portal.onboarding_catalogue_products", category_id=chosen[0]))
 
-    # GET — reset any partial wizard state
-    session.pop("ob_cat_ids", None)
-    session.pop("ob_cats_done", None)
-    return render_template(
-        "portal/onboarding_catalogue_step1.html",
-        customer=customer, categories=categories,
-    )
+    return render_template("portal/onboarding_catalogue_step1.html",
+                           customer=customer, categories=categories, dept=dept)
 
 
 @portal_bp.route("/onboarding/catalogue/products/<int:category_id>", methods=["GET", "POST"])
@@ -9151,7 +9577,30 @@ def onboarding_catalogue_products(category_id: int):
             amap: dict = {}
             for row in cur.fetchall():
                 amap.setdefault(row["product_id"], {})[row["attribute_key"]] = row["value"]
-            products = [dict(p, attrs=amap.get(p["id"], {})) for p in products]
+
+            # Load variants per product so merchant can see available options
+            cur.execute("""
+                SELECT pv.product_id, pv.id AS variant_id, pv.variant_combo,
+                       pv.price_modifier, pv.stock_status, pv.is_active
+                FROM catalogue_product_variants pv
+                WHERE pv.product_id = ANY(%s) AND pv.is_active = TRUE
+                ORDER BY pv.variant_combo::text
+            """, (pids,))
+            vmap: dict = {}
+            for row in cur.fetchall():
+                vmap.setdefault(row["product_id"], []).append(row)
+
+            # Merchant's selected variant IDs
+            cur.execute(
+                "SELECT variant_id FROM merchant_product_variants WHERE merchant_id=%s AND is_active=TRUE",
+                (merchant_id,)
+            )
+            selected_variant_ids = {r["variant_id"] for r in cur.fetchall()}
+
+            products = [dict(p, attrs=amap.get(p["id"], {}),
+                             variants=vmap.get(p["id"], [])) for p in products]
+        else:
+            selected_variant_ids = set()
 
         selected_ids = _merchant_selection_ids(cur, merchant_id)
 
@@ -9169,6 +9618,7 @@ def onboarding_catalogue_products(category_id: int):
         products=products, selected_ids=selected_ids, searched=searched,
         step_num=step_num, step_total=step_total,
         cat_ids=cat_ids, cats_done=cats_done,
+        selected_variant_ids=selected_variant_ids if searched else set(),
     )
 
 
@@ -9396,6 +9846,55 @@ def onboarding_manual_product():
 
 
 # Toggle during wizard (AJAX or form POST) — reuses the same endpoint as the main catalogue
+@portal_bp.route("/onboarding/catalogue/toggle-variant/<int:variant_id>", methods=["POST"])
+def onboarding_catalogue_toggle_variant(variant_id: int):
+    """Toggle a specific product variant on/off for the merchant (AJAX)."""
+    r = _require_login()
+    if r: return r
+    customer    = _get_customer(_customer_id())
+    merchant_id = int(customer["id"])
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # Verify variant exists and is active
+    cur.execute("""
+        SELECT pv.id, pv.product_id FROM catalogue_product_variants pv
+        WHERE pv.id=%s AND pv.is_active=TRUE
+    """, (variant_id,))
+    variant = cur.fetchone()
+    if not variant:
+        cur.close(); conn.close()
+        return {"ok": False, "error": "Variant not found"}, 404
+
+    cur.execute(
+        "SELECT is_active FROM merchant_product_variants WHERE merchant_id=%s AND variant_id=%s",
+        (merchant_id, variant_id)
+    )
+    existing = cur.fetchone()
+    if existing is None:
+        cur.execute(
+            "INSERT INTO merchant_product_variants (merchant_id, variant_id) VALUES (%s,%s)",
+            (merchant_id, variant_id)
+        )
+        new_state = True
+        # Also ensure base product is selected
+        cur.execute("""
+            INSERT INTO merchant_product_catalogue (merchant_id, product_id)
+            VALUES (%s,%s) ON CONFLICT DO NOTHING
+        """, (merchant_id, variant["product_id"]))
+    else:
+        new_state = not existing["is_active"]
+        cur.execute(
+            "UPDATE merchant_product_variants SET is_active=%s WHERE merchant_id=%s AND variant_id=%s",
+            (new_state, merchant_id, variant_id)
+        )
+
+    conn.commit()
+    cur.close(); conn.close()
+    return {"ok": True, "selected": new_state}
+
+
 @portal_bp.route("/onboarding/catalogue/toggle/<int:category_id>/<int:product_id>", methods=["POST"])
 def onboarding_catalogue_toggle(category_id: int, product_id: int):
     """Same as catalogue_toggle but stays within the wizard URL space."""
@@ -12218,7 +12717,7 @@ def _get_tenant_plan(tenant_id: int) -> dict:
                    COALESCE(p.price_ngn,         0)       AS price_ngn,
                    COALESCE(p.price_usd,         0)       AS price_usd,
                    COALESCE(p.ai_messages_limit, 100)     AS ai_messages_limit,
-                   COALESCE(p.agents_limit,        1)     AS agents_limit,
+                   COALESCE(p.ai_agents_limit,     1)     AS ai_agents_limit,
                    COALESCE(p.broadcasts_limit,    0)     AS broadcasts_limit,
                    COALESCE(p.feat_crm,        FALSE)     AS feat_crm,
                    COALESCE(p.feat_advanced_ai,FALSE)     AS feat_advanced_ai,
