@@ -166,9 +166,9 @@
 {% set annual_ngn = (plan.price_ngn * (1 - disc))|int %}
 {% set annual_usd = (plan.price_usd|float * (1 - disc))|round(2) %}
 
-<div class="plan-card {% if is_current %}current{% elif plan.slug == 'growth' %}popular{% endif %}">
+<div class="plan-card {% if is_current %}current{% elif plan.slug == 'pro' %}popular{% endif %}">
   {% if is_current %}<span class="current-badge">Current plan</span>
-  {% elif plan.slug == 'growth' %}<span class="plan-badge">Most popular</span>{% endif %}
+  {% elif plan.slug == 'pro' %}<span class="plan-badge">Recommended</span>{% endif %}
 
   <div class="plan-name">{{ plan.name }}</div>
   <div class="plan-price">
@@ -240,7 +240,7 @@
     <span class="btn-upgrade btn-current">Current plan</span>
     {% elif plan.slug == 'free' %}
     <span class="btn-upgrade btn-upgrade-outline" style="cursor:default">Downgrade</span>
-    {% elif plan.slug == 'growth' %}
+    {% elif plan.slug == 'pro' %}
     <button type="button" onclick="openUpgradeModal('{{ plan.slug }}','{{ plan.name }}',{{ plan.price_ngn }},{{ plan.price_usd }},{{ plan.annual_discount_pct }})"
             class="btn-upgrade btn-upgrade-purple">
       Upgrade to {{ plan.name }}
