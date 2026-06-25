@@ -189,14 +189,16 @@
 
     /* ── Simple top-bar shown on no-sidebar pages ── */
     .auth-topbar{
-      display:flex; align-items:center; justify-content:space-between;
+      position:relative; display:flex; align-items:center; justify-content:center;
       padding:16px 28px; border-bottom:1px solid var(--line);
       background:rgba(255,255,255,0.88); backdrop-filter:blur(12px);
     }
     .auth-topbar img{height:44px; width:auto}
+    .auth-topbar-action{position:absolute; right:28px}
     @media(max-width:860px){
       .auth-topbar{padding:10px 16px}
       .auth-topbar img{height:34px}
+      .auth-topbar-action{right:16px}
     }
 
     /* ═══════════════════════════════════════════════════════════
@@ -836,9 +838,11 @@
       <img src="{{ url_for('static', filename='portal/phixtra-logo.png') }}" alt="PhiXtra"/>
     </a>
     {% if request.endpoint != 'portal.login' %}
-    <a href="{{ url_for('portal.login') }}" class="btn btn-primary" style="padding:9px 18px;font-size:14px">
-      Log in →
-    </a>
+    <div class="auth-topbar-action">
+      <a href="{{ url_for('portal.login') }}" class="btn btn-primary" style="padding:9px 18px;font-size:14px">
+        Log in →
+      </a>
+    </div>
     {% endif %}
   </div>
   {% endif %}

@@ -47,6 +47,9 @@
 .prod-table tr:last-child td { border-bottom:none }
 .prod-table tr.prod-row.inactive td { opacity:.45 }
 .prod-table tr:hover td { background:#fafafe }
+@media(max-width:540px){
+  .prod-table .col-cat,.prod-table .col-views{display:none}
+}
 
 .prod-name  { font-weight:700; font-size:14px }
 .prod-brand { font-size:12px; color:var(--muted) }
@@ -135,8 +138,8 @@
       <thead>
         <tr>
           <th>Product</th>
-          <th>Category</th>
-          <th style="text-align:center">WhatsApp Views</th>
+          <th class="col-cat">Category</th>
+          <th class="col-views" style="text-align:center">WhatsApp Views</th>
           <th style="text-align:center">Active</th>
         </tr>
       </thead>
@@ -163,10 +166,10 @@
               {% if p.brand %}{{ p.brand }}{% if p.sku %} &middot; {{ p.sku }}{% endif %}{% elif p.sku %}{{ p.sku }}{% endif %}
             </div>
           </td>
-          <td>
+          <td class="col-cat">
             <span class="prod-cat">{{ p.cat_icon or '' }} {{ p.cat_name }}</span>
           </td>
-          <td style="text-align:center">
+          <td class="col-views" style="text-align:center">
             <span class="views-badge {% if vc == 0 %}views-0{% elif vc < 10 %}views-low{% elif vc < 50 %}views-mid{% else %}views-high{% endif %}">
               {{ vc }} view{{ 's' if vc != 1 }}
             </span>

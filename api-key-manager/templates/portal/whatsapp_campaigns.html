@@ -725,7 +725,7 @@
       <tbody>
         {% for p in proactive_log %}
         <tr>
-          <td style="font-size:13px;font-weight:600">+{{ p.customer_phone }}</td>
+          <td style="font-size:13px;font-weight:600">{% if p.customer_phone %}+{{ p.customer_phone }}{% else %}—{% endif %}</td>
           <td><span class="badge-event">{{ p.event_type }}</span></td>
           <td>
             {% if p.template_name %}
