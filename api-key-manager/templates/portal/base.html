@@ -5,6 +5,13 @@
   <title>{% block title %}PhiXtra Portal{% endblock %}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='portal/favicon.png') }}"/>
+  <link rel="manifest" href="/static/portal/manifest.json"/>
+  <meta name="theme-color" content="#030C18"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="PhiXtra"/>
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='portal/pwa-icon-192.png') }}"/>
   <style>
     :root{
       --ink:#030C18; --bg:#fff; --card:#fff;
@@ -147,6 +154,23 @@
       padding:8px; font-size:13px; font-weight:650; z-index:90;
     }
 
+    /* ─── DEMO MODE BANNER ─── */
+    .demo-bar{
+      position:fixed; top:0; left:var(--sidebar-w); right:0;
+      background:linear-gradient(90deg,#1d4ed8,#2563eb); color:#fff;
+      display:flex; align-items:center; justify-content:center; gap:16px;
+      padding:9px 16px; font-size:13px; font-weight:600; z-index:90;
+      flex-wrap:wrap;
+    }
+    .demo-bar a{color:#bfdbfe;text-decoration:underline;font-weight:700;white-space:nowrap}
+    .demo-bar a:hover{color:#fff}
+    body:has(.demo-bar) .site-main,
+    body:has(.demo-bar) .impersonate-bar{top:38px}
+    @media(max-width:860px){
+      .demo-bar{left:0; top:54px}
+      body:has(.demo-bar) .site-main{padding-top:92px}
+    }
+
     /* ═══════════════════════════════════════════════════════════
        MAIN CONTENT AREA
     ═══════════════════════════════════════════════════════════ */
@@ -165,11 +189,15 @@
 
     /* ── Simple top-bar shown on no-sidebar pages ── */
     .auth-topbar{
-      display:flex; align-items:center; justify-content:center;
-      padding:22px 20px; border-bottom:1px solid var(--line);
+      display:flex; align-items:center; justify-content:space-between;
+      padding:16px 28px; border-bottom:1px solid var(--line);
       background:rgba(255,255,255,0.88); backdrop-filter:blur(12px);
     }
-    .auth-topbar img{height:52px; width:auto}
+    .auth-topbar img{height:44px; width:auto}
+    @media(max-width:860px){
+      .auth-topbar{padding:10px 16px}
+      .auth-topbar img{height:34px}
+    }
 
     /* ═══════════════════════════════════════════════════════════
        MOBILE TOP BAR + SIDEBAR OVERLAY
@@ -222,6 +250,8 @@
       .site-main{margin-left:0; padding-top:54px}
       .page{padding:20px 14px 50px}
       .impersonate-bar{top:54px; left:0}
+      body.no-sidebar .site-main{padding-top:0}
+      body.no-sidebar .page{padding-top:10px}
     }
 
     /* ═══════════════════════════════════════════════════════════
@@ -554,7 +584,7 @@
     </a>
 
     <!-- ── AI Assistant group ── -->
-    {% set _ai_group = request.endpoint in ('portal.api_keys', 'portal.ai_instruction', 'portal.handoff_rules') or (request.endpoint == 'portal.verified_specs_settings' and customer.tenant_source_type != 'whatsapp') %}
+    {% set _ai_group = request.endpoint in ('portal.api_keys', 'portal.ai_instruction', 'portal.handoff_rules', 'portal.ai_agents', 'portal.ai_agents_new', 'portal.ai_agents_edit') or (request.endpoint == 'portal.verified_specs_settings' and customer is defined and customer and customer.tenant_source_type != 'whatsapp') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _ai_group %}open{% endif %}"
            data-tour="nav-ai" onclick="sbToggle(this)">
@@ -568,6 +598,10 @@
            class="{% if request.endpoint == 'portal.api_keys' %}active{% endif %}">
           API Keys
         </a>
+        <a href="{{ url_for('portal.ai_agents') }}"
+           class="{% if request.endpoint in ('portal.ai_agents','portal.ai_agents_new','portal.ai_agents_edit') %}active{% endif %}">
+          AI Agent Profiles
+        </a>
         <a href="{{ url_for('portal.ai_instruction') }}"
            class="{% if request.endpoint == 'portal.ai_instruction' %}active{% endif %}">
           System Instruction
@@ -576,7 +610,7 @@
            class="{% if request.endpoint == 'portal.handoff_rules' %}active{% endif %}">
           Handoff Rules
         </a>
-        {% if customer.tenant_source_type != 'whatsapp' %}
+        {% if customer is defined and customer and customer.tenant_source_type != 'whatsapp' %}
         <a href="{{ url_for('portal.verified_specs_settings') }}"
            class="{% if request.endpoint == 'portal.verified_specs_settings' %}active{% endif %}">
           Verified Specs
@@ -784,6 +818,14 @@
   </div>
 {% endif %}
 
+<!-- ══════════════ DEMO MODE BANNER ══════════════ -->
+{% if _is_demo_tenant %}
+  <div class="demo-bar">
+    <span>🎮 <strong>Demo Account</strong> — this is your personal playground. Add products, change settings, and test anything freely.</span>
+    <a href="{{ url_for('ambassador.getting_started_topic', topic='understand-phixtra') }}">← Return to Ambassador Hub</a>
+  </div>
+{% endif %}
+
 <!-- ══════════════ MAIN CONTENT ══════════════ -->
 <div class="site-main">
 
@@ -793,6 +835,11 @@
     <a href="{{ url_for('portal.home') }}">
       <img src="{{ url_for('static', filename='portal/phixtra-logo.png') }}" alt="PhiXtra"/>
     </a>
+    {% if request.endpoint != 'portal.login' %}
+    <a href="{{ url_for('portal.login') }}" class="btn btn-primary" style="padding:9px 18px;font-size:14px">
+      Log in →
+    </a>
+    {% endif %}
   </div>
   {% endif %}
 
@@ -1117,7 +1164,7 @@
     { icon:'🔑', title:'API Keys',               desc:'Manage your AI integration keys',              url:'{{ url_for("portal.api_keys") }}',                   tags:'api keys developer integration access token' },
     { icon:'🤖', title:'AI System Instruction',  desc:'Customise your AI assistant personality',      url:'{{ url_for("portal.ai_instruction") }}',             tags:'ai bot personality system prompt instruction custom behaviour' },
     { icon:'🔀', title:'Handoff Rules',          desc:'When the AI should pass to a human agent',    url:'{{ url_for("portal.handoff_rules") }}',              tags:'handoff rules human agent escalate transfer live' },
-    {% if customer.tenant_source_type != 'whatsapp' %}
+    {% if customer is defined and customer and customer.tenant_source_type != 'whatsapp' %}
     { icon:'✅', title:'Verified Specs',         desc:'Product specs the AI can confirm accurately',  url:'{{ url_for("portal.verified_specs_settings") }}',    tags:'verified specs product guarantee confirm accuracy' },
     {% endif %}
     { icon:'📋', title:'Subscription Plans',     desc:'View and manage your subscription',            url:'{{ url_for("portal.billing_subscribe") }}',          tags:'subscription plan monthly upgrade downgrade' },
@@ -1234,6 +1281,77 @@
 })();
 </script>
 {% endif %}
+
+<!-- ══════════════ PWA ══════════════ -->
+<!-- Install prompt banner -->
+<div id="pwaInstallBar" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9999;
+     background:#030C18;color:#fff;padding:12px 16px;
+     display:none;align-items:center;gap:12px;box-shadow:0 -4px 20px rgba(3,12,24,0.25)">
+  <img src="{{ url_for('static', filename='portal/pwa-icon-192.png') }}"
+       style="width:36px;height:36px;border-radius:8px;flex-shrink:0" alt="PhiXtra"/>
+  <div style="flex:1;min-width:0">
+    <div style="font-size:13px;font-weight:700">Add PhiXtra to your home screen</div>
+    <div style="font-size:11px;color:rgba(255,255,255,0.55)">Open like an app — no browser bar</div>
+  </div>
+  <button id="pwaInstallBtn"
+          style="background:#25D366;color:#fff;border:none;border-radius:10px;
+                 padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;
+                 font-family:inherit;flex-shrink:0;white-space:nowrap">
+    Install
+  </button>
+  <button id="pwaInstallDismiss"
+          style="background:none;border:none;color:rgba(255,255,255,0.45);
+                 font-size:20px;cursor:pointer;padding:0 4px;flex-shrink:0;
+                 font-family:inherit;line-height:1">
+    ×
+  </button>
+</div>
+
+<script>
+// ── Service worker registration ──
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      .catch(function(e) { console.warn('SW registration failed:', e); });
+  });
+}
+
+// ── Install prompt ──
+var _pwaPrompt = null;
+window.addEventListener('beforeinstallprompt', function(e) {
+  e.preventDefault();
+  _pwaPrompt = e;
+  // beforeinstallprompt only fires when NOT installed — safe to always show
+  var bar = document.getElementById('pwaInstallBar');
+  if (bar) bar.style.display = 'flex';
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+  var installBtn   = document.getElementById('pwaInstallBtn');
+  var dismissBtn   = document.getElementById('pwaInstallDismiss');
+  var bar          = document.getElementById('pwaInstallBar');
+
+  if (installBtn) {
+    installBtn.addEventListener('click', function() {
+      if (_pwaPrompt) {
+        _pwaPrompt.prompt();
+        _pwaPrompt.userChoice.then(function(r) {
+          // Don't persist dismissed flag on install — so if they
+          // uninstall and return, the prompt shows again
+          if (bar) bar.style.display = 'none';
+          _pwaPrompt = null;
+        });
+      }
+    });
+  }
+
+  if (dismissBtn) {
+    dismissBtn.addEventListener('click', function() {
+      if (bar) bar.style.display = 'none';
+    });
+  }
+});
+</script>
 
 </body>
 </html>
