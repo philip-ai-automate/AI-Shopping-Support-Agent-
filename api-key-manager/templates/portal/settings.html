@@ -285,7 +285,7 @@
 
           <div id="handoffEmailSection"
                style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(37,99,235,0.15);{% if not customer.get('notif_handoff', 1) %}display:none;{% endif %}">
-            <div class="form-group" style="margin-bottom:4px">
+            <div class="form-group" style="margin-bottom:16px">
               <label style="font-size:13px;font-weight:650">
                 Send handoff alerts to
                 <span class="muted" style="font-weight:400"> — optional</span>
@@ -297,6 +297,22 @@
                 💡 Enter a different address to receive alerts — e.g. a team inbox or a colleague.
                 If left blank, alerts will go to your account email
                 <strong>{{ customer.email }}</strong>.
+              </p>
+            </div>
+            <div class="form-group" style="margin-bottom:4px">
+              <label style="font-size:13px;font-weight:650">
+                Also alert me on WhatsApp
+                <span class="muted" style="font-weight:400"> — optional</span>
+              </label>
+              <input type="tel" name="report_phone"
+                     value="{{ report_phone or '' }}"
+                     placeholder="e.g. +2348012345678"
+                     style="max-width:280px"
+                     inputmode="tel"/>
+              <p class="muted" style="font-size:12px;margin-top:6px;line-height:1.5">
+                📱 Enter your <strong>personal</strong> WhatsApp number (not your business number).
+                You'll get an instant WhatsApp message when a customer needs a human agent.
+                Also used for the daily WhatsApp summary report.
               </p>
             </div>
           </div>
@@ -355,15 +371,11 @@
         </div>
         <div id="reportPhoneRow"
              style="margin-top:12px;{% if not daily_report_enabled %}display:none;{% endif %}">
-          <label style="font-size:13px;color:var(--muted);margin-bottom:5px;display:block">
-            Deliver report to WhatsApp number
-            <span style="font-weight:400">(leave blank to use your account phone)</span>
-          </label>
-          <input type="tel" name="report_phone"
-                 value="{{ report_phone or '' }}"
-                 placeholder="{{ customer.phone_number or '+234 801 234 5678' }}"
-                 style="max-width:280px"
-                 inputmode="tel"/>
+          <p class="muted" style="font-size:12px;line-height:1.5">
+            📱 Delivered to the personal WhatsApp number set in the
+            <strong>Handoff Alerts</strong> section above.
+            {% if report_phone %}Current: <strong>{{ report_phone }}</strong>{% else %}No number set — add one above.{% endif %}
+          </p>
         </div>
 
         <div style="margin-top:18px">
