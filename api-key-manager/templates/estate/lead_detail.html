@@ -208,6 +208,41 @@
 .il-empty{text-align:center;padding:40px 20px;color:rgba(3,12,24,0.40);
           font-size:13.5px;line-height:1.7}
 
+/* ── Phase 4: Plot Allocation ── */
+.pa-linked{
+  padding:16px;background:rgba(10,122,60,0.05);border:1.5px solid rgba(10,122,60,0.20);
+  border-radius:12px;margin-bottom:16px
+}
+.pa-prop-title{font-size:15px;font-weight:800;color:#030C18;margin-bottom:4px}
+.pa-prop-loc{font-size:12.5px;color:rgba(3,12,24,0.50);margin-bottom:10px}
+.pa-prop-meta{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.pa-meta-chip{
+  display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:999px;
+  font-size:12px;font-weight:700;background:rgba(3,12,24,0.06);color:#030C18
+}
+.pa-plot-badge{
+  display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:9px;
+  background:#fff;border:1.5px solid rgba(10,122,60,0.30);font-size:13px;font-weight:700;
+  color:#0a7a3c;margin-top:4px
+}
+.pa-allocate-btn{
+  width:100%;padding:11px;border:none;border-radius:9px;font-size:13.5px;font-weight:800;
+  font-family:inherit;cursor:pointer;transition:.13s;margin-top:14px;
+  background:#0a7a3c;color:#fff
+}
+.pa-allocate-btn:hover{background:#076130}
+.pa-unlink-btn{
+  display:inline-flex;align-items:center;gap:5px;padding:6px 13px;border-radius:8px;
+  font-size:12px;font-weight:750;border:1.5px solid rgba(3,12,24,0.14);background:#fff;
+  color:rgba(3,12,24,0.55);cursor:pointer;font-family:inherit;transition:.12s
+}
+.pa-unlink-btn:hover{border-color:#dc2626;color:#dc2626}
+.pa-allocated-stamp{
+  display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:9px;
+  font-size:12.5px;font-weight:700;background:rgba(10,122,60,0.08);
+  color:#0a7a3c;border:1px solid rgba(10,122,60,0.20);margin-top:10px
+}
+
 /* ── Modals ── */
 .modal-bg{display:none;position:fixed;inset:0;background:rgba(3,12,24,0.65);z-index:500;
           align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(3px)}
@@ -585,6 +620,87 @@
       No interactions logged yet.<br>
       <span style="font-size:12px">Use <strong>+ Log Interaction</strong> to record a call, visit, note, or WhatsApp message.</span>
     </div>
+    {% endif %}
+
+  </div>
+</div>
+
+<!-- ── Phase 4: Plot / Property Allocation ── -->
+<div class="ld-card" style="margin-bottom:18px">
+  <div class="ld-card-head">
+    <div class="ld-card-title"><span class="ic">🏗️</span> Plot / Property Allocation</div>
+    {% if contact.linked_listing_id %}
+    <form method="POST" action="{{ url_for('estate.lead_plot_unlink', contact_id=contact.id) }}"
+          onsubmit="return confirm('Remove the plot link from this lead?')">
+      <button type="submit" class="pa-unlink-btn">✕ Unlink</button>
+    </form>
+    {% endif %}
+  </div>
+  <div class="ld-card-body">
+
+    {% if linked_listing %}
+    <!-- ── Linked listing display ── -->
+    <div class="pa-linked">
+      <div class="pa-prop-title">{{ linked_listing.title }}</div>
+      <div class="pa-prop-loc">📍 {{ linked_listing.location }}{% if linked_listing.lga %}, {{ linked_listing.lga }}{% endif %}</div>
+      <div class="pa-prop-meta">
+        {% if linked_listing.price %}
+        <span class="pa-meta-chip">💰 ₦{{ '{:,.0f}'.format(linked_listing.price) }}</span>
+        {% endif %}
+        {% if linked_listing.property_type %}
+        <span class="pa-meta-chip">🏠 {{ linked_listing.property_type | replace('_',' ') | title }}</span>
+        {% endif %}
+        {% if linked_listing.bedrooms %}
+        <span class="pa-meta-chip">🛏 {{ linked_listing.bedrooms }} bed</span>
+        {% endif %}
+        {% if linked_listing.size_sqm %}
+        <span class="pa-meta-chip">📐 {{ linked_listing.size_sqm | int }} m²</span>
+        {% endif %}
+        <span class="pa-meta-chip" style="{% if linked_listing.status == 'available' %}background:rgba(10,122,60,0.12);color:#0a7a3c{% elif linked_listing.status == 'under_offer' %}background:rgba(247,144,9,0.12);color:#7a4f00{% else %}background:rgba(3,12,24,0.08);color:#030C18{% endif %}">
+          {{ linked_listing.status | replace('_',' ') | title }}
+        </span>
+      </div>
+      {% if contact.plot_number %}
+      <div class="pa-plot-badge">
+        🔖 Plot / Unit: <strong>{{ contact.plot_number }}</strong>
+      </div>
+      {% endif %}
+    </div>
+
+    {% if contact.pipeline_stage == 'allocated' %}
+    <div class="pa-allocated-stamp">
+      ✅ Allocated{% if contact.allocated_at %} on {{ contact.allocated_at.strftime('%d %b %Y') }}{% endif %}
+    </div>
+    {% elif contact.pipeline_stage != 'lost' %}
+    <form method="POST" action="{{ url_for('estate.lead_stage', contact_id=contact.id) }}">
+      <input type="hidden" name="stage" value="allocated"/>
+      <button type="submit" class="pa-allocate-btn">✅ Mark as Allocated</button>
+    </form>
+    {% endif %}
+
+    {% else %}
+    <!-- ── Link form ── -->
+    <form method="POST" action="{{ url_for('estate.lead_plot', contact_id=contact.id) }}">
+      <div class="fg">
+        <label>Select Property <span style="color:#dc2626">*</span></label>
+        <select name="listing_id" required>
+          <option value="">— Choose a listing —</option>
+          {% for lst in listings %}
+          <option value="{{ lst.id }}">
+            {{ lst.title }} — {{ lst.location }}
+            {% if lst.price %}(₦{{ '{:,.0f}'.format(lst.price) }}){% endif %}
+            [{{ lst.status | replace('_',' ') | title }}]
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="fg" style="margin-bottom:18px">
+        <label>Plot / Unit Number <span style="color:rgba(3,12,24,0.35);font-style:italic;text-transform:none;font-weight:500">(optional)</span></label>
+        <input type="text" name="plot_number" maxlength="50"
+               placeholder="e.g. Plot 14, Block B, Unit 3A…"/>
+      </div>
+      <button type="submit" class="save-btn">Link to Property</button>
+    </form>
     {% endif %}
 
   </div>

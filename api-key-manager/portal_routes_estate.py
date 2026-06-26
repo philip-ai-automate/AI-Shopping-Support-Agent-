@@ -2243,6 +2243,25 @@ def lead_detail(contact_id):
     """, (contact_id, tenant_id))
     interactions = cur.fetchall()
 
+    # Phase 4: linked listing + all listings for dropdown
+    linked_listing = None
+    if contact.get("linked_listing_id"):
+        cur.execute("""
+            SELECT id, title, property_type, location, lga, state, price,
+                   status, title_document, bedrooms, size_sqm
+            FROM re_property_listings
+            WHERE id=%s AND tenant_id=%s
+        """, (contact["linked_listing_id"], tenant_id))
+        linked_listing = cur.fetchone()
+
+    cur.execute("""
+        SELECT id, title, location, price, status, property_type
+        FROM re_property_listings
+        WHERE tenant_id=%s AND status NOT IN ('sold','let')
+        ORDER BY title
+    """, (tenant_id,))
+    listings = cur.fetchall()
+
     cur.close(); conn.close()
 
     follow_up_overdue = bool(
@@ -2261,7 +2280,9 @@ def lead_detail(contact_id):
                            follow_up_overdue=follow_up_overdue,
                            interactions=interactions,
                            current_staff_id=current_staff_id,
-                           now_iso=now_iso)
+                           now_iso=now_iso,
+                           linked_listing=linked_listing,
+                           listings=listings)
 
 
 @estate_bp.route("/estate/leads/<int:contact_id>/profile", methods=["POST"])
@@ -2519,6 +2540,63 @@ def delete_interaction(contact_id, interaction_id):
             """, (interaction_id, contact_id, tenant_id, staff_id))
         conn.commit(); cur.close(); conn.close()
         flash("Entry removed.", "success")
+    return redirect(url_for("estate.lead_detail", contact_id=contact_id))
+
+
+# ── Phase 4: Plot Linking ─────────────────────────────────────────────────────────
+
+@estate_bp.route("/estate/leads/<int:contact_id>/plot", methods=["POST"])
+def lead_plot(contact_id):
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id  = _re_tenant_id()
+    listing_id = request.form.get("listing_id", "").strip()
+    plot_num   = request.form.get("plot_number", "").strip() or None
+
+    if not listing_id:
+        flash("Please select a property listing.", "danger")
+        return redirect(url_for("estate.lead_detail", contact_id=contact_id))
+
+    conn = get_db_connection()
+    if conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT id FROM re_property_listings WHERE id=%s AND tenant_id=%s",
+                    (listing_id, tenant_id))
+        if not cur.fetchone():
+            cur.close(); conn.close()
+            flash("Listing not found.", "danger")
+            return redirect(url_for("estate.lead_detail", contact_id=contact_id))
+        cur.execute("SELECT id FROM re_customers WHERE id=%s AND tenant_id=%s",
+                    (contact_id, tenant_id))
+        if not cur.fetchone():
+            cur.close(); conn.close()
+            flash("Contact not found.", "danger")
+            return redirect(url_for("estate.contacts"))
+        cur2 = conn.cursor()
+        cur2.execute("""
+            UPDATE re_customers SET linked_listing_id=%s, plot_number=%s, updated_at=NOW()
+            WHERE id=%s AND tenant_id=%s
+        """, (int(listing_id), plot_num, contact_id, tenant_id))
+        conn.commit(); cur.close(); cur2.close(); conn.close()
+        flash("Property linked successfully.", "success")
+    return redirect(url_for("estate.lead_detail", contact_id=contact_id))
+
+
+@estate_bp.route("/estate/leads/<int:contact_id>/plot/unlink", methods=["POST"])
+def lead_plot_unlink(contact_id):
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+
+    conn = get_db_connection()
+    if conn:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE re_customers SET linked_listing_id=NULL, plot_number=NULL, updated_at=NOW()
+            WHERE id=%s AND tenant_id=%s
+        """, (contact_id, tenant_id))
+        conn.commit(); cur.close(); conn.close()
+        flash("Property unlinked.", "success")
     return redirect(url_for("estate.lead_detail", contact_id=contact_id))
 
 
