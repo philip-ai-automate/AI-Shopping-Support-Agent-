@@ -166,6 +166,66 @@
 </div>
 {% endif %}
 
+<!-- ── How broadcast works ── -->
+<div style="background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:14px;
+            box-shadow:0 2px 8px rgba(3,12,24,0.04);margin-bottom:24px;overflow:hidden">
+  <div style="padding:16px 22px;border-bottom:1px solid rgba(3,12,24,0.07);
+              display:flex;align-items:center;gap:10px">
+    <div style="width:34px;height:34px;border-radius:10px;background:rgba(26,86,219,0.09);
+                display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1a56db" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    </div>
+    <span style="font-size:14px;font-weight:800;color:#030C18">How Broadcast Works</span>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0">
+
+    <div style="padding:18px 22px;border-right:1px solid rgba(3,12,24,0.07)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <div style="width:28px;height:28px;border-radius:50%;background:rgba(18,183,106,0.12);
+                    display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0a7a3c" stroke-width="2.2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <span style="font-size:13px;font-weight:800;color:#030C18">Works — Active contacts</span>
+      </div>
+      <p style="font-size:12.5px;color:rgba(3,12,24,0.55);line-height:1.65;margin:0">
+        Contacts who sent you a WhatsApp message <strong>within the last 24 hours</strong> are in an open session. You can send them any free-form message and it will be delivered.
+      </p>
+    </div>
+
+    <div style="padding:18px 22px;border-right:1px solid rgba(3,12,24,0.07)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <div style="width:28px;height:28px;border-radius:50%;background:rgba(247,144,9,0.10);
+                    display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7a4f00" stroke-width="2.2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </div>
+        <span style="font-size:13px;font-weight:800;color:#030C18">Limited — Older contacts</span>
+      </div>
+      <p style="font-size:12.5px;color:rgba(3,12,24,0.55);line-height:1.65;margin:0">
+        If a contact last messaged you <strong>more than 24 hours ago</strong>, Meta requires a pre-approved template. Free-form messages will be blocked. Re-engage them when they reach out again.
+      </p>
+    </div>
+
+    <div style="padding:18px 22px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <div style="width:28px;height:28px;border-radius:50%;background:rgba(240,68,56,0.09);
+                    display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F04438" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </div>
+        <span style="font-size:13px;font-weight:800;color:#030C18">Won't work — Cold contacts</span>
+      </div>
+      <p style="font-size:12.5px;color:rgba(3,12,24,0.55);line-height:1.65;margin:0">
+        Contacts you added manually or from CSV who have <strong>never WhatsApp'd you</strong> — Meta will reject the message. Best for follow-up after they've messaged you first.
+      </p>
+    </div>
+
+  </div>
+  <div style="padding:12px 22px;background:#f8fafc;border-top:1px solid rgba(3,12,24,0.06);
+              font-size:12px;color:rgba(3,12,24,0.40);display:flex;align-items:center;gap:6px">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    This is a WhatsApp Business API rule, not a PhiXtra limitation. Meta blocks unsolicited messages to protect users from spam.
+  </div>
+</div>
+
 <div class="bc-wrap">
 
   <!-- ── Left: Composer ── -->
@@ -225,8 +285,17 @@
       <div class="bc-section">
         <div class="bc-section-title"><span>3</span> Message</div>
 
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span style="font-size:12.5px;font-weight:700;color:rgba(3,12,24,0.55)">
+            Saved Messages
+            <span style="font-size:11px;font-weight:600;color:rgba(3,12,24,0.35)"> — click to load into composer</span>
+          </span>
+          <a href="{{ url_for('estate.message_templates') }}"
+             style="font-size:12px;font-weight:700;color:#1a56db;text-decoration:none">
+            Manage →
+          </a>
+        </div>
         {% if templates %}
-        <div style="font-size:12.5px;font-weight:700;color:rgba(3,12,24,0.55);margin-bottom:8px">Pick a template (optional)</div>
         <div class="tpl-pick" style="margin-bottom:16px">
           {% for t in templates %}
           <div class="tpl-row" onclick="useTemplate('{{ t.body | replace("'","\\'") | replace(chr(10),"\\n") }}')">
@@ -236,6 +305,12 @@
             <div class="tpl-row-body">{{ t.body | truncate(80, true, '…') }}</div>
           </div>
           {% endfor %}
+        </div>
+        {% else %}
+        <div style="padding:12px 14px;background:#f8fafc;border:1px solid rgba(3,12,24,0.08);
+                    border-radius:9px;margin-bottom:16px;font-size:13px;color:rgba(3,12,24,0.40)">
+          No saved messages yet.
+          <a href="{{ url_for('estate.message_templates') }}" style="color:#1a56db;font-weight:700;text-decoration:none">Create one →</a>
         </div>
         {% endif %}
 

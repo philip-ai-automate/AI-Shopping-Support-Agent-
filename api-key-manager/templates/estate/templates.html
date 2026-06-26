@@ -1,5 +1,5 @@
 {% extends "estate/base.html" %}
-{% block title %}Message Templates — PhiXtra Real Estate{% endblock %}
+{% block title %}Saved Messages — PhiXtra Real Estate{% endblock %}
 
 {% block head %}
 <style>
@@ -97,8 +97,8 @@
 
 <div class="page-header">
   <div>
-    <h1 class="section-title" style="margin-bottom:4px">Message Templates</h1>
-    <p class="muted">Reusable WhatsApp messages with merge fields — use them in Broadcast</p>
+    <h1 class="section-title" style="margin-bottom:4px">Saved Messages</h1>
+    <p class="muted">Pre-written message snippets — load them into Broadcast with one click</p>
   </div>
   <button class="add-tpl-btn" onclick="openModal('addModal')">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -111,6 +111,21 @@
   <div class="flash {{ 'danger' if cat in ('error','danger') else cat }}">{{ msg }}</div>
   {% endfor %}
 {% endwith %}
+
+<!-- Context note -->
+<div style="background:rgba(26,86,219,0.05);border:1px solid rgba(26,86,219,0.15);border-radius:12px;
+            padding:14px 18px;margin-bottom:22px;display:flex;align-items:flex-start;gap:12px">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1a56db" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:2px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+  <div>
+    <div style="font-size:13px;font-weight:750;color:#1a56db;margin-bottom:3px">Saved Messages are message snippets, not Meta-approved templates</div>
+    <div style="font-size:12.5px;color:rgba(3,12,24,0.55);line-height:1.6">
+      These messages are stored in your account and loaded into the Broadcast composer with one click.
+      They work for contacts who have messaged you <strong>within the last 24 hours</strong> (WhatsApp's open session window).
+      For older or cold contacts, Meta requires a separately approved template submitted through Meta Business Manager.
+      <a href="{{ url_for('estate.broadcast') }}" style="color:#1a56db;font-weight:700;text-decoration:none;margin-left:4px">← Back to Broadcast</a>
+    </div>
+  </div>
+</div>
 
 <!-- Merge field guide -->
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px;align-items:center">
