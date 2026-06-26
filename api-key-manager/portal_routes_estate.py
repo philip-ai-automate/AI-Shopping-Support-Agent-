@@ -2463,6 +2463,9 @@ def add_interaction(contact_id):
         itype = "note"
     if outcome not in _INTERACTION_OUTCOMES:
         outcome = None
+    # Direction only meaningful for call/whatsapp/email
+    if itype not in {"call", "whatsapp", "email"}:
+        direction = None
 
     if not summary:
         flash("Summary is required.", "danger")
