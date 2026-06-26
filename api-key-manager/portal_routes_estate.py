@@ -2232,6 +2232,17 @@ def lead_detail(contact_id):
     cur.execute("SELECT business_name FROM re_tenants WHERE id = %s", (tenant_id,))
     tenant_row = cur.fetchone()
 
+    # Interactions for this contact
+    cur.execute("""
+        SELECT i.*,
+               TRIM(COALESCE(s.first_name,'') || ' ' || COALESCE(s.last_name,'')) AS staff_name
+        FROM re_interactions i
+        LEFT JOIN re_staff s ON s.id = i.logged_by
+        WHERE i.contact_id = %s AND i.tenant_id = %s
+        ORDER BY i.logged_at DESC
+    """, (contact_id, tenant_id))
+    interactions = cur.fetchall()
+
     cur.close(); conn.close()
 
     follow_up_overdue = bool(
@@ -2239,12 +2250,18 @@ def lead_detail(contact_id):
         contact["follow_up_at"] < datetime.now(tz=contact["follow_up_at"].tzinfo)
     )
 
+    current_staff_id = session.get("re_staff_id")
+    now_iso = datetime.now().strftime("%Y-%m-%dT%H:%M")
+
     return render_template("estate/lead_detail.html",
                            tenant=tenant, contact=contact,
                            contact_segments=contact_segments,
                            staff_list=staff_list,
                            pipeline_stages=PIPELINE_STAGES,
-                           follow_up_overdue=follow_up_overdue)
+                           follow_up_overdue=follow_up_overdue,
+                           interactions=interactions,
+                           current_staff_id=current_staff_id,
+                           now_iso=now_iso)
 
 
 @estate_bp.route("/estate/leads/<int:contact_id>/profile", methods=["POST"])
@@ -2418,6 +2435,87 @@ def lead_assign(contact_id):
         ))
         conn.commit(); cur.close(); conn.close()
         flash("Lead updated.", "success")
+    return redirect(url_for("estate.lead_detail", contact_id=contact_id))
+
+
+# ── Interaction Log ───────────────────────────────────────────────────────────────
+
+_INTERACTION_TYPES = {"call","visit","meeting","whatsapp","email","note"}
+_INTERACTION_OUTCOMES = {
+    "","interested","follow_up","not_interested","no_answer",
+    "left_voicemail","visit_scheduled","offer_discussed","other"
+}
+
+@estate_bp.route("/estate/leads/<int:contact_id>/interactions", methods=["POST"])
+def add_interaction(contact_id):
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+
+    itype     = request.form.get("type", "note").strip()
+    direction = request.form.get("direction", "").strip() or None
+    summary   = request.form.get("summary", "").strip()
+    outcome   = request.form.get("outcome", "").strip() or None
+    logged_at = request.form.get("logged_at", "").strip() or None
+    staff_id  = session.get("re_staff_id")
+
+    if itype not in _INTERACTION_TYPES:
+        itype = "note"
+    if outcome not in _INTERACTION_OUTCOMES:
+        outcome = None
+
+    if not summary:
+        flash("Summary is required.", "danger")
+        return redirect(url_for("estate.lead_detail", contact_id=contact_id))
+
+    conn = get_db_connection()
+    if conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        # Verify contact belongs to this tenant
+        cur.execute("SELECT id FROM re_customers WHERE id=%s AND tenant_id=%s",
+                    (contact_id, tenant_id))
+        if not cur.fetchone():
+            cur.close(); conn.close()
+            flash("Lead not found.", "danger")
+            return redirect(url_for("estate.contacts"))
+
+        cur.execute("""
+            INSERT INTO re_interactions
+              (tenant_id, contact_id, type, direction, summary, outcome, logged_at, logged_by)
+            VALUES (%s, %s, %s, %s, %s, %s,
+                    COALESCE(%s::timestamptz, NOW()),
+                    %s)
+        """, (tenant_id, contact_id, itype, direction, summary, outcome,
+              logged_at, staff_id))
+        conn.commit(); cur.close(); conn.close()
+        flash("Interaction logged.", "success")
+    return redirect(url_for("estate.lead_detail", contact_id=contact_id))
+
+
+@estate_bp.route("/estate/leads/<int:contact_id>/interactions/<int:interaction_id>/delete",
+                 methods=["POST"])
+def delete_interaction(contact_id, interaction_id):
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    staff_id  = session.get("re_staff_id")
+    is_admin  = session.get("re_role") == "admin"
+
+    conn = get_db_connection()
+    if conn:
+        cur = conn.cursor()
+        if is_admin:
+            cur.execute("""
+                DELETE FROM re_interactions
+                WHERE id=%s AND contact_id=%s AND tenant_id=%s
+            """, (interaction_id, contact_id, tenant_id))
+        else:
+            cur.execute("""
+                DELETE FROM re_interactions
+                WHERE id=%s AND contact_id=%s AND tenant_id=%s AND logged_by=%s
+            """, (interaction_id, contact_id, tenant_id, staff_id))
+        conn.commit(); cur.close(); conn.close()
+        flash("Entry removed.", "success")
     return redirect(url_for("estate.lead_detail", contact_id=contact_id))
 
 

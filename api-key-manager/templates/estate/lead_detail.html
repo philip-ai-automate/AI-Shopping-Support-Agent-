@@ -178,6 +178,36 @@
 .info-val{font-size:13px;font-weight:650;color:#030C18;text-align:right}
 .info-val.muted{color:rgba(3,12,24,0.35);font-weight:500;font-style:italic}
 
+/* ── Interaction Log ── */
+.il-timeline{padding:18px 22px;display:flex;flex-direction:column;gap:0}
+.il-item{display:flex;gap:14px;position:relative}
+.il-dot-col{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:34px}
+.il-icon-dot{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;
+             justify-content:center;font-size:15px;flex-shrink:0;border:2px solid transparent}
+.il-call    {background:rgba(26,86,219,0.12);border-color:rgba(26,86,219,0.25)}
+.il-visit   {background:rgba(10,122,60,0.12);border-color:rgba(10,122,60,0.25)}
+.il-meeting {background:rgba(124,58,237,0.12);border-color:rgba(124,58,237,0.25)}
+.il-wa      {background:rgba(37,211,102,0.12);border-color:rgba(37,211,102,0.30)}
+.il-email   {background:rgba(8,145,178,0.12);border-color:rgba(8,145,178,0.25)}
+.il-note    {background:rgba(247,144,9,0.12);border-color:rgba(247,144,9,0.25)}
+.il-line{flex:1;width:2px;background:rgba(3,12,24,0.08);margin:4px 0;min-height:12px}
+.il-body{flex:1;min-width:0;padding-bottom:20px}
+.il-meta-row{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:6px}
+.il-type-badge{font-size:11px;font-weight:750;padding:3px 9px;border-radius:999px;
+               background:rgba(3,12,24,0.07);color:#030C18}
+.il-outcome-badge{font-size:11px;font-weight:650;padding:3px 9px;border-radius:999px;
+                  background:rgba(18,183,106,0.10);color:#0a7a3c;
+                  border:1px solid rgba(18,183,106,0.25)}
+.il-time{font-size:11px;color:rgba(3,12,24,0.38);font-weight:500}
+.il-summary{font-size:13.5px;color:#030C18;line-height:1.55;margin-bottom:4px;
+            white-space:pre-wrap;word-break:break-word}
+.il-by{font-size:11px;color:rgba(3,12,24,0.38)}
+.il-del-btn{background:none;border:none;color:rgba(3,12,24,0.28);cursor:pointer;
+            font-size:13px;padding:2px 6px;border-radius:6px;transition:.12s;font-family:inherit}
+.il-del-btn:hover{background:rgba(240,68,56,0.10);color:#dc2626}
+.il-empty{text-align:center;padding:40px 20px;color:rgba(3,12,24,0.40);
+          font-size:13.5px;line-height:1.7}
+
 /* ── Modals ── */
 .modal-bg{display:none;position:fixed;inset:0;background:rgba(3,12,24,0.65);z-index:500;
           align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(3px)}
@@ -484,16 +514,149 @@
       </div>
     </div>
 
-    <!-- Coming next -->
-    <div style="background:rgba(26,86,219,0.05);border:1px solid rgba(26,86,219,0.15);border-radius:12px;
-                padding:14px 16px;margin-top:18px;font-size:12.5px;color:#1a3a6e;line-height:1.6">
-      <strong style="display:block;margin-bottom:4px">Coming in Phase 2 & beyond:</strong>
-      📞 Interaction Log (calls, visits, notes)<br>
-      🏘️ Link to Property / Plot Number<br>
-      💰 Payment Milestones in ₦<br>
-      📄 Documents + WhatsApp Delivery
-    </div>
+      <!-- Phase 4+ placeholder -->
+      <div style="background:rgba(26,86,219,0.05);border:1px solid rgba(26,86,219,0.15);
+                  border-radius:12px;padding:12px 14px;margin-top:16px;
+                  font-size:12px;color:#1a3a6e;line-height:1.65">
+        <strong style="display:block;margin-bottom:3px">Coming in Phase 4+:</strong>
+        🏘️ Link to Property / Plot Number<br>
+        💰 Payment Milestones in ₦<br>
+        📄 Documents + WhatsApp Delivery
+      </div>
 
+  </div>
+</div>
+
+<!-- ── Interaction Log ── -->
+<div class="ld-card" style="margin-top:4px">
+  <div class="ld-card-head">
+    <div class="ld-card-title"><span class="ic">📞</span> Interaction Log</div>
+    <button class="ld-action-btn ld-btn-dark" onclick="openModal('logModal')"
+            style="padding:7px 14px;font-size:13px">+ Log Interaction</button>
+  </div>
+  <div class="ld-card-body" style="padding:0">
+
+    {% if interactions %}
+    <div class="il-timeline">
+      {% for ix in interactions %}
+      <div class="il-item">
+        <div class="il-dot-col">
+          <span class="il-icon-dot {% if ix.type == 'call' %}il-call{% elif ix.type == 'visit' %}il-visit
+            {% elif ix.type == 'meeting' %}il-meeting{% elif ix.type == 'whatsapp' %}il-wa
+            {% elif ix.type == 'email' %}il-email{% else %}il-note{% endif %}">
+            {% if ix.type == 'call' %}📞
+            {% elif ix.type == 'visit' %}🏠
+            {% elif ix.type == 'meeting' %}🤝
+            {% elif ix.type == 'whatsapp' %}💬
+            {% elif ix.type == 'email' %}📧
+            {% else %}📝{% endif %}
+          </span>
+          {% if not loop.last %}<div class="il-line"></div>{% endif %}
+        </div>
+        <div class="il-body">
+          <div class="il-meta-row">
+            <span class="il-type-badge il-{{ ix.type }}">
+              {{ ix.type | title }}{% if ix.direction %} · {{ ix.direction | title }}{% endif %}
+            </span>
+            {% if ix.outcome %}
+            <span class="il-outcome-badge">{{ ix.outcome | replace('_',' ') | title }}</span>
+            {% endif %}
+            <span class="il-time">{{ ix.logged_at.strftime('%d %b %Y, %-I:%M %p') }}</span>
+            {% if current_staff_id == ix.logged_by or session.get('re_role') == 'admin' %}
+            <form method="POST"
+                  action="{{ url_for('estate.delete_interaction', contact_id=contact.id, interaction_id=ix.id) }}"
+                  style="margin-left:auto"
+                  onsubmit="return confirm('Remove this log entry?')">
+              <button class="il-del-btn">✕</button>
+            </form>
+            {% endif %}
+          </div>
+          <div class="il-summary">{{ ix.summary }}</div>
+          {% if ix.staff_name %}
+          <div class="il-by">by {{ ix.staff_name }}</div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="il-empty">
+      <span style="font-size:28px;display:block;margin-bottom:8px">📋</span>
+      No interactions logged yet.<br>
+      <span style="font-size:12px">Use <strong>+ Log Interaction</strong> to record a call, visit, note, or WhatsApp message.</span>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+
+<!-- ── Log Interaction Modal ── -->
+<div class="modal-bg" id="logModal">
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-head">
+      <span class="modal-title">📞 Log Interaction</span>
+      <button class="modal-close" onclick="closeModal('logModal')">×</button>
+    </div>
+    <form method="POST" action="{{ url_for('estate.add_interaction', contact_id=contact.id) }}">
+      <div class="modal-body">
+
+        <div class="fg2">
+          <div class="fg">
+            <label>Type</label>
+            <select name="type" id="intType" onchange="toggleDirection()">
+              <option value="call">📞 Call</option>
+              <option value="visit">🏠 Site Visit</option>
+              <option value="meeting">🤝 Meeting</option>
+              <option value="whatsapp">💬 WhatsApp</option>
+              <option value="email">📧 Email</option>
+              <option value="note">📝 Note</option>
+            </select>
+          </div>
+          <div class="fg" id="dirRow">
+            <label>Direction</label>
+            <select name="direction">
+              <option value="">N/A</option>
+              <option value="outbound">Outbound</option>
+              <option value="inbound">Inbound</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="fg">
+          <label>Summary <span style="color:#dc2626">*</span></label>
+          <textarea name="summary" rows="3" required
+                    placeholder="What happened? Key points discussed…"></textarea>
+        </div>
+
+        <div class="fg2">
+          <div class="fg">
+            <label>Outcome</label>
+            <select name="outcome">
+              <option value="">— None —</option>
+              <option value="interested">✅ Interested</option>
+              <option value="follow_up">🔄 Follow-up Needed</option>
+              <option value="visit_scheduled">📅 Visit Scheduled</option>
+              <option value="offer_discussed">💰 Offer Discussed</option>
+              <option value="not_interested">❌ Not Interested</option>
+              <option value="no_answer">📵 No Answer</option>
+              <option value="left_voicemail">📩 Left Voicemail</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label>Date &amp; Time</label>
+            <input type="datetime-local" name="logged_at" value="{{ now_iso }}"/>
+          </div>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="ld-action-btn ld-btn-outline"
+                onclick="closeModal('logModal')">Cancel</button>
+        <button type="submit" class="save-btn"
+                style="width:auto;padding:9px 22px;margin-top:0">Save Log</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -540,6 +703,22 @@
 <script>
 function openModal(id){ document.getElementById(id).style.display='flex'; }
 function closeModal(id){ document.getElementById(id).style.display='none'; }
-document.addEventListener('keydown',function(e){ if(e.key==='Escape') closeModal('lostModal'); });
+document.addEventListener('keydown', function(e){
+  if(e.key === 'Escape'){
+    closeModal('lostModal');
+    closeModal('logModal');
+  }
+});
+
+function toggleDirection(){
+  var t = document.getElementById('intType');
+  var row = document.getElementById('dirRow');
+  if(t && row){
+    var showFor = ['call','whatsapp','email'];
+    row.style.display = showFor.indexOf(t.value) > -1 ? '' : 'none';
+  }
+}
+/* initialise on load */
+document.addEventListener('DOMContentLoaded', toggleDirection);
 </script>
 {% endblock %}
