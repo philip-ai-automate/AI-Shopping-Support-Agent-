@@ -1,0 +1,251 @@
+{% extends "estate/base.html" %}
+{% block title %}Contact Segments — PhiXtra Real Estate{% endblock %}
+
+{% block head %}
+<style>
+.seg-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:24px}
+.seg-btn{
+  display:inline-flex;align-items:center;gap:7px;padding:10px 18px;
+  border:none;border-radius:9px;font-size:13.5px;font-weight:750;
+  font-family:inherit;cursor:pointer;transition:.13s;white-space:nowrap;text-decoration:none
+}
+.seg-btn-dark{background:#030C18;color:#fff}
+.seg-btn-dark:hover{background:#0d1f3c;color:#fff}
+.seg-btn-outline{background:#fff;color:#030C18;border:1.5px solid rgba(3,12,24,0.14)}
+.seg-btn-outline:hover{border-color:#030C18;background:#fafbfc;text-decoration:none}
+
+/* Grid */
+.seg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.seg-card{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:14px;
+  padding:20px 20px 16px;box-shadow:0 2px 8px rgba(3,12,24,0.04);
+  display:flex;flex-direction:column;gap:10px
+}
+.seg-card-top{display:flex;align-items:center;gap:12px}
+.seg-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0}
+.seg-name{font-size:15px;font-weight:800;color:#030C18;flex:1}
+.seg-desc{font-size:13px;color:rgba(3,12,24,0.48);line-height:1.45;min-height:18px}
+.seg-meta{display:flex;align-items:center;justify-content:space-between;margin-top:4px}
+.seg-count{
+  font-size:12px;font-weight:700;color:rgba(3,12,24,0.45);
+  background:rgba(3,12,24,0.05);padding:3px 10px;border-radius:999px;
+  border:1px solid rgba(3,12,24,0.07)
+}
+.seg-actions{display:flex;gap:6px}
+.act-btn{
+  width:30px;height:30px;border-radius:8px;border:1.5px solid rgba(3,12,24,0.10);
+  background:#fff;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
+  color:rgba(3,12,24,0.40);transition:.12s
+}
+.act-btn:hover{border-color:#030C18;color:#030C18;background:#fafbfc}
+.act-btn.danger:hover{border-color:#F04438;color:#F04438}
+.act-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* Empty */
+.seg-empty{text-align:center;padding:70px 20px;background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:16px;box-shadow:0 2px 8px rgba(3,12,24,0.04)}
+.seg-empty svg{width:48px;height:48px;stroke:rgba(3,12,24,0.14);fill:none;stroke-width:1.3;stroke-linecap:round;margin:0 auto 16px;display:block}
+.seg-empty h3{font-size:17px;font-weight:750;color:#030C18;margin-bottom:6px}
+.seg-empty p{font-size:14px;color:rgba(3,12,24,0.42);max-width:340px;margin:0 auto 20px}
+
+/* Modals */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(3,12,24,0.65);z-index:500;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(3px)}
+.modal-box{background:#fff;border-radius:18px;width:100%;max-width:480px;box-shadow:0 30px 80px rgba(0,0,0,0.25);overflow:hidden;animation:modal-in .18s ease}
+@keyframes modal-in{from{transform:translateY(16px);opacity:0}to{transform:none;opacity:1}}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid rgba(3,12,24,0.07)}
+.modal-title{font-size:16px;font-weight:800;color:#030C18}
+.modal-close{width:32px;height:32px;border-radius:8px;border:none;background:rgba(3,12,24,0.06);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;color:rgba(3,12,24,0.45);transition:.12s}
+.modal-close:hover{background:rgba(3,12,24,0.12)}
+.modal-body{padding:22px 24px;display:flex;flex-direction:column;gap:14px}
+.modal-footer{padding:16px 24px;border-top:1px solid rgba(3,12,24,0.07);display:flex;gap:10px;justify-content:flex-end}
+.mfg{display:flex;flex-direction:column;gap:4px}
+.mfg label{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:rgba(3,12,24,0.38)}
+.mfg input,.mfg textarea{padding:10px 13px;border:1.5px solid rgba(3,12,24,0.12);border-radius:8px;font-size:13.5px;font-family:inherit;color:#030C18;background:#fafbfc;outline:none;transition:border-color .15s;width:100%;box-sizing:border-box}
+.mfg input:focus,.mfg textarea:focus{border-color:#030C18;background:#fff}
+.mfg textarea{resize:vertical;min-height:62px}
+
+/* Color picker */
+.color-grid{display:flex;flex-wrap:wrap;gap:10px;margin-top:4px}
+.color-opt{position:relative}
+.color-opt input[type=radio]{position:absolute;opacity:0;width:0;height:0}
+.color-swatch{
+  width:30px;height:30px;border-radius:50%;cursor:pointer;display:block;
+  border:3px solid transparent;transition:.12s;box-sizing:border-box
+}
+.color-opt input[type=radio]:checked + .color-swatch{border-color:#030C18;transform:scale(1.15)}
+.color-swatch:hover{transform:scale(1.1)}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="seg-header">
+  <div>
+    <h1 class="section-title" style="margin-bottom:4px">Contact Segments</h1>
+    <p class="muted">{{ segments | length }} segment{{ 's' if segments | length != 1 }}</p>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center">
+    <a href="{{ url_for('estate.contacts') }}" class="seg-btn seg-btn-outline">← Back to Contacts</a>
+    <button class="seg-btn seg-btn-dark" onclick="openModal('addModal')">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add Segment
+    </button>
+  </div>
+</div>
+
+{% with msgs = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in msgs %}
+  <div class="flash {{ 'danger' if cat in ('error','danger') else cat }}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+<div style="background:rgba(26,86,219,0.06);border:1px solid rgba(26,86,219,0.18);border-radius:10px;padding:13px 16px;font-size:13px;color:#1a3a6e;margin-bottom:22px;display:flex;gap:10px;align-items:flex-start">
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+  <span>Segments are how you categorize contacts — e.g. <strong>Serious Buyer</strong>, <strong>Just Browsing</strong>, <strong>Investor</strong>. Create your own to match your business. Staff can assign segments when adding or editing contacts.</span>
+</div>
+
+{% if segments %}
+<div class="seg-grid">
+  {% for s in segments %}
+  <div class="seg-card">
+    <div class="seg-card-top">
+      <div class="seg-dot" style="background:{{ s.color }}"></div>
+      <div class="seg-name">{{ s.name }}</div>
+    </div>
+    {% if s.description %}
+    <div class="seg-desc">{{ s.description }}</div>
+    {% else %}
+    <div class="seg-desc" style="color:rgba(3,12,24,0.22);font-style:italic">No description</div>
+    {% endif %}
+    <div class="seg-meta">
+      <span class="seg-count">{{ s.contact_count }} contact{{ 's' if s.contact_count != 1 }}</span>
+      <div class="seg-actions">
+        <button class="act-btn" title="Edit segment"
+                onclick="openEditSeg({{ s.id }}, {{ s.name|tojson }}, {{ s.color|tojson }}, {{ (s.description or '')|tojson }})">
+          <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+        <form method="POST" action="{{ url_for('estate.contact_segments') }}" style="display:inline">
+          <input type="hidden" name="section" value="delete_segment"/>
+          <input type="hidden" name="segment_id" value="{{ s.id }}"/>
+          <button type="button" class="act-btn danger" title="Delete segment"
+                  onclick="confirmDelete(this, '{{ s.name }}', {{ s.contact_count }})">
+            <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% else %}
+<div class="seg-empty">
+  <svg viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+  <h3>No segments yet</h3>
+  <p>Create your first segment to start categorizing your contacts — e.g. Serious Buyer, Investor, Cold Lead.</p>
+  <button class="seg-btn seg-btn-dark" onclick="openModal('addModal')">Create First Segment</button>
+</div>
+{% endif %}
+
+<!-- ── Add Segment Modal ── -->
+<div class="modal-bg" id="addModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <span class="modal-title">Add Segment</span>
+      <button class="modal-close" onclick="closeModal('addModal')">×</button>
+    </div>
+    <form method="POST" action="{{ url_for('estate.contact_segments') }}">
+      <input type="hidden" name="section" value="add_segment"/>
+      <div class="modal-body">
+        <div class="mfg">
+          <label>Segment Name *</label>
+          <input type="text" name="name" placeholder="e.g. Serious Buyer" required autofocus/>
+        </div>
+        <div class="mfg">
+          <label>Description (optional)</label>
+          <textarea name="description" placeholder="What does this segment mean?"></textarea>
+        </div>
+        <div class="mfg">
+          <label>Color</label>
+          <div class="color-grid">
+            {% for hex, lbl in [('#1a56db','Blue'),('#7c3aed','Purple'),('#0891b2','Teal'),('#0a7a3c','Green'),('#dc2626','Red'),('#d97706','Amber'),('#db2777','Pink'),('#374151','Slate')] %}
+            <label class="color-opt" title="{{ lbl }}">
+              <input type="radio" name="color" value="{{ hex }}" {% if hex == '#1a56db' %}checked{% endif %}/>
+              <span class="color-swatch" style="background:{{ hex }}"></span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="seg-btn seg-btn-outline" onclick="closeModal('addModal')">Cancel</button>
+        <button type="submit" class="seg-btn seg-btn-dark">Create Segment</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Edit Segment Modal ── -->
+<div class="modal-bg" id="editModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <span class="modal-title">Edit Segment</span>
+      <button class="modal-close" onclick="closeModal('editModal')">×</button>
+    </div>
+    <form method="POST" id="editSegForm" action="{{ url_for('estate.contact_segments') }}">
+      <input type="hidden" name="section" value="edit_segment"/>
+      <input type="hidden" name="segment_id" id="editSegId"/>
+      <div class="modal-body">
+        <div class="mfg">
+          <label>Segment Name *</label>
+          <input type="text" name="name" id="editSegName" required/>
+        </div>
+        <div class="mfg">
+          <label>Description (optional)</label>
+          <textarea name="description" id="editSegDesc"></textarea>
+        </div>
+        <div class="mfg">
+          <label>Color</label>
+          <div class="color-grid" id="editColorGrid">
+            {% for hex, lbl in [('#1a56db','Blue'),('#7c3aed','Purple'),('#0891b2','Teal'),('#0a7a3c','Green'),('#dc2626','Red'),('#d97706','Amber'),('#db2777','Pink'),('#374151','Slate')] %}
+            <label class="color-opt" title="{{ lbl }}">
+              <input type="radio" name="color" value="{{ hex }}" class="edit-color-radio"/>
+              <span class="color-swatch" style="background:{{ hex }}"></span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="seg-btn seg-btn-outline" onclick="closeModal('editModal')">Cancel</button>
+        <button type="submit" class="seg-btn seg-btn-dark">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openModal(id){ document.getElementById(id).style.display='flex'; }
+function closeModal(id){ document.getElementById(id).style.display='none'; }
+document.addEventListener('keydown',function(e){ if(e.key==='Escape') ['addModal','editModal'].forEach(closeModal); });
+
+function openEditSeg(id, name, color, desc) {
+  document.getElementById('editSegId').value   = id;
+  document.getElementById('editSegName').value  = name;
+  document.getElementById('editSegDesc').value  = desc || '';
+  document.querySelectorAll('.edit-color-radio').forEach(function(r){
+    r.checked = (r.value === color);
+  });
+  openModal('editModal');
+}
+
+function confirmDelete(btn, name, count) {
+  var msg = count > 0
+    ? 'Delete segment "' + name + '"? This will remove it from ' + count + ' contact(s).'
+    : 'Delete segment "' + name + '"?';
+  if(confirm(msg)) btn.closest('form').submit();
+}
+</script>
+{% endblock %}

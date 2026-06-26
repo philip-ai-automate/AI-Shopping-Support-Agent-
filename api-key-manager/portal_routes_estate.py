@@ -1930,14 +1930,15 @@ def contacts():
         cur = conn.cursor()
 
         if section == "add_contact":
-            name    = request.form.get("name", "").strip()
-            phone   = request.form.get("phone", "").strip().replace(" ", "").replace("-", "")
-            email   = request.form.get("email", "").strip() or None
-            area    = request.form.get("area", "").strip() or None
-            budget  = request.form.get("budget", "").strip() or None
-            notes   = request.form.get("notes", "").strip() or None
-            tags_raw= request.form.get("tags", "").strip()
-            tags    = [t.strip().lower() for t in tags_raw.split(",") if t.strip()]
+            name       = request.form.get("name", "").strip()
+            phone      = request.form.get("phone", "").strip().replace(" ", "").replace("-", "")
+            email      = request.form.get("email", "").strip() or None
+            area       = request.form.get("area", "").strip() or None
+            budget     = request.form.get("budget", "").strip() or None
+            notes      = request.form.get("notes", "").strip() or None
+            tags_raw   = request.form.get("tags", "").strip()
+            tags       = [t.strip().lower() for t in tags_raw.split(",") if t.strip()]
+            seg_ids    = [int(s) for s in request.form.getlist("segment_ids") if s.isdigit()]
             if not phone:
                 flash("Phone number is required.", "danger")
             else:
@@ -1954,8 +1955,18 @@ def contacts():
                               notes=EXCLUDED.notes,
                               tags=EXCLUDED.tags,
                               updated_at=NOW()
+                        RETURNING id
                     """, (tenant_id, phone, name or None, email, area,
                           float(budget) if budget else None, notes, tags))
+                    new_id = cur.fetchone()[0]
+                    for sid in seg_ids:
+                        cur.execute("""
+                            INSERT INTO re_contact_segment_map (contact_id, segment_id)
+                            SELECT %s, %s WHERE EXISTS (
+                                SELECT 1 FROM re_contact_segments WHERE id=%s AND tenant_id=%s
+                            )
+                            ON CONFLICT DO NOTHING
+                        """, (new_id, sid, sid, tenant_id))
                     conn.commit()
                     flash("Contact added.", "success")
                 except Exception as e:
@@ -2025,15 +2036,26 @@ def contacts():
         return redirect(url_for("estate.contacts"))
 
     # GET — list contacts
-    search     = request.args.get("q", "").strip()
-    tag_filter = request.args.get("tag", "").strip()
-    source_filter = request.args.get("source", "").strip()
+    search         = request.args.get("q", "").strip()
+    tag_filter     = request.args.get("tag", "").strip()
+    source_filter  = request.args.get("source", "").strip()
+    segment_filter = request.args.get("segment_id", "").strip()
 
     conn = get_db_connection()
     contacts_list = []
-    all_tags = []
+    all_tags      = []
+    all_segments  = []
+    segment_map   = {}
     if conn:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # All segments for this tenant
+        cur.execute(
+            "SELECT id, name, color FROM re_contact_segments WHERE tenant_id=%s ORDER BY name",
+            (tenant_id,)
+        )
+        all_segments = cur.fetchall()
+
         query  = "SELECT * FROM re_customers WHERE tenant_id=%s"
         params = [tenant_id]
         if search:
@@ -2045,9 +2067,28 @@ def contacts():
         if source_filter:
             query  += " AND source=%s"
             params.append(source_filter)
+        if segment_filter:
+            query  += " AND id IN (SELECT contact_id FROM re_contact_segment_map WHERE segment_id=%s)"
+            params.append(int(segment_filter))
         query += " ORDER BY last_seen_at DESC"
         cur.execute(query, params)
         contacts_list = cur.fetchall()
+
+        # Segment assignments for displayed contacts
+        contact_ids = [c["id"] for c in contacts_list]
+        if contact_ids:
+            cur.execute("""
+                SELECT csm.contact_id, cs.id, cs.name, cs.color
+                FROM re_contact_segment_map csm
+                JOIN re_contact_segments cs ON cs.id = csm.segment_id
+                WHERE csm.contact_id = ANY(%s)
+                ORDER BY cs.name
+            """, (contact_ids,))
+            for row in cur.fetchall():
+                cid = row["contact_id"]
+                if cid not in segment_map:
+                    segment_map[cid] = []
+                segment_map[cid].append({"id": row["id"], "name": row["name"], "color": row["color"]})
 
         # All unique tags for this tenant
         cur.execute(
@@ -2059,8 +2100,10 @@ def contacts():
 
     return render_template("estate/contacts.html",
                            tenant=tenant, contacts=contacts_list,
-                           all_tags=all_tags, search=search,
-                           tag_filter=tag_filter, source_filter=source_filter)
+                           all_tags=all_tags, all_segments=all_segments,
+                           segment_map=segment_map,
+                           search=search, tag_filter=tag_filter,
+                           source_filter=source_filter, segment_filter=segment_filter)
 
 
 @estate_bp.route("/estate/contacts/<int:contact_id>/edit", methods=["POST"])
@@ -2068,12 +2111,13 @@ def contact_edit(contact_id):
     redir = _require_re_login()
     if redir: return redir
     tenant_id = _re_tenant_id()
-    name   = request.form.get("name","").strip() or None
-    email  = request.form.get("email","").strip() or None
-    area   = request.form.get("area","").strip() or None
-    notes  = request.form.get("notes","").strip() or None
-    tags_r = request.form.get("tags","").strip()
-    tags   = [t.strip().lower() for t in tags_r.split(",") if t.strip()]
+    name    = request.form.get("name","").strip() or None
+    email   = request.form.get("email","").strip() or None
+    area    = request.form.get("area","").strip() or None
+    notes   = request.form.get("notes","").strip() or None
+    tags_r  = request.form.get("tags","").strip()
+    tags    = [t.strip().lower() for t in tags_r.split(",") if t.strip()]
+    seg_ids = [int(s) for s in request.form.getlist("segment_ids") if s.isdigit()]
     conn = get_db_connection()
     if conn:
         cur = conn.cursor()
@@ -2082,9 +2126,111 @@ def contact_edit(contact_id):
             SET name=%s, email=%s, preferred_area=%s, notes=%s, tags=%s, updated_at=NOW()
             WHERE id=%s AND tenant_id=%s
         """, (name, email, area, notes, tags, contact_id, tenant_id))
+        # Replace segment assignments
+        cur.execute("DELETE FROM re_contact_segment_map WHERE contact_id=%s", (contact_id,))
+        for sid in seg_ids:
+            cur.execute("""
+                INSERT INTO re_contact_segment_map (contact_id, segment_id)
+                SELECT %s, %s WHERE EXISTS (
+                    SELECT 1 FROM re_contact_segments WHERE id=%s AND tenant_id=%s
+                )
+                ON CONFLICT DO NOTHING
+            """, (contact_id, sid, sid, tenant_id))
         conn.commit(); cur.close(); conn.close()
         flash("Contact updated.", "success")
     return redirect(url_for("estate.contacts"))
+
+
+# ── Contact Segments ─────────────────────────────────────────────────────────────
+
+@estate_bp.route("/estate/segments", methods=["GET", "POST"])
+def contact_segments():
+    redir = _require_admin()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    tenant    = _get_tenant(tenant_id)
+
+    if request.method == "POST":
+        section = request.form.get("section", "")
+        conn = get_db_connection()
+        if not conn:
+            flash("Database unavailable.", "danger")
+            return redirect(url_for("estate.contact_segments"))
+        cur = conn.cursor()
+
+        if section == "add_segment":
+            name  = request.form.get("name", "").strip()
+            color = request.form.get("color", "#1a56db").strip()
+            desc  = request.form.get("description", "").strip() or None
+            if not name:
+                flash("Segment name is required.", "danger")
+            else:
+                try:
+                    cur.execute("""
+                        INSERT INTO re_contact_segments (tenant_id, name, color, description)
+                        VALUES (%s, %s, %s, %s)
+                    """, (tenant_id, name, color, desc))
+                    conn.commit()
+                    flash(f'Segment "{name}" created.', "success")
+                except psycopg2.errors.UniqueViolation:
+                    conn.rollback()
+                    flash("A segment with that name already exists.", "danger")
+                except Exception as e:
+                    conn.rollback()
+                    flash(f"Error: {e}", "danger")
+
+        elif section == "edit_segment":
+            seg_id = request.form.get("segment_id")
+            name   = request.form.get("name", "").strip()
+            color  = request.form.get("color", "#1a56db").strip()
+            desc   = request.form.get("description", "").strip() or None
+            if seg_id and name:
+                try:
+                    cur.execute("""
+                        UPDATE re_contact_segments
+                        SET name=%s, color=%s, description=%s
+                        WHERE id=%s AND tenant_id=%s
+                    """, (name, color, desc, int(seg_id), tenant_id))
+                    conn.commit()
+                    flash("Segment updated.", "success")
+                except psycopg2.errors.UniqueViolation:
+                    conn.rollback()
+                    flash("A segment with that name already exists.", "danger")
+                except Exception as e:
+                    conn.rollback()
+                    flash(f"Error: {e}", "danger")
+
+        elif section == "delete_segment":
+            seg_id = request.form.get("segment_id")
+            if seg_id:
+                cur.execute(
+                    "DELETE FROM re_contact_segments WHERE id=%s AND tenant_id=%s",
+                    (int(seg_id), tenant_id)
+                )
+                conn.commit()
+                flash("Segment deleted.", "success")
+
+        cur.close(); conn.close()
+        return redirect(url_for("estate.contact_segments"))
+
+    # GET
+    conn = get_db_connection()
+    segments = []
+    if conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT s.id, s.name, s.color, s.description, s.created_at,
+                   COUNT(csm.contact_id) AS contact_count
+            FROM re_contact_segments s
+            LEFT JOIN re_contact_segment_map csm ON csm.segment_id = s.id
+            WHERE s.tenant_id = %s
+            GROUP BY s.id
+            ORDER BY s.name
+        """, (tenant_id,))
+        segments = cur.fetchall()
+        cur.close(); conn.close()
+
+    return render_template("estate/segments.html", tenant=tenant, segments=segments)
 
 
 # ── Message Templates ───────────────────────────────────────────────────────────
@@ -2196,9 +2342,11 @@ def broadcast():
 
     conn = get_db_connection()
     all_tags      = []
+    all_segments  = []
     all_contacts  = []
     templates     = []
     campaigns     = []
+    segment_names = {}   # id -> name for history display
     if conn:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
@@ -2206,6 +2354,13 @@ def broadcast():
             (tenant_id,)
         )
         all_tags = [r["tag"] for r in cur.fetchall()]
+
+        cur.execute(
+            "SELECT id, name, color FROM re_contact_segments WHERE tenant_id=%s ORDER BY name",
+            (tenant_id,)
+        )
+        all_segments = cur.fetchall()
+        segment_names = {s["id"]: s["name"] for s in all_segments}
 
         cur.execute(
             "SELECT id, name, phone_number FROM re_customers WHERE tenant_id=%s ORDER BY name, phone_number",
@@ -2231,6 +2386,7 @@ def broadcast():
         if section == "send_broadcast":
             camp_name    = request.form.get("campaign_name","").strip() or "Broadcast"
             message_body = request.form.get("message_body","").strip()
+            seg_ids      = [int(i) for i in request.form.getlist("segment_ids") if i.isdigit()]
             seg_tags     = [t for t in request.form.getlist("segment_tags") if t]
             pick_ids     = [int(i) for i in request.form.getlist("recipient_ids") if i]
             tpl_id       = request.form.get("template_id","").strip() or None
@@ -2247,7 +2403,23 @@ def broadcast():
 
             cur2 = conn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-            recipients = []
+            recipients   = []
+            seen_ids     = set()
+
+            # By segment (new structured segments)
+            if seg_ids:
+                cur2.execute("""
+                    SELECT DISTINCT c.id, c.name, c.phone_number, c.preferred_area
+                    FROM re_customers c
+                    JOIN re_contact_segment_map csm ON csm.contact_id = c.id
+                    WHERE c.tenant_id=%s AND csm.segment_id = ANY(%s)
+                """, (tenant_id, seg_ids))
+                for row in cur2.fetchall():
+                    if row["id"] not in seen_ids:
+                        recipients.append(row)
+                        seen_ids.add(row["id"])
+
+            # By legacy tag
             if seg_tags:
                 placeholders = ",".join(["%s"] * len(seg_tags))
                 cur2.execute(f"""
@@ -2255,11 +2427,14 @@ def broadcast():
                     FROM re_customers
                     WHERE tenant_id=%s AND tags && ARRAY[{placeholders}]::TEXT[]
                 """, [tenant_id] + seg_tags)
-                recipients = list(cur2.fetchall())
+                for row in cur2.fetchall():
+                    if row["id"] not in seen_ids:
+                        recipients.append(row)
+                        seen_ids.add(row["id"])
 
+            # Individual picks
             if pick_ids:
-                existing_ids = {r["id"] for r in recipients}
-                extra = [i for i in pick_ids if i not in existing_ids]
+                extra = [i for i in pick_ids if i not in seen_ids]
                 if extra:
                     cur2.execute(
                         "SELECT id, name, phone_number, preferred_area FROM re_customers WHERE id=ANY(%s) AND tenant_id=%s",
@@ -2276,11 +2451,11 @@ def broadcast():
             cur2.execute("""
                 INSERT INTO re_broadcast_campaigns
                   (tenant_id, name, template_id, message_body, segment_tags,
-                   recipient_ids, total_count, status)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,'sending')
+                   selected_segment_ids, recipient_ids, total_count, status)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'sending')
                 RETURNING id
             """, (tenant_id, camp_name, int(tpl_id) if tpl_id else None,
-                  message_body, seg_tags,
+                  message_body, seg_tags, seg_ids if seg_ids else None,
                   _json.dumps([r["id"] for r in recipients]),
                   len(recipients)))
             camp_id = cur2.fetchone()["id"]
@@ -2319,6 +2494,7 @@ def broadcast():
 
     return render_template("estate/broadcast.html",
                            tenant=tenant, all_tags=all_tags,
+                           all_segments=all_segments, segment_names=segment_names,
                            all_contacts=all_contacts, templates=templates,
                            campaigns=campaigns)
 

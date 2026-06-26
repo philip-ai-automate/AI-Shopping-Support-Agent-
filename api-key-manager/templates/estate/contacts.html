@@ -4,7 +4,7 @@
 {% block head %}
 <style>
 /* ── Toolbar ── */
-.ct-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:20px}
+.ct-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
 .ct-search{
   flex:1;min-width:200px;padding:10px 14px;
   border:1.5px solid rgba(3,12,24,0.12);border-radius:9px;
@@ -72,7 +72,15 @@
 .src-manual{background:rgba(26,86,219,0.09);color:#1a56db;border:1px solid rgba(26,86,219,0.20)}
 .src-csv   {background:rgba(247,144,9,0.10);color:#7a4f00;border:1px solid rgba(247,144,9,0.25)}
 
-/* Tags */
+/* Segment pills */
+.seg-pill{
+  display:inline-flex;align-items:center;gap:5px;padding:3px 10px;
+  border-radius:999px;font-size:11px;font-weight:700;
+  margin:2px 2px 0 0;white-space:nowrap;border:1px solid transparent
+}
+.seg-dot-sm{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+
+/* Tag chips (secondary) */
 .tag-chip{
   display:inline-flex;padding:2px 9px;border-radius:999px;
   font-size:11px;font-weight:700;background:rgba(3,12,24,0.06);
@@ -81,6 +89,17 @@
 }
 .tag-chip.clickable{cursor:pointer;text-decoration:none}
 .tag-chip.clickable:hover{background:rgba(3,12,24,0.12);color:#030C18}
+
+/* Segment filter pills bar */
+.seg-filter-bar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.seg-filter-pill{
+  display:inline-flex;align-items:center;gap:6px;padding:5px 12px;
+  border-radius:999px;font-size:12px;font-weight:700;cursor:pointer;
+  text-decoration:none;border:1.5px solid transparent;transition:.12s
+}
+.seg-filter-pill.active{border-color:#030C18 !important;color:#030C18 !important;background:#fff !important}
+.seg-filter-pill-all{background:rgba(3,12,24,0.06);color:rgba(3,12,24,0.6);border-color:rgba(3,12,24,0.10)}
+.seg-filter-pill-all:hover,.seg-filter-pill-all.active{background:rgba(3,12,24,0.12);color:#030C18}
 
 /* Action buttons */
 .act-btn{
@@ -115,7 +134,7 @@
   color:rgba(3,12,24,0.45);transition:.12s
 }
 .modal-close:hover{background:rgba(3,12,24,0.12)}
-.modal-body{padding:22px 24px;display:flex;flex-direction:column;gap:14px}
+.modal-body{padding:22px 24px;display:flex;flex-direction:column;gap:14px;max-height:70vh;overflow-y:auto}
 .modal-footer{padding:16px 24px;border-top:1px solid rgba(3,12,24,0.07);display:flex;gap:10px;justify-content:flex-end}
 
 /* Form fields inside modal */
@@ -131,6 +150,28 @@
 .mfg2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:480px){.mfg2{grid-template-columns:1fr}}
 .mf-hint{font-size:11.5px;color:rgba(3,12,24,0.38)}
+
+/* Segment checkboxes */
+.seg-check-grid{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+.seg-check-item{
+  display:flex;align-items:center;gap:10px;padding:9px 12px;
+  border:1.5px solid rgba(3,12,24,0.10);border-radius:9px;cursor:pointer;
+  transition:.12s;user-select:none
+}
+.seg-check-item:hover{border-color:rgba(3,12,24,0.25);background:#fafbfc}
+.seg-check-item input[type=checkbox]{display:none}
+.seg-check-item.checked{border-color:var(--seg-color,#1a56db);background:var(--seg-bg,rgba(26,86,219,0.06))}
+.seg-check-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.seg-check-name{font-size:13px;font-weight:700;color:#030C18;flex:1}
+.seg-checkmark{
+  width:18px;height:18px;border-radius:5px;border:1.5px solid rgba(3,12,24,0.18);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  background:#fff;transition:.12s
+}
+.seg-check-item.checked .seg-checkmark{background:var(--seg-color,#1a56db);border-color:var(--seg-color,#1a56db)}
+.seg-checkmark svg{display:none;width:11px;height:11px;stroke:#fff;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.seg-check-item.checked .seg-checkmark svg{display:block}
+.seg-none{font-size:13px;color:rgba(3,12,24,0.38);font-style:italic;padding:6px 0}
 
 /* CSV drop zone */
 .csv-drop{
@@ -157,9 +198,15 @@
 <div class="page-header">
   <div>
     <h1 class="section-title" style="margin-bottom:4px">Contacts</h1>
-    <p class="muted">{{ contacts | length }} contact{{ 's' if contacts | length != 1 }}</p>
+    <p class="muted">{{ contacts | length }} contact{{ 's' if contacts | length != 1 }}{% if segment_filter %} in this segment{% endif %}</p>
   </div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    {% if _re_is_admin %}
+    <a href="{{ url_for('estate.contact_segments') }}" class="ct-btn ct-btn-outline">
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+      Manage Segments
+    </a>
+    {% endif %}
     <button class="ct-btn ct-btn-outline" onclick="openModal('csvModal')">
       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       Upload CSV
@@ -201,16 +248,29 @@
   </div>
 </div>
 
+<!-- Segment quick-filter bar -->
+{% if all_segments %}
+<div class="seg-filter-bar">
+  <a href="{{ url_for('estate.contacts', q=search, source=source_filter) }}"
+     class="seg-filter-pill seg-filter-pill-all {% if not segment_filter %}active{% endif %}">
+    All Contacts
+  </a>
+  {% for seg in all_segments %}
+  <a href="{{ url_for('estate.contacts', segment_id=seg.id, q=search, source=source_filter) }}"
+     class="seg-filter-pill {% if segment_filter == seg.id|string %}active{% endif %}"
+     style="background:{{ seg.color }}1a;color:{{ seg.color }};border-color:{{ seg.color }}33">
+    <span style="width:7px;height:7px;border-radius:50%;background:{{ seg.color }};display:inline-block;flex-shrink:0"></span>
+    {{ seg.name }}
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
 <!-- Toolbar -->
 <form method="GET" action="{{ url_for('estate.contacts') }}" class="ct-toolbar">
+  {% if segment_filter %}<input type="hidden" name="segment_id" value="{{ segment_filter }}"/>{% endif %}
   <input class="ct-search" type="text" name="q" placeholder="Search name, phone, email…"
          value="{{ search }}"/>
-  <select class="ct-filter-sel" name="tag" onchange="this.form.submit()">
-    <option value="">All Tags</option>
-    {% for t in all_tags %}
-    <option value="{{ t }}" {% if tag_filter == t %}selected{% endif %}>{{ t }}</option>
-    {% endfor %}
-  </select>
   <select class="ct-filter-sel" name="source" onchange="this.form.submit()">
     <option value="">All Sources</option>
     <option value="whatsapp" {% if source_filter=='whatsapp' %}selected{% endif %}>WhatsApp</option>
@@ -218,23 +278,10 @@
     <option value="csv"      {% if source_filter=='csv'      %}selected{% endif %}>CSV</option>
   </select>
   <button type="submit" class="ct-btn ct-btn-outline">Search</button>
-  {% if search or tag_filter or source_filter %}
+  {% if search or source_filter or segment_filter %}
   <a href="{{ url_for('estate.contacts') }}" class="ct-btn ct-btn-outline">Clear</a>
   {% endif %}
 </form>
-
-<!-- Tags quick-filter bar -->
-{% if all_tags %}
-<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
-  <a href="{{ url_for('estate.contacts') }}" class="tag-chip clickable" style="{% if not tag_filter %}background:rgba(3,12,24,0.12);color:#030C18{% endif %}">All</a>
-  {% for t in all_tags %}
-  <a href="{{ url_for('estate.contacts', tag=t) }}" class="tag-chip clickable"
-     style="{% if tag_filter == t %}background:#030C18;color:#fff;border-color:#030C18{% endif %}">
-    {{ t }}
-  </a>
-  {% endfor %}
-</div>
-{% endif %}
 
 <!-- Table -->
 <div class="ct-card">
@@ -244,7 +291,7 @@
     <thead>
       <tr>
         <th>Contact</th>
-        <th>Tags</th>
+        <th>Segments</th>
         <th>Source</th>
         <th>Area</th>
         <th>Last Seen</th>
@@ -255,6 +302,7 @@
     {% set av_colors = ['#1a56db','#7c3aed','#0891b2','#0369a1','#4f46e5','#6d28d9','#0a7a3c'] %}
     {% for c in contacts %}
     {% set col = av_colors[loop.index0 % av_colors|length] %}
+    {% set c_segs = segment_map.get(c.id, []) %}
     <tr>
       <td>
         <div class="ct-name-cell">
@@ -269,12 +317,21 @@
         </div>
       </td>
       <td>
-        {% if c.tags %}
-          {% for t in c.tags %}
-          <a href="{{ url_for('estate.contacts', tag=t) }}" class="tag-chip clickable">{{ t }}</a>
+        {% if c_segs %}
+          {% for seg in c_segs %}
+          <span class="seg-pill" style="background:{{ seg.color }}1a;color:{{ seg.color }};border-color:{{ seg.color }}33">
+            <span class="seg-dot-sm" style="background:{{ seg.color }}"></span>{{ seg.name }}
+          </span>
           {% endfor %}
         {% else %}
           <span style="color:rgba(3,12,24,0.28);font-size:12px">—</span>
+        {% endif %}
+        {% if c.tags %}
+        <div style="margin-top:3px">
+          {% for t in c.tags %}
+          <span class="tag-chip" style="font-size:10px">{{ t }}</span>
+          {% endfor %}
+        </div>
         {% endif %}
       </td>
       <td>
@@ -297,7 +354,7 @@
         </a>
         {% endif %}
         <button class="act-btn" title="Edit contact"
-                onclick="openEdit({{ c.id }}, '{{ (c.name or '') | replace("'","\'") }}', '{{ c.email or '' }}', '{{ c.preferred_area or '' }}', '{{ (c.notes or '') | replace("'","\'") }}', '{{ c.tags | join(",") }}')">
+                onclick="openEdit({{ c.id }}, {{ (c.name or '')|tojson }}, {{ (c.email or '')|tojson }}, {{ (c.preferred_area or '')|tojson }}, {{ (c.notes or '')|tojson }}, {{ (c.tags or [])|tojson }}, {{ c_segs|map(attribute='id')|list|tojson }})">
           <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         </button>
         {% if c.source != 'whatsapp' %}
@@ -319,8 +376,13 @@
   {% else %}
   <div class="ct-empty">
     <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    {% if segment_filter %}
+    <h3>No contacts in this segment</h3>
+    <p>Assign contacts to this segment by editing them.</p>
+    {% else %}
     <h3>No contacts yet</h3>
     <p>Add contacts manually or upload a CSV to get started.</p>
+    {% endif %}
   </div>
   {% endif %}
 </div>
@@ -355,17 +417,38 @@
             <input type="number" name="budget" placeholder="50000000"/>
           </div>
         </div>
-        <div class="mfg2">
-          <div class="mfg">
-            <label>Area / Location</label>
-            <input type="text" name="area" placeholder="Lekki Phase 1"/>
-          </div>
-          <div class="mfg">
-            <label>Tags</label>
-            <input type="text" name="tags" placeholder="lekki, investor, 3bed"/>
-            <span class="mf-hint">Comma-separated — used for segments &amp; broadcast</span>
-          </div>
+        <div class="mfg">
+          <label>Area / Location</label>
+          <input type="text" name="area" placeholder="Lekki Phase 1"/>
         </div>
+
+        <!-- Segments -->
+        <div class="mfg">
+          <label>Segments</label>
+          {% if all_segments %}
+          <div class="seg-check-grid" id="addSegGrid">
+            {% for seg in all_segments %}
+            <label class="seg-check-item" style="--seg-color:{{ seg.color }};--seg-bg:{{ seg.color }}1a"
+                   onclick="toggleSegCheck(this)">
+              <input type="checkbox" name="segment_ids" value="{{ seg.id }}"/>
+              <span class="seg-check-dot" style="background:{{ seg.color }}"></span>
+              <span class="seg-check-name">{{ seg.name }}</span>
+              <span class="seg-checkmark">
+                <svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg>
+              </span>
+            </label>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="seg-none">
+            No segments yet.
+            {% if _re_is_admin %}
+            <a href="{{ url_for('estate.contact_segments') }}" style="color:#1a56db;font-weight:700">Create segments →</a>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+
         <div class="mfg">
           <label>Notes</label>
           <textarea name="notes" placeholder="Any notes about this contact…"></textarea>
@@ -387,7 +470,6 @@
       <button class="modal-close" onclick="closeModal('editModal')">×</button>
     </div>
     <form method="POST" id="editForm">
-      <input type="hidden" name="_method" value="POST"/>
       <div class="modal-body">
         <div class="mfg2">
           <div class="mfg">
@@ -399,15 +481,42 @@
             <input type="email" name="email" id="editEmail" placeholder="chidi@email.com"/>
           </div>
         </div>
-        <div class="mfg2">
-          <div class="mfg">
-            <label>Area / Location</label>
-            <input type="text" name="area" id="editArea" placeholder="Lekki Phase 1"/>
+        <div class="mfg">
+          <label>Area / Location</label>
+          <input type="text" name="area" id="editArea" placeholder="Lekki Phase 1"/>
+        </div>
+
+        <!-- Segments -->
+        <div class="mfg">
+          <label>Segments</label>
+          {% if all_segments %}
+          <div class="seg-check-grid" id="editSegGrid">
+            {% for seg in all_segments %}
+            <label class="seg-check-item" id="editSeg_{{ seg.id }}"
+                   style="--seg-color:{{ seg.color }};--seg-bg:{{ seg.color }}1a"
+                   onclick="toggleSegCheck(this)">
+              <input type="checkbox" name="segment_ids" value="{{ seg.id }}"/>
+              <span class="seg-check-dot" style="background:{{ seg.color }}"></span>
+              <span class="seg-check-name">{{ seg.name }}</span>
+              <span class="seg-checkmark">
+                <svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg>
+              </span>
+            </label>
+            {% endfor %}
           </div>
-          <div class="mfg">
-            <label>Tags</label>
-            <input type="text" name="tags" id="editTags" placeholder="lekki, investor"/>
+          {% else %}
+          <div class="seg-none">
+            No segments yet.
+            {% if _re_is_admin %}
+            <a href="{{ url_for('estate.contact_segments') }}" style="color:#1a56db;font-weight:700">Create segments →</a>
+            {% endif %}
           </div>
+          {% endif %}
+        </div>
+
+        <div class="mfg">
+          <label>Tags <span style="font-weight:400;text-transform:none;font-size:10px">(legacy / comma-separated)</span></label>
+          <input type="text" name="tags" id="editTags" placeholder="lekki, investor"/>
         </div>
         <div class="mfg">
           <label>Notes</label>
@@ -446,7 +555,7 @@
             Chidi Okeke, 2348012345678, chidi@email.com, Lekki, 50000000, "investor,lekki"
           </code>
           <div style="font-size:11.5px;color:rgba(3,12,24,0.40);margin-top:8px">
-            Only <strong>Phone</strong> is required. If a contact with the same phone already exists, their tags are merged.
+            Only <strong>Phone</strong> is required. To assign segments after import, edit contacts individually.
           </div>
         </div>
         <a href="data:text/csv;charset=utf-8,Name%2CPhone%2CEmail%2CArea%2CBudget%2CTags%0AChidi%20Okeke%2C2348012345678%2Cchidi%40email.com%2CLekki%2C50000000%2C%22investor%2Clekki%22"
@@ -471,13 +580,26 @@ function openModal(id){ document.getElementById(id).style.display='flex'; }
 function closeModal(id){ document.getElementById(id).style.display='none'; }
 document.addEventListener('keydown',function(e){ if(e.key==='Escape') ['addModal','editModal','csvModal'].forEach(closeModal); });
 
-function openEdit(id, name, email, area, notes, tags) {
+function toggleSegCheck(label) {
+  var cb = label.querySelector('input[type=checkbox]');
+  cb.checked = !cb.checked;
+  label.classList.toggle('checked', cb.checked);
+}
+
+function openEdit(id, name, email, area, notes, tags, segIds) {
   document.getElementById('editForm').action = '/estate/contacts/' + id + '/edit';
-  document.getElementById('editName').value  = name;
-  document.getElementById('editEmail').value = email;
-  document.getElementById('editArea').value  = area;
-  document.getElementById('editNotes').value = notes;
-  document.getElementById('editTags').value  = tags;
+  document.getElementById('editName').value  = name || '';
+  document.getElementById('editEmail').value = email || '';
+  document.getElementById('editArea').value  = area || '';
+  document.getElementById('editNotes').value = notes || '';
+  document.getElementById('editTags').value  = (tags || []).join(', ');
+  // Set segment checkboxes
+  document.querySelectorAll('#editSegGrid .seg-check-item').forEach(function(lbl) {
+    var cb  = lbl.querySelector('input[type=checkbox]');
+    var sid = parseInt(cb.value);
+    cb.checked = segIds.indexOf(sid) !== -1;
+    lbl.classList.toggle('checked', cb.checked);
+  });
   openModal('editModal');
 }
 

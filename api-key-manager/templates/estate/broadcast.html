@@ -36,7 +36,28 @@
 .bfg textarea{resize:vertical;min-height:120px}
 .bfg-hint{font-size:11.5px;color:rgba(3,12,24,0.38);line-height:1.5}
 
-/* Tags multi-select */
+/* Segment picker */
+.seg-pick-grid{display:flex;flex-direction:column;gap:6px;margin-bottom:4px}
+.seg-pick-item{
+  display:flex;align-items:center;gap:10px;padding:9px 12px;
+  border:1.5px solid rgba(3,12,24,0.10);border-radius:9px;cursor:pointer;
+  transition:.12s;user-select:none
+}
+.seg-pick-item:hover{border-color:rgba(3,12,24,0.22);background:#fafbfc}
+.seg-pick-item input[type=checkbox]{display:none}
+.seg-pick-item.checked{border-color:var(--sc);background:var(--sc-bg)}
+.seg-pick-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.seg-pick-name{font-size:13px;font-weight:700;color:#030C18;flex:1}
+.seg-pick-mark{
+  width:18px;height:18px;border-radius:5px;border:1.5px solid rgba(3,12,24,0.18);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  background:#fff;transition:.12s
+}
+.seg-pick-item.checked .seg-pick-mark{border-color:var(--sc);background:var(--sc)}
+.seg-pick-mark svg{display:none;width:11px;height:11px;stroke:#fff;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.seg-pick-item.checked .seg-pick-mark svg{display:block}
+
+/* Tags multi-select (legacy) */
 .tag-picker{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px}
 .tag-pick{
   display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:999px;
@@ -48,6 +69,13 @@
 .tag-pick .tp-check{width:14px;height:14px;border-radius:50%;border:1.5px solid currentColor;
                      display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:9px}
 .tag-pick.checked .tp-check{background:#fff;color:#030C18;border-color:transparent;font-weight:900}
+
+/* Segment pills in history */
+.hist-seg-pill{
+  display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;
+  font-size:10.5px;font-weight:700;margin:1px 2px 0 0;
+  background:rgba(3,12,24,0.06);color:rgba(3,12,24,0.55);border:1px solid rgba(3,12,24,0.08)
+}
 
 /* Individual contact picker */
 .contact-picker{
@@ -245,21 +273,58 @@
       <div class="bc-section">
         <div class="bc-section-title"><span>2</span> Recipients</div>
 
-        {% if all_tags %}
-        <div style="font-size:12.5px;font-weight:700;color:rgba(3,12,24,0.55);margin-bottom:8px">By Segment (tags)</div>
-        <div class="tag-picker" id="tagPicker">
-          {% for t in all_tags %}
-          <label class="tag-pick" id="lbl-{{ loop.index }}">
-            <input type="checkbox" name="segment_tags" value="{{ t }}"
-                   onchange="updateTagLabel(this,'lbl-{{ loop.index }}');countRecipients()"/>
-            <span class="tp-check">✓</span>
-            {{ t }}
+        <!-- By Segment -->
+        {% if all_segments %}
+        <div style="font-size:12.5px;font-weight:700;color:rgba(3,12,24,0.55);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+          <span>By Segment</span>
+          <a href="{{ url_for('estate.contact_segments') }}" style="font-size:11.5px;font-weight:700;color:#1a56db;text-decoration:none">Manage →</a>
+        </div>
+        <div class="seg-pick-grid" style="margin-bottom:14px">
+          {% for seg in all_segments %}
+          <label class="seg-pick-item" style="--sc:{{ seg.color }};--sc-bg:{{ seg.color }}1a"
+                 onclick="toggleSegPick(this)">
+            <input type="checkbox" name="segment_ids" value="{{ seg.id }}" onchange="countRecipients()"/>
+            <span class="seg-pick-dot" style="background:{{ seg.color }}"></span>
+            <span class="seg-pick-name">{{ seg.name }}</span>
+            <span class="seg-pick-mark">
+              <svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg>
+            </span>
           </label>
           {% endfor %}
         </div>
+        {% else %}
+        <div style="padding:12px 14px;background:#f8fafc;border:1px solid rgba(3,12,24,0.08);
+                    border-radius:9px;margin-bottom:14px;font-size:13px;color:rgba(3,12,24,0.42);display:flex;align-items:center;gap:10px">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+          No segments yet.
+          {% if _re_is_admin %}
+          <a href="{{ url_for('estate.contact_segments') }}" style="color:#1a56db;font-weight:700;text-decoration:none">Create segments →</a>
+          {% endif %}
+        </div>
         {% endif %}
 
-        <div style="font-size:12.5px;font-weight:700;color:rgba(3,12,24,0.55);margin:14px 0 8px">Or Pick Individuals</div>
+        <!-- By Tag (legacy) -->
+        {% if all_tags %}
+        <details style="margin-bottom:14px">
+          <summary style="font-size:12.5px;font-weight:700;color:rgba(3,12,24,0.45);cursor:pointer;list-style:none;display:flex;align-items:center;gap:5px">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+            By Tag (legacy)
+          </summary>
+          <div class="tag-picker" id="tagPicker" style="margin-top:10px">
+            {% for t in all_tags %}
+            <label class="tag-pick" id="lbl-{{ loop.index }}">
+              <input type="checkbox" name="segment_tags" value="{{ t }}"
+                     onchange="updateTagLabel(this,'lbl-{{ loop.index }}');countRecipients()"/>
+              <span class="tp-check">✓</span>
+              {{ t }}
+            </label>
+            {% endfor %}
+          </div>
+        </details>
+        {% endif %}
+
+        <!-- Individual pick -->
+        <div style="font-size:12.5px;font-weight:700;color:rgba(3,12,24,0.55);margin-bottom:8px">Or Pick Individuals</div>
         <input class="cp-search" type="text" placeholder="Search contacts…" oninput="filterContacts(this.value)"
                style="display:block;border-radius:9px 9px 0 0;border:1.5px solid rgba(3,12,24,0.12);padding:9px 13px;margin-bottom:0;width:100%;box-sizing:border-box;font-size:13px;font-family:inherit;background:#fafbfc;outline:none"/>
         <div class="contact-picker" id="contactPicker">
@@ -360,7 +425,15 @@
           <div class="hist-meta">
             <span class="status-chip s-{{ c.status }}">{{ c.status | title }}</span>
             &nbsp;{{ c.total_count }} recipients
-            {% if c.segment_tags %} · {{ c.segment_tags | join(', ') }}{% endif %}
+            {% if c.selected_segment_ids %}
+              {% for sid in c.selected_segment_ids %}
+                {% if sid in segment_names %}
+                <span class="hist-seg-pill">{{ segment_names[sid] }}</span>
+                {% endif %}
+              {% endfor %}
+            {% elif c.segment_tags %}
+              · {{ c.segment_tags | join(', ') }}
+            {% endif %}
           </div>
         </div>
         <div class="hist-right">
@@ -412,21 +485,30 @@ function filterContacts(q){
   });
 }
 
+function toggleSegPick(label) {
+  var cb = label.querySelector('input[type=checkbox]');
+  cb.checked = !cb.checked;
+  label.classList.toggle('checked', cb.checked);
+  countRecipients();
+}
+
 function countRecipients(){
+  var segs = document.querySelectorAll('input[name=segment_ids]:checked').length;
   var tags = document.querySelectorAll('input[name=segment_tags]:checked').length;
   var indv = document.querySelectorAll('input[name=recipient_ids]:checked').length;
-  var total = tags > 0 ? '?' : 0;
-  /* If only individual picks, count exactly */
-  if(tags === 0) total = indv;
-  else           total = indv + ' + segment';
-
   var badge = document.getElementById('rcBadge');
-  if((tags + indv) === 0){
+  var hasGroup = (segs + tags) > 0;
+
+  if(segs + tags + indv === 0){
     badge.className = 'rc-badge rc-zero';
     badge.textContent = '0 recipients selected';
   } else {
     badge.className = 'rc-badge';
-    badge.textContent = (tags > 0 ? 'Segment(s) + ' + indv + ' individual(s)' : indv + ' recipient(s) selected');
+    var parts = [];
+    if(segs > 0) parts.push(segs + ' segment' + (segs > 1 ? 's' : ''));
+    if(tags > 0) parts.push(tags + ' tag' + (tags > 1 ? 's' : ''));
+    if(indv > 0) parts.push(indv + ' individual' + (indv > 1 ? 's' : ''));
+    badge.textContent = parts.join(' + ') + ' selected' + (hasGroup ? ' (contact count auto-resolved)' : '');
   }
 }
 

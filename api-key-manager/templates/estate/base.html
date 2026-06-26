@@ -233,6 +233,13 @@
        href="{{ url_for('estate.contacts') }}">
       <span class="sb-icon">👤</span> Contacts
     </a>
+    {% if _re_is_admin %}
+    <a class="sb-link {% if request.endpoint == 'estate.contact_segments' %}active{% endif %}"
+       href="{{ url_for('estate.contact_segments') }}"
+       style="padding-left:2.2rem;font-size:13px;color:{% if request.endpoint == 'estate.contact_segments' %}#030C18{% else %}rgba(3,12,24,0.50){% endif %}">
+      <span class="sb-icon" style="font-size:13px">🏷️</span> Segments
+    </a>
+    {% endif %}
 
     <a class="sb-link {% if request.endpoint == 'estate.broadcast' %}active{% endif %}"
        href="{{ url_for('estate.broadcast') }}">
