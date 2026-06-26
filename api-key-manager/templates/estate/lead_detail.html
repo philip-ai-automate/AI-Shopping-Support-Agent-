@@ -208,6 +208,57 @@
 .il-empty{text-align:center;padding:40px 20px;color:rgba(3,12,24,0.40);
           font-size:13.5px;line-height:1.7}
 
+/* ── Phase 5: Payment Milestones ── */
+.pm-summary{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px}
+@media(max-width:480px){.pm-summary{grid-template-columns:1fr}}
+.pm-stat{text-align:center;padding:14px 10px;background:#f8fafc;border-radius:12px;
+         border:1px solid rgba(3,12,24,0.07)}
+.pm-stat-val{font-size:17px;font-weight:800;color:#030C18;letter-spacing:-.3px;
+             white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pm-stat-lbl{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;
+             color:rgba(3,12,24,0.40);margin-top:4px}
+.pm-stat.pm-s-paid .pm-stat-val{color:#0a7a3c}
+.pm-stat.pm-s-owe  .pm-stat-val{color:#dc2626}
+.pm-progress{width:100%;height:6px;background:rgba(3,12,24,0.08);border-radius:999px;
+             overflow:hidden;margin-bottom:4px}
+.pm-progress-fill{height:100%;background:#0a7a3c;border-radius:999px;transition:width .4s}
+.pm-pct-label{font-size:11px;color:rgba(3,12,24,0.38);text-align:right;margin-bottom:16px;
+              font-weight:600}
+.pm-list{display:flex;flex-direction:column;gap:10px}
+.pm-row{padding:14px 16px;border:1.5px solid rgba(3,12,24,0.09);border-radius:12px;
+        background:#fff;transition:.12s}
+.pm-row.pm-is-paid{background:rgba(10,122,60,0.03);border-color:rgba(10,122,60,0.22)}
+.pm-row.pm-is-overdue{background:rgba(240,68,56,0.03);border-color:rgba(240,68,56,0.22)}
+.pm-row-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.pm-name{font-size:14px;font-weight:750;color:#030C18;flex:1;min-width:0;
+         white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pm-amount{font-size:14px;font-weight:800;color:#030C18;flex-shrink:0}
+.pm-row-bottom{display:flex;align-items:center;gap:7px;margin-top:8px;flex-wrap:wrap}
+.pm-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;
+         border-radius:999px;font-size:11px;font-weight:750}
+.pm-chip-paid{background:rgba(10,122,60,0.10);color:#0a7a3c;border:1px solid rgba(10,122,60,0.25)}
+.pm-chip-overdue{background:rgba(240,68,56,0.10);color:#dc2626;border:1px solid rgba(240,68,56,0.25)}
+.pm-chip-upcoming{background:rgba(3,12,24,0.06);color:rgba(3,12,24,0.55);border:1px solid rgba(3,12,24,0.10)}
+.pm-due{font-size:11.5px;color:rgba(3,12,24,0.45);font-weight:500}
+.pm-paid-info{font-size:11.5px;color:#0a7a3c;font-weight:600}
+.pm-actions{display:flex;gap:6px;margin-left:auto}
+.pm-pay-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:7px;
+            font-size:12px;font-weight:750;border:1.5px solid rgba(10,122,60,0.30);
+            background:rgba(10,122,60,0.08);color:#0a7a3c;cursor:pointer;
+            font-family:inherit;transition:.12s}
+.pm-pay-btn:hover{background:rgba(10,122,60,0.16)}
+.pm-del-btn{display:inline-flex;align-items:center;padding:5px 9px;border-radius:7px;
+            font-size:12px;border:1.5px solid rgba(3,12,24,0.10);background:transparent;
+            color:rgba(3,12,24,0.35);cursor:pointer;font-family:inherit;transition:.12s}
+.pm-del-btn:hover{border-color:#dc2626;color:#dc2626;background:rgba(240,68,56,0.06)}
+.pm-add-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 15px;border-radius:8px;
+            font-size:12.5px;font-weight:750;border:1.5px solid rgba(3,12,24,0.14);
+            background:#fff;color:#030C18;cursor:pointer;font-family:inherit;transition:.12s}
+.pm-add-btn:hover{border-color:#030C18;background:#f8fafc}
+.pm-empty{text-align:center;padding:36px 20px;color:rgba(3,12,24,0.40);font-size:13.5px;line-height:1.7}
+.pm-note{font-size:12px;color:rgba(3,12,24,0.38);margin-top:6px;font-style:italic;
+         padding-top:6px;border-top:1px solid rgba(3,12,24,0.05)}
+
 /* ── Phase 4: Plot Allocation ── */
 .pa-linked{
   padding:16px;background:rgba(10,122,60,0.05);border:1.5px solid rgba(10,122,60,0.20);
@@ -700,6 +751,167 @@
   </div>
 </div>
 
+<!-- ── Phase 5: Payment Milestones ── -->
+<div class="ld-card" style="margin-bottom:18px">
+  <div class="ld-card-head">
+    <div class="ld-card-title"><span class="ic">💳</span> Payment Milestones</div>
+    <button class="pm-add-btn" onclick="openModal('milestoneModal')">+ Add Milestone</button>
+  </div>
+  <div class="ld-card-body">
+
+    {% if milestones %}
+
+    <!-- Summary stats -->
+    <div class="pm-summary">
+      <div class="pm-stat">
+        <div class="pm-stat-val">₦{{ '{:,.0f}'.format(milestone_totals.scheduled) }}</div>
+        <div class="pm-stat-lbl">Contract Value</div>
+      </div>
+      <div class="pm-stat pm-s-paid">
+        <div class="pm-stat-val">₦{{ '{:,.0f}'.format(milestone_totals.paid) }}</div>
+        <div class="pm-stat-lbl">Total Paid</div>
+      </div>
+      <div class="pm-stat {% if milestone_totals.outstanding > 0 %}pm-s-owe{% endif %}">
+        <div class="pm-stat-val">₦{{ '{:,.0f}'.format(milestone_totals.outstanding) }}</div>
+        <div class="pm-stat-lbl">Outstanding</div>
+      </div>
+    </div>
+
+    <!-- Progress bar -->
+    <div class="pm-progress">
+      <div class="pm-progress-fill" style="width:{{ milestone_totals.pct }}%"></div>
+    </div>
+    <div class="pm-pct-label">{{ milestone_totals.pct }}% paid</div>
+
+    <!-- Milestone rows -->
+    <div class="pm-list">
+      {% for m in milestones %}
+      {% set is_overdue = (not m.paid) and (m.due_date < today) %}
+      <div class="pm-row {% if m.paid %}pm-is-paid{% elif is_overdue %}pm-is-overdue{% endif %}">
+        <div class="pm-row-top">
+          <div class="pm-name">{{ m.name }}</div>
+          <div class="pm-amount">₦{{ '{:,.0f}'.format(m.amount) }}</div>
+        </div>
+        <div class="pm-row-bottom">
+          {% if m.paid %}
+            <span class="pm-chip pm-chip-paid">✅ Paid</span>
+            <span class="pm-paid-info">
+              ₦{{ '{:,.0f}'.format(m.paid_amount or m.amount) }}
+              {% if m.paid_date %}· {{ m.paid_date.strftime('%d %b %Y') }}{% endif %}
+            </span>
+          {% elif is_overdue %}
+            <span class="pm-chip pm-chip-overdue">⚠ Overdue</span>
+            <span class="pm-due">Due {{ m.due_date.strftime('%d %b %Y') }}</span>
+          {% else %}
+            <span class="pm-chip pm-chip-upcoming">📅 Upcoming</span>
+            <span class="pm-due">Due {{ m.due_date.strftime('%d %b %Y') }}</span>
+          {% endif %}
+          <div class="pm-actions">
+            {% if not m.paid %}
+            <button class="pm-pay-btn"
+                    onclick="openPayModal({{ m.id }},'{{ m.name | replace("'","\\'") }}',{{ m.amount }})">
+              Mark Paid
+            </button>
+            {% endif %}
+            <form method="POST"
+                  action="{{ url_for('estate.milestone_delete', contact_id=contact.id, milestone_id=m.id) }}"
+                  onsubmit="return confirm('Delete this milestone?')">
+              <button type="submit" class="pm-del-btn">✕</button>
+            </form>
+          </div>
+        </div>
+        {% if m.notes %}
+        <div class="pm-note">{{ m.notes }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    {% else %}
+    <div class="pm-empty">
+      <span style="font-size:28px;display:block;margin-bottom:8px">💳</span>
+      No payment milestones yet.<br>
+      <span style="font-size:12px">Add milestones to track deposits, installments, and completion payments.</span>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+
+<!-- ── Add Milestone Modal ── -->
+<div class="modal-bg" id="milestoneModal">
+  <div class="modal-box" style="max-width:460px">
+    <div class="modal-head">
+      <span class="modal-title">💳 Add Payment Milestone</span>
+      <button class="modal-close" onclick="closeModal('milestoneModal')">×</button>
+    </div>
+    <form method="POST" action="{{ url_for('estate.milestone_add', contact_id=contact.id) }}">
+      <div class="modal-body">
+        <div class="fg">
+          <label>Milestone Name <span style="color:#dc2626">*</span></label>
+          <input type="text" name="name" required maxlength="150"
+                 placeholder="e.g. Initial Deposit, 30% Payment, Balance…"/>
+        </div>
+        <div class="fg2">
+          <div class="fg">
+            <label>Amount (₦) <span style="color:#dc2626">*</span></label>
+            <input type="number" name="amount" required min="1" step="any"
+                   placeholder="5000000"/>
+          </div>
+          <div class="fg">
+            <label>Due Date <span style="color:#dc2626">*</span></label>
+            <input type="date" name="due_date" required value="{{ today.strftime('%Y-%m-%d') }}"/>
+          </div>
+        </div>
+        <div class="fg" style="margin-bottom:0">
+          <label>Notes <span style="color:rgba(3,12,24,0.35);font-style:italic;text-transform:none;font-weight:500">(optional)</span></label>
+          <textarea name="notes" rows="2" placeholder="Payment terms, bank details…"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="ld-action-btn ld-btn-outline"
+                onclick="closeModal('milestoneModal')">Cancel</button>
+        <button type="submit" class="save-btn"
+                style="width:auto;padding:9px 22px;margin-top:0">Add Milestone</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Mark Paid Modal ── -->
+<div class="modal-bg" id="payModal">
+  <div class="modal-box" style="max-width:420px">
+    <div class="modal-head">
+      <span class="modal-title" id="payModalTitle">✅ Mark as Paid</span>
+      <button class="modal-close" onclick="closeModal('payModal')">×</button>
+    </div>
+    <form method="POST" id="payModalForm" action="">
+      <div class="modal-body">
+        <div class="fg2">
+          <div class="fg">
+            <label>Amount Paid (₦)</label>
+            <input type="number" name="paid_amount" id="payAmountInput" min="0" step="any"/>
+          </div>
+          <div class="fg">
+            <label>Date Paid</label>
+            <input type="date" name="paid_date" id="payDateInput" value="{{ today.strftime('%Y-%m-%d') }}"/>
+          </div>
+        </div>
+        <div class="fg" style="margin-bottom:0">
+          <label>Notes <span style="color:rgba(3,12,24,0.35);font-style:italic;text-transform:none;font-weight:500">(optional)</span></label>
+          <textarea name="notes" rows="2" placeholder="Receipt number, payment method…"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="ld-action-btn ld-btn-outline"
+                onclick="closeModal('payModal')">Cancel</button>
+        <button type="submit" class="save-btn"
+                style="width:auto;padding:9px 22px;margin-top:0;background:#0a7a3c">Confirm Payment</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- ── Log Interaction Modal ── -->
 <div class="modal-bg" id="logModal">
   <div class="modal-box" style="max-width:480px">
@@ -817,8 +1029,18 @@ document.addEventListener('keydown', function(e){
   if(e.key === 'Escape'){
     closeModal('lostModal');
     closeModal('logModal');
+    closeModal('milestoneModal');
+    closeModal('payModal');
   }
 });
+
+function openPayModal(id, name, amount){
+  document.getElementById('payModalTitle').textContent = '✅ Mark as Paid: ' + name;
+  document.getElementById('payAmountInput').value = amount;
+  var base = '{{ url_for("estate.milestone_pay", contact_id=contact.id, milestone_id=0) }}';
+  document.getElementById('payModalForm').action = base.replace('/0/', '/' + id + '/');
+  openModal('payModal');
+}
 
 function toggleDirection(){
   var t = document.getElementById('intType');

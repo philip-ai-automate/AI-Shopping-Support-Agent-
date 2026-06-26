@@ -2262,7 +2262,31 @@ def lead_detail(contact_id):
     """, (tenant_id,))
     listings = cur.fetchall()
 
+    # Phase 5: payment milestones
+    cur.execute("""
+        SELECT id, name, amount, due_date, paid, paid_date, paid_amount, notes, position
+        FROM re_payment_milestones
+        WHERE contact_id=%s AND tenant_id=%s
+        ORDER BY position, due_date
+    """, (contact_id, tenant_id))
+    milestones = cur.fetchall()
+
     cur.close(); conn.close()
+
+    # Milestone totals (computed in Python — paid_amount may be NULL)
+    total_scheduled = float(sum(m["amount"] or 0 for m in milestones))
+    total_paid      = float(sum(
+        float(m["paid_amount"] if m["paid_amount"] is not None else m["amount"] or 0)
+        for m in milestones if m["paid"]
+    ))
+    outstanding  = total_scheduled - total_paid
+    pct_paid     = round(total_paid / total_scheduled * 100) if total_scheduled > 0 else 0
+    milestone_totals = {
+        "scheduled":   total_scheduled,
+        "paid":        total_paid,
+        "outstanding": outstanding,
+        "pct":         pct_paid,
+    }
 
     follow_up_overdue = bool(
         contact.get("follow_up_at") and
@@ -2271,6 +2295,8 @@ def lead_detail(contact_id):
 
     current_staff_id = session.get("re_staff_id")
     now_iso = datetime.now().strftime("%Y-%m-%dT%H:%M")
+
+    today = datetime.now().date()
 
     return render_template("estate/lead_detail.html",
                            tenant=tenant, contact=contact,
@@ -2282,7 +2308,10 @@ def lead_detail(contact_id):
                            current_staff_id=current_staff_id,
                            now_iso=now_iso,
                            linked_listing=linked_listing,
-                           listings=listings)
+                           listings=listings,
+                           milestones=milestones,
+                           milestone_totals=milestone_totals,
+                           today=today)
 
 
 @estate_bp.route("/estate/leads/<int:contact_id>/profile", methods=["POST"])
@@ -2597,6 +2626,107 @@ def lead_plot_unlink(contact_id):
         """, (contact_id, tenant_id))
         conn.commit(); cur.close(); conn.close()
         flash("Property unlinked.", "success")
+    return redirect(url_for("estate.lead_detail", contact_id=contact_id))
+
+
+# ── Phase 5: Payment Milestones ───────────────────────────────────────────────────
+
+@estate_bp.route("/estate/leads/<int:contact_id>/milestones", methods=["POST"])
+def milestone_add(contact_id):
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id  = _re_tenant_id()
+    name       = request.form.get("name", "").strip()
+    amount_raw = request.form.get("amount", "").strip()
+    due_date   = request.form.get("due_date", "").strip()
+    notes      = request.form.get("notes", "").strip() or None
+    staff_id   = session.get("re_staff_id")
+
+    if not name or not amount_raw or not due_date:
+        flash("Name, amount and due date are required.", "danger")
+        return redirect(url_for("estate.lead_detail", contact_id=contact_id))
+    try:
+        amount = float(amount_raw.replace(",", ""))
+        if amount <= 0:
+            raise ValueError
+    except ValueError:
+        flash("Amount must be a positive number.", "danger")
+        return redirect(url_for("estate.lead_detail", contact_id=contact_id))
+
+    conn = get_db_connection()
+    if conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT id FROM re_customers WHERE id=%s AND tenant_id=%s",
+                    (contact_id, tenant_id))
+        if not cur.fetchone():
+            cur.close(); conn.close()
+            flash("Contact not found.", "danger")
+            return redirect(url_for("estate.contacts"))
+        # position = next after current max
+        cur2 = conn.cursor()
+        cur2.execute("""
+            SELECT COALESCE(MAX(position), -1) + 1
+            FROM re_payment_milestones WHERE contact_id=%s AND tenant_id=%s
+        """, (contact_id, tenant_id))
+        pos = cur2.fetchone()[0]
+        cur2.execute("""
+            INSERT INTO re_payment_milestones
+              (tenant_id, contact_id, name, amount, due_date, notes, position, created_by)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+        """, (tenant_id, contact_id, name, amount, due_date, notes, pos, staff_id))
+        conn.commit(); cur.close(); cur2.close(); conn.close()
+        flash("Milestone added.", "success")
+    return redirect(url_for("estate.lead_detail", contact_id=contact_id))
+
+
+@estate_bp.route("/estate/leads/<int:contact_id>/milestones/<int:milestone_id>/pay",
+                 methods=["POST"])
+def milestone_pay(contact_id, milestone_id):
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id       = _re_tenant_id()
+    paid_amount_raw = request.form.get("paid_amount", "").strip()
+    paid_date       = request.form.get("paid_date", "").strip() or None
+    notes           = request.form.get("notes", "").strip() or None
+
+    try:
+        paid_amount = float(paid_amount_raw.replace(",", "")) if paid_amount_raw else None
+    except ValueError:
+        paid_amount = None
+
+    conn = get_db_connection()
+    if conn:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE re_payment_milestones
+            SET paid=TRUE,
+                paid_amount=COALESCE(%s, amount),
+                paid_date=COALESCE(%s::date, CURRENT_DATE),
+                notes=COALESCE(%s, notes),
+                updated_at=NOW()
+            WHERE id=%s AND contact_id=%s AND tenant_id=%s AND paid=FALSE
+        """, (paid_amount, paid_date, notes, milestone_id, contact_id, tenant_id))
+        conn.commit(); cur.close(); conn.close()
+        flash("Milestone marked as paid.", "success")
+    return redirect(url_for("estate.lead_detail", contact_id=contact_id))
+
+
+@estate_bp.route("/estate/leads/<int:contact_id>/milestones/<int:milestone_id>/delete",
+                 methods=["POST"])
+def milestone_delete(contact_id, milestone_id):
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+
+    conn = get_db_connection()
+    if conn:
+        cur = conn.cursor()
+        cur.execute("""
+            DELETE FROM re_payment_milestones
+            WHERE id=%s AND contact_id=%s AND tenant_id=%s
+        """, (milestone_id, contact_id, tenant_id))
+        conn.commit(); cur.close(); conn.close()
+        flash("Milestone removed.", "success")
     return redirect(url_for("estate.lead_detail", contact_id=contact_id))
 
 
