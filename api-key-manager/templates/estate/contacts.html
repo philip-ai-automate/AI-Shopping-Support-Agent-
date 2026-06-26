@@ -348,6 +348,11 @@
         {{ c.last_seen_at.strftime('%d %b %Y') if c.last_seen_at else '—' }}
       </td>
       <td style="white-space:nowrap;text-align:right">
+        <a href="{{ url_for('estate.lead_detail', contact_id=c.id) }}" class="act-btn" title="Open lead"
+           style="background:#030C18;border-color:#030C18;color:#fff;width:auto;padding:0 10px;font-size:11.5px;font-weight:750;gap:4px">
+          <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" fill="none" stroke-width="2.2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Lead
+        </a>
         {% if c.source == 'whatsapp' %}
         <a href="{{ url_for('estate.inbox_detail', customer_id=c.id) }}" class="act-btn" title="View conversation">
           <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>

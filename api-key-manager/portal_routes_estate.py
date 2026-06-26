@@ -521,6 +521,31 @@ def dashboard():
         """, (tenant_id,))
         stats["recent_listings"] = cur.fetchall()
 
+        # Overdue follow-ups
+        cur.execute("""
+            SELECT c.id, c.name, c.phone_number, c.follow_up_at, c.pipeline_stage,
+                   s.first_name || ' ' || s.last_name AS agent_name
+            FROM re_customers c
+            LEFT JOIN re_staff s ON s.id = c.assigned_to
+            WHERE c.tenant_id=%s
+              AND c.follow_up_at < NOW()
+              AND c.pipeline_stage NOT IN ('allocated','lost')
+            ORDER BY c.follow_up_at ASC
+            LIMIT 8
+        """, (tenant_id,))
+        stats["overdue_followups"] = cur.fetchall()
+
+        # Pipeline stage counts
+        cur.execute("""
+            SELECT pipeline_stage, COUNT(*) AS n
+            FROM re_customers
+            WHERE tenant_id=%s AND pipeline_stage NOT IN ('allocated','lost')
+            GROUP BY pipeline_stage
+        """, (tenant_id,))
+        stage_rows = cur.fetchall()
+        stats["pipeline_counts"] = {r["pipeline_stage"]: r["n"] for r in stage_rows}
+        stats["active_pipeline"] = sum(stats["pipeline_counts"].values())
+
         cur.close(); conn.close()
 
     # Quota meter
@@ -537,7 +562,8 @@ def dashboard():
     return render_template("estate/dashboard.html",
                            tenant=tenant, stats=stats,
                            quota_pct=quota_pct, used=used, msg_limit=msg_limit,
-                           trial_days_left=trial_days_left)
+                           trial_days_left=trial_days_left,
+                           pipeline_stages=PIPELINE_STAGES)
 
 
 # ── Listings ──────────────────────────────────────────────────────────────────
@@ -2139,6 +2165,190 @@ def contact_edit(contact_id):
         conn.commit(); cur.close(); conn.close()
         flash("Contact updated.", "success")
     return redirect(url_for("estate.contacts"))
+
+
+# ── Lead Pipeline ────────────────────────────────────────────────────────────────
+
+PIPELINE_STAGES = [
+    ("new",       "New",               "#6b7280"),
+    ("contacted", "Contacted",         "#1a56db"),
+    ("qualified", "Qualified",         "#7c3aed"),
+    ("viewing",   "Viewing Scheduled", "#0891b2"),
+    ("offer",     "Offer Made",        "#d97706"),
+    ("allocated", "Allocated",         "#0a7a3c"),
+    ("lost",      "Lost",              "#dc2626"),
+]
+_STAGE_SLUGS = [s[0] for s in PIPELINE_STAGES]
+
+
+@estate_bp.route("/estate/leads/<int:contact_id>")
+def lead_detail(contact_id):
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    tenant    = _get_tenant(tenant_id)
+
+    conn = get_db_connection()
+    if not conn:
+        flash("Database unavailable.", "danger")
+        return redirect(url_for("estate.contacts"))
+
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # Contact — must belong to this tenant
+    cur.execute("""
+        SELECT c.*,
+               s.first_name || ' ' || s.last_name AS agent_name,
+               s.id AS agent_id
+        FROM re_customers c
+        LEFT JOIN re_staff s ON s.id = c.assigned_to
+        WHERE c.id = %s AND c.tenant_id = %s
+    """, (contact_id, tenant_id))
+    contact = cur.fetchone()
+    if not contact:
+        cur.close(); conn.close()
+        flash("Lead not found.", "danger")
+        return redirect(url_for("estate.contacts"))
+
+    # Segments assigned to this contact
+    cur.execute("""
+        SELECT cs.id, cs.name, cs.color
+        FROM re_contact_segments cs
+        JOIN re_contact_segment_map csm ON csm.segment_id = cs.id
+        WHERE csm.contact_id = %s
+        ORDER BY cs.name
+    """, (contact_id,))
+    contact_segments = cur.fetchall()
+
+    # All staff for assignment dropdown
+    cur.execute("""
+        SELECT id, first_name || ' ' || last_name AS full_name, role
+        FROM re_staff WHERE tenant_id = %s AND is_active = TRUE
+        ORDER BY first_name
+    """, (tenant_id,))
+    staff_list = cur.fetchall()
+
+    # Owner (tenant) also assignable
+    cur.execute("SELECT business_name FROM re_tenants WHERE id = %s", (tenant_id,))
+    tenant_row = cur.fetchone()
+
+    cur.close(); conn.close()
+
+    follow_up_overdue = bool(
+        contact.get("follow_up_at") and
+        contact["follow_up_at"] < datetime.now(tz=contact["follow_up_at"].tzinfo)
+    )
+
+    return render_template("estate/lead_detail.html",
+                           tenant=tenant, contact=contact,
+                           contact_segments=contact_segments,
+                           staff_list=staff_list,
+                           pipeline_stages=PIPELINE_STAGES,
+                           follow_up_overdue=follow_up_overdue)
+
+
+@estate_bp.route("/estate/leads/<int:contact_id>/profile", methods=["POST"])
+def lead_profile(contact_id):
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+
+    budget_min   = request.form.get("budget_min", "").strip() or None
+    budget_max   = request.form.get("budget_max", "").strip() or None
+    prop_type    = request.form.get("property_type_pref", "").strip() or None
+    bedrooms     = request.form.get("bedrooms_pref", "").strip() or None
+    area         = request.form.get("preferred_area", "").strip() or None
+    payment_meth = request.form.get("payment_method", "").strip() or None
+    urgency      = request.form.get("urgency", "").strip() or None
+    notes        = request.form.get("notes", "").strip() or None
+
+    conn = get_db_connection()
+    if conn:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE re_customers SET
+              budget_min        = %s,
+              budget_max        = %s,
+              property_type_pref= %s,
+              bedrooms_pref     = %s,
+              preferred_area    = %s,
+              payment_method    = %s,
+              urgency           = %s,
+              notes             = %s,
+              updated_at        = NOW()
+            WHERE id = %s AND tenant_id = %s
+        """, (
+            float(budget_min) if budget_min else None,
+            float(budget_max) if budget_max else None,
+            prop_type, int(bedrooms) if bedrooms else None,
+            area, payment_meth, urgency, notes,
+            contact_id, tenant_id
+        ))
+        conn.commit(); cur.close(); conn.close()
+        flash("Interest profile saved.", "success")
+    return redirect(url_for("estate.lead_detail", contact_id=contact_id))
+
+
+@estate_bp.route("/estate/leads/<int:contact_id>/stage", methods=["POST"])
+def lead_stage(contact_id):
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+
+    stage  = request.form.get("stage", "").strip()
+    reason = request.form.get("lost_reason", "").strip() or None
+    if stage not in _STAGE_SLUGS:
+        flash("Invalid stage.", "danger")
+        return redirect(url_for("estate.lead_detail", contact_id=contact_id))
+
+    conn = get_db_connection()
+    if conn:
+        cur = conn.cursor()
+        if stage == "allocated":
+            cur.execute("""
+                UPDATE re_customers SET pipeline_stage=%s, allocated_at=NOW(), updated_at=NOW()
+                WHERE id=%s AND tenant_id=%s
+            """, (stage, contact_id, tenant_id))
+        elif stage == "lost":
+            cur.execute("""
+                UPDATE re_customers SET pipeline_stage=%s, lost_reason=%s, updated_at=NOW()
+                WHERE id=%s AND tenant_id=%s
+            """, (stage, reason, contact_id, tenant_id))
+        else:
+            cur.execute("""
+                UPDATE re_customers SET pipeline_stage=%s, updated_at=NOW()
+                WHERE id=%s AND tenant_id=%s
+            """, (stage, contact_id, tenant_id))
+        conn.commit(); cur.close(); conn.close()
+    return redirect(url_for("estate.lead_detail", contact_id=contact_id))
+
+
+@estate_bp.route("/estate/leads/<int:contact_id>/assign", methods=["POST"])
+def lead_assign(contact_id):
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+
+    staff_id     = request.form.get("assigned_to", "").strip() or None
+    follow_up_at = request.form.get("follow_up_at", "").strip() or None
+
+    conn = get_db_connection()
+    if conn:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE re_customers SET
+              assigned_to  = %s,
+              follow_up_at = %s,
+              updated_at   = NOW()
+            WHERE id = %s AND tenant_id = %s
+        """, (
+            int(staff_id) if staff_id else None,
+            follow_up_at if follow_up_at else None,
+            contact_id, tenant_id
+        ))
+        conn.commit(); cur.close(); conn.close()
+        flash("Lead updated.", "success")
+    return redirect(url_for("estate.lead_detail", contact_id=contact_id))
 
 
 # ── Contact Segments ─────────────────────────────────────────────────────────────

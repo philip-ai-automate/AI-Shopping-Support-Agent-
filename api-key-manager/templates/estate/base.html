@@ -210,6 +210,12 @@
       <span class="sb-icon">🏠</span> Dashboard
     </a>
 
+    <a class="sb-link {% if request.endpoint == 'estate.lead_detail' %}active{% endif %}"
+       href="{{ url_for('estate.contacts') }}"
+       style="background:{% if request.endpoint == 'estate.lead_detail' %}rgba(3,12,24,0.06){% endif %}">
+      <span class="sb-icon">📊</span> Pipeline
+    </a>
+
     <a class="sb-link {% if request.endpoint in ('estate.listings','estate.listing_new','estate.listing_edit') %}active{% endif %}"
        href="{{ url_for('estate.listings') }}">
       <span class="sb-icon">🏘️</span> My Listings

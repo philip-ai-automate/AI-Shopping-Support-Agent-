@@ -1,0 +1,545 @@
+{% extends "estate/base.html" %}
+{% block title %}{{ contact.name or contact.phone_number }} — Lead — PhiXtra Real Estate{% endblock %}
+
+{% block head %}
+<style>
+/* ── Page shell ── */
+.ld-back{
+  display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:700;
+  color:rgba(3,12,24,0.45);text-decoration:none;margin-bottom:20px;transition:.12s
+}
+.ld-back:hover{color:#030C18}
+.ld-back svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round}
+
+/* ── Contact hero ── */
+.ld-hero{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:16px;
+  padding:24px 28px;box-shadow:0 2px 12px rgba(3,12,24,0.04);margin-bottom:18px;
+  display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap
+}
+.ld-av{
+  width:56px;height:56px;border-radius:14px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:22px;font-weight:800;color:#fff
+}
+.ld-hero-info{flex:1;min-width:0}
+.ld-name{font-size:20px;font-weight:800;color:#030C18;letter-spacing:-.3px;line-height:1.2}
+.ld-phone{font-size:14px;color:rgba(3,12,24,0.45);font-family:monospace;margin-top:3px}
+.ld-pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.src-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:750}
+.src-wa    {background:rgba(37,211,102,0.10);color:#0a7a3c;border:1px solid rgba(37,211,102,0.25)}
+.src-manual{background:rgba(26,86,219,0.09);color:#1a56db;border:1px solid rgba(26,86,219,0.20)}
+.src-csv   {background:rgba(247,144,9,0.10);color:#7a4f00;border:1px solid rgba(247,144,9,0.25)}
+.seg-pill{
+  display:inline-flex;align-items:center;gap:5px;padding:3px 10px;
+  border-radius:999px;font-size:11px;font-weight:700;border:1px solid transparent
+}
+.ld-hero-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;flex-shrink:0}
+.ld-action-btn{
+  display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:9px;
+  font-size:13px;font-weight:750;font-family:inherit;cursor:pointer;border:none;
+  text-decoration:none;transition:.12s;white-space:nowrap
+}
+.ld-btn-dark{background:#030C18;color:#fff}
+.ld-btn-dark:hover{background:#0d1f3c;color:#fff}
+.ld-btn-outline{background:#fff;color:#030C18;border:1.5px solid rgba(3,12,24,0.14)}
+.ld-btn-outline:hover{border-color:#030C18;background:#fafbfc;text-decoration:none}
+.ld-btn-wa{background:rgba(37,211,102,0.12);color:#0a7a3c;border:1.5px solid rgba(37,211,102,0.25)}
+.ld-btn-wa:hover{background:rgba(37,211,102,0.20)}
+
+/* ── Stage bar ── */
+.stage-card{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:16px;
+  padding:22px 26px;box-shadow:0 2px 12px rgba(3,12,24,0.04);margin-bottom:18px
+}
+.stage-label{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;
+             color:rgba(3,12,24,0.38);margin-bottom:14px}
+.stage-bar{display:flex;gap:0;flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}
+.stage-step{
+  flex:1;min-width:90px;position:relative;text-align:center
+}
+.stage-step::after{
+  content:'';position:absolute;top:16px;right:0;width:50%;height:2px;
+  background:rgba(3,12,24,0.10);z-index:0
+}
+.stage-step:last-child::after{display:none}
+.stage-step::before{
+  content:'';position:absolute;top:16px;left:0;width:50%;height:2px;
+  background:rgba(3,12,24,0.10);z-index:0
+}
+.stage-step:first-child::before{display:none}
+.stage-step.done::after,.stage-step.done::before,.stage-step.active::before{background:var(--sc)}
+.stage-btn-inner{
+  position:relative;z-index:1;display:inline-flex;flex-direction:column;
+  align-items:center;gap:5px;cursor:pointer;padding:4px 6px;border-radius:8px;
+  transition:.12s;border:none;background:transparent;font-family:inherit;width:100%
+}
+.stage-btn-inner:hover .stage-circle{border-color:var(--sc);background:rgba(0,0,0,0.04)}
+.stage-circle{
+  width:32px;height:32px;border-radius:50%;border:2.5px solid rgba(3,12,24,0.12);
+  background:#fff;display:flex;align-items:center;justify-content:center;transition:.12s
+}
+.stage-circle svg{width:14px;height:14px;stroke:rgba(3,12,24,0.25);fill:none;stroke-width:2.2;stroke-linecap:round}
+.stage-step.done .stage-circle{background:var(--sc);border-color:var(--sc)}
+.stage-step.done .stage-circle svg{stroke:#fff}
+.stage-step.active .stage-circle{background:#fff;border-color:var(--sc);box-shadow:0 0 0 4px color-mix(in srgb,var(--sc) 15%,transparent)}
+.stage-step.active .stage-circle svg{stroke:var(--sc)}
+.stage-name{font-size:10.5px;font-weight:700;color:rgba(3,12,24,0.40);white-space:nowrap;letter-spacing:.02em}
+.stage-step.done .stage-name,.stage-step.active .stage-name{color:var(--sc);font-weight:800}
+
+/* Lost button separate */
+.lost-sep{display:flex;align-items:center;gap:10px;margin-top:16px}
+.lost-btn{
+  display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;
+  font-size:12.5px;font-weight:750;border:1.5px solid rgba(240,68,56,0.25);
+  background:rgba(240,68,56,0.06);color:#dc2626;cursor:pointer;font-family:inherit;transition:.12s
+}
+.lost-btn:hover{background:rgba(240,68,56,0.12);border-color:#dc2626}
+.lost-reason-tag{
+  display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;
+  font-size:11.5px;font-weight:700;background:rgba(240,68,56,0.08);color:#dc2626;
+  border:1px solid rgba(240,68,56,0.20)
+}
+
+/* ── Two-col layout ── */
+.ld-grid{display:grid;grid-template-columns:1fr 340px;gap:18px;align-items:start}
+@media(max-width:860px){.ld-grid{grid-template-columns:1fr}}
+
+/* ── Cards ── */
+.ld-card{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:16px;
+  box-shadow:0 2px 12px rgba(3,12,24,0.04);overflow:hidden;margin-bottom:18px
+}
+.ld-card-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 22px;border-bottom:1px solid rgba(3,12,24,0.07)
+}
+.ld-card-title{font-size:13px;font-weight:800;color:#030C18;display:flex;align-items:center;gap:8px}
+.ld-card-title span.ic{font-size:16px}
+.ld-card-body{padding:22px}
+
+/* ── Form fields ── */
+.fg{display:flex;flex-direction:column;gap:5px;margin-bottom:16px}
+.fg:last-child{margin-bottom:0}
+.fg label{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:rgba(3,12,24,0.38)}
+.fg input,.fg select,.fg textarea{
+  padding:10px 13px;border:1.5px solid rgba(3,12,24,0.12);border-radius:9px;
+  font-size:13.5px;font-family:inherit;color:#030C18;background:#fafbfc;
+  outline:none;transition:border-color .15s;width:100%;box-sizing:border-box
+}
+.fg input:focus,.fg select:focus,.fg textarea:focus{border-color:#030C18;background:#fff}
+.fg textarea{resize:vertical;min-height:80px}
+.fg2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:480px){.fg2{grid-template-columns:1fr}}
+.fg-prefix{position:relative}
+.fg-prefix span{
+  position:absolute;left:13px;top:50%;transform:translateY(-50%);
+  font-size:13.5px;color:rgba(3,12,24,0.40);font-weight:700;pointer-events:none
+}
+.fg-prefix input{padding-left:28px}
+
+.save-btn{
+  width:100%;padding:11px;background:#030C18;color:#fff;border:none;border-radius:9px;
+  font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer;margin-top:4px;transition:.13s
+}
+.save-btn:hover{background:#0d1f3c}
+
+/* ── Assign panel ── */
+.assign-row{display:flex;flex-direction:column;gap:12px}
+.assign-agent-current{
+  display:flex;align-items:center;gap:10px;padding:12px 14px;
+  background:#f8fafc;border:1px solid rgba(3,12,24,0.08);border-radius:10px
+}
+.agent-av{
+  width:34px;height:34px;border-radius:9px;background:#1a56db;
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:800;color:#fff;flex-shrink:0
+}
+.agent-name{font-size:13px;font-weight:700;color:#030C18}
+.agent-role{font-size:11.5px;color:rgba(3,12,24,0.40)}
+
+/* Follow-up date */
+.followup-status{
+  display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:9px;
+  font-size:12.5px;font-weight:700;margin-bottom:10px
+}
+.followup-overdue{background:rgba(240,68,56,0.08);color:#dc2626;border:1px solid rgba(240,68,56,0.20)}
+.followup-set    {background:rgba(18,183,106,0.08);color:#0a7a3c;border:1px solid rgba(18,183,106,0.20)}
+.followup-none   {background:rgba(3,12,24,0.04);color:rgba(3,12,24,0.40);border:1px solid rgba(3,12,24,0.08)}
+
+/* ── Info list ── */
+.info-list{display:flex;flex-direction:column;gap:0}
+.info-row{
+  display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
+  padding:10px 0;border-bottom:1px solid rgba(3,12,24,0.06)
+}
+.info-row:last-child{border-bottom:none}
+.info-key{font-size:11.5px;font-weight:700;color:rgba(3,12,24,0.40);text-transform:uppercase;letter-spacing:.04em;flex-shrink:0}
+.info-val{font-size:13px;font-weight:650;color:#030C18;text-align:right}
+.info-val.muted{color:rgba(3,12,24,0.35);font-weight:500;font-style:italic}
+
+/* ── Modals ── */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(3,12,24,0.65);z-index:500;
+          align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(3px)}
+.modal-box{background:#fff;border-radius:18px;width:100%;max-width:440px;
+           box-shadow:0 30px 80px rgba(0,0,0,0.25);overflow:hidden;animation:modal-in .18s ease}
+@keyframes modal-in{from{transform:translateY(16px);opacity:0}to{transform:none;opacity:1}}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid rgba(3,12,24,0.07)}
+.modal-title{font-size:16px;font-weight:800;color:#030C18}
+.modal-close{width:32px;height:32px;border-radius:8px;border:none;background:rgba(3,12,24,0.06);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;color:rgba(3,12,24,0.45)}
+.modal-close:hover{background:rgba(3,12,24,0.12)}
+.modal-body{padding:22px 24px;display:flex;flex-direction:column;gap:14px}
+.modal-footer{padding:16px 24px;border-top:1px solid rgba(3,12,24,0.07);display:flex;gap:10px;justify-content:flex-end}
+</style>
+{% endblock %}
+
+{% block content %}
+
+{# ── helpers ── #}
+{% set av_colors = ['#1a56db','#7c3aed','#0891b2','#0369a1','#4f46e5','#6d28d9','#0a7a3c'] %}
+{% set av_col = av_colors[contact.id % av_colors|length] %}
+{% set stage_slugs = pipeline_stages | map(attribute=0) | list %}
+{% set cur_stage_idx = stage_slugs.index(contact.pipeline_stage) if contact.pipeline_stage in stage_slugs else 0 %}
+{% set now_ts = namespace(val=none) %}
+
+<a href="{{ url_for('estate.contacts') }}" class="ld-back">
+  <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+  Back to Contacts
+</a>
+
+{% with msgs = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in msgs %}
+  <div class="flash {{ 'danger' if cat in ('error','danger') else cat }}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+<!-- ── Contact Hero ── -->
+<div class="ld-hero">
+  <div class="ld-av" style="background:{{ av_col }}">
+    {{ (contact.name or contact.phone_number or '?')[0] | upper }}
+  </div>
+  <div class="ld-hero-info">
+    <div class="ld-name">{{ contact.name or 'Unknown Contact' }}</div>
+    <div class="ld-phone">{{ contact.phone_number }}</div>
+    {% if contact.email %}<div style="font-size:12px;color:rgba(3,12,24,0.40);margin-top:2px">{{ contact.email }}</div>{% endif %}
+    <div class="ld-pills" style="margin-top:10px">
+      {% if contact.source == 'whatsapp' %}
+      <span class="src-badge src-wa">💬 WhatsApp</span>
+      {% elif contact.source == 'csv' %}
+      <span class="src-badge src-csv">📄 CSV</span>
+      {% else %}
+      <span class="src-badge src-manual">✏️ Manual</span>
+      {% endif %}
+      {% for seg in contact_segments %}
+      <span class="seg-pill" style="background:{{ seg.color }}1a;color:{{ seg.color }};border-color:{{ seg.color }}33">
+        <span style="width:6px;height:6px;border-radius:50%;background:{{ seg.color }};display:inline-block"></span>
+        {{ seg.name }}
+      </span>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="ld-hero-actions">
+    {% if contact.source == 'whatsapp' %}
+    <a href="{{ url_for('estate.inbox_detail', customer_id=contact.id) }}" class="ld-action-btn ld-btn-wa">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      WhatsApp Chat
+    </a>
+    {% endif %}
+    <a href="tel:{{ contact.phone_number }}" class="ld-action-btn ld-btn-outline">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.4 2 2 0 0 1 3.6 1.22h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.83a16 16 0 0 0 6 6l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+      Call
+    </a>
+  </div>
+</div>
+
+<!-- ── Pipeline Stage Bar ── -->
+<div class="stage-card">
+  <div class="stage-label">Pipeline Stage</div>
+  <div class="stage-bar">
+    {% for slug, label, color in pipeline_stages %}
+    {% if slug != 'lost' %}
+    {% set s_idx = loop.index0 %}
+    {% set is_active = contact.pipeline_stage == slug %}
+    {% set is_done   = (s_idx < cur_stage_idx) and contact.pipeline_stage != 'lost' %}
+    <div class="stage-step {% if is_active %}active{% elif is_done %}done{% endif %}"
+         style="--sc:{{ color }}">
+      <form method="POST" action="{{ url_for('estate.lead_stage', contact_id=contact.id) }}">
+        <input type="hidden" name="stage" value="{{ slug }}"/>
+        <button type="submit" class="stage-btn-inner" title="Move to {{ label }}">
+          <div class="stage-circle">
+            {% if is_done %}
+            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+            {% elif is_active %}
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/></svg>
+            {% else %}
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>
+            {% endif %}
+          </div>
+          <span class="stage-name">{{ label }}</span>
+        </button>
+      </form>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+
+  <!-- Lost / Archived -->
+  <div class="lost-sep">
+    <span style="font-size:12px;color:rgba(3,12,24,0.30)">or</span>
+    {% if contact.pipeline_stage == 'lost' %}
+    <span class="lost-reason-tag">
+      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      Lost / Archived{% if contact.lost_reason %} — {{ contact.lost_reason }}{% endif %}
+    </span>
+    <form method="POST" action="{{ url_for('estate.lead_stage', contact_id=contact.id) }}" style="display:inline">
+      <input type="hidden" name="stage" value="new"/>
+      <button type="submit" class="ld-action-btn ld-btn-outline" style="font-size:12px;padding:5px 12px">↩ Reopen</button>
+    </form>
+    {% else %}
+    <button class="lost-btn" onclick="openModal('lostModal')">
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      Mark as Lost / Archive
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ── Two-col grid ── -->
+<div class="ld-grid">
+
+  <!-- Left: Interest Profile -->
+  <div>
+    <div class="ld-card">
+      <div class="ld-card-head">
+        <div class="ld-card-title"><span class="ic">🏡</span> Property Interest Profile</div>
+      </div>
+      <div class="ld-card-body">
+        <form method="POST" action="{{ url_for('estate.lead_profile', contact_id=contact.id) }}">
+
+          <div class="fg2">
+            <div class="fg">
+              <label>Budget Min (₦)</label>
+              <div class="fg-prefix">
+                <span>₦</span>
+                <input type="number" name="budget_min" placeholder="5,000,000"
+                       value="{{ contact.budget_min | int if contact.budget_min else '' }}"/>
+              </div>
+            </div>
+            <div class="fg">
+              <label>Budget Max (₦)</label>
+              <div class="fg-prefix">
+                <span>₦</span>
+                <input type="number" name="budget_max" placeholder="20,000,000"
+                       value="{{ contact.budget_max | int if contact.budget_max else '' }}"/>
+              </div>
+            </div>
+          </div>
+
+          <div class="fg2">
+            <div class="fg">
+              <label>Property Type</label>
+              <select name="property_type_pref">
+                <option value="">— Select —</option>
+                {% for pt in ['Land (Residential)','Land (Commercial)','Flat / Apartment','Duplex / Townhouse','Detached Bungalow','Detached Duplex','Semi-Detached','Commercial Space','Office Space','Warehouse'] %}
+                <option value="{{ pt }}" {% if contact.property_type_pref == pt %}selected{% endif %}>{{ pt }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="fg">
+              <label>Bedrooms Needed</label>
+              <select name="bedrooms_pref">
+                <option value="">— Any —</option>
+                {% for n in [1,2,3,4,5,6] %}
+                <option value="{{ n }}" {% if contact.bedrooms_pref == n %}selected{% endif %}>{{ n }} Bed{{ 's' if n > 1 }}</option>
+                {% endfor %}
+                <option value="0" {% if contact.bedrooms_pref == 0 %}selected{% endif %}>N/A (Land)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="fg">
+            <label>Preferred Location / Area</label>
+            <input type="text" name="preferred_area" placeholder="e.g. Lekki Phase 1, Abuja Gwarinpa"
+                   value="{{ contact.preferred_area or '' }}"/>
+          </div>
+
+          <div class="fg2">
+            <div class="fg">
+              <label>Payment Method</label>
+              <select name="payment_method">
+                <option value="">— Select —</option>
+                {% for pm in [('outright','Outright Purchase'),('installment','Installment Plan'),('mortgage','Mortgage'),('joint','Joint Purchase')] %}
+                <option value="{{ pm[0] }}" {% if contact.payment_method == pm[0] %}selected{% endif %}>{{ pm[1] }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="fg">
+              <label>Timeline / Urgency</label>
+              <select name="urgency">
+                <option value="">— Select —</option>
+                {% for ug in [('urgent','Urgent — Ready now'),('planning','Planning — 3–6 months'),('browsing','Just Browsing')] %}
+                <option value="{{ ug[0] }}" {% if contact.urgency == ug[0] %}selected{% endif %}>{{ ug[1] }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div class="fg">
+            <label>Notes</label>
+            <textarea name="notes" placeholder="Any additional details, special requests, concerns…">{{ contact.notes or '' }}</textarea>
+          </div>
+
+          <button type="submit" class="save-btn">Save Interest Profile</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Assign + Follow-up + Lead Info -->
+  <div>
+
+    <!-- Assign + Follow-up -->
+    <div class="ld-card" style="margin-bottom:18px">
+      <div class="ld-card-head">
+        <div class="ld-card-title"><span class="ic">👤</span> Assignment &amp; Follow-up</div>
+      </div>
+      <div class="ld-card-body">
+        <form method="POST" action="{{ url_for('estate.lead_assign', contact_id=contact.id) }}">
+          <div class="fg">
+            <label>Assigned Agent</label>
+            <select name="assigned_to">
+              <option value="">— Unassigned —</option>
+              {% for st in staff_list %}
+              <option value="{{ st.id }}" {% if contact.assigned_to == st.id %}selected{% endif %}>
+                {{ st.full_name }}{% if st.role == 'admin' %} (Admin){% endif %}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="fg">
+            <label>Next Follow-up Date</label>
+            {% if contact.follow_up_at %}
+              {% if follow_up_overdue %}
+              <div class="followup-status followup-overdue">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                Overdue — was {{ contact.follow_up_at.strftime('%d %b %Y') }}
+              </div>
+              {% else %}
+              <div class="followup-status followup-set">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                Set for {{ contact.follow_up_at.strftime('%d %b %Y') }}
+              </div>
+              {% endif %}
+            {% else %}
+            <div class="followup-status followup-none">No follow-up date set</div>
+            {% endif %}
+            <input type="date" name="follow_up_at"
+                   value="{{ contact.follow_up_at.strftime('%Y-%m-%d') if contact.follow_up_at else '' }}"/>
+          </div>
+
+          <button type="submit" class="save-btn">Save Assignment</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Lead Info -->
+    <div class="ld-card">
+      <div class="ld-card-head">
+        <div class="ld-card-title"><span class="ic">📋</span> Lead Info</div>
+      </div>
+      <div class="ld-card-body" style="padding:16px 22px">
+        <div class="info-list">
+          <div class="info-row">
+            <span class="info-key">Stage</span>
+            <span class="info-val" style="color:{{ pipeline_stages | selectattr(0,'eq',contact.pipeline_stage) | map(attribute=2) | first | default('#6b7280') }}; font-weight:750">
+              {{ pipeline_stages | selectattr(0,'eq',contact.pipeline_stage) | map(attribute=1) | first | default('New') }}
+            </span>
+          </div>
+          <div class="info-row">
+            <span class="info-key">Source</span>
+            <span class="info-val">{{ contact.source | title }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-key">Agent</span>
+            <span class="info-val {% if not contact.agent_name %}muted{% endif %}">
+              {{ contact.agent_name or 'Unassigned' }}
+            </span>
+          </div>
+          <div class="info-row">
+            <span class="info-key">Added</span>
+            <span class="info-val">{{ contact.created_at.strftime('%d %b %Y') if contact.created_at else '—' }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-key">Last Seen</span>
+            <span class="info-val">{{ contact.last_seen_at.strftime('%d %b %Y') if contact.last_seen_at else '—' }}</span>
+          </div>
+          {% if contact.pipeline_stage == 'allocated' and contact.allocated_at %}
+          <div class="info-row">
+            <span class="info-key">Allocated</span>
+            <span class="info-val" style="color:#0a7a3c">{{ contact.allocated_at.strftime('%d %b %Y') }}</span>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Coming next -->
+    <div style="background:rgba(26,86,219,0.05);border:1px solid rgba(26,86,219,0.15);border-radius:12px;
+                padding:14px 16px;margin-top:18px;font-size:12.5px;color:#1a3a6e;line-height:1.6">
+      <strong style="display:block;margin-bottom:4px">Coming in Phase 2 & beyond:</strong>
+      📞 Interaction Log (calls, visits, notes)<br>
+      🏘️ Link to Property / Plot Number<br>
+      💰 Payment Milestones in ₦<br>
+      📄 Documents + WhatsApp Delivery
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Lost Modal ── -->
+<div class="modal-bg" id="lostModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <span class="modal-title">Mark Lead as Lost</span>
+      <button class="modal-close" onclick="closeModal('lostModal')">×</button>
+    </div>
+    <form method="POST" action="{{ url_for('estate.lead_stage', contact_id=contact.id) }}">
+      <input type="hidden" name="stage" value="lost"/>
+      <div class="modal-body">
+        <div style="font-size:13.5px;color:rgba(3,12,24,0.55);line-height:1.6">
+          This will archive the lead. You can reopen it at any time.
+        </div>
+        <div class="fg" style="margin-bottom:0">
+          <label>Reason (optional)</label>
+          <select name="lost_reason">
+            <option value="">— Select reason —</option>
+            <option>Budget too low</option>
+            <option>No suitable property</option>
+            <option>Went with competitor</option>
+            <option>No longer interested</option>
+            <option>Unreachable / No response</option>
+            <option>Bought elsewhere</option>
+            <option>Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="ld-action-btn ld-btn-outline" onclick="closeModal('lostModal')">Cancel</button>
+        <button type="submit" style="padding:9px 18px;border-radius:9px;border:none;background:#dc2626;color:#fff;font-size:13.5px;font-weight:750;cursor:pointer;font-family:inherit">
+          Archive Lead
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openModal(id){ document.getElementById(id).style.display='flex'; }
+function closeModal(id){ document.getElementById(id).style.display='none'; }
+document.addEventListener('keydown',function(e){ if(e.key==='Escape') closeModal('lostModal'); });
+</script>
+{% endblock %}
