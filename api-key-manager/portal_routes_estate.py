@@ -1912,6 +1912,444 @@ def billing_plans():
                            trial_days_left=trial_days_left)
 
 
+# ── Contacts ───────────────────────────────────────────────────────────────────
+
+@estate_bp.route("/estate/contacts", methods=["GET", "POST"])
+def contacts():
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    tenant    = _get_tenant(tenant_id)
+
+    if request.method == "POST":
+        section = request.form.get("section", "")
+        conn = get_db_connection()
+        if not conn:
+            flash("Database unavailable.", "danger")
+            return redirect(url_for("estate.contacts"))
+        cur = conn.cursor()
+
+        if section == "add_contact":
+            name    = request.form.get("name", "").strip()
+            phone   = request.form.get("phone", "").strip().replace(" ", "").replace("-", "")
+            email   = request.form.get("email", "").strip() or None
+            area    = request.form.get("area", "").strip() or None
+            budget  = request.form.get("budget", "").strip() or None
+            notes   = request.form.get("notes", "").strip() or None
+            tags_raw= request.form.get("tags", "").strip()
+            tags    = [t.strip().lower() for t in tags_raw.split(",") if t.strip()]
+            if not phone:
+                flash("Phone number is required.", "danger")
+            else:
+                try:
+                    cur.execute("""
+                        INSERT INTO re_customers
+                          (tenant_id, phone_number, name, email, preferred_area,
+                           budget_max, notes, tags, source, lead_status, last_seen_at)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'manual','new',NOW())
+                        ON CONFLICT (tenant_id, phone_number) DO UPDATE
+                          SET name=EXCLUDED.name, email=EXCLUDED.email,
+                              preferred_area=EXCLUDED.preferred_area,
+                              budget_max=EXCLUDED.budget_max,
+                              notes=EXCLUDED.notes,
+                              tags=EXCLUDED.tags,
+                              updated_at=NOW()
+                    """, (tenant_id, phone, name or None, email, area,
+                          float(budget) if budget else None, notes, tags))
+                    conn.commit()
+                    flash("Contact added.", "success")
+                except Exception as e:
+                    conn.rollback()
+                    flash(f"Error: {e}", "danger")
+
+        elif section == "csv_upload":
+            import csv, io
+            f = request.files.get("csv_file")
+            if not f or not f.filename.endswith(".csv"):
+                flash("Please upload a .csv file.", "danger")
+            else:
+                content = f.read().decode("utf-8-sig", errors="replace")
+                reader  = csv.DictReader(io.StringIO(content))
+                added = 0; skipped = 0
+                for row in reader:
+                    phone = (row.get("Phone") or row.get("phone") or "").strip().replace(" ","").replace("-","")
+                    if not phone:
+                        skipped += 1; continue
+                    name   = (row.get("Name")   or row.get("name")   or "").strip() or None
+                    email  = (row.get("Email")  or row.get("email")  or "").strip() or None
+                    area   = (row.get("Area")   or row.get("area")   or "").strip() or None
+                    budget = (row.get("Budget") or row.get("budget") or "").strip()
+                    tags_r = (row.get("Tags")   or row.get("tags")   or "").strip()
+                    tags   = [t.strip().lower() for t in tags_r.split(",") if t.strip()]
+                    try:
+                        cur.execute("""
+                            INSERT INTO re_customers
+                              (tenant_id, phone_number, name, email, preferred_area,
+                               budget_max, tags, source, lead_status, last_seen_at)
+                            VALUES (%s,%s,%s,%s,%s,%s,%s,'csv','new',NOW())
+                            ON CONFLICT (tenant_id, phone_number) DO UPDATE
+                              SET tags = array(
+                                SELECT DISTINCT unnest(re_customers.tags || EXCLUDED.tags)
+                              ), updated_at=NOW()
+                        """, (tenant_id, phone, name, email, area,
+                              float(budget) if budget else None, tags))
+                        added += 1
+                    except Exception:
+                        conn.rollback(); skipped += 1; continue
+                conn.commit()
+                flash(f"Imported {added} contacts. {skipped} skipped.", "success" if added else "warning")
+
+        elif section == "delete_contact":
+            cid = request.form.get("contact_id")
+            if cid:
+                cur.execute(
+                    "DELETE FROM re_customers WHERE id=%s AND tenant_id=%s AND source!='whatsapp'",
+                    (int(cid), tenant_id)
+                )
+                conn.commit()
+                flash("Contact deleted.", "success")
+
+        elif section == "update_tags":
+            cid      = request.form.get("contact_id")
+            tags_raw = request.form.get("tags", "")
+            tags     = [t.strip().lower() for t in tags_raw.split(",") if t.strip()]
+            if cid:
+                cur.execute(
+                    "UPDATE re_customers SET tags=%s, updated_at=NOW() WHERE id=%s AND tenant_id=%s",
+                    (tags, int(cid), tenant_id)
+                )
+                conn.commit()
+                flash("Tags updated.", "success")
+
+        cur.close(); conn.close()
+        return redirect(url_for("estate.contacts"))
+
+    # GET — list contacts
+    search     = request.args.get("q", "").strip()
+    tag_filter = request.args.get("tag", "").strip()
+    source_filter = request.args.get("source", "").strip()
+
+    conn = get_db_connection()
+    contacts_list = []
+    all_tags = []
+    if conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        query  = "SELECT * FROM re_customers WHERE tenant_id=%s"
+        params = [tenant_id]
+        if search:
+            query  += " AND (name ILIKE %s OR phone_number ILIKE %s OR email ILIKE %s)"
+            params += [f"%{search}%", f"%{search}%", f"%{search}%"]
+        if tag_filter:
+            query  += " AND %s = ANY(tags)"
+            params.append(tag_filter)
+        if source_filter:
+            query  += " AND source=%s"
+            params.append(source_filter)
+        query += " ORDER BY last_seen_at DESC"
+        cur.execute(query, params)
+        contacts_list = cur.fetchall()
+
+        # All unique tags for this tenant
+        cur.execute(
+            "SELECT DISTINCT unnest(tags) AS tag FROM re_customers WHERE tenant_id=%s ORDER BY tag",
+            (tenant_id,)
+        )
+        all_tags = [r["tag"] for r in cur.fetchall()]
+        cur.close(); conn.close()
+
+    return render_template("estate/contacts.html",
+                           tenant=tenant, contacts=contacts_list,
+                           all_tags=all_tags, search=search,
+                           tag_filter=tag_filter, source_filter=source_filter)
+
+
+@estate_bp.route("/estate/contacts/<int:contact_id>/edit", methods=["POST"])
+def contact_edit(contact_id):
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    name   = request.form.get("name","").strip() or None
+    email  = request.form.get("email","").strip() or None
+    area   = request.form.get("area","").strip() or None
+    notes  = request.form.get("notes","").strip() or None
+    tags_r = request.form.get("tags","").strip()
+    tags   = [t.strip().lower() for t in tags_r.split(",") if t.strip()]
+    conn = get_db_connection()
+    if conn:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE re_customers
+            SET name=%s, email=%s, preferred_area=%s, notes=%s, tags=%s, updated_at=NOW()
+            WHERE id=%s AND tenant_id=%s
+        """, (name, email, area, notes, tags, contact_id, tenant_id))
+        conn.commit(); cur.close(); conn.close()
+        flash("Contact updated.", "success")
+    return redirect(url_for("estate.contacts"))
+
+
+# ── Message Templates ───────────────────────────────────────────────────────────
+
+@estate_bp.route("/estate/templates", methods=["GET", "POST"])
+def message_templates():
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    tenant    = _get_tenant(tenant_id)
+
+    if request.method == "POST":
+        section = request.form.get("section","")
+        conn = get_db_connection()
+        if not conn:
+            flash("Database unavailable.", "danger")
+            return redirect(url_for("estate.message_templates"))
+        cur = conn.cursor()
+
+        if section == "add_template":
+            name     = request.form.get("name","").strip()
+            body     = request.form.get("body","").strip()
+            category = request.form.get("category","custom").strip()
+            if not name or not body:
+                flash("Name and message body are required.", "danger")
+            else:
+                cur.execute("""
+                    INSERT INTO re_message_templates (tenant_id, name, body, category)
+                    VALUES (%s,%s,%s,%s)
+                """, (tenant_id, name, body, category))
+                conn.commit()
+                flash("Template saved.", "success")
+
+        elif section == "edit_template":
+            tid  = request.form.get("template_id")
+            name = request.form.get("name","").strip()
+            body = request.form.get("body","").strip()
+            cat  = request.form.get("category","custom").strip()
+            if tid and name and body:
+                cur.execute("""
+                    UPDATE re_message_templates
+                    SET name=%s, body=%s, category=%s, updated_at=NOW()
+                    WHERE id=%s AND tenant_id=%s
+                """, (name, body, cat, int(tid), tenant_id))
+                conn.commit()
+                flash("Template updated.", "success")
+
+        elif section == "delete_template":
+            tid = request.form.get("template_id")
+            if tid:
+                cur.execute(
+                    "DELETE FROM re_message_templates WHERE id=%s AND tenant_id=%s",
+                    (int(tid), tenant_id)
+                )
+                conn.commit()
+                flash("Template deleted.", "success")
+
+        cur.close(); conn.close()
+        return redirect(url_for("estate.message_templates"))
+
+    conn = get_db_connection()
+    templates = []
+    if conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT * FROM re_message_templates WHERE tenant_id=%s ORDER BY category, name",
+            (tenant_id,)
+        )
+        templates = cur.fetchall()
+        cur.close(); conn.close()
+
+    return render_template("estate/templates.html", tenant=tenant, templates=templates)
+
+
+# ── Broadcast ───────────────────────────────────────────────────────────────────
+
+def _resolve_message(body: str, contact: dict) -> str:
+    """Replace {name}, {area}, {property} merge fields."""
+    name = contact.get("name") or contact.get("phone_number") or "there"
+    area = contact.get("preferred_area") or ""
+    return (body
+            .replace("{name}", name.split()[0] if name else "there")
+            .replace("{area}", area)
+            .replace("{property}", area))
+
+
+def _send_wa_message(phone_number_id: str, access_token: str, to: str, body: str) -> bool:
+    import requests as _req
+    to_clean = to.strip().lstrip("+").replace(" ", "")
+    try:
+        r = _req.post(
+            f"{_RE_GRAPH}/{phone_number_id}/messages",
+            headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
+            json={"messaging_product": "whatsapp", "recipient_type": "individual",
+                  "to": to_clean, "type": "text", "text": {"body": body}},
+            timeout=12
+        )
+        return r.status_code == 200
+    except Exception:
+        return False
+
+
+@estate_bp.route("/estate/broadcast", methods=["GET", "POST"])
+def broadcast():
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    tenant    = _get_tenant(tenant_id)
+
+    conn = get_db_connection()
+    all_tags      = []
+    all_contacts  = []
+    templates     = []
+    campaigns     = []
+    if conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT DISTINCT unnest(tags) AS tag FROM re_customers WHERE tenant_id=%s ORDER BY tag",
+            (tenant_id,)
+        )
+        all_tags = [r["tag"] for r in cur.fetchall()]
+
+        cur.execute(
+            "SELECT id, name, phone_number FROM re_customers WHERE tenant_id=%s ORDER BY name, phone_number",
+            (tenant_id,)
+        )
+        all_contacts = cur.fetchall()
+
+        cur.execute(
+            "SELECT * FROM re_message_templates WHERE tenant_id=%s ORDER BY category, name",
+            (tenant_id,)
+        )
+        templates = cur.fetchall()
+
+        cur.execute(
+            "SELECT * FROM re_broadcast_campaigns WHERE tenant_id=%s ORDER BY created_at DESC LIMIT 50",
+            (tenant_id,)
+        )
+        campaigns = cur.fetchall()
+        cur.close(); conn.close()
+
+    if request.method == "POST":
+        section = request.form.get("section","")
+        if section == "send_broadcast":
+            camp_name    = request.form.get("campaign_name","").strip() or "Broadcast"
+            message_body = request.form.get("message_body","").strip()
+            seg_tags     = [t for t in request.form.getlist("segment_tags") if t]
+            pick_ids     = [int(i) for i in request.form.getlist("recipient_ids") if i]
+            tpl_id       = request.form.get("template_id","").strip() or None
+
+            if not message_body:
+                flash("Message body cannot be empty.", "danger")
+                return redirect(url_for("estate.broadcast"))
+
+            # Resolve recipients
+            conn2 = get_db_connection()
+            if not conn2:
+                flash("Database unavailable.", "danger")
+                return redirect(url_for("estate.broadcast"))
+
+            cur2 = conn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+            recipients = []
+            if seg_tags:
+                placeholders = ",".join(["%s"] * len(seg_tags))
+                cur2.execute(f"""
+                    SELECT DISTINCT id, name, phone_number, preferred_area
+                    FROM re_customers
+                    WHERE tenant_id=%s AND tags && ARRAY[{placeholders}]::TEXT[]
+                """, [tenant_id] + seg_tags)
+                recipients = list(cur2.fetchall())
+
+            if pick_ids:
+                existing_ids = {r["id"] for r in recipients}
+                extra = [i for i in pick_ids if i not in existing_ids]
+                if extra:
+                    cur2.execute(
+                        "SELECT id, name, phone_number, preferred_area FROM re_customers WHERE id=ANY(%s) AND tenant_id=%s",
+                        (extra, tenant_id)
+                    )
+                    recipients += list(cur2.fetchall())
+
+            if not recipients:
+                flash("No recipients selected.", "warning")
+                cur2.close(); conn2.close()
+                return redirect(url_for("estate.broadcast"))
+
+            # Save campaign record
+            cur2.execute("""
+                INSERT INTO re_broadcast_campaigns
+                  (tenant_id, name, template_id, message_body, segment_tags,
+                   recipient_ids, total_count, status)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,'sending')
+                RETURNING id
+            """, (tenant_id, camp_name, int(tpl_id) if tpl_id else None,
+                  message_body, seg_tags,
+                  _json.dumps([r["id"] for r in recipients]),
+                  len(recipients)))
+            camp_id = cur2.fetchone()["id"]
+            conn2.commit()
+
+            # Send messages
+            phone_number_id = tenant.get("wa_phone_number_id","")
+            access_token    = tenant.get("wa_access_token","")
+            sent = 0; failed = 0
+
+            if not phone_number_id or not access_token:
+                flash("WhatsApp is not connected. Connect it in Settings first.", "danger")
+                cur2.execute(
+                    "UPDATE re_broadcast_campaigns SET status='failed' WHERE id=%s", (camp_id,)
+                )
+                conn2.commit(); cur2.close(); conn2.close()
+                return redirect(url_for("estate.broadcast"))
+
+            import time as _time
+            for r in recipients:
+                msg = _resolve_message(message_body, dict(r))
+                ok  = _send_wa_message(phone_number_id, access_token, r["phone_number"], msg)
+                if ok: sent += 1
+                else:  failed += 1
+                _time.sleep(0.25)  # stay under rate limit
+
+            cur2.execute("""
+                UPDATE re_broadcast_campaigns
+                SET sent_count=%s, failed_count=%s, status='sent', sent_at=NOW()
+                WHERE id=%s
+            """, (sent, failed, camp_id))
+            conn2.commit(); cur2.close(); conn2.close()
+
+            flash(f"Broadcast sent — {sent} delivered, {failed} failed.", "success" if not failed else "warning")
+            return redirect(url_for("estate.broadcast"))
+
+    return render_template("estate/broadcast.html",
+                           tenant=tenant, all_tags=all_tags,
+                           all_contacts=all_contacts, templates=templates,
+                           campaigns=campaigns)
+
+
+@estate_bp.route("/estate/broadcast/<int:campaign_id>/recipients")
+def broadcast_recipients(campaign_id):
+    """Return recipient list for a past campaign (JSON)."""
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    conn = get_db_connection()
+    if not conn:
+        return jsonify([])
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        "SELECT recipient_ids FROM re_broadcast_campaigns WHERE id=%s AND tenant_id=%s",
+        (campaign_id, tenant_id)
+    )
+    row = cur.fetchone()
+    ids = _json.loads(row["recipient_ids"]) if row else []
+    result = []
+    if ids:
+        cur.execute(
+            "SELECT id, name, phone_number FROM re_customers WHERE id=ANY(%s)",
+            (ids,)
+        )
+        result = [dict(r) for r in cur.fetchall()]
+    cur.close(); conn.close()
+    return jsonify(result)
+
+
 # ── Email helpers ──────────────────────────────────────────────────────────────
 
 def _send_verify_email(to_email: str, first_name: str, business_name: str, verify_url: str):

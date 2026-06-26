@@ -229,6 +229,21 @@
       {% endif %}
     </a>
 
+    <a class="sb-link {% if request.endpoint == 'estate.contacts' %}active{% endif %}"
+       href="{{ url_for('estate.contacts') }}">
+      <span class="sb-icon">👤</span> Contacts
+    </a>
+
+    <a class="sb-link {% if request.endpoint == 'estate.broadcast' %}active{% endif %}"
+       href="{{ url_for('estate.broadcast') }}">
+      <span class="sb-icon">📣</span> Broadcast
+    </a>
+
+    <a class="sb-link {% if request.endpoint == 'estate.message_templates' %}active{% endif %}"
+       href="{{ url_for('estate.message_templates') }}">
+      <span class="sb-icon">📋</span> Templates
+    </a>
+
     <a class="sb-link {% if request.endpoint == 'estate.reports' %}active{% endif %}"
        href="{{ url_for('estate.reports') }}">
       <span class="sb-icon">📊</span> Reports

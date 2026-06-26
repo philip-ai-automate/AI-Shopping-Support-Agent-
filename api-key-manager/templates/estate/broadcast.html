@@ -1,0 +1,368 @@
+{% extends "estate/base.html" %}
+{% block title %}Broadcast — PhiXtra Real Estate{% endblock %}
+
+{% block head %}
+<style>
+/* ── Layout ── */
+.bc-wrap{display:grid;grid-template-columns:1fr 380px;gap:22px;align-items:start}
+@media(max-width:900px){.bc-wrap{grid-template-columns:1fr}}
+
+/* ── Composer card ── */
+.bc-card{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:16px;
+  box-shadow:0 2px 12px rgba(3,12,24,0.04);overflow:hidden
+}
+.bc-section{padding:22px 26px;border-bottom:1px solid rgba(3,12,24,0.07)}
+.bc-section:last-child{border-bottom:none}
+.bc-section-title{
+  font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;
+  color:rgba(3,12,24,0.38);margin-bottom:16px;display:flex;align-items:center;gap:8px
+}
+.bc-section-title span{
+  width:22px;height:22px;border-radius:50%;background:#030C18;color:#fff;
+  font-size:10px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0
+}
+
+/* form fields */
+.bfg{display:flex;flex-direction:column;gap:5px;margin-bottom:14px}
+.bfg:last-child{margin-bottom:0}
+.bfg label{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:rgba(3,12,24,0.38)}
+.bfg input,.bfg textarea,.bfg select{
+  padding:10px 13px;border:1.5px solid rgba(3,12,24,0.12);border-radius:9px;
+  font-size:13.5px;font-family:inherit;color:#030C18;background:#fafbfc;
+  outline:none;transition:border-color .15s;width:100%;box-sizing:border-box
+}
+.bfg input:focus,.bfg textarea:focus,.bfg select:focus{border-color:#030C18;background:#fff}
+.bfg textarea{resize:vertical;min-height:120px}
+.bfg-hint{font-size:11.5px;color:rgba(3,12,24,0.38);line-height:1.5}
+
+/* Tags multi-select */
+.tag-picker{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px}
+.tag-pick{
+  display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:999px;
+  border:1.5px solid rgba(3,12,24,0.12);background:#fff;color:rgba(3,12,24,0.55);
+  font-size:12.5px;font-weight:650;cursor:pointer;transition:.12s;user-select:none
+}
+.tag-pick input{display:none}
+.tag-pick.checked{background:#030C18;color:#fff;border-color:#030C18}
+.tag-pick .tp-check{width:14px;height:14px;border-radius:50%;border:1.5px solid currentColor;
+                     display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:9px}
+.tag-pick.checked .tp-check{background:#fff;color:#030C18;border-color:transparent;font-weight:900}
+
+/* Individual contact picker */
+.contact-picker{
+  max-height:220px;overflow-y:auto;border:1.5px solid rgba(3,12,24,0.10);
+  border-radius:10px;background:#fafbfc
+}
+.cp-item{
+  display:flex;align-items:center;gap:10px;padding:9px 13px;
+  border-bottom:1px solid rgba(3,12,24,0.05);cursor:pointer;transition:.1s
+}
+.cp-item:last-child{border-bottom:none}
+.cp-item:hover{background:rgba(3,12,24,0.025)}
+.cp-item.selected{background:rgba(3,12,24,0.04)}
+.cp-item input[type=checkbox]{accent-color:#030C18;width:15px;height:15px;flex-shrink:0}
+.cp-name{font-size:13px;font-weight:650;color:#030C18}
+.cp-phone{font-size:11.5px;color:rgba(3,12,24,0.38);font-family:monospace}
+.cp-search{
+  width:100%;padding:9px 13px;border:none;border-bottom:1.5px solid rgba(3,12,24,0.08);
+  font-size:13px;font-family:inherit;background:#fff;outline:none;color:#030C18;
+  border-radius:10px 10px 0 0
+}
+
+/* Template pick */
+.tpl-pick{
+  display:flex;flex-direction:column;gap:8px;max-height:200px;overflow-y:auto;
+  border:1.5px solid rgba(3,12,24,0.10);border-radius:10px;background:#fafbfc
+}
+.tpl-row{
+  padding:10px 14px;border-bottom:1px solid rgba(3,12,24,0.05);cursor:pointer;transition:.1s
+}
+.tpl-row:last-child{border-bottom:none}
+.tpl-row:hover{background:rgba(3,12,24,0.03)}
+.tpl-row-name{font-size:13px;font-weight:700;color:#030C18}
+.tpl-row-body{font-size:12px;color:rgba(3,12,24,0.42);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;max-width:420px}
+
+/* Preview panel */
+.preview-panel{
+  background:#f0f2f5;border-radius:14px;padding:20px;font-size:13.5px;
+  color:#030C18;line-height:1.7;white-space:pre-wrap;min-height:80px;
+  border-bottom-left-radius:3px;word-break:break-word
+}
+.preview-from{
+  font-size:11.5px;color:rgba(3,12,24,0.38);margin-top:10px;text-align:right;
+  font-style:italic
+}
+
+/* Recipient count badge */
+.rc-badge{
+  display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:999px;
+  background:#030C18;color:#fff;font-size:13px;font-weight:750;margin-bottom:14px
+}
+.rc-zero{background:rgba(3,12,24,0.08);color:rgba(3,12,24,0.40)}
+
+/* Send button */
+.send-btn{
+  width:100%;padding:13px;background:#030C18;color:#fff;border:none;border-radius:10px;
+  font-size:14.5px;font-weight:800;font-family:inherit;cursor:pointer;transition:.13s;
+  display:flex;align-items:center;justify-content:center;gap:8px
+}
+.send-btn:hover{background:#0d1f3c}
+.send-btn:disabled{opacity:.40;cursor:not-allowed}
+.send-btn svg{width:16px;height:16px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+/* ── History ── */
+.hist-card{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:14px;
+  box-shadow:0 2px 8px rgba(3,12,24,0.04);overflow:hidden
+}
+.hist-row{
+  display:flex;align-items:center;gap:14px;padding:14px 20px;
+  border-bottom:1px solid rgba(3,12,24,0.05)
+}
+.hist-row:last-child{border-bottom:none}
+.hist-icon{
+  width:40px;height:40px;border-radius:11px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(3,12,24,0.06)
+}
+.hist-icon svg{width:18px;height:18px;stroke:rgba(3,12,24,0.40);fill:none;stroke-width:1.8;stroke-linecap:round}
+.hist-name{font-size:13.5px;font-weight:750;color:#030C18;margin-bottom:2px}
+.hist-meta{font-size:12px;color:rgba(3,12,24,0.40)}
+.hist-right{margin-left:auto;text-align:right;flex-shrink:0}
+.hist-sent{font-size:14px;font-weight:800;color:#0a7a3c}
+.hist-failed{font-size:12px;color:#F04438;margin-top:1px}
+.hist-date{font-size:11.5px;color:rgba(3,12,24,0.30);margin-top:2px}
+.status-chip{
+  display:inline-flex;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:750;
+}
+.s-sent   {background:rgba(18,183,106,0.10);color:#0a7a3c;border:1px solid rgba(18,183,106,0.25)}
+.s-sending{background:rgba(247,144,9,0.10);color:#7a4f00;border:1px solid rgba(247,144,9,0.25)}
+.s-failed {background:rgba(240,68,56,0.09);color:#b02020;border:1px solid rgba(240,68,56,0.20)}
+.s-draft  {background:rgba(3,12,24,0.06);color:rgba(3,12,24,0.45);border:1px solid rgba(3,12,24,0.10)}
+
+.hist-empty{text-align:center;padding:40px 20px;font-size:13.5px;color:rgba(3,12,24,0.35)}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title" style="margin-bottom:4px">Broadcast</h1>
+    <p class="muted">Send WhatsApp messages to segments or individual contacts</p>
+  </div>
+</div>
+
+{% with msgs = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in msgs %}
+  <div class="flash {{ 'danger' if cat in ('error','danger') else cat }}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+{% if not tenant.wa_phone_number_id %}
+<div class="flash warning" style="margin-bottom:20px">
+  ⚠️ WhatsApp is not connected. <a href="{{ url_for('estate.settings') }}" style="font-weight:700;color:inherit">Connect it in Settings</a> before sending broadcasts.
+</div>
+{% endif %}
+
+<div class="bc-wrap">
+
+  <!-- ── Left: Composer ── -->
+  <form method="POST" action="{{ url_for('estate.broadcast') }}" id="bcForm">
+    <input type="hidden" name="section" value="send_broadcast"/>
+    <div class="bc-card">
+
+      <!-- Step 1: Campaign Name -->
+      <div class="bc-section">
+        <div class="bc-section-title"><span>1</span> Campaign Name</div>
+        <div class="bfg">
+          <input type="text" name="campaign_name" placeholder="e.g. June Lekki Property Alert" required/>
+        </div>
+      </div>
+
+      <!-- Step 2: Recipients -->
+      <div class="bc-section">
+        <div class="bc-section-title"><span>2</span> Recipients</div>
+
+        {% if all_tags %}
+        <div style="font-size:12.5px;font-weight:700;color:rgba(3,12,24,0.55);margin-bottom:8px">By Segment (tags)</div>
+        <div class="tag-picker" id="tagPicker">
+          {% for t in all_tags %}
+          <label class="tag-pick" id="lbl-{{ loop.index }}">
+            <input type="checkbox" name="segment_tags" value="{{ t }}"
+                   onchange="updateTagLabel(this,'lbl-{{ loop.index }}');countRecipients()"/>
+            <span class="tp-check">✓</span>
+            {{ t }}
+          </label>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        <div style="font-size:12.5px;font-weight:700;color:rgba(3,12,24,0.55);margin:14px 0 8px">Or Pick Individuals</div>
+        <input class="cp-search" type="text" placeholder="Search contacts…" oninput="filterContacts(this.value)"
+               style="display:block;border-radius:9px 9px 0 0;border:1.5px solid rgba(3,12,24,0.12);padding:9px 13px;margin-bottom:0;width:100%;box-sizing:border-box;font-size:13px;font-family:inherit;background:#fafbfc;outline:none"/>
+        <div class="contact-picker" id="contactPicker">
+          {% for c in all_contacts %}
+          <label class="cp-item" id="cp-{{ c.id }}" data-name="{{ (c.name or '') | lower }}" data-phone="{{ c.phone_number }}">
+            <input type="checkbox" name="recipient_ids" value="{{ c.id }}" onchange="countRecipients()"/>
+            <div>
+              <div class="cp-name">{{ c.name or '—' }}</div>
+              <div class="cp-phone">{{ c.phone_number }}</div>
+            </div>
+          </label>
+          {% else %}
+          <div style="padding:16px;text-align:center;font-size:13px;color:rgba(3,12,24,0.35)">No contacts yet.</div>
+          {% endfor %}
+        </div>
+
+        <div style="margin-top:14px">
+          <div class="rc-badge rc-zero" id="rcBadge">0 recipients selected</div>
+        </div>
+      </div>
+
+      <!-- Step 3: Message -->
+      <div class="bc-section">
+        <div class="bc-section-title"><span>3</span> Message</div>
+
+        {% if templates %}
+        <div style="font-size:12.5px;font-weight:700;color:rgba(3,12,24,0.55);margin-bottom:8px">Pick a template (optional)</div>
+        <div class="tpl-pick" style="margin-bottom:16px">
+          {% for t in templates %}
+          <div class="tpl-row" onclick="useTemplate('{{ t.body | replace("'","\\'") | replace(chr(10),"\\n") }}')">
+            <div class="tpl-row-name">{{ t.name }}
+              <span style="font-size:10.5px;font-weight:700;color:rgba(3,12,24,0.35);margin-left:6px">{{ t.category | replace('-',' ') | title }}</span>
+            </div>
+            <div class="tpl-row-body">{{ t.body | truncate(80, true, '…') }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="bfg">
+          <label>Message Body *</label>
+          <textarea name="message_body" id="msgBody" required
+                    placeholder="Hi {name}, we have new listings in {area} you might love…"
+                    oninput="updatePreview()"></textarea>
+          <span class="bfg-hint">Merge fields: <strong>{name}</strong> · <strong>{area}</strong> · <strong>{property}</strong></span>
+        </div>
+
+        <div class="bfg">
+          <label>Preview (sample contact)</label>
+          <div class="preview-panel" id="bcPreview">Your message will appear here…</div>
+          <div class="preview-from">Sent from your WhatsApp Business number</div>
+        </div>
+      </div>
+
+      <!-- Send -->
+      <div class="bc-section">
+        <button type="submit" class="send-btn" id="sendBtn"
+                {% if not tenant.wa_phone_number_id %}disabled{% endif %}>
+          <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          Send Broadcast
+        </button>
+        <div style="font-size:12px;color:rgba(3,12,24,0.35);text-align:center;margin-top:10px">
+          Messages are sent one-by-one to avoid spam blocks. Large broadcasts may take a moment.
+        </div>
+      </div>
+
+    </div>
+  </form>
+
+  <!-- ── Right: History ── -->
+  <div>
+    <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;
+                color:rgba(3,12,24,0.38);margin-bottom:12px">Campaign History</div>
+    <div class="hist-card">
+      {% if campaigns %}
+      {% for c in campaigns %}
+      <div class="hist-row">
+        <div class="hist-icon">
+          <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div class="hist-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.name }}</div>
+          <div class="hist-meta">
+            <span class="status-chip s-{{ c.status }}">{{ c.status | title }}</span>
+            &nbsp;{{ c.total_count }} recipients
+            {% if c.segment_tags %} · {{ c.segment_tags | join(', ') }}{% endif %}
+          </div>
+        </div>
+        <div class="hist-right">
+          <div class="hist-sent">{{ c.sent_count }} sent</div>
+          {% if c.failed_count %}<div class="hist-failed">{{ c.failed_count }} failed</div>{% endif %}
+          <div class="hist-date">{{ c.sent_at.strftime('%d %b, %H:%M') if c.sent_at else c.created_at.strftime('%d %b') }}</div>
+        </div>
+      </div>
+      {% endfor %}
+      {% else %}
+      <div class="hist-empty">No broadcasts yet</div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function updatePreview(){
+  var body = document.getElementById('msgBody').value;
+  var preview = body
+    .replace(/\{name\}/g, 'Chidi')
+    .replace(/\{area\}/g, 'Lekki')
+    .replace(/\{property\}/g, 'Lekki');
+  document.getElementById('bcPreview').textContent = preview || 'Your message will appear here…';
+}
+
+function useTemplate(body){
+  var decoded = body.replace(/\\n/g, '\n');
+  document.getElementById('msgBody').value = decoded;
+  updatePreview();
+}
+
+function updateTagLabel(cb, lblId){
+  var lbl = document.getElementById(lblId);
+  if(cb.checked) lbl.classList.add('checked');
+  else            lbl.classList.remove('checked');
+}
+
+function filterContacts(q){
+  q = q.toLowerCase();
+  document.querySelectorAll('#contactPicker label.cp-item').forEach(function(el){
+    var name  = el.dataset.name  || '';
+    var phone = el.dataset.phone || '';
+    el.style.display = (name.includes(q) || phone.includes(q)) ? '' : 'none';
+  });
+}
+
+function countRecipients(){
+  var tags = document.querySelectorAll('input[name=segment_tags]:checked').length;
+  var indv = document.querySelectorAll('input[name=recipient_ids]:checked').length;
+  var total = tags > 0 ? '?' : 0;
+  /* If only individual picks, count exactly */
+  if(tags === 0) total = indv;
+  else           total = indv + ' + segment';
+
+  var badge = document.getElementById('rcBadge');
+  if((tags + indv) === 0){
+    badge.className = 'rc-badge rc-zero';
+    badge.textContent = '0 recipients selected';
+  } else {
+    badge.className = 'rc-badge';
+    badge.textContent = (tags > 0 ? 'Segment(s) + ' + indv + ' individual(s)' : indv + ' recipient(s) selected');
+  }
+}
+
+/* handle cp-item label clicks to toggle selected style */
+document.querySelectorAll('.cp-item input[type=checkbox]').forEach(function(cb){
+  cb.addEventListener('change', function(){
+    var item = this.closest('.cp-item');
+    if(this.checked) item.classList.add('selected');
+    else             item.classList.remove('selected');
+    countRecipients();
+  });
+});
+</script>
+{% endblock %}

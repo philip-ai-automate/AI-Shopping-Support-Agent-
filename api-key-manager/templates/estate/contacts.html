@@ -1,0 +1,497 @@
+{% extends "estate/base.html" %}
+{% block title %}Contacts — PhiXtra Real Estate{% endblock %}
+
+{% block head %}
+<style>
+/* ── Toolbar ── */
+.ct-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:20px}
+.ct-search{
+  flex:1;min-width:200px;padding:10px 14px;
+  border:1.5px solid rgba(3,12,24,0.12);border-radius:9px;
+  font-size:13.5px;font-family:inherit;color:#030C18;background:#fafbfc;
+  outline:none;transition:border-color .15s
+}
+.ct-search:focus{border-color:#030C18;background:#fff}
+.ct-filter-sel{
+  padding:10px 12px;border:1.5px solid rgba(3,12,24,0.12);border-radius:9px;
+  font-size:13px;font-family:inherit;color:#030C18;background:#fafbfc;
+  outline:none;cursor:pointer
+}
+.ct-btn{
+  display:inline-flex;align-items:center;gap:7px;padding:10px 18px;
+  border:none;border-radius:9px;font-size:13.5px;font-weight:750;
+  font-family:inherit;cursor:pointer;transition:.13s;white-space:nowrap;text-decoration:none
+}
+.ct-btn-dark{background:#030C18;color:#fff}
+.ct-btn-dark:hover{background:#0d1f3c;color:#fff;text-decoration:none}
+.ct-btn-outline{background:#fff;color:#030C18;border:1.5px solid rgba(3,12,24,0.14)}
+.ct-btn-outline:hover{border-color:#030C18;background:#fafbfc;text-decoration:none}
+
+/* ── Stats strip ── */
+.ct-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px}
+@media(max-width:700px){.ct-stats{grid-template-columns:repeat(2,1fr)}}
+.ct-stat{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:12px;
+  padding:16px 18px;box-shadow:0 2px 8px rgba(3,12,24,0.04)
+}
+.ct-stat-val{font-size:24px;font-weight:800;color:#030C18;letter-spacing:-.5px}
+.ct-stat-label{font-size:11.5px;color:rgba(3,12,24,0.40);font-weight:650;text-transform:uppercase;
+                letter-spacing:.05em;margin-top:2px}
+
+/* ── Table card ── */
+.ct-card{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:16px;
+  box-shadow:0 2px 12px rgba(3,12,24,0.04);overflow:hidden
+}
+.ct-table{width:100%;border-collapse:collapse}
+.ct-table th{
+  font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;
+  color:rgba(3,12,24,0.38);padding:13px 18px;text-align:left;
+  border-bottom:1px solid rgba(3,12,24,0.07);background:#fafbfc;white-space:nowrap
+}
+.ct-table td{padding:14px 18px;border-bottom:1px solid rgba(3,12,24,0.05);vertical-align:middle}
+.ct-table tr:last-child td{border-bottom:none}
+.ct-table tr:hover td{background:rgba(3,12,24,0.015)}
+
+/* Avatar */
+.ct-av{
+  width:36px;height:36px;border-radius:10px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;font-weight:800;color:#fff
+}
+.ct-name-cell{display:flex;align-items:center;gap:11px}
+.ct-name-main{font-size:13.5px;font-weight:700;color:#030C18}
+.ct-name-sub{font-size:11.5px;color:rgba(3,12,24,0.38);margin-top:1px;font-family:monospace}
+
+/* Source badge */
+.src-badge{
+  display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;
+  font-size:10.5px;font-weight:750;letter-spacing:.03em
+}
+.src-wa    {background:rgba(37,211,102,0.10);color:#0a7a3c;border:1px solid rgba(37,211,102,0.25)}
+.src-manual{background:rgba(26,86,219,0.09);color:#1a56db;border:1px solid rgba(26,86,219,0.20)}
+.src-csv   {background:rgba(247,144,9,0.10);color:#7a4f00;border:1px solid rgba(247,144,9,0.25)}
+
+/* Tags */
+.tag-chip{
+  display:inline-flex;padding:2px 9px;border-radius:999px;
+  font-size:11px;font-weight:700;background:rgba(3,12,24,0.06);
+  color:rgba(3,12,24,0.55);border:1px solid rgba(3,12,24,0.08);
+  margin:2px 2px 0 0;white-space:nowrap
+}
+.tag-chip.clickable{cursor:pointer;text-decoration:none}
+.tag-chip.clickable:hover{background:rgba(3,12,24,0.12);color:#030C18}
+
+/* Action buttons */
+.act-btn{
+  width:30px;height:30px;border-radius:8px;border:1.5px solid rgba(3,12,24,0.10);
+  background:#fff;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
+  color:rgba(3,12,24,0.40);transition:.12s;margin-left:4px
+}
+.act-btn:hover{border-color:#030C18;color:#030C18;background:#fafbfc}
+.act-btn.danger:hover{border-color:#F04438;color:#F04438}
+.act-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* ── Modals ── */
+.modal-bg{
+  display:none;position:fixed;inset:0;background:rgba(3,12,24,0.65);
+  z-index:500;align-items:center;justify-content:center;padding:20px;
+  backdrop-filter:blur(3px)
+}
+.modal-box{
+  background:#fff;border-radius:18px;width:100%;max-width:520px;
+  box-shadow:0 30px 80px rgba(0,0,0,0.25);overflow:hidden;
+  animation:modal-in .18s ease
+}
+@keyframes modal-in{from{transform:translateY(16px);opacity:0}to{transform:none;opacity:1}}
+.modal-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:20px 24px;border-bottom:1px solid rgba(3,12,24,0.07)
+}
+.modal-title{font-size:16px;font-weight:800;color:#030C18}
+.modal-close{
+  width:32px;height:32px;border-radius:8px;border:none;background:rgba(3,12,24,0.06);
+  cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;
+  color:rgba(3,12,24,0.45);transition:.12s
+}
+.modal-close:hover{background:rgba(3,12,24,0.12)}
+.modal-body{padding:22px 24px;display:flex;flex-direction:column;gap:14px}
+.modal-footer{padding:16px 24px;border-top:1px solid rgba(3,12,24,0.07);display:flex;gap:10px;justify-content:flex-end}
+
+/* Form fields inside modal */
+.mfg{display:flex;flex-direction:column;gap:4px}
+.mfg label{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:rgba(3,12,24,0.38)}
+.mfg input,.mfg textarea,.mfg select{
+  padding:10px 13px;border:1.5px solid rgba(3,12,24,0.12);border-radius:8px;
+  font-size:13.5px;font-family:inherit;color:#030C18;background:#fafbfc;outline:none;
+  transition:border-color .15s;width:100%;box-sizing:border-box
+}
+.mfg input:focus,.mfg textarea:focus{border-color:#030C18;background:#fff}
+.mfg textarea{resize:vertical;min-height:72px}
+.mfg2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:480px){.mfg2{grid-template-columns:1fr}}
+.mf-hint{font-size:11.5px;color:rgba(3,12,24,0.38)}
+
+/* CSV drop zone */
+.csv-drop{
+  border:2px dashed rgba(3,12,24,0.15);border-radius:12px;padding:28px 20px;
+  text-align:center;cursor:pointer;transition:.15s;background:#fafbfc
+}
+.csv-drop:hover,.csv-drop.over{border-color:#1a56db;background:rgba(26,86,219,0.04)}
+.csv-drop svg{width:32px;height:32px;stroke:rgba(3,12,24,0.22);fill:none;
+              stroke-width:1.5;stroke-linecap:round;margin:0 auto 10px;display:block}
+.csv-drop p{font-size:13px;color:rgba(3,12,24,0.45);margin:0}
+.csv-drop strong{color:#030C18}
+
+/* Empty state */
+.ct-empty{text-align:center;padding:60px 20px}
+.ct-empty svg{width:48px;height:48px;stroke:rgba(3,12,24,0.14);fill:none;stroke-width:1.3;
+              stroke-linecap:round;margin:0 auto 16px;display:block}
+.ct-empty h3{font-size:17px;font-weight:750;color:#030C18;margin-bottom:6px}
+.ct-empty p{font-size:14px;color:rgba(3,12,24,0.42);max-width:340px;margin:0 auto}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title" style="margin-bottom:4px">Contacts</h1>
+    <p class="muted">{{ contacts | length }} contact{{ 's' if contacts | length != 1 }}</p>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="ct-btn ct-btn-outline" onclick="openModal('csvModal')">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Upload CSV
+    </button>
+    <button class="ct-btn ct-btn-dark" onclick="openModal('addModal')">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add Contact
+    </button>
+  </div>
+</div>
+
+{% with msgs = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in msgs %}
+  <div class="flash {{ 'danger' if cat in ('error','danger') else cat }}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+<!-- Stats -->
+{% set total = contacts | length %}
+{% set wa_count = contacts | selectattr('source','eq','whatsapp') | list | length %}
+{% set manual_count = contacts | selectattr('source','eq','manual') | list | length %}
+{% set csv_count = contacts | selectattr('source','eq','csv') | list | length %}
+<div class="ct-stats">
+  <div class="ct-stat">
+    <div class="ct-stat-val">{{ total }}</div>
+    <div class="ct-stat-label">Total</div>
+  </div>
+  <div class="ct-stat">
+    <div class="ct-stat-val" style="color:#0a7a3c">{{ wa_count }}</div>
+    <div class="ct-stat-label">Via WhatsApp</div>
+  </div>
+  <div class="ct-stat">
+    <div class="ct-stat-val" style="color:#1a56db">{{ manual_count }}</div>
+    <div class="ct-stat-label">Manual</div>
+  </div>
+  <div class="ct-stat">
+    <div class="ct-stat-val" style="color:#7a4f00">{{ csv_count }}</div>
+    <div class="ct-stat-label">CSV Import</div>
+  </div>
+</div>
+
+<!-- Toolbar -->
+<form method="GET" action="{{ url_for('estate.contacts') }}" class="ct-toolbar">
+  <input class="ct-search" type="text" name="q" placeholder="Search name, phone, email…"
+         value="{{ search }}"/>
+  <select class="ct-filter-sel" name="tag" onchange="this.form.submit()">
+    <option value="">All Tags</option>
+    {% for t in all_tags %}
+    <option value="{{ t }}" {% if tag_filter == t %}selected{% endif %}>{{ t }}</option>
+    {% endfor %}
+  </select>
+  <select class="ct-filter-sel" name="source" onchange="this.form.submit()">
+    <option value="">All Sources</option>
+    <option value="whatsapp" {% if source_filter=='whatsapp' %}selected{% endif %}>WhatsApp</option>
+    <option value="manual"   {% if source_filter=='manual'   %}selected{% endif %}>Manual</option>
+    <option value="csv"      {% if source_filter=='csv'      %}selected{% endif %}>CSV</option>
+  </select>
+  <button type="submit" class="ct-btn ct-btn-outline">Search</button>
+  {% if search or tag_filter or source_filter %}
+  <a href="{{ url_for('estate.contacts') }}" class="ct-btn ct-btn-outline">Clear</a>
+  {% endif %}
+</form>
+
+<!-- Tags quick-filter bar -->
+{% if all_tags %}
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
+  <a href="{{ url_for('estate.contacts') }}" class="tag-chip clickable" style="{% if not tag_filter %}background:rgba(3,12,24,0.12);color:#030C18{% endif %}">All</a>
+  {% for t in all_tags %}
+  <a href="{{ url_for('estate.contacts', tag=t) }}" class="tag-chip clickable"
+     style="{% if tag_filter == t %}background:#030C18;color:#fff;border-color:#030C18{% endif %}">
+    {{ t }}
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Table -->
+<div class="ct-card">
+  {% if contacts %}
+  <div style="overflow-x:auto">
+  <table class="ct-table">
+    <thead>
+      <tr>
+        <th>Contact</th>
+        <th>Tags</th>
+        <th>Source</th>
+        <th>Area</th>
+        <th>Last Seen</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% set av_colors = ['#1a56db','#7c3aed','#0891b2','#0369a1','#4f46e5','#6d28d9','#0a7a3c'] %}
+    {% for c in contacts %}
+    {% set col = av_colors[loop.index0 % av_colors|length] %}
+    <tr>
+      <td>
+        <div class="ct-name-cell">
+          <div class="ct-av" style="background:{{ col }}">
+            {{ (c.name or c.phone_number or '?')[0] | upper }}
+          </div>
+          <div>
+            <div class="ct-name-main">{{ c.name or '—' }}</div>
+            <div class="ct-name-sub">{{ c.phone_number }}</div>
+            {% if c.email %}<div style="font-size:11px;color:rgba(3,12,24,0.38)">{{ c.email }}</div>{% endif %}
+          </div>
+        </div>
+      </td>
+      <td>
+        {% if c.tags %}
+          {% for t in c.tags %}
+          <a href="{{ url_for('estate.contacts', tag=t) }}" class="tag-chip clickable">{{ t }}</a>
+          {% endfor %}
+        {% else %}
+          <span style="color:rgba(3,12,24,0.28);font-size:12px">—</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if c.source == 'whatsapp' %}
+        <span class="src-badge src-wa">💬 WhatsApp</span>
+        {% elif c.source == 'csv' %}
+        <span class="src-badge src-csv">📄 CSV</span>
+        {% else %}
+        <span class="src-badge src-manual">✏️ Manual</span>
+        {% endif %}
+      </td>
+      <td style="font-size:13px;color:rgba(3,12,24,0.55)">{{ c.preferred_area or '—' }}</td>
+      <td style="font-size:12px;color:rgba(3,12,24,0.38);white-space:nowrap">
+        {{ c.last_seen_at.strftime('%d %b %Y') if c.last_seen_at else '—' }}
+      </td>
+      <td style="white-space:nowrap;text-align:right">
+        {% if c.source == 'whatsapp' %}
+        <a href="{{ url_for('estate.inbox_detail', customer_id=c.id) }}" class="act-btn" title="View conversation">
+          <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </a>
+        {% endif %}
+        <button class="act-btn" title="Edit contact"
+                onclick="openEdit({{ c.id }}, '{{ (c.name or '') | replace("'","\'") }}', '{{ c.email or '' }}', '{{ c.preferred_area or '' }}', '{{ (c.notes or '') | replace("'","\'") }}', '{{ c.tags | join(",") }}')">
+          <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+        {% if c.source != 'whatsapp' %}
+        <form method="POST" action="{{ url_for('estate.contacts') }}" style="display:inline">
+          <input type="hidden" name="section" value="delete_contact"/>
+          <input type="hidden" name="contact_id" value="{{ c.id }}"/>
+          <button type="button" class="act-btn danger" title="Delete contact"
+                  onclick="if(confirm('Delete this contact?'))this.closest('form').submit()">
+            <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+          </button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <div class="ct-empty">
+    <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    <h3>No contacts yet</h3>
+    <p>Add contacts manually or upload a CSV to get started.</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── Add Contact Modal ── -->
+<div class="modal-bg" id="addModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <span class="modal-title">Add Contact</span>
+      <button class="modal-close" onclick="closeModal('addModal')">×</button>
+    </div>
+    <form method="POST" action="{{ url_for('estate.contacts') }}">
+      <input type="hidden" name="section" value="add_contact"/>
+      <div class="modal-body">
+        <div class="mfg2">
+          <div class="mfg">
+            <label>Full Name</label>
+            <input type="text" name="name" placeholder="Chidi Okeke"/>
+          </div>
+          <div class="mfg">
+            <label>Phone Number *</label>
+            <input type="text" name="phone" required placeholder="2348012345678"/>
+          </div>
+        </div>
+        <div class="mfg2">
+          <div class="mfg">
+            <label>Email</label>
+            <input type="email" name="email" placeholder="chidi@email.com"/>
+          </div>
+          <div class="mfg">
+            <label>Budget (₦)</label>
+            <input type="number" name="budget" placeholder="50000000"/>
+          </div>
+        </div>
+        <div class="mfg2">
+          <div class="mfg">
+            <label>Area / Location</label>
+            <input type="text" name="area" placeholder="Lekki Phase 1"/>
+          </div>
+          <div class="mfg">
+            <label>Tags</label>
+            <input type="text" name="tags" placeholder="lekki, investor, 3bed"/>
+            <span class="mf-hint">Comma-separated — used for segments &amp; broadcast</span>
+          </div>
+        </div>
+        <div class="mfg">
+          <label>Notes</label>
+          <textarea name="notes" placeholder="Any notes about this contact…"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="ct-btn ct-btn-outline" onclick="closeModal('addModal')">Cancel</button>
+        <button type="submit" class="ct-btn ct-btn-dark">Add Contact</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Edit Contact Modal ── -->
+<div class="modal-bg" id="editModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <span class="modal-title">Edit Contact</span>
+      <button class="modal-close" onclick="closeModal('editModal')">×</button>
+    </div>
+    <form method="POST" id="editForm">
+      <input type="hidden" name="_method" value="POST"/>
+      <div class="modal-body">
+        <div class="mfg2">
+          <div class="mfg">
+            <label>Full Name</label>
+            <input type="text" name="name" id="editName" placeholder="Chidi Okeke"/>
+          </div>
+          <div class="mfg">
+            <label>Email</label>
+            <input type="email" name="email" id="editEmail" placeholder="chidi@email.com"/>
+          </div>
+        </div>
+        <div class="mfg2">
+          <div class="mfg">
+            <label>Area / Location</label>
+            <input type="text" name="area" id="editArea" placeholder="Lekki Phase 1"/>
+          </div>
+          <div class="mfg">
+            <label>Tags</label>
+            <input type="text" name="tags" id="editTags" placeholder="lekki, investor"/>
+          </div>
+        </div>
+        <div class="mfg">
+          <label>Notes</label>
+          <textarea name="notes" id="editNotes"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="ct-btn ct-btn-outline" onclick="closeModal('editModal')">Cancel</button>
+        <button type="submit" class="ct-btn ct-btn-dark">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── CSV Upload Modal ── -->
+<div class="modal-bg" id="csvModal">
+  <div class="modal-box" style="max-width:580px">
+    <div class="modal-head">
+      <span class="modal-title">Upload CSV</span>
+      <button class="modal-close" onclick="closeModal('csvModal')">×</button>
+    </div>
+    <form method="POST" action="{{ url_for('estate.contacts') }}" enctype="multipart/form-data">
+      <input type="hidden" name="section" value="csv_upload"/>
+      <div class="modal-body">
+        <div class="csv-drop" id="csvDrop" onclick="document.getElementById('csvFile').click()">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p><strong>Click to choose</strong> or drag &amp; drop a CSV file</p>
+          <p style="font-size:12px;margin-top:6px" id="csvFileName">No file chosen</p>
+          <input type="file" id="csvFile" name="csv_file" accept=".csv" style="display:none"
+                 onchange="document.getElementById('csvFileName').textContent=this.files[0]?.name||'No file chosen'"/>
+        </div>
+        <div style="background:#f8fafc;border:1px solid rgba(3,12,24,0.08);border-radius:10px;padding:14px 16px">
+          <div style="font-size:12.5px;font-weight:700;color:#030C18;margin-bottom:8px">Expected columns:</div>
+          <code style="font-size:11.5px;color:rgba(3,12,24,0.55);line-height:1.8;display:block">
+            Name, Phone, Email, Area, Budget, Tags<br/>
+            Chidi Okeke, 2348012345678, chidi@email.com, Lekki, 50000000, "investor,lekki"
+          </code>
+          <div style="font-size:11.5px;color:rgba(3,12,24,0.40);margin-top:8px">
+            Only <strong>Phone</strong> is required. If a contact with the same phone already exists, their tags are merged.
+          </div>
+        </div>
+        <a href="data:text/csv;charset=utf-8,Name%2CPhone%2CEmail%2CArea%2CBudget%2CTags%0AChidi%20Okeke%2C2348012345678%2Cchidi%40email.com%2CLekki%2C50000000%2C%22investor%2Clekki%22"
+           download="phixtra_contacts_template.csv"
+           style="font-size:13px;color:#1a56db;font-weight:650;text-decoration:none">
+          ↓ Download template CSV
+        </a>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="ct-btn ct-btn-outline" onclick="closeModal('csvModal')">Cancel</button>
+        <button type="submit" class="ct-btn ct-btn-dark">Import Contacts</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openModal(id){ document.getElementById(id).style.display='flex'; }
+function closeModal(id){ document.getElementById(id).style.display='none'; }
+document.addEventListener('keydown',function(e){ if(e.key==='Escape') ['addModal','editModal','csvModal'].forEach(closeModal); });
+
+function openEdit(id, name, email, area, notes, tags) {
+  document.getElementById('editForm').action = '/estate/contacts/' + id + '/edit';
+  document.getElementById('editName').value  = name;
+  document.getElementById('editEmail').value = email;
+  document.getElementById('editArea').value  = area;
+  document.getElementById('editNotes').value = notes;
+  document.getElementById('editTags').value  = tags;
+  openModal('editModal');
+}
+
+// CSV drag-drop
+var drop = document.getElementById('csvDrop');
+if(drop){
+  drop.addEventListener('dragover',function(e){e.preventDefault();drop.classList.add('over')});
+  drop.addEventListener('dragleave',function(){drop.classList.remove('over')});
+  drop.addEventListener('drop',function(e){
+    e.preventDefault();drop.classList.remove('over');
+    var f=e.dataTransfer.files[0];
+    if(f){ document.getElementById('csvFile').files=e.dataTransfer.files;
+           document.getElementById('csvFileName').textContent=f.name; }
+  });
+}
+</script>
+{% endblock %}
