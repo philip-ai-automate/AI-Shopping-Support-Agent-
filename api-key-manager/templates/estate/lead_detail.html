@@ -771,10 +771,17 @@
         <div class="pm-stat-val">₦{{ '{:,.0f}'.format(milestone_totals.paid) }}</div>
         <div class="pm-stat-lbl">Total Paid</div>
       </div>
+      {% if milestone_totals.overpaid > 0 %}
+      <div class="pm-stat pm-s-paid">
+        <div class="pm-stat-val">₦{{ '{:,.0f}'.format(milestone_totals.overpaid) }}</div>
+        <div class="pm-stat-lbl">Overpaid</div>
+      </div>
+      {% else %}
       <div class="pm-stat {% if milestone_totals.outstanding > 0 %}pm-s-owe{% endif %}">
         <div class="pm-stat-val">₦{{ '{:,.0f}'.format(milestone_totals.outstanding) }}</div>
         <div class="pm-stat-lbl">Outstanding</div>
       </div>
+      {% endif %}
     </div>
 
     <!-- Progress bar -->
@@ -796,7 +803,7 @@
           {% if m.paid %}
             <span class="pm-chip pm-chip-paid">✅ Paid</span>
             <span class="pm-paid-info">
-              ₦{{ '{:,.0f}'.format(m.paid_amount or m.amount) }}
+              ₦{{ '{:,.0f}'.format(m.paid_amount if m.paid_amount is not none else m.amount) }}
               {% if m.paid_date %}· {{ m.paid_date.strftime('%d %b %Y') }}{% endif %}
             </span>
           {% elif is_overdue %}

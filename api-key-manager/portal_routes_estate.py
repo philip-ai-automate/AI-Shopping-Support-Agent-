@@ -2279,12 +2279,15 @@ def lead_detail(contact_id):
         float(m["paid_amount"] if m["paid_amount"] is not None else m["amount"] or 0)
         for m in milestones if m["paid"]
     ))
-    outstanding  = total_scheduled - total_paid
-    pct_paid     = round(total_paid / total_scheduled * 100) if total_scheduled > 0 else 0
+    balance      = total_scheduled - total_paid
+    outstanding  = max(0.0, balance)
+    overpaid     = max(0.0, -balance)
+    pct_paid     = min(100, round(total_paid / total_scheduled * 100)) if total_scheduled > 0 else 0
     milestone_totals = {
         "scheduled":   total_scheduled,
         "paid":        total_paid,
         "outstanding": outstanding,
+        "overpaid":    overpaid,
         "pct":         pct_paid,
     }
 
@@ -2652,6 +2655,11 @@ def milestone_add(contact_id):
     except ValueError:
         flash("Amount must be a positive number.", "danger")
         return redirect(url_for("estate.lead_detail", contact_id=contact_id))
+    try:
+        datetime.strptime(due_date, "%Y-%m-%d")
+    except ValueError:
+        flash("Invalid due date.", "danger")
+        return redirect(url_for("estate.lead_detail", contact_id=contact_id))
 
     conn = get_db_connection()
     if conn:
@@ -2693,6 +2701,11 @@ def milestone_pay(contact_id, milestone_id):
         paid_amount = float(paid_amount_raw.replace(",", "")) if paid_amount_raw else None
     except ValueError:
         paid_amount = None
+    if paid_date:
+        try:
+            datetime.strptime(paid_date, "%Y-%m-%d")
+        except ValueError:
+            paid_date = None  # fall back to CURRENT_DATE
 
     conn = get_db_connection()
     if conn:
