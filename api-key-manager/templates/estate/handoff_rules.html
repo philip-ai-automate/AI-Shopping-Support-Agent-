@@ -1,0 +1,394 @@
+{% extends "estate/base.html" %}
+{% block title %}Handoff Rules — PhiXtra Real Estate{% endblock %}
+
+{% block head %}
+<style>
+/* ── How it works ── */
+.how-grid{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px
+}
+@media(max-width:860px){.how-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:500px){.how-grid{grid-template-columns:1fr}}
+
+.how-step{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:13px;
+  padding:18px 18px 16px;box-shadow:0 2px 10px rgba(3,12,24,0.04);
+  position:relative;overflow:hidden
+}
+.how-step::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:13px 13px 0 0;
+  background:linear-gradient(90deg,#1a56db,#7c3aed)
+}
+.how-num{
+  width:28px;height:28px;border-radius:8px;
+  background:#030C18;color:#fff;
+  font-size:13px;font-weight:800;
+  display:flex;align-items:center;justify-content:center;
+  margin-bottom:12px;flex-shrink:0
+}
+.how-title{font-size:13.5px;font-weight:750;color:#030C18;margin-bottom:5px}
+.how-desc{font-size:12px;color:rgba(3,12,24,0.48);line-height:1.55}
+
+/* ── Rule cards ── */
+.rule-list{display:flex;flex-direction:column;gap:10px;margin-bottom:24px}
+
+.rule-card{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:14px;
+  box-shadow:0 2px 10px rgba(3,12,24,0.04);
+  padding:18px 22px;
+  display:flex;align-items:center;gap:16px;
+  transition:box-shadow .15s
+}
+.rule-card:hover{box-shadow:0 5px 20px rgba(3,12,24,0.08)}
+.rule-card.paused{opacity:.65}
+
+.rule-status-dot{
+  width:9px;height:9px;border-radius:50%;flex-shrink:0;margin-top:2px
+}
+.rule-status-dot.active{background:#12B76A;box-shadow:0 0 0 3px rgba(18,183,106,0.18)}
+.rule-status-dot.paused{background:rgba(3,12,24,0.25)}
+
+.rule-main{flex:1;min-width:0}
+.rule-name{
+  font-size:14.5px;font-weight:750;color:#030C18;
+  margin-bottom:7px;display:flex;align-items:center;gap:8px;flex-wrap:wrap
+}
+.rule-active-pill{
+  font-size:10.5px;font-weight:800;letter-spacing:.04em;
+  padding:2px 9px;border-radius:999px;
+}
+.rule-active-pill.on{background:rgba(18,183,106,0.10);color:#0a7a3c;border:1px solid rgba(18,183,106,0.25)}
+.rule-active-pill.off{background:rgba(3,12,24,0.06);color:rgba(3,12,24,0.45);border:1px solid rgba(3,12,24,0.10)}
+
+.rule-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.rule-kw{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:12px;font-weight:700;color:#030C18;
+  background:#f0f2f5;border:1px solid rgba(3,12,24,0.10);
+  padding:3px 10px;border-radius:6px;font-family:monospace;letter-spacing:.02em
+}
+.rule-kw-label{font-family:inherit;font-size:11px;color:rgba(3,12,24,0.42);font-weight:600;margin-right:2px}
+.rule-sep{color:rgba(3,12,24,0.18);font-size:13px}
+.rule-channel{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:12px;font-weight:650;color:rgba(3,12,24,0.55)
+}
+.rule-channel svg{width:13px;height:13px;flex-shrink:0;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.rule-channel.wa{color:#25D366}
+.rule-channel.em{color:#1a56db}
+.rule-channel.both{color:#7c3aed}
+.rule-target{
+  font-size:11.5px;color:rgba(3,12,24,0.40);font-family:monospace;
+  background:rgba(3,12,24,0.04);padding:2px 8px;border-radius:5px
+}
+
+.rule-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.rule-btn{
+  padding:7px 14px;border-radius:8px;font-size:12.5px;font-weight:700;font-family:inherit;
+  cursor:pointer;border:1.5px solid rgba(3,12,24,0.10);background:#fff;
+  color:rgba(3,12,24,0.55);transition:.13s;white-space:nowrap
+}
+.rule-btn:hover{border-color:rgba(3,12,24,0.22);color:#030C18}
+.rule-btn.danger{color:#F04438;border-color:rgba(240,68,56,0.20)}
+.rule-btn.danger:hover{background:rgba(240,68,56,0.05);border-color:rgba(240,68,56,0.35)}
+
+/* ── Empty state ── */
+.rule-empty{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:14px;
+  padding:60px 20px;text-align:center;margin-bottom:24px;
+  box-shadow:0 2px 10px rgba(3,12,24,0.04)
+}
+.rule-empty svg{width:44px;height:44px;stroke:rgba(3,12,24,0.14);fill:none;
+                stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;
+                display:block;margin:0 auto 16px}
+.rule-empty h3{font-size:16px;font-weight:750;color:#030C18;margin-bottom:6px}
+.rule-empty p{font-size:13.5px;color:rgba(3,12,24,0.42);max-width:340px;margin:0 auto 20px;line-height:1.6}
+
+/* ── Add rule button ── */
+.add-rule-btn{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:10px 20px;background:#030C18;color:#fff;
+  border:none;border-radius:9px;font-size:13.5px;font-weight:700;font-family:inherit;
+  cursor:pointer;transition:background .13s,transform .12s;text-decoration:none
+}
+.add-rule-btn:hover{background:#0d1f3c;transform:translateY(-1px);color:#fff;text-decoration:none}
+
+/* ── Modal ── */
+.modal-overlay{
+  display:none;position:fixed;inset:0;background:rgba(3,12,24,0.60);
+  z-index:1000;align-items:center;justify-content:center;padding:20px
+}
+.modal-box{
+  background:#fff;border-radius:18px;padding:32px 30px;
+  width:100%;max-width:500px;box-shadow:0 30px 80px rgba(0,0,0,0.25)
+}
+.modal-title{font-size:18px;font-weight:800;color:#030C18;margin-bottom:4px}
+.modal-sub{font-size:13px;color:rgba(3,12,24,0.42);margin-bottom:24px}
+
+.mf-group{display:flex;flex-direction:column;gap:5px;margin-bottom:16px}
+.mf-label{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(3,12,24,0.42)}
+.mf-input{
+  width:100%;padding:11px 14px;
+  border:1.5px solid rgba(3,12,24,0.12);border-radius:9px;
+  font-size:13.5px;font-family:inherit;color:#030C18;background:#fafbfc;
+  outline:none;transition:border-color .15s,box-shadow .15s,background .15s;
+  box-sizing:border-box
+}
+.mf-input:focus{border-color:#030C18;background:#fff;box-shadow:0 0 0 3px rgba(3,12,24,0.06)}
+.mf-hint{font-size:11.5px;color:rgba(3,12,24,0.38);margin-top:2px}
+
+.mf-select{
+  width:100%;padding:11px 14px;
+  border:1.5px solid rgba(3,12,24,0.12);border-radius:9px;
+  font-size:13.5px;font-family:inherit;color:#030C18;background:#fafbfc;
+  outline:none;cursor:pointer;appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23667085' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 14px center;
+  padding-right:36px;transition:border-color .15s,box-shadow .15s
+}
+.mf-select:focus{border-color:#030C18;box-shadow:0 0 0 3px rgba(3,12,24,0.06)}
+
+.modal-actions{display:flex;align-items:center;gap:10px;justify-content:flex-end;margin-top:22px}
+.mf-btn-cancel{
+  padding:10px 20px;border:1.5px solid rgba(3,12,24,0.12);border-radius:9px;
+  background:#fff;font-size:13.5px;font-weight:650;font-family:inherit;
+  color:rgba(3,12,24,0.55);cursor:pointer;transition:.13s
+}
+.mf-btn-cancel:hover{border-color:rgba(3,12,24,0.22);color:#030C18}
+.mf-btn-save{
+  padding:10px 24px;background:#030C18;color:#fff;border:none;border-radius:9px;
+  font-size:13.5px;font-weight:750;font-family:inherit;cursor:pointer;
+  transition:background .13s,transform .12s
+}
+.mf-btn-save:hover{background:#0d1f3c;transform:translateY(-1px)}
+
+/* Keyword preview chip */
+#kwPreview{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:12px;font-weight:700;color:#030C18;
+  background:#f0f2f5;border:1px solid rgba(3,12,24,0.10);
+  padding:3px 10px;border-radius:6px;font-family:monospace;
+  margin-top:6px;transition:opacity .2s
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title" style="margin-bottom:4px">Handoff Rules</h1>
+    <p class="muted">Configure when the AI should alert a human agent</p>
+  </div>
+  <button class="add-rule-btn" onclick="openModal()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round">
+      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    </svg>
+    Add Rule
+  </button>
+</div>
+
+{% with msgs = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in msgs %}
+  <div class="flash {{ 'danger' if cat in ('error','danger') else cat }}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+<!-- ── How it works ── -->
+<div class="how-grid">
+  <div class="how-step">
+    <div class="how-num">1</div>
+    <div class="how-title">AI detects a keyword</div>
+    <div class="how-desc">When your AI outputs a trigger keyword (e.g. CALLBACK, INSPECT) during a buyer conversation, the rule fires.</div>
+  </div>
+  <div class="how-step">
+    <div class="how-num">2</div>
+    <div class="how-title">Buyer summary captured</div>
+    <div class="how-desc">Budget, preferred area, property type, and conversation context are packaged automatically.</div>
+  </div>
+  <div class="how-step">
+    <div class="how-num">3</div>
+    <div class="how-title">Agent is notified</div>
+    <div class="how-desc">A notification is sent via WhatsApp or email with the buyer's full profile so your agent can follow up immediately.</div>
+  </div>
+  <div class="how-step">
+    <div class="how-num">4</div>
+    <div class="how-title">Inbox alert appears</div>
+    <div class="how-desc">The handoff request also shows in your Leads &amp; Inbox with a "Pending" badge for tracking and resolution.</div>
+  </div>
+</div>
+
+<!-- ── Rules list ── -->
+{% if rules %}
+<div class="rule-list">
+  {% for rule in rules %}
+  <div class="rule-card {% if not rule.is_active %}paused{% endif %}">
+
+    <div class="rule-status-dot {% if rule.is_active %}active{% else %}paused{% endif %}"></div>
+
+    <div class="rule-main">
+      <div class="rule-name">
+        {{ rule.rule_name }}
+        <span class="rule-active-pill {% if rule.is_active %}on{% else %}off{% endif %}">
+          {{ 'Active' if rule.is_active else 'Paused' }}
+        </span>
+      </div>
+      <div class="rule-meta">
+        <span class="rule-kw">
+          <span class="rule-kw-label">TRIGGER</span>{{ rule.trigger_keyword }}
+        </span>
+        <span class="rule-sep">→</span>
+        {% if rule.notify_channel == 'whatsapp' %}
+        <span class="rule-channel wa">
+          <svg viewBox="0 0 24 24" fill="#25D366" stroke="none">
+            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+          </svg>
+          WhatsApp
+        </span>
+        {% elif rule.notify_channel == 'email' %}
+        <span class="rule-channel em">
+          <svg viewBox="0 0 24 24" stroke="#1a56db">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+            <polyline points="22,6 12,13 2,6"/>
+          </svg>
+          Email
+        </span>
+        {% else %}
+        <span class="rule-channel both">
+          <svg viewBox="0 0 24 24" stroke="#7c3aed">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+          </svg>
+          WhatsApp &amp; Email
+        </span>
+        {% endif %}
+        {% if rule.notify_target %}
+        <span class="rule-target">{{ rule.notify_target }}</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="rule-actions">
+      <form method="POST" action="{{ url_for('estate.handoff_rules') }}">
+        <input type="hidden" name="action" value="toggle"/>
+        <input type="hidden" name="rule_id" value="{{ rule.id }}"/>
+        <button type="submit" class="rule-btn">
+          {{ 'Pause' if rule.is_active else 'Resume' }}
+        </button>
+      </form>
+      <form method="POST" action="{{ url_for('estate.handoff_rules') }}"
+            onsubmit="return confirm('Delete this rule permanently?')">
+        <input type="hidden" name="action" value="delete"/>
+        <input type="hidden" name="rule_id" value="{{ rule.id }}"/>
+        <button type="submit" class="rule-btn danger">Delete</button>
+      </form>
+    </div>
+
+  </div>
+  {% endfor %}
+</div>
+
+{% else %}
+
+<!-- ── Empty state ── -->
+<div class="rule-empty">
+  <svg viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="10"/>
+    <line x1="12" y1="8" x2="12" y2="12"/>
+    <line x1="12" y1="16" x2="12.01" y2="16"/>
+  </svg>
+  <h3>No handoff rules yet</h3>
+  <p>Add a rule to alert your agents automatically when a buyer needs human attention.</p>
+  <button class="add-rule-btn" onclick="openModal()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round">
+      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    </svg>
+    Add Your First Rule
+  </button>
+</div>
+
+{% endif %}
+
+<!-- ── Add Rule Modal ── -->
+<div class="modal-overlay" id="addRuleModal" onclick="if(event.target===this)closeModal()">
+  <div class="modal-box">
+    <div class="modal-title">Add Handoff Rule</div>
+    <div class="modal-sub">Define when your AI should hand a buyer off to a human agent.</div>
+
+    <form method="POST" action="{{ url_for('estate.handoff_rules') }}">
+      <input type="hidden" name="action" value="create"/>
+
+      <div class="mf-group">
+        <label class="mf-label">Rule Name *</label>
+        <input class="mf-input" type="text" name="rule_name" required maxlength="100"
+               placeholder="e.g. Buyer Callback Request"/>
+      </div>
+
+      <div class="mf-group">
+        <label class="mf-label">Trigger Keyword *</label>
+        <input class="mf-input" type="text" name="trigger_keyword" id="kwInput"
+               required maxlength="80" placeholder="e.g. CALLBACK"
+               oninput="updateKwPreview(this.value)"
+               style="text-transform:uppercase;font-family:monospace;letter-spacing:.04em"/>
+        <div style="margin-top:5px">
+          <span id="kwPreview" style="opacity:0">KEYWORD</span>
+        </div>
+        <div class="mf-hint">The exact keyword your AI outputs to trigger this rule. Use uppercase.</div>
+      </div>
+
+      <div class="mf-group">
+        <label class="mf-label">Notify Channel *</label>
+        <select class="mf-select" name="notify_channel" required>
+          <option value="whatsapp">WhatsApp</option>
+          <option value="email">Email</option>
+          <option value="both">Both (WhatsApp &amp; Email)</option>
+        </select>
+      </div>
+
+      <div class="mf-group">
+        <label class="mf-label">Notify Target</label>
+        <input class="mf-input" type="text" name="notify_target" maxlength="255"
+               placeholder="e.g. 2348012345678 or agent@example.com"/>
+        <div class="mf-hint">Leave blank to use your account contact details.</div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="mf-btn-cancel" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="mf-btn-save">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline;vertical-align:middle;margin-right:6px">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+            <polyline points="17 21 17 13 7 13 7 21"/>
+            <polyline points="7 3 7 8 15 8"/>
+          </svg>
+          Save Rule
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openModal() {
+  document.getElementById('addRuleModal').style.display = 'flex';
+  document.querySelector('#addRuleModal input[name="rule_name"]').focus();
+}
+function closeModal() {
+  document.getElementById('addRuleModal').style.display = 'none';
+}
+function updateKwPreview(val) {
+  var el = document.getElementById('kwPreview');
+  var v = val.trim().toUpperCase();
+  if (v) {
+    el.textContent = v;
+    el.style.opacity = '1';
+  } else {
+    el.style.opacity = '0';
+  }
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeModal();
+});
+</script>
+{% endblock %}

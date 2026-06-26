@@ -1,0 +1,360 @@
+{% extends "estate/base.html" %}
+{% block title %}System Instruction — PhiXtra Real Estate{% endblock %}
+
+{% block head %}
+<style>
+/* ── Two-column layout ── */
+.si-grid{display:grid;grid-template-columns:1fr 360px;gap:20px;align-items:start}
+@media(max-width:940px){.si-grid{grid-template-columns:1fr}}
+
+/* ── Cards ── */
+.si-card{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:16px;
+  box-shadow:0 2px 12px rgba(3,12,24,0.04);overflow:hidden;margin-bottom:16px
+}
+.si-card:last-child{margin-bottom:0}
+.si-card-head{
+  display:flex;align-items:center;gap:12px;padding:18px 22px;
+  border-bottom:1px solid rgba(3,12,24,0.07);
+  background:linear-gradient(to right,rgba(3,12,24,0.015),transparent)
+}
+.si-card-icon{
+  width:36px;height:36px;border-radius:10px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center
+}
+.si-card-icon svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.si-card-icon.purple{background:rgba(124,58,237,0.09);color:#7c3aed}
+.si-card-icon.blue  {background:rgba(26,86,219,0.09); color:#1a56db}
+.si-card-icon.amber {background:rgba(247,144,9,0.09); color:#b45309}
+.si-card-label{font-size:14px;font-weight:750;color:#030C18}
+.si-card-sub{font-size:12px;color:rgba(3,12,24,0.40);margin-top:1px}
+.si-card-body{padding:22px}
+
+/* Plan feature badge */
+.plan-badge{
+  display:inline-flex;align-items:center;gap:5px;
+  background:linear-gradient(135deg,#6d28d9,#4f46e5);
+  color:#fff;font-size:11px;font-weight:750;letter-spacing:.03em;
+  padding:3px 11px;border-radius:999px
+}
+.plan-badge svg{width:11px;height:11px;fill:#fff;stroke:none}
+
+/* ── Prompt textarea ── */
+.si-textarea{
+  width:100%;padding:14px 16px;
+  border:1.5px solid rgba(3,12,24,0.12);border-radius:11px;
+  font-size:13px;font-family:monospace;color:#030C18;background:#fafbfc;
+  outline:none;resize:vertical;line-height:1.65;
+  transition:border-color .15s,box-shadow .15s,background .15s;
+  box-sizing:border-box;min-height:340px
+}
+.si-textarea:focus{border-color:#030C18;background:#fff;box-shadow:0 0 0 3px rgba(3,12,24,0.06)}
+.si-textarea::placeholder{color:rgba(3,12,24,0.28);font-size:12.5px}
+
+/* Character counter */
+.si-counter{
+  display:flex;justify-content:space-between;align-items:center;
+  margin-top:7px;font-size:11.5px;color:rgba(3,12,24,0.35)
+}
+
+/* ── Action bar ── */
+.si-actions{
+  display:flex;align-items:center;gap:10px;
+  padding:18px 22px;border-top:1px solid rgba(3,12,24,0.07);
+  background:#fafbfc
+}
+.si-btn-save{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:10px 22px;background:#030C18;color:#fff;
+  border:none;border-radius:9px;
+  font-size:13.5px;font-weight:750;font-family:inherit;cursor:pointer;
+  transition:background .13s,transform .12s
+}
+.si-btn-save:hover{background:#0d1f3c;transform:translateY(-1px)}
+.si-btn-save svg{width:14px;height:14px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.si-btn-reset{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:10px 18px;border:1.5px solid rgba(240,68,56,0.25);
+  background:transparent;color:#F04438;border-radius:9px;
+  font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;
+  transition:.13s;margin-left:auto
+}
+.si-btn-reset:hover{background:rgba(240,68,56,0.05);border-color:rgba(240,68,56,0.45)}
+.si-btn-reset svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* ── Pipeline order ── */
+.pipeline-steps{display:flex;flex-direction:column;gap:0}
+.pipe-step{display:flex;align-items:flex-start;gap:14px;padding:12px 0;position:relative}
+.pipe-step:not(:last-child)::after{
+  content:'';position:absolute;left:14px;top:38px;bottom:-8px;
+  width:1px;background:rgba(3,12,24,0.10);z-index:0
+}
+.pipe-num{
+  width:28px;height:28px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:800;color:#fff;position:relative;z-index:1
+}
+.pipe-num.n1{background:linear-gradient(135deg,#6d28d9,#4f46e5)}
+.pipe-num.n2{background:linear-gradient(135deg,#1a56db,#3b82f6)}
+.pipe-num.n3{background:linear-gradient(135deg,#0891b2,#22d3ee)}
+.pipe-num.n4{background:linear-gradient(135deg,#12B76A,#34d399)}
+.pipe-step-label{font-size:13.5px;font-weight:700;color:#030C18;margin-bottom:2px}
+.pipe-step-sub{font-size:12px;color:rgba(3,12,24,0.45);line-height:1.4}
+.pipe-step-you{
+  display:inline-block;font-size:10px;font-weight:800;letter-spacing:.05em;
+  background:rgba(124,58,237,0.10);color:#7c3aed;border:1px solid rgba(124,58,237,0.20);
+  padding:1px 7px;border-radius:999px;margin-left:6px;vertical-align:middle
+}
+
+/* ── Use cases ── */
+.use-case-item{
+  display:flex;align-items:flex-start;gap:10px;
+  padding:10px 12px;border-radius:9px;
+  background:#fafbfc;border:1px solid rgba(3,12,24,0.07);
+  margin-bottom:8px
+}
+.use-case-item:last-child{margin-bottom:0}
+.use-case-arrow{
+  width:18px;height:18px;border-radius:5px;flex-shrink:0;margin-top:1px;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(26,86,219,0.09)
+}
+.use-case-arrow svg{width:10px;height:10px;stroke:#1a56db;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.use-case-text{font-size:12.5px;color:rgba(3,12,24,0.60);line-height:1.5}
+.use-case-text strong{color:#030C18;font-weight:700}
+
+/* Current prompt status */
+.prompt-status{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:12px;font-weight:650;
+  padding:4px 12px;border-radius:999px
+}
+.prompt-status.custom{background:rgba(18,183,106,0.10);color:#0a7a3c;border:1px solid rgba(18,183,106,0.22)}
+.prompt-status.default{background:rgba(3,12,24,0.05);color:rgba(3,12,24,0.45);border:1px solid rgba(3,12,24,0.10)}
+.prompt-status-dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title" style="margin-bottom:6px">System Instruction</h1>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <p class="muted" style="margin:0">Override default AI behaviour for all conversations</p>
+      <span class="plan-badge">
+        <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+        Growth+ Feature
+      </span>
+    </div>
+  </div>
+  <div>
+    {% if current_prompt %}
+    <span class="prompt-status custom">
+      <span class="prompt-status-dot"></span>
+      Custom instruction active
+    </span>
+    {% else %}
+    <span class="prompt-status default">
+      <span class="prompt-status-dot"></span>
+      Using default prompt
+    </span>
+    {% endif %}
+  </div>
+</div>
+
+{% with msgs = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in msgs %}
+  <div class="flash {{ 'danger' if cat in ('error','danger') else cat }}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+<div class="si-grid">
+
+  <!-- ── Left: Editor ── -->
+  <div>
+    <!-- Main save form -->
+    <form method="POST" action="{{ url_for('estate.system_instruction') }}" id="saveForm">
+      <div class="si-card">
+        <div class="si-card-head">
+          <div class="si-card-icon purple">
+            <svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+          </div>
+          <div>
+            <div class="si-card-label">Global System Prompt</div>
+            <div class="si-card-sub">Prepended to every AI conversation, before the agent's own prompt</div>
+          </div>
+        </div>
+        <div class="si-card-body">
+          <textarea class="si-textarea" name="system_prompt" id="promptArea"
+                    oninput="updateCounter()"
+                    placeholder="Example: Always identify yourself as [Business Name] property consultant. Never discuss competitor pricing. If a buyer asks for a discount, confirm their budget first before proceeding. Always end messages by asking if they want to schedule a viewing.">{{ current_prompt or '' }}</textarea>
+          <div class="si-counter">
+            <span id="promptCounter">0 characters</span>
+            <span id="promptStatus" style="color:rgba(3,12,24,0.30)">Start typing…</span>
+          </div>
+        </div>
+        <div class="si-actions">
+          <button type="submit" class="si-btn-save">
+            <svg viewBox="0 0 24 24">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+              <polyline points="17 21 17 13 7 13 7 21"/>
+              <polyline points="7 3 7 8 15 8"/>
+            </svg>
+            Save Instruction
+          </button>
+          {% if current_prompt %}
+          <!-- Reset form is a sibling, NOT nested inside saveForm -->
+        </div>
+      </div>
+    </form>
+
+    <form method="POST" action="{{ url_for('estate.system_instruction') }}" id="resetForm">
+      <input type="hidden" name="clear" value="1"/>
+      <div class="si-card" style="border-color:rgba(240,68,56,0.18);background:rgba(240,68,56,0.01)">
+        <div style="padding:16px 22px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:13.5px;font-weight:700;color:#030C18;margin-bottom:3px">Reset to Default</div>
+            <div style="font-size:12.5px;color:rgba(3,12,24,0.45);line-height:1.4">
+              Clears your custom instruction and reverts to the compiled system default for your active agent.
+            </div>
+          </div>
+          <button type="submit" class="si-btn-reset"
+                  onclick="return confirm('Reset to default? Your custom instruction will be replaced.')">
+            <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.65"/></svg>
+            Reset to Default
+          </button>
+        </div>
+      </div>
+    </form>
+
+    {% else %}
+          <!-- no current_prompt: close action bar and card normally -->
+        </div>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+
+  <!-- ── Right: Guide ── -->
+  <div>
+
+    <!-- Instruction order -->
+    <div class="si-card">
+      <div class="si-card-head">
+        <div class="si-card-icon blue">
+          <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        </div>
+        <div>
+          <div class="si-card-label">Instruction Order</div>
+          <div class="si-card-sub">How the AI receives context in each conversation</div>
+        </div>
+      </div>
+      <div class="si-card-body">
+        <div class="pipeline-steps">
+
+          <div class="pipe-step">
+            <div class="pipe-num n1">1</div>
+            <div>
+              <div class="pipe-step-label">
+                Global System Instruction
+                <span class="pipe-step-you">THIS PAGE</span>
+              </div>
+              <div class="pipe-step-sub">Your business-wide rules, compliance language, and branding overrides.</div>
+            </div>
+          </div>
+
+          <div class="pipe-step">
+            <div class="pipe-num n2">2</div>
+            <div>
+              <div class="pipe-step-label">Active Agent Prompt</div>
+              <div class="pipe-step-sub">The system prompt from your active AI Agent Profile — buyer qualification flow, keywords, and tone.</div>
+            </div>
+          </div>
+
+          <div class="pipe-step">
+            <div class="pipe-num n3">3</div>
+            <div>
+              <div class="pipe-step-label">AI Conversation Memory</div>
+              <div class="pipe-step-sub">Recent messages and a compressed summary of the buyer's history and profile.</div>
+            </div>
+          </div>
+
+          <div class="pipe-step">
+            <div class="pipe-num n4">4</div>
+            <div>
+              <div class="pipe-step-label">Buyer's Message</div>
+              <div class="pipe-step-sub">The live incoming WhatsApp message from the buyer.</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- Use cases -->
+    <div class="si-card">
+      <div class="si-card-head">
+        <div class="si-card-icon amber">
+          <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        </div>
+        <div>
+          <div class="si-card-label">Use Cases</div>
+          <div class="si-card-sub">What to put in your global instruction</div>
+        </div>
+      </div>
+      <div class="si-card-body">
+
+        {% set cases = [
+          ('Compliance',      'Never promise returns, capital gains, or guaranteed rental income.'),
+          ('Branding',        'Always introduce yourself as [Name] from [Company] in the first message.'),
+          ('Eligibility gate','Only show C of O properties to diaspora buyers asking about titles.'),
+          ('Regional focus',  'Only discuss properties in Lagos and Abuja. Politely decline other cities.'),
+          ('Escalation rule', 'Always escalate immediately if a buyer\'s budget exceeds ₦500 million.')
+        ] %}
+        {% for title, desc in cases %}
+        <div class="use-case-item">
+          <div class="use-case-arrow">
+            <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+          </div>
+          <div class="use-case-text">
+            <strong>{{ title }}:</strong> {{ desc }}
+          </div>
+        </div>
+        {% endfor %}
+
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function updateCounter() {
+  var ta  = document.getElementById('promptArea');
+  var cnt = document.getElementById('promptCounter');
+  var sts = document.getElementById('promptStatus');
+  var n   = ta.value.length;
+  cnt.textContent = n.toLocaleString() + ' character' + (n !== 1 ? 's' : '');
+  cnt.style.color = n > 3000 ? '#F79009' : 'rgba(3,12,24,0.35)';
+  if (n === 0) {
+    sts.textContent = 'Start typing…';
+    sts.style.color = 'rgba(3,12,24,0.28)';
+  } else if (n < 100) {
+    sts.textContent = 'Too short — be specific';
+    sts.style.color = '#F79009';
+  } else if (n < 500) {
+    sts.textContent = 'Good start';
+    sts.style.color = '#12B76A';
+  } else {
+    sts.textContent = 'Detailed — great';
+    sts.style.color = '#12B76A';
+  }
+}
+updateCounter();
+</script>
+{% endblock %}

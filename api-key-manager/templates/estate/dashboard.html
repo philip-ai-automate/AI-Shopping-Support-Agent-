@@ -1,0 +1,414 @@
+{% extends "estate/base.html" %}
+{% block title %}Dashboard — PhiXtra Real Estate{% endblock %}
+
+{% block head %}
+<style>
+/* ── Page header ── */
+.dash-header{
+  display:flex;align-items:flex-start;justify-content:space-between;
+  flex-wrap:wrap;gap:16px;margin-bottom:28px
+}
+.dash-greeting{font-size:22px;font-weight:800;letter-spacing:-.4px;color:#030C18;line-height:1.25}
+.dash-sub{font-size:13.5px;color:rgba(3,12,24,0.45);margin-top:5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.trial-pill{
+  display:inline-flex;align-items:center;gap:5px;
+  background:linear-gradient(135deg,#6d28d9,#4f46e5);
+  color:#fff;font-size:11px;font-weight:700;letter-spacing:.04em;
+  padding:3px 10px;border-radius:999px
+}
+.trial-pill::before{content:'';width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,0.7)}
+
+/* ── KPI strip ── */
+.kpi-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+@media(max-width:900px){.kpi-strip{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:480px){.kpi-strip{grid-template-columns:1fr 1fr}}
+
+.kpi-tile{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:14px;
+  padding:20px 22px;box-shadow:0 2px 12px rgba(3,12,24,0.05);
+  display:flex;flex-direction:column;gap:10px;position:relative;overflow:hidden
+}
+.kpi-tile::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:14px 14px 0 0
+}
+.kpi-tile.kpi-listings::before{background:linear-gradient(90deg,#1a56db,#3b82f6)}
+.kpi-tile.kpi-buyers::before{background:linear-gradient(90deg,#7c3aed,#a78bfa)}
+.kpi-tile.kpi-leads::before{background:linear-gradient(90deg,#12B76A,#34d399)}
+.kpi-tile.kpi-handoff::before{background:linear-gradient(90deg,#F04438,#fb7185)}
+
+.kpi-tile-top{display:flex;align-items:center;justify-content:space-between}
+.kpi-tile-icon{
+  width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center
+}
+.kpi-tile-icon svg{width:18px;height:18px;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.kpi-listings .kpi-tile-icon{background:rgba(26,86,219,0.10);stroke:#1a56db}
+.kpi-buyers   .kpi-tile-icon{background:rgba(124,58,237,0.10);stroke:#7c3aed}
+.kpi-leads    .kpi-tile-icon{background:rgba(18,183,106,0.10);stroke:#12B76A}
+.kpi-handoff  .kpi-tile-icon{background:rgba(240,68,56,0.10);stroke:#F04438}
+
+.kpi-tile-label{font-size:11.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(3,12,24,0.40)}
+.kpi-tile-value{font-size:32px;font-weight:800;letter-spacing:-.8px;color:#030C18;line-height:1}
+.kpi-tile-action{font-size:12px;font-weight:650;color:#F04438;text-decoration:none}
+.kpi-tile-action:hover{text-decoration:underline}
+
+/* ── Quota card ── */
+.quota-card{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:14px;
+  padding:20px 24px;box-shadow:0 2px 12px rgba(3,12,24,0.05);margin-bottom:20px
+}
+.quota-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:12px;flex-wrap:wrap}
+.quota-label{font-size:11.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(3,12,24,0.40);margin-bottom:3px}
+.quota-value{font-size:16px;font-weight:800;color:#030C18;letter-spacing:-.3px}
+.quota-bar-wrap{background:rgba(3,12,24,0.06);border-radius:999px;height:7px;overflow:hidden;flex:1;min-width:120px}
+.quota-bar{height:100%;border-radius:999px;transition:width .4s}
+.quota-pct{font-size:12px;color:rgba(3,12,24,0.38);margin-left:10px;flex-shrink:0;font-weight:600}
+.quota-row{display:flex;align-items:center;gap:0}
+
+/* ── Two-col panel ── */
+.dash-panels{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:860px){.dash-panels{grid-template-columns:1fr}}
+
+.dash-panel{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:14px;
+  box-shadow:0 2px 12px rgba(3,12,24,0.05);display:flex;flex-direction:column
+}
+.dp-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 20px;border-bottom:1px solid rgba(3,12,24,0.06)
+}
+.dp-title{font-size:13px;font-weight:700;color:#030C18;letter-spacing:-.1px}
+.dp-action{
+  font-size:12px;font-weight:650;color:rgba(3,12,24,0.45);text-decoration:none;
+  padding:5px 11px;border:1px solid rgba(3,12,24,0.10);border-radius:7px;
+  transition:background .13s,color .13s
+}
+.dp-action:hover{background:rgba(3,12,24,0.04);color:#030C18;text-decoration:none}
+
+.dp-body{flex:1;padding:8px 0}
+.dp-empty{padding:36px 20px;text-align:center;color:rgba(3,12,24,0.38);font-size:13px}
+.dp-empty-btn{
+  display:inline-flex;align-items:center;gap:6px;margin-top:12px;
+  padding:8px 16px;background:#030C18;color:#fff;border-radius:8px;
+  font-size:13px;font-weight:650;text-decoration:none;
+  transition:background .13s,transform .12s
+}
+.dp-empty-btn:hover{background:#0d1f3c;transform:translateY(-1px);color:#fff;text-decoration:none}
+
+/* Lead row */
+.lead-row{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:12px 20px;border-bottom:1px solid rgba(3,12,24,0.05)
+}
+.lead-row:last-child{border-bottom:none}
+.lead-row:hover{background:rgba(3,12,24,0.018)}
+.lead-avatar{
+  width:36px;height:36px;border-radius:10px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:800;color:#fff;
+  background:linear-gradient(135deg,#1a56db,#7c3aed)
+}
+.lead-info{flex:1;min-width:0}
+.lead-name{font-size:13.5px;font-weight:700;color:#030C18;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.lead-meta{font-size:12px;color:rgba(3,12,24,0.42);margin-top:2px;
+           white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lead-open{
+  flex-shrink:0;font-size:12px;font-weight:650;color:rgba(3,12,24,0.45);
+  padding:5px 12px;border:1px solid rgba(3,12,24,0.10);border-radius:7px;
+  text-decoration:none;transition:background .13s,color .13s,border-color .13s
+}
+.lead-open:hover{background:#030C18;color:#fff;border-color:#030C18;text-decoration:none}
+
+/* Listing row */
+.lst-row{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:12px 20px;border-bottom:1px solid rgba(3,12,24,0.05)
+}
+.lst-row:last-child{border-bottom:none}
+.lst-row:hover{background:rgba(3,12,24,0.018)}
+.lst-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:2px}
+.lst-dot.available{background:#12B76A}
+.lst-dot.sold{background:#F04438}
+.lst-dot.reserved{background:#F79009}
+.lst-dot.off_market{background:rgba(3,12,24,0.25)}
+.lst-info{flex:1;min-width:0}
+.lst-title{font-size:13.5px;font-weight:700;color:#030C18;
+           white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lst-meta{font-size:12px;color:rgba(3,12,24,0.42);margin-top:2px}
+.lst-right{text-align:right;flex-shrink:0}
+.lst-status{
+  display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;
+  border-radius:999px;letter-spacing:.03em
+}
+.lst-status.available{background:rgba(18,183,106,0.10);color:#0a7a3c;border:1px solid rgba(18,183,106,0.25)}
+.lst-status.sold{background:rgba(240,68,56,0.08);color:#b02020;border:1px solid rgba(240,68,56,0.20)}
+.lst-status.reserved{background:rgba(247,144,9,0.10);color:#7a4f00;border:1px solid rgba(247,144,9,0.25)}
+.lst-status.off_market{background:rgba(3,12,24,0.05);color:rgba(3,12,24,0.45);border:1px solid rgba(3,12,24,0.10)}
+.lst-views{font-size:11px;color:rgba(3,12,24,0.35);margin-top:3px}
+
+/* action pills */
+.ap{
+  display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;
+  padding:2px 8px;border-radius:999px;letter-spacing:.03em
+}
+.ap-inspect{background:rgba(26,86,219,0.10);color:#1a56db;border:1px solid rgba(26,86,219,0.20)}
+.ap-callback{background:rgba(247,144,9,0.10);color:#7a4f00;border:1px solid rgba(247,144,9,0.25)}
+.ap-default{background:rgba(3,12,24,0.06);color:rgba(3,12,24,0.55);border:1px solid rgba(3,12,24,0.10)}
+
+/* upgrade banner */
+.upgrade-banner{
+  background:linear-gradient(135deg,#030C18 0%,#0d2547 100%);
+  border-radius:14px;padding:20px 24px;margin-bottom:20px;
+  display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap
+}
+.upgrade-banner-text{color:rgba(255,255,255,0.85);font-size:14px;line-height:1.5}
+.upgrade-banner-text strong{color:#fff;font-size:15px;display:block;margin-bottom:3px}
+.upgrade-banner-btn{
+  flex-shrink:0;display:inline-flex;align-items:center;gap:7px;
+  padding:10px 20px;background:#fff;color:#030C18;border:none;border-radius:8px;
+  font-size:13.5px;font-weight:800;text-decoration:none;
+  transition:transform .12s,box-shadow .15s
+}
+.upgrade-banner-btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(0,0,0,0.25);color:#030C18;text-decoration:none}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Page header -->
+<div class="dash-header">
+  <div>
+    <div class="dash-greeting">
+      Good day, {{ tenant.first_name or tenant.business_name }} 👋
+    </div>
+    <div class="dash-sub">
+      <span>{{ tenant.business_name }}</span>
+      <span style="color:rgba(3,12,24,0.20)">·</span>
+      <span>{{ tenant.plan_name or 'Free' }} Plan</span>
+      {% if trial_days_left is not none and trial_days_left >= 0 %}
+      <span class="trial-pill">
+        Trial — {{ trial_days_left }} day{{ 's' if trial_days_left != 1 }} left
+      </span>
+      {% endif %}
+    </div>
+  </div>
+  <a href="{{ url_for('estate.listing_new') }}" class="btn btn-primary"
+     style="padding:10px 20px;border-radius:9px;font-size:13.5px">
+    + Add Listing
+  </a>
+</div>
+
+<!-- Upgrade banner when quota critical -->
+{% if quota_pct >= 90 and msg_limit > 0 %}
+<div class="upgrade-banner">
+  <div class="upgrade-banner-text">
+    <strong>You've used {{ quota_pct }}% of your AI message quota</strong>
+    Upgrade now to keep your WhatsApp AI responding without interruption.
+  </div>
+  <a href="{{ url_for('estate.billing_plans') }}" class="upgrade-banner-btn">
+    Upgrade Plan →
+  </a>
+</div>
+{% endif %}
+
+<!-- KPI strip -->
+<div class="kpi-strip">
+
+  <div class="kpi-tile kpi-listings">
+    <div class="kpi-tile-top">
+      <span class="kpi-tile-label">Active Listings</span>
+      <div class="kpi-tile-icon kpi-listings">
+        <svg viewBox="0 0 24 24" style="stroke:#1a56db">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+      </div>
+    </div>
+    <div class="kpi-tile-value">{{ stats.active_listings }}</div>
+  </div>
+
+  <div class="kpi-tile kpi-buyers">
+    <div class="kpi-tile-top">
+      <span class="kpi-tile-label">Total Buyers</span>
+      <div class="kpi-tile-icon kpi-buyers">
+        <svg viewBox="0 0 24 24" style="stroke:#7c3aed">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+      </div>
+    </div>
+    <div class="kpi-tile-value">{{ stats.total_buyers }}</div>
+  </div>
+
+  <div class="kpi-tile kpi-leads">
+    <div class="kpi-tile-top">
+      <span class="kpi-tile-label">New Leads Today</span>
+      <div class="kpi-tile-icon kpi-leads">
+        <svg viewBox="0 0 24 24" style="stroke:#12B76A">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+      </div>
+    </div>
+    <div class="kpi-tile-value"
+         style="color:{% if stats.new_leads_today > 0 %}#12B76A{% else %}#030C18{% endif %}">
+      {{ stats.new_leads_today }}
+    </div>
+  </div>
+
+  <div class="kpi-tile kpi-handoff">
+    <div class="kpi-tile-top">
+      <span class="kpi-tile-label">Awaiting Agent</span>
+      <div class="kpi-tile-icon kpi-handoff">
+        <svg viewBox="0 0 24 24" style="stroke:#F04438">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      </div>
+    </div>
+    <div class="kpi-tile-value"
+         style="color:{% if stats.pending_handoffs > 0 %}#F04438{% else %}#030C18{% endif %}">
+      {{ stats.pending_handoffs }}
+    </div>
+    {% if stats.pending_handoffs > 0 %}
+    <a class="kpi-tile-action" href="{{ url_for('estate.inbox', filter='pending') }}">
+      Review now →
+    </a>
+    {% endif %}
+  </div>
+
+</div>
+
+<!-- AI quota meter -->
+<div class="quota-card">
+  <div class="quota-top">
+    <div>
+      <div class="quota-label">AI Messages This Period</div>
+      <div class="quota-value">
+        {{ used | int }}
+        <span style="font-size:14px;font-weight:600;color:rgba(3,12,24,0.38)">
+          / {% if msg_limit == 0 %}Unlimited{% else %}{{ msg_limit | int }}{% endif %}
+        </span>
+      </div>
+    </div>
+    {% if msg_limit > 0 %}
+    <div class="quota-row" style="flex:1;margin-left:28px;max-width:320px">
+      <div class="quota-bar-wrap">
+        <div class="quota-bar"
+             style="width:{{ quota_pct }}%;
+                    background:{% if quota_pct >= 90 %}#F04438{% elif quota_pct >= 70 %}#F79009{% else %}#12B76A{% endif %}">
+        </div>
+      </div>
+      <span class="quota-pct">{{ quota_pct }}%</span>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Two-column panels -->
+<div class="dash-panels">
+
+  <!-- Hot leads -->
+  <div class="dash-panel">
+    <div class="dp-head">
+      <span class="dp-title">
+        Hot Leads
+        {% if stats.pending_handoffs > 0 %}
+        <span style="display:inline-flex;align-items:center;justify-content:center;
+                     width:18px;height:18px;background:#F04438;color:#fff;
+                     font-size:10px;font-weight:800;border-radius:50%;margin-left:4px">
+          {{ stats.pending_handoffs if stats.pending_handoffs < 100 else '99+' }}
+        </span>
+        {% endif %}
+      </span>
+      <a href="{{ url_for('estate.inbox', filter='pending') }}" class="dp-action">View all</a>
+    </div>
+    <div class="dp-body">
+      {% if stats.hot_leads %}
+        {% for lead in stats.hot_leads %}
+        <div class="lead-row">
+          <div class="lead-avatar">
+            {{ (lead.buyer_name or lead.phone_number or '?')[0] | upper }}
+          </div>
+          <div class="lead-info">
+            <div class="lead-name">
+              {{ lead.buyer_name or lead.phone_number }}
+              {% if lead.action_type %}
+              <span class="ap {% if lead.action_type == 'INSPECT' %}ap-inspect{% elif lead.action_type == 'CALLBACK' %}ap-callback{% else %}ap-default{% endif %}">
+                {{ lead.action_type }}
+              </span>
+              {% endif %}
+            </div>
+            <div class="lead-meta">
+              {% if lead.listing_title %}{{ lead.listing_title }}{% endif %}
+              {% if lead.buyer_summary %}
+              {% if lead.listing_title %} · {% endif %}{{ lead.buyer_summary }}
+              {% endif %}
+            </div>
+          </div>
+          <a href="{{ url_for('estate.inbox_detail', customer_id=lead.customer_id if lead.customer_id else 0) }}"
+             class="lead-open">Open</a>
+        </div>
+        {% endfor %}
+      {% else %}
+      <div class="dp-empty">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(3,12,24,0.18)"
+             stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto 10px">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+          <polyline points="22 4 12 14.01 9 11.01"/>
+        </svg>
+        <div>No pending leads right now.</div>
+        <div style="font-size:12px;margin-top:4px;color:rgba(3,12,24,0.28)">New WhatsApp enquiries will appear here</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Recent listings -->
+  <div class="dash-panel">
+    <div class="dp-head">
+      <span class="dp-title">Recent Listings</span>
+      <a href="{{ url_for('estate.listings') }}" class="dp-action">All listings</a>
+    </div>
+    <div class="dp-body">
+      {% if stats.recent_listings %}
+        {% for lst in stats.recent_listings %}
+        <div class="lst-row">
+          <div class="lst-dot {{ lst.status or 'off_market' }}"></div>
+          <div class="lst-info">
+            <div class="lst-title">{{ lst.title }}</div>
+            <div class="lst-meta">
+              {{ lst.location or 'Location not set' }}
+              {% if lst.price %}
+              &nbsp;·&nbsp; ₦{{ '{:,.0f}'.format(lst.price) }}
+              {% endif %}
+            </div>
+          </div>
+          <div class="lst-right">
+            <div class="lst-status {{ lst.status or 'off_market' }}">
+              {{ (lst.status or 'Off Market') | replace('_', ' ') | title }}
+            </div>
+            <div class="lst-views">{{ lst.view_count }} view{{ 's' if lst.view_count != 1 }}</div>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+      <div class="dp-empty">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(3,12,24,0.18)"
+             stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto 10px">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+        <div>No listings yet.</div>
+        <a href="{{ url_for('estate.listing_new') }}" class="dp-empty-btn">
+          + Add your first listing
+        </a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}

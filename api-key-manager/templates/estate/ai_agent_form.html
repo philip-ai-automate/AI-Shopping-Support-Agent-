@@ -1,0 +1,317 @@
+{% extends "estate/base.html" %}
+{% block title %}{{ 'Edit Agent' if mode == 'edit' else 'New Agent' }} — PhiXtra Real Estate{% endblock %}
+
+{% block head %}
+<style>
+/* ── Two-column layout ── */
+.af-grid{display:grid;grid-template-columns:1fr 380px;gap:20px;align-items:start}
+@media(max-width:960px){.af-grid{grid-template-columns:1fr}}
+
+/* ── Section cards ── */
+.af-card{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:16px;
+  box-shadow:0 2px 12px rgba(3,12,24,0.04);overflow:hidden;margin-bottom:16px
+}
+.af-card-head{
+  display:flex;align-items:center;gap:12px;padding:18px 22px;
+  border-bottom:1px solid rgba(3,12,24,0.07);
+  background:linear-gradient(to right,rgba(3,12,24,0.015),transparent)
+}
+.af-card-icon{
+  width:36px;height:36px;border-radius:10px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center
+}
+.af-card-icon svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.af-card-icon.blue{background:rgba(26,86,219,0.09);color:#1a56db}
+.af-card-icon.purple{background:rgba(124,58,237,0.09);color:#7c3aed}
+.af-card-icon.green{background:rgba(18,183,106,0.09);color:#0a7a3c}
+.af-card-icon.amber{background:rgba(247,144,9,0.09);color:#b45309}
+.af-card-label{font-size:14px;font-weight:750;color:#030C18}
+.af-card-sub{font-size:12px;color:rgba(3,12,24,0.40);margin-top:1px}
+.af-card-body{padding:22px}
+
+/* ── Enterprise inputs ── */
+.af-group{display:flex;flex-direction:column;gap:5px;margin-bottom:16px}
+.af-group:last-child{margin-bottom:0}
+.af-label{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(3,12,24,0.42)}
+.af-input{
+  width:100%;padding:11px 14px;
+  border:1.5px solid rgba(3,12,24,0.12);border-radius:9px;
+  font-size:13.5px;font-family:inherit;color:#030C18;background:#fafbfc;
+  outline:none;transition:border-color .15s,box-shadow .15s,background .15s;
+  box-sizing:border-box
+}
+.af-input:focus{border-color:#030C18;background:#fff;box-shadow:0 0 0 3px rgba(3,12,24,0.06)}
+.af-hint{font-size:11.5px;color:rgba(3,12,24,0.38)}
+
+.af-textarea{
+  width:100%;padding:13px 14px;
+  border:1.5px solid rgba(3,12,24,0.12);border-radius:9px;
+  font-size:13px;font-family:monospace;color:#030C18;background:#fafbfc;
+  outline:none;resize:vertical;line-height:1.6;
+  transition:border-color .15s,box-shadow .15s,background .15s;
+  box-sizing:border-box;min-height:380px
+}
+.af-textarea:focus{border-color:#030C18;background:#fff;box-shadow:0 0 0 3px rgba(3,12,24,0.06)}
+
+/* Character counter */
+.af-counter{font-size:11px;color:rgba(3,12,24,0.35);text-align:right;margin-top:4px}
+
+/* ── Prompt guide tips ── */
+.tip-card{
+  padding:13px 15px;border-radius:11px;
+  border-left:3px solid;margin-bottom:10px
+}
+.tip-card:last-child{margin-bottom:0}
+.tip-card.blue{background:rgba(26,86,219,0.05);border-color:#1a56db}
+.tip-card.green{background:rgba(18,183,106,0.05);border-color:#12B76A}
+.tip-card.purple{background:rgba(124,58,237,0.05);border-color:#7c3aed}
+.tip-card.amber{background:rgba(247,144,9,0.06);border-color:#F79009}
+.tip-title{font-size:12.5px;font-weight:750;color:#030C18;margin-bottom:4px;display:flex;align-items:center;gap:6px}
+.tip-title code{
+  font-size:11px;font-family:monospace;font-weight:800;letter-spacing:.04em;
+  background:rgba(3,12,24,0.08);padding:1px 6px;border-radius:4px;color:#030C18
+}
+.tip-desc{font-size:12px;color:rgba(3,12,24,0.52);line-height:1.5}
+
+/* ── Status toggle ── */
+.toggle-row{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:14px 16px;background:#fafbfc;border:1px solid rgba(3,12,24,0.08);
+  border-radius:11px
+}
+.toggle-text strong{display:block;font-size:13.5px;font-weight:700;color:#030C18;margin-bottom:2px}
+.toggle-text span{font-size:12px;color:rgba(3,12,24,0.45);line-height:1.4}
+
+/* Native checkbox hidden; toggle shown */
+.toggle-wrap{position:relative;width:44px;height:24px;flex-shrink:0}
+.toggle-wrap input{opacity:0;width:0;height:0;position:absolute}
+.toggle-slider{
+  position:absolute;inset:0;border-radius:999px;
+  background:rgba(3,12,24,0.15);cursor:pointer;transition:background .2s
+}
+.toggle-slider::before{
+  content:'';position:absolute;
+  width:18px;height:18px;border-radius:50%;background:#fff;
+  top:3px;left:3px;transition:transform .2s;
+  box-shadow:0 1px 4px rgba(3,12,24,0.20)
+}
+.toggle-wrap input:checked + .toggle-slider{background:#12B76A}
+.toggle-wrap input:checked + .toggle-slider::before{transform:translateX(20px)}
+
+/* ── Bottom action bar ── */
+.af-actions{
+  display:flex;align-items:center;justify-content:flex-end;gap:10px;
+  padding:18px 22px;background:#fafbfc;
+  border:1px solid rgba(3,12,24,0.08);border-radius:14px;
+  box-shadow:0 2px 10px rgba(3,12,24,0.04)
+}
+.af-btn-cancel{
+  padding:10px 20px;border:1.5px solid rgba(3,12,24,0.12);border-radius:9px;
+  background:#fff;font-size:13.5px;font-weight:650;font-family:inherit;
+  color:rgba(3,12,24,0.55);cursor:pointer;text-decoration:none;
+  transition:.13s;display:inline-flex;align-items:center
+}
+.af-btn-cancel:hover{border-color:rgba(3,12,24,0.22);color:#030C18;text-decoration:none}
+.af-btn-save{
+  padding:10px 24px;background:#030C18;color:#fff;border:none;border-radius:9px;
+  font-size:13.5px;font-weight:750;font-family:inherit;cursor:pointer;
+  transition:background .13s,transform .12s;
+  display:inline-flex;align-items:center;gap:7px
+}
+.af-btn-save:hover{background:#0d1f3c;transform:translateY(-1px)}
+.af-btn-save svg{width:14px;height:14px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title" style="margin-bottom:4px">
+      {{ 'Edit Agent' if mode == 'edit' else 'Create AI Agent' }}
+    </h1>
+    <p class="muted">Configure how your AI property consultant handles buyer conversations</p>
+  </div>
+  <a href="{{ url_for('estate.agents') }}" class="agent-btn" style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:9px;border:1.5px solid rgba(3,12,24,0.12);background:#fff;font-size:13px;font-weight:650;color:rgba(3,12,24,0.55);text-decoration:none;transition:.13s">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
+    </svg>
+    Back
+  </a>
+</div>
+
+{% if error %}
+<div class="flash danger">{{ error }}</div>
+{% endif %}
+
+<form method="POST">
+<div class="af-grid">
+
+  <!-- ── Left column ── -->
+  <div>
+
+    <!-- Agent Identity -->
+    <div class="af-card">
+      <div class="af-card-head">
+        <div class="af-card-icon blue">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M6 20v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg>
+        </div>
+        <div>
+          <div class="af-card-label">Agent Identity</div>
+          <div class="af-card-sub">How your AI introduces itself to buyers</div>
+        </div>
+      </div>
+      <div class="af-card-body">
+        <div class="af-group">
+          <label class="af-label">Agent Name *</label>
+          <input class="af-input" type="text" name="name" required maxlength="120"
+                 placeholder="e.g. Adaeze — PhiXtra Property Consultant"
+                 value="{{ agent.name if agent else '' }}"/>
+          <div class="af-hint">This is how your AI introduces itself to buyers on WhatsApp.</div>
+        </div>
+        <div class="af-group">
+          <label class="af-label">Description <span style="font-weight:500;text-transform:none;letter-spacing:0">(internal only)</span></label>
+          <input class="af-input" type="text" name="description" maxlength="255"
+                 placeholder="e.g. Handles Lagos Mainland buyers"
+                 value="{{ agent.description if agent else '' }}"/>
+        </div>
+      </div>
+    </div>
+
+    <!-- System Prompt -->
+    <div class="af-card">
+      <div class="af-card-head">
+        <div class="af-card-icon purple">
+          <svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        </div>
+        <div>
+          <div class="af-card-label">System Prompt</div>
+          <div class="af-card-sub">Full instruction set — controls tone, qualification, and escalation</div>
+        </div>
+      </div>
+      <div class="af-card-body">
+        <div class="af-group">
+          <label class="af-label">Prompt *</label>
+          <textarea class="af-textarea" name="system_prompt" id="promptArea"
+                    required oninput="updateCounter()"
+                    placeholder="You are Adaeze, a professional property consultant for [business name]...
+
+Your role:
+- Help buyers find properties matching their budget and location preference
+- Ask about their budget, preferred area, property type, and timeline
+- Share matching listings clearly with price, location, and key features
+- Book inspections when a buyer is serious (use INSPECT keyword)
+- Escalate to human agent when buyer requests a callback (use CALLBACK keyword)
+
+Always respond in a warm, professional Nigerian tone. Support Pidgin if the buyer uses it.">{{ agent.system_prompt if agent else '' }}</textarea>
+          <div class="af-counter" id="promptCounter">0 characters</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Right column ── -->
+  <div>
+
+    <!-- Prompt Guide -->
+    <div class="af-card">
+      <div class="af-card-head">
+        <div class="af-card-icon amber">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        </div>
+        <div>
+          <div class="af-card-label">Prompt Guide</div>
+          <div class="af-card-sub">What to include in your system prompt</div>
+        </div>
+      </div>
+      <div class="af-card-body">
+
+        <div class="tip-card blue">
+          <div class="tip-title">Buyer Qualification</div>
+          <div class="tip-desc">Instruct the AI to collect: budget range, preferred area, property type, bedrooms needed, payment method (mortgage / outright / instalment), and urgency.</div>
+        </div>
+
+        <div class="tip-card green">
+          <div class="tip-title">
+            Inspection keyword
+            <code>INSPECT</code>
+          </div>
+          <div class="tip-desc">Tell the AI to reply <strong>INSPECT</strong> when a buyer wants to view a property. This triggers the inspection booking flow.</div>
+        </div>
+
+        <div class="tip-card purple">
+          <div class="tip-title">
+            Handoff keyword
+            <code>CALLBACK</code>
+          </div>
+          <div class="tip-desc">Tell the AI to reply <strong>CALLBACK</strong> when a buyer asks to speak with a human. This fires an agent alert in your inbox.</div>
+        </div>
+
+        <div class="tip-card amber">
+          <div class="tip-title">Nigerian Context</div>
+          <div class="tip-desc">Mention title docs (C of O, Governor's Consent), prices in Naira (₦), support Pidgin, and reference common areas (VI, Lekki, Abuja, PH, GRA, etc.).</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Status -->
+    <div class="af-card">
+      <div class="af-card-head">
+        <div class="af-card-icon green">
+          <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        </div>
+        <div>
+          <div class="af-card-label">Status</div>
+          <div class="af-card-sub">Only one agent can be active at a time</div>
+        </div>
+      </div>
+      <div class="af-card-body" style="padding:16px 22px">
+        <div class="toggle-row">
+          <div class="toggle-text">
+            <strong>Set as Active</strong>
+            <span>Activating this agent will automatically deactivate any other active agent.</span>
+          </div>
+          <label class="toggle-wrap">
+            <input type="checkbox" name="is_active"
+                   {% if agent and agent.is_active %}checked{% elif not agent %}checked{% endif %}/>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Action buttons -->
+    <div class="af-actions">
+      <a href="{{ url_for('estate.agents') }}" class="af-btn-cancel">Cancel</a>
+      <button type="submit" class="af-btn-save">
+        <svg viewBox="0 0 24 24">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+          <polyline points="17 21 17 13 7 13 7 21"/>
+          <polyline points="7 3 7 8 15 8"/>
+        </svg>
+        {{ 'Save Changes' if mode == 'edit' else 'Create Agent' }}
+      </button>
+    </div>
+
+  </div>
+
+</div>
+</form>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function updateCounter() {
+  var ta = document.getElementById('promptArea');
+  var el = document.getElementById('promptCounter');
+  var n = ta.value.length;
+  el.textContent = n.toLocaleString() + ' character' + (n !== 1 ? 's' : '');
+  el.style.color = n > 4000 ? '#F79009' : 'rgba(3,12,24,0.35)';
+}
+updateCounter();
+</script>
+{% endblock %}

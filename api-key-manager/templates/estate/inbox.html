@@ -1,0 +1,579 @@
+{% extends "estate/base.html" %}
+{% block title %}Leads & Inbox — PhiXtra Real Estate{% endblock %}
+
+{% block head %}
+{% if embedded_enabled and not wa_connected %}
+<script>
+  window.fbAsyncInit = function() {
+    FB.init({ appId: '{{ meta_app_id }}', autoLogAppEvents: true, xfbml: true, version: 'v19.0' });
+  };
+</script>
+<script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js"></script>
+{% endif %}
+<style>
+/* ── WhatsApp connection banner ── */
+.wa-connect-banner{
+  background:linear-gradient(135deg,#030C18 0%,#0d2547 100%);
+  border-radius:16px;padding:32px 36px;margin-bottom:24px;position:relative;overflow:hidden
+}
+.wa-connect-banner::before{
+  content:'';position:absolute;inset:0;
+  background-image:radial-gradient(rgba(255,255,255,0.03) 1px,transparent 1px);
+  background-size:28px 28px;pointer-events:none
+}
+.wa-connect-banner::after{
+  content:'';position:absolute;top:-80px;right:-80px;width:280px;height:280px;
+  border-radius:50%;background:radial-gradient(circle,rgba(37,211,102,0.15) 0%,transparent 70%);
+  pointer-events:none
+}
+.wa-banner-head{display:flex;align-items:flex-start;gap:16px;margin-bottom:24px;z-index:1;position:relative}
+.wa-banner-icon{
+  width:52px;height:52px;border-radius:14px;flex-shrink:0;
+  background:rgba(37,211,102,0.18);border:1px solid rgba(37,211,102,0.35);
+  display:flex;align-items:center;justify-content:center
+}
+.wa-banner-icon svg{width:26px;height:26px;fill:#25D366}
+.wa-banner-title{font-size:20px;font-weight:800;color:#fff;letter-spacing:-.3px;margin-bottom:5px}
+.wa-banner-sub{font-size:14px;color:rgba(255,255,255,0.50);line-height:1.5}
+
+/* Steps */
+.wa-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:28px;position:relative;z-index:1}
+@media(max-width:760px){.wa-steps{grid-template-columns:1fr}}
+.wa-step{
+  background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.09);
+  border-radius:12px;padding:16px 18px
+}
+.wa-step-num{
+  width:26px;height:26px;border-radius:50%;background:rgba(37,211,102,0.25);
+  border:1px solid rgba(37,211,102,0.45);color:#25D366;font-size:12px;font-weight:800;
+  display:flex;align-items:center;justify-content:center;margin-bottom:10px
+}
+.wa-step-title{font-size:13px;font-weight:700;color:#fff;margin-bottom:5px}
+.wa-step-desc{font-size:12px;color:rgba(255,255,255,0.45);line-height:1.5}
+.wa-step-link{
+  display:inline-flex;align-items:center;gap:4px;margin-top:7px;
+  font-size:12px;font-weight:650;color:#25D366;text-decoration:none
+}
+.wa-step-link:hover{text-decoration:underline;color:#25D366}
+
+/* Connection form */
+.wa-connect-form{
+  background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.10);
+  border-radius:12px;padding:20px 22px;position:relative;z-index:1
+}
+.wa-connect-form-title{
+  font-size:13px;font-weight:750;color:#fff;margin-bottom:16px;
+  display:flex;align-items:center;gap:8px
+}
+.wa-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:640px){.wa-form-grid{grid-template-columns:1fr}}
+.wa-field label{
+  display:block;font-size:10.5px;font-weight:700;letter-spacing:.07em;
+  text-transform:uppercase;color:rgba(255,255,255,0.38);margin-bottom:5px
+}
+.wa-field input{
+  width:100%;padding:10px 13px;border:1.5px solid rgba(255,255,255,0.12);
+  border-radius:8px;font-size:13px;font-family:inherit;color:#fff;
+  background:rgba(255,255,255,0.07);outline:none;
+  transition:border-color .15s,background .15s
+}
+.wa-field input:focus{border-color:rgba(37,211,102,0.60);background:rgba(255,255,255,0.10)}
+.wa-field input::placeholder{color:rgba(255,255,255,0.22)}
+.wa-copy-field{
+  display:flex;align-items:center;gap:8px;
+  padding:10px 13px;border:1.5px solid rgba(255,255,255,0.12);
+  border-radius:8px;background:rgba(255,255,255,0.04);
+  font-size:12.5px;color:rgba(255,255,255,0.60);font-family:monospace;
+  word-break:break-all;line-height:1.4
+}
+.copy-btn{
+  flex-shrink:0;padding:5px 11px;border-radius:6px;
+  background:rgba(255,255,255,0.10);border:1px solid rgba(255,255,255,0.15);
+  color:rgba(255,255,255,0.70);font-size:11.5px;font-weight:650;
+  cursor:pointer;font-family:inherit;transition:.13s;white-space:nowrap
+}
+.copy-btn:hover{background:rgba(255,255,255,0.18);color:#fff}
+.wa-connect-submit{
+  display:inline-flex;align-items:center;gap:8px;margin-top:16px;
+  padding:11px 24px;background:#25D366;color:#fff;border:none;border-radius:8px;
+  font-size:14px;font-weight:750;font-family:inherit;cursor:pointer;
+  transition:background .13s,transform .12s,box-shadow .13s;
+  box-shadow:0 4px 16px rgba(37,211,102,0.30)
+}
+.wa-connect-submit:hover{background:#1da852;transform:translateY(-1px);box-shadow:0 8px 24px rgba(37,211,102,0.35)}
+
+/* ── Connected badge ── */
+.wa-connected-bar{
+  display:flex;align-items:center;gap:10px;padding:12px 18px;
+  background:rgba(18,183,106,0.08);border:1px solid rgba(18,183,106,0.22);
+  border-radius:12px;margin-bottom:22px
+}
+.wa-connected-dot{width:9px;height:9px;border-radius:50%;background:#12B76A;flex-shrink:0;
+                  box-shadow:0 0 0 3px rgba(18,183,106,0.20)}
+.wa-connected-bar span{font-size:13.5px;font-weight:650;color:#0a7a3c}
+.wa-connected-bar .wa-num{font-size:12.5px;color:rgba(3,12,24,0.45);font-family:monospace;margin-left:4px}
+.wa-disconnect-link{margin-left:auto;font-size:12px;color:rgba(3,12,24,0.38);text-decoration:none;font-weight:600}
+.wa-disconnect-link:hover{color:#F04438;text-decoration:underline}
+
+/* ── Filter tabs ── */
+.filter-tabs{
+  display:flex;gap:6px;flex-wrap:nowrap;margin-bottom:20px;
+  overflow-x:auto;-webkit-overflow-scrolling:touch;
+  padding-bottom:4px;scrollbar-width:none
+}
+.filter-tabs::-webkit-scrollbar{display:none}
+.ftab{
+  padding:7px 16px;border-radius:8px;font-size:13px;font-weight:650;
+  border:1.5px solid rgba(3,12,24,0.10);background:#fff;color:rgba(3,12,24,0.55);
+  text-decoration:none;transition:.13s;white-space:nowrap;flex-shrink:0
+}
+.ftab:hover{border-color:rgba(3,12,24,0.22);color:#030C18;text-decoration:none}
+.ftab.active{background:#030C18;color:#fff;border-color:#030C18}
+.ftab-badge{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:18px;height:18px;padding:0 5px;border-radius:999px;
+  font-size:10px;font-weight:800;margin-left:5px
+}
+.ftab.active .ftab-badge{background:rgba(255,255,255,0.25);color:#fff}
+.ftab:not(.active) .ftab-badge{background:#F04438;color:#fff}
+
+/* ── Assignee chip on buyer cards ── */
+.assignee-chip{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:2px 8px 2px 4px;border-radius:999px;
+  font-size:11px;font-weight:700;
+  border:1px solid rgba(124,58,237,0.20);
+  background:rgba(124,58,237,0.07);color:#5b21b6
+}
+.assignee-chip-av{
+  width:16px;height:16px;border-radius:50%;
+  background:linear-gradient(135deg,#7c3aed,#a78bfa);
+  display:inline-flex;align-items:center;justify-content:center;
+  font-size:8px;font-weight:800;color:#fff;flex-shrink:0
+}
+.unassigned-chip{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:2px 8px;border-radius:999px;
+  font-size:11px;font-weight:650;
+  border:1px solid rgba(3,12,24,0.10);
+  background:rgba(3,12,24,0.04);color:rgba(3,12,24,0.38)
+}
+@media(max-width:500px){
+  .assignee-chip,.unassigned-chip{display:none}
+  .buyer-name{font-size:13.5px}
+  .buyer-last-msg{max-width:200px}
+  .buyer-avatar{width:38px;height:38px;border-radius:10px;font-size:14px}
+  .buyer-open{padding:5px 11px;font-size:12px}
+}
+
+/* ── Buyer cards ── */
+.buyer-list{display:flex;flex-direction:column;gap:10px}
+.buyer-card{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:13px;
+  padding:16px 20px;box-shadow:0 2px 10px rgba(3,12,24,0.04);
+  display:flex;align-items:center;gap:16px;
+  transition:box-shadow .15s,transform .15s;text-decoration:none;color:inherit
+}
+.buyer-card:hover{box-shadow:0 6px 22px rgba(3,12,24,0.09);transform:translateY(-1px);text-decoration:none;color:inherit}
+
+.buyer-avatar{
+  width:44px;height:44px;border-radius:12px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;font-weight:800;color:#fff
+}
+
+.buyer-main{flex:1;min-width:0}
+.buyer-name{font-size:14px;font-weight:750;color:#030C18;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px}
+.buyer-phone{font-size:12px;color:rgba(3,12,24,0.38);font-family:monospace}
+.buyer-last-msg{
+  font-size:12.5px;color:rgba(3,12,24,0.45);margin-top:4px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:420px
+}
+
+.buyer-qual{
+  display:flex;flex-direction:column;gap:4px;flex-shrink:0;
+  min-width:160px;
+  @media(max-width:700px){display:none}
+}
+.buyer-qual-row{display:flex;align-items:center;gap:5px;font-size:12px;color:rgba(3,12,24,0.45)}
+.buyer-qual-row svg{width:12px;height:12px;stroke:rgba(3,12,24,0.30);fill:none;stroke-width:2;flex-shrink:0}
+
+.buyer-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0}
+.buyer-time{font-size:11.5px;color:rgba(3,12,24,0.35);white-space:nowrap}
+.buyer-open{
+  padding:6px 14px;border-radius:7px;font-size:12.5px;font-weight:700;
+  background:#030C18;color:#fff;text-decoration:none;white-space:nowrap;
+  transition:background .12s
+}
+.buyer-open:hover{background:#0d1f3c;color:#fff;text-decoration:none}
+
+/* Lead status pills */
+.ls-pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;
+         padding:2px 9px;border-radius:999px;letter-spacing:.02em}
+.ls-new{background:rgba(3,12,24,0.06);color:rgba(3,12,24,0.50);border:1px solid rgba(3,12,24,0.10)}
+.ls-qualified{background:rgba(26,86,219,0.09);color:#1a56db;border:1px solid rgba(26,86,219,0.20)}
+.ls-inspection_booked{background:rgba(124,58,237,0.09);color:#6d28d9;border:1px solid rgba(124,58,237,0.20)}
+.ls-negotiating{background:rgba(247,144,9,0.10);color:#7a4f00;border:1px solid rgba(247,144,9,0.25)}
+.ls-closed{background:rgba(18,183,106,0.10);color:#0a7a3c;border:1px solid rgba(18,183,106,0.25)}
+.ls-lost{background:rgba(240,68,56,0.08);color:#b02020;border:1px solid rgba(240,68,56,0.20)}
+.handoff-dot{
+  display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;
+  padding:2px 9px;border-radius:999px;background:rgba(240,68,56,0.09);
+  color:#b02020;border:1px solid rgba(240,68,56,0.20)
+}
+
+/* Empty state */
+.inbox-empty{
+  text-align:center;padding:60px 20px;
+  background:#fff;border:1px solid rgba(3,12,24,0.07);border-radius:14px
+}
+.inbox-empty svg{width:48px;height:48px;stroke:rgba(3,12,24,0.14);fill:none;
+                  stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round;margin:0 auto 16px;display:block}
+.inbox-empty h3{font-size:17px;font-weight:750;color:#030C18;margin-bottom:6px}
+.inbox-empty p{font-size:14px;color:rgba(3,12,24,0.42);max-width:360px;margin:0 auto;line-height:1.6}
+
+@media(max-width:700px){
+  .buyer-qual{display:none}
+  .buyer-card{gap:12px;padding:14px 16px}
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title" style="margin-bottom:4px">Leads &amp; Inbox</h1>
+    <p class="muted">
+      {% if wa_connected %}
+        {{ buyers | length }} buyer{{ 's' if buyers | length != 1 }}
+      {% else %}
+        WhatsApp not connected
+      {% endif %}
+    </p>
+  </div>
+</div>
+
+<!-- ── WhatsApp NOT connected — setup flow ── -->
+{% if not wa_connected %}
+<div class="wa-connect-banner">
+  <div class="wa-banner-head">
+    <div class="wa-banner-icon">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+      </svg>
+    </div>
+    <div>
+      <div class="wa-banner-title">Connect your WhatsApp Business number</div>
+      <div class="wa-banner-sub">
+        Your inbox will show buyer conversations once your WhatsApp Business API is connected. Follow the 3 steps below — it takes about 10 minutes.
+      </div>
+    </div>
+  </div>
+
+  <!-- Steps -->
+  <div class="wa-steps">
+    <div class="wa-step">
+      <div class="wa-step-num">1</div>
+      <div class="wa-step-title">Create a Meta App</div>
+      <div class="wa-step-desc">Go to Meta for Developers, create a Business app, and add the WhatsApp product. You'll get a Phone Number ID, Access Token, and WABA ID.</div>
+      <a class="wa-step-link" href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">
+        Open Meta Developers →
+      </a>
+    </div>
+    <div class="wa-step">
+      <div class="wa-step-num">2</div>
+      <div class="wa-step-title">Configure the Webhook</div>
+      <div class="wa-step-desc">In your Meta App → WhatsApp → Configuration, set the webhook URL and verify token below. Subscribe to the <strong style="color:rgba(255,255,255,0.70)">messages</strong> field.</div>
+    </div>
+    <div class="wa-step">
+      <div class="wa-step-num">3</div>
+      <div class="wa-step-title">Paste Credentials Below</div>
+      <div class="wa-step-desc">Enter your Phone Number ID, Access Token, App Secret, and WABA ID in the form below and click Connect.</div>
+    </div>
+  </div>
+
+  <!-- Embedded Signup Button -->
+  <div class="wa-connect-form" style="text-align:center;padding:28px 22px">
+    {% if embedded_enabled %}
+    <p style="font-size:14px;color:rgba(255,255,255,0.55);margin-bottom:20px;line-height:1.6">
+      Click the button below. A Meta popup will open — select your WhatsApp Business Account and phone number. No copy-pasting required.
+    </p>
+    <button class="wa-connect-submit" onclick="launchWhatsAppSignup()" id="signupBtn"
+            style="margin:0 auto">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff">
+        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+      </svg>
+      Connect with WhatsApp Business
+    </button>
+    <div id="signupStatus" style="display:none;align-items:center;justify-content:center;gap:10px;margin-top:16px;font-size:14px;color:rgba(255,255,255,0.55)">
+      <div style="width:16px;height:16px;border:2px solid rgba(255,255,255,0.25);border-top-color:#25D366;border-radius:50%;animation:wa-spin .7s linear infinite;flex-shrink:0"></div>
+      <span id="signupStatusText">Completing setup…</span>
+    </div>
+    <div id="signupError" style="display:none;margin-top:14px;padding:10px 14px;background:rgba(240,68,56,0.15);border:1px solid rgba(240,68,56,0.35);border-radius:8px;font-size:13px;color:#fca5a5"></div>
+    {% else %}
+    <p style="font-size:14px;color:rgba(255,255,255,0.45)">
+      Embedded signup is not configured on this server. Contact your administrator.
+    </p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Phone selection modal (multiple numbers) -->
+<div id="phoneModal" style="display:none;position:fixed;inset:0;background:rgba(3,12,24,0.70);z-index:999;align-items:center;justify-content:center;padding:20px">
+  <div style="background:#fff;border-radius:16px;width:100%;max-width:440px;padding:28px 30px;box-shadow:0 30px 80px rgba(0,0,0,0.35)">
+    <h3 style="font-size:17px;font-weight:800;color:#030C18;margin-bottom:6px">Select your WhatsApp number</h3>
+    <p style="font-size:13px;color:rgba(3,12,24,0.45);margin-bottom:18px">Your account has multiple phone numbers. Choose one to connect.</p>
+    <div id="phoneOptions"></div>
+    <form id="phoneSelectForm" method="POST" action="{{ url_for('estate.inbox_embedded_complete') }}">
+      <input type="hidden" name="phone_number_id" id="selPhoneId">
+      <input type="hidden" name="waba_id"         id="selWabaId">
+      <input type="hidden" name="display_phone"   id="selDisplayPhone">
+      <input type="hidden" name="verified_name"   id="selVerifiedName">
+      <div style="display:flex;gap:10px;margin-top:18px">
+        <button type="submit" id="confirmPhoneBtn" disabled
+                style="flex:1;padding:11px;background:#030C18;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;opacity:.5">
+          Confirm
+        </button>
+        <button type="button" onclick="document.getElementById('phoneModal').style.display='none'"
+                style="padding:11px 18px;border:1.5px solid rgba(3,12,24,0.12);border-radius:8px;background:#fff;font-size:14px;font-family:inherit;cursor:pointer">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% else %}
+
+<!-- ── Connected bar ── -->
+<div class="wa-connected-bar">
+  <div class="wa-connected-dot"></div>
+  <span>WhatsApp Connected</span>
+  <span class="wa-num">{{ tenant.wa_phone_number_id }}</span>
+  <a href="{{ url_for('estate.settings') }}" class="wa-disconnect-link">Manage →</a>
+</div>
+
+<!-- Filter tabs -->
+<div class="filter-tabs">
+  <a href="{{ url_for('estate.inbox', filter='all') }}"
+     class="ftab {% if filter_type == 'all' %}active{% endif %}">All Buyers</a>
+  {% if my_staff_id %}
+  <a href="{{ url_for('estate.inbox', filter='mine') }}"
+     class="ftab {% if filter_type == 'mine' %}active{% endif %}">My Leads</a>
+  {% endif %}
+  <a href="{{ url_for('estate.inbox', filter='unassigned') }}"
+     class="ftab {% if filter_type == 'unassigned' %}active{% endif %}">Unassigned</a>
+  <a href="{{ url_for('estate.inbox', filter='pending') }}"
+     class="ftab {% if filter_type == 'pending' %}active{% endif %}">
+    Needs Agent
+    {% if _re_inbox_count and _re_inbox_count > 0 %}
+    <span class="ftab-badge">{{ _re_inbox_count if _re_inbox_count < 100 else '99+' }}</span>
+    {% endif %}
+  </a>
+  <a href="{{ url_for('estate.inbox', filter='qualified') }}"
+     class="ftab {% if filter_type == 'qualified' %}active{% endif %}">Qualified</a>
+</div>
+
+<!-- Buyer list -->
+{% set avatar_colors = ['#1a56db','#7c3aed','#0891b2','#0369a1','#4f46e5','#6d28d9'] %}
+{% if buyers %}
+<div class="buyer-list">
+  {% for b in buyers %}
+  {% set color = avatar_colors[loop.index0 % avatar_colors|length] %}
+  <a class="buyer-card" href="{{ url_for('estate.inbox_detail', customer_id=b.id) }}">
+
+    <div class="buyer-avatar" style="background:{{ color }}">
+      {{ (b.name or b.phone_number or '?')[0] | upper }}
+    </div>
+
+    <div class="buyer-main">
+      <div class="buyer-name">
+        {{ b.name or b.phone_number }}
+        {# Lead status pill #}
+        {% set ls = b.lead_status or 'new' %}
+        <span class="ls-pill ls-{{ ls }}">{{ ls | replace('_',' ') | title }}</span>
+        {# Assignee chip #}
+        {% if b.assignee_first %}
+        <span class="assignee-chip">
+          <span class="assignee-chip-av">{{ b.assignee_first[0] | upper }}</span>
+          {{ b.assignee_first }}{% if b.assignee_last %} {{ b.assignee_last[0] | upper }}.{% endif %}
+        </span>
+        {% else %}
+        <span class="unassigned-chip">Unassigned</span>
+        {% endif %}
+        {# Pending handoff alert #}
+        {% if b.pending_handoffs and b.pending_handoffs > 0 %}
+        <span class="handoff-dot">
+          ⚡ {{ b.pending_handoffs }} handoff{{ 's' if b.pending_handoffs != 1 }}
+        </span>
+        {% endif %}
+      </div>
+      <div class="buyer-phone">{{ b.phone_number }}</div>
+      {% if b.last_message %}
+      <div class="buyer-last-msg">{{ b.last_message }}</div>
+      {% endif %}
+    </div>
+
+    <!-- Qualification column -->
+    <div class="buyer-qual">
+      {% if b.budget_min or b.budget_max %}
+      <div class="buyer-qual-row">
+        <svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        ₦{{ '{:,.0f}'.format(b.budget_min) if b.budget_min else '?' }}
+        {% if b.budget_max %} – ₦{{ '{:,.0f}'.format(b.budget_max) }}{% endif %}
+      </div>
+      {% endif %}
+      {% if b.preferred_area %}
+      <div class="buyer-qual-row">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        {{ b.preferred_area }}
+      </div>
+      {% endif %}
+      {% if b.property_type_pref %}
+      <div class="buyer-qual-row">
+        <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        {{ b.property_type_pref | title }}
+      </div>
+      {% endif %}
+      {% if b.urgency %}
+      <div class="buyer-qual-row">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        {{ b.urgency | title }}
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="buyer-right">
+      <div class="buyer-time">
+        {{ b.last_seen_at.strftime('%d %b, %H:%M') if b.last_seen_at else '—' }}
+      </div>
+      <span class="buyer-open">Open →</span>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+
+{% else %}
+<div class="inbox-empty">
+  <svg viewBox="0 0 24 24">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+  </svg>
+  <h3>
+    {% if filter_type == 'pending' %}No leads awaiting an agent
+    {% elif filter_type == 'qualified' %}No qualified buyers yet
+    {% elif filter_type == 'mine' %}No leads assigned to you
+    {% elif filter_type == 'unassigned' %}No unassigned leads
+    {% else %}No buyers yet{% endif %}
+  </h3>
+  <p>
+    {% if filter_type != 'all' %}
+      Try the <a href="{{ url_for('estate.inbox') }}" style="color:#1a56db;font-weight:650">All Buyers</a> tab or wait for new WhatsApp enquiries.
+    {% else %}
+      Once buyers message your WhatsApp number, their conversations will appear here automatically.
+    {% endif %}
+  </p>
+</div>
+{% endif %}
+
+{% endif %}{# end wa_connected #}
+
+{% endblock %}
+
+{% block scripts %}
+{% if embedded_enabled and not wa_connected %}
+<style>@keyframes wa-spin{to{transform:rotate(360deg)}}</style>
+<script>
+var _sessionInfo = {};
+
+window.addEventListener('message', function(e) {
+  if (e.origin !== 'https://www.facebook.com' && e.origin !== 'https://web.facebook.com') return;
+  try {
+    var d = JSON.parse(e.data);
+    if (d.type === 'WA_EMBEDDED_SIGNUP' && d.event === 'FINISH') _sessionInfo = d.data || {};
+  } catch(x) {}
+});
+
+function launchWhatsAppSignup() {
+  _sessionInfo = {};
+  setStatus('Connecting…');
+  clearError();
+  FB.login(function(resp) {
+    if (resp.authResponse && resp.authResponse.code) {
+      setStatus('Completing setup…');
+      sendCode(resp.authResponse.code);
+    } else {
+      hideStatus();
+    }
+  }, {
+    config_id: '{{ meta_config_id }}',
+    response_type: 'code',
+    override_default_response_type: true,
+    extras: { setup: {}, featureType: 'whatsapp_embedded_signup', sessionInfoVersion: '3' }
+  });
+}
+
+function sendCode(code) {
+  fetch('{{ url_for("estate.inbox_embedded_callback") }}', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      code: code,
+      phone_number_id: _sessionInfo.phone_number_id || '',
+      waba_id: _sessionInfo.waba_id || ''
+    })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data) {
+    if (data.error) { hideStatus(); showError(data.error); return; }
+    if (data.status === 'connected') {
+      setStatus('Connected! Reloading…');
+      window.location.reload();
+    } else if (data.status === 'select_phone') {
+      hideStatus();
+      showPhoneModal(data.phone_options);
+    }
+  })
+  .catch(function(){ hideStatus(); showError('Connection failed. Please try again.'); });
+}
+
+function showPhoneModal(phones) {
+  var opts = document.getElementById('phoneOptions');
+  opts.innerHTML = '';
+  phones.forEach(function(p) {
+    var div = document.createElement('div');
+    div.style.cssText = 'padding:12px 14px;border:2px solid #e2e8f0;border-radius:10px;cursor:pointer;margin-bottom:8px;transition:.13s';
+    div.innerHTML = '<div style="font-weight:700;font-size:14px;color:#030C18">' + (p.display_phone_number||p.phone_number_id) + '</div>' +
+                    '<div style="font-size:12px;color:rgba(3,12,24,0.45);margin-top:2px">' + (p.verified_name||'') + ' · WABA: ' + p.waba_id + '</div>';
+    div.onclick = function() {
+      document.querySelectorAll('#phoneOptions > div').forEach(function(d){ d.style.borderColor='#e2e8f0'; });
+      div.style.borderColor = '#25D366';
+      document.getElementById('selPhoneId').value      = p.phone_number_id;
+      document.getElementById('selWabaId').value       = p.waba_id;
+      document.getElementById('selDisplayPhone').value = p.display_phone_number || '';
+      document.getElementById('selVerifiedName').value = p.verified_name || '';
+      document.getElementById('confirmPhoneBtn').disabled = false;
+      document.getElementById('confirmPhoneBtn').style.opacity = '1';
+    };
+    opts.appendChild(div);
+  });
+  document.getElementById('phoneModal').style.display = 'flex';
+}
+
+function setStatus(msg) {
+  document.getElementById('signupBtn').disabled = true;
+  document.getElementById('signupStatusText').textContent = msg;
+  document.getElementById('signupStatus').style.display = 'flex';
+}
+function hideStatus() {
+  document.getElementById('signupBtn').disabled = false;
+  document.getElementById('signupStatus').style.display = 'none';
+}
+function showError(msg) {
+  var el = document.getElementById('signupError');
+  el.textContent = msg; el.style.display = 'block';
+}
+function clearError() { document.getElementById('signupError').style.display = 'none'; }
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,390 @@
+{% extends "estate/base.html" %}
+{% block title %}Plan & Billing — PhiXtra Real Estate{% endblock %}
+
+{% block head %}
+<style>
+/* ── Usage summary bar ── */
+.usage-card{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:16px;
+  box-shadow:0 2px 12px rgba(3,12,24,0.05);padding:24px 28px;margin-bottom:24px;
+  display:flex;align-items:center;gap:32px;flex-wrap:wrap
+}
+.usage-plan-badge{
+  display:inline-flex;align-items:center;gap:7px;
+  background:#030C18;color:#fff;
+  font-size:13px;font-weight:750;letter-spacing:-.1px;
+  padding:8px 16px;border-radius:999px
+}
+.usage-plan-badge svg{width:14px;height:14px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.usage-trial-pill{
+  display:inline-flex;align-items:center;gap:5px;
+  background:linear-gradient(135deg,#6d28d9,#4f46e5);
+  color:#fff;font-size:11px;font-weight:700;
+  padding:4px 11px;border-radius:999px;letter-spacing:.03em
+}
+.usage-meter{flex:1;min-width:200px}
+.usage-meter-top{
+  display:flex;justify-content:space-between;align-items:baseline;
+  margin-bottom:7px
+}
+.usage-meter-label{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:rgba(3,12,24,0.40)}
+.usage-meter-nums{font-size:13px;font-weight:700;color:#030C18}
+.usage-meter-nums span{font-weight:500;color:rgba(3,12,24,0.38)}
+.usage-bar-bg{height:7px;background:rgba(3,12,24,0.07);border-radius:999px;overflow:hidden}
+.usage-bar-fill{height:100%;border-radius:999px;transition:width .5s}
+
+/* ── Plan grid ── */
+.plan-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
+  gap:16px;
+  margin-bottom:24px;
+  align-items:stretch
+}
+
+.plan-card{
+  background:#fff;border:1.5px solid rgba(3,12,24,0.09);border-radius:18px;
+  box-shadow:0 2px 14px rgba(3,12,24,0.05);
+  display:flex;flex-direction:column;
+  position:relative;overflow:hidden;
+  transition:box-shadow .18s,transform .18s
+}
+.plan-card:hover{box-shadow:0 8px 30px rgba(3,12,24,0.10);transform:translateY(-2px)}
+.plan-card.is-current{
+  border-color:#030C18;
+  box-shadow:0 0 0 3px rgba(3,12,24,0.08),0 4px 20px rgba(3,12,24,0.10)
+}
+.plan-card.is-popular{
+  border-color:#1a56db;
+  box-shadow:0 0 0 3px rgba(26,86,219,0.10),0 4px 20px rgba(26,86,219,0.12)
+}
+
+/* Coloured top strip */
+.plan-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:4px;border-radius:18px 18px 0 0
+}
+.plan-card.tier-free::before    {background:linear-gradient(90deg,#94a3b8,#cbd5e1)}
+.plan-card.tier-starter::before {background:linear-gradient(90deg,#1a56db,#3b82f6)}
+.plan-card.tier-growth::before  {background:linear-gradient(90deg,#7c3aed,#a78bfa)}
+.plan-card.tier-pro::before     {background:linear-gradient(90deg,#F79009,#fbbf24)}
+
+/* Badges */
+.plan-current-badge{
+  position:absolute;top:0;right:20px;
+  background:#030C18;color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.08em;
+  padding:4px 11px;border-radius:0 0 8px 8px;text-transform:uppercase
+}
+.plan-popular-badge{
+  position:absolute;top:0;right:20px;
+  background:linear-gradient(135deg,#1a56db,#7c3aed);
+  color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.08em;
+  padding:4px 11px;border-radius:0 0 8px 8px;text-transform:uppercase
+}
+
+/* Card body */
+.plan-head{padding:28px 24px 20px}
+.plan-name{font-size:17px;font-weight:800;color:#030C18;letter-spacing:-.2px;margin-bottom:4px}
+.plan-desc{font-size:12.5px;color:rgba(3,12,24,0.42);line-height:1.4;margin-bottom:14px}
+.plan-price{display:flex;align-items:baseline;gap:4px}
+.plan-price-val{font-size:32px;font-weight:900;letter-spacing:-.8px;color:#030C18;line-height:1}
+.plan-price-period{font-size:13px;font-weight:500;color:rgba(3,12,24,0.40)}
+
+/* Divider */
+.plan-divider{height:1px;background:rgba(3,12,24,0.07);margin:0 24px}
+
+/* Feature list */
+.plan-features{padding:18px 24px;flex:1}
+.plan-feat{
+  display:flex;align-items:center;gap:10px;
+  padding:5px 0;font-size:13px;color:#030C18
+}
+.plan-feat-icon{width:18px;height:18px;flex-shrink:0}
+.plan-feat-icon.yes{color:#12B76A}
+.plan-feat-icon.no{color:rgba(3,12,24,0.20)}
+.plan-feat-icon svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.plan-feat-label{flex:1;font-size:13px;color:#030C18}
+.plan-feat-val{font-size:12.5px;font-weight:700;color:rgba(3,12,24,0.60)}
+
+/* CTA */
+.plan-cta{padding:0 24px 24px}
+.plan-btn{
+  display:block;width:100%;padding:12px;
+  border-radius:10px;font-size:14px;font-weight:750;font-family:inherit;
+  text-align:center;cursor:pointer;border:none;transition:background .13s,transform .12s,box-shadow .13s
+}
+.plan-btn.upgrade{
+  background:#030C18;color:#fff;
+  box-shadow:0 2px 12px rgba(3,12,24,0.20)
+}
+.plan-btn.upgrade:hover{background:#0d1f3c;transform:translateY(-1px);box-shadow:0 6px 20px rgba(3,12,24,0.25)}
+.plan-btn.upgrade.popular{
+  background:linear-gradient(135deg,#1a56db,#7c3aed);
+  box-shadow:0 2px 12px rgba(26,86,219,0.30)
+}
+.plan-btn.upgrade.popular:hover{box-shadow:0 6px 20px rgba(26,86,219,0.40);transform:translateY(-1px)}
+.plan-btn.downgrade{
+  background:transparent;color:rgba(3,12,24,0.45);
+  border:1.5px solid rgba(3,12,24,0.12)
+}
+.plan-btn.downgrade:hover{border-color:rgba(3,12,24,0.22);color:#030C18}
+.plan-btn.current-plan{
+  background:rgba(3,12,24,0.04);color:rgba(3,12,24,0.40);
+  border:1.5px solid rgba(3,12,24,0.09);cursor:default
+}
+
+/* Limit display */
+.limit-chip{
+  display:inline-flex;align-items:center;gap:3px;
+  font-size:12px;font-weight:750;
+  background:rgba(3,12,24,0.06);color:#030C18;
+  padding:2px 8px;border-radius:5px
+}
+.limit-chip.unlimited{background:rgba(18,183,106,0.10);color:#0a7a3c}
+
+/* Footer note */
+.billing-note{
+  text-align:center;font-size:12.5px;color:rgba(3,12,24,0.40);
+  padding:16px;display:flex;align-items:center;justify-content:center;gap:8px
+}
+.billing-note svg{width:13px;height:13px;stroke:rgba(3,12,24,0.30);fill:none;stroke-width:2;stroke-linecap:round;flex-shrink:0}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title" style="margin-bottom:4px">Plan &amp; Billing</h1>
+    <p class="muted">Choose the plan that fits your agency</p>
+  </div>
+</div>
+
+{% with msgs = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in msgs %}
+  <div class="flash {{ 'danger' if cat in ('error','danger') else cat }}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+<!-- ── Current usage summary ── -->
+<div class="usage-card">
+
+  <!-- Plan badge -->
+  <div>
+    <div style="font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:rgba(3,12,24,0.38);margin-bottom:7px">Current Plan</div>
+    <div class="usage-plan-badge">
+      <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+      {{ tenant.plan_name or 'Free' }}
+    </div>
+    {% if trial_days_left is not none and trial_days_left >= 0 %}
+    <div style="margin-top:8px">
+      <span class="usage-trial-pill">
+        Trial — {{ trial_days_left }} day{{ 's' if trial_days_left != 1 }} left
+      </span>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Divider -->
+  <div style="width:1px;height:60px;background:rgba(3,12,24,0.08);flex-shrink:0"></div>
+
+  <!-- AI Messages meter -->
+  <div class="usage-meter">
+    <div class="usage-meter-top">
+      <span class="usage-meter-label">AI Messages This Period</span>
+      <span class="usage-meter-nums">
+        {{ used | int }}
+        <span>/ {% if msg_limit <= 0 %}Unlimited{% else %}{{ msg_limit | int }}{% endif %}</span>
+      </span>
+    </div>
+    {% if msg_limit > 0 %}
+    <div class="usage-bar-bg">
+      <div class="usage-bar-fill"
+           style="width:{{ quota_pct }}%;
+                  background:{% if quota_pct >= 90 %}#F04438{% elif quota_pct >= 70 %}#F79009{% else %}#12B76A{% endif %}">
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:5px">
+      <span style="font-size:11.5px;color:rgba(3,12,24,0.38)">{{ quota_pct }}% used</span>
+      <span style="font-size:11.5px;color:rgba(3,12,24,0.38)">{{ [msg_limit - used, 0] | max | int }} remaining</span>
+    </div>
+    {% else %}
+    <div style="font-size:12px;color:#0a7a3c;margin-top:4px;font-weight:650">Unlimited messages on this plan</div>
+    {% endif %}
+  </div>
+
+</div>
+
+<!-- ── Plan cards ── -->
+{% set plan_order = ['free','starter','growth','pro'] %}
+{% set current_idx = plan_order.index(tenant.plan_slug) if tenant.plan_slug in plan_order else 0 %}
+
+<!-- Determine popular plan slug (middle-ish tier) -->
+{% set popular_slug = plans[1].slug if plans | length >= 2 else '' %}
+
+<div class="plan-grid">
+  {% for plan in plans %}
+  {% set is_current = (plan.slug == tenant.plan_slug) %}
+  {% set this_idx   = plan_order.index(plan.slug) if plan.slug in plan_order else 0 %}
+  {% set is_popular = (plan.slug == popular_slug and not is_current) %}
+
+  <div class="plan-card tier-{{ plan.slug }}
+               {% if is_current %}is-current{% elif is_popular %}is-popular{% endif %}">
+
+    {% if is_current %}
+    <div class="plan-current-badge">Current</div>
+    {% elif is_popular %}
+    <div class="plan-popular-badge">Most Popular</div>
+    {% endif %}
+
+    <!-- Head -->
+    <div class="plan-head">
+      <div class="plan-name">{{ plan.name }}</div>
+      <div class="plan-desc">
+        {% if plan.slug == 'free' %}Perfect for getting started
+        {% elif plan.slug == 'starter' %}For individual agents
+        {% elif plan.slug == 'growth' %}For growing agencies
+        {% elif plan.slug == 'pro' %}Full-scale agency power
+        {% else %}{{ plan.description or '' }}
+        {% endif %}
+      </div>
+      <div class="plan-price">
+        {% if plan.price_ngn == 0 %}
+        <span class="plan-price-val">Free</span>
+        {% else %}
+        <span class="plan-price-val">₦{{ '{:,.0f}'.format(plan.price_ngn) }}</span>
+        <span class="plan-price-period">/month</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="plan-divider"></div>
+
+    <!-- Features -->
+    <div class="plan-features">
+
+      <!-- AI Messages -->
+      <div class="plan-feat">
+        <div class="plan-feat-icon yes">
+          <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <span class="plan-feat-label">AI Messages / mo</span>
+        <span class="plan-feat-val">
+          {% if plan.ai_messages_limit <= 0 %}
+          <span class="limit-chip unlimited">Unlimited</span>
+          {% else %}
+          <span class="limit-chip">{{ plan.ai_messages_limit | int }}</span>
+          {% endif %}
+        </span>
+      </div>
+
+      <!-- Listings -->
+      <div class="plan-feat">
+        <div class="plan-feat-icon yes">
+          <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        </div>
+        <span class="plan-feat-label">Property Listings</span>
+        <span class="plan-feat-val">
+          {% if plan.listings_limit <= 0 %}
+          <span class="limit-chip unlimited">Unlimited</span>
+          {% else %}
+          <span class="limit-chip">{{ plan.listings_limit }}</span>
+          {% endif %}
+        </span>
+      </div>
+
+      <!-- AI Agents -->
+      <div class="plan-feat">
+        <div class="plan-feat-icon yes">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M6 20v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg>
+        </div>
+        <span class="plan-feat-label">AI Agents</span>
+        <span class="plan-feat-val">
+          {% if plan.ai_agents_limit <= 0 %}
+          <span class="limit-chip unlimited">Unlimited</span>
+          {% else %}
+          <span class="limit-chip">{{ plan.ai_agents_limit }}</span>
+          {% endif %}
+        </span>
+      </div>
+
+      <!-- Follow-up Sequences -->
+      <div class="plan-feat">
+        <div class="plan-feat-icon {% if plan.features.get('follow_up') %}yes{% else %}no{% endif %}">
+          {% if plan.features.get('follow_up') %}
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          {% else %}
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          {% endif %}
+        </div>
+        <span class="plan-feat-label" style="{% if not plan.features.get('follow_up') %}color:rgba(3,12,24,0.35){% endif %}">Follow-up Sequences</span>
+      </div>
+
+      <!-- Listing Broadcasts -->
+      <div class="plan-feat">
+        <div class="plan-feat-icon {% if plan.features.get('broadcasts') %}yes{% else %}no{% endif %}">
+          {% if plan.features.get('broadcasts') %}
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          {% else %}
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          {% endif %}
+        </div>
+        <span class="plan-feat-label" style="{% if not plan.features.get('broadcasts') %}color:rgba(3,12,24,0.35){% endif %}">Listing Broadcasts</span>
+      </div>
+
+      <!-- Inspection Bookings -->
+      <div class="plan-feat">
+        <div class="plan-feat-icon {% if plan.features.get('inspections') %}yes{% else %}no{% endif %}">
+          {% if plan.features.get('inspections') %}
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          {% else %}
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          {% endif %}
+        </div>
+        <span class="plan-feat-label" style="{% if not plan.features.get('inspections') %}color:rgba(3,12,24,0.35){% endif %}">Inspection Bookings</span>
+      </div>
+
+      <!-- Custom AI Prompt -->
+      <div class="plan-feat">
+        <div class="plan-feat-icon {% if plan.features.get('custom_prompt') %}yes{% else %}no{% endif %}">
+          {% if plan.features.get('custom_prompt') %}
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          {% else %}
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          {% endif %}
+        </div>
+        <span class="plan-feat-label" style="{% if not plan.features.get('custom_prompt') %}color:rgba(3,12,24,0.35){% endif %}">Custom AI Prompt</span>
+      </div>
+
+    </div>
+
+    <!-- CTA -->
+    <div class="plan-cta">
+      {% if is_current %}
+      <button class="plan-btn current-plan" disabled>Current Plan</button>
+      {% else %}
+      <form method="POST" action="{{ url_for('estate.billing_plans') }}">
+        <input type="hidden" name="plan_slug" value="{{ plan.slug }}"/>
+        {% if this_idx > current_idx %}
+        <button type="submit" class="plan-btn upgrade {% if is_popular %}popular{% endif %}">
+          Upgrade to {{ plan.name }}
+        </button>
+        {% else %}
+        <button type="submit" class="plan-btn downgrade">
+          Downgrade to {{ plan.name }}
+        </button>
+        {% endif %}
+      </form>
+      {% endif %}
+    </div>
+
+  </div>
+  {% endfor %}
+</div>
+
+<!-- ── Footer note ── -->
+<div class="billing-note">
+  <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+  Payments processed securely via Paystack &nbsp;·&nbsp; All prices in Nigerian Naira (₦) &nbsp;·&nbsp; Cancel anytime
+</div>
+
+{% endblock %}

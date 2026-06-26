@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>{% block title %}PhiXtra Real Estate{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='portal/favicon.png') }}"/>
+  <style>
+    :root{
+      --ink:#030C18; --bg:#fff; --card:#fff;
+      --line:rgba(3,12,24,0.10); --txt:rgba(3,12,24,0.92);
+      --muted:rgba(3,12,24,0.55); --good:#12B76A;
+      --warn:#F79009; --bad:#F04438;
+      --shadow:0 18px 40px rgba(3,12,24,0.09);
+      --shadow2:0 4px 14px rgba(3,12,24,0.07);
+      --ring:0 0 0 4px rgba(3,12,24,0.07);
+      --sidebar-w:230px;
+      --accent:#1a56db;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    html{-webkit-font-smoothing:antialiased}
+    body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+         color:var(--txt);background:#f8f9fc;min-height:100vh;font-size:15px;line-height:1.55}
+    a{color:var(--ink);text-decoration:none}
+    a:hover{text-decoration:underline;text-underline-offset:3px}
+
+    .sidebar{position:fixed;top:0;left:0;bottom:0;width:var(--sidebar-w);
+             background:#fff;display:flex;flex-direction:column;z-index:100;
+             border-right:1px solid var(--line);box-shadow:4px 0 20px rgba(3,12,24,0.08);
+             overflow-y:auto;overflow-x:hidden}
+    .sb-brand{display:flex;align-items:center;gap:0;padding:20px 18px 16px;
+              border-bottom:1px solid var(--line);flex-shrink:0;text-decoration:none;
+              flex-direction:column}
+    .sb-brand:hover{text-decoration:none}
+    .sb-brand img{height:48px;width:auto;flex-shrink:0}
+    .sb-brand-label{font-size:10px;color:rgba(3,12,24,0.40);font-weight:600;
+                    letter-spacing:.08em;text-transform:uppercase;margin-top:6px}
+    .sb-nav{flex:1;padding:8px 10px;display:flex;flex-direction:column;gap:0}
+    .sb-link{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:10px;
+             font-size:14px;font-weight:500;color:rgba(3,12,24,0.65);
+             cursor:pointer;transition:.15s;text-decoration:none;white-space:nowrap;
+             border-bottom:1px solid rgba(3,12,24,0.05)}
+    .sb-link:hover{background:rgba(3,12,24,0.04);color:var(--ink);text-decoration:none}
+    .sb-link.active{background:rgba(3,12,24,0.10);color:var(--ink);font-weight:650;
+                    box-shadow:inset 3px 0 0 var(--accent)}
+    .sb-link .sb-icon{font-size:16px;flex-shrink:0;width:20px;text-align:center}
+    .sb-group{margin-top:0}
+    .sb-group-toggle{display:flex;align-items:center;gap:11px;justify-content:space-between;
+                     padding:10px 12px;border-radius:10px;font-size:14px;font-weight:600;
+                     color:rgba(3,12,24,0.60);cursor:pointer;transition:.15s;user-select:none;
+                     border-bottom:1px solid rgba(3,12,24,0.05)}
+    .sb-group-toggle:hover{background:rgba(3,12,24,0.04);color:var(--ink)}
+    .sb-group-toggle.open{color:var(--ink);background:rgba(3,12,24,0.08);
+                          box-shadow:inset 3px 0 0 var(--accent)}
+    .sb-group-toggle .sb-gtitle{display:flex;align-items:center;gap:11px}
+    .sb-group-toggle .sb-arrow{font-size:12px;transition:transform .22s;opacity:.7;flex-shrink:0}
+    .sb-group-toggle.open .sb-arrow{transform:rotate(180deg);opacity:1}
+    .sb-group-toggle .sb-icon{font-size:16px;flex-shrink:0;width:20px;text-align:center}
+    .sb-sub{overflow:hidden;max-height:0;transition:max-height .28s cubic-bezier(.4,0,.2,1);
+            padding-left:12px;border-left:2px solid rgba(3,12,24,0.10);margin-left:20px}
+    .sb-sub.open{max-height:400px}
+    .sb-sub a{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;
+              font-size:13px;font-weight:500;color:rgba(3,12,24,0.60);
+              text-decoration:none;transition:.15s;border-bottom:1px solid rgba(3,12,24,0.04)}
+    .sb-sub a:before{content:"";width:5px;height:5px;border-radius:50%;
+                     background:rgba(3,12,24,0.18);flex-shrink:0}
+    .sb-sub a:hover{background:rgba(3,12,24,0.05);color:var(--ink);text-decoration:none}
+    .sb-sub a.active{background:rgba(3,12,24,0.10);color:var(--ink);font-weight:650}
+    .sb-sub a.active:before{background:var(--good)}
+    .sb-divider{height:1px;background:var(--line);margin:6px 12px}
+    .sb-footer{padding:10px 10px 16px;border-top:1px solid var(--line);background:#fafafa;flex-shrink:0}
+    .sb-logout{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:10px;
+               font-size:14px;color:rgba(3,12,24,0.50);cursor:pointer;transition:.15s;text-decoration:none}
+    .sb-logout:hover{background:rgba(3,12,24,0.05);color:var(--ink);text-decoration:none}
+
+    .sb-mobile-topbar{display:none;position:fixed;top:0;left:0;right:0;z-index:150;
+                      height:54px;background:var(--ink);align-items:center;gap:12px;
+                      padding:0 16px;box-shadow:0 2px 12px rgba(3,12,24,0.25)}
+    .sb-mobile-toggle{background:none;border:none;color:#fff;cursor:pointer;
+                      width:40px;height:40px;display:flex;align-items:center;
+                      justify-content:center;border-radius:8px;flex-shrink:0;font-size:20px}
+    .sb-overlay{display:none;position:fixed;inset:0;background:rgba(3,12,24,0.55);
+                z-index:99;backdrop-filter:blur(2px)}
+    .sb-overlay.active{display:block}
+    .sb-close{display:none;align-self:flex-end;margin:10px 12px 0;background:rgba(3,12,24,0.07);
+              border:none;color:var(--ink);width:32px;height:32px;border-radius:8px;cursor:pointer;
+              font-size:18px;align-items:center;justify-content:center;flex-shrink:0}
+
+    @media(max-width:860px){
+      :root{--sidebar-w:0px}
+      .sidebar{transform:translateX(-260px);width:260px;transition:transform .25s;z-index:200}
+      .sidebar.sb-open{transform:translateX(0)}
+      .sb-mobile-topbar{display:flex}
+      .sb-close{display:flex}
+      .site-main{margin-left:0;padding-top:54px}
+      .page{padding:20px 14px 50px}
+    }
+
+    .site-main{margin-left:var(--sidebar-w);min-height:100vh}
+    .page{max-width:1100px;margin:0 auto;padding:32px 28px 60px}
+    .page-sm{max-width:480px;margin:0 auto;padding:56px 20px 60px}
+    body.no-sidebar .sidebar{display:none}
+    body.no-sidebar .site-main{margin-left:0}
+    .auth-topbar{display:flex;align-items:center;justify-content:center;padding:18px 28px;
+                 border-bottom:1px solid var(--line);background:#fff}
+    .auth-topbar img{height:42px;width:auto}
+    .auth-topbar-action{position:absolute;right:28px}
+
+    .card{background:var(--card);border:1px solid var(--line);border-radius:16px;
+          padding:22px;box-shadow:var(--shadow)}
+    .card-sm{padding:14px}
+    .card-title{font-size:12px;font-weight:700;color:var(--muted);
+                text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+    .kpi{font-size:28px;font-weight:800;letter-spacing:-.5px;color:var(--ink)}
+    .grid{display:grid;gap:14px}
+    .g4{grid-template-columns:repeat(4,1fr)}
+    .g3{grid-template-columns:repeat(3,1fr)}
+    .g2{grid-template-columns:repeat(2,1fr)}
+    @media(max-width:860px){.g4,.g3,.g2{grid-template-columns:1fr}}
+
+    .btn{display:inline-flex;align-items:center;gap:7px;padding:10px 16px;border-radius:12px;
+         border:1px solid var(--line);background:#fff;color:var(--txt);cursor:pointer;
+         font-weight:650;font-size:14px;text-decoration:none;transition:.15s;
+         box-shadow:var(--shadow2);font-family:inherit;line-height:1}
+    .btn:hover{transform:translateY(-1px);box-shadow:0 8px 22px rgba(3,12,24,0.12);text-decoration:none}
+    .btn-primary{background:var(--ink);color:#fff;border-color:rgba(3,12,24,0.2);
+                 box-shadow:0 10px 26px rgba(3,12,24,0.18)}
+    .btn-primary:hover{background:#000;color:#fff}
+    a.btn-primary,a.btn-primary:visited,a.btn-primary:hover{color:#fff}
+    .btn-danger{background:#fff;color:var(--bad);border-color:rgba(240,68,56,0.25)}
+    .btn-sm{padding:7px 12px;font-size:13px;border-radius:10px}
+    .btn-ghost{background:transparent;border-color:transparent;box-shadow:none}
+
+    label{display:block;font-size:13px;color:var(--muted);margin-bottom:5px;font-weight:500}
+    input,select,textarea{width:100%;padding:11px 13px;border-radius:12px;
+                          border:1px solid rgba(3,12,24,0.18);background:#fff;
+                          color:var(--txt);font-size:14px;font-family:inherit;outline:none;
+                          transition:.15s;line-height:1.4}
+    input:focus,select:focus,textarea:focus{border-color:rgba(3,12,24,0.35);box-shadow:var(--ring)}
+    .form-group{margin-bottom:16px}
+    .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    @media(max-width:540px){.form-row{grid-template-columns:1fr}}
+
+    .flash{border-radius:14px;border:1px solid var(--line);padding:12px 16px;
+           margin:0 0 18px;font-size:14px}
+    .flash.success{border-color:rgba(18,183,106,0.40);background:rgba(18,183,106,0.07)}
+    .flash.warning{border-color:rgba(247,144,9,0.40);background:rgba(247,144,9,0.07)}
+    .flash.danger {border-color:rgba(240,68,56,0.40);background:rgba(240,68,56,0.06)}
+
+    .table-wrap{overflow-x:auto;border-radius:14px;border:1px solid var(--line)}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:11px 14px;font-size:13px;border-bottom:1px solid rgba(3,12,24,0.07);text-align:left}
+    th{font-weight:700;color:var(--muted);background:rgba(3,12,24,0.025)}
+    tbody tr:last-child td{border-bottom:none}
+    tbody tr:hover{background:rgba(3,12,24,0.018)}
+
+    .pill{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;
+          font-size:12px;font-weight:650;border:1px solid var(--line)}
+    .pill-green{border-color:rgba(18,183,106,0.30);background:rgba(18,183,106,0.10);color:#0a7a3c}
+    .pill-red  {border-color:rgba(240,68,56,0.30);background:rgba(240,68,56,0.08);color:#b02020}
+    .pill-warn {border-color:rgba(247,144,9,0.30);background:rgba(247,144,9,0.10);color:#7a4f00}
+    .pill-grey {border-color:var(--line);background:rgba(3,12,24,0.04);color:var(--muted)}
+    .pill-blue {border-color:rgba(26,86,219,0.30);background:rgba(26,86,219,0.08);color:#1a56db}
+
+    .progress{height:8px;width:100%;background:rgba(3,12,24,0.07);border-radius:999px;overflow:hidden}
+    .progress>div{height:100%;border-radius:999px;background:var(--good);transition:width .4s}
+    .progress.warn>div{background:var(--warn)}
+    .progress.danger>div{background:var(--bad)}
+
+    .muted{color:var(--muted);font-size:13px}
+    .section-title{font-size:20px;font-weight:800;letter-spacing:-.3px;margin-bottom:18px}
+    .page-header{display:flex;align-items:center;justify-content:space-between;
+                 flex-wrap:wrap;gap:12px;margin-bottom:26px}
+    .divider{height:1px;background:var(--line);margin:22px 0}
+    .dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0}
+    .dot-green{background:var(--good)}
+    .dot-red  {background:var(--bad)}
+    .dot-grey {background:rgba(3,12,24,0.25)}
+    .footer{color:var(--muted);font-size:12px;padding-top:28px;
+            border-top:1px solid var(--line);margin-top:40px}
+
+    .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+    @media(max-width:860px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+    @media(max-width:480px){.kpi-grid{grid-template-columns:1fr}}
+    .kpi-card{padding:18px 20px}
+    .kpi-label{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;
+               letter-spacing:.06em;margin-bottom:8px}
+    .kpi-value{font-size:28px;font-weight:800;letter-spacing:-.5px;color:var(--ink);line-height:1}
+    .kpi-sub{font-size:12px;color:var(--muted);margin-top:5px}
+  </style>
+  {% block head %}{% endblock %}
+</head>
+
+{% set _re_logged = session.get('re_logged_in') %}
+<body class="{% if not _re_logged %}no-sidebar{% endif %}">
+
+{% if _re_logged %}
+<nav class="sidebar" id="estateSidebar">
+  <button class="sb-close" id="sbClose">&#10005;</button>
+
+  <a class="sb-brand" href="{{ url_for('estate.dashboard') }}">
+    <img src="{{ url_for('static', filename='portal/phixtra-logo.png') }}" alt="PhiXtra"/>
+    <span class="sb-brand-label">Real Estate Portal</span>
+  </a>
+
+  <div class="sb-nav">
+
+    <a class="sb-link {% if request.endpoint == 'estate.dashboard' %}active{% endif %}"
+       href="{{ url_for('estate.dashboard') }}">
+      <span class="sb-icon">🏠</span> Dashboard
+    </a>
+
+    <a class="sb-link {% if request.endpoint in ('estate.listings','estate.listing_new','estate.listing_edit') %}active{% endif %}"
+       href="{{ url_for('estate.listings') }}">
+      <span class="sb-icon">🏘️</span> My Listings
+    </a>
+
+    <a class="sb-link {% if request.endpoint in ('estate.inbox','estate.inbox_detail') %}active{% endif %}"
+       href="{{ url_for('estate.inbox') }}"
+       style="justify-content:space-between">
+      <span style="display:flex;align-items:center;gap:10px">
+        <span class="sb-icon">💬</span> Leads &amp; Inbox
+      </span>
+      {% if _re_inbox_count and _re_inbox_count > 0 %}
+      <span style="background:#F04438;color:#fff;font-size:11px;font-weight:700;
+                   padding:2px 7px;border-radius:999px;flex-shrink:0">
+        {{ _re_inbox_count if _re_inbox_count < 100 else '99+' }}
+      </span>
+      {% endif %}
+    </a>
+
+    <a class="sb-link {% if request.endpoint == 'estate.reports' %}active{% endif %}"
+       href="{{ url_for('estate.reports') }}">
+      <span class="sb-icon">📊</span> Reports
+    </a>
+
+    <div class="sb-divider"></div>
+
+    {% set _ai_group = request.endpoint in ('estate.agents','estate.agents_new','estate.agents_edit','estate.system_instruction','estate.handoff_rules') %}
+    <div class="sb-group">
+      <div class="sb-group-toggle {% if _ai_group %}open{% endif %}" onclick="sbToggle(this)">
+        <span class="sb-gtitle"><span class="sb-icon">🤖</span> AI Assistant</span>
+        <span class="sb-arrow">▾</span>
+      </div>
+      <div class="sb-sub {% if _ai_group %}open{% endif %}">
+        <a href="{{ url_for('estate.agents') }}"
+           class="{% if request.endpoint in ('estate.agents','estate.agents_new','estate.agents_edit') %}active{% endif %}">
+          AI Assistants
+        </a>
+        {% if _re_tenant and _re_tenant.feat_advanced_ai %}
+        <a href="{{ url_for('estate.system_instruction') }}"
+           class="{% if request.endpoint == 'estate.system_instruction' %}active{% endif %}">
+          System Instruction
+        </a>
+        {% endif %}
+        <a href="{{ url_for('estate.handoff_rules') }}"
+           class="{% if request.endpoint == 'estate.handoff_rules' %}active{% endif %}">
+          Handoff Rules
+        </a>
+      </div>
+    </div>
+
+    <div class="sb-divider"></div>
+
+    {% if _re_is_admin %}
+    <a class="sb-link {% if request.endpoint == 'estate.billing_plans' %}active{% endif %}"
+       href="{{ url_for('estate.billing_plans') }}">
+      <span class="sb-icon">💳</span> Plan &amp; Billing
+    </a>
+    {% endif %}
+
+    <a class="sb-link {% if request.endpoint == 'estate.settings' %}active{% endif %}"
+       href="{{ url_for('estate.settings') }}">
+      <span class="sb-icon">⚙️</span> Settings
+    </a>
+
+    {% if _re_is_admin %}
+    <a class="sb-link {% if request.endpoint == 'estate.team' %}active{% endif %}"
+       href="{{ url_for('estate.team') }}">
+      <span class="sb-icon">👥</span> Team
+    </a>
+    {% endif %}
+
+    <a class="sb-link" href="https://phixtra.com" target="_blank" rel="noopener">
+      <span class="sb-icon">🌐</span> PhiXtra Home
+    </a>
+
+  </div>
+
+  <div class="sb-footer">
+    {% if _re_tenant %}
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;
+                border:1px solid var(--line);margin-bottom:6px;background:#fff;">
+      {% if _re_staff_name %}
+        {# Staff member logged in #}
+        <div style="width:34px;height:34px;border-radius:50%;
+                    background:{% if _re_role == 'admin' %}#7c3aed{% else %}#0a7a3c{% endif %};
+                    display:flex;align-items:center;justify-content:center;
+                    font-size:14px;font-weight:800;color:#fff;flex-shrink:0;">
+          {{ _re_staff_name[0]|upper }}
+        </div>
+        <div style="min-width:0;flex:1">
+          <div style="font-size:13px;font-weight:650;color:var(--ink);
+                      white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+            {{ _re_staff_name }}
+          </div>
+          <div style="display:flex;align-items:center;gap:5px;margin-top:2px">
+            <span style="font-size:10px;font-weight:750;letter-spacing:.05em;text-transform:uppercase;
+                         padding:1px 7px;border-radius:999px;
+                         background:{% if _re_role == 'admin' %}rgba(124,58,237,0.12){% else %}rgba(18,183,106,0.10){% endif %};
+                         color:{% if _re_role == 'admin' %}#7c3aed{% else %}#0a7a3c{% endif %}">
+              {{ _re_role|title }}
+            </span>
+            <span style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+              {{ _re_tenant.business_name or 'My Agency' }}
+            </span>
+          </div>
+        </div>
+      {% else %}
+        {# Owner account #}
+        <div style="width:34px;height:34px;border-radius:50%;background:var(--accent);
+                    display:flex;align-items:center;justify-content:center;
+                    font-size:14px;font-weight:800;color:#fff;flex-shrink:0;">
+          {{ (_re_tenant.first_name or _re_tenant.business_name or '?')[0]|upper }}
+        </div>
+        <div style="min-width:0;flex:1">
+          <div style="font-size:13px;font-weight:650;color:var(--ink);
+                      white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+            {{ _re_tenant.business_name or 'My Agency' }}
+          </div>
+          <div style="font-size:11px;color:var(--muted);
+                      white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+            {{ _re_tenant.plan_name or 'Free' }} Plan
+          </div>
+        </div>
+      {% endif %}
+    </div>
+    {% endif %}
+    <a class="sb-logout" href="{{ url_for('estate.logout') }}">
+      <span style="font-size:16px;width:20px;text-align:center">🚪</span> Log out
+    </a>
+  </div>
+</nav>
+
+<div class="sb-mobile-topbar">
+  <button class="sb-mobile-toggle" id="sbMobileToggle">&#9776;</button>
+  <img src="{{ url_for('static', filename='portal/phixtra-logo.png') }}"
+       style="height:26px;width:auto" alt="PhiXtra"/>
+</div>
+<div class="sb-overlay" id="sbOverlay"></div>
+{% endif %}
+
+<div class="site-main">
+  {% block auth_topbar %}
+  {% if not _re_logged %}
+  <div class="auth-topbar" style="position:relative">
+    <a href="{{ url_for('estate.login') }}">
+      <img src="{{ url_for('static', filename='portal/phixtra-logo.png') }}" alt="PhiXtra"/>
+    </a>
+    {% if request.endpoint != 'estate.login' %}
+    <div class="auth-topbar-action">
+      <a href="{{ url_for('estate.login') }}" class="btn btn-primary" style="padding:9px 18px;font-size:14px">
+        Log in →
+      </a>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% endblock %}
+
+  <div class="{% block wrap_class %}page{% endblock %}">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+
+    {% block footer %}
+    <div class="footer">
+      © 2026 PhiXtra Real Estate &nbsp;·&nbsp;
+      <a href="mailto:support@phixtra.com">support@phixtra.com</a>
+    </div>
+    {% endblock %}
+  </div>
+</div>
+
+<script>
+function sbToggle(el){
+  var sub=el.nextElementSibling,isOpen=sub.classList.contains('open');
+  document.querySelectorAll('.sb-group-toggle.open').forEach(function(e){
+    e.classList.remove('open');e.nextElementSibling.classList.remove('open');
+  });
+  if(!isOpen){el.classList.add('open');sub.classList.add('open')}
+}
+var sidebar=document.getElementById('estateSidebar');
+var overlay=document.getElementById('sbOverlay');
+var mobileBtn=document.getElementById('sbMobileToggle');
+var closeBtn=document.getElementById('sbClose');
+function openSB(){if(!sidebar)return;sidebar.classList.add('sb-open');if(overlay)overlay.classList.add('active');document.body.style.overflow='hidden'}
+function closeSB(){if(!sidebar)return;sidebar.classList.remove('sb-open');if(overlay)overlay.classList.remove('active');document.body.style.overflow=''}
+if(mobileBtn)mobileBtn.addEventListener('click',function(e){e.stopPropagation();openSB()});
+if(closeBtn)closeBtn.addEventListener('click',closeSB);
+if(overlay)overlay.addEventListener('click',closeSB);
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

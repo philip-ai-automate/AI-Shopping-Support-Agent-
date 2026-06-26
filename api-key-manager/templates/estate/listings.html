@@ -1,0 +1,268 @@
+{% extends "estate/base.html" %}
+{% block title %}My Listings — PhiXtra Real Estate{% endblock %}
+
+{% block head %}
+<style>
+/* ── Filter tabs ── */
+.filter-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:22px}
+.ftab{
+  padding:7px 16px;border-radius:8px;font-size:13px;font-weight:650;
+  border:1.5px solid rgba(3,12,24,0.10);background:#fff;color:rgba(3,12,24,0.55);
+  text-decoration:none;transition:.13s;cursor:pointer
+}
+.ftab:hover{border-color:rgba(3,12,24,0.22);color:#030C18;text-decoration:none}
+.ftab.active{background:#030C18;color:#fff;border-color:#030C18}
+
+/* ── Card grid ── */
+.listing-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(290px,1fr));
+  gap:18px
+}
+
+.lcard{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:14px;
+  overflow:hidden;box-shadow:0 2px 12px rgba(3,12,24,0.05);
+  display:flex;flex-direction:column;transition:box-shadow .18s,transform .18s
+}
+.lcard:hover{box-shadow:0 8px 28px rgba(3,12,24,0.10);transform:translateY(-2px)}
+
+/* Image area */
+.lcard-img{
+  position:relative;width:100%;padding-top:62%;
+  background:linear-gradient(135deg,#f0f4f8,#e8edf3);overflow:hidden;flex-shrink:0
+}
+.lcard-img img{
+  position:absolute;inset:0;width:100%;height:100%;object-fit:cover
+}
+.lcard-img-placeholder{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:8px
+}
+.lcard-img-placeholder svg{width:32px;height:32px;stroke:rgba(3,12,24,0.18);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.lcard-img-placeholder span{font-size:12px;color:rgba(3,12,24,0.28);font-weight:500}
+
+.lcard-status-badge{
+  position:absolute;top:10px;left:10px;
+  font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;
+  letter-spacing:.03em;backdrop-filter:blur(4px)
+}
+.lcard-status-badge.available{background:rgba(18,183,106,0.92);color:#fff}
+.lcard-status-badge.sold{background:rgba(240,68,56,0.92);color:#fff}
+.lcard-status-badge.under_offer{background:rgba(247,144,9,0.92);color:#fff}
+.lcard-status-badge.let{background:rgba(26,86,219,0.92);color:#fff}
+.lcard-status-badge.off_market{background:rgba(3,12,24,0.60);color:#fff}
+
+.lcard-photo-count{
+  position:absolute;bottom:8px;right:8px;
+  background:rgba(3,12,24,0.55);color:#fff;
+  font-size:11px;font-weight:650;padding:3px 8px;border-radius:6px;
+  display:flex;align-items:center;gap:4px;backdrop-filter:blur(4px)
+}
+
+/* Body */
+.lcard-body{padding:16px 18px;flex:1;display:flex;flex-direction:column;gap:0}
+.lcard-title{
+  font-size:14.5px;font-weight:750;color:#030C18;line-height:1.3;
+  margin-bottom:6px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden
+}
+.lcard-location{
+  display:flex;align-items:center;gap:5px;font-size:12.5px;color:rgba(3,12,24,0.45);
+  margin-bottom:12px
+}
+.lcard-location svg{width:12px;height:12px;stroke:rgba(3,12,24,0.35);fill:none;stroke-width:2;flex-shrink:0}
+.lcard-specs{
+  display:flex;align-items:center;gap:12px;font-size:12px;
+  color:rgba(3,12,24,0.50);margin-bottom:14px;flex-wrap:wrap
+}
+.lcard-spec{display:flex;align-items:center;gap:4px}
+.lcard-spec svg{width:13px;height:13px;stroke:rgba(3,12,24,0.38);fill:none;stroke-width:1.8;flex-shrink:0}
+.lcard-price{font-size:17px;font-weight:800;color:#030C18;letter-spacing:-.3px;margin-top:auto}
+.lcard-price-neg{font-size:11px;color:rgba(3,12,24,0.38);font-weight:500;margin-left:5px}
+
+/* Footer actions */
+.lcard-foot{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:12px 18px;border-top:1px solid rgba(3,12,24,0.06);background:#fafafa
+}
+.lcard-views{font-size:12px;color:rgba(3,12,24,0.38);display:flex;align-items:center;gap:4px}
+.lcard-views svg{width:13px;height:13px;stroke:rgba(3,12,24,0.35);fill:none;stroke-width:1.8}
+.lcard-actions{display:flex;align-items:center;gap:6px}
+.lcard-btn{
+  font-size:12px;font-weight:650;padding:6px 13px;border-radius:7px;
+  text-decoration:none;border:1.5px solid rgba(3,12,24,0.10);
+  background:#fff;color:rgba(3,12,24,0.60);cursor:pointer;font-family:inherit;
+  transition:.12s;line-height:1
+}
+.lcard-btn:hover{border-color:rgba(3,12,24,0.22);color:#030C18;text-decoration:none}
+.lcard-btn.primary{background:#030C18;color:#fff;border-color:#030C18}
+.lcard-btn.primary:hover{background:#0d1f3c;color:#fff}
+.lcard-btn.danger{color:#F04438;border-color:rgba(240,68,56,0.20)}
+.lcard-btn.danger:hover{background:rgba(240,68,56,0.06);border-color:rgba(240,68,56,0.35)}
+
+/* status select inline */
+.status-mini{
+  font-size:11.5px;font-weight:650;padding:5px 8px;border-radius:7px;
+  border:1.5px solid rgba(3,12,24,0.10);background:#fff;color:rgba(3,12,24,0.60);
+  cursor:pointer;outline:none;font-family:inherit
+}
+
+/* Empty state */
+.listing-empty{
+  grid-column:1/-1;padding:64px 20px;text-align:center
+}
+.listing-empty svg{width:48px;height:48px;stroke:rgba(3,12,24,0.14);fill:none;
+                   stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round;margin:0 auto 16px}
+.listing-empty h3{font-size:17px;font-weight:750;color:#030C18;margin-bottom:6px}
+.listing-empty p{font-size:14px;color:rgba(3,12,24,0.42);margin-bottom:20px}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title" style="margin-bottom:4px">My Listings</h1>
+    <p class="muted">{{ listings | length }} propert{{ 'ies' if listings | length != 1 else 'y' }}</p>
+  </div>
+  <a href="{{ url_for('estate.listing_new') }}" class="btn btn-primary"
+     style="border-radius:9px;padding:10px 20px;font-size:13.5px">
+    + Add Listing
+  </a>
+</div>
+
+<!-- Filter tabs -->
+<div class="filter-tabs">
+  {% for s in ['all','available','under_offer','sold','let','off_market'] %}
+  <a href="{{ url_for('estate.listings', status=s) }}"
+     class="ftab {% if status_filter == s %}active{% endif %}">
+    {{ s | replace('_',' ') | title }}
+  </a>
+  {% endfor %}
+</div>
+
+<!-- Card grid -->
+<div class="listing-grid">
+  {% if listings %}
+    {% for lst in listings %}
+    {% set images = lst.images if lst.images else [] %}
+    {% set first_img = images[0] if images else None %}
+
+    <div class="lcard">
+      <!-- Image -->
+      <div class="lcard-img">
+        {% if first_img %}
+        <img src="/static/{{ first_img }}" alt="{{ lst.title }}" loading="lazy"/>
+        {% else %}
+        <div class="lcard-img-placeholder">
+          <svg viewBox="0 0 24 24">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <circle cx="8.5" cy="8.5" r="1.5"/>
+            <polyline points="21 15 16 10 5 21"/>
+          </svg>
+          <span>No photos</span>
+        </div>
+        {% endif %}
+        <span class="lcard-status-badge {{ lst.status or 'off_market' }}">
+          {{ (lst.status or 'Off Market') | replace('_',' ') | title }}
+        </span>
+        {% if images | length > 1 %}
+        <div class="lcard-photo-count">
+          <svg viewBox="0 0 24 24" width="11" height="11" stroke="#fff" fill="none" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
+            <polyline points="21 15 16 10 5 21"/>
+          </svg>
+          {{ images | length }}
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Body -->
+      <div class="lcard-body">
+        <div class="lcard-title">{{ lst.title }}</div>
+        {% if lst.location or lst.lga %}
+        <div class="lcard-location">
+          <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          {{ lst.lga or lst.location }}{% if lst.lga and lst.location %}, {{ lst.location }}{% endif %}
+        </div>
+        {% endif %}
+        {% if lst.bedrooms or lst.bathrooms or lst.size_sqm %}
+        <div class="lcard-specs">
+          {% if lst.bedrooms %}
+          <span class="lcard-spec">
+            <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            {{ lst.bedrooms }} bed
+          </span>
+          {% endif %}
+          {% if lst.bathrooms %}
+          <span class="lcard-spec">
+            <svg viewBox="0 0 24 24"><path d="M4 12h16"/><path d="M4 12V6a2 2 0 0 1 2-2h1a2 2 0 0 1 2 2v6"/><rect x="2" y="12" width="20" height="4" rx="1"/><path d="M6 16v2"/><path d="M18 16v2"/></svg>
+            {{ lst.bathrooms }} bath
+          </span>
+          {% endif %}
+          {% if lst.size_sqm %}
+          <span class="lcard-spec">
+            <svg viewBox="0 0 24 24"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+            {{ lst.size_sqm | int }} sqm
+          </span>
+          {% endif %}
+        </div>
+        {% endif %}
+        <div class="lcard-price">
+          {% if lst.price %}
+          ₦{{ '{:,.0f}'.format(lst.price) }}
+          {% if lst.price_negotiable %}<span class="lcard-price-neg">Negotiable</span>{% endif %}
+          {% else %}
+          <span style="color:rgba(3,12,24,0.30);font-size:14px;font-weight:500">Price on request</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="lcard-foot">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="lcard-views">
+            <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            {{ lst.view_count }}
+          </div>
+          <form method="POST" action="{{ url_for('estate.listing_toggle', listing_id=lst.id) }}">
+            <select name="status" class="status-mini" onchange="this.form.submit()">
+              {% for s in ['available','under_offer','sold','let','off_market'] %}
+              <option value="{{ s }}" {% if lst.status == s %}selected{% endif %}>
+                {{ s | replace('_',' ') | title }}
+              </option>
+              {% endfor %}
+            </select>
+          </form>
+        </div>
+        <div class="lcard-actions">
+          <a href="{{ url_for('estate.listing_edit', listing_id=lst.id) }}"
+             class="lcard-btn primary">Edit</a>
+          <form method="POST"
+                action="{{ url_for('estate.listing_delete', listing_id=lst.id) }}"
+                onsubmit="return confirm('Delete this listing permanently?')">
+            <button type="submit" class="lcard-btn danger">Delete</button>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+
+  {% else %}
+    <div class="listing-empty">
+      <svg viewBox="0 0 24 24" style="display:block">
+        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+        <polyline points="9 22 9 12 15 12 15 22"/>
+      </svg>
+      <h3>No listings yet</h3>
+      <p>Add your first property to get started — it only takes a minute.</p>
+      <a href="{{ url_for('estate.listing_new') }}" class="btn btn-primary"
+         style="border-radius:9px;padding:11px 24px">
+        + Add your first listing
+      </a>
+    </div>
+  {% endif %}
+</div>
+
+{% endblock %}

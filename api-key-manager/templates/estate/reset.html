@@ -1,0 +1,154 @@
+{% extends "estate/base.html" %}
+{% block title %}Set New Password — PhiXtra Real Estate{% endblock %}
+{% block auth_topbar %}{% endblock %}
+{% block wrap_class %}auth-center-wrap{% endblock %}
+{% block footer %}{% endblock %}
+
+{% block head %}
+<style>
+.auth-center-wrap{
+  padding:0;max-width:none;min-height:100vh;
+  background:linear-gradient(150deg,#030C18 0%,#071830 55%,#0c2545 100%);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  position:relative;
+}
+.auth-center-wrap::before{
+  content:'';position:absolute;inset:0;
+  background-image:radial-gradient(rgba(255,255,255,0.035) 1px,transparent 1px);
+  background-size:30px 30px;pointer-events:none
+}
+.auth-center-wrap::after{
+  content:'';position:absolute;bottom:-160px;right:-160px;
+  width:500px;height:500px;border-radius:50%;
+  background:radial-gradient(circle,rgba(26,86,219,0.20) 0%,transparent 68%);
+  pointer-events:none
+}
+
+.ac-logo-block{
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  margin-bottom:28px;z-index:1;text-decoration:none
+}
+.ac-logo-block img{height:38px;width:auto;filter:brightness(0) invert(1)}
+.ac-logo-sub{
+  font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+  color:rgba(255,255,255,0.35)
+}
+
+.ac-card{
+  width:100%;max-width:420px;background:#fff;border-radius:16px;
+  padding:36px 38px;box-shadow:0 24px 60px rgba(0,0,0,0.35);
+  position:relative;z-index:1
+}
+.ac-icon{
+  width:52px;height:52px;border-radius:14px;
+  background:linear-gradient(135deg,rgba(18,183,106,0.12),rgba(18,183,106,0.06));
+  border:1px solid rgba(18,183,106,0.22);
+  display:flex;align-items:center;justify-content:center;margin-bottom:20px
+}
+.ac-icon svg{width:24px;height:24px;stroke:#12B76A;fill:none;stroke-width:1.8;
+             stroke-linecap:round;stroke-linejoin:round}
+
+.ac-card h1{font-size:22px;font-weight:800;letter-spacing:-.4px;color:#030C18;margin-bottom:6px}
+.ac-card p{font-size:14px;color:rgba(3,12,24,0.45);line-height:1.55;margin-bottom:26px}
+
+/* Password strength bar */
+.pw-strength{margin-top:6px;height:4px;border-radius:999px;background:#e9ecf1;overflow:hidden}
+.pw-strength-bar{height:100%;border-radius:999px;width:0;transition:width .3s,background .3s}
+.pw-hint{font-size:11px;color:rgba(3,12,24,0.38);margin-top:5px}
+
+.ef-group{margin-bottom:18px}
+.ef-label{
+  display:block;font-size:11px;font-weight:700;letter-spacing:.07em;
+  text-transform:uppercase;color:rgba(3,12,24,0.40);margin-bottom:7px
+}
+.ef-input{
+  width:100%;padding:12px 14px;border:1.5px solid #e2e8f0;border-radius:8px;
+  font-size:14px;font-family:inherit;color:#030C18;background:#f8fafc;
+  outline:none;transition:border-color .15s,box-shadow .15s,background .15s;line-height:1.4
+}
+.ef-input:focus{border-color:#1a56db;background:#fff;box-shadow:0 0 0 3px rgba(26,86,219,0.10)}
+.ef-input::placeholder{color:rgba(3,12,24,0.25)}
+
+.ef-btn{
+  display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+  padding:13px 20px;background:#030C18;color:#fff;border:none;border-radius:8px;
+  font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;letter-spacing:-.1px;
+  transition:background .15s,transform .12s,box-shadow .15s;
+  box-shadow:0 4px 16px rgba(3,12,24,0.20);margin-top:4px
+}
+.ef-btn:hover{background:#0d1f3c;transform:translateY(-1px);box-shadow:0 8px 26px rgba(3,12,24,0.24)}
+.ef-btn:active{transform:translateY(0)}
+
+.ac-back{
+  margin-top:22px;text-align:center;font-size:13px;
+  color:rgba(255,255,255,0.40);z-index:1;position:relative
+}
+.ac-back a{color:rgba(255,255,255,0.65);font-weight:650;text-decoration:none}
+.ac-back a:hover{color:#fff;text-decoration:underline}
+
+@media(max-width:480px){
+  .ac-card{padding:28px 22px;border-radius:12px}
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<a class="ac-logo-block" href="{{ url_for('estate.login') }}">
+  <img src="{{ url_for('static', filename='portal/phixtra-logo.png') }}" alt="PhiXtra"/>
+  <span class="ac-logo-sub">Real Estate Portal</span>
+</a>
+
+<div class="ac-card">
+  <div class="ac-icon">
+    <svg viewBox="0 0 24 24">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    </svg>
+  </div>
+
+  <h1>Set a new password</h1>
+  <p>Choose a strong password to secure your account. You'll be signed in automatically after.</p>
+
+  {% if error %}
+  <div class="flash danger" style="border-radius:8px;margin-bottom:18px">{{ error }}</div>
+  {% endif %}
+
+  <form method="POST">
+    <div class="ef-group">
+      <label class="ef-label">New Password</label>
+      <input class="ef-input" type="password" name="password" id="pw"
+             placeholder="Min 8 characters" autocomplete="new-password" required/>
+      <div class="pw-strength"><div class="pw-strength-bar" id="pwBar"></div></div>
+      <div class="pw-hint" id="pwHint">Use 8+ characters with letters and numbers</div>
+    </div>
+    <div class="ef-group">
+      <label class="ef-label">Confirm Password</label>
+      <input class="ef-input" type="password" name="confirm_password"
+             placeholder="Repeat password" autocomplete="new-password" required/>
+    </div>
+    <button type="submit" class="ef-btn">
+      Update Password &nbsp;<span style="opacity:.65">→</span>
+    </button>
+  </form>
+</div>
+
+<div class="ac-back">
+  <a href="{{ url_for('estate.login') }}">← Back to sign in</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var pw=document.getElementById('pw'),bar=document.getElementById('pwBar'),hint=document.getElementById('pwHint');
+if(pw){pw.addEventListener('input',function(){
+  var v=pw.value,s=0;
+  if(v.length>=8)s++;if(v.length>=12)s++;
+  if(/[A-Z]/.test(v))s++;if(/[0-9]/.test(v))s++;if(/[^A-Za-z0-9]/.test(v))s++;
+  var pct=['0%','25%','50%','75%','100%'][Math.min(s,4)];
+  var clr=['#F04438','#F79009','#F79009','#12B76A','#12B76A'][Math.min(s,4)];
+  var lbl=['Too short','Weak','Fair','Good','Strong'][Math.min(s,4)];
+  bar.style.width=pct;bar.style.background=clr;
+  hint.textContent=v.length?lbl+' password':'Use 8+ characters with letters and numbers';
+  hint.style.color=v.length?clr:'rgba(3,12,24,0.38)';
+});}
+</script>
+{% endblock %}

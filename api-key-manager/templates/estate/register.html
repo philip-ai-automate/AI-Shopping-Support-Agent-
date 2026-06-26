@@ -1,0 +1,254 @@
+{% extends "estate/base.html" %}
+{% block title %}Create Account — PhiXtra Real Estate{% endblock %}
+{% block auth_topbar %}{% endblock %}
+{% block wrap_class %}auth-fullpage{% endblock %}
+{% block footer %}{% endblock %}
+
+{% block head %}
+<style>
+.auth-fullpage{padding:0;max-width:none}
+.auth-split{display:flex;min-height:100vh}
+
+/* ── Left hero panel ── */
+.auth-hero{
+  flex:0 0 40%;background:linear-gradient(150deg,#030C18 0%,#071830 55%,#0c2545 100%);
+  display:flex;flex-direction:column;padding:48px 48px;position:relative;overflow:hidden
+}
+.auth-hero::before{
+  content:'';position:absolute;inset:0;
+  background-image:radial-gradient(rgba(255,255,255,0.035) 1px,transparent 1px);
+  background-size:30px 30px;pointer-events:none
+}
+.auth-hero::after{
+  content:'';position:absolute;bottom:-140px;right:-140px;
+  width:420px;height:420px;border-radius:50%;
+  background:radial-gradient(circle,rgba(26,86,219,0.20) 0%,transparent 68%);
+  pointer-events:none
+}
+.ah-logo{display:flex;align-items:center;gap:12px;text-decoration:none;z-index:1}
+.ah-logo img{height:36px;width:auto;filter:brightness(0) invert(1)}
+.ah-logo-sub{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+             color:rgba(255,255,255,0.38);line-height:1.3}
+.ah-body{flex:1;display:flex;flex-direction:column;justify-content:center;padding:44px 0;z-index:1}
+.ah-tag{
+  display:inline-flex;align-items:center;gap:8px;
+  background:rgba(26,86,219,0.22);border:1px solid rgba(26,86,219,0.45);
+  border-radius:999px;padding:5px 14px;font-size:11.5px;font-weight:700;
+  color:#93c5fd;letter-spacing:.05em;margin-bottom:22px;width:fit-content
+}
+.ah-tag::before{content:'';width:6px;height:6px;border-radius:50%;background:#60a5fa;flex-shrink:0}
+.ah-body h2{
+  font-size:32px;font-weight:800;color:#fff;letter-spacing:-.7px;
+  line-height:1.2;margin-bottom:14px
+}
+.ah-sub{font-size:14.5px;color:rgba(255,255,255,0.48);line-height:1.65;margin-bottom:34px}
+
+/* Plan card */
+.ah-plan-card{
+  background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.10);
+  border-radius:14px;padding:20px 22px;margin-bottom:28px
+}
+.ah-plan-badge{
+  display:inline-block;background:linear-gradient(135deg,#6d28d9,#1a56db);
+  color:#fff;font-size:11px;font-weight:800;letter-spacing:.08em;
+  text-transform:uppercase;padding:3px 10px;border-radius:999px;margin-bottom:12px
+}
+.ah-plan-title{font-size:17px;font-weight:800;color:#fff;margin-bottom:4px}
+.ah-plan-sub{font-size:13px;color:rgba(255,255,255,0.45)}
+
+.ah-features{display:flex;flex-direction:column;gap:13px}
+.ah-feat{display:flex;align-items:flex-start;gap:11px}
+.ah-feat-check{
+  width:20px;height:20px;border-radius:50%;flex-shrink:0;margin-top:2px;
+  background:rgba(26,86,219,0.28);border:1px solid rgba(26,86,219,0.5);
+  display:flex;align-items:center;justify-content:center
+}
+.ah-feat-check svg{width:10px;height:10px;stroke:#93c5fd;fill:none;stroke-width:2.5;
+                   stroke-linecap:round;stroke-linejoin:round}
+.ah-feat-text{font-size:13px;color:rgba(255,255,255,0.65);line-height:1.4}
+
+.ah-footer{
+  margin-top:auto;padding-top:28px;border-top:1px solid rgba(255,255,255,0.07);z-index:1
+}
+.ah-footer p{font-size:12px;color:rgba(255,255,255,0.30)}
+.ah-footer strong{color:rgba(255,255,255,0.58)}
+
+/* ── Right form panel ── */
+.auth-form-panel{
+  flex:1;display:flex;flex-direction:column;justify-content:center;
+  align-items:center;padding:48px 48px;background:#fff;overflow-y:auto
+}
+.afp-inner{width:100%;max-width:480px}
+.afp-head{margin-bottom:26px}
+.afp-head h1{font-size:24px;font-weight:800;letter-spacing:-.5px;color:#030C18;margin-bottom:6px}
+.afp-head p{font-size:14px;color:rgba(3,12,24,0.45)}
+
+/* Enterprise inputs */
+.ef-group{margin-bottom:16px}
+.ef-label{
+  display:block;font-size:11px;font-weight:700;letter-spacing:.07em;
+  text-transform:uppercase;color:rgba(3,12,24,0.40);margin-bottom:6px
+}
+.ef-input{
+  width:100%;padding:11px 14px;border:1.5px solid #e2e8f0;border-radius:8px;
+  font-size:14px;font-family:inherit;color:#030C18;background:#f8fafc;
+  outline:none;transition:border-color .15s,box-shadow .15s,background .15s;line-height:1.4
+}
+.ef-input:focus{border-color:#1a56db;background:#fff;box-shadow:0 0 0 3px rgba(26,86,219,0.10)}
+.ef-input::placeholder{color:rgba(3,12,24,0.25)}
+.ef-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:540px){.ef-row{grid-template-columns:1fr}}
+
+.ef-btn{
+  display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+  padding:13px 20px;background:#030C18;color:#fff;border:none;border-radius:8px;
+  font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;letter-spacing:-.1px;
+  transition:background .15s,transform .12s,box-shadow .15s;
+  box-shadow:0 4px 16px rgba(3,12,24,0.20);margin-top:4px
+}
+.ef-btn:hover{background:#0d1f3c;transform:translateY(-1px);box-shadow:0 8px 26px rgba(3,12,24,0.24)}
+.ef-btn:active{transform:translateY(0)}
+
+.afp-note{
+  margin-top:14px;padding:11px 14px;background:#f0f7ff;
+  border:1px solid rgba(26,86,219,0.18);border-radius:8px;
+  font-size:12.5px;color:rgba(3,12,24,0.55);line-height:1.5;text-align:center
+}
+.afp-note strong{color:#1a56db}
+
+.afp-links{margin-top:20px;text-align:center;font-size:13px;color:rgba(3,12,24,0.42)}
+.afp-links a{color:#1a56db;font-weight:650;text-decoration:none}
+.afp-links a:hover{text-decoration:underline}
+
+@media(max-width:860px){
+  .auth-split{flex-direction:column}
+  .auth-hero{flex:none;padding:32px 24px}
+  .ah-body{padding:20px 0}
+  .ah-body h2{font-size:24px}
+  .ah-features{display:none}
+  .auth-form-panel{padding:32px 20px}
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="auth-split">
+
+  <!-- Left hero -->
+  <div class="auth-hero">
+    <a class="ah-logo" href="{{ url_for('estate.login') }}">
+      <img src="{{ url_for('static', filename='portal/phixtra-logo.png') }}" alt="PhiXtra"/>
+      <div class="ah-logo-sub">Real Estate<br>Portal</div>
+    </a>
+
+    <div class="ah-body">
+      <div class="ah-tag">Free 30-Day Trial</div>
+      <h2>Your AI-powered agency starts here.</h2>
+      <p class="ah-sub">
+        Register in under 2 minutes and get instant access to the full Pro plan — WhatsApp AI, lead management, automated follow-ups, and more.
+      </p>
+
+      <div class="ah-plan-card">
+        <div class="ah-plan-badge">Pro Plan — Free Trial</div>
+        <div class="ah-plan-title">Everything unlocked for 30 days</div>
+        <div class="ah-plan-sub">No credit card · No commitment</div>
+      </div>
+
+      <div class="ah-features">
+        <div class="ah-feat">
+          <div class="ah-feat-check"><svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg></div>
+          <div class="ah-feat-text">Unlimited AI-powered WhatsApp conversations</div>
+        </div>
+        <div class="ah-feat">
+          <div class="ah-feat-check"><svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg></div>
+          <div class="ah-feat-text">Up to 10 agent profiles and listing management</div>
+        </div>
+        <div class="ah-feat">
+          <div class="ah-feat-check"><svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg></div>
+          <div class="ah-feat-text">Automated follow-up sequences and buyer qualification</div>
+        </div>
+        <div class="ah-feat">
+          <div class="ah-feat-check"><svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg></div>
+          <div class="ah-feat-text">Inspection booking, handoff alerts and full reports</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ah-footer">
+      <p>After trial ends, your account moves to the <strong>Free plan</strong>. Upgrade anytime.</p>
+    </div>
+  </div>
+
+  <!-- Right form panel -->
+  <div class="auth-form-panel">
+    <div class="afp-inner">
+      <div class="afp-head">
+        <h1>Create your account</h1>
+        <p>Start your 30-day Pro trial — takes less than 2 minutes</p>
+      </div>
+
+      {% if error %}
+      <div class="flash danger" style="border-radius:8px;margin-bottom:18px">{{ error }}</div>
+      {% endif %}
+
+      <form method="POST">
+        <div class="ef-row">
+          <div class="ef-group">
+            <label class="ef-label">First Name *</label>
+            <input class="ef-input" type="text" name="first_name" placeholder="Tunde" required/>
+          </div>
+          <div class="ef-group">
+            <label class="ef-label">Last Name</label>
+            <input class="ef-input" type="text" name="last_name" placeholder="Bello"/>
+          </div>
+        </div>
+
+        <div class="ef-group">
+          <label class="ef-label">Business / Agency Name *</label>
+          <input class="ef-input" type="text" name="business_name"
+                 placeholder="Skyline Properties Ltd" required/>
+        </div>
+
+        <div class="ef-group">
+          <label class="ef-label">Work Email *</label>
+          <input class="ef-input" type="email" name="email"
+                 placeholder="you@agency.com" autocomplete="email" required/>
+        </div>
+
+        <div class="ef-group">
+          <label class="ef-label">Phone Number</label>
+          <input class="ef-input" type="tel" name="phone" placeholder="+234 801 234 5678"/>
+        </div>
+
+        <div class="ef-row">
+          <div class="ef-group">
+            <label class="ef-label">Password *</label>
+            <input class="ef-input" type="password" name="password"
+                   placeholder="Min 8 characters" autocomplete="new-password" required/>
+          </div>
+          <div class="ef-group">
+            <label class="ef-label">Confirm Password *</label>
+            <input class="ef-input" type="password" name="confirm_password"
+                   placeholder="Repeat password" autocomplete="new-password" required/>
+          </div>
+        </div>
+
+        <button type="submit" class="ef-btn">
+          Create Account &amp; Start Trial &nbsp;<span style="opacity:.65">→</span>
+        </button>
+      </form>
+
+      <div class="afp-note">
+        Your trial begins immediately. No payment needed until you choose to upgrade.
+        <strong>Full Pro access for 30 days.</strong>
+      </div>
+
+      <div class="afp-links">
+        Already have an account?
+        <a href="{{ url_for('estate.login') }}">Sign in →</a>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

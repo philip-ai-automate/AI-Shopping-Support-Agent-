@@ -1,0 +1,128 @@
+{% extends "estate/base.html" %}
+{% block title %}Reset Password — PhiXtra Real Estate{% endblock %}
+{% block auth_topbar %}{% endblock %}
+{% block wrap_class %}auth-center-wrap{% endblock %}
+{% block footer %}{% endblock %}
+
+{% block head %}
+<style>
+.auth-center-wrap{
+  padding:0;max-width:none;min-height:100vh;
+  background:linear-gradient(150deg,#030C18 0%,#071830 55%,#0c2545 100%);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  position:relative;
+}
+.auth-center-wrap::before{
+  content:'';position:absolute;inset:0;
+  background-image:radial-gradient(rgba(255,255,255,0.035) 1px,transparent 1px);
+  background-size:30px 30px;pointer-events:none
+}
+.auth-center-wrap::after{
+  content:'';position:absolute;bottom:-160px;right:-160px;
+  width:500px;height:500px;border-radius:50%;
+  background:radial-gradient(circle,rgba(26,86,219,0.20) 0%,transparent 68%);
+  pointer-events:none
+}
+
+.ac-logo-block{
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  margin-bottom:28px;z-index:1;text-decoration:none
+}
+.ac-logo-block img{height:38px;width:auto;filter:brightness(0) invert(1)}
+.ac-logo-sub{
+  font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+  color:rgba(255,255,255,0.35)
+}
+
+.ac-card{
+  width:100%;max-width:420px;background:#fff;border-radius:16px;
+  padding:36px 38px;box-shadow:0 24px 60px rgba(0,0,0,0.35);
+  position:relative;z-index:1
+}
+.ac-icon{
+  width:52px;height:52px;border-radius:14px;
+  background:linear-gradient(135deg,rgba(26,86,219,0.12),rgba(26,86,219,0.06));
+  border:1px solid rgba(26,86,219,0.18);
+  display:flex;align-items:center;justify-content:center;margin-bottom:20px
+}
+.ac-icon svg{width:24px;height:24px;stroke:#1a56db;fill:none;stroke-width:1.8;
+             stroke-linecap:round;stroke-linejoin:round}
+
+.ac-card h1{font-size:22px;font-weight:800;letter-spacing:-.4px;color:#030C18;margin-bottom:6px}
+.ac-card p{font-size:14px;color:rgba(3,12,24,0.45);line-height:1.55;margin-bottom:26px}
+
+.ef-group{margin-bottom:20px}
+.ef-label{
+  display:block;font-size:11px;font-weight:700;letter-spacing:.07em;
+  text-transform:uppercase;color:rgba(3,12,24,0.40);margin-bottom:7px
+}
+.ef-input{
+  width:100%;padding:12px 14px;border:1.5px solid #e2e8f0;border-radius:8px;
+  font-size:14px;font-family:inherit;color:#030C18;background:#f8fafc;
+  outline:none;transition:border-color .15s,box-shadow .15s,background .15s;line-height:1.4
+}
+.ef-input:focus{border-color:#1a56db;background:#fff;box-shadow:0 0 0 3px rgba(26,86,219,0.10)}
+.ef-input::placeholder{color:rgba(3,12,24,0.25)}
+
+.ef-btn{
+  display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+  padding:13px 20px;background:#030C18;color:#fff;border:none;border-radius:8px;
+  font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;letter-spacing:-.1px;
+  transition:background .15s,transform .12s,box-shadow .15s;
+  box-shadow:0 4px 16px rgba(3,12,24,0.20)
+}
+.ef-btn:hover{background:#0d1f3c;transform:translateY(-1px);box-shadow:0 8px 26px rgba(3,12,24,0.24)}
+.ef-btn:active{transform:translateY(0)}
+
+.ac-back{
+  margin-top:22px;text-align:center;font-size:13px;
+  color:rgba(255,255,255,0.40);z-index:1;position:relative
+}
+.ac-back a{color:rgba(255,255,255,0.65);font-weight:650;text-decoration:none}
+.ac-back a:hover{color:#fff;text-decoration:underline}
+
+@media(max-width:480px){
+  .ac-card{padding:28px 22px;border-radius:12px}
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<a class="ac-logo-block" href="{{ url_for('estate.login') }}">
+  <img src="{{ url_for('static', filename='portal/phixtra-logo.png') }}" alt="PhiXtra"/>
+  <span class="ac-logo-sub">Real Estate Portal</span>
+</a>
+
+<div class="ac-card">
+  <div class="ac-icon">
+    <svg viewBox="0 0 24 24">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+    </svg>
+  </div>
+
+  <h1>Forgot your password?</h1>
+  <p>No problem. Enter your registered email and we'll send you a secure reset link.</p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash {{ category }}" style="border-radius:8px;margin-bottom:16px">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <form method="POST">
+    <div class="ef-group">
+      <label class="ef-label">Email address</label>
+      <input class="ef-input" type="email" name="email"
+             placeholder="you@agency.com" autocomplete="email" required/>
+    </div>
+    <button type="submit" class="ef-btn">
+      Send Reset Link &nbsp;<span style="opacity:.65">→</span>
+    </button>
+  </form>
+</div>
+
+<div class="ac-back">
+  <a href="{{ url_for('estate.login') }}">← Back to sign in</a>
+</div>
+{% endblock %}

@@ -1,0 +1,744 @@
+{% extends "estate/base.html" %}
+{% block title %}Settings — PhiXtra Real Estate{% endblock %}
+
+{% block head %}
+{% if embedded_enabled and not wa_connected %}
+<script>
+  window.fbAsyncInit = function() {
+    FB.init({ appId: '{{ meta_app_id }}', autoLogAppEvents: true, xfbml: true, version: 'v19.0' });
+  };
+</script>
+<script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js"></script>
+{% endif %}
+<style>
+/* ── Layout ── */
+.st-wrap{display:grid;grid-template-columns:220px 1fr;gap:26px;align-items:start}
+@media(max-width:820px){.st-wrap{grid-template-columns:1fr}}
+
+/* ── Sticky sidebar ── */
+.st-nav{
+  position:sticky;top:80px;
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:16px;
+  overflow:hidden;box-shadow:0 2px 12px rgba(3,12,24,0.05)
+}
+.st-nav-item{
+  display:flex;align-items:center;gap:12px;padding:14px 16px;
+  cursor:pointer;text-decoration:none;transition:.13s;
+  border-left:3px solid transparent;
+  border-bottom:1px solid rgba(3,12,24,0.05)
+}
+.st-nav-item:last-child{border-bottom:none}
+.st-nav-item:hover{background:rgba(3,12,24,0.025);text-decoration:none}
+.st-nav-item.active{background:rgba(3,12,24,0.04);border-left-color:#030C18}
+.st-nav-item.danger-item:hover{background:rgba(240,68,56,0.03)}
+.st-nav-item.danger-item.active{border-left-color:#F04438;background:rgba(240,68,56,0.04)}
+.sni-icon{
+  width:34px;height:34px;border-radius:9px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center
+}
+.sni-icon svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.sni-icon.blue  {background:rgba(26,86,219,0.09);color:#1a56db}
+.sni-icon.purple{background:rgba(124,58,237,0.09);color:#7c3aed}
+.sni-icon.green {background:rgba(18,183,106,0.09);color:#0a7a3c}
+.sni-icon.red   {background:rgba(240,68,56,0.09);color:#F04438}
+.sni-text strong{display:block;font-size:13px;font-weight:700;color:#030C18;line-height:1.2}
+.sni-text span{font-size:11px;color:rgba(3,12,24,0.38);margin-top:1px;display:block}
+@media(max-width:820px){.st-nav{display:flex;overflow-x:auto;border-radius:12px}}
+@media(max-width:820px){.st-nav-item{border-left:none;border-bottom:3px solid transparent;border-right:none;white-space:nowrap;flex-shrink:0}}
+@media(max-width:820px){.st-nav-item.active{border-bottom-color:#030C18}}
+@media(max-width:820px){.sni-text span{display:none}}
+
+/* ── Section cards ── */
+.sc{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:16px;
+  box-shadow:0 2px 12px rgba(3,12,24,0.04);overflow:hidden;margin-bottom:20px;
+  scroll-margin-top:90px
+}
+.sc-head{
+  display:flex;align-items:center;gap:14px;padding:22px 26px;
+  border-bottom:1px solid rgba(3,12,24,0.07)
+}
+.sc-icon{
+  width:44px;height:44px;border-radius:13px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center
+}
+.sc-icon svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.sc-icon.blue  {background:rgba(26,86,219,0.10);color:#1a56db}
+.sc-icon.purple{background:rgba(124,58,237,0.10);color:#7c3aed}
+.sc-icon.green {background:rgba(18,183,106,0.10);color:#0a7a3c}
+.sc-icon.red   {background:rgba(240,68,56,0.10);color:#F04438}
+.sc-head-title{font-size:15.5px;font-weight:800;color:#030C18;margin-bottom:2px;letter-spacing:-.2px}
+.sc-head-sub  {font-size:12.5px;color:rgba(3,12,24,0.42);line-height:1.4}
+.sc-body{padding:26px}
+
+/* ── Form fields ── */
+.fg{display:flex;flex-direction:column;gap:5px}
+.fg-label{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(3,12,24,0.40)}
+.fg-input{
+  width:100%;padding:11px 14px;
+  border:1.5px solid rgba(3,12,24,0.12);border-radius:9px;
+  font-size:13.5px;font-family:inherit;color:#030C18;background:#fafbfc;
+  outline:none;transition:border-color .15s,box-shadow .15s,background .15s;box-sizing:border-box
+}
+.fg-input:focus{border-color:#030C18;background:#fff;box-shadow:0 0 0 3px rgba(3,12,24,0.06)}
+.fg-hint{font-size:11.5px;color:rgba(3,12,24,0.38)}
+.fg-wrap{position:relative}
+.fg-eye{
+  position:absolute;right:13px;top:50%;transform:translateY(-50%);
+  background:none;border:none;cursor:pointer;color:rgba(3,12,24,0.35);
+  padding:4px;display:flex;align-items:center
+}
+.fg-eye:hover{color:#030C18}
+.fg-eye svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.fg-wrap .fg-input{padding-right:40px}
+
+.f2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:560px){.f2{grid-template-columns:1fr}}
+.f2.f3{grid-template-columns:1fr 1fr 1fr}
+@media(max-width:700px){.f2.f3{grid-template-columns:1fr 1fr}}
+@media(max-width:480px){.f2.f3{grid-template-columns:1fr}}
+.full{grid-column:1/-1}
+
+/* Save button */
+.save-btn{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:11px 24px;background:#030C18;color:#fff;
+  border:none;border-radius:9px;font-size:13.5px;font-weight:750;
+  font-family:inherit;cursor:pointer;transition:background .13s,transform .12s;
+  margin-top:20px
+}
+.save-btn:hover{background:#0d1f3c;transform:translateY(-1px)}
+.save-btn svg{width:14px;height:14px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+/* Profile avatar preview */
+.profile-preview{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:10px;padding:24px;background:#fafbfc;
+  border:1px solid rgba(3,12,24,0.08);border-radius:12px;text-align:center
+}
+.profile-avatar-big{
+  width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,#1a56db,#4f82f7);
+  display:flex;align-items:center;justify-content:center;
+  font-size:26px;font-weight:800;color:#fff;letter-spacing:-.5px;
+  flex-shrink:0
+}
+.profile-avatar-name{font-size:14px;font-weight:700;color:#030C18}
+.profile-avatar-plan{
+  font-size:11px;font-weight:750;letter-spacing:.05em;text-transform:uppercase;
+  padding:3px 10px;border-radius:999px;
+  background:rgba(26,86,219,0.10);color:#1a56db;border:1px solid rgba(26,86,219,0.20)
+}
+
+/* Password strength */
+.pw-bar{height:5px;border-radius:3px;background:rgba(3,12,24,0.08);margin-top:7px;overflow:hidden}
+.pw-fill{height:100%;border-radius:3px;transition:width .3s,background .3s;width:0}
+.pw-hint{font-size:11.5px;margin-top:5px;transition:color .2s}
+
+/* ── WhatsApp states ── */
+.wa-connected-banner{
+  background:linear-gradient(135deg,#0a7a3c 0%,#12B76A 100%);
+  border-radius:14px;padding:22px 24px;
+  display:flex;align-items:center;gap:16px;margin-bottom:18px;
+  position:relative;overflow:hidden
+}
+.wa-connected-banner::before{
+  content:'';position:absolute;inset:0;
+  background-image:radial-gradient(rgba(255,255,255,0.08) 1px,transparent 1px);
+  background-size:20px 20px;pointer-events:none
+}
+.wa-conn-icon{
+  width:48px;height:48px;border-radius:14px;background:rgba(255,255,255,0.18);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative;z-index:1
+}
+.wa-conn-info{flex:1;position:relative;z-index:1}
+.wa-conn-label{font-size:12px;font-weight:750;text-transform:uppercase;letter-spacing:.06em;
+               color:rgba(255,255,255,0.65);margin-bottom:4px}
+.wa-conn-number{font-size:20px;font-weight:800;color:#fff;letter-spacing:-.3px;font-family:monospace}
+.wa-status-dot{
+  width:10px;height:10px;border-radius:50%;background:#a7f3d0;
+  box-shadow:0 0 0 3px rgba(167,243,208,0.30);
+  display:inline-block;margin-right:6px
+}
+
+.wa-disconnect-row{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 18px;background:#f8fafc;
+  border:1px solid rgba(3,12,24,0.08);border-radius:11px
+}
+.wa-disconnect-btn{
+  padding:8px 16px;border:1.5px solid rgba(240,68,56,0.28);background:transparent;
+  color:#F04438;border-radius:8px;font-size:12.5px;font-weight:700;
+  font-family:inherit;cursor:pointer;transition:.13s;display:inline-flex;align-items:center;gap:6px
+}
+.wa-disconnect-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+.wa-disconnect-btn:hover{background:rgba(240,68,56,0.05);border-color:rgba(240,68,56,0.45)}
+
+/* WA signup dark card */
+.wa-dark{
+  background:linear-gradient(135deg,#030C18 0%,#0d2547 100%);
+  border-radius:14px;padding:26px;position:relative;overflow:hidden
+}
+.wa-dark::before{
+  content:'';position:absolute;inset:0;
+  background-image:radial-gradient(rgba(255,255,255,0.03) 1px,transparent 1px);
+  background-size:22px 22px;pointer-events:none
+}
+.wa-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px}
+@media(max-width:640px){.wa-steps{grid-template-columns:1fr}}
+.wa-step{
+  background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);
+  border-radius:11px;padding:14px 16px;position:relative;z-index:1
+}
+.wa-step-num{
+  width:26px;height:26px;border-radius:50%;margin-bottom:10px;
+  background:rgba(37,211,102,0.22);border:1px solid rgba(37,211,102,0.40);
+  color:#25D366;font-size:11px;font-weight:800;
+  display:flex;align-items:center;justify-content:center
+}
+.wa-step-title{font-size:13px;font-weight:750;color:#fff;margin-bottom:4px}
+.wa-step-desc{font-size:11.5px;color:rgba(255,255,255,0.38);line-height:1.5}
+.wa-signup-btn{
+  display:inline-flex;align-items:center;gap:10px;padding:13px 28px;
+  background:#25D366;color:#fff;border:none;border-radius:10px;
+  font-size:14px;font-weight:750;font-family:inherit;cursor:pointer;
+  box-shadow:0 4px 18px rgba(37,211,102,0.32);
+  transition:background .13s,transform .12s,box-shadow .13s
+}
+.wa-signup-btn:hover{background:#1da852;transform:translateY(-1px);box-shadow:0 8px 26px rgba(37,211,102,0.40)}
+@keyframes wa-spin{to{transform:rotate(360deg)}}
+
+/* ── Danger zone ── */
+.danger-box{
+  border:1px solid rgba(240,68,56,0.18);border-radius:12px;
+  background:rgba(240,68,56,0.025);padding:20px 22px;margin-bottom:22px
+}
+.danger-what{
+  display:flex;align-items:flex-start;gap:12px;
+  font-size:13px;color:rgba(3,12,24,0.55);line-height:1.6
+}
+.danger-what svg{width:16px;height:16px;stroke:#F04438;fill:none;stroke-width:2;
+                 stroke-linecap:round;flex-shrink:0;margin-top:2px}
+.danger-confirm{
+  display:flex;align-items:flex-start;gap:10px;padding:14px 16px;
+  background:#fafbfc;border:1px solid rgba(3,12,24,0.09);border-radius:10px;
+  margin-bottom:18px
+}
+.danger-confirm input[type=checkbox]{width:16px;height:16px;accent-color:#F04438;cursor:pointer;flex-shrink:0;margin-top:2px}
+.danger-confirm label{font-size:13px;color:rgba(3,12,24,0.58);line-height:1.55;cursor:pointer}
+.del-btn{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:11px 22px;background:#F04438;color:#fff;
+  border:none;border-radius:9px;font-size:13.5px;font-weight:750;
+  font-family:inherit;cursor:pointer;transition:.13s
+}
+.del-btn:hover:not(:disabled){background:#c0392b}
+.del-btn:disabled{opacity:.40;cursor:not-allowed}
+.del-btn svg{width:14px;height:14px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title" style="margin-bottom:4px">Settings</h1>
+    <p class="muted">Manage your account, WhatsApp, and preferences</p>
+  </div>
+</div>
+
+{% with msgs = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in msgs %}
+  <div class="flash {{ 'danger' if cat in ('error','danger') else cat }}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+<div class="st-wrap">
+
+  <!-- ── Sticky sidebar nav ── -->
+  <nav class="st-nav">
+    <a class="st-nav-item active" href="#profile" onclick="snClick(event,this,'profile')">
+      <div class="sni-icon blue">
+        <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      </div>
+      <div class="sni-text">
+        <strong>Profile</strong>
+        <span>Business details</span>
+      </div>
+    </a>
+    <a class="st-nav-item" href="#security" onclick="snClick(event,this,'security')">
+      <div class="sni-icon purple">
+        <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+      <div class="sni-text">
+        <strong>Security</strong>
+        <span>Change password</span>
+      </div>
+    </a>
+    {% if _re_is_admin %}
+    <a class="st-nav-item" href="#whatsapp" onclick="snClick(event,this,'whatsapp')">
+      <div class="sni-icon green">
+        <svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+      </div>
+      <div class="sni-text">
+        <strong>WhatsApp</strong>
+        <span>Connect number</span>
+      </div>
+    </a>
+    <a class="st-nav-item danger-item" href="#danger" onclick="snClick(event,this,'danger')">
+      <div class="sni-icon red">
+        <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <div class="sni-text">
+        <strong>Danger Zone</strong>
+        <span>Delete account</span>
+      </div>
+    </a>
+    {% endif %}
+  </nav>
+
+  <!-- ── Sections ── -->
+  <div>
+
+    <!-- ── Profile ── -->
+    <div class="sc" id="profile">
+      <div class="sc-head">
+        <div class="sc-icon blue">
+          <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
+        <div>
+          <div class="sc-head-title">Business Profile</div>
+          <div class="sc-head-sub">Your agency details shown to buyers and in AI responses</div>
+        </div>
+      </div>
+      <div class="sc-body">
+        <form method="POST" action="{{ url_for('estate.settings') }}">
+          <input type="hidden" name="section" value="profile"/>
+
+          <div style="display:grid;grid-template-columns:1fr 200px;gap:22px;align-items:start">
+            <div>
+              <div class="f2" style="margin-bottom:16px">
+                <div class="fg">
+                  <label class="fg-label">Business Name *</label>
+                  <input class="fg-input" type="text" name="business_name" id="bizName" required
+                         value="{{ tenant.business_name or '' }}" placeholder="Lagos Homes Ltd"
+                         oninput="updateAvatar()"/>
+                </div>
+                <div class="fg">
+                  <label class="fg-label">State / City</label>
+                  <input class="fg-input" type="text" name="state"
+                         value="{{ tenant.state or '' }}" placeholder="Lagos"/>
+                </div>
+              </div>
+              <div class="f2">
+                <div class="fg">
+                  <label class="fg-label">Contact Email</label>
+                  <input class="fg-input" type="email" name="contact_email"
+                         value="{{ tenant.contact_email or '' }}" placeholder="hello@youragency.com"/>
+                </div>
+                <div class="fg">
+                  <label class="fg-label">Contact Phone</label>
+                  <input class="fg-input" type="text" name="contact_phone"
+                         value="{{ tenant.contact_phone or '' }}" placeholder="2348012345678"/>
+                </div>
+              </div>
+            </div>
+
+            <!-- Avatar preview -->
+            <div class="profile-preview">
+              <div class="profile-avatar-big" id="avatarPreview">
+                {{ (tenant.business_name or 'A')[0]|upper }}
+              </div>
+              <div class="profile-avatar-name" id="avatarName">{{ tenant.business_name or 'My Agency' }}</div>
+              <div class="profile-avatar-plan">{{ tenant.plan_name or 'Free' }} Plan</div>
+            </div>
+          </div>
+
+          <button type="submit" class="save-btn">
+            <svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Save Profile
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- ── Security ── -->
+    <div class="sc" id="security">
+      <div class="sc-head">
+        <div class="sc-icon purple">
+          <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <div>
+          <div class="sc-head-title">Security</div>
+          <div class="sc-head-sub">Keep your account protected with a strong password</div>
+        </div>
+      </div>
+      <div class="sc-body">
+        <form method="POST" action="{{ url_for('estate.settings') }}" style="max-width:520px">
+          <input type="hidden" name="section" value="password"/>
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <div class="fg">
+              <label class="fg-label">Current Password *</label>
+              <div class="fg-wrap">
+                <input class="fg-input" type="password" name="current_password" id="curPw"
+                       required autocomplete="current-password" placeholder="Your current password"/>
+                <button type="button" class="fg-eye" onclick="togglePw('curPw',this)" tabindex="-1">
+                  <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="f2">
+              <div class="fg">
+                <label class="fg-label">New Password *</label>
+                <div class="fg-wrap">
+                  <input class="fg-input" type="password" name="new_password" id="newPw"
+                         required minlength="8" autocomplete="new-password"
+                         placeholder="Min. 8 characters" oninput="evalPw(this.value)"/>
+                  <button type="button" class="fg-eye" onclick="togglePw('newPw',this)" tabindex="-1">
+                    <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
+                </div>
+                <div class="pw-bar"><div class="pw-fill" id="pwFill"></div></div>
+                <div class="pw-hint" id="pwHint" style="display:none"></div>
+              </div>
+              <div class="fg">
+                <label class="fg-label">Confirm New Password *</label>
+                <div class="fg-wrap">
+                  <input class="fg-input" type="password" name="confirm_password" id="confPw"
+                         required minlength="8" autocomplete="new-password"
+                         placeholder="Repeat new password"/>
+                  <button type="button" class="fg-eye" onclick="togglePw('confPw',this)" tabindex="-1">
+                    <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <button type="submit" class="save-btn">
+            <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            Update Password
+          </button>
+        </form>
+      </div>
+    </div>
+
+    {% if _re_is_admin %}
+
+    <!-- ── WhatsApp ── -->
+    <div class="sc" id="whatsapp">
+      <div class="sc-head">
+        <div class="sc-icon green">
+          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+          </svg>
+        </div>
+        <div>
+          <div class="sc-head-title">WhatsApp Integration</div>
+          <div class="sc-head-sub">Connect your Business number to receive buyer messages</div>
+        </div>
+        {% if wa_connected %}
+        <div style="margin-left:auto;display:flex;align-items:center;gap:6px;
+                    padding:5px 12px;border-radius:999px;
+                    background:rgba(18,183,106,0.10);border:1px solid rgba(18,183,106,0.25)">
+          <span style="width:7px;height:7px;border-radius:50%;background:#12B76A;display:inline-block;
+                       box-shadow:0 0 0 2px rgba(18,183,106,0.25)"></span>
+          <span style="font-size:12px;font-weight:750;color:#0a7a3c">Live</span>
+        </div>
+        {% endif %}
+      </div>
+      <div class="sc-body">
+
+        {% if wa_connected %}
+        <div class="wa-connected-banner">
+          <div class="wa-conn-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff">
+              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+            </svg>
+          </div>
+          <div class="wa-conn-info">
+            <div class="wa-conn-label">
+              <span class="wa-status-dot"></span>Connected &amp; receiving messages
+            </div>
+            <div class="wa-conn-number">{{ tenant.display_phone_number or tenant.wa_phone_number_id }}</div>
+          </div>
+        </div>
+
+        <div class="wa-disconnect-row">
+          <div>
+            <div style="font-size:13.5px;font-weight:650;color:#030C18;margin-bottom:2px">Switch or disconnect number</div>
+            <div style="font-size:12.5px;color:rgba(3,12,24,0.42)">
+              Buyer messages appear in your <a href="{{ url_for('estate.inbox') }}" style="color:#030C18;font-weight:700;text-decoration:none">Leads &amp; Inbox</a>
+            </div>
+          </div>
+          <form method="POST" action="{{ url_for('estate.settings') }}">
+            <input type="hidden" name="section" value="wa_disconnect"/>
+            <button type="button" class="wa-disconnect-btn"
+                    onclick="if(confirm('Disconnect WhatsApp? Buyers won\'t reach you until you reconnect.'))this.closest('form').submit()">
+              <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              Disconnect
+            </button>
+          </form>
+        </div>
+
+        {% elif embedded_enabled %}
+        <div class="wa-dark">
+          <div style="position:relative;z-index:1">
+            <p style="font-size:13.5px;color:rgba(255,255,255,0.50);margin-bottom:22px;line-height:1.65">
+              One click — Meta opens a secure popup. Choose your WhatsApp Business Account and number. No token copy-pasting needed.
+            </p>
+            <div class="wa-steps">
+              <div class="wa-step">
+                <div class="wa-step-num">1</div>
+                <div class="wa-step-title">Click Connect</div>
+                <div class="wa-step-desc">A Meta popup opens. Log in with your Meta Business account.</div>
+              </div>
+              <div class="wa-step">
+                <div class="wa-step-num">2</div>
+                <div class="wa-step-title">Select Number</div>
+                <div class="wa-step-desc">Pick your WhatsApp Business Account and phone number.</div>
+              </div>
+              <div class="wa-step">
+                <div class="wa-step-num">3</div>
+                <div class="wa-step-title">Done</div>
+                <div class="wa-step-desc">Number is live. Buyer messages appear in your inbox instantly.</div>
+              </div>
+            </div>
+            <div style="text-align:center">
+              <button class="wa-signup-btn" onclick="launchWaSignup()" id="waSignupBtn">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff">
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                </svg>
+                Connect with WhatsApp Business
+              </button>
+              <div id="waStatus" style="display:none;align-items:center;justify-content:center;gap:10px;margin-top:18px;font-size:13.5px;color:rgba(255,255,255,0.50)">
+                <div style="width:16px;height:16px;border:2px solid rgba(255,255,255,0.18);border-top-color:#25D366;border-radius:50%;animation:wa-spin .7s linear infinite;flex-shrink:0"></div>
+                <span id="waStatusText">Completing setup…</span>
+              </div>
+              <div id="waError" style="display:none;margin-top:14px;padding:11px 14px;background:rgba(240,68,56,0.15);border:1px solid rgba(240,68,56,0.30);border-radius:9px;font-size:13px;color:#fca5a5;text-align:left"></div>
+            </div>
+          </div>
+        </div>
+
+        {% else %}
+        <div style="padding:16px 18px;background:#f8fafc;border:1px solid rgba(3,12,24,0.08);border-radius:11px;font-size:13.5px;color:rgba(3,12,24,0.45)">
+          WhatsApp Embedded Signup is not configured on this server. Contact your administrator.
+        </div>
+        {% endif %}
+
+      </div>
+    </div>
+
+    <!-- ── Danger Zone ── -->
+    <div class="sc" id="danger" style="border-color:rgba(240,68,56,0.20)">
+      <div class="sc-head" style="background:rgba(240,68,56,0.025)">
+        <div class="sc-icon red">
+          <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </div>
+        <div>
+          <div class="sc-head-title" style="color:#F04438">Danger Zone</div>
+          <div class="sc-head-sub">Irreversible actions — read carefully before proceeding</div>
+        </div>
+      </div>
+      <div class="sc-body">
+        <div class="danger-box">
+          <div style="font-size:14px;font-weight:750;color:#030C18;margin-bottom:10px">Delete Account</div>
+          <div class="danger-what">
+            <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span>
+              Permanently deletes your agency account, all property listings, all buyer conversations, your WhatsApp configuration, and all staff logins. <strong style="color:#030C18">This cannot be reversed.</strong>
+            </span>
+          </div>
+        </div>
+        <form method="POST" action="{{ url_for('estate.settings') }}" id="deleteForm">
+          <input type="hidden" name="section" value="delete_account"/>
+          <div class="danger-confirm">
+            <input type="checkbox" id="dangerConfirm"
+                   onchange="document.getElementById('deleteBtn').disabled=!this.checked"/>
+            <label for="dangerConfirm">
+              I understand that deleting my account will permanently erase all data for my agency and cannot be undone.
+            </label>
+          </div>
+          <button type="button" class="del-btn" id="deleteBtn" disabled
+                  onclick="if(confirm('Last chance — permanently delete your account and all data?'))document.getElementById('deleteForm').submit()">
+            <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+            Delete My Account
+          </button>
+        </form>
+      </div>
+    </div>
+
+    {% endif %}
+
+  </div>
+</div>
+
+<!-- Phone selection modal -->
+<div id="phoneModal" style="display:none;position:fixed;inset:0;background:rgba(3,12,24,0.72);z-index:999;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(3px)">
+  <div style="background:#fff;border-radius:18px;width:100%;max-width:440px;padding:28px 30px;box-shadow:0 30px 80px rgba(0,0,0,0.30)">
+    <h3 style="font-size:17px;font-weight:800;color:#030C18;margin-bottom:5px">Select your WhatsApp number</h3>
+    <p style="font-size:13px;color:rgba(3,12,24,0.42);margin-bottom:18px">Your account has multiple numbers. Choose one to connect.</p>
+    <div id="phoneOptions"></div>
+    <form id="phoneSelectForm" method="POST" action="{{ url_for('estate.inbox_embedded_complete') }}">
+      <input type="hidden" name="phone_number_id" id="selPhoneId">
+      <input type="hidden" name="waba_id"         id="selWabaId">
+      <input type="hidden" name="display_phone"   id="selDisplayPhone">
+      <input type="hidden" name="verified_name"   id="selVerifiedName">
+      <div style="display:flex;gap:10px;margin-top:18px">
+        <button type="submit" id="confirmPhoneBtn" disabled
+                style="flex:1;padding:11px;background:#030C18;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;opacity:.40;transition:.13s">
+          Confirm
+        </button>
+        <button type="button" onclick="document.getElementById('phoneModal').style.display='none'"
+                style="padding:11px 18px;border:1.5px solid rgba(3,12,24,0.12);border-radius:9px;background:#fff;font-size:14px;font-family:inherit;cursor:pointer">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* Nav smooth scroll + active state */
+function snClick(e, el, id) {
+  e.preventDefault();
+  document.querySelectorAll('.st-nav-item').forEach(function(i){ i.classList.remove('active'); });
+  el.classList.add('active');
+  var t = document.getElementById(id);
+  if (t) t.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+/* Avatar live preview */
+function updateAvatar() {
+  var val = document.getElementById('bizName').value.trim();
+  var av  = document.getElementById('avatarPreview');
+  var nm  = document.getElementById('avatarName');
+  av.textContent = val ? val[0].toUpperCase() : '?';
+  nm.textContent = val || 'My Agency';
+}
+
+/* Password eye toggle */
+function togglePw(id, btn) {
+  var inp = document.getElementById(id);
+  var show = inp.type === 'text';
+  inp.type = show ? 'password' : 'text';
+  /* swap icon */
+  btn.innerHTML = show
+    ? '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
+    : '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+}
+
+/* Password strength meter */
+function evalPw(v) {
+  var fill = document.getElementById('pwFill');
+  var hint = document.getElementById('pwHint');
+  var s = 0;
+  if (v.length >= 8) s++;
+  if (/[A-Z]/.test(v)) s++;
+  if (/[0-9]/.test(v)) s++;
+  if (/[^A-Za-z0-9]/.test(v)) s++;
+  var cols = ['#F04438','#F79009','#F79009','#12B76A'];
+  var labs = ['Too short','Weak — add numbers & uppercase','Almost — add a special character','Strong password'];
+  fill.style.width  = (s * 25) + '%';
+  fill.style.background = cols[Math.max(0,s-1)];
+  if (v.length) {
+    hint.style.display = 'block';
+    hint.textContent   = labs[Math.max(0,s-1)];
+    hint.style.color   = cols[Math.max(0,s-1)];
+  } else {
+    hint.style.display = 'none';
+  }
+}
+
+{% if embedded_enabled and not wa_connected %}
+function launchWaSignup() {
+  if (typeof FB === 'undefined') {
+    alert('Facebook SDK not loaded yet. Please wait a moment and try again.');
+    return;
+  }
+  FB.login(function(response) {
+    if (response.authResponse && response.authResponse.code) {
+      document.getElementById('waSignupBtn').disabled = true;
+      document.getElementById('waStatus').style.display = 'flex';
+      document.getElementById('waError').style.display = 'none';
+      fetch('{{ url_for("estate.inbox_embedded_callback") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: response.authResponse.code })
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(data) {
+        if (data.status === 'select_phone') {
+          document.getElementById('waStatus').style.display = 'none';
+          showPhoneModal(data.phones, data.waba_id);
+        } else if (data.status === 'connected') {
+          document.getElementById('waStatusText').textContent = 'Connected! Refreshing…';
+          setTimeout(function(){ location.reload(); }, 1200);
+        } else {
+          showWaError(data.error || 'Connection failed. Please try again.');
+          document.getElementById('waSignupBtn').disabled = false;
+          document.getElementById('waStatus').style.display = 'none';
+        }
+      })
+      .catch(function() {
+        showWaError('Network error. Please try again.');
+        document.getElementById('waSignupBtn').disabled = false;
+        document.getElementById('waStatus').style.display = 'none';
+      });
+    }
+  }, {
+    config_id: '{{ meta_config_id }}',
+    response_type: 'code',
+    override_default_response_type: true,
+    extras: { setup: {}, sessionInfoVersion: 2 }
+  });
+}
+
+function showWaError(msg) {
+  var el = document.getElementById('waError');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function showPhoneModal(phones, wabaId) {
+  var container = document.getElementById('phoneOptions');
+  container.innerHTML = '';
+  phones.forEach(function(p) {
+    var div = document.createElement('div');
+    div.style.cssText = 'padding:12px 14px;border:1.5px solid rgba(3,12,24,0.10);border-radius:9px;cursor:pointer;margin-bottom:8px;transition:.12s';
+    div.innerHTML = '<div style="font-size:14px;font-weight:700;color:#030C18">' + (p.display_phone_number || p.phone_number_id) + '</div>'
+      + '<div style="font-size:12px;color:rgba(3,12,24,0.40);margin-top:2px">' + (p.verified_name || '') + ' · ID: ' + p.phone_number_id + '</div>';
+    div.onclick = function() {
+      document.querySelectorAll('#phoneOptions > div').forEach(function(d){
+        d.style.borderColor='rgba(3,12,24,0.10)'; d.style.background='';
+      });
+      this.style.borderColor='#030C18'; this.style.background='rgba(3,12,24,0.03)';
+      document.getElementById('selPhoneId').value     = p.phone_number_id;
+      document.getElementById('selWabaId').value      = wabaId;
+      document.getElementById('selDisplayPhone').value= p.display_phone_number || '';
+      document.getElementById('selVerifiedName').value= p.verified_name || '';
+      var btn = document.getElementById('confirmPhoneBtn');
+      btn.disabled = false; btn.style.opacity = '1';
+    };
+    container.appendChild(div);
+    if (phones.length === 1) div.click();
+  });
+  document.getElementById('phoneModal').style.display = 'flex';
+}
+
+window.addEventListener('message', function(e) {
+  if (e.data && e.data.type === 'WA_EMBEDDED_SIGNUP' && e.data.event === 'FINISH') {
+    var d = e.data.data || {};
+    if (d.phone_number_id && d.waba_id) {
+      document.getElementById('selPhoneId').value     = d.phone_number_id;
+      document.getElementById('selWabaId').value      = d.waba_id;
+      document.getElementById('selDisplayPhone').value= d.display_phone_number || '';
+      document.getElementById('selVerifiedName').value= d.business_name || '';
+      document.getElementById('phoneSelectForm').submit();
+    }
+  }
+});
+{% endif %}
+</script>
+{% endblock %}

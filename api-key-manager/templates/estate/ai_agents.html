@@ -1,0 +1,229 @@
+{% extends "estate/base.html" %}
+{% block title %}AI Agent Profiles — PhiXtra Real Estate{% endblock %}
+
+{% block head %}
+<style>
+/* ── Usage strip ── */
+.agents-header-meta{
+  display:flex;align-items:center;gap:8px;
+  padding:8px 16px;background:#fff;
+  border:1px solid rgba(3,12,24,0.09);border-radius:10px;
+  box-shadow:0 1px 6px rgba(3,12,24,0.05);
+  font-size:13px;font-weight:650;color:rgba(3,12,24,0.55)
+}
+.agents-header-meta strong{color:#030C18}
+
+/* ── Agent cards ── */
+.agent-list{display:flex;flex-direction:column;gap:12px}
+
+.agent-card{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:14px;
+  box-shadow:0 2px 12px rgba(3,12,24,0.05);overflow:hidden;
+  display:flex;transition:box-shadow .15s,transform .15s
+}
+.agent-card:hover{box-shadow:0 6px 24px rgba(3,12,24,0.09);transform:translateY(-1px)}
+.agent-card.is-active{border-color:rgba(18,183,106,0.30)}
+
+/* Coloured left rail */
+.agent-rail{
+  width:5px;flex-shrink:0;
+  background:rgba(3,12,24,0.10)
+}
+.agent-card.is-active .agent-rail{
+  background:linear-gradient(180deg,#12B76A,#34d399)
+}
+
+.agent-body{flex:1;padding:20px 22px;min-width:0}
+.agent-head{display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap}
+.agent-name{font-size:15.5px;font-weight:800;color:#030C18;letter-spacing:-.2px}
+.agent-pill{
+  font-size:10.5px;font-weight:800;letter-spacing:.04em;
+  padding:2px 9px;border-radius:999px;white-space:nowrap
+}
+.agent-pill.on{background:rgba(18,183,106,0.10);color:#0a7a3c;border:1px solid rgba(18,183,106,0.25)}
+.agent-pill.off{background:rgba(3,12,24,0.05);color:rgba(3,12,24,0.42);border:1px solid rgba(3,12,24,0.10)}
+
+.agent-desc{font-size:13px;color:rgba(3,12,24,0.48);margin-bottom:12px}
+
+.agent-prompt-preview{
+  background:#fafbfc;border:1px solid rgba(3,12,24,0.08);border-radius:9px;
+  padding:11px 14px;font-size:11.5px;color:rgba(3,12,24,0.50);
+  font-family:monospace;line-height:1.55;
+  max-height:72px;overflow:hidden;position:relative
+}
+.agent-prompt-preview::after{
+  content:'';position:absolute;bottom:0;left:0;right:0;height:28px;
+  background:linear-gradient(transparent,#fafbfc)
+}
+
+.agent-actions{
+  padding:16px 22px;border-top:1px solid rgba(3,12,24,0.06);
+  display:flex;align-items:center;gap:8px;background:#fafbfc
+}
+.agent-btn{
+  padding:7px 15px;border-radius:8px;font-size:12.5px;font-weight:700;font-family:inherit;
+  cursor:pointer;border:1.5px solid rgba(3,12,24,0.10);background:#fff;
+  color:rgba(3,12,24,0.55);text-decoration:none;transition:.13s;
+  display:inline-flex;align-items:center;gap:6px;white-space:nowrap
+}
+.agent-btn:hover{border-color:rgba(3,12,24,0.22);color:#030C18;text-decoration:none}
+.agent-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.agent-btn.primary{background:#030C18;color:#fff;border-color:#030C18}
+.agent-btn.primary:hover{background:#0d1f3c;color:#fff}
+.agent-btn.activate{background:rgba(18,183,106,0.09);color:#0a7a3c;border-color:rgba(18,183,106,0.30)}
+.agent-btn.activate:hover{background:rgba(18,183,106,0.15);border-color:rgba(18,183,106,0.50)}
+.agent-btn.danger{color:#F04438;border-color:rgba(240,68,56,0.20)}
+.agent-btn.danger:hover{background:rgba(240,68,56,0.05);border-color:rgba(240,68,56,0.35)}
+
+/* ── Empty state ── */
+.agents-empty{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:14px;
+  padding:70px 20px;text-align:center;
+  box-shadow:0 2px 12px rgba(3,12,24,0.04)
+}
+.agents-empty svg{width:48px;height:48px;stroke:rgba(3,12,24,0.13);fill:none;
+                  stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round;
+                  display:block;margin:0 auto 18px}
+.agents-empty h3{font-size:17px;font-weight:750;color:#030C18;margin-bottom:7px}
+.agents-empty p{font-size:13.5px;color:rgba(3,12,24,0.42);max-width:360px;margin:0 auto 22px;line-height:1.6}
+
+/* New agent CTA button */
+.new-agent-btn{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:10px 22px;background:#030C18;color:#fff;
+  border-radius:9px;font-size:13.5px;font-weight:750;
+  text-decoration:none;border:none;font-family:inherit;cursor:pointer;
+  transition:background .13s,transform .12s
+}
+.new-agent-btn:hover{background:#0d1f3c;transform:translateY(-1px);color:#fff;text-decoration:none}
+
+/* ── Plan limit notice ── */
+.plan-limit-bar{
+  display:flex;align-items:center;gap:12px;padding:14px 18px;
+  background:rgba(247,144,9,0.07);border:1px solid rgba(247,144,9,0.25);
+  border-radius:11px;margin-bottom:20px;font-size:13px
+}
+.plan-limit-bar svg{width:16px;height:16px;stroke:#F79009;fill:none;stroke-width:2;stroke-linecap:round;flex-shrink:0}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title" style="margin-bottom:4px">AI Agent Profiles</h1>
+    <p class="muted">Manage your AI property consultants</p>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <div class="agents-header-meta">
+      <strong>{{ agents | length }}</strong>
+      <span>/ {{ tenant.ai_agents_limit if tenant.ai_agents_limit > 0 else '∞' }} agents</span>
+    </div>
+    {% if agents | length < tenant.ai_agents_limit or tenant.ai_agents_limit <= 0 %}
+    <a href="{{ url_for('estate.agents_new') }}" class="new-agent-btn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round">
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      New Agent
+    </a>
+    {% endif %}
+  </div>
+</div>
+
+{% with msgs = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in msgs %}
+  <div class="flash {{ 'danger' if cat in ('error','danger') else cat }}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+{% if agents | length >= tenant.ai_agents_limit and tenant.ai_agents_limit > 0 %}
+<div class="plan-limit-bar">
+  <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <span>You've used all <strong>{{ tenant.ai_agents_limit }}</strong> agent slots on your plan.
+    <a href="{{ url_for('estate.billing_plans') }}" style="color:#030C18;font-weight:700;text-decoration:none">Upgrade →</a>
+    to add more.
+  </span>
+</div>
+{% endif %}
+
+{% if agents %}
+<div class="agent-list">
+  {% for agent in agents %}
+  <div class="agent-card {% if agent.is_active %}is-active{% endif %}">
+
+    <div class="agent-rail"></div>
+
+    <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+      <div class="agent-body">
+        <div class="agent-head">
+          <span class="agent-name">{{ agent.name }}</span>
+          <span class="agent-pill {% if agent.is_active %}on{% else %}off{% endif %}">
+            {{ 'Active' if agent.is_active else 'Inactive' }}
+          </span>
+        </div>
+        {% if agent.description %}
+        <div class="agent-desc">{{ agent.description }}</div>
+        {% endif %}
+        <div class="agent-prompt-preview">{{ agent.system_prompt[:280] }}{% if agent.system_prompt | length > 280 %}…{% endif %}</div>
+      </div>
+
+      <div class="agent-actions">
+        {% if not agent.is_active %}
+        <form method="POST" action="{{ url_for('estate.agents_activate', agent_id=agent.id) }}">
+          <button type="submit" class="agent-btn activate">
+            <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Activate
+          </button>
+        </form>
+        {% else %}
+        <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:650;color:#0a7a3c">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#12B76A" stroke-width="2.2" stroke-linecap="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          Live
+        </span>
+        {% endif %}
+        <a href="{{ url_for('estate.agents_edit', agent_id=agent.id) }}" class="agent-btn">
+          <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Edit
+        </a>
+        {% if agents | length > 1 %}
+        <form method="POST"
+              action="{{ url_for('estate.agents_delete', agent_id=agent.id) }}"
+              onsubmit="return confirm('Delete this agent? This cannot be undone.')">
+          <button type="submit" class="agent-btn danger">
+            <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+            Delete
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+  {% endfor %}
+</div>
+
+{% else %}
+
+<div class="agents-empty">
+  <svg viewBox="0 0 24 24">
+    <circle cx="12" cy="8" r="4"/>
+    <path d="M6 20v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/>
+    <line x1="12" y1="1" x2="12" y2="3"/>
+    <line x1="12" y1="21" x2="12" y2="23"/>
+    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+  </svg>
+  <h3>No AI agents yet</h3>
+  <p>Create your first AI property consultant — it handles buyer conversations on WhatsApp around the clock.</p>
+  <a href="{{ url_for('estate.agents_new') }}" class="new-agent-btn">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round">
+      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    </svg>
+    Create Your First Agent
+  </a>
+</div>
+
+{% endif %}
+{% endblock %}

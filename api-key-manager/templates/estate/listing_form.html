@@ -1,0 +1,548 @@
+{% extends "estate/base.html" %}
+{% block title %}{{ 'Edit' if mode == 'edit' else 'Add' }} Listing — PhiXtra Real Estate{% endblock %}
+
+{% block head %}
+<!-- Cropper.js -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css"/>
+<style>
+/* ── Form sections ── */
+.lf-wrap{display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start}
+@media(max-width:900px){.lf-wrap{grid-template-columns:1fr}}
+
+.lf-section{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:14px;
+  padding:22px 24px;box-shadow:0 2px 10px rgba(3,12,24,0.05);margin-bottom:16px
+}
+.lf-section-title{
+  font-size:13px;font-weight:750;color:#030C18;letter-spacing:-.1px;
+  margin-bottom:18px;display:flex;align-items:center;gap:8px
+}
+.lf-section-title svg{width:15px;height:15px;stroke:#1a56db;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+
+.ef-group{margin-bottom:15px}
+.ef-group:last-child{margin-bottom:0}
+.ef-label{
+  display:block;font-size:11px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;color:rgba(3,12,24,0.38);margin-bottom:6px
+}
+.ef-input,.ef-select,.ef-textarea{
+  width:100%;padding:10px 13px;border:1.5px solid #e2e8f0;border-radius:8px;
+  font-size:13.5px;font-family:inherit;color:#030C18;background:#f8fafc;
+  outline:none;transition:border-color .15s,box-shadow .15s,background .15s;line-height:1.4
+}
+.ef-input:focus,.ef-select:focus,.ef-textarea:focus{
+  border-color:#1a56db;background:#fff;box-shadow:0 0 0 3px rgba(26,86,219,0.09)
+}
+.ef-input::placeholder,.ef-textarea::placeholder{color:rgba(3,12,24,0.25)}
+.ef-textarea{resize:vertical;min-height:90px}
+.ef-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:540px){.ef-row{grid-template-columns:1fr}}
+
+.ef-checkbox-label{
+  display:flex;align-items:center;gap:9px;font-size:13px;color:rgba(3,12,24,0.65);
+  cursor:pointer;font-weight:500
+}
+.ef-checkbox-label input[type=checkbox]{width:auto;accent-color:#1a56db;width:16px;height:16px;cursor:pointer}
+
+/* ── Image upload ── */
+.img-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.img-thumb{
+  position:relative;padding-top:72%;border-radius:9px;overflow:hidden;
+  background:#f0f4f8;border:1.5px solid rgba(3,12,24,0.08)
+}
+.img-thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.img-thumb-del{
+  position:absolute;top:5px;right:5px;width:24px;height:24px;
+  background:rgba(240,68,56,0.88);border:none;border-radius:50%;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;
+  line-height:1;transition:.13s;backdrop-filter:blur(3px)
+}
+.img-thumb-del:hover{background:#F04438;transform:scale(1.1)}
+.img-thumb-badge{
+  position:absolute;bottom:5px;left:5px;background:rgba(3,12,24,0.55);
+  color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;
+  letter-spacing:.04em
+}
+
+.img-add-btn{
+  padding-top:72%;border-radius:9px;border:2px dashed rgba(3,12,24,0.15);
+  background:#f8fafc;cursor:pointer;position:relative;transition:.15s
+}
+.img-add-btn:hover{border-color:#1a56db;background:rgba(26,86,219,0.03)}
+.img-add-inner{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:6px
+}
+.img-add-inner svg{width:22px;height:22px;stroke:rgba(3,12,24,0.28);fill:none;stroke-width:1.8;stroke-linecap:round}
+.img-add-inner span{font-size:11.5px;color:rgba(3,12,24,0.38);font-weight:600;text-align:center;line-height:1.3}
+.img-add-btn:hover .img-add-inner svg{stroke:#1a56db}
+.img-add-btn:hover .img-add-inner span{color:#1a56db}
+
+.img-note{font-size:11.5px;color:rgba(3,12,24,0.38);line-height:1.5}
+
+/* Cropper modal */
+.cropper-modal-overlay{
+  display:none;position:fixed;inset:0;background:rgba(3,12,24,0.72);
+  z-index:1000;align-items:center;justify-content:center;padding:20px
+}
+.cropper-modal-overlay.active{display:flex}
+.cropper-modal{
+  background:#fff;border-radius:16px;width:100%;max-width:640px;
+  overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,0.35)
+}
+.cropper-modal-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 20px;border-bottom:1px solid rgba(3,12,24,0.08)
+}
+.cropper-modal-head h3{font-size:15px;font-weight:750;color:#030C18}
+.cropper-modal-close{
+  background:none;border:none;font-size:20px;cursor:pointer;
+  color:rgba(3,12,24,0.40);padding:4px;border-radius:6px;transition:.13s;line-height:1
+}
+.cropper-modal-close:hover{background:rgba(3,12,24,0.06);color:#030C18}
+.cropper-canvas-wrap{height:340px;background:#111;overflow:hidden}
+.cropper-canvas-wrap img{display:block;max-width:100%}
+.cropper-modal-foot{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 20px;border-top:1px solid rgba(3,12,24,0.08);gap:10px;flex-wrap:wrap
+}
+.cropper-hint{font-size:12.5px;color:rgba(3,12,24,0.42)}
+.cropper-modal-foot-btns{display:flex;gap:8px}
+.crop-btn{
+  padding:9px 18px;border-radius:8px;font-size:13.5px;font-weight:700;
+  font-family:inherit;cursor:pointer;border:1.5px solid rgba(3,12,24,0.12);
+  background:#fff;color:rgba(3,12,24,0.60);transition:.13s
+}
+.crop-btn:hover{border-color:rgba(3,12,24,0.25);color:#030C18}
+.crop-btn.primary{background:#030C18;color:#fff;border-color:#030C18}
+.crop-btn.primary:hover{background:#0d1f3c}
+
+/* Upload progress */
+.upload-progress{
+  display:none;align-items:center;gap:10px;padding:10px 14px;
+  background:rgba(26,86,219,0.06);border:1px solid rgba(26,86,219,0.18);
+  border-radius:8px;margin-bottom:10px;font-size:13px;color:#1a56db;font-weight:600
+}
+.upload-progress.active{display:flex}
+.upload-spinner{
+  width:16px;height:16px;border:2px solid rgba(26,86,219,0.25);
+  border-top-color:#1a56db;border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Save bar */
+.lf-save-bar{
+  display:flex;align-items:center;justify-content:flex-end;gap:10px;
+  padding:16px 24px;background:#fff;border:1px solid rgba(3,12,24,0.08);
+  border-radius:14px;box-shadow:0 2px 10px rgba(3,12,24,0.05)
+}
+.ef-btn-save{
+  display:inline-flex;align-items:center;gap:7px;padding:11px 24px;
+  background:#030C18;color:#fff;border:none;border-radius:8px;
+  font-size:14px;font-weight:750;font-family:inherit;cursor:pointer;
+  transition:background .13s,transform .12s,box-shadow .13s;
+  box-shadow:0 4px 14px rgba(3,12,24,0.18)
+}
+.ef-btn-save:hover{background:#0d1f3c;transform:translateY(-1px);box-shadow:0 8px 22px rgba(3,12,24,0.22)}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="section-title" style="margin-bottom:4px">
+      {{ 'Edit Listing' if mode == 'edit' else 'Add New Listing' }}
+    </h1>
+    <p class="muted">{{ listing.title if listing else 'Fill in the property details below' }}</p>
+  </div>
+  <a href="{{ url_for('estate.listings') }}" class="btn" style="border-radius:9px">
+    ← Back
+  </a>
+</div>
+
+{% if error %}
+<div class="flash danger" style="border-radius:10px;margin-bottom:18px">{{ error }}</div>
+{% endif %}
+
+<form method="POST" id="listingForm">
+
+  <div class="lf-wrap">
+
+    <!-- ── Left column ── -->
+    <div>
+
+      <!-- Basic info -->
+      <div class="lf-section">
+        <div class="lf-section-title">
+          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Basic Information
+        </div>
+
+        <div class="ef-group">
+          <label class="ef-label">Property Title *</label>
+          <input class="ef-input" type="text" name="title" required
+                 placeholder="e.g. 3-Bed Terrace Duplex, Lekki Phase 1"
+                 value="{{ listing.title if listing else '' }}"/>
+        </div>
+
+        <div class="ef-row">
+          <div class="ef-group">
+            <label class="ef-label">Property Type</label>
+            <select class="ef-select" name="property_type">
+              <option value="">— Select —</option>
+              {% for t in ['land','residential','commercial','mixed_use','industrial'] %}
+              <option value="{{ t }}" {% if listing and listing.property_type == t %}selected{% endif %}>
+                {{ t | replace('_',' ') | title }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="ef-group">
+            <label class="ef-label">Transaction Type</label>
+            <select class="ef-select" name="transaction_type">
+              <option value="">— Select —</option>
+              {% for t in ['sale','rent','lease','shortlet'] %}
+              <option value="{{ t }}" {% if listing and listing.transaction_type == t %}selected{% endif %}>
+                {{ t | title }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="ef-row">
+          <div class="ef-group">
+            <label class="ef-label">Price (₦)</label>
+            <input class="ef-input" type="number" name="price" step="500000" min="0"
+                   placeholder="55000000"
+                   value="{{ listing.price | int if listing and listing.price else '' }}"/>
+          </div>
+          <div class="ef-group">
+            <label class="ef-label">Title Document</label>
+            <select class="ef-select" name="title_document">
+              <option value="">— Select —</option>
+              {% for d in ['C_of_O','Governors_Consent','Survey','Excision','Freehold','Deed_of_Assignment','None','Other'] %}
+              <option value="{{ d }}" {% if listing and listing.title_document == d %}selected{% endif %}>
+                {{ d | replace('_',' ') }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="ef-group">
+          <label class="ef-checkbox-label">
+            <input type="checkbox" name="price_negotiable"
+                   {% if listing and listing.price_negotiable %}checked{% endif %}/>
+            Price is negotiable
+          </label>
+        </div>
+      </div>
+
+      <!-- Location -->
+      <div class="lf-section">
+        <div class="lf-section-title">
+          <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          Location
+        </div>
+        <div class="ef-group">
+          <label class="ef-label">Address / Area</label>
+          <input class="ef-input" type="text" name="location"
+                 placeholder="e.g. Lekki Phase 1, after Chevron roundabout"
+                 value="{{ listing.location if listing else '' }}"/>
+        </div>
+        <div class="ef-row">
+          <div class="ef-group">
+            <label class="ef-label">LGA</label>
+            <input class="ef-input" type="text" name="lga" placeholder="Eti-Osa"
+                   value="{{ listing.lga if listing else '' }}"/>
+          </div>
+          <div class="ef-group">
+            <label class="ef-label">State</label>
+            <input class="ef-input" type="text" name="state" placeholder="Lagos"
+                   value="{{ listing.state if listing else 'Lagos' }}"/>
+          </div>
+        </div>
+      </div>
+
+      <!-- Property details -->
+      <div class="lf-section">
+        <div class="lf-section-title">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+          Property Details
+        </div>
+        <div class="ef-row">
+          <div class="ef-group">
+            <label class="ef-label">Bedrooms</label>
+            <input class="ef-input" type="number" name="bedrooms" min="0" placeholder="3"
+                   value="{{ listing.bedrooms if listing else '' }}"/>
+          </div>
+          <div class="ef-group">
+            <label class="ef-label">Bathrooms</label>
+            <input class="ef-input" type="number" name="bathrooms" min="0" placeholder="3"
+                   value="{{ listing.bathrooms if listing else '' }}"/>
+          </div>
+        </div>
+        <div class="ef-row">
+          <div class="ef-group">
+            <label class="ef-label">Toilets</label>
+            <input class="ef-input" type="number" name="toilets" min="0" placeholder="4"
+                   value="{{ listing.toilets if listing else '' }}"/>
+          </div>
+          <div class="ef-group">
+            <label class="ef-label">Size (sqm)</label>
+            <input class="ef-input" type="number" name="size_sqm" step="0.01" min="0" placeholder="250"
+                   value="{{ listing.size_sqm if listing else '' }}"/>
+          </div>
+        </div>
+      </div>
+
+      <!-- Description & features -->
+      <div class="lf-section">
+        <div class="lf-section-title">
+          <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          Description &amp; Features
+        </div>
+        <div class="ef-group">
+          <label class="ef-label">Description</label>
+          <textarea class="ef-textarea" name="description" rows="5"
+                    placeholder="Describe the property — this feeds the AI's knowledge and helps buyers find it...">{{ listing.description if listing else '' }}</textarea>
+        </div>
+        <div class="ef-group">
+          <label class="ef-label">Features <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;color:rgba(3,12,24,0.35)">(one per line)</span></label>
+          <textarea class="ef-textarea" name="features_raw" id="featuresArea" rows="6"
+                    placeholder="Gated estate&#10;Borehole water&#10;24hr security&#10;CCTV&#10;Backup power">{% if listing and listing.features %}{% if listing.features is iterable and listing.features is not string %}{% for f in listing.features %}{{ f }}
+{% endfor %}{% else %}{{ listing.features }}{% endif %}{% endif %}</textarea>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ── Right column ── -->
+    <div>
+
+      <!-- Status -->
+      <div class="lf-section">
+        <div class="lf-section-title">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Status
+        </div>
+        <div class="ef-group">
+          <label class="ef-label">Listing Status</label>
+          <select class="ef-select" name="status">
+            {% for s in ['available','under_offer','sold','let','off_market'] %}
+            <option value="{{ s }}"
+              {% if listing and listing.status == s %}selected
+              {% elif not listing and s == 'available' %}selected{% endif %}>
+              {{ s | replace('_',' ') | title }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <!-- Photos — only in edit mode (listing must exist to have an ID) -->
+      {% if mode == 'edit' and listing %}
+      <div class="lf-section">
+        <div class="lf-section-title">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          Photos
+        </div>
+
+        <div class="upload-progress" id="uploadProgress">
+          <div class="upload-spinner"></div>
+          Uploading photo…
+        </div>
+
+        <div class="img-grid" id="imgGrid">
+          {% set images = listing.images if listing.images else [] %}
+          {% for img in images %}
+          <div class="img-thumb" data-path="{{ img }}">
+            <img src="/static/{{ img }}" alt="Photo {{ loop.index }}"/>
+            {% if loop.first %}<div class="img-thumb-badge">COVER</div>{% endif %}
+            <button type="button" class="img-thumb-del"
+                    onclick="deleteImage('{{ img }}', this.closest('.img-thumb'))"
+                    title="Remove photo">×</button>
+          </div>
+          {% endfor %}
+          <div class="img-add-btn" id="addPhotoBtn" onclick="document.getElementById('photoFilePicker').click()">
+            <div class="img-add-inner">
+              <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              <span>Add photo</span>
+            </div>
+          </div>
+        </div>
+
+        <input type="file" id="photoFilePicker" accept="image/*" style="display:none"/>
+        <p class="img-note">First photo is the cover image. Max 8 MB per photo. JPG/PNG recommended.</p>
+      </div>
+      {% else %}
+      <div class="lf-section" style="background:rgba(26,86,219,0.04);border-color:rgba(26,86,219,0.15)">
+        <div class="lf-section-title" style="color:rgba(3,12,24,0.50)">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          Photos
+        </div>
+        <p style="font-size:13px;color:rgba(3,12,24,0.45);line-height:1.55">
+          Save the listing first — you'll be taken to the edit page where you can upload and crop property photos.
+        </p>
+      </div>
+      {% endif %}
+
+      <!-- Save -->
+      <div class="lf-save-bar">
+        <a href="{{ url_for('estate.listings') }}" class="btn" style="border-radius:8px">Cancel</a>
+        <button type="submit" class="ef-btn-save">
+          {{ 'Save Changes' if mode == 'edit' else 'Save &amp; Add Photos →' }}
+        </button>
+      </div>
+
+    </div>
+  </div>
+</form>
+
+<!-- Cropper modal -->
+<div class="cropper-modal-overlay" id="cropperOverlay">
+  <div class="cropper-modal">
+    <div class="cropper-modal-head">
+      <h3>Crop Photo</h3>
+      <button type="button" class="cropper-modal-close" onclick="closeCropper()">×</button>
+    </div>
+    <div class="cropper-canvas-wrap">
+      <img id="cropperImg" src="" alt="Crop"/>
+    </div>
+    <div class="cropper-modal-foot">
+      <span class="cropper-hint">Drag to reposition · Scroll to zoom · Pinch on mobile</span>
+      <div class="cropper-modal-foot-btns">
+        <button type="button" class="crop-btn" onclick="closeCropper()">Cancel</button>
+        <button type="button" class="crop-btn primary" onclick="useCrop()">Use This Crop</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
+<script>
+// ── Features textarea → hidden inputs on submit ──────────────────────────────
+document.getElementById('listingForm').addEventListener('submit', function(){
+  var ta = document.getElementById('featuresArea');
+  if(!ta) return;
+  var lines = ta.value.split('\n').map(function(l){return l.trim()}).filter(Boolean);
+  ta.name = '_features_raw_disabled';
+  lines.forEach(function(f){
+    var inp = document.createElement('input');
+    inp.type='hidden'; inp.name='features'; inp.value=f;
+    document.getElementById('listingForm').appendChild(inp);
+  });
+});
+
+{% if mode == 'edit' and listing %}
+// ── Image upload + cropper ───────────────────────────────────────────────────
+var cropper = null;
+var LISTING_ID = {{ listing.id }};
+
+document.getElementById('photoFilePicker').addEventListener('change', function(){
+  var file = this.files[0];
+  if(!file) return;
+  if(file.size > 16 * 1024 * 1024){
+    alert('File too large. Please choose an image under 16 MB.');
+    this.value=''; return;
+  }
+  var reader = new FileReader();
+  reader.onload = function(e){ openCropper(e.target.result); };
+  reader.readAsDataURL(file);
+  this.value = '';
+});
+
+function openCropper(src){
+  var img = document.getElementById('cropperImg');
+  img.src = src;
+  document.getElementById('cropperOverlay').classList.add('active');
+  document.body.style.overflow = 'hidden';
+  if(cropper){ cropper.destroy(); }
+  cropper = new Cropper(img, {
+    aspectRatio: 4/3,
+    viewMode: 1,
+    autoCropArea: 0.85,
+    responsive: true,
+    checkOrientation: true,
+  });
+}
+
+function closeCropper(){
+  document.getElementById('cropperOverlay').classList.remove('active');
+  document.body.style.overflow = '';
+  if(cropper){ cropper.destroy(); cropper = null; }
+}
+
+function useCrop(){
+  if(!cropper) return;
+  var canvas = cropper.getCroppedCanvas({ width:1200, height:900, imageSmoothingQuality:'high' });
+  var b64 = canvas.toDataURL('image/jpeg', 0.88);
+  closeCropper();
+  uploadImage(b64);
+}
+
+function uploadImage(b64){
+  var prog = document.getElementById('uploadProgress');
+  prog.classList.add('active');
+
+  fetch('/estate/listings/' + LISTING_ID + '/images/upload', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({image: b64})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    prog.classList.remove('active');
+    if(data.error){ alert('Upload failed: ' + data.error); return; }
+    addThumbToGrid(data.url, data.path);
+  })
+  .catch(function(){ prog.classList.remove('active'); alert('Upload failed. Please try again.'); });
+}
+
+function addThumbToGrid(url, path){
+  var grid = document.getElementById('imgGrid');
+  var addBtn = document.getElementById('addPhotoBtn');
+  var isFirst = grid.querySelectorAll('.img-thumb').length === 0;
+
+  var div = document.createElement('div');
+  div.className = 'img-thumb';
+  div.dataset.path = path;
+  div.innerHTML =
+    '<img src="' + url + '" alt="Photo"/>' +
+    (isFirst ? '<div class="img-thumb-badge">COVER</div>' : '') +
+    '<button type="button" class="img-thumb-del" onclick="deleteImage(\'' + path + '\', this.closest(\'.img-thumb\'))" title="Remove photo">\xd7</button>';
+  grid.insertBefore(div, addBtn);
+}
+
+function deleteImage(path, el){
+  if(!confirm('Remove this photo?')) return;
+  fetch('/estate/listings/' + LISTING_ID + '/images/delete', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({path: path})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    if(data.error){ alert('Error: ' + data.error); return; }
+    el.remove();
+    // Re-apply COVER badge to first remaining thumb
+    var thumbs = document.querySelectorAll('#imgGrid .img-thumb');
+    thumbs.forEach(function(t,i){
+      var badge = t.querySelector('.img-thumb-badge');
+      if(i===0){ if(!badge){ var b=document.createElement('div'); b.className='img-thumb-badge'; b.textContent='COVER'; t.appendChild(b); } }
+      else { if(badge) badge.remove(); }
+    });
+  })
+  .catch(function(){ alert('Failed to remove photo. Please try again.'); });
+}
+
+// Close cropper on overlay click
+document.getElementById('cropperOverlay').addEventListener('click', function(e){
+  if(e.target === this) closeCropper();
+});
+{% endif %}
+</script>
+{% endblock %}

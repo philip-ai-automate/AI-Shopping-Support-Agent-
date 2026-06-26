@@ -1,0 +1,301 @@
+{% extends "estate/base.html" %}
+{% block title %}{{ buyer.name or buyer.phone_number }} — PhiXtra Real Estate{% endblock %}
+
+{% block head %}
+<style>
+/* Two-column layout */
+.detail-grid{display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start}
+@media(max-width:860px){
+  .detail-grid{grid-template-columns:1fr}
+  .detail-chat{order:2}
+  .detail-sidebar{order:1}
+  .chat-inner{max-height:380px!important}
+}
+@media(max-width:540px){
+  .page-header{flex-wrap:wrap;gap:10px}
+  .page-header > div:first-child{flex:1 1 100%}
+}
+
+/* Assignment card */
+.assign-card{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:13px;
+  box-shadow:0 2px 10px rgba(3,12,24,0.04);overflow:hidden
+}
+.assign-head{
+  padding:14px 18px;border-bottom:1px solid rgba(3,12,24,0.07);
+  display:flex;align-items:center;justify-content:space-between
+}
+.assign-head-title{font-size:12px;font-weight:800;text-transform:uppercase;
+                    letter-spacing:.07em;color:rgba(3,12,24,0.40)}
+.assign-body{padding:16px 18px}
+
+.assign-current{
+  display:flex;align-items:center;gap:10px;
+  padding:12px 14px;border-radius:10px;
+  background:#fafbfc;border:1px solid rgba(3,12,24,0.08);margin-bottom:14px
+}
+.assign-av{
+  width:34px;height:34px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:800;color:#fff
+}
+.assign-av.filled{background:linear-gradient(135deg,#7c3aed,#a78bfa)}
+.assign-av.empty {background:rgba(3,12,24,0.08);
+                   color:rgba(3,12,24,0.30);font-size:18px;font-weight:400}
+.assign-info strong{display:block;font-size:13.5px;font-weight:750;color:#030C18}
+.assign-info span{font-size:11.5px;color:rgba(3,12,24,0.40)}
+
+.assign-select{
+  width:100%;padding:9px 12px;
+  border:1.5px solid rgba(3,12,24,0.12);border-radius:8px;
+  font-size:13px;font-family:inherit;color:#030C18;background:#fafbfc;
+  outline:none;cursor:pointer;transition:border-color .15s;margin-bottom:10px
+}
+.assign-select:focus{border-color:#030C18;background:#fff}
+.assign-btn{
+  width:100%;padding:10px;background:#030C18;color:#fff;
+  border:none;border-radius:8px;font-size:13px;font-weight:750;
+  font-family:inherit;cursor:pointer;transition:background .13s
+}
+.assign-btn:hover{background:#0d1f3c}
+.assign-unassign{
+  display:block;text-align:center;margin-top:8px;font-size:12px;
+  color:rgba(3,12,24,0.35);text-decoration:none;cursor:pointer;
+  border:none;background:none;font-family:inherit;width:100%;padding:4px 0
+}
+.assign-unassign:hover{color:#F04438;text-decoration:underline}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title" style="margin-bottom:4px">
+      {{ buyer.name or buyer.phone_number }}
+    </h1>
+    <p class="muted">{{ buyer.phone_number }} &nbsp;·&nbsp; {{ buyer.lead_status | replace('_',' ') | title }}
+      {% if buyer.assignee_first %}
+      &nbsp;·&nbsp;
+      <span style="color:#7c3aed;font-weight:700">👤 {{ buyer.assignee_first }}{% if buyer.assignee_last %} {{ buyer.assignee_last[0] | upper }}.{% endif %}</span>
+      {% else %}
+      &nbsp;·&nbsp; <span style="color:rgba(3,12,24,0.35)">Unassigned</span>
+      {% endif %}
+    </p>
+  </div>
+  <div style="display:flex;gap:8px;flex-shrink:0">
+    {% if handoffs and handoffs | selectattr('status','eq','pending') | list %}
+    <form method="POST" action="{{ url_for('estate.inbox_resolve', customer_id=buyer.id) }}">
+      <button type="submit" class="btn btn-primary">✓ Mark Handled</button>
+    </form>
+    {% endif %}
+    <a href="{{ url_for('estate.inbox') }}" class="btn">← Back</a>
+  </div>
+</div>
+
+<div class="detail-grid">
+
+  <!-- Chat -->
+  <div class="card detail-chat" style="display:flex;flex-direction:column;gap:0">
+    <h3 style="font-size:14px;font-weight:700;margin-bottom:14px;color:var(--muted);
+               text-transform:uppercase;letter-spacing:.05em">Conversation</h3>
+    <div class="chat-inner" style="display:flex;flex-direction:column;gap:10px;max-height:520px;overflow-y:auto;
+                padding-right:4px">
+      {% if messages %}
+        {% for msg in messages %}
+        <div style="display:flex;{% if msg.role == 'assistant' %}justify-content:flex-start{% else %}justify-content:flex-end{% endif %}">
+          <div style="max-width:75%;padding:10px 14px;border-radius:14px;font-size:13px;line-height:1.55;
+                      {% if msg.role == 'assistant' %}
+                      background:#f0f2f5;color:var(--ink);border-bottom-left-radius:4px
+                      {% else %}
+                      background:var(--ink);color:#fff;border-bottom-right-radius:4px
+                      {% endif %}">
+            {{ msg.content }}
+            <div style="font-size:10px;margin-top:4px;
+                        {% if msg.role == 'assistant' %}color:var(--muted){% else %}color:rgba(255,255,255,0.55){% endif %}">
+              {{ msg.created_at.strftime('%d %b %H:%M') if msg.created_at else '' }}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <p class="muted" style="text-align:center;padding:30px 0">No messages yet.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Right panel -->
+  <div class="detail-sidebar" style="display:flex;flex-direction:column;gap:16px">
+
+    <!-- Buyer qualification -->
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:700;margin-bottom:14px;color:var(--muted);
+                 text-transform:uppercase;letter-spacing:.05em">Buyer Profile</h3>
+      <div style="display:flex;flex-direction:column;gap:8px;font-size:13px">
+        <div style="display:flex;justify-content:space-between">
+          <span class="muted">Phone</span>
+          <span style="font-weight:600">{{ buyer.phone_number }}</span>
+        </div>
+        {% if buyer.name %}
+        <div style="display:flex;justify-content:space-between">
+          <span class="muted">Name</span>
+          <span style="font-weight:600">{{ buyer.name }}</span>
+        </div>
+        {% endif %}
+        {% if buyer.budget_min or buyer.budget_max %}
+        <div style="display:flex;justify-content:space-between">
+          <span class="muted">Budget</span>
+          <span style="font-weight:600">
+            ₦{{ '{:,.0f}'.format(buyer.budget_min) if buyer.budget_min else '?' }}
+            – ₦{{ '{:,.0f}'.format(buyer.budget_max) if buyer.budget_max else '?' }}
+          </span>
+        </div>
+        {% endif %}
+        {% if buyer.preferred_area %}
+        <div style="display:flex;justify-content:space-between">
+          <span class="muted">Area</span>
+          <span style="font-weight:600">{{ buyer.preferred_area }}</span>
+        </div>
+        {% endif %}
+        {% if buyer.property_type_pref %}
+        <div style="display:flex;justify-content:space-between">
+          <span class="muted">Property Type</span>
+          <span style="font-weight:600">{{ buyer.property_type_pref | title }}</span>
+        </div>
+        {% endif %}
+        {% if buyer.bedrooms_pref %}
+        <div style="display:flex;justify-content:space-between">
+          <span class="muted">Bedrooms</span>
+          <span style="font-weight:600">{{ buyer.bedrooms_pref }}</span>
+        </div>
+        {% endif %}
+        {% if buyer.urgency %}
+        <div style="display:flex;justify-content:space-between">
+          <span class="muted">Urgency</span>
+          <span class="pill {% if buyer.urgency == 'urgent' %}pill-red{% elif buyer.urgency == 'planning' %}pill-warn{% else %}pill-grey{% endif %}"
+                style="font-size:11px">
+            {{ buyer.urgency | title }}
+          </span>
+        </div>
+        {% endif %}
+        {% if buyer.payment_method %}
+        <div style="display:flex;justify-content:space-between">
+          <span class="muted">Payment</span>
+          <span style="font-weight:600">{{ buyer.payment_method | title }}</span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Assignment -->
+    <div class="assign-card">
+      <div class="assign-head">
+        <span class="assign-head-title">Assigned To</span>
+        {% if _re_is_admin %}
+        <span style="font-size:11px;color:rgba(3,12,24,0.35)">Admin can reassign</span>
+        {% endif %}
+      </div>
+      <div class="assign-body">
+        <!-- Current assignee -->
+        <div class="assign-current">
+          {% if buyer.assignee_first %}
+          <div class="assign-av filled">{{ buyer.assignee_first[0] | upper }}</div>
+          <div class="assign-info">
+            <strong>{{ buyer.assignee_first }} {% if buyer.assignee_last %}{{ buyer.assignee_last }}{% endif %}</strong>
+            <span>Currently handling this lead</span>
+          </div>
+          {% else %}
+          <div class="assign-av empty">👤</div>
+          <div class="assign-info">
+            <strong>Unassigned</strong>
+            <span>No one is handling this lead</span>
+          </div>
+          {% endif %}
+        </div>
+
+        {% if _re_is_admin or not buyer.assigned_to %}
+        <!-- Admin always sees full form; staff sees it only if unassigned -->
+        <form method="POST" action="{{ url_for('estate.inbox_assign', customer_id=buyer.id) }}">
+          <select name="staff_id" class="assign-select">
+            <option value="">— Select staff member —</option>
+            {% for s in staff_list %}
+            <option value="{{ s.id }}"
+              {% if buyer.assigned_to == s.id %}selected{% endif %}>
+              {{ s.first_name }}{% if s.last_name %} {{ s.last_name }}{% endif %}
+              ({{ s.role | title }})
+            </option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="assign-btn">
+            {% if buyer.assignee_first %}Reassign Lead{% else %}Assign Lead{% endif %}
+          </button>
+          {% if buyer.assigned_to %}
+          <button type="submit" name="staff_id" value="" class="assign-unassign">
+            Remove assignment
+          </button>
+          {% endif %}
+        </form>
+        {% elif buyer.assigned_to == my_staff_id %}
+        <!-- This lead belongs to the logged-in staff member -->
+        <div style="padding:10px 12px;border-radius:9px;background:rgba(124,58,237,0.07);
+                    border:1px solid rgba(124,58,237,0.18);font-size:13px;
+                    color:#5b21b6;font-weight:650;text-align:center;margin-bottom:10px">
+          ✓ This lead is assigned to you
+        </div>
+        <form method="POST" action="{{ url_for('estate.inbox_assign', customer_id=buyer.id) }}">
+          <button type="submit" name="staff_id" value="" class="assign-unassign"
+                  style="border:1.5px solid rgba(3,12,24,0.10);border-radius:8px;
+                         padding:8px;width:100%;color:rgba(3,12,24,0.40)">
+            Unassign from me
+          </button>
+        </form>
+        {% else %}
+        <!-- Assigned to someone else — staff can claim it -->
+        <form method="POST" action="{{ url_for('estate.inbox_assign', customer_id=buyer.id) }}">
+          <input type="hidden" name="staff_id" value="{{ my_staff_id or '' }}">
+          <button type="submit" class="assign-btn" style="background:#7c3aed">
+            Claim This Lead
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Handoff requests -->
+    {% if handoffs %}
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:700;margin-bottom:14px;color:var(--muted);
+                 text-transform:uppercase;letter-spacing:.05em">Action Requests</h3>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        {% for hr in handoffs %}
+        <div style="padding:10px 12px;border-radius:10px;background:{% if hr.status == 'pending' %}rgba(240,68,56,0.05){% else %}rgba(3,12,24,0.03){% endif %};
+                    border:1px solid {% if hr.status == 'pending' %}rgba(240,68,56,0.20){% else %}var(--line){% endif %}">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            <span class="pill {% if hr.action_type == 'INSPECT' %}pill-blue{% elif hr.action_type == 'CALLBACK' %}pill-warn{% else %}pill-grey{% endif %}"
+                  style="font-size:11px">
+              {{ hr.action_type or 'Enquiry' }}
+            </span>
+            <span class="pill {% if hr.status == 'pending' %}pill-red{% else %}pill-green{% endif %}"
+                  style="font-size:11px">
+              {{ hr.status | title }}
+            </span>
+          </div>
+          {% if hr.listing_title %}
+          <div style="font-size:12px;font-weight:600;margin-bottom:3px">{{ hr.listing_title }}</div>
+          {% endif %}
+          {% if hr.buyer_summary %}
+          <div style="font-size:12px;color:var(--muted)">{{ hr.buyer_summary }}</div>
+          {% endif %}
+          <div class="muted" style="font-size:11px;margin-top:4px">
+            {{ hr.created_at.strftime('%d %b %Y, %H:%M') if hr.created_at else '' }}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+
+{% endblock %}
