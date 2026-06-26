@@ -211,11 +211,6 @@
   </button>
 </div>
 
-{% with msgs = get_flashed_messages(with_categories=true) %}
-  {% for cat, msg in msgs %}
-  <div class="flash {{ 'danger' if cat in ('error','danger') else cat }}">{{ msg }}</div>
-  {% endfor %}
-{% endwith %}
 
 <!-- KPI strip -->
 {% set total    = staff_list | length %}

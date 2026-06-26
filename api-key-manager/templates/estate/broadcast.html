@@ -182,11 +182,6 @@
   </div>
 </div>
 
-{% with msgs = get_flashed_messages(with_categories=true) %}
-  {% for cat, msg in msgs %}
-  <div class="flash {{ 'danger' if cat in ('error','danger') else cat }}">{{ msg }}</div>
-  {% endfor %}
-{% endwith %}
 
 {% if not tenant.wa_phone_number_id %}
 <div class="flash warning" style="margin-bottom:20px">

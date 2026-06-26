@@ -92,11 +92,6 @@
   </div>
 </div>
 
-{% with msgs = get_flashed_messages(with_categories=true) %}
-  {% for cat, msg in msgs %}
-  <div class="flash {{ 'danger' if cat in ('error','danger') else cat }}">{{ msg }}</div>
-  {% endfor %}
-{% endwith %}
 
 <div style="background:rgba(26,86,219,0.06);border:1px solid rgba(26,86,219,0.18);border-radius:10px;padding:13px 16px;font-size:13px;color:#1a3a6e;margin-bottom:22px;display:flex;gap:10px;align-items:flex-start">
   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>

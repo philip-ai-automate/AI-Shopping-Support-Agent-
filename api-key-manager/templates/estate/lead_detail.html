@@ -272,12 +272,6 @@
   Back to Contacts
 </a>
 
-{% with msgs = get_flashed_messages(with_categories=true) %}
-  {% for cat, msg in msgs %}
-  <div class="flash {{ 'danger' if cat in ('error','danger') else cat }}">{{ msg }}</div>
-  {% endfor %}
-{% endwith %}
-
 <!-- ── Contact Hero ── -->
 <div class="ld-hero">
   <div class="ld-av" style="background:{{ av_col }}">

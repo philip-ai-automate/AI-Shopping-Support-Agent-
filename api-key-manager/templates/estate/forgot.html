@@ -104,12 +104,6 @@
   <h1>Forgot your password?</h1>
   <p>No problem. Enter your registered email and we'll send you a secure reset link.</p>
 
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% for category, message in messages %}
-      <div class="flash {{ category }}" style="border-radius:8px;margin-bottom:16px">{{ message }}</div>
-    {% endfor %}
-  {% endwith %}
-
   <form method="POST">
     <div class="ef-group">
       <label class="ef-label">Email address</label>

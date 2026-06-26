@@ -106,11 +106,6 @@
   </button>
 </div>
 
-{% with msgs = get_flashed_messages(with_categories=true) %}
-  {% for cat, msg in msgs %}
-  <div class="flash {{ 'danger' if cat in ('error','danger') else cat }}">{{ msg }}</div>
-  {% endfor %}
-{% endwith %}
 
 <!-- Context note -->
 <div style="background:rgba(26,86,219,0.05);border:1px solid rgba(26,86,219,0.15);border-radius:12px;
