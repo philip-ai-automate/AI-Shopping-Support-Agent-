@@ -884,7 +884,7 @@ def inbox():
         query = """
             SELECT c.*,
                    (SELECT content FROM re_chat_messages
-                    WHERE customer_id=c.id ORDER BY created_at DESC LIMIT 1) AS last_message,
+                    WHERE customer_id=c.id AND role='user' ORDER BY created_at DESC LIMIT 1) AS last_message,
                    (SELECT COUNT(*) FROM re_handoff_requests
                     WHERE customer_id=c.id AND status='pending') AS pending_handoffs,
                    s.first_name AS assignee_first,
