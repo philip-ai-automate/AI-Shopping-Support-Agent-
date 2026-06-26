@@ -2289,15 +2289,82 @@ def lead_profile(contact_id):
     return redirect(url_for("estate.lead_detail", contact_id=contact_id))
 
 
+@estate_bp.route("/estate/pipeline")
+def pipeline():
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    tenant    = _get_tenant(tenant_id)
+
+    contacts_by_stage = {s[0]: [] for s in PIPELINE_STAGES}
+    stage_stats       = {s[0]: {"count": 0, "total_budget": 0} for s in PIPELINE_STAGES}
+
+    conn = get_db_connection()
+    if conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        cur.execute("""
+            SELECT c.id, c.name, c.phone_number, c.source,
+                   c.pipeline_stage, c.follow_up_at, c.lost_reason,
+                   c.budget_min, c.budget_max, c.preferred_area,
+                   c.property_type_pref, c.urgency, c.created_at,
+                   TRIM(COALESCE(s.first_name,'') || ' ' || COALESCE(s.last_name,'')) AS agent_name
+            FROM re_customers c
+            LEFT JOIN re_staff s ON s.id = c.assigned_to
+            WHERE c.tenant_id = %s
+            ORDER BY c.updated_at DESC
+        """, (tenant_id,))
+        contacts = cur.fetchall()
+
+        cur.execute("""
+            SELECT m.contact_id, sg.id AS seg_id, sg.name AS seg_name, sg.color
+            FROM re_contact_segment_map m
+            JOIN re_contact_segments sg ON sg.id = m.segment_id
+            WHERE sg.tenant_id = %s
+        """, (tenant_id,))
+        seg_map = {}
+        for r in cur.fetchall():
+            seg_map.setdefault(r["contact_id"], []).append(r)
+
+        cur.close(); conn.close()
+
+        for row in contacts:
+            c = dict(row)
+            c["segments"] = seg_map.get(c["id"], [])
+            fup = c.get("follow_up_at")
+            c["overdue"] = bool(fup and fup < datetime.now(tz=fup.tzinfo))
+            stage = c.get("pipeline_stage") or "new"
+            if stage not in contacts_by_stage:
+                stage = "new"
+            contacts_by_stage[stage].append(c)
+
+        for slug, _, _ in PIPELINE_STAGES:
+            cards = contacts_by_stage[slug]
+            budgets = [float(c["budget_max"]) for c in cards if c.get("budget_max")]
+            stage_stats[slug] = {
+                "count": len(cards),
+                "total_budget": sum(budgets),
+            }
+
+    return render_template("estate/pipeline.html",
+                           tenant=tenant,
+                           pipeline_stages=PIPELINE_STAGES,
+                           contacts_by_stage=contacts_by_stage,
+                           stage_stats=stage_stats)
+
+
 @estate_bp.route("/estate/leads/<int:contact_id>/stage", methods=["POST"])
 def lead_stage(contact_id):
     redir = _require_re_login()
     if redir: return redir
     tenant_id = _re_tenant_id()
+    is_ajax   = request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
     stage  = request.form.get("stage", "").strip()
     reason = request.form.get("lost_reason", "").strip() or None
     if stage not in _STAGE_SLUGS:
+        if is_ajax:
+            return jsonify({"ok": False, "error": "Invalid stage"}), 400
         flash("Invalid stage.", "danger")
         return redirect(url_for("estate.lead_detail", contact_id=contact_id))
 
@@ -2320,6 +2387,9 @@ def lead_stage(contact_id):
                 WHERE id=%s AND tenant_id=%s
             """, (stage, contact_id, tenant_id))
         conn.commit(); cur.close(); conn.close()
+
+    if is_ajax:
+        return jsonify({"ok": True, "stage": stage})
     return redirect(url_for("estate.lead_detail", contact_id=contact_id))
 
 

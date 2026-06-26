@@ -210,9 +210,8 @@
       <span class="sb-icon">🏠</span> Dashboard
     </a>
 
-    <a class="sb-link {% if request.endpoint == 'estate.lead_detail' %}active{% endif %}"
-       href="{{ url_for('estate.contacts') }}"
-       style="background:{% if request.endpoint == 'estate.lead_detail' %}rgba(3,12,24,0.06){% endif %}">
+    <a class="sb-link {% if request.endpoint in ('estate.pipeline','estate.lead_detail') %}active{% endif %}"
+       href="{{ url_for('estate.pipeline') }}">
       <span class="sb-icon">📊</span> Pipeline
     </a>
 

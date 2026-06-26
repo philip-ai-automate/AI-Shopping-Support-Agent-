@@ -1,0 +1,575 @@
+{% extends "estate/base.html" %}
+{% block title %}Pipeline Board — PhiXtra Real Estate{% endblock %}
+{% block wrap_class %}page-pipeline{% endblock %}
+
+{% block head %}
+<style>
+  .page-pipeline{padding:24px 20px 60px;max-width:none}
+
+  /* ── Header ── */
+  .pb-topbar{display:flex;align-items:center;justify-content:space-between;
+             flex-wrap:wrap;gap:12px;margin-bottom:20px}
+  .pb-title{font-size:22px;font-weight:800;letter-spacing:-.4px}
+  .pb-actions{display:flex;align-items:center;gap:10px}
+  .pb-stat-strip{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:20px}
+  .pb-stat{font-size:13px;color:var(--muted)}
+  .pb-stat strong{color:var(--ink);font-weight:750}
+
+  /* ── Board ── */
+  .pb-board{display:flex;gap:14px;overflow-x:auto;padding-bottom:20px;align-items:flex-start}
+  .pb-board::-webkit-scrollbar{height:6px}
+  .pb-board::-webkit-scrollbar-track{background:rgba(3,12,24,0.04);border-radius:999px}
+  .pb-board::-webkit-scrollbar-thumb{background:rgba(3,12,24,0.18);border-radius:999px}
+
+  /* ── Column ── */
+  .pb-col{flex:0 0 272px;background:rgba(3,12,24,0.025);border-radius:16px;
+          border:2px solid transparent;transition:.18s}
+  .pb-col.drag-over{border-color:var(--accent);background:rgba(26,86,219,0.04)}
+  .pb-col-lost{opacity:.85}
+  .pb-col-head{display:flex;align-items:center;justify-content:space-between;
+               padding:14px 14px 10px;border-radius:14px 14px 0 0}
+  .pb-col-label{font-size:13px;font-weight:750;letter-spacing:.01em}
+  .pb-col-badge{font-size:12px;font-weight:750;padding:3px 9px;border-radius:999px}
+  .pb-col-total{font-size:11px;color:var(--muted);padding:0 14px 10px;font-weight:600}
+
+  /* ── Cards ── */
+  .pb-cards{padding:0 10px 12px;display:flex;flex-direction:column;gap:10px;
+            min-height:60px}
+  .pb-card{background:#fff;border:1px solid var(--line);border-radius:12px;
+           padding:13px;cursor:pointer;transition:.15s;position:relative;
+           box-shadow:0 2px 8px rgba(3,12,24,0.05)}
+  .pb-card:hover{box-shadow:0 6px 20px rgba(3,12,24,0.10);transform:translateY(-1px)}
+  .pb-card.dragging{opacity:.45;transform:scale(.97)}
+
+  /* Card top */
+  .pb-card-top{display:flex;align-items:flex-start;gap:9px;margin-bottom:8px}
+  .pb-av{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;
+         justify-content:center;font-size:13px;font-weight:800;color:#fff;flex-shrink:0}
+  .pb-card-meta{flex:1;min-width:0}
+  .pb-card-name{font-size:13px;font-weight:700;color:var(--ink);
+                white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pb-card-phone{font-size:11px;color:var(--muted);margin-top:1px}
+  .pb-src-badge{font-size:11px;border-radius:6px;padding:2px 6px;flex-shrink:0;margin-top:1px;
+                background:rgba(22,163,74,0.10);color:#15803d;font-weight:650}
+  .pb-src-badge.wa{background:rgba(22,163,74,0.12);color:#15803d}
+  .pb-src-badge.manual{background:rgba(3,12,24,0.07);color:var(--muted)}
+
+  /* Card body lines */
+  .pb-card-prop{font-size:11px;color:var(--muted);margin-bottom:5px;
+                white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pb-card-budget{font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px}
+
+  /* Urgency */
+  .pb-urgency{display:inline-flex;align-items:center;gap:3px;font-size:10px;
+              font-weight:700;padding:2px 7px;border-radius:999px;margin-bottom:6px}
+  .pb-urgency.urgent{background:rgba(240,68,56,0.10);color:#b02020}
+  .pb-urgency.planning{background:rgba(247,144,9,0.10);color:#7a4f00}
+  .pb-urgency.browsing{background:rgba(3,12,24,0.07);color:var(--muted)}
+
+  /* Segments */
+  .pb-segs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:7px}
+  .pb-seg{font-size:10px;font-weight:650;padding:2px 7px;border-radius:999px}
+
+  /* Footer */
+  .pb-card-foot{display:flex;align-items:center;justify-content:space-between;
+                padding-top:8px;border-top:1px solid rgba(3,12,24,0.07);margin-top:2px;gap:6px}
+  .pb-agent{font-size:11px;color:var(--muted);white-space:nowrap;
+            overflow:hidden;text-overflow:ellipsis;flex:1}
+  .pb-fup{font-size:11px;font-weight:650;white-space:nowrap;flex-shrink:0}
+  .pb-fup.late{color:#b02020}
+
+  /* Advance button */
+  .pb-advance{display:block;width:100%;margin-top:9px;padding:6px 10px;
+              border:1px solid rgba(3,12,24,0.14);border-radius:8px;
+              background:rgba(3,12,24,0.03);color:var(--muted);
+              font-size:11px;font-weight:650;cursor:pointer;
+              text-align:center;transition:.15s;font-family:inherit}
+  .pb-advance:hover{background:rgba(3,12,24,0.08);color:var(--ink)}
+  .pb-advance:disabled{opacity:.45;cursor:default}
+
+  /* Lost card extras */
+  .pb-lost-why{font-size:11px;color:#b02020;font-weight:650;margin-top:4px;
+               padding:3px 8px;border-radius:6px;background:rgba(240,68,56,0.07);
+               display:inline-block}
+
+  /* Empty column */
+  .pb-empty{font-size:12px;color:var(--muted);text-align:center;
+            padding:28px 10px;border:1.5px dashed rgba(3,12,24,0.12);
+            border-radius:10px}
+
+  /* Lost reason modal */
+  .pb-modal-bg{position:fixed;inset:0;background:rgba(3,12,24,0.50);
+               z-index:900;display:flex;align-items:center;justify-content:center;
+               backdrop-filter:blur(3px)}
+  .pb-modal-bg.hidden{display:none}
+  .pb-modal{background:#fff;border-radius:20px;padding:28px 26px;width:340px;
+            box-shadow:0 24px 60px rgba(3,12,24,0.20)}
+  .pb-modal h3{font-size:16px;font-weight:800;margin-bottom:6px}
+  .pb-modal p{font-size:13px;color:var(--muted);margin-bottom:18px}
+  .pb-modal select{margin-bottom:14px}
+  .pb-modal-btns{display:flex;gap:10px}
+  .pb-modal-btns button{flex:1;padding:10px;border-radius:10px;font-weight:650;
+                        font-size:14px;cursor:pointer;font-family:inherit;border:1px solid var(--line)}
+  .pb-modal-confirm{background:#b02020;color:#fff;border-color:#b02020}
+  .pb-modal-cancel{background:#fff;color:var(--ink)}
+
+  @media(max-width:640px){
+    .pb-board{flex-direction:column}
+    .pb-col{flex:none;width:100%}
+  }
+</style>
+{% endblock %}
+
+{% set av_colors = ['#1a56db','#7c3aed','#0891b2','#0a7a3c','#d97706','#dc2626','#db2777','#0369a1'] %}
+
+{% block content %}
+<!-- ── Top bar ── -->
+<div class="pb-topbar">
+  <div>
+    <div class="pb-title">📊 Pipeline Board</div>
+    <div style="font-size:13px;color:var(--muted);margin-top:3px">
+      Drag cards between columns or use the advance button
+    </div>
+  </div>
+  <div class="pb-actions">
+    <a href="{{ url_for('estate.contacts') }}" class="btn btn-sm">
+      👤 All Contacts
+    </a>
+    <a href="{{ url_for('estate.contacts') }}#addModal" class="btn btn-sm btn-primary"
+       onclick="sessionStorage.setItem('openAddContact','1')">
+      + Add Lead
+    </a>
+  </div>
+</div>
+
+<!-- ── Summary strip ── -->
+{% set active_total = namespace(n=0) %}
+{% for slug, label, color in pipeline_stages %}
+  {% if slug not in ('lost',) %}
+    {% set active_total.n = active_total.n + stage_stats[slug].count %}
+  {% endif %}
+{% endfor %}
+<div class="pb-stat-strip">
+  <span class="pb-stat">Active pipeline: <strong>{{ active_total.n }}</strong></span>
+  {% for slug, label, color in pipeline_stages %}
+    {% if stage_stats[slug].count > 0 and slug != 'lost' %}
+    <span class="pb-stat">
+      <span style="display:inline-block;width:8px;height:8px;border-radius:50%;
+                   background:{{ color }};margin-right:4px;vertical-align:middle"></span>
+      {{ label }}: <strong>{{ stage_stats[slug].count }}</strong>
+    </span>
+    {% endif %}
+  {% endfor %}
+  {% if stage_stats['lost'].count > 0 %}
+  <span class="pb-stat" style="color:rgba(240,68,56,0.7)">
+    Lost: <strong>{{ stage_stats['lost'].count }}</strong>
+  </span>
+  {% endif %}
+</div>
+
+<!-- ── Kanban Board ── -->
+<div class="pb-board" id="pbBoard">
+
+  {% for slug, label, color in pipeline_stages %}
+  {% set col_idx = loop.index0 %}
+  {% set next_slug  = pipeline_stages[col_idx + 1][0] if col_idx < pipeline_stages|length - 2 else '' %}
+  {% set next_label = pipeline_stages[col_idx + 1][1] if col_idx < pipeline_stages|length - 2 else '' %}
+
+  <div class="pb-col {% if slug == 'lost' %}pb-col-lost{% endif %}"
+       id="pbCol-{{ slug }}"
+       data-stage="{{ slug }}"
+       ondragover="pbDragOver(event)"
+       ondragleave="pbDragLeave(event)"
+       ondrop="pbDrop(event, '{{ slug }}')">
+
+    <!-- Column header -->
+    <div class="pb-col-head" style="border-radius:14px 14px 0 0">
+      <span class="pb-col-label" style="color:{{ color }}">{{ label }}</span>
+      <span class="pb-col-badge" id="pbBadge-{{ slug }}"
+            style="background:{{ color }}1a;color:{{ color }}">
+        {{ stage_stats[slug].count }}
+      </span>
+    </div>
+
+    {% if stage_stats[slug].total_budget > 0 %}
+    <div class="pb-col-total">
+      ₦{{ "{:,.0f}".format(stage_stats[slug].total_budget) }} potential
+    </div>
+    {% endif %}
+
+    <!-- Cards -->
+    <div class="pb-cards" id="pbCards-{{ slug }}">
+
+      {% for c in contacts_by_stage[slug] %}
+      {% set av_color = av_colors[c.id % (av_colors|length)] %}
+      <div class="pb-card"
+           draggable="true"
+           data-id="{{ c.id }}"
+           data-stage="{{ slug }}"
+           id="pbCard-{{ c.id }}"
+           ondragstart="pbDragStart(event)"
+           ondragend="pbDragEnd(event)"
+           onclick="pbCardClick(event, {{ c.id }})">
+
+        <!-- Top: avatar + name -->
+        <div class="pb-card-top">
+          <div class="pb-av" style="background:{{ av_color }}">
+            {{ (c.name or c.phone_number or '?')[0]|upper }}
+          </div>
+          <div class="pb-card-meta">
+            <div class="pb-card-name">{{ c.name or c.phone_number }}</div>
+            {% if c.name %}
+            <div class="pb-card-phone">{{ c.phone_number }}</div>
+            {% endif %}
+          </div>
+          <span class="pb-src-badge {% if c.source == 'whatsapp' %}wa{% else %}manual{% endif %}">
+            {% if c.source == 'whatsapp' %}WA{% else %}Manual{% endif %}
+          </span>
+        </div>
+
+        <!-- Property snippet -->
+        {% if c.preferred_area or c.property_type_pref %}
+        <div class="pb-card-prop">
+          {% if c.preferred_area %}📍 {{ c.preferred_area }}{% endif %}
+          {% if c.property_type_pref %} · {{ c.property_type_pref }}{% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Budget -->
+        {% if c.budget_max %}
+        <div class="pb-card-budget">
+          ₦{{ "{:,.0f}".format(c.budget_max|float) }}
+          {% if c.budget_min and c.budget_min != c.budget_max %}
+          <span style="font-size:10px;color:var(--muted);font-weight:400">
+            (from ₦{{ "{:,.0f}".format(c.budget_min|float) }})
+          </span>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Urgency -->
+        {% if c.urgency %}
+        <div>
+          <span class="pb-urgency {{ c.urgency }}">
+            {% if c.urgency == 'urgent' %}🔥 Urgent
+            {% elif c.urgency == 'planning' %}📅 Planning
+            {% else %}👀 Browsing{% endif %}
+          </span>
+        </div>
+        {% endif %}
+
+        <!-- Segments -->
+        {% if c.segments %}
+        <div class="pb-segs">
+          {% for seg in c.segments[:3] %}
+          <span class="pb-seg"
+                style="background:{{ seg.color }}18;color:{{ seg.color }};
+                       border:1px solid {{ seg.color }}30">
+            {{ seg.seg_name }}
+          </span>
+          {% endfor %}
+          {% if c.segments|length > 3 %}
+          <span class="pb-seg" style="background:rgba(3,12,24,0.06);color:var(--muted);
+                                      border:1px solid rgba(3,12,24,0.10)">
+            +{{ c.segments|length - 3 }}
+          </span>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Lost reason -->
+        {% if slug == 'lost' and c.lost_reason %}
+        <div class="pb-lost-why">
+          {{ c.lost_reason|replace('_',' ')|title }}
+        </div>
+        {% endif %}
+
+        <!-- Footer: agent + follow-up -->
+        <div class="pb-card-foot">
+          <span class="pb-agent">
+            👤 {{ c.agent_name if c.agent_name else 'Unassigned' }}
+          </span>
+          {% if c.follow_up_at %}
+          <span class="pb-fup {% if c.overdue %}late{% endif %}">
+            {% if c.overdue %}⚠️{% else %}📅{% endif %}
+            {{ c.follow_up_at.strftime('%d %b') }}
+          </span>
+          {% endif %}
+        </div>
+
+        <!-- Advance button (not for allocated/lost) -->
+        {% if next_slug and slug not in ('allocated',) %}
+        <button class="pb-advance"
+                onclick="pbAdvance(event, {{ c.id }}, '{{ next_slug }}', '{{ next_label }}', this)">
+          → Move to {{ next_label }}
+        </button>
+        {% endif %}
+
+      </div>
+      {% endfor %}
+
+      {% if not contacts_by_stage[slug] %}
+      <div class="pb-empty" id="pbEmpty-{{ slug }}">
+        Drop leads here
+      </div>
+      {% endif %}
+
+    </div><!-- /pb-cards -->
+  </div><!-- /pb-col -->
+  {% endfor %}
+
+</div><!-- /pb-board -->
+
+<!-- ── Lost Reason Modal ── -->
+<div class="pb-modal-bg hidden" id="pbLostModal">
+  <div class="pb-modal" onclick="event.stopPropagation()">
+    <h3>Mark as Lost</h3>
+    <p>Select a reason before archiving this lead.</p>
+    <label>Loss Reason</label>
+    <select id="pbLostReason">
+      <option value="price_too_high">Price Too High</option>
+      <option value="location_mismatch">Location Mismatch</option>
+      <option value="no_finance">No Finance / Funding</option>
+      <option value="changed_mind">Changed Mind</option>
+      <option value="unresponsive">Went Unresponsive</option>
+      <option value="other">Other</option>
+    </select>
+    <div class="pb-modal-btns">
+      <button class="pb-modal-cancel" onclick="pbLostCancel()">Cancel</button>
+      <button class="pb-modal-confirm" id="pbLostConfirmBtn" onclick="pbLostConfirm()">
+        Mark as Lost
+      </button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  /* ── State ── */
+  let dragId    = null;
+  let dragFrom  = null;
+  let lostDragId = null;
+
+  /* ── Drag & Drop ── */
+  function pbDragStart(e) {
+    const card = e.currentTarget;
+    dragId   = card.dataset.id;
+    dragFrom = card.dataset.stage;
+    e.dataTransfer.effectAllowed = 'move';
+    setTimeout(() => card.classList.add('dragging'), 0);
+  }
+  window.pbDragStart = pbDragStart;
+
+  function pbDragEnd(e) {
+    e.currentTarget.classList.remove('dragging');
+    dragId = dragFrom = null;
+    document.querySelectorAll('.pb-col.drag-over')
+            .forEach(c => c.classList.remove('drag-over'));
+  }
+  window.pbDragEnd = pbDragEnd;
+
+  function pbDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    e.currentTarget.classList.add('drag-over');
+  }
+  window.pbDragOver = pbDragOver;
+
+  function pbDragLeave(e) {
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      e.currentTarget.classList.remove('drag-over');
+    }
+  }
+  window.pbDragLeave = pbDragLeave;
+
+  function pbDrop(e, toStage) {
+    e.preventDefault();
+    const col = e.currentTarget;
+    col.classList.remove('drag-over');
+    if (!dragId || toStage === dragFrom) return;
+
+    if (toStage === 'lost') {
+      lostDragId = dragId;
+      document.getElementById('pbLostModal').classList.remove('hidden');
+    } else {
+      stageUpdate(dragId, toStage);
+    }
+  }
+  window.pbDrop = pbDrop;
+
+  /* ── Advance button ── */
+  function pbAdvance(e, id, toStage, toLabel, btn) {
+    e.stopPropagation();
+    btn.disabled = true;
+    btn.textContent = '...';
+    stageUpdate(String(id), toStage, btn, toLabel);
+  }
+  window.pbAdvance = pbAdvance;
+
+  /* ── AJAX stage update ── */
+  function stageUpdate(id, toStage, triggerBtn, nextLabel) {
+    const fd = new FormData();
+    fd.append('stage', toStage);
+
+    fetch('/estate/leads/' + id + '/stage', {
+      method: 'POST',
+      headers: {'X-Requested-With': 'XMLHttpRequest'},
+      body: fd
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        moveCard(id, toStage);
+      } else {
+        if (triggerBtn) { triggerBtn.disabled = false; triggerBtn.textContent = '→ ' + (nextLabel || 'Next'); }
+        showToast('Stage update failed', true);
+      }
+    })
+    .catch(() => {
+      if (triggerBtn) { triggerBtn.disabled = false; triggerBtn.textContent = '→ ' + (nextLabel || 'Next'); }
+      showToast('Network error', true);
+    });
+  }
+
+  /* ── Move card in DOM ── */
+  function moveCard(id, toStage) {
+    const card = document.getElementById('pbCard-' + id);
+    if (!card) return;
+    const fromStage = card.dataset.stage;
+    card.dataset.stage = toStage;
+    card.style.opacity = '1';
+    card.classList.remove('dragging');
+
+    const targetCards = document.getElementById('pbCards-' + toStage);
+    if (targetCards) targetCards.prepend(card);
+
+    /* remove advance button if moved to allocated/lost */
+    if (toStage === 'allocated' || toStage === 'lost') {
+      const advBtn = card.querySelector('.pb-advance');
+      if (advBtn) advBtn.remove();
+    }
+
+    /* hide empty placeholders */
+    toggleEmpty(fromStage);
+    toggleEmpty(toStage);
+
+    /* update count badges */
+    updateBadge(fromStage, -1);
+    updateBadge(toStage,   +1);
+
+    showToast('Moved to ' + toStage.charAt(0).toUpperCase() + toStage.slice(1));
+  }
+
+  function toggleEmpty(stage) {
+    const el    = document.getElementById('pbEmpty-' + stage);
+    const cards = document.querySelectorAll('#pbCards-' + stage + ' .pb-card');
+    if (el) el.style.display = cards.length > 0 ? 'none' : '';
+  }
+
+  function updateBadge(stage, delta) {
+    const badge = document.getElementById('pbBadge-' + stage);
+    if (badge) {
+      const n = parseInt(badge.textContent || '0') + delta;
+      badge.textContent = Math.max(0, n);
+    }
+  }
+
+  /* ── Lost modal ── */
+  function pbLostCancel() {
+    document.getElementById('pbLostModal').classList.add('hidden');
+    lostDragId = null;
+  }
+  window.pbLostCancel = pbLostCancel;
+
+  function pbLostConfirm() {
+    if (!lostDragId) return;
+    const reason = document.getElementById('pbLostReason').value;
+    const btn    = document.getElementById('pbLostConfirmBtn');
+    btn.disabled = true;
+    btn.textContent = '...';
+
+    const fd = new FormData();
+    fd.append('stage', 'lost');
+    fd.append('lost_reason', reason);
+
+    fetch('/estate/leads/' + lostDragId + '/stage', {
+      method: 'POST',
+      headers: {'X-Requested-With': 'XMLHttpRequest'},
+      body: fd
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        /* add lost-why label to card */
+        const card = document.getElementById('pbCard-' + lostDragId);
+        if (card) {
+          const foot = card.querySelector('.pb-card-foot');
+          const why = document.createElement('div');
+          why.className = 'pb-lost-why';
+          why.textContent = reason.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+          if (foot) foot.before(why);
+          /* remove advance button */
+          const advBtn = card.querySelector('.pb-advance');
+          if (advBtn) advBtn.remove();
+        }
+        moveCard(lostDragId, 'lost');
+      } else {
+        showToast('Update failed', true);
+      }
+      document.getElementById('pbLostModal').classList.add('hidden');
+      btn.disabled = false;
+      btn.textContent = 'Mark as Lost';
+      lostDragId = null;
+    })
+    .catch(() => {
+      showToast('Network error', true);
+      document.getElementById('pbLostModal').classList.add('hidden');
+      btn.disabled = false;
+      btn.textContent = 'Mark as Lost';
+      lostDragId = null;
+    });
+  }
+  window.pbLostConfirm = pbLostConfirm;
+
+  /* Click background to cancel */
+  document.getElementById('pbLostModal').addEventListener('click', function(e) {
+    if (e.target === this) pbLostCancel();
+  });
+
+  /* ── Card click → lead detail ── */
+  window.pbCardClick = function(e, id) {
+    if (e.target.closest('.pb-advance') || e.target.closest('.pb-modal')) return;
+    window.location = '/estate/leads/' + id;
+  };
+
+  /* ── Toast notification ── */
+  let toastTimer;
+  function showToast(msg, isErr) {
+    let t = document.getElementById('pbToast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'pbToast';
+      t.style.cssText = 'position:fixed;bottom:28px;left:50%;transform:translateX(-50%);' +
+        'padding:10px 20px;border-radius:12px;font-size:13px;font-weight:650;' +
+        'color:#fff;z-index:9999;transition:opacity .3s;pointer-events:none;white-space:nowrap';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.background = isErr ? '#b02020' : '#030C18';
+    t.style.opacity = '1';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.style.opacity = '0'; }, 2400);
+  }
+
+  /* ── Auto-open add modal if redirected from pipeline ── */
+  if (sessionStorage.getItem('openAddContact') === '1') {
+    sessionStorage.removeItem('openAddContact');
+    /* contacts page handles the hash, nothing to do here */
+  }
+
+})();
+</script>
+{% endblock %}
