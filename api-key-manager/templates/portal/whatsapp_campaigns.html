@@ -884,6 +884,26 @@
       <div class="step-panel" id="panel-2">
         <div class="drawer-section-head">Who receives this campaign</div>
 
+        {% if segments %}
+        <div class="field">
+          <label class="field-label">
+            Send to Segment
+            <span class="field-hint">optional — auto-fills phone list from segment members</span>
+          </label>
+          <select class="field-select" name="segment_id" id="f-segment" onchange="loadSegmentPhones(this.value)">
+            <option value="">— paste phone numbers manually —</option>
+            {% for seg in segments %}
+            <option value="{{ seg.id }}" data-color="{{ seg.color }}">
+              {{ seg.name }} ({{ seg.member_count }} contact{{ 's' if seg.member_count != 1 }})
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div id="seg-loading" style="display:none;font-size:12px;color:#6366f1;font-weight:600;margin:-10px 0 14px">Loading segment contacts…</div>
+        {% else %}
+        <input type="hidden" name="segment_id" value="">
+        {% endif %}
+
         <div class="field">
           <label class="field-label">
             Phone Numbers
@@ -1180,6 +1200,31 @@ function countRecipients(el) {
   const counter = document.getElementById('recipCounter')
   counter.textContent = n + (n === 1 ? ' number' : ' numbers')
   counter.classList.toggle('has-nums', n > 0)
+}
+
+/* ── Load segment phones ─────────────────────────────────────────────── */
+function loadSegmentPhones(segId) {
+  const ta      = document.getElementById('f-recipients')
+  const loading = document.getElementById('seg-loading')
+  if (!segId) {
+    if (loading) loading.style.display = 'none'
+    return
+  }
+  if (loading) loading.style.display = 'block'
+  fetch('/whatsapp/segments/' + segId + '/contacts-json')
+    .then(r => r.json())
+    .then(data => {
+      if (loading) loading.style.display = 'none'
+      if (data.phones && data.phones.length) {
+        ta.value = data.phones.join('\n')
+        countRecipients(ta)
+      } else {
+        ta.value = ''
+        countRecipients(ta)
+        alert('This segment has no contacts yet.')
+      }
+    })
+    .catch(() => { if (loading) loading.style.display='none' })
 }
 
 /* ── Send timing toggle ─────────────────────────────────────────────── */

@@ -3,223 +3,227 @@
 
 {% block head %}
 <style>
-/* ── Hero ────────────────────────────────────────────────────────────── */
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+.crm-layout { display: grid; grid-template-columns: 230px 1fr; gap: 20px; align-items: start; }
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+.crm-sidebar { background:#fff; border:1px solid rgba(3,12,24,.08); border-radius:14px; overflow:hidden; position:sticky; top:20px; }
+.sidebar-section { padding:14px 16px; }
+.sidebar-section + .sidebar-section { border-top:1px solid rgba(3,12,24,.06); }
+.sidebar-title { font-size:10px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin:0 0 10px; }
+
+.filter-item {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:7px 10px; border-radius:8px; font-size:13px; cursor:pointer;
+  text-decoration:none; color:var(--ink); transition:.12s; gap:6px;
+}
+.filter-item:hover { background:#f1f5f9; }
+.filter-item.active { background:#eff6ff; color:#2563eb; font-weight:700; }
+.filter-item .fi-label { flex:1; }
+.filter-item .fi-count { font-size:11px; background:#f1f5f9; color:var(--muted); padding:1px 7px; border-radius:20px; font-weight:600; }
+.filter-item.active .fi-count { background:#dbeafe; color:#2563eb; }
+
+.seg-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+
+/* Status colours */
+.badge-lead     { background:#fef9c3; color:#854d0e; }
+.badge-prospect { background:#dbeafe; color:#1e40af; }
+.badge-customer { background:#dcfce7; color:#14532d; }
+.badge-inactive { background:#f1f5f9; color:#64748b; }
+.status-badge {
+  display:inline-flex; align-items:center; gap:4px;
+  font-size:11px; font-weight:700; padding:2px 9px; border-radius:20px;
+  text-transform:capitalize; white-space:nowrap;
+}
+.status-dot { width:6px; height:6px; border-radius:50%; background:currentColor; opacity:.7; }
+
+/* Tag pill */
+.tag-pill {
+  display:inline-flex; align-items:center; gap:3px;
+  background:#f1f5f9; color:#475569; font-size:11px; font-weight:600;
+  padding:2px 8px; border-radius:20px; white-space:nowrap;
+}
+
+/* ── Hero ────────────────────────────────────────────────────────────────── */
 .contacts-hero {
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-  border-radius: 16px;
-  padding: 28px 32px;
-  margin-bottom: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
+  background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);
+  border-radius:16px; padding:24px 28px; margin-bottom:20px;
+  display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
 }
-.contacts-hero h1 { font-size: 22px; font-weight: 800; color: #fff; margin: 0 0 4px; letter-spacing: -.3px; }
-.contacts-hero p  { font-size: 13px; color: rgba(255,255,255,.5); margin: 0; }
-.hero-actions { display: flex; gap: 10px; flex-shrink: 0; flex-wrap: wrap; }
+.contacts-hero h1 { font-size:21px; font-weight:800; color:#fff; margin:0 0 4px; }
+.contacts-hero p  { font-size:13px; color:rgba(255,255,255,.5); margin:0; }
+.hero-actions { display:flex; gap:10px; flex-shrink:0; flex-wrap:wrap; }
 
-/* ── Buttons ─────────────────────────────────────────────────────────── */
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
 .btn-primary-green {
-  display: inline-flex; align-items: center; gap: 7px;
-  background: #25D366; color: #fff; font-size: 13px; font-weight: 700;
-  padding: 10px 18px; border-radius: 10px; border: none; cursor: pointer;
-  transition: .15s; white-space: nowrap;
+  display:inline-flex; align-items:center; gap:7px;
+  background:#25D366; color:#fff; font-size:13px; font-weight:700;
+  padding:9px 16px; border-radius:10px; border:none; cursor:pointer; transition:.15s; white-space:nowrap;
 }
-.btn-primary-green:hover { background: #1ebe58; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(37,211,102,.3); }
-
+.btn-primary-green:hover { background:#1ebe58; }
 .btn-outline-white {
-  display: inline-flex; align-items: center; gap: 7px;
-  background: rgba(255,255,255,.08); color: rgba(255,255,255,.85);
-  font-size: 13px; font-weight: 600; padding: 10px 18px;
-  border-radius: 10px; border: 1px solid rgba(255,255,255,.15);
-  cursor: pointer; transition: .15s; white-space: nowrap; text-decoration: none;
+  display:inline-flex; align-items:center; gap:7px;
+  background:rgba(255,255,255,.08); color:rgba(255,255,255,.85);
+  font-size:13px; font-weight:600; padding:9px 16px;
+  border-radius:10px; border:1px solid rgba(255,255,255,.15);
+  cursor:pointer; transition:.15s; text-decoration:none;
 }
-.btn-outline-white:hover { background: rgba(255,255,255,.14); color: #fff; }
+.btn-outline-white:hover { background:rgba(255,255,255,.14); color:#fff; }
 
-/* ── Stats ───────────────────────────────────────────────────────────── */
-.stats-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-bottom: 24px; }
-.stat-card { background: #fff; border: 1px solid rgba(3,12,24,.08); border-radius: 14px; padding: 18px 22px; }
-.stat-label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
-.stat-value { font-size: 28px; font-weight: 800; color: var(--ink); line-height: 1; }
-.stat-sub   { font-size: 11px; color: var(--muted); margin-top: 3px; }
+/* ── Stats row ───────────────────────────────────────────────────────────── */
+.stats-row { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:18px; }
+.stat-card { background:#fff; border:1px solid rgba(3,12,24,.08); border-radius:12px; padding:15px 18px; }
+.stat-label { font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:4px; }
+.stat-value { font-size:24px; font-weight:800; color:var(--ink); line-height:1; }
+.stat-sub   { font-size:11px; color:var(--muted); margin-top:2px; }
 
-/* ── Toolbar ─────────────────────────────────────────────────────────── */
-.toolbar {
-  display: flex; align-items: center; gap: 12px;
-  margin-bottom: 16px; flex-wrap: wrap;
-}
-.search-wrap { position: relative; flex: 1; min-width: 220px; }
+/* ── Toolbar ─────────────────────────────────────────────────────────────── */
+.toolbar { display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+.search-wrap { position:relative; flex:1; min-width:200px; }
 .search-wrap input {
-  width: 100%; padding: 10px 14px 10px 38px;
-  border: 1.5px solid #e2e8f0; border-radius: 10px;
-  font-size: 13px; outline: none; transition: .15s; box-sizing: border-box;
-  background: #fff; color: var(--ink);
+  width:100%; padding:9px 12px 9px 36px;
+  border:1.5px solid #e2e8f0; border-radius:9px;
+  font-size:13px; outline:none; transition:.15s; box-sizing:border-box; background:#fff;
 }
-.search-wrap input:focus { border-color: #25D366; box-shadow: 0 0 0 3px rgba(37,211,102,.1); }
-.search-icon {
-  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
-  color: #94a3b8; pointer-events: none;
-}
+.search-wrap input:focus { border-color:#25D366; box-shadow:0 0 0 3px rgba(37,211,102,.1); }
+.search-icon { position:absolute; left:11px; top:50%; transform:translateY(-50%); color:#94a3b8; pointer-events:none; }
 
-/* ── Table card ──────────────────────────────────────────────────────── */
-.section-card { background: #fff; border: 1px solid rgba(3,12,24,.08); border-radius: 16px; overflow: hidden; margin-bottom: 24px; }
-.section-card-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid rgba(3,12,24,.07); }
-.section-card-header h2 { font-size: 15px; font-weight: 700; color: var(--ink); margin: 0; }
+/* ── Table card ──────────────────────────────────────────────────────────── */
+.section-card { background:#fff; border:1px solid rgba(3,12,24,.08); border-radius:14px; overflow:hidden; }
+.section-card-header { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid rgba(3,12,24,.07); }
+.section-card-header h2 { font-size:14px; font-weight:700; color:var(--ink); margin:0; }
 
-.contacts-table { width: 100%; border-collapse: collapse; }
+.contacts-table { width:100%; border-collapse:collapse; }
 .contacts-table th {
-  font-size: 11px; font-weight: 700; color: var(--muted);
-  text-transform: uppercase; letter-spacing: .06em;
-  padding: 11px 20px; text-align: left;
-  background: #f8fafc; border-bottom: 1px solid rgba(3,12,24,.07);
+  font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.06em;
+  padding:10px 16px; text-align:left; background:#f8fafc; border-bottom:1px solid rgba(3,12,24,.07);
 }
-.contacts-table td {
-  padding: 13px 20px; font-size: 13px;
-  border-bottom: 1px solid rgba(3,12,24,.05); vertical-align: middle;
-}
-.contacts-table tr:last-child td { border-bottom: none; }
-.contacts-table tbody tr:hover td { background: #fafbfc; }
+.contacts-table td { padding:11px 16px; font-size:13px; border-bottom:1px solid rgba(3,12,24,.05); vertical-align:middle; }
+.contacts-table tr:last-child td { border-bottom:none; }
+.contacts-table tbody tr:hover td { background:#fafbfc; }
 
-/* Avatar initials */
-.avatar {
-  width: 36px; height: 36px; border-radius: 50%;
-  background: linear-gradient(135deg, #e0f2fe, #bae6fd);
-  color: #0369a1; font-size: 13px; font-weight: 800;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0; text-transform: uppercase;
-}
+/* Avatar */
+.avatar { width:34px; height:34px; border-radius:50%; background:linear-gradient(135deg,#e0f2fe,#bae6fd); color:#0369a1; font-size:12px; font-weight:800; display:flex; align-items:center; justify-content:center; flex-shrink:0; text-transform:uppercase; }
 
 /* Phone pill */
-.phone-pill {
-  display: inline-flex; align-items: center; gap: 5px;
-  background: #f1f5f9; color: #475569; font-size: 12px; font-weight: 600;
-  padding: 3px 9px; border-radius: 20px; font-family: 'SF Mono','Fira Code',monospace;
-}
-
-/* Notes snippet */
-.notes-snip { font-size: 12px; color: var(--muted); max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.phone-pill { display:inline-flex; align-items:center; gap:4px; background:#f1f5f9; color:#475569; font-size:11px; font-weight:600; padding:2px 8px; border-radius:20px; font-family:'SF Mono','Fira Code',monospace; }
 
 /* Action icon buttons */
-.icon-btn {
-  width: 30px; height: 30px; border-radius: 7px; border: 1px solid rgba(3,12,24,.1);
-  background: #fff; color: var(--muted); display: inline-flex; align-items: center;
-  justify-content: center; cursor: pointer; transition: .12s;
-}
-.icon-btn:hover { border-color: rgba(3,12,24,.25); color: var(--ink); background: #f8fafc; }
-.icon-btn.del:hover { border-color: rgba(220,38,38,.3); color: #dc2626; background: #fef2f2; }
+.icon-btn { width:28px; height:28px; border-radius:6px; border:1px solid rgba(3,12,24,.1); background:#fff; color:var(--muted); display:inline-flex; align-items:center; justify-content:center; cursor:pointer; transition:.12s; }
+.icon-btn:hover { border-color:rgba(3,12,24,.25); color:var(--ink); background:#f8fafc; }
+.icon-btn.del:hover { border-color:rgba(220,38,38,.3); color:#dc2626; background:#fef2f2; }
 
-/* Empty state */
-.empty-state { display: flex; flex-direction: column; align-items: center; padding: 60px 20px; color: var(--muted); text-align: center; }
-.empty-icon-wrap { width: 72px; height: 72px; border-radius: 20px; background: linear-gradient(135deg, #e0f2fe, #bae6fd); display: flex; align-items: center; justify-content: center; margin-bottom: 16px; font-size: 30px; }
-.empty-state h3 { font-size: 15px; font-weight: 700; color: var(--ink); margin: 0 0 6px; }
-.empty-state p  { font-size: 13px; margin: 0; max-width: 320px; line-height: 1.5; }
+/* Checkbox */
+.row-check { width:16px; height:16px; accent-color:#6366f1; cursor:pointer; }
+.select-all-check { width:16px; height:16px; accent-color:#6366f1; cursor:pointer; }
+
+/* ── Bulk action bar ─────────────────────────────────────────────────────── */
+.bulk-bar {
+  display:none; position:sticky; bottom:0; left:0; right:0; z-index:50;
+  background:#0f172a; color:#fff; padding:12px 20px;
+  align-items:center; gap:12px; border-top:1px solid rgba(255,255,255,.08);
+  flex-wrap:wrap;
+}
+.bulk-bar.visible { display:flex; }
+.bulk-count { font-size:13px; font-weight:700; }
+.bulk-sep { width:1px; height:20px; background:rgba(255,255,255,.15); }
+.bulk-btn {
+  padding:6px 13px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; border:none;
+  background:rgba(255,255,255,.1); color:#fff; transition:.12s; display:inline-flex; align-items:center; gap:5px;
+}
+.bulk-btn:hover { background:rgba(255,255,255,.2); }
+.bulk-btn.danger:hover { background:#dc2626; }
+.bulk-btn-cancel { padding:6px 12px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; border:1px solid rgba(255,255,255,.2); background:transparent; color:rgba(255,255,255,.6); }
+.bulk-btn-cancel:hover { color:#fff; border-color:rgba(255,255,255,.4); }
+
+/* ── Empty state ─────────────────────────────────────────────────────────── */
+.empty-state { display:flex; flex-direction:column; align-items:center; padding:60px 20px; color:var(--muted); text-align:center; }
+.empty-icon-wrap { width:64px; height:64px; border-radius:18px; background:linear-gradient(135deg,#e0f2fe,#bae6fd); display:flex; align-items:center; justify-content:center; margin-bottom:14px; font-size:26px; }
+.empty-state h3 { font-size:14px; font-weight:700; color:var(--ink); margin:0 0 5px; }
+.empty-state p  { font-size:13px; margin:0; max-width:300px; line-height:1.5; }
 
 /* ═══════════════════════════════════════════════════════════════════════
    DRAWERS & MODALS
 ═══════════════════════════════════════════════════════════════════════ */
-.drawer-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 800; backdrop-filter: blur(2px); }
-.drawer-overlay.open { display: block; }
-
+.drawer-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:800; backdrop-filter:blur(2px); }
+.drawer-overlay.open { display:block; }
 .drawer {
-  position: fixed; top: 0; right: -520px; width: 480px; max-width: 96vw;
-  height: 100vh; background: #fff; z-index: 801;
-  box-shadow: -8px 0 40px rgba(0,0,0,.18);
-  display: flex; flex-direction: column;
-  transition: right .3s cubic-bezier(.4,0,.2,1); overflow: hidden;
+  position:fixed; top:0; right:-520px; width:480px; max-width:96vw; height:100vh;
+  background:#fff; z-index:801; box-shadow:-8px 0 40px rgba(0,0,0,.18);
+  display:flex; flex-direction:column; transition:right .3s cubic-bezier(.4,0,.2,1); overflow:hidden;
 }
-.drawer.open { right: 0; }
+.drawer.open { right:0; }
+.drawer-head { display:flex; align-items:center; justify-content:space-between; padding:20px 24px; border-bottom:1px solid rgba(3,12,24,.08); flex-shrink:0; background:#0f172a; }
+.drawer-head h2 { font-size:16px; font-weight:800; color:#fff; margin:0 0 2px; }
+.drawer-head p  { font-size:12px; color:rgba(255,255,255,.5); margin:0; }
+.drawer-close { width:32px; height:32px; border-radius:8px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.08); color:rgba(255,255,255,.7); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:16px; transition:.12s; }
+.drawer-close:hover { background:rgba(255,255,255,.15); color:#fff; }
+.drawer-body { flex:1; overflow-y:auto; padding:24px; }
+.drawer-foot { padding:14px 24px; border-top:1px solid rgba(3,12,24,.08); display:flex; justify-content:flex-end; gap:10px; flex-shrink:0; background:#f8fafc; }
 
-.drawer-head {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 22px 28px; border-bottom: 1px solid rgba(3,12,24,.08);
-  flex-shrink: 0; background: #0f172a;
+.field { margin-bottom:18px; }
+.field-label { display:block; font-size:12px; font-weight:700; color:#374151; margin-bottom:6px; }
+.field-hint  { font-size:11px; color:#94a3b8; font-weight:400; margin-left:5px; }
+.field-input, .field-textarea, .field-select {
+  width:100%; padding:10px 13px; border:1.5px solid #e2e8f0; border-radius:9px;
+  font-size:13px; font-family:inherit; color:var(--ink); background:#fff;
+  outline:none; transition:.15s; box-sizing:border-box;
 }
-.drawer-head h2 { font-size: 17px; font-weight: 800; color: #fff; margin: 0 0 2px; }
-.drawer-head p  { font-size: 12px; color: rgba(255,255,255,.5); margin: 0; }
-.drawer-close {
-  width: 34px; height: 34px; border-radius: 8px;
-  border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.08);
-  color: rgba(255,255,255,.7); display: flex; align-items: center;
-  justify-content: center; cursor: pointer; font-size: 17px; transition: .12s;
-}
-.drawer-close:hover { background: rgba(255,255,255,.15); color: #fff; }
+.field-input:focus, .field-textarea:focus, .field-select:focus { border-color:#25D366; box-shadow:0 0 0 3px rgba(37,211,102,.12); }
+.field-textarea { resize:vertical; min-height:80px; }
 
-.drawer-body { flex: 1; overflow-y: auto; padding: 28px; }
-
-.field { margin-bottom: 20px; }
-.field-label { display: block; font-size: 12px; font-weight: 700; color: #374151; margin-bottom: 7px; letter-spacing: .02em; }
-.field-hint  { font-size: 11px; color: #94a3b8; font-weight: 400; margin-left: 6px; }
-.field-input, .field-textarea {
-  width: 100%; padding: 11px 14px; border: 1.5px solid #e2e8f0; border-radius: 10px;
-  font-size: 14px; font-family: inherit; color: var(--ink); background: #fff;
-  outline: none; transition: border-color .15s, box-shadow .15s; box-sizing: border-box;
-}
-.field-input:focus, .field-textarea:focus { border-color: #25D366; box-shadow: 0 0 0 3px rgba(37,211,102,.12); }
-.field-textarea { resize: vertical; min-height: 90px; }
-
-.drawer-foot {
-  padding: 16px 28px; border-top: 1px solid rgba(3,12,24,.08);
-  display: flex; justify-content: flex-end; gap: 10px;
-  flex-shrink: 0; background: #f8fafc;
-}
-.btn-ghost {
-  padding: 10px 18px; border-radius: 9px; border: 1.5px solid #e2e8f0;
-  background: #fff; font-size: 13px; font-weight: 600; color: #64748b; cursor: pointer; transition: .12s;
-}
-.btn-ghost:hover { border-color: #cbd5e1; color: #374151; }
-.btn-save {
-  padding: 10px 22px; border-radius: 9px; border: none;
-  background: #0f172a; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; transition: .15s;
-}
-.btn-save:hover { background: #1e293b; }
+.btn-ghost { padding:9px 16px; border-radius:9px; border:1.5px solid #e2e8f0; background:#fff; font-size:13px; font-weight:600; color:#64748b; cursor:pointer; transition:.12s; }
+.btn-ghost:hover { border-color:#cbd5e1; color:#374151; }
+.btn-save { padding:9px 20px; border-radius:9px; border:none; background:#0f172a; color:#fff; font-size:13px; font-weight:700; cursor:pointer; transition:.15s; }
+.btn-save:hover { background:#1e293b; }
 
 /* ── CSV Import modal ────────────────────────────────────────────────── */
-.modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 900; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
-.modal-backdrop.open { display: flex; }
-.modal-box { background: #fff; border-radius: 20px; width: 100%; max-width: 520px; box-shadow: 0 24px 64px rgba(0,0,0,.2); overflow: hidden; }
-.modal-head { background: #0f172a; padding: 22px 26px; display: flex; align-items: center; justify-content: space-between; }
-.modal-head h2 { font-size: 16px; font-weight: 800; color: #fff; margin: 0 0 2px; }
-.modal-head p  { font-size: 12px; color: rgba(255,255,255,.5); margin: 0; }
-.modal-body { padding: 26px; }
-.modal-foot { padding: 16px 26px; border-top: 1px solid rgba(3,12,24,.07); display: flex; justify-content: flex-end; gap: 10px; background: #f8fafc; }
+.modal-backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:900; align-items:center; justify-content:center; backdrop-filter:blur(2px); }
+.modal-backdrop.open { display:flex; }
+.modal-box { background:#fff; border-radius:18px; width:100%; max-width:500px; box-shadow:0 24px 64px rgba(0,0,0,.2); overflow:hidden; }
+.modal-head { background:#0f172a; padding:20px 24px; display:flex; align-items:center; justify-content:space-between; }
+.modal-head h2 { font-size:15px; font-weight:800; color:#fff; margin:0 0 2px; }
+.modal-head p  { font-size:12px; color:rgba(255,255,255,.5); margin:0; }
+.modal-body { padding:22px; }
+.modal-foot { padding:14px 22px; border-top:1px solid rgba(3,12,24,.07); display:flex; justify-content:flex-end; gap:10px; background:#f8fafc; }
 
-/* Drop zone */
-.drop-zone {
-  border: 2px dashed #cbd5e1; border-radius: 14px;
-  padding: 36px 20px; text-align: center; cursor: pointer;
-  transition: .15s; background: #f8fafc; position: relative;
+.drop-zone { border:2px dashed #cbd5e1; border-radius:12px; padding:30px 20px; text-align:center; cursor:pointer; transition:.15s; background:#f8fafc; position:relative; }
+.drop-zone:hover, .drop-zone.drag-over { border-color:#25D366; background:#f0fdf4; }
+.drop-zone input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
+.drop-icon { font-size:32px; margin-bottom:8px; }
+.drop-zone h3 { font-size:13px; font-weight:700; color:var(--ink); margin:0 0 3px; }
+.drop-zone p  { font-size:12px; color:var(--muted); margin:0; }
+.file-chosen { margin-top:8px; font-size:12px; font-weight:600; color:#16a34a; display:none; }
+.format-box { background:#f1f5f9; border-radius:9px; padding:12px 14px; margin-top:14px; font-size:12px; color:#475569; line-height:1.6; }
+.format-box strong { color:var(--ink); }
+.format-box code { display:inline-block; background:#e2e8f0; border-radius:4px; padding:1px 5px; font-family:'SF Mono','Fira Code',monospace; font-size:11px; }
+
+/* ── Edit modal ──────────────────────────────────────────────────────── */
+.edit-backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:900; align-items:center; justify-content:center; backdrop-filter:blur(2px); }
+.edit-backdrop.open { display:flex; }
+.edit-box { background:#fff; border-radius:14px; width:100%; max-width:440px; box-shadow:0 16px 40px rgba(0,0,0,.18); overflow:hidden; }
+.edit-head { padding:16px 20px; background:#0f172a; }
+.edit-head h2 { font-size:15px; font-weight:700; margin:0; color:#fff; }
+.edit-body { padding:20px; }
+.edit-foot { padding:12px 20px; border-top:1px solid rgba(3,12,24,.07); display:flex; justify-content:flex-end; gap:10px; background:#f8fafc; }
+
+/* ── Bulk action modals (mini) ───────────────────────────────────────── */
+.mini-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:950; align-items:center; justify-content:center; backdrop-filter:blur(2px); }
+.mini-modal.open { display:flex; }
+.mini-box { background:#fff; border-radius:14px; width:100%; max-width:380px; box-shadow:0 16px 40px rgba(0,0,0,.18); overflow:hidden; }
+.mini-head { padding:16px 20px; background:#0f172a; }
+.mini-head h2 { font-size:14px; font-weight:700; color:#fff; margin:0; }
+.mini-body { padding:20px; }
+.mini-foot { padding:12px 20px; border-top:1px solid rgba(3,12,24,.07); display:flex; justify-content:flex-end; gap:10px; background:#f8fafc; }
+
+@media (max-width:820px) {
+  .crm-layout { grid-template-columns:1fr; }
+  .crm-sidebar { position:static; }
+  .stats-row { grid-template-columns:1fr 1fr; }
 }
-.drop-zone:hover, .drop-zone.drag-over { border-color: #25D366; background: #f0fdf4; }
-.drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
-.drop-icon { font-size: 36px; margin-bottom: 10px; }
-.drop-zone h3 { font-size: 14px; font-weight: 700; color: var(--ink); margin: 0 0 4px; }
-.drop-zone p  { font-size: 12px; color: var(--muted); margin: 0; }
-.file-chosen { margin-top: 10px; font-size: 12px; font-weight: 600; color: #16a34a; display: none; }
-
-.format-box {
-  background: #f1f5f9; border-radius: 10px; padding: 14px 16px; margin-top: 18px;
-  font-size: 12px; color: #475569; line-height: 1.6;
-}
-.format-box strong { color: var(--ink); }
-.format-box code {
-  display: inline-block; background: #e2e8f0; border-radius: 4px;
-  padding: 1px 6px; font-family: 'SF Mono','Fira Code',monospace; font-size: 11px;
-}
-
-/* ── Edit modal (small) ──────────────────────────────────────────────── */
-.edit-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 900; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
-.edit-backdrop.open { display: flex; }
-.edit-box { background: #fff; border-radius: 16px; width: 100%; max-width: 420px; box-shadow: 0 16px 40px rgba(0,0,0,.18); overflow: hidden; }
-.edit-head { padding: 18px 22px; border-bottom: 1px solid rgba(3,12,24,.07); }
-.edit-head h2 { font-size: 15px; font-weight: 700; margin: 0; }
-.edit-body { padding: 22px; }
-.edit-foot { padding: 14px 22px; border-top: 1px solid rgba(3,12,24,.07); display: flex; justify-content: flex-end; gap: 10px; background: #f8fafc; }
-
-@media (max-width: 680px) {
-  .stats-row { grid-template-columns: 1fr 1fr; }
-  .contacts-hero { flex-direction: column; align-items: flex-start; }
-  .drawer { width: 100%; max-width: 100%; }
+@media (max-width:540px) {
+  .contacts-hero { flex-direction:column; align-items:flex-start; }
+  .stats-row { grid-template-columns:1fr 1fr; }
 }
 </style>
 {% endblock %}
@@ -230,30 +234,30 @@
 <div class="contacts-hero">
   <div>
     <h1>Contacts</h1>
-    <p>Manage your WhatsApp audience — add, import, and organise recipients for campaigns.</p>
+    <p>Manage your CRM — segment, tag, and track every lead through to customer.</p>
   </div>
   <div class="hero-actions">
     <a href="{{ url_for('portal.whatsapp_contacts_export') }}" class="btn-outline-white">
-      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+      <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
       Export CSV
     </a>
     <button class="btn-outline-white" onclick="openImport()">
-      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+      <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
       Import CSV
     </button>
     <button class="btn-primary-green" onclick="openAddDrawer()">
-      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
       Add Contact
     </button>
   </div>
 </div>
 
-<!-- ── Stats ──────────────────────────────────────────────────────────────── -->
+<!-- ── Stats row ──────────────────────────────────────────────────────────── -->
 <div class="stats-row">
   <div class="stat-card">
     <div class="stat-label">Total Contacts</div>
     <div class="stat-value">{{ total }}</div>
-    <div class="stat-sub">In your audience</div>
+    <div class="stat-sub">In your CRM</div>
   </div>
   <div class="stat-card">
     <div class="stat-label">Added This Week</div>
@@ -261,120 +265,275 @@
     <div class="stat-sub">Last 7 days</div>
   </div>
   <div class="stat-card">
-    <div class="stat-label">Named Contacts</div>
-    {% set named = contacts | selectattr('display_name') | list | length %}
-    <div class="stat-value" style="color:#2563eb">{{ named }}</div>
-    <div class="stat-sub">With display name</div>
+    <div class="stat-label">Segments</div>
+    <div class="stat-value" style="color:#6366f1">{{ segments|length }}</div>
+    <div class="stat-sub">Contact groups</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Tags Used</div>
+    <div class="stat-value" style="color:#0ea5e9">{{ all_tags|length }}</div>
+    <div class="stat-sub">Unique labels</div>
   </div>
 </div>
 
-<!-- ── Toolbar ────────────────────────────────────────────────────────────── -->
-<form method="GET" action="{{ url_for('portal.whatsapp_contacts') }}" class="toolbar">
-  <div class="search-wrap">
-    <svg class="search-icon" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-      <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
-    </svg>
-    <input type="text" name="q" value="{{ search }}" placeholder="Search by name or phone number…" autocomplete="off">
-  </div>
-  <button type="submit" class="btn-save" style="padding:10px 18px">Search</button>
-  {% if search %}
-  <a href="{{ url_for('portal.whatsapp_contacts') }}" class="btn-ghost" style="text-decoration:none">Clear</a>
-  {% endif %}
-</form>
+<!-- ── CRM layout: sidebar + main ─────────────────────────────────────────── -->
+<div class="crm-layout">
 
-<!-- ── Contacts table ─────────────────────────────────────────────────────── -->
-<div class="section-card">
-  <div class="section-card-header">
-    <h2>{% if search %}Results for "{{ search }}"{% else %}All Contacts{% endif %}</h2>
-    <span style="font-size:12px;color:var(--muted)">{{ contacts|length }}{% if total > contacts|length %} of {{ total }}{% endif %} shown</span>
-  </div>
+  <!-- Sidebar filters -->
+  <aside class="crm-sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-title">View</div>
+      <a href="{{ url_for('portal.whatsapp_contacts') }}"
+         class="filter-item {% if not status_filter and not tag_filter and not segment_filter %}active{% endif %}">
+        <span class="fi-label">All Contacts</span>
+        <span class="fi-count">{{ total }}</span>
+      </a>
+    </div>
 
-  {% if not contacts %}
-  <div class="empty-state">
-    <div class="empty-icon-wrap">👥</div>
-    {% if search %}
-    <h3>No contacts found</h3>
-    <p>No contacts match "{{ search }}". Try a different search term.</p>
+    <div class="sidebar-section">
+      <div class="sidebar-title">By Status</div>
+      {% set statuses = [('lead','Lead','#854d0e'),('prospect','Prospect','#1e40af'),('customer','Customer','#14532d'),('inactive','Inactive','#64748b')] %}
+      {% for val, label, clr in statuses %}
+      <a href="{{ url_for('portal.whatsapp_contacts', status_filter=val) }}"
+         class="filter-item {% if status_filter == val %}active{% endif %}">
+        <span style="width:8px;height:8px;border-radius:50%;background:{{ clr }};flex-shrink:0"></span>
+        <span class="fi-label">{{ label }}</span>
+      </a>
+      {% endfor %}
+    </div>
+
+    {% if segments %}
+    <div class="sidebar-section">
+      <div class="sidebar-title">Segments</div>
+      {% for seg in segments %}
+      <a href="{{ url_for('portal.whatsapp_contacts', segment_filter=seg.id) }}"
+         class="filter-item {% if segment_filter == seg.id|string %}active{% endif %}">
+        <span class="seg-dot" style="background:{{ seg.color }}"></span>
+        <span class="fi-label">{{ seg.name }}</span>
+        <span class="fi-count">{{ seg.member_count }}</span>
+      </a>
+      {% endfor %}
+      <a href="{{ url_for('portal.whatsapp_segments') }}" style="display:block;font-size:11px;color:#6366f1;padding:8px 10px 4px;text-decoration:none;font-weight:600">
+        + Manage Segments
+      </a>
+    </div>
     {% else %}
-    <h3>No contacts yet</h3>
-    <p>Add your first contact manually or upload a CSV file to populate your audience.</p>
-    <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;justify-content:center">
-      <button class="btn-primary-green" onclick="openAddDrawer()">
-        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-        Add Contact
-      </button>
-      <button class="btn-ghost" onclick="openImport()">Import CSV</button>
+    <div class="sidebar-section">
+      <div class="sidebar-title">Segments</div>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 8px;line-height:1.5">No segments yet. Create groups to organise your leads.</p>
+      <a href="{{ url_for('portal.whatsapp_segments') }}" style="font-size:12px;color:#6366f1;font-weight:700;text-decoration:none">+ Create Segment</a>
     </div>
     {% endif %}
+
+    {% if all_tags %}
+    <div class="sidebar-section">
+      <div class="sidebar-title">Tags</div>
+      {% for tag in all_tags[:20] %}
+      <a href="{{ url_for('portal.whatsapp_contacts', tag_filter=tag) }}"
+         class="filter-item {% if tag_filter == tag %}active{% endif %}">
+        <span class="fi-label"># {{ tag }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </aside>
+
+  <!-- Main content -->
+  <div>
+    <!-- Toolbar -->
+    <form method="GET" action="{{ url_for('portal.whatsapp_contacts') }}" class="toolbar">
+      {% if status_filter %}<input type="hidden" name="status_filter" value="{{ status_filter }}">{% endif %}
+      {% if tag_filter %}<input type="hidden" name="tag_filter" value="{{ tag_filter }}">{% endif %}
+      {% if segment_filter %}<input type="hidden" name="segment_filter" value="{{ segment_filter }}">{% endif %}
+      <div class="search-wrap">
+        <svg class="search-icon" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <input type="text" name="q" value="{{ search }}" placeholder="Search by name or phone…" autocomplete="off">
+      </div>
+      <button type="submit" class="btn-save" style="padding:9px 16px">Search</button>
+      {% if search or status_filter or tag_filter or segment_filter %}
+      <a href="{{ url_for('portal.whatsapp_contacts') }}" class="btn-ghost" style="text-decoration:none">Clear all</a>
+      {% endif %}
+    </form>
+
+    <!-- Active filter chips -->
+    {% if status_filter or tag_filter or segment_filter %}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      {% if status_filter %}
+      <span style="display:inline-flex;align-items:center;gap:5px;background:#dbeafe;color:#1e40af;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;">
+        Status: {{ status_filter|title }}
+        <a href="{{ url_for('portal.whatsapp_contacts', q=search, tag_filter=tag_filter, segment_filter=segment_filter) }}" style="color:inherit;text-decoration:none;margin-left:3px">✕</a>
+      </span>
+      {% endif %}
+      {% if tag_filter %}
+      <span style="display:inline-flex;align-items:center;gap:5px;background:#f0fdf4;color:#15803d;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;">
+        Tag: # {{ tag_filter }}
+        <a href="{{ url_for('portal.whatsapp_contacts', q=search, status_filter=status_filter, segment_filter=segment_filter) }}" style="color:inherit;text-decoration:none;margin-left:3px">✕</a>
+      </span>
+      {% endif %}
+      {% if segment_filter %}
+      {% set active_seg = segments|selectattr('id','equalto', segment_filter|int)|first %}
+      <span style="display:inline-flex;align-items:center;gap:5px;background:#ede9fe;color:#5b21b6;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;">
+        Segment: {{ active_seg.name if active_seg else segment_filter }}
+        <a href="{{ url_for('portal.whatsapp_contacts', q=search, status_filter=status_filter, tag_filter=tag_filter) }}" style="color:inherit;text-decoration:none;margin-left:3px">✕</a>
+      </span>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Contacts table wrapped in bulk-form -->
+    <form id="bulkForm" method="POST" action="{{ url_for('portal.whatsapp_contacts_bulk_action') }}">
+      <input type="hidden" name="q" value="{{ search }}">
+      <input type="hidden" name="status_filter" value="{{ status_filter }}">
+      <input type="hidden" name="tag_filter" value="{{ tag_filter }}">
+      <input type="hidden" name="segment_filter" value="{{ segment_filter }}">
+      <input type="hidden" name="action" id="bulk-action-input" value="">
+      <input type="hidden" name="new_status" id="bulk-new-status" value="">
+      <input type="hidden" name="new_tag" id="bulk-new-tag" value="">
+      <input type="hidden" name="rem_tag" id="bulk-rem-tag" value="">
+      <input type="hidden" name="segment_id" id="bulk-segment-id" value="">
+
+      <div class="section-card">
+        <div class="section-card-header">
+          <h2>
+            {% if search %}Results for "{{ search }}"
+            {% elif status_filter %}{{ status_filter|title }}s
+            {% elif tag_filter %}Tag: #{{ tag_filter }}
+            {% elif segment_filter %}{% set as2 = segments|selectattr('id','equalto',segment_filter|int)|first %}{{ as2.name if as2 else 'Segment' }}
+            {% else %}All Contacts{% endif %}
+          </h2>
+          <span style="font-size:12px;color:var(--muted)">{{ contacts|length }}{% if total > contacts|length %} of {{ total }}{% endif %} shown</span>
+        </div>
+
+        {% if not contacts %}
+        <div class="empty-state">
+          <div class="empty-icon-wrap">👥</div>
+          {% if search or status_filter or tag_filter or segment_filter %}
+          <h3>No contacts match this filter</h3>
+          <p>Try adjusting your search or filter criteria.</p>
+          {% else %}
+          <h3>No contacts yet</h3>
+          <p>Add your first contact manually or import a CSV file.</p>
+          <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;justify-content:center">
+            <button type="button" class="btn-primary-green" onclick="openAddDrawer()">+ Add Contact</button>
+            <button type="button" class="btn-ghost" onclick="openImport()">Import CSV</button>
+          </div>
+          {% endif %}
+        </div>
+        {% else %}
+        <div style="overflow-x:auto">
+          <table class="contacts-table">
+            <thead>
+              <tr>
+                <th style="width:36px"><input type="checkbox" class="select-all-check" id="selectAll" title="Select all"></th>
+                <th style="width:40px"></th>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Status</th>
+                <th>Tags</th>
+                <th>Added</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in contacts %}
+              <tr>
+                <td><input type="checkbox" class="row-check" name="contact_ids" value="{{ c.id }}"></td>
+                <td>
+                  <div class="avatar">
+                    {% if c.display_name %}{{ c.display_name[0] }}{% else %}#{% endif %}
+                  </div>
+                </td>
+                <td>
+                  <a href="{{ url_for('portal.whatsapp_contact_detail', contact_id=c.id) }}"
+                     style="font-weight:700;font-size:13px;color:var(--ink);text-decoration:none;display:block;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                     onmouseover="this.style.color='#6366f1'" onmouseout="this.style.color='var(--ink)'">
+                    {{ c.display_name or '<span style="color:var(--muted);font-weight:400;font-style:italic">Unnamed</span>'|safe }}
+                  </a>
+                  {% if c.notes %}
+                  <div style="font-size:11px;color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px" title="{{ c.notes }}">{{ c.notes }}</div>
+                  {% endif %}
+                </td>
+                <td>
+                  <span class="phone-pill">
+                    <svg width="9" height="9" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+                    +{{ c.phone }}
+                  </span>
+                </td>
+                <td>
+                  <span class="status-badge badge-{{ c.status or 'lead' }}">
+                    <span class="status-dot"></span>{{ (c.status or 'lead')|title }}
+                  </span>
+                </td>
+                <td>
+                  <div style="display:flex;gap:4px;flex-wrap:wrap;max-width:160px">
+                    {% if c.tags %}
+                      {% for tag in c.tags[:3] %}
+                      <span class="tag-pill">#{{ tag }}</span>
+                      {% endfor %}
+                      {% if c.tags|length > 3 %}
+                      <span class="tag-pill">+{{ c.tags|length - 3 }}</span>
+                      {% endif %}
+                    {% else %}
+                    <span style="font-size:11px;color:var(--muted)">—</span>
+                    {% endif %}
+                  </div>
+                </td>
+                <td style="font-size:11px;color:var(--muted);white-space:nowrap">
+                  {{ c.created_at.strftime('%d %b %Y') if c.created_at else '—' }}
+                </td>
+                <td style="white-space:nowrap">
+                  <button type="button" class="icon-btn" title="Edit contact"
+                          onclick="openEdit({{ c.id }}, '{{ (c.display_name or '')|replace("'","\\'")|replace('"','\\"') }}', '{{ (c.notes or '')|replace("'","\\'")|replace('"','\\"')|replace('\n',' ') }}', '{{ c.status or 'lead' }}', '{{ (c.tags or [])|join(',') }}')">
+                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  </button>
+                  <form method="POST"
+                        action="{{ url_for('portal.whatsapp_contacts_delete', contact_id=c.id) }}"
+                        style="display:inline;margin-left:4px"
+                        onsubmit="return confirm('Delete +{{ c.phone }}?')">
+                    <button type="submit" class="icon-btn del" title="Delete contact">
+                      <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2"/></svg>
+                    </button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if total > 500 %}
+        <div style="padding:12px 18px;font-size:12px;color:var(--muted);border-top:1px solid rgba(3,12,24,.06)">
+          Showing first 500 contacts. Use search or filters to narrow results.
+        </div>
+        {% endif %}
+        {% endif %}
+      </div>
+
+      <!-- ── Bulk action bar ───────────────────────────────────────────── -->
+      <div class="bulk-bar" id="bulkBar">
+        <span class="bulk-count" id="bulkCount">0 selected</span>
+        <span class="bulk-sep"></span>
+        <button type="button" class="bulk-btn" onclick="openBulkStatus()">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+          Set Status
+        </button>
+        <button type="button" class="bulk-btn" onclick="openBulkTag()">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><circle cx="7" cy="7" r="1.5" fill="currentColor"/></svg>
+          Add Tag
+        </button>
+        {% if segments %}
+        <button type="button" class="bulk-btn" onclick="openBulkSegment()">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/><circle cx="9" cy="7" r="4"/></svg>
+          Add to Segment
+        </button>
+        {% endif %}
+        <button type="button" class="bulk-btn danger" onclick="bulkDelete()">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M3 6h18M19 6l-1 14H6L5 6"/></svg>
+          Delete
+        </button>
+        <button type="button" class="bulk-btn-cancel" onclick="clearSelection()">Cancel</button>
+      </div>
+    </form>
   </div>
-  {% else %}
-  <div style="overflow-x:auto">
-    <table class="contacts-table">
-      <thead>
-        <tr>
-          <th style="width:44px"></th>
-          <th>Name</th>
-          <th>Phone</th>
-          <th>Notes</th>
-          <th>Added</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for c in contacts %}
-        <tr>
-          <td>
-            <div class="avatar">
-              {% if c.display_name %}{{ c.display_name[0] }}{% else %}#{% endif %}
-            </div>
-          </td>
-          <td>
-            <div style="font-weight:700;font-size:13px">
-              {{ c.display_name or '<span style="color:var(--muted);font-weight:400;font-style:italic">Unnamed</span>'|safe }}
-            </div>
-          </td>
-          <td>
-            <span class="phone-pill">
-              <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
-              +{{ c.phone }}
-            </span>
-          </td>
-          <td>
-            {% if c.notes %}
-            <span class="notes-snip" title="{{ c.notes }}">{{ c.notes }}</span>
-            {% else %}
-            <span style="color:var(--muted);font-size:12px">—</span>
-            {% endif %}
-          </td>
-          <td style="font-size:12px;color:var(--muted);white-space:nowrap">
-            {{ c.created_at.strftime('%d %b %Y') if c.created_at else '—' }}
-          </td>
-          <td style="white-space:nowrap">
-            <button class="icon-btn"
-                    title="Edit contact"
-                    onclick="openEdit({{ c.id }}, '{{ (c.display_name or '')|replace("'","\\'")|replace('"','\\"') }}', '{{ (c.notes or '')|replace("'","\\'")|replace('"','\\"')|replace('\n',' ') }}')">
-              <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            </button>
-            <form method="POST"
-                  action="{{ url_for('portal.whatsapp_contacts_delete', contact_id=c.id) }}"
-                  style="display:inline;margin-left:5px"
-                  onsubmit="return confirm('Delete +{{ c.phone }}?')">
-              <button type="submit" class="icon-btn del" title="Delete contact">
-                <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2"/></svg>
-              </button>
-            </form>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% if total > 500 %}
-  <div style="padding:14px 20px;font-size:12px;color:var(--muted);border-top:1px solid rgba(3,12,24,.06)">
-    Showing first 500 contacts. Use search to narrow results.
-  </div>
-  {% endif %}
-  {% endif %}
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════
@@ -383,40 +542,46 @@
 <div class="drawer-overlay" id="addOverlay" onclick="closeAddDrawer()"></div>
 <div class="drawer" id="addDrawer">
   <div class="drawer-head">
-    <div>
-      <h2>Add Contact</h2>
-      <p>Manually add a single WhatsApp contact</p>
-    </div>
-    <button class="drawer-close" onclick="closeAddDrawer()">✕</button>
+    <div><h2>Add Contact</h2><p>Manually add a single contact to your CRM</p></div>
+    <button type="button" class="drawer-close" onclick="closeAddDrawer()">✕</button>
   </div>
   <div class="drawer-body">
     <form id="addForm" method="POST" action="{{ url_for('portal.whatsapp_contacts_add') }}">
       <div class="field">
         <label class="field-label">Phone Number <span style="color:#ef4444">*</span></label>
         <input class="field-input" type="text" name="phone" id="af-phone"
-               placeholder="2348012345678 — include country code, no + or spaces"
-               autocomplete="off" inputmode="numeric">
-        <div style="font-size:11px;color:#94a3b8;margin-top:5px">
+               placeholder="2348012345678 — include country code" autocomplete="off" inputmode="numeric">
+        <div style="font-size:11px;color:#94a3b8;margin-top:4px">
           Examples: <code style="background:#f1f5f9;padding:1px 5px;border-radius:4px">2348012345678</code>
           &nbsp;<code style="background:#f1f5f9;padding:1px 5px;border-radius:4px">447911123456</code>
-          &nbsp;<code style="background:#f1f5f9;padding:1px 5px;border-radius:4px">19175551234</code>
         </div>
       </div>
       <div class="field">
         <label class="field-label">Display Name <span class="field-hint">optional</span></label>
-        <input class="field-input" type="text" name="display_name"
-               placeholder="e.g. Amira Johnson" autocomplete="off">
+        <input class="field-input" type="text" name="display_name" placeholder="e.g. Amira Johnson" autocomplete="off">
+      </div>
+      <div class="field">
+        <label class="field-label">Status <span class="field-hint">optional</span></label>
+        <select class="field-select" name="status">
+          <option value="lead">Lead</option>
+          <option value="prospect">Prospect</option>
+          <option value="customer">Customer</option>
+          <option value="inactive">Inactive</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="field-label">Tags <span class="field-hint">optional — comma separated</span></label>
+        <input class="field-input" type="text" name="tags_csv" placeholder="e.g. Lagos, VIP, Hot Lead" autocomplete="off">
       </div>
       <div class="field">
         <label class="field-label">Notes <span class="field-hint">optional</span></label>
-        <textarea class="field-textarea" name="notes"
-                  placeholder="e.g. VIP customer, Lagos branch, opted in via website…"></textarea>
+        <textarea class="field-textarea" name="notes" placeholder="e.g. Interested in Plan B, follow up Friday…"></textarea>
       </div>
     </form>
   </div>
   <div class="drawer-foot">
-    <button class="btn-ghost" onclick="closeAddDrawer()">Cancel</button>
-    <button class="btn-save" onclick="submitAdd()">Save Contact</button>
+    <button type="button" class="btn-ghost" onclick="closeAddDrawer()">Cancel</button>
+    <button type="button" class="btn-save" onclick="submitAdd()">Save Contact</button>
   </div>
 </div>
 
@@ -426,45 +591,27 @@
 <div class="modal-backdrop" id="importModal" onclick="closeImportOutside(event)">
   <div class="modal-box">
     <div class="modal-head">
-      <div>
-        <h2>Import Contacts from CSV</h2>
-        <p>Upload a spreadsheet to bulk-add your audience</p>
-      </div>
-      <button class="drawer-close" onclick="closeImport()">✕</button>
+      <div><h2>Import Contacts from CSV</h2><p>Upload a spreadsheet to bulk-add your audience</p></div>
+      <button type="button" class="drawer-close" onclick="closeImport()">✕</button>
     </div>
     <div class="modal-body">
-      <form id="importForm" method="POST"
-            action="{{ url_for('portal.whatsapp_contacts_import') }}"
-            enctype="multipart/form-data">
-
+      <form id="importForm" method="POST" action="{{ url_for('portal.whatsapp_contacts_import') }}" enctype="multipart/form-data">
         <div class="drop-zone" id="dropZone">
-          <input type="file" name="csv_file" id="csvFile" accept=".csv,text/csv"
-                 onchange="fileChosen(this)">
+          <input type="file" name="csv_file" id="csvFile" accept=".csv,text/csv" onchange="fileChosen(this)">
           <div class="drop-icon">📂</div>
           <h3>Drop your CSV file here</h3>
           <p>or click to browse — .csv files only</p>
           <div class="file-chosen" id="fileChosen"></div>
         </div>
-
         <div class="format-box">
-          <strong>Expected CSV format</strong><br>
-          First row can be headers or data. The importer auto-detects columns.<br><br>
-          <strong>Column order:</strong>
-          <code>phone</code> (required) · <code>name</code> · <code>notes</code><br><br>
-          <strong>Example:</strong><br>
-          <code>phone,name,notes</code><br>
-          <code>2348012345678,Amira Johnson,VIP customer</code><br>
-          <code>447911123456,James Okafor,</code><br><br>
-          Phone numbers must include the country code with no <code>+</code> or spaces.
-          Existing contacts will be updated if the phone matches.
+          <strong>Expected columns:</strong> <code>phone</code> (required) · <code>name</code> · <code>notes</code><br>
+          Phone numbers must include country code with no <code>+</code> or spaces.
         </div>
       </form>
     </div>
     <div class="modal-foot">
-      <button class="btn-ghost" onclick="closeImport()">Cancel</button>
-      <button class="btn-save" onclick="submitImport()">
-        <span id="importBtnText">Import Contacts</span>
-      </button>
+      <button type="button" class="btn-ghost" onclick="closeImport()">Cancel</button>
+      <button type="button" class="btn-save" onclick="submitImport()"><span id="importBtnText">Import Contacts</span></button>
     </div>
   </div>
 </div>
@@ -474,14 +621,25 @@
 ═══════════════════════════════════════════════════════════════════════ -->
 <div class="edit-backdrop" id="editModal" onclick="closeEditOutside(event)">
   <div class="edit-box">
-    <div class="edit-head">
-      <h2>Edit Contact</h2>
-    </div>
+    <div class="edit-head"><h2>Edit Contact</h2></div>
     <div class="edit-body">
       <form id="editForm" method="POST" action="">
         <div class="field">
           <label class="field-label">Display Name</label>
           <input class="field-input" type="text" name="display_name" id="ef-name" placeholder="Full name">
+        </div>
+        <div class="field">
+          <label class="field-label">Status</label>
+          <select class="field-select" name="status" id="ef-status">
+            <option value="lead">Lead</option>
+            <option value="prospect">Prospect</option>
+            <option value="customer">Customer</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">Tags <span class="field-hint">comma separated</span></label>
+          <input class="field-input" type="text" name="tags_csv" id="ef-tags" placeholder="e.g. Lagos, VIP">
         </div>
         <div class="field" style="margin-bottom:0">
           <label class="field-label">Notes</label>
@@ -490,13 +648,133 @@
       </form>
     </div>
     <div class="edit-foot">
-      <button class="btn-ghost" onclick="closeEdit()">Cancel</button>
-      <button class="btn-save" onclick="submitEdit()">Save Changes</button>
+      <button type="button" class="btn-ghost" onclick="closeEdit()">Cancel</button>
+      <button type="button" class="btn-save" onclick="submitEdit()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Bulk: Set Status modal ─────────────────────────────────────────────── -->
+<div class="mini-modal" id="bulkStatusModal">
+  <div class="mini-box">
+    <div class="mini-head"><h2>Set Status</h2></div>
+    <div class="mini-body">
+      <label class="field-label">New status for selected contacts</label>
+      <select class="field-select" id="bulkStatusSelect">
+        <option value="lead">Lead</option>
+        <option value="prospect">Prospect</option>
+        <option value="customer">Customer</option>
+        <option value="inactive">Inactive</option>
+      </select>
+    </div>
+    <div class="mini-foot">
+      <button type="button" class="btn-ghost" onclick="document.getElementById('bulkStatusModal').classList.remove('open')">Cancel</button>
+      <button type="button" class="btn-save" onclick="applyBulkStatus()">Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Bulk: Add Tag modal ────────────────────────────────────────────────── -->
+<div class="mini-modal" id="bulkTagModal">
+  <div class="mini-box">
+    <div class="mini-head"><h2>Add Tag</h2></div>
+    <div class="mini-body">
+      <label class="field-label">Tag to add to selected contacts</label>
+      <input class="field-input" type="text" id="bulkTagInput" placeholder="e.g. VIP, Lagos, Hot Lead">
+    </div>
+    <div class="mini-foot">
+      <button type="button" class="btn-ghost" onclick="document.getElementById('bulkTagModal').classList.remove('open')">Cancel</button>
+      <button type="button" class="btn-save" onclick="applyBulkTag()">Add Tag</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Bulk: Add to Segment modal ─────────────────────────────────────────── -->
+<div class="mini-modal" id="bulkSegmentModal">
+  <div class="mini-box">
+    <div class="mini-head"><h2>Add to Segment</h2></div>
+    <div class="mini-body">
+      <label class="field-label">Choose segment</label>
+      <select class="field-select" id="bulkSegmentSelect">
+        {% for seg in segments %}
+        <option value="{{ seg.id }}">{{ seg.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="mini-foot">
+      <button type="button" class="btn-ghost" onclick="document.getElementById('bulkSegmentModal').classList.remove('open')">Cancel</button>
+      <button type="button" class="btn-save" onclick="applyBulkSegment()">Add to Segment</button>
     </div>
   </div>
 </div>
 
 <script>
+/* ── Checkbox / bulk selection ───────────────────────────────────────── */
+const selectAll = document.getElementById('selectAll')
+const bulkBar   = document.getElementById('bulkBar')
+const bulkCount = document.getElementById('bulkCount')
+
+function getChecked() { return [...document.querySelectorAll('.row-check:checked')] }
+
+function updateBulkBar() {
+  const checked = getChecked()
+  if (checked.length > 0) {
+    bulkBar.classList.add('visible')
+    bulkCount.textContent = checked.length + ' selected'
+  } else {
+    bulkBar.classList.remove('visible')
+  }
+}
+
+document.querySelectorAll('.row-check').forEach(cb => cb.addEventListener('change', updateBulkBar))
+
+if (selectAll) {
+  selectAll.addEventListener('change', function() {
+    document.querySelectorAll('.row-check').forEach(cb => cb.checked = this.checked)
+    updateBulkBar()
+  })
+}
+
+function clearSelection() {
+  document.querySelectorAll('.row-check').forEach(cb => cb.checked = false)
+  if (selectAll) selectAll.checked = false
+  updateBulkBar()
+}
+
+/* ── Bulk actions ────────────────────────────────────────────────────── */
+function openBulkStatus()  { document.getElementById('bulkStatusModal').classList.add('open') }
+function openBulkTag()     { document.getElementById('bulkTagModal').classList.add('open'); document.getElementById('bulkTagInput').focus() }
+function openBulkSegment() { document.getElementById('bulkSegmentModal').classList.add('open') }
+
+function applyBulkStatus() {
+  const val = document.getElementById('bulkStatusSelect').value
+  document.getElementById('bulk-action-input').value = 'set_status'
+  document.getElementById('bulk-new-status').value   = val
+  document.getElementById('bulkStatusModal').classList.remove('open')
+  document.getElementById('bulkForm').submit()
+}
+function applyBulkTag() {
+  const tag = document.getElementById('bulkTagInput').value.trim()
+  if (!tag) return
+  document.getElementById('bulk-action-input').value = 'add_tag'
+  document.getElementById('bulk-new-tag').value      = tag
+  document.getElementById('bulkTagModal').classList.remove('open')
+  document.getElementById('bulkForm').submit()
+}
+function applyBulkSegment() {
+  const segId = document.getElementById('bulkSegmentSelect').value
+  document.getElementById('bulk-action-input').value = 'add_to_segment'
+  document.getElementById('bulk-segment-id').value   = segId
+  document.getElementById('bulkSegmentModal').classList.remove('open')
+  document.getElementById('bulkForm').submit()
+}
+function bulkDelete() {
+  const n = getChecked().length
+  if (!confirm(`Delete ${n} contact(s)? This cannot be undone.`)) return
+  document.getElementById('bulk-action-input').value = 'delete'
+  document.getElementById('bulkForm').submit()
+}
+
 /* ── Add drawer ──────────────────────────────────────────────────────── */
 function openAddDrawer() {
   document.getElementById('addOverlay').classList.add('open')
@@ -513,71 +791,53 @@ function submitAdd() {
   const ph = document.getElementById('af-phone').value.trim()
   if (!ph) {
     const el = document.getElementById('af-phone')
-    el.style.borderColor = '#ef4444'; el.style.boxShadow = '0 0 0 3px rgba(239,68,68,.15)'; el.focus()
-    setTimeout(() => { el.style.borderColor = ''; el.style.boxShadow = '' }, 1800)
+    el.style.borderColor='#ef4444'; el.style.boxShadow='0 0 0 3px rgba(239,68,68,.15)'; el.focus()
+    setTimeout(()=>{ el.style.borderColor=''; el.style.boxShadow='' }, 1800)
     return
   }
   document.getElementById('addForm').submit()
 }
 
 /* ── Import modal ─────────────────────────────────────────────────────── */
-function openImport() {
-  document.getElementById('importModal').classList.add('open')
-  document.body.style.overflow = 'hidden'
-}
-function closeImport() {
-  document.getElementById('importModal').classList.remove('open')
-  document.body.style.overflow = ''
-}
-function closeImportOutside(e) { if (e.target === document.getElementById('importModal')) closeImport() }
-
+function openImport() { document.getElementById('importModal').classList.add('open'); document.body.style.overflow='hidden' }
+function closeImport() { document.getElementById('importModal').classList.remove('open'); document.body.style.overflow='' }
+function closeImportOutside(e) { if(e.target===document.getElementById('importModal')) closeImport() }
 function fileChosen(input) {
   const label = document.getElementById('fileChosen')
   if (input.files && input.files[0]) {
-    label.textContent = '✓ ' + input.files[0].name
-    label.style.display = 'block'
-    document.querySelector('#dropZone h3').textContent = 'File selected'
-    document.querySelector('#dropZone p').textContent = 'Click Import to continue'
+    label.textContent='✓ '+input.files[0].name; label.style.display='block'
+    document.querySelector('#dropZone h3').textContent='File selected'
+    document.querySelector('#dropZone p').textContent='Click Import to continue'
   }
 }
 function submitImport() {
-  if (!document.getElementById('csvFile').files.length) {
-    alert('Please select a CSV file first.')
-    return
-  }
-  document.getElementById('importBtnText').textContent = 'Importing…'
+  if (!document.getElementById('csvFile').files.length) { alert('Please select a CSV file first.'); return }
+  document.getElementById('importBtnText').textContent='Importing…'
   document.getElementById('importForm').submit()
 }
-
-/* Drag-over highlight */
 const dz = document.getElementById('dropZone')
 if (dz) {
-  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over') })
-  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'))
-  dz.addEventListener('drop', e => {
+  dz.addEventListener('dragover', e=>{ e.preventDefault(); dz.classList.add('drag-over') })
+  dz.addEventListener('dragleave', ()=>dz.classList.remove('drag-over'))
+  dz.addEventListener('drop', e=>{
     e.preventDefault(); dz.classList.remove('drag-over')
-    const dt = e.dataTransfer
-    if (dt.files.length) {
-      document.getElementById('csvFile').files = dt.files
-      fileChosen(document.getElementById('csvFile'))
-    }
+    if (e.dataTransfer.files.length) { document.getElementById('csvFile').files=e.dataTransfer.files; fileChosen(document.getElementById('csvFile')) }
   })
 }
 
 /* ── Edit modal ──────────────────────────────────────────────────────── */
-function openEdit(id, name, notes) {
+function openEdit(id, name, notes, status, tagsStr) {
   document.getElementById('editForm').action = '/whatsapp/contacts/' + id + '/edit'
   document.getElementById('ef-name').value   = name
   document.getElementById('ef-notes').value  = notes
+  document.getElementById('ef-status').value = status || 'lead'
+  document.getElementById('ef-tags').value   = tagsStr
   document.getElementById('editModal').classList.add('open')
   document.body.style.overflow = 'hidden'
   setTimeout(() => document.getElementById('ef-name').focus(), 100)
 }
-function closeEdit() {
-  document.getElementById('editModal').classList.remove('open')
-  document.body.style.overflow = ''
-}
-function closeEditOutside(e) { if (e.target === document.getElementById('editModal')) closeEdit() }
+function closeEdit() { document.getElementById('editModal').classList.remove('open'); document.body.style.overflow='' }
+function closeEditOutside(e) { if(e.target===document.getElementById('editModal')) closeEdit() }
 function submitEdit() { document.getElementById('editForm').submit() }
 </script>
 {% endblock %}

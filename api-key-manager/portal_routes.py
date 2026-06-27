@@ -542,12 +542,19 @@ def _send_welcome_trial_email_wa(
     """Day-0 welcome email for WhatsApp-only merchants."""
     greeting = first_name.strip() if first_name and first_name.strip() else "there"
     portal_link  = _PORTAL_BASE_URL
-    upgrade_link = "https://phixtra.com/subscription-plans/"
+    upgrade_link = "https://phixtra.com/pricing-2/"
     html = f"""
     <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto">
       <h2 style="color:#030C18">Welcome to PhiXtra — Your WhatsApp CRM &amp; Sales Agent</h2>
       <p>Hi {greeting},</p>
       <p>Your AI-powered WhatsApp CRM and Sales Agent for <b>{business_name}</b> has been created and is ready to set up.</p>
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 18px;margin:0 0 20px">
+        <p style="margin:0;font-size:14px;color:#15803d">
+          <b>🎉 Your 1-month free trial is now active.</b><br>
+          You have full access to every PhiXtra feature for 30 days — no credit card required.
+          After your trial, choose a plan that fits your business to keep everything running.
+        </p>
+      </div>
       <p><b>Important — How it works:</b><br>
       PhiXtra connects to the <b>WhatsApp Business API</b>, the official Meta platform for businesses. This is different from the regular WhatsApp app. To go live, you will need a <b>Meta-approved WhatsApp Business API number</b> — a one-time setup that PhiXtra will guide you through inside the portal.</p>
       <p style="margin:0 0 6px"><b>What you get:</b></p>
@@ -574,7 +581,7 @@ def _send_welcome_trial_email_wa(
            style="display:inline-block;background:#fff;color:#030C18;padding:12px 22px;
                   border-radius:12px;text-decoration:none;font-weight:700;font-size:15px;
                   border:2px solid #030C18">
-          View Plans
+          View AI WhatsApp Plan
         </a>
       </p>
       <p style="color:#6b7280;font-size:13px">
@@ -588,6 +595,9 @@ def _send_welcome_trial_email_wa(
         text_body=(
             f"Hi {greeting},\n\n"
             f"Your AI-powered WhatsApp CRM and Sales Agent for {business_name} has been created and is ready to set up.\n\n"
+            f"🎉 Your 1-month free trial is now active.\n"
+            f"You have full access to every PhiXtra feature for 30 days — no credit card required. "
+            f"After your trial, choose a plan that fits your business to keep everything running.\n\n"
             f"Important — How it works:\n"
             f"PhiXtra connects to the WhatsApp Business API, the official Meta platform for businesses. "
             f"This is different from the regular WhatsApp app. To go live, you will need a Meta-approved "
@@ -602,7 +612,7 @@ def _send_welcome_trial_email_wa(
             f"2. Follow the WhatsApp Business API setup steps to connect your business number via Meta\n"
             f"3. Upload your product catalogue and configure your AI Sales Agent\n"
             f"4. Start messaging your customers — individually, in bulk, or let the AI handle it automatically\n\n"
-            f"Log in: {portal_link}\nView plans: {upgrade_link}"
+            f"Log in: {portal_link}\nView AI WhatsApp Plan: {upgrade_link}"
         ),
     )
 
@@ -2999,11 +3009,16 @@ def ai_instruction():
 
         current_prompt = (row.get("system_prompt") or "").strip()
         has_customisation = _WIZARD_MARKER in current_prompt
+        saved_customisation = ""
+        if has_customisation:
+            saved_customisation = current_prompt.split(_WIZARD_MARKER, 1)[1].strip()
 
         return render_template(
             "portal/ai_instruction.html",
-            customer          = customer,
-            has_customisation = has_customisation,
+            customer            = customer,
+            has_customisation   = has_customisation,
+            saved_customisation = saved_customisation,
+            full_prompt         = current_prompt,
         )
 
     # ── POST: save wizard selections ────────────────────────────────────────
@@ -4975,10 +4990,10 @@ def settings_notifications():
     if r: return r
 
     cid             = _customer_id()
-    notif_billing   = 1 if request.form.get("notif_billing")   else 0
-    notif_usage     = 1 if request.form.get("notif_usage")     else 0
-    notif_marketing = 1 if request.form.get("notif_marketing") else 0
-    notif_handoff   = 1 if request.form.get("notif_handoff")   else 0
+    notif_billing   = bool(request.form.get("notif_billing"))
+    notif_usage     = bool(request.form.get("notif_usage"))
+    notif_marketing = bool(request.form.get("notif_marketing"))
+    notif_handoff   = bool(request.form.get("notif_handoff"))
 
     # Custom handoff alert email — strip whitespace, store NULL if blank
     import re as _re_email_notif
@@ -5003,6 +5018,7 @@ def settings_notifications():
             """, (notif_billing, notif_usage, notif_marketing,
                   notif_handoff, handoff_notify_email, cid))
         except Exception:
+            conn.rollback()
             cur.execute("""
                 UPDATE customers
                 SET notif_billing=%s, notif_usage=%s, notif_marketing=%s
@@ -5015,7 +5031,7 @@ def settings_notifications():
         # ── Tenant-level report settings ─────────────────────────────────
         customer2     = _get_customer(cid)
         tenant_id2    = int(customer2["tenant_id"])
-        daily_enabled = 1 if request.form.get("daily_report_enabled") else 0
+        daily_enabled = bool(request.form.get("daily_report_enabled"))
         report_phone2 = (request.form.get("report_phone") or "").strip() or None
         try:
             conn2 = get_db_connection()
@@ -7682,26 +7698,43 @@ def whatsapp_contacts():
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
-    search = (request.args.get("q") or "").strip()
+    search         = (request.args.get("q") or "").strip()
+    status_filter  = (request.args.get("status_filter") or "").strip()
+    tag_filter     = (request.args.get("tag_filter") or "").strip()
+    segment_filter = (request.args.get("segment_filter") or "").strip()
 
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # Build dynamic query
+        join_clause = ""
+        join_params = []
+        if segment_filter and segment_filter.isdigit():
+            join_clause = "JOIN wa_segment_members sm ON sm.contact_id = c.id AND sm.segment_id = %s"
+            join_params = [int(segment_filter)]
+
+        clauses = ["c.tenant_id = %s"]
+        where_params = [tenant_id]
         if search:
-            cur.execute("""
-                SELECT * FROM wa_contacts
-                WHERE tenant_id=%s
-                  AND (phone ILIKE %s OR display_name ILIKE %s)
-                ORDER BY display_name ASC NULLS LAST, created_at DESC
-                LIMIT 500
-            """, (tenant_id, f"%{search}%", f"%{search}%"))
-        else:
-            cur.execute("""
-                SELECT * FROM wa_contacts
-                WHERE tenant_id=%s
-                ORDER BY display_name ASC NULLS LAST, created_at DESC
-                LIMIT 500
-            """, (tenant_id,))
+            clauses.append("(c.phone ILIKE %s OR c.display_name ILIKE %s)")
+            where_params += [f"%{search}%", f"%{search}%"]
+        if status_filter:
+            clauses.append("c.status = %s")
+            where_params.append(status_filter)
+        if tag_filter:
+            clauses.append("%s = ANY(c.tags)")
+            where_params.append(tag_filter)
+
+        where = " AND ".join(clauses)
+        query = f"""
+            SELECT c.* FROM wa_contacts c
+            {join_clause}
+            WHERE {where}
+            ORDER BY c.display_name ASC NULLS LAST, c.created_at DESC
+            LIMIT 500
+        """
+        cur.execute(query, join_params + where_params)
         contacts = cur.fetchall()
 
         cur.execute("SELECT COUNT(*) AS total FROM wa_contacts WHERE tenant_id=%s", (tenant_id,))
@@ -7713,10 +7746,28 @@ def whatsapp_contacts():
         """, (tenant_id,))
         new_week = cur.fetchone()["new_week"]
 
+        # All distinct tags used by this tenant's contacts
+        cur.execute("""
+            SELECT DISTINCT unnest(tags) AS tag FROM wa_contacts
+            WHERE tenant_id=%s AND array_length(tags,1) > 0
+            ORDER BY tag
+        """, (tenant_id,))
+        all_tags = [row["tag"] for row in cur.fetchall()]
+
+        # Segments for filter sidebar
+        cur.execute("""
+            SELECT s.id, s.name, s.color, COUNT(m.contact_id) AS member_count
+            FROM wa_segments s
+            LEFT JOIN wa_segment_members m ON m.segment_id = s.id
+            WHERE s.tenant_id = %s
+            GROUP BY s.id ORDER BY s.name
+        """, (tenant_id,))
+        segments = cur.fetchall()
+
         cur.close(); conn.close()
     except Exception as e:
         print("⚠️ whatsapp_contacts error:", e)
-        contacts, total, new_week = [], 0, 0
+        contacts, total, new_week, all_tags, segments = [], 0, 0, [], []
 
     return render_template(
         "portal/whatsapp_contacts.html",
@@ -7724,6 +7775,11 @@ def whatsapp_contacts():
         total=total,
         new_week=new_week,
         search=search,
+        status_filter=status_filter,
+        tag_filter=tag_filter,
+        segment_filter=segment_filter,
+        all_tags=all_tags,
+        segments=segments,
     )
 
 
@@ -7737,6 +7793,11 @@ def whatsapp_contacts_add():
     phone        = _normalise_phone(request.form.get("phone") or "")
     display_name = (request.form.get("display_name") or "").strip()[:200]
     notes        = (request.form.get("notes") or "").strip()
+    status       = (request.form.get("status") or "lead").strip()
+    if status not in ("lead", "prospect", "customer", "inactive"):
+        status = "lead"
+    tags_csv = (request.form.get("tags_csv") or "").strip()
+    tags = [t.strip()[:50] for t in tags_csv.split(",") if t.strip()]
 
     if not phone or len(phone) < 7:
         flash("A valid phone number with country code is required.", "danger")
@@ -7746,13 +7807,15 @@ def whatsapp_contacts_add():
         conn = get_db_connection()
         cur  = conn.cursor()
         cur.execute("""
-            INSERT INTO wa_contacts (tenant_id, phone, display_name, notes)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO wa_contacts (tenant_id, phone, display_name, notes, status, tags, source)
+            VALUES (%s, %s, %s, %s, %s, %s, 'manual')
             ON CONFLICT (tenant_id, phone)
             DO UPDATE SET display_name=EXCLUDED.display_name,
                           notes=EXCLUDED.notes,
+                          status=EXCLUDED.status,
+                          tags=EXCLUDED.tags,
                           updated_at=NOW()
-        """, (tenant_id, phone, display_name or None, notes or None))
+        """, (tenant_id, phone, display_name or None, notes or None, status, tags))
         conn.commit()
         cur.close(); conn.close()
         flash(f"Contact {display_name or phone} saved.", "success")
@@ -7772,15 +7835,20 @@ def whatsapp_contacts_edit(contact_id: int):
 
     display_name = (request.form.get("display_name") or "").strip()[:200]
     notes        = (request.form.get("notes") or "").strip()
+    status       = (request.form.get("status") or "lead").strip()
+    if status not in ("lead", "prospect", "customer", "inactive"):
+        status = "lead"
+    tags_csv = (request.form.get("tags_csv") or "").strip()
+    tags = [t.strip()[:50] for t in tags_csv.split(",") if t.strip()]
 
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
         cur.execute("""
             UPDATE wa_contacts
-            SET display_name=%s, notes=%s, updated_at=NOW()
+            SET display_name=%s, notes=%s, status=%s, tags=%s, updated_at=NOW()
             WHERE id=%s AND tenant_id=%s
-        """, (display_name or None, notes or None, contact_id, tenant_id))
+        """, (display_name or None, notes or None, status, tags, contact_id, tenant_id))
         conn.commit()
         cur.close(); conn.close()
         flash("Contact updated.", "success")
@@ -7788,6 +7856,10 @@ def whatsapp_contacts_edit(contact_id: int):
         print("⚠️ whatsapp_contacts_edit error:", e)
         flash("Could not update contact.", "danger")
 
+    # Return to detail page if that's where the edit came from
+    ref = request.referrer or ""
+    if f"/whatsapp/contacts/{contact_id}" in ref and "/edit" not in ref:
+        return redirect(url_for("portal.whatsapp_contact_detail", contact_id=contact_id))
     return redirect(url_for("portal.whatsapp_contacts"))
 
 
@@ -7868,8 +7940,8 @@ def whatsapp_contacts_import():
 
         try:
             cur.execute("""
-                INSERT INTO wa_contacts (tenant_id, phone, display_name, notes)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO wa_contacts (tenant_id, phone, display_name, notes, source)
+                VALUES (%s, %s, %s, %s, 'csv')
                 ON CONFLICT (tenant_id, phone)
                 DO UPDATE SET display_name=COALESCE(EXCLUDED.display_name, wa_contacts.display_name),
                               notes=COALESCE(EXCLUDED.notes, wa_contacts.notes),
@@ -7929,6 +8001,607 @@ def whatsapp_contacts_export():
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=contacts.csv"},
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WHATSAPP CONTACTS — DETAIL PAGE & NOTES
+# ══════════════════════════════════════════════════════════════════════════════
+
+@portal_bp.route("/whatsapp/contacts/<int:contact_id>")
+def whatsapp_contact_detail(contact_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        cur.execute("SELECT * FROM wa_contacts WHERE id=%s AND tenant_id=%s",
+                    (contact_id, tenant_id))
+        contact = cur.fetchone()
+        if not contact:
+            flash("Contact not found.", "warning")
+            return redirect(url_for("portal.whatsapp_contacts"))
+
+        # Activity notes
+        cur.execute("""
+            SELECT n.*,
+                   COALESCE(NULLIF(TRIM(c.first_name || ' ' || COALESCE(c.last_name,'')), ''), c.email) AS author_name
+            FROM wa_contact_notes n
+            LEFT JOIN customers c ON c.id = n.author_id
+            WHERE n.contact_id = %s
+            ORDER BY n.created_at DESC
+        """, (contact_id,))
+        notes = cur.fetchall()
+
+        # Recent conversation messages (last 10)
+        cur.execute("""
+            SELECT direction, content, message_type, created_at
+            FROM (
+                SELECT direction, content, message_type, created_at
+                FROM wa_message_log
+                WHERE tenant_id=%s AND customer_phone=%s
+                ORDER BY created_at DESC LIMIT 10
+            ) r ORDER BY created_at ASC
+        """, (tenant_id, contact["phone"]))
+        recent_messages = cur.fetchall()
+
+        # Segments this contact belongs to
+        cur.execute("""
+            SELECT s.id, s.name, s.color
+            FROM wa_segments s
+            JOIN wa_segment_members m ON m.segment_id = s.id
+            WHERE m.contact_id = %s
+            ORDER BY s.name
+        """, (contact_id,))
+        contact_segments = cur.fetchall()
+
+        # All segments (for "add to segment" dropdown)
+        cur.execute("""
+            SELECT s.id, s.name, s.color FROM wa_segments s
+            WHERE s.tenant_id=%s
+              AND s.id NOT IN (
+                SELECT segment_id FROM wa_segment_members WHERE contact_id=%s
+              )
+            ORDER BY s.name
+        """, (tenant_id, contact_id))
+        available_segments = cur.fetchall()
+
+        # Message count
+        cur.execute("""
+            SELECT COUNT(*) AS msg_count
+            FROM wa_message_log
+            WHERE tenant_id=%s AND customer_phone=%s
+        """, (tenant_id, contact["phone"]))
+        msg_count = cur.fetchone()["msg_count"]
+
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ contact_detail error:", e)
+        flash("Could not load contact.", "danger")
+        return redirect(url_for("portal.whatsapp_contacts"))
+
+    return render_template(
+        "portal/whatsapp_contact_detail.html",
+        contact=contact,
+        notes=notes,
+        recent_messages=recent_messages,
+        contact_segments=contact_segments,
+        available_segments=available_segments,
+        msg_count=msg_count,
+    )
+
+
+@portal_bp.route("/whatsapp/contacts/<int:contact_id>/notes", methods=["POST"])
+def whatsapp_contact_add_note(contact_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    author_id = int(_customer_id())
+    body = (request.form.get("body") or "").strip()
+
+    if not body:
+        flash("Note cannot be empty.", "warning")
+        return redirect(url_for("portal.whatsapp_contact_detail", contact_id=contact_id))
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        # Verify ownership
+        cur.execute("SELECT id FROM wa_contacts WHERE id=%s AND tenant_id=%s",
+                    (contact_id, tenant_id))
+        if not cur.fetchone():
+            flash("Contact not found.", "danger")
+            cur.close(); conn.close()
+            return redirect(url_for("portal.whatsapp_contacts"))
+        cur.execute(
+            "INSERT INTO wa_contact_notes(contact_id, tenant_id, author_id, body) VALUES(%s,%s,%s,%s)",
+            (contact_id, tenant_id, author_id, body)
+        )
+        conn.commit(); cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ add_note error:", e)
+        flash("Could not save note.", "danger")
+
+    return redirect(url_for("portal.whatsapp_contact_detail", contact_id=contact_id))
+
+
+@portal_bp.route("/whatsapp/contacts/<int:contact_id>/notes/<int:note_id>/delete", methods=["POST"])
+def whatsapp_contact_delete_note(contact_id: int, note_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute(
+            "DELETE FROM wa_contact_notes WHERE id=%s AND contact_id=%s AND tenant_id=%s",
+            (note_id, contact_id, tenant_id)
+        )
+        conn.commit(); cur.close(); conn.close()
+        flash("Note deleted.", "success")
+    except Exception as e:
+        print("⚠️ delete_note error:", e)
+        flash("Could not delete note.", "danger")
+
+    return redirect(url_for("portal.whatsapp_contact_detail", contact_id=contact_id))
+
+
+@portal_bp.route("/whatsapp/contacts/<int:contact_id>/add-to-segment", methods=["POST"])
+def whatsapp_contact_add_to_segment(contact_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    seg_id_raw = (request.form.get("segment_id") or "").strip()
+
+    if not seg_id_raw or not seg_id_raw.isdigit():
+        flash("Invalid segment.", "warning")
+        return redirect(url_for("portal.whatsapp_contact_detail", contact_id=contact_id))
+
+    seg_id = int(seg_id_raw)
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("SELECT id FROM wa_contacts WHERE id=%s AND tenant_id=%s", (contact_id, tenant_id))
+        if not cur.fetchone():
+            flash("Contact not found.", "danger")
+            cur.close(); conn.close()
+            return redirect(url_for("portal.whatsapp_contacts"))
+        cur.execute("SELECT id FROM wa_segments WHERE id=%s AND tenant_id=%s", (seg_id, tenant_id))
+        if not cur.fetchone():
+            flash("Segment not found.", "danger")
+        else:
+            cur.execute(
+                "INSERT INTO wa_segment_members(segment_id, contact_id) VALUES(%s,%s) ON CONFLICT DO NOTHING",
+                (seg_id, contact_id)
+            )
+            flash("Added to segment.", "success")
+        conn.commit(); cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ contact_add_to_segment error:", e)
+        flash("Could not add to segment.", "danger")
+
+    return redirect(url_for("portal.whatsapp_contact_detail", contact_id=contact_id))
+
+
+@portal_bp.route("/whatsapp/contacts/<int:contact_id>/remove-from-segment/<int:seg_id>", methods=["POST"])
+def whatsapp_contact_remove_from_segment(contact_id: int, seg_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("SELECT id FROM wa_segments WHERE id=%s AND tenant_id=%s", (seg_id, tenant_id))
+        if cur.fetchone():
+            cur.execute(
+                "DELETE FROM wa_segment_members WHERE segment_id=%s AND contact_id=%s",
+                (seg_id, contact_id)
+            )
+        conn.commit(); cur.close(); conn.close()
+        flash("Removed from segment.", "success")
+    except Exception as e:
+        print("⚠️ remove_from_segment error:", e)
+        flash("Could not remove from segment.", "danger")
+
+    return redirect(url_for("portal.whatsapp_contact_detail", contact_id=contact_id))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WHATSAPP CONTACTS — BULK ACTIONS & FIELD UPDATES
+# ══════════════════════════════════════════════════════════════════════════════
+
+@portal_bp.route("/whatsapp/contacts/bulk-action", methods=["POST"])
+def whatsapp_contacts_bulk_action():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    action     = request.form.get("action", "").strip()
+    ids_raw    = request.form.getlist("contact_ids")
+    contact_ids = [int(i) for i in ids_raw if i.isdigit()]
+
+    if not contact_ids:
+        flash("No contacts selected.", "warning")
+        return redirect(url_for("portal.whatsapp_contacts"))
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+
+        if action == "delete":
+            cur.execute(
+                "DELETE FROM wa_contacts WHERE id = ANY(%s) AND tenant_id=%s",
+                (contact_ids, tenant_id)
+            )
+            flash(f"{cur.rowcount} contact(s) deleted.", "success")
+
+        elif action == "set_status":
+            new_status = request.form.get("new_status", "").strip()
+            if new_status not in ("lead", "prospect", "customer", "inactive"):
+                flash("Invalid status.", "danger")
+            else:
+                cur.execute(
+                    "UPDATE wa_contacts SET status=%s, updated_at=NOW() "
+                    "WHERE id = ANY(%s) AND tenant_id=%s",
+                    (new_status, contact_ids, tenant_id)
+                )
+                flash(f"{cur.rowcount} contact(s) updated to {new_status.title()}.", "success")
+
+        elif action == "add_tag":
+            new_tag = (request.form.get("new_tag") or "").strip()[:50]
+            if not new_tag:
+                flash("Please enter a tag name.", "warning")
+            else:
+                cur.execute(
+                    "UPDATE wa_contacts SET tags = array_append(tags, %s), updated_at=NOW() "
+                    "WHERE id = ANY(%s) AND tenant_id=%s AND NOT (%s = ANY(tags))",
+                    (new_tag, contact_ids, tenant_id, new_tag)
+                )
+                flash(f"Tag '{new_tag}' added to {cur.rowcount} contact(s).", "success")
+
+        elif action == "remove_tag":
+            rem_tag = (request.form.get("rem_tag") or "").strip()
+            if rem_tag:
+                cur.execute(
+                    "UPDATE wa_contacts SET tags = array_remove(tags, %s), updated_at=NOW() "
+                    "WHERE id = ANY(%s) AND tenant_id=%s",
+                    (rem_tag, contact_ids, tenant_id)
+                )
+                flash(f"Tag '{rem_tag}' removed.", "success")
+
+        elif action == "add_to_segment":
+            seg_id = request.form.get("segment_id", "").strip()
+            if not seg_id or not seg_id.isdigit():
+                flash("Invalid segment.", "warning")
+            else:
+                seg_id = int(seg_id)
+                cur.execute(
+                    "SELECT id FROM wa_segments WHERE id=%s AND tenant_id=%s",
+                    (seg_id, tenant_id)
+                )
+                if not cur.fetchone():
+                    flash("Segment not found.", "danger")
+                else:
+                    for cid in contact_ids:
+                        cur.execute(
+                            "INSERT INTO wa_segment_members(segment_id, contact_id) "
+                            "VALUES(%s, %s) ON CONFLICT DO NOTHING",
+                            (seg_id, cid)
+                        )
+                    flash(f"{len(contact_ids)} contact(s) added to segment.", "success")
+
+        conn.commit()
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ bulk_action error:", e)
+        flash("Bulk action failed. Please try again.", "danger")
+
+    # Preserve any active filters in the redirect
+    args = {k: v for k, v in request.form.items()
+            if k in ("q", "status_filter", "tag_filter", "segment_filter") and v}
+    return redirect(url_for("portal.whatsapp_contacts", **args))
+
+
+@portal_bp.route("/whatsapp/contacts/<int:contact_id>/set-status", methods=["POST"])
+def whatsapp_contact_set_status(contact_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    new_status = request.form.get("status", "").strip()
+    if new_status not in ("lead", "prospect", "customer", "inactive"):
+        flash("Invalid status.", "danger")
+        return redirect(url_for("portal.whatsapp_contacts"))
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute(
+            "UPDATE wa_contacts SET status=%s, updated_at=NOW() WHERE id=%s AND tenant_id=%s",
+            (new_status, contact_id, tenant_id)
+        )
+        conn.commit(); cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ set_status error:", e)
+    return redirect(request.referrer or url_for("portal.whatsapp_contacts"))
+
+
+@portal_bp.route("/whatsapp/contacts/<int:contact_id>/tags", methods=["POST"])
+def whatsapp_contact_tags(contact_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    tags_raw  = (request.form.get("tags") or "").strip()
+    tags = [t.strip()[:50] for t in tags_raw.split(",") if t.strip()]
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute(
+            "UPDATE wa_contacts SET tags=%s, updated_at=NOW() WHERE id=%s AND tenant_id=%s",
+            (tags, contact_id, tenant_id)
+        )
+        conn.commit(); cur.close(); conn.close()
+        flash("Tags updated.", "success")
+    except Exception as e:
+        print("⚠️ contact_tags error:", e)
+        flash("Could not update tags.", "danger")
+    return redirect(request.referrer or url_for("portal.whatsapp_contacts"))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WHATSAPP SEGMENTS
+# ══════════════════════════════════════════════════════════════════════════════
+
+@portal_bp.route("/whatsapp/segments")
+def whatsapp_segments():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT s.*,
+                   COUNT(m.contact_id) AS member_count
+            FROM wa_segments s
+            LEFT JOIN wa_segment_members m ON m.segment_id = s.id
+            WHERE s.tenant_id = %s
+            GROUP BY s.id
+            ORDER BY s.created_at DESC
+        """, (tenant_id,))
+        segments = cur.fetchall()
+        cur.execute("SELECT COUNT(*) AS total FROM wa_contacts WHERE tenant_id=%s", (tenant_id,))
+        total_contacts = cur.fetchone()["total"]
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ whatsapp_segments error:", e)
+        segments, total_contacts = [], 0
+    return render_template("portal/whatsapp_segments.html",
+                           segments=segments, total_contacts=total_contacts)
+
+
+@portal_bp.route("/whatsapp/segments/create", methods=["POST"])
+def whatsapp_segments_create():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    name  = (request.form.get("name") or "").strip()[:100]
+    desc  = (request.form.get("description") or "").strip()
+    color = (request.form.get("color") or "#6366f1").strip()[:7]
+    if not name:
+        flash("Segment name is required.", "danger")
+        return redirect(url_for("portal.whatsapp_segments"))
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute(
+            "INSERT INTO wa_segments(tenant_id, name, description, color) "
+            "VALUES(%s, %s, %s, %s) ON CONFLICT DO NOTHING RETURNING id",
+            (tenant_id, name, desc or None, color)
+        )
+        row = cur.fetchone()
+        conn.commit(); cur.close(); conn.close()
+        if row:
+            flash(f"Segment '{name}' created.", "success")
+        else:
+            flash(f"A segment named '{name}' already exists.", "warning")
+    except Exception as e:
+        print("⚠️ segments_create error:", e)
+        flash("Could not create segment.", "danger")
+    return redirect(url_for("portal.whatsapp_segments"))
+
+
+@portal_bp.route("/whatsapp/segments/<int:seg_id>/edit", methods=["POST"])
+def whatsapp_segments_edit(seg_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    name  = (request.form.get("name") or "").strip()[:100]
+    desc  = (request.form.get("description") or "").strip()
+    color = (request.form.get("color") or "#6366f1").strip()[:7]
+    if not name:
+        flash("Name required.", "danger")
+        return redirect(url_for("portal.whatsapp_segments"))
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute(
+            "UPDATE wa_segments SET name=%s, description=%s, color=%s, updated_at=NOW() "
+            "WHERE id=%s AND tenant_id=%s",
+            (name, desc or None, color, seg_id, tenant_id)
+        )
+        conn.commit(); cur.close(); conn.close()
+        flash("Segment updated.", "success")
+    except Exception as e:
+        print("⚠️ segments_edit error:", e)
+        flash("Could not update segment.", "danger")
+    return redirect(url_for("portal.whatsapp_segments"))
+
+
+@portal_bp.route("/whatsapp/segments/<int:seg_id>/delete", methods=["POST"])
+def whatsapp_segments_delete(seg_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("DELETE FROM wa_segments WHERE id=%s AND tenant_id=%s", (seg_id, tenant_id))
+        conn.commit(); cur.close(); conn.close()
+        flash("Segment deleted.", "success")
+    except Exception as e:
+        print("⚠️ segments_delete error:", e)
+        flash("Could not delete segment.", "danger")
+    return redirect(url_for("portal.whatsapp_segments"))
+
+
+@portal_bp.route("/whatsapp/segments/<int:seg_id>")
+def whatsapp_segment_detail(seg_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT * FROM wa_segments WHERE id=%s AND tenant_id=%s", (seg_id, tenant_id)
+        )
+        segment = cur.fetchone()
+        if not segment:
+            flash("Segment not found.", "warning")
+            return redirect(url_for("portal.whatsapp_segments"))
+
+        cur.execute("""
+            SELECT c.* FROM wa_contacts c
+            JOIN wa_segment_members m ON m.contact_id = c.id
+            WHERE m.segment_id = %s
+            ORDER BY c.display_name ASC NULLS LAST, c.created_at DESC
+        """, (seg_id,))
+        members = cur.fetchall()
+
+        cur.execute("""
+            SELECT c.* FROM wa_contacts c
+            WHERE c.tenant_id = %s
+              AND c.id NOT IN (
+                SELECT contact_id FROM wa_segment_members WHERE segment_id=%s
+              )
+            ORDER BY c.display_name ASC NULLS LAST
+            LIMIT 500
+        """, (tenant_id, seg_id))
+        non_members = cur.fetchall()
+
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ segment_detail error:", e)
+        segment, members, non_members = None, [], []
+        flash("Could not load segment.", "danger")
+        return redirect(url_for("portal.whatsapp_segments"))
+
+    return render_template("portal/whatsapp_segment_detail.html",
+                           segment=segment, members=members, non_members=non_members)
+
+
+@portal_bp.route("/whatsapp/segments/<int:seg_id>/add-member", methods=["POST"])
+def whatsapp_segment_add_member(seg_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    contact_id = request.form.get("contact_id", "").strip()
+    if not contact_id or not contact_id.isdigit():
+        flash("Invalid contact.", "warning")
+        return redirect(url_for("portal.whatsapp_segment_detail", seg_id=seg_id))
+    contact_id = int(contact_id)
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("SELECT id FROM wa_segments WHERE id=%s AND tenant_id=%s", (seg_id, tenant_id))
+        if not cur.fetchone():
+            flash("Segment not found.", "danger")
+        else:
+            cur.execute(
+                "SELECT id FROM wa_contacts WHERE id=%s AND tenant_id=%s", (contact_id, tenant_id)
+            )
+            if not cur.fetchone():
+                flash("Contact not found.", "danger")
+            else:
+                cur.execute(
+                    "INSERT INTO wa_segment_members(segment_id, contact_id) "
+                    "VALUES(%s, %s) ON CONFLICT DO NOTHING",
+                    (seg_id, contact_id)
+                )
+                flash("Contact added to segment.", "success")
+        conn.commit(); cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ add_member error:", e)
+        flash("Could not add contact.", "danger")
+    return redirect(url_for("portal.whatsapp_segment_detail", seg_id=seg_id))
+
+
+@portal_bp.route("/whatsapp/segments/<int:seg_id>/remove-member/<int:contact_id>", methods=["POST"])
+def whatsapp_segment_remove_member(seg_id: int, contact_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute(
+            "SELECT id FROM wa_segments WHERE id=%s AND tenant_id=%s", (seg_id, tenant_id)
+        )
+        if cur.fetchone():
+            cur.execute(
+                "DELETE FROM wa_segment_members WHERE segment_id=%s AND contact_id=%s",
+                (seg_id, contact_id)
+            )
+        conn.commit(); cur.close(); conn.close()
+        flash("Contact removed from segment.", "success")
+    except Exception as e:
+        print("⚠️ remove_member error:", e)
+        flash("Could not remove contact.", "danger")
+    return redirect(url_for("portal.whatsapp_segment_detail", seg_id=seg_id))
+
+
+@portal_bp.route("/whatsapp/segments/<int:seg_id>/contacts-json")
+def whatsapp_segment_contacts_json(seg_id: int):
+    """Return segment member phones for campaign pre-fill."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT id FROM wa_segments WHERE id=%s AND tenant_id=%s", (seg_id, tenant_id))
+        if not cur.fetchone():
+            cur.close(); conn.close()
+            return jsonify({"error": "not found"}), 404
+        cur.execute("""
+            SELECT c.phone, c.display_name FROM wa_contacts c
+            JOIN wa_segment_members m ON m.contact_id = c.id
+            WHERE m.segment_id = %s
+        """, (seg_id,))
+        rows = cur.fetchall()
+        cur.close(); conn.close()
+        return jsonify({"phones": [r["phone"] for r in rows], "count": len(rows)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -8149,6 +8822,7 @@ def whatsapp_campaigns():
 
     campaigns = []
     proactive_log = []
+    segments = []
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -8162,6 +8836,13 @@ def whatsapp_campaigns():
             (tenant_id,),
         )
         proactive_log = cur.fetchall()
+        cur.execute("""
+            SELECT s.id, s.name, s.color, COUNT(m.contact_id) AS member_count
+            FROM wa_segments s
+            LEFT JOIN wa_segment_members m ON m.segment_id = s.id
+            WHERE s.tenant_id = %s GROUP BY s.id ORDER BY s.name
+        """, (tenant_id,))
+        segments = cur.fetchall()
         cur.close(); conn.close()
     except Exception as e:
         print("⚠️ whatsapp_campaigns fetch error:", e)
@@ -8171,6 +8852,7 @@ def whatsapp_campaigns():
         connection=connection,
         campaigns=campaigns,
         proactive_log=proactive_log,
+        segments=segments,
     )
 
 
@@ -8185,6 +8867,7 @@ def whatsapp_campaigns_create():
     template_name    = (request.form.get("template_name") or "").strip()
     language_code    = (request.form.get("language_code") or "en").strip()
     recipients       = (request.form.get("recipients") or "").strip()
+    segment_id_raw   = (request.form.get("segment_id") or "").strip()
     schedule_str     = (request.form.get("scheduled_at") or "").strip()
     send_now         = request.form.get("send_now") == "1"
     header_type      = (request.form.get("header_type") or "").strip().upper() or None
@@ -8200,13 +8883,37 @@ def whatsapp_campaigns_create():
         header_location = _json.dumps({"latitude": loc_lat, "longitude": loc_lng,
                                         "name": loc_name, "address": loc_address})
 
-    if not name or not template_name or not recipients:
-        flash("Campaign name, template name, and at least one recipient are required.", "danger")
+    segment_id = None
+    phones = []
+
+    # If a segment is selected, pull phones from it
+    if segment_id_raw and segment_id_raw.isdigit():
+        seg_int = int(segment_id_raw)
+        try:
+            _sc = get_db_connection(); _scc = _sc.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            _scc.execute("SELECT id FROM wa_segments WHERE id=%s AND tenant_id=%s", (seg_int, tenant_id))
+            if _scc.fetchone():
+                segment_id = seg_int
+                _scc.execute("""
+                    SELECT c.phone FROM wa_contacts c
+                    JOIN wa_segment_members m ON m.contact_id = c.id
+                    WHERE m.segment_id = %s
+                """, (seg_int,))
+                phones = [r["phone"] for r in _scc.fetchall()]
+            _scc.close(); _sc.close()
+        except Exception as _se:
+            print("⚠️ segment phones fetch error:", _se)
+
+    # Fall back to (or supplement with) manually pasted phones
+    if not phones and recipients:
+        phones = [p.strip() for p in recipients.splitlines() if p.strip()]
+
+    if not name or not template_name:
+        flash("Campaign name and template name are required.", "danger")
         return redirect(url_for("portal.whatsapp_campaigns"))
 
-    phones = [p.strip() for p in recipients.splitlines() if p.strip()]
     if not phones:
-        flash("No valid phone numbers found.", "danger")
+        flash("No recipients found. Select a segment with contacts or enter phone numbers.", "danger")
         return redirect(url_for("portal.whatsapp_campaigns"))
 
     scheduled_at = None
@@ -8229,13 +8936,13 @@ def whatsapp_campaigns_create():
             INSERT INTO wa_campaigns
               (tenant_id, name, template_name, language_code, status,
                scheduled_at, total_count, recipients,
-               header_type, header_image_url, header_text, header_location)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               header_type, header_image_url, header_text, header_location, segment_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (tenant_id, name, template_name, language_code, status,
              scheduled_at, len(phones), "\n".join(phones),
-             header_type, header_image_url, header_text, header_location),
+             header_type, header_image_url, header_text, header_location, segment_id),
         )
         campaign_id = cur.fetchone()[0]
         conn.commit()
@@ -9356,7 +10063,7 @@ def onboarding_catalogue_start():
             session.pop("ob_dept_id", None)
             session.pop("ob_cat_ids", None)
             session.pop("ob_cats_done", None)
-            return redirect(url_for("portal.onboarding_wa_connect"))
+            return redirect(url_for("portal.dashboard"))
 
         dept_id_raw = request.form.get("department_id") or ""
         if not dept_id_raw.isdigit():
@@ -9423,7 +10130,7 @@ def onboarding_catalogue_categories():
             session.pop("ob_dept_id", None)
             session.pop("ob_cat_ids", None)
             session.pop("ob_cats_done", None)
-            return redirect(url_for("portal.onboarding_wa_connect"))
+            return redirect(url_for("portal.dashboard"))
 
         raw_ids    = request.form.getlist("cat_ids")
         chosen     = [int(x) for x in raw_ids if x.isdigit()]
@@ -12677,8 +13384,8 @@ def inbox_save_contact(phone: str):
         cur  = conn.cursor()
         if display_name:
             cur.execute("""
-                INSERT INTO wa_contacts (tenant_id, phone, display_name)
-                VALUES (%s, %s, %s)
+                INSERT INTO wa_contacts (tenant_id, phone, display_name, source)
+                VALUES (%s, %s, %s, 'whatsapp')
                 ON CONFLICT (tenant_id, phone) DO UPDATE SET display_name = EXCLUDED.display_name, updated_at = NOW()
             """, (tenant_id, phone, display_name))
         else:

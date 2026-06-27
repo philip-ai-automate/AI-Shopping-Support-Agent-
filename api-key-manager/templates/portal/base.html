@@ -464,6 +464,11 @@
        href="{{ url_for('portal.whatsapp_contacts') }}" data-tour="nav-contacts">
       <span class="sb-icon">👥</span> Contacts
     </a>
+    <!-- Segments -->
+    <a class="sb-link {% if request.endpoint in ('portal.whatsapp_segments','portal.whatsapp_segment_detail') %}active{% endif %}"
+       href="{{ url_for('portal.whatsapp_segments') }}" style="padding-left:36px;font-size:12px">
+      <span class="sb-icon" style="font-size:13px">🗂️</span> Segments
+    </a>
 
     <!-- Leads -->
     <a class="sb-link {% if request.endpoint == 'portal.leads_page' %}active{% endif %}"

@@ -1,0 +1,531 @@
+{% extends "portal/base.html" %}
+{% block title %}{{ contact.display_name or contact.phone }} — Contact — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+.cd-layout { display: grid; grid-template-columns: 300px 1fr; gap: 20px; align-items: start; }
+
+/* ── Profile card ────────────────────────────────────────────────────────── */
+.profile-card {
+  background: #fff; border: 1px solid rgba(3,12,24,.08); border-radius: 16px;
+  overflow: hidden; position: sticky; top: 20px;
+}
+.profile-card-top {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  padding: 28px 24px 20px; text-align: center;
+}
+.profile-avatar {
+  width: 72px; height: 72px; border-radius: 50%;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff; font-size: 28px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 12px; text-transform: uppercase;
+}
+.profile-avatar.unnamed {
+  background: linear-gradient(135deg, #334155, #475569);
+  font-size: 22px;
+}
+.profile-name { font-size: 17px; font-weight: 800; color: #fff; margin: 0 0 4px; }
+.profile-phone {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: rgba(255,255,255,.1); color: rgba(255,255,255,.8);
+  font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 20px;
+  font-family: 'SF Mono','Fira Code',monospace;
+}
+
+.profile-body { padding: 18px 20px; }
+.profile-field { margin-bottom: 14px; }
+.profile-field-label { font-size:10px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:5px; }
+.profile-field-value { font-size:13px; font-weight:600; color:var(--ink); }
+
+/* Status badge */
+.status-badge { display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700; padding:3px 10px; border-radius:20px; text-transform:capitalize; }
+.badge-lead     { background:#fef9c3; color:#854d0e; }
+.badge-prospect { background:#dbeafe; color:#1e40af; }
+.badge-customer { background:#dcfce7; color:#14532d; }
+.badge-inactive { background:#f1f5f9; color:#64748b; }
+.status-dot { width:6px; height:6px; border-radius:50%; background:currentColor; opacity:.7; }
+
+/* Source badge */
+.source-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; text-transform: capitalize;
+}
+.src-manual    { background: #f1f5f9; color: #64748b; }
+.src-csv       { background: #f0fdf4; color: #15803d; }
+.src-whatsapp  { background: #dcfce7; color: #15803d; }
+.src-web       { background: #eff6ff; color: #1d4ed8; }
+
+/* Tag pill */
+.tag-pill {
+  display: inline-flex; align-items: center; gap: 3px;
+  background: #f1f5f9; color: #475569; font-size: 11px; font-weight: 600;
+  padding: 3px 9px; border-radius: 20px;
+}
+
+/* Segment chip */
+.seg-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+  background: #f8f7ff; color: #5b21b6; border: 1px solid #ddd6fe;
+}
+.seg-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* CTA buttons */
+.profile-actions { display: flex; flex-direction: column; gap: 8px; padding: 16px 20px; border-top: 1px solid rgba(3,12,24,.07); }
+.btn-wa {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  background: #25D366; color: #fff; font-size: 13px; font-weight: 700;
+  padding: 10px 16px; border-radius: 10px; border: none; cursor: pointer;
+  text-decoration: none; transition: .15s;
+}
+.btn-wa:hover { background: #1ebe58; }
+.btn-edit-profile {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  background: #f8fafc; color: #475569; font-size: 13px; font-weight: 600;
+  padding: 9px 16px; border-radius: 10px; border: 1.5px solid #e2e8f0;
+  cursor: pointer; transition: .15s;
+}
+.btn-edit-profile:hover { background: #f1f5f9; border-color: #cbd5e1; color: #0f172a; }
+
+/* ── Main panels ─────────────────────────────────────────────────────────── */
+.section-card { background: #fff; border: 1px solid rgba(3,12,24,.08); border-radius: 14px; overflow: hidden; margin-bottom: 18px; }
+.section-card:last-child { margin-bottom: 0; }
+.sc-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid rgba(3,12,24,.07); }
+.sc-head h2 { font-size: 13px; font-weight: 800; color: var(--ink); margin: 0; text-transform: uppercase; letter-spacing: .04em; }
+.sc-head-count { font-size: 11px; background: #f1f5f9; color: var(--muted); padding: 2px 8px; border-radius: 20px; font-weight: 700; }
+.sc-body { padding: 18px 20px; }
+
+/* ── Notes timeline ──────────────────────────────────────────────────────── */
+.notes-form { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px; }
+.notes-form textarea {
+  flex: 1; padding: 10px 13px; border: 1.5px solid #e2e8f0; border-radius: 10px;
+  font-size: 13px; font-family: inherit; color: var(--ink); resize: none;
+  min-height: 60px; outline: none; transition: .15s; background: #fff;
+}
+.notes-form textarea:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,.1); }
+.btn-add-note {
+  padding: 10px 16px; border-radius: 10px; border: none;
+  background: #0f172a; color: #fff; font-size: 13px; font-weight: 700;
+  cursor: pointer; white-space: nowrap; transition: .15s; flex-shrink: 0;
+}
+.btn-add-note:hover { background: #1e293b; }
+
+.timeline { position: relative; }
+.timeline::before {
+  content: ''; position: absolute; left: 15px; top: 0; bottom: 0;
+  width: 2px; background: #f1f5f9;
+}
+.tl-item { position: relative; padding-left: 38px; margin-bottom: 18px; }
+.tl-item:last-child { margin-bottom: 0; }
+.tl-dot {
+  position: absolute; left: 8px; top: 4px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #6366f1; border: 2px solid #fff;
+  box-shadow: 0 0 0 2px #e0e7ff;
+}
+.tl-dot.system { background: #94a3b8; box-shadow: 0 0 0 2px #f1f5f9; }
+.tl-body {
+  background: #f8fafc; border: 1px solid rgba(3,12,24,.07);
+  border-radius: 10px; padding: 12px 14px;
+}
+.tl-body-text { font-size: 13px; color: var(--ink); line-height: 1.5; white-space: pre-wrap; }
+.tl-meta {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 6px; font-size: 11px; color: var(--muted);
+}
+.tl-author { font-weight: 700; color: #6366f1; }
+.tl-del {
+  background: none; border: none; cursor: pointer; color: #cbd5e1;
+  font-size: 11px; padding: 0; transition: .12s;
+}
+.tl-del:hover { color: #dc2626; }
+
+.empty-timeline { padding: 24px 20px; text-align: center; color: var(--muted); font-size: 13px; }
+
+/* ── Messages preview ────────────────────────────────────────────────────── */
+.msg-row { display: flex; gap: 8px; margin-bottom: 10px; }
+.msg-row.out { flex-direction: row-reverse; }
+.msg-bubble {
+  max-width: 75%; background: #f1f5f9; border-radius: 12px;
+  padding: 8px 12px; font-size: 13px; line-height: 1.45; color: var(--ink);
+}
+.msg-row.out .msg-bubble { background: #dcfce7; color: #14532d; }
+.msg-time { font-size: 10px; color: var(--muted); margin-top: 3px; text-align: right; }
+.msg-row.out .msg-time { text-align: left; }
+
+/* ── Edit drawer ─────────────────────────────────────────────────────────── */
+.drawer-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:800; backdrop-filter:blur(2px); }
+.drawer-overlay.open { display:block; }
+.drawer {
+  position:fixed; top:0; right:-520px; width:440px; max-width:96vw; height:100vh;
+  background:#fff; z-index:801; box-shadow:-8px 0 40px rgba(0,0,0,.18);
+  display:flex; flex-direction:column; transition:right .3s cubic-bezier(.4,0,.2,1); overflow:hidden;
+}
+.drawer.open { right:0; }
+.drawer-head { display:flex; align-items:center; justify-content:space-between; padding:20px 22px; border-bottom:1px solid rgba(3,12,24,.08); flex-shrink:0; background:#0f172a; }
+.drawer-head h2 { font-size:16px; font-weight:800; color:#fff; margin:0; }
+.drawer-close { width:30px; height:30px; border-radius:7px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.08); color:rgba(255,255,255,.7); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:15px; }
+.drawer-close:hover { background:rgba(255,255,255,.15); color:#fff; }
+.drawer-body { flex:1; overflow-y:auto; padding:22px; }
+.drawer-foot { padding:14px 22px; border-top:1px solid rgba(3,12,24,.08); display:flex; justify-content:flex-end; gap:10px; flex-shrink:0; background:#f8fafc; }
+
+.field { margin-bottom:16px; }
+.field-label { display:block; font-size:12px; font-weight:700; color:#374151; margin-bottom:6px; }
+.field-hint  { font-size:11px; color:#94a3b8; font-weight:400; margin-left:5px; }
+.field-input, .field-textarea, .field-select {
+  width:100%; padding:10px 13px; border:1.5px solid #e2e8f0; border-radius:9px;
+  font-size:13px; font-family:inherit; color:var(--ink); background:#fff;
+  outline:none; transition:.15s; box-sizing:border-box;
+}
+.field-input:focus, .field-textarea:focus, .field-select:focus { border-color:#6366f1; box-shadow:0 0 0 3px rgba(99,102,241,.1); }
+.field-textarea { resize:vertical; min-height:80px; }
+.btn-ghost { padding:9px 16px; border-radius:9px; border:1.5px solid #e2e8f0; background:#fff; font-size:13px; font-weight:600; color:#64748b; cursor:pointer; }
+.btn-ghost:hover { border-color:#cbd5e1; color:#374151; }
+.btn-save { padding:9px 20px; border-radius:9px; border:none; background:#0f172a; color:#fff; font-size:13px; font-weight:700; cursor:pointer; }
+.btn-save:hover { background:#1e293b; }
+
+/* ── Stat pills ──────────────────────────────────────────────────────────── */
+.stat-row { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:18px; }
+.stat-pill { background:#fff; border:1px solid rgba(3,12,24,.08); border-radius:11px; padding:12px 16px; }
+.stat-pill-value { font-size:22px; font-weight:800; color:var(--ink); line-height:1; }
+.stat-pill-label { font-size:11px; color:var(--muted); font-weight:600; margin-top:3px; }
+
+@media (max-width:820px) {
+  .cd-layout { grid-template-columns:1fr; }
+  .profile-card { position:static; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Breadcrumb -->
+<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-bottom:16px">
+  <a href="{{ url_for('portal.whatsapp_contacts') }}" style="color:var(--muted);text-decoration:none;font-weight:600">Contacts</a>
+  <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+  <span style="color:var(--ink);font-weight:700">{{ contact.display_name or ('+' + contact.phone) }}</span>
+</div>
+
+<div class="cd-layout">
+
+  <!-- ── Left: Profile card ──────────────────────────────────────────── -->
+  <aside>
+    <div class="profile-card">
+      <div class="profile-card-top">
+        <div class="profile-avatar {% if not contact.display_name %}unnamed{% endif %}">
+          {% if contact.display_name %}{{ contact.display_name[0] }}{% else %}?{% endif %}
+        </div>
+        <h1 class="profile-name">{{ contact.display_name or 'Unnamed Contact' }}</h1>
+        <span class="profile-phone">
+          <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+          +{{ contact.phone }}
+        </span>
+      </div>
+
+      <div class="profile-body">
+
+        <!-- Stats -->
+        <div class="stat-row">
+          <div class="stat-pill">
+            <div class="stat-pill-value">{{ msg_count }}</div>
+            <div class="stat-pill-label">Messages</div>
+          </div>
+          <div class="stat-pill">
+            <div class="stat-pill-value">{{ notes|length }}</div>
+            <div class="stat-pill-label">Notes</div>
+          </div>
+        </div>
+
+        <!-- Status -->
+        <div class="profile-field">
+          <div class="profile-field-label">Status</div>
+          <span class="status-badge badge-{{ contact.status or 'lead' }}">
+            <span class="status-dot"></span>{{ (contact.status or 'lead')|title }}
+          </span>
+        </div>
+
+        <!-- Source -->
+        <div class="profile-field">
+          <div class="profile-field-label">Source</div>
+          {% set src = contact.source or 'manual' %}
+          {% set src_icons = {'manual':'✏️','csv':'📋','whatsapp':'💬','web':'🌐'} %}
+          <span class="source-badge src-{{ src }}">{{ src_icons.get(src,'📌') }} {{ src|title }}</span>
+        </div>
+
+        <!-- Tags -->
+        <div class="profile-field">
+          <div class="profile-field-label">Tags</div>
+          <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:2px">
+            {% if contact.tags %}
+              {% for tag in contact.tags %}
+              <span class="tag-pill">#{{ tag }}</span>
+              {% endfor %}
+            {% else %}
+              <span style="font-size:12px;color:var(--muted)">No tags</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Segments -->
+        <div class="profile-field">
+          <div class="profile-field-label">Segments</div>
+          <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:2px">
+            {% if contact_segments %}
+              {% for seg in contact_segments %}
+              <span class="seg-chip">
+                <span class="seg-dot" style="background:{{ seg.color }}"></span>
+                {{ seg.name }}
+              </span>
+              {% endfor %}
+            {% else %}
+              <span style="font-size:12px;color:var(--muted)">No segments</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Notes snippet -->
+        {% if contact.notes %}
+        <div class="profile-field">
+          <div class="profile-field-label">Profile Notes</div>
+          <div class="profile-field-value" style="font-weight:400;font-size:13px;color:var(--muted);line-height:1.5">{{ contact.notes }}</div>
+        </div>
+        {% endif %}
+
+        <!-- Dates -->
+        <div class="profile-field" style="margin-bottom:0">
+          <div class="profile-field-label">Added</div>
+          <div class="profile-field-value" style="font-size:12px">
+            {{ contact.created_at.strftime('%d %b %Y, %H:%M') if contact.created_at else '—' }}
+          </div>
+        </div>
+        {% if contact.updated_at and contact.updated_at != contact.created_at %}
+        <div class="profile-field" style="margin-top:8px;margin-bottom:0">
+          <div class="profile-field-label">Last Updated</div>
+          <div class="profile-field-value" style="font-size:12px">
+            {{ contact.updated_at.strftime('%d %b %Y, %H:%M') }}
+          </div>
+        </div>
+        {% endif %}
+
+      </div><!-- /profile-body -->
+
+      <div class="profile-actions">
+        {% if msg_count > 0 %}
+        <a href="{{ url_for('portal.my_inbox') }}?phone={{ contact.phone }}" class="btn-wa">
+          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.122 1.534 5.854L0 24l6.336-1.508A11.933 11.933 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.8 9.8 0 01-5.002-1.372l-.36-.213-3.727.887.908-3.617-.234-.375A9.808 9.808 0 012.182 12C2.182 6.58 6.58 2.182 12 2.182S21.818 6.58 21.818 12 17.42 21.818 12 21.818z"/></svg>
+          Open Conversation
+        </a>
+        {% endif %}
+        <button class="btn-edit-profile" onclick="openEdit()">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Edit Profile
+        </button>
+        {% if available_segments %}
+        <div style="position:relative">
+          <select id="quickSegSelect" class="field-select" style="font-size:12px;padding:8px 12px"
+                  onchange="quickAddSegment(this.value)">
+            <option value="">+ Add to Segment…</option>
+            {% for seg in available_segments %}
+            <option value="{{ seg.id }}">{{ seg.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+      </div>
+    </div><!-- /profile-card -->
+
+    <!-- Segments membership -->
+    {% if contact_segments %}
+    <div class="section-card" style="margin-top:16px">
+      <div class="sc-head">
+        <h2>In Segments</h2>
+        <span class="sc-head-count">{{ contact_segments|length }}</span>
+      </div>
+      <div class="sc-body" style="padding:12px 16px">
+        {% for seg in contact_segments %}
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(3,12,24,.05)">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="seg-dot" style="background:{{ seg.color }}"></span>
+            <a href="{{ url_for('portal.whatsapp_segment_detail', seg_id=seg.id) }}"
+               style="font-size:13px;font-weight:600;color:var(--ink);text-decoration:none">{{ seg.name }}</a>
+          </div>
+          <form method="POST" action="{{ url_for('portal.whatsapp_contact_remove_from_segment', contact_id=contact.id, seg_id=seg.id) }}"
+                onsubmit="return confirm('Remove from {{ seg.name }}?')">
+            <button type="submit" style="background:none;border:none;cursor:pointer;color:#cbd5e1;font-size:12px;padding:0"
+                    onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='#cbd5e1'">✕</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </aside>
+
+  <!-- ── Right: Timeline + Messages ─────────────────────────────────── -->
+  <div>
+
+    <!-- Notes / Activity Timeline -->
+    <div class="section-card">
+      <div class="sc-head">
+        <h2>Activity & Notes</h2>
+        <span class="sc-head-count">{{ notes|length }}</span>
+      </div>
+      <div class="sc-body">
+        <!-- Add note form -->
+        <form method="POST" action="{{ url_for('portal.whatsapp_contact_add_note', contact_id=contact.id) }}" class="notes-form">
+          <textarea name="body" placeholder="Add a note — follow-up reminder, call outcome, deal details…" rows="2"></textarea>
+          <button type="submit" class="btn-add-note">Add Note</button>
+        </form>
+
+        <!-- Timeline -->
+        {% if not notes %}
+        <div class="empty-timeline">No notes yet. Add the first one above.</div>
+        {% else %}
+        <div class="timeline">
+          {% for note in notes %}
+          <div class="tl-item">
+            <div class="tl-dot"></div>
+            <div class="tl-body">
+              <div class="tl-body-text">{{ note.body }}</div>
+              <div class="tl-meta">
+                <div>
+                  <span class="tl-author">{{ note.author_name or 'You' }}</span>
+                  &nbsp;·&nbsp;
+                  <span>{{ note.created_at.strftime('%d %b %Y, %H:%M') if note.created_at else '' }}</span>
+                </div>
+                <form method="POST"
+                      action="{{ url_for('portal.whatsapp_contact_delete_note', contact_id=contact.id, note_id=note.id) }}"
+                      onsubmit="return confirm('Delete this note?')">
+                  <button type="submit" class="tl-del">Delete</button>
+                </form>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Recent Messages Preview -->
+    <div class="section-card">
+      <div class="sc-head">
+        <h2>Recent Messages</h2>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="sc-head-count">{{ msg_count }} total</span>
+          {% if msg_count > 0 %}
+          <a href="{{ url_for('portal.my_inbox') }}?phone={{ contact.phone }}"
+             style="font-size:12px;color:#25D366;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:4px">
+            Open Chat
+            <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+          {% endif %}
+        </div>
+      </div>
+      <div class="sc-body">
+        {% if not recent_messages %}
+        <div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">
+          No WhatsApp conversation with this contact yet.
+        </div>
+        {% else %}
+        <div style="display:flex;flex-direction:column;gap:4px;max-height:360px;overflow-y:auto">
+          {% for msg in recent_messages %}
+          <div class="msg-row {% if msg.direction == 'outbound' %}out{% endif %}">
+            <div class="msg-bubble">
+              {{ msg.content }}
+              <div class="msg-time">{{ msg.created_at.strftime('%d %b, %H:%M') if msg.created_at else '' }}</div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% if msg_count > 10 %}
+        <div style="padding-top:12px;text-align:center">
+          <a href="{{ url_for('portal.my_inbox') }}?phone={{ contact.phone }}"
+             style="font-size:12px;color:#6366f1;font-weight:700;text-decoration:none">
+            View all {{ msg_count }} messages in Inbox →
+          </a>
+        </div>
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+
+  </div><!-- /right col -->
+</div><!-- /cd-layout -->
+
+<!-- ── Add to Segment (quick form) ───────────────────────────────────────── -->
+<form id="quickSegForm" method="POST"
+      action="{{ url_for('portal.whatsapp_contact_add_to_segment', contact_id=contact.id) }}"
+      style="display:none">
+  <input type="hidden" name="segment_id" id="quickSegId" value="">
+</form>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     EDIT PROFILE DRAWER
+═══════════════════════════════════════════════════════════════════════ -->
+<div class="drawer-overlay" id="editOverlay" onclick="closeEdit()"></div>
+<div class="drawer" id="editDrawer">
+  <div class="drawer-head">
+    <h2>Edit Profile</h2>
+    <button type="button" class="drawer-close" onclick="closeEdit()">✕</button>
+  </div>
+  <div class="drawer-body">
+    <form id="editForm" method="POST"
+          action="{{ url_for('portal.whatsapp_contacts_edit', contact_id=contact.id) }}">
+
+      <div class="field">
+        <label class="field-label">Display Name</label>
+        <input class="field-input" type="text" name="display_name"
+               value="{{ contact.display_name or '' }}" placeholder="Full name">
+      </div>
+
+      <div class="field">
+        <label class="field-label">Status</label>
+        <select class="field-select" name="status">
+          {% for val, label in [('lead','Lead'),('prospect','Prospect'),('customer','Customer'),('inactive','Inactive')] %}
+          <option value="{{ val }}" {% if (contact.status or 'lead') == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Tags <span class="field-hint">comma separated</span></label>
+        <input class="field-input" type="text" name="tags_csv"
+               value="{{ (contact.tags or [])|join(', ') }}"
+               placeholder="e.g. Lagos, VIP, Hot Lead">
+      </div>
+
+      <div class="field" style="margin-bottom:0">
+        <label class="field-label">Notes</label>
+        <textarea class="field-textarea" name="notes" rows="4"
+                  placeholder="Profile notes about this contact…">{{ contact.notes or '' }}</textarea>
+      </div>
+    </form>
+  </div>
+  <div class="drawer-foot">
+    <button type="button" class="btn-ghost" onclick="closeEdit()">Cancel</button>
+    <button type="button" class="btn-save" onclick="document.getElementById('editForm').submit()">Save Changes</button>
+  </div>
+</div>
+
+<script>
+function openEdit() {
+  document.getElementById('editOverlay').classList.add('open')
+  document.getElementById('editDrawer').classList.add('open')
+  document.body.style.overflow = 'hidden'
+}
+function closeEdit() {
+  document.getElementById('editOverlay').classList.remove('open')
+  document.getElementById('editDrawer').classList.remove('open')
+  document.body.style.overflow = ''
+}
+
+function quickAddSegment(segId) {
+  if (!segId) return
+  document.getElementById('quickSegId').value = segId
+  document.getElementById('quickSegForm').submit()
+}
+</script>
+{% endblock %}

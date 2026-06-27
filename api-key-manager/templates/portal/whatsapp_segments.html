@@ -1,0 +1,287 @@
+{% extends "portal/base.html" %}
+{% block title %}Segments — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+.seg-hero {
+  background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);
+  border-radius:16px; padding:24px 28px; margin-bottom:20px;
+  display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+}
+.seg-hero h1 { font-size:21px; font-weight:800; color:#fff; margin:0 0 4px; }
+.seg-hero p  { font-size:13px; color:rgba(255,255,255,.5); margin:0; }
+
+.btn-primary { display:inline-flex; align-items:center; gap:7px; background:#6366f1; color:#fff; font-size:13px; font-weight:700; padding:9px 16px; border-radius:10px; border:none; cursor:pointer; transition:.15s; }
+.btn-primary:hover { background:#4f46e5; }
+.btn-outline-white { display:inline-flex; align-items:center; gap:7px; background:rgba(255,255,255,.08); color:rgba(255,255,255,.85); font-size:13px; font-weight:600; padding:9px 16px; border-radius:10px; border:1px solid rgba(255,255,255,.15); cursor:pointer; transition:.15s; text-decoration:none; }
+.btn-outline-white:hover { background:rgba(255,255,255,.14); color:#fff; }
+.btn-ghost { padding:9px 16px; border-radius:9px; border:1.5px solid #e2e8f0; background:#fff; font-size:13px; font-weight:600; color:#64748b; cursor:pointer; transition:.12s; }
+.btn-ghost:hover { border-color:#cbd5e1; color:#374151; }
+.btn-save { padding:9px 20px; border-radius:9px; border:none; background:#0f172a; color:#fff; font-size:13px; font-weight:700; cursor:pointer; }
+.btn-save:hover { background:#1e293b; }
+.btn-danger { padding:9px 16px; border-radius:9px; border:none; background:#dc2626; color:#fff; font-size:13px; font-weight:700; cursor:pointer; }
+
+/* Segments grid */
+.seg-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:16px; }
+
+.seg-card {
+  background:#fff; border:1px solid rgba(3,12,24,.08); border-radius:14px; overflow:hidden;
+  display:flex; flex-direction:column; transition:.15s;
+}
+.seg-card:hover { box-shadow:0 4px 20px rgba(0,0,0,.08); }
+.seg-card-top { padding:18px 20px 16px; flex:1; }
+.seg-color-bar { height:4px; }
+.seg-name { font-size:15px; font-weight:800; color:var(--ink); margin:12px 0 4px; }
+.seg-desc { font-size:12px; color:var(--muted); line-height:1.5; }
+.seg-meta { display:flex; align-items:center; gap:10px; margin-top:12px; }
+.seg-count { font-size:28px; font-weight:800; color:var(--ink); line-height:1; }
+.seg-count-label { font-size:11px; color:var(--muted); font-weight:600; }
+.seg-card-foot { padding:12px 20px; border-top:1px solid rgba(3,12,24,.06); display:flex; align-items:center; justify-content:space-between; background:#f8fafc; }
+
+.icon-btn { width:28px; height:28px; border-radius:6px; border:1px solid rgba(3,12,24,.1); background:#fff; color:var(--muted); display:inline-flex; align-items:center; justify-content:center; cursor:pointer; transition:.12s; }
+.icon-btn:hover { border-color:rgba(3,12,24,.25); color:var(--ink); }
+.icon-btn.del:hover { border-color:rgba(220,38,38,.3); color:#dc2626; background:#fef2f2; }
+
+/* Empty */
+.empty-state { display:flex; flex-direction:column; align-items:center; padding:60px 20px; color:var(--muted); text-align:center; }
+.empty-icon-wrap { width:72px; height:72px; border-radius:20px; background:linear-gradient(135deg,#ede9fe,#ddd6fe); display:flex; align-items:center; justify-content:center; margin-bottom:16px; font-size:28px; }
+.empty-state h3 { font-size:15px; font-weight:700; color:var(--ink); margin:0 0 6px; }
+.empty-state p  { font-size:13px; margin:0; max-width:320px; line-height:1.5; }
+
+/* Modal */
+.modal-backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:900; align-items:center; justify-content:center; backdrop-filter:blur(2px); }
+.modal-backdrop.open { display:flex; }
+.modal-box { background:#fff; border-radius:16px; width:100%; max-width:440px; box-shadow:0 16px 40px rgba(0,0,0,.18); overflow:hidden; }
+.modal-head { background:#0f172a; padding:18px 22px; display:flex; align-items:center; justify-content:space-between; }
+.modal-head h2 { font-size:15px; font-weight:800; color:#fff; margin:0; }
+.modal-body { padding:22px; }
+.modal-foot { padding:14px 22px; border-top:1px solid rgba(3,12,24,.07); display:flex; justify-content:flex-end; gap:10px; background:#f8fafc; }
+.drawer-close { width:30px; height:30px; border-radius:7px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.08); color:rgba(255,255,255,.7); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:15px; }
+.drawer-close:hover { background:rgba(255,255,255,.15); color:#fff; }
+
+.field { margin-bottom:16px; }
+.field-label { display:block; font-size:12px; font-weight:700; color:#374151; margin-bottom:6px; }
+.field-input, .field-textarea { width:100%; padding:10px 13px; border:1.5px solid #e2e8f0; border-radius:9px; font-size:13px; font-family:inherit; color:var(--ink); background:#fff; outline:none; transition:.15s; box-sizing:border-box; }
+.field-input:focus, .field-textarea:focus { border-color:#6366f1; box-shadow:0 0 0 3px rgba(99,102,241,.12); }
+.field-textarea { resize:vertical; min-height:70px; }
+
+.color-row { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
+.color-swatch { width:28px; height:28px; border-radius:7px; cursor:pointer; border:2px solid transparent; transition:.12s; }
+.color-swatch.selected, .color-swatch:hover { border-color:#0f172a; transform:scale(1.15); }
+
+/* Stats summary */
+.stat-bar { display:flex; gap:14px; margin-bottom:20px; }
+.stat-pill { background:#fff; border:1px solid rgba(3,12,24,.08); border-radius:10px; padding:10px 16px; display:flex; align-items:center; gap:8px; font-size:13px; }
+.stat-pill strong { font-size:18px; font-weight:800; color:var(--ink); }
+.stat-pill span   { font-size:11px; color:var(--muted); font-weight:600; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Hero -->
+<div class="seg-hero">
+  <div>
+    <h1>Segments</h1>
+    <p>Group contacts into named lists — use them to target campaigns and manage leads.</p>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap">
+    <a href="{{ url_for('portal.whatsapp_contacts') }}" class="btn-outline-white">
+      <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+      All Contacts
+    </a>
+    <button class="btn-primary" onclick="openCreate()">
+      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      New Segment
+    </button>
+  </div>
+</div>
+
+<!-- Summary -->
+<div class="stat-bar">
+  <div class="stat-pill">
+    <strong>{{ segments|length }}</strong>
+    <span>Segments</span>
+  </div>
+  <div class="stat-pill">
+    <strong>{{ total_contacts }}</strong>
+    <span>Total contacts</span>
+  </div>
+</div>
+
+{% if not segments %}
+<div class="empty-state" style="background:#fff;border:1px solid rgba(3,12,24,.08);border-radius:14px">
+  <div class="empty-icon-wrap">🗂️</div>
+  <h3>No segments yet</h3>
+  <p>Create your first segment to group contacts by deal stage, location, interest, or any criteria that matters to your business.</p>
+  <button class="btn-primary" onclick="openCreate()" style="margin-top:20px">+ Create First Segment</button>
+</div>
+{% else %}
+<div class="seg-grid">
+  {% for seg in segments %}
+  <div class="seg-card">
+    <div class="seg-color-bar" style="background:{{ seg.color }}"></div>
+    <div class="seg-card-top">
+      <div class="seg-meta">
+        <div>
+          <div class="seg-count">{{ seg.member_count }}</div>
+          <div class="seg-count-label">contacts</div>
+        </div>
+        <div style="margin-left:auto;width:36px;height:36px;border-radius:10px;background:{{ seg.color }}20;display:flex;align-items:center;justify-content:center">
+          <svg width="16" height="16" fill="none" stroke="{{ seg.color }}" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+        </div>
+      </div>
+      <div class="seg-name">{{ seg.name }}</div>
+      {% if seg.description %}
+      <div class="seg-desc">{{ seg.description }}</div>
+      {% endif %}
+    </div>
+    <div class="seg-card-foot">
+      <a href="{{ url_for('portal.whatsapp_segment_detail', seg_id=seg.id) }}"
+         style="font-size:12px;font-weight:700;color:#6366f1;text-decoration:none;display:inline-flex;align-items:center;gap:4px">
+        View &amp; Manage
+        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </a>
+      <div style="display:flex;gap:6px">
+        <a href="{{ url_for('portal.whatsapp_campaigns') }}?segment_id={{ seg.id }}"
+           title="Target this segment in a campaign"
+           style="text-decoration:none" class="icon-btn">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </a>
+        <button class="icon-btn" title="Edit segment"
+                onclick="openEdit({{ seg.id }}, '{{ seg.name|replace("'","\\'") }}', '{{ (seg.description or '')|replace("'","\\'") }}', '{{ seg.color }}')">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+        <form method="POST" action="{{ url_for('portal.whatsapp_segments_delete', seg_id=seg.id) }}" style="display:inline" onsubmit="return confirm('Delete segment &quot;{{ seg.name }}&quot;? Contacts will not be deleted.')">
+          <button class="icon-btn del" type="submit" title="Delete segment">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6l-1 14H6L5 6"/></svg>
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ── Create Segment Modal ───────────────────────────────────────────── -->
+<div class="modal-backdrop" id="createModal" onclick="closeCreateOutside(event)">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2>New Segment</h2>
+      <button type="button" class="drawer-close" onclick="closeCreate()">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="createForm" method="POST" action="{{ url_for('portal.whatsapp_segments_create') }}">
+        <div class="field">
+          <label class="field-label">Segment Name <span style="color:#ef4444">*</span></label>
+          <input class="field-input" type="text" name="name" id="cf-name" placeholder="e.g. Hot Leads, Lagos Customers, Q3 Prospects" maxlength="100">
+        </div>
+        <div class="field">
+          <label class="field-label">Description <span style="font-size:11px;color:#94a3b8;font-weight:400">optional</span></label>
+          <textarea class="field-textarea" name="description" rows="2" placeholder="What is this segment for?"></textarea>
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <label class="field-label">Colour</label>
+          <div class="color-row">
+            {% set colours = ['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316','#64748b'] %}
+            {% for c in colours %}
+            <div class="color-swatch {% if loop.first %}selected{% endif %}"
+                 style="background:{{ c }}"
+                 data-color="{{ c }}"
+                 onclick="pickColor(this, '{{ c }}')"></div>
+            {% endfor %}
+          </div>
+          <input type="hidden" name="color" id="cf-color" value="#6366f1">
+        </div>
+      </form>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn-ghost" onclick="closeCreate()">Cancel</button>
+      <button type="button" class="btn-save" onclick="submitCreate()">Create Segment</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Edit Segment Modal ─────────────────────────────────────────────── -->
+<div class="modal-backdrop" id="editModal" onclick="closeEditOutside(event)">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2>Edit Segment</h2>
+      <button type="button" class="drawer-close" onclick="closeEdit()">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="editForm" method="POST" action="">
+        <div class="field">
+          <label class="field-label">Segment Name <span style="color:#ef4444">*</span></label>
+          <input class="field-input" type="text" name="name" id="ef-name" maxlength="100">
+        </div>
+        <div class="field">
+          <label class="field-label">Description</label>
+          <textarea class="field-textarea" name="description" id="ef-desc" rows="2"></textarea>
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <label class="field-label">Colour</label>
+          <div class="color-row" id="editColorRow">
+            {% set colours = ['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316','#64748b'] %}
+            {% for c in colours %}
+            <div class="color-swatch"
+                 style="background:{{ c }}"
+                 data-color="{{ c }}"
+                 onclick="pickEditColor(this, '{{ c }}')"></div>
+            {% endfor %}
+          </div>
+          <input type="hidden" name="color" id="ef-color" value="">
+        </div>
+      </form>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn-ghost" onclick="closeEdit()">Cancel</button>
+      <button type="button" class="btn-save" onclick="submitEdit()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const COLOURS = ['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316','#64748b']
+
+function pickColor(el, color) {
+  document.querySelectorAll('#createModal .color-swatch').forEach(s=>s.classList.remove('selected'))
+  el.classList.add('selected')
+  document.getElementById('cf-color').value = color
+}
+function pickEditColor(el, color) {
+  document.querySelectorAll('#editColorRow .color-swatch').forEach(s=>s.classList.remove('selected'))
+  el.classList.add('selected')
+  document.getElementById('ef-color').value = color
+}
+
+function openCreate() {
+  document.getElementById('createModal').classList.add('open')
+  document.body.style.overflow='hidden'
+  setTimeout(()=>document.getElementById('cf-name').focus(), 100)
+}
+function closeCreate() { document.getElementById('createModal').classList.remove('open'); document.body.style.overflow='' }
+function closeCreateOutside(e) { if(e.target===document.getElementById('createModal')) closeCreate() }
+function submitCreate() {
+  if (!document.getElementById('cf-name').value.trim()) { document.getElementById('cf-name').focus(); return }
+  document.getElementById('createForm').submit()
+}
+
+function openEdit(id, name, desc, color) {
+  document.getElementById('editForm').action = '/whatsapp/segments/' + id + '/edit'
+  document.getElementById('ef-name').value = name
+  document.getElementById('ef-desc').value = desc
+  document.getElementById('ef-color').value = color
+  document.querySelectorAll('#editColorRow .color-swatch').forEach(s=>{
+    s.classList.toggle('selected', s.dataset.color === color)
+  })
+  document.getElementById('editModal').classList.add('open')
+  document.body.style.overflow='hidden'
+  setTimeout(()=>document.getElementById('ef-name').focus(), 100)
+}
+function closeEdit() { document.getElementById('editModal').classList.remove('open'); document.body.style.overflow='' }
+function closeEditOutside(e) { if(e.target===document.getElementById('editModal')) closeEdit() }
+function submitEdit() { document.getElementById('editForm').submit() }
+</script>
+{% endblock %}
