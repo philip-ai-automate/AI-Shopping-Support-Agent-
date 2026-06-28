@@ -1,0 +1,272 @@
+{% extends "estate/base.html" %}
+{% block title %}Check Your Email — PhiXtra Real Estate{% endblock %}
+{% block auth_topbar %}{% endblock %}
+{% block wrap_class %}auth-fullpage{% endblock %}
+{% block footer %}{% endblock %}
+
+{% block head %}
+<style>
+.auth-fullpage{padding:0;max-width:none}
+.auth-split{display:flex;min-height:100vh}
+
+/* ── Left hero panel (same as login/register) ── */
+.auth-hero{
+  flex:0 0 45%;background:linear-gradient(150deg,#030C18 0%,#071830 55%,#0c2545 100%);
+  display:flex;flex-direction:column;padding:48px 52px;position:relative;overflow:hidden
+}
+.auth-hero::before{
+  content:'';position:absolute;inset:0;
+  background-image:radial-gradient(rgba(255,255,255,0.035) 1px,transparent 1px);
+  background-size:30px 30px;pointer-events:none
+}
+.auth-hero::after{
+  content:'';position:absolute;bottom:-140px;right:-140px;
+  width:480px;height:480px;border-radius:50%;
+  background:radial-gradient(circle,rgba(26,86,219,0.22) 0%,transparent 68%);
+  pointer-events:none
+}
+.ah-logo{display:flex;align-items:center;gap:12px;text-decoration:none;z-index:1}
+.ah-logo img{height:36px;width:auto;filter:brightness(0) invert(1)}
+.ah-logo-sub{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+             color:rgba(255,255,255,0.38);line-height:1.3}
+.ah-body{flex:1;display:flex;flex-direction:column;justify-content:center;padding:48px 0;z-index:1}
+.ah-tag{
+  display:inline-flex;align-items:center;gap:8px;
+  background:rgba(26,86,219,0.22);border:1px solid rgba(26,86,219,0.45);
+  border-radius:999px;padding:5px 14px;font-size:11.5px;font-weight:700;
+  color:#93c5fd;letter-spacing:.05em;margin-bottom:24px;width:fit-content
+}
+.ah-tag::before{content:'';width:6px;height:6px;border-radius:50%;background:#60a5fa;flex-shrink:0}
+.ah-body h2{
+  font-size:36px;font-weight:800;color:#fff;letter-spacing:-.8px;
+  line-height:1.18;margin-bottom:14px
+}
+.ah-sub{font-size:15px;color:rgba(255,255,255,0.48);line-height:1.65;margin-bottom:38px}
+.ah-steps{display:flex;flex-direction:column;gap:20px}
+.ah-step{display:flex;align-items:flex-start;gap:14px}
+.ah-step-num{
+  width:26px;height:26px;border-radius:50%;flex-shrink:0;
+  background:rgba(26,86,219,0.28);border:1px solid rgba(26,86,219,0.5);
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:800;color:#93c5fd;margin-top:1px
+}
+.ah-step-text{font-size:13.5px;color:rgba(255,255,255,0.68);line-height:1.5}
+.ah-step-text strong{color:rgba(255,255,255,0.9)}
+.ah-footer{
+  margin-top:auto;padding-top:32px;border-top:1px solid rgba(255,255,255,0.07);z-index:1
+}
+.ah-footer p{font-size:12.5px;color:rgba(255,255,255,0.32)}
+
+/* ── Right confirmation panel ── */
+.auth-form-panel{
+  flex:1;display:flex;flex-direction:column;justify-content:center;
+  align-items:center;padding:60px 48px;background:#fff;overflow-y:auto
+}
+.afp-inner{width:100%;max-width:400px}
+
+/* Envelope icon */
+.ce-icon-wrap{
+  width:80px;height:80px;border-radius:50%;
+  background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);
+  border:2px solid #bfdbfe;
+  display:flex;align-items:center;justify-content:center;
+  margin:0 auto 28px
+}
+.ce-icon-wrap svg{width:38px;height:38px;stroke:#1a56db;fill:none;
+                  stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+
+/* Heading */
+.ce-head{text-align:center;margin-bottom:28px}
+.ce-head h1{font-size:26px;font-weight:800;letter-spacing:-.5px;color:#030C18;margin-bottom:8px}
+.ce-head p{font-size:14.5px;color:rgba(3,12,24,0.50);line-height:1.6}
+
+/* Email badge */
+.ce-email-badge{
+  display:inline-flex;align-items:center;gap:6px;
+  background:#eff6ff;border:1px solid #bfdbfe;border-radius:999px;
+  padding:5px 14px;font-size:13px;font-weight:650;color:#1a56db;
+  margin:0 auto 28px;
+}
+.ce-email-badge svg{width:13px;height:13px;stroke:#1a56db;fill:none;
+                    stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ce-email-center{text-align:center}
+
+/* Steps checklist */
+.ce-steps{
+  background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;
+  padding:18px 20px;margin-bottom:28px;display:flex;flex-direction:column;gap:12px
+}
+.ce-step{display:flex;align-items:flex-start;gap:10px}
+.ce-step-check{
+  width:20px;height:20px;border-radius:50%;flex-shrink:0;margin-top:1px;
+  background:#dcfce7;border:1px solid #86efac;
+  display:flex;align-items:center;justify-content:center
+}
+.ce-step-check svg{width:10px;height:10px;stroke:#16a34a;fill:none;
+                   stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.ce-step-text{font-size:13.5px;color:rgba(3,12,24,0.65);line-height:1.45}
+
+/* Resent banner */
+.ce-resent{
+  display:flex;align-items:center;gap:8px;
+  background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;
+  padding:11px 16px;margin-bottom:20px;font-size:13.5px;color:#15803d;font-weight:600
+}
+.ce-resent svg{width:16px;height:16px;stroke:#15803d;fill:none;
+               stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+
+/* Resend form */
+.ce-resend-form{margin-bottom:20px}
+.ef-btn-outline{
+  display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+  padding:12px 20px;background:#fff;color:#030C18;
+  border:1.5px solid #cbd5e1;border-radius:8px;
+  font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;
+  transition:border-color .15s,background .15s,box-shadow .15s
+}
+.ef-btn-outline:hover{border-color:#1a56db;color:#1a56db;background:#eff6ff;
+                      box-shadow:0 0 0 3px rgba(26,86,219,0.08)}
+.ef-btn-outline svg{width:15px;height:15px;stroke:currentColor;fill:none;
+                    stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+.ce-signin{text-align:center;font-size:13.5px;color:rgba(3,12,24,0.42);margin-top:4px}
+.ce-signin a{color:#1a56db;font-weight:650;text-decoration:none}
+.ce-signin a:hover{text-decoration:underline}
+
+.ce-spam-note{
+  text-align:center;font-size:12px;color:rgba(3,12,24,0.32);
+  margin-top:28px;line-height:1.5
+}
+
+@media(max-width:860px){
+  .auth-split{flex-direction:column}
+  .auth-hero{flex:none;padding:32px 24px}
+  .ah-body{padding:24px 0}
+  .ah-body h2{font-size:26px}
+  .ah-steps{display:none}
+  .auth-form-panel{padding:36px 24px}
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="auth-split">
+
+  <!-- Left hero -->
+  <div class="auth-hero">
+    <a class="ah-logo" href="{{ url_for('estate.login') }}">
+      <img src="{{ url_for('static', filename='portal/phixtra-logo.png') }}" alt="PhiXtra"/>
+      <div class="ah-logo-sub">Real Estate<br>Portal</div>
+    </a>
+
+    <div class="ah-body">
+      <div class="ah-tag">One step away</div>
+      <h2>Just verify<br>your email.</h2>
+      <p class="ah-sub">
+        Your PhiXtra account is ready — verify your email and your AI property assistant goes live instantly.
+      </p>
+      <div class="ah-steps">
+        <div class="ah-step">
+          <div class="ah-step-num">1</div>
+          <div class="ah-step-text">Open the email we sent you</div>
+        </div>
+        <div class="ah-step">
+          <div class="ah-step-num">2</div>
+          <div class="ah-step-text">Click <strong>Verify Email Address</strong></div>
+        </div>
+        <div class="ah-step">
+          <div class="ah-step-num">3</div>
+          <div class="ah-step-text">Sign in and launch your property AI</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ah-footer">
+      <p>Need help? Email <strong>support@phixtra.com</strong></p>
+    </div>
+  </div>
+
+  <!-- Right confirmation panel -->
+  <div class="auth-form-panel">
+    <div class="afp-inner">
+
+      <!-- Envelope icon -->
+      <div class="ce-icon-wrap">
+        <svg viewBox="0 0 24 24">
+          <rect x="2" y="4" width="20" height="16" rx="2"/>
+          <polyline points="2,4 12,13 22,4"/>
+        </svg>
+      </div>
+
+      <!-- Heading -->
+      <div class="ce-head">
+        <h1>Check your inbox{% if name %}, {{ name.split()[0] }}{% endif %}</h1>
+        <p>We've sent a verification link to</p>
+      </div>
+
+      <!-- Email badge -->
+      {% if email %}
+      <div class="ce-email-center">
+        <span class="ce-email-badge">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12,8 12,12 14,14"/></svg>
+          {{ email }}
+        </span>
+      </div>
+      {% endif %}
+
+      <!-- Resent confirmation banner -->
+      {% if request.args.get('resent') %}
+      <div class="ce-resent">
+        <svg viewBox="0 0 24 24"><polyline points="20,6 9,17 4,12"/></svg>
+        New verification email sent — check your inbox.
+      </div>
+      {% endif %}
+
+      <!-- Checklist -->
+      <div class="ce-steps">
+        <div class="ce-step">
+          <div class="ce-step-check">
+            <svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg>
+          </div>
+          <div class="ce-step-text">Click the <strong>Verify Email Address</strong> button in the email</div>
+        </div>
+        <div class="ce-step">
+          <div class="ce-step-check">
+            <svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg>
+          </div>
+          <div class="ce-step-text">The link expires in <strong>48 hours</strong></div>
+        </div>
+        <div class="ce-step">
+          <div class="ce-step-check">
+            <svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg>
+          </div>
+          <div class="ce-step-text">Check your <strong>spam or junk folder</strong> if you don't see it</div>
+        </div>
+      </div>
+
+      <!-- Resend button -->
+      <form class="ce-resend-form" method="POST" action="{{ url_for('estate.resend_verify') }}">
+        <input type="hidden" name="email" value="{{ email }}"/>
+        <input type="hidden" name="name" value="{{ name }}"/>
+        <button type="submit" class="ef-btn-outline">
+          <svg viewBox="0 0 24 24"><polyline points="1,4 1,10 7,10"/><path d="M3.51,15a9,9,0,1,0,.49-3.5"/></svg>
+          Resend verification email
+        </button>
+      </form>
+
+      <!-- Sign in link -->
+      <div class="ce-signin">
+        Already verified? <a href="{{ url_for('estate.login') }}">Sign in →</a>
+      </div>
+
+      <!-- Spam note -->
+      <p class="ce-spam-note">
+        Emails are sent from <strong>no-reply@phixtra.com</strong><br>
+        Add it to your contacts to ensure delivery.
+      </p>
+
+    </div>
+  </div>
+
+</div>
+{% endblock %}

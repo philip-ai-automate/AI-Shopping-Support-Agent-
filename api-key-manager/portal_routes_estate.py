@@ -20,7 +20,8 @@ from portal_utils import hash_password, verify_password, make_token, send_email
 
 estate_bp = Blueprint("estate", __name__, template_folder="templates")
 
-_ESTATE_BASE_URL = os.getenv("ESTATE_BASE_URL", "https://home.phixtra.com").rstrip("/")
+_ESTATE_BASE_URL   = os.getenv("ESTATE_BASE_URL",  "https://home.phixtra.com").rstrip("/")
+_AI_BACKEND_URL    = os.getenv("AI_BACKEND_URL",   "http://127.0.0.1:8000").rstrip("/")
 
 DEFAULT_RE_SYSTEM_PROMPT = (
     "You are a property assistant for {{business_name}}.\n\n"
@@ -323,8 +324,8 @@ def register():
                     verify_url = f"{_ESTATE_BASE_URL}/estate/verify/{verify_token}"
                     _send_verify_email(email, first_name, business_name, verify_url)
 
-                    flash("Account created! Check your email to verify your address.", "success")
-                    return redirect(url_for("estate.login"))
+                    return redirect(url_for("estate.check_email",
+                                              email=email, name=first_name))
 
                 except psycopg2.errors.UniqueViolation:
                     conn.rollback()
@@ -383,6 +384,50 @@ def verify_email(token):
     cur.close(); cur2.close(); conn.close()
     flash("Email verified! You can now log in.", "success")
     return redirect(url_for("estate.login"))
+
+
+@estate_bp.route("/estate/check-email")
+def check_email():
+    email = request.args.get("email", "").strip().lower()
+    name  = request.args.get("name", "").strip()
+    return render_template("estate/check_email.html", email=email, name=name)
+
+
+@estate_bp.route("/estate/resend-verify", methods=["POST"])
+def resend_verify():
+    email = request.form.get("email", "").strip().lower()
+    name  = request.form.get("name", "").strip()
+    if email:
+        conn = get_db_connection()
+        if conn:
+            try:
+                cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cur.execute(
+                    "SELECT id, first_name, business_name, email_verified FROM re_tenants "
+                    "WHERE email=%s LIMIT 1", (email,)
+                )
+                tenant = cur.fetchone()
+                if tenant and not tenant["email_verified"]:
+                    new_token = make_token(32)
+                    cur2 = conn.cursor()
+                    cur2.execute(
+                        "UPDATE re_tenants SET verify_token=%s WHERE id=%s",
+                        (new_token, tenant["id"])
+                    )
+                    conn.commit()
+                    cur2.close()
+                    verify_url = f"{_ESTATE_BASE_URL}/estate/verify/{new_token}"
+                    _send_verify_email(
+                        email,
+                        tenant["first_name"] or name or "there",
+                        tenant["business_name"] or "",
+                        verify_url
+                    )
+                cur.close(); conn.close()
+            except Exception:
+                try: conn.rollback(); conn.close()
+                except Exception: pass
+    return redirect(url_for("estate.check_email", email=email, name=name, resent="1"))
 
 
 @estate_bp.route("/estate/forgot", methods=["GET", "POST"])
@@ -1395,9 +1440,11 @@ def handoff_rules():
                 if rule_name and trigger_keyword:
                     cur.execute("""
                         INSERT INTO re_handoff_rules
-                            (tenant_id, rule_name, trigger_keyword, notify_channel, notify_target)
-                        VALUES (%s,%s,%s,%s,%s)
-                    """, (tenant_id, rule_name, trigger_keyword, notify_channel, notify_target))
+                            (tenant_id, rule_name, trigger_text, trigger_keyword,
+                             trigger_type, notify_channel, notify_target)
+                        VALUES (%s,%s,%s,%s,'visitor_initiated',%s,%s)
+                    """, (tenant_id, rule_name, trigger_keyword, trigger_keyword,
+                          notify_channel, notify_target))
                     flash("Rule added.", "success")
             elif action == "delete":
                 rule_id = request.form.get("rule_id")
@@ -1513,22 +1560,39 @@ def reports():
         """, (tenant_id,))
         data["by_status"] = {r["status"]: r["n"] for r in cur.fetchall()}
 
-        # Leads this month
+        # Daily leads – last 30 days (for trend chart)
         cur.execute("""
-            SELECT DATE(created_at) AS day, COUNT(*) AS n
+            SELECT TO_CHAR(DATE(created_at), 'Mon DD') AS day, COUNT(*) AS n
             FROM re_customers
             WHERE tenant_id=%s AND created_at >= NOW() - INTERVAL '30 days'
-            GROUP BY day ORDER BY day
+            GROUP BY DATE(created_at), day ORDER BY DATE(created_at)
         """, (tenant_id,))
-        data["daily_leads"] = cur.fetchall()
+        daily_rows = cur.fetchall()
+        data["daily_leads_labels"] = [r["day"] for r in daily_rows]
+        data["daily_leads_values"] = [int(r["n"]) for r in daily_rows]
 
-        # Lead status breakdown
+        # Lead status breakdown (pipeline)
         cur.execute("""
             SELECT lead_status, COUNT(*) AS n
             FROM re_customers WHERE tenant_id=%s
             GROUP BY lead_status
         """, (tenant_id,))
         data["lead_status"] = {r["lead_status"]: r["n"] for r in cur.fetchall()}
+
+        # Full conversion counts
+        cur.execute("""
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN lead_status IN ('inspection_booked','negotiating','closed') THEN 1 ELSE 0 END) AS progressed,
+                SUM(CASE WHEN lead_status = 'closed' THEN 1 ELSE 0 END) AS closed_count
+            FROM re_customers WHERE tenant_id=%s
+        """, (tenant_id,))
+        conv = cur.fetchone() or {}
+        data["conversion"] = {
+            "total":     int(conv.get("total") or 0),
+            "progressed":int(conv.get("progressed") or 0),
+            "closed":    int(conv.get("closed_count") or 0),
+        }
 
         # Top enquired listings (by view_count)
         cur.execute("""
@@ -1552,7 +1616,7 @@ def reports():
             SELECT COUNT(*) AS n FROM re_inspection_bookings
             WHERE tenant_id=%s AND created_at >= NOW() - INTERVAL '30 days'
         """, (tenant_id,))
-        data["inspections_30d"] = (cur.fetchone() or {}).get("n", 0)
+        data["inspections_30d"] = int((cur.fetchone() or {}).get("n", 0) or 0)
 
         # Confirmed inspections
         cur.execute("""
@@ -1560,64 +1624,124 @@ def reports():
             WHERE tenant_id=%s AND status='confirmed'
               AND created_at >= NOW() - INTERVAL '30 days'
         """, (tenant_id,))
-        data["inspections_confirmed"] = (cur.fetchone() or {}).get("n", 0)
+        data["inspections_confirmed"] = int((cur.fetchone() or {}).get("n", 0) or 0)
 
         # Handoff requests this month
         cur.execute("""
             SELECT COUNT(*) AS n FROM re_handoff_requests
             WHERE tenant_id=%s AND created_at >= NOW() - INTERVAL '30 days'
         """, (tenant_id,))
-        data["handoffs_30d"] = (cur.fetchone() or {}).get("n", 0)
+        data["handoffs_30d"] = int((cur.fetchone() or {}).get("n", 0) or 0)
 
-        # Follow-ups sent this month (Boom 1)
+        # Follow-ups sent this month
         cur.execute("""
             SELECT COUNT(*) AS n FROM re_follow_up_queue
             WHERE tenant_id=%s AND status='sent'
               AND send_at >= NOW() - INTERVAL '30 days'
         """, (tenant_id,))
-        data["followups_sent"] = (cur.fetchone() or {}).get("n", 0)
+        data["followups_sent"] = int((cur.fetchone() or {}).get("n", 0) or 0)
 
-        # Broadcasts sent this month (Boom 3)
+        # Broadcasts sent this month
         cur.execute("""
             SELECT COUNT(*) AS n FROM re_listing_broadcasts
             WHERE tenant_id=%s AND created_at >= NOW() - INTERVAL '30 days'
         """, (tenant_id,))
-        data["broadcasts_sent"] = (cur.fetchone() or {}).get("n", 0)
+        data["broadcasts_sent"] = int((cur.fetchone() or {}).get("n", 0) or 0)
 
-        # Conversion: new → inspection_booked
+        # Month-over-month: leads
         cur.execute("""
             SELECT
-                SUM(CASE WHEN lead_status='new' THEN 1 ELSE 0 END) AS new_leads,
-                SUM(CASE WHEN lead_status IN ('inspection_booked','negotiating','closed') THEN 1 ELSE 0 END) AS converted
+                COUNT(CASE WHEN created_at >= date_trunc('month', NOW()) THEN 1 END) AS this_month,
+                COUNT(CASE WHEN created_at >= date_trunc('month', NOW() - INTERVAL '1 month')
+                            AND created_at < date_trunc('month', NOW()) THEN 1 END) AS last_month
             FROM re_customers WHERE tenant_id=%s
         """, (tenant_id,))
-        row = cur.fetchone()
-        data["conversion"] = row if row else {"new_leads": 0, "converted": 0}
+        mom = cur.fetchone() or {}
+        data["mom_leads"] = {"this": int(mom.get("this_month") or 0), "last": int(mom.get("last_month") or 0)}
+
+        # Month-over-month: inspections
+        cur.execute("""
+            SELECT
+                COUNT(CASE WHEN created_at >= date_trunc('month', NOW()) THEN 1 END) AS this_month,
+                COUNT(CASE WHEN created_at >= date_trunc('month', NOW() - INTERVAL '1 month')
+                            AND created_at < date_trunc('month', NOW()) THEN 1 END) AS last_month
+            FROM re_inspection_bookings WHERE tenant_id=%s
+        """, (tenant_id,))
+        mom_insp = cur.fetchone() or {}
+        data["mom_inspections"] = {"this": int(mom_insp.get("this_month") or 0), "last": int(mom_insp.get("last_month") or 0)}
+
+        # Portfolio value by status (for value breakdown)
+        cur.execute("""
+            SELECT status, COUNT(*) AS cnt, COALESCE(SUM(price), 0) AS total_value
+            FROM re_property_listings WHERE tenant_id=%s
+            GROUP BY status ORDER BY total_value DESC
+        """, (tenant_id,))
+        port_rows = cur.fetchall()
+        data["portfolio"] = port_rows
+        data["portfolio_available_value"] = int(sum(
+            r["total_value"] for r in port_rows if r["status"] == "available"
+        ))
+        data["portfolio_total_value"] = int(sum(r["total_value"] for r in port_rows))
+
+        # New listings added this month
+        cur.execute("""
+            SELECT COUNT(*) AS n FROM re_property_listings
+            WHERE tenant_id=%s AND created_at >= date_trunc('month', NOW())
+        """, (tenant_id,))
+        data["new_listings_month"] = int((cur.fetchone() or {}).get("n", 0) or 0)
+
+        # Staff performance leaderboard
+        cur.execute("""
+            SELECT s.first_name || ' ' || s.last_name AS name, s.role,
+                   COUNT(c.id) AS total_leads,
+                   SUM(CASE WHEN c.lead_status IN ('inspection_booked','negotiating','closed') THEN 1 ELSE 0 END) AS progressed,
+                   SUM(CASE WHEN c.lead_status = 'closed' THEN 1 ELSE 0 END) AS closed
+            FROM re_staff s
+            LEFT JOIN re_customers c ON c.assigned_to = s.id AND c.tenant_id = s.tenant_id
+            WHERE s.tenant_id=%s AND s.is_active=TRUE
+            GROUP BY s.id, s.first_name, s.last_name, s.role
+            ORDER BY closed DESC NULLS LAST, progressed DESC NULLS LAST, total_leads DESC NULLS LAST
+        """, (tenant_id,))
+        data["staff_perf"] = cur.fetchall()
 
         cur.close(); conn.close()
+
+    total_leads = data.get("conversion", {}).get("total", 0)
+    progressed  = data.get("conversion", {}).get("progressed", 0)
+    conv_rate   = round((progressed / total_leads) * 100) if total_leads > 0 else 0
 
     stats = {
         "total_conversations":   sum(data.get("lead_status", {}).values()),
         "qualified_buyers":      data.get("lead_status", {}).get("qualified", 0),
         "inspections":           data.get("inspections_30d", 0),
+        "inspections_confirmed": data.get("inspections_confirmed", 0),
         "handoffs":              data.get("handoffs_30d", 0),
         "followups_sent":        data.get("followups_sent", 0),
         "broadcasts_sent":       data.get("broadcasts_sent", 0),
-        "inspections_confirmed": data.get("inspections_confirmed", 0),
+        "conv_rate":             conv_rate,
+        "total_leads":           total_leads,
+        "closed_deals":          data.get("conversion", {}).get("closed", 0),
+        "portfolio_value":       data.get("portfolio_available_value", 0),
+        "new_listings_month":    data.get("new_listings_month", 0),
+        "mom_leads":             data.get("mom_leads", {"this": 0, "last": 0}),
+        "mom_inspections":       data.get("mom_inspections", {"this": 0, "last": 0}),
     }
-    # Enrich top_listings with placeholder counts
+
     top_listings = []
     for lst in data.get("top_listings", []):
         row = dict(lst)
         row.setdefault("enquiry_count", row.get("view_count", 0))
-        row.setdefault("inspection_count", 0)
         top_listings.append(row)
 
     return render_template("estate/reports.html",
                            tenant=tenant, stats=stats,
                            pipeline=data.get("lead_status", {}),
                            top_listings=top_listings,
-                           popular_areas=data.get("popular_areas", []))
+                           popular_areas=data.get("popular_areas", []),
+                           staff_perf=data.get("staff_perf", []),
+                           portfolio=data.get("portfolio", []),
+                           daily_labels=_json.dumps(data.get("daily_leads_labels", [])),
+                           daily_values=_json.dumps(data.get("daily_leads_values", [])))
 
 
 # ── Settings ───────────────────────────────────────────────────────────────────
@@ -3126,6 +3250,414 @@ def broadcast_recipients(campaign_id):
         result = [dict(r) for r in cur.fetchall()]
     cur.close(); conn.close()
     return jsonify(result)
+
+
+# ── Inspections ──────────────────────────────────────────────────────────────────
+
+@estate_bp.route("/estate/inspections", methods=["GET", "POST"])
+def inspections():
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+
+    conn = get_db_connection()
+    if not conn:
+        flash("Database error.", "danger")
+        return redirect(url_for("estate.dashboard"))
+
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    if request.method == "POST":
+        action = request.form.get("action", "")
+
+        # ── Add slot ──────────────────────────────────────────────────────────
+        if action == "add_slot":
+            slot_dt    = request.form.get("slot_datetime", "").strip()
+            listing_id = request.form.get("listing_id", "").strip() or None
+            duration   = request.form.get("duration_mins", "60").strip() or "60"
+            if not slot_dt:
+                flash("Please select a date and time for the slot.", "danger")
+            else:
+                try:
+                    cur.execute("""
+                        INSERT INTO re_inspection_slots
+                          (tenant_id, listing_id, slot_datetime, duration_mins)
+                        VALUES (%s, %s, %s::timestamptz, %s)
+                    """, (tenant_id, int(listing_id) if listing_id else None,
+                          slot_dt, int(duration)))
+                    conn.commit()
+                    flash("Viewing slot added.", "success")
+                except Exception as e:
+                    conn.rollback()
+                    flash(f"Could not add slot: {e}", "danger")
+
+        # ── Delete slot ───────────────────────────────────────────────────────
+        elif action == "delete_slot":
+            slot_id = request.form.get("slot_id", "").strip()
+            if slot_id:
+                cur.execute("""
+                    DELETE FROM re_inspection_slots
+                    WHERE id=%s AND tenant_id=%s AND is_available=TRUE
+                """, (int(slot_id), tenant_id))
+                conn.commit()
+                flash("Slot removed.", "success")
+
+        # ── Update booking status ─────────────────────────────────────────────
+        elif action == "update_booking":
+            booking_id = request.form.get("booking_id", "").strip()
+            new_status = request.form.get("status", "").strip()
+            allowed = {"confirmed", "cancelled", "completed", "no_show"}
+            if booking_id and new_status in allowed:
+                cur.execute("""
+                    UPDATE re_inspection_bookings
+                    SET status=%s, updated_at=NOW()
+                    WHERE id=%s AND tenant_id=%s
+                """, (new_status, int(booking_id), tenant_id))
+                conn.commit()
+                flash("Booking updated.", "success")
+
+        cur.close(); conn.close()
+        return redirect(url_for("estate.inspections"))
+
+    # ── GET: load data ─────────────────────────────────────────────────────────
+    # Available slots
+    cur.execute("""
+        SELECT s.id, s.slot_datetime, s.duration_mins, s.listing_id, s.is_available,
+               l.title AS listing_title
+        FROM re_inspection_slots s
+        LEFT JOIN re_property_listings l ON l.id = s.listing_id
+        WHERE s.tenant_id = %s AND s.slot_datetime >= NOW()
+        ORDER BY s.slot_datetime
+        LIMIT 60
+    """, (tenant_id,))
+    slots = [dict(r) for r in (cur.fetchall() or [])]
+
+    # Bookings
+    cur.execute("""
+        SELECT b.id, b.status, b.created_at, b.notes,
+               s.slot_datetime, s.duration_mins,
+               l.title AS listing_title, l.location AS listing_location,
+               c.name AS customer_name, c.phone_number AS customer_phone
+        FROM re_inspection_bookings b
+        JOIN re_inspection_slots s ON s.id = b.slot_id
+        LEFT JOIN re_property_listings l ON l.id = b.listing_id
+        JOIN re_customers c ON c.id = b.customer_id
+        WHERE b.tenant_id = %s
+        ORDER BY s.slot_datetime DESC
+        LIMIT 100
+    """, (tenant_id,))
+    bookings = [dict(r) for r in (cur.fetchall() or [])]
+
+    # Listings for the slot form dropdown
+    cur.execute("""
+        SELECT id, title FROM re_property_listings
+        WHERE tenant_id=%s AND status='available'
+        ORDER BY title
+    """, (tenant_id,))
+    listings = [dict(r) for r in (cur.fetchall() or [])]
+
+    cur.close(); conn.close()
+
+    return render_template(
+        "estate/inspections.html",
+        slots=slots,
+        bookings=bookings,
+        listings=listings,
+        now=datetime.now(),
+    )
+
+
+# ── AI Playground (Sandbox) ───────────────────────────────────────────────────
+
+@estate_bp.route("/estate/sandbox")
+def sandbox():
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    tenant = _get_tenant(tenant_id)
+
+    conn = get_db_connection()
+    api_key    = None
+    agent_name = "Property Assistant"
+    if conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT api_key_plain FROM re_api_keys WHERE tenant_id=%s AND is_active=TRUE LIMIT 1",
+            (tenant_id,)
+        )
+        row = cur.fetchone()
+        if row: api_key = row["api_key_plain"]
+        cur.execute(
+            "SELECT name FROM re_tenant_agents WHERE tenant_id=%s AND is_active=TRUE LIMIT 1",
+            (tenant_id,)
+        )
+        arow = cur.fetchone()
+        if arow: agent_name = arow["name"]
+        cur.close(); conn.close()
+
+    resp = render_template("estate/sandbox.html",
+                           tenant=tenant,
+                           tenant_id=tenant_id,
+                           api_key=api_key,
+                           agent_name=agent_name,
+                           now=datetime.now())
+    from flask import make_response
+    r = make_response(resp)
+    r.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    r.headers["Pragma"] = "no-cache"
+    return r
+
+
+import re as _re
+_BOOK_KW = _re.compile(
+    r'\b(book|booking|inspect|inspection|view|viewing|visit|appointment|arrange)\b',
+    _re.IGNORECASE,
+)
+
+
+def _sandbox_get_slots(tenant_id: int, listing_id) -> list:
+    """Fetch upcoming available inspection slots for sandbox BOOK flow."""
+    from datetime import datetime, timezone, timedelta
+    conn = get_db_connection()
+    if not conn:
+        return []
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        now    = datetime.now(timezone.utc)
+        cutoff = now + timedelta(days=21)
+        if listing_id:
+            cur.execute("""
+                SELECT s.id, s.slot_datetime, s.duration_mins, s.listing_id,
+                       l.title AS listing_title
+                FROM re_inspection_slots s
+                LEFT JOIN re_property_listings l ON l.id = s.listing_id
+                WHERE s.tenant_id = %s AND s.is_available = TRUE
+                  AND s.slot_datetime BETWEEN %s AND %s
+                  AND (s.listing_id = %s OR s.listing_id IS NULL)
+                ORDER BY s.slot_datetime LIMIT 10
+            """, (tenant_id, now, cutoff, listing_id))
+        else:
+            cur.execute("""
+                SELECT s.id, s.slot_datetime, s.duration_mins, s.listing_id,
+                       l.title AS listing_title
+                FROM re_inspection_slots s
+                LEFT JOIN re_property_listings l ON l.id = s.listing_id
+                WHERE s.tenant_id = %s AND s.is_available = TRUE
+                  AND s.slot_datetime BETWEEN %s AND %s
+                ORDER BY s.slot_datetime LIMIT 10
+            """, (tenant_id, now, cutoff))
+        rows = cur.fetchall() or []
+        result = []
+        for r in rows:
+            d = dict(r)
+            if d.get("slot_datetime"):
+                from datetime import timezone as _tz
+                dt = d["slot_datetime"]
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=_tz.utc)
+                d["slot_label"] = dt.strftime("%a %d %b · %I:%M %p").lstrip("0").replace("·  ", "· ")
+                d["slot_datetime"] = dt.isoformat()
+            result.append(d)
+        return result
+    except Exception as e:
+        print(f"⚠️ [SANDBOX] _sandbox_get_slots error: {e}")
+        return []
+    finally:
+        cur.close(); conn.close()
+
+
+@estate_bp.route("/estate/sandbox/chat", methods=["POST"])
+def sandbox_chat():
+    redir = _require_re_login()
+    if redir: return jsonify({"error": "Not logged in"}), 401
+
+    tenant_id = _re_tenant_id()
+    data       = request.get_json(silent=True) or {}
+    message    = (data.get("message") or "").strip()
+    listing_id = data.get("listing_id")  # sent by frontend JS tracking lastListingId
+    if listing_id:
+        try: listing_id = int(listing_id)
+        except: listing_id = None
+
+    if not message:
+        return jsonify({"error": "Empty message"}), 400
+
+    conn = get_db_connection()
+    api_key = None
+    if conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT api_key_plain FROM re_api_keys WHERE tenant_id=%s AND is_active=TRUE LIMIT 1",
+            (tenant_id,)
+        )
+        row = cur.fetchone()
+        if row: api_key = row["api_key_plain"]
+        cur.close(); conn.close()
+
+    if not api_key:
+        return jsonify({"error": "No API key found — please contact support"}), 500
+
+    sandbox_phone = f"sandbox_{tenant_id}"
+
+    # ── BOOK keyword interceptor ──────────────────────────────────────────────
+    if _BOOK_KW.search(message):
+        slots = _sandbox_get_slots(tenant_id, listing_id)
+        if slots:
+            listing_title = slots[0].get("listing_title") or ""
+            prop_ref = f" for *{listing_title}*" if listing_title else ""
+            reply_text = (
+                f"Sure! Here are the available viewing slots{prop_ref}. "
+                f"Tap a time to confirm your booking:"
+            )
+            return jsonify({
+                "sandbox_action": "slot_list",
+                "reply":          reply_text,
+                "slots":          slots,
+                "listing_id":     listing_id,
+                "listing_title":  listing_title,
+            })
+        # No slots available — fall through to AI which will explain
+    # ─────────────────────────────────────────────────────────────────────────
+
+    try:
+        import requests as _req
+        resp = _req.post(
+            f"{_AI_BACKEND_URL}/estate-chat",
+            json={"api_key": api_key, "phone_number": sandbox_phone, "message": message},
+            timeout=30
+        )
+        result = resp.json()
+    except Exception as e:
+        return jsonify({"error": f"AI backend unavailable: {e}"}), 500
+
+    # Attach updated buyer qualification profile from DB
+    try:
+        conn2 = get_db_connection()
+        if conn2:
+            cur2 = conn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur2.execute("""
+                SELECT name, budget_min, budget_max, preferred_area, property_type_pref,
+                       transaction_pref, bedrooms_pref, urgency, payment_method
+                FROM re_customers WHERE tenant_id=%s AND phone_number=%s LIMIT 1
+            """, (tenant_id, sandbox_phone))
+            cust = cur2.fetchone()
+            result["buyer_profile"] = {k: v for k, v in (dict(cust) if cust else {}).items()
+                                        if v is not None}
+            cur2.close(); conn2.close()
+    except Exception:
+        result["buyer_profile"] = {}
+
+    return jsonify(result)
+
+
+@estate_bp.route("/estate/sandbox/reset", methods=["POST"])
+def sandbox_reset():
+    redir = _require_re_login()
+    if redir: return jsonify({"error": "Not logged in"}), 401
+
+    tenant_id     = _re_tenant_id()
+    sandbox_phone = f"sandbox_{tenant_id}"
+
+    conn = get_db_connection()
+    if conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id FROM re_customers WHERE tenant_id=%s AND phone_number=%s LIMIT 1",
+            (tenant_id, sandbox_phone)
+        )
+        cust_row = cur.fetchone()
+        if cust_row:
+            cid = cust_row[0]
+            cur.execute("DELETE FROM re_chat_messages WHERE tenant_id=%s AND customer_id=%s",
+                        (tenant_id, cid))
+            cur.execute("DELETE FROM re_chat_summaries WHERE tenant_id=%s AND customer_id=%s",
+                        (tenant_id, cid))
+            cur.execute("""
+                UPDATE re_customers
+                SET budget_min=NULL, budget_max=NULL, preferred_area=NULL,
+                    property_type_pref=NULL, transaction_pref=NULL, bedrooms_pref=NULL,
+                    urgency=NULL, payment_method=NULL, name=NULL
+                WHERE id=%s
+            """, (cid,))
+        conn.commit()
+        cur.close(); conn.close()
+
+    return jsonify({"ok": True})
+
+
+@estate_bp.route("/estate/sandbox/book-slot", methods=["POST"])
+def sandbox_book_slot():
+    redir = _require_re_login()
+    if redir: return jsonify({"error": "Not logged in"}), 401
+
+    tenant_id = _re_tenant_id()
+    data      = request.get_json(silent=True) or {}
+    slot_id   = data.get("slot_id")
+    listing_id = data.get("listing_id")
+
+    if not slot_id:
+        return jsonify({"error": "Missing slot_id"}), 400
+
+    sandbox_phone = f"sandbox_{tenant_id}"
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "DB unavailable"}), 500
+
+    try:
+        from datetime import timezone as _tz
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        cur.execute(
+            "SELECT id FROM re_customers WHERE tenant_id=%s AND phone_number=%s LIMIT 1",
+            (tenant_id, sandbox_phone),
+        )
+        cust = cur.fetchone()
+        if not cust:
+            return jsonify({"error": "Chat first to create a buyer profile, then book."}), 400
+        customer_id = cust["id"]
+
+        cur.execute(
+            """SELECT id, slot_datetime, duration_mins
+               FROM re_inspection_slots
+               WHERE id=%s AND tenant_id=%s AND is_available=TRUE LIMIT 1""",
+            (slot_id, tenant_id),
+        )
+        slot = cur.fetchone()
+        if not slot:
+            return jsonify({"error": "This slot is no longer available — please choose another."}), 409
+
+        cur.execute("""
+            INSERT INTO re_inspection_bookings (tenant_id, slot_id, listing_id, customer_id, status)
+            VALUES (%s, %s, %s, %s, 'confirmed')
+            RETURNING id
+        """, (tenant_id, slot_id, listing_id or None, customer_id))
+        booking = cur.fetchone()
+        conn.commit()
+
+        dt = slot["slot_datetime"]
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=_tz.utc)
+        day_str  = dt.strftime("%A, %d %B %Y")
+        time_str = dt.strftime("%I:%M %p").lstrip("0")
+        dur      = slot["duration_mins"] or 60
+
+        return jsonify({
+            "ok":           True,
+            "booking_id":   booking["id"],
+            "confirmation": (
+                f"✅ *Viewing booked!*\n"
+                f"📅 {day_str} at {time_str} ({dur} min)\n"
+                f"An agent will contact you before the appointment."
+            ),
+        })
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": f"Booking failed: {e}"}), 500
+    finally:
+        try: cur.close()
+        except: pass
+        conn.close()
 
 
 # ── Email helpers ──────────────────────────────────────────────────────────────
