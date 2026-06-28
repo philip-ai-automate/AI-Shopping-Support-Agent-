@@ -669,6 +669,61 @@ def listings():
                            status_filter=status_filter, type_filter=type_filter)
 
 
+@estate_bp.route("/estate/listings/<int:listing_id>")
+def listing_view(listing_id):
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    tenant    = _get_tenant(tenant_id)
+
+    conn = get_db_connection()
+    if not conn:
+        flash("Database unavailable.", "danger")
+        return redirect(url_for("estate.listings"))
+
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM re_property_listings WHERE id=%s AND tenant_id=%s",
+                (listing_id, tenant_id))
+    listing = cur.fetchone()
+
+    if not listing:
+        cur.close(); conn.close()
+        flash("Listing not found.", "danger")
+        return redirect(url_for("estate.listings"))
+
+    # Increment view counter
+    cur2 = conn.cursor()
+    cur2.execute(
+        "UPDATE re_property_listings SET view_count=view_count+1 WHERE id=%s",
+        (listing_id,)
+    )
+    conn.commit()
+
+    # Fetch assigned agent name
+    agent = None
+    if listing.get("assigned_to"):
+        cur.execute(
+            "SELECT first_name, last_name, email FROM re_staff WHERE id=%s",
+            (listing["assigned_to"],)
+        )
+        agent = cur.fetchone()
+
+    cur.close(); conn.close()
+
+    # Pre-compute fee estimates for sidebar
+    price = listing.get("price") or 0
+    agency_fee  = round(float(price) * float(listing.get("agency_fee_pct") or 0) / 100, 2)
+    legal_fee   = round(float(price) * float(listing.get("legal_fee_pct") or 0) / 100, 2)
+    total_cost  = float(price) + agency_fee + legal_fee
+
+    return render_template("estate/listing_view.html",
+                           tenant=tenant, listing=listing,
+                           agent=agent,
+                           agency_fee=agency_fee,
+                           legal_fee=legal_fee,
+                           total_cost=total_cost)
+
+
 @estate_bp.route("/estate/listings/new", methods=["GET", "POST"])
 def listing_new():
     redir = _require_re_login()

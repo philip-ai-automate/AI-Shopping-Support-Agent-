@@ -1,0 +1,798 @@
+{% extends "estate/base.html" %}
+{% block title %}{{ listing.title }} — PhiXtra Real Estate{% endblock %}
+
+{% block head %}
+<style>
+/* ── Page header ── */
+.lv-topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  flex-wrap:wrap;gap:12px;margin-bottom:20px
+}
+.lv-topbar-left{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.lv-title-block h1{font-size:22px;font-weight:800;color:#030C18;line-height:1.2;margin-bottom:6px}
+.lv-badges{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.lv-status-pill{
+  font-size:11px;font-weight:750;letter-spacing:.05em;text-transform:uppercase;
+  padding:4px 12px;border-radius:999px
+}
+.lv-status-pill.available{background:rgba(5,150,105,0.12);color:#059669;border:1px solid rgba(5,150,105,0.25)}
+.lv-status-pill.under_offer{background:rgba(245,158,11,0.12);color:#b45309;border:1px solid rgba(245,158,11,0.25)}
+.lv-status-pill.sold{background:rgba(240,68,56,0.12);color:#dc2626;border:1px solid rgba(240,68,56,0.25)}
+.lv-status-pill.let{background:rgba(26,86,219,0.12);color:#1a56db;border:1px solid rgba(26,86,219,0.25)}
+.lv-status-pill.off_market{background:rgba(3,12,24,0.08);color:rgba(3,12,24,0.50);border:1px solid rgba(3,12,24,0.12)}
+.lv-type-pill{
+  font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+  padding:4px 10px;border-radius:999px;background:rgba(3,12,24,0.06);color:rgba(3,12,24,0.55)
+}
+.lv-topbar-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.lv-btn{
+  display:inline-flex;align-items:center;gap:6px;padding:9px 18px;
+  border-radius:9px;font-size:13px;font-weight:700;font-family:inherit;
+  text-decoration:none;border:1.5px solid rgba(3,12,24,0.12);
+  background:#fff;color:rgba(3,12,24,0.60);cursor:pointer;transition:.13s;line-height:1
+}
+.lv-btn:hover{border-color:rgba(3,12,24,0.25);color:#030C18;text-decoration:none}
+.lv-btn.primary{background:#030C18;color:#fff;border-color:#030C18}
+.lv-btn.primary:hover{background:#0d1f3c;color:#fff}
+.lv-btn.danger{color:#F04438;border-color:rgba(240,68,56,0.20)}
+.lv-btn.danger:hover{background:rgba(240,68,56,0.06);border-color:rgba(240,68,56,0.40)}
+
+/* ── Photo gallery ── */
+.lv-gallery{margin-bottom:24px}
+.lv-hero{
+  position:relative;width:100%;padding-top:52%;border-radius:14px;
+  overflow:hidden;background:linear-gradient(135deg,#f0f4f8,#e2e8f0);
+  cursor:pointer;margin-bottom:10px
+}
+.lv-hero img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform .3s}
+.lv-hero:hover img{transform:scale(1.02)}
+.lv-hero-placeholder{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:10px
+}
+.lv-hero-placeholder svg{width:48px;height:48px;stroke:rgba(3,12,24,0.18);fill:none;stroke-width:1.3;stroke-linecap:round}
+.lv-hero-placeholder p{font-size:14px;color:rgba(3,12,24,0.30);font-weight:500}
+.lv-hero-count{
+  position:absolute;bottom:14px;right:14px;
+  background:rgba(3,12,24,0.60);color:#fff;
+  font-size:12px;font-weight:700;padding:5px 12px;border-radius:8px;
+  display:flex;align-items:center;gap:6px;backdrop-filter:blur(4px)
+}
+.lv-thumbs{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.lv-thumbs::-webkit-scrollbar{height:4px}
+.lv-thumbs::-webkit-scrollbar-track{background:transparent}
+.lv-thumbs::-webkit-scrollbar-thumb{background:rgba(3,12,24,0.15);border-radius:2px}
+.lv-thumb{
+  flex-shrink:0;width:88px;height:66px;border-radius:8px;
+  overflow:hidden;border:2.5px solid transparent;cursor:pointer;
+  transition:border-color .15s,transform .15s
+}
+.lv-thumb img{width:100%;height:100%;object-fit:cover}
+.lv-thumb.active{border-color:#030C18}
+.lv-thumb:hover{transform:scale(1.04)}
+
+/* ── Lightbox ── */
+.lv-lightbox{
+  display:none;position:fixed;inset:0;background:rgba(3,12,24,0.92);
+  z-index:1000;align-items:center;justify-content:center;padding:20px
+}
+.lv-lightbox.open{display:flex}
+.lv-lightbox img{max-width:90vw;max-height:90vh;object-fit:contain;border-radius:8px}
+.lv-lb-close{
+  position:fixed;top:18px;right:20px;background:rgba(255,255,255,0.12);
+  border:none;color:#fff;font-size:24px;width:40px;height:40px;border-radius:50%;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:.13s;line-height:1
+}
+.lv-lb-close:hover{background:rgba(255,255,255,0.22)}
+.lv-lb-nav{
+  position:fixed;top:50%;transform:translateY(-50%);
+  background:rgba(255,255,255,0.12);border:none;color:#fff;
+  font-size:22px;width:44px;height:44px;border-radius:50%;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:.13s
+}
+.lv-lb-nav:hover{background:rgba(255,255,255,0.22)}
+.lv-lb-prev{left:16px}
+.lv-lb-next{right:16px}
+.lv-lb-counter{
+  position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+  color:rgba(255,255,255,0.65);font-size:13px;font-weight:600
+}
+
+/* ── Layout ── */
+.lv-wrap{display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start}
+@media(max-width:900px){.lv-wrap{grid-template-columns:1fr}}
+
+/* ── Cards ── */
+.lv-card{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:14px;
+  padding:22px 24px;box-shadow:0 2px 10px rgba(3,12,24,0.05);margin-bottom:16px
+}
+.lv-card-title{
+  font-size:12px;font-weight:750;color:#030C18;letter-spacing:.06em;
+  text-transform:uppercase;margin-bottom:16px;
+  display:flex;align-items:center;gap:8px;padding-bottom:12px;
+  border-bottom:1px solid rgba(3,12,24,0.07)
+}
+.lv-card-title svg{width:14px;height:14px;stroke:#1a56db;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+
+/* ── Spec grid ── */
+.lv-specs{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:4px}
+@media(max-width:600px){.lv-specs{grid-template-columns:repeat(2,1fr)}}
+.lv-spec{
+  background:#f8fafc;border:1px solid rgba(3,12,24,0.07);border-radius:10px;
+  padding:12px 14px;text-align:center
+}
+.lv-spec-icon{font-size:20px;line-height:1;margin-bottom:5px}
+.lv-spec-val{font-size:17px;font-weight:800;color:#030C18;line-height:1;margin-bottom:3px}
+.lv-spec-label{font-size:10.5px;font-weight:600;color:rgba(3,12,24,0.40);text-transform:uppercase;letter-spacing:.05em}
+
+/* ── Location row ── */
+.lv-loc-row{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px}
+.lv-loc-row:last-child{margin-bottom:0}
+.lv-loc-icon{width:32px;height:32px;border-radius:8px;background:rgba(26,86,219,0.08);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+.lv-loc-icon svg{width:14px;height:14px;stroke:#1a56db;fill:none;stroke-width:2;stroke-linecap:round}
+.lv-loc-label{font-size:10.5px;font-weight:700;color:rgba(3,12,24,0.38);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px}
+.lv-loc-val{font-size:13.5px;font-weight:600;color:#030C18;line-height:1.35}
+
+/* ── Amenity chips ── */
+.lv-amenities{display:flex;flex-wrap:wrap;gap:7px}
+.lv-am-chip{
+  display:inline-flex;align-items:center;gap:6px;padding:6px 12px;
+  border-radius:8px;background:#f0f9ff;border:1px solid rgba(26,86,219,0.18);
+  font-size:12.5px;font-weight:600;color:#1a56db
+}
+.lv-am-chip-icon{font-size:14px}
+.lv-features-list{
+  display:flex;flex-direction:column;gap:6px;margin-top:0
+}
+.lv-feature-item{
+  display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(3,12,24,0.70);font-weight:500
+}
+.lv-feature-item::before{
+  content:"";width:6px;height:6px;border-radius:50%;
+  background:#1a56db;flex-shrink:0
+}
+
+/* ── Description ── */
+.lv-desc{
+  font-size:14px;color:rgba(3,12,24,0.70);line-height:1.7;
+  white-space:pre-line
+}
+
+/* ── Media links ── */
+.lv-media-links{display:flex;flex-direction:column;gap:10px}
+.lv-media-link{
+  display:flex;align-items:center;gap:10px;padding:12px 16px;
+  border:1.5px solid rgba(3,12,24,0.10);border-radius:10px;
+  text-decoration:none;color:#030C18;transition:.13s;font-weight:600;font-size:13.5px
+}
+.lv-media-link:hover{border-color:#1a56db;background:rgba(26,86,219,0.04);text-decoration:none;color:#1a56db}
+.lv-media-link svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+
+/* ── Price sidebar ── */
+.lv-price-hero{
+  font-size:28px;font-weight:900;color:#030C18;letter-spacing:-.5px;
+  line-height:1;margin-bottom:4px
+}
+.lv-price-qualifier{
+  font-size:13px;color:rgba(3,12,24,0.45);font-weight:500;margin-bottom:16px
+}
+.lv-price-neg{
+  display:inline-flex;align-items:center;gap:5px;padding:4px 10px;
+  border-radius:999px;background:rgba(5,150,105,0.10);
+  color:#059669;font-size:11.5px;font-weight:700;border:1px solid rgba(5,150,105,0.20);
+  margin-bottom:16px
+}
+.lv-fee-row{
+  display:flex;justify-content:space-between;align-items:center;
+  font-size:13px;padding:7px 0;border-bottom:1px solid rgba(3,12,24,0.06)
+}
+.lv-fee-row:last-child{border-bottom:none}
+.lv-fee-row.total{font-weight:800;color:#030C18;padding-top:10px;font-size:14px}
+.lv-fee-label{color:rgba(3,12,24,0.50);font-weight:500}
+.lv-fee-val{font-weight:700;color:#030C18}
+
+/* ── Details list ── */
+.lv-detail-row{
+  display:flex;justify-content:space-between;align-items:flex-start;
+  padding:9px 0;border-bottom:1px solid rgba(3,12,24,0.06);font-size:13px
+}
+.lv-detail-row:last-child{border-bottom:none}
+.lv-detail-label{color:rgba(3,12,24,0.45);font-weight:500;flex-shrink:0;padding-right:12px}
+.lv-detail-val{font-weight:650;color:#030C18;text-align:right}
+
+/* ── Agent card ── */
+.lv-agent{display:flex;align-items:center;gap:12px}
+.lv-agent-avatar{
+  width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#030C18,#1a56db);
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;font-weight:800;color:#fff;flex-shrink:0
+}
+.lv-agent-name{font-size:14px;font-weight:750;color:#030C18}
+.lv-agent-role{font-size:12px;color:rgba(3,12,24,0.42)}
+
+/* ── AI badge ── */
+.lv-ai-badge{
+  display:inline-flex;align-items:center;gap:7px;padding:8px 14px;
+  border-radius:10px;font-size:13px;font-weight:700
+}
+.lv-ai-badge.ok{background:rgba(5,150,105,0.10);color:#059669;border:1px solid rgba(5,150,105,0.20)}
+.lv-ai-badge.no{background:rgba(245,158,11,0.10);color:#b45309;border:1px solid rgba(245,158,11,0.20)}
+
+/* ── Internal notes ── */
+.lv-note-box{
+  background:#fffbeb;border:1px solid rgba(245,158,11,0.30);border-radius:10px;
+  padding:14px 16px;font-size:13px;color:rgba(3,12,24,0.70);line-height:1.6;
+  white-space:pre-line
+}
+.lv-note-label{
+  font-size:11px;font-weight:700;color:#b45309;text-transform:uppercase;
+  letter-spacing:.05em;margin-bottom:8px
+}
+
+/* ── Land info box ── */
+.lv-land-box{
+  background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.20);
+  border-radius:10px;padding:14px 16px;margin-bottom:14px
+}
+.lv-land-box p{font-size:13px;color:rgba(3,12,24,0.65);margin:0}
+
+/* ── Views counter ── */
+.lv-views{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:12px;color:rgba(3,12,24,0.38);font-weight:500
+}
+.lv-views svg{width:13px;height:13px;stroke:rgba(3,12,24,0.35);fill:none;stroke-width:1.8}
+
+/* ── Print ── */
+@media print {
+  .sidebar-nav, .lv-topbar-actions, .lv-lb-close, .lv-thumbs { display:none !important }
+  .lv-wrap { grid-template-columns:1fr 280px }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+{% set images = listing.images if listing.images else [] %}
+{% set amenities = listing.amenities if listing.amenities else [] %}
+{% set features  = listing.features  if listing.features  else [] %}
+
+{# Helper macros #}
+{% set txn_label = {
+  'sale':     'For Sale',
+  'rent':     'To Let',
+  'lease':    'Lease',
+  'shortlet': 'Shortlet'
+} %}
+{% set qualifier_label = {
+  'outright':  'Outright purchase',
+  'per_annum': 'Per annum (annual rent)',
+  'per_month': 'Per month',
+  'per_night': 'Per night (shortlet)',
+  'per_sqm':   'Per sqm'
+} %}
+{% set amenity_meta = {
+  'generator':       ('⚡','Generator'),
+  'borehole':        ('💧','Borehole'),
+  'perimeter_fence': ('🧱','Perimeter Fence'),
+  'security_guards': ('💂','Security Guards'),
+  'cctv':            ('📷','CCTV'),
+  'bq':              ('🏠','Boys Quarters'),
+  'prepaid_meter':   ('🔌','Prepaid Meter'),
+  'swimming_pool':   ('🏊','Swimming Pool'),
+  'gym':             ('🏋️','Gym'),
+  'elevator':        ('🛗','Elevator'),
+  'parking':         ('🚗','Parking'),
+  'ac':              ('❄️','Air Conditioning'),
+  'fitted_kitchen':  ('🍳','Fitted Kitchen'),
+  'wardrobes':       ('👔','Wardrobes'),
+  'pop_ceiling':     ('🎨','POP Ceiling'),
+  'tiled_floors':    ('🪟','Tiled Floors'),
+  'internet':        ('📡','Internet / Fibre'),
+  'rooftop':         ('🌇','Rooftop Terrace'),
+  'playground':      ('🛝','Playground'),
+  'gated_estate':    ('🔐','Gated Estate'),
+  'water_treatment': ('🚿','Water Treatment'),
+  'garden':          ('🌳','Garden / Lawn')
+} %}
+
+<!-- Top bar -->
+<div class="lv-topbar">
+  <div class="lv-title-block">
+    <a href="{{ url_for('estate.listings') }}" class="btn" style="border-radius:8px;margin-bottom:12px;display:inline-flex;align-items:center;gap:5px;font-size:13px">
+      ← Back to Listings
+    </a>
+    <h1>{{ listing.title }}</h1>
+    <div class="lv-badges">
+      <span class="lv-status-pill {{ listing.status or 'off_market' }}">
+        {{ (listing.status or 'Off Market') | replace('_',' ') | title }}
+      </span>
+      {% if listing.property_type %}
+      <span class="lv-type-pill">{{ listing.property_type | replace('_',' ') | title }}</span>
+      {% endif %}
+      {% if listing.sub_type %}
+      <span class="lv-type-pill">{{ listing.sub_type }}</span>
+      {% endif %}
+      {% if listing.transaction_type %}
+      <span class="lv-type-pill">{{ txn_label.get(listing.transaction_type, listing.transaction_type) }}</span>
+      {% endif %}
+      <span class="lv-views">
+        <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        {{ (listing.view_count or 0) + 1 }} views
+      </span>
+    </div>
+  </div>
+  <div class="lv-topbar-actions">
+    <button onclick="window.print()" class="lv-btn">🖨 Print</button>
+    <a href="{{ url_for('estate.listing_edit', listing_id=listing.id) }}" class="lv-btn primary">✏️ Edit</a>
+    <form method="POST" action="{{ url_for('estate.listing_delete', listing_id=listing.id) }}"
+          onsubmit="return confirm('Delete this listing permanently?')" style="display:inline">
+      <button type="submit" class="lv-btn danger">🗑 Delete</button>
+    </form>
+  </div>
+</div>
+
+<!-- Photo gallery -->
+<div class="lv-gallery">
+  <div class="lv-hero" id="heroWrap" onclick="openLightbox(0)">
+    {% if images %}
+    <img src="/static/{{ images[0] }}" alt="{{ listing.title }}" id="heroImg"/>
+    {% if images | length > 1 %}
+    <div class="lv-hero-count">
+      <svg viewBox="0 0 24 24" width="13" height="13" stroke="#fff" fill="none" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      {{ images | length }} photos — click to view
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="lv-hero-placeholder">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      <p>No photos uploaded yet</p>
+    </div>
+    {% endif %}
+  </div>
+  {% if images | length > 1 %}
+  <div class="lv-thumbs" id="thumbsWrap">
+    {% for img in images %}
+    <div class="lv-thumb {% if loop.first %}active{% endif %}" onclick="selectPhoto({{ loop.index0 }}, this)">
+      <img src="/static/{{ img }}" alt="Photo {{ loop.index }}" loading="lazy"/>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<!-- Lightbox -->
+{% if images %}
+<div class="lv-lightbox" id="lightbox" onclick="closeLightbox(event)">
+  <button class="lv-lb-close" onclick="closeLightbox()">×</button>
+  <button class="lv-lb-nav lv-lb-prev" onclick="lbNav(-1);event.stopPropagation()">‹</button>
+  <img src="" alt="" id="lbImg"/>
+  <button class="lv-lb-nav lv-lb-next" onclick="lbNav(1);event.stopPropagation()">›</button>
+  <div class="lv-lb-counter" id="lbCounter"></div>
+</div>
+{% endif %}
+
+<!-- Main two-column layout -->
+<div class="lv-wrap">
+
+<!-- ═══════════════════ LEFT COLUMN ═══════════════════ -->
+<div>
+
+  {% if listing.property_type == 'land' %}
+  <!-- Land highlights -->
+  <div class="lv-card">
+    <div class="lv-card-title">
+      <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      Land Summary
+    </div>
+    <div class="lv-specs">
+      {% if listing.size_sqm %}
+      <div class="lv-spec">
+        <div class="lv-spec-icon">📐</div>
+        <div class="lv-spec-val">{{ listing.size_sqm | int }}</div>
+        <div class="lv-spec-label">{{ listing.size_unit or 'sqm' }}</div>
+      </div>
+      {% endif %}
+      {% if listing.land_use %}
+      <div class="lv-spec">
+        <div class="lv-spec-icon">🏗️</div>
+        <div class="lv-spec-val" style="font-size:13px">{{ listing.land_use | replace('_',' ') | title }}</div>
+        <div class="lv-spec-label">Land Use</div>
+      </div>
+      {% endif %}
+      {% if listing.terrain %}
+      <div class="lv-spec">
+        <div class="lv-spec-icon">🌄</div>
+        <div class="lv-spec-val" style="font-size:13px">{{ listing.terrain | replace('_',' ') | title }}</div>
+        <div class="lv-spec-label">Terrain</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <!-- Residential / Commercial highlights -->
+  {% if listing.bedrooms or listing.bathrooms or listing.toilets or listing.car_parks or listing.size_sqm or listing.floors %}
+  <div class="lv-card">
+    <div class="lv-card-title">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+      Property Specs
+    </div>
+    <div class="lv-specs">
+      {% if listing.bedrooms %}
+      <div class="lv-spec">
+        <div class="lv-spec-icon">🛏️</div>
+        <div class="lv-spec-val">{{ listing.bedrooms }}</div>
+        <div class="lv-spec-label">Bedrooms</div>
+      </div>
+      {% endif %}
+      {% if listing.bathrooms %}
+      <div class="lv-spec">
+        <div class="lv-spec-icon">🚿</div>
+        <div class="lv-spec-val">{{ listing.bathrooms }}</div>
+        <div class="lv-spec-label">Bathrooms</div>
+      </div>
+      {% endif %}
+      {% if listing.toilets %}
+      <div class="lv-spec">
+        <div class="lv-spec-icon">🚽</div>
+        <div class="lv-spec-val">{{ listing.toilets }}</div>
+        <div class="lv-spec-label">Toilets</div>
+      </div>
+      {% endif %}
+      {% if listing.car_parks %}
+      <div class="lv-spec">
+        <div class="lv-spec-icon">🚗</div>
+        <div class="lv-spec-val">{{ listing.car_parks }}</div>
+        <div class="lv-spec-label">Car Parks</div>
+      </div>
+      {% endif %}
+      {% if listing.size_sqm %}
+      <div class="lv-spec">
+        <div class="lv-spec-icon">📐</div>
+        <div class="lv-spec-val">{{ listing.size_sqm | int }}</div>
+        <div class="lv-spec-label">{{ listing.size_unit or 'sqm' }}</div>
+      </div>
+      {% endif %}
+      {% if listing.floors %}
+      <div class="lv-spec">
+        <div class="lv-spec-icon">🏢</div>
+        <div class="lv-spec-val">{{ listing.floors }}</div>
+        <div class="lv-spec-label">Floors</div>
+      </div>
+      {% endif %}
+      {% if listing.floor_level %}
+      <div class="lv-spec">
+        <div class="lv-spec-icon">🔼</div>
+        <div class="lv-spec-val">{{ listing.floor_level }}</div>
+        <div class="lv-spec-label">Floor Level</div>
+      </div>
+      {% endif %}
+      {% if listing.furnishing %}
+      <div class="lv-spec">
+        <div class="lv-spec-icon">🛋️</div>
+        <div class="lv-spec-val" style="font-size:12px">{{ listing.furnishing | replace('_',' ') | title }}</div>
+        <div class="lv-spec-label">Furnishing</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+  {% endif %}
+
+  <!-- Location -->
+  <div class="lv-card">
+    <div class="lv-card-title">
+      <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      Location
+    </div>
+    {% if listing.location %}
+    <div class="lv-loc-row">
+      <div class="lv-loc-icon"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
+      <div><div class="lv-loc-label">Address</div><div class="lv-loc-val">{{ listing.location }}</div></div>
+    </div>
+    {% endif %}
+    {% if listing.neighbourhood %}
+    <div class="lv-loc-row">
+      <div class="lv-loc-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg></div>
+      <div><div class="lv-loc-label">Neighbourhood / Estate</div><div class="lv-loc-val">{{ listing.neighbourhood }}</div></div>
+    </div>
+    {% endif %}
+    {% if listing.lga or listing.state %}
+    <div class="lv-loc-row">
+      <div class="lv-loc-icon"><svg viewBox="0 0 24 24"><path d="M1 6v16l7-4 8 4 7-4V2l-7 4-8-4-7 4z"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg></div>
+      <div>
+        <div class="lv-loc-label">LGA / State</div>
+        <div class="lv-loc-val">{{ [listing.lga, listing.state] | select | join(', ') }}</div>
+      </div>
+    </div>
+    {% endif %}
+    {% if listing.landmark %}
+    <div class="lv-loc-row">
+      <div class="lv-loc-icon"><svg viewBox="0 0 24 24"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg></div>
+      <div><div class="lv-loc-label">Landmark / Direction</div><div class="lv-loc-val">{{ listing.landmark }}</div></div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Amenities -->
+  {% if amenities or features %}
+  <div class="lv-card">
+    <div class="lv-card-title">
+      <svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      Amenities &amp; Features
+    </div>
+    {% if amenities %}
+    <div class="lv-amenities" style="margin-bottom:{% if features %}16px{% else %}0{% endif %}">
+      {% for am in amenities %}
+      {% if amenity_meta.get(am) %}
+      {% set meta = amenity_meta[am] %}
+      <span class="lv-am-chip"><span class="lv-am-chip-icon">{{ meta[0] }}</span>{{ meta[1] }}</span>
+      {% else %}
+      <span class="lv-am-chip">{{ am | replace('_',' ') | title }}</span>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if features %}
+    <div class="lv-features-list">
+      {% for f in features %}
+      <div class="lv-feature-item">{{ f }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- Description -->
+  {% if listing.description %}
+  <div class="lv-card">
+    <div class="lv-card-title">
+      <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+      Description
+    </div>
+    <p class="lv-desc">{{ listing.description }}</p>
+  </div>
+  {% endif %}
+
+  <!-- Media -->
+  {% if listing.video_url or listing.virtual_tour_url %}
+  <div class="lv-card">
+    <div class="lv-card-title">
+      <svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+      Virtual Tours &amp; Media
+    </div>
+    <div class="lv-media-links">
+      {% if listing.video_url %}
+      <a href="{{ listing.video_url }}" target="_blank" rel="noopener" class="lv-media-link">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+        Watch Video Tour
+      </a>
+      {% endif %}
+      {% if listing.virtual_tour_url %}
+      <a href="{{ listing.virtual_tour_url }}" target="_blank" rel="noopener" class="lv-media-link">
+        <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        View 3D / Virtual Tour
+      </a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+<!-- ═══════════════════ RIGHT SIDEBAR ═══════════════════ -->
+<div>
+
+  <!-- Price -->
+  <div class="lv-card">
+    <div class="lv-card-title">
+      <svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      Pricing
+    </div>
+    {% if listing.price %}
+    <div class="lv-price-hero">₦{{ '{:,.0f}'.format(listing.price) }}</div>
+    <div class="lv-price-qualifier">
+      {{ qualifier_label.get(listing.price_qualifier, listing.price_qualifier or 'Outright purchase') }}
+    </div>
+    {% if listing.price_negotiable %}
+    <div class="lv-price-neg">✓ Negotiable</div>
+    {% endif %}
+
+    {% if listing.agency_fee_pct or listing.legal_fee_pct or listing.service_charge or listing.estate_levy or listing.caution_deposit %}
+    <div style="border-top:1px solid rgba(3,12,24,0.07);padding-top:12px">
+      <div style="font-size:11px;font-weight:700;color:rgba(3,12,24,0.38);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Cost Breakdown</div>
+      <div class="lv-fee-row">
+        <span class="lv-fee-label">Property price</span>
+        <span class="lv-fee-val">₦{{ '{:,.0f}'.format(listing.price) }}</span>
+      </div>
+      {% if agency_fee > 0 %}
+      <div class="lv-fee-row">
+        <span class="lv-fee-label">Agency fee ({{ listing.agency_fee_pct }}%)</span>
+        <span class="lv-fee-val">₦{{ '{:,.0f}'.format(agency_fee) }}</span>
+      </div>
+      {% endif %}
+      {% if legal_fee > 0 %}
+      <div class="lv-fee-row">
+        <span class="lv-fee-label">Legal / perfection ({{ listing.legal_fee_pct }}%)</span>
+        <span class="lv-fee-val">₦{{ '{:,.0f}'.format(legal_fee) }}</span>
+      </div>
+      {% endif %}
+      {% if listing.service_charge %}
+      <div class="lv-fee-row">
+        <span class="lv-fee-label">Service charge / yr</span>
+        <span class="lv-fee-val">₦{{ '{:,.0f}'.format(listing.service_charge) }}</span>
+      </div>
+      {% endif %}
+      {% if listing.estate_levy %}
+      <div class="lv-fee-row">
+        <span class="lv-fee-label">Estate levy / yr</span>
+        <span class="lv-fee-val">₦{{ '{:,.0f}'.format(listing.estate_levy) }}</span>
+      </div>
+      {% endif %}
+      {% if listing.caution_deposit %}
+      <div class="lv-fee-row">
+        <span class="lv-fee-label">Caution deposit</span>
+        <span class="lv-fee-val">{{ listing.caution_deposit }} month{{ 's' if listing.caution_deposit != 1 }}</span>
+      </div>
+      {% endif %}
+      {% if agency_fee > 0 or legal_fee > 0 %}
+      <div class="lv-fee-row total">
+        <span>Est. total cost</span>
+        <span>₦{{ '{:,.0f}'.format(total_cost) }}</span>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% else %}
+    <p style="font-size:14px;color:rgba(3,12,24,0.40);font-weight:500">Price on request — contact agent.</p>
+    {% endif %}
+  </div>
+
+  <!-- Property & Legal Details -->
+  <div class="lv-card">
+    <div class="lv-card-title">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Property Details
+    </div>
+    {% if listing.title_document %}
+    <div class="lv-detail-row">
+      <span class="lv-detail-label">Title Document</span>
+      <span class="lv-detail-val">{{ listing.title_document | replace('_',' ') }}</span>
+    </div>
+    {% endif %}
+    {% if listing.transaction_type %}
+    <div class="lv-detail-row">
+      <span class="lv-detail-label">Transaction</span>
+      <span class="lv-detail-val">{{ txn_label.get(listing.transaction_type, listing.transaction_type) }}</span>
+    </div>
+    {% endif %}
+    {% if listing.available_from %}
+    <div class="lv-detail-row">
+      <span class="lv-detail-label">Available From</span>
+      <span class="lv-detail-val">{{ listing.available_from.strftime('%d %b %Y') if listing.available_from else '—' }}</span>
+    </div>
+    {% endif %}
+    <div class="lv-detail-row">
+      <span class="lv-detail-label">Listed</span>
+      <span class="lv-detail-val">{{ listing.created_at.strftime('%d %b %Y') if listing.created_at else '—' }}</span>
+    </div>
+    {% if listing.updated_at and listing.updated_at != listing.created_at %}
+    <div class="lv-detail-row">
+      <span class="lv-detail-label">Last Updated</span>
+      <span class="lv-detail-val">{{ listing.updated_at.strftime('%d %b %Y') if listing.updated_at else '—' }}</span>
+    </div>
+    {% endif %}
+    <div class="lv-detail-row">
+      <span class="lv-detail-label">Ref #</span>
+      <span class="lv-detail-val" style="font-family:monospace;font-size:12px">#{{ '%05d' % listing.id }}</span>
+    </div>
+  </div>
+
+  <!-- Assigned Agent -->
+  {% if agent %}
+  <div class="lv-card">
+    <div class="lv-card-title">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M6 20v-2a6 6 0 0 1 12 0v2"/></svg>
+      Assigned Agent
+    </div>
+    <div class="lv-agent">
+      <div class="lv-agent-avatar">{{ agent.first_name[0] | upper }}{{ agent.last_name[0] | upper if agent.last_name else '' }}</div>
+      <div>
+        <div class="lv-agent-name">{{ agent.first_name }} {{ agent.last_name or '' }}</div>
+        <div class="lv-agent-role">{{ agent.email }}</div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Internal Notes -->
+  {% if listing.internal_notes %}
+  <div class="lv-card">
+    <div class="lv-card-title">
+      <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      Internal Notes
+    </div>
+    <div class="lv-note-label">🔒 Not visible to clients</div>
+    <div class="lv-note-box">{{ listing.internal_notes }}</div>
+  </div>
+  {% endif %}
+
+  <!-- AI Index Status -->
+  <div class="lv-card">
+    <div class="lv-card-title">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+      AI Knowledge Base
+    </div>
+    {% if listing.ai_indexed_at %}
+    <div class="lv-ai-badge ok">✓ Indexed in AI knowledge base</div>
+    <p style="font-size:12px;color:rgba(3,12,24,0.38);margin-top:8px;margin-bottom:0">
+      Last indexed {{ listing.ai_indexed_at.strftime('%d %b %Y, %H:%M') }}
+    </p>
+    {% else %}
+    <div class="lv-ai-badge no">⚠ Not yet indexed</div>
+    <p style="font-size:12px;color:rgba(3,12,24,0.45);margin-top:8px;margin-bottom:0">
+      Save the listing to trigger automatic AI indexing.
+    </p>
+    {% endif %}
+  </div>
+
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if images %}
+<script>
+var PHOTOS = {{ images | tojson }};
+var heroImg  = document.getElementById('heroImg');
+var lbImg    = document.getElementById('lbImg');
+var lbCounter = document.getElementById('lbCounter');
+var lightbox = document.getElementById('lightbox');
+var lbIndex  = 0;
+
+function selectPhoto(idx, thumbEl){
+  lbIndex = idx;
+  heroImg.src = '/static/' + PHOTOS[idx];
+  document.querySelectorAll('.lv-thumb').forEach(function(t){ t.classList.remove('active'); });
+  if(thumbEl) thumbEl.classList.add('active');
+}
+
+function openLightbox(idx){
+  if(!PHOTOS.length) return;
+  lbIndex = idx;
+  lbImg.src = '/static/' + PHOTOS[lbIndex];
+  lbCounter.textContent = (lbIndex + 1) + ' / ' + PHOTOS.length;
+  lightbox.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox(e){
+  if(e && e.target !== lightbox && !e.target.classList.contains('lv-lb-close')) return;
+  lightbox.classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function lbNav(dir){
+  lbIndex = (lbIndex + dir + PHOTOS.length) % PHOTOS.length;
+  lbImg.src = '/static/' + PHOTOS[lbIndex];
+  lbCounter.textContent = (lbIndex + 1) + ' / ' + PHOTOS.length;
+  // Sync thumb + hero
+  var thumbs = document.querySelectorAll('.lv-thumb');
+  thumbs.forEach(function(t){ t.classList.remove('active'); });
+  if(thumbs[lbIndex]) thumbs[lbIndex].classList.add('active');
+}
+
+// Keyboard navigation
+document.addEventListener('keydown', function(e){
+  if(!lightbox.classList.contains('open')) return;
+  if(e.key === 'ArrowRight') lbNav(1);
+  else if(e.key === 'ArrowLeft') lbNav(-1);
+  else if(e.key === 'Escape') { lightbox.classList.remove('open'); document.body.style.overflow = ''; }
+});
+</script>
+{% endif %}
+{% endblock %}

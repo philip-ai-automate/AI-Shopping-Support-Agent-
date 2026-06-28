@@ -299,12 +299,14 @@
           </form>
         </div>
         <div class="lcard-actions">
+          <a href="{{ url_for('estate.listing_view', listing_id=lst.id) }}"
+             class="lcard-btn">View</a>
           <a href="{{ url_for('estate.listing_edit', listing_id=lst.id) }}"
              class="lcard-btn primary">Edit</a>
           <form method="POST"
                 action="{{ url_for('estate.listing_delete', listing_id=lst.id) }}"
                 onsubmit="return confirm('Delete this listing permanently?')">
-            <button type="submit" class="lcard-btn danger">Delete</button>
+            <button type="submit" class="lcard-btn danger">Del</button>
           </form>
         </div>
       </div>
