@@ -374,7 +374,7 @@
         </div>
 
         <input type="file" id="photoFilePicker" accept="image/*" style="display:none"/>
-        <p class="img-note">First photo is the cover image. Max 8 MB per photo. JPG/PNG recommended.</p>
+        <p class="img-note">First photo is the cover image. Max 3 MB per photo. JPG/PNG recommended.</p>
       </div>
       {% else %}
       <div class="lf-section" style="background:rgba(26,86,219,0.04);border-color:rgba(26,86,219,0.15)">
@@ -445,8 +445,8 @@ var LISTING_ID = {{ listing.id }};
 document.getElementById('photoFilePicker').addEventListener('change', function(){
   var file = this.files[0];
   if(!file) return;
-  if(file.size > 16 * 1024 * 1024){
-    alert('File too large. Please choose an image under 16 MB.');
+  if(file.size > 3 * 1024 * 1024){
+    alert('File too large. Please choose an image under 3 MB.');
     this.value=''; return;
   }
   var reader = new FileReader();

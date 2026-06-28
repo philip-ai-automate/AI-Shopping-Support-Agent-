@@ -755,8 +755,8 @@ def listing_image_upload(listing_id):
     except Exception:
         return jsonify({"error": "Invalid base64"}), 400
 
-    if len(img_bytes) > 8 * 1024 * 1024:
-        return jsonify({"error": "Image too large (max 8 MB)"}), 400
+    if len(img_bytes) > 3 * 1024 * 1024:
+        return jsonify({"error": "Image too large (max 3 MB)"}), 400
 
     save_dir = os.path.join(
         os.path.dirname(__file__), "static", "estate_images",
