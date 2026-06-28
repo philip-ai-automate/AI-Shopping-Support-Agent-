@@ -461,7 +461,7 @@
           <a href="{{ url_for('portal.billing') }}" class="btn btn-primary btn-sm">
             {% if plan_key.key_type == 'trial' %}View Paid Plans →{% else %}Buy Credits →{% endif %}
           </a>
-          <a href="https://phixtra.com/subscription-plans/" target="_blank" rel="noopener"
+          <a href="{% if plan_key.key_type == 'whatsapp' %}https://phixtra.com/pricing-2/{% else %}https://phixtra.com/subscription-plans/{% endif %}" target="_blank" rel="noopener"
              class="btn btn-sm" style="margin-left:8px">View Plan Details</a>
         </div>
 

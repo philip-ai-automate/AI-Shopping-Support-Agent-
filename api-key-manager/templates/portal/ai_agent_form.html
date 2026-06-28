@@ -1,0 +1,89 @@
+{% extends "portal/base.html" %}
+{% set is_edit = agent is not none %}
+{% block title %}{{ 'Edit' if is_edit else 'New' }} AI Agent — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+.form-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:28px 28px 32px;max-width:700px}
+.form-title{font-size:18px;font-weight:800;margin-bottom:4px}
+.form-subtitle{font-size:13px;color:var(--muted);margin-bottom:24px}
+
+.field{margin-bottom:20px}
+.field label{display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--ink)}
+.field input,.field textarea{
+  width:100%;border:1.5px solid var(--line);border-radius:10px;
+  padding:10px 14px;font-size:14px;font-family:inherit;color:var(--ink);
+  background:#fff;box-sizing:border-box;transition:border-color .15s;resize:vertical
+}
+.field input:focus,.field textarea:focus{outline:none;border-color:#7C3AED}
+.field-hint{font-size:12px;color:var(--muted);margin-top:5px}
+
+.prompt-area{min-height:260px;font-family:'Courier New',monospace;font-size:13px;line-height:1.6}
+
+.form-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+.back-link{font-size:13px;color:var(--muted);text-decoration:none;margin-bottom:16px;display:inline-flex;align-items:center;gap:4px}
+.back-link:hover{color:var(--ink)}
+
+.char-count{font-size:11px;color:var(--muted);text-align:right;margin-top:4px}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page" style="max-width:760px">
+
+  <a href="{{ url_for('portal.ai_agents') }}" class="back-link">← Back to AI Agents</a>
+
+  <div class="form-card">
+    <div class="form-title">{{ 'Edit Agent' if is_edit else 'New AI Agent Profile' }}</div>
+    <div class="form-subtitle">
+      {% if is_edit %}
+        Update this agent's name, description, and system prompt.
+      {% else %}
+        Give this agent a name and write its system prompt. You can activate it from the agents list.
+      {% endif %}
+    </div>
+
+    <form method="POST" action="{{ url_for('portal.ai_agents_edit', agent_id=agent.id) if is_edit else url_for('portal.ai_agents_new') }}">
+
+      <div class="field">
+        <label for="name">Agent Name <span style="color:#F04438">*</span></label>
+        <input type="text" id="name" name="name" maxlength="100" required
+               placeholder="e.g. Sales Agent, Support Bot, After-Hours AI"
+               value="{{ agent.name if is_edit else '' }}">
+      </div>
+
+      <div class="field">
+        <label for="description">Description <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+        <input type="text" id="description" name="description" maxlength="255"
+               placeholder="Short note about what this agent does"
+               value="{{ agent.description or '' if is_edit else '' }}">
+      </div>
+
+      <div class="field">
+        <label for="system_prompt">System Prompt <span style="color:#F04438">*</span></label>
+        <textarea id="system_prompt" name="system_prompt" class="prompt-area"
+                  placeholder="Write the full system prompt for this agent. This is what the AI sees before every conversation."
+                  oninput="updateCharCount(this)">{{ agent.system_prompt if is_edit else '' }}</textarea>
+        <div class="char-count" id="charCount">0 characters</div>
+        <div class="field-hint">Describe the agent's persona, tone, and any specific instructions. Be specific — the AI follows this exactly.</div>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">{{ 'Save Changes' if is_edit else 'Create Agent' }}</button>
+        <a href="{{ url_for('portal.ai_agents') }}" class="btn" style="background:#f4f4f6;border:1px solid var(--line)">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function updateCharCount(el) {
+  document.getElementById('charCount').textContent = el.value.length.toLocaleString() + ' characters';
+}
+// Init on load
+document.addEventListener('DOMContentLoaded', function() {
+  var ta = document.getElementById('system_prompt');
+  if (ta) updateCharCount(ta);
+});
+</script>
+{% endblock %}

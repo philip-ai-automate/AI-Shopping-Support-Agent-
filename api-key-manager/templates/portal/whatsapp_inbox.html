@@ -3,27 +3,43 @@
 
 {% block head %}
 <style>
-  .inbox-grid{display:grid;grid-template-columns:280px 1fr;gap:0;height:calc(100vh - 80px);
+  .inbox-grid{display:grid;grid-template-columns:300px 1fr;gap:0;height:calc(100vh - 80px);
               border:1px solid var(--line);border-radius:18px;overflow:hidden;
               box-shadow:var(--shadow)}
   @media(max-width:860px){.inbox-grid{grid-template-columns:1fr;height:auto}}
 
-  /* Conversation list (left panel) */
+  /* Left panel */
   .inbox-list{border-right:1px solid var(--line);overflow-y:auto;background:#fff}
+  .inbox-section-label{padding:10px 16px;font-size:11px;font-weight:700;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--line);
+    background:#f9f9fb;position:sticky;top:0;z-index:1}
   .inbox-item{padding:14px 16px;border-bottom:1px solid var(--line);cursor:pointer;
               transition:.15s;text-decoration:none;display:block;color:var(--txt)}
   .inbox-item:hover{background:rgba(3,12,24,0.03);text-decoration:none}
   .inbox-item.active{background:rgba(3,12,24,0.06)}
-  .inbox-phone{font-weight:700;font-size:14px;margin-bottom:3px}
+  .inbox-phone{font-weight:700;font-size:14px;margin-bottom:3px;display:flex;
+               align-items:center;gap:6px}
   .inbox-time{font-size:11px;color:var(--muted)}
   .inbox-preview{font-size:12px;color:var(--muted);white-space:nowrap;
                  overflow:hidden;text-overflow:ellipsis;margin-top:3px}
+  .badge-handoff{font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;
+                 background:#FEF3C7;color:#92400E}
+  .badge-takeover{font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;
+                  background:#EDE9FE;color:#5B21B6}
 
-  /* Chat panel (right) */
+  /* Recent convos */
+  .recent-item{padding:12px 16px;border-bottom:1px solid var(--line);
+               display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .recent-phone{font-size:13px;font-weight:600;color:var(--txt)}
+  .recent-time{font-size:11px;color:var(--muted);margin-top:2px}
+
+  /* Chat panel */
   .inbox-chat{display:flex;flex-direction:column;background:#f9f9fb}
   .chat-header{padding:14px 20px;border-bottom:1px solid var(--line);
                background:#fff;display:flex;align-items:center;
-               justify-content:space-between;gap:12px;flex-shrink:0}
+               justify-content:space-between;gap:12px;flex-shrink:0;flex-wrap:wrap}
+  .chat-header-info{display:flex;align-items:center;gap:10px}
+  .chat-header-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .chat-messages{flex:1;overflow-y:auto;padding:20px;display:flex;
                  flex-direction:column;gap:10px}
   .chat-bubble{max-width:72%;padding:10px 14px;border-radius:14px;
@@ -48,6 +64,9 @@
                justify-content:center;flex:1;gap:10px;color:var(--muted);
                text-align:center;padding:40px}
   .empty-icon{font-size:40px;opacity:.35}
+  .ai-paused-banner{background:#FFF7ED;border-bottom:1px solid #FED7AA;
+    padding:8px 20px;font-size:12px;color:#92400E;font-weight:600;flex-shrink:0;
+    display:flex;align-items:center;gap:6px}
 </style>
 {% endblock %}
 
@@ -55,72 +74,124 @@
 <div class="page-header" style="margin-bottom:18px">
   <div>
     <div class="section-title">Agent Inbox</div>
-    <p class="muted">Reply to customers who asked for a human agent. Resolving a conversation hands them back to the AI.</p>
+    <p class="muted">Reply to customers who need human help. Take over any AI conversation at any time.</p>
   </div>
-  <a href="{{ url_for('portal.whatsapp_connect') }}" class="btn btn-sm">
-    WhatsApp Settings
-  </a>
+  <div style="display:flex;gap:8px">
+    <a href="{{ url_for('portal.whatsapp_reports') }}" class="btn btn-sm">📊 Reports</a>
+    <a href="{{ url_for('portal.whatsapp_connect') }}" class="btn btn-sm">WhatsApp Settings</a>
+  </div>
 </div>
 
 {% if not connection %}
 <div class="card" style="text-align:center;padding:40px">
   <div style="font-size:36px;margin-bottom:12px;opacity:.4">📵</div>
   <div style="font-weight:700;margin-bottom:6px">WhatsApp not connected</div>
-  <p class="muted" style="margin-bottom:18px">Connect your WhatsApp account first to receive handoff conversations.</p>
+  <p class="muted" style="margin-bottom:18px">Connect your WhatsApp account first to use the inbox.</p>
   <a href="{{ url_for('portal.whatsapp_connect') }}" class="btn btn-primary">Connect WhatsApp</a>
 </div>
-{% elif not handoffs %}
+
+{% elif not handoffs and not recent_convos %}
 <div class="card" style="text-align:center;padding:60px">
   <div style="font-size:42px;margin-bottom:14px;opacity:.35">✅</div>
-  <div style="font-weight:700;font-size:18px;margin-bottom:8px">No open handoffs</div>
-  <p class="muted">All conversations are being handled by the AI assistant.<br>When a customer asks for a human agent, they'll appear here.</p>
+  <div style="font-weight:700;font-size:18px;margin-bottom:8px">All quiet</div>
+  <p class="muted">No open handoffs and no recent conversations in the last 48 hours.</p>
 </div>
+
 {% else %}
 
-{# Show first conversation by default via URL anchor #}
-{% set active_session = request.args.get('session', handoffs[0].session_id) %}
+{% set active_session = request.args.get('session', (handoffs[0].session_id if handoffs else '')) %}
 
 <div class="inbox-grid">
 
-  <!-- Left: conversation list -->
+  <!-- ── Left panel ── -->
   <div class="inbox-list">
-    <div style="padding:12px 16px;font-size:11px;font-weight:700;color:var(--muted);
-                text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--line);
-                background:#fff;position:sticky;top:0">
-      Open Handoffs ({{ handoffs|length }})
+
+    <!-- Active handoffs -->
+    <div class="inbox-section-label">
+      🙋 Needs Attention ({{ handoffs|length }})
     </div>
-    {% for h in handoffs %}
-    <a class="inbox-item {% if h.session_id == active_session %}active{% endif %}"
-       href="?session={{ h.session_id }}">
-      <div class="inbox-phone">+{{ h.customer_phone }}</div>
-      <div class="inbox-time">Escalated {{ h.escalated_at.strftime('%d %b %H:%M') if h.escalated_at else '' }}</div>
-      {% if h.messages %}
-        {% set last = h.messages[-1] %}
-        <div class="inbox-preview">
-          {{ '→' if last.direction == 'outbound' else '←' }}
-          {{ (last.content or '')|truncate(50) }}
+    {% if handoffs %}
+      {% for h in handoffs %}
+      <a class="inbox-item {% if h.session_id == active_session %}active{% endif %}"
+         href="?session={{ h.session_id }}">
+        <div class="inbox-phone">
+          +{{ h.customer_phone }}
+          {% if h.get('takeover') %}
+            <span class="badge-takeover">Taken Over</span>
+          {% else %}
+            <span class="badge-handoff">AI Escalated</span>
+          {% endif %}
         </div>
-      {% endif %}
-    </a>
+        <div class="inbox-time">{{ h.escalated_at.strftime('%d %b %H:%M') if h.escalated_at else '' }}</div>
+        {% if h.messages %}
+          {% set last = h.messages[-1] %}
+          <div class="inbox-preview">
+            {{ '→' if last.direction == 'outbound' else '←' }}
+            {{ (last.content or '')|truncate(45) }}
+          </div>
+        {% endif %}
+      </a>
+      {% endfor %}
+    {% else %}
+      <div style="padding:16px;font-size:13px;color:var(--muted);text-align:center">
+        No active handoffs
+      </div>
+    {% endif %}
+
+    <!-- Recent AI-handled conversations -->
+    {% if recent_convos %}
+    <div class="inbox-section-label" style="top:auto">
+      🤖 Recent AI Conversations
+    </div>
+    {% for r in recent_convos %}
+    <div class="recent-item">
+      <div>
+        <div class="recent-phone">+{{ r.customer_phone }}</div>
+        <div class="recent-time">Last message {{ r.last_message_at.strftime('%d %b %H:%M') if r.last_message_at else '' }}</div>
+      </div>
+      <form method="POST" action="{{ url_for('portal.whatsapp_inbox_takeover') }}"
+            onsubmit="return confirm('Take over this conversation? The AI will stop responding until you resolve it.')">
+        <input type="hidden" name="customer_phone" value="{{ r.customer_phone }}">
+        <button type="submit" class="btn btn-sm" style="white-space:nowrap">Take Over</button>
+      </form>
+    </div>
     {% endfor %}
+    {% endif %}
+
   </div>
 
-  <!-- Right: active conversation -->
-  {% for h in handoffs %}
-  {% if h.session_id == active_session %}
+  <!-- ── Right panel: active conversation ── -->
+  {% set active_handoff = handoffs | selectattr('session_id', 'equalto', active_session) | list %}
+
+  {% if active_handoff %}
+  {% set h = active_handoff[0] %}
   <div class="inbox-chat">
+
+    <!-- AI paused banner -->
+    <div class="ai-paused-banner">
+      🤖 AI is paused for this conversation —
+      {% if h.get('takeover') %}you took over manually.{% else %}customer requested a human.{% endif %}
+      Resolve to hand back to AI.
+    </div>
 
     <!-- Header -->
     <div class="chat-header">
-      <div>
-        <div style="font-weight:700;font-size:15px">+{{ h.customer_phone }}</div>
-        <div style="font-size:11px;color:var(--muted)">Session: <code>{{ h.session_id }}</code></div>
+      <div class="chat-header-info">
+        <div>
+          <div style="font-weight:700;font-size:15px">+{{ h.customer_phone }}</div>
+          <div style="font-size:11px;color:var(--muted)">
+            {% if h.get('takeover') %}Merchant takeover{% else %}AI-escalated handoff{% endif %}
+            · Since {{ h.escalated_at.strftime('%d %b %H:%M') if h.escalated_at else 'unknown' }}
+          </div>
+        </div>
       </div>
-      <form method="POST"
-            action="{{ url_for('portal.whatsapp_inbox_resolve', session_id=h.session_id) }}"
-            onsubmit="return confirm('Mark as resolved? The AI assistant will resume this conversation.')">
-        <button type="submit" class="btn btn-sm btn-primary">Mark Resolved</button>
-      </form>
+      <div class="chat-header-actions">
+        <form method="POST"
+              action="{{ url_for('portal.whatsapp_inbox_resolve', session_id=h.session_id) }}"
+              onsubmit="return confirm('Resolve this conversation? The AI assistant will resume.')">
+          <button type="submit" class="btn btn-sm btn-primary">✓ Resolve &amp; Return to AI</button>
+        </form>
+      </div>
     </div>
 
     <!-- Messages -->
@@ -167,13 +238,21 @@
     </div>
 
   </div>
+
+  {% else %}
+  <!-- No active handoff selected — show placeholder -->
+  <div class="inbox-chat">
+    <div class="empty-state">
+      <div class="empty-icon">👈</div>
+      <div>Select a conversation from the left</div>
+      <p class="muted" style="font-size:13px">Or take over an AI conversation to start chatting</p>
+    </div>
+  </div>
   {% endif %}
-  {% endfor %}
 
 </div>
 
 <script>
-  // Scroll to bottom of chat on load
   var el = document.getElementById('chatMessages');
   if (el) el.scrollTop = el.scrollHeight;
 </script>

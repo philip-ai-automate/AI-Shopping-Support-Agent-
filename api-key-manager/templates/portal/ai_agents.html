@@ -1,0 +1,157 @@
+{% extends "portal/base.html" %}
+{% block title %}AI Agent Profiles — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+.ag-header{display:flex;align-items:flex-start;justify-content:space-between;
+           flex-wrap:wrap;gap:12px;margin-bottom:22px}
+.ag-title{font-size:22px;font-weight:800;letter-spacing:-.3px}
+.ag-subtitle{font-size:13px;color:var(--muted);margin-top:3px;max-width:520px}
+
+.quota-bar{background:#fff;border:1px solid var(--line);border-radius:12px;
+           padding:14px 20px;margin-bottom:20px;display:flex;align-items:center;
+           justify-content:space-between;gap:16px;flex-wrap:wrap}
+.quota-text{font-size:13px;color:var(--muted)}
+.quota-count{font-size:20px;font-weight:800}
+.quota-count span{font-size:13px;font-weight:500;color:var(--muted)}
+.meter-bar{height:8px;background:#f0f0f2;border-radius:999px;overflow:hidden;width:160px;flex-shrink:0}
+.meter-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#12B76A,#027A48);transition:width .4s}
+.meter-fill.full{background:linear-gradient(90deg,#F04438,#B42318)}
+
+.howto-banner{background:#F0F4FF;border:1px solid #C7D7FD;border-radius:12px;
+              padding:14px 18px;margin-bottom:22px;font-size:13px;color:#1E3A8A;
+              display:flex;gap:12px;align-items:flex-start;line-height:1.5}
+.howto-banner b{display:block;font-weight:700;margin-bottom:2px}
+
+.agent-list{display:flex;flex-direction:column;gap:12px}
+.agent-card{background:#fff;border:1.5px solid var(--line);border-radius:14px;
+            padding:18px 20px;display:flex;align-items:flex-start;
+            justify-content:space-between;gap:16px;transition:.15s}
+.agent-card:hover{box-shadow:var(--shadow2)}
+
+.agent-info{flex:1;min-width:0}
+.agent-name{font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.agent-desc{font-size:13px;color:var(--muted);margin-top:4px;
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:480px}
+.agent-prompt-preview{font-size:12px;color:var(--muted);margin-top:6px;
+                      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:480px;
+                      font-style:italic}
+.assign-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.assign-tag{font-size:11px;font-weight:600;background:#F0FDF4;color:#027A48;
+            border:1px solid #A6F4C5;border-radius:999px;padding:2px 9px}
+.assign-tag.none{background:#F9F9FB;color:var(--muted);border-color:var(--line)}
+
+.agent-actions{display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap}
+.btn-edit{background:#f4f4f6;color:var(--ink);border:1px solid var(--line);border-radius:8px;
+          padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;
+          text-decoration:none;display:inline-flex;align-items:center;gap:4px}
+.btn-edit:hover{background:#e8e8ed}
+.btn-del{background:#FEF3F2;color:#B42318;border:1px solid #FDA29B;border-radius:8px;
+         padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:.15s}
+.btn-del:hover{background:#FEE4E2}
+
+.empty-state{text-align:center;padding:48px 24px;color:var(--muted)}
+.empty-icon{font-size:40px;margin-bottom:12px}
+.empty-text{font-size:14px}
+
+.limit-banner{background:#FEF3F2;border:1px solid #FDA29B;border-radius:10px;
+              padding:12px 16px;font-size:13px;color:#B42318;margin-bottom:20px;
+              display:flex;gap:10px;align-items:flex-start}
+
+@media(max-width:600px){
+  .agent-actions{flex-direction:column;align-items:flex-end}
+  .agent-desc,.agent-prompt-preview{max-width:200px}
+  .meter-bar{width:80px}
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page" style="max-width:820px">
+
+  <div class="ag-header">
+    <div>
+      <div class="ag-title">AI Agent Profiles</div>
+      <div class="ag-subtitle">Create named AI personas with their own system prompts. Each WhatsApp number can be assigned a different agent.</div>
+    </div>
+    {% if used < limit %}
+    <a href="{{ url_for('portal.ai_agents_new') }}" class="btn btn-primary" style="white-space:nowrap">+ New Agent</a>
+    {% else %}
+    <button class="btn btn-primary" disabled style="opacity:.5;cursor:not-allowed;white-space:nowrap">+ New Agent</button>
+    {% endif %}
+  </div>
+
+  {# How agents work #}
+  <div class="howto-banner">
+    <span style="font-size:20px">💡</span>
+    <div>
+      <b>How agents connect to WhatsApp numbers</b>
+      Each agent profile is assigned to a WhatsApp number on the
+      <a href="{{ url_for('portal.whatsapp_connect') }}" style="color:#1E3A8A;font-weight:700">WhatsApp Settings</a> page.
+      When a customer messages that number, the AI uses that agent's system prompt automatically.
+      A number with no agent assigned uses your default
+      <a href="{{ url_for('portal.system_instruction') }}" style="color:#1E3A8A;font-weight:700">System Instruction</a>.
+    </div>
+  </div>
+
+  {# Quota bar #}
+  <div class="quota-bar">
+    <div>
+      <div class="quota-count">{{ used }} <span>/ {{ limit }} agent{{ 's' if limit != 1 else '' }}</span></div>
+      <div class="quota-text">on your current plan</div>
+    </div>
+    <div class="meter-bar">
+      {% set pct = [(used / limit * 100)|int, 100]|min %}
+      <div class="meter-fill {% if used >= limit %}full{% endif %}" style="width:{{ pct }}%"></div>
+    </div>
+  </div>
+
+  {% if used >= limit %}
+  <div class="limit-banner">
+    ⚠️ You've reached the {{ limit }}-agent limit on your plan.
+    <a href="{{ url_for('portal.billing_plans') }}" style="color:#B42318;font-weight:700;margin-left:4px">Upgrade to add more →</a>
+  </div>
+  {% endif %}
+
+  {# Agent list #}
+  {% if agents %}
+  <div class="agent-list">
+    {% for ag in agents %}
+    <div class="agent-card">
+      <div class="agent-info">
+        <div class="agent-name">{{ ag.name }}</div>
+        {% if ag.description %}
+        <div class="agent-desc">{{ ag.description }}</div>
+        {% endif %}
+        {% if ag.system_prompt %}
+        <div class="agent-prompt-preview">{{ ag.system_prompt[:140] }}{% if ag.system_prompt|length > 140 %}…{% endif %}</div>
+        {% endif %}
+        <div class="assign-tags">
+          {% if ag.assigned_numbers %}
+            {% for num in ag.assigned_numbers %}
+            <span class="assign-tag">{{ num }}</span>
+            {% endfor %}
+          {% else %}
+          <span class="assign-tag none">Not assigned to any number</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="agent-actions">
+        <a href="{{ url_for('portal.ai_agents_edit', agent_id=ag.id) }}" class="btn-edit">Edit</a>
+        <form method="POST" action="{{ url_for('portal.ai_agents_delete', agent_id=ag.id) }}" style="display:inline"
+              onsubmit="return confirm('Delete agent \'{{ ag.name }}\'? Any WhatsApp numbers assigned to this agent will revert to your default instruction.')">
+          <button type="submit" class="btn-del">Delete</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-icon">🤖</div>
+    <div class="empty-text">No agent profiles yet.<br>Create one, then assign it to a WhatsApp number on the <a href="{{ url_for('portal.whatsapp_connect') }}">WhatsApp Settings</a> page.</div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

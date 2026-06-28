@@ -1,0 +1,56 @@
+{% extends "ambassador/base.html" %}
+{% block title %}Getting Started — Ambassador Hub{% endblock %}
+
+{% block head %}
+<style>
+.gs-hub-hero{margin-bottom:28px}
+.gs-hub-title{font-size:24px;font-weight:800;letter-spacing:-.5px;margin-bottom:6px}
+.gs-hub-sub{font-size:13px;color:var(--muted);line-height:1.6}
+.gs-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:28px}
+.gs-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px;
+         text-decoration:none;color:var(--ink);display:flex;flex-direction:column;gap:10px;
+         transition:border-color .15s,box-shadow .15s;cursor:pointer}
+.gs-card:hover{border-color:#030C18;box-shadow:0 4px 16px rgba(3,12,24,.08)}
+.gs-card-icon{font-size:26px;line-height:1}
+.gs-card-title{font-size:14px;font-weight:800;letter-spacing:-.2px}
+.gs-card-desc{font-size:12px;color:var(--muted);line-height:1.55;flex:1}
+.gs-card-arrow{font-size:12px;font-weight:700;color:var(--ink);align-self:flex-end}
+.gs-start-btn{display:flex;align-items:center;justify-content:space-between;
+              background:var(--ink);color:#fff;border-radius:14px;padding:16px 20px;
+              text-decoration:none;transition:background .15s}
+.gs-start-btn:hover{background:#1a2535}
+.gs-start-btn-label{font-size:14px;font-weight:700}
+.gs-start-btn-sub{font-size:12px;color:rgba(255,255,255,.6);margin-top:2px}
+@media(max-width:600px){
+  .gs-grid{grid-template-columns:1fr}
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="gs-hub-hero">
+  <h1 class="gs-hub-title">Getting Started</h1>
+  <p class="gs-hub-sub">Six short guides that will show you everything you need to start earning as a PhiXtra Ambassador. Pick any topic or start from Step 1.</p>
+</div>
+
+<div class="gs-grid">
+  {% for slug, title, icon, desc in topics %}
+  <a class="gs-card" href="{{ url_for('ambassador.getting_started_topic', topic=slug) }}">
+    <div class="gs-card-icon">{{ icon }}</div>
+    <div class="gs-card-title">{{ title }}</div>
+    <div class="gs-card-desc">{{ desc }}</div>
+    <div class="gs-card-arrow">Read guide →</div>
+  </a>
+  {% endfor %}
+</div>
+
+<a class="gs-start-btn" href="{{ url_for('ambassador.getting_started_topic', topic='your-link') }}">
+  <div>
+    <div class="gs-start-btn-label">Start from the beginning →</div>
+    <div class="gs-start-btn-sub">Your Link & QR Code is Step 1</div>
+  </div>
+  <span style="font-size:22px">🚀</span>
+</a>
+
+{% endblock %}

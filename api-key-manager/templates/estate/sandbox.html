@@ -1,0 +1,748 @@
+{% extends "estate/base.html" %}
+{% block title %}AI Playground — PhiXtra Real Estate{% endblock %}
+
+{% block wrap_class %}pg-page-wrap{% endblock %}
+
+{% block head %}
+<style>
+/* ── Page override ────────────────────────────────────────────────────── */
+.pg-page-wrap {
+  padding: 0;
+  max-width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+@media(max-width:860px) {
+  .pg-page-wrap { height: calc(100vh - 54px); }
+}
+
+/* ── Two-column layout ───────────────────────────────────────────────── */
+.pg-wrap {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+@media(max-width:860px) {
+  .pg-wrap { grid-template-columns: 1fr; }
+  .pg-side  { display: none; }
+}
+
+/* ── WhatsApp chat column ────────────────────────────────────────────── */
+.wa-outer {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* WA header */
+.wa-header {
+  background: #128C7E;
+  color: #fff;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+.wa-avatar {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: #25D366;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; font-weight: 800; color: #fff; flex-shrink: 0;
+}
+.wa-header-info strong { display: block; font-size: 15px; font-weight: 700; line-height: 1.2; }
+.wa-header-info span   { font-size: 12px; opacity: .85; }
+.wa-online-dot {
+  display: inline-block; width: 7px; height: 7px;
+  background: #25D366; border-radius: 50%; margin-right: 4px; vertical-align: middle;
+}
+.wa-header-actions { margin-left: auto; display: flex; gap: 8px; }
+.wa-header-actions button {
+  background: rgba(255,255,255,0.15); border: none; color: #fff;
+  padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: 600;
+  cursor: pointer; font-family: inherit; transition: background .15s;
+}
+.wa-header-actions button:hover { background: rgba(255,255,255,0.28); }
+
+/* Info bar */
+.pg-info-bar {
+  background: #fff8e1; border-bottom: 1px solid #ffe082;
+  padding: 7px 16px; font-size: 12px; color: #6d5100;
+  display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+}
+
+/* Chat scroll area */
+.wa-chat {
+  flex: 1; overflow-y: auto; padding: 16px 16px 8px;
+  display: flex; flex-direction: column; gap: 6px; min-height: 0;
+  background-color: #efeae2;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23c9bfa8' fill-opacity='0.18'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+
+/* Message bubbles */
+.wa-msg { display: flex; max-width: 75%; }
+.wa-msg.user      { align-self: flex-end;   justify-content: flex-end; }
+.wa-msg.assistant { align-self: flex-start; }
+
+.wa-bubble {
+  padding: 8px 12px; border-radius: 8px;
+  font-size: 14px; line-height: 1.55; word-break: break-word;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+}
+.wa-msg.user      .wa-bubble { background: #dcf8c6; color: #111; border-bottom-right-radius: 2px; }
+.wa-msg.assistant .wa-bubble { background: #fff;    color: #111; border-bottom-left-radius:  2px; }
+.wa-time { font-size: 10px; color: rgba(0,0,0,0.42); text-align: right; margin-top: 3px; }
+.wa-ticks { color: #34b7f1; margin-left: 3px; }
+
+/* Typing indicator */
+.wa-typing { align-self: flex-start; display: none; }
+.wa-typing.visible { display: flex; }
+.wa-typing-bubble {
+  background: #fff; border-radius: 8px; border-bottom-left-radius: 2px;
+  padding: 10px 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+  display: flex; gap: 4px; align-items: center;
+}
+.wa-typing-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #90949c; animation: waBounce 1.2s infinite;
+}
+.wa-typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.wa-typing-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes waBounce {
+  0%, 60%, 100% { transform: translateY(0); }
+  30%            { transform: translateY(-6px); }
+}
+
+/* Handoff system alert */
+.wa-handoff-alert {
+  align-self: center; max-width: 80%;
+  background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px;
+  padding: 7px 14px; font-size: 12px; font-weight: 600;
+  color: #5c4300; text-align: center;
+}
+
+/* Date stamp */
+.wa-date-stamp {
+  align-self: center;
+  background: rgba(255,255,255,0.75); border-radius: 6px;
+  padding: 3px 10px; font-size: 11px; color: rgba(0,0,0,0.48);
+  margin: 4px 0;
+}
+
+/* Property cards */
+.wa-cards { display: flex; flex-direction: column; gap: 8px; align-self: flex-start; }
+.wa-prop-card {
+  background: #fff; border-radius: 8px; overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.18); width: 260px;
+}
+.wa-prop-img {
+  width: 100%; height: 130px; object-fit: cover; display: block; background: #dde;
+}
+.wa-prop-img-placeholder {
+  width: 100%; height: 130px;
+  background: linear-gradient(135deg, #0f6b5a, #25D366);
+  display: flex; align-items: center; justify-content: center; font-size: 38px;
+}
+.wa-prop-body { padding: 10px 12px; }
+.wa-prop-title { font-size: 13px; font-weight: 700; color: #111; margin-bottom: 3px; line-height: 1.3; }
+.wa-prop-price { font-size: 13px; font-weight: 800; color: #128C7E; margin-bottom: 5px; }
+.wa-prop-meta  { font-size: 11px; color: #666; margin-bottom: 5px; }
+.wa-prop-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.wa-chip {
+  background: #f0faf7; border: 1px solid #c0e8d5;
+  color: #0f6b5a; font-size: 10px; font-weight: 650;
+  padding: 2px 7px; border-radius: 999px;
+}
+
+/* Input bar */
+.wa-input-bar {
+  background: #f0f2f5; padding: 8px 12px;
+  display: flex; align-items: flex-end; gap: 8px; flex-shrink: 0;
+  border-top: 1px solid rgba(0,0,0,0.10);
+}
+.wa-input {
+  flex: 1; padding: 10px 14px; border-radius: 24px;
+  border: none; background: #fff; font-size: 14px; font-family: inherit;
+  outline: none; box-shadow: 0 1px 3px rgba(0,0,0,0.10);
+  resize: none; min-height: 42px; max-height: 120px; line-height: 1.4;
+  overflow-y: auto;
+}
+.wa-send-btn {
+  width: 44px; height: 44px; border-radius: 50%; background: #25D366;
+  border: none; color: #fff; font-size: 20px; cursor: pointer; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s; box-shadow: 0 2px 8px rgba(37,211,102,0.35);
+}
+.wa-send-btn:hover    { background: #1da851; }
+.wa-send-btn:disabled { background: #bbb; cursor: not-allowed; box-shadow: none; }
+
+/* ── Right side panel ─────────────────────────────────────────────── */
+.pg-side {
+  background: #fff; border-left: 1px solid rgba(3,12,24,0.09);
+  display: flex; flex-direction: column; overflow-y: auto; min-height: 0;
+}
+.pg-side-section {
+  padding: 14px 16px; border-bottom: 1px solid rgba(3,12,24,0.07);
+}
+.pg-side-title {
+  font-size: 10px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .08em; color: rgba(3,12,24,0.38); margin-bottom: 10px;
+}
+.profile-row {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  padding: 5px 0; font-size: 13px; border-bottom: 1px solid rgba(3,12,24,0.05);
+  gap: 8px;
+}
+.profile-row:last-child { border-bottom: none; }
+.profile-label { color: rgba(3,12,24,0.52); white-space: nowrap; flex-shrink: 0; }
+.profile-value { font-weight: 650; color: #030C18; text-align: right; }
+.profile-empty { color: rgba(3,12,24,0.30); font-size: 12px; font-style: italic; line-height: 1.55; }
+
+.quota-bar { height: 6px; background: rgba(3,12,24,0.07); border-radius: 999px; overflow: hidden; margin-top: 8px; }
+.quota-bar > div { height: 100%; border-radius: 999px; background: #25D366; transition: width .4s; }
+.quota-bar.warn   > div { background: #F79009; }
+.quota-bar.danger > div { background: #F04438; }
+
+.tip-btn {
+  text-align: left; background: #f8f9fc; border: 1px solid rgba(3,12,24,0.09);
+  padding: 8px 10px; border-radius: 8px; font-size: 12px; cursor: pointer;
+  font-family: inherit; color: #333; line-height: 1.4; width: 100%;
+  transition: background .13s, border-color .13s;
+}
+.tip-btn:hover { background: #eef0f4; border-color: rgba(3,12,24,0.18); }
+
+/* Slot picker bubble */
+.wa-slot-picker {
+  align-self: flex-start;
+  background: #fff; border-radius: 8px; border-bottom-left-radius: 2px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.18); overflow: hidden;
+  min-width: 240px; max-width: 300px;
+}
+.wa-slot-header {
+  background: #128C7E; color: #fff;
+  padding: 8px 12px; font-size: 13px; font-weight: 700;
+}
+.wa-slot-sub {
+  padding: 7px 12px 5px; font-size: 12px; color: #555; border-bottom: 1px solid #eee;
+}
+.wa-slot-btn {
+  display: block; width: 100%; text-align: left;
+  padding: 9px 12px; font-size: 13px; font-family: inherit;
+  background: #fff; border: none; border-bottom: 1px solid #f2f2f2;
+  cursor: pointer; color: #0a5c4a; font-weight: 600;
+  transition: background .12s;
+}
+.wa-slot-btn:hover   { background: #f0faf7; }
+.wa-slot-btn:disabled { color: #aaa; cursor: not-allowed; background: #fafafa; }
+.wa-slot-btn:last-child { border-bottom: none; }
+.wa-slot-time { font-size: 11px; color: #888; font-weight: 400; }
+
+/* Book button under cards */
+.wa-book-btn {
+  display: inline-block; margin-top: 8px;
+  background: #25D366; color: #fff; border: none; border-radius: 20px;
+  padding: 7px 18px; font-size: 13px; font-weight: 700;
+  cursor: pointer; font-family: inherit; letter-spacing: .01em;
+  box-shadow: 0 2px 6px rgba(37,211,102,.35);
+  transition: background .15s;
+}
+.wa-book-btn:hover { background: #1da851; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{% if not api_key %}
+<div style="padding:40px 24px;text-align:center">
+  <div style="font-size:32px;margin-bottom:16px">⚠️</div>
+  <h2 style="margin-bottom:8px">No API Key Found</h2>
+  <p class="muted">Your account doesn't have an API key configured. Please contact support.</p>
+</div>
+{% else %}
+
+<div class="pg-wrap">
+
+  <!-- ── Left: WhatsApp playground ────────────────────────────────── -->
+  <div class="wa-outer">
+
+    <!-- Header -->
+    <div class="wa-header">
+      <div class="wa-avatar">{{ (tenant.business_name or 'A')[0]|upper }}</div>
+      <div class="wa-header-info">
+        <strong>{{ tenant.business_name or 'My Agency' }}</strong>
+        <span><span class="wa-online-dot"></span>{{ agent_name }} &middot; Sandbox</span>
+      </div>
+      <div class="wa-header-actions">
+        <button onclick="resetConversation()">↺ Reset</button>
+      </div>
+    </div>
+
+    <!-- Info strip -->
+    <div class="pg-info-bar">
+      🧪 Sandbox — uses your real listings and AI settings. Test conversations are stored with phone <strong>sandbox_{{ tenant_id }}</strong>.
+    </div>
+
+    <!-- Chat window -->
+    <div class="wa-chat" id="waChat">
+      <div class="wa-date-stamp">TODAY</div>
+
+      <div class="wa-msg assistant" id="welcomeMsg">
+        <div class="wa-bubble">
+          👋 Send a message below to test your AI property assistant. Try asking about properties, budget, or location.
+          <div class="wa-time">{{ now.strftime('%H:%M') }}</div>
+        </div>
+      </div>
+
+      <div class="wa-typing" id="waTyping">
+        <div class="wa-typing-bubble">
+          <div class="wa-typing-dot"></div>
+          <div class="wa-typing-dot"></div>
+          <div class="wa-typing-dot"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Input bar -->
+    <div class="wa-input-bar">
+      <textarea class="wa-input" id="waInput" rows="1"
+                placeholder="Type a message…"
+                onkeydown="handleKey(event)"
+                oninput="autoResize(this)"></textarea>
+      <button class="wa-send-btn" id="waSendBtn" onclick="sendMessage()" title="Send">&#10148;</button>
+    </div>
+
+  </div>
+
+  <!-- ── Right: Live info panel ─────────────────────────────────── -->
+  <div class="pg-side">
+
+    <!-- Buyer profile -->
+    <div class="pg-side-section">
+      <div class="pg-side-title">Buyer Profile (live)</div>
+      <div id="profilePanel">
+        <div class="profile-empty">No data yet — the AI will collect buyer requirements naturally during the conversation.</div>
+      </div>
+    </div>
+
+    <!-- Last action -->
+    <div class="pg-side-section">
+      <div class="pg-side-title">Detected Action</div>
+      <div id="actionPanel" style="font-size:13px;color:rgba(3,12,24,0.38);font-style:italic">None yet</div>
+    </div>
+
+    <!-- Handoff status -->
+    <div class="pg-side-section">
+      <div class="pg-side-title">Handoff</div>
+      <div id="handoffPanel" style="font-size:13px;color:rgba(3,12,24,0.38);font-style:italic">Not triggered</div>
+    </div>
+
+    <!-- Quota -->
+    <div class="pg-side-section">
+      <div class="pg-side-title">AI Message Quota</div>
+      <div style="font-size:13px">
+        <span id="quotaUsed">—</span> of <span id="quotaLimit">—</span> used
+      </div>
+      <div class="quota-bar" id="quotaBar"><div id="quotaFill" style="width:0%"></div></div>
+    </div>
+
+    <!-- Test tips -->
+    <div class="pg-side-section" style="flex:1">
+      <div class="pg-side-title">Try These</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        {% for tip in [
+          "I'm looking for a 3-bedroom flat in Lekki",
+          "My budget is ₦25 million for outright purchase",
+          "Show me properties for rent in Victoria Island",
+          "I want to book an inspection for one of the properties",
+          "Can an agent please call me back?",
+        ] %}
+        <button class="tip-btn" onclick="useTip(this)">"{{ tip }}"</button>
+        {% endfor %}
+      </div>
+    </div>
+
+  </div>
+
+</div><!-- .pg-wrap -->
+
+{% endif %}
+{% endblock %}
+
+{% block footer %}{% endblock %}
+
+{% block scripts %}
+{% if api_key %}
+<script>
+const CHAT_URL      = "{{ url_for('estate.sandbox_chat') }}";
+const RESET_URL     = "{{ url_for('estate.sandbox_reset') }}";
+const BOOK_SLOT_URL = "{{ url_for('estate.sandbox_book_slot') }}";
+
+let profile       = {};
+let sending       = false;
+let lastListingId = null;
+
+function nowStr() {
+  return new Date().toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
+
+function useTip(btn) {
+  const input = document.getElementById('waInput');
+  input.value = btn.textContent.replace(/^"|"$/g,'');
+  input.focus();
+  autoResize(input);
+}
+
+function scrollBottom() {
+  const c = document.getElementById('waChat');
+  c.scrollTop = c.scrollHeight;
+}
+
+function addBubble(role, text) {
+  const chat   = document.getElementById('waChat');
+  const typing = document.getElementById('waTyping');
+  const div    = document.createElement('div');
+  div.className = 'wa-msg ' + role;
+  const ticks = role === 'user' ? ' <span class="wa-ticks">✓✓</span>' : '';
+  div.innerHTML = `<div class="wa-bubble">${esc(text).replace(/\n/g,'<br>')}<div class="wa-time">${nowStr()}${ticks}</div></div>`;
+  chat.insertBefore(div, typing);
+  scrollBottom();
+}
+
+function addCards(listings) {
+  if (!listings || !listings.length) return;
+
+  // Track first listing id for BOOK flow
+  if (listings[0] && listings[0].id) lastListingId = listings[0].id;
+
+  const chat   = document.getElementById('waChat');
+  const typing = document.getElementById('waTyping');
+  const wrap   = document.createElement('div');
+  wrap.className = 'wa-cards';
+
+  listings.forEach(L => {
+    const card = document.createElement('div');
+    card.className = 'wa-prop-card';
+    const imgs = Array.isArray(L.images) ? L.images : [];
+    let imgHtml = imgs[0]
+      ? `<img class="wa-prop-img" src="${esc(imgs[0])}" alt="" loading="lazy"
+              onerror="this.style.display='none';this.nextSibling.style.display='flex'">
+         <div class="wa-prop-img-placeholder" style="display:none">🏠</div>`
+      : `<div class="wa-prop-img-placeholder">🏠</div>`;
+    const chips = [];
+    if (L.bedrooms)   chips.push(`🛏 ${L.bedrooms} bed`);
+    if (L.bathrooms)  chips.push(`🚿 ${L.bathrooms} bath`);
+    if (L.size_sqm)   chips.push(`📐 ${L.size_sqm} sqm`);
+    if (L.title_document) chips.push(L.title_document);
+    const loc = [L.location, L.lga, L.state].filter(Boolean).join(', ');
+    card.innerHTML = `
+      ${imgHtml}
+      <div class="wa-prop-body">
+        <div class="wa-prop-title">${esc(L.title||'Property Listing')}</div>
+        <div class="wa-prop-price">${esc(L.price||'Price on request')}</div>
+        ${loc ? `<div class="wa-prop-meta">📍 ${esc(loc)}</div>` : ''}
+        ${chips.length ? `<div class="wa-prop-chips">${chips.map(c=>`<span class="wa-chip">${esc(c)}</span>`).join('')}</div>` : ''}
+      </div>`;
+    wrap.appendChild(card);
+  });
+
+  // Book a Viewing shortcut button — triggers slot list directly, no text typed
+  const bookBtn = document.createElement('button');
+  bookBtn.className = 'wa-book-btn';
+  bookBtn.textContent = '📅 Book a Viewing';
+  bookBtn.onclick = () => triggerBookingFlow(lastListingId, bookBtn);
+  wrap.appendChild(bookBtn);
+
+  chat.insertBefore(wrap, typing);
+  scrollBottom();
+}
+
+function addSlotList(slots, listingId, listingTitle) {
+  if (!slots || !slots.length) return;
+  const chat   = document.getElementById('waChat');
+  const typing = document.getElementById('waTyping');
+
+  const picker = document.createElement('div');
+  picker.className = 'wa-slot-picker';
+
+  const header = document.createElement('div');
+  header.className = 'wa-slot-header';
+  header.textContent = '📅 Available Viewing Slots';
+  picker.appendChild(header);
+
+  if (listingTitle) {
+    const sub = document.createElement('div');
+    sub.className = 'wa-slot-sub';
+    sub.textContent = listingTitle;
+    picker.appendChild(sub);
+  }
+
+  const sub2 = document.createElement('div');
+  sub2.className = 'wa-slot-sub';
+  sub2.textContent = 'Tap a slot to confirm your viewing:';
+  picker.appendChild(sub2);
+
+  slots.forEach(s => {
+    const btn = document.createElement('button');
+    btn.className = 'wa-slot-btn';
+    const dur = s.duration_mins || 60;
+    btn.innerHTML = `${esc(s.slot_label || s.slot_datetime)}<br><span class="wa-slot-time">${dur} min viewing</span>`;
+    btn.onclick = () => bookSlot(s.id, listingId, s.slot_label || s.slot_datetime, btn, picker);
+    picker.appendChild(btn);
+  });
+
+  chat.insertBefore(picker, typing);
+  scrollBottom();
+}
+
+async function triggerBookingFlow(listingId, triggerBtn) {
+  if (sending) return;
+  if (triggerBtn) triggerBtn.disabled = true;
+
+  sending = true;
+  document.getElementById('waSendBtn').disabled = true;
+
+  // Show as a user action bubble (not raw "BOOK" text)
+  addBubble('user', '📅 Book a Viewing');
+  document.getElementById('waTyping').classList.add('visible');
+  scrollBottom();
+
+  try {
+    const res  = await fetch(CHAT_URL, {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({message: 'BOOK', listing_id: listingId}),
+    });
+    const data = await res.json();
+    document.getElementById('waTyping').classList.remove('visible');
+
+    if (data.sandbox_action === 'slot_list') {
+      if (data.reply) addBubble('assistant', data.reply);
+      if (data.listing_id) lastListingId = data.listing_id;
+      addSlotList(data.slots, data.listing_id, data.listing_title);
+    } else if (data.reply) {
+      addBubble('assistant', data.reply);
+    } else if (data.error) {
+      addBubble('assistant', '⚠️ ' + data.error);
+    }
+  } catch(err) {
+    document.getElementById('waTyping').classList.remove('visible');
+    addBubble('assistant', '⚠️ Connection error — please try again.');
+  }
+
+  sending = false;
+  document.getElementById('waSendBtn').disabled = false;
+  if (triggerBtn) triggerBtn.disabled = false;
+}
+
+async function bookSlot(slotId, listingId, label, btn, picker) {
+  // Disable all slot buttons to prevent double-booking
+  picker.querySelectorAll('.wa-slot-btn').forEach(b => b.disabled = true);
+  btn.textContent = '⏳ Booking…';
+
+  try {
+    const res  = await fetch(BOOK_SLOT_URL, {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({slot_id: slotId, listing_id: listingId}),
+    });
+    const data = await res.json();
+
+    if (data.error) {
+      btn.disabled = false;
+      btn.textContent = '⚠️ ' + data.error;
+      picker.querySelectorAll('.wa-slot-btn:not([disabled])').forEach(b => b.disabled = false);
+    } else {
+      // Replace picker with confirmation bubble
+      const conf = document.createElement('div');
+      conf.className = 'wa-msg assistant';
+      conf.innerHTML = `<div class="wa-bubble">${esc(data.confirmation).replace(/\n/g,'<br>')}<div class="wa-time">${nowStr()}</div></div>`;
+      picker.replaceWith(conf);
+      scrollBottom();
+    }
+  } catch(err) {
+    btn.disabled = false;
+    btn.textContent = '⚠️ Connection error — try again';
+    picker.querySelectorAll('.wa-slot-btn').forEach(b => b.disabled = false);
+  }
+}
+
+function addHandoffAlert(actionType) {
+  const chat   = document.getElementById('waChat');
+  const typing = document.getElementById('waTyping');
+  const div    = document.createElement('div');
+  div.className = 'wa-handoff-alert';
+  div.textContent = '🔔 Handoff triggered' + (actionType && actionType !== 'general' ? ' — ' + actionType : '') + ': a staff member has been alerted.';
+  chat.insertBefore(div, typing);
+  scrollBottom();
+}
+
+function updateProfile(bp) {
+  Object.assign(profile, bp || {});
+  const defs = [
+    ['name',                'Name'],
+    ['preferred_area',      'Preferred Area'],
+    ['property_type_pref',  'Property Type',  v => v.charAt(0).toUpperCase()+v.slice(1)],
+    ['transaction_pref',    'Transaction',    v => v.charAt(0).toUpperCase()+v.slice(1)],
+    ['budget_min',          'Min Budget',     v => '₦'+Number(v).toLocaleString()],
+    ['budget_max',          'Max Budget',     v => '₦'+Number(v).toLocaleString()],
+    ['bedrooms_pref',       'Bedrooms'],
+    ['urgency',             'Urgency',        v => v.charAt(0).toUpperCase()+v.slice(1)],
+    ['payment_method',      'Payment',        v => v.charAt(0).toUpperCase()+v.slice(1)],
+  ];
+  const filled = defs.filter(([k]) => profile[k] != null && profile[k] !== '');
+  const panel  = document.getElementById('profilePanel');
+  if (!filled.length) {
+    panel.innerHTML = '<div class="profile-empty">No data yet — the AI will collect buyer requirements naturally during the conversation.</div>';
+    return;
+  }
+  panel.innerHTML = filled.map(([k, label, fmt]) => {
+    const raw = profile[k];
+    const val = fmt ? fmt(raw) : String(raw);
+    return `<div class="profile-row"><span class="profile-label">${esc(label)}</span><span class="profile-value">${esc(val)}</span></div>`;
+  }).join('');
+}
+
+function updateQuota(used, limit) {
+  if (used == null) return;
+  document.getElementById('quotaUsed').textContent  = used;
+  document.getElementById('quotaLimit').textContent = limit === 0 || limit == null ? '∞' : limit;
+  if (limit > 0) {
+    const pct = Math.min(100, Math.round(used / limit * 100));
+    document.getElementById('quotaFill').style.width = pct + '%';
+    const bar = document.getElementById('quotaBar');
+    bar.className = 'quota-bar' + (pct >= 90 ? ' danger' : pct >= 70 ? ' warn' : '');
+  }
+}
+
+function updateAction(a) {
+  const el = document.getElementById('actionPanel');
+  if (!a || a === 'general') {
+    el.style.color = 'rgba(3,12,24,0.38)'; el.style.fontStyle = 'italic';
+    el.textContent = 'General enquiry';
+  } else if (a === 'INSPECT') {
+    el.style.color = '#1a56db'; el.style.fontStyle = 'normal';
+    el.textContent = '🏠 INSPECT — buyer wants to view a property';
+  } else {
+    el.style.color = '#b45309'; el.style.fontStyle = 'normal';
+    el.textContent = '📞 CALLBACK — buyer wants an agent to call';
+  }
+}
+
+function updateHandoff(triggered, actionType) {
+  if (!triggered) return;
+  const el = document.getElementById('handoffPanel');
+  el.style.color = '#92400e'; el.style.fontStyle = 'normal';
+  el.innerHTML = `🔔 <strong>Triggered</strong><br><span style="font-size:12px">${esc(actionType||'Escalation requested')}</span>`;
+}
+
+async function sendMessage() {
+  if (sending) return;
+  const input = document.getElementById('waInput');
+  const msg   = input.value.trim();
+  if (!msg) return;
+
+  sending = true;
+  document.getElementById('waSendBtn').disabled = true;
+  input.value = ''; input.style.height = 'auto';
+
+  const welcome = document.getElementById('welcomeMsg');
+  if (welcome) welcome.remove();
+
+  addBubble('user', msg);
+  document.getElementById('waTyping').classList.add('visible');
+  scrollBottom();
+
+  try {
+    const res  = await fetch(CHAT_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({message: msg, listing_id: lastListingId})
+    });
+    const data = await res.json();
+    document.getElementById('waTyping').classList.remove('visible');
+
+    if (data.error) {
+      addBubble('assistant', '⚠️ Error: ' + data.error);
+    } else if (data.quota_exceeded) {
+      addBubble('assistant', '⚠️ Your AI message quota has been reached. Please upgrade your plan to continue.');
+    } else if (data.sandbox_action === 'slot_list') {
+      // BOOK keyword matched — show reply then slot picker
+      if (data.reply) addBubble('assistant', data.reply);
+      if (data.listing_id) lastListingId = data.listing_id;
+      addSlotList(data.slots, data.listing_id, data.listing_title);
+    } else {
+      if (data.reply)    addBubble('assistant', data.reply);
+      if (data.listings && data.listings.length) addCards(data.listings);
+      if (data.handoff_triggered) { addHandoffAlert(data.action_type); updateHandoff(true, data.action_type); }
+      updateQuota(data.messages_used, data.messages_limit);
+      if (data.action_type) updateAction(data.action_type);
+      if (data.buyer_profile) updateProfile(data.buyer_profile);
+    }
+  } catch(err) {
+    document.getElementById('waTyping').classList.remove('visible');
+    addBubble('assistant', '⚠️ Connection error — please try again.');
+  }
+
+  sending = false;
+  document.getElementById('waSendBtn').disabled = false;
+  input.focus();
+}
+
+async function resetConversation() {
+  if (!confirm('Clear this sandbox conversation? The AI will start fresh.')) return;
+
+  try { await fetch(RESET_URL, {method:'POST'}); } catch(e) {}
+
+  profile = {};
+  lastListingId = null;
+  const chat = document.getElementById('waChat');
+  chat.innerHTML = `
+    <div class="wa-date-stamp">TODAY</div>
+    <div class="wa-msg assistant" id="welcomeMsg">
+      <div class="wa-bubble">
+        👋 Send a message below to test your AI property assistant. Try asking about properties, budget, or location.
+        <div class="wa-time">${nowStr()}</div>
+      </div>
+    </div>
+    <div class="wa-typing" id="waTyping">
+      <div class="wa-typing-bubble">
+        <div class="wa-typing-dot"></div>
+        <div class="wa-typing-dot"></div>
+        <div class="wa-typing-dot"></div>
+      </div>
+    </div>`;
+
+  updateProfile({});
+  document.getElementById('quotaUsed').textContent  = '—';
+  document.getElementById('quotaLimit').textContent = '—';
+  document.getElementById('quotaFill').style.width  = '0%';
+  document.getElementById('quotaBar').className     = 'quota-bar';
+  const ap = document.getElementById('actionPanel');
+  ap.style.color = 'rgba(3,12,24,0.38)'; ap.style.fontStyle = 'italic'; ap.textContent = 'None yet';
+  const hp = document.getElementById('handoffPanel');
+  hp.style.color = 'rgba(3,12,24,0.38)'; hp.style.fontStyle = 'italic'; hp.textContent = 'Not triggered';
+}
+
+document.getElementById('waInput').focus();
+</script>
+{% endif %}
+{% endblock %}

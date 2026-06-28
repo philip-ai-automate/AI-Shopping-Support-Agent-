@@ -1,0 +1,133 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Ambassador Leads — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+  .status-pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}
+  .s-new{background:#f1f5f9;color:#475569}
+  .s-contacted{background:#dbeafe;color:#1d4ed8}
+  .s-negotiating{background:#fef9c3;color:#92400e}
+  .s-closed_won{background:#dcfce7;color:#15803d}
+  .s-closed_lost{background:#fee2e2;color:#991b1b}
+
+  .action-form{display:inline}
+  .action-select{padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;
+                 font-size:12px;font-family:inherit;background:#fff;cursor:pointer;
+                 color:var(--ink);outline:none}
+  .action-btn{padding:5px 12px;border-radius:8px;border:1.5px solid var(--line);
+              background:#fff;font-size:12px;font-weight:600;cursor:pointer;
+              font-family:inherit;transition:background .15s;color:var(--ink)}
+  .action-btn:hover{background:#f3f4f6}
+  .action-btn.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .action-btn.primary:hover{background:#1a2535}
+
+  .commission-form{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .commission-input{width:120px;padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;
+                    font-size:12px;font-family:inherit;outline:none}
+  .commission-input:focus{border-color:var(--ink)}
+
+  .notes-cell{max-width:200px;font-size:12px;color:var(--muted);
+              white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+</style>
+
+<div class="page-header" style="margin-bottom:20px">
+  <h1 style="font-size:22px;font-weight:800;letter-spacing:-.4px">Ambassador Leads</h1>
+  <span style="font-size:13px;color:var(--muted)">{{ leads|length }} total</span>
+</div>
+
+<div style="background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden">
+  <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead>
+        <tr style="border-bottom:2px solid var(--line)">
+          <th style="padding:11px 14px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Business</th>
+          <th style="padding:11px 14px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Contact</th>
+          <th style="padding:11px 14px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Ambassador</th>
+          <th style="padding:11px 14px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Notes</th>
+          <th style="padding:11px 14px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Status</th>
+          <th style="padding:11px 14px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Commission</th>
+          <th style="padding:11px 14px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Submitted</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if not leads %}
+        <tr>
+          <td colspan="7" style="text-align:center;padding:48px;color:var(--muted)">
+            No leads submitted yet.
+          </td>
+        </tr>
+        {% endif %}
+
+        {% for lead in leads %}
+        <tr style="border-bottom:1px solid var(--line)">
+          <td style="padding:12px 14px;vertical-align:middle">
+            <strong>{{ lead.business_name }}</strong>
+          </td>
+          <td style="padding:12px 14px;vertical-align:middle">
+            {% if lead.contact_name %}<div>{{ lead.contact_name }}</div>{% endif %}
+            {% if lead.phone %}<div style="color:var(--muted);font-size:12px">{{ lead.phone }}</div>{% endif %}
+            {% if lead.email %}<div style="color:var(--muted);font-size:12px">{{ lead.email }}</div>{% endif %}
+            {% if not lead.contact_name and not lead.phone and not lead.email %}
+              <span style="color:var(--muted)">—</span>
+            {% endif %}
+          </td>
+          <td style="padding:12px 14px;vertical-align:middle">
+            <div>{{ lead.ambassador_name }}</div>
+            <div style="font-size:12px;color:var(--muted)">{{ lead.ambassador_email }}</div>
+          </td>
+          <td style="padding:12px 14px;vertical-align:middle">
+            <div class="notes-cell" title="{{ lead.notes or '' }}">
+              {{ lead.notes or '—' }}
+            </div>
+          </td>
+          <td style="padding:12px 14px;vertical-align:middle">
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <span class="status-pill s-{{ lead.status }}">
+                {{ lead.status.replace('_', ' ').title() }}
+              </span>
+              {% if lead.status not in ('closed_won', 'closed_lost') %}
+              <form class="action-form" method="POST"
+                    action="{{ url_for('portal_admin.lead_update_status', lead_id=lead.id) }}">
+                <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
+                  <select class="action-select" name="status">
+                    <option value="contacted" {% if lead.status=='contacted' %}selected{% endif %}>Contacted</option>
+                    <option value="negotiating" {% if lead.status=='negotiating' %}selected{% endif %}>Negotiating</option>
+                    <option value="closed_won">Closed Won</option>
+                    <option value="closed_lost">Closed Lost</option>
+                  </select>
+                  <button class="action-btn" type="submit">Update</button>
+                </div>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+          <td style="padding:12px 14px;vertical-align:middle">
+            {% if lead.commission_triggered %}
+              <span style="display:inline-flex;align-items:center;gap:5px;
+                           padding:4px 10px;background:#dcfce7;border-radius:20px;
+                           font-size:11px;font-weight:700;color:#15803d">
+                ✓ Recorded
+              </span>
+            {% elif lead.status == 'closed_won' %}
+              <form class="action-form" method="POST"
+                    action="{{ url_for('portal_admin.lead_record_commission', lead_id=lead.id) }}">
+                <div class="commission-form">
+                  <span style="font-size:12px;color:var(--muted)">Sub. amount:</span>
+                  <input class="commission-input" type="number" name="amount"
+                         placeholder="e.g. 25000" min="1" step="any" required/>
+                  <button class="action-btn primary" type="submit">Record 20%</button>
+                </div>
+              </form>
+            {% else %}
+              <span style="color:var(--muted);font-size:12px">—</span>
+            {% endif %}
+          </td>
+          <td style="padding:12px 14px;vertical-align:middle;color:var(--muted);white-space:nowrap">
+            {{ lead.created_at.strftime('%d %b %Y') if lead.created_at else '—' }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

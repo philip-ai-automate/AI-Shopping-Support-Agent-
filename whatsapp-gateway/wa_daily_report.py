@@ -241,6 +241,212 @@ def _format_report(tenant_name: str, report_date: date, stats: dict) -> str:
     return "\n".join(lines)
 
 
+# ─── Automatic template management ───────────────────────────────────────────
+#
+# Each tenant has their own WhatsApp Business Account (WABA).  Templates are
+# WABA-scoped, so every tenant needs their own approved copy of the daily report
+# template.  These helpers handle the full lifecycle automatically:
+#
+#   ensure_templates_submitted()   — called at startup; submits for any tenant
+#                                    that is missing a template record.
+#   poll_and_activate_templates()  — called every 2 h by scheduler; detects when
+#                                    Meta approves a pending template and flips
+#                                    wa_templates.active = TRUE automatically.
+#   submit_template_for_tenant()   — called from onboarding when a new tenant
+#                                    connects their WhatsApp Business number.
+
+_DAILY_REPORT_TEMPLATE_NAME = "phixtra_daily_report"
+_DAILY_REPORT_TEMPLATE_BODY = (
+    "📊 Daily Report — {{1}}\n"
+    "🗓 {{2}}\n\n"
+    "📦 Orders placed: {{3}}\n"
+    "💰 Revenue: ₦{{4}}\n"
+    "💬 Conversations: {{5}}\n"
+    "🤝 Handoffs: {{6}}\n\n"
+    "📲 View dashboard: portal.phixtra.com"
+)
+
+
+async def _submit_template_to_meta(waba_id: str, access_token: str) -> bool:
+    """POST the phixtra_daily_report template to a tenant's WABA. Returns True on success."""
+    url = f"{_GRAPH_BASE}/{waba_id}/message_templates"
+    payload = {
+        "name": _DAILY_REPORT_TEMPLATE_NAME,
+        "language": "en",
+        "category": "UTILITY",
+        "components": [{
+            "type": "BODY",
+            "text": _DAILY_REPORT_TEMPLATE_BODY,
+            "example": {
+                "body_text": [["My Business", "27 June 2026", "3", "45,000", "12", "2"]]
+            },
+        }],
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post(
+                url, json=payload,
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            data = r.json()
+            if r.status_code in (200, 201) and data.get("id"):
+                return True
+            if "already exists" in str(data).lower():
+                return True
+            print(f"⚠️ [TEMPLATE] Meta rejected submission for WABA {waba_id}: {data}")
+            return False
+    except Exception as e:
+        print(f"⚠️ [TEMPLATE] submit error for WABA {waba_id}: {e}")
+        return False
+
+
+def _upsert_template_record(tenant_id: int) -> None:
+    """Insert an inactive wa_templates row if one doesn't already exist."""
+    conn = get_db_connection()
+    if not conn:
+        return
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO wa_templates (tenant_id, template_name, language_code, template_type, active)
+            VALUES (%s, %s, 'en', 'daily_report', FALSE)
+            ON CONFLICT (tenant_id, template_type) DO NOTHING
+        """, (tenant_id, _DAILY_REPORT_TEMPLATE_NAME))
+        conn.commit()
+    except Exception as e:
+        print(f"⚠️ [TEMPLATE] DB insert error for tenant {tenant_id}: {e}")
+    finally:
+        cur.close()
+        conn.close()
+
+
+async def submit_template_for_tenant(tenant_id: int, waba_id: str, access_token: str) -> None:
+    """Submit the daily report template to a single tenant's WABA and record it."""
+    ok = await _submit_template_to_meta(waba_id, access_token)
+    if ok:
+        _upsert_template_record(tenant_id)
+        print(f"✅ [TEMPLATE] submitted {_DAILY_REPORT_TEMPLATE_NAME} for tenant={tenant_id}")
+    else:
+        print(f"⚠️ [TEMPLATE] submission failed for tenant={tenant_id}")
+
+
+async def ensure_templates_submitted() -> None:
+    """
+    Startup check: find every tenant with daily reporting enabled but no
+    template record, and submit the template to their WABA.
+    """
+    conn = get_db_connection()
+    if not conn:
+        return
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("""
+            SELECT wt.tenant_id, wt.waba_id, wt.access_token
+            FROM wa_tenants wt
+            JOIN tenants t ON wt.tenant_id = t.id
+            WHERE t.daily_report_enabled = TRUE
+              AND wt.waba_id IS NOT NULL
+              AND wt.access_token IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM wa_templates tmpl
+                  WHERE tmpl.tenant_id = wt.tenant_id
+                    AND tmpl.template_type = 'daily_report'
+              )
+        """)
+        rows = cur.fetchall() or []
+    except Exception as e:
+        print(f"⚠️ [TEMPLATE] ensure_templates_submitted query error: {e}")
+        rows = []
+    finally:
+        cur.close()
+        conn.close()
+
+    if not rows:
+        return
+
+    print(f"🔧 [TEMPLATE] Submitting daily report template for {len(rows)} tenant(s) missing it…")
+    for row in rows:
+        await submit_template_for_tenant(row["tenant_id"], row["waba_id"], row["access_token"])
+
+
+async def _check_template_status(waba_id: str, access_token: str) -> str | None:
+    """Query Meta for the current approval status of phixtra_daily_report in this WABA."""
+    url = f"{_GRAPH_BASE}/{waba_id}/message_templates"
+    params = {
+        "name": _DAILY_REPORT_TEMPLATE_NAME,
+        "fields": "name,status",
+        "access_token": access_token,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(url, params=params)
+            data = r.json().get("data", [])
+            return data[0]["status"] if data else None
+    except Exception as e:
+        print(f"⚠️ [TEMPLATE] status check error: {e}")
+        return None
+
+
+def _activate_template_record(tenant_id: int) -> None:
+    conn = get_db_connection()
+    if not conn:
+        return
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "UPDATE wa_templates SET active = TRUE WHERE tenant_id = %s AND template_type = 'daily_report'",
+            (tenant_id,)
+        )
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        cur.close()
+        conn.close()
+
+
+async def poll_and_activate_templates() -> None:
+    """
+    Scheduler job (every 2 h): check Meta API for pending templates and
+    activate any that have been approved since last check.
+    """
+    conn = get_db_connection()
+    if not conn:
+        return
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("""
+            SELECT tmpl.tenant_id, wt.waba_id, wt.access_token
+            FROM wa_templates tmpl
+            JOIN wa_tenants wt ON tmpl.tenant_id = wt.tenant_id
+            WHERE tmpl.active = FALSE
+              AND tmpl.template_type = 'daily_report'
+              AND wt.waba_id IS NOT NULL
+        """)
+        rows = cur.fetchall() or []
+    except Exception as e:
+        print(f"⚠️ [TEMPLATE] poll query error: {e}")
+        rows = []
+    finally:
+        cur.close()
+        conn.close()
+
+    if not rows:
+        return
+
+    print(f"🔍 [TEMPLATE] Polling approval for {len(rows)} pending template(s)…")
+    for row in rows:
+        status = await _check_template_status(row["waba_id"], row["access_token"])
+        tid = row["tenant_id"]
+        if status == "APPROVED":
+            _activate_template_record(tid)
+            print(f"✅ [TEMPLATE] tenant={tid} {_DAILY_REPORT_TEMPLATE_NAME} approved — activated")
+        elif status in ("REJECTED", "PAUSED", "DISABLED"):
+            print(f"⚠️ [TEMPLATE] tenant={tid} {_DAILY_REPORT_TEMPLATE_NAME} → {status}")
+        else:
+            print(f"   [TEMPLATE] tenant={tid} still {status or 'unknown'}")
+
+
 def _get_wa_template_for_report(tenant_id: int) -> dict | None:
     """Check if tenant has a phixtra_daily_report template configured."""
     conn = get_db_connection()

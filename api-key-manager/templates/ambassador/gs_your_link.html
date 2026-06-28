@@ -1,0 +1,68 @@
+{% extends "ambassador/gs_page.html" %}
+
+{% block gs_style %}
+.ref-box{background:#f8f9fb;border:1px solid var(--line);border-radius:10px;padding:12px 14px;
+         display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.ref-url{font-size:12px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;
+         white-space:nowrap;min-width:0}
+{% endblock %}
+
+{% block gs_content %}
+
+<div class="gs-section">
+  <div class="gs-section-title">Your referral link</div>
+  <p style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.6">
+    When a shop signs up using this link, they are added to your account. You earn money every time they pay their monthly subscription.
+  </p>
+  <div class="ref-box">
+    <span id="refLink" class="ref-url">{{ base_url }}/register?ref={{ amb.ref_code }}</span>
+    <button class="copy-btn" onclick="copyText('refLink', this)">Copy</button>
+  </div>
+  <div class="gs-tip">
+    <strong>Best way to share:</strong> Paste this link in a WhatsApp chat, post it on your status, or drop it in any business group you are in.
+  </div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">Your QR code</div>
+  <p style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.6">
+    A shop owner can point their phone camera at this code and go straight to your sign-up page. No link needed.
+  </p>
+  <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
+    <img src="{{ url_for('ambassador.qr_image') }}" alt="Your QR code"
+         style="width:130px;height:130px;border:1px solid var(--line);border-radius:12px;flex-shrink:0"/>
+    <div style="flex:1;min-width:180px;display:flex;flex-direction:column;gap:10px">
+      <a href="{{ url_for('ambassador.qr_image', download='1') }}" class="btn btn-primary btn-sm" download>
+        Download QR Code
+      </a>
+      <a href="{{ url_for('ambassador.qr_page') }}" class="btn btn-sm">View Full QR Page →</a>
+    </div>
+  </div>
+  <div class="gs-tip" style="margin-top:14px">
+    <strong>Pro tip:</strong> Save the QR image as your phone wallpaper or lock screen. When you meet a shop owner, just show your phone — no searching for a link.
+  </div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">Ways to share</div>
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;gap:12px;align-items:flex-start;font-size:13px">
+      <span style="font-size:18px;flex-shrink:0">📲</span>
+      <div><strong>WhatsApp Status</strong> — Post your QR code as a status. Anyone who sees it and scans it is added to your account.</div>
+    </div>
+    <div style="display:flex;gap:12px;align-items:flex-start;font-size:13px">
+      <span style="font-size:18px;flex-shrink:0">💬</span>
+      <div><strong>Direct Message</strong> — Copy your link and send it to a shop owner you are talking to.</div>
+    </div>
+    <div style="display:flex;gap:12px;align-items:flex-start;font-size:13px">
+      <span style="font-size:18px;flex-shrink:0">🖨️</span>
+      <div><strong>Printed flyer</strong> — Download your QR code and print it on a small card to hand out at markets or events.</div>
+    </div>
+    <div style="display:flex;gap:12px;align-items:flex-start;font-size:13px">
+      <span style="font-size:18px;flex-shrink:0">👥</span>
+      <div><strong>WhatsApp groups</strong> — Share in business owner groups you belong to (ask the admin first).</div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

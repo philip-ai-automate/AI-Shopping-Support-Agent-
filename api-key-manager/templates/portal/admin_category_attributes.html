@@ -14,6 +14,15 @@
            border-radius:0 0 12px 12px}
   .add-row .form-group{margin:0;min-width:130px}
   .add-row .form-group.wide{min-width:190px}
+
+  /* Template picker */
+  .tpl-banner{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+              background:linear-gradient(135deg,rgba(3,12,24,.04),rgba(3,12,24,.02));
+              border:1px solid var(--line);border-radius:14px;padding:16px 20px;
+              margin-bottom:18px}
+  .tpl-banner label{font-size:13px;font-weight:700;white-space:nowrap}
+  .tpl-banner select{flex:1;min-width:200px}
+  .tpl-preview{font-size:11px;color:var(--muted);margin-top:4px}
 </style>
 
 <div class="page-header">
@@ -26,9 +35,32 @@
   <div style="display:flex;gap:8px">
     <a href="{{ url_for('portal_admin.catalogue_category_products', category_id=cat.id) }}" class="btn btn-sm">View Products</a>
     <a href="{{ url_for('portal_admin.catalogue_category_upload', category_id=cat.id) }}" class="btn btn-sm btn-primary">⬆ Upload CSV</a>
+    <a href="{{ url_for('portal_admin.catalogue_templates') }}" class="btn btn-sm">🗂 Manage Templates</a>
     <a href="{{ url_for('portal_admin.catalogue_dashboard') }}" class="btn btn-sm">← Dashboard</a>
   </div>
 </div>
+
+{# ── Template picker banner ── #}
+{% if templates %}
+<form method="POST" action="{{ url_for('portal_admin.catalogue_apply_template', category_id=cat.id) }}"
+      class="tpl-banner"
+      onsubmit="return confirm('Apply template? Existing attributes won\'t be overwritten, only missing ones added.')">
+  <span style="font-size:22px">🗂</span>
+  <div style="flex:1">
+    <label>Apply Industry Template</label>
+    <div class="tpl-preview">Adds missing attributes from the template — existing ones are not overwritten</div>
+  </div>
+  <select name="template_id" style="max-width:260px">
+    <option value="">— Select a template —</option>
+    {% for t in templates %}
+    <option value="{{ t.id }}">
+      {{ t.name }}{% if t.is_builtin %} ✦{% endif %} ({{ t.attr_count }} attrs)
+    </option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="btn btn-primary btn-sm" style="white-space:nowrap">Apply →</button>
+</form>
+{% endif %}
 
 <div class="card" style="padding:0;overflow:hidden">
   {% if attrs %}
@@ -127,6 +159,79 @@
 <div style="margin-top:16px;display:flex;gap:10px">
   <a href="{{ url_for('portal_admin.catalogue_category_upload', category_id=cat.id) }}" class="btn btn-primary">⬆ Upload Products CSV →</a>
   <a href="{{ url_for('portal_admin.catalogue_category_template', category_id=cat.id) }}" class="btn btn-sm">⬇ Download Template</a>
+</div>
+
+{# ══════════════════════════════════════════════════════════
+   VARIANT TYPES SECTION
+   ══════════════════════════════════════════════════════════ #}
+<div style="margin-top:32px">
+  <div class="page-header" style="margin-bottom:14px">
+    <div>
+      <div style="font-size:16px;font-weight:800">🎨 Product Variants</div>
+      <div class="muted" style="font-size:12px;margin-top:3px">
+        Define variant dimensions (e.g. Size, Color). Products in this category will show a variant matrix.
+      </div>
+    </div>
+  </div>
+
+  {% if variant_types %}
+  <div style="display:flex;flex-direction:column;gap:16px">
+    {% for vt in variant_types %}
+    <div class="card" style="padding:16px 20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px">
+        <div style="font-size:14px;font-weight:800">{{ vt.name }}</div>
+        <form method="POST"
+              action="{{ url_for('portal_admin.catalogue_variant_type_delete', category_id=cat.id, type_id=vt.id) }}"
+              onsubmit="return confirm('Delete variant type {{ vt.name }} and all its options?')">
+          <button class="btn btn-sm btn-danger" type="submit">🗑 Remove Type</button>
+        </form>
+      </div>
+
+      {# Options chips #}
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
+        {% for opt in (vt.options or []) %}
+        <span style="display:inline-flex;align-items:center;gap:5px;background:rgba(3,12,24,.06);
+                     border:1px solid var(--line);border-radius:8px;padding:4px 10px;font-size:12px;font-weight:600">
+          {{ opt.value }}
+          <form method="POST"
+                action="{{ url_for('portal_admin.catalogue_variant_option_delete', category_id=cat.id, type_id=vt.id, opt_id=opt.id) }}"
+                style="display:inline;margin:0">
+            <button type="submit" style="background:none;border:none;cursor:pointer;color:var(--muted);
+                                          font-size:13px;padding:0;line-height:1" title="Remove">×</button>
+          </form>
+        </span>
+        {% else %}
+        <span class="muted" style="font-size:12px">No options yet — add below</span>
+        {% endfor %}
+      </div>
+
+      {# Add option form #}
+      <form method="POST"
+            action="{{ url_for('portal_admin.catalogue_variant_option_add', category_id=cat.id, type_id=vt.id) }}"
+            style="display:flex;gap:8px;align-items:center">
+        <input name="option_value" placeholder="e.g. XL, Red, 500ml" style="max-width:220px;padding:7px 10px;font-size:13px"/>
+        <button class="btn btn-sm btn-primary" type="submit">+ Add Option</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card" style="text-align:center;padding:28px;color:var(--muted)">
+    <div style="font-size:24px;margin-bottom:8px">🎨</div>
+    <div style="font-size:13px">No variant types yet. Add one below to enable size/colour/volume selection on products.</div>
+  </div>
+  {% endif %}
+
+  {# Add new variant type #}
+  <div class="card" style="margin-top:14px;padding:16px 20px">
+    <div style="font-size:13px;font-weight:700;margin-bottom:10px">Add Variant Type</div>
+    <form method="POST"
+          action="{{ url_for('portal_admin.catalogue_variant_type_add', category_id=cat.id) }}"
+          style="display:flex;gap:8px;align-items:center">
+      <input name="variant_name" placeholder="e.g. Size, Color, Volume, Dosage" style="max-width:260px;padding:7px 10px;font-size:13px"/>
+      <button class="btn btn-primary btn-sm" type="submit">+ Add Variant Type</button>
+    </form>
+  </div>
 </div>
 
 {% endblock %}

@@ -152,6 +152,21 @@
     </p>
 
   </form>
+
+  <!-- ── Full instruction viewer ────────────────────────────────────────── -->
+  <div style="margin-top:20px;border-top:1px solid var(--line);padding-top:16px">
+    <details>
+      <summary style="font-size:13px;font-weight:700;cursor:pointer;color:var(--ink)">
+        View full AI instruction sent to your assistant
+      </summary>
+      <p class="muted" style="font-size:12px;margin:8px 0 6px">
+        This is the complete instruction your AI receives at the start of every conversation, including the base prompt and your wizard settings.
+      </p>
+      <pre style="background:rgba(3,12,24,0.04);border:1px solid var(--line);border-radius:10px;
+                  padding:14px 16px;font-size:12px;line-height:1.7;white-space:pre-wrap;
+                  word-break:break-word;max-height:400px;overflow-y:auto;color:var(--txt);margin:0">{{ full_prompt or '(No instruction configured yet.)' }}</pre>
+    </details>
+  </div>
 </div>
 
 <script>
@@ -204,7 +219,23 @@ document.getElementById('wizardForm').addEventListener('submit', function() {
   buildPreview();
 });
 
-// Initialise
+// Restore previously-saved wizard selections
+var saved = {{ saved_customisation | tojson }};
+if (saved) {
+  for (var cat in CATEGORIES) {
+    if (saved.indexOf(CATEGORIES[cat]) !== -1) {
+      selectedCategory = cat;
+      document.querySelectorAll('.cat-card').forEach(function(el) {
+        el.classList.toggle('selected', el.dataset.cat === cat);
+      });
+      break;
+    }
+  }
+  document.getElementById('cb-orders').checked    = saved.indexOf('collect their full name, delivery address') !== -1;
+  document.getElementById('cb-recommend').checked = saved.indexOf('suggest one or two related or complementary') !== -1;
+  document.getElementById('cb-promo').checked     = saved.indexOf('current promotions, discounts, or special deals') !== -1;
+  document.getElementById('cb-noprice').checked   = saved.indexOf('Never share specific prices') !== -1;
+}
 buildPreview();
 </script>
 {% endblock %}

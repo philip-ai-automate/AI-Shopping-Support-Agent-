@@ -1,0 +1,157 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}{{ 'Edit' if tpl else 'New' }} Template — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+  .attr-row{display:grid;grid-template-columns:1fr 1fr 90px 80px 70px 70px 36px;gap:8px;
+            align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+  .attr-row:last-child{border-bottom:none}
+  .attr-row input,.attr-row select{font-size:13px;padding:6px 10px}
+  .attr-row.header{font-size:11px;font-weight:700;color:var(--muted);padding-bottom:6px}
+  .attr-row.header span{padding:0 4px}
+  #attr-list{margin-bottom:12px}
+  .del-row-btn{background:none;border:none;color:var(--bad);cursor:pointer;font-size:16px;
+               padding:4px;line-height:1;border-radius:6px}
+  .del-row-btn:hover{background:rgba(176,32,32,.08)}
+  .center-cell{display:flex;justify-content:center;align-items:center;height:100%}
+  .builtin-notice{background:rgba(3,12,24,.04);border:1px solid var(--line);border-radius:12px;
+                  padding:14px 18px;font-size:13px;color:var(--muted);margin-bottom:20px}
+</style>
+
+<div class="page-header">
+  <h1 class="section-title">{{ '✏️ Edit' if tpl else '+ New' }} Attribute Template</h1>
+  <a href="{{ url_for('portal_admin.catalogue_templates') }}" class="btn btn-sm">← Templates</a>
+</div>
+
+{% if tpl and tpl.is_builtin %}
+<div class="builtin-notice">
+  ✦ This is a <strong>built-in template</strong>. You can view and copy its attributes, but cannot delete it.
+  To customise, create a new template and apply the one you want to start from.
+</div>
+{% endif %}
+
+<div class="card" style="max-width:900px">
+  <form method="POST" id="tplForm">
+
+    <div class="grid g2" style="gap:16px;margin-bottom:20px">
+      <div class="form-group" style="margin:0">
+        <label>Template Name *</label>
+        <input name="name" value="{{ tpl.name if tpl else '' }}"
+               placeholder="e.g. Pharmacy, Hardware Store" required
+               {% if tpl and tpl.is_builtin %}readonly{% endif %}/>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>Department <span class="muted">(optional)</span></label>
+        <select name="department_id" {% if tpl and tpl.is_builtin %}disabled{% endif %}>
+          <option value="">— Any department —</option>
+          {% for dept in departments %}
+          <option value="{{ dept.id }}"
+            {% if tpl and tpl.department_id == dept.id %}selected{% endif %}>
+            {{ dept.icon }} {{ dept.name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div style="font-size:14px;font-weight:700;margin-bottom:10px">Attributes</div>
+
+    <div class="attr-row header">
+      <span>CSV Key *</span>
+      <span>Label *</span>
+      <span>Type</span>
+      <span>Unit</span>
+      <span>Filterable</span>
+      <span>Required</span>
+      <span></span>
+    </div>
+
+    <div id="attr-list">
+      {% set existing = tpl.attributes if tpl and tpl.attributes else [] %}
+      {% for a in existing %}
+      <div class="attr-row" data-index="{{ loop.index0 }}">
+        <input name="attr_key" value="{{ a.key }}" placeholder="e.g. ram" pattern="[a-z0-9_]+"
+               title="lowercase letters, numbers, underscore only"
+               {% if tpl and tpl.is_builtin %}readonly{% endif %}/>
+        <input name="attr_label" value="{{ a.label }}" placeholder="e.g. RAM"
+               {% if tpl and tpl.is_builtin %}readonly{% endif %}/>
+        <select name="attr_data_type" {% if tpl and tpl.is_builtin %}disabled{% endif %}>
+          {% for dt in DATA_TYPES %}
+          <option value="{{ dt }}" {% if a.data_type == dt %}selected{% endif %}>{{ dt }}</option>
+          {% endfor %}
+        </select>
+        <input name="attr_unit" value="{{ a.unit or '' }}" placeholder="GB, ml…"
+               {% if tpl and tpl.is_builtin %}readonly{% endif %}/>
+        <div class="center-cell">
+          <input type="checkbox" name="attr_filterable" value="{{ loop.index0 }}"
+                 {% if a.is_filterable %}checked{% endif %}
+                 {% if tpl and tpl.is_builtin %}disabled{% endif %}/>
+        </div>
+        <div class="center-cell">
+          <input type="checkbox" name="attr_required" value="{{ loop.index0 }}"
+                 {% if a.is_required %}checked{% endif %}
+                 {% if tpl and tpl.is_builtin %}disabled{% endif %}/>
+        </div>
+        <div class="center-cell">
+          {% if not (tpl and tpl.is_builtin) %}
+          <button type="button" class="del-row-btn" onclick="delRow(this)" title="Remove">×</button>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    {% if not (tpl and tpl.is_builtin) %}
+    <button type="button" class="btn btn-sm" onclick="addRow()" style="margin-bottom:20px">+ Add Attribute</button>
+
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button type="submit" class="btn btn-primary">{{ 'Save Changes' if tpl else 'Create Template' }}</button>
+      <a href="{{ url_for('portal_admin.catalogue_templates') }}" class="btn">Cancel</a>
+    </div>
+    {% else %}
+    <div style="margin-top:8px">
+      <a href="{{ url_for('portal_admin.catalogue_templates') }}" class="btn">← Back</a>
+    </div>
+    {% endif %}
+
+  </form>
+</div>
+
+<script>
+const DATA_TYPES = {{ DATA_TYPES | tojson }};
+let rowCount = document.querySelectorAll('.attr-row[data-index]').length;
+
+function addRow() {
+  const idx  = rowCount++;
+  const list = document.getElementById('attr-list');
+  const div  = document.createElement('div');
+  div.className = 'attr-row';
+  div.dataset.index = idx;
+  div.innerHTML = `
+    <input name="attr_key" placeholder="e.g. strength" pattern="[a-z0-9_]+" title="lowercase, numbers, underscore"/>
+    <input name="attr_label" placeholder="e.g. Strength"/>
+    <select name="attr_data_type">
+      ${DATA_TYPES.map(dt => `<option value="${dt}">${dt}</option>`).join('')}
+    </select>
+    <input name="attr_unit" placeholder="mg, ml…"/>
+    <div class="center-cell"><input type="checkbox" name="attr_filterable" value="${idx}"/></div>
+    <div class="center-cell"><input type="checkbox" name="attr_required" value="${idx}"/></div>
+    <div class="center-cell"><button type="button" class="del-row-btn" onclick="delRow(this)">×</button></div>
+  `;
+  list.appendChild(div);
+}
+
+function delRow(btn) {
+  btn.closest('.attr-row').remove();
+}
+
+// Re-index checkbox values before submit so indices match row positions
+document.getElementById('tplForm').addEventListener('submit', () => {
+  document.querySelectorAll('.attr-row[data-index]').forEach((row, i) => {
+    const flt = row.querySelector('[name="attr_filterable"]');
+    const req = row.querySelector('[name="attr_required"]');
+    if (flt) flt.value = i;
+    if (req) req.value = i;
+  });
+});
+</script>
+{% endblock %}

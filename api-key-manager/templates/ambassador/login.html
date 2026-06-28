@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Ambassador Login — PhiXtra AI</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f6fa;color:#030C18;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+    .card{background:#fff;border-radius:20px;border:1px solid #e8eaf0;padding:36px 32px;max-width:400px;width:100%;box-shadow:0 8px 32px rgba(3,12,24,.08)}
+    .brand{font-size:13px;font-weight:800;letter-spacing:.05em;color:#7a8096;text-transform:uppercase;margin-bottom:6px}
+    h1{font-size:24px;font-weight:800;letter-spacing:-.4px;margin-bottom:6px}
+    .sub{font-size:14px;color:#7a8096;margin-bottom:28px}
+    label{display:block;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#7a8096;margin-bottom:5px;margin-top:16px}
+    input{width:100%;padding:10px 14px;border:1px solid #e8eaf0;border-radius:10px;font-size:14px;outline:none;transition:border .15s}
+    input:focus{border-color:#030C18}
+    .btn{display:block;width:100%;padding:13px;background:#030C18;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;margin-top:24px}
+    .btn:hover{background:#1a2535}
+    .register-link{text-align:center;margin-top:20px;font-size:13px;color:#7a8096}
+    .register-link a{color:#030C18;font-weight:700}
+    .flash{padding:12px 14px;border-radius:10px;margin-bottom:16px;font-size:13px;font-weight:500}
+    .flash.danger{background:#fee2e2;color:#991b1b;border:1px solid #fecaca}
+    .flash.warning{background:#fef9c3;color:#92400e;border:1px solid #fde68a}
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="brand">PhiXtra AI</div>
+  <h1>Ambassador Hub</h1>
+  <p class="sub">Log in to track your referrals and earnings</p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+      <div class="flash {{ cat }}">{{ msg }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <form method="POST">
+    <label>Email Address</label>
+    <input type="email" name="email" required placeholder="john@example.com" autofocus/>
+
+    <label>Password</label>
+    <input type="password" name="password" required placeholder="Your password"/>
+
+    <button type="submit" class="btn">Log In</button>
+  </form>
+
+  <div class="register-link">Not an ambassador yet?
+    <a href="{{ url_for('ambassador.register') }}">Apply now</a>
+  </div>
+</div>
+</body>
+</html>

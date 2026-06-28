@@ -280,6 +280,8 @@ def _is_school_phone(phone_number_id: str) -> bool:
         conn.close()
 
 
+
+
 def _wants_order(text: str) -> bool:
     lower = text.lower()
     return any(kw in lower for kw in _ORDER_KEYWORDS)
@@ -378,6 +380,17 @@ async def receive_webhook(
                 await _client.post("http://127.0.0.1:8002/webhook", json=payload)
         except Exception as _e:
             print(f"⚠️ [META] School gateway forward error: {_e}")
+        return {"status": "ok"}
+
+    # ── Route to Estate handler if phone_number_id belongs to an estate tenant ──
+    from estate_webhook import (
+        get_estate_tenant_by_phone_number_id as _get_estate_tenant,
+        handle_estate_message as _handle_estate,
+    )
+    _estate_tenant = _get_estate_tenant(phone_number_id)
+    if _estate_tenant:
+        print(f"🏠 [META] Estate tenant={_estate_tenant['id']} — phone_number_id={phone_number_id}")
+        await _handle_estate(msg, _estate_tenant, body, x_hub_signature_256 or "")
         return {"status": "ok"}
 
     tenant = get_tenant_by_phone_number_id(phone_number_id)

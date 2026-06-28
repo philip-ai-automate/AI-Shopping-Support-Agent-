@@ -1,0 +1,212 @@
+{% extends "estate/base.html" %}
+{% block title %}Inspections — PhiXtra Real Estate{% endblock %}
+
+{% block head %}
+<style>
+  .status-confirmed{color:#0a7a3c;font-weight:700}
+  .status-cancelled{color:#b02020}
+  .status-completed{color:#1a56db}
+  .status-no_show  {color:#7a4f00}
+  .slot-available  {color:#0a7a3c}
+  .slot-taken      {color:var(--muted);text-decoration:line-through}
+  .add-slot-form{display:grid;grid-template-columns:1fr 1fr auto auto;gap:12px;align-items:end}
+  @media(max-width:700px){.add-slot-form{grid-template-columns:1fr}}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in msgs %}
+      <div class="flash {{ cat }}">{{ msg }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <div class="page-header">
+    <div>
+      <h1 class="section-title" style="margin-bottom:4px">🗓️ Inspections</h1>
+      <p class="muted">Manage viewing slots and AI-booked appointments.</p>
+    </div>
+  </div>
+
+  {# ── KPI strip ──────────────────────────────────────────────────────────── #}
+  {% set upcoming = bookings | selectattr('status','eq','confirmed') | list %}
+  {% set total_slots = slots | length %}
+  {% set avail_slots = slots | selectattr('is_available','eq',True) | list %}
+  <div class="kpi-grid" style="margin-bottom:28px">
+    <div class="card kpi-card">
+      <div class="kpi-label">Available Slots</div>
+      <div class="kpi-value">{{ avail_slots | length }}</div>
+    </div>
+    <div class="card kpi-card">
+      <div class="kpi-label">Upcoming Confirmed</div>
+      <div class="kpi-value">{{ upcoming | length }}</div>
+    </div>
+    <div class="card kpi-card">
+      <div class="kpi-label">Total Bookings</div>
+      <div class="kpi-value">{{ bookings | length }}</div>
+    </div>
+    <div class="card kpi-card">
+      <div class="kpi-label">Completed</div>
+      <div class="kpi-value">{{ bookings | selectattr('status','eq','completed') | list | length }}</div>
+    </div>
+  </div>
+
+  {# ── Add Slot ─────────────────────────────────────────────────────────────── #}
+  <div class="card" style="margin-bottom:28px">
+    <div style="font-weight:700;font-size:15px;margin-bottom:14px">Add Viewing Slot</div>
+    <p class="muted" style="margin-bottom:16px;font-size:13px">
+      Create available time slots so buyers can book viewings directly through the AI assistant via WhatsApp.
+    </p>
+    <form method="POST" action="{{ url_for('estate.inspections') }}">
+      <input type="hidden" name="action" value="add_slot"/>
+      <div class="add-slot-form">
+        <div class="form-group" style="margin:0">
+          <label>Date &amp; Time</label>
+          <input type="datetime-local" name="slot_datetime" required
+                 min="{{ now.strftime('%Y-%m-%dT%H:%M') }}"/>
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>Property (optional — leave blank for any)</label>
+          <select name="listing_id">
+            <option value="">— Any property —</option>
+            {% for l in listings %}
+            <option value="{{ l.id }}">{{ l.title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>Duration</label>
+          <select name="duration_mins" style="min-width:110px">
+            <option value="30">30 mins</option>
+            <option value="60" selected>60 mins</option>
+            <option value="90">90 mins</option>
+            <option value="120">2 hours</option>
+          </select>
+        </div>
+        <div style="padding-bottom:0">
+          <button class="btn btn-primary" type="submit">+ Add Slot</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  {# ── Upcoming Slots ───────────────────────────────────────────────────────── #}
+  <div class="card" style="margin-bottom:28px">
+    <div style="font-weight:700;font-size:15px;margin-bottom:14px">
+      Upcoming Slots
+      <span class="muted" style="font-weight:400;font-size:13px;margin-left:6px">(next 60 days)</span>
+    </div>
+    {% if slots %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Date &amp; Time</th>
+            <th>Duration</th>
+            <th>Property</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in slots %}
+          <tr>
+            <td style="font-weight:600">
+              {{ s.slot_datetime.strftime('%a, %d %b %Y') }}<br>
+              <span class="muted">{{ s.slot_datetime.strftime('%I:%M %p').lstrip('0') }}</span>
+            </td>
+            <td>{{ s.duration_mins }} mins</td>
+            <td>{{ s.listing_title or '—' }}</td>
+            <td>
+              {% if s.is_available %}
+                <span class="pill pill-green slot-available">Available</span>
+              {% else %}
+                <span class="pill pill-grey">Booked</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if s.is_available %}
+              <form method="POST" action="{{ url_for('estate.inspections') }}"
+                    onsubmit="return confirm('Delete this slot?')" style="display:inline">
+                <input type="hidden" name="action" value="delete_slot"/>
+                <input type="hidden" name="slot_id" value="{{ s.id }}"/>
+                <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="muted" style="padding:16px 0">No upcoming slots. Add one above so buyers can book viewings.</p>
+    {% endif %}
+  </div>
+
+  {# ── Bookings ─────────────────────────────────────────────────────────────── #}
+  <div class="card">
+    <div style="font-weight:700;font-size:15px;margin-bottom:14px">All Bookings</div>
+    {% if bookings %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Buyer</th>
+            <th>Phone</th>
+            <th>Property</th>
+            <th>Date &amp; Time</th>
+            <th>Status</th>
+            <th>Booked</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in bookings %}
+          <tr>
+            <td style="font-weight:600">{{ b.customer_name or '—' }}</td>
+            <td>{{ b.customer_phone or '—' }}</td>
+            <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+              {{ b.listing_title or '—' }}
+              {% if b.listing_location %}
+                <br><span class="muted">{{ b.listing_location }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {{ b.slot_datetime.strftime('%a %d %b %Y') }}<br>
+              <span class="muted">{{ b.slot_datetime.strftime('%I:%M %p').lstrip('0') }}</span>
+            </td>
+            <td>
+              <span class="status-{{ b.status }}">
+                {{ b.status.replace('_',' ').title() }}
+              </span>
+            </td>
+            <td class="muted">{{ b.created_at.strftime('%d %b') }}</td>
+            <td>
+              <form method="POST" action="{{ url_for('estate.inspections') }}" style="display:flex;gap:6px">
+                <input type="hidden" name="action" value="update_booking"/>
+                <input type="hidden" name="booking_id" value="{{ b.id }}"/>
+                <select name="status" style="padding:5px 8px;font-size:12px;width:auto;border-radius:8px">
+                  {% for st in ['confirmed','completed','cancelled','no_show'] %}
+                  <option value="{{ st }}" {% if b.status==st %}selected{% endif %}>
+                    {{ st.replace('_',' ').title() }}
+                  </option>
+                  {% endfor %}
+                </select>
+                <button class="btn btn-sm" type="submit">Save</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="muted" style="padding:16px 0">No bookings yet. Once buyers book viewings via WhatsApp, they'll appear here.</p>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

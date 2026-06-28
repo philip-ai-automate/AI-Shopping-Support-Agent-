@@ -240,8 +240,12 @@ def build_handoff_instruction(tenant_id: int) -> str:
 
     lines += [
         "",
-        "Important: only trigger a handoff when one of the above situations is clearly present.",
-        "Do not trigger it for general product questions you can answer yourself.",
+        "IMPORTANT RULES:",
+        "- For VISITOR-INITIATED triggers: fire when the visitor clearly says something matching the rule.",
+        "- For AI-DECIDED triggers: these are the merchant's explicit instructions — fire them even if",
+        "  you feel you could handle the situation yourself. The merchant has decided these cases must",
+        "  go to a human. Do NOT skip them just because you can write a polite reply.",
+        "- Do NOT trigger a handoff for routine product questions or general browsing.",
     ]
 
     return "\n".join(lines)

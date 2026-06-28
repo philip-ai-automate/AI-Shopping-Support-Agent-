@@ -65,16 +65,41 @@ def normalize(payload: dict) -> Optional[dict]:
                 elif btn_id == "more":
                     action_type = "more"
                     text = "Show me more options"
+                # Estate property buttons
+                elif btn_id.startswith("inspect_"):
+                    action_product_id = btn_id.replace("inspect_", "")
+                    action_type = "inspect"
+                    text = f"I'd like to book an inspection for listing {action_product_id}"
+                elif btn_id.startswith("callback_"):
+                    action_product_id = btn_id.replace("callback_", "")
+                    action_type = "callback"
+                    text = f"I'd like to request a callback about listing {action_product_id}"
+                elif btn_id == "more_props":
+                    action_type = "more_props"
+                    text = "Please show me more properties"
                 else:
                     text = btn_title or btn_id
 
             elif itype == "list_reply":
                 list_reply = interactive.get("list_reply") or {}
                 selected_title = list_reply.get("title", "").strip()
-                selected_id = (list_reply.get("id") or "").replace("prod_", "")
-                action_type = "list_select"
-                action_product_id = selected_id
-                text = f"I'm interested in {selected_title} (product id: {selected_id})"
+                selected_id_raw = (list_reply.get("id") or "")
+                if selected_id_raw.startswith("elst_"):
+                    # Estate property list selection
+                    action_product_id = selected_id_raw.replace("elst_", "")
+                    action_type = "estate_select"
+                    text = f"I'm interested in {selected_title} (listing id: {action_product_id})"
+                elif selected_id_raw.startswith("islot_"):
+                    # Estate inspection slot selection
+                    action_product_id = selected_id_raw.replace("islot_", "")
+                    action_type = "slot_select"
+                    text = f"I want to book the viewing slot on {selected_title} (slot_id: {action_product_id})"
+                else:
+                    # Ecommerce product list selection
+                    selected_id = selected_id_raw.replace("prod_", "")
+                    action_type = "list_select"
+                    action_product_id = selected_id
+                    text = f"I'm interested in {selected_title} (product id: {selected_id})"
 
         elif msg_type in ("image", "video", "document", "audio"):
             media = msg.get(msg_type) or {}

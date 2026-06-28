@@ -1,0 +1,63 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}{{ 'Edit' if dept else 'New' }} Department — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+  .icon-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+  .icon-opt{display:flex;align-items:center;justify-content:center;width:46px;height:46px;
+            border-radius:12px;border:2px solid var(--line);cursor:pointer;font-size:22px;
+            transition:.15s;user-select:none}
+  .icon-opt:hover{border-color:rgba(3,12,24,.35);background:rgba(3,12,24,.04)}
+  .icon-opt.selected{border-color:var(--ink);background:rgba(3,12,24,.08)}
+  #icon-hidden{display:none}
+</style>
+
+<div class="page-header">
+  <h1 class="section-title">{{ '✏️ Edit Department' if dept else '+ New Department' }}</h1>
+  <a href="{{ url_for('portal_admin.catalogue_dashboard') }}" class="btn btn-sm">← Back</a>
+</div>
+
+<div class="card" style="max-width:560px">
+  <form method="POST">
+    <div class="form-group">
+      <label>Department Name *</label>
+      <input name="name" value="{{ dept.name if dept else '' }}"
+             placeholder="e.g. Pharmacy, Supermarket, Fashion" required autofocus/>
+    </div>
+
+    <div class="form-group">
+      <label>Icon *</label>
+      <input type="hidden" name="icon" id="icon-hidden"
+             value="{{ dept.icon if dept else (icons[0] if icons else '🏪') }}"/>
+      <div class="icon-grid" id="icon-grid">
+        {% for ic in icons %}
+        <div class="icon-opt {% if (dept and dept.icon == ic) or (not dept and loop.first) %}selected{% endif %}"
+             data-icon="{{ ic }}" title="{{ ic }}">{{ ic }}</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Description <span class="muted">(optional)</span></label>
+      <textarea name="description" rows="2" style="resize:vertical"
+                placeholder="Short description of what this department covers">{{ dept.description if dept else '' }}</textarea>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:4px">
+      <button type="submit" class="btn btn-primary">
+        {{ 'Save Changes' if dept else 'Create Department' }}
+      </button>
+      <a href="{{ url_for('portal_admin.catalogue_dashboard') }}" class="btn">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<script>
+document.querySelectorAll('.icon-opt').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.icon-opt').forEach(o => o.classList.remove('selected'));
+    el.classList.add('selected');
+    document.getElementById('icon-hidden').value = el.dataset.icon;
+  });
+});
+</script>
+{% endblock %}

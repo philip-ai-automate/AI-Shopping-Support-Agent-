@@ -1,0 +1,85 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Industry Templates — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+  .tpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin-bottom:32px}
+  .tpl-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px;
+            box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px}
+  .tpl-card.builtin{border-color:rgba(3,12,24,.15);background:rgba(3,12,24,.015)}
+  .tpl-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+  .tpl-name{font-size:15px;font-weight:800;letter-spacing:-.2px}
+  .tpl-dept{font-size:12px;color:var(--muted);margin-top:2px}
+  .tpl-attrs{display:flex;flex-wrap:wrap;gap:5px}
+  .attr-chip{background:rgba(3,12,24,.05);border-radius:6px;padding:2px 8px;
+             font-size:11px;font-weight:600;color:var(--ink)}
+  .attr-chip.required{background:rgba(220,38,38,.08);color:#b02020}
+  .attr-chip.filterable{background:rgba(14,122,60,.08);color:#0a7a3c}
+  .tpl-actions{display:flex;gap:6px;margin-top:4px}
+</style>
+
+<div class="page-header">
+  <h1 class="section-title">🗂 Industry Attribute Templates</h1>
+  <a href="{{ url_for('portal_admin.catalogue_template_new') }}" class="btn btn-primary">+ New Template</a>
+</div>
+
+<div class="muted" style="margin-bottom:20px;font-size:13px">
+  Templates define standard attribute sets for each industry vertical.
+  Apply a template to any category to instantly populate its attributes.
+  Built-in templates <strong>✦</strong> cannot be deleted but can be used as a reference.
+</div>
+
+{% if templates %}
+<div class="tpl-grid">
+  {% for t in templates %}
+  <div class="tpl-card {% if t.is_builtin %}builtin{% endif %}">
+    <div class="tpl-head">
+      <div>
+        <div class="tpl-name">
+          {{ t.name }}
+          {% if t.is_builtin %}<span class="pill pill-grey" style="font-size:10px;vertical-align:middle">✦ Built-in</span>{% endif %}
+        </div>
+        <div class="tpl-dept">
+          {% if t.dept_icon %}{{ t.dept_icon }} {% endif %}{{ t.dept_name or 'No department' }}
+          &mdash; {{ t.attr_count }} attribute{{ 's' if t.attr_count != 1 else '' }}
+        </div>
+      </div>
+    </div>
+
+    <div class="tpl-attrs">
+      {% set attrs = t.attributes if t.attributes is iterable and t.attributes is not string else [] %}
+      {% for a in (t.attributes or []) %}
+      <span class="attr-chip {% if a.is_required %}required{% elif a.is_filterable %}filterable{% endif %}"
+            title="{{ 'Required' if a.is_required else ('Filterable' if a.is_filterable else '') }}">
+        {{ a.label }}{% if a.unit %} ({{ a.unit }}){% endif %}
+      </span>
+      {% endfor %}
+    </div>
+
+    <div class="tpl-actions">
+      {% if not t.is_builtin %}
+      <a href="{{ url_for('portal_admin.catalogue_template_edit', tpl_id=t.id) }}" class="btn btn-sm">✏️ Edit</a>
+      <form method="POST" action="{{ url_for('portal_admin.catalogue_template_delete', tpl_id=t.id) }}"
+            style="display:inline"
+            onsubmit="return confirm('Delete template {{ t.name }}?')">
+        <button class="btn btn-sm btn-danger" type="submit">🗑 Delete</button>
+      </form>
+      {% else %}
+      <a href="{{ url_for('portal_admin.catalogue_template_edit', tpl_id=t.id) }}" class="btn btn-sm">👁 View</a>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card" style="text-align:center;padding:40px">
+  <div style="font-size:36px;margin-bottom:12px">🗂</div>
+  <div style="font-size:15px;font-weight:700;margin-bottom:6px">No templates yet</div>
+  <div class="muted" style="margin-bottom:16px">Create your first attribute template</div>
+  <a href="{{ url_for('portal_admin.catalogue_template_new') }}" class="btn btn-primary">+ Create Template</a>
+</div>
+{% endif %}
+
+<div style="margin-top:8px">
+  <a href="{{ url_for('portal_admin.catalogue_dashboard') }}" class="btn btn-sm">← Back to Catalogue</a>
+</div>
+{% endblock %}

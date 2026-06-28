@@ -30,6 +30,7 @@ from db import get_db_connection, insert_audit_log
 from memory_store import (
     init_memory_tables,
     ensure_session,
+    get_session_status,
     add_message,
     maybe_summarize_session,
     get_history_with_summary,
@@ -55,6 +56,9 @@ app = FastAPI(title="ProfitBuyz AI Support API")
 from chatwoot_webhook import router as _chatwoot_router
 app.include_router(_chatwoot_router)
 
+from estate.main import estate_router as _estate_router
+app.include_router(_estate_router)
+
 app.add_middleware(
     CORSMiddleware,
         # Multi-tenant widgets load from customer domains. Since we do not use cookies
@@ -79,7 +83,8 @@ class ChatRequest(BaseModel):
     api_key: str
     message: str
     session_id: str | None = None
-    system_addon: str | None = None  # injected by WA gateway for pending-order context
+    system_addon: str | None = None           # injected by WA gateway for pending-order context
+    override_system_prompt: str | None = None  # per-WA-number agent prompt (overrides tenant default)
 
 
 def record_usage_event(
@@ -368,10 +373,14 @@ def chat(req: ChatRequest):
             "messages_limit": _quota["messages_limit"],
         }
     # ─────────────────────────────────────────────────────────────────────────
-    system_prompt = tenant["system_prompt"] or ""
+    # Per-number agent prompt overrides the tenant default (set by WA gateway)
+    if req.override_system_prompt:
+        system_prompt = req.override_system_prompt
+    else:
+        system_prompt = tenant["system_prompt"] or ""
     semantic_config = tenant.get("azure_semantic_config") or ""
 
-    # Pending-order context from WA gateway — goes into system prompt, NOT the search query
+    # Pending-order context from WA gateway — appended to whichever prompt is active
     if req.system_addon:
         system_prompt = system_prompt + "\n\n" + req.system_addon
 
@@ -414,6 +423,27 @@ def chat(req: ChatRequest):
     # ─────────────────────────────────────────────────────────────────────────
 
     print(f"   product_recommendation={'ON' if rec_enabled else 'OFF'}  related_products={'ON' if related_enabled else 'OFF'}")
+    # ─────────────────────────────────────────────────────────────────────────
+
+    # ── New-visitor / dormant-user business introduction ──────────────────────
+    # Check BEFORE ensure_session updates last_seen.
+    # If this is the user's first-ever message, or they haven't chatted in 48h,
+    # instruct the AI to open with a brief business introduction so the user
+    # knows what the store sells without having to guess.
+    try:
+        _sess_status = get_session_status(session_id)
+        if _sess_status["is_new"] or _sess_status["dormant"]:
+            _intro_reason = "new customer" if _sess_status["is_new"] else "returning customer (inactive 48+ hours)"
+            system_prompt += (
+                f"\n\nFIRST-CONTACT GREETING ({_intro_reason}): Before answering the customer's message, "
+                "open with a short, warm welcome and introduce what this business sells or offers "
+                "(2-3 sentences drawn from the context above — business name, main products/services, "
+                "and an invitation to ask questions). "
+                "Do NOT repeat this introduction in future replies — only on this first message."
+            )
+            print(f"   [INTRO] Injecting business intro for session={session_id} ({_intro_reason})")
+    except Exception as _intro_err:
+        print(f"⚠️ session status check error: {_intro_err}")
     # ─────────────────────────────────────────────────────────────────────────
 
     ensure_session(session_id, tenant_id)
@@ -847,12 +877,20 @@ def chat(req: ChatRequest):
                     "description": (_doc.get("content") or "")[:600],
                 })
 
-            if product_recommendations:
+            # Only strip the AI's text list if the fallback actually produces
+            # valid product cards (url + product_id + price). When raw_docs are
+            # all pages (no price/product_id), validation produces 0 items and
+            # we must NOT strip — the AI's bullet points are the real answer.
+            valid_fallback = _validate_products(product_recommendations)
+            if valid_fallback:
+                product_recommendations = valid_fallback
                 print(f"   ⚡ tag-fallback: {len(product_recommendations)} product(s) from raw_docs")
                 # Strip any numbered or bulleted product list the AI wrote so
                 # the customer only sees the intro sentence + the View Options list
                 answer = _re.sub(r'\n\d+\.\s+\*.*', '', answer, flags=_re.DOTALL).strip()
                 answer = _re.sub(r'\n[-•]\s+\*.*', '', answer, flags=_re.DOTALL).strip()
+            else:
+                product_recommendations = []
         # ─────────────────────────────────────────────────────────────────────
 
     # Token accounting

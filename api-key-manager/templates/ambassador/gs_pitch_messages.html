@@ -1,0 +1,65 @@
+{% extends "ambassador/gs_page.html" %}
+
+{% block gs_style %}
+.pitch-card{background:#f8f9fb;border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:12px}
+.pitch-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:10px}
+.pitch-text{font-size:13px;line-height:1.7;color:var(--ink);white-space:pre-wrap;word-break:break-word}
+.pitch-footer{display:flex;justify-content:flex-end;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+{% endblock %}
+
+{% block gs_content %}
+
+<div class="gs-section" style="padding-bottom:8px">
+  <div class="gs-section-title">How to use these messages</div>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6">
+    These messages are written for <strong>mobile phone and computer shops</strong>. Copy any one, swap in the shop owner's name, and send. Your referral link is already in each message.
+  </p>
+</div>
+
+<div class="pitch-card">
+  <div class="pitch-label">💬 Casual — for people you already know</div>
+  <div class="pitch-text" id="pitch1">Hi [Name] 👋, do your customers WhatsApp you asking about phone prices, specs, or stock? There's an AI that replies to all of that for you — day and night, even when the shop is closed. It's called PhiXtra. It takes about 5 minutes to set up. Check it out: {{ base_url }}/register?ref={{ amb.ref_code }}</div>
+  <div class="pitch-footer"><button class="copy-btn" onclick="copyText('pitch1', this)">Copy message</button></div>
+</div>
+
+<div class="pitch-card">
+  <div class="pitch-label">🏢 Professional — for shops you don't know yet</div>
+  <div class="pitch-text" id="pitch2">Good day [Name], I want to share something that could help your shop. PhiXtra AI replies to customer WhatsApp messages for you — price checks, stock questions, specifications, orders — all handled without you doing anything. No extra staff needed, and there is a free trial. Would you like to try it? {{ base_url }}/register?ref={{ amb.ref_code }}</div>
+  <div class="pitch-footer"><button class="copy-btn" onclick="copyText('pitch2', this)">Copy message</button></div>
+</div>
+
+<div class="pitch-card">
+  <div class="pitch-label">⚡ Short — for WhatsApp status replies</div>
+  <div class="pitch-text" id="pitch3">Phone or computer shop owner? PhiXtra AI answers your customer WhatsApp messages for you — prices, specs, stock — 24/7. Free trial 👇
+{{ base_url }}/register?ref={{ amb.ref_code }}</div>
+  <div class="pitch-footer"><button class="copy-btn" onclick="copyText('pitch3', this)">Copy message</button></div>
+</div>
+
+<div class="pitch-card">
+  <div class="pitch-label">🗣️ In-person — when you walk into a shop</div>
+  <div class="pitch-text" id="pitch4">Say: "How many WhatsApp messages do you get a day asking about phone prices or laptop specs?"
+→ If they say a lot: "Do you ever miss any messages or take long to reply?"
+→ "There's a tool called PhiXtra that handles all of that for you. A customer sends a message asking the price of an iPhone 15 — the AI replies straight away with the price, specs, and whether it's in stock. Even at midnight. Want me to sign you up right now?"
+[Show your QR code on your phone screen]</div>
+  <div class="pitch-footer"><button class="copy-btn" onclick="copyText('pitch4', this)">Copy script</button></div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">Pitching other types of businesses</div>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:10px">
+    You can refer <strong>any business</strong>, not just phone and computer shops. But if they do something different, their account needs to be set up by the PhiXtra team first.
+  </p>
+  <div style="display:flex;gap:12px;align-items:flex-start;background:#fef9c3;border:1px solid #fde68a;
+              border-radius:12px;padding:14px 16px;font-size:13px;color:#92400e">
+    <span style="font-size:18px;flex-shrink:0">⏱️</span>
+    <div>
+      <strong>48-hour setup time</strong> — For businesses outside phone and computer shops, the PhiXtra team will set up their account. They will be ready to go live within 48 hours. Always tell them this upfront: <em>"Setup takes up to 48 hours, then you're live."</em>
+    </div>
+  </div>
+</div>
+
+<div class="gs-tip">
+  <strong>Tip:</strong> The in-person script works best when your QR code is already on your phone screen. Save it as your wallpaper so you can show it in seconds.
+</div>
+
+{% endblock %}

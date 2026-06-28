@@ -23,7 +23,7 @@
   .cat-card:hover{border-color:rgba(3,12,24,.3);transform:translateY(-1px);
     box-shadow:0 6px 20px rgba(3,12,24,.08)}
   .cat-card.selected{border-color:var(--ink);background:rgba(3,12,24,.03)}
-  .cat-card input{position:absolute;opacity:0;width:0;height:0}
+  .cat-card input[type="checkbox"]{position:absolute;opacity:0;width:0;height:0}
   .cat-check{position:absolute;top:12px;right:12px;width:20px;height:20px;
     border-radius:50%;border:2px solid var(--line);transition:.15s;
     display:flex;align-items:center;justify-content:center}
@@ -31,30 +31,25 @@
     font-size:11px}
   .cat-icon{font-size:28px}
   .cat-name{font-size:14px;font-weight:700}
-  .cat-count{font-size:11px;color:var(--muted)}
 </style>
 
 {# ── Wizard header ── #}
 <div class="wizard-header">
   <div>
-    <div class="wizard-title">👋 Welcome, {{ customer.first_name }}! Let's set up your store.</div>
-    <div class="wizard-sub">This takes about 2 minutes. You can always change it later.</div>
+    <div class="wizard-title">
+      {% if dept %}{{ dept.icon }} {{ dept.name }} — Choose Your Categories
+      {% else %}Which categories do you sell?{% endif %}
+    </div>
+    <div class="wizard-sub">Select all that apply — you'll browse products for each one.</div>
   </div>
   <div class="wizard-steps">
-    <div class="wstep active">
-      <div class="wstep-num">1</div>
-      <span>Categories</span>
-    </div>
+    <div class="wstep done"><div class="wstep-num">✓</div><span>Business Type</span></div>
     <div class="wstep-div"></div>
-    <div class="wstep">
-      <div class="wstep-num">2</div>
-      <span>Products</span>
-    </div>
+    <div class="wstep active"><div class="wstep-num">2</div><span>Categories</span></div>
     <div class="wstep-div"></div>
-    <div class="wstep">
-      <div class="wstep-num">3</div>
-      <span>Review</span>
-    </div>
+    <div class="wstep"><div class="wstep-num">3</div><span>Products</span></div>
+    <div class="wstep-div"></div>
+    <div class="wstep"><div class="wstep-num">4</div><span>Review</span></div>
   </div>
 </div>
 
@@ -62,6 +57,7 @@
   <div style="margin-bottom:20px">
     <div style="font-size:17px;font-weight:800;margin-bottom:4px">
       Which categories do you sell?
+      {% if dept %}<span class="pill pill-grey" style="font-size:12px;vertical-align:middle">{{ dept.icon }} {{ dept.name }}</span>{% endif %}
     </div>
     <div class="muted">Select all that apply — you'll browse products for each one.</div>
   </div>
@@ -75,13 +71,31 @@
         <div class="cat-check" id="ck-{{ cat.id }}"></div>
         <div class="cat-icon">{{ cat.icon }}</div>
         <div class="cat-name">{{ cat.name }}</div>
-        <div class="cat-count">{{ cat.product_count }} product{{ 's' if cat.product_count != 1 }}</div>
       </label>
       {% endfor %}
+
+      {# Other card #}
+      <div class="cat-card" id="cl-other">
+        <div class="cat-check" id="ck-other"></div>
+        <div class="cat-icon">➕</div>
+        <div class="cat-name">Other</div>
+        <div class="cat-count" style="margin-bottom:8px">My category isn't listed</div>
+        <input type="text" name="other_category_text" id="other-text"
+               placeholder="e.g. Furniture, Clothing, Toys"
+               style="width:100%;border:1px solid var(--line);border-radius:8px;
+                      padding:7px 10px;font-size:13px;outline:none;
+                      font-family:inherit;box-sizing:border-box;
+                      cursor:text;user-select:text;-webkit-user-select:text;
+                      position:relative;z-index:2">
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">Separate multiple with commas</div>
+      </div>
     </div>
 
     <div style="margin-top:24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-      <div id="sel-count" class="muted" style="font-size:13px"></div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button type="submit" name="action" value="back" class="btn" style="color:var(--muted)">← Back</button>
+        <div id="sel-count" class="muted" style="font-size:13px"></div>
+      </div>
       <div style="display:flex;gap:10px">
         <button type="submit" name="action" value="next" class="btn btn-primary" id="nextBtn" disabled>
           Next: Select Products →
@@ -109,7 +123,6 @@ function toggleCard(label, id) {
   const cb   = document.getElementById('cb-' + id);
   const card = document.getElementById('cl-' + id);
   const ck   = document.getElementById('ck-' + id);
-  // checkbox is toggled by the label click naturally — read state after event
   setTimeout(() => {
     if (cb.checked) {
       card.classList.add('selected');
@@ -122,30 +135,68 @@ function toggleCard(label, id) {
   }, 0);
 }
 
+// Other card — use addEventListener so we can exclude clicks on the input
+(function(){
+  const card  = document.getElementById('cl-other');
+  const input = document.getElementById('other-text');
+  const ck    = document.getElementById('ck-other');
+
+  card.addEventListener('click', function(e) {
+    if (e.target === input) return; // typing in the box — don't toggle
+    const isSelected = card.classList.toggle('selected');
+    ck.textContent = isSelected ? '✓' : '';
+    updateCount();
+  });
+
+  // Clicking into the input always selects the card
+  input.addEventListener('focus', function() {
+    if (!card.classList.contains('selected')) {
+      card.classList.add('selected');
+      ck.textContent = '✓';
+      updateCount();
+    }
+  });
+
+  // Typing in the input enables the button even without an explicit card click
+  input.addEventListener('input', function() {
+    if (input.value.trim()) {
+      if (!card.classList.contains('selected')) {
+        card.classList.add('selected');
+        ck.textContent = '✓';
+      }
+    } else {
+      card.classList.remove('selected');
+      ck.textContent = '';
+    }
+    updateCount();
+  });
+})();
+
 function updateCount() {
-  const checked = document.querySelectorAll('[name="cat_ids"]:checked').length;
-  const btn     = document.getElementById('nextBtn');
-  const lbl     = document.getElementById('sel-count');
-  btn.disabled  = checked === 0;
-  lbl.textContent = checked > 0
-    ? checked + ' categor' + (checked === 1 ? 'y' : 'ies') + ' selected'
+  const checked   = document.querySelectorAll('[name="cat_ids"]:checked').length;
+  const otherSel  = document.getElementById('cl-other').classList.contains('selected');
+  const otherText = document.getElementById('other-text').value.trim();
+  const total     = checked + (otherSel ? 1 : 0);
+  const btn       = document.getElementById('nextBtn');
+  const lbl       = document.getElementById('sel-count');
+  btn.disabled    = total === 0;
+  // Show a sensible label: if only custom text, say Save & Continue; otherwise Next: Select Products
+  btn.textContent = (checked === 0 && otherText) ? 'Save & Continue →' : 'Next: Select Products →';
+  lbl.textContent = total > 0
+    ? total + ' categor' + (total === 1 ? 'y' : 'ies') + ' selected'
     : '';
 }
 
-// Prevent label double-firing
-document.querySelectorAll('.cat-card').forEach(lbl => {
+document.querySelectorAll('.cat-card:not(#cl-other)').forEach(lbl => {
   lbl.addEventListener('click', e => {
-    // Let the click propagate to the checkbox naturally
     e.preventDefault();
-    const cbId = lbl.querySelector('input').id;
-    const cb = document.getElementById(cbId);
+    const cb = lbl.querySelector('input[type="checkbox"]');
     cb.checked = !cb.checked;
-    const card = lbl;
-    const ck   = lbl.querySelector('.cat-check');
+    const ck = lbl.querySelector('.cat-check');
     if (cb.checked) {
-      card.classList.add('selected'); ck.textContent = '✓';
+      lbl.classList.add('selected'); ck.textContent = '✓';
     } else {
-      card.classList.remove('selected'); ck.textContent = '';
+      lbl.classList.remove('selected'); ck.textContent = '';
     }
     updateCount();
   });

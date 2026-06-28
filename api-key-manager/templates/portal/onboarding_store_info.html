@@ -1,0 +1,136 @@
+{% extends "portal/base.html" %}
+{% block title %}Store Information — PhiXtra Portal{% endblock %}
+{% block content %}
+<style>
+  .wizard-header{background:linear-gradient(135deg,#030C18 0%,#1a2744 100%);
+    border-radius:16px;padding:24px 28px;color:#fff;margin-bottom:24px;
+    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px}
+  .wizard-title{font-size:18px;font-weight:800;letter-spacing:-.2px;margin-bottom:4px}
+  .wizard-sub{font-size:13px;opacity:.7;line-height:1.5}
+  .optional-badge{display:inline-block;background:rgba(255,255,255,.15);
+    border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700;
+    letter-spacing:.04em;margin-bottom:8px}
+  .ai-notice{background:#f0fdf4;border:1px solid rgba(18,183,106,.3);
+    border-radius:12px;padding:14px 18px;margin-bottom:22px;
+    display:flex;gap:12px;align-items:flex-start}
+  .tab-bar{display:flex;gap:0;border:1px solid var(--line);border-radius:10px;
+    overflow:hidden;margin-bottom:20px;background:#fff}
+  .tab-btn{flex:1;padding:10px;font-size:13px;font-weight:700;border:none;
+    background:#fff;cursor:pointer;font-family:inherit;color:var(--muted);
+    transition:.15s;border-right:1px solid var(--line)}
+  .tab-btn:last-child{border-right:none}
+  .tab-btn.active{background:var(--ink);color:#fff}
+  .tab-panel{display:none}
+  .tab-panel.active{display:block}
+  .upload-box{border:2px dashed rgba(3,12,24,.2);border-radius:14px;padding:20px 24px;
+    background:rgba(3,12,24,.02)}
+  .upload-row{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:12px}
+  .upload-row input[type="text"]{padding:8px 12px;border-radius:9px;
+    border:1px solid rgba(3,12,24,.18);font-size:13px;font-family:inherit;min-width:180px;flex:1}
+  .upload-row input[type="file"]{font-size:12px;color:var(--muted)}
+  .si-section{background:#fff;border:1px solid var(--line);border-radius:14px;
+    padding:18px 22px;margin-bottom:12px}
+  .si-label{font-size:13px;font-weight:800;margin-bottom:3px}
+  .si-hint{font-size:12px;color:var(--muted);margin-bottom:8px}
+  .si-section textarea{width:100%;padding:10px 12px;border-radius:9px;
+    border:1px solid rgba(3,12,24,.18);font-size:13px;font-family:inherit;
+    line-height:1.6;resize:vertical;box-sizing:border-box;outline:none;transition:border-color .15s}
+  .si-section textarea:focus{border-color:var(--ink)}
+  .bottom-bar{margin-top:24px;display:flex;align-items:center;
+    justify-content:space-between;flex-wrap:wrap;gap:12px}
+</style>
+
+{# ── Wizard header ── #}
+<div class="wizard-header">
+  <div>
+    <div class="optional-badge">OPTIONAL</div>
+    <div class="wizard-title">Almost done! Help your AI answer customer questions</div>
+    <div class="wizard-sub">
+      The more you share, the better your AI will answer questions about delivery, returns, and your store.<br>
+      You can always update this later from <strong>Store Information</strong> in the menu.
+    </div>
+  </div>
+</div>
+
+<div class="ai-notice">
+  <div style="font-size:20px;flex-shrink:0">🤖</div>
+  <div style="font-size:13px;color:#065f46;line-height:1.6">
+    When a customer asks <em>"do you deliver to Lagos?"</em> or <em>"what is your returns policy?"</em>,
+    your AI answers from this information — not a guess.
+    Everything you add here is embedded in your AI's knowledge base automatically.
+  </div>
+</div>
+
+{# ── Tab switcher ── #}
+<div class="tab-bar">
+  <button type="button" class="tab-btn active" onclick="switchTab('type')">✏️ Type it in</button>
+  <button type="button" class="tab-btn" onclick="switchTab('upload')">📎 Upload a document</button>
+</div>
+
+{# ── Tab: upload ── #}
+<div class="tab-panel" id="tab-upload">
+  <div class="upload-box">
+    <div style="font-size:13px;font-weight:700;margin-bottom:4px">Upload a PDF, Word, or text file</div>
+    <div style="font-size:12px;color:var(--muted)">
+      Already have a policy document? Upload it directly — the AI will read and index the contents within 5 minutes.
+    </div>
+    <form method="POST" enctype="multipart/form-data">
+      <input type="hidden" name="action" value="upload_doc"/>
+      <div class="upload-row">
+        <div>
+          <label style="display:block;font-size:11px;color:var(--muted);margin-bottom:3px">Document title *</label>
+          <input type="text" name="doc_title" placeholder="e.g. Delivery Policy, About Us…"/>
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;color:var(--muted);margin-bottom:3px">File (PDF, DOCX, TXT) *</label>
+          <input type="file" name="doc_file" accept=".pdf,.docx,.txt"/>
+        </div>
+        <div style="align-self:flex-end">
+          <button type="submit" class="btn btn-primary btn-sm">Upload & Index</button>
+        </div>
+      </div>
+    </form>
+  </div>
+  <div class="bottom-bar" style="margin-top:20px">
+    <form method="POST" style="margin:0">
+      <input type="hidden" name="action" value="skip"/>
+      <button type="submit" class="btn" style="color:var(--muted);font-size:13px">Skip for now →</button>
+    </form>
+  </div>
+</div>
+
+{# ── Tab: type ── #}
+<div class="tab-panel active" id="tab-type">
+  <form method="POST">
+    <input type="hidden" name="action" value="save"/>
+    {% for key, label, hint in sections %}
+    <div class="si-section">
+      <div class="si-label">{{ label }}</div>
+      <div class="si-hint">{{ hint }}</div>
+      <textarea name="{{ key }}" rows="3" placeholder="Leave blank to skip…">{{ existing[key] }}</textarea>
+    </div>
+    {% endfor %}
+
+    <div class="bottom-bar">
+      <button type="submit" name="action" value="skip"
+              class="btn" style="color:var(--muted);font-size:13px">
+        Skip for now →
+      </button>
+      <button type="submit" name="action" value="save"
+              class="btn btn-primary" style="padding:10px 28px;font-size:14px">
+        Save & Go to Dashboard →
+      </button>
+    </div>
+  </form>
+</div>
+
+<script>
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(function(b, i) {
+    b.classList.toggle('active', (i === 0 && tab === 'type') || (i === 1 && tab === 'upload'));
+  });
+  document.getElementById('tab-type').classList.toggle('active', tab === 'type');
+  document.getElementById('tab-upload').classList.toggle('active', tab === 'upload');
+}
+</script>
+{% endblock %}

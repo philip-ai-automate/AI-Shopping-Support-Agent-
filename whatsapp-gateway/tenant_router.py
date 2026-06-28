@@ -45,7 +45,7 @@ def get_tenant_by_phone_number_id(phone_number_id: str) -> dict | None:
     try:
         cur.execute(
             """
-            SELECT tenant_id, phixtra_api_key, access_token, verify_token, waba_id, app_secret, typing_ack_text
+            SELECT tenant_id, phixtra_api_key, access_token, verify_token, waba_id, app_secret, typing_ack_text, agent_id
             FROM wa_tenants
             WHERE phone_number_id = %s AND active = TRUE
             """,

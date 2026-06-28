@@ -1,0 +1,92 @@
+{% extends "ambassador/gs_page.html" %}
+
+{% block gs_style %}
+.target-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:12px}
+.target-card{background:#f8f9fb;border:1px solid var(--line);border-radius:10px;
+             padding:12px 14px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px}
+.signal-list{display:flex;flex-direction:column;gap:10px;margin-top:4px}
+.signal-item{display:flex;gap:12px;align-items:flex-start;font-size:13px}
+{% endblock %}
+
+{% block gs_content %}
+
+<div class="gs-section">
+  <div class="gs-section-title">Your main targets</div>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:12px">
+    Start with these two. They are ready to go live right away — no extra setup needed:
+  </p>
+  <div class="target-grid">
+    <div class="target-card">📱 Mobile Phone Shops</div>
+    <div class="target-card">💻 Computer Shops</div>
+  </div>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-top:12px">
+    These shops get a lot of WhatsApp messages every day asking about prices, specs, and stock. That is exactly what PhiXtra handles for them.
+  </p>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">Other businesses you can refer</div>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:10px">
+    You can refer <strong>any business</strong> that uses WhatsApp to talk to customers. But if they are not a phone or computer shop, the PhiXtra team needs to set up their account first.
+  </p>
+  <div style="display:flex;gap:12px;align-items:flex-start;background:#fef9c3;border:1px solid #fde68a;
+              border-radius:12px;padding:14px 16px;font-size:13px;color:#92400e">
+    <span style="font-size:18px;flex-shrink:0">⏱️</span>
+    <div>
+      <strong>48-hour setup time</strong> — For any business outside phone and computer shops, the PhiXtra team will set up their account. They will be ready within 48 hours of signing up. Always tell them this upfront: <em>"Setup takes up to 48 hours, then you're live."</em>
+    </div>
+  </div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">The best question to ask</div>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:14px">
+    Ask this when you walk into a shop. The answer will tell you right away if they need PhiXtra:
+  </p>
+  <div style="background:#030C18;color:#fff;border-radius:12px;padding:16px 20px;font-size:14px;font-weight:700;line-height:1.6">
+    "How many WhatsApp messages do you get a day asking about prices, specs, or stock?"
+  </div>
+  <div style="font-size:13px;color:var(--muted);margin-top:12px;line-height:1.65">
+    If they say <strong>more than 10</strong> — they need PhiXtra.<br>
+    If they say they <strong>miss messages or reply late</strong> — they really need PhiXtra.<br>
+    If they say <strong>"I can't keep up"</strong> — you have a sale.
+  </div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">Signs of a good shop to approach</div>
+  <div class="signal-list">
+    <div class="signal-item">
+      <span style="font-size:16px;flex-shrink:0">✅</span>
+      <div>Customers send them WhatsApp messages asking about phone or laptop prices and stock</div>
+    </div>
+    <div class="signal-item">
+      <span style="font-size:16px;flex-shrink:0">✅</span>
+      <div>They have a WhatsApp number for their shop (even a basic one)</div>
+    </div>
+    <div class="signal-item">
+      <span style="font-size:16px;flex-shrink:0">✅</span>
+      <div>They post products on Instagram or Facebook with "WhatsApp to order" in the caption</div>
+    </div>
+    <div class="signal-item">
+      <span style="font-size:16px;flex-shrink:0">✅</span>
+      <div>They are busy — trying to reply WhatsApp messages while also serving customers in the shop at the same time</div>
+    </div>
+    <div class="signal-item">
+      <span style="font-size:16px;flex-shrink:0">✅</span>
+      <div>They already pay for other tools or apps for their business</div>
+    </div>
+  </div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">Where to find them</div>
+  <div class="signal-list">
+    <div class="signal-item"><span style="font-size:16px;flex-shrink:0">🏬</span><div><strong>Phone and computer markets</strong> — Computer Village (Lagos), Otigba, Ikeja, and similar tech markets in your city</div></div>
+    <div class="signal-item"><span style="font-size:16px;flex-shrink:0">🏪</span><div><strong>Malls and plazas</strong> — phone accessory shops, electronics stores, and repair shops</div></div>
+    <div class="signal-item"><span style="font-size:16px;flex-shrink:0">📱</span><div><strong>Instagram and Facebook</strong> — accounts posting phone and laptop deals with a WhatsApp number in their bio</div></div>
+    <div class="signal-item"><span style="font-size:16px;flex-shrink:0">👥</span><div><strong>Tech and gadget WhatsApp groups</strong> — dealers and resellers who post their stock every day</div></div>
+  </div>
+</div>
+
+{% endblock %}

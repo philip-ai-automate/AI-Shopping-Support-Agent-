@@ -33,15 +33,8 @@
 {# ── Wizard header ── #}
 <div class="wizard-header">
   <div>
-    <div class="wizard-title">Almost there! Review your catalogue</div>
-    <div class="wizard-sub">Here's what you've added. You can change it any time from My Catalogue.</div>
-  </div>
-  <div class="wizard-steps">
-    <div class="wstep done"><div class="wstep-num">✓</div><span>Categories</span></div>
-    <div class="wstep-div"></div>
-    <div class="wstep done"><div class="wstep-num">✓</div><span>Products</span></div>
-    <div class="wstep-div"></div>
-    <div class="wstep active"><div class="wstep-num">3</div><span>Review</span></div>
+    <div class="wizard-title">Almost there! Confirm your WhatsApp Business catalogue</div>
+    <div class="wizard-sub">Here's what you've added. Your AI Sales Agent will use this catalogue to answer customer questions on WhatsApp Business API.</div>
   </div>
 </div>
 
@@ -55,17 +48,10 @@
 {% else %}
 
 <div class="summary-bar">
-  <div>
-    <span style="font-size:24px;font-weight:800">{{ total }}</span>
-    <span class="muted" style="margin-left:6px">
-      product{{ 's' if total != 1 }} across {{ by_category|length }} categor{{ 'y' if by_category|length == 1 else 'ies' }}
-    </span>
-  </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
     {% for cat_row in by_category %}
     <span style="background:rgba(3,12,24,.07);border-radius:999px;padding:4px 12px;font-size:12px;font-weight:700">
       {{ cat_row.cat_icon }} {{ cat_row.cat_name }}
-      <span style="opacity:.6">({{ cat_row.product_count }})</span>
     </span>
     {% endfor %}
   </div>
@@ -81,9 +67,6 @@
   <div class="cat-hdr">
     <span style="font-size:20px">{{ p.cat_icon }}</span>
     <span style="font-size:15px;font-weight:800">{{ p.cat_name }}</span>
-    <span class="muted" style="font-size:12px">
-      ({{ by_category|selectattr('cat_name','eq',p.cat_name)|map(attribute='product_count')|first }})
-    </span>
   </div>
   <div class="table-wrap">
   <table class="prod-table">
@@ -255,7 +238,7 @@ function saveCustomProduct() {
     <div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:3px">One more step after this</div>
     <div style="font-size:13px;color:#78350f;line-height:1.6">
       Your store will be set up, but <strong>no messages will be sent or received</strong> until you connect your Meta-approved WhatsApp Business number.
-      After launching, go to <strong>WhatsApp Settings</strong> in your dashboard to complete the connection.
+      After launching, tap <a href="{{ url_for('portal.whatsapp_connect') }}" style="color:#92400e;font-weight:700;text-decoration:underline">Connect WhatsApp →</a> to complete the connection.
     </div>
   </div>
 </div>

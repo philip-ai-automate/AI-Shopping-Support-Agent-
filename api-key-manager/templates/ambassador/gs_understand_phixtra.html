@@ -1,0 +1,136 @@
+{% extends "ambassador/gs_page.html" %}
+
+{% block gs_style %}
+.feature-list{display:flex;flex-direction:column;gap:10px;margin-top:4px}
+.feature-item{display:flex;gap:14px;align-items:flex-start;font-size:13px}
+.demo-action-box{background:#030C18;border-radius:14px;padding:20px 22px;margin-top:14px}
+.open-demo-btn{display:flex;align-items:center;justify-content:center;gap:10px;
+               background:#2563eb;color:#fff;border-radius:12px;padding:14px;
+               font-size:14px;font-weight:700;text-decoration:none;
+               transition:background .15s}
+.open-demo-btn:hover{background:#1d4ed8;text-decoration:none;color:#fff}
+.reset-demo-btn{display:flex;align-items:center;justify-content:center;gap:8px;
+                background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);
+                color:rgba(255,255,255,.8);border-radius:12px;padding:11px;
+                font-size:13px;font-weight:600;cursor:pointer;width:100%;margin-top:10px;
+                transition:background .15s;font-family:inherit}
+.reset-demo-btn:hover{background:rgba(255,255,255,.18);color:#fff}
+.explore-item{display:flex;gap:14px;align-items:flex-start;padding:13px 16px;
+              background:#f8f9fb;border:1px solid var(--line);border-radius:12px}
+.explore-title{font-size:13px;font-weight:700;margin-bottom:3px}
+.explore-desc{font-size:12px;color:var(--muted);line-height:1.55}
+.explore-tip{font-size:12px;color:#1d4ed8;margin-top:4px;font-style:italic}
+{% endblock %}
+
+{% block gs_content %}
+
+<div class="gs-section">
+  <div class="gs-section-title">What is PhiXtra?</div>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:14px">
+    PhiXtra is an AI assistant that runs on a shop's WhatsApp line. When a customer sends a message — asking about a price, checking if something is in stock, or placing an order — the AI replies for the shop automatically, day and night, without the shop owner doing anything.
+  </p>
+  <div class="feature-list">
+    <div class="feature-item">
+      <span style="font-size:18px;flex-shrink:0">⚡</span>
+      <div><strong>Replies in seconds</strong> — customers never wait. The AI answers instantly, even at 2am when the shop is closed.</div>
+    </div>
+    <div class="feature-item">
+      <span style="font-size:18px;flex-shrink:0">📦</span>
+      <div><strong>Knows the shop's products</strong> — the shop uploads their product list and the AI learns it. It can answer questions about prices, specs, stock, and more.</div>
+    </div>
+    <div class="feature-item">
+      <span style="font-size:18px;flex-shrink:0">👤</span>
+      <div><strong>Talks like a real person</strong> — it does not sound like a bot. Customers get clear, helpful replies in plain language.</div>
+    </div>
+    <div class="feature-item">
+      <span style="font-size:18px;flex-shrink:0">📊</span>
+      <div><strong>The shop stays in control</strong> — the owner can log in any time to see all conversations, update products, and change how the AI behaves.</div>
+    </div>
+    <div class="feature-item">
+      <span style="font-size:18px;flex-shrink:0">🔀</span>
+      <div><strong>Hands over to a human when needed</strong> — if a customer has a complex issue, the AI can pass the conversation to the shop owner to handle.</div>
+    </div>
+  </div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">Your demo portal</div>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:4px">
+    You have your own <strong>private demo account</strong> on the PhiXtra portal. It is pre-loaded with sample contacts, conversations, orders, and stats so you can explore everything and show clients exactly what they will get.
+  </p>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-top:8px">
+    <strong>Feel free to change anything</strong> — add products, update settings, delete things. If it gets messy, just reset it back to the original sample data.
+  </p>
+
+  <div class="demo-action-box">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+                color:rgba(255,255,255,.45);margin-bottom:12px">Your demo portal</div>
+    <a class="open-demo-btn" href="{{ url_for('ambassador.demo_portal_access') }}" target="_blank" rel="noopener">
+      <span style="font-size:18px">🖥️</span> Open My Demo Portal
+    </a>
+    <form method="POST" action="{{ url_for('ambassador.demo_portal_reset') }}"
+          onsubmit="return confirm('Reset your demo portal back to the default sample data? All changes will be lost.')">
+      <button type="submit" class="reset-demo-btn">
+        <span>🔄</span> Reset Demo Data
+      </button>
+    </form>
+    <div style="font-size:11px;color:rgba(255,255,255,.35);margin-top:10px;text-align:center">
+      Opens in a new tab · Reset restores 8 contacts, sample conversations, and orders
+    </div>
+  </div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">What to explore in the demo</div>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:14px">
+    Once you log in, here is what to look at — and what to point out when showing a client.
+  </p>
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div class="explore-item">
+      <span style="font-size:20px;flex-shrink:0">🏠</span>
+      <div>
+        <div class="explore-title">Dashboard</div>
+        <div class="explore-desc">Shows total messages handled, active conversations, and AI performance at a glance.</div>
+        <div class="explore-tip">Tell a client: "This is your control room. You can see everything that is happening with your customers."</div>
+      </div>
+    </div>
+    <div class="explore-item">
+      <span style="font-size:20px;flex-shrink:0">💬</span>
+      <div>
+        <div class="explore-title">Inbox</div>
+        <div class="explore-desc">All customer WhatsApp conversations in one place. The AI handles them but the shop owner can read every message and jump in if needed.</div>
+        <div class="explore-tip">Tell a client: "You can see every chat your AI has with customers. Nothing is hidden."</div>
+      </div>
+    </div>
+    <div class="explore-item">
+      <span style="font-size:20px;flex-shrink:0">📦</span>
+      <div>
+        <div class="explore-title">Products</div>
+        <div class="explore-desc">The shop's product catalogue. This is where they upload their list — and what the AI uses to answer customer questions about prices and stock.</div>
+        <div class="explore-tip">Tell a client: "Whatever you add here, the AI knows. Update a price and the AI will quote the new price from that moment."</div>
+      </div>
+    </div>
+    <div class="explore-item">
+      <span style="font-size:20px;flex-shrink:0">📱</span>
+      <div>
+        <div class="explore-title">WhatsApp Connect</div>
+        <div class="explore-desc">Shows the business WhatsApp number that is connected to the AI. This is the number customers message.</div>
+        <div class="explore-tip">Tell a client: "This is where we connect your WhatsApp number. Once it is linked, the AI takes over."</div>
+      </div>
+    </div>
+    <div class="explore-item">
+      <span style="font-size:20px;flex-shrink:0">💳</span>
+      <div>
+        <div class="explore-title">Plans &amp; Billing</div>
+        <div class="explore-desc">Shows the available plans and what each one includes. The shop picks a plan after signing up.</div>
+        <div class="explore-tip">Tell a client: "There is a free trial to start. You only pay when you are happy with how it works."</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="gs-tip">
+  <strong>When showing a client:</strong> Log in on your phone and hand it to them to scroll through. Let them see the inbox and products themselves. Seeing real conversations in the inbox is usually what convinces them.
+</div>
+
+{% endblock %}

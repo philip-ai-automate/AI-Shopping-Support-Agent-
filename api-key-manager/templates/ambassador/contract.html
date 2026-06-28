@@ -1,0 +1,157 @@
+{% extends "ambassador/base.html" %}
+{% block title %}My Contract — Ambassador Hub{% endblock %}
+
+{% block head %}
+<style>
+  .contract-card{background:#fff;border:1.5px solid var(--line);border-radius:16px;
+                 padding:36px 40px;max-width:780px}
+  .contract-header{text-align:center;margin-bottom:32px;padding-bottom:24px;
+                   border-bottom:2px solid var(--line)}
+  .contract-header h2{font-size:20px;font-weight:900;letter-spacing:-.4px;margin-bottom:6px}
+  .contract-header p{font-size:13px;color:var(--muted)}
+  .contract-meta{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:28px}
+  .meta-item{background:#f8f9fb;border-radius:10px;padding:12px 16px}
+  .meta-label{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+              color:var(--muted);margin-bottom:3px}
+  .meta-val{font-size:14px;font-weight:700}
+  .clause{margin-bottom:22px}
+  .clause h3{font-size:13.5px;font-weight:800;margin-bottom:8px;color:#111}
+  .clause p,.clause li{font-size:13.5px;color:#374151;line-height:1.7}
+  .clause ul{margin:6px 0 0 18px}
+  .clause table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+  .clause th{padding:8px 12px;text-align:left;background:#f1f5f9;font-weight:700;
+             font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#475569}
+  .clause td{padding:8px 12px;border-bottom:1px solid #f1f5f9;color:#374151}
+  .clause tr:last-child td{border-bottom:none}
+  .accepted-badge{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;
+                  background:#dcfce7;border:1px solid #bbf7d0;border-radius:12px;
+                  font-size:13px;font-weight:700;color:#15803d;margin-top:28px}
+  @media(max-width:600px){
+    .contract-card{padding:20px 16px}
+    .contract-meta{grid-template-columns:1fr}
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="section-title">My Contract</h1>
+  <a href="/ambassador/contract/download" style="display:none"></a>
+</div>
+
+<div class="contract-card">
+  <div class="contract-header">
+    <h2>PhiXtra AI — Ambassador Partnership Agreement</h2>
+    <p>This agreement governs your participation in the PhiXtra AI Ambassador Programme.</p>
+  </div>
+
+  <div class="contract-meta">
+    <div class="meta-item">
+      <div class="meta-label">Ambassador</div>
+      <div class="meta-val">{{ amb.first_name }} {{ amb.last_name }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">Email</div>
+      <div class="meta-val">{{ amb.email }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">Partnership Start</div>
+      <div class="meta-val">
+        {% if amb.partnership_start %}
+          {{ amb.partnership_start.strftime('%d %B %Y') if amb.partnership_start else '—' }}
+        {% else %}—{% endif %}
+      </div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">Referral Code</div>
+      <div class="meta-val" style="font-family:monospace;letter-spacing:.05em">{{ amb.ref_code }}</div>
+    </div>
+  </div>
+
+  <div class="clause">
+    <h3>1. Appointment</h3>
+    <p>PhiXtra AI hereby appoints the Ambassador as a non-exclusive independent partner to promote and refer clients to PhiXtra AI's products and services. This agreement does not create an employment relationship.</p>
+  </div>
+
+  <div class="clause">
+    <h3>2. Commission Structure</h3>
+    <p><strong>2.1 Self-Closed Referrals</strong><br>
+    Where a business signs up directly through the Ambassador's unique referral link, the Ambassador earns <strong>30% of the client's monthly subscription fee</strong> for the duration of their active commission window (see Clause 4).</p>
+    <br>
+    <p><strong>2.2 Submitted Leads</strong><br>
+    Where the Ambassador submits a business lead via the PhiXtra Ambassador Portal and PhiXtra AI's team closes and onboards the client, the Ambassador earns <strong>20% of the client's monthly subscription fee</strong>, beginning from the date the client activates a paid subscription.</p>
+    <br>
+    <p><strong>2.3 Upsell Bonuses</strong><br>The Ambassador earns a one-time bonus when a referred client upgrades to a higher plan:</p>
+    <table>
+      <thead><tr><th>Upgrade</th><th>Bonus</th></tr></thead>
+      <tbody>
+        <tr><td>Starter → Growth</td><td>₦5,000</td></tr>
+        <tr><td>Growth → Pro</td><td>₦10,000</td></tr>
+        <tr><td>Starter → Pro</td><td>₦15,000</td></tr>
+        <tr><td>Free → Pro</td><td>₦20,000</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="clause">
+    <h3>3. Ambassador Tiers</h3>
+    <table>
+      <thead><tr><th>Tier</th><th>Active Clients</th><th>Commission Window</th></tr></thead>
+      <tbody>
+        <tr><td>Standard</td><td>1 – 9</td><td>12 months from approval</td></tr>
+        <tr><td>Elite</td><td>10 – 19</td><td>18 months from approval</td></tr>
+        <tr><td>Master</td><td>20+</td><td>Lifetime</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="clause">
+    <h3>4. Commission Window</h3>
+    <p>Commission is earned from the Ambassador's approval date until the end of their tier's commission window. Commissions on clients referred before the window closes continue to be earned until that client churns or the window ends, whichever comes first. Master tier Ambassadors earn commissions indefinitely.</p>
+  </div>
+
+  <div class="clause">
+    <h3>5. Payouts</h3>
+    <p>Commissions are paid on the <strong>last business day of each calendar month</strong>. Minimum payout threshold: <strong>₦5,000</strong> — balances below this roll over to the following month. Payment is made via bank transfer to the account details provided in the Ambassador's profile. PhiXtra AI reserves the right to withhold payment for commissions under dispute or where fraudulent activity is suspected.</p>
+  </div>
+
+  <div class="clause">
+    <h3>6. Ambassador Obligations</h3>
+    <p>The Ambassador agrees to:</p>
+    <ul>
+      <li>Promote PhiXtra AI honestly and accurately</li>
+      <li>Not make false or misleading claims about PhiXtra AI's products</li>
+      <li>Not approach existing PhiXtra AI clients as new referrals</li>
+      <li>Not use spam, unsolicited bulk messaging, or prohibited advertising methods</li>
+      <li>Maintain the confidentiality of any non-public information shared by PhiXtra AI</li>
+    </ul>
+  </div>
+
+  <div class="clause">
+    <h3>7. Termination</h3>
+    <p>Either party may terminate this agreement by giving <strong>14 days' written notice</strong> to the other. On termination, no new commissions are earned after the termination date; commissions already earned and due before termination will be paid on the next regular payout date; and the Ambassador's referral link will be deactivated. PhiXtra AI may terminate immediately (without notice) for fraud, breach of this agreement, or conduct damaging to PhiXtra AI's reputation.</p>
+  </div>
+
+  <div class="clause">
+    <h3>8. Independent Contractor</h3>
+    <p>The Ambassador is an independent contractor. Nothing in this agreement creates a partnership, joint venture, agency, franchise, or employment relationship. The Ambassador is solely responsible for any applicable taxes on earnings received.</p>
+  </div>
+
+  <div class="clause">
+    <h3>9. Governing Law</h3>
+    <p>This agreement is governed by the laws of the <strong>Federal Republic of Nigeria</strong>. Any disputes shall be resolved through good-faith negotiation, failing which through the courts of Nigeria.</p>
+  </div>
+
+  <div class="clause">
+    <h3>10. Acceptance</h3>
+    <p>The Ambassador accepted this agreement during registration and confirmed their understanding of all terms at that time.</p>
+  </div>
+
+  <div class="accepted-badge">
+    ✅ Accepted during registration
+    {% if amb.approved_at %}
+      · Approved {{ amb.approved_at.strftime('%d %B %Y') }}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

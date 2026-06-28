@@ -102,7 +102,8 @@
       </div>
       <div class="usage-cycle">
         {% if current.is_trial %}
-          Free 30-day Pro trial
+          {% if customer.tenant_source_type == 'whatsapp' %}1-month free trial — AI WhatsApp Plan
+          {% else %}Free 30-day Pro trial{% endif %}
           &nbsp;·&nbsp; Ends {{ current.trial_ends_at.strftime('%-d %b %Y') if current.trial_ends_at }}
         {% else %}
           {{ current.billing_cycle | capitalize }} billing

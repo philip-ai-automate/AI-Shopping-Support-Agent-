@@ -1,0 +1,119 @@
+{% extends "portal/base.html" %}
+{% block title %}Set Up Your Catalogue — PhiXtra Portal{% endblock %}
+{% block content %}
+<style>
+  .wizard-header{background:linear-gradient(135deg,#030C18 0%,#1a2744 100%);
+    border-radius:16px;padding:28px 32px;color:#fff;margin-bottom:28px;
+    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px}
+  .wizard-title{font-size:22px;font-weight:800;letter-spacing:-.3px;margin-bottom:4px}
+  .wizard-sub{font-size:13px;opacity:.7}
+
+  /* Step progress */
+  .wizard-steps{display:flex;align-items:center;gap:0}
+  .wstep{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;opacity:.55}
+  .wstep.active{opacity:1}
+  .wstep.done{opacity:.7}
+  .wstep-num{width:26px;height:26px;border-radius:50%;border:2px solid rgba(255,255,255,.4);
+    display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800}
+  .wstep.active .wstep-num{border-color:#fff;background:#fff;color:#030C18}
+  .wstep.done .wstep-num{border-color:rgba(18,183,106,.8);background:rgba(18,183,106,.2);color:#6effc3}
+  .wstep-div{width:32px;height:2px;background:rgba(255,255,255,.2);margin:0 4px}
+
+  /* Department cards */
+  .dept-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:24px}
+  .dept-card{border:2px solid var(--line);border-radius:16px;padding:22px 16px;background:#fff;
+    cursor:pointer;transition:.15s;display:flex;flex-direction:column;align-items:center;
+    gap:8px;text-align:center;user-select:none;position:relative}
+  .dept-card:hover{border-color:rgba(3,12,24,.3);transform:translateY(-1px);
+    box-shadow:0 6px 20px rgba(3,12,24,.08)}
+  .dept-card.selected{border-color:var(--ink);background:rgba(3,12,24,.03)}
+  .dept-card input[type="radio"]{position:absolute;opacity:0;width:0;height:0}
+  .dept-check{position:absolute;top:10px;right:10px;width:18px;height:18px;
+    border-radius:50%;border:2px solid var(--line);transition:.15s;
+    display:flex;align-items:center;justify-content:center;font-size:10px}
+  .dept-card.selected .dept-check{border-color:var(--ink);background:var(--ink);color:#fff}
+  .dept-icon{font-size:36px;line-height:1}
+  .dept-name{font-size:13px;font-weight:700;line-height:1.3}
+  .dept-desc{font-size:11px;color:var(--muted);line-height:1.4}
+</style>
+
+{# ── Wizard header ── #}
+<div class="wizard-header">
+  <div>
+    <div class="wizard-title">👋 Welcome, {{ customer.first_name }}! Let's set up your WhatsApp Business catalogue.</div>
+    <div class="wizard-sub">Your product catalogue powers your AI Sales Agent. This takes about 2 minutes.</div>
+  </div>
+  <div class="wizard-steps">
+    <div class="wstep active"><div class="wstep-num">1</div><span>Business Type</span></div>
+    <div class="wstep-div"></div>
+    <div class="wstep"><div class="wstep-num">2</div><span>Categories</span></div>
+    <div class="wstep-div"></div>
+    <div class="wstep"><div class="wstep-num">3</div><span>Products</span></div>
+    <div class="wstep-div"></div>
+    <div class="wstep"><div class="wstep-num">4</div><span>Review</span></div>
+  </div>
+</div>
+
+<div class="card">
+  <div style="margin-bottom:20px">
+    <div style="font-size:17px;font-weight:800;margin-bottom:4px">What type of business do you run?</div>
+    <div class="muted">This helps us show you the right product categories.</div>
+  </div>
+
+  {% if departments %}
+  <form method="POST" id="deptForm">
+    <div class="dept-grid">
+      {% for dept in departments %}
+      <div class="dept-card" id="dc-{{ dept.id }}" onclick="selectDept({{ dept.id }})">
+        <input type="radio" name="department_id" value="{{ dept.id }}" id="dr-{{ dept.id }}"/>
+        <div class="dept-check" id="dck-{{ dept.id }}"></div>
+        <div class="dept-icon">{{ dept.icon }}</div>
+        <div class="dept-name">{{ dept.name }}</div>
+        {% if dept.description %}
+        <div class="dept-desc">{{ dept.description }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div id="sel-label" class="muted" style="font-size:13px"></div>
+      <div style="display:flex;gap:10px">
+        <button type="submit" name="action" value="next" class="btn btn-primary" id="nextBtn" disabled>
+          Next: Choose Categories →
+        </button>
+        <button type="submit" name="action" value="skip" class="btn" style="color:var(--muted)">
+          Skip for now
+        </button>
+      </div>
+    </div>
+  </form>
+  {% else %}
+  <div style="text-align:center;padding:32px">
+    <div style="font-size:32px;margin-bottom:10px">📭</div>
+    <div style="font-weight:700;margin-bottom:8px">No departments available yet</div>
+    <div class="muted" style="margin-bottom:20px">The PhiXtra team is setting up the catalogue. Check back soon.</div>
+    <form method="POST">
+      <button type="submit" name="action" value="skip" class="btn btn-primary">Go to Dashboard →</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+function selectDept(id) {
+  document.querySelectorAll('.dept-card').forEach(c => {
+    c.classList.remove('selected');
+    c.querySelector('.dept-check').textContent = '';
+  });
+  const card  = document.getElementById('dc-' + id);
+  const radio = document.getElementById('dr-' + id);
+  const ck    = document.getElementById('dck-' + id);
+  radio.checked = true;
+  card.classList.add('selected');
+  ck.textContent = '✓';
+  document.getElementById('nextBtn').disabled = false;
+  document.getElementById('sel-label').textContent = card.querySelector('.dept-name').textContent.trim() + ' selected';
+}
+</script>
+{% endblock %}

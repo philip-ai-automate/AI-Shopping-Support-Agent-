@@ -30,6 +30,15 @@
           <td style="border:none;padding:4px 8px">{% if customer.is_active %}<span class="pill pill-green">Active</span>{% else %}<span class="pill pill-red">Disabled</span>{% endif %}</td></tr>
       <tr><td class="muted" style="border:none;padding:4px 0">Signed up</td>
           <td style="border:none;padding:4px 8px">{{ customer.created_at.strftime('%Y-%m-%d %H:%M') if customer.created_at else '—' }}</td></tr>
+      {% if onboarding_other %}
+      <tr><td class="muted" style="border:none;padding:4px 0">Other category</td>
+          <td style="border:none;padding:4px 8px">
+            <span style="background:rgba(247,144,9,.10);border:1px solid rgba(247,144,9,.35);
+                         color:#92400e;border-radius:8px;padding:2px 10px;font-size:13px;font-weight:600">
+              {{ onboarding_other }}
+            </span>
+          </td></tr>
+      {% endif %}
     </table>
     <div style="margin-top:12px">
       <form method="POST" action="{{ url_for('portal_admin.customer_toggle_active', customer_id=customer.id) }}"
@@ -635,6 +644,29 @@
     After deleting, the customer re-imports by going to <strong>WordPress → PhiXtra AI → PhiXtra Export → PhiXtra Sync tab → Full Sync</strong>.
     All actions are recorded in the audit log below.
   </p>
+</div>
+{# ──────────────────────────────────────────────────────────────────────────── #}
+
+{# SYSTEM PROMPT #}
+<div class="card" id="system-prompt">
+  <div class="card-title">AI System Prompt</div>
+  <p class="muted" style="font-size:12px;margin-bottom:12px">
+    This is the full instruction the AI receives at the start of every conversation for this store.
+    Editing here overrides both the wizard settings and the default prompt for this tenant.
+  </p>
+  <form method="POST"
+        action="{{ url_for('portal_admin.customer_system_prompt_save', customer_id=customer.id) }}"
+        onsubmit="return confirm('Save this system prompt for {{ customer.domain }}?')">
+    <div class="form-group" style="margin-bottom:10px">
+      <textarea name="system_prompt" rows="18"
+                style="font-family:monospace;font-size:12px;line-height:1.7;width:100%;
+                       box-sizing:border-box;border:1px solid var(--line);border-radius:8px;
+                       padding:12px 14px;resize:vertical;background:#fafafa"
+      >{{ tenant_system_prompt }}</textarea>
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm">Save system prompt</button>
+    <span class="muted" style="font-size:12px;margin-left:10px">Changes take effect on the next conversation.</span>
+  </form>
 </div>
 {# ──────────────────────────────────────────────────────────────────────────── #}
 

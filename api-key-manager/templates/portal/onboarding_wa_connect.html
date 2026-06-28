@@ -1,0 +1,239 @@
+{% extends "portal/base.html" %}
+{% block title %}Connect WhatsApp — PhiXtra Portal{% endblock %}
+
+{% block head %}
+{% if embedded_enabled %}
+<script>
+  window.fbAsyncInit = function() {
+    FB.init({ appId: '{{ meta_app_id }}', autoLogAppEvents: true, xfbml: true, version: 'v19.0' });
+  };
+</script>
+<script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js"></script>
+{% endif %}
+<style>
+  .wizard-header {
+    background: linear-gradient(135deg,#030C18 0%,#1a2744 100%);
+    border-radius: 16px; padding: 28px 32px; color: #fff;
+    margin-bottom: 28px; display: flex; align-items: center;
+    justify-content: space-between; flex-wrap: wrap; gap: 16px;
+  }
+  .wizard-title { font-size: 22px; font-weight: 800; letter-spacing: -.3px; margin-bottom: 4px }
+  .wizard-sub   { font-size: 13px; opacity: .7 }
+
+  .wa-signup-btn {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 14px 26px; border-radius: 12px; border: none; cursor: pointer;
+    background: #25D366; color: #fff; font-size: 15px; font-weight: 700;
+    font-family: inherit; transition: .15s; box-shadow: 0 4px 14px rgba(37,211,102,.35);
+  }
+  .wa-signup-btn:hover { background: #1fbb59; transform: translateY(-1px); }
+  .wa-signup-btn:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+  .wa-signup-btn svg { width: 22px; height: 22px; flex-shrink: 0 }
+
+  .phone-option {
+    display: block; padding: 14px 16px; border: 2px solid var(--line);
+    border-radius: 14px; cursor: pointer; margin-bottom: 10px; transition: .15s;
+    text-decoration: none; color: var(--txt);
+  }
+  .phone-option:hover  { border-color: #25D366; background: rgba(37,211,102,.04); }
+  .phone-option.selected { border-color: #25D366; background: rgba(37,211,102,.06); }
+  .phone-option-num  { font-weight: 700; font-size: 15px }
+  .phone-option-meta { font-size: 12px; color: var(--muted); margin-top: 3px }
+
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(3,12,24,.55); z-index: 1000; align-items: center; justify-content: center }
+  .modal-overlay.open { display: flex }
+  .modal-box { background: #fff; border-radius: 20px; padding: 28px; max-width: 480px; width: 100%; margin: 20px; box-shadow: 0 24px 60px rgba(3,12,24,.22) }
+  .modal-title { font-size: 18px; font-weight: 800; margin-bottom: 6px }
+  .modal-sub   { font-size: 13px; color: var(--muted); margin-bottom: 20px }
+
+  #signupStatus { display: none; align-items: center; gap: 10px; margin-top: 14px; font-size: 14px; color: var(--muted) }
+  #signupError  { display: none; margin-top: 12px }
+  @keyframes spin { to { transform: rotate(360deg) } }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="wizard-header">
+  <div>
+    <div class="wizard-title">Last step — Connect your WhatsApp number</div>
+    <div class="wizard-sub">Your AI assistant is ready. Connect WhatsApp so customers can start messaging you.</div>
+  </div>
+</div>
+
+{% if connection and connection.active %}
+<!-- Already connected -->
+<div class="card" style="margin-bottom:20px">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+    <span class="dot dot-green"></span>
+    <span style="font-weight:700;color:var(--good)">WhatsApp already connected</span>
+  </div>
+  <div class="muted" style="font-size:13px;margin-bottom:20px">
+    <strong>{{ connection.display_phone_number or connection.phone_number_id }}</strong>
+    {% if connection.verified_name %} · {{ connection.verified_name }}{% endif %}
+  </div>
+  <a href="{{ url_for('portal.dashboard') }}" class="btn btn-primary">Go to Dashboard →</a>
+</div>
+
+{% elif embedded_enabled %}
+<!-- Embedded Signup -->
+<div class="card" style="margin-bottom:20px">
+  <p style="font-size:14px;margin-bottom:20px;line-height:1.6">
+    Click the button below. A Meta popup will open and guide you through connecting your WhatsApp Business Account — no technical setup required.
+  </p>
+
+  <button class="wa-signup-btn" onclick="launchWhatsAppSignup()" id="signupBtn">
+    <svg viewBox="0 0 24 24" fill="currentColor">
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+      <path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.553 4.113 1.522 5.842L.057 23.886l6.221-1.436A11.934 11.934 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.003-1.37l-.36-.213-3.696.853.885-3.576-.234-.369A9.818 9.818 0 012.182 12C2.182 6.578 6.578 2.182 12 2.182S21.818 6.578 21.818 12 17.422 21.818 12 21.818z"/>
+    </svg>
+    Connect WhatsApp
+  </button>
+
+  <div id="signupStatus">
+    <div style="width:18px;height:18px;border:2px solid var(--muted);border-top-color:var(--ink);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0"></div>
+    <span id="signupStatusText">Completing setup...</span>
+  </div>
+  <div id="signupError" class="flash danger"></div>
+
+  <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--line)">
+    <a href="{{ url_for('portal.dashboard') }}" class="muted" style="font-size:13px">
+      Not ready yet — skip and connect later from the WhatsApp page →
+    </a>
+  </div>
+</div>
+
+{% else %}
+<!-- Embedded Signup not configured — redirect to WhatsApp page -->
+<div class="card" style="margin-bottom:20px">
+  <p style="font-size:14px;margin-bottom:20px">Connect your WhatsApp Business Account to get started.</p>
+  <a href="{{ url_for('portal.whatsapp_connect') }}" class="btn btn-primary">Connect WhatsApp →</a>
+  <div style="margin-top:16px">
+    <a href="{{ url_for('portal.dashboard') }}" class="muted" style="font-size:13px">Skip for now →</a>
+  </div>
+</div>
+{% endif %}
+
+<!-- Phone selection modal -->
+<div class="modal-overlay" id="phoneModal">
+  <div class="modal-box">
+    <div class="modal-title">Select your WhatsApp number</div>
+    <div class="modal-sub">Your WhatsApp Business Account has multiple phone numbers. Choose which one PhiXtra should use.</div>
+    <div id="phoneOptions"></div>
+    <form id="phoneSelectForm" method="POST" action="{{ url_for('portal.whatsapp_embedded_complete') }}">
+      <input type="hidden" name="phone_number_id" id="selectedPhoneId">
+      <input type="hidden" name="waba_id"         id="selectedWabaId">
+      <input type="hidden" name="display_phone"   id="selectedDisplayPhone">
+      <input type="hidden" name="verified_name"   id="selectedVerifiedName">
+      <input type="hidden" name="next"            value="onboarding">
+      <div style="display:flex;gap:10px;margin-top:18px">
+        <button type="submit" class="btn btn-primary" id="confirmPhoneBtn" disabled>Confirm Selection</button>
+        <button type="button" class="btn" onclick="document.getElementById('phoneModal').classList.remove('open')">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if embedded_enabled %}
+<script>
+  var _sessionInfo = {};
+
+  window.addEventListener('message', function(event) {
+    if (event.origin !== 'https://www.facebook.com' &&
+        event.origin !== 'https://web.facebook.com') return;
+    try {
+      var data = JSON.parse(event.data);
+      if (data.type === 'WA_EMBEDDED_SIGNUP' && data.event === 'FINISH') {
+        _sessionInfo = data.data || {};
+      }
+    } catch(e) {}
+  });
+
+  function launchWhatsAppSignup() {
+    _sessionInfo = {};
+    setStatus('connecting', 'Opening WhatsApp signup...');
+    clearError();
+
+    FB.login(function(response) {
+      if (response.authResponse && response.authResponse.code) {
+        setStatus('connecting', 'Completing setup...');
+        sendCodeToBackend(response.authResponse.code);
+      } else {
+        setStatus('idle');
+      }
+    }, {
+      config_id: '{{ meta_config_id }}',
+      response_type: 'code',
+      override_default_response_type: true,
+      extras: {
+        setup: {},
+        featureType: 'whatsapp_embedded_signup',
+        sessionInfoVersion: '3',
+      }
+    });
+  }
+
+  function sendCodeToBackend(code) {
+    fetch('{{ url_for("portal.whatsapp_embedded_callback") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code: code,
+        phone_number_id: _sessionInfo.phone_number_id || '',
+        waba_id: _sessionInfo.waba_id || '',
+      })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.error) { setStatus('idle'); showError(data.error); return; }
+      if (data.status === 'connected') {
+        setStatus('connecting', 'Connected! Taking you to your dashboard...');
+        window.location.href = '{{ url_for("portal.dashboard") }}';
+      } else if (data.status === 'select_phone') {
+        setStatus('idle');
+        showPhoneModal(data.phone_options);
+      }
+    })
+    .catch(function() {
+      setStatus('idle');
+      showError('Network error. Please try again.');
+    });
+  }
+
+  function setStatus(state, text) {
+    var btn  = document.getElementById('signupBtn');
+    var stat = document.getElementById('signupStatus');
+    var stxt = document.getElementById('signupStatusText');
+    if (state === 'idle') { btn.disabled = false; stat.style.display = 'none'; }
+    else { btn.disabled = true; if (text) stxt.textContent = text; stat.style.display = 'flex'; }
+  }
+
+  function clearError() { var el = document.getElementById('signupError'); el.style.display = 'none'; el.textContent = ''; }
+  function showError(msg) { var el = document.getElementById('signupError'); el.textContent = msg; el.style.display = 'block'; }
+
+  function showPhoneModal(phones) {
+    var container = document.getElementById('phoneOptions');
+    container.innerHTML = '';
+    phones.forEach(function(pn) {
+      var el = document.createElement('div');
+      el.className = 'phone-option';
+      el.innerHTML =
+        '<div class="phone-option-num">' + (pn.display_phone_number || pn.phone_number_id) + '</div>' +
+        '<div class="phone-option-meta">' + (pn.verified_name ? pn.verified_name + ' · ' : '') + 'WABA: ' + pn.waba_id + '</div>';
+      el.addEventListener('click', function() {
+        document.querySelectorAll('.phone-option').forEach(function(o) { o.classList.remove('selected'); });
+        el.classList.add('selected');
+        document.getElementById('selectedPhoneId').value    = pn.phone_number_id;
+        document.getElementById('selectedWabaId').value     = pn.waba_id;
+        document.getElementById('selectedDisplayPhone').value = pn.display_phone_number || '';
+        document.getElementById('selectedVerifiedName').value = pn.verified_name || '';
+        document.getElementById('confirmPhoneBtn').disabled = false;
+      });
+      container.appendChild(el);
+    });
+    document.getElementById('phoneModal').classList.add('open');
+  }
+</script>
+{% endif %}
+
+{% endblock %}

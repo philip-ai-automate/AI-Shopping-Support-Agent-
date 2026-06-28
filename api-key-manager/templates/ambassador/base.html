@@ -73,8 +73,11 @@
 
     @media(max-width:768px){
       .amb-sidebar{width:60px}
-      .asb-brand-name,.asb-brand-sub,.asb-link span,.asb-logout span{display:none}
-      .amb-main{margin-left:60px;padding:20px}
+      .asb-brand-name,.asb-brand-sub,.asb-link span:not(.asb-icon),.asb-logout span:not(.asb-icon){display:none}
+      /* sidebar is fixed so main must be explicitly capped to avoid overflow */
+      .amb-main{margin-left:60px;padding:16px;width:calc(100vw - 60px);min-width:0;box-sizing:border-box}
+      .page-header{flex-wrap:wrap;gap:10px}
+      .section-title{font-size:18px}
     }
   </style>
   {% block head %}{% endblock %}
@@ -87,6 +90,10 @@
     <div class="asb-brand-sub">Ambassador Hub</div>
   </div>
   <div class="asb-nav">
+    <a class="asb-link {% if request.endpoint=='ambassador.getting_started' %}active{% endif %}"
+       href="{{ url_for('ambassador.getting_started') }}">
+      <span class="asb-icon">🚀</span><span>Getting Started</span>
+    </a>
     <a class="asb-link {% if request.endpoint=='ambassador.dashboard' %}active{% endif %}"
        href="{{ url_for('ambassador.dashboard') }}">
       <span class="asb-icon">🏠</span><span>Dashboard</span>
@@ -102,6 +109,31 @@
     <a class="asb-link {% if request.endpoint=='ambassador.qr_page' %}active{% endif %}"
        href="{{ url_for('ambassador.qr_page') }}">
       <span class="asb-icon">📱</span><span>My QR Code</span>
+    </a>
+    <a class="asb-link {% if request.endpoint=='ambassador.demo_qr_page' %}active{% endif %}"
+       href="{{ url_for('ambassador.demo_qr_page') }}">
+      <span class="asb-icon">📲</span><span>Demo QR Code</span>
+    </a>
+    <a class="asb-link {% if request.endpoint=='ambassador.checklist' %}active{% endif %}"
+       href="{{ url_for('ambassador.checklist') }}">
+      <span class="asb-icon">📋</span><span>Client Checklist</span>
+    </a>
+    <a class="asb-link {% if request.endpoint=='ambassador.leads' %}active{% endif %}"
+       href="{{ url_for('ambassador.leads') }}">
+      <span class="asb-icon">🎯</span><span>Refer a Lead</span>
+    </a>
+    <a class="asb-link {% if request.endpoint=='ambassador.contract' %}active{% endif %}"
+       href="{{ url_for('ambassador.contract') }}">
+      <span class="asb-icon">📄</span><span>My Contract</span>
+    </a>
+    <a class="asb-link"
+       href="{{ url_for('ambassador.demo_portal_access') }}"
+       target="_blank" rel="noopener"
+       style="background:rgba(37,99,235,.18);color:#93c5fd;font-weight:700;margin-top:6px">
+      <span class="asb-icon">🎮</span><span>My Demo Portal</span>
+    </a>
+    <a class="asb-link" href="https://chat.whatsapp.com/KKRG7lVuxq6LVGMdLHYaqG" target="_blank" rel="noopener">
+      <span class="asb-icon">💬</span><span>Support Group</span>
     </a>
   </div>
   <div class="asb-footer">

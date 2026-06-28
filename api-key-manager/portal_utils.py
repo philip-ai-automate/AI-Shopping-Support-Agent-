@@ -71,6 +71,56 @@ def send_email(to_email: str, subject: str, html_body: str, text_body: str | Non
         return False
 
 
+def send_email_with_attachment(
+    to_email: str, subject: str, html_body: str,
+    attachment_bytes: bytes, attachment_filename: str, attachment_mimetype: str = "image/png",
+    text_body: str | None = None,
+) -> bool:
+    """Send an email with a single binary attachment. Returns True on success."""
+    host = os.getenv("SMTP_HOST", "").strip()
+    port = int(os.getenv("SMTP_PORT", "587"))
+    user = os.getenv("SMTP_USER", "").strip()
+    password = os.getenv("SMTP_PASSWORD", "").strip()
+    from_email = os.getenv("SMTP_FROM", user or "no-reply@phixtra.com").strip()
+    use_tls = os.getenv("SMTP_USE_TLS", "1").strip() == "1"
+    use_ssl = os.getenv("SMTP_USE_SSL", "0").strip() == "1"
+
+    if not host or not from_email:
+        print("⚠️ SMTP not configured; skipping email:", subject)
+        return False
+
+    maintype, subtype = attachment_mimetype.split("/", 1)
+
+    msg = EmailMessage()
+    msg["From"] = from_email
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.set_content(text_body or "Please view this email in an HTML-capable client.")
+    msg.add_alternative(html_body, subtype="html")
+    msg.add_attachment(attachment_bytes, maintype=maintype, subtype=subtype,
+                       filename=attachment_filename)
+
+    try:
+        if use_ssl:
+            import ssl as _ssl
+            ctx = _ssl.create_default_context()
+            with smtplib.SMTP_SSL(host, port, timeout=20, context=ctx) as server:
+                if user and password:
+                    server.login(user, password)
+                server.send_message(msg)
+        else:
+            with smtplib.SMTP(host, port, timeout=20) as server:
+                if use_tls:
+                    server.starttls()
+                if user and password:
+                    server.login(user, password)
+                server.send_message(msg)
+        return True
+    except Exception as e:
+        print("⚠️ send_email_with_attachment failed:", e)
+        return False
+
+
 def next_invoice_number() -> str:
     # Example: PHX-20260214-8F3A2C
     stamp = datetime.utcnow().strftime("%Y%m%d")

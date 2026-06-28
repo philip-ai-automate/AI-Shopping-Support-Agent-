@@ -1,0 +1,327 @@
+{% extends "ambassador/gs_page.html" %}
+{% block title %}Common Questions — Getting Started{% endblock %}
+
+{% block gs_style %}
+.faq-card{border-radius:14px;border:1px solid var(--line);overflow:hidden;margin-bottom:16px}
+.faq-q{display:flex;align-items:flex-start;gap:14px;padding:16px 20px;background:#fff;cursor:pointer;
+        transition:background .15s;user-select:none}
+.faq-q:hover{background:#f8f9fb}
+.faq-icon{font-size:22px;flex-shrink:0;width:32px;text-align:center;line-height:1.3}
+.faq-qtext{flex:1}
+.faq-qtitle{font-size:14.5px;font-weight:800;letter-spacing:-.2px;color:var(--ink);line-height:1.3}
+.faq-qsub{font-size:12px;color:var(--muted);margin-top:3px}
+.faq-arrow{font-size:13px;color:var(--muted);transition:transform .2s;flex-shrink:0;margin-top:3px}
+.faq-body{display:none;padding:0 20px 20px;background:#fff;border-top:1px solid var(--line)}
+.faq-body.open{display:block}
+.faq-body p{font-size:13.5px;color:#374151;line-height:1.75;margin-bottom:10px}
+.faq-body p:last-child{margin-bottom:0}
+.faq-body strong{color:var(--ink)}
+.faq-body ul{margin:6px 0 10px 18px;display:flex;flex-direction:column;gap:5px}
+.faq-body li{font-size:13.5px;color:#374151;line-height:1.6}
+.faq-steps{display:flex;flex-direction:column;gap:10px;margin:10px 0}
+.faq-step{display:flex;gap:14px;align-items:flex-start;padding:13px 16px;
+          background:#f8f9fb;border-radius:11px;border:1px solid var(--line)}
+.faq-step-num{width:26px;height:26px;border-radius:50%;background:var(--ink);color:#fff;
+              font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.faq-step-body{font-size:13px;color:#374151;line-height:1.6}
+.faq-step-title{font-weight:700;color:var(--ink);margin-bottom:2px;font-size:13px}
+.tip-box{background:#eff6ff;border:1px solid #bfdbfe;border-radius:11px;
+         padding:13px 16px;font-size:13px;color:#1d4ed8;line-height:1.6;margin:10px 0}
+.warn-box{background:#fef9c3;border:1px solid #fde68a;border-radius:11px;
+          padding:13px 16px;font-size:13px;color:#92400e;line-height:1.6;margin:10px 0}
+.do-dont{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0}
+.do-box{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:11px;padding:13px 16px}
+.dont-box{background:#fff1f2;border:1px solid #fecdd3;border-radius:11px;padding:13px 16px}
+.dd-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+.do-box .dd-title{color:#15803d}
+.dont-box .dd-title{color:#be123c}
+.dd-item{font-size:12.5px;color:#374151;line-height:1.55;margin-bottom:5px;display:flex;gap:6px}
+.plan-tbl{width:100%;border-collapse:collapse;font-size:13px;margin:10px 0;border-radius:10px;overflow:hidden;border:1px solid var(--line)}
+.plan-tbl th{padding:9px 14px;text-align:left;background:var(--ink);color:#fff;font-size:11px;
+             font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.plan-tbl td{padding:10px 14px;border-bottom:1px solid var(--line)}
+.plan-tbl tr:last-child td{border-bottom:none}
+.plan-tbl tr:nth-child(even) td{background:#f8f9fb}
+.copy-row{display:flex;justify-content:flex-end;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.pdf-bar{display:flex;align-items:center;justify-content:space-between;
+         background:var(--ink);border-radius:14px;padding:16px 20px;margin-bottom:20px}
+.pdf-bar-text{color:rgba(255,255,255,.85);font-size:13px;line-height:1.5}
+.pdf-bar-text strong{color:#fff;display:block;font-size:14px;margin-bottom:3px}
+.pdf-btn{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;background:#fff;
+         color:var(--ink);border-radius:10px;font-size:13px;font-weight:700;
+         text-decoration:none;white-space:nowrap;transition:background .15s;flex-shrink:0}
+.pdf-btn:hover{background:#f0f1f8;text-decoration:none;color:var(--ink)}
+@media(max-width:600px){
+  .do-dont{grid-template-columns:1fr}
+  .pdf-bar{flex-direction:column;gap:14px;text-align:center}
+}
+{% endblock %}
+
+{% block gs_content %}
+
+<!-- PDF download bar -->
+<div class="pdf-bar">
+  <div class="pdf-bar-text">
+    <strong>Share this as a PDF</strong>
+    Download a clean, branded document to send directly to any prospect who wants to read more.
+  </div>
+  <a class="pdf-btn" href="{{ url_for('ambassador.faq_pdf') }}">
+    📄 Download PDF
+  </a>
+</div>
+
+<p style="font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.6">
+  These are the questions prospects ask most often. Click any question to read the full answer.
+  Each one has a <strong>Copy</strong> button so you can paste the answer straight into WhatsApp.
+</p>
+
+<!-- Q1 -->
+<div class="faq-card">
+  <div class="faq-q" onclick="toggleFaq(this)">
+    <div class="faq-icon">🤖</div>
+    <div class="faq-qtext">
+      <div class="faq-qtitle">How does PhiXtra actually work?</div>
+      <div class="faq-qsub">The most common first question — answer this and most other doubts disappear</div>
+    </div>
+    <div class="faq-arrow">▼</div>
+  </div>
+  <div class="faq-body">
+    <p style="margin-top:14px">Imagine hiring a smart, tireless customer service rep who knows every single product you sell, never takes a day off, never sleeps, and can handle hundreds of customers at once — all on your existing WhatsApp number. That is PhiXtra.</p>
+    <div class="faq-steps">
+      <div class="faq-step">
+        <div class="faq-step-num">1</div>
+        <div class="faq-step-body">
+          <div class="faq-step-title">You connect your WhatsApp</div>
+          Your business WhatsApp number is linked to PhiXtra using the official Meta Business API. Nothing changes for your customers — they still message the same number they always have.
+        </div>
+      </div>
+      <div class="faq-step">
+        <div class="faq-step-num">2</div>
+        <div class="faq-step-body">
+          <div class="faq-step-title">You upload your products</div>
+          You add your products, prices, and any information you want the AI to know. Think of it as briefing your new staff member. The more detail you give, the better it performs.
+        </div>
+      </div>
+      <div class="faq-step">
+        <div class="faq-step-num">3</div>
+        <div class="faq-step-body">
+          <div class="faq-step-title">The AI goes live</div>
+          From that moment, every customer message is read and answered within seconds. A customer asks "what is the price of Samsung A55?" — the AI checks your product list and replies immediately with the price, specs, and availability. Even at midnight. Even on Sundays.
+        </div>
+      </div>
+      <div class="faq-step">
+        <div class="faq-step-num">4</div>
+        <div class="faq-step-body">
+          <div class="faq-step-title">You stay in control</div>
+          Nothing is hidden from you. Log in at any time to read every conversation, update your products, change how the AI behaves, or take over a chat yourself. The AI works for you — you are always the boss.
+        </div>
+      </div>
+    </div>
+    <div class="copy-row">
+      <button class="copy-btn" onclick="copyFaq('faq1copy', this)">Copy short answer</button>
+    </div>
+    <div id="faq1copy" style="display:none">PhiXtra connects to your business WhatsApp number. When a customer sends a message — asking about prices, checking stock, or placing an order — the AI replies instantly on your behalf using the products you've uploaded. It works 24/7, even when your shop is closed. You can log in anytime to read all conversations, update products, or jump in yourself. Setup takes about 5 minutes.</div>
+  </div>
+</div>
+
+<!-- Q2 -->
+<div class="faq-card">
+  <div class="faq-q" onclick="toggleFaq(this)">
+    <div class="faq-icon">🔒</div>
+    <div class="faq-qtext">
+      <div class="faq-qtitle">How does it handle my customer data?</div>
+      <div class="faq-qsub">A trust question — answer it fully and you'll earn serious credibility</div>
+    </div>
+    <div class="faq-arrow">▼</div>
+  </div>
+  <div class="faq-body">
+    <p style="margin-top:14px">This is one of the most important questions to ask any software you trust with your business — and we want to answer it fully.</p>
+    <p><strong>Your data is yours. Full stop.</strong> When a customer messages your WhatsApp, that conversation is stored on your PhiXtra account. No other business can see it. Your customer list, chat history, and product prices all belong only to you.</p>
+    <div class="do-dont">
+      <div class="do-box">
+        <div class="dd-title">✅ What PhiXtra does</div>
+        <div class="dd-item"><span>→</span>Reads your product list to answer customers</div>
+        <div class="dd-item"><span>→</span>Stores conversations for you to review</div>
+        <div class="dd-item"><span>→</span>Keeps all data within your account only</div>
+      </div>
+      <div class="dont-box">
+        <div class="dd-title">❌ What PhiXtra never does</div>
+        <div class="dd-item"><span>→</span>Sell your data to anyone</div>
+        <div class="dd-item"><span>→</span>Share customer info with other businesses</div>
+        <div class="dd-item"><span>→</span>Use your data to train public AI</div>
+        <div class="dd-item"><span>→</span>Access your account without permission</div>
+      </div>
+    </div>
+    <p>All data is stored on secure, encrypted servers. You can export your data, delete conversations, or close your account at any time. When you delete your account, your data is permanently removed.</p>
+    <div class="copy-row">
+      <button class="copy-btn" onclick="copyFaq('faq2copy', this)">Copy short answer</button>
+    </div>
+    <div id="faq2copy" style="display:none">Your customer data belongs to you alone. PhiXtra stores your conversations and messages securely on your own account — no other business can see them. PhiXtra only uses your data to answer your customers' questions. It does not sell your data, share it with anyone, or use it to train public AI. You can delete your account and all your data at any time.</div>
+  </div>
+</div>
+
+<!-- Q3 -->
+<div class="faq-card">
+  <div class="faq-q" onclick="toggleFaq(this)">
+    <div class="faq-icon">📱</div>
+    <div class="faq-qtext">
+      <div class="faq-qtitle">Is it safe to connect my WhatsApp number?</div>
+      <div class="faq-qsub">Prospects are often worried about their number being "hacked" or banned</div>
+    </div>
+    <div class="faq-arrow">▼</div>
+  </div>
+  <div class="faq-body">
+    <p style="margin-top:14px">Completely. PhiXtra uses the <strong>official Meta (WhatsApp) Business API</strong> — the same approved system that banks, fintech companies, airlines, and large corporations use worldwide to communicate with their customers on WhatsApp.</p>
+    <div class="tip-box">💡 This is the same infrastructure that GTBank, Flutterwave, and international companies use. It is not a hack, a workaround, or anything that violates WhatsApp's rules.</div>
+    <p>Your WhatsApp number remains 100% yours at all times. If you ever decide to stop using PhiXtra, you simply disconnect the number in one click and it returns to working as a normal WhatsApp line immediately — your contacts, chat history, and account are completely unaffected.</p>
+    <div class="copy-row">
+      <button class="copy-btn" onclick="copyFaq('faq3copy', this)">Copy short answer</button>
+    </div>
+    <div id="faq3copy" style="display:none">Yes, completely safe. PhiXtra uses the official Meta (WhatsApp) Business API — the same system used by banks and large companies worldwide. It is not a hack or a workaround. Your number stays yours. If you ever stop using PhiXtra, you disconnect it in one click and your WhatsApp returns to normal immediately.</div>
+  </div>
+</div>
+
+<!-- Q4 -->
+<div class="faq-card">
+  <div class="faq-q" onclick="toggleFaq(this)">
+    <div class="faq-icon">❓</div>
+    <div class="faq-qtext">
+      <div class="faq-qtitle">What if the AI gives a wrong answer?</div>
+      <div class="faq-qsub">A fair concern — here's the honest, reassuring answer</div>
+    </div>
+    <div class="faq-arrow">▼</div>
+  </div>
+  <div class="faq-body">
+    <p style="margin-top:14px">The AI can only say what it knows — and it knows what you tell it. It strictly answers based on your product list and the information you have uploaded. It does not guess or make things up.</p>
+    <p>If a customer asks about a product that is not in your list, the AI will say it does not have that information and invite the customer to call or ask again — it does not invent an answer.</p>
+    <p>If the AI ever gives outdated information, it is almost always because the product list has not been updated. Fix the price or product detail in your portal, and from that second, the AI uses the new information for every future conversation.</p>
+    <div class="tip-box">📥 You can read every conversation in your portal inbox. Nothing is hidden. If a conversation needs a human touch, you can jump in and the AI steps aside instantly.</div>
+    <p>Most business owners find that within the first two weeks, they rarely need to correct anything — because the AI sticks strictly to what they have given it.</p>
+    <div class="copy-row">
+      <button class="copy-btn" onclick="copyFaq('faq4copy', this)">Copy short answer</button>
+    </div>
+    <div id="faq4copy" style="display:none">The AI only answers based on your product list — it does not guess or make things up. If a product is missing from your list, it tells the customer it doesn't have that information rather than inventing an answer. If anything is outdated, you update it in your portal and the AI uses the new information immediately. You can also read every conversation and jump in yourself at any time.</div>
+  </div>
+</div>
+
+<!-- Q5 -->
+<div class="faq-card">
+  <div class="faq-q" onclick="toggleFaq(this)">
+    <div class="faq-icon">👁️</div>
+    <div class="faq-qtext">
+      <div class="faq-qtitle">Will my customers know they are talking to AI?</div>
+      <div class="faq-qsub">This comes up often — the answer is simpler than most people expect</div>
+    </div>
+    <div class="faq-arrow">▼</div>
+  </div>
+  <div class="faq-body">
+    <p style="margin-top:14px">That is entirely your choice as the business owner. PhiXtra does not force any disclosure.</p>
+    <p>Some businesses are fully transparent — they set the AI up to say something like: <em>"Hi! I'm Temi, the virtual assistant for this shop. How can I help you today?"</em></p>
+    <p>Others give the AI a human-sounding name like "Mike" or "Amaka" and customers never ask. Both approaches work — what matters most to customers is getting a fast, accurate answer.</p>
+    <div class="warn-box">⚡ Customers are far more frustrated by slow replies and missed messages than they are by talking to a well-trained AI. PhiXtra solves the problem that is actually losing you sales right now.</div>
+    <div class="copy-row">
+      <button class="copy-btn" onclick="copyFaq('faq5copy', this)">Copy short answer</button>
+    </div>
+    <div id="faq5copy" style="display:none">That's your choice entirely. Some businesses label the AI clearly as a virtual assistant. Others give it a human name and customers never ask. PhiXtra doesn't force any disclosure. What matters most to customers is getting a fast, accurate answer — and PhiXtra delivers that regardless.</div>
+  </div>
+</div>
+
+<!-- Q6 -->
+<div class="faq-card">
+  <div class="faq-q" onclick="toggleFaq(this)">
+    <div class="faq-icon">🕐</div>
+    <div class="faq-qtext">
+      <div class="faq-qtitle">What happens when my shop is closed?</div>
+      <div class="faq-qsub">This is often what finally convinces a prospect to sign up</div>
+    </div>
+    <div class="faq-arrow">▼</div>
+  </div>
+  <div class="faq-body">
+    <p style="margin-top:14px">The AI never closes. Whether it is 2am on a Saturday, Christmas Day, or a public holiday — every customer message is answered within seconds. No customer waits. No sale is lost because nobody was there to reply.</p>
+    <p>Consider this: most impulse purchases happen in the evening when people are relaxed and scrolling on their phones. These are exactly the hours that traditional shops miss entirely. PhiXtra captures every one of those customers automatically.</p>
+    <div class="tip-box">💬 <em>"I woke up to three orders I didn't even know about."</em> — this is what business owners tell us most often in the first week.</div>
+    <div class="copy-row">
+      <button class="copy-btn" onclick="copyFaq('faq6copy', this)">Copy short answer</button>
+    </div>
+    <div id="faq6copy" style="display:none">The AI never closes. Whether it's 2am on a Sunday or a public holiday, every customer message is answered within seconds. Most impulse purchases happen in the evening when people are on their phones — PhiXtra captures all those sales that would otherwise be missed. Business owners often say: "I woke up to orders I didn't even know about."</div>
+  </div>
+</div>
+
+<!-- Q7 -->
+<div class="faq-card">
+  <div class="faq-q" onclick="toggleFaq(this)">
+    <div class="faq-icon">💳</div>
+    <div class="faq-qtext">
+      <div class="faq-qtitle">Is there a free trial? What does it cost?</div>
+      <div class="faq-qsub">Always answer pricing clearly — uncertainty kills decisions</div>
+    </div>
+    <div class="faq-arrow">▼</div>
+  </div>
+  <div class="faq-body">
+    <p style="margin-top:14px">Yes — you can start for free with no credit card required. You get full access to try the platform and see exactly how it works with your business before spending a single naira.</p>
+    <p>After your free trial, choose the plan that fits your business:</p>
+    <table class="plan-tbl">
+      <thead><tr><th>Plan</th><th>Price / Month</th><th>Best For</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Starter</strong></td><td>₦25,000</td><td>Small shops getting started</td></tr>
+        <tr><td><strong>Growth</strong></td><td>₦75,000</td><td>Busier shops with higher message volume</td></tr>
+        <tr><td><strong>Pro</strong></td><td>₦200,000</td><td>High-volume businesses, advanced features</td></tr>
+      </tbody>
+    </table>
+    <p>All plans include unlimited AI replies. There is no contract and no cancellation fee — cancel any time with no penalty. Most business owners recover the monthly cost within the first week from sales that would otherwise have been missed.</p>
+    <div class="copy-row">
+      <button class="copy-btn" onclick="copyFaq('faq7copy', this)">Copy short answer</button>
+    </div>
+    <div id="faq7copy" style="display:none">Yes, there is a free trial — no credit card needed. After the trial: Starter is ₦25,000/month, Growth is ₦75,000/month, and Pro is ₦200,000/month. All plans include unlimited AI replies to customers. No contract, cancel any time. Most business owners recover the cost within the first week from sales they would have missed without the AI.</div>
+  </div>
+</div>
+
+<!-- Q8 -->
+<div class="faq-card">
+  <div class="faq-q" onclick="toggleFaq(this)">
+    <div class="faq-icon">🔌</div>
+    <div class="faq-qtext">
+      <div class="faq-qtitle">How long does setup take?</div>
+      <div class="faq-qsub">Remove the fear of a long, complicated process</div>
+    </div>
+    <div class="faq-arrow">▼</div>
+  </div>
+  <div class="faq-body">
+    <p style="margin-top:14px">For phone and computer shops: <strong>about 5 minutes.</strong> You create your account, upload your product list, and connect your WhatsApp number. The AI is live from that moment — no waiting, no installation, no technical knowledge required.</p>
+    <p>For other types of businesses — fashion, food, logistics, services — the PhiXtra team will personally configure your account within <strong>48 hours</strong> at no extra charge. You just sign up and we handle the rest.</p>
+    <div class="tip-box">🤝 Your PhiXtra Ambassador will guide you through every step and can stay on a call with you during setup so you are never stuck.</div>
+    <div class="copy-row">
+      <button class="copy-btn" onclick="copyFaq('faq8copy', this)">Copy short answer</button>
+    </div>
+    <div id="faq8copy" style="display:none">For phone and computer shops, setup takes about 5 minutes — create account, upload products, connect WhatsApp, done. For other business types, the PhiXtra team sets everything up for you within 48 hours at no extra cost. Your ambassador will guide you through every step.</div>
+  </div>
+</div>
+
+<div class="gs-tip" style="margin-top:8px">
+  <strong>Not on this list?</strong> If a prospect asks something you cannot answer, send their question to the Ambassador WhatsApp support group and the PhiXtra team will get you an answer within a few hours.
+</div>
+
+<script>
+function toggleFaq(btn) {
+  var body  = btn.nextElementSibling;
+  var arrow = btn.querySelector('.faq-arrow');
+  var open  = body.classList.contains('open');
+  // close all
+  document.querySelectorAll('.faq-body').forEach(function(b){ b.classList.remove('open'); });
+  document.querySelectorAll('.faq-arrow').forEach(function(a){ a.style.transform = ''; });
+  // open clicked if it was closed
+  if (!open) {
+    body.classList.add('open');
+    arrow.style.transform = 'rotate(180deg)';
+  }
+}
+function copyFaq(id, btn) {
+  var text = document.getElementById(id).textContent.trim();
+  navigator.clipboard.writeText(text).then(function() {
+    var orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(function(){ btn.textContent = orig; }, 2000);
+  });
+}
+</script>
+{% endblock %}

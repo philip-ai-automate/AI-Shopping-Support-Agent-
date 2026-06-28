@@ -262,6 +262,14 @@ html, body { overflow: hidden; height: 100%; }
   background: rgba(0,0,0,.07); padding: 3px 10px; border-radius: 999px; white-space: nowrap;
 }
 
+/* Campaign message banner */
+.campaign-msg-banner {
+  align-self: center; margin: 8px auto; max-width: 85%;
+  background: #FFF8E1; border: 1px solid #FFD54F; border-radius: 10px;
+  padding: 8px 14px; font-size: 12.5px; color: #7B5800;
+  text-align: center; flex-shrink: 0;
+}
+
 /* New message animation */
 .msg-new { opacity: 0; transform: translateY(10px) }
 .msg-new-in { opacity: 1; transform: translateY(0); transition: opacity .2s ease, transform .2s ease }
@@ -554,7 +562,12 @@ html, body { overflow: hidden; height: 100%; }
               {% set ns.last_date = msg_date %}
             {% endif %}
 
-            {% if msg.direction == 'inbound' %}
+            {% if msg.message_type == 'campaign' %}
+            <div class="campaign-msg-banner" data-ts="{{ msg.created_at.isoformat() if msg.created_at else '' }}">
+              <span>{{ msg.content }}</span>
+              <span class="bubble-time" style="margin-left:8px;opacity:.7">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}</span>
+            </div>
+            {% elif msg.direction == 'inbound' %}
             <div class="msg-wrap inbound" data-ts="{{ msg.created_at.isoformat() if msg.created_at else '' }}">
               <div class="msg-avatar" style="background:{{ _hcol }}">{{ _hini }}</div>
               <div class="bubble-col">

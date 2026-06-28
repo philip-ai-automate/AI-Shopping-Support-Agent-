@@ -2,15 +2,39 @@
 {% block title %}Catalogue — PhiXtra Admin{% endblock %}
 {% block content %}
 <style>
-  .cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-bottom:28px}
-  .cat-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px;
-            box-shadow:var(--shadow);display:flex;flex-direction:column;gap:8px;position:relative}
+  /* ── Department sections ── */
+  .dept-section{margin-bottom:32px}
+  .dept-header{display:flex;align-items:center;justify-content:space-between;
+               flex-wrap:wrap;gap:10px;margin-bottom:12px;padding-bottom:10px;
+               border-bottom:2px solid var(--line)}
+  .dept-title{display:flex;align-items:center;gap:10px}
+  .dept-icon{font-size:26px;line-height:1}
+  .dept-name{font-size:17px;font-weight:800;letter-spacing:-.3px}
+  .dept-meta{font-size:12px;color:var(--muted);margin-top:2px}
+  .dept-actions{display:flex;gap:6px;flex-wrap:wrap}
+  .dept-section.inactive .dept-name{opacity:.5}
+
+  /* ── Category cards ── */
+  .cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+  .cat-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;
+            box-shadow:var(--shadow);display:flex;flex-direction:column;gap:7px;position:relative}
   .cat-card.inactive{opacity:.55}
-  .cat-icon{font-size:28px;line-height:1}
-  .cat-name{font-size:15px;font-weight:800;letter-spacing:-.2px}
+  .cat-icon{font-size:24px;line-height:1}
+  .cat-name{font-size:14px;font-weight:800;letter-spacing:-.2px}
   .cat-count{font-size:12px;color:var(--muted)}
-  .cat-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .cat-actions{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px}
+
+  /* ── Ungrouped block ── */
+  .ungrouped-section{margin-bottom:32px}
+
+  /* ── Empty state ── */
+  .empty-dept{background:rgba(3,12,24,.03);border:1px dashed var(--line);border-radius:12px;
+              padding:20px;text-align:center;color:var(--muted);font-size:13px}
+
+  /* ── Legacy phones card ── */
   .phones-card{border:2px solid rgba(3,12,24,.12)}
+
+  /* ── Uploads table ── */
   .upload-table td,.upload-table th{font-size:12px;padding:9px 12px}
   .status-done{color:#0a7a3c;font-weight:700}
   .status-partial{color:#7a4f00;font-weight:700}
@@ -19,52 +43,163 @@
 
 <div class="page-header">
   <h1 class="section-title">📂 Catalogue Management</h1>
-  <a href="{{ url_for('portal_admin.catalogue_category_new') }}" class="btn btn-primary">+ Create Category</a>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <a href="{{ url_for('portal_admin.catalogue_templates') }}" class="btn btn-sm">🗂 Templates</a>
+    <a href="{{ url_for('portal_admin.catalogue_department_new') }}" class="btn">+ New Department</a>
+    <a href="{{ url_for('portal_admin.catalogue_category_new') }}" class="btn btn-primary">+ New Category</a>
+  </div>
 </div>
 
-{# ── Dynamic categories ── #}
-{% if categories %}
-<div class="cat-grid">
-  {% for cat in categories %}
-  <div class="cat-card {% if not cat.is_active %}inactive{% endif %}">
-    <div class="cat-icon">{{ cat.icon }}</div>
-    <div class="cat-name">{{ cat.name }}</div>
-    <div class="cat-count">{{ cat.product_count }} products
-      {% if not cat.is_active %}<span class="pill pill-grey" style="margin-left:4px">Inactive</span>{% endif %}
+{# ════════════════════════════════════════════════════════
+   Department sections
+   ════════════════════════════════════════════════════════ #}
+{% if departments %}
+  {% for dept in departments %}
+  {% set dept_cats = cats_by_dept.get(dept.id, []) %}
+  <div class="dept-section {% if not dept.is_active %}inactive{% endif %}">
+    <div class="dept-header">
+      <div class="dept-title">
+        <span class="dept-icon">{{ dept.icon }}</span>
+        <div>
+          <div class="dept-name">
+            {{ dept.name }}
+            {% if not dept.is_active %}<span class="pill pill-grey" style="font-size:10px;vertical-align:middle">Inactive</span>{% endif %}
+          </div>
+          <div class="dept-meta">
+            {{ dept_cats|length }} categor{{ 'y' if dept_cats|length == 1 else 'ies' }}
+            {% if dept.description %} &mdash; {{ dept.description }}{% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="dept-actions">
+        <a href="{{ url_for('portal_admin.catalogue_department_edit', dept_id=dept.id) }}" class="btn btn-sm">✏️ Edit</a>
+        <form method="POST" action="{{ url_for('portal_admin.catalogue_department_toggle', dept_id=dept.id) }}" style="display:inline">
+          <button class="btn btn-sm" type="submit" title="{{ 'Deactivate' if dept.is_active else 'Activate' }}">
+            {{ '⏸ Deactivate' if dept.is_active else '▶ Activate' }}
+          </button>
+        </form>
+        {% if dept_cats|length == 0 %}
+        <form method="POST" action="{{ url_for('portal_admin.catalogue_department_delete', dept_id=dept.id) }}"
+              style="display:inline"
+              onsubmit="return confirm('Delete department {{ dept.name }}?')">
+          <button class="btn btn-sm btn-danger" type="submit">🗑 Delete</button>
+        </form>
+        {% endif %}
+      </div>
     </div>
-    <div class="cat-actions">
-      <a href="{{ url_for('portal_admin.catalogue_category_products', category_id=cat.id) }}" class="btn btn-sm">Manage</a>
-      <a href="{{ url_for('portal_admin.catalogue_category_upload', category_id=cat.id) }}" class="btn btn-sm">⬆ Upload</a>
-      <a href="{{ url_for('portal_admin.catalogue_category_attributes', category_id=cat.id) }}" class="btn btn-sm">⚙</a>
+
+    {% if dept_cats %}
+    <div class="cat-grid">
+      {% for cat in dept_cats %}
+      <div class="cat-card {% if not cat.is_active %}inactive{% endif %}">
+        <div class="cat-icon">{{ cat.icon }}</div>
+        <div class="cat-name">{{ cat.name }}</div>
+        <div class="cat-count">
+          {{ cat.product_count }} product{{ 's' if cat.product_count != 1 else '' }}
+          {% if not cat.is_active %}<span class="pill pill-grey" style="margin-left:4px;font-size:10px">Inactive</span>{% endif %}
+        </div>
+        <div class="cat-actions">
+          <a href="{{ url_for('portal_admin.catalogue_category_products', category_id=cat.id) }}" class="btn btn-sm">Manage</a>
+          <a href="{{ url_for('portal_admin.catalogue_category_upload', category_id=cat.id) }}" class="btn btn-sm">⬆ Upload</a>
+          <a href="{{ url_for('portal_admin.catalogue_category_attributes', category_id=cat.id) }}" class="btn btn-sm">⚙</a>
+        </div>
+        <div style="display:flex;gap:5px;margin-top:2px">
+          <form method="POST" action="{{ url_for('portal_admin.catalogue_category_toggle', category_id=cat.id) }}" style="display:inline">
+            <button class="btn btn-sm" type="submit" title="{{ 'Deactivate' if cat.is_active else 'Activate' }}">
+              {{ '⏸' if cat.is_active else '▶' }}
+            </button>
+          </form>
+          <a href="{{ url_for('portal_admin.catalogue_category_edit', category_id=cat.id) }}" class="btn btn-sm">✏️</a>
+          {% if cat.product_count == 0 %}
+          <form method="POST" action="{{ url_for('portal_admin.catalogue_category_delete', category_id=cat.id) }}"
+                style="display:inline"
+                onsubmit="return confirm('Delete category {{ cat.name }}?')">
+            <button class="btn btn-sm btn-danger" type="submit">🗑</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+
+      {# Add category shortcut inside this department #}
+      <a href="{{ url_for('portal_admin.catalogue_category_new') }}?dept={{ dept.id }}"
+         class="cat-card" style="justify-content:center;align-items:center;min-height:120px;
+                border:2px dashed var(--line);box-shadow:none;text-decoration:none;
+                color:var(--muted);font-size:13px;gap:6px">
+        <span style="font-size:22px">＋</span>
+        <span>Add Category</span>
+      </a>
     </div>
-    <div style="display:flex;gap:5px;margin-top:4px">
-      <form method="POST" action="{{ url_for('portal_admin.catalogue_category_toggle', category_id=cat.id) }}" style="display:inline">
-        <button class="btn btn-sm" type="submit" title="{{ 'Deactivate' if cat.is_active else 'Activate' }}">
-          {{ '⏸' if cat.is_active else '▶' }}
-        </button>
-      </form>
-      <a href="{{ url_for('portal_admin.catalogue_category_edit', category_id=cat.id) }}" class="btn btn-sm">✏️</a>
-      {% if cat.product_count == 0 %}
-      <form method="POST" action="{{ url_for('portal_admin.catalogue_category_delete', category_id=cat.id) }}"
-            style="display:inline"
-            onsubmit="return confirm('Delete category {{ cat.name }}?')">
-        <button class="btn btn-sm btn-danger" type="submit">🗑</button>
-      </form>
-      {% endif %}
+    {% else %}
+    <div class="empty-dept">
+      No categories yet in this department.
+      <a href="{{ url_for('portal_admin.catalogue_category_new') }}?dept={{ dept.id }}" style="margin-left:6px">Add one →</a>
     </div>
+    {% endif %}
   </div>
   {% endfor %}
-</div>
-{% else %}
-<div class="card" style="text-align:center;padding:40px">
-  <div style="font-size:40px;margin-bottom:12px">📦</div>
-  <div style="font-size:15px;font-weight:700;margin-bottom:6px">No categories yet</div>
-  <div class="muted" style="margin-bottom:16px">Create your first category to start building the catalogue</div>
-  <a href="{{ url_for('portal_admin.catalogue_category_new') }}" class="btn btn-primary">+ Create First Category</a>
+{% endif %}
+
+{# ════════════════════════════════════════════════════════
+   Ungrouped categories (no department assigned)
+   ════════════════════════════════════════════════════════ #}
+{% if ungrouped %}
+<div class="ungrouped-section">
+  <div class="dept-header">
+    <div class="dept-title">
+      <span class="dept-icon">📦</span>
+      <div>
+        <div class="dept-name">Ungrouped Categories</div>
+        <div class="dept-meta">{{ ungrouped|length }} categor{{ 'y' if ungrouped|length == 1 else 'ies' }} not yet assigned to a department — edit each to assign</div>
+      </div>
+    </div>
+  </div>
+  <div class="cat-grid">
+    {% for cat in ungrouped %}
+    <div class="cat-card {% if not cat.is_active %}inactive{% endif %}">
+      <div class="cat-icon">{{ cat.icon }}</div>
+      <div class="cat-name">{{ cat.name }}</div>
+      <div class="cat-count">{{ cat.product_count }} product{{ 's' if cat.product_count != 1 else '' }}</div>
+      <div class="cat-actions">
+        <a href="{{ url_for('portal_admin.catalogue_category_products', category_id=cat.id) }}" class="btn btn-sm">Manage</a>
+        <a href="{{ url_for('portal_admin.catalogue_category_upload', category_id=cat.id) }}" class="btn btn-sm">⬆ Upload</a>
+        <a href="{{ url_for('portal_admin.catalogue_category_attributes', category_id=cat.id) }}" class="btn btn-sm">⚙</a>
+      </div>
+      <div style="display:flex;gap:5px;margin-top:2px">
+        <form method="POST" action="{{ url_for('portal_admin.catalogue_category_toggle', category_id=cat.id) }}" style="display:inline">
+          <button class="btn btn-sm" type="submit">{{ '⏸' if cat.is_active else '▶' }}</button>
+        </form>
+        <a href="{{ url_for('portal_admin.catalogue_category_edit', category_id=cat.id) }}" class="btn btn-sm">✏️ Assign Dept</a>
+        {% if cat.product_count == 0 %}
+        <form method="POST" action="{{ url_for('portal_admin.catalogue_category_delete', category_id=cat.id) }}"
+              style="display:inline"
+              onsubmit="return confirm('Delete category {{ cat.name }}?')">
+          <button class="btn btn-sm btn-danger" type="submit">🗑</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
 </div>
 {% endif %}
 
-{# ── Legacy phones card ── #}
+{# Empty state if truly nothing exists #}
+{% if not departments and not ungrouped %}
+<div class="card" style="text-align:center;padding:48px">
+  <div style="font-size:44px;margin-bottom:12px">🏪</div>
+  <div style="font-size:16px;font-weight:700;margin-bottom:6px">No departments or categories yet</div>
+  <div class="muted" style="margin-bottom:20px">Start by creating a department, then add categories inside it</div>
+  <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+    <a href="{{ url_for('portal_admin.catalogue_department_new') }}" class="btn btn-primary">+ Create First Department</a>
+    <a href="{{ url_for('portal_admin.catalogue_category_new') }}" class="btn">+ Create Category</a>
+  </div>
+</div>
+{% endif %}
+
+{# ════════════════════════════════════════════════════════
+   Legacy phones card
+   ════════════════════════════════════════════════════════ #}
 <div class="card phones-card" style="margin-bottom:28px">
   <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
     <div style="display:flex;align-items:center;gap:12px">
@@ -82,16 +217,16 @@
   </div>
 </div>
 
-{# ── Recent uploads ── #}
+{# ════════════════════════════════════════════════════════
+   Recent uploads
+   ════════════════════════════════════════════════════════ #}
 {% if recent_uploads %}
 <div class="card">
   <div class="card-title">Recent Uploads</div>
   <div class="table-wrap">
     <table class="upload-table">
       <thead>
-        <tr>
-          <th>File</th><th>Category</th><th>Total</th><th>OK</th><th>Failed</th><th>Status</th><th>Date</th>
-        </tr>
+        <tr><th>File</th><th>Category</th><th>Total</th><th>OK</th><th>Failed</th><th>Status</th><th>Date</th></tr>
       </thead>
       <tbody>
         {% for u in recent_uploads %}

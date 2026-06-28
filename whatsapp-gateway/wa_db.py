@@ -397,15 +397,74 @@ def log_proactive(
         conn.close()
 
 
+def is_campaign_recipient(tenant_id: int, customer_phone: str) -> bool:
+    """Return True if this phone was ever sent a campaign by this tenant."""
+    conn = get_db_connection()
+    if not conn:
+        return False
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT 1 FROM wa_campaign_recipients
+            WHERE tenant_id = %s AND phone = %s AND status = 'sent'
+            LIMIT 1
+            """,
+            (tenant_id, customer_phone),
+        )
+        return cur.fetchone() is not None
+    except Exception as e:
+        print("⚠️ is_campaign_recipient error:", e)
+        return False
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_visitor_handoff_keywords(tenant_id: int) -> list:
+    """
+    Return visitor_initiated handoff trigger texts for this tenant from the portal's
+    handoff_rules table. The gateway uses these for fast keyword matching before
+    calling the AI — same rules the merchant configured in the portal.
+    Returns empty list if none configured (caller should use a fallback).
+    """
+    conn = get_db_connection()
+    if not conn:
+        return []
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT trigger_text FROM handoff_rules
+            WHERE tenant_id = %s AND trigger_type = 'visitor_initiated' AND is_active = TRUE
+            ORDER BY sort_order ASC, id ASC
+            """,
+            (tenant_id,),
+        )
+        rows = cur.fetchall() or []
+        return [r[0] for r in rows if r[0]]
+    except Exception as e:
+        print("⚠️ get_visitor_handoff_keywords error:", e)
+        return []
+    finally:
+        cur.close()
+        conn.close()
+
+
 def is_handoff_active(session_id: str) -> bool:
-    """Return True if this session has an unresolved human handoff."""
+    """Return True if this session has an unresolved human handoff within the last 4 hours."""
     conn = get_db_connection()
     if not conn:
         return False
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cur.execute(
-            "SELECT id FROM wa_handoff_state WHERE session_id = %s AND resolved_at IS NULL",
+            """
+            SELECT id FROM wa_handoff_state
+            WHERE session_id = %s
+              AND resolved_at IS NULL
+              AND escalated_at > NOW() - INTERVAL '4 hours'
+            """,
             (session_id,),
         )
         return cur.fetchone() is not None
@@ -435,6 +494,42 @@ def create_handoff(session_id: str, tenant_id: int, customer_phone: str):
         conn.commit()
     except Exception as e:
         print("⚠️ create_handoff error:", e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def auto_close_stale_handoffs() -> int:
+    """
+    Auto-resolve handoffs where the customer has not sent a message in 24 hours.
+    Returns the number of handoffs closed.
+    Runs every hour via the scheduler in main.py.
+    """
+    conn = get_db_connection()
+    if not conn:
+        return 0
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            UPDATE wa_handoff_state
+            SET resolved_at = NOW()
+            WHERE resolved_at IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM wa_message_log
+                WHERE wa_message_log.customer_phone = wa_handoff_state.customer_phone
+                  AND wa_message_log.tenant_id      = wa_handoff_state.tenant_id
+                  AND wa_message_log.direction      = 'inbound'
+                  AND wa_message_log.created_at     > NOW() - INTERVAL '24 hours'
+              )
+        """)
+        conn.commit()
+        closed = cur.rowcount
+        if closed:
+            print(f"🕐 [AUTO-CLOSE] Resolved {closed} stale handoff(s) — no customer message in 24h")
+        return closed
+    except Exception as e:
+        print(f"⚠️ auto_close_stale_handoffs error: {e}")
+        return 0
     finally:
         cur.close()
         conn.close()

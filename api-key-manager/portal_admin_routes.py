@@ -206,6 +206,20 @@ def customer_detail(customer_id: int):
     except Exception:
         doc_counts = {}
 
+    # System prompt — prefer active agent, fall back to tenant row
+    tenant_system_prompt = ""
+    try:
+        cur.execute("""
+            SELECT COALESCE(ta.system_prompt, t.system_prompt) AS system_prompt
+            FROM tenants t
+            LEFT JOIN tenant_agents ta ON ta.tenant_id = t.id AND ta.is_active = TRUE
+            WHERE t.id = %s
+        """, (tenant_id,))
+        sp_row = cur.fetchone() or {}
+        tenant_system_prompt = (sp_row.get("system_prompt") or "").strip()
+    except Exception:
+        tenant_system_prompt = ""
+
     # Plan data for assignment panel
     cur.execute("SELECT id, slug, name FROM plans WHERE is_active=TRUE ORDER BY sort_order")
     all_plans = cur.fetchall() or []
@@ -242,7 +256,48 @@ def customer_detail(customer_id: int):
                            all_plans=all_plans,
                            msgs_used=msgs_used,
                            onboarding_other=onboarding_other,
+                           tenant_system_prompt=tenant_system_prompt,
                            admin_new_plain_key=session.pop("admin_new_plain_key", None))
+
+
+@portal_admin_bp.route("/customers/<int:customer_id>/system-prompt", methods=["POST"])
+def customer_system_prompt_save(customer_id: int):
+    r = _require_admin()
+    if r: return r
+
+    new_prompt = (request.form.get("system_prompt") or "").strip()
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT tenant_id FROM customers WHERE id=%s", (customer_id,))
+    row = cur.fetchone()
+    if not row:
+        cur.close(); conn.close()
+        flash("Customer not found.", "danger")
+        return redirect(url_for("portal_admin.customers"))
+
+    tenant_id = int(row["tenant_id"])
+
+    # Write to active agent if one exists, otherwise fall back to tenant row
+    cur.execute("""
+        UPDATE tenant_agents SET system_prompt=%s, updated_at=NOW()
+        WHERE tenant_id=%s AND is_active=TRUE
+    """, (new_prompt, tenant_id))
+    if cur.rowcount == 0:
+        cur.execute("UPDATE tenants SET system_prompt=%s WHERE id=%s",
+                    (new_prompt, tenant_id))
+    conn.commit()
+    cur.close(); conn.close()
+
+    insert_audit_log(
+        admin_username=session.get("portal_admin_username", "admin"),
+        action="admin_update_system_prompt",
+        tenant_id=tenant_id,
+        details={"customer_id": customer_id},
+    )
+
+    flash("System prompt updated successfully.", "success")
+    return redirect(url_for("portal_admin.customer_detail", customer_id=customer_id) + "#system-prompt")
 
 
 @portal_admin_bp.route("/customers/<int:customer_id>/credit-adjust", methods=["POST"])
@@ -2149,6 +2204,152 @@ def _cat_attrs(cur, category_id: int):
     return cur.fetchall()
 
 
+def _cat_variant_types(cur, category_id: int):
+    cur.execute("""
+        SELECT vt.*, json_agg(
+            json_build_object('id', vo.id, 'value', vo.value, 'sort_order', vo.sort_order)
+            ORDER BY vo.sort_order, vo.id
+        ) FILTER (WHERE vo.id IS NOT NULL) AS options
+        FROM catalogue_variant_types vt
+        LEFT JOIN catalogue_variant_options vo ON vo.variant_type_id = vt.id
+        WHERE vt.category_id = %s
+        GROUP BY vt.id
+        ORDER BY vt.sort_order, vt.id
+    """, (category_id,))
+    return cur.fetchall()
+
+
+def _product_variants(cur, product_id: int):
+    cur.execute("""
+        SELECT * FROM catalogue_product_variants
+        WHERE product_id = %s
+        ORDER BY variant_combo::text
+    """, (product_id,))
+    return cur.fetchall()
+
+
+# ── Department helpers ────────────────────────────────────────────────────────
+
+def _dept_get(cur, dept_id: int):
+    cur.execute("SELECT * FROM catalogue_departments WHERE id=%s", (dept_id,))
+    return cur.fetchone()
+
+def _all_departments(cur):
+    cur.execute("SELECT * FROM catalogue_departments ORDER BY sort_order, name")
+    return cur.fetchall()
+
+DEPT_ICONS = ["🏪","📱","💊","💄","🛒","🖨","🛋","👗","🔧","🍔","🚗","🏋","📚","🌿","🐾","🧸","⚗️","🏠","🎓","💈"]
+
+
+# ── Department CRUD ───────────────────────────────────────────────────────────
+
+@portal_admin_bp.route("/catalogue/departments/new", methods=["GET", "POST"])
+def catalogue_department_new():
+    r = _require_admin()
+    if r: return r
+
+    if request.method == "GET":
+        return render_template("portal/admin_department_new.html", icons=DEPT_ICONS)
+
+    name        = (request.form.get("name") or "").strip()
+    icon        = (request.form.get("icon") or "🏪").strip()
+    description = (request.form.get("description") or "").strip()
+
+    if not name:
+        flash("Department name is required.", "danger")
+        return render_template("portal/admin_department_new.html", icons=DEPT_ICONS)
+
+    slug = _slugify(name)
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            """INSERT INTO catalogue_departments (name, slug, icon, description, created_by)
+               VALUES (%s, %s, %s, %s, %s) RETURNING id""",
+            (name, slug, icon, description or None, _admin_user())
+        )
+        conn.commit()
+        insert_audit_log(action="catalogue_department_create", admin_username=_admin_user(),
+                         details={"name": name, "slug": slug})
+        flash(f"Department '{name}' created.", "success")
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
+        flash(f"A department with the slug '{slug}' already exists.", "danger")
+        cur.close(); conn.close()
+        return render_template("portal/admin_department_new.html", icons=DEPT_ICONS)
+    finally:
+        cur.close(); conn.close()
+    return redirect(url_for("portal_admin.catalogue_dashboard"))
+
+
+@portal_admin_bp.route("/catalogue/departments/<int:dept_id>/edit", methods=["GET", "POST"])
+def catalogue_department_edit(dept_id: int):
+    r = _require_admin()
+    if r: return r
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    dept = _dept_get(cur, dept_id)
+    if not dept:
+        cur.close(); conn.close()
+        flash("Department not found.", "danger")
+        return redirect(url_for("portal_admin.catalogue_dashboard"))
+
+    if request.method == "POST":
+        name        = (request.form.get("name") or "").strip()
+        icon        = (request.form.get("icon") or dept["icon"]).strip()
+        description = (request.form.get("description") or "").strip()
+        if not name:
+            flash("Name is required.", "danger")
+        else:
+            cur.execute(
+                "UPDATE catalogue_departments SET name=%s, icon=%s, description=%s WHERE id=%s",
+                (name, icon, description or None, dept_id)
+            )
+            conn.commit()
+            insert_audit_log(action="catalogue_department_edit", admin_username=_admin_user(),
+                             details={"id": dept_id, "name": name})
+            flash("Department updated.", "success")
+        cur.close(); conn.close()
+        return redirect(url_for("portal_admin.catalogue_dashboard"))
+
+    cur.close(); conn.close()
+    return render_template("portal/admin_department_new.html", icons=DEPT_ICONS, dept=dept)
+
+
+@portal_admin_bp.route("/catalogue/departments/<int:dept_id>/toggle", methods=["POST"])
+def catalogue_department_toggle(dept_id: int):
+    r = _require_admin()
+    if r: return r
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("UPDATE catalogue_departments SET is_active = NOT is_active WHERE id=%s", (dept_id,))
+    conn.commit()
+    cur.close(); conn.close()
+    return redirect(url_for("portal_admin.catalogue_dashboard"))
+
+
+@portal_admin_bp.route("/catalogue/departments/<int:dept_id>/delete", methods=["POST"])
+def catalogue_department_delete(dept_id: int):
+    r = _require_admin()
+    if r: return r
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    # Only allow delete if no categories assigned
+    cur.execute("SELECT COUNT(*) AS n FROM catalogue_categories WHERE department_id=%s", (dept_id,))
+    count = (cur.fetchone() or {}).get("n", 0)
+    if count > 0:
+        flash(f"Cannot delete: {count} category/categories are still assigned to this department.", "danger")
+    else:
+        cur.execute("DELETE FROM catalogue_departments WHERE id=%s", (dept_id,))
+        conn.commit()
+        insert_audit_log(action="catalogue_department_delete", admin_username=_admin_user(),
+                         details={"id": dept_id})
+        flash("Department deleted.", "success")
+    cur.close(); conn.close()
+    return redirect(url_for("portal_admin.catalogue_dashboard"))
+
+
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 
 @portal_admin_bp.route("/catalogue")
@@ -2159,15 +2360,30 @@ def catalogue_dashboard():
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    # New dynamic categories with product counts
+    # All departments ordered
+    cur.execute("SELECT * FROM catalogue_departments ORDER BY sort_order, name")
+    departments = cur.fetchall()
+
+    # All categories with product counts and department info
     cur.execute("""
-        SELECT c.*, COUNT(p.id) AS product_count
+        SELECT c.*, d.name AS dept_name, COUNT(p.id) AS product_count
         FROM catalogue_categories c
+        LEFT JOIN catalogue_departments d ON d.id = c.department_id
         LEFT JOIN catalogue_products p ON p.category_id = c.id
-        GROUP BY c.id
+        GROUP BY c.id, d.name
         ORDER BY c.sort_order, c.name
     """)
-    categories = cur.fetchall()
+    all_categories = cur.fetchall()
+
+    # Group categories by department_id for template rendering
+    import collections
+    cats_by_dept = collections.defaultdict(list)
+    ungrouped    = []
+    for cat in all_categories:
+        if cat["department_id"]:
+            cats_by_dept[cat["department_id"]].append(cat)
+        else:
+            ungrouped.append(cat)
 
     # Legacy phones count
     cur.execute("SELECT COUNT(*) AS n FROM phone_catalogue")
@@ -2185,7 +2401,9 @@ def catalogue_dashboard():
     cur.close(); conn.close()
     return render_template(
         "portal/admin_catalogue_dashboard.html",
-        categories=categories,
+        departments=departments,
+        cats_by_dept=dict(cats_by_dept),
+        ungrouped=ungrouped,
         phones_count=phones_count,
         recent_uploads=recent_uploads,
     )
@@ -2198,37 +2416,45 @@ def catalogue_category_new():
     r = _require_admin()
     if r: return r
 
-    ICONS = ["📱","💻","🖥","🖵","🔌","📷","🎮","📺","🎧","⌨️","🖱","🔋","📡","🖨","⌚","📻"]
+    ICONS = ["📱","💻","🖥","🖵","🔌","📷","🎮","📺","🎧","⌨️","🖱","🔋","📡","🖨","⌚","📻",
+             "💊","💄","🛒","🛋","👗","🔧","🍔","🏋","📚","🌿"]
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    departments = _all_departments(cur)
+    cur.close(); conn.close()
 
     if request.method == "GET":
-        return render_template("portal/admin_category_new.html", icons=ICONS)
+        return render_template("portal/admin_category_new.html", icons=ICONS, departments=departments)
 
-    name = (request.form.get("name") or "").strip()
-    icon = (request.form.get("icon") or "📦").strip()
-    description = (request.form.get("description") or "").strip()
+    name          = (request.form.get("name") or "").strip()
+    icon          = (request.form.get("icon") or "📦").strip()
+    description   = (request.form.get("description") or "").strip()
+    dept_id_raw   = request.form.get("department_id") or ""
+    department_id = int(dept_id_raw) if dept_id_raw.isdigit() else None
 
     if not name:
         flash("Category name is required.", "danger")
-        return render_template("portal/admin_category_new.html", icons=ICONS)
+        return render_template("portal/admin_category_new.html", icons=ICONS, departments=departments)
 
     slug = _slugify(name)
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cur.execute(
-            """INSERT INTO catalogue_categories (name, slug, icon, description, created_by)
-               VALUES (%s, %s, %s, %s, %s) RETURNING id""",
-            (name, slug, icon, description or None, _admin_user())
+            """INSERT INTO catalogue_categories (name, slug, icon, description, department_id, created_by)
+               VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
+            (name, slug, icon, description or None, department_id, _admin_user())
         )
         new_id = cur.fetchone()["id"]
         conn.commit()
         insert_audit_log(action="catalogue_category_create", admin_username=_admin_user(),
-                         details={"name": name, "slug": slug})
+                         details={"name": name, "slug": slug, "department_id": department_id})
     except psycopg2.errors.UniqueViolation:
         conn.rollback()
         flash(f"A category with the slug '{slug}' already exists.", "danger")
         cur.close(); conn.close()
-        return render_template("portal/admin_category_new.html", icons=ICONS)
+        return render_template("portal/admin_category_new.html", icons=ICONS, departments=departments)
     finally:
         cur.close(); conn.close()
 
@@ -2243,7 +2469,8 @@ def catalogue_category_edit(category_id: int):
     r = _require_admin()
     if r: return r
 
-    ICONS = ["📱","💻","🖥","🖵","🔌","📷","🎮","📺","🎧","⌨️","🖱","🔋","📡","🖨","⌚","📻"]
+    ICONS = ["📱","💻","🖥","🖵","🔌","📷","🎮","📺","🎧","⌨️","🖱","🔋","📡","🖨","⌚","📻",
+             "💊","💄","🛒","🛋","👗","🔧","🍔","🏋","📚","🌿"]
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cat  = _cat_get(cur, category_id)
@@ -2252,21 +2479,25 @@ def catalogue_category_edit(category_id: int):
         flash("Category not found.", "danger")
         return redirect(url_for("portal_admin.catalogue_dashboard"))
 
+    departments = _all_departments(cur)
+
     if request.method == "POST":
-        name = (request.form.get("name") or "").strip()
-        icon = (request.form.get("icon") or cat["icon"]).strip()
-        description = (request.form.get("description") or "").strip()
+        name          = (request.form.get("name") or "").strip()
+        icon          = (request.form.get("icon") or cat["icon"]).strip()
+        description   = (request.form.get("description") or "").strip()
+        dept_id_raw   = request.form.get("department_id") or ""
+        department_id = int(dept_id_raw) if dept_id_raw.isdigit() else None
         if not name:
             flash("Name is required.", "danger")
         else:
             try:
                 cur.execute(
-                    "UPDATE catalogue_categories SET name=%s, icon=%s, description=%s WHERE id=%s",
-                    (name, icon, description or None, category_id)
+                    "UPDATE catalogue_categories SET name=%s, icon=%s, description=%s, department_id=%s WHERE id=%s",
+                    (name, icon, description or None, department_id, category_id)
                 )
                 conn.commit()
                 insert_audit_log(action="catalogue_category_edit", admin_username=_admin_user(),
-                                 details={"id": category_id, "name": name})
+                                 details={"id": category_id, "name": name, "department_id": department_id})
                 flash("Category updated.", "success")
             except Exception as e:
                 conn.rollback()
@@ -2275,7 +2506,7 @@ def catalogue_category_edit(category_id: int):
         return redirect(url_for("portal_admin.catalogue_category_products", category_id=category_id))
 
     cur.close(); conn.close()
-    return render_template("portal/admin_category_new.html", icons=ICONS, cat=cat)
+    return render_template("portal/admin_category_new.html", icons=ICONS, cat=cat, departments=departments)
 
 
 # ── Toggle category active ────────────────────────────────────────────────────
@@ -2398,13 +2629,414 @@ def catalogue_category_attributes(category_id: int):
         cur.close(); conn.close()
         return redirect(url_for("portal_admin.catalogue_category_attributes", category_id=category_id))
 
-    attrs = _cat_attrs(cur, category_id)
+    attrs         = _cat_attrs(cur, category_id)
+    variant_types = _cat_variant_types(cur, category_id)
+
+    # Load templates — prefer those matching the category's department
+    conn2 = get_db_connection()
+    cur2  = conn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur2.execute("""
+        SELECT t.id, t.name, t.slug, t.is_builtin,
+               jsonb_array_length(t.attributes) AS attr_count
+        FROM catalogue_industry_templates t
+        ORDER BY
+            CASE WHEN t.department_id = %s THEN 0 ELSE 1 END,
+            t.is_builtin DESC, t.name
+    """, (cat.get("department_id"),))
+    templates = cur2.fetchall()
+    cur2.close(); conn2.close()
+
     cur.close(); conn.close()
     return render_template(
         "portal/admin_category_attributes.html",
         cat=cat, attrs=attrs,
         DATA_TYPES=["text", "number", "select", "boolean"],
+        templates=templates,
+        variant_types=variant_types,
     )
+
+
+# ── Apply template to category ────────────────────────────────────────────────
+
+@portal_admin_bp.route("/catalogue/categories/<int:category_id>/apply-template", methods=["POST"])
+def catalogue_apply_template(category_id: int):
+    r = _require_admin()
+    if r: return r
+
+    tpl_id_raw = request.form.get("template_id") or ""
+    if not tpl_id_raw.isdigit():
+        flash("Please select a template.", "warning")
+        return redirect(url_for("portal_admin.catalogue_category_attributes", category_id=category_id))
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cat = _cat_get(cur, category_id)
+    if not cat:
+        cur.close(); conn.close()
+        flash("Category not found.", "danger")
+        return redirect(url_for("portal_admin.catalogue_dashboard"))
+
+    cur.execute("SELECT * FROM catalogue_industry_templates WHERE id=%s", (int(tpl_id_raw),))
+    tpl = cur.fetchone()
+    if not tpl:
+        cur.close(); conn.close()
+        flash("Template not found.", "danger")
+        return redirect(url_for("portal_admin.catalogue_category_attributes", category_id=category_id))
+
+    # Get current max sort_order
+    cur.execute(
+        "SELECT COALESCE(MAX(sort_order),0) AS n FROM catalogue_attribute_definitions WHERE category_id=%s",
+        (category_id,)
+    )
+    base_sort = (cur.fetchone() or {}).get("n", 0)
+
+    # Get existing attribute keys to avoid duplicates
+    cur.execute(
+        "SELECT attribute_key FROM catalogue_attribute_definitions WHERE category_id=%s",
+        (category_id,)
+    )
+    existing_keys = {r["attribute_key"] for r in cur.fetchall()}
+
+    import json as _json
+    attrs = tpl["attributes"] if isinstance(tpl["attributes"], list) else _json.loads(tpl["attributes"])
+    added = 0
+    for a in attrs:
+        key = a.get("key", "")
+        if not key or key in existing_keys:
+            continue
+        cur.execute("""
+            INSERT INTO catalogue_attribute_definitions
+                (category_id, attribute_key, attribute_label, data_type, unit,
+                 is_filterable, is_required, sort_order)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT (category_id, attribute_key) DO NOTHING
+        """, (
+            category_id, key, a.get("label", key),
+            a.get("data_type", "text"), a.get("unit") or None,
+            bool(a.get("is_filterable", False)), bool(a.get("is_required", False)),
+            base_sort + a.get("sort_order", 99)
+        ))
+        added += 1
+
+    conn.commit()
+    cur.close(); conn.close()
+    insert_audit_log(action="catalogue_apply_template", admin_username=_admin_user(),
+                     details={"category_id": category_id, "template_id": int(tpl_id_raw),
+                              "template_name": tpl["name"], "added": added})
+    flash(f"Template '{tpl['name']}' applied — {added} attribute(s) added.", "success")
+    return redirect(url_for("portal_admin.catalogue_category_attributes", category_id=category_id))
+
+
+# ── Industry templates management ─────────────────────────────────────────────
+
+@portal_admin_bp.route("/catalogue/templates")
+def catalogue_templates():
+    r = _require_admin()
+    if r: return r
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT t.*, d.name AS dept_name, d.icon AS dept_icon,
+               jsonb_array_length(t.attributes) AS attr_count
+        FROM catalogue_industry_templates t
+        LEFT JOIN catalogue_departments d ON d.id = t.department_id
+        ORDER BY t.is_builtin DESC, t.name
+    """)
+    templates = cur.fetchall()
+    cur.close(); conn.close()
+    return render_template("portal/admin_templates.html", templates=templates)
+
+
+@portal_admin_bp.route("/catalogue/templates/new", methods=["GET", "POST"])
+def catalogue_template_new():
+    r = _require_admin()
+    if r: return r
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    departments = _all_departments(cur)
+
+    if request.method == "POST":
+        name       = (request.form.get("name") or "").strip()
+        dept_raw   = request.form.get("department_id") or ""
+        dept_id    = int(dept_raw) if dept_raw.isdigit() else None
+        # Collect attribute rows from form
+        import json as _json
+        keys    = request.form.getlist("attr_key")
+        labels  = request.form.getlist("attr_label")
+        dtypes  = request.form.getlist("attr_data_type")
+        units   = request.form.getlist("attr_unit")
+        filts   = set(request.form.getlist("attr_filterable"))
+        reqs    = set(request.form.getlist("attr_required"))
+        attrs   = []
+        for i, (k, l) in enumerate(zip(keys, labels)):
+            k = k.strip(); l = l.strip()
+            if not k or not l:
+                continue
+            attrs.append({
+                "key": k, "label": l,
+                "data_type": dtypes[i] if i < len(dtypes) else "text",
+                "unit": units[i].strip() if i < len(units) else "",
+                "is_filterable": str(i) in filts,
+                "is_required": str(i) in reqs,
+                "sort_order": i + 1,
+            })
+        if not name:
+            flash("Template name is required.", "danger")
+        elif not attrs:
+            flash("Add at least one attribute.", "danger")
+        else:
+            slug = _slugify(name)
+            try:
+                cur.execute("""
+                    INSERT INTO catalogue_industry_templates
+                        (name, slug, department_id, attributes, is_builtin, created_by)
+                    VALUES (%s,%s,%s,%s,FALSE,%s) RETURNING id
+                """, (name, slug, dept_id, _json.dumps(attrs), _admin_user()))
+                conn.commit()
+                insert_audit_log(action="catalogue_template_create", admin_username=_admin_user(),
+                                 details={"name": name})
+                flash(f"Template '{name}' created.", "success")
+                cur.close(); conn.close()
+                return redirect(url_for("portal_admin.catalogue_templates"))
+            except psycopg2.errors.UniqueViolation:
+                conn.rollback()
+                flash(f"A template named '{name}' already exists.", "danger")
+
+    cur.close(); conn.close()
+    return render_template("portal/admin_template_edit.html",
+                           departments=departments, tpl=None,
+                           DATA_TYPES=["text", "number", "select", "boolean"])
+
+
+@portal_admin_bp.route("/catalogue/templates/<int:tpl_id>/edit", methods=["GET", "POST"])
+def catalogue_template_edit(tpl_id: int):
+    r = _require_admin()
+    if r: return r
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM catalogue_industry_templates WHERE id=%s", (tpl_id,))
+    tpl = cur.fetchone()
+    if not tpl:
+        cur.close(); conn.close()
+        flash("Template not found.", "danger")
+        return redirect(url_for("portal_admin.catalogue_templates"))
+    departments = _all_departments(cur)
+
+    if request.method == "POST":
+        if tpl["is_builtin"]:
+            cur.close(); conn.close()
+            flash("Built-in templates cannot be edited.", "danger")
+            return redirect(url_for("portal_admin.catalogue_templates"))
+        import json as _json
+        name     = (request.form.get("name") or "").strip()
+        dept_raw = request.form.get("department_id") or ""
+        dept_id  = int(dept_raw) if dept_raw.isdigit() else None
+        keys    = request.form.getlist("attr_key")
+        labels  = request.form.getlist("attr_label")
+        dtypes  = request.form.getlist("attr_data_type")
+        units   = request.form.getlist("attr_unit")
+        filts   = set(request.form.getlist("attr_filterable"))
+        reqs    = set(request.form.getlist("attr_required"))
+        attrs   = []
+        for i, (k, l) in enumerate(zip(keys, labels)):
+            k = k.strip(); l = l.strip()
+            if not k or not l:
+                continue
+            attrs.append({
+                "key": k, "label": l,
+                "data_type": dtypes[i] if i < len(dtypes) else "text",
+                "unit": units[i].strip() if i < len(units) else "",
+                "is_filterable": str(i) in filts,
+                "is_required": str(i) in reqs,
+                "sort_order": i + 1,
+            })
+        if not name:
+            flash("Template name is required.", "danger")
+        elif not attrs:
+            flash("Add at least one attribute.", "danger")
+        else:
+            cur.execute("""
+                UPDATE catalogue_industry_templates
+                SET name=%s, department_id=%s, attributes=%s
+                WHERE id=%s
+            """, (name, dept_id, _json.dumps(attrs), tpl_id))
+            conn.commit()
+            insert_audit_log(action="catalogue_template_edit", admin_username=_admin_user(),
+                             details={"id": tpl_id, "name": name})
+            flash(f"Template '{name}' updated.", "success")
+            cur.close(); conn.close()
+            return redirect(url_for("portal_admin.catalogue_templates"))
+
+    cur.close(); conn.close()
+    return render_template("portal/admin_template_edit.html",
+                           departments=departments, tpl=tpl,
+                           DATA_TYPES=["text", "number", "select", "boolean"])
+
+
+@portal_admin_bp.route("/catalogue/templates/<int:tpl_id>/delete", methods=["POST"])
+def catalogue_template_delete(tpl_id: int):
+    r = _require_admin()
+    if r: return r
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT name, is_builtin FROM catalogue_industry_templates WHERE id=%s", (tpl_id,))
+    tpl = cur.fetchone()
+    if tpl and tpl["is_builtin"]:
+        flash("Built-in templates cannot be deleted.", "danger")
+    elif tpl:
+        cur.execute("DELETE FROM catalogue_industry_templates WHERE id=%s", (tpl_id,))
+        conn.commit()
+        flash(f"Template '{tpl['name']}' deleted.", "success")
+    cur.close(); conn.close()
+    return redirect(url_for("portal_admin.catalogue_templates"))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# VARIANT TYPES & OPTIONS (per category)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@portal_admin_bp.route("/catalogue/categories/<int:category_id>/variants/add", methods=["POST"])
+def catalogue_variant_type_add(category_id: int):
+    r = _require_admin()
+    if r: return r
+    name = (request.form.get("variant_name") or "").strip()
+    if not name:
+        flash("Variant type name is required.", "danger")
+        return redirect(url_for("portal_admin.catalogue_category_attributes", category_id=category_id))
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO catalogue_variant_types (category_id, name, sort_order)
+            VALUES (%s, %s, (SELECT COALESCE(MAX(sort_order),0)+1 FROM catalogue_variant_types WHERE category_id=%s))
+        """, (category_id, name, category_id))
+        conn.commit()
+        flash(f"Variant type '{name}' added.", "success")
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
+        flash(f"Variant type '{name}' already exists in this category.", "danger")
+    finally:
+        cur.close(); conn.close()
+    return redirect(url_for("portal_admin.catalogue_category_attributes", category_id=category_id))
+
+
+@portal_admin_bp.route("/catalogue/categories/<int:category_id>/variants/<int:type_id>/delete", methods=["POST"])
+def catalogue_variant_type_delete(category_id: int, type_id: int):
+    r = _require_admin()
+    if r: return r
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("DELETE FROM catalogue_variant_types WHERE id=%s AND category_id=%s", (type_id, category_id))
+    # Purge saved variant rows for all products in this category — JSONB combos are now stale
+    cur.execute("""
+        DELETE FROM catalogue_product_variants
+        WHERE product_id IN (SELECT id FROM catalogue_products WHERE category_id=%s)
+    """, (category_id,))
+    conn.commit()
+    cur.close(); conn.close()
+    flash("Variant type and all its options deleted. Saved variant rows cleared — please re-save product variants.", "success")
+    return redirect(url_for("portal_admin.catalogue_category_attributes", category_id=category_id))
+
+
+@portal_admin_bp.route("/catalogue/categories/<int:category_id>/variants/<int:type_id>/options/add", methods=["POST"])
+def catalogue_variant_option_add(category_id: int, type_id: int):
+    r = _require_admin()
+    if r: return r
+    value = (request.form.get("option_value") or "").strip()
+    if not value:
+        flash("Option value is required.", "danger")
+        return redirect(url_for("portal_admin.catalogue_category_attributes", category_id=category_id))
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO catalogue_variant_options (variant_type_id, value, sort_order)
+            VALUES (%s, %s, (SELECT COALESCE(MAX(sort_order),0)+1 FROM catalogue_variant_options WHERE variant_type_id=%s))
+        """, (type_id, value, type_id))
+        conn.commit()
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
+        flash(f"Option '{value}' already exists.", "danger")
+    finally:
+        cur.close(); conn.close()
+    return redirect(url_for("portal_admin.catalogue_category_attributes", category_id=category_id))
+
+
+@portal_admin_bp.route("/catalogue/categories/<int:category_id>/variants/<int:type_id>/options/<int:opt_id>/delete",
+                        methods=["POST"])
+def catalogue_variant_option_delete(category_id: int, type_id: int, opt_id: int):
+    r = _require_admin()
+    if r: return r
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("DELETE FROM catalogue_variant_options WHERE id=%s AND variant_type_id=%s", (opt_id, type_id))
+    conn.commit()
+    cur.close(); conn.close()
+    return redirect(url_for("portal_admin.catalogue_category_attributes", category_id=category_id))
+
+
+# ── Product variant matrix save ───────────────────────────────────────────────
+
+@portal_admin_bp.route("/catalogue/categories/<int:category_id>/products/<int:product_id>/variants",
+                        methods=["POST"])
+def catalogue_product_variants_save(category_id: int, product_id: int):
+    r = _require_admin()
+    if r: return r
+
+    import json as _json, itertools as _it
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # Verify product belongs to category
+    cur.execute("SELECT id FROM catalogue_products WHERE id=%s AND category_id=%s", (product_id, category_id))
+    if not cur.fetchone():
+        cur.close(); conn.close()
+        flash("Product not found.", "danger")
+        return redirect(url_for("portal_admin.catalogue_category_products", category_id=category_id))
+
+    # Collect variant rows from form: indices 0..N
+    indices = sorted(set(
+        k.split("_", 2)[2] for k in request.form.keys()
+        if k.startswith("v_combo_")
+    ), key=lambda x: int(x) if x.isdigit() else 0)
+
+    # Replace the full variant set for this product
+    cur.execute("DELETE FROM catalogue_product_variants WHERE product_id=%s", (product_id,))
+
+    saved = 0
+    for idx in indices:
+        combo_raw = request.form.get(f"v_combo_{idx}", "{}")
+        sku_val   = (request.form.get(f"v_sku_{idx}") or "").strip() or None
+        price_raw = (request.form.get(f"v_price_{idx}") or "0").strip()
+        is_active = request.form.get(f"v_active_{idx}") == "1"
+        stock     = request.form.get(f"v_stock_{idx}") or "in_stock"
+        try:
+            combo = _json.loads(combo_raw)
+            price = float(price_raw) if price_raw else 0.0
+        except (ValueError, TypeError):
+            continue
+
+        cur.execute("SAVEPOINT sp_var")
+        try:
+            cur.execute("""
+                INSERT INTO catalogue_product_variants
+                    (product_id, sku, price_modifier, stock_status, is_active, variant_combo)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (product_id, sku_val, price, stock, is_active, _json.dumps(combo)))
+            cur.execute("RELEASE SAVEPOINT sp_var")
+            saved += 1
+        except Exception:
+            cur.execute("ROLLBACK TO SAVEPOINT sp_var")
+
+    conn.commit()
+    cur.close(); conn.close()
+    insert_audit_log(action="catalogue_variants_save", admin_username=_admin_user(),
+                     details={"product_id": product_id, "saved": saved})
+    flash(f"{saved} variant row(s) saved.", "success")
+    return redirect(url_for("portal_admin.catalogue_product_edit",
+                            category_id=category_id, product_id=product_id))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2486,12 +3118,20 @@ def catalogue_category_products(category_id: int):
     )
     brands = [r["brand"] for r in cur.fetchall()]
 
+    # Department slug for extended column display
+    dept_slug = None
+    if cat.get("department_id"):
+        cur.execute("SELECT slug FROM catalogue_departments WHERE id=%s", (cat["department_id"],))
+        dept_row = cur.fetchone()
+        dept_slug = (dept_row or {}).get("slug")
+
     cur.close(); conn.close()
     return render_template(
         "portal/admin_category_products.html",
         cat=cat, attrs=attrs, products=products, brands=brands,
         total=total, page=page, pages=pages, per_page=per_page,
         q=q, brand_f=brand_f, status_f=status_f,
+        dept_slug=dept_slug,
     )
 
 
@@ -2520,6 +3160,13 @@ def catalogue_product_edit(category_id: int, product_id: int):
 
     attrs = _cat_attrs(cur, category_id)
 
+    # Load department slug for field visibility
+    dept_slug = None
+    if cat.get("department_id"):
+        cur.execute("SELECT slug FROM catalogue_departments WHERE id=%s", (cat["department_id"],))
+        dept_row = cur.fetchone()
+        dept_slug = (dept_row or {}).get("slug")
+
     # Load existing attribute values
     cur.execute(
         """SELECT ad.attribute_key, pa.value
@@ -2531,6 +3178,9 @@ def catalogue_product_edit(category_id: int, product_id: int):
     )
     attr_vals = {r["attribute_key"]: r["value"] for r in cur.fetchall()}
 
+    EXTENDED_FIELDS = ["barcode", "unit_of_measure", "weight_value", "weight_unit",
+                       "shelf_life_days", "requires_rxn", "regulatory_ref", "dimensions_cm"]
+
     if request.method == "POST":
         brand        = (request.form.get("brand") or "").strip() or None
         model_name   = (request.form.get("model_name") or "").strip()
@@ -2540,13 +3190,28 @@ def catalogue_product_edit(category_id: int, product_id: int):
         image_url    = (request.form.get("image_url") or "").strip() or None
         is_active    = request.form.get("is_active") == "1"
 
+        # Extended fields
+        barcode        = (request.form.get("barcode") or "").strip() or None
+        unit_of_measure= (request.form.get("unit_of_measure") or "").strip() or None
+        weight_value_s = (request.form.get("weight_value") or "").strip()
+        try:
+            weight_value = float(weight_value_s) if weight_value_s else None
+        except ValueError:
+            weight_value = None
+        weight_unit    = (request.form.get("weight_unit") or "").strip() or None
+        shelf_life_s   = (request.form.get("shelf_life_days") or "").strip()
+        shelf_life_days= int(shelf_life_s) if shelf_life_s.isdigit() else None
+        requires_rxn_s = request.form.get("requires_rxn") or ""
+        requires_rxn   = True if requires_rxn_s == "1" else (False if requires_rxn_s == "0" else None)
+        regulatory_ref = (request.form.get("regulatory_ref") or "").strip() or None
+        dimensions_cm  = (request.form.get("dimensions_cm") or "").strip() or None
+
         if not model_name:
             flash("Model name is required.", "danger")
             cur.close(); conn.close()
-            # Re-render the form with the user's input preserved
             return render_template(
                 "portal/admin_category_product_edit.html",
-                cat=cat, product=product, attrs=attrs,
+                cat=cat, product=product, attrs=attrs, dept_slug=dept_slug,
                 attr_vals={a["attribute_key"]: request.form.get(f"attr_{a['attribute_key']}") for a in attrs},
             )
 
@@ -2554,11 +3219,16 @@ def catalogue_product_edit(category_id: int, product_id: int):
             cur.execute(
                 """UPDATE catalogue_products
                    SET brand=%s, model_name=%s, model_number=%s, sku=%s,
-                       description=%s, image_url=%s, is_active=%s, updated_at=NOW()
+                       description=%s, image_url=%s, is_active=%s,
+                       barcode=%s, unit_of_measure=%s, weight_value=%s, weight_unit=%s,
+                       shelf_life_days=%s, requires_rxn=%s, regulatory_ref=%s,
+                       dimensions_cm=%s, updated_at=NOW()
                    WHERE id=%s""",
-                (brand, model_name, model_number, sku, description, image_url, is_active, product_id)
+                (brand, model_name, model_number, sku, description, image_url, is_active,
+                 barcode, unit_of_measure, weight_value, weight_unit,
+                 shelf_life_days, requires_rxn, regulatory_ref, dimensions_cm,
+                 product_id)
             )
-            # Upsert attribute values
             for ad in attrs:
                 val = (request.form.get(f"attr_{ad['attribute_key']}") or "").strip() or None
                 if val is not None:
@@ -2584,10 +3254,44 @@ def catalogue_product_edit(category_id: int, product_id: int):
         cur.close(); conn.close()
         return redirect(url_for("portal_admin.catalogue_category_products", category_id=category_id))
 
+    variant_types    = _cat_variant_types(cur, category_id)
+    product_variants = _product_variants(cur, product_id)
     cur.close(); conn.close()
+
+    # Build cartesian matrix from variant types × options
+    import itertools as _it, json as _json
+    existing_by_combo = {
+        _json.dumps(dict(sorted(v["variant_combo"].items())), sort_keys=True): v
+        for v in product_variants
+        if v["variant_combo"]
+    }
+
+    matrix = []
+    if variant_types:
+        type_options = [(vt["name"], vt["options"] or []) for vt in variant_types]
+        all_names    = [t[0] for t in type_options]
+        all_opts     = [[(o["value"]) for o in t[1]] for t in type_options]
+        if all(all_opts):
+            for combo_vals in _it.product(*all_opts):
+                combo = dict(zip(all_names, combo_vals))
+                key   = _json.dumps(combo, sort_keys=True)
+                existing = existing_by_combo.get(key)
+                matrix.append({
+                    "combo":      combo,
+                    "combo_json": key,
+                    "label":      " / ".join(combo_vals),
+                    "sku":        existing["sku"] if existing else "",
+                    "price":      float(existing["price_modifier"]) if existing else 0.0,
+                    "stock":      existing["stock_status"] if existing else "in_stock",
+                    "is_active":  existing["is_active"] if existing else True,
+                })
+
     return render_template(
         "portal/admin_category_product_edit.html",
         cat=cat, product=product, attrs=attrs, attr_vals=attr_vals,
+        dept_slug=dept_slug,
+        variant_types=variant_types,
+        matrix=matrix,
     )
 
 
@@ -2659,21 +3363,48 @@ def catalogue_category_template(category_id: int):
         return redirect(url_for("portal_admin.catalogue_dashboard"))
 
     attrs = _cat_attrs(cur, category_id)
+
+    # Determine department slug for extended field inclusion
+    dept_slug = None
+    if cat.get("department_id"):
+        cur.execute("SELECT slug FROM catalogue_departments WHERE id=%s", (cat["department_id"],))
+        dept_row = cur.fetchone()
+        dept_slug = (dept_row or {}).get("slug")
+
     cur.close(); conn.close()
 
     base_cols = ["brand", "model_name", "model_number", "sku", "description", "image_url"]
-    attr_cols = [a["attribute_key"] for a in attrs]
-    all_cols  = base_cols + attr_cols
 
-    # Example row with hints
-    example = {
-        "brand": "Samsung",
-        "model_name": "Galaxy S24 Ultra",
-        "model_number": "SM-S928B",
-        "sku": "SAM-S24U-256",
-        "description": "Flagship phone with S Pen",
-        "image_url": "https://...",
+    # Extended cols selected by department
+    _ext_map = {
+        "pharmacy":    ["barcode", "unit_of_measure", "shelf_life_days", "regulatory_ref", "requires_rxn"],
+        "supermarket": ["barcode", "unit_of_measure", "weight_value", "weight_unit", "shelf_life_days", "regulatory_ref"],
+        "beauty":      ["barcode", "unit_of_measure", "weight_value", "weight_unit", "shelf_life_days", "regulatory_ref"],
+        "fashion":     ["weight_value", "weight_unit"],
+        "furniture":   ["dimensions_cm", "weight_value", "weight_unit"],
+        "office":      ["barcode", "dimensions_cm", "weight_value", "weight_unit"],
+        "electronics": ["barcode", "dimensions_cm", "weight_value", "weight_unit"],
     }
+    ext_cols  = _ext_map.get(dept_slug, []) if dept_slug else []
+    attr_cols = [a["attribute_key"] for a in attrs]
+    all_cols  = base_cols + ext_cols + attr_cols
+
+    example = {
+        "brand": "Brand Name",
+        "model_name": "Product Name",
+        "model_number": "Model/Part No.",
+        "sku": "SKU-001",
+        "description": "Short product description",
+        "image_url": "https://example.com/image.jpg",
+    }
+    for col in ext_cols:
+        hints = {
+            "barcode": "6001234567890", "unit_of_measure": "each|kg|litre|ml|pack",
+            "weight_value": "1.5", "weight_unit": "kg|g|lb",
+            "shelf_life_days": "730", "regulatory_ref": "A1-1234",
+            "requires_rxn": "Yes|No", "dimensions_cm": "120x60x75",
+        }
+        example[col] = hints.get(col, "")
     for a in attrs:
         example[a["attribute_key"]] = a["unit"] or a["data_type"]
 
@@ -2731,14 +3462,16 @@ def catalogue_category_export(category_id: int):
     cur.close(); conn.close()
 
     base_cols = ["id", "brand", "model_name", "model_number", "sku", "is_active", "created_at"]
+    ext_cols  = ["barcode", "unit_of_measure", "weight_value", "weight_unit",
+                 "shelf_life_days", "requires_rxn", "regulatory_ref", "dimensions_cm"]
     attr_cols = [a["attribute_key"] for a in attrs]
-    all_cols  = base_cols + attr_cols
+    all_cols  = base_cols + ext_cols + attr_cols
 
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=all_cols, extrasaction="ignore")
     writer.writeheader()
     for p in products:
-        row = {c: p.get(c, "") for c in base_cols}
+        row = {c: p.get(c, "") for c in base_cols + ext_cols}
         row.update(attr_map.get(p["id"], {}))
         writer.writerow(row)
 
@@ -2830,27 +3563,56 @@ def catalogue_category_upload(category_id: int):
         description  = str(row.get("description") or "").strip() or None
         image_url    = str(row.get("image_url") or "").strip() or None
 
+        # Extended fields from CSV
+        barcode         = str(row.get("barcode") or "").strip() or None
+        unit_of_measure = str(row.get("unit_of_measure") or "").strip() or None
+        wv              = str(row.get("weight_value") or "").strip()
+        try:
+            weight_value = float(wv) if wv else None
+        except ValueError:
+            weight_value = None
+        weight_unit     = str(row.get("weight_unit") or "").strip() or None
+        sl              = str(row.get("shelf_life_days") or "").strip()
+        shelf_life_days = int(sl) if sl.isdigit() else None
+        rxn_s           = str(row.get("requires_rxn") or "").strip().lower()
+        requires_rxn    = True if rxn_s in ("yes","true","1") else (False if rxn_s in ("no","false","0") else None)
+        regulatory_ref  = str(row.get("regulatory_ref") or "").strip() or None
+        dimensions_cm   = str(row.get("dimensions_cm") or "").strip() or None
+
         try:
             cur.execute("SAVEPOINT sp_row")
             if on_conflict == "update" and sku_val:
                 cur.execute(
                     """INSERT INTO catalogue_products
-                       (category_id, brand, model_name, model_number, sku, description, image_url)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s)
+                       (category_id, brand, model_name, model_number, sku, description, image_url,
+                        barcode, unit_of_measure, weight_value, weight_unit,
+                        shelf_life_days, requires_rxn, regulatory_ref, dimensions_cm)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                        ON CONFLICT (sku) DO UPDATE SET
                          brand=EXCLUDED.brand, model_name=EXCLUDED.model_name,
                          model_number=EXCLUDED.model_number, description=EXCLUDED.description,
-                         image_url=EXCLUDED.image_url, updated_at=NOW()
+                         image_url=EXCLUDED.image_url,
+                         barcode=EXCLUDED.barcode, unit_of_measure=EXCLUDED.unit_of_measure,
+                         weight_value=EXCLUDED.weight_value, weight_unit=EXCLUDED.weight_unit,
+                         shelf_life_days=EXCLUDED.shelf_life_days, requires_rxn=EXCLUDED.requires_rxn,
+                         regulatory_ref=EXCLUDED.regulatory_ref, dimensions_cm=EXCLUDED.dimensions_cm,
+                         updated_at=NOW()
                        RETURNING id, xmax""",
-                    (category_id, brand, model_name, model_number, sku_val, description, image_url)
+                    (category_id, brand, model_name, model_number, sku_val, description, image_url,
+                     barcode, unit_of_measure, weight_value, weight_unit,
+                     shelf_life_days, requires_rxn, regulatory_ref, dimensions_cm)
                 )
             else:
                 cur.execute(
                     """INSERT INTO catalogue_products
-                       (category_id, brand, model_name, model_number, sku, description, image_url)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s)
+                       (category_id, brand, model_name, model_number, sku, description, image_url,
+                        barcode, unit_of_measure, weight_value, weight_unit,
+                        shelf_life_days, requires_rxn, regulatory_ref, dimensions_cm)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                        RETURNING id, xmax""",
-                    (category_id, brand, model_name, model_number, sku_val, description, image_url)
+                    (category_id, brand, model_name, model_number, sku_val, description, image_url,
+                     barcode, unit_of_measure, weight_value, weight_unit,
+                     shelf_life_days, requires_rxn, regulatory_ref, dimensions_cm)
                 )
 
             result = cur.fetchone()
@@ -3687,3 +4449,96 @@ def sales_rep_email_qr(rep_id: int):
         return {"success": True, "message": f"QR code emailed to {to_email}."}, 200
     else:
         return {"error": "Failed to send email. Check SMTP settings."}, 500
+
+
+# ── Ambassador Leads ───────────────────────────────────────────────────────
+
+@portal_admin_bp.route("/admin/leads", methods=["GET"])
+def admin_leads():
+    r = _require_admin()
+    if r: return r
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT al.*,
+               a.first_name || ' ' || a.last_name AS ambassador_name,
+               a.email AS ambassador_email
+        FROM ambassador_leads al
+        JOIN ambassadors a ON a.id = al.ambassador_id
+        ORDER BY
+          CASE al.status WHEN 'new' THEN 0 WHEN 'contacted' THEN 1
+                         WHEN 'negotiating' THEN 2 ELSE 3 END,
+          al.created_at DESC
+    """)
+    leads = [dict(r) for r in cur.fetchall()]
+    cur.close(); conn.close()
+    return render_template("portal/admin_leads.html", leads=leads)
+
+
+@portal_admin_bp.route("/admin/leads/<int:lead_id>/status", methods=["POST"])
+def lead_update_status(lead_id: int):
+    r = _require_admin()
+    if r: return r
+    new_status = (request.form.get("status") or "").strip()
+    allowed = {"contacted", "negotiating", "closed_won", "closed_lost"}
+    if new_status not in allowed:
+        flash("Invalid status.", "danger")
+        return redirect(url_for("portal_admin.admin_leads"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    if new_status in ("closed_won", "closed_lost"):
+        cur.execute("UPDATE ambassador_leads SET status=%s, closed_at=NOW() WHERE id=%s",
+                    (new_status, lead_id))
+    else:
+        cur.execute("UPDATE ambassador_leads SET status=%s, closed_at=NULL WHERE id=%s",
+                    (new_status, lead_id))
+    conn.commit()
+    cur.close(); conn.close()
+    flash("Lead status updated.", "success")
+    return redirect(url_for("portal_admin.admin_leads"))
+
+
+@portal_admin_bp.route("/admin/leads/<int:lead_id>/commission", methods=["POST"])
+def lead_record_commission(lead_id: int):
+    r = _require_admin()
+    if r: return r
+
+    amount_str = (request.form.get("amount") or "").strip()
+    try:
+        amount = float(amount_str)
+        if amount <= 0:
+            raise ValueError
+    except ValueError:
+        flash("Please enter a valid subscription amount.", "danger")
+        return redirect(url_for("portal_admin.admin_leads"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM ambassador_leads WHERE id=%s", (lead_id,))
+    lead = cur.fetchone()
+    if not lead or lead["status"] != "closed_won":
+        cur.close(); conn.close()
+        flash("Lead must be marked Closed Won before recording commission.", "warning")
+        return redirect(url_for("portal_admin.admin_leads"))
+    if lead["commission_triggered"]:
+        cur.close(); conn.close()
+        flash("Commission has already been recorded for this lead.", "warning")
+        return redirect(url_for("portal_admin.admin_leads"))
+
+    commission = round(amount * 0.20, 2)
+    cur2 = conn.cursor()
+    cur2.execute("""
+        INSERT INTO ambassador_commissions
+          (ambassador_id, tenant_id, commission_type, currency,
+           source_amount, commission_amount, description)
+        VALUES (%s, NULL, 'lead_commission', 'NGN', %s, %s, %s)
+    """, (lead["ambassador_id"], amount, commission,
+          f"20% lead commission — {lead['business_name']} (₦{amount:,.0f} subscription)"))
+    cur2.execute("""
+        UPDATE ambassador_leads SET commission_triggered=TRUE WHERE id=%s
+    """, (lead_id,))
+    conn.commit()
+    cur2.close(); cur.close(); conn.close()
+    flash(f"₦{commission:,.0f} commission recorded successfully.", "success")
+    return redirect(url_for("portal_admin.admin_leads"))

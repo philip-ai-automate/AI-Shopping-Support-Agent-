@@ -242,6 +242,41 @@ def get_history_with_summary(session_id: str, tenant_id: int, keep_last_n: int =
     return out
 
 
+def get_session_status(session_id: str) -> dict:
+    """Return whether this session is brand-new or has been dormant for 48+ hours.
+
+    Must be called BEFORE ensure_session so last_seen hasn't been updated yet.
+    Returns {"is_new": bool, "dormant": bool}.
+    """
+    conn = get_db_connection()
+    if not conn:
+        return {"is_new": False, "dormant": False}
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT last_seen FROM chat_sessions WHERE session_id=%s",
+            (session_id,),
+        )
+        row = cur.fetchone()
+        cur.close()
+        if row is None:
+            return {"is_new": True, "dormant": False}
+        last_seen = row["last_seen"]
+        if last_seen is None:
+            return {"is_new": False, "dormant": False}
+        from datetime import datetime, timezone, timedelta
+        now = datetime.now(timezone.utc)
+        if last_seen.tzinfo is None:
+            last_seen = last_seen.replace(tzinfo=timezone.utc)
+        dormant = (now - last_seen) > timedelta(hours=48)
+        return {"is_new": False, "dormant": dormant}
+    except Exception as e:
+        print("? [MEMORY] get_session_status error:", str(e))
+        return {"is_new": False, "dormant": False}
+    finally:
+        conn.close()
+
+
 def ensure_session(session_id: str, tenant_id: int):
     conn = get_db_connection()
     if not conn:

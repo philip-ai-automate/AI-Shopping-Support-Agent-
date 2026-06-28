@@ -1,0 +1,206 @@
+{% extends "ambassador/base.html" %}
+{% block title %}Refer a Lead — Ambassador Hub{% endblock %}
+
+{% block head %}
+<style>
+  .rate-callout{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px}
+  .rate-box{border-radius:14px;padding:18px 20px;border:1.5px solid var(--line)}
+  .rate-box.self{background:#f0fdf4;border-color:#bbf7d0}
+  .rate-box.admin{background:#eff6ff;border-color:#bfdbfe}
+  .rate-pct{font-size:28px;font-weight:900;letter-spacing:-.5px;margin-bottom:4px}
+  .rate-pct.self{color:#15803d}
+  .rate-pct.admin{color:#1d4ed8}
+  .rate-label{font-size:12px;font-weight:700;color:#374151;margin-bottom:3px}
+  .rate-desc{font-size:12px;color:var(--muted);line-height:1.45}
+
+  .lead-form{background:#fff;border:1.5px solid var(--line);border-radius:16px;padding:24px}
+  .lf-title{font-size:15px;font-weight:800;margin-bottom:16px}
+  .frow{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+  .frow.single{grid-template-columns:1fr}
+  .flbl{display:block;font-size:11px;font-weight:700;text-transform:uppercase;
+        letter-spacing:.05em;color:#6b7280;margin-bottom:5px}
+  .finp{width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:10px;
+        font-size:13.5px;color:#030C18;outline:none;font-family:inherit;
+        transition:border-color .15s;background:#fff}
+  .finp:focus{border-color:#030C18;box-shadow:0 0 0 3px rgba(3,12,24,.06)}
+  textarea.finp{resize:vertical;min-height:80px}
+
+  .status-pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}
+  .s-new{background:#f1f5f9;color:#475569}
+  .s-contacted{background:#dbeafe;color:#1d4ed8}
+  .s-negotiating{background:#fef9c3;color:#92400e}
+  .s-closed_won{background:#dcfce7;color:#15803d}
+  .s-closed_lost{background:#fee2e2;color:#991b1b}
+
+  @media(max-width:600px){
+    .rate-callout,.frow{grid-template-columns:1fr}
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="section-title">Refer a Lead</h1>
+</div>
+
+<!-- Commission rate callout -->
+<div class="rate-callout">
+  <div class="rate-box self">
+    <div class="rate-pct self">30%</div>
+    <div class="rate-label">Self-Closed via Your Link</div>
+    <div class="rate-desc">Client signs up through your referral link — you earn 30% of every monthly subscription.</div>
+  </div>
+  <div class="rate-box admin">
+    <div class="rate-pct admin">20%</div>
+    <div class="rate-label">Lead You Submit (Admin Closes)</div>
+    <div class="rate-desc">You submit the business below, our team closes them — you earn 20% of their subscription once they're active.</div>
+  </div>
+</div>
+
+<!-- Submit lead form -->
+<div class="lead-form" style="margin-bottom:28px">
+  <div class="lf-title">Submit a New Lead</div>
+  <form method="POST">
+    <div class="frow">
+      <div>
+        <label class="flbl">Business Name <span style="color:#f04438">*</span></label>
+        <input class="finp" type="text" name="business_name" placeholder="e.g. Sunshine Stores Ltd" required/>
+      </div>
+      <div>
+        <label class="flbl">Contact Name</label>
+        <input class="finp" type="text" name="contact_name" placeholder="e.g. Amaka Johnson"/>
+      </div>
+    </div>
+    <div class="frow">
+      <div>
+        <label class="flbl">Phone Number</label>
+        <input class="finp" type="tel" name="phone" placeholder="+234 800 000 0000"/>
+      </div>
+      <div>
+        <label class="flbl">Email Address</label>
+        <input class="finp" type="email" name="email" placeholder="contact@business.com"/>
+      </div>
+    </div>
+    <div class="frow single">
+      <div>
+        <label class="flbl">Notes <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:11px">(optional — context that helps us close them)</span></label>
+        <textarea class="finp" name="notes" placeholder="e.g. They run a fashion store on Instagram, interested in automating customer enquiries..."></textarea>
+      </div>
+    </div>
+    <button type="submit"
+            style="padding:10px 22px;background:#030C18;color:#fff;border:none;border-radius:11px;
+                   font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;transition:background .15s"
+            onmouseover="this.style.background='#1a2535'" onmouseout="this.style.background='#030C18'">
+      Submit Lead →
+    </button>
+  </form>
+</div>
+
+<!-- Submitted leads table -->
+<div class="card" style="padding:0;margin-bottom:28px">
+  <div style="padding:16px 20px 0;display:flex;align-items:center;justify-content:space-between">
+    <div style="font-size:14px;font-weight:800">Leads I've Submitted</div>
+    <span style="font-size:12px;color:var(--muted)">{{ submitted_leads|length }} total</span>
+  </div>
+  <div class="table-wrap" style="margin-top:12px">
+    <table>
+      <thead>
+        <tr>
+          <th>Business</th>
+          <th>Contact</th>
+          <th>Phone / Email</th>
+          <th>Status</th>
+          <th>Commission</th>
+          <th>Submitted</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if not submitted_leads %}
+        <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:36px">
+          No leads submitted yet. Use the form above to refer a business.
+        </td></tr>
+        {% endif %}
+        {% for l in submitted_leads %}
+        <tr>
+          <td><strong>{{ l.business_name }}</strong></td>
+          <td>{{ l.contact_name or '—' }}</td>
+          <td>
+            {% if l.phone %}<div>{{ l.phone }}</div>{% endif %}
+            {% if l.email %}<div style="color:var(--muted);font-size:12px">{{ l.email }}</div>{% endif %}
+            {% if not l.phone and not l.email %}<span class="muted">—</span>{% endif %}
+          </td>
+          <td>
+            <span class="status-pill s-{{ l.status }}">
+              {{ l.status.replace('_', ' ').title() }}
+            </span>
+          </td>
+          <td>
+            {% if l.commission_triggered %}
+              <span class="pill pill-green">✓ Recorded</span>
+            {% elif l.status == 'closed_won' %}
+              <span class="pill pill-warn">Pending</span>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+          <td class="muted">{{ l.created_at.strftime('%d %b %Y') if l.created_at else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Self-closed clients -->
+<div class="card" style="padding:0">
+  <div style="padding:16px 20px 0;display:flex;align-items:center;justify-content:space-between">
+    <div style="font-size:14px;font-weight:800">Self-Closed Clients <span style="font-size:12px;font-weight:500;color:var(--muted);margin-left:6px">via your referral link · 30% commission</span></div>
+    <span style="font-size:12px;color:var(--muted)">{{ self_closed|length }} total</span>
+  </div>
+  <div class="table-wrap" style="margin-top:12px">
+    <table>
+      <thead>
+        <tr>
+          <th>Business</th>
+          <th>Plan</th>
+          <th>Status</th>
+          <th>Commission Earned</th>
+          <th>Signed Up</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if not self_closed %}
+        <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:36px">
+          No self-closed clients yet. Share your referral link or QR code to get started.
+        </td></tr>
+        {% endif %}
+        {% for c in self_closed %}
+        <tr>
+          <td><strong>{{ c.name }}</strong></td>
+          <td>{{ c.plan_name or 'Free' }}</td>
+          <td>
+            {% if c.status == 'active' %}
+              <span class="pill pill-green">Active</span>
+            {% elif c.status == 'pending' %}
+              <span class="pill pill-warn">Pending</span>
+            {% elif c.status == 'suspended' %}
+              <span class="pill pill-red">Suspended</span>
+            {% else %}
+              <span class="pill pill-grey">{{ c.status|title }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if c.earned %}
+              <strong>₦{{ "{:,.0f}".format(c.earned) }}</strong>
+            {% else %}
+              <span class="muted">₦0</span>
+            {% endif %}
+          </td>
+          <td class="muted">{{ c.created_at.strftime('%d %b %Y') if c.created_at else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

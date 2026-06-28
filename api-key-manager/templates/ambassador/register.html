@@ -151,12 +151,12 @@
 <div class="left-panel">
   <div class="brand-logo"><span class="brand-dot"></span> PhiXtra AI</div>
   <h2 class="left-headline">Earn while you grow the PhiXtra network</h2>
-  <p class="left-sub">Join our Ambassador programme and receive 20% on every client you bring in — with lifetime earning potential.</p>
+  <p class="left-sub">Join our Ambassador programme and earn 30% on every client you directly sign up — with lifetime earning potential.</p>
   <div class="perks">
     <div class="perk-item">
       <div class="perk-icon">💸</div>
-      <div><div class="perk-title">20% Commission</div>
-           <div class="perk-desc">On all subscription payments from every client you refer</div></div>
+      <div><div class="perk-title">Up to 30% Commission</div>
+           <div class="perk-desc">30% on self-closed clients · 20% on leads closed by our team</div></div>
     </div>
     <div class="perk-item">
       <div class="perk-icon">⭐</div>
@@ -292,13 +292,15 @@
   <div class="prog-step"><div class="prog-circle" id="pc5">5</div></div>
   <div class="prog-line" id="pl5"></div>
   <div class="prog-step"><div class="prog-circle" id="pc6">6</div></div>
+  <div class="prog-line" id="pl6"></div>
+  <div class="prog-step"><div class="prog-circle" id="pc7">7</div></div>
 </div>
 
 <form method="POST" enctype="multipart/form-data" id="regForm" novalidate>
 
   <!-- ── Step 1: Personal Details ── -->
   <div class="step active" id="step1">
-    <div class="step-num">Step 1 of 6</div>
+    <div class="step-num">Step 1 of 7</div>
     <div class="step-title">Personal Details</div>
     <div class="step-sub">Tell us a little about yourself</div>
 
@@ -457,7 +459,7 @@
 
   <!-- ── Step 2: Contact & Location ── -->
   <div class="step" id="step2">
-    <div class="step-num">Step 2 of 6</div>
+    <div class="step-num">Step 2 of 7</div>
     <div class="step-title">Contact &amp; Location</div>
     <div class="step-sub">How we'll reach you and where you'll operate</div>
 
@@ -500,7 +502,7 @@
 
   <!-- ── Step 3: Qualifications ── -->
   <div class="step" id="step3">
-    <div class="step-num">Step 3 of 6</div>
+    <div class="step-num">Step 3 of 7</div>
     <div class="step-title">Qualifications</div>
     <div class="step-sub">Minimum qualification required: OND or equivalent</div>
 
@@ -549,7 +551,7 @@
 
   <!-- ── Step 4: Identity Verification ── -->
   <div class="step" id="step4">
-    <div class="step-num">Step 4 of 6</div>
+    <div class="step-num">Step 4 of 7</div>
     <div class="step-title">Identity Verification</div>
     <div class="step-sub">Upload a valid government-issued ID document</div>
 
@@ -592,7 +594,7 @@
 
   <!-- ── Step 5: Bank Details ── -->
   <div class="step" id="step5">
-    <div class="step-num">Step 5 of 6</div>
+    <div class="step-num">Step 5 of 7</div>
     <div class="step-title">Bank Details</div>
     <div class="step-sub">Where we'll send your commission payments</div>
 
@@ -633,9 +635,9 @@
 
   <!-- ── Step 6: Password & Review ── -->
   <div class="step" id="step6">
-    <div class="step-num">Step 6 of 6</div>
+    <div class="step-num">Step 6 of 7</div>
     <div class="step-title">Almost there!</div>
-    <div class="step-sub">Set your password, then review and submit your application</div>
+    <div class="step-sub">Set your password and review your details before the final step</div>
 
     <div class="field-row">
       <div class="field">
@@ -652,6 +654,128 @@
 
     <div id="reviewSummary" style="margin-top:8px"></div>
 
+    <div class="step-nav">
+      <button type="button" class="btn-back" onclick="prevStep(6)">← Back</button>
+      <button type="button" class="btn-next" onclick="nextStep(6)">Continue →</button>
+    </div>
+  </div>
+
+  <!-- ── Step 7: Partnership Agreement ── -->
+  <div class="step" id="step7">
+    <div class="step-num">Step 7 of 7</div>
+    <div class="step-title">Partnership Agreement</div>
+    <div class="step-sub">Read and accept our Ambassador Agreement to complete your application</div>
+
+    <div style="position:relative">
+      <div id="contractBox"
+           style="height:320px;overflow-y:auto;border:1.5px solid #e5e7eb;border-radius:12px;
+                  padding:20px 22px;background:#f8f9fb;font-size:13px;color:#111827;line-height:1.7">
+
+        <div style="font-size:15px;font-weight:800;text-align:center;margin-bottom:4px;letter-spacing:-.3px">
+          PhiXtra AI — Ambassador Partnership Agreement
+        </div>
+        <div style="text-align:center;font-size:11.5px;color:#6b7280;margin-bottom:20px">
+          Effective Date: <em>Your approval date</em>
+        </div>
+
+        <p style="margin-bottom:14px"><strong>1. Appointment</strong><br>
+        PhiXtra AI hereby appoints the Ambassador as a non-exclusive independent partner to promote and refer clients to PhiXtra AI's products and services. This agreement does not create an employment relationship.</p>
+
+        <p style="margin-bottom:10px"><strong>2. Commission Structure</strong></p>
+        <p style="margin-bottom:8px"><strong>2.1 Self-Closed Referrals</strong><br>
+        Where a business signs up directly through the Ambassador's unique referral link, the Ambassador earns <strong>30% of the client's monthly subscription fee</strong> for the duration of their active commission window (see Clause 4).</p>
+        <p style="margin-bottom:8px"><strong>2.2 Submitted Leads</strong><br>
+        Where the Ambassador submits a business lead via the PhiXtra Ambassador Portal and PhiXtra AI's team closes and onboards the client, the Ambassador earns <strong>20% of the client's monthly subscription fee</strong>, beginning from the date the client activates a paid subscription.</p>
+        <p style="margin-bottom:10px"><strong>2.3 Upsell Bonuses</strong><br>
+        The Ambassador earns a one-time bonus when a referred client upgrades to a higher plan:</p>
+        <table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:16px">
+          <thead>
+            <tr style="background:#e5e7eb">
+              <th style="padding:7px 10px;text-align:left;border-radius:6px 0 0 6px">Upgrade</th>
+              <th style="padding:7px 10px;text-align:left;border-radius:0 6px 6px 0">Bonus</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:6px 10px">Starter → Growth</td><td style="padding:6px 10px">₦5,000</td></tr>
+            <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:6px 10px">Growth → Pro</td><td style="padding:6px 10px">₦10,000</td></tr>
+            <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:6px 10px">Starter → Pro</td><td style="padding:6px 10px">₦15,000</td></tr>
+            <tr><td style="padding:6px 10px">Free → Pro</td><td style="padding:6px 10px">₦20,000</td></tr>
+          </tbody>
+        </table>
+
+        <p style="margin-bottom:10px"><strong>3. Ambassador Tiers</strong></p>
+        <table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:16px">
+          <thead>
+            <tr style="background:#e5e7eb">
+              <th style="padding:7px 10px;text-align:left">Tier</th>
+              <th style="padding:7px 10px;text-align:left">Active Clients</th>
+              <th style="padding:7px 10px;text-align:left">Commission Window</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:6px 10px">Standard</td><td style="padding:6px 10px">1 – 9</td><td style="padding:6px 10px">12 months from approval</td></tr>
+            <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:6px 10px">Elite</td><td style="padding:6px 10px">10 – 19</td><td style="padding:6px 10px">18 months from approval</td></tr>
+            <tr><td style="padding:6px 10px">Master</td><td style="padding:6px 10px">20+</td><td style="padding:6px 10px">Lifetime</td></tr>
+          </tbody>
+        </table>
+
+        <p style="margin-bottom:14px"><strong>4. Commission Window</strong><br>
+        Commission is earned from the Ambassador's approval date until the end of their tier's commission window. Commissions on clients referred before the window closes continue to be earned until that client churns or the window ends, whichever comes first. Master tier Ambassadors earn commissions indefinitely.</p>
+
+        <p style="margin-bottom:14px"><strong>5. Payouts</strong><br>
+        Commissions are paid on the <strong>last business day of each calendar month</strong>. Minimum payout threshold: <strong>₦5,000</strong> — balances below this roll over to the following month. Payment is made via bank transfer to the account details provided in the Ambassador's profile. PhiXtra AI reserves the right to withhold payment for commissions under dispute or where fraudulent activity is suspected.</p>
+
+        <p style="margin-bottom:10px"><strong>6. Ambassador Obligations</strong><br>The Ambassador agrees to:</p>
+        <ul style="margin:0 0 14px 18px;padding:0">
+          <li>Promote PhiXtra AI honestly and accurately</li>
+          <li>Not make false or misleading claims about PhiXtra AI's products</li>
+          <li>Not approach existing PhiXtra AI clients as new referrals</li>
+          <li>Not use spam, unsolicited bulk messaging, or prohibited advertising methods</li>
+          <li>Maintain the confidentiality of any non-public information shared by PhiXtra AI</li>
+        </ul>
+
+        <p style="margin-bottom:14px"><strong>7. Termination</strong><br>
+        Either party may terminate this agreement by giving <strong>14 days' written notice</strong> to the other. On termination, no new commissions are earned after the termination date; commissions already earned and due before termination will be paid on the next regular payout date; and the Ambassador's referral link will be deactivated. PhiXtra AI may terminate immediately (without notice) for fraud, breach of this agreement, or conduct damaging to PhiXtra AI's reputation.</p>
+
+        <p style="margin-bottom:14px"><strong>8. Independent Contractor</strong><br>
+        The Ambassador is an independent contractor. Nothing in this agreement creates a partnership, joint venture, agency, franchise, or employment relationship. The Ambassador is solely responsible for any applicable taxes on earnings received.</p>
+
+        <p style="margin-bottom:14px"><strong>9. Governing Law</strong><br>
+        This agreement is governed by the laws of the <strong>Federal Republic of Nigeria</strong>. Any disputes shall be resolved through good-faith negotiation, failing which through the courts of Nigeria.</p>
+
+        <p><strong>10. Acceptance</strong><br>
+        By submitting this application, the Ambassador confirms they have read, understood, and agreed to all terms of this agreement.</p>
+      </div>
+
+      <!-- Scroll indicator -->
+      <div id="scrollIndicator"
+           style="position:absolute;bottom:0;left:0;right:0;height:52px;pointer-events:none;
+                  border-radius:0 0 12px 12px;
+                  background:linear-gradient(to bottom,transparent,rgba(248,249,251,0.97));
+                  display:flex;align-items:flex-end;justify-content:center;padding-bottom:8px;
+                  transition:opacity .3s">
+        <span style="font-size:11.5px;font-weight:600;color:#6b7280;letter-spacing:.01em">
+          Scroll to read full agreement ↓
+        </span>
+      </div>
+    </div>
+
+    <!-- Contract agree checkbox -->
+    <div id="contract_agreed_wrap"
+         style="margin-top:16px;padding:14px 16px;background:#fff;border:1.5px solid #e5e7eb;
+                border-radius:12px;display:flex;align-items:flex-start;gap:12px;transition:border-color .15s">
+      <input type="checkbox" name="contract_agreed" id="contract_agreed" value="1"
+             style="width:18px;height:18px;margin-top:1px;flex-shrink:0;
+                    accent-color:#030C18;cursor:pointer;border-radius:4px"/>
+      <label for="contract_agreed"
+             style="font-size:13.5px;font-weight:600;color:#030C18;cursor:pointer;line-height:1.45">
+        I have read and agree to the PhiXtra AI Ambassador Partnership Agreement
+      </label>
+    </div>
+    <div class="err-msg" id="err_contract_agreed" style="margin-top:6px">
+      You must read and accept the Agreement before submitting
+    </div>
+
     {% if turnstile_site_key %}
     <div style="margin-top:20px">
       <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="light"></div>
@@ -663,8 +787,9 @@
     {% endif %}
 
     <div class="step-nav">
-      <button type="button" class="btn-back" onclick="prevStep(6)">← Back</button>
-      <button type="submit" class="btn-next">Submit Application</button>
+      <button type="button" class="btn-back" onclick="prevStep(7)">← Back</button>
+      <button type="submit" class="btn-next" id="submitBtn"
+              style="opacity:.5;cursor:not-allowed" disabled>Submit Application</button>
     </div>
   </div>
 
@@ -691,13 +816,13 @@ function startApplication() {
 }
 
 function updateProgress(step) {
-  for (let i = 1; i <= 6; i++) {
+  for (let i = 1; i <= 7; i++) {
     const c = document.getElementById('pc' + i);
     if (i < step)       { c.className = 'prog-circle done'; c.innerHTML = '✓'; }
     else if (i === step){ c.className = 'prog-circle active'; c.innerHTML = i; }
     else                { c.className = 'prog-circle'; c.innerHTML = i; }
   }
-  for (let i = 1; i <= 5; i++) {
+  for (let i = 1; i <= 6; i++) {
     const l = document.getElementById('pl' + i);
     l.className = i < step ? 'prog-line done' : 'prog-line';
   }
@@ -713,6 +838,15 @@ function showStep(n) {
     rp.scrollTo({top: 0, behavior: 'smooth'});
   } else {
     window.scrollTo({top: 0, behavior: 'smooth'});
+  }
+  if (n === 7) {
+    /* Check scroll indicator state now that the box is visible */
+    var box = document.getElementById('contractBox');
+    var ind = document.getElementById('scrollIndicator');
+    if (box && ind) {
+      var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 20;
+      ind.style.opacity = atBottom ? '0' : '1';
+    }
   }
 }
 
@@ -752,6 +886,10 @@ const RULES = {
     {id:'confirm_password', err:'err_confirm_password',
      ok: () => document.getElementById('password').value === document.getElementById('confirm_password').value},
   ],
+  7: [
+    {id:'contract_agreed', err:'err_contract_agreed',
+     ok: () => document.getElementById('contract_agreed').checked, isFile: true},
+  ],
 };
 
 function validate(step) {
@@ -789,8 +927,40 @@ function nextStep(n) {
 }
 function prevStep(n) { showStep(n - 1); }
 
+/* Submit button enable/disable + checkbox container border */
+document.addEventListener('DOMContentLoaded', function() {
+  const cb   = document.getElementById('contract_agreed');
+  const btn  = document.getElementById('submitBtn');
+  const wrap = document.getElementById('contract_agreed_wrap');
+  if (cb && btn) {
+    cb.addEventListener('change', function() {
+      btn.disabled = !this.checked;
+      btn.style.opacity = this.checked ? '1' : '.5';
+      btn.style.cursor  = this.checked ? 'pointer' : 'not-allowed';
+      setContractError(false);
+    });
+  }
+
+  /* Scroll indicator — listen only; initial check deferred to showStep */
+  const box = document.getElementById('contractBox');
+  const ind = document.getElementById('scrollIndicator');
+  if (box && ind) {
+    box.addEventListener('scroll', function() {
+      const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 20;
+      ind.style.opacity = atBottom ? '0' : '1';
+    });
+  }
+});
+
+function setContractError(hasError) {
+  const wrap = document.getElementById('contract_agreed_wrap');
+  if (wrap) wrap.style.borderColor = hasError ? '#f04438' : '#e5e7eb';
+}
+
 document.getElementById('regForm').addEventListener('submit', function(e) {
-  if (!validate(6)) {
+  const cb = document.getElementById('contract_agreed');
+  setContractError(!(cb && cb.checked));
+  if (!validate(7)) {
     e.preventDefault();
     return;
   }

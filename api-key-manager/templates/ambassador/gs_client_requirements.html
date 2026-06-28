@@ -1,0 +1,111 @@
+{% extends "ambassador/gs_page.html" %}
+
+{% block gs_style %}
+.req-item{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:10px}
+.req-btn{width:100%;background:#f8f9fb;border:none;padding:14px 16px;
+         display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;font-family:inherit}
+.req-btn:hover{background:#f0f1f8}
+.req-title{font-size:13px;font-weight:700;color:var(--ink)}
+.req-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.req-arrow{font-size:12px;color:var(--muted);flex-shrink:0;transition:transform .2s}
+.req-body{display:none;padding:14px 16px 16px;border-top:1px solid var(--line);background:#fff}
+.req-body ol{font-size:13px;line-height:1.75;color:var(--ink);padding-left:20px;margin:0;
+             display:flex;flex-direction:column;gap:6px}
+{% endblock %}
+
+{% block gs_content %}
+
+<div class="gs-section">
+  <div class="gs-section-title">What to tell the shop owner</div>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6">
+    Before a shop can go live on PhiXtra, they need to have four things ready. When a shop owner says yes, share this list with them. Tap each one to see how to help them get it.
+  </p>
+</div>
+
+<div class="req-item">
+  <button type="button" class="req-btn" onclick="toggleReq(this)">
+    <span style="font-size:20px;flex-shrink:0">📱</span>
+    <div style="flex:1">
+      <div class="req-title">A phone number just for the business</div>
+      <div class="req-sub">Not a personal number — a number used only for the shop's WhatsApp</div>
+    </div>
+    <span class="req-arrow">▼</span>
+  </button>
+  <div class="req-body">
+    <ol>
+      <li>Get a <strong>brand new SIM card</strong> — or any number that has <strong>never been used on WhatsApp before</strong>. This number is only for the business.</li>
+      <li>If the number is already on WhatsApp, they must <strong>delete that WhatsApp account first</strong> before continuing.</li>
+      <li>Keep the SIM active — they will need to get a <strong>one-time code (OTP)</strong> on that number during setup.</li>
+      <li>Give the number to PhiXtra — the team will connect it to WhatsApp Business for them.</li>
+    </ol>
+    <div class="gs-warn">💡 MTN, Glo, Airtel, and 9mobile SIMs all work fine.</div>
+  </div>
+</div>
+
+<div class="req-item">
+  <button type="button" class="req-btn" onclick="toggleReq(this)">
+    <span style="font-size:20px;flex-shrink:0">🏢</span>
+    <div style="flex:1">
+      <div class="req-title">A Meta Business Account</div>
+      <div class="req-sub">A free Facebook account that shows Meta the business is real</div>
+    </div>
+    <span class="req-arrow">▼</span>
+  </button>
+  <div class="req-body">
+    <ol>
+      <li>Go to <strong>business.facebook.com</strong> on a computer or laptop and click <strong>"Create Account"</strong>.</li>
+      <li>Enter the business name, owner's name, and a business email address. Click Submit.</li>
+      <li>Check that email inbox — click the <strong>confirmation link</strong> that Meta sends.</li>
+      <li>Save the login details somewhere safe — they will need them again later.</li>
+      <li>Find the <strong>Meta Business ID</strong>: go to Settings → Business Info — it is a long number near the top.</li>
+    </ol>
+    <div class="gs-warn">💡 They need a personal Facebook account to do this. It is free to create one.</div>
+  </div>
+</div>
+
+<div class="req-item">
+  <button type="button" class="req-btn" onclick="toggleReq(this)">
+    <span style="font-size:20px;flex-shrink:0">🔗</span>
+    <div style="flex:1">
+      <div class="req-title">Their WhatsApp number linked to Meta</div>
+      <div class="req-sub">The shop's phone number must be connected to their Meta Business Account</div>
+    </div>
+    <span class="req-arrow">▼</span>
+  </button>
+  <div class="req-body">
+    <ol>
+      <li>Log in to <strong>business.facebook.com</strong> and go to Settings → Business Assets → WhatsApp Accounts.</li>
+      <li>Click <strong>"Add"</strong> and type in the shop's phone number.</li>
+      <li>Meta will send a <strong>one-time code (OTP)</strong> to that number — enter it to confirm.</li>
+      <li>Share the phone number and Meta Business ID with PhiXtra to finish the connection.</li>
+    </ol>
+    <div class="gs-warn">💡 Meta can take 1–2 days to verify. This is normal — PhiXtra support will help them through it.</div>
+  </div>
+</div>
+
+<div class="req-item">
+  <button type="button" class="req-btn" onclick="toggleReq(this)">
+    <span style="font-size:20px;flex-shrink:0">📊</span>
+    <div style="flex:1">
+      <div class="req-title">A product list in a spreadsheet</div>
+      <div class="req-sub">An Excel or Google Sheets file with all their products and prices</div>
+    </div>
+    <span class="req-arrow">▼</span>
+  </button>
+  <div class="req-body">
+    <ol>
+      <li>Open <strong>Microsoft Excel</strong> or <strong>Google Sheets</strong> (free at sheets.google.com).</li>
+      <li>Add these column headings in the first row: <strong>Product Name | Price | Description | In Stock (Yes or No)</strong>.</li>
+      <li>Fill in one product per row — for example: iPhone 15 | ₦850,000 | Brand new, 128GB, Black | Yes.</li>
+      <li>Save the file as <strong>.xlsx or .csv</strong>. In Google Sheets, go to File → Download → Microsoft Excel.</li>
+      <li>Upload the file in PhiXtra under <strong>"Product Import"</strong> after signing up.</li>
+    </ol>
+    <div class="gs-warn">💡 The more details they add in the description, the better the AI can answer customer questions. Tell them to include things like colour, storage size, condition, and warranty.</div>
+  </div>
+</div>
+
+<div class="gs-tip">
+  <strong>Tip:</strong> Send this list to the shop owner on WhatsApp after they agree to sign up. The sooner they get these things ready, the sooner they go live — and the sooner you start earning.
+</div>
+
+{% endblock %}

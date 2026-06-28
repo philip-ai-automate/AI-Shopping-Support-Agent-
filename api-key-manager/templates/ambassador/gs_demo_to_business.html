@@ -1,0 +1,186 @@
+{% extends "ambassador/gs_page.html" %}
+
+{% block gs_style %}
+.demo-btn{display:flex;align-items:center;justify-content:center;gap:10px;
+          background:#16a34a;color:#fff;border-radius:14px;padding:16px 20px;
+          text-decoration:none;font-size:15px;font-weight:700;transition:background .15s;
+          margin-top:14px}
+.demo-btn:hover{background:#15803d}
+.demo-steps{display:flex;flex-direction:column;gap:12px}
+.demo-step{display:flex;gap:14px;align-items:flex-start;padding:14px 16px;
+           background:#f8f9fb;border:1px solid var(--line);border-radius:12px}
+.demo-step-num{width:26px;height:26px;background:var(--ink);color:#fff;border-radius:50%;
+               font-size:12px;font-weight:800;display:flex;align-items:center;
+               justify-content:center;flex-shrink:0;margin-top:1px}
+.demo-step-title{font-size:13px;font-weight:700;margin-bottom:3px}
+.demo-step-desc{font-size:12px;color:var(--muted);line-height:1.55}
+.q-card{background:#f8f9fb;border:1px solid var(--line);border-radius:10px;
+        padding:12px 14px;display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.q-text{font-size:13px;color:var(--ink);flex:1}
+{% endblock %}
+
+{% block gs_content %}
+
+<div class="gs-section">
+  <div class="gs-section-title">Why show a demo first?</div>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6">
+    Telling a shop owner about the AI is good. <strong>Showing them the AI replying in real time is better.</strong> Most shop owners sign up on the spot once they see it working. The demo takes less than 2 minutes.
+  </p>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">The demo WhatsApp account</div>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:4px">
+    This is a <strong>live PhiXtra AI account</strong> running on a real phone shop — profitbuyz.com. It knows iPhone prices, specs, and stock. You will use it to show shop owners exactly what their customers will experience.
+  </p>
+  <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:12px;padding:13px 16px;
+              font-size:13px;color:#92400e;display:flex;gap:10px;align-items:flex-start;margin-top:12px">
+    <span style="font-size:18px;flex-shrink:0">📱</span>
+    <div>
+      <strong>iPhones only for now.</strong> This demo account only knows about iPhones at the moment. Only ask iPhone questions during the demo. Do not type questions about Samsung, Tecno, laptops, or other products — the AI will not have those answers yet.
+    </div>
+  </div>
+  <!-- Open chat button -->
+  <a class="demo-btn" href="https://wa.me/{{ demo_wa_number }}" target="_blank" rel="noopener">
+    <span style="font-size:20px">💬</span> Open Demo Chat on WhatsApp
+  </a>
+
+  <!-- Demo QR code -->
+  <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--line)">
+    <div style="font-size:13px;font-weight:700;margin-bottom:10px">Demo QR Code</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.6">
+      Share this QR code with a shop owner so they can scan it and chat with the demo AI themselves — on their own phone.
+    </p>
+    <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
+      <img src="{{ url_for('ambassador.demo_qr_image') }}" alt="Demo WhatsApp QR code"
+           style="width:140px;height:140px;border:1px solid var(--line);border-radius:12px;flex-shrink:0"/>
+      <div style="flex:1;min-width:180px;display:flex;flex-direction:column;gap:10px">
+        <a href="{{ url_for('ambassador.demo_qr_image', download='1') }}"
+           class="btn btn-primary btn-sm" download>
+          Download QR Code
+        </a>
+        <button class="btn btn-sm" onclick="shareQR(this)">Share QR Code</button>
+        <div style="font-size:12px;color:var(--muted);line-height:1.55">
+          Download and send as an image on WhatsApp, or use Share to send it directly.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">How to run the demo</div>
+  <div class="demo-steps">
+    <div class="demo-step">
+      <div class="demo-step-num">1</div>
+      <div>
+        <div class="demo-step-title">Open the demo chat in front of the shop owner</div>
+        <div class="demo-step-desc">Tap the green button above or open WhatsApp and search for the demo number. Do this while they are watching.</div>
+      </div>
+    </div>
+    <div class="demo-step">
+      <div class="demo-step-num">2</div>
+      <div>
+        <div class="demo-step-title">Type an iPhone question and send it</div>
+        <div class="demo-step-desc">Use one of the sample questions below. Type it slowly so they can see what you are doing.</div>
+      </div>
+    </div>
+    <div class="demo-step">
+      <div class="demo-step-num">3</div>
+      <div>
+        <div class="demo-step-title">Show them the reply</div>
+        <div class="demo-step-desc">The AI will reply in seconds. Hold up your phone so they can read the answer. Let it sink in.</div>
+      </div>
+    </div>
+    <div class="demo-step">
+      <div class="demo-step-num">4</div>
+      <div>
+        <div class="demo-step-title">Let them type their own question</div>
+        <div class="demo-step-desc">Hand your phone to the shop owner and ask them to type any iPhone question they want. This is the moment that usually closes the deal.</div>
+      </div>
+    </div>
+    <div class="demo-step">
+      <div class="demo-step-num">5</div>
+      <div>
+        <div class="demo-step-title">Say this to close</div>
+        <div class="demo-step-desc">"This is exactly what your customers will get when they message your shop. Ready to set yours up? I can sign you up right now."</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">Sample questions to use during the demo</div>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:12px">
+    Copy any of these into the demo chat. Only use iPhone questions — that is what this demo account knows.
+  </p>
+
+  <div class="q-card">
+    <span class="q-text" id="q1">How much is iPhone 15?</span>
+    <button class="copy-btn" onclick="copyText('q1', this)">Copy</button>
+  </div>
+  <div class="q-card">
+    <span class="q-text" id="q2">Do you have iPhone 14 Pro Max in stock?</span>
+    <button class="copy-btn" onclick="copyText('q2', this)">Copy</button>
+  </div>
+  <div class="q-card">
+    <span class="q-text" id="q3">What is the price of iPhone 13 128GB?</span>
+    <button class="copy-btn" onclick="copyText('q3', this)">Copy</button>
+  </div>
+  <div class="q-card">
+    <span class="q-text" id="q4">Is iPhone 15 Pro available in black?</span>
+    <button class="copy-btn" onclick="copyText('q4', this)">Copy</button>
+  </div>
+  <div class="q-card">
+    <span class="q-text" id="q5">What is the difference between iPhone 14 and iPhone 15?</span>
+    <button class="copy-btn" onclick="copyText('q5', this)">Copy</button>
+  </div>
+
+  <div class="gs-tip" style="margin-top:4px">
+    <strong>Remember:</strong> Only ask iPhone questions during the demo. If a shop owner asks about other phones or products, tell them: "The demo only covers iPhones right now. Your own account will be set up for whatever you sell."
+  </div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">After the demo</div>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:10px">
+    Once they are impressed, move straight to the sign-up. Do not wait for them to think about it.
+  </p>
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;gap:12px;align-items:flex-start;font-size:13px">
+      <span style="font-size:16px;flex-shrink:0">👉</span>
+      <div>Show them your QR code and ask them to scan it — or paste your referral link directly into the chat</div>
+    </div>
+    <div style="display:flex;gap:12px;align-items:flex-start;font-size:13px">
+      <span style="font-size:16px;flex-shrink:0">👉</span>
+      <div>Let them know it only takes a few minutes to register and the PhiXtra team will get them set up</div>
+    </div>
+    <div style="display:flex;gap:12px;align-items:flex-start;font-size:13px">
+      <span style="font-size:16px;flex-shrink:0">👉</span>
+      <div>If they are not a phone or computer shop, remind them: setup takes up to 48 hours, then they are live</div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function shareQR(btn) {
+  try {
+    const resp = await fetch("{{ url_for('ambassador.demo_qr_image') }}");
+    const blob = await resp.blob();
+    const file = new File([blob], "phixtra-demo-whatsapp-qr.png", { type: "image/png" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({
+        title: "PhiXtra AI Demo",
+        text:  "Scan this QR code to chat with a live PhiXtra AI on WhatsApp",
+        files: [file],
+      });
+    } else {
+      window.location.href = "{{ url_for('ambassador.demo_qr_image', download='1') }}";
+    }
+  } catch(e) {
+    window.location.href = "{{ url_for('ambassador.demo_qr_image', download='1') }}";
+  }
+}
+</script>
+
+{% endblock %}

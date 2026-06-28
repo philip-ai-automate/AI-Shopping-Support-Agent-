@@ -14,28 +14,29 @@ def _get_client() -> OpenAI:
 
 
 def _compact_system_prompt(tenant_system_prompt: str) -> str:
-    """Make the system prompt structured + minimal to reduce tokens.
-
-    We do NOT "invent" instructions; we keep tenant instructions but tighten formatting
-    and cap length for safety.
-
-    IMPORTANT: The product recommendation instruction block is always kept intact and
-    is never truncated, even if the tenant instructions are long. We split on the marker,
-    cap only the tenant part, then reattach the product rec block in full.
+    """
+    Assembles the full system prompt for the LLM.
+    All parts are sent in full — no truncation. GPT-4o mini handles large
+    context cheaply and truncating instructions silently breaks features.
+    Order: base preamble → tenant instructions → product rules → handoff rules.
     """
     tenant_system_prompt = (tenant_system_prompt or "").strip()
 
-    # Split off the product recommendation instruction so it is never truncated
-    _REC_MARKER = "[PRODUCT RECOMMENDATION INSTRUCTION]"
+    # Split off the handoff block so it always appears last and in full
+    _HANDOFF_MARKER = "[HANDOFF RULES — READ CAREFULLY]"
+    handoff_block = ""
+    if _HANDOFF_MARKER in tenant_system_prompt:
+        idx = tenant_system_prompt.index(_HANDOFF_MARKER)
+        handoff_block = "\n\n" + tenant_system_prompt[idx:].strip()
+        tenant_system_prompt = tenant_system_prompt[:idx].strip()
+
+    # Split off the product recommendation block so it always appears in full
+    _REC_MARKER = "[PRODUCT DISPLAY — CRITICAL RULE]"
     rec_block = ""
     if _REC_MARKER in tenant_system_prompt:
         idx = tenant_system_prompt.index(_REC_MARKER)
         rec_block = "\n\n" + tenant_system_prompt[idx:].strip()
         tenant_system_prompt = tenant_system_prompt[:idx].strip()
-
-    cap = int(os.getenv("SYSTEM_PROMPT_MAX_CHARS", "3000"))
-    if cap > 0 and len(tenant_system_prompt) > cap:
-        tenant_system_prompt = tenant_system_prompt[:cap].rstrip() + "…"
 
     base = (
         "You are PhiXtra, an AI shopping assistant for a WooCommerce store.\n"
@@ -47,7 +48,7 @@ def _compact_system_prompt(tenant_system_prompt: str) -> str:
         "- Prefer bullet points for steps, and include prices/variants when relevant.\n\n"
         "Tenant instructions (highest priority):\n"
     )
-    return base + (tenant_system_prompt or "(none)") + rec_block
+    return base + (tenant_system_prompt or "(none)") + rec_block + handoff_block
 
 
 def _format_context(context_chunks) -> str:

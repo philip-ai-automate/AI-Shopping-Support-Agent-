@@ -1,42 +1,389 @@
 {% extends "portal/base.html" %}
-{% block title %}PhiXtra Portal{% endblock %}
-{% block wrap_class %}page-sm{% endblock %}
-{% block content %}
+{% block title %}PhiXtra — AI WhatsApp Sales & CRM{% endblock %}
+{% block wrap_class %}page{% endblock %}
 
-<div class="card" style="padding:26px;margin-top:6px">
-  <div style="text-align:center">
-    <img src="{{ url_for('static', filename='portal/phixtra-logo.png') }}"
-         alt="PhiXtra" style="height:62px;margin-bottom:16px">
-    <h1 style="font-size:28px;font-weight:850;letter-spacing:-.6px;margin-bottom:10px">
-      PhiXtra Customer Portal
+{% block head %}
+<style>
+  /* ── Landing page overrides ── */
+  .lp-wrap{max-width:900px;margin:0 auto}
+
+  /* Hero */
+  .lp-hero{text-align:center;padding:40px 16px 32px}
+  .lp-flag-strip{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;
+    justify-content:center;
+    padding:6px 14px;border-radius:999px;border:1px solid var(--line);
+    background:rgba(255,255,255,0.8);font-size:12px;font-weight:600;
+    color:var(--muted);margin-bottom:22px;backdrop-filter:blur(8px);
+    max-width:100%}
+  .lp-motto{font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--muted);margin-bottom:10px}
+  .lp-headline{font-size:clamp(26px,6vw,46px);font-weight:900;
+    letter-spacing:-1px;line-height:1.15;color:var(--ink);margin-bottom:16px}
+  .lp-headline span{background:linear-gradient(135deg,#25D366,#128C7E);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    background-clip:text}
+  .lp-sub{font-size:15px;color:var(--muted);line-height:1.6;
+    max-width:520px;margin:0 auto 28px}
+  .lp-ctas{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:12px}
+  .lp-ctas .btn{flex:1;min-width:200px;max-width:280px;justify-content:center}
+  .lp-trust{font-size:12px;color:var(--muted);display:flex;align-items:center;
+    flex-wrap:wrap;gap:6px;justify-content:center;line-height:1.8}
+
+  /* Demo credentials reveal */
+  .lp-demo-creds{display:none;max-width:340px;margin:16px auto 0;
+    background:#fff;border:1px solid var(--line);border-radius:16px;
+    padding:18px 20px;box-shadow:var(--shadow);text-align:left}
+  .lp-demo-creds.open{display:block}
+  .lp-demo-label{font-size:11px;font-weight:700;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px}
+  .lp-cred-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .lp-cred-key{font-size:12px;color:var(--muted);font-weight:500;width:64px;flex-shrink:0}
+  .lp-cred-val{font-family:"SF Mono","Fira Code",monospace;font-size:12px;
+    font-weight:650;color:var(--ink);background:rgba(3,12,24,0.04);
+    border:1px solid var(--line);border-radius:8px;padding:5px 10px;flex:1;
+    min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    display:flex;align-items:center;justify-content:space-between;gap:6px}
+  .lp-cred-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+  .lp-copy-btn{background:none;border:none;cursor:pointer;color:var(--muted);
+    padding:0;font-size:12px;line-height:1;transition:.15s;flex-shrink:0}
+  .lp-copy-btn:hover{color:var(--ink)}
+
+  /* Feature cards */
+  .lp-features{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;
+    margin:36px 0}
+  @media(max-width:680px){.lp-features{grid-template-columns:1fr}}
+  .lp-feat{background:#fff;border:1px solid var(--line);border-radius:18px;
+    padding:22px 20px;box-shadow:var(--shadow2)}
+  .lp-feat-icon{font-size:28px;margin-bottom:10px;line-height:1}
+  .lp-feat-title{font-size:14px;font-weight:750;color:var(--ink);margin-bottom:5px}
+  .lp-feat-desc{font-size:13px;color:var(--muted);line-height:1.5}
+
+  /* Dashboard mockup */
+  .lp-mockup-wrap{position:relative;margin:0 0 36px}
+  .lp-mockup-outer{
+    border-radius:18px;overflow:hidden;
+    border:1px solid var(--line);
+    box-shadow:0 24px 80px rgba(3,12,24,0.14);
+    background:#f4f5f7;
+  }
+  .lp-mockup-bar{
+    height:34px;background:#fff;border-bottom:1px solid var(--line);
+    display:flex;align-items:center;gap:8px;padding:0 14px;
+  }
+  .lp-dot-r{width:10px;height:10px;border-radius:50%;background:#F04438}
+  .lp-dot-y{width:10px;height:10px;border-radius:50%;background:#F79009}
+  .lp-dot-g{width:10px;height:10px;border-radius:50%;background:#12B76A}
+  .lp-url{flex:1;background:rgba(3,12,24,0.04);border-radius:6px;
+    height:18px;margin:0 20px;display:flex;align-items:center;padding:0 10px}
+  .lp-url-text{font-size:10px;color:var(--muted);font-family:monospace}
+
+  .lp-screen{display:flex;min-height:340px}
+
+  /* Mock sidebar */
+  .lp-sb{width:160px;flex-shrink:0;background:#fff;border-right:1px solid var(--line);
+    padding:14px 8px;display:flex;flex-direction:column;gap:2px}
+  .lp-sb-logo{display:flex;align-items:center;gap:6px;padding:6px 8px 14px;
+    border-bottom:1px solid var(--line);margin-bottom:8px}
+  .lp-sb-logo-dot{width:20px;height:20px;border-radius:6px;background:#030C18;
+    display:flex;align-items:center;justify-content:center;
+    font-size:11px;color:#fff;font-weight:800;flex-shrink:0}
+  .lp-sb-logo-label{font-size:10px;font-weight:750;color:var(--ink)}
+  .lp-sb-item{padding:7px 8px;border-radius:8px;font-size:11px;font-weight:500;
+    color:var(--muted);display:flex;align-items:center;gap:6px}
+  .lp-sb-item.active{background:rgba(3,12,24,0.09);color:var(--ink);font-weight:700;
+    box-shadow:inset 2px 0 0 var(--ink)}
+  .lp-sb-icon{font-size:12px}
+
+  /* Mock main content */
+  .lp-main{flex:1;padding:16px;overflow:hidden;min-width:0}
+  .lp-wa-bar{background:rgba(37,211,102,0.08);border:1px solid rgba(37,211,102,0.3);
+    border-radius:10px;padding:8px 12px;display:flex;align-items:center;
+    gap:8px;margin-bottom:12px;overflow:hidden}
+  .lp-wa-dot{width:7px;height:7px;border-radius:50%;background:#25D366;flex-shrink:0;
+    box-shadow:0 0 6px rgba(37,211,102,0.6)}
+  .lp-wa-text{font-size:11px;font-weight:650;color:#1a7a3c;flex:1;min-width:0;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lp-wa-num{font-size:10px;color:var(--muted);margin-left:auto;font-family:monospace;
+    flex-shrink:0;white-space:nowrap}
+
+  .lp-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+  .lp-kpi{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 10px 8px}
+  .lp-kpi-label{font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;
+    letter-spacing:.05em;margin-bottom:4px}
+  .lp-kpi-val{font-size:18px;font-weight:850;color:var(--ink);letter-spacing:-.5px}
+  .lp-kpi-sub{font-size:9px;color:var(--muted);margin-top:2px}
+
+  .lp-chats{background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .lp-chat-head{padding:8px 10px;border-bottom:1px solid var(--line);
+    font-size:10px;font-weight:700;color:var(--muted)}
+  .lp-chat-row{padding:8px 10px;border-bottom:1px solid rgba(3,12,24,0.05);
+    display:flex;align-items:center;gap:8px}
+  .lp-chat-row:last-child{border-bottom:none}
+  .lp-avatar{width:24px;height:24px;border-radius:50%;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    font-size:10px;font-weight:800;color:#fff}
+  .lp-chat-name{font-size:11px;font-weight:650;color:var(--ink);flex:1}
+  .lp-chat-msg{font-size:10px;color:var(--muted);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    min-width:0;flex:1}
+  .lp-pill-hot{font-size:9px;font-weight:750;padding:2px 7px;border-radius:999px;
+    background:rgba(240,68,56,0.1);color:#b02020;border:1px solid rgba(240,68,56,0.2);flex-shrink:0}
+  .lp-pill-warm{font-size:9px;font-weight:750;padding:2px 7px;border-radius:999px;
+    background:rgba(247,144,9,0.1);color:#7a4f00;border:1px solid rgba(247,144,9,0.2);flex-shrink:0}
+  .lp-pill-new{font-size:9px;font-weight:750;padding:2px 7px;border-radius:999px;
+    background:rgba(18,183,106,0.1);color:#0a7a3c;border:1px solid rgba(18,183,106,0.2);flex-shrink:0}
+
+  @media(max-width:680px){
+    .lp-kpis{grid-template-columns:repeat(2,1fr)}
+    .lp-sb{display:none}
+    .lp-wa-num{display:none}
+    .lp-screen{min-height:260px}
+  }
+  @media(max-width:860px){
+    .lp-hero{padding:20px 16px 24px}
+    .lp-flag-strip{font-size:11px;padding:5px 10px}
+  }
+  @media(max-width:420px){
+    .lp-ctas .btn{min-width:0;width:100%;max-width:100%}
+    .lp-hero{padding:14px 0 20px}
+    .lp-headline br{display:none}
+    .lp-mockup-bar{padding:0 10px}
+    .lp-kpi-val{font-size:15px}
+    .lp-social{gap:14px}
+  }
+
+  /* Social proof */
+  .lp-social{display:flex;align-items:center;justify-content:center;
+    gap:24px;flex-wrap:wrap;padding:20px 0 32px;border-top:1px solid var(--line)}
+  .lp-social-item{display:flex;align-items:center;gap:6px;
+    font-size:12px;color:var(--muted);font-weight:500}
+
+  /* Bottom auth */
+  .lp-auth{text-align:center;padding:10px 0 8px;font-size:13px;color:var(--muted)}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="lp-wrap">
+
+  <!-- ── Hero ── -->
+  <div class="lp-hero">
+    <div class="lp-flag-strip">
+      🇬🇧 UK &nbsp;·&nbsp; 🇳🇬 Nigeria &nbsp;·&nbsp; Official Meta WhatsApp Business API
+    </div>
+    <p class="lp-motto">AI that sells while you sleep</p>
+    <h1 class="lp-headline">
+      Turn WhatsApp into your<br><span>AI-powered sales team</span>
     </h1>
-    <p class="muted" style="margin-bottom:18px">
-      Manage your AI assistant, credits, and API keys in one place.
+    <p class="lp-sub">
+      Your AI Sales Agent replies to enquiries, recommends products, and closes sales 24/7 —
+      all on WhatsApp. No website. No developer. Live in minutes.
+    </p>
+    <div class="lp-ctas">
+      <button onclick="toggleDemo()"
+              class="btn btn-primary"
+              style="padding:13px 24px;font-size:15px;font-weight:750;gap:8px">
+        ▶ Try the live demo
+      </button>
+      <a href="{{ url_for('portal.register') }}"
+         class="btn"
+         style="padding:13px 24px;font-size:15px;font-weight:650">
+        Create free account →
+      </a>
+    </div>
+
+    <!-- Demo credentials reveal -->
+    <div class="lp-demo-creds" id="demoCreds">
+      <div class="lp-demo-label">📋 Demo account — log in to explore</div>
+      <div class="lp-cred-row">
+        <span class="lp-cred-key">Email</span>
+        <span class="lp-cred-val">
+          <span class="lp-cred-text">demo@phixtra.com</span>
+          <button class="lp-copy-btn" onclick="copyText('demo@phixtra.com', this)" title="Copy">⧉</button>
+        </span>
+      </div>
+      <div class="lp-cred-row" style="margin-bottom:14px">
+        <span class="lp-cred-key">Password</span>
+        <span class="lp-cred-val">
+          <span class="lp-cred-text">Demo1234!</span>
+          <button class="lp-copy-btn" onclick="copyText('Demo1234!', this)" title="Copy">⧉</button>
+        </span>
+      </div>
+      <a href="{{ url_for('portal.login') }}" class="btn btn-primary"
+         style="width:100%;justify-content:center;font-size:14px">
+        Log in to demo →
+      </a>
+    </div>
+
+    <p class="lp-trust" style="margin-top:14px">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      </svg>
+      No credit card required &nbsp;·&nbsp; No website needed &nbsp;·&nbsp; Cancel anytime
     </p>
   </div>
 
-  <div class="grid" style="gap:10px;margin:18px 0 18px">
-    <div style="display:flex;gap:10px;align-items:flex-start">
-      <span class="dot dot-green" style="margin-top:7px"></span>
-      <div>
-        <div style="font-weight:750">Create & manage API keys</div>
-        <div class="muted">Connect your WooCommerce store securely.</div>
-      </div>
+  <!-- ── Feature cards ── -->
+  <div class="lp-features">
+    <div class="lp-feat">
+      <div class="lp-feat-icon">🤖</div>
+      <div class="lp-feat-title">AI Sales Agent</div>
+      <div class="lp-feat-desc">Responds to customer questions, recommends products, and captures orders — 24/7, even while you sleep.</div>
     </div>
-    <div style="display:flex;gap:10px;align-items:flex-start">
-      <span class="dot dot-grey" style="margin-top:7px"></span>
-      <div>
-        <div style="font-weight:750">Buy credits & download invoices</div>
-        <div class="muted">Keep your assistant running smoothly.</div>
+    <div class="lp-feat">
+      <div class="lp-feat-icon">💬</div>
+      <div class="lp-feat-title">WhatsApp CRM</div>
+      <div class="lp-feat-desc">Every conversation, contact, and order history in one place. Customers automatically scored Hot, Warm, or Cold.</div>
+    </div>
+    <div class="lp-feat">
+      <div class="lp-feat-icon">📣</div>
+      <div class="lp-feat-title">Bulk Campaigns</div>
+      <div class="lp-feat-desc">Send promotions and flash sales directly to your customer list on WhatsApp. High open rates, instant delivery.</div>
+    </div>
+  </div>
+
+  <!-- ── Dashboard mockup ── -->
+  <div class="lp-mockup-wrap">
+    <div class="lp-mockup-outer">
+      <!-- browser chrome bar -->
+      <div class="lp-mockup-bar">
+        <div class="lp-dot-r"></div>
+        <div class="lp-dot-y"></div>
+        <div class="lp-dot-g"></div>
+        <div class="lp-url">
+          <span class="lp-url-text">portal.phixtra.com/dashboard</span>
+        </div>
+      </div>
+      <!-- screen -->
+      <div class="lp-screen">
+        <!-- sidebar -->
+        <div class="lp-sb">
+          <div class="lp-sb-logo">
+            <div class="lp-sb-logo-dot">P</div>
+            <div class="lp-sb-logo-label">PhiXtra</div>
+          </div>
+          <div class="lp-sb-item active"><span class="lp-sb-icon">📊</span> Dashboard</div>
+          <div class="lp-sb-item"><span class="lp-sb-icon">💬</span> Conversations</div>
+          <div class="lp-sb-item"><span class="lp-sb-icon">👥</span> Contacts</div>
+          <div class="lp-sb-item"><span class="lp-sb-icon">🔥</span> Leads</div>
+          <div class="lp-sb-item"><span class="lp-sb-icon">📣</span> Campaigns</div>
+          <div class="lp-sb-item"><span class="lp-sb-icon">🤖</span> AI Assistant</div>
+          <div class="lp-sb-item"><span class="lp-sb-icon">💳</span> Billing</div>
+        </div>
+        <!-- main -->
+        <div class="lp-main">
+          <!-- WhatsApp status bar -->
+          <div class="lp-wa-bar">
+            <div class="lp-wa-dot"></div>
+            <span class="lp-wa-text">AI Agent is live — responding to customers now</span>
+            <span class="lp-wa-num">+234 803 *** 4892</span>
+          </div>
+          <!-- KPIs -->
+          <div class="lp-kpis">
+            <div class="lp-kpi">
+              <div class="lp-kpi-label">Messages in</div>
+              <div class="lp-kpi-val">247</div>
+              <div class="lp-kpi-sub">today</div>
+            </div>
+            <div class="lp-kpi">
+              <div class="lp-kpi-label">AI Replies</div>
+              <div class="lp-kpi-val">231</div>
+              <div class="lp-kpi-sub">94% handled</div>
+            </div>
+            <div class="lp-kpi">
+              <div class="lp-kpi-label">Hot Leads</div>
+              <div class="lp-kpi-val" style="color:#F04438">18</div>
+              <div class="lp-kpi-sub">ready to buy</div>
+            </div>
+            <div class="lp-kpi">
+              <div class="lp-kpi-label">Orders</div>
+              <div class="lp-kpi-val" style="color:#12B76A">12</div>
+              <div class="lp-kpi-sub">this week</div>
+            </div>
+          </div>
+          <!-- Conversations preview -->
+          <div class="lp-chats">
+            <div class="lp-chat-head">Recent conversations</div>
+            <div class="lp-chat-row">
+              <div class="lp-avatar" style="background:#F04438">A</div>
+              <div style="flex:1;min-width:0">
+                <div class="lp-chat-name">Amara Okafor</div>
+                <div class="lp-chat-msg">Do you have the red one in size 12?</div>
+              </div>
+              <div class="lp-pill-hot">Hot</div>
+            </div>
+            <div class="lp-chat-row">
+              <div class="lp-avatar" style="background:#F79009">K</div>
+              <div style="flex:1;min-width:0">
+                <div class="lp-chat-name">Kemi Adeleke</div>
+                <div class="lp-chat-msg">What's the price for bulk order?</div>
+              </div>
+              <div class="lp-pill-warm">Warm</div>
+            </div>
+            <div class="lp-chat-row">
+              <div class="lp-avatar" style="background:#12B76A">T</div>
+              <div style="flex:1;min-width:0">
+                <div class="lp-chat-name">Tunde Bello</div>
+                <div class="lp-chat-msg">Hi, I need to place an order</div>
+              </div>
+              <div class="lp-pill-new">New</div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 
-  <div style="display:flex;flex-direction:column;gap:10px;max-width:340px;margin:0 auto">
-    <a href="{{ url_for('portal.login') }}" class="btn btn-primary" style="justify-content:center">Log in</a>
-    <a href="{{ url_for('portal.register') }}" class="btn" style="justify-content:center">Create account</a>
-    <a href="https://phixtra.com" target="_blank" rel="noopener" class="btn btn-ghost" style="justify-content:center">Visit PhiXtra.com</a>
+  <!-- ── Social proof strip ── -->
+  <div class="lp-social">
+    <div class="lp-social-item">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+      </svg>
+      Official Meta WhatsApp Business API
+    </div>
+    <div class="lp-social-item">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      </svg>
+      256-bit SSL encryption
+    </div>
+    <div class="lp-social-item">🇬🇧 United Kingdom &nbsp; · &nbsp; 🇳🇬 Nigeria</div>
+    <div class="lp-social-item">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+      </svg>
+      Live in under 5 minutes
+    </div>
   </div>
+
+  <!-- ── Bottom auth strip ── -->
+  <div class="lp-auth">
+    Already have an account?
+    <a href="{{ url_for('portal.login') }}" style="font-weight:700;color:var(--ink)">Log in →</a>
+    &nbsp;&nbsp;·&nbsp;&nbsp;
+    <a href="https://phixtra.com" target="_blank" rel="noopener" style="color:var(--muted)">Visit phixtra.com</a>
+  </div>
+
 </div>
 
+<script>
+function toggleDemo() {
+  var el = document.getElementById('demoCreds');
+  el.classList.toggle('open');
+  if (el.classList.contains('open')) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+function copyText(text, btn) {
+  navigator.clipboard.writeText(text).then(function() {
+    var orig = btn.textContent;
+    btn.textContent = '✓';
+    setTimeout(function() { btn.textContent = orig; }, 1500);
+  });
+}
+</script>
+
 {% endblock %}
+
+{% block footer %}{% endblock %}

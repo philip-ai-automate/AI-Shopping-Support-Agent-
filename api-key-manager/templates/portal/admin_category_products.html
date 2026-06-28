@@ -64,6 +64,13 @@
   </div>
 </form>
 
+{# Decide which extended columns to surface in the list #}
+{% set show_barcode    = dept_slug in ('pharmacy','supermarket','electronics','office') %}
+{% set show_uom        = dept_slug in ('supermarket','pharmacy','beauty') %}
+{% set show_rxn        = dept_slug == 'pharmacy' %}
+{% set show_reg        = dept_slug in ('pharmacy','supermarket','beauty') %}
+{% set show_dimensions = dept_slug in ('furniture','office') %}
+
 {% if products %}
 <form method="POST" action="{{ url_for('portal_admin.catalogue_products_bulk', category_id=cat.id) }}" id="bulk-form">
   <div class="table-wrap">
@@ -72,9 +79,15 @@
         <tr>
           <th><input type="checkbox" class="cb-all" title="Select all"/></th>
           <th>Brand</th>
-          <th>Model</th>
+          <th>Product</th>
           <th>SKU</th>
-          {% for a in attrs[:4] %}<th>{{ a.attribute_label }}</th>{% endfor %}
+          {% if show_barcode %}<th>Barcode</th>{% endif %}
+          {% if show_uom %}<th>UOM</th>{% endif %}
+          {% if show_rxn %}<th>Rxn?</th>{% endif %}
+          {% if show_reg %}<th>Regulatory</th>{% endif %}
+          {% if show_dimensions %}<th>Dimensions</th>{% endif %}
+          {% if not dept_slug %}{% for a in attrs[:3] %}<th>{{ a.attribute_label }}</th>{% endfor %}
+          {% else %}{% for a in attrs[:2] %}<th>{{ a.attribute_label }}</th>{% endfor %}{% endif %}
           <th>Status</th>
           <th>Actions</th>
         </tr>
@@ -86,12 +99,22 @@
           <td>{{ p.brand or '—' }}</td>
           <td>
             <strong>{{ p.model_name }}</strong>
-            {% if p.model_number %}<div class="muted">{{ p.model_number }}</div>{% endif %}
+            {% if p.model_number %}<div class="muted" style="font-size:11px">{{ p.model_number }}</div>{% endif %}
           </td>
-          <td class="muted">{{ p.sku or '—' }}</td>
-          {% for a in attrs[:4] %}
-          <td>{{ p.attrs.get(a.attribute_key, '—') }}</td>
-          {% endfor %}
+          <td class="muted" style="font-size:11px">{{ p.sku or '—' }}</td>
+          {% if show_barcode %}<td class="muted" style="font-size:11px">{{ p.barcode or '—' }}</td>{% endif %}
+          {% if show_uom %}<td>{{ p.unit_of_measure or '—' }}</td>{% endif %}
+          {% if show_rxn %}
+          <td>
+            {% if p.requires_rxn == true %}<span class="pill pill-warn" style="font-size:10px">Rxn</span>
+            {% elif p.requires_rxn == false %}<span class="pill pill-grey" style="font-size:10px">OTC</span>
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+          {% endif %}
+          {% if show_reg %}<td class="muted" style="font-size:11px">{{ p.regulatory_ref or '—' }}</td>{% endif %}
+          {% if show_dimensions %}<td class="muted" style="font-size:11px">{{ p.dimensions_cm or '—' }}</td>{% endif %}
+          {% if not dept_slug %}{% for a in attrs[:3] %}<td>{{ p.attrs.get(a.attribute_key, '—') }}</td>{% endfor %}
+          {% else %}{% for a in attrs[:2] %}<td>{{ p.attrs.get(a.attribute_key, '—') }}</td>{% endfor %}{% endif %}
           <td>
             {% if p.is_active %}
               <span class="pill pill-green">Active</span>

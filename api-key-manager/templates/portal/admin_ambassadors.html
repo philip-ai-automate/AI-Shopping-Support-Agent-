@@ -297,7 +297,7 @@
   <div style="padding:14px 16px 0">
     <div class="amb-search">
       <span class="amb-search-icon">🔍</span>
-      <input type="text" id="searchInput" placeholder="Search by name, email or location…"
+      <input type="text" id="searchInput" placeholder="Search by name, email, phone, WhatsApp or location…"
              oninput="applyFilter()"/>
     </div>
   </div>
@@ -326,6 +326,8 @@
             data-name="{{ (a.first_name ~ ' ' ~ a.last_name)|lower }}"
             data-email="{{ a.email|lower }}"
             data-location="{{ (a.location or '')|lower }}"
+            data-phone="{{ (a.phone or '')|lower }}"
+            data-whatsapp="{{ (a.whatsapp_number or '')|lower }}"
             onclick="openPanel({{ a.id }})">
           <td>
             <div class="amb-name">{{ a.first_name }} {{ a.last_name }}</div>
@@ -527,7 +529,9 @@ function applyFilter() {
     const matchSearch = !q ||
       row.dataset.name.includes(q) ||
       row.dataset.email.includes(q) ||
-      row.dataset.location.includes(q);
+      row.dataset.location.includes(q) ||
+      row.dataset.phone.includes(q) ||
+      row.dataset.whatsapp.includes(q);
     row.style.display = (matchFilter && matchSearch) ? '' : 'none';
   });
 }

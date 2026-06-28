@@ -138,12 +138,43 @@
         {% endif %}{% endfor %}
       </div>
       {% endif %}
+
+      {# ── Variant selector ── #}
+      {% if p.variants %}
+      <div style="margin-top:8px;border-top:1px solid var(--line);padding-top:8px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em">
+          Available Variants — select what you carry
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px">
+          {% for v in p.variants %}
+          {% set v_sel = v.variant_id in selected_variant_ids %}
+          {% set v_label = v.variant_combo.values() | join(' / ') %}
+          <button type="button"
+                  class="variant-chip {% if v_sel %}v-selected{% endif %}"
+                  data-variant-id="{{ v.variant_id }}"
+                  data-product-id="{{ p.id }}"
+                  onclick="toggleVariant(this)"
+                  title="{{ v.stock_status }}"
+                  style="border:1px solid {% if v_sel %}rgba(18,183,106,.5){% else %}var(--line){% endif %};
+                         background:{% if v_sel %}rgba(18,183,106,.1){% else %}#fff{% endif %};
+                         color:{% if v_sel %}#0a7a3c{% else %}var(--muted){% endif %};
+                         border-radius:6px;padding:3px 8px;font-size:11px;font-weight:600;cursor:pointer;
+                         {% if v.stock_status == 'out_of_stock' %}opacity:.45;{% endif %}">
+            {{ v_label }}{% if v.price_modifier and v.price_modifier != 0 %}
+            <span style="font-size:10px;opacity:.7">({% if v.price_modifier > 0 %}+{% endif %}₦{{ '{:,.0f}'.format(v.price_modifier) }})</span>
+            {% endif %}
+          </button>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
       <div class="toggle-btn">
         <button class="{% if is_sel %}btn-remove{% else %}btn-add{% endif %}"
                 data-product-id="{{ p.id }}"
                 data-category-id="{{ cat.id }}"
                 onclick="toggleProd(this)">
-          {% if is_sel %}✓ Added{% else %}+ Add{% endif %}
+          {% if is_sel %}✓ Added{% else %}+ Add Product{% endif %}
         </button>
       </div>
     </div>
@@ -188,9 +219,38 @@ async function toggleProd(btn) {
       card.classList.add('selected');
       if (!check) { const el = document.createElement('div'); el.className='sel-check'; el.textContent='✅'; card.prepend(el); }
     } else {
-      btn.className = 'btn-add'; btn.textContent = '+ Add';
+      btn.className = 'btn-add'; btn.textContent = '+ Add Product';
       card.classList.remove('selected');
       if (check) check.remove();
+    }
+  } catch(e) { console.error(e); }
+  btn.disabled = false;
+}
+
+async function toggleVariant(btn) {
+  btn.disabled = true;
+  const variantId = btn.dataset.variantId;
+  try {
+    const res  = await fetch(`/onboarding/catalogue/toggle-variant/${variantId}`,
+                             { method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'} });
+    const data = await res.json();
+    if (!data.ok) { btn.disabled = false; return; }
+    if (data.selected) {
+      btn.style.border     = '1px solid rgba(18,183,106,.5)';
+      btn.style.background = 'rgba(18,183,106,.1)';
+      btn.style.color      = '#0a7a3c';
+      btn.classList.add('v-selected');
+      // Auto-select the base product card too
+      const card = document.getElementById('card-' + btn.dataset.productId);
+      if (card && !card.classList.contains('selected')) {
+        const addBtn = card.querySelector('.btn-add');
+        if (addBtn) toggleProd(addBtn);
+      }
+    } else {
+      btn.style.border     = '1px solid var(--line)';
+      btn.style.background = '#fff';
+      btn.style.color      = 'var(--muted)';
+      btn.classList.remove('v-selected');
     }
   } catch(e) { console.error(e); }
   btn.disabled = false;

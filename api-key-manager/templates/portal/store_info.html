@@ -1,0 +1,112 @@
+{% extends "portal/base.html" %}
+{% block title %}Store Information — PhiXtra Portal{% endblock %}
+{% block content %}
+<style>
+  .si-header{background:linear-gradient(135deg,#030C18 0%,#1a2744 100%);
+    border-radius:16px;padding:24px 28px;color:#fff;margin-bottom:24px}
+  .si-title{font-size:18px;font-weight:800;margin-bottom:4px}
+  .si-sub{font-size:13px;opacity:.7}
+  .si-section{background:#fff;border:1px solid var(--line);border-radius:14px;
+    padding:20px 24px;margin-bottom:16px}
+  .si-label{font-size:13px;font-weight:800;margin-bottom:3px}
+  .si-hint{font-size:12px;color:var(--muted);margin-bottom:8px}
+  .si-section textarea{width:100%;padding:10px 12px;border-radius:9px;
+    border:1px solid rgba(3,12,24,.18);font-size:13px;font-family:inherit;
+    line-height:1.6;resize:vertical;box-sizing:border-box;outline:none;transition:border-color .15s}
+  .si-section textarea:focus{border-color:var(--ink)}
+  .ai-notice{background:#f0fdf4;border:1px solid rgba(18,183,106,.3);
+    border-radius:12px;padding:14px 18px;margin-bottom:24px;display:flex;gap:12px;align-items:flex-start}
+  .upload-box{border:2px dashed rgba(3,12,24,.2);border-radius:14px;padding:20px 24px;
+    background:rgba(3,12,24,.02);margin-bottom:24px}
+  .upload-box-title{font-size:14px;font-weight:800;margin-bottom:4px}
+  .upload-box-sub{font-size:12px;color:var(--muted);margin-bottom:14px}
+  .upload-row{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+  .upload-row input[type="text"]{padding:8px 12px;border-radius:9px;border:1px solid rgba(3,12,24,.18);
+    font-size:13px;font-family:inherit;min-width:200px;flex:1}
+  .upload-row input[type="file"]{font-size:12px}
+  .doc-list{margin-top:16px}
+  .doc-row{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:10px 14px;background:#fff;border:1px solid var(--line);border-radius:10px;margin-bottom:6px;flex-wrap:wrap}
+  .doc-row-title{font-size:13px;font-weight:700}
+  .doc-row-meta{font-size:11px;color:var(--muted);margin-top:1px}
+  .embed-badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;
+    border-radius:999px;background:rgba(18,183,106,.12);color:#0a7a3c;border:1px solid rgba(18,183,106,.3)}
+</style>
+
+<div class="si-header">
+  <div class="si-title">🏪 Store Information</div>
+  <div class="si-sub">Used by your AI Sales Agent to answer customer questions accurately — no guessing, no hallucination.</div>
+</div>
+
+<div class="ai-notice">
+  <div style="font-size:20px;flex-shrink:0">🤖</div>
+  <div style="font-size:13px;color:#065f46;line-height:1.6">
+    <strong>How this works:</strong> Everything you add here is stored in your AI's knowledge base (embedded in pgvector).
+    When a customer asks <em>"do you deliver to Lagos?"</em> or <em>"what is your return policy?"</em>,
+    the AI answers from your actual store data — not a guess.
+    You can type information directly <strong>or upload a document</strong> (PDF, Word, or text file).
+  </div>
+</div>
+
+{# ── Upload a document ── #}
+<div class="upload-box">
+  <div class="upload-box-title">📎 Upload a Document</div>
+  <div class="upload-box-sub">Upload a PDF, Word (.docx), or plain text file. The AI will read and index the content automatically within 5 minutes.</div>
+
+  <form method="POST" enctype="multipart/form-data">
+    <input type="hidden" name="action" value="upload_doc"/>
+    <div class="upload-row">
+      <div>
+        <label style="display:block;font-size:11px;color:var(--muted);margin-bottom:3px">Document title *</label>
+        <input type="text" name="doc_title" placeholder="e.g. Delivery Policy, About Us…" required/>
+      </div>
+      <div>
+        <label style="display:block;font-size:11px;color:var(--muted);margin-bottom:3px">File (PDF, DOCX, TXT) *</label>
+        <input type="file" name="doc_file" accept=".pdf,.docx,.txt" required/>
+      </div>
+      <div style="align-self:flex-end">
+        <button type="submit" class="btn btn-primary btn-sm">Upload & Index</button>
+      </div>
+    </div>
+  </form>
+
+  {% if uploaded_docs %}
+  <div class="doc-list">
+    <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px">Uploaded documents</div>
+    {% for doc in uploaded_docs %}
+    <div class="doc-row">
+      <div>
+        <div class="doc-row-title">{{ doc.title }}</div>
+        <div class="doc-row-meta">{{ (doc.content or '')|length }} characters extracted &nbsp;·&nbsp; <span class="embed-badge">✓ indexed</span></div>
+      </div>
+      <form method="POST" style="margin:0" onsubmit="return confirm('Delete this document?')">
+        <input type="hidden" name="action" value="delete_doc"/>
+        <input type="hidden" name="doc_id" value="{{ doc.id }}"/>
+        <button type="submit" class="btn btn-sm" style="color:var(--bad,#b02020);border-color:rgba(240,68,56,.3)">Delete</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+{# ── Text sections ── #}
+<form method="POST">
+  <input type="hidden" name="action" value="save_text"/>
+  <div style="font-size:14px;font-weight:800;margin-bottom:12px">✏️ Or type your information directly</div>
+
+  {% for key, label, hint in sections %}
+  <div class="si-section">
+    <div class="si-label">{{ label }}</div>
+    <div class="si-hint">{{ hint }}</div>
+    <textarea name="{{ key }}" rows="4" placeholder="Leave blank to skip…">{{ existing[key] }}</textarea>
+  </div>
+  {% endfor %}
+
+  <div style="display:flex;justify-content:flex-end;margin-top:8px">
+    <button type="submit" class="btn btn-primary" style="padding:10px 28px;font-size:14px">
+      Save Store Information
+    </button>
+  </div>
+</form>
+{% endblock %}

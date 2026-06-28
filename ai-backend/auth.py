@@ -52,13 +52,14 @@ def verify_api_key(api_key: str):
             t.id AS tenant_id,
             t.name,
             t.domain,
-            t.system_prompt,
+            COALESCE(ta.system_prompt, t.system_prompt) AS system_prompt,
             t.azure_search_index,
             t.azure_semantic_config,
             t.status,
             t.features
         FROM api_keys ak
         JOIN tenants t ON ak.tenant_id = t.id
+        LEFT JOIN tenant_agents ta ON ta.tenant_id = t.id AND ta.is_active = TRUE
         WHERE ak.is_active = TRUE
           AND t.status IN ('active', 'pending')
     """

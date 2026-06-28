@@ -38,7 +38,7 @@ ambassador_bp = Blueprint("ambassador", __name__)
 
 BRAND         = "#030C18"
 BASE_URL      = os.getenv("PORTAL_BASE_URL", "https://portal.phixtra.com")
-COMMISSION_PC = 0.20   # 20%
+COMMISSION_PC = 0.30   # 30% for self-closed referral-link signups
 
 TURNSTILE_SECRET       = os.getenv("TURNSTILE_SECRET_KEY", "")
 RATE_LIMIT_MAX_ATTEMPTS = 5
@@ -309,9 +309,17 @@ def _send_approved_email(amb_name: str, amb_email: str, ref_code: str):
          border-radius:12px;text-decoration:none;display:inline-block">Log In to Ambassador Hub</a></p>
       <p><strong>Your referral link:</strong><br>
          <a href="{ref_link}" style="color:{BRAND}">{ref_link}</a></p>
-      <p>You earn <strong>20% commission</strong> on every subscription payment from clients
-         you refer. You also earn one-time upsell bonuses: <strong>₦5,000</strong> (Starter→Growth),
-         <strong>₦10,000</strong> (Growth→Pro), <strong>₦15,000</strong> (Starter→Pro),
+      <p>Here's how your commissions work:</p>
+      <ul style="line-height:1.9;padding-left:20px">
+        <li><strong>30% commission</strong> on every subscription payment from clients who sign up
+            directly through your referral link</li>
+        <li><strong>20% commission</strong> on clients you refer as a lead via the Ambassador Hub
+            and our team closes</li>
+      </ul>
+      <p>You also earn one-time upsell bonuses when referred clients upgrade:
+         <strong>₦5,000</strong> (Starter→Growth),
+         <strong>₦10,000</strong> (Growth→Pro),
+         <strong>₦15,000</strong> (Starter→Pro),
          or <strong>₦20,000</strong> (Free→Pro).</p>
 
       <div style="background:#dcfce7;border:1px solid #bbf7d0;border-radius:12px;padding:16px 20px;margin:20px 0">
@@ -329,7 +337,16 @@ def _send_approved_email(amb_name: str, amb_email: str, ref_code: str):
       <p style="color:#888;font-size:12px">Questions? Contact support@phixtra.com</p>
     </div>"""
     send_email(amb_email, "You're approved — Welcome to PhiXtra Ambassadors!", html,
-               text_body=f"Approved! Log in: {link}\n\nYour referral link: {ref_link}\n\nJoin our Ambassador WhatsApp support group: {WA_GROUP_LINK}")
+               text_body=(
+                   f"Approved! Log in: {link}\n\n"
+                   f"Your referral link: {ref_link}\n\n"
+                   f"Commission rates:\n"
+                   f"- 30% on clients who sign up via your referral link\n"
+                   f"- 20% on leads you submit that our team closes\n\n"
+                   f"Upsell bonuses: ₦5k (Starter→Growth), ₦10k (Growth→Pro), "
+                   f"₦15k (Starter→Pro), ₦20k (Free→Pro)\n\n"
+                   f"Join our Ambassador WhatsApp support group: {WA_GROUP_LINK}"
+               ))
 
 
 # ── Auth routes ────────────────────────────────────────────────────────────
@@ -376,6 +393,8 @@ def register():
         return _bail("Password must be at least 8 characters.")
     if pw != pw2:
         return _bail("Passwords do not match.")
+    if request.form.get("contract_agreed") != "1":
+        return _bail("You must read and accept the Ambassador Partnership Agreement to continue.")
 
     # ── Minimum education: OND ───────────────────────────────────────────────
     if qualification not in QUAL_ORDER:
@@ -657,10 +676,11 @@ GS_TOPICS = [
     ("your-link",           "Your Link & QR Code",    "🔗", "Your personal sign-up link and QR code — every shop that uses it is tracked to your account"),
     ("who-to-approach",     "Who to Approach",         "👥", "Start with phone and computer shops — find out how to spot a good one and where to find them"),
     ("pitch-messages",      "Pitch Messages",          "💬", "Ready-to-send WhatsApp messages and a step-by-step script for when you walk into a shop"),
+    ("common-questions",    "Common Questions",        "💡", "Answers to the questions prospects ask most — ready to copy and send, or share as a PDF"),
     ("demo-to-business",    "Demo to Business",        "🎬", "Show a live PhiXtra AI demo using the profitbuyz.com WhatsApp account — iPhone questions only for now"),
     ("client-requirements", "Client Requirements",     "📋", "Four things a shop must have ready before they can go live on PhiXtra"),
     ("after-signup",        "After They Sign Up",      "🤝", "Five things to do after a shop signs up to make sure they go live fast and you start earning"),
-    ("how-you-earn",        "How You Earn",            "💰", "Your 20% monthly cut, how your level goes up, and the bonuses you earn when shops upgrade"),
+    ("how-you-earn",        "How You Earn",            "💰", "Your 30% monthly cut, how your level goes up, and the bonuses you earn when shops upgrade"),
 ]
 
 DEMO_WA_NUMBER = "447778391737"  # profitbuyz.com WhatsApp demo account
@@ -699,6 +719,14 @@ def checklist():
     if r: return r
     amb = _get_ambassador(_amb_id())
     return render_template("ambassador/checklist.html", amb=amb)
+
+
+@ambassador_bp.route("/ambassador/demo-qr")
+def demo_qr_page():
+    r = _require_amb()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+    return render_template("ambassador/demo_qr.html", amb=amb, demo_wa_number=DEMO_WA_NUMBER)
 
 
 @ambassador_bp.route("/ambassador/demo-qr.png")
@@ -785,6 +813,249 @@ def qr_image():
 
 # ── Commission helper (called from portal_routes._activate_plan_subscription) ──
 
+@ambassador_bp.route("/ambassador/faq.pdf")
+def faq_pdf():
+    r = _require_amb()
+    if r: return r
+
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.colors import HexColor, white
+    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
+                                    Table, TableStyle, HRFlowable)
+    from reportlab.lib.units import cm
+    from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_JUSTIFY
+    from reportlab.pdfgen import canvas as pdfcanvas
+    import io as _io
+
+    INK   = HexColor("#030C18")
+    TEAL  = HexColor("#0d9488")
+    LGREY = HexColor("#f8f9fb")
+    MGREY = HexColor("#e8eaf0")
+    DKGREY= HexColor("#374151")
+
+    buf = _io.BytesIO()
+
+    def _draw_header(c, doc):
+        W, H = A4
+        c.setFillColor(INK)
+        c.rect(0, H - 72, W, 72, fill=1, stroke=0)
+        c.setFillColor(white)
+        c.setFont("Helvetica-Bold", 16)
+        c.drawString(2*cm, H - 30, "PhiXtra AI")
+        c.setFont("Helvetica", 10)
+        c.drawString(2*cm, H - 46, "Common Questions & Answers for Prospects")
+        c.setFillColor(TEAL)
+        c.circle(2*cm - 6, H - 18, 5, fill=1, stroke=0)
+        c.setFillColor(DKGREY)
+        c.setFont("Helvetica", 8)
+        c.drawRightString(W - 2*cm, H - 56, "share this with anyone considering PhiXtra")
+        # footer
+        c.setFillColor(MGREY)
+        c.rect(0, 0, W, 28, fill=1, stroke=0)
+        c.setFillColor(DKGREY)
+        c.setFont("Helvetica", 8)
+        c.drawString(2*cm, 10, "Questions? Contact support@phixtra.com  ·  phixtra.com")
+        c.drawRightString(W - 2*cm, 10, f"Page {doc.page}")
+
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        topMargin=2.8*cm, bottomMargin=1.4*cm,
+        leftMargin=2*cm, rightMargin=2*cm,
+    )
+
+    Q  = ParagraphStyle("Q",  fontName="Helvetica-Bold", fontSize=12, textColor=INK,
+                         spaceAfter=5, spaceBefore=14, leading=16)
+    A  = ParagraphStyle("A",  fontName="Helvetica",      fontSize=10, textColor=DKGREY,
+                         spaceAfter=4, leading=15, alignment=TA_JUSTIFY)
+    BL = ParagraphStyle("BL", fontName="Helvetica",      fontSize=10, textColor=DKGREY,
+                         spaceAfter=3, leading=14, leftIndent=14, bulletIndent=4)
+    IN = ParagraphStyle("IN", fontName="Helvetica-Oblique", fontSize=9.5,
+                         textColor=HexColor("#1d4ed8"), spaceAfter=4, leading=13,
+                         leftIndent=12, borderPad=6, backColor=HexColor("#eff6ff"),
+                         borderColor=HexColor("#bfdbfe"), borderWidth=1, borderRadius=4)
+    SB = ParagraphStyle("SB", fontName="Helvetica-Bold", fontSize=10, textColor=DKGREY,
+                         spaceAfter=3, spaceBefore=6, leading=14)
+
+    QA = [
+        ("🤖  How does PhiXtra actually work?",
+         [("p", "Imagine hiring a smart, tireless customer service rep who knows every single product you sell, never takes a day off, never sleeps, and can handle hundreds of customers at once — all on your existing WhatsApp number. That is PhiXtra."),
+          ("sb", "Step 1 — You connect your WhatsApp"),
+          ("p", "Your business WhatsApp number is linked to PhiXtra using the official Meta Business API. Nothing changes for your customers — they still message the same number they always have."),
+          ("sb", "Step 2 — You upload your products"),
+          ("p", "You add your products, prices, and any information you want the AI to know. Think of it as briefing your new staff member. The more detail you give, the better it performs."),
+          ("sb", "Step 3 — The AI goes live"),
+          ("p", "From that moment, every customer message is read and answered by the AI within seconds. A customer asks \"what is the price of Samsung A55?\" — the AI checks your product list and replies immediately with the price, specs, and availability. Even at midnight. Even on Sundays."),
+          ("sb", "Step 4 — You stay in control"),
+          ("p", "Nothing is hidden from you. You can log in at any time, read every conversation, update your products, or take over a conversation yourself if a customer needs personal attention. The AI works for you — you are always the boss."),
+         ]),
+        ("🔒  How does PhiXtra handle my customer data?",
+         [("p", "This is one of the most important questions to ask any software you trust with your business — and we want to answer it fully."),
+          ("sb", "Your data is yours. Full stop."),
+          ("p", "When a customer messages your WhatsApp, that conversation is stored on your PhiXtra account. No other business can see it. No other business has access to it. Your customer list, your chat history, your product prices — all of it belongs only to you."),
+          ("sb", "What PhiXtra does with your data:"),
+          ("bl", "✓  Reads your product information to answer customer questions"),
+          ("bl", "✓  Stores your conversations so you can review them"),
+          ("bl", "✓  Uses your chat history to improve responses within your account only"),
+          ("sb", "What PhiXtra does NOT do:"),
+          ("bl", "✗  Sell your data to anyone"),
+          ("bl", "✗  Share your customer information with other businesses"),
+          ("bl", "✗  Use your data to train public AI models"),
+          ("bl", "✗  Access your account without your permission"),
+          ("sb", "You are always in control:"),
+          ("p", "You can export your data, delete conversations, or close your account at any time. When you delete your account, your data is permanently removed from our servers. All data is stored on secure, encrypted servers using the official Meta Business API infrastructure."),
+         ]),
+        ("📱  Is it safe to connect my WhatsApp number?",
+         [("p", "Completely. PhiXtra uses the official Meta (WhatsApp) Business API — the same approved system that banks, fintech companies, and large corporations use to communicate with customers on WhatsApp."),
+          ("p", "This is NOT a hack, a third-party workaround, or anything that violates WhatsApp's rules. Your WhatsApp number remains 100% yours. If you ever decide to stop using PhiXtra, you simply disconnect the number and it returns to working as a normal WhatsApp line immediately — nothing is lost."),
+         ]),
+        ("❓  What if the AI gives a wrong answer to a customer?",
+         [("p", "The AI can only say what it knows — and it knows what you tell it. If a customer asks about a product that is not in your product list, the AI will say it does not have that information and invite the customer to ask again or call directly."),
+          ("p", "If the AI ever gives outdated or incorrect information, it is almost always because the product list has not been updated. Fix the price or product detail in your PhiXtra portal, and from that second, the AI uses the new information."),
+          ("p", "You can read every conversation in your portal inbox, so nothing is hidden from you. If a conversation needs a human touch, you can jump in directly and the AI steps aside. Most business owners find that within the first two weeks, they rarely need to correct anything."),
+         ]),
+        ("👁️  Will my customers know they are talking to AI?",
+         [("p", "That is entirely your choice as the business owner."),
+          ("p", "Some businesses are fully transparent — they set the AI up to introduce itself as a virtual assistant. Others give the AI a human name and customers never ask. What matters most to customers is getting a fast, accurate answer — and PhiXtra delivers that either way."),
+          ("tip", "Customers are far more frustrated by slow replies and unanswered messages than they are by talking to a well-trained AI. PhiXtra solves the problem that actually loses you sales."),
+         ]),
+        ("🕐  What happens when my shop is closed?",
+         [("p", "The AI never closes. Whether it is 2am on a Saturday, Christmas Day, or a public holiday — every customer message is answered within seconds. No customer waits. No sale is lost because nobody was there to reply."),
+          ("p", "Most impulse purchases happen in the evening when people are relaxed and browsing on their phones. These are exactly the hours that traditional shops miss. PhiXtra captures every one of those customers."),
+          ("tip", "Business owners who switch to PhiXtra often say: \"I woke up to three orders I didn't even know about.\""),
+         ]),
+        ("💳  Is there a free trial? What does it cost?",
+         [("p", "Yes — you can start for free with no credit card required. You get full access to try the platform and see how it works with your business before spending a single naira."),
+          ("p", "After your free trial, choose the plan that fits your business:"),
+          ("tbl", [
+              ["Plan", "Price/Month", "Best For"],
+              ["Starter", "₦25,000", "Small shops, getting started"],
+              ["Growth",  "₦75,000", "Busier shops, higher volume"],
+              ["Pro",     "₦200,000","High-volume businesses, advanced features"],
+          ]),
+          ("p", "All plans include unlimited AI replies to customer messages. There is no contract and no cancellation fee. Most business owners recover the monthly cost within the first week from sales that would otherwise have been missed."),
+         ]),
+        ("🔌  How long does setup take?",
+         [("p", "For phone and computer shops: about 5 minutes. You create your account, upload your product list, and connect your WhatsApp number. The AI is live from that moment."),
+          ("p", "For other types of businesses — fashion, food, logistics, services — the PhiXtra team will personally configure your account within 48 hours at no extra charge."),
+          ("p", "Your PhiXtra Ambassador will guide you through every step and can stay on a call with you while you set up."),
+         ]),
+    ]
+
+    story = [Spacer(1, 0.3*cm)]
+
+    for question, body in QA:
+        story.append(Paragraph(question, Q))
+        story.append(HRFlowable(width="100%", thickness=1, color=MGREY, spaceAfter=6))
+        for kind, content in body:
+            if kind == "p":
+                story.append(Paragraph(content, A))
+            elif kind == "sb":
+                story.append(Paragraph(content, SB))
+            elif kind == "bl":
+                story.append(Paragraph(content, BL))
+            elif kind == "tip":
+                story.append(Paragraph(content, IN))
+            elif kind == "tbl":
+                col_w = [(A4[0] - 4*cm) / 3] * 3
+                tbl = Table(content, colWidths=col_w)
+                tbl.setStyle(TableStyle([
+                    ("BACKGROUND", (0,0), (-1,0), INK),
+                    ("TEXTCOLOR",  (0,0), (-1,0), white),
+                    ("FONTNAME",   (0,0), (-1,0), "Helvetica-Bold"),
+                    ("FONTSIZE",   (0,0), (-1,-1), 9.5),
+                    ("ROWBACKGROUNDS", (0,1), (-1,-1), [white, LGREY]),
+                    ("GRID", (0,0), (-1,-1), 0.5, MGREY),
+                    ("TOPPADDING",    (0,0), (-1,-1), 7),
+                    ("BOTTOMPADDING", (0,0), (-1,-1), 7),
+                    ("LEFTPADDING",   (0,0), (-1,-1), 10),
+                ]))
+                story.append(Spacer(1, 4))
+                story.append(tbl)
+                story.append(Spacer(1, 6))
+        story.append(Spacer(1, 8))
+
+    story.append(HRFlowable(width="100%", thickness=1, color=MGREY, spaceBefore=10, spaceAfter=8))
+    story.append(Paragraph(
+        "Still have questions? Ask your PhiXtra Ambassador — they are trained to help you, "
+        "or they will get the PhiXtra team to answer within a few hours.",
+        ParagraphStyle("foot", fontName="Helvetica-Oblique", fontSize=9.5,
+                       textColor=HexColor("#6b7280"), alignment=TA_CENTER, leading=14)
+    ))
+
+    doc.build(story, onFirstPage=_draw_header, onLaterPages=_draw_header)
+    buf.seek(0)
+    from flask import Response as _Resp
+    return _Resp(
+        buf.getvalue(),
+        mimetype="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=PhiXtra-AI-FAQ.pdf"}
+    )
+
+
+@ambassador_bp.route("/ambassador/leads", methods=["GET", "POST"])
+def leads():
+    r = _require_amb()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+
+    if request.method == "POST":
+        business_name = (request.form.get("business_name") or "").strip()
+        contact_name  = (request.form.get("contact_name")  or "").strip() or None
+        phone         = (request.form.get("phone")         or "").strip() or None
+        email         = (request.form.get("email")         or "").strip() or None
+        notes         = (request.form.get("notes")         or "").strip() or None
+
+        if not business_name:
+            flash("Business name is required.", "danger")
+            return redirect(url_for("ambassador.leads"))
+
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("""
+            INSERT INTO ambassador_leads
+              (ambassador_id, business_name, contact_name, phone, email, notes)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (amb["id"], business_name, contact_name, phone, email, notes))
+        conn.commit()
+        cur.close(); conn.close()
+        flash("Lead submitted successfully. We'll follow up shortly.", "success")
+        return redirect(url_for("ambassador.leads"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT * FROM ambassador_leads WHERE ambassador_id=%s ORDER BY created_at DESC
+    """, (amb["id"],))
+    submitted_leads = [dict(r) for r in cur.fetchall()]
+
+    # Self-closed clients (referral link signups)
+    cur.execute("""
+        SELECT t.name, t.status, p.name AS plan_name, p.price_ngn,
+               t.created_at,
+               COALESCE(SUM(ac.commission_amount), 0) AS earned
+        FROM tenants t
+        LEFT JOIN plans p ON p.id = t.plan_id
+        LEFT JOIN ambassador_commissions ac ON ac.tenant_id = t.id AND ac.ambassador_id=%s
+        WHERE t.ref_code = %s
+        GROUP BY t.id, t.name, t.status, p.name, p.price_ngn, t.created_at
+        ORDER BY t.created_at DESC
+    """, (amb["id"], amb["ref_code"]))
+    self_closed = [dict(r) for r in cur.fetchall()]
+
+    cur.close(); conn.close()
+    return render_template("ambassador/leads.html",
+        amb=amb, submitted_leads=submitted_leads, self_closed=self_closed)
+
+
+@ambassador_bp.route("/ambassador/contract")
+def contract():
+    r = _require_amb()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+    return render_template("ambassador/contract.html", amb=amb)
+
+
 def record_ambassador_commission(tenant_id: int, plan_id: int, prev_plan_id: int,
                                   amount, currency: str) -> None:
     """
@@ -820,7 +1091,7 @@ def record_ambassador_commission(tenant_id: int, plan_id: int, prev_plan_id: int
     amb = dict(amb)
     cur2 = conn.cursor()
 
-    # 20% subscription commission (if eligible, from first payment)
+    # 30% subscription commission (if eligible, from first payment)
     if _commission_eligible(amb) and float(amount or 0) > 0:
         commission = round(float(amount) * COMMISSION_PC, 2)
         cur2.execute("""
@@ -828,7 +1099,7 @@ def record_ambassador_commission(tenant_id: int, plan_id: int, prev_plan_id: int
               (ambassador_id, tenant_id, commission_type, currency, source_amount, commission_amount, description)
             VALUES (%s,%s,'subscription',%s,%s,%s,%s)
         """, (amb["id"], tenant_id, currency, float(amount), commission,
-              f"20% of {currency} {float(amount):.2f} subscription payment"))
+              f"30% of {currency} {float(amount):.2f} subscription payment"))
 
     # One-time upsell bonus (per upgrade path, once per tenant)
     bonus = UPSELL_BONUSES.get((prev_slug, new_slug))

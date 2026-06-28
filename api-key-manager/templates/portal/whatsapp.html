@@ -126,144 +126,162 @@
     <div class="section-title">WhatsApp Integration</div>
     <p class="muted">Connect your Meta WhatsApp Business account so your AI assistant can reply on WhatsApp.</p>
   </div>
-  {% if connection and connection.active %}
+  {% if connections %}
   <a href="{{ url_for('portal.whatsapp_inbox') }}" class="btn btn-primary">Open Agent Inbox</a>
   {% endif %}
 </div>
 
-<!-- ── Connection Status Card ────────────────────────────────────────────── -->
+<!-- ── Connected Numbers ─────────────────────────────────────────────────── -->
 <div class="card" style="margin-bottom:20px">
-  <div class="card-title">Connection Status</div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div class="card-title" style="margin-bottom:0">WhatsApp Numbers</div>
+    <span style="font-size:12px;color:var(--muted)">{{ connections|length }} number{{ 's' if connections|length != 1 else '' }} connected</span>
+  </div>
 
-  {% if connection %}
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
-      <div>
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-          {% if not connection.active %}
-            <span class="dot dot-grey"></span>
-            <span style="font-weight:700;color:var(--muted)">Disconnected</span>
-          {% elif token_expiry_status == 'expired' %}
-            <span class="dot dot-red"></span>
-            <span style="font-weight:700;color:var(--bad)">Token Expired — Reconnect Required</span>
-          {% else %}
-            <span class="dot dot-green"></span>
-            <span style="font-weight:700;color:var(--good)">Connected</span>
-          {% endif %}
-          {% if connection.signup_method == 'embedded' %}
-            <span class="pill pill-green" style="font-size:11px">Embedded Signup</span>
-          {% else %}
-            <span class="pill pill-grey" style="font-size:11px">Manual</span>
-          {% endif %}
-        </div>
-
-        <div class="muted" style="font-size:13px;display:flex;flex-direction:column;gap:4px">
-          {% if connection.display_phone_number %}
-          <div>Phone: <strong>{{ connection.display_phone_number }}</strong>
-            {% if connection.verified_name %} · {{ connection.verified_name }}{% endif %}
+  {% if connections %}
+    {% for cn in connections %}
+    <div style="border:1.5px solid {% if cn.active %}var(--line){% else %}#f0f0f2{% endif %};
+                border-radius:14px;padding:16px 18px;margin-bottom:12px;
+                {% if not cn.active %}opacity:.65{% endif %}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:0">
+          <!-- Status + number -->
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+            {% if cn.active %}
+              <span class="dot dot-green"></span>
+              <span style="font-weight:700;font-size:14px">{{ cn.display_phone_number or cn.phone_number_id }}</span>
+            {% else %}
+              <span class="dot dot-grey"></span>
+              <span style="font-weight:700;font-size:14px;color:var(--muted)">{{ cn.display_phone_number or cn.phone_number_id }}</span>
+            {% endif %}
+            {% if cn.verified_name %}
+              <span style="font-size:12px;color:var(--muted)">· {{ cn.verified_name }}</span>
+            {% endif %}
+            {% if cn.signup_method == 'embedded' %}
+              <span class="pill pill-green" style="font-size:10px">Embedded</span>
+            {% else %}
+              <span class="pill pill-grey" style="font-size:10px">Manual</span>
+            {% endif %}
           </div>
+
+          <!-- Meta IDs -->
+          <div style="font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:2px">
+            <div>Phone Number ID: <code>{{ cn.phone_number_id }}</code></div>
+            {% if cn.waba_id %}<div>WABA ID: <code>{{ cn.waba_id }}</code></div>{% endif %}
+            {% if cn.active and cn.token_expires_at %}
+              {% set _exp = cn.token_expires_at %}
+              <div style="margin-top:4px">
+                {% if token_expiry_status == 'expired' %}
+                  <span class="token-badge token-expired">Token expired</span>
+                {% elif token_expiry_status == 'expiring' %}
+                  <span class="token-badge token-expiring">Token expires {{ _exp.strftime('%d %b %Y') }} — reconnect soon</span>
+                {% else %}
+                  <span class="token-badge token-ok">Token valid until {{ _exp.strftime('%d %b %Y') }}</span>
+                {% endif %}
+              </div>
+            {% endif %}
+          </div>
+
+          <!-- Agent assignment -->
+          <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="font-size:12px;font-weight:600;color:var(--muted)">🤖 AI Agent:</span>
+            <form method="POST" action="{{ url_for('portal.whatsapp_assign_agent', wa_id=cn.id) }}"
+                  style="display:flex;align-items:center;gap:6px">
+              <select name="agent_id"
+                      style="font-size:12px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)">
+                {% if agents %}
+                  {% for ag in agents %}
+                  <option value="{{ ag.id }}" {% if cn.agent_id == ag.id %}selected{% endif %}>{{ ag.name }}</option>
+                  {% endfor %}
+                  <option value="0" {% if not cn.agent_id %}selected{% endif %}>— Use tenant default —</option>
+                {% else %}
+                  <option value="0">No agents configured</option>
+                {% endif %}
+              </select>
+              <button type="submit" class="btn btn-sm btn-primary" style="padding:4px 10px;font-size:12px">Assign</button>
+            </form>
+            {% if not agents %}
+              <a href="{{ url_for('portal.ai_agents') }}" style="font-size:12px;color:var(--muted)">Create agents →</a>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex-shrink:0">
+          {% if cn.active %}
+          <button onclick="document.getElementById('qrModal_{{ cn.id }}').classList.add('open')"
+                  class="btn btn-sm">QR Code</button>
+          <form method="POST" action="{{ url_for('portal.whatsapp_disconnect') }}"
+                onsubmit="return confirm('Disconnect this number? The AI will stop replying until you reconnect.')">
+            <input type="hidden" name="wa_id" value="{{ cn.id }}">
+            <button type="submit" class="btn btn-sm btn-danger">Disconnect</button>
+          </form>
           {% endif %}
-          <div>Phone Number ID: <code>{{ connection.phone_number_id }}</code></div>
-          {% if connection.waba_id %}
-          <div>WABA ID: <code>{{ connection.waba_id }}</code></div>
-          {% endif %}
-          {% if connection.active and connection.token_expires_at %}
-            <div style="margin-top:6px">
-              {% if token_expiry_status == 'expired' %}
-                <span class="token-badge token-expired">Token expired {{ connection.token_expires_at.strftime('%d %b %Y') if connection.token_expires_at }}</span>
-              {% elif token_expiry_status == 'expiring' %}
-                <span class="token-badge token-expiring">Token expires {{ connection.token_expires_at.strftime('%d %b %Y') if connection.token_expires_at }} — reconnect soon</span>
-              {% else %}
-                <span class="token-badge token-ok">Token valid until {{ connection.token_expires_at.strftime('%d %b %Y') if connection.token_expires_at }}</span>
-              {% endif %}
-            </div>
-          {% endif %}
+          <form method="POST" action="{{ url_for('portal.whatsapp_delete') }}"
+                onsubmit="return confirm('Delete this WhatsApp number? This cannot be undone.')">
+            <input type="hidden" name="wa_id" value="{{ cn.id }}">
+            <button type="submit" class="btn btn-sm"
+                    style="background:rgba(240,68,56,.1);color:#b02020;border:1px solid rgba(240,68,56,.35)">Delete</button>
+          </form>
         </div>
       </div>
 
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        {% if connection.active %}
-        <button onclick="document.getElementById('qrModal').classList.add('open')" class="btn btn-sm">QR Code</button>
-        <button onclick="checkToken()" class="btn btn-sm" id="checkTokenBtn">Check Token</button>
-        <form method="POST" action="{{ url_for('portal.whatsapp_disconnect') }}"
-              onsubmit="return confirm('Disconnect WhatsApp? The AI will stop replying until you reconnect.')">
-          <button type="submit" class="btn btn-sm btn-danger">Disconnect</button>
-        </form>
-        {% endif %}
-        <form method="POST" action="{{ url_for('portal.whatsapp_delete') }}"
-              onsubmit="return confirm('Permanently delete this WhatsApp connection? This cannot be undone. The phone number ID will be freed so you can register it again.')">
-          <button type="submit" class="btn btn-sm" style="background:rgba(240,68,56,.1);color:#b02020;border:1px solid rgba(240,68,56,.35)">Delete</button>
+      {% if cn.active and cn.token_expires_at and token_expiry_status in ('expired','expiring') %}
+      <div class="flash {% if token_expiry_status == 'expired' %}danger{% else %}warning{% endif %}"
+           style="margin-top:12px;margin-bottom:0">
+        {% if token_expiry_status == 'expired' %}Your token has expired. Reconnect below.
+        {% else %}Your token expires soon. Reconnect to get a fresh token.{% endif %}
+      </div>
+      {% endif %}
+
+      <!-- Ack text for active numbers -->
+      {% if cn.active %}
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+        <form method="POST" action="{{ url_for('portal.whatsapp_save_ack_text') }}">
+          <input type="hidden" name="wa_id" value="{{ cn.id }}">
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;color:var(--muted)">
+            Instant acknowledgement message
+            <span style="font-weight:400"> — sent before the AI replies (leave blank to disable)</span>
+          </label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="text" name="typing_ack_text" maxlength="200"
+                   value="{{ cn.typing_ack_text or '' }}"
+                   placeholder="e.g. ⏳ or Got it, one moment..."
+                   style="flex:1;padding:7px 12px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:var(--bg)">
+            <button type="submit" class="btn btn-sm btn-primary">Save</button>
+          </div>
         </form>
       </div>
-    </div>
-
-    {% if connection.active and token_expiry_status in ('expired', 'expiring') %}
-    <div class="flash {% if token_expiry_status == 'expired' %}danger{% else %}warning{% endif %}"
-         style="margin-top:16px;margin-bottom:0">
-      {% if token_expiry_status == 'expired' %}
-        Your WhatsApp access token has expired. Reconnect below to restore AI replies.
-      {% else %}
-        Your token expires soon. Reconnect via Embedded Signup to get a fresh 60-day token.
       {% endif %}
     </div>
+
+    <!-- QR modal per number -->
+    {% if cn.active %}
+    <div class="modal-overlay" id="qrModal_{{ cn.id }}"
+         onclick="if(event.target===this)this.classList.remove('open')">
+      <div class="modal-box" style="max-width:360px;text-align:center">
+        <div class="modal-title">QR Code — {{ cn.display_phone_number or cn.phone_number_id }}</div>
+        <p class="modal-sub">Customers scan this to open a WhatsApp chat with you directly.</p>
+        <img src="{{ url_for('portal.whatsapp_qr_code') }}" alt="WhatsApp QR Code"
+             style="width:220px;height:220px;border:1px solid var(--line);border-radius:12px;margin-bottom:20px">
+        <div style="display:flex;gap:10px;justify-content:center">
+          <a href="{{ url_for('portal.whatsapp_qr_code', download='1') }}" class="btn btn-primary btn-sm" download>Download PNG</a>
+          <button onclick="document.getElementById('qrModal_{{ cn.id }}').classList.remove('open')" class="btn btn-sm">Close</button>
+        </div>
+      </div>
+    </div>
     {% endif %}
+    {% endfor %}
 
   {% else %}
     <div style="display:flex;align-items:center;gap:10px">
       <span class="dot dot-grey"></span>
-      <span class="muted">Not connected</span>
+      <span class="muted">No WhatsApp numbers connected yet. Add one below.</span>
     </div>
   {% endif %}
 </div>
 
-<!-- ── Agent Behaviour Settings ──────────────────────────────────────────── -->
-{% if connection and connection.active %}
-<div class="card" style="margin-bottom:20px">
-  <div class="card-title">Agent Behaviour</div>
-  <p class="muted" style="font-size:13px;margin-bottom:16px">
-    Customise how your AI agent responds to customers on WhatsApp.
-  </p>
-
-  <form method="POST" action="{{ url_for('portal.whatsapp_save_ack_text') }}">
-    <div class="form-group" style="margin-bottom:12px">
-      <label style="font-weight:600;font-size:13px;display:block;margin-bottom:6px">
-        Instant acknowledgement message
-      </label>
-      <p class="muted" style="font-size:12px;margin-bottom:8px">
-        Sent immediately when a customer messages, before the AI finishes thinking. Gives instant feedback that the bot is active. Leave blank to disable.
-      </p>
-      <div style="display:flex;gap:10px;align-items:center">
-        <input type="text" name="typing_ack_text" maxlength="200"
-               value="{{ connection.typing_ack_text or '' }}"
-               placeholder="e.g.  ⏳  or  Got it, one moment..."
-               style="flex:1;padding:8px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px;background:var(--bg)">
-        <button type="submit" class="btn btn-sm btn-primary">Save</button>
-      </div>
-    </div>
-  </form>
-</div>
-{% endif %}
-
-<!-- ── QR Code Modal ──────────────────────────────────────────────────────── -->
-{% if connection and connection.active %}
-<div class="modal-overlay" id="qrModal" onclick="if(event.target===this)this.classList.remove('open')">
-  <div class="modal-box" style="max-width:360px;text-align:center">
-    <div class="modal-title">Customer Onboarding QR Code</div>
-    <p class="modal-sub">Customers scan this to open a WhatsApp chat with you directly.</p>
-    <img src="{{ url_for('portal.whatsapp_qr_code') }}" alt="WhatsApp QR Code"
-         style="width:220px;height:220px;border:1px solid var(--line);border-radius:12px;margin-bottom:20px">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;background:rgba(3,12,24,.04);border:1px solid var(--line);border-radius:10px;padding:8px 10px">
-      <span id="qrLinkText" style="font-size:12px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left">{{ wa_onboarding_link }}</span>
-      <button onclick="copyQrLink()" id="qrCopyBtn" class="btn btn-sm" style="flex-shrink:0;padding:4px 10px;font-size:12px">Copy Link</button>
-    </div>
-    <div style="display:flex;gap:10px;justify-content:center">
-      <a href="{{ url_for('portal.whatsapp_qr_code', download='1') }}" class="btn btn-primary btn-sm" download>Download PNG</a>
-      <button onclick="document.getElementById('qrModal').classList.remove('open')" class="btn btn-sm">Close</button>
-    </div>
-  </div>
-</div>
-{% endif %}
-
-{% if not connection or not connection.active %}
+{% if not connections %}
 <!-- Help link -->
 <div style="margin-bottom:20px;padding:14px 18px;border:1px solid var(--line);border-radius:14px;
             background:rgba(3,12,24,.02);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
@@ -284,7 +302,7 @@
      EMBEDDED SIGNUP (Tech Provider mode — Meta approved)
 ═════════════════════════════════════════════════════════════ -->
 <div class="card" style="margin-bottom:20px">
-  <div class="card-title">{{ 'Reconnect WhatsApp' if connection else 'Connect WhatsApp' }}</div>
+  <div class="card-title">Add a WhatsApp Number</div>
   <p class="muted" style="margin-bottom:20px;font-size:13px">
     Click the button below to connect your WhatsApp Business Account.
     A Meta popup will guide you through selecting your phone number — no copy-pasting required.

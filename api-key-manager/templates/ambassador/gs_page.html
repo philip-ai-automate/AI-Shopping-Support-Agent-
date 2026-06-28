@@ -1,0 +1,106 @@
+{% extends "ambassador/base.html" %}
+{% block title %}{{ current[1] }} — Getting Started{% endblock %}
+
+{% block head %}
+<style>
+.gs-breadcrumb{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-bottom:20px}
+.gs-breadcrumb a{color:var(--muted);text-decoration:none;font-weight:600}
+.gs-breadcrumb a:hover{color:var(--ink)}
+.gs-breadcrumb-sep{font-size:10px}
+.gs-hero{margin-bottom:24px}
+.gs-hero-step{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px}
+.gs-hero-title{font-size:22px;font-weight:800;letter-spacing:-.4px;display:flex;align-items:center;gap:10px}
+.gs-progress{display:flex;gap:4px;margin-top:14px}
+.gs-pip{height:4px;border-radius:2px;flex:1;background:var(--line)}
+.gs-pip.done{background:var(--ink)}
+.gs-section{background:#fff;border:1px solid var(--line);border-radius:16px;padding:22px;margin-bottom:16px}
+.gs-section-title{font-size:14px;font-weight:800;margin-bottom:10px;letter-spacing:-.2px}
+.gs-nav{display:flex;gap:10px;margin-top:24px;padding-top:20px;border-top:1px solid var(--line)}
+.gs-nav-prev{flex:1;display:flex;flex-direction:column;align-items:flex-start;padding:12px 16px;
+             background:#fff;border:1px solid var(--line);border-radius:12px;
+             text-decoration:none;color:var(--ink);transition:background .15s}
+.gs-nav-prev:hover{background:#f8f9fb}
+.gs-nav-next{flex:1;display:flex;flex-direction:column;align-items:flex-end;padding:12px 16px;
+             background:var(--ink);border:1px solid var(--ink);border-radius:12px;
+             text-decoration:none;color:#fff;transition:background .15s}
+.gs-nav-next:hover{background:#1a2535}
+.gs-nav-dir{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;opacity:.6;margin-bottom:3px}
+.gs-nav-label{font-size:13px;font-weight:700}
+.gs-tip{background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:13px 16px;font-size:13px;color:#1d4ed8;line-height:1.6;margin-top:12px}
+.gs-warn{background:#fef9c3;border:1px solid #fde68a;border-radius:12px;padding:11px 14px;font-size:12px;color:#92400e;margin-top:10px}
+/* shared utility */
+.copy-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:8px;
+          font-size:12px;font-weight:600;border:1px solid var(--line);background:#fff;
+          color:var(--ink);cursor:pointer;transition:background .15s;font-family:inherit}
+.copy-btn:hover{background:#f8f9fb}
+{% block gs_style %}{% endblock %}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="gs-breadcrumb">
+  <a href="{{ url_for('ambassador.getting_started') }}">← Getting Started</a>
+  <span class="gs-breadcrumb-sep">›</span>
+  <span>{{ current[1] }}</span>
+</div>
+
+<div class="gs-hero">
+  <div class="gs-hero-step">Step {{ topic_index }} of {{ topic_count }}</div>
+  <div class="gs-hero-title">
+    <span>{{ current[2] }}</span>
+    <span>{{ current[1] }}</span>
+  </div>
+  <div class="gs-progress">
+    {% for i in range(topic_count) %}
+    <div class="gs-pip {% if i < topic_index %}done{% endif %}"></div>
+    {% endfor %}
+  </div>
+</div>
+
+{% block gs_content %}{% endblock %}
+
+<div class="gs-nav">
+  {% if prev_topic %}
+  <a class="gs-nav-prev" href="{{ url_for('ambassador.getting_started_topic', topic=prev_topic[0]) }}">
+    <div class="gs-nav-dir">← Previous</div>
+    <div class="gs-nav-label">{{ prev_topic[2] }} {{ prev_topic[1] }}</div>
+  </a>
+  {% else %}
+  <a class="gs-nav-prev" href="{{ url_for('ambassador.getting_started') }}">
+    <div class="gs-nav-dir">← Back</div>
+    <div class="gs-nav-label">Getting Started</div>
+  </a>
+  {% endif %}
+
+  {% if next_topic %}
+  <a class="gs-nav-next" href="{{ url_for('ambassador.getting_started_topic', topic=next_topic[0]) }}">
+    <div class="gs-nav-dir">Next →</div>
+    <div class="gs-nav-label">{{ next_topic[2] }} {{ next_topic[1] }}</div>
+  </a>
+  {% else %}
+  <a class="gs-nav-next" href="{{ url_for('ambassador.dashboard') }}">
+    <div class="gs-nav-dir">Done!</div>
+    <div class="gs-nav-label">Go to Dashboard 🏠</div>
+  </a>
+  {% endif %}
+</div>
+
+<script>
+function copyText(id, btn) {
+  var text = document.getElementById(id).textContent.trim();
+  navigator.clipboard.writeText(text).then(function() {
+    var orig = btn.textContent;
+    btn.textContent = "Copied!";
+    setTimeout(function(){ btn.textContent = orig; }, 2000);
+  });
+}
+function toggleReq(btn) {
+  var body  = btn.nextElementSibling;
+  var arrow = btn.querySelector('.req-arrow');
+  var open  = body.style.display === 'block';
+  body.style.display = open ? 'none' : 'block';
+  arrow.style.transform = open ? '' : 'rotate(180deg)';
+}
+</script>
+{% endblock %}

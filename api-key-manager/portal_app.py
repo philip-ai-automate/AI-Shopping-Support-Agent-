@@ -22,6 +22,7 @@ def create_app():
     from ambassador_routes import ambassador_bp
     from school_routes import school_bp
     from school_migrations import ensure_school_tables
+    from portal_routes_estate import estate_bp
 
     # Run DB migrations on startup (all idempotent — safe)
     ensure_portal_tables()
@@ -32,16 +33,20 @@ def create_app():
     flask_app.register_blueprint(facebook_bp)
     flask_app.register_blueprint(ambassador_bp)
     flask_app.register_blueprint(school_bp, url_prefix="/school")
+    flask_app.register_blueprint(estate_bp)
 
     from flask import request, redirect
 
     @flask_app.before_request
-    def _school_subdomain_redirect():
-        """When a request arrives from school.phixtra.com and the path doesn't
-        already start with /school, redirect so the school blueprint handles it."""
+    def _subdomain_redirect():
+        """Redirect subdomains to their blueprint prefix."""
         host = request.host.split(":")[0]
         if host == "school.phixtra.com" and not request.path.startswith("/school"):
             new_path = "/school" + request.path
+            qs = ("?" + request.query_string.decode()) if request.query_string else ""
+            return redirect(new_path + qs, code=302)
+        if host == "home.phixtra.com" and not request.path.startswith("/estate"):
+            new_path = "/estate" + request.path
             qs = ("?" + request.query_string.decode()) if request.query_string else ""
             return redirect(new_path + qs, code=302)
 
@@ -154,6 +159,10 @@ def create_app():
     @flask_app.context_processor
     def inject_turnstile():
         return {"turnstile_site_key": os.getenv("TURNSTILE_SITE_KEY", "")}
+
+    # Estate portal context processor (inject _re_tenant + _re_inbox_count)
+    from portal_routes_estate import inject_re_tenant as _estate_ctx
+    flask_app.context_processor(_estate_ctx)
 
     @flask_app.context_processor
     def inject_is_demo_tenant():
