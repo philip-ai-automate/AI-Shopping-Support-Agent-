@@ -207,6 +207,53 @@
 .wa-signup-btn:hover{background:#1da852;transform:translateY(-1px);box-shadow:0 8px 26px rgba(37,211,102,0.40)}
 @keyframes wa-spin{to{transform:rotate(360deg)}}
 
+/* ── Manual WA setup ── */
+.wa-manual-reveal{
+  display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+  padding:11px;background:transparent;
+  border:1.5px dashed rgba(255,255,255,0.18);border-radius:10px;
+  color:rgba(255,255,255,0.50);font-size:13px;font-weight:650;
+  font-family:inherit;cursor:pointer;transition:.13s;margin-top:16px
+}
+.wa-manual-reveal:hover{border-color:rgba(255,255,255,0.40);color:rgba(255,255,255,0.80)}
+.wa-manual-reveal svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s}
+.wa-manual-reveal.open svg.chevron{transform:rotate(180deg)}
+
+.wa-manual-panel{
+  background:#fff;border:1.5px solid rgba(3,12,24,0.10);border-radius:14px;
+  overflow:hidden;margin-top:16px
+}
+.wa-manual-head{
+  padding:16px 20px;border-bottom:1px solid rgba(3,12,24,0.07);
+  display:flex;align-items:center;gap:10px
+}
+.wa-manual-head-icon{
+  width:32px;height:32px;border-radius:8px;
+  background:rgba(3,12,24,0.06);display:flex;align-items:center;justify-content:center;flex-shrink:0
+}
+.wa-manual-head-icon svg{width:15px;height:15px;stroke:#030C18;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.wa-manual-instructions{padding:0 20px}
+.wa-mstep{display:flex;align-items:flex-start;gap:12px;padding:14px 0;border-bottom:1px solid rgba(3,12,24,0.055)}
+.wa-mstep:last-of-type{border-bottom:none}
+.wa-mstep-num{
+  width:24px;height:24px;border-radius:50%;flex-shrink:0;margin-top:1px;
+  background:#030C18;color:#fff;font-size:11px;font-weight:800;
+  display:flex;align-items:center;justify-content:center
+}
+.wa-mstep-title{font-size:13px;font-weight:750;color:#030C18;margin-bottom:3px}
+.wa-mstep-desc{font-size:12.5px;color:rgba(3,12,24,0.50);line-height:1.6}
+.wa-mstep-path{
+  display:inline-block;font-size:11px;font-weight:700;
+  background:rgba(3,12,24,0.06);border:1px solid rgba(3,12,24,0.10);
+  border-radius:4px;padding:1px 7px;margin:2px 1px;color:#030C18;font-family:monospace
+}
+.wa-mstep-warn{
+  display:flex;align-items:flex-start;gap:7px;margin-top:6px;
+  padding:8px 12px;background:#fffbeb;border:1px solid #fde68a;
+  border-radius:7px;font-size:11.5px;color:#78350f;line-height:1.5
+}
+.wa-manual-form{padding:18px 20px;background:#f8fafc;border-top:1px solid rgba(3,12,24,0.07)}
+
 /* ── Danger zone ── */
 .danger-box{
   border:1px solid rgba(240,68,56,0.18);border-radius:12px;
@@ -474,7 +521,10 @@
           </form>
         </div>
 
-        {% elif embedded_enabled %}
+        {% else %}
+
+        {% if embedded_enabled %}
+        <!-- ── Embedded Signup (primary) ── -->
         <div class="wa-dark">
           <div style="position:relative;z-index:1">
             <p style="font-size:13.5px;color:rgba(255,255,255,0.50);margin-bottom:22px;line-height:1.65">
@@ -510,14 +560,154 @@
               </div>
               <div id="waError" style="display:none;margin-top:14px;padding:11px 14px;background:rgba(240,68,56,0.15);border:1px solid rgba(240,68,56,0.30);border-radius:9px;font-size:13px;color:#fca5a5;text-align:left"></div>
             </div>
+
+            <!-- Toggle to manual -->
+            <button type="button" class="wa-manual-reveal" id="manualRevealBtn" onclick="toggleManual()">
+              <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              Prefer to set up manually?
+              <svg class="chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+
           </div>
         </div>
-
-        {% else %}
-        <div style="padding:16px 18px;background:#f8fafc;border:1px solid rgba(3,12,24,0.08);border-radius:11px;font-size:13.5px;color:rgba(3,12,24,0.45)">
-          WhatsApp Embedded Signup is not configured on this server. Contact your administrator.
-        </div>
         {% endif %}
+
+        <!-- ── Manual Setup Panel ── -->
+        <div class="wa-manual-panel" id="manualPanel" style="display:{% if not embedded_enabled %}block{% else %}none{% endif %}">
+          <div class="wa-manual-head">
+            <div class="wa-manual-head-icon">
+              <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><polyline points="8 21 12 17 16 21"/><line x1="12" y1="17" x2="12" y2="3"/></svg>
+            </div>
+            <div>
+              <div style="font-size:14px;font-weight:800;color:#030C18;margin-bottom:1px">Manual Setup</div>
+              <div style="font-size:12px;color:rgba(3,12,24,0.42)">Enter your credentials from Meta Business Manager</div>
+            </div>
+          </div>
+
+          <!-- Step-by-step instructions -->
+          <div class="wa-manual-instructions">
+
+            <div class="wa-mstep">
+              <div class="wa-mstep-num">1</div>
+              <div>
+                <div class="wa-mstep-title">Find your Phone Number ID</div>
+                <div class="wa-mstep-desc">
+                  In Meta Business Manager, go to:
+                  <span class="wa-mstep-path">Business Settings</span> →
+                  <span class="wa-mstep-path">WhatsApp Accounts</span> →
+                  select your account →
+                  <span class="wa-mstep-path">API Setup</span><br/>
+                  Copy the <strong>Phone Number ID</strong> shown there.
+                </div>
+                <div class="wa-mstep-warn">
+                  ⚠️ This is a long numeric ID (e.g. <code>123456789012345</code>), NOT the actual phone number like +234…
+                </div>
+              </div>
+            </div>
+
+            <div class="wa-mstep">
+              <div class="wa-mstep-num">2</div>
+              <div>
+                <div class="wa-mstep-title">Get your WhatsApp Business Account ID (WABA ID)</div>
+                <div class="wa-mstep-desc">
+                  In Meta Business Manager:
+                  <span class="wa-mstep-path">Business Settings</span> →
+                  <span class="wa-mstep-path">WhatsApp Accounts</span><br/>
+                  Your WABA ID appears at the top of the account detail page. It's also visible in the URL as <code>waba_id=XXXXXXXXX</code>.
+                </div>
+              </div>
+            </div>
+
+            <div class="wa-mstep">
+              <div class="wa-mstep-num">3</div>
+              <div>
+                <div class="wa-mstep-title">Generate a Permanent Access Token</div>
+                <div class="wa-mstep-desc">
+                  In Meta Business Manager:
+                  <span class="wa-mstep-path">Settings</span> →
+                  <span class="wa-mstep-path">Users</span> →
+                  <span class="wa-mstep-path">System Users</span> →
+                  select or create a System User → click <strong>Generate New Token</strong>.<br/>
+                  Select your app, enable <code>whatsapp_business_messaging</code> and <code>whatsapp_business_management</code> permissions, set expiry to <strong>Never</strong>. Copy the token (starts with <code>EAAG…</code> or <code>EAAx…</code>).
+                </div>
+                <div class="wa-mstep-warn">
+                  ⚠️ Save the token immediately — Meta only shows it once.
+                </div>
+              </div>
+            </div>
+
+            <div class="wa-mstep">
+              <div class="wa-mstep-num">4</div>
+              <div>
+                <div class="wa-mstep-title">App Secret <span style="font-weight:500;color:rgba(3,12,24,0.40);font-size:11.5px">(optional — recommended for security)</span></div>
+                <div class="wa-mstep-desc">
+                  In Meta Developers portal:
+                  <span class="wa-mstep-path">Your App</span> →
+                  <span class="wa-mstep-path">Settings</span> →
+                  <span class="wa-mstep-path">Basic</span><br/>
+                  Copy the <strong>App Secret</strong>. Used to verify that incoming webhook messages are genuinely from Meta.
+                </div>
+              </div>
+            </div>
+
+          </div><!-- /instructions -->
+
+          <!-- Form -->
+          <div class="wa-manual-form">
+            <p style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:rgba(3,12,24,0.38);margin:0 0 16px">Enter your credentials</p>
+            <form method="POST" action="{{ url_for('estate.inbox_connect_wa') }}">
+              <div class="f2" style="margin-bottom:14px">
+                <div class="fg">
+                  <label class="fg-label">Phone Number ID *</label>
+                  <input class="fg-input" type="text" name="wa_phone_number_id" required
+                         placeholder="123456789012345"
+                         style="font-family:monospace;font-size:13px"/>
+                  <span class="fg-hint">From API Setup page in Business Manager</span>
+                </div>
+                <div class="fg">
+                  <label class="fg-label">WhatsApp Business Account ID *</label>
+                  <input class="fg-input" type="text" name="wa_business_account_id" required
+                         placeholder="987654321098765"
+                         style="font-family:monospace;font-size:13px"/>
+                  <span class="fg-hint">WABA ID from Business Settings</span>
+                </div>
+              </div>
+              <div class="f2" style="margin-bottom:14px">
+                <div class="fg">
+                  <label class="fg-label">Permanent Access Token *</label>
+                  <div class="fg-wrap">
+                    <input class="fg-input" type="password" name="wa_access_token" id="waTokenInput" required
+                           placeholder="EAAGxxxxxxxxxxxxxxx"
+                           style="font-family:monospace;font-size:12px"/>
+                    <button type="button" class="fg-eye" onclick="togglePw('waTokenInput',this)" tabindex="-1">
+                      <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    </button>
+                  </div>
+                  <span class="fg-hint">System User token with messaging permissions</span>
+                </div>
+                <div class="fg">
+                  <label class="fg-label">App Secret <span style="font-weight:500;opacity:.6">(optional)</span></label>
+                  <div class="fg-wrap">
+                    <input class="fg-input" type="password" name="wa_app_secret" id="waSecretInput"
+                           placeholder="a1b2c3d4e5f6…"
+                           style="font-family:monospace;font-size:12px"/>
+                    <button type="button" class="fg-eye" onclick="togglePw('waSecretInput',this)" tabindex="-1">
+                      <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    </button>
+                  </div>
+                  <span class="fg-hint">For webhook signature verification</span>
+                </div>
+              </div>
+              <button type="submit" class="save-btn" style="margin-top:8px">
+                <svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+                Connect WhatsApp
+              </button>
+            </form>
+          </div>
+
+        </div><!-- /manualPanel -->
+
+        {% endif %}<!-- /not wa_connected -->
 
       </div>
     </div>
@@ -644,6 +834,14 @@ function evalPw(v) {
   } else {
     hint.style.display = 'none';
   }
+}
+
+function toggleManual() {
+  var panel = document.getElementById('manualPanel');
+  var btn   = document.getElementById('manualRevealBtn');
+  var open  = panel.style.display === 'block';
+  panel.style.display = open ? 'none' : 'block';
+  if (btn) btn.classList.toggle('open', !open);
 }
 
 {% if embedded_enabled and not wa_connected %}
