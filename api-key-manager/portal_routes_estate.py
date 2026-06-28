@@ -1843,7 +1843,7 @@ def settings():
                         UPDATE re_tenants
                         SET wa_phone_number_id=NULL, wa_waba_id=NULL,
                             wa_access_token=NULL, wa_app_secret=NULL,
-                            display_phone_number=NULL, updated_at=NOW()
+                            wa_display_phone=NULL, wa_verified_name=NULL, updated_at=NOW()
                         WHERE id=%s
                     """, (tenant_id,))
                     conn.commit()
