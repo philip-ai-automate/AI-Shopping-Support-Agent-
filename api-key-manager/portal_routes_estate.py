@@ -2073,6 +2073,313 @@ def reports_export_csv():
     )
 
 
+# ── Report Generation ──────────────────────────────────────────────────────────
+
+def _rpt_since(period):
+    """Return SQL fragment for the start of a period."""
+    m = {"30d": "NOW()-INTERVAL '30 days'", "90d": "NOW()-INTERVAL '90 days'",
+         "6m":  "NOW()-INTERVAL '6 months'", "ytd": "DATE_TRUNC('year',NOW())",
+         "1y":  "NOW()-INTERVAL '1 year'",   "all": "'2000-01-01'::timestamptz"}
+    return m.get(period, "NOW()-INTERVAL '30 days'")
+
+def _rpt_period_label(period):
+    m = {"30d":"Last 30 Days","90d":"Last 90 Days","6m":"Last 6 Months",
+         "ytd":"Year to Date","1y":"Last 12 Months","all":"All Time"}
+    return m.get(period, "Last 30 Days")
+
+@estate_bp.route("/estate/reports/generate/<report_type>")
+def reports_generate(report_type):
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    tenant    = _get_tenant(tenant_id)
+
+    if report_type not in ("portfolio","pipeline","staff","inspections","financial","buyers"):
+        return redirect(url_for("estate.reports"))
+
+    period       = request.args.get("period", "all")
+    status_f     = request.args.get("status", "all")
+    if period not in ("30d","90d","6m","ytd","1y","all"): period = "all"
+    since_sql    = _rpt_since(period)
+    period_label = _rpt_period_label(period)
+    generated_at = datetime.now().strftime("%d %B %Y, %I:%M %p")
+    data         = {}
+
+    conn = get_db_connection()
+    if conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        if report_type == "portfolio":
+            status_clause = f"AND pl.status = '{status_f}'" if status_f != "all" else ""
+            cur.execute(f"""
+                SELECT pl.id, pl.title, pl.property_type, pl.sub_type, pl.transaction_type,
+                       pl.status, pl.location, pl.neighbourhood, pl.lga, pl.state,
+                       pl.price, pl.price_qualifier, pl.size_sqm, pl.size_unit,
+                       pl.bedrooms, pl.bathrooms, pl.title_document, pl.view_count,
+                       pl.ai_indexed_at, pl.created_at, pl.updated_at,
+                       s.first_name || ' ' || s.last_name AS agent_name
+                FROM re_property_listings pl
+                LEFT JOIN re_staff s ON s.id = pl.assigned_to AND s.tenant_id = pl.tenant_id
+                WHERE pl.tenant_id=%s {status_clause}
+                ORDER BY pl.created_at DESC
+            """, (tenant_id,))
+            data["rows"] = cur.fetchall()
+            cur.execute("SELECT status, COUNT(*) AS cnt, COALESCE(SUM(price),0) AS total_val FROM re_property_listings WHERE tenant_id=%s GROUP BY status", (tenant_id,))
+            data["summary"] = cur.fetchall()
+
+        elif report_type == "pipeline":
+            stage_f = request.args.get("stage", "all")
+            stage_clause = f"AND c.lead_status = '{stage_f}'" if stage_f != "all" else ""
+            cur.execute(f"""
+                SELECT c.id, c.name, c.phone_number, c.email, c.lead_status,
+                       c.budget_min, c.budget_max, c.preferred_area,
+                       c.property_type_pref, c.transaction_pref, c.bedrooms_pref,
+                       c.payment_method, c.urgency, c.source,
+                       c.last_seen_at, c.created_at, c.follow_up_at,
+                       s.first_name || ' ' || s.last_name AS agent_name
+                FROM re_customers c
+                LEFT JOIN re_staff s ON s.id = c.assigned_to AND s.tenant_id = c.tenant_id
+                WHERE c.tenant_id=%s AND c.created_at >= {since_sql} {stage_clause}
+                ORDER BY c.lead_status, c.created_at DESC
+            """, (tenant_id,))
+            data["rows"] = cur.fetchall()
+            cur.execute("SELECT lead_status, COUNT(*) AS n FROM re_customers WHERE tenant_id=%s GROUP BY lead_status ORDER BY n DESC", (tenant_id,))
+            data["summary"] = cur.fetchall()
+
+        elif report_type == "staff":
+            cur.execute("""
+                SELECT s.first_name || ' ' || s.last_name AS name, s.role, s.email,
+                       s.is_active, s.created_at,
+                       COUNT(c.id) AS total_leads,
+                       SUM(CASE WHEN c.lead_status IN ('inspection_booked','negotiating','closed') THEN 1 ELSE 0 END) AS progressed,
+                       SUM(CASE WHEN c.lead_status = 'closed' THEN 1 ELSE 0 END) AS closed,
+                       SUM(CASE WHEN c.lead_status = 'inspection_booked' THEN 1 ELSE 0 END) AS inspections_booked
+                FROM re_staff s
+                LEFT JOIN re_customers c ON c.assigned_to = s.id AND c.tenant_id = s.tenant_id
+                WHERE s.tenant_id=%s
+                GROUP BY s.id, s.first_name, s.last_name, s.role, s.email, s.is_active, s.created_at
+                ORDER BY closed DESC NULLS LAST, progressed DESC NULLS LAST
+            """, (tenant_id,))
+            data["rows"] = cur.fetchall()
+            cur.execute("SELECT COUNT(*) AS n FROM re_staff WHERE tenant_id=%s AND is_active=TRUE", (tenant_id,))
+            data["active_count"] = int((cur.fetchone() or {}).get("n", 0) or 0)
+
+        elif report_type == "inspections":
+            status_clause = f"AND ib.status = '{status_f}'" if status_f != "all" else ""
+            cur.execute(f"""
+                SELECT ib.id, ib.status, ib.notes, ib.created_at, ib.updated_at,
+                       pl.title AS property_title, pl.location, pl.price, pl.status AS listing_status,
+                       c.name AS customer_name, c.phone_number AS customer_phone,
+                       sl.slot_datetime
+                FROM re_inspection_bookings ib
+                LEFT JOIN re_property_listings pl ON pl.id = ib.listing_id
+                LEFT JOIN re_customers c ON c.id = ib.customer_id
+                LEFT JOIN re_inspection_slots sl ON sl.id = ib.slot_id
+                WHERE ib.tenant_id=%s AND ib.created_at >= {since_sql} {status_clause}
+                ORDER BY sl.slot_datetime DESC NULLS LAST, ib.created_at DESC
+            """, (tenant_id,))
+            data["rows"] = cur.fetchall()
+            cur.execute("SELECT status, COUNT(*) AS n FROM re_inspection_bookings WHERE tenant_id=%s GROUP BY status", (tenant_id,))
+            data["summary"] = {r["status"]: int(r["n"]) for r in cur.fetchall()}
+
+        elif report_type == "financial":
+            # Portfolio value by status
+            cur.execute("""
+                SELECT status, COUNT(*) AS cnt, COALESCE(SUM(price),0) AS total_val,
+                       COALESCE(AVG(price),0) AS avg_val
+                FROM re_property_listings WHERE tenant_id=%s GROUP BY status ORDER BY total_val DESC
+            """, (tenant_id,))
+            data["portfolio"] = cur.fetchall()
+            # Revenue earned (agency fees)
+            cur.execute("""
+                SELECT COALESCE(SUM(price * agency_fee_pct / 100),0) AS revenue,
+                       COALESCE(SUM(price * legal_fee_pct / 100),0) AS legal_fees,
+                       COUNT(*) AS deals
+                FROM re_property_listings
+                WHERE tenant_id=%s AND status IN ('sold','let') AND price > 0
+            """, (tenant_id,))
+            data["fees"] = cur.fetchone() or {}
+            # Property type revenue breakdown
+            cur.execute("""
+                SELECT property_type, transaction_type, COUNT(*) AS cnt,
+                       COALESCE(SUM(price),0) AS total_val,
+                       COALESCE(SUM(price * agency_fee_pct / 100),0) AS agency_rev
+                FROM re_property_listings
+                WHERE tenant_id=%s AND status IN ('sold','let') AND price > 0
+                GROUP BY property_type, transaction_type ORDER BY total_val DESC
+            """, (tenant_id,))
+            data["by_type"] = cur.fetchall()
+            # Top 10 highest value deals closed
+            cur.execute("""
+                SELECT title, property_type, transaction_type, status, location, state,
+                       price, agency_fee_pct, legal_fee_pct,
+                       ROUND(price * agency_fee_pct / 100, 0) AS agency_earned,
+                       updated_at
+                FROM re_property_listings
+                WHERE tenant_id=%s AND status IN ('sold','let') AND price > 0
+                ORDER BY price DESC LIMIT 10
+            """, (tenant_id,))
+            data["top_deals"] = cur.fetchall()
+            # Available stock value
+            cur.execute("SELECT COALESCE(SUM(price),0) AS v, COUNT(*) AS n FROM re_property_listings WHERE tenant_id=%s AND status='available' AND price > 0", (tenant_id,))
+            data["available"] = cur.fetchone() or {}
+
+        elif report_type == "buyers":
+            stage_f = request.args.get("stage", "all")
+            stage_clause = f"AND c.lead_status = '{stage_f}'" if stage_f != "all" else ""
+            cur.execute(f"""
+                SELECT c.id, c.name, c.phone_number, c.email, c.lead_status,
+                       c.budget_min, c.budget_max, c.preferred_area,
+                       c.property_type_pref, c.transaction_pref, c.bedrooms_pref,
+                       c.payment_method, c.urgency, c.source, c.tags,
+                       c.last_seen_at, c.created_at,
+                       s.first_name || ' ' || s.last_name AS agent_name
+                FROM re_customers c
+                LEFT JOIN re_staff s ON s.id = c.assigned_to AND s.tenant_id = c.tenant_id
+                WHERE c.tenant_id=%s {stage_clause}
+                ORDER BY c.lead_status, c.budget_max DESC NULLS LAST
+            """, (tenant_id,))
+            data["rows"] = cur.fetchall()
+            cur.execute("SELECT COUNT(*) AS n FROM re_customers WHERE tenant_id=%s AND budget_max IS NOT NULL AND budget_max > 0", (tenant_id,))
+            data["qualified_n"] = int((cur.fetchone() or {}).get("n", 0) or 0)
+
+        cur.close(); conn.close()
+
+    rpt_titles = {
+        "portfolio":   "Property Portfolio Report",
+        "pipeline":    "Sales Pipeline Report",
+        "staff":       "Staff Performance Report",
+        "inspections": "Inspections Report",
+        "financial":   "Financial Summary Report",
+        "buyers":      "Buyer Profiles Report",
+    }
+    return render_template("estate/report_print.html",
+        tenant=tenant, report_type=report_type, period=period,
+        period_label=period_label, generated_at=generated_at,
+        status_filter=status_f, data=data,
+        report_title=rpt_titles.get(report_type, "Report"),
+        now=datetime.now())
+
+
+@estate_bp.route("/estate/reports/export/<report_type>.csv")
+def reports_export_type(report_type):
+    import csv, io
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+
+    if report_type not in ("portfolio","pipeline","staff","inspections","buyers"):
+        return redirect(url_for("estate.reports"))
+
+    period   = request.args.get("period", "all")
+    status_f = request.args.get("status", "all")
+    since    = _rpt_since(period)
+    conn     = get_db_connection()
+    rows     = []
+    headers  = []
+
+    if conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        if report_type == "portfolio":
+            s_clause = f"AND pl.status='{status_f}'" if status_f != "all" else ""
+            cur.execute(f"""
+                SELECT pl.title, pl.property_type, pl.sub_type, pl.transaction_type,
+                       pl.status, pl.location, pl.neighbourhood, pl.state, pl.price,
+                       pl.bedrooms, pl.bathrooms, pl.size_sqm, pl.size_unit,
+                       pl.title_document, pl.view_count,
+                       s.first_name || ' ' || s.last_name AS agent,
+                       pl.created_at, pl.updated_at
+                FROM re_property_listings pl
+                LEFT JOIN re_staff s ON s.id=pl.assigned_to AND s.tenant_id=pl.tenant_id
+                WHERE pl.tenant_id=%s {s_clause} ORDER BY pl.created_at DESC
+            """, (tenant_id,))
+            rows    = cur.fetchall()
+            headers = ["Title","Type","Sub-type","Transaction","Status","Location","Neighbourhood","State","Price (₦)","Beds","Baths","Size","Size Unit","Title Doc","Views","Agent","Created","Updated"]
+            def row_fn(r): return [r["title"],r["property_type"],r["sub_type"],r["transaction_type"],r["status"],r["location"],r["neighbourhood"],r["state"],r["price"] or "",r["bedrooms"] or "",r["bathrooms"] or "",r["size_sqm"] or "",r["size_unit"],r["title_document"],r["view_count"] or 0,r["agent"] or "Unassigned",str(r["created_at"])[:10],str(r["updated_at"])[:10]]
+
+        elif report_type == "pipeline":
+            cur.execute(f"""
+                SELECT c.name, c.phone_number, c.email, c.lead_status,
+                       c.budget_min, c.budget_max, c.preferred_area,
+                       c.property_type_pref, c.transaction_pref, c.bedrooms_pref,
+                       c.urgency, c.source,
+                       s.first_name || ' ' || s.last_name AS agent,
+                       c.created_at, c.last_seen_at
+                FROM re_customers c
+                LEFT JOIN re_staff s ON s.id=c.assigned_to AND s.tenant_id=c.tenant_id
+                WHERE c.tenant_id=%s AND c.created_at >= {since} ORDER BY c.lead_status, c.created_at DESC
+            """, (tenant_id,))
+            rows    = cur.fetchall()
+            headers = ["Name","Phone","Email","Stage","Budget Min","Budget Max","Area","Type Pref","Transaction","Beds","Urgency","Source","Agent","Created","Last Seen"]
+            def row_fn(r): return [r["name"] or "",r["phone_number"],r["email"] or "",r["lead_status"],r["budget_min"] or "",r["budget_max"] or "",r["preferred_area"] or "",r["property_type_pref"] or "",r["transaction_pref"] or "",r["bedrooms_pref"] or "",r["urgency"] or "",r["source"] or "",r["agent"] or "",str(r["created_at"])[:10],str(r["last_seen_at"])[:10] if r["last_seen_at"] else ""]
+
+        elif report_type == "staff":
+            cur.execute("""
+                SELECT s.first_name || ' ' || s.last_name AS name, s.role, s.email, s.is_active,
+                       COUNT(c.id) AS total_leads,
+                       SUM(CASE WHEN c.lead_status IN ('inspection_booked','negotiating','closed') THEN 1 ELSE 0 END) AS progressed,
+                       SUM(CASE WHEN c.lead_status='closed' THEN 1 ELSE 0 END) AS closed
+                FROM re_staff s
+                LEFT JOIN re_customers c ON c.assigned_to=s.id AND c.tenant_id=s.tenant_id
+                WHERE s.tenant_id=%s GROUP BY s.id,s.first_name,s.last_name,s.role,s.email,s.is_active
+                ORDER BY closed DESC NULLS LAST
+            """, (tenant_id,))
+            rows    = cur.fetchall()
+            headers = ["Name","Role","Email","Active","Leads Assigned","Progressed","Closed","Conversion %"]
+            def row_fn(r):
+                tot  = int(r["total_leads"] or 0)
+                prog = int(r["progressed"] or 0)
+                conv = round(prog/tot*100) if tot else 0
+                return [r["name"],r["role"],r["email"] or "","Yes" if r["is_active"] else "No",tot,prog,int(r["closed"] or 0),f"{conv}%"]
+
+        elif report_type == "inspections":
+            s_clause = f"AND ib.status='{status_f}'" if status_f != "all" else ""
+            cur.execute(f"""
+                SELECT ib.status, ib.notes, ib.created_at,
+                       pl.title AS property, pl.location,
+                       c.name AS customer, c.phone_number,
+                       sl.slot_datetime
+                FROM re_inspection_bookings ib
+                LEFT JOIN re_property_listings pl ON pl.id=ib.listing_id
+                LEFT JOIN re_customers c ON c.id=ib.customer_id
+                LEFT JOIN re_inspection_slots sl ON sl.id=ib.slot_id
+                WHERE ib.tenant_id=%s AND ib.created_at >= {since} {s_clause}
+                ORDER BY sl.slot_datetime DESC NULLS LAST
+            """, (tenant_id,))
+            rows    = cur.fetchall()
+            headers = ["Status","Property","Location","Customer","Phone","Slot Date/Time","Booked On","Notes"]
+            def row_fn(r): return [r["status"],r["property"] or "",r["location"] or "",r["customer"] or "",r["phone_number"] or "",str(r["slot_datetime"])[:16] if r["slot_datetime"] else "",str(r["created_at"])[:10],r["notes"] or ""]
+
+        elif report_type == "buyers":
+            cur.execute("""
+                SELECT c.name, c.phone_number, c.email, c.lead_status,
+                       c.budget_min, c.budget_max, c.preferred_area,
+                       c.property_type_pref, c.transaction_pref, c.bedrooms_pref,
+                       c.urgency, c.payment_method, c.source,
+                       s.first_name || ' ' || s.last_name AS agent, c.created_at
+                FROM re_customers c
+                LEFT JOIN re_staff s ON s.id=c.assigned_to AND s.tenant_id=c.tenant_id
+                WHERE c.tenant_id=%s ORDER BY c.budget_max DESC NULLS LAST
+            """, (tenant_id,))
+            rows    = cur.fetchall()
+            headers = ["Name","Phone","Email","Stage","Budget Min","Budget Max","Area","Type Pref","Transaction","Beds","Urgency","Payment","Source","Agent","Created"]
+            def row_fn(r): return [r["name"] or "",r["phone_number"],r["email"] or "",r["lead_status"],r["budget_min"] or "",r["budget_max"] or "",r["preferred_area"] or "",r["property_type_pref"] or "",r["transaction_pref"] or "",r["bedrooms_pref"] or "",r["urgency"] or "",r["payment_method"] or "",r["source"] or "",r["agent"] or "",str(r["created_at"])[:10]]
+
+        cur.close(); conn.close()
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(headers)
+    for r in rows:
+        writer.writerow(row_fn(r))
+
+    from flask import Response
+    fname = f"{report_type}_report_{datetime.now().strftime('%Y%m%d')}.csv"
+    return Response(buf.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": f"attachment;filename={fname}"})
+
+
 # ── Settings ───────────────────────────────────────────────────────────────────
 
 @estate_bp.route("/estate/settings", methods=["GET", "POST"])
