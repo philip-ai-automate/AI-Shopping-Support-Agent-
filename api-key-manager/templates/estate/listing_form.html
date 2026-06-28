@@ -515,7 +515,7 @@
       </div>
     </div>
 
-    <div id="panelNone" class="{% if listing and listing.property_type %}{% else %}prop-panel active{% endif %}">
+    <div id="panelNone" class="prop-panel {% if not listing or not listing.property_type %}active{% endif %}">
       <p class="ef-hint">Select a property type above to see relevant detail fields.</p>
     </div>
   </div>
@@ -757,14 +757,19 @@ function onTypeChange(){
     sel.appendChild(o);
   });
 
+  // Re-enable all panel inputs (in case of a prior submit attempt or type switch)
+  document.querySelectorAll('.prop-panel input, .prop-panel select, .prop-panel textarea').forEach(function(el){
+    el.disabled = false;
+  });
+
   // Show/hide detail panels
   ['panelLand','panelResidential','panelCommercial','panelNone'].forEach(function(id){
     document.getElementById(id).classList.remove('active');
   });
-  if(type === 'land')                                  document.getElementById('panelLand').classList.add('active');
-  else if(type === 'residential')                      document.getElementById('panelResidential').classList.add('active');
+  if(type === 'land')                                        document.getElementById('panelLand').classList.add('active');
+  else if(type === 'residential')                            document.getElementById('panelResidential').classList.add('active');
   else if(['commercial','mixed_use','industrial'].includes(type)) document.getElementById('panelCommercial').classList.add('active');
-  else                                                 document.getElementById('panelNone').classList.add('active');
+  else                                                       document.getElementById('panelNone').classList.add('active');
 }
 
 // Re-select saved sub_type on page load
@@ -788,17 +793,37 @@ function toggleAmChip(label){
   label.classList.toggle('selected', cb.checked);
 }
 
-// ── Features textarea → hidden inputs on submit ───────────────────────────────
-document.getElementById('listingForm').addEventListener('submit', function(){
-  var ta = document.getElementById('featuresArea');
-  if(!ta) return;
-  var lines = ta.value.split('\n').map(function(l){return l.trim()}).filter(Boolean);
-  ta.name = '_features_raw_disabled';
-  lines.forEach(function(f){
-    var inp = document.createElement('input');
-    inp.type='hidden'; inp.name='features'; inp.value=f;
-    document.getElementById('listingForm').appendChild(inp);
+// ── Pre-submit: disable inactive panel inputs + convert features textarea ────
+document.getElementById('listingForm').addEventListener('submit', function(e){
+  // 1. Disable all inputs inside inactive prop-panels so they don't submit
+  document.querySelectorAll('.prop-panel:not(.active) input, .prop-panel:not(.active) select, .prop-panel:not(.active) textarea').forEach(function(el){
+    el.disabled = true;
   });
+
+  // 2. If a non-land type is active and size_unit wasn't in that panel, inject sqm default
+  var type = document.getElementById('propType').value;
+  if(type && type !== 'land'){
+    // ensure size_unit is submitted as sqm (land panel is disabled, so we add it manually)
+    var hasSizeUnit = false;
+    document.querySelectorAll('select[name="size_unit"]:not([disabled])').forEach(function(){ hasSizeUnit = true; });
+    if(!hasSizeUnit){
+      var inp = document.createElement('input');
+      inp.type='hidden'; inp.name='size_unit'; inp.value='sqm';
+      document.getElementById('listingForm').appendChild(inp);
+    }
+  }
+
+  // 3. Features textarea → individual hidden inputs
+  var ta = document.getElementById('featuresArea');
+  if(ta){
+    var lines = ta.value.split('\n').map(function(l){return l.trim()}).filter(Boolean);
+    ta.name = '_features_raw_disabled';
+    lines.forEach(function(f){
+      var inp = document.createElement('input');
+      inp.type='hidden'; inp.name='features'; inp.value=f;
+      document.getElementById('listingForm').appendChild(inp);
+    });
+  }
 });
 
 {% if mode == 'edit' and listing %}
