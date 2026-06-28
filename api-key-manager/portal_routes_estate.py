@@ -3663,45 +3663,220 @@ def sandbox_book_slot():
 # ── Email helpers ──────────────────────────────────────────────────────────────
 
 def _send_verify_email(to_email: str, first_name: str, business_name: str, verify_url: str):
-    subject  = "Verify your PhiXtra Real Estate account"
-    html_body = f"""
-    <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:32px 24px">
-      <img src="https://home.phixtra.com/static/portal/phixtra-logo.png"
-           style="height:40px;margin-bottom:24px" alt="PhiXtra"/>
-      <h2 style="color:#030C18;margin:0 0 8px">Welcome to PhiXtra Real Estate, {first_name}!</h2>
-      <p style="color:#555;margin:0 0 20px">
-        You're almost ready to launch your property AI assistant for
-        <strong>{business_name}</strong>. Please verify your email to activate your account.
-      </p>
-      <a href="{verify_url}"
-         style="display:inline-block;background:#030C18;color:#fff;padding:14px 28px;
-                border-radius:12px;text-decoration:none;font-weight:700;font-size:15px">
-        Verify Email Address
-      </a>
-      <p style="color:#999;font-size:12px;margin-top:24px">
-        This link expires in 48 hours. If you didn't register, ignore this email.
-      </p>
+    subject  = f"Welcome to PhiXtra, {first_name} — please verify your email"
+    html_body = f"""<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Verify your email</title></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
+
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f1f5f9;padding:40px 0;">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;">
+
+  <!-- Header -->
+  <tr><td style="background:linear-gradient(135deg,#030C18 0%,#071830 60%,#0c2545 100%);border-radius:16px 16px 0 0;padding:36px 48px 32px;text-align:center;">
+    <img src="https://home.phixtra.com/static/portal/phixtra-logo.png"
+         alt="PhiXtra" height="38" style="height:38px;width:auto;filter:brightness(0) invert(1);display:block;margin:0 auto 20px;"/>
+    <div style="display:inline-block;background:rgba(26,86,219,0.22);border:1px solid rgba(26,86,219,0.45);border-radius:999px;padding:5px 16px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#93c5fd;margin-bottom:18px;">
+      Real Estate Portal
     </div>
-    """
+    <h1 style="color:#ffffff;font-size:26px;font-weight:800;letter-spacing:-.5px;line-height:1.2;margin:0 0 10px;">
+      Welcome aboard, {first_name}!
+    </h1>
+    <p style="color:rgba(255,255,255,0.55);font-size:14px;line-height:1.6;margin:0;">
+      One click to activate your account for <strong style="color:rgba(255,255,255,0.85);">{business_name}</strong>
+    </p>
+  </td></tr>
+
+  <!-- Body -->
+  <tr><td style="background:#ffffff;padding:40px 48px 32px;">
+
+    <!-- Verify button -->
+    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td align="center" style="padding-bottom:32px;">
+      <a href="{verify_url}"
+         style="display:inline-block;background:#030C18;color:#ffffff;text-decoration:none;
+                font-size:16px;font-weight:800;letter-spacing:-.1px;
+                padding:16px 40px;border-radius:12px;
+                box-shadow:0 4px 20px rgba(3,12,24,0.25);">
+        Verify Email Address &nbsp;→
+      </a>
+    </td></tr>
+    </table>
+
+    <!-- Divider -->
+    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td style="border-top:1px solid #e2e8f0;font-size:0;">&nbsp;</td>
+    </tr>
+    </table>
+
+    <!-- What you get -->
+    <p style="color:#64748b;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin:28px 0 16px;">
+      What's waiting for you
+    </p>
+
+    <!-- Feature 1 -->
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:14px;">
+    <tr>
+      <td width="40" valign="top">
+        <div style="width:32px;height:32px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;text-align:center;line-height:32px;font-size:15px;">🏠</div>
+      </td>
+      <td style="padding-left:12px;" valign="top">
+        <p style="margin:0;font-size:14px;font-weight:700;color:#030C18;line-height:1.3;">AI Property Assistant</p>
+        <p style="margin:4px 0 0;font-size:13px;color:#64748b;line-height:1.5;">Qualifies buyers, answers enquiries and books inspections on WhatsApp — automatically.</p>
+      </td>
+    </tr>
+    </table>
+
+    <!-- Feature 2 -->
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:14px;">
+    <tr>
+      <td width="40" valign="top">
+        <div style="width:32px;height:32px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;text-align:center;line-height:32px;font-size:15px;">📋</div>
+      </td>
+      <td style="padding-left:12px;" valign="top">
+        <p style="margin:0;font-size:14px;font-weight:700;color:#030C18;line-height:1.3;">Lead CRM & Inbox</p>
+        <p style="margin:4px 0 0;font-size:13px;color:#64748b;line-height:1.5;">Every WhatsApp enquiry becomes a tracked lead — assign to staff, add notes, filter by status.</p>
+      </td>
+    </tr>
+    </table>
+
+    <!-- Feature 3 -->
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:32px;">
+    <tr>
+      <td width="40" valign="top">
+        <div style="width:32px;height:32px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;text-align:center;line-height:32px;font-size:15px;">📲</div>
+      </td>
+      <td style="padding-left:12px;" valign="top">
+        <p style="margin:0;font-size:14px;font-weight:700;color:#030C18;line-height:1.3;">Smart Follow-Up</p>
+        <p style="margin:4px 0 0;font-size:13px;color:#64748b;line-height:1.5;">Automated follow-up sequences on day 2, 5 and 10 — so no lead goes cold.</p>
+      </td>
+    </tr>
+    </table>
+
+    <!-- Expiry note -->
+    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px 18px;">
+      <p style="margin:0;font-size:13px;color:#64748b;line-height:1.6;">
+        ⏱ &nbsp;This link expires in <strong style="color:#030C18;">48 hours</strong>.
+        If you didn't create this account, you can safely ignore this email.
+      </p>
+    </td></tr>
+    </table>
+
+    <!-- Fallback link -->
+    <p style="font-size:12px;color:#94a3b8;margin:20px 0 0;line-height:1.6;">
+      Button not working? Copy and paste this link into your browser:<br/>
+      <a href="{verify_url}" style="color:#1a56db;word-break:break-all;text-decoration:none;">{verify_url}</a>
+    </p>
+
+  </td></tr>
+
+  <!-- Footer -->
+  <tr><td style="background:#030C18;border-radius:0 0 16px 16px;padding:28px 48px;text-align:center;">
+    <p style="color:rgba(255,255,255,0.85);font-size:13px;font-weight:700;margin:0 0 4px;">PhiXtra Real Estate</p>
+    <p style="color:rgba(255,255,255,0.35);font-size:12px;margin:0 0 14px;line-height:1.5;">
+      AI-powered property sales platform
+    </p>
+    <p style="margin:0;">
+      <a href="mailto:support@phixtra.com" style="color:#60a5fa;font-size:12px;text-decoration:none;">support@phixtra.com</a>
+      &nbsp;·&nbsp;
+      <a href="https://home.phixtra.com" style="color:#60a5fa;font-size:12px;text-decoration:none;">home.phixtra.com</a>
+    </p>
+  </td></tr>
+
+</table>
+</td></tr>
+</table>
+
+</body>
+</html>"""
     send_email(to_email, subject, html_body)
 
 
 def _send_reset_email(to_email: str, first_name: str, reset_url: str):
     subject  = "Reset your PhiXtra Real Estate password"
-    html_body = f"""
-    <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:32px 24px">
-      <img src="https://home.phixtra.com/static/portal/phixtra-logo.png"
-           style="height:40px;margin-bottom:24px" alt="PhiXtra"/>
-      <h2 style="color:#030C18;margin:0 0 8px">Reset your password</h2>
-      <p style="color:#555;margin:0 0 20px">Hi {first_name}, click below to set a new password.</p>
-      <a href="{reset_url}"
-         style="display:inline-block;background:#030C18;color:#fff;padding:14px 28px;
-                border-radius:12px;text-decoration:none;font-weight:700;font-size:15px">
-        Reset Password
-      </a>
-      <p style="color:#999;font-size:12px;margin-top:24px">
-        This link expires in 2 hours. If you didn't request this, ignore this email.
-      </p>
+    html_body = f"""<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Reset your password</title></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
+
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f1f5f9;padding:40px 0;">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;">
+
+  <!-- Header -->
+  <tr><td style="background:linear-gradient(135deg,#030C18 0%,#071830 60%,#0c2545 100%);border-radius:16px 16px 0 0;padding:36px 48px 32px;text-align:center;">
+    <img src="https://home.phixtra.com/static/portal/phixtra-logo.png"
+         alt="PhiXtra" height="38" style="height:38px;width:auto;filter:brightness(0) invert(1);display:block;margin:0 auto 20px;"/>
+    <div style="width:56px;height:56px;background:rgba(26,86,219,0.22);border:1px solid rgba(26,86,219,0.45);border-radius:50%;margin:0 auto 16px;text-align:center;line-height:56px;font-size:24px;">
+      🔐
     </div>
-    """
+    <h1 style="color:#ffffff;font-size:24px;font-weight:800;letter-spacing:-.5px;line-height:1.2;margin:0 0 8px;">
+      Password reset request
+    </h1>
+    <p style="color:rgba(255,255,255,0.50);font-size:14px;line-height:1.6;margin:0;">
+      Hi <strong style="color:rgba(255,255,255,0.85);">{first_name}</strong>, we received a request to reset your password.
+    </p>
+  </td></tr>
+
+  <!-- Body -->
+  <tr><td style="background:#ffffff;padding:40px 48px 32px;">
+
+    <p style="font-size:15px;color:#475569;line-height:1.7;margin:0 0 28px;">
+      Click the button below to choose a new password. This link is valid for <strong style="color:#030C18;">2 hours</strong>.
+    </p>
+
+    <!-- Reset button -->
+    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td align="center" style="padding-bottom:32px;">
+      <a href="{reset_url}"
+         style="display:inline-block;background:#030C18;color:#ffffff;text-decoration:none;
+                font-size:16px;font-weight:800;letter-spacing:-.1px;
+                padding:16px 40px;border-radius:12px;
+                box-shadow:0 4px 20px rgba(3,12,24,0.25);">
+        Reset My Password &nbsp;→
+      </a>
+    </td></tr>
+    </table>
+
+    <!-- Security note -->
+    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td style="background:#fefce8;border:1.5px solid #fde68a;border-radius:10px;padding:14px 18px;">
+      <p style="margin:0;font-size:13px;color:#713f12;line-height:1.6;">
+        ⚠️ &nbsp;If you didn't request a password reset, <strong>ignore this email</strong> — your account is safe and your password has not been changed.
+      </p>
+    </td></tr>
+    </table>
+
+    <!-- Fallback link -->
+    <p style="font-size:12px;color:#94a3b8;margin:20px 0 0;line-height:1.6;">
+      Button not working? Copy and paste this link into your browser:<br/>
+      <a href="{reset_url}" style="color:#1a56db;word-break:break-all;text-decoration:none;">{reset_url}</a>
+    </p>
+
+  </td></tr>
+
+  <!-- Footer -->
+  <tr><td style="background:#030C18;border-radius:0 0 16px 16px;padding:28px 48px;text-align:center;">
+    <p style="color:rgba(255,255,255,0.85);font-size:13px;font-weight:700;margin:0 0 4px;">PhiXtra Real Estate</p>
+    <p style="color:rgba(255,255,255,0.35);font-size:12px;margin:0 0 14px;line-height:1.5;">
+      AI-powered property sales platform
+    </p>
+    <p style="margin:0;">
+      <a href="mailto:support@phixtra.com" style="color:#60a5fa;font-size:12px;text-decoration:none;">support@phixtra.com</a>
+      &nbsp;·&nbsp;
+      <a href="https://home.phixtra.com" style="color:#60a5fa;font-size:12px;text-decoration:none;">home.phixtra.com</a>
+    </p>
+  </td></tr>
+
+</table>
+</td></tr>
+</table>
+
+</body>
+</html>"""
     send_email(to_email, subject, html_body)
