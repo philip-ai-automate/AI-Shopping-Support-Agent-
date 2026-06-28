@@ -124,6 +124,25 @@ def _get_tenant(tenant_id: int):
     cur.close(); conn.close()
     return row
 
+def _get_staff_list(tenant_id: int):
+    conn = get_db_connection()
+    if not conn:
+        return []
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT id, first_name, last_name FROM re_staff WHERE tenant_id=%s AND is_active=TRUE ORDER BY first_name",
+            (tenant_id,)
+        )
+        rows = cur.fetchall()
+        cur.close(); conn.close()
+        return rows
+    except Exception:
+        try: conn.close()
+        except Exception: pass
+        return []
+
+
 def _check_re_quota(tenant_id: int, limit: int) -> bool:
     """True if tenant is within their monthly AI message quota."""
     if limit == 0:
@@ -628,8 +647,10 @@ def listings():
     if conn:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         query = """
-            SELECT id, title, property_type, transaction_type, location, lga,
-                   price, bedrooms, status, view_count, created_at, updated_at
+            SELECT id, title, property_type, sub_type, transaction_type,
+                   location, neighbourhood, lga, state,
+                   price, price_qualifier, bedrooms, bathrooms, size_sqm, size_unit,
+                   status, images, ai_indexed_at, view_count, created_at, updated_at
             FROM re_property_listings
             WHERE tenant_id=%s
         """
@@ -680,8 +701,10 @@ def listing_new():
             return redirect(url_for("estate.listing_edit", listing_id=new_id, new=1))
         error = new_id  # it's an error string
 
+    staff_list = _get_staff_list(tenant_id)
     return render_template("estate/listing_form.html",
-                           tenant=tenant, listing=None, error=error, mode="new")
+                           tenant=tenant, listing=None, error=error, mode="new",
+                           staff_list=staff_list)
 
 
 @estate_bp.route("/estate/listings/<int:listing_id>/edit", methods=["GET", "POST"])
@@ -714,8 +737,10 @@ def listing_edit(listing_id):
             flash("Listing updated.", "success")
             return redirect(url_for("estate.listings"))
 
+    staff_list = _get_staff_list(tenant_id)
     return render_template("estate/listing_form.html",
-                           tenant=tenant, listing=listing, error=error, mode="edit")
+                           tenant=tenant, listing=listing, error=error, mode="edit",
+                           staff_list=staff_list)
 
 
 @estate_bp.route("/estate/listings/<int:listing_id>/delete", methods=["POST"])
@@ -860,30 +885,72 @@ def listing_toggle(listing_id):
     return redirect(url_for("estate.listings"))
 
 
+def _int(val):
+    try: return int(val) if str(val).strip().lstrip('-').isdigit() else None
+    except: return None
+
+def _float(val):
+    try: return float(val) if str(val).strip() else None
+    except: return None
+
 def _save_listing(tenant_id: int, listing_id):
-    """Save or update a listing. Returns None on success, error string on failure."""
-    title            = request.form.get("title", "").strip()
-    property_type    = request.form.get("property_type", "").strip() or None
-    transaction_type = request.form.get("transaction_type", "").strip() or None
-    location         = request.form.get("location", "").strip() or None
-    lga              = request.form.get("lga", "").strip() or None
-    state            = request.form.get("state", "Lagos").strip() or "Lagos"
-    price_str        = request.form.get("price", "").strip()
-    price            = float(price_str) if price_str else None
-    price_negotiable = request.form.get("price_negotiable") == "on"
-    bedrooms_str     = request.form.get("bedrooms", "").strip()
-    bedrooms         = int(bedrooms_str) if bedrooms_str.isdigit() else None
-    bathrooms_str    = request.form.get("bathrooms", "").strip()
-    bathrooms        = int(bathrooms_str) if bathrooms_str.isdigit() else None
-    toilets_str      = request.form.get("toilets", "").strip()
-    toilets          = int(toilets_str) if toilets_str.isdigit() else None
-    size_str         = request.form.get("size_sqm", "").strip()
-    size_sqm         = float(size_str) if size_str else None
-    title_document   = request.form.get("title_document", "").strip() or None
-    features_raw     = request.form.getlist("features")
-    features         = _json.dumps([f.strip() for f in features_raw if f.strip()])
-    status           = request.form.get("status", "available").strip()
-    description      = request.form.get("description", "").strip() or None
+    """Save or update a listing. Returns new id (int) on INSERT, None on UPDATE, error str on failure."""
+    g  = lambda k, d="": request.form.get(k, d).strip()
+    gi = lambda k: _int(g(k))
+    gf = lambda k: _float(g(k))
+
+    title            = g("title")
+    property_type    = g("property_type") or None
+    sub_type         = g("sub_type") or None
+    transaction_type = g("transaction_type") or None
+    status           = g("status") or "available"
+    description      = g("description") or None
+
+    # Location
+    location      = g("location") or None
+    neighbourhood = g("neighbourhood") or None
+    lga           = g("lga") or None
+    state         = g("state") or "Lagos"
+    landmark      = g("landmark") or None
+
+    # Pricing
+    price            = gf("price")
+    price_qualifier  = g("price_qualifier") or "outright"
+    price_negotiable = g("price_negotiable") == "on"
+    service_charge   = gf("service_charge")
+    estate_levy      = gf("estate_levy")
+    agency_fee_pct   = gf("agency_fee_pct")
+    legal_fee_pct    = gf("legal_fee_pct")
+    caution_deposit  = gi("caution_deposit") or 0
+
+    # Property details
+    bedrooms    = gi("bedrooms")
+    bathrooms   = gi("bathrooms")
+    toilets     = gi("toilets")
+    car_parks   = gi("car_parks")
+    floors      = gi("floors")
+    floor_level = gi("floor_level")
+    furnishing  = g("furnishing") or None
+    size_sqm    = gf("size_sqm")
+    size_unit   = g("size_unit") or "sqm"
+    land_use    = g("land_use") or None
+    terrain     = g("terrain") or None
+    title_document = g("title_document") or None
+
+    # Amenities (multi-select checkboxes) + features (one per line textarea)
+    amenities    = _json.dumps(request.form.getlist("amenities"))
+    features_raw = request.form.getlist("features")
+    features     = _json.dumps([f.strip() for f in features_raw if f.strip()])
+
+    # Media
+    video_url        = g("video_url") or None
+    virtual_tour_url = g("virtual_tour_url") or None
+
+    # Internal
+    assigned_to    = gi("assigned_to")
+    internal_notes = g("internal_notes") or None
+    avail_str      = g("available_from")
+    available_from = avail_str if avail_str else None
 
     if not title:
         return "Property title is required."
@@ -896,36 +963,99 @@ def _save_listing(tenant_id: int, listing_id):
         if listing_id is None:
             cur.execute("""
                 INSERT INTO re_property_listings
-                    (tenant_id, title, property_type, transaction_type, location, lga,
-                     state, price, price_negotiable, bedrooms, bathrooms, toilets,
-                     size_sqm, title_document, features, status, description)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    (tenant_id, title, property_type, sub_type, transaction_type,
+                     status, description,
+                     location, neighbourhood, lga, state, landmark,
+                     price, price_qualifier, price_negotiable,
+                     service_charge, estate_levy, agency_fee_pct, legal_fee_pct, caution_deposit,
+                     bedrooms, bathrooms, toilets, car_parks, floors, floor_level,
+                     furnishing, size_sqm, size_unit, land_use, terrain,
+                     title_document, amenities, features,
+                     video_url, virtual_tour_url,
+                     assigned_to, internal_notes, available_from)
+                VALUES (
+                    %s,%s,%s,%s,%s,
+                    %s,%s,
+                    %s,%s,%s,%s,%s,
+                    %s,%s,%s,
+                    %s,%s,%s,%s,%s,
+                    %s,%s,%s,%s,%s,%s,
+                    %s,%s,%s,%s,%s,
+                    %s,%s,%s,
+                    %s,%s,
+                    %s,%s,%s)
                 RETURNING id
-            """, (tenant_id, title, property_type, transaction_type, location, lga,
-                  state, price, price_negotiable, bedrooms, bathrooms, toilets,
-                  size_sqm, title_document, features, status, description))
+            """, (
+                tenant_id, title, property_type, sub_type, transaction_type,
+                status, description,
+                location, neighbourhood, lga, state, landmark,
+                price, price_qualifier, price_negotiable,
+                service_charge, estate_levy, agency_fee_pct, legal_fee_pct, caution_deposit,
+                bedrooms, bathrooms, toilets, car_parks, floors, floor_level,
+                furnishing, size_sqm, size_unit, land_use, terrain,
+                title_document, amenities, features,
+                video_url, virtual_tour_url,
+                assigned_to, internal_notes, available_from
+            ))
             new_id = cur.fetchone()[0]
             conn.commit(); cur.close(); conn.close()
+            _trigger_rag_index(tenant_id, new_id)
             return new_id
         else:
             cur.execute("""
                 UPDATE re_property_listings SET
-                    title=%s, property_type=%s, transaction_type=%s,
-                    location=%s, lga=%s, state=%s, price=%s, price_negotiable=%s,
-                    bedrooms=%s, bathrooms=%s, toilets=%s, size_sqm=%s,
-                    title_document=%s, features=%s, status=%s, description=%s,
+                    title=%s, property_type=%s, sub_type=%s, transaction_type=%s,
+                    status=%s, description=%s,
+                    location=%s, neighbourhood=%s, lga=%s, state=%s, landmark=%s,
+                    price=%s, price_qualifier=%s, price_negotiable=%s,
+                    service_charge=%s, estate_levy=%s, agency_fee_pct=%s,
+                    legal_fee_pct=%s, caution_deposit=%s,
+                    bedrooms=%s, bathrooms=%s, toilets=%s, car_parks=%s,
+                    floors=%s, floor_level=%s, furnishing=%s,
+                    size_sqm=%s, size_unit=%s, land_use=%s, terrain=%s,
+                    title_document=%s, amenities=%s, features=%s,
+                    video_url=%s, virtual_tour_url=%s,
+                    assigned_to=%s, internal_notes=%s, available_from=%s,
                     updated_at=NOW()
                 WHERE id=%s AND tenant_id=%s
-            """, (title, property_type, transaction_type, location, lga,
-                  state, price, price_negotiable, bedrooms, bathrooms, toilets,
-                  size_sqm, title_document, features, status, description,
-                  listing_id, tenant_id))
+            """, (
+                title, property_type, sub_type, transaction_type,
+                status, description,
+                location, neighbourhood, lga, state, landmark,
+                price, price_qualifier, price_negotiable,
+                service_charge, estate_levy, agency_fee_pct,
+                legal_fee_pct, caution_deposit,
+                bedrooms, bathrooms, toilets, car_parks,
+                floors, floor_level, furnishing,
+                size_sqm, size_unit, land_use, terrain,
+                title_document, amenities, features,
+                video_url, virtual_tour_url,
+                assigned_to, internal_notes, available_from,
+                listing_id, tenant_id
+            ))
             conn.commit(); cur.close(); conn.close()
+            _trigger_rag_index(tenant_id, listing_id)
             return None
     except Exception as e:
         try: conn.rollback(); conn.close()
         except Exception: pass
         return str(e)
+
+
+def _trigger_rag_index(tenant_id: int, listing_id: int):
+    """Fire-and-forget call to AI backend to embed this listing."""
+    import threading
+    def _call():
+        try:
+            import requests as _req
+            _req.post(
+                f"{_AI_BACKEND_URL}/estate-index-listing",
+                json={"listing_id": listing_id, "tenant_id": tenant_id},
+                timeout=20
+            )
+        except Exception as e:
+            print(f"⚠️ RAG index failed for listing {listing_id}: {e}")
+    threading.Thread(target=_call, daemon=True).start()
 
 
 # ── Inbox ──────────────────────────────────────────────────────────────────────

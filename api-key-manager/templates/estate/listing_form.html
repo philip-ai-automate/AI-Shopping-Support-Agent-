@@ -2,10 +2,9 @@
 {% block title %}{{ 'Edit' if mode == 'edit' else 'Add' }} Listing — PhiXtra Real Estate{% endblock %}
 
 {% block head %}
-<!-- Cropper.js -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css"/>
 <style>
-/* ── Form sections ── */
+/* ── Layout ── */
 .lf-wrap{display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start}
 @media(max-width:900px){.lf-wrap{grid-template-columns:1fr}}
 
@@ -19,12 +18,14 @@
 }
 .lf-section-title svg{width:15px;height:15px;stroke:#1a56db;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
 
+/* ── Form fields ── */
 .ef-group{margin-bottom:15px}
 .ef-group:last-child{margin-bottom:0}
 .ef-label{
   display:block;font-size:11px;font-weight:700;letter-spacing:.06em;
   text-transform:uppercase;color:rgba(3,12,24,0.38);margin-bottom:6px
 }
+.ef-label-note{font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;color:rgba(3,12,24,0.35)}
 .ef-input,.ef-select,.ef-textarea{
   width:100%;padding:10px 13px;border:1.5px solid #e2e8f0;border-radius:8px;
   font-size:13.5px;font-family:inherit;color:#030C18;background:#f8fafc;
@@ -36,13 +37,43 @@
 .ef-input::placeholder,.ef-textarea::placeholder{color:rgba(3,12,24,0.25)}
 .ef-textarea{resize:vertical;min-height:90px}
 .ef-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-@media(max-width:540px){.ef-row{grid-template-columns:1fr}}
+.ef-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+@media(max-width:540px){.ef-row,.ef-row-3{grid-template-columns:1fr}}
 
 .ef-checkbox-label{
   display:flex;align-items:center;gap:9px;font-size:13px;color:rgba(3,12,24,0.65);
   cursor:pointer;font-weight:500
 }
-.ef-checkbox-label input[type=checkbox]{width:auto;accent-color:#1a56db;width:16px;height:16px;cursor:pointer}
+.ef-checkbox-label input[type=checkbox]{accent-color:#1a56db;width:16px;height:16px;cursor:pointer;flex-shrink:0}
+
+.ef-hint{font-size:11.5px;color:rgba(3,12,24,0.38);margin-top:5px;line-height:1.5}
+
+/* ── Naira prefix input ── */
+.ef-prefix-wrap{position:relative}
+.ef-prefix-wrap .ef-prefix{
+  position:absolute;left:0;top:0;bottom:0;width:36px;display:flex;align-items:center;
+  justify-content:center;font-size:14px;font-weight:700;color:rgba(3,12,24,0.45);
+  border-right:1.5px solid #e2e8f0;pointer-events:none
+}
+.ef-prefix-wrap .ef-input{padding-left:46px}
+
+/* ── Amenities grid ── */
+.amenity-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+@media(max-width:600px){.amenity-grid{grid-template-columns:1fr 1fr}}
+.am-chip{
+  display:flex;align-items:center;gap:7px;padding:8px 10px;border-radius:8px;
+  border:1.5px solid rgba(3,12,24,0.1);background:#f8fafc;cursor:pointer;
+  font-size:12.5px;font-weight:600;color:rgba(3,12,24,0.6);transition:.13s;
+  user-select:none
+}
+.am-chip:hover{border-color:rgba(26,86,219,0.35);background:rgba(26,86,219,0.04);color:#1a56db}
+.am-chip.selected{border-color:#1a56db;background:rgba(26,86,219,0.08);color:#1a56db}
+.am-chip input[type=checkbox]{display:none}
+.am-chip-icon{font-size:15px;line-height:1;flex-shrink:0}
+
+/* ── Dynamic section toggle ── */
+.prop-panel{display:none}
+.prop-panel.active{display:block}
 
 /* ── Image upload ── */
 .img-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
@@ -63,7 +94,6 @@
   color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;
   letter-spacing:.04em
 }
-
 .img-add-btn{
   padding-top:72%;border-radius:9px;border:2px dashed rgba(3,12,24,0.15);
   background:#f8fafc;cursor:pointer;position:relative;transition:.15s
@@ -77,7 +107,6 @@
 .img-add-inner span{font-size:11.5px;color:rgba(3,12,24,0.38);font-weight:600;text-align:center;line-height:1.3}
 .img-add-btn:hover .img-add-inner svg{stroke:#1a56db}
 .img-add-btn:hover .img-add-inner span{color:#1a56db}
-
 .img-note{font-size:11.5px;color:rgba(3,12,24,0.38);line-height:1.5}
 
 /* Cropper modal */
@@ -86,63 +115,35 @@
   z-index:1000;align-items:center;justify-content:center;padding:20px
 }
 .cropper-modal-overlay.active{display:flex}
-.cropper-modal{
-  background:#fff;border-radius:16px;width:100%;max-width:640px;
-  overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,0.35)
-}
-.cropper-modal-head{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:16px 20px;border-bottom:1px solid rgba(3,12,24,0.08)
-}
+.cropper-modal{background:#fff;border-radius:16px;width:100%;max-width:640px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,0.35)}
+.cropper-modal-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid rgba(3,12,24,0.08)}
 .cropper-modal-head h3{font-size:15px;font-weight:750;color:#030C18}
-.cropper-modal-close{
-  background:none;border:none;font-size:20px;cursor:pointer;
-  color:rgba(3,12,24,0.40);padding:4px;border-radius:6px;transition:.13s;line-height:1
-}
+.cropper-modal-close{background:none;border:none;font-size:20px;cursor:pointer;color:rgba(3,12,24,0.40);padding:4px;border-radius:6px;transition:.13s;line-height:1}
 .cropper-modal-close:hover{background:rgba(3,12,24,0.06);color:#030C18}
 .cropper-canvas-wrap{height:340px;background:#111;overflow:hidden}
 .cropper-canvas-wrap img{display:block;max-width:100%}
-.cropper-modal-foot{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:14px 20px;border-top:1px solid rgba(3,12,24,0.08);gap:10px;flex-wrap:wrap
-}
+.cropper-modal-foot{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-top:1px solid rgba(3,12,24,0.08);gap:10px;flex-wrap:wrap}
 .cropper-hint{font-size:12.5px;color:rgba(3,12,24,0.42)}
 .cropper-modal-foot-btns{display:flex;gap:8px}
-.crop-btn{
-  padding:9px 18px;border-radius:8px;font-size:13.5px;font-weight:700;
-  font-family:inherit;cursor:pointer;border:1.5px solid rgba(3,12,24,0.12);
-  background:#fff;color:rgba(3,12,24,0.60);transition:.13s
-}
+.crop-btn{padding:9px 18px;border-radius:8px;font-size:13.5px;font-weight:700;font-family:inherit;cursor:pointer;border:1.5px solid rgba(3,12,24,0.12);background:#fff;color:rgba(3,12,24,0.60);transition:.13s}
 .crop-btn:hover{border-color:rgba(3,12,24,0.25);color:#030C18}
 .crop-btn.primary{background:#030C18;color:#fff;border-color:#030C18}
 .crop-btn.primary:hover{background:#0d1f3c}
 
 /* Upload progress */
-.upload-progress{
-  display:none;align-items:center;gap:10px;padding:10px 14px;
-  background:rgba(26,86,219,0.06);border:1px solid rgba(26,86,219,0.18);
-  border-radius:8px;margin-bottom:10px;font-size:13px;color:#1a56db;font-weight:600
-}
+.upload-progress{display:none;align-items:center;gap:10px;padding:10px 14px;background:rgba(26,86,219,0.06);border:1px solid rgba(26,86,219,0.18);border-radius:8px;margin-bottom:10px;font-size:13px;color:#1a56db;font-weight:600}
 .upload-progress.active{display:flex}
-.upload-spinner{
-  width:16px;height:16px;border:2px solid rgba(26,86,219,0.25);
-  border-top-color:#1a56db;border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0
-}
+.upload-spinner{width:16px;height:16px;border:2px solid rgba(26,86,219,0.25);border-top-color:#1a56db;border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
 @keyframes spin{to{transform:rotate(360deg)}}
 
+/* AI index badge */
+.ai-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:20px;font-size:12px;font-weight:700}
+.ai-badge.indexed{background:rgba(5,150,105,0.1);color:#059669;border:1px solid rgba(5,150,105,0.2)}
+.ai-badge.not-indexed{background:rgba(245,158,11,0.1);color:#b45309;border:1px solid rgba(245,158,11,0.2)}
+
 /* Save bar */
-.lf-save-bar{
-  display:flex;align-items:center;justify-content:flex-end;gap:10px;
-  padding:16px 24px;background:#fff;border:1px solid rgba(3,12,24,0.08);
-  border-radius:14px;box-shadow:0 2px 10px rgba(3,12,24,0.05)
-}
-.ef-btn-save{
-  display:inline-flex;align-items:center;gap:7px;padding:11px 24px;
-  background:#030C18;color:#fff;border:none;border-radius:8px;
-  font-size:14px;font-weight:750;font-family:inherit;cursor:pointer;
-  transition:background .13s,transform .12s,box-shadow .13s;
-  box-shadow:0 4px 14px rgba(3,12,24,0.18)
-}
+.lf-save-bar{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:16px 24px;background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:14px;box-shadow:0 2px 10px rgba(3,12,24,0.05)}
+.ef-btn-save{display:inline-flex;align-items:center;gap:7px;padding:11px 24px;background:#030C18;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:750;font-family:inherit;cursor:pointer;transition:background .13s,transform .12s,box-shadow .13s;box-shadow:0 4px 14px rgba(3,12,24,0.18)}
 .ef-btn-save:hover{background:#0d1f3c;transform:translateY(-1px);box-shadow:0 8px 22px rgba(3,12,24,0.22)}
 </style>
 {% endblock %}
@@ -155,9 +156,7 @@
     </h1>
     <p class="muted">{{ listing.title if listing else 'Fill in the property details below' }}</p>
   </div>
-  <a href="{{ url_for('estate.listings') }}" class="btn" style="border-radius:9px">
-    ← Back
-  </a>
+  <a href="{{ url_for('estate.listings') }}" class="btn" style="border-radius:9px">← Back</a>
 </div>
 
 {% if error %}
@@ -165,239 +164,553 @@
 {% endif %}
 
 <form method="POST" id="listingForm">
+<div class="lf-wrap">
 
-  <div class="lf-wrap">
+<!-- ═══════════════════════ LEFT COLUMN ═══════════════════════ -->
+<div>
 
-    <!-- ── Left column ── -->
-    <div>
-
-      <!-- Basic info -->
-      <div class="lf-section">
-        <div class="lf-section-title">
-          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-          Basic Information
-        </div>
-
-        <div class="ef-group">
-          <label class="ef-label">Property Title *</label>
-          <input class="ef-input" type="text" name="title" required
-                 placeholder="e.g. 3-Bed Terrace Duplex, Lekki Phase 1"
-                 value="{{ listing.title if listing else '' }}"/>
-        </div>
-
-        <div class="ef-row">
-          <div class="ef-group">
-            <label class="ef-label">Property Type</label>
-            <select class="ef-select" name="property_type">
-              <option value="">— Select —</option>
-              {% for t in ['land','residential','commercial','mixed_use','industrial'] %}
-              <option value="{{ t }}" {% if listing and listing.property_type == t %}selected{% endif %}>
-                {{ t | replace('_',' ') | title }}
-              </option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="ef-group">
-            <label class="ef-label">Transaction Type</label>
-            <select class="ef-select" name="transaction_type">
-              <option value="">— Select —</option>
-              {% for t in ['sale','rent','lease','shortlet'] %}
-              <option value="{{ t }}" {% if listing and listing.transaction_type == t %}selected{% endif %}>
-                {{ t | title }}
-              </option>
-              {% endfor %}
-            </select>
-          </div>
-        </div>
-
-        <div class="ef-row">
-          <div class="ef-group">
-            <label class="ef-label">Price (₦)</label>
-            <input class="ef-input" type="number" name="price" step="500000" min="0"
-                   placeholder="55000000"
-                   value="{{ listing.price | int if listing and listing.price else '' }}"/>
-          </div>
-          <div class="ef-group">
-            <label class="ef-label">Title Document</label>
-            <select class="ef-select" name="title_document">
-              <option value="">— Select —</option>
-              {% for d in ['C_of_O','Governors_Consent','Survey','Excision','Freehold','Deed_of_Assignment','None','Other'] %}
-              <option value="{{ d }}" {% if listing and listing.title_document == d %}selected{% endif %}>
-                {{ d | replace('_',' ') }}
-              </option>
-              {% endfor %}
-            </select>
-          </div>
-        </div>
-
-        <div class="ef-group">
-          <label class="ef-checkbox-label">
-            <input type="checkbox" name="price_negotiable"
-                   {% if listing and listing.price_negotiable %}checked{% endif %}/>
-            Price is negotiable
-          </label>
-        </div>
-      </div>
-
-      <!-- Location -->
-      <div class="lf-section">
-        <div class="lf-section-title">
-          <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-          Location
-        </div>
-        <div class="ef-group">
-          <label class="ef-label">Address / Area</label>
-          <input class="ef-input" type="text" name="location"
-                 placeholder="e.g. Lekki Phase 1, after Chevron roundabout"
-                 value="{{ listing.location if listing else '' }}"/>
-        </div>
-        <div class="ef-row">
-          <div class="ef-group">
-            <label class="ef-label">LGA</label>
-            <input class="ef-input" type="text" name="lga" placeholder="Eti-Osa"
-                   value="{{ listing.lga if listing else '' }}"/>
-          </div>
-          <div class="ef-group">
-            <label class="ef-label">State</label>
-            <input class="ef-input" type="text" name="state" placeholder="Lagos"
-                   value="{{ listing.state if listing else 'Lagos' }}"/>
-          </div>
-        </div>
-      </div>
-
-      <!-- Property details -->
-      <div class="lf-section">
-        <div class="lf-section-title">
-          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
-          Property Details
-        </div>
-        <div class="ef-row">
-          <div class="ef-group">
-            <label class="ef-label">Bedrooms</label>
-            <input class="ef-input" type="number" name="bedrooms" min="0" placeholder="3"
-                   value="{{ listing.bedrooms if listing else '' }}"/>
-          </div>
-          <div class="ef-group">
-            <label class="ef-label">Bathrooms</label>
-            <input class="ef-input" type="number" name="bathrooms" min="0" placeholder="3"
-                   value="{{ listing.bathrooms if listing else '' }}"/>
-          </div>
-        </div>
-        <div class="ef-row">
-          <div class="ef-group">
-            <label class="ef-label">Toilets</label>
-            <input class="ef-input" type="number" name="toilets" min="0" placeholder="4"
-                   value="{{ listing.toilets if listing else '' }}"/>
-          </div>
-          <div class="ef-group">
-            <label class="ef-label">Size (sqm)</label>
-            <input class="ef-input" type="number" name="size_sqm" step="0.01" min="0" placeholder="250"
-                   value="{{ listing.size_sqm if listing else '' }}"/>
-          </div>
-        </div>
-      </div>
-
-      <!-- Description & features -->
-      <div class="lf-section">
-        <div class="lf-section-title">
-          <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-          Description &amp; Features
-        </div>
-        <div class="ef-group">
-          <label class="ef-label">Description</label>
-          <textarea class="ef-textarea" name="description" rows="5"
-                    placeholder="Describe the property — this feeds the AI's knowledge and helps buyers find it...">{{ listing.description if listing else '' }}</textarea>
-        </div>
-        <div class="ef-group">
-          <label class="ef-label">Features <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;color:rgba(3,12,24,0.35)">(one per line)</span></label>
-          <textarea class="ef-textarea" name="features_raw" id="featuresArea" rows="6"
-                    placeholder="Gated estate&#10;Borehole water&#10;24hr security&#10;CCTV&#10;Backup power">{% if listing and listing.features %}{% if listing.features is iterable and listing.features is not string %}{% for f in listing.features %}{{ f }}
-{% endfor %}{% else %}{{ listing.features }}{% endif %}{% endif %}</textarea>
-        </div>
-      </div>
-
+  <!-- ── 1. Basics ── -->
+  <div class="lf-section">
+    <div class="lf-section-title">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Basics
     </div>
 
-    <!-- ── Right column ── -->
-    <div>
+    <div class="ef-group">
+      <label class="ef-label">Property Title *</label>
+      <input class="ef-input" type="text" name="title" required
+             placeholder="e.g. 3-Bed Terrace Duplex, Lekki Phase 1"
+             value="{{ listing.title if listing else '' }}"/>
+    </div>
 
-      <!-- Status -->
-      <div class="lf-section">
-        <div class="lf-section-title">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          Status
+    <div class="ef-row">
+      <div class="ef-group">
+        <label class="ef-label">Property Type</label>
+        <select class="ef-select" name="property_type" id="propType" onchange="onTypeChange()">
+          <option value="">— Select type —</option>
+          <option value="land"       {% if listing and listing.property_type=='land' %}selected{% endif %}>Land</option>
+          <option value="residential"{% if listing and listing.property_type=='residential' %}selected{% endif %}>Residential</option>
+          <option value="commercial" {% if listing and listing.property_type=='commercial' %}selected{% endif %}>Commercial</option>
+          <option value="mixed_use"  {% if listing and listing.property_type=='mixed_use' %}selected{% endif %}>Mixed Use</option>
+          <option value="industrial" {% if listing and listing.property_type=='industrial' %}selected{% endif %}>Industrial</option>
+        </select>
+      </div>
+      <div class="ef-group">
+        <label class="ef-label">Sub-Type</label>
+        <select class="ef-select" name="sub_type" id="subType">
+          <option value="">— Select type first —</option>
+          {% if listing and listing.sub_type %}
+          <option value="{{ listing.sub_type }}" selected>{{ listing.sub_type }}</option>
+          {% endif %}
+        </select>
+      </div>
+    </div>
+
+    <div class="ef-row">
+      <div class="ef-group">
+        <label class="ef-label">Transaction Type</label>
+        <select class="ef-select" name="transaction_type">
+          <option value="">— Select —</option>
+          <option value="sale"     {% if listing and listing.transaction_type=='sale' %}selected{% endif %}>For Sale</option>
+          <option value="rent"     {% if listing and listing.transaction_type=='rent' %}selected{% endif %}>To Let (Annual Rent)</option>
+          <option value="lease"    {% if listing and listing.transaction_type=='lease' %}selected{% endif %}>Lease</option>
+          <option value="shortlet" {% if listing and listing.transaction_type=='shortlet' %}selected{% endif %}>Shortlet</option>
+        </select>
+      </div>
+      <div class="ef-group">
+        <label class="ef-label">Listing Status</label>
+        <select class="ef-select" name="status">
+          <option value="available"   {% if not listing or listing.status=='available' %}selected{% endif %}>Available</option>
+          <option value="under_offer" {% if listing and listing.status=='under_offer' %}selected{% endif %}>Under Offer</option>
+          <option value="sold"        {% if listing and listing.status=='sold' %}selected{% endif %}>Sold</option>
+          <option value="let"         {% if listing and listing.status=='let' %}selected{% endif %}>Let</option>
+          <option value="off_market"  {% if listing and listing.status=='off_market' %}selected{% endif %}>Off Market</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 2. Location ── -->
+  <div class="lf-section">
+    <div class="lf-section-title">
+      <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      Location
+    </div>
+
+    <div class="ef-group">
+      <label class="ef-label">Street Address / Area</label>
+      <input class="ef-input" type="text" name="location"
+             placeholder="e.g. No. 5 Admiralty Way, Lekki Phase 1"
+             value="{{ listing.location if listing else '' }}"/>
+    </div>
+
+    <div class="ef-row">
+      <div class="ef-group">
+        <label class="ef-label">Neighbourhood / Estate</label>
+        <input class="ef-input" type="text" name="neighbourhood"
+               placeholder="e.g. Chevron Drive, Ikota Villa"
+               value="{{ listing.neighbourhood if listing else '' }}"/>
+      </div>
+      <div class="ef-group">
+        <label class="ef-label">LGA</label>
+        <input class="ef-input" type="text" name="lga"
+               placeholder="e.g. Eti-Osa, Maitama"
+               value="{{ listing.lga if listing else '' }}"/>
+      </div>
+    </div>
+
+    <div class="ef-row">
+      <div class="ef-group">
+        <label class="ef-label">State</label>
+        <select class="ef-select" name="state">
+          {% set states = ['Abia','Adamawa','Akwa Ibom','Anambra','Bauchi','Bayelsa','Benue','Borno','Cross River','Delta','Ebonyi','Edo','Ekiti','Enugu','FCT Abuja','Gombe','Imo','Jigawa','Kaduna','Kano','Katsina','Kebbi','Kogi','Kwara','Lagos','Nasarawa','Niger','Ogun','Ondo','Osun','Oyo','Plateau','Rivers','Sokoto','Taraba','Yobe','Zamfara'] %}
+          {% for s in states %}
+          <option value="{{ s }}" {% if (listing and listing.state==s) or (not listing and s=='Lagos') %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="ef-group">
+        <label class="ef-label">Landmark / Direction</label>
+        <input class="ef-input" type="text" name="landmark"
+               placeholder="e.g. Off Lekki-Epe Expressway"
+               value="{{ listing.landmark if listing else '' }}"/>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 3. Pricing ── -->
+  <div class="lf-section">
+    <div class="lf-section-title">
+      <svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      Pricing (₦)
+    </div>
+
+    <div class="ef-row">
+      <div class="ef-group">
+        <label class="ef-label">Price (₦)</label>
+        <div class="ef-prefix-wrap">
+          <span class="ef-prefix">₦</span>
+          <input class="ef-input" type="number" name="price" step="50000" min="0"
+                 placeholder="45000000"
+                 value="{{ listing.price | int if listing and listing.price else '' }}"/>
+        </div>
+      </div>
+      <div class="ef-group">
+        <label class="ef-label">Price Qualifier</label>
+        <select class="ef-select" name="price_qualifier">
+          <option value="outright" {% if not listing or listing.price_qualifier=='outright' %}selected{% endif %}>Outright Purchase</option>
+          <option value="per_annum"{% if listing and listing.price_qualifier=='per_annum' %}selected{% endif %}>Per Annum</option>
+          <option value="per_month"{% if listing and listing.price_qualifier=='per_month' %}selected{% endif %}>Per Month</option>
+          <option value="per_night"{% if listing and listing.price_qualifier=='per_night' %}selected{% endif %}>Per Night (Shortlet)</option>
+          <option value="per_sqm"  {% if listing and listing.price_qualifier=='per_sqm' %}selected{% endif %}>Per Sqm</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="ef-group">
+      <label class="ef-checkbox-label">
+        <input type="checkbox" name="price_negotiable"
+               {% if listing and listing.price_negotiable %}checked{% endif %}/>
+        Price is negotiable
+      </label>
+    </div>
+
+    <div class="ef-row">
+      <div class="ef-group">
+        <label class="ef-label">Service Charge (₦/yr) <span class="ef-label-note">optional</span></label>
+        <div class="ef-prefix-wrap">
+          <span class="ef-prefix">₦</span>
+          <input class="ef-input" type="number" name="service_charge" step="10000" min="0"
+                 placeholder="0"
+                 value="{{ listing.service_charge | int if listing and listing.service_charge else '' }}"/>
+        </div>
+      </div>
+      <div class="ef-group">
+        <label class="ef-label">Estate Levy (₦/yr) <span class="ef-label-note">optional</span></label>
+        <div class="ef-prefix-wrap">
+          <span class="ef-prefix">₦</span>
+          <input class="ef-input" type="number" name="estate_levy" step="10000" min="0"
+                 placeholder="0"
+                 value="{{ listing.estate_levy | int if listing and listing.estate_levy else '' }}"/>
+        </div>
+      </div>
+    </div>
+
+    <div class="ef-row-3">
+      <div class="ef-group">
+        <label class="ef-label">Agency Fee %</label>
+        <input class="ef-input" type="number" name="agency_fee_pct" step="0.5" min="0" max="15"
+               placeholder="5"
+               value="{{ listing.agency_fee_pct if listing and listing.agency_fee_pct else '' }}"/>
+      </div>
+      <div class="ef-group">
+        <label class="ef-label">Legal Fee %</label>
+        <input class="ef-input" type="number" name="legal_fee_pct" step="0.5" min="0" max="10"
+               placeholder="5"
+               value="{{ listing.legal_fee_pct if listing and listing.legal_fee_pct else '' }}"/>
+      </div>
+      <div class="ef-group">
+        <label class="ef-label">Caution Deposit (months)</label>
+        <input class="ef-input" type="number" name="caution_deposit" min="0" max="12"
+               placeholder="1"
+               value="{{ listing.caution_deposit if listing and listing.caution_deposit else '' }}"/>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 4. Property Details (dynamic) ── -->
+  <div class="lf-section">
+    <div class="lf-section-title">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+      Property Details
+    </div>
+
+    <!-- Shown for all types -->
+    <div class="ef-row" style="margin-bottom:15px">
+      <div class="ef-group" style="margin-bottom:0">
+        <label class="ef-label">Title Document</label>
+        <select class="ef-select" name="title_document">
+          <option value="">— None / Unknown —</option>
+          {% for d in [('C_of_O','C of O (Certificate of Occupancy)'),('Governors_Consent',"Governor's Consent"),('Survey_Plan','Survey Plan'),('Excision','Excision'),('Deed_of_Assignment','Deed of Assignment'),('Right_of_Occupancy','Right of Occupancy (R of O)'),('Gazette','Gazette'),('Freehold','Freehold'),('Leasehold','Leasehold'),('Other','Other')] %}
+          <option value="{{ d[0] }}" {% if listing and listing.title_document==d[0] %}selected{% endif %}>{{ d[1] }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div></div>
+    </div>
+
+    <!-- Land panel -->
+    <div class="prop-panel {% if listing and listing.property_type=='land' %}active{% endif %}" id="panelLand">
+      <p class="ef-hint" style="margin-bottom:14px;padding:9px 12px;background:rgba(245,158,11,0.07);border-radius:7px;border:1px solid rgba(245,158,11,0.2);color:#92400e">
+        🌍 Land listing — fill in size in plots (most common in Nigeria) or sqm/acres.
+      </p>
+      <div class="ef-row">
+        <div class="ef-group">
+          <label class="ef-label">Size</label>
+          <input class="ef-input" type="number" name="size_sqm" step="0.01" min="0"
+                 placeholder="2"
+                 value="{{ listing.size_sqm if listing and listing.size_sqm else '' }}"/>
         </div>
         <div class="ef-group">
-          <label class="ef-label">Listing Status</label>
-          <select class="ef-select" name="status">
-            {% for s in ['available','under_offer','sold','let','off_market'] %}
-            <option value="{{ s }}"
-              {% if listing and listing.status == s %}selected
-              {% elif not listing and s == 'available' %}selected{% endif %}>
-              {{ s | replace('_',' ') | title }}
-            </option>
-            {% endfor %}
+          <label class="ef-label">Unit</label>
+          <select class="ef-select" name="size_unit">
+            <option value="plots"   {% if not listing or listing.size_unit=='plots' %}selected{% endif %}>Plots</option>
+            <option value="sqm"     {% if listing and listing.size_unit=='sqm' %}selected{% endif %}>Square Metres (sqm)</option>
+            <option value="acres"   {% if listing and listing.size_unit=='acres' %}selected{% endif %}>Acres</option>
+            <option value="hectares"{% if listing and listing.size_unit=='hectares' %}selected{% endif %}>Hectares</option>
           </select>
         </div>
       </div>
-
-      <!-- Photos — only in edit mode (listing must exist to have an ID) -->
-      {% if mode == 'edit' and listing %}
-      <div class="lf-section">
-        <div class="lf-section-title">
-          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-          Photos
+      <div class="ef-row">
+        <div class="ef-group">
+          <label class="ef-label">Land Use</label>
+          <select class="ef-select" name="land_use">
+            <option value="">— Select —</option>
+            <option value="residential"  {% if listing and listing.land_use=='residential' %}selected{% endif %}>Residential</option>
+            <option value="commercial"   {% if listing and listing.land_use=='commercial' %}selected{% endif %}>Commercial</option>
+            <option value="agricultural" {% if listing and listing.land_use=='agricultural' %}selected{% endif %}>Agricultural</option>
+            <option value="industrial"   {% if listing and listing.land_use=='industrial' %}selected{% endif %}>Industrial</option>
+            <option value="mixed"        {% if listing and listing.land_use=='mixed' %}selected{% endif %}>Mixed Use</option>
+          </select>
         </div>
-
-        <div class="upload-progress" id="uploadProgress">
-          <div class="upload-spinner"></div>
-          Uploading photo…
+        <div class="ef-group">
+          <label class="ef-label">Terrain</label>
+          <select class="ef-select" name="terrain">
+            <option value="">— Select —</option>
+            <option value="flat"             {% if listing and listing.terrain=='flat' %}selected{% endif %}>Flat</option>
+            <option value="elevated"         {% if listing and listing.terrain=='elevated' %}selected{% endif %}>Elevated</option>
+            <option value="corner_piece"     {% if listing and listing.terrain=='corner_piece' %}selected{% endif %}>Corner Piece</option>
+            <option value="waterfront"       {% if listing and listing.terrain=='waterfront' %}selected{% endif %}>Waterfront</option>
+            <option value="swampy"           {% if listing and listing.terrain=='swampy' %}selected{% endif %}>Swampy / Reclaimed</option>
+          </select>
         </div>
+      </div>
+    </div>
 
-        <div class="img-grid" id="imgGrid">
-          {% set images = listing.images if listing.images else [] %}
-          {% for img in images %}
-          <div class="img-thumb" data-path="{{ img }}">
-            <img src="/static/{{ img }}" alt="Photo {{ loop.index }}"/>
-            {% if loop.first %}<div class="img-thumb-badge">COVER</div>{% endif %}
-            <button type="button" class="img-thumb-del"
-                    onclick="deleteImage('{{ img }}', this.closest('.img-thumb'))"
-                    title="Remove photo">×</button>
+    <!-- Residential panel -->
+    <div class="prop-panel {% if listing and listing.property_type=='residential' %}active{% endif %}" id="panelResidential">
+      <div class="ef-row-3">
+        <div class="ef-group">
+          <label class="ef-label">Bedrooms</label>
+          <input class="ef-input" type="number" name="bedrooms" min="0" placeholder="3"
+                 value="{{ listing.bedrooms if listing else '' }}"/>
+        </div>
+        <div class="ef-group">
+          <label class="ef-label">Bathrooms</label>
+          <input class="ef-input" type="number" name="bathrooms" min="0" placeholder="3"
+                 value="{{ listing.bathrooms if listing else '' }}"/>
+        </div>
+        <div class="ef-group">
+          <label class="ef-label">Toilets</label>
+          <input class="ef-input" type="number" name="toilets" min="0" placeholder="4"
+                 value="{{ listing.toilets if listing else '' }}"/>
+        </div>
+      </div>
+      <div class="ef-row-3">
+        <div class="ef-group">
+          <label class="ef-label">Car Parks</label>
+          <input class="ef-input" type="number" name="car_parks" min="0" placeholder="2"
+                 value="{{ listing.car_parks if listing else '' }}"/>
+        </div>
+        <div class="ef-group">
+          <label class="ef-label">No. of Floors</label>
+          <input class="ef-input" type="number" name="floors" min="1" placeholder="2"
+                 value="{{ listing.floors if listing else '' }}"/>
+        </div>
+        <div class="ef-group">
+          <label class="ef-label">Floor Level (flat)</label>
+          <input class="ef-input" type="number" name="floor_level" min="0" placeholder="1"
+                 value="{{ listing.floor_level if listing else '' }}"/>
+        </div>
+      </div>
+      <div class="ef-row">
+        <div class="ef-group">
+          <label class="ef-label">Size (sqm) <span class="ef-label-note">optional</span></label>
+          <div class="ef-prefix-wrap">
+            <span class="ef-prefix" style="font-size:11px">m²</span>
+            <input class="ef-input" type="number" name="size_sqm" step="0.5" min="0" placeholder="350"
+                   value="{{ listing.size_sqm if listing and listing.size_sqm else '' }}"/>
           </div>
-          {% endfor %}
-          <div class="img-add-btn" id="addPhotoBtn" onclick="document.getElementById('photoFilePicker').click()">
-            <div class="img-add-inner">
-              <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              <span>Add photo</span>
-            </div>
+        </div>
+        <div class="ef-group">
+          <label class="ef-label">Furnishing</label>
+          <select class="ef-select" name="furnishing">
+            <option value="">— Select —</option>
+            <option value="unfurnished"    {% if listing and listing.furnishing=='unfurnished' %}selected{% endif %}>Unfurnished</option>
+            <option value="semi_furnished" {% if listing and listing.furnishing=='semi_furnished' %}selected{% endif %}>Semi-Furnished</option>
+            <option value="furnished"      {% if listing and listing.furnishing=='furnished' %}selected{% endif %}>Fully Furnished</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Commercial panel -->
+    <div class="prop-panel {% if listing and listing.property_type in ['commercial','mixed_use','industrial'] %}active{% endif %}" id="panelCommercial">
+      <div class="ef-row">
+        <div class="ef-group">
+          <label class="ef-label">Size (sqm)</label>
+          <div class="ef-prefix-wrap">
+            <span class="ef-prefix" style="font-size:11px">m²</span>
+            <input class="ef-input" type="number" name="size_sqm" step="0.5" min="0" placeholder="500"
+                   value="{{ listing.size_sqm if listing and listing.size_sqm else '' }}"/>
           </div>
         </div>
-
-        <input type="file" id="photoFilePicker" accept="image/*" style="display:none"/>
-        <p class="img-note">First photo is the cover image. Max 3 MB per photo. JPG/PNG recommended.</p>
-      </div>
-      {% else %}
-      <div class="lf-section" style="background:rgba(26,86,219,0.04);border-color:rgba(26,86,219,0.15)">
-        <div class="lf-section-title" style="color:rgba(3,12,24,0.50)">
-          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-          Photos
+        <div class="ef-group">
+          <label class="ef-label">Car Parks</label>
+          <input class="ef-input" type="number" name="car_parks" min="0" placeholder="10"
+                 value="{{ listing.car_parks if listing else '' }}"/>
         </div>
-        <p style="font-size:13px;color:rgba(3,12,24,0.45);line-height:1.55">
-          Save the listing first — you'll be taken to the edit page where you can upload and crop property photos.
-        </p>
       </div>
-      {% endif %}
-
-      <!-- Save -->
-      <div class="lf-save-bar">
-        <a href="{{ url_for('estate.listings') }}" class="btn" style="border-radius:8px">Cancel</a>
-        <button type="submit" class="ef-btn-save">
-          {{ 'Save Changes' if mode == 'edit' else 'Save &amp; Add Photos →' }}
-        </button>
+      <div class="ef-row">
+        <div class="ef-group">
+          <label class="ef-label">No. of Floors</label>
+          <input class="ef-input" type="number" name="floors" min="1" placeholder="3"
+                 value="{{ listing.floors if listing else '' }}"/>
+        </div>
+        <div class="ef-group">
+          <label class="ef-label">Floor Level</label>
+          <input class="ef-input" type="number" name="floor_level" min="0" placeholder="2"
+                 value="{{ listing.floor_level if listing else '' }}"/>
+        </div>
       </div>
+    </div>
 
+    <div id="panelNone" class="{% if listing and listing.property_type %}{% else %}prop-panel active{% endif %}">
+      <p class="ef-hint">Select a property type above to see relevant detail fields.</p>
     </div>
   </div>
+
+  <!-- ── 5. Amenities ── -->
+  <div class="lf-section">
+    <div class="lf-section-title">
+      <svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      Amenities &amp; Features
+    </div>
+
+    {% set saved_amenities = listing.amenities if listing and listing.amenities else [] %}
+
+    <div class="amenity-grid" id="amenityGrid">
+      {% set amenity_list = [
+        ('Generator','⚡','generator'),
+        ('Borehole','💧','borehole'),
+        ('Perimeter Fence','🧱','perimeter_fence'),
+        ('Security Guards','💂','security_guards'),
+        ('CCTV','📷','cctv'),
+        ('Boys Quarters (BQ)','🏠','bq'),
+        ('Prepaid Meter','🔌','prepaid_meter'),
+        ('Swimming Pool','🏊','swimming_pool'),
+        ('Gym / Fitness','🏋️','gym'),
+        ('Elevator / Lift','🛗','elevator'),
+        ('Ample Parking','🚗','parking'),
+        ('Air Conditioning','❄️','ac'),
+        ('Fitted Kitchen','🍳','fitted_kitchen'),
+        ('Wardrobes','👔','wardrobes'),
+        ('Pop Ceiling','🎨','pop_ceiling'),
+        ('Tiled Floors','🪟','tiled_floors'),
+        ('Internet / Fibre','📡','internet'),
+        ('Rooftop Terrace','🌇','rooftop'),
+        ('Playground','🛝','playground'),
+        ('Gated Estate','🔐','gated_estate'),
+        ('Water Treatment','🚿','water_treatment'),
+        ('Garden / Lawn','🌳','garden')
+      ] %}
+
+      {% for label, icon, val in amenity_list %}
+      {% set is_checked = val in saved_amenities %}
+      <label class="am-chip {% if is_checked %}selected{% endif %}" onclick="toggleAmChip(this)">
+        <input type="checkbox" name="amenities" value="{{ val }}" {% if is_checked %}checked{% endif %}/>
+        <span class="am-chip-icon">{{ icon }}</span>
+        <span>{{ label }}</span>
+      </label>
+      {% endfor %}
+    </div>
+
+    <div class="ef-group" style="margin-top:18px">
+      <label class="ef-label">Additional Features <span class="ef-label-note">one per line</span></label>
+      <textarea class="ef-textarea" name="features_raw" id="featuresArea" rows="5"
+                placeholder="Smart home automation&#10;Solar panels&#10;Shared workspace&#10;Mini mart on site">{% if listing and listing.features %}{% if listing.features is iterable and listing.features is not string %}{% for f in listing.features %}{{ f }}
+{% endfor %}{% else %}{{ listing.features }}{% endif %}{% endif %}</textarea>
+    </div>
+  </div>
+
+  <!-- ── 6. Description & Media ── -->
+  <div class="lf-section">
+    <div class="lf-section-title">
+      <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      Description &amp; Media Links
+    </div>
+
+    <div class="ef-group">
+      <label class="ef-label">Property Description</label>
+      <textarea class="ef-textarea" name="description" rows="6"
+                placeholder="Describe the property in detail. This text feeds the AI assistant — the more detailed, the better buyers are served.">{{ listing.description if listing else '' }}</textarea>
+      <p class="ef-hint">Include key selling points, nearby landmarks, condition, and any special notes.</p>
+    </div>
+
+    <div class="ef-group">
+      <label class="ef-label">Video Tour URL <span class="ef-label-note">YouTube / Google Drive</span></label>
+      <input class="ef-input" type="url" name="video_url"
+             placeholder="https://youtube.com/watch?v=..."
+             value="{{ listing.video_url if listing and listing.video_url else '' }}"/>
+    </div>
+
+    <div class="ef-group">
+      <label class="ef-label">Virtual Tour URL <span class="ef-label-note">Matterport / Kuula</span></label>
+      <input class="ef-input" type="url" name="virtual_tour_url"
+             placeholder="https://..."
+             value="{{ listing.virtual_tour_url if listing and listing.virtual_tour_url else '' }}"/>
+    </div>
+  </div>
+
+</div>
+<!-- ═══════════════════════ RIGHT COLUMN ═══════════════════════ -->
+<div>
+
+  <!-- ── 7. Internal ── -->
+  <div class="lf-section">
+    <div class="lf-section-title">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M6 20v-2a6 6 0 0 1 12 0v2"/></svg>
+      Internal
+    </div>
+
+    <div class="ef-group">
+      <label class="ef-label">Assigned Agent</label>
+      <select class="ef-select" name="assigned_to">
+        <option value="">— Unassigned —</option>
+        {% if staff_list %}
+          {% for s in staff_list %}
+          <option value="{{ s.id }}" {% if listing and listing.assigned_to==s.id %}selected{% endif %}>
+            {{ s.first_name }} {{ s.last_name }}
+          </option>
+          {% endfor %}
+        {% endif %}
+      </select>
+    </div>
+
+    <div class="ef-group">
+      <label class="ef-label">Available From</label>
+      <input class="ef-input" type="date" name="available_from"
+             value="{{ listing.available_from if listing and listing.available_from else '' }}"/>
+    </div>
+
+    <div class="ef-group">
+      <label class="ef-label">Internal Notes <span class="ef-label-note">not shown to public</span></label>
+      <textarea class="ef-textarea" name="internal_notes" rows="4"
+                placeholder="Client preferences, viewing notes, commission details...">{{ listing.internal_notes if listing and listing.internal_notes else '' }}</textarea>
+    </div>
+
+    {% if mode == 'edit' and listing %}
+    <div style="margin-top:6px">
+      {% if listing.ai_indexed_at %}
+      <span class="ai-badge indexed">✓ AI Indexed</span>
+      <span style="font-size:11px;color:rgba(3,12,24,0.35);display:block;margin-top:5px">
+        Last indexed: {{ listing.ai_indexed_at.strftime('%d %b %Y, %H:%M') if listing.ai_indexed_at else '' }}
+      </span>
+      {% else %}
+      <span class="ai-badge not-indexed">⚠ Not Yet Indexed</span>
+      <p class="ef-hint" style="margin-top:5px">Saving this listing will trigger AI indexing automatically.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ── Photos ── -->
+  {% if mode == 'edit' and listing %}
+  <div class="lf-section">
+    <div class="lf-section-title">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      Photos
+    </div>
+
+    <div class="upload-progress" id="uploadProgress">
+      <div class="upload-spinner"></div>
+      Uploading photo…
+    </div>
+
+    <div class="img-grid" id="imgGrid">
+      {% set images = listing.images if listing.images else [] %}
+      {% for img in images %}
+      <div class="img-thumb" data-path="{{ img }}">
+        <img src="/static/{{ img }}" alt="Photo {{ loop.index }}"/>
+        {% if loop.first %}<div class="img-thumb-badge">COVER</div>{% endif %}
+        <button type="button" class="img-thumb-del"
+                onclick="deleteImage('{{ img }}', this.closest('.img-thumb'))"
+                title="Remove photo">×</button>
+      </div>
+      {% endfor %}
+      <div class="img-add-btn" id="addPhotoBtn" onclick="document.getElementById('photoFilePicker').click()">
+        <div class="img-add-inner">
+          <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span>Add photo</span>
+        </div>
+      </div>
+    </div>
+
+    <input type="file" id="photoFilePicker" accept="image/*" style="display:none"/>
+    <p class="img-note">First photo is the cover image. Drag to reorder (coming soon). Max 3 MB per photo. JPG/PNG recommended.</p>
+  </div>
+  {% else %}
+  <div class="lf-section" style="background:rgba(26,86,219,0.04);border-color:rgba(26,86,219,0.15)">
+    <div class="lf-section-title" style="color:rgba(3,12,24,0.50)">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      Photos
+    </div>
+    <p style="font-size:13px;color:rgba(3,12,24,0.45);line-height:1.55">
+      Save the listing first — you'll be taken to the edit page where you can upload and crop property photos.
+    </p>
+  </div>
+  {% endif %}
+
+  <!-- ── Save bar ── -->
+  <div class="lf-save-bar">
+    <a href="{{ url_for('estate.listings') }}" class="btn" style="border-radius:8px">Cancel</a>
+    <button type="submit" class="ef-btn-save">
+      {{ 'Save Changes' if mode == 'edit' else 'Save &amp; Add Photos →' }}
+    </button>
+  </div>
+
+</div>
+</div>
 </form>
 
 <!-- Cropper modal -->
@@ -424,7 +737,58 @@
 {% block scripts %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
 <script>
-// ── Features textarea → hidden inputs on submit ──────────────────────────────
+// ── Sub-type options ──────────────────────────────────────────────────────────
+var SUB_TYPES = {
+  land:        ['Bare Land','Estate Land','Corner Piece','Waterfront Land','Farm Land'],
+  residential: ['Flat / Apartment','Mini Flat','Studio','Bungalow','Semi-Detached Duplex',
+                'Fully Detached Duplex','Terrace','Maisonette','Penthouse','Self-Contain','Boys Quarters'],
+  commercial:  ['Office Space','Shop / Retail','Warehouse','Event Centre','Plaza',
+                'Co-working Space','Hotel','Guest House','Filling Station','Restaurant Space'],
+  mixed_use:   ['Residential & Commercial','Office & Retail','Block of Flats & Shops'],
+  industrial:  ['Factory','Warehouse','Workshop','Cold Room','Logistics Hub']
+};
+
+function onTypeChange(){
+  var type = document.getElementById('propType').value;
+  var sel  = document.getElementById('subType');
+  sel.innerHTML = '<option value="">— Select —</option>';
+  (SUB_TYPES[type] || []).forEach(function(s){
+    var o = document.createElement('option'); o.value = s; o.textContent = s;
+    sel.appendChild(o);
+  });
+
+  // Show/hide detail panels
+  ['panelLand','panelResidential','panelCommercial','panelNone'].forEach(function(id){
+    document.getElementById(id).classList.remove('active');
+  });
+  if(type === 'land')                                  document.getElementById('panelLand').classList.add('active');
+  else if(type === 'residential')                      document.getElementById('panelResidential').classList.add('active');
+  else if(['commercial','mixed_use','industrial'].includes(type)) document.getElementById('panelCommercial').classList.add('active');
+  else                                                 document.getElementById('panelNone').classList.add('active');
+}
+
+// Re-select saved sub_type on page load
+(function(){
+  var type    = document.getElementById('propType').value;
+  var saved   = "{{ listing.sub_type if listing and listing.sub_type else '' }}";
+  if(!type) return;
+  var sel = document.getElementById('subType');
+  sel.innerHTML = '<option value="">— Select —</option>';
+  (SUB_TYPES[type] || []).forEach(function(s){
+    var o = document.createElement('option'); o.value = s; o.textContent = s;
+    if(s === saved) o.selected = true;
+    sel.appendChild(o);
+  });
+})();
+
+// ── Amenity chip toggle ───────────────────────────────────────────────────────
+function toggleAmChip(label){
+  var cb = label.querySelector('input[type=checkbox]');
+  cb.checked = !cb.checked;
+  label.classList.toggle('selected', cb.checked);
+}
+
+// ── Features textarea → hidden inputs on submit ───────────────────────────────
 document.getElementById('listingForm').addEventListener('submit', function(){
   var ta = document.getElementById('featuresArea');
   if(!ta) return;
@@ -438,7 +802,7 @@ document.getElementById('listingForm').addEventListener('submit', function(){
 });
 
 {% if mode == 'edit' and listing %}
-// ── Image upload + cropper ───────────────────────────────────────────────────
+// ── Image upload + cropper ────────────────────────────────────────────────────
 var cropper = null;
 var LISTING_ID = {{ listing.id }};
 
@@ -462,11 +826,8 @@ function openCropper(src){
   document.body.style.overflow = 'hidden';
   if(cropper){ cropper.destroy(); }
   cropper = new Cropper(img, {
-    aspectRatio: 4/3,
-    viewMode: 1,
-    autoCropArea: 0.85,
-    responsive: true,
-    checkOrientation: true,
+    aspectRatio: 4/3, viewMode: 1, autoCropArea: 0.85,
+    responsive: true, checkOrientation: true
   });
 }
 
@@ -487,10 +848,8 @@ function useCrop(){
 function uploadImage(b64){
   var prog = document.getElementById('uploadProgress');
   prog.classList.add('active');
-
   fetch('/estate/listings/' + LISTING_ID + '/images/upload', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
+    method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({image: b64})
   })
   .then(function(r){ return r.json(); })
@@ -503,10 +862,9 @@ function uploadImage(b64){
 }
 
 function addThumbToGrid(url, path){
-  var grid = document.getElementById('imgGrid');
+  var grid   = document.getElementById('imgGrid');
   var addBtn = document.getElementById('addPhotoBtn');
   var isFirst = grid.querySelectorAll('.img-thumb').length === 0;
-
   var div = document.createElement('div');
   div.className = 'img-thumb';
   div.dataset.path = path;
@@ -520,15 +878,13 @@ function addThumbToGrid(url, path){
 function deleteImage(path, el){
   if(!confirm('Remove this photo?')) return;
   fetch('/estate/listings/' + LISTING_ID + '/images/delete', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
+    method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({path: path})
   })
   .then(function(r){ return r.json(); })
   .then(function(data){
     if(data.error){ alert('Error: ' + data.error); return; }
     el.remove();
-    // Re-apply COVER badge to first remaining thumb
     var thumbs = document.querySelectorAll('#imgGrid .img-thumb');
     thumbs.forEach(function(t,i){
       var badge = t.querySelector('.img-thumb-badge');
@@ -539,7 +895,6 @@ function deleteImage(path, el){
   .catch(function(){ alert('Failed to remove photo. Please try again.'); });
 }
 
-// Close cropper on overlay click
 document.getElementById('cropperOverlay').addEventListener('click', function(e){
   if(e.target === this) closeCropper();
 });

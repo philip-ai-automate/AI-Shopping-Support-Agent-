@@ -101,6 +101,30 @@
 .lcard-btn.danger{color:#F04438;border-color:rgba(240,68,56,0.20)}
 .lcard-btn.danger:hover{background:rgba(240,68,56,0.06);border-color:rgba(240,68,56,0.35)}
 
+/* type / sub-type chips */
+.lcard-type{
+  display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:8px
+}
+.lcard-type-pill{
+  font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+  padding:3px 9px;border-radius:999px
+}
+.lcard-type-pill.type-land{background:rgba(217,119,6,0.12);color:#92400e}
+.lcard-type-pill.type-residential{background:rgba(26,86,219,0.10);color:#1a56db}
+.lcard-type-pill.type-commercial{background:rgba(79,70,229,0.10);color:#4338ca}
+.lcard-type-pill.type-mixed_use{background:rgba(16,185,129,0.10);color:#059669}
+.lcard-type-pill.type-industrial{background:rgba(107,114,128,0.12);color:#374151}
+.lcard-type-pill.txn{background:rgba(3,12,24,0.06);color:rgba(3,12,24,0.55)}
+
+/* AI index badge */
+.ai-mini{
+  display:inline-flex;align-items:center;gap:4px;
+  font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;
+  margin-left:auto;white-space:nowrap
+}
+.ai-mini.ok{background:rgba(5,150,105,0.10);color:#059669}
+.ai-mini.no{background:rgba(245,158,11,0.12);color:#b45309}
+
 /* status select inline */
 .status-mini{
   font-size:11.5px;font-weight:650;padding:5px 8px;border-radius:7px;
@@ -132,12 +156,21 @@
   </a>
 </div>
 
-<!-- Filter tabs -->
-<div class="filter-tabs">
+<!-- Status filters -->
+<div class="filter-tabs" style="margin-bottom:10px">
   {% for s in ['all','available','under_offer','sold','let','off_market'] %}
-  <a href="{{ url_for('estate.listings', status=s) }}"
+  <a href="{{ url_for('estate.listings', status=s, type=type_filter) }}"
      class="ftab {% if status_filter == s %}active{% endif %}">
     {{ s | replace('_',' ') | title }}
+  </a>
+  {% endfor %}
+</div>
+<!-- Type filters -->
+<div class="filter-tabs">
+  {% for t in [('all','All Types'),('land','Land'),('residential','Residential'),('commercial','Commercial'),('mixed_use','Mixed Use'),('industrial','Industrial')] %}
+  <a href="{{ url_for('estate.listings', status=status_filter, type=t[0]) }}"
+     class="ftab {% if type_filter == t[0] %}active{% endif %}">
+    {{ t[1] }}
   </a>
   {% endfor %}
 </div>
@@ -180,13 +213,39 @@
 
       <!-- Body -->
       <div class="lcard-body">
+        <!-- Type / sub-type chips -->
+        <div class="lcard-type">
+          {% if lst.property_type %}
+          <span class="lcard-type-pill type-{{ lst.property_type }}">{{ lst.property_type | replace('_',' ') | title }}</span>
+          {% endif %}
+          {% if lst.sub_type %}
+          <span class="lcard-type-pill txn">{{ lst.sub_type }}</span>
+          {% endif %}
+          {% if lst.transaction_type %}
+          <span class="lcard-type-pill txn">{{ lst.transaction_type | replace('_',' ') | title }}</span>
+          {% endif %}
+          {% if lst.ai_indexed_at %}
+          <span class="ai-mini ok">✓ AI</span>
+          {% else %}
+          <span class="ai-mini no">⚠ AI</span>
+          {% endif %}
+        </div>
+
         <div class="lcard-title">{{ lst.title }}</div>
-        {% if lst.location or lst.lga %}
+
+        <!-- Location: neighbourhood > lga > location -->
+        {% set loc_parts = [] %}
+        {% if lst.neighbourhood %}{% set _ = loc_parts.append(lst.neighbourhood) %}{% endif %}
+        {% if lst.lga and lst.lga != lst.neighbourhood %}{% set _ = loc_parts.append(lst.lga) %}{% endif %}
+        {% if not lst.neighbourhood and not lst.lga and lst.location %}{% set _ = loc_parts.append(lst.location) %}{% endif %}
+        {% if loc_parts %}
         <div class="lcard-location">
           <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-          {{ lst.lga or lst.location }}{% if lst.lga and lst.location %}, {{ lst.location }}{% endif %}
+          {{ loc_parts | join(', ') }}{% if lst.state %}, {{ lst.state }}{% endif %}
         </div>
         {% endif %}
+
+        <!-- Specs -->
         {% if lst.bedrooms or lst.bathrooms or lst.size_sqm %}
         <div class="lcard-specs">
           {% if lst.bedrooms %}
@@ -204,15 +263,18 @@
           {% if lst.size_sqm %}
           <span class="lcard-spec">
             <svg viewBox="0 0 24 24"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-            {{ lst.size_sqm | int }} sqm
+            {{ lst.size_sqm | int }} {{ lst.size_unit or 'sqm' }}
           </span>
           {% endif %}
         </div>
         {% endif %}
-        <div class="lcard-price">
+
+        <div class="lcard-price" style="margin-top:auto">
           {% if lst.price %}
           ₦{{ '{:,.0f}'.format(lst.price) }}
-          {% if lst.price_negotiable %}<span class="lcard-price-neg">Negotiable</span>{% endif %}
+          {% if lst.price_qualifier and lst.price_qualifier != 'outright' %}
+          <span class="lcard-price-neg">/ {{ lst.price_qualifier | replace('_',' ') }}</span>
+          {% endif %}
           {% else %}
           <span style="color:rgba(3,12,24,0.30);font-size:14px;font-weight:500">Price on request</span>
           {% endif %}
