@@ -3089,7 +3089,8 @@ def lead_profile(contact_id):
     bedrooms     = request.form.get("bedrooms_pref", "").strip() or None
     area         = request.form.get("preferred_area", "").strip() or None
     payment_meth = request.form.get("payment_method", "").strip() or None
-    urgency      = request.form.get("urgency", "").strip() or None
+    urgency_raw  = request.form.get("urgency", "").strip()
+    urgency      = urgency_raw if urgency_raw in ("urgent", "planning", "browsing") else None
     notes        = request.form.get("notes", "").strip() or None
 
     conn = get_db_connection()
