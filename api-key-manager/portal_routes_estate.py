@@ -1560,6 +1560,22 @@ def system_instruction():
                            tenant=tenant, current_prompt=current_prompt)
 
 
+# ── QR Code ────────────────────────────────────────────────────────────────────
+
+@estate_bp.route("/estate/qr-code")
+def qr_code():
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    tenant    = _get_tenant(tenant_id)
+    if not tenant:
+        return redirect(url_for("estate.login"))
+    raw_phone = tenant.get("wa_display_phone") or ""
+    clean_phone = "".join(filter(str.isdigit, raw_phone))
+    return render_template("estate/qr_code.html", tenant=tenant,
+                           clean_phone=clean_phone)
+
+
 # ── Reports ────────────────────────────────────────────────────────────────────
 
 @estate_bp.route("/estate/reports")

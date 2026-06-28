@@ -1,0 +1,348 @@
+{% extends "estate/base.html" %}
+{% block title %}QR Code — PhiXtra Real Estate{% endblock %}
+
+{% block head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<style>
+.qr-layout{display:grid;grid-template-columns:1fr 380px;gap:28px;align-items:start}
+@media(max-width:900px){.qr-layout{grid-template-columns:1fr}}
+
+/* ── Preview column ── */
+.qr-preview-wrap{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:18px;
+  padding:36px;display:flex;flex-direction:column;align-items:center;
+  box-shadow:0 4px 24px rgba(3,12,24,0.06)
+}
+.qr-preview-label{
+  font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:rgba(3,12,24,0.35);margin-bottom:22px
+}
+
+/* The downloadable card */
+.qr-card{
+  width:320px;border-radius:20px;padding:28px 24px 22px;
+  display:flex;flex-direction:column;align-items:center;
+  transition:background .25s,color .25s;position:relative;overflow:hidden
+}
+.qr-card.style-light{background:#ffffff;border:1px solid rgba(3,12,24,0.10)}
+.qr-card.style-dark {background:#030C18}
+.qr-card.style-green{background:#25D366}
+
+/* Card header */
+.qr-card-avatar{
+  width:52px;height:52px;border-radius:14px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:22px;font-weight:800;flex-shrink:0;margin-bottom:10px
+}
+.style-light .qr-card-avatar{background:#eff6ff;color:#1a56db}
+.style-dark  .qr-card-avatar{background:rgba(255,255,255,0.12);color:#fff}
+.style-green .qr-card-avatar{background:rgba(255,255,255,0.25);color:#fff}
+
+.qr-card-biz{font-size:15px;font-weight:800;letter-spacing:-.2px;text-align:center;margin-bottom:3px}
+.style-light .qr-card-biz{color:#030C18}
+.style-dark  .qr-card-biz{color:#fff}
+.style-green .qr-card-biz{color:#fff}
+
+.qr-card-tag{font-size:11px;font-weight:600;text-align:center;margin-bottom:20px}
+.style-light .qr-card-tag{color:rgba(3,12,24,0.40)}
+.style-dark  .qr-card-tag{color:rgba(255,255,255,0.45)}
+.style-green .qr-card-tag{color:rgba(255,255,255,0.70)}
+
+/* QR box */
+.qr-box{
+  border-radius:14px;padding:14px;margin-bottom:18px;display:flex;align-items:center;justify-content:center
+}
+.style-light .qr-box{background:#f8fafc;border:1px solid rgba(3,12,24,0.08)}
+.style-dark  .qr-box{background:#fff}
+.style-green .qr-box{background:#fff}
+
+#qrCanvas canvas,#qrCanvas img{display:block}
+
+/* Scan prompt */
+.qr-card-prompt{font-size:13px;font-weight:700;text-align:center;margin-bottom:8px}
+.style-light .qr-card-prompt{color:#030C18}
+.style-dark  .qr-card-prompt{color:#fff}
+.style-green .qr-card-prompt{color:#fff}
+
+/* WhatsApp icon + number */
+.qr-card-wa-row{
+  display:flex;align-items:center;gap:7px;
+  padding:7px 16px;border-radius:999px;margin-bottom:16px
+}
+.style-light .qr-card-wa-row{background:rgba(37,211,102,0.10);border:1px solid rgba(37,211,102,0.25)}
+.style-dark  .qr-card-wa-row{background:rgba(255,255,255,0.10);border:1px solid rgba(255,255,255,0.15)}
+.style-green .qr-card-wa-row{background:rgba(255,255,255,0.20);border:1px solid rgba(255,255,255,0.30)}
+
+.qr-card-wa-num{font-size:13px;font-weight:750}
+.style-light .qr-card-wa-num{color:#030C18}
+.style-dark  .qr-card-wa-num{color:#fff}
+.style-green .qr-card-wa-num{color:#fff}
+
+/* Card footer */
+.qr-card-footer{
+  padding-top:12px;display:flex;align-items:center;gap:5px;
+  font-size:10px;font-weight:600;letter-spacing:.04em;width:100%;justify-content:center
+}
+.style-light .qr-card-footer{color:rgba(3,12,24,0.28);border-top:1px solid rgba(3,12,24,0.07)}
+.style-dark  .qr-card-footer{color:rgba(255,255,255,0.25);border-top:1px solid rgba(255,255,255,0.08)}
+.style-green .qr-card-footer{color:rgba(255,255,255,0.55);border-top:1px solid rgba(255,255,255,0.20)}
+
+/* ── Controls column ── */
+.qr-controls{
+  background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:18px;
+  padding:26px;box-shadow:0 4px 24px rgba(3,12,24,0.06)
+}
+.qrc-section{margin-bottom:24px}
+.qrc-label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+           color:rgba(3,12,24,0.38);margin-bottom:12px}
+
+/* Style picker */
+.style-pills{display:flex;gap:8px}
+.style-pill{
+  flex:1;padding:10px 8px;border-radius:10px;border:2px solid transparent;
+  cursor:pointer;text-align:center;font-size:12px;font-weight:700;
+  transition:.15s;user-select:none
+}
+.style-pill.light{background:#f8fafc;color:#030C18;border-color:rgba(3,12,24,0.10)}
+.style-pill.dark {background:#030C18;color:#fff}
+.style-pill.green{background:#25D366;color:#fff}
+.style-pill.selected{box-shadow:0 0 0 3px rgba(26,86,219,0.30);border-color:#1a56db}
+
+/* Message textarea */
+.qrc-msg{
+  width:100%;padding:11px 14px;border:1.5px solid rgba(3,12,24,0.12);border-radius:10px;
+  font-size:13.5px;font-family:inherit;color:#030C18;background:#fafbfc;
+  outline:none;resize:vertical;min-height:72px;transition:border-color .15s,box-shadow .15s;
+  line-height:1.55
+}
+.qrc-msg:focus{border-color:#030C18;background:#fff;box-shadow:0 0 0 3px rgba(3,12,24,0.06)}
+
+/* wa.me link display */
+.qrc-link-box{
+  display:flex;align-items:center;gap:8px;
+  padding:10px 13px;background:#f8fafc;border:1.5px solid rgba(3,12,24,0.08);border-radius:10px
+}
+.qrc-link-text{font-size:11.5px;color:#1a56db;font-family:monospace;
+               white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.qrc-copy-btn{
+  flex-shrink:0;padding:5px 11px;border:1.5px solid rgba(3,12,24,0.12);
+  border-radius:7px;background:#fff;font-size:12px;font-weight:700;
+  color:#030C18;cursor:pointer;transition:.13s;white-space:nowrap
+}
+.qrc-copy-btn:hover{border-color:#030C18;background:#030C18;color:#fff}
+
+/* Action buttons */
+.qrc-actions{display:flex;flex-direction:column;gap:10px}
+.qrc-btn{
+  display:flex;align-items:center;justify-content:center;gap:9px;
+  width:100%;padding:13px;border-radius:11px;border:none;
+  font-size:14px;font-weight:750;font-family:inherit;cursor:pointer;transition:.13s
+}
+.qrc-btn-primary{background:#030C18;color:#fff;box-shadow:0 4px 16px rgba(3,12,24,0.20)}
+.qrc-btn-primary:hover{background:#0d1f3c;transform:translateY(-1px)}
+.qrc-btn-outline{background:#fff;color:#030C18;border:1.5px solid rgba(3,12,24,0.14)}
+.qrc-btn-outline:hover{border-color:#030C18;background:rgba(3,12,24,0.03)}
+.qrc-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;
+             stroke-linecap:round;stroke-linejoin:round}
+
+/* No WA warning */
+.qr-no-wa{
+  text-align:center;padding:40px 20px;
+  background:rgba(247,144,9,0.05);border:1.5px solid rgba(247,144,9,0.25);border-radius:14px
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="section-title" style="margin-bottom:4px">WhatsApp QR Code</h1>
+    <p class="muted">Share with buyers so they can reach you instantly on WhatsApp</p>
+  </div>
+</div>
+
+{% if not clean_phone %}
+<div class="qr-no-wa">
+  <div style="font-size:36px;margin-bottom:12px">📵</div>
+  <div style="font-size:15px;font-weight:700;color:#030C18;margin-bottom:6px">WhatsApp not connected</div>
+  <p style="font-size:13.5px;color:rgba(3,12,24,0.50);margin-bottom:18px">
+    Connect your WhatsApp Business number first, then come back to generate your QR code.
+  </p>
+  <a href="{{ url_for('estate.settings') }}#whatsapp" class="btn btn-primary">
+    Go to Settings →
+  </a>
+</div>
+
+{% else %}
+
+<div class="qr-layout">
+
+  <!-- ── Left: live card preview ── -->
+  <div class="qr-preview-wrap">
+    <div class="qr-preview-label">Preview — this is what you share or print</div>
+
+    <div class="qr-card style-light" id="qrCard">
+
+      <div class="qr-card-avatar" id="cardAvatar">
+        {{ (tenant.business_name or 'A')[0]|upper }}
+      </div>
+      <div class="qr-card-biz" id="cardBizName">{{ tenant.business_name or 'My Agency' }}</div>
+      <div class="qr-card-tag">AI Property Assistant</div>
+
+      <div class="qr-box">
+        <div id="qrCanvas"></div>
+      </div>
+
+      <div class="qr-card-prompt">📱 Scan to chat with us on WhatsApp</div>
+
+      <div class="qr-card-wa-row">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="#25D366">
+          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+        </svg>
+        <span class="qr-card-wa-num" id="cardPhone">{{ tenant.wa_display_phone }}</span>
+      </div>
+
+      <div class="qr-card-footer">
+        <span>Powered by</span>
+        <strong style="letter-spacing:.02em">PhiXtra</strong>
+      </div>
+
+    </div>
+
+    <div style="margin-top:18px;font-size:12px;color:rgba(3,12,24,0.30);text-align:center;line-height:1.6">
+      QR encodes your wa.me link · Customers scan → WhatsApp opens instantly
+    </div>
+  </div>
+
+  <!-- ── Right: controls ── -->
+  <div class="qr-controls">
+
+    <!-- Style picker -->
+    <div class="qrc-section">
+      <div class="qrc-label">Card style</div>
+      <div class="style-pills">
+        <div class="style-pill light selected" onclick="setStyle('light',this)">☀️ Light</div>
+        <div class="style-pill dark"           onclick="setStyle('dark',this)">🌙 Dark</div>
+        <div class="style-pill green"          onclick="setStyle('green',this)">💚 Green</div>
+      </div>
+    </div>
+
+    <!-- Pre-filled message -->
+    <div class="qrc-section">
+      <div class="qrc-label">Pre-filled message <span style="font-weight:500;opacity:.6">(optional)</span></div>
+      <textarea class="qrc-msg" id="waMsg"
+                placeholder="Hello, I'm interested in a property…"
+                oninput="updateQR()">Hello, I'm interested in a property</textarea>
+      <div style="font-size:11.5px;color:rgba(3,12,24,0.35);margin-top:5px">
+        This text auto-fills in the buyer's WhatsApp when they scan
+      </div>
+    </div>
+
+    <!-- wa.me link -->
+    <div class="qrc-section">
+      <div class="qrc-label">Direct link</div>
+      <div class="qrc-link-box">
+        <span class="qrc-link-text" id="waLinkDisplay"></span>
+        <button class="qrc-copy-btn" onclick="copyLink()" id="copyBtn">Copy</button>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="qrc-actions">
+      <button class="qrc-btn qrc-btn-primary" onclick="downloadPNG()">
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download PNG
+      </button>
+      <button class="qrc-btn qrc-btn-outline" onclick="window.print()">
+        <svg viewBox="0 0 24 24"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        Print
+      </button>
+    </div>
+
+    <div style="margin-top:20px;padding:14px;background:#f8fafc;border:1px solid rgba(3,12,24,0.07);border-radius:10px;font-size:12.5px;color:rgba(3,12,24,0.45);line-height:1.65">
+      💡 <strong style="color:#030C18">How to use:</strong> Print and display this at your office, property viewings, or listings. Add it to your email signature or social media bio. Buyers scan once — WhatsApp opens with a message ready to send.
+    </div>
+
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if clean_phone %}
+<script>
+var PHONE    = "{{ clean_phone }}";
+var BIZ_NAME = {{ tenant.business_name | tojson }};
+var qrObj    = null;
+var currentStyle = 'light';
+
+var QR_COLORS = {
+  light: { dark: '#030C18', light: '#f8fafc' },
+  dark:  { dark: '#030C18', light: '#ffffff' },
+  green: { dark: '#030C18', light: '#ffffff' }
+};
+
+function buildUrl() {
+  var msg = document.getElementById('waMsg').value.trim();
+  var base = 'https://wa.me/' + PHONE;
+  return msg ? base + '?text=' + encodeURIComponent(msg) : base;
+}
+
+function updateQR() {
+  var url = buildUrl();
+  document.getElementById('waLinkDisplay').textContent = url;
+  var colors = QR_COLORS[currentStyle];
+  var container = document.getElementById('qrCanvas');
+  container.innerHTML = '';
+  qrObj = new QRCode(container, {
+    text: url,
+    width: 180,
+    height: 180,
+    colorDark:  colors.dark,
+    colorLight: colors.light,
+    correctLevel: QRCode.CorrectLevel.H
+  });
+}
+
+function setStyle(style, el) {
+  document.querySelectorAll('.style-pill').forEach(function(p){ p.classList.remove('selected'); });
+  el.classList.add('selected');
+  var card = document.getElementById('qrCard');
+  card.className = 'qr-card style-' + style;
+  currentStyle = style;
+  updateQR();
+}
+
+function copyLink() {
+  var url = buildUrl();
+  navigator.clipboard.writeText(url).then(function() {
+    var btn = document.getElementById('copyBtn');
+    btn.textContent = 'Copied!';
+    btn.style.background = '#12B76A';
+    btn.style.color = '#fff';
+    btn.style.borderColor = '#12B76A';
+    setTimeout(function(){ btn.textContent='Copy'; btn.style=''; }, 2000);
+  });
+}
+
+function downloadPNG() {
+  var card = document.getElementById('qrCard');
+  html2canvas(card, { scale: 3, useCORS: true, backgroundColor: null }).then(function(canvas) {
+    var link = document.createElement('a');
+    link.download = BIZ_NAME.replace(/\s+/g,'-').toLowerCase() + '-whatsapp-qr.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  });
+}
+
+/* Print: show only the card */
+var printStyle = document.createElement('style');
+printStyle.textContent = '@media print{body *{visibility:hidden}.qr-card{visibility:visible;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%)}}';
+document.head.appendChild(printStyle);
+
+document.addEventListener('DOMContentLoaded', function(){ updateQR(); });
+</script>
+{% endif %}
+{% endblock %}

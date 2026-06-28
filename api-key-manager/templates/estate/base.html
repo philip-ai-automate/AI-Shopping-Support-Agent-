@@ -251,12 +251,27 @@
       <span class="sb-icon">📣</span> Broadcast
     </a>
 
+    <a class="sb-link {% if request.endpoint == 'estate.qr_code' %}active{% endif %}"
+       href="{{ url_for('estate.qr_code') }}">
+      <span class="sb-icon">📲</span> QR Code
+    </a>
+
+    <a class="sb-link {% if request.endpoint == 'estate.inspections' %}active{% endif %}"
+       href="{{ url_for('estate.inspections') }}">
+      <span class="sb-icon">🗓️</span> Inspections
+    </a>
+
     <a class="sb-link {% if request.endpoint == 'estate.reports' %}active{% endif %}"
        href="{{ url_for('estate.reports') }}">
       <span class="sb-icon">📊</span> Reports
     </a>
 
     <div class="sb-divider"></div>
+
+    <a class="sb-link {% if request.endpoint == 'estate.sandbox' %}active{% endif %}"
+       href="{{ url_for('estate.sandbox') }}">
+      <span class="sb-icon">🧪</span> AI Playground
+    </a>
 
     {% set _ai_group = request.endpoint in ('estate.agents','estate.agents_new','estate.agents_edit','estate.system_instruction','estate.handoff_rules') %}
     <div class="sb-group">
