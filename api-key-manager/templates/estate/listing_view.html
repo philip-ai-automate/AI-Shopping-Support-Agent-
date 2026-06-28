@@ -326,6 +326,10 @@
     </div>
   </div>
   <div class="lv-topbar-actions">
+    <button onclick="shareWhatsApp()" class="lv-btn" style="background:#25D366;color:#fff;border-color:#25D366">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.121 1.532 5.852L0 24l6.335-1.652A11.954 11.954 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 0 1-5.003-1.369l-.36-.214-3.724.976.994-3.63-.235-.374A9.818 9.818 0 1 1 12 21.818z"/></svg>
+      Share
+    </button>
     <button onclick="window.print()" class="lv-btn">🖨 Print</button>
     <a href="{{ url_for('estate.listing_edit', listing_id=listing.id) }}" class="lv-btn primary">✏️ Edit</a>
     <form method="POST" action="{{ url_for('estate.listing_delete', listing_id=listing.id) }}"
@@ -745,9 +749,74 @@
 {% endblock %}
 
 {% block scripts %}
-{% if images %}
 <script>
-var PHOTOS = {{ images | tojson }};
+function shareWhatsApp(){
+  var title   = {{ listing.title | tojson }};
+  var ptype   = {{ (listing.property_type or '') | replace('_',' ') | title | tojson }};
+  var sub     = {{ (listing.sub_type or '') | tojson }};
+  var txn     = {{ {'sale':'For Sale','rent':'To Let','lease':'Lease','shortlet':'Shortlet'}.get(listing.transaction_type, listing.transaction_type or '') | tojson }};
+  var loc     = {{ [listing.neighbourhood, listing.lga, listing.state] | select | join(', ') | tojson }};
+  var price   = {{ listing.price | int if listing.price else 0 }};
+  var qual    = {{ {'outright':'','per_annum':'/yr','per_month':'/mo','per_night':'/night','per_sqm':'/sqm'}.get(listing.price_qualifier or 'outright', '') | tojson }};
+  var neg     = {{ 'true' if listing.price_negotiable else 'false' }};
+  var beds    = {{ listing.bedrooms or 0 }};
+  var baths   = {{ listing.bathrooms or 0 }};
+  var size    = {{ listing.size_sqm | int if listing.size_sqm else 0 }};
+  var unit    = {{ (listing.size_unit or 'sqm') | tojson }};
+  var titledoc= {{ (listing.title_document or '') | replace('_',' ') | tojson }};
+  var desc    = {{ (listing.description or '') | tojson }};
+  var amenList= {{ (listing.amenities or []) | tojson }};
+
+  // Format price
+  var priceStr = price ? '₦' + price.toLocaleString('en-NG') + qual : 'Price on request';
+  if(neg && price) priceStr += ' (Negotiable)';
+
+  // Build specs line
+  var specs = [];
+  if(beds)  specs.push(beds + ' Beds');
+  if(baths) specs.push(baths + ' Baths');
+  if(size)  specs.push(size + ' ' + unit);
+  var specsLine = specs.length ? specs.join(' · ') : '';
+
+  // Top amenities (max 4, mapped to friendly names)
+  var AM_LABELS = {
+    generator:'Generator',borehole:'Borehole',perimeter_fence:'Perimeter Fence',
+    security_guards:'Security Guards',cctv:'CCTV',bq:'Boys Quarters',
+    prepaid_meter:'Prepaid Meter',swimming_pool:'Swimming Pool',gym:'Gym',
+    elevator:'Elevator',parking:'Parking',ac:'Air Conditioning',
+    fitted_kitchen:'Fitted Kitchen',wardrobes:'Wardrobes',pop_ceiling:'POP Ceiling',
+    tiled_floors:'Tiled Floors',internet:'Internet/Fibre',rooftop:'Rooftop Terrace',
+    playground:'Playground',gated_estate:'Gated Estate',
+    water_treatment:'Water Treatment',garden:'Garden'
+  };
+  var amenStr = amenList.slice(0,4).map(function(a){ return AM_LABELS[a] || a; }).join(', ');
+
+  // Trim description to 200 chars
+  var descSnippet = desc.length > 200 ? desc.slice(0, 197) + '...' : desc;
+
+  // Compose message
+  var lines = [];
+  lines.push('🏠 *' + title + '*');
+  lines.push('');
+  var typeStr = [ptype, sub, txn].filter(Boolean).join(' · ');
+  if(typeStr) lines.push('🏷️ ' + typeStr);
+  if(loc)     lines.push('📍 ' + loc);
+  lines.push('💰 ' + priceStr);
+  if(specsLine) lines.push('📐 ' + specsLine);
+  if(titledoc)  lines.push('📋 Title: ' + titledoc);
+  if(amenStr)   lines.push('✅ ' + amenStr);
+  if(descSnippet){ lines.push(''); lines.push(descSnippet); }
+  lines.push('');
+  lines.push('_Contact us for more details or to book a viewing._');
+
+  var msg = lines.join('\n');
+  window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+}
+</script>
+
+{% if listing.images %}
+<script>
+var PHOTOS = {{ (listing.images or []) | tojson }};
 var heroImg  = document.getElementById('heroImg');
 var lbImg    = document.getElementById('lbImg');
 var lbCounter = document.getElementById('lbCounter');
