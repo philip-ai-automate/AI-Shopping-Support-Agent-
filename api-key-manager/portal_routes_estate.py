@@ -1057,9 +1057,10 @@ def _re_save_wa(tenant_id: int, phone_number_id: str, waba_id: str, token: str,
         cur = conn.cursor()
         cur.execute("""
             UPDATE re_tenants
-            SET wa_phone_number_id=%s, wa_waba_id=%s, wa_access_token=%s, updated_at=NOW()
+            SET wa_phone_number_id=%s, wa_waba_id=%s, wa_access_token=%s,
+                wa_display_phone=%s, wa_verified_name=%s, updated_at=NOW()
             WHERE id=%s
-        """, (phone_number_id, waba_id, token, tenant_id))
+        """, (phone_number_id, waba_id, token, display_phone or None, verified_name or None, tenant_id))
         conn.commit(); cur.close(); conn.close()
         return True
     except Exception as e:
@@ -1132,16 +1133,36 @@ def inbox_embedded_complete():
 def inbox_connect_wa():
     redir = _require_re_login()
     if redir: return redir
-    tenant_id = _re_tenant_id()
+    tenant_id       = _re_tenant_id()
     phone_number_id = request.form.get("wa_phone_number_id", "").strip() or None
     access_token    = request.form.get("wa_access_token", "").strip() or None
     app_secret      = request.form.get("wa_app_secret", "").strip() or None
     waba_id         = request.form.get("wa_business_account_id", "").strip() or None
+
+    # Fetch display phone number from Meta API
+    display_phone = None
+    verified_name = None
+    if phone_number_id and access_token:
+        try:
+            import requests as _req2
+            r = _req2.get(
+                f"https://graph.facebook.com/v19.0/{phone_number_id}",
+                params={"fields": "display_phone_number,verified_name", "access_token": access_token},
+                timeout=8
+            )
+            if r.status_code == 200:
+                d = r.json()
+                display_phone = d.get("display_phone_number") or None
+                verified_name = d.get("verified_name") or None
+        except Exception:
+            pass
+
     conn = get_db_connection()
     if conn:
         cur = conn.cursor()
-        update_fields = ["wa_phone_number_id=%s", "wa_waba_id=%s", "updated_at=NOW()"]
-        params = [phone_number_id, waba_id]
+        update_fields = ["wa_phone_number_id=%s", "wa_waba_id=%s",
+                         "wa_display_phone=%s", "wa_verified_name=%s", "updated_at=NOW()"]
+        params = [phone_number_id, waba_id, display_phone, verified_name]
         if access_token:
             update_fields.insert(2, "wa_access_token=%s"); params.insert(2, access_token)
         if app_secret:
@@ -1149,8 +1170,9 @@ def inbox_connect_wa():
         params.append(tenant_id)
         cur.execute(f"UPDATE re_tenants SET {', '.join(update_fields)} WHERE id=%s", params)
         conn.commit(); cur.close(); conn.close()
-        flash("WhatsApp connected successfully. Buyers will appear here once messages arrive.", "success")
-    return redirect(url_for("estate.inbox"))
+        label = display_phone or phone_number_id
+        flash(f"WhatsApp connected — {label}. Buyers will appear here once messages arrive.", "success")
+    return redirect(url_for("estate.settings"))
 
 
 @estate_bp.route("/estate/inbox/<int:customer_id>")
