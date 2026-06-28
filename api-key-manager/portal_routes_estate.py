@@ -4,7 +4,7 @@ Completely separate from the ecommerce portal (portal.phixtra.com).
 All DB operations use re_* tables. Session keys: re_logged_in, re_tenant_id.
 """
 import hashlib
-import os, secrets, string, json as _json, base64, uuid
+import os, shutil, secrets, string, json as _json, base64, uuid
 from datetime import datetime, timedelta, date
 
 import bcrypt
@@ -811,6 +811,9 @@ def listing_delete(listing_id):
             (listing_id, tenant_id)
         )
         conn.commit(); cur.close(); conn.close()
+        img_dir = os.path.join("static", "estate_images", str(tenant_id), str(listing_id))
+        if os.path.isdir(img_dir):
+            shutil.rmtree(img_dir, ignore_errors=True)
     flash("Listing deleted.", "success")
     return redirect(url_for("estate.listings"))
 
