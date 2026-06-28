@@ -4,15 +4,40 @@
 {% block head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
-/* ── KPI strip ── */
-.kpi-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:20px}
-@media(max-width:1100px){.kpi-strip{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:640px){.kpi-strip{grid-template-columns:repeat(2,1fr)}}
+/* ══════════════════════════════════════════
+   PERIOD TABS
+══════════════════════════════════════════ */
+.period-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.period-tab{
+  display:inline-flex;align-items:center;padding:5px 14px;border-radius:8px;
+  font-size:12.5px;font-weight:650;color:rgba(3,12,24,0.50);
+  border:1.5px solid rgba(3,12,24,0.10);background:#fff;cursor:pointer;
+  text-decoration:none;transition:all .15s;white-space:nowrap
+}
+.period-tab:hover{border-color:rgba(26,86,219,0.35);color:#1a56db;background:rgba(26,86,219,0.04)}
+.period-tab.active{background:#1a56db;color:#fff;border-color:#1a56db;box-shadow:0 2px 8px rgba(26,86,219,0.25)}
+.rp-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.rp-btn{
+  display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:9px;
+  font-size:12.5px;font-weight:650;cursor:pointer;border:1.5px solid rgba(3,12,24,0.12);
+  background:#fff;color:rgba(3,12,24,0.55);text-decoration:none;box-shadow:0 1px 6px rgba(3,12,24,0.05)
+}
+.rp-btn:hover{background:#fafbfc;color:#030C18}
+.rp-btn svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.rp-btn.export{border-color:rgba(18,183,106,0.30);color:#0a7a3c;background:rgba(18,183,106,0.05)}
+.rp-btn.export:hover{background:rgba(18,183,106,0.10)}
+
+/* ══════════════════════════════════════════
+   KPI STRIP — 6 tiles
+══════════════════════════════════════════ */
+.kpi-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:18px}
+@media(max-width:1300px){.kpi-strip{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:700px){.kpi-strip{grid-template-columns:repeat(2,1fr)}}
 
 .kpi-tile{
   background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:14px;
-  padding:18px 20px;box-shadow:0 2px 12px rgba(3,12,24,0.05);
-  display:flex;flex-direction:column;gap:10px;position:relative;overflow:hidden
+  padding:16px 18px;box-shadow:0 2px 12px rgba(3,12,24,0.04);
+  display:flex;flex-direction:column;gap:8px;position:relative;overflow:hidden
 }
 .kpi-tile::before{
   content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:14px 14px 0 0
@@ -22,35 +47,40 @@
 .kpi-tile.kt-green::before {background:linear-gradient(90deg,#12B76A,#34d399)}
 .kpi-tile.kt-amber::before {background:linear-gradient(90deg,#F79009,#fbbf24)}
 .kpi-tile.kt-teal::before  {background:linear-gradient(90deg,#0891b2,#22d3ee)}
+.kpi-tile.kt-rose::before  {background:linear-gradient(90deg,#e11d48,#fb7185)}
 
 .kpi-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.kpi-icon{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.kpi-icon svg{width:16px;height:16px;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
-.kt-blue   .kpi-icon{background:rgba(26,86,219,0.10)}
-.kt-purple .kpi-icon{background:rgba(124,58,237,0.10)}
-.kt-green  .kpi-icon{background:rgba(18,183,106,0.10)}
-.kt-amber  .kpi-icon{background:rgba(247,144,9,0.10)}
-.kt-teal   .kpi-icon{background:rgba(8,145,178,0.10)}
+.kpi-icon{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.kpi-icon svg{width:15px;height:15px;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.kt-blue   .kpi-icon{background:rgba(26,86,219,0.10);stroke:#1a56db}
+.kt-purple .kpi-icon{background:rgba(124,58,237,0.10);stroke:#7c3aed}
+.kt-green  .kpi-icon{background:rgba(18,183,106,0.10);stroke:#12B76A}
+.kt-amber  .kpi-icon{background:rgba(247,144,9,0.10);stroke:#F79009}
+.kt-teal   .kpi-icon{background:rgba(8,145,178,0.10);stroke:#0891b2}
+.kt-rose   .kpi-icon{background:rgba(225,29,72,0.09);stroke:#e11d48}
 
-.kpi-label{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:rgba(3,12,24,0.40);flex:1}
-.kpi-value{font-size:32px;font-weight:800;letter-spacing:-.8px;color:#030C18;line-height:1}
+.kpi-label{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:rgba(3,12,24,0.38);flex:1}
+.kpi-value{font-size:26px;font-weight:800;letter-spacing:-.7px;color:#030C18;line-height:1}
+.kpi-value.small{font-size:18px}
 .kpi-bottom{display:flex;align-items:center;justify-content:space-between;gap:6px}
-.kpi-sub{font-size:11.5px;color:rgba(3,12,24,0.38);font-weight:500}
-.kpi-delta{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:700;
+.kpi-sub{font-size:11px;color:rgba(3,12,24,0.38);font-weight:500}
+.kpi-delta{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;font-weight:700;
            padding:2px 7px;border-radius:999px;white-space:nowrap}
 .kpi-delta.up  {background:rgba(18,183,106,0.12);color:#0a7a3c}
 .kpi-delta.dn  {background:rgba(240,68,56,0.10);color:#b02020}
 .kpi-delta.flat{background:rgba(3,12,24,0.06);color:rgba(3,12,24,0.45)}
-.kpi-delta svg {width:10px;height:10px;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.kpi-delta svg {width:9px;height:9px;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
 
-/* ── Chart card ── */
+/* ══════════════════════════════════════════
+   CHART CARDS
+══════════════════════════════════════════ */
 .chart-card{
   background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:14px;
-  box-shadow:0 2px 12px rgba(3,12,24,0.04);overflow:hidden;margin-bottom:16px
+  box-shadow:0 2px 12px rgba(3,12,24,0.04);overflow:hidden;margin-bottom:14px
 }
 .chart-head{
   display:flex;align-items:center;gap:10px;
-  padding:16px 20px 12px;border-bottom:1px solid rgba(3,12,24,0.06)
+  padding:14px 18px 10px;border-bottom:1px solid rgba(3,12,24,0.06)
 }
 .chart-icon{width:28px;height:28px;border-radius:8px;flex-shrink:0;
             display:flex;align-items:center;justify-content:center}
@@ -58,263 +88,338 @@
 .chart-title{font-size:13px;font-weight:750;color:#030C18;flex:1}
 .chart-badge{font-size:11px;font-weight:700;color:rgba(3,12,24,0.38);
              background:rgba(3,12,24,0.05);padding:2px 9px;border-radius:999px}
-.chart-body{padding:20px}
-.chart-canvas-wrap{position:relative;height:220px}
+.chart-body{padding:18px}
+.chart-canvas-wrap{position:relative;height:210px}
+.chart-canvas-wrap.tall{height:260px}
+.chart-canvas-wrap.sm{height:170px}
 
-/* ── Grid layout ── */
-.rp-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
-@media(max-width:840px){.rp-grid{grid-template-columns:1fr}}
-.rp-full{grid-column:1/-1}
+/* ══════════════════════════════════════════
+   GRID LAYOUTS
+══════════════════════════════════════════ */
+.rp-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.rp-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px}
+@media(max-width:960px){.rp-grid-2,.rp-grid-3{grid-template-columns:1fr}}
+.rp-col-span-2{grid-column:span 2}
+@media(max-width:960px){.rp-col-span-2{grid-column:span 1}}
 
-/* ── Pipeline bars ── */
-.pipeline-row{margin-bottom:13px}
-.pipeline-row:last-child{margin-bottom:0}
-.pipeline-meta{display:flex;align-items:center;justify-content:space-between;margin-bottom:5px}
-.pipeline-label{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:650;color:#030C18}
-.pipeline-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.pipeline-count{font-size:13px;font-weight:800;color:#030C18}
-.pipeline-pct{font-size:11px;color:rgba(3,12,24,0.38);margin-left:4px;font-weight:500}
-.pipeline-bar-bg{height:6px;background:rgba(3,12,24,0.07);border-radius:999px;overflow:hidden}
-.pipeline-bar-fill{height:100%;border-radius:999px;transition:width .5s}
-
-/* ── Funnel ── */
-.funnel-wrap{display:flex;flex-direction:column;gap:8px;padding:4px 0}
-.funnel-step{position:relative}
-.funnel-bar-outer{height:38px;border-radius:8px;overflow:hidden;position:relative;
-                  background:rgba(3,12,24,0.05)}
+/* ══════════════════════════════════════════
+   PIPELINE / FUNNEL
+══════════════════════════════════════════ */
+.funnel-wrap{display:flex;flex-direction:column;gap:7px}
+.funnel-bar-outer{height:36px;border-radius:8px;overflow:hidden;background:rgba(3,12,24,0.05);position:relative}
 .funnel-bar-inner{height:100%;border-radius:8px;display:flex;align-items:center;
-                  padding:0 14px;gap:8px;min-width:32px;transition:width .6s}
-.funnel-stage{font-size:12.5px;font-weight:700;color:#fff;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.funnel-n{font-size:14px;font-weight:800;color:#fff;flex-shrink:0}
-.funnel-rate{font-size:11px;color:rgba(3,12,24,0.40);text-align:right;margin-top:4px;font-weight:600}
+                  padding:0 12px;gap:8px;min-width:32px;transition:width .6s}
+.funnel-stage{font-size:12px;font-weight:700;color:#fff;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.funnel-n{font-size:13px;font-weight:800;color:#fff;flex-shrink:0}
+.funnel-rate{font-size:10.5px;color:rgba(3,12,24,0.38);text-align:right;margin-top:3px;font-weight:600}
 
-/* ── Staff table ── */
-.staff-table{width:100%;border-collapse:collapse}
-.staff-table th{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
-                color:rgba(3,12,24,0.38);padding:10px 16px;text-align:left;
-                border-bottom:1px solid rgba(3,12,24,0.07);background:#fafbfc;white-space:nowrap}
-.staff-table th.right,.staff-table td.right{text-align:right}
-.staff-table td{padding:12px 16px;border-bottom:1px solid rgba(3,12,24,0.05);
-                font-size:13px;color:#030C18;vertical-align:middle}
-.staff-table tr:last-child td{border-bottom:none}
-.staff-table tr:hover td{background:rgba(3,12,24,0.015)}
-.staff-avatar{display:inline-flex;align-items:center;justify-content:center;
-              width:28px;height:28px;border-radius:50%;font-size:11px;font-weight:700;
-              color:#fff;flex-shrink:0;margin-right:8px}
-.staff-name-cell{display:flex;align-items:center}
+/* ══════════════════════════════════════════
+   STAFF TABLE
+══════════════════════════════════════════ */
+.erp-table{width:100%;border-collapse:collapse}
+.erp-table th{
+  font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  color:rgba(3,12,24,0.38);padding:10px 16px;text-align:left;
+  border-bottom:1px solid rgba(3,12,24,0.07);background:#fafbfc;white-space:nowrap
+}
+.erp-table th.r,.erp-table td.r{text-align:right}
+.erp-table td{padding:11px 16px;border-bottom:1px solid rgba(3,12,24,0.05);
+              font-size:13px;color:#030C18;vertical-align:middle}
+.erp-table tr:last-child td{border-bottom:none}
+.erp-table tr:hover td{background:rgba(3,12,24,0.015)}
+.av{display:inline-flex;align-items:center;justify-content:center;
+    width:28px;height:28px;border-radius:50%;font-size:10.5px;font-weight:700;color:#fff;flex-shrink:0;margin-right:8px}
+.name-cell{display:flex;align-items:center}
 .conv-bar-wrap{display:flex;align-items:center;gap:8px}
 .conv-bar-bg{flex:1;height:5px;background:rgba(3,12,24,0.07);border-radius:999px;overflow:hidden;min-width:50px}
 .conv-bar-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#12B76A,#34d399)}
-.conv-pct{font-size:12px;font-weight:700;color:#030C18;white-space:nowrap;min-width:34px;text-align:right}
-.staff-badge{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;
-             text-transform:uppercase;padding:2px 7px;border-radius:999px}
-.staff-badge.admin{background:rgba(26,86,219,0.10);color:#1a56db}
-.staff-badge.staff{background:rgba(3,12,24,0.06);color:rgba(3,12,24,0.50)}
-.rank-medal{font-size:16px;width:24px;text-align:center;flex-shrink:0}
+.conv-pct{font-size:11.5px;font-weight:700;color:#030C18;white-space:nowrap;min-width:34px;text-align:right}
+.role-badge{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;
+            text-transform:uppercase;padding:2px 7px;border-radius:999px}
+.role-badge.admin{background:rgba(26,86,219,0.10);color:#1a56db}
+.role-badge.staff{background:rgba(3,12,24,0.06);color:rgba(3,12,24,0.50)}
 
-/* ── Portfolio value breakdown ── */
-.port-row{display:flex;align-items:center;gap:12px;padding:12px 16px;
+/* ══════════════════════════════════════════
+   PORTFOLIO ROWS
+══════════════════════════════════════════ */
+.port-row{display:flex;align-items:center;gap:12px;padding:11px 18px;
           border-bottom:1px solid rgba(3,12,24,0.05)}
 .port-row:last-child{border-bottom:none}
-.port-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.port-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
 .port-label{font-size:13px;font-weight:650;color:#030C18;flex:1;text-transform:capitalize}
-.port-count{font-size:12px;color:rgba(3,12,24,0.40);font-weight:500;margin-right:6px}
+.port-count{font-size:11.5px;color:rgba(3,12,24,0.38);font-weight:500}
 .port-value{font-size:13px;font-weight:800;color:#030C18;white-space:nowrap}
 
-/* ── Automation row ── */
-.auto-row{display:flex;align-items:center;gap:14px;padding:13px 16px;border-radius:11px;
-          border:1px solid rgba(3,12,24,0.07);background:#fafbfc;margin-bottom:10px}
+/* ══════════════════════════════════════════
+   AUTOMATION ROWS
+══════════════════════════════════════════ */
+.auto-row{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:10px;
+          border:1px solid rgba(3,12,24,0.07);background:#fafbfc;margin-bottom:8px}
 .auto-row:last-child{margin-bottom:0}
-.auto-icon{width:36px;height:36px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
-.auto-icon svg{width:17px;height:17px;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.auto-icon{width:34px;height:34px;border-radius:9px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.auto-icon svg{width:15px;height:15px;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 .auto-text{flex:1}
-.auto-title{font-size:13px;font-weight:700;color:#030C18;margin-bottom:2px}
-.auto-desc{font-size:12px;color:rgba(3,12,24,0.42)}
-.auto-count{font-size:26px;font-weight:800;letter-spacing:-.5px;color:#030C18;flex-shrink:0}
+.auto-title{font-size:12.5px;font-weight:700;color:#030C18;margin-bottom:1px}
+.auto-desc{font-size:11px;color:rgba(3,12,24,0.42)}
+.auto-count{font-size:22px;font-weight:800;letter-spacing:-.5px;flex-shrink:0}
 
-/* ── Popular areas ── */
-.area-tags{display:flex;flex-wrap:wrap;gap:8px;padding:20px}
-.area-tag{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:999px;
+/* ══════════════════════════════════════════
+   INSPECTION STATUS GRID
+══════════════════════════════════════════ */
+.insp-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:16px}
+.insp-tile{border-radius:10px;padding:14px 16px;border:1px solid transparent}
+.insp-tile .it-n{font-size:26px;font-weight:800;letter-spacing:-.5px;line-height:1;margin-bottom:4px}
+.insp-tile .it-l{font-size:11.5px;font-weight:650;color:rgba(3,12,24,0.50)}
+
+/* ══════════════════════════════════════════
+   LISTING STATUS PILL
+══════════════════════════════════════════ */
+.lst-stat{display:inline-flex;align-items:center;font-size:11px;font-weight:700;
+          padding:3px 9px;border-radius:999px;letter-spacing:.02em}
+.lst-stat.available  {background:rgba(18,183,106,0.10);color:#0a7a3c;border:1px solid rgba(18,183,106,0.22)}
+.lst-stat.sold       {background:rgba(240,68,56,0.08);color:#b02020;border:1px solid rgba(240,68,56,0.18)}
+.lst-stat.under_offer{background:rgba(247,144,9,0.10);color:#7a4f00;border:1px solid rgba(247,144,9,0.22)}
+.lst-stat.let        {background:rgba(26,86,219,0.09);color:#1a56db;border:1px solid rgba(26,86,219,0.20)}
+.lst-stat.off_market {background:rgba(3,12,24,0.05);color:rgba(3,12,24,0.45);border:1px solid rgba(3,12,24,0.10)}
+
+/* ══════════════════════════════════════════
+   POPULAR AREAS TAGS
+══════════════════════════════════════════ */
+.area-tags{display:flex;flex-wrap:wrap;gap:8px;padding:16px}
+.area-tag{display:inline-flex;align-items:center;gap:6px;padding:6px 13px;border-radius:999px;
           background:#fff;border:1.5px solid rgba(3,12,24,0.10);
-          font-size:13px;font-weight:650;color:#030C18;box-shadow:0 1px 4px rgba(3,12,24,0.05)}
-.area-tag-count{font-size:11px;font-weight:800;color:#fff;
-                background:#030C18;border-radius:999px;padding:1px 7px;min-width:20px;text-align:center}
+          font-size:12.5px;font-weight:650;color:#030C18;box-shadow:0 1px 4px rgba(3,12,24,0.05)}
+.area-tag-n{font-size:10.5px;font-weight:800;color:#fff;
+            background:#030C18;border-radius:999px;padding:1px 7px;min-width:18px;text-align:center}
 
-/* ── Top listings ── */
-.tl-wrap{overflow-x:auto}
-.tl-table{width:100%;border-collapse:collapse}
-.tl-table th{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
-             color:rgba(3,12,24,0.38);padding:10px 20px;text-align:left;
-             border-bottom:1px solid rgba(3,12,24,0.07);background:#fafbfc;white-space:nowrap}
-.tl-table th:last-child{text-align:right}
-.tl-table td{padding:13px 20px;border-bottom:1px solid rgba(3,12,24,0.05);
-             font-size:13px;color:#030C18;vertical-align:middle}
-.tl-table tr:last-child td{border-bottom:none}
-.tl-table tr:hover td{background:rgba(3,12,24,0.015)}
-.tl-title{font-weight:700;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tl-loc{font-size:12px;color:rgba(3,12,24,0.42)}
-.tl-price{font-weight:700;white-space:nowrap}
-.tl-stat{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;
-         padding:3px 10px;border-radius:999px;letter-spacing:.02em}
-.tl-stat.available  {background:rgba(18,183,106,0.10);color:#0a7a3c;border:1px solid rgba(18,183,106,0.22)}
-.tl-stat.sold       {background:rgba(240,68,56,0.08);color:#b02020;border:1px solid rgba(240,68,56,0.18)}
-.tl-stat.under_offer{background:rgba(247,144,9,0.10);color:#7a4f00;border:1px solid rgba(247,144,9,0.22)}
-.tl-stat.let        {background:rgba(26,86,219,0.09);color:#1a56db;border:1px solid rgba(26,86,219,0.20)}
-.tl-stat.off_market {background:rgba(3,12,24,0.05);color:rgba(3,12,24,0.45);border:1px solid rgba(3,12,24,0.10)}
-.tl-num{font-size:14px;font-weight:800;color:#030C18}
-.empty-state{padding:40px 20px;text-align:center;font-size:13px;color:rgba(3,12,24,0.38)}
+/* ══════════════════════════════════════════
+   LEAD SOURCE ROWS
+══════════════════════════════════════════ */
+.src-row{display:flex;align-items:center;gap:10px;padding:10px 18px;
+         border-bottom:1px solid rgba(3,12,24,0.05)}
+.src-row:last-child{border-bottom:none}
+.src-label{font-size:13px;font-weight:650;color:#030C18;flex:1}
+.src-bar-bg{width:110px;height:6px;background:rgba(3,12,24,0.07);border-radius:999px;overflow:hidden}
+.src-bar-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#1a56db,#3b82f6)}
+.src-n{font-size:13px;font-weight:800;color:#030C18;min-width:28px;text-align:right}
 
-/* ── Print ── */
-.print-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;background:#fff;
-           border:1px solid rgba(3,12,24,0.12);border-radius:9px;font-size:12.5px;
-           font-weight:650;color:rgba(3,12,24,0.55);cursor:pointer;box-shadow:0 1px 6px rgba(3,12,24,0.05)}
-.print-btn:hover{background:#fafbfc;color:#030C18}
-.print-btn svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-@media print{.sidebar,.page-header .print-btn{display:none}}
+/* ══════════════════════════════════════════
+   SECTION DIVIDER
+══════════════════════════════════════════ */
+.sdiv{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+      color:rgba(3,12,24,0.35);margin:22px 0 10px;display:flex;align-items:center;gap:10px}
+.sdiv::after{content:'';flex:1;height:1px;background:rgba(3,12,24,0.08)}
 
-/* ── Divider label ── */
-.section-divider{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
-                 color:rgba(3,12,24,0.35);margin:24px 0 12px;display:flex;align-items:center;gap:10px}
-.section-divider::after{content:'';flex:1;height:1px;background:rgba(3,12,24,0.08)}
+/* ══════════════════════════════════════════
+   DOUGHNUT LEGEND
+══════════════════════════════════════════ */
+.dnut-legend{display:flex;flex-direction:column;gap:7px;padding:16px 18px 4px}
+.dnut-row{display:flex;align-items:center;gap:9px}
+.dnut-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.dnut-name{font-size:12.5px;font-weight:650;color:#030C18;flex:1;text-transform:capitalize}
+.dnut-pct{font-size:12px;font-weight:700;color:rgba(3,12,24,0.45)}
+.dnut-n{font-size:12.5px;font-weight:800;color:#030C18}
+
+/* ══════════════════════════════════════════
+   EMPTY STATE
+══════════════════════════════════════════ */
+.empty-state{padding:36px 20px;text-align:center;font-size:13px;color:rgba(3,12,24,0.35)}
+
+/* ══════════════════════════════════════════
+   PRINT
+══════════════════════════════════════════ */
+@media print{
+  .sidebar,.period-bar,.rp-actions,.print-hide{display:none!important}
+  .kpi-strip{grid-template-columns:repeat(3,1fr)!important}
+  .rp-grid-2,.rp-grid-3{grid-template-columns:1fr!important}
+}
 </style>
 {% endblock %}
 
 {% block content %}
 
-{# ── helpers ── #}
-{% macro mom_delta(this, last) %}
-  {% if last == 0 and this == 0 %}
-    <span class="kpi-delta flat">— same</span>
-  {% elif last == 0 %}
-    <span class="kpi-delta up">
-      <svg viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>New
-    </span>
-  {% elif this > last %}
-    {% set pct = (((this - last) / last) * 100) | round | int %}
-    <span class="kpi-delta up">
-      <svg viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>+{{ pct }}%
-    </span>
-  {% elif this < last %}
-    {% set pct = (((last - this) / last) * 100) | round | int %}
-    <span class="kpi-delta dn">
-      <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>-{{ pct }}%
-    </span>
-  {% else %}
-    <span class="kpi-delta flat">— same</span>
-  {% endif %}
+{# ── MoM delta macro ── #}
+{% macro mom(this, last) %}
+  {% if last == 0 and this == 0 %}<span class="kpi-delta flat">— same</span>
+  {% elif last == 0 %}<span class="kpi-delta up"><svg viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>New</span>
+  {% elif this > last %}{% set p=((this-last)/last*100)|round|int %}<span class="kpi-delta up"><svg viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>+{{ p }}%</span>
+  {% elif this < last %}{% set p=((last-this)/last*100)|round|int %}<span class="kpi-delta dn"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>-{{ p }}%</span>
+  {% else %}<span class="kpi-delta flat">— same</span>{% endif %}
 {% endmacro %}
 
-<div class="page-header">
+<!-- ══════════════════════════════════════════════════════
+     PAGE HEADER
+══════════════════════════════════════════════════════ -->
+<div class="page-header" style="flex-wrap:wrap;gap:12px;margin-bottom:14px">
   <div>
-    <h1 class="section-title" style="margin-bottom:4px">Executive Reports</h1>
-    <p class="muted">Performance dashboard · All-time pipeline + 30-day activity</p>
+    <h1 class="section-title" style="margin-bottom:3px">Executive Reports</h1>
+    <p class="muted" style="margin:0">{{ period_label }} — {{ tenant.business_name or 'Your Agency' }}</p>
   </div>
-  <button class="print-btn" onclick="window.print()">
-    <svg viewBox="0 0 24 24"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-    Print / Export
-  </button>
+  <div class="rp-actions print-hide">
+    <a href="{{ url_for('estate.reports_export_csv', period=period) }}" class="rp-btn export">
+      <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Export CSV
+    </a>
+    <button onclick="window.print()" class="rp-btn">
+      <svg viewBox="0 0 24 24"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+      Print
+    </button>
+  </div>
+</div>
+
+<!-- Period selector -->
+<div class="period-bar print-hide" style="margin-bottom:16px">
+  {% for p, lbl in [('30d','30 Days'),('90d','90 Days'),('6m','6 Months'),('ytd','Year to Date'),('1y','12 Months'),('all','All Time')] %}
+  <a href="{{ url_for('estate.reports', period=p) }}" class="period-tab{% if period == p %} active{% endif %}">{{ lbl }}</a>
+  {% endfor %}
 </div>
 
 <!-- ══════════════════════════════════════════════════════
-     KPI STRIP — 5 tiles
+     KPI STRIP — 6 tiles
 ══════════════════════════════════════════════════════ -->
 <div class="kpi-strip">
 
-  <!-- Total Leads this month -->
   <div class="kpi-tile kt-blue">
     <div class="kpi-top">
-      <span class="kpi-label">Leads (this month)</span>
+      <span class="kpi-label">New Leads</span>
       <div class="kpi-icon"><svg viewBox="0 0 24 24" stroke="#1a56db"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
     </div>
-    <div class="kpi-value">{{ stats.mom_leads.this }}</div>
+    <div class="kpi-value">{{ period_leads }}</div>
     <div class="kpi-bottom">
-      <span class="kpi-sub">{{ stats.total_leads }} all-time</span>
-      {{ mom_delta(stats.mom_leads.this, stats.mom_leads.last) }}
+      <span class="kpi-sub">{{ total_leads }} all-time</span>
+      {{ mom(mom_leads.this, mom_leads.last) }}
     </div>
   </div>
 
-  <!-- Conversion Rate -->
   <div class="kpi-tile kt-purple">
     <div class="kpi-top">
       <span class="kpi-label">Conversion Rate</span>
       <div class="kpi-icon"><svg viewBox="0 0 24 24" stroke="#7c3aed"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
     </div>
-    <div class="kpi-value">{{ stats.conv_rate }}%</div>
+    <div class="kpi-value">{{ conv_rate }}%</div>
     <div class="kpi-bottom">
       <span class="kpi-sub">Enquiry → inspection+</span>
     </div>
   </div>
 
-  <!-- Inspections this month -->
   <div class="kpi-tile kt-green">
     <div class="kpi-top">
-      <span class="kpi-label">Inspections (30d)</span>
+      <span class="kpi-label">Inspections</span>
       <div class="kpi-icon"><svg viewBox="0 0 24 24" stroke="#12B76A"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
     </div>
-    <div class="kpi-value">{{ stats.inspections }}</div>
+    <div class="kpi-value">{{ period_inspections }}</div>
     <div class="kpi-bottom">
-      <span class="kpi-sub">{{ stats.inspections_confirmed }} confirmed</span>
-      {{ mom_delta(stats.mom_inspections.this, stats.mom_inspections.last) }}
+      <span class="kpi-sub">{{ period_inspections_confirmed }} confirmed</span>
+      {{ mom(mom_inspections.this, mom_inspections.last) }}
     </div>
   </div>
 
-  <!-- Closed Deals -->
   <div class="kpi-tile kt-amber">
     <div class="kpi-top">
       <span class="kpi-label">Closed Deals</span>
       <div class="kpi-icon"><svg viewBox="0 0 24 24" stroke="#F79009"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
     </div>
-    <div class="kpi-value">{{ stats.closed_deals }}</div>
+    <div class="kpi-value">{{ closed_deals }}</div>
     <div class="kpi-bottom">
       <span class="kpi-sub">All-time closed/won</span>
     </div>
   </div>
 
-  <!-- Portfolio Value Available -->
+  <div class="kpi-tile kt-rose">
+    <div class="kpi-top">
+      <span class="kpi-label">Revenue Earned</span>
+      <div class="kpi-icon"><svg viewBox="0 0 24 24" stroke="#e11d48"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+    </div>
+    {% if revenue_earned > 0 %}
+    <div class="kpi-value small">₦{{ '{:,.0f}'.format(revenue_earned) }}</div>
+    {% else %}
+    <div class="kpi-value">—</div>
+    {% endif %}
+    <div class="kpi-bottom">
+      <span class="kpi-sub">Agency fees · {{ deals_count }} deal{{ 's' if deals_count != 1 }}</span>
+    </div>
+  </div>
+
   <div class="kpi-tile kt-teal">
     <div class="kpi-top">
       <span class="kpi-label">Available Portfolio</span>
       <div class="kpi-icon"><svg viewBox="0 0 24 24" stroke="#0891b2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
     </div>
-    {% if stats.portfolio_value > 0 %}
-    <div class="kpi-value" style="font-size:22px">₦{{ '{:,.0f}'.format(stats.portfolio_value) }}</div>
+    {% if portfolio_value > 0 %}
+    <div class="kpi-value small">₦{{ '{:,.0f}'.format(portfolio_value) }}</div>
     {% else %}
     <div class="kpi-value">—</div>
     {% endif %}
     <div class="kpi-bottom">
-      <span class="kpi-sub">{{ stats.new_listings_month }} new this month</span>
+      <span class="kpi-sub">{{ new_listings_month }} new this month</span>
     </div>
   </div>
 
 </div>
 
 <!-- ══════════════════════════════════════════════════════
-     ROW 1 — Lead Trend (full width)
+     ROW A — Lead Trend + Property Type Doughnut
 ══════════════════════════════════════════════════════ -->
-<div class="chart-card">
-  <div class="chart-head">
-    <div class="chart-icon" style="background:rgba(26,86,219,0.09)">
-      <svg viewBox="0 0 24 24" stroke="#1a56db"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+<div class="sdiv">Pipeline &amp; Activity</div>
+
+<div class="rp-grid-2">
+
+  <!-- Lead trend chart -->
+  <div class="chart-card" style="margin-bottom:0">
+    <div class="chart-head">
+      <div class="chart-icon" style="background:rgba(26,86,219,0.09)">
+        <svg viewBox="0 0 24 24" stroke="#1a56db"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      </div>
+      <span class="chart-title">Lead Arrivals — {{ period_label }}</span>
+      <span class="chart-badge">{{ period_leads }} total</span>
     </div>
-    <span class="chart-title">New Lead Arrivals — Last 30 Days</span>
-    {% set total_30d = stats.mom_leads.this %}
-    <span class="chart-badge">{{ total_30d }} this month</span>
+    <div class="chart-body">
+      {% if trend_labels != '[]' %}
+      <div class="chart-canvas-wrap"><canvas id="trendChart"></canvas></div>
+      {% else %}
+      <div class="empty-state">No lead activity in this period.</div>
+      {% endif %}
+    </div>
   </div>
-  <div class="chart-body">
-    {% if daily_values != '[]' %}
-    <div class="chart-canvas-wrap">
-      <canvas id="leadTrendChart"></canvas>
+
+  <!-- Property type doughnut -->
+  <div class="chart-card" style="margin-bottom:0">
+    <div class="chart-head">
+      <div class="chart-icon" style="background:rgba(124,58,237,0.09)">
+        <svg viewBox="0 0 24 24" stroke="#7c3aed"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+      </div>
+      <span class="chart-title">Listing Mix by Type</span>
+      {% set total_type = type_breakdown | sum(attribute='n') %}
+      <span class="chart-badge">{{ total_type }} total</span>
     </div>
+    {% if type_breakdown %}
+    <div class="chart-body" style="padding-bottom:0">
+      <div class="chart-canvas-wrap sm"><canvas id="typeChart"></canvas></div>
+    </div>
+    {% set type_colors = ['#1a56db','#12B76A','#F79009','#7c3aed','#0891b2','#F04438'] %}
+    <div class="dnut-legend">
+      {% for row in type_breakdown %}
+      {% set pct = ((row.n / total_type) * 100) | round | int if total_type else 0 %}
+      <div class="dnut-row">
+        <span class="dnut-dot" style="background:{{ type_colors[loop.index0 % type_colors|length] }}"></span>
+        <span class="dnut-name">{{ (row.property_type or 'Unknown') | replace('_',' ') }}</span>
+        <span class="dnut-pct">{{ pct }}%</span>
+        <span class="dnut-n">{{ row.n }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <div style="height:12px"></div>
     {% else %}
-    <div class="empty-state" style="padding:40px 20px">No lead activity in the last 30 days.</div>
+    <div class="empty-state">No listings yet.</div>
     {% endif %}
   </div>
+
 </div>
 
 <!-- ══════════════════════════════════════════════════════
-     ROW 2 — Pipeline funnel + Automation
+     ROW B — Funnel + Automation Activity
 ══════════════════════════════════════════════════════ -->
-<div class="rp-grid">
+<div class="rp-grid-2" style="margin-top:14px">
 
   <!-- Sales Funnel -->
   <div class="chart-card" style="margin-bottom:0">
@@ -322,33 +427,31 @@
       <div class="chart-icon" style="background:rgba(26,86,219,0.09)">
         <svg viewBox="0 0 24 24" stroke="#1a56db"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
       </div>
-      <span class="chart-title">Sales Funnel</span>
-      {% set total_pipe = pipeline.values() | sum %}
-      <span class="chart-badge">{{ total_pipe }} total leads</span>
+      <span class="chart-title">Sales Pipeline Funnel</span>
+      <span class="chart-badge">{{ pipeline.values() | sum }} leads</span>
     </div>
-    <div class="chart-body" style="padding:16px 20px">
+    <div class="chart-body" style="padding:14px 18px">
       {% set stages = [
-        ('new',               'New Enquiry',       '#94a3b8'),
-        ('qualified',         'Qualified',          '#1a56db'),
-        ('inspection_booked', 'Inspection Booked',  '#7c3aed'),
-        ('negotiating',       'Negotiating',        '#F79009'),
-        ('closed',            'Closed / Won',       '#12B76A'),
-        ('lost',              'Lost',               '#F04438')
+        ('new','New Enquiry','#94a3b8'),
+        ('qualified','Qualified','#1a56db'),
+        ('inspection_booked','Inspection Booked','#7c3aed'),
+        ('negotiating','Negotiating','#F79009'),
+        ('closed','Closed / Won','#12B76A'),
+        ('lost','Lost','#F04438')
       ] %}
-      {% set total = [pipeline.values() | sum, 1] | max %}
+      {% set pipe_total = [pipeline.values()|sum, 1]|max %}
       <div class="funnel-wrap">
         {% for slug, label, color in stages %}
         {% set count = pipeline.get(slug, 0) %}
-        {% set pct = ((count / total) * 100) | int %}
+        {% set pct = ((count / pipe_total) * 100) | int %}
         <div class="funnel-step">
           <div class="funnel-bar-outer">
-            <div class="funnel-bar-inner"
-                 style="width:{{ [pct, count > 0 and 8 or 0] | max }}%;background:{{ color }}">
+            <div class="funnel-bar-inner" style="width:{{ [pct, count > 0 and 7 or 0]|max }}%;background:{{ color }}">
               <span class="funnel-stage">{{ label }}</span>
               <span class="funnel-n">{{ count }}</span>
             </div>
           </div>
-          <div class="funnel-rate">{{ pct }}% of pipeline</div>
+          <div class="funnel-rate">{{ pct }}%</div>
         </div>
         {% endfor %}
       </div>
@@ -361,10 +464,9 @@
       <div class="chart-icon" style="background:rgba(124,58,237,0.09)">
         <svg viewBox="0 0 24 24" stroke="#7c3aed"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
       </div>
-      <span class="chart-title">Automation Activity (30d)</span>
+      <span class="chart-title">Automation Activity — {{ period_label }}</span>
     </div>
-    <div class="chart-body" style="padding:16px">
-
+    <div class="chart-body" style="padding:14px">
       <div class="auto-row">
         <div class="auto-icon" style="background:rgba(26,86,219,0.09)">
           <svg viewBox="0 0 24 24" stroke="#1a56db"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -373,20 +475,18 @@
           <div class="auto-title">Follow-up Sequences</div>
           <div class="auto-desc">Auto messages sent to cold leads</div>
         </div>
-        <div class="auto-count" style="color:#1a56db">{{ stats.followups_sent }}</div>
+        <div class="auto-count" style="color:#1a56db">{{ period_followups }}</div>
       </div>
-
       <div class="auto-row">
         <div class="auto-icon" style="background:rgba(18,183,106,0.09)">
           <svg viewBox="0 0 24 24" stroke="#12B76A"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         </div>
         <div class="auto-text">
-          <div class="auto-title">Buyer Profiles Captured</div>
-          <div class="auto-desc">Budget, area &amp; type qualified</div>
+          <div class="auto-title">Qualified Buyers</div>
+          <div class="auto-desc">Budget, area &amp; type captured</div>
         </div>
-        <div class="auto-count" style="color:#12B76A">{{ stats.qualified_buyers }}</div>
+        <div class="auto-count" style="color:#12B76A">{{ pipeline.get('qualified', 0) }}</div>
       </div>
-
       <div class="auto-row">
         <div class="auto-icon" style="background:rgba(247,144,9,0.09)">
           <svg viewBox="0 0 24 24" stroke="#F79009"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2.24h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9.91a16 16 0 0 0 6.16 6.16l.97-.97a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.92 17z"/></svg>
@@ -395,29 +495,56 @@
           <div class="auto-title">Listing Broadcasts</div>
           <div class="auto-desc">New listing &amp; price-drop alerts sent</div>
         </div>
-        <div class="auto-count" style="color:#F79009">{{ stats.broadcasts_sent }}</div>
+        <div class="auto-count" style="color:#F79009">{{ period_broadcasts }}</div>
       </div>
-
       <div class="auto-row">
         <div class="auto-icon" style="background:rgba(240,68,56,0.09)">
           <svg viewBox="0 0 24 24" stroke="#F04438"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         </div>
         <div class="auto-text">
-          <div class="auto-title">Agent Handoffs Triggered</div>
+          <div class="auto-title">Agent Handoffs</div>
           <div class="auto-desc">Leads escalated for human follow-up</div>
         </div>
-        <div class="auto-count" style="color:#F04438">{{ stats.handoffs }}</div>
+        <div class="auto-count" style="color:#F04438">{{ period_handoffs }}</div>
       </div>
-
     </div>
   </div>
 
 </div>
 
 <!-- ══════════════════════════════════════════════════════
-     ROW 3 — Staff Leaderboard (full width)
+     ROW C — 12-Month Bar Chart (full width)
 ══════════════════════════════════════════════════════ -->
-<div class="section-divider">Team Performance</div>
+<div class="sdiv" style="margin-top:22px">12-Month Performance Trend</div>
+
+<div class="chart-card">
+  <div class="chart-head">
+    <div class="chart-icon" style="background:rgba(8,145,178,0.09)">
+      <svg viewBox="0 0 24 24" stroke="#0891b2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
+    </div>
+    <span class="chart-title">Monthly Breakdown — Leads · Listings Added · Closings</span>
+    <span class="chart-badge">Last 12 months</span>
+  </div>
+  <div class="chart-body">
+    <div class="chart-canvas-wrap tall"><canvas id="monthlyChart"></canvas></div>
+    <div style="display:flex;gap:18px;margin-top:10px;justify-content:center;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:650;color:rgba(3,12,24,0.55)">
+        <span style="width:12px;height:12px;border-radius:3px;background:#1a56db;flex-shrink:0"></span>New Leads
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:650;color:rgba(3,12,24,0.55)">
+        <span style="width:12px;height:12px;border-radius:3px;background:rgba(124,58,237,0.6);flex-shrink:0"></span>Listings Added
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:650;color:rgba(3,12,24,0.55)">
+        <span style="width:12px;height:12px;border-radius:3px;background:#12B76A;flex-shrink:0"></span>Closed Deals
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     ROW D — Staff Leaderboard (full width)
+══════════════════════════════════════════════════════ -->
+<div class="sdiv">Team Performance</div>
 
 <div class="chart-card">
   <div class="chart-head">
@@ -425,63 +552,61 @@
       <svg viewBox="0 0 24 24" stroke="#12B76A"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
     </div>
     <span class="chart-title">Staff Performance Leaderboard</span>
-    <span class="chart-badge">{{ staff_perf | length }} agents</span>
+    <span class="chart-badge">{{ staff_perf|length }} agents</span>
   </div>
   {% if staff_perf %}
   <div style="overflow-x:auto">
-    <table class="staff-table">
+    <table class="erp-table">
       <thead>
         <tr>
-          <th style="width:32px"></th>
+          <th style="width:36px"></th>
           <th>Agent</th>
-          <th class="right">Leads Assigned</th>
-          <th class="right">Progressed</th>
-          <th class="right">Closed</th>
-          <th style="min-width:140px">Conversion</th>
+          <th class="r">Leads Assigned</th>
+          <th class="r">Progressed</th>
+          <th class="r">Closed</th>
+          <th style="min-width:150px">Conversion</th>
+          <th class="r">Response Score</th>
         </tr>
       </thead>
       <tbody>
-        {% set avatar_colors = ['#1a56db','#7c3aed','#12B76A','#F79009','#0891b2','#F04438','#6366f1','#ec4899'] %}
+        {% set av_colors=['#1a56db','#7c3aed','#12B76A','#F79009','#0891b2','#F04438','#6366f1','#ec4899'] %}
         {% for s in staff_perf %}
-        {% set total = s.total_leads | int %}
-        {% set prog = s.progressed | int %}
-        {% set conv = (prog / total * 100) | round | int if total > 0 else 0 %}
-        {% set medals = ['🥇','🥈','🥉'] %}
+        {% set tot = s.total_leads|int %}
+        {% set prog = s.progressed|int %}
+        {% set conv = (prog/tot*100)|round|int if tot > 0 else 0 %}
         <tr>
-          <td style="padding:12px 8px 12px 16px;text-align:center">
-            {% if loop.index <= 3 %}
-              <span style="font-size:16px">{{ medals[loop.index0] }}</span>
-            {% else %}
-              <span style="font-size:12px;color:rgba(3,12,24,0.30);font-weight:700">{{ loop.index }}</span>
-            {% endif %}
+          <td style="padding:11px 8px 11px 16px;text-align:center">
+            {% if loop.index == 1 %}<span style="font-size:16px">🥇</span>
+            {% elif loop.index == 2 %}<span style="font-size:16px">🥈</span>
+            {% elif loop.index == 3 %}<span style="font-size:16px">🥉</span>
+            {% else %}<span style="font-size:12px;color:rgba(3,12,24,0.30);font-weight:700">{{ loop.index }}</span>{% endif %}
           </td>
           <td>
-            <div class="staff-name-cell">
-              <span class="staff-avatar" style="background:{{ avatar_colors[loop.index0 % avatar_colors|length] }}">
+            <div class="name-cell">
+              <span class="av" style="background:{{ av_colors[loop.index0 % av_colors|length] }}">
                 {{ s.name.split()[0][0] }}{{ s.name.split()[-1][0] if s.name.split()|length > 1 else '' }}
               </span>
               <div>
                 <div style="font-weight:700;font-size:13px">{{ s.name }}</div>
-                <span class="staff-badge {{ s.role }}">{{ s.role }}</span>
+                <span class="role-badge {{ s.role }}">{{ s.role }}</span>
               </div>
             </div>
           </td>
-          <td class="right">
-            <span style="font-weight:800;font-size:15px">{{ total }}</span>
-          </td>
-          <td class="right">
-            <span style="font-weight:700">{{ prog }}</span>
-          </td>
-          <td class="right">
-            <span style="font-weight:800;color:#12B76A">{{ s.closed | int }}</span>
-          </td>
+          <td class="r"><span style="font-weight:800;font-size:15px">{{ tot }}</span></td>
+          <td class="r"><span style="font-weight:700">{{ prog }}</span></td>
+          <td class="r"><span style="font-weight:800;color:#12B76A">{{ s.closed|int }}</span></td>
           <td>
             <div class="conv-bar-wrap">
-              <div class="conv-bar-bg">
-                <div class="conv-bar-fill" style="width:{{ conv }}%"></div>
-              </div>
+              <div class="conv-bar-bg"><div class="conv-bar-fill" style="width:{{ conv }}%"></div></div>
               <span class="conv-pct">{{ conv }}%</span>
             </div>
+          </td>
+          <td class="r">
+            {% set close_bonus = [s.closed|int * 20, 100]|min %}
+          {% set score = conv + close_bonus %}
+            <span style="font-weight:800;font-size:13px;color:{% if score >= 80 %}#12B76A{% elif score >= 40 %}#F79009{% else %}rgba(3,12,24,0.40){% endif %}">
+              {{ score }}
+            </span>
           </td>
         </tr>
         {% endfor %}
@@ -489,61 +614,139 @@
     </table>
   </div>
   {% else %}
-  <div class="empty-state">No staff accounts yet. Add team members under <a href="{{ url_for('estate.team') }}">Team</a>.</div>
+  <div class="empty-state">No staff yet. Add team members under <a href="{{ url_for('estate.team') }}">Team</a>.</div>
   {% endif %}
 </div>
 
 <!-- ══════════════════════════════════════════════════════
-     ROW 4 — Portfolio Value + Popular Areas
+     ROW E — Inspection Analytics + Lead Sources
 ══════════════════════════════════════════════════════ -->
-<div class="section-divider">Inventory &amp; Market Intelligence</div>
+<div class="sdiv">Activity Breakdown</div>
 
-<div class="rp-grid">
+<div class="rp-grid-2">
 
-  <!-- Portfolio Value Breakdown -->
+  <!-- Inspection Analytics -->
+  <div class="chart-card" style="margin-bottom:0">
+    <div class="chart-head">
+      <div class="chart-icon" style="background:rgba(18,183,106,0.09)">
+        <svg viewBox="0 0 24 24" stroke="#12B76A"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      </div>
+      <span class="chart-title">Inspection Analytics</span>
+      <span class="chart-badge">{{ inspection_status.values()|sum }} total</span>
+    </div>
+    {% set insp_map = [
+      ('pending',   'Pending',    '#F79009', 'rgba(247,144,9,0.08)', 'rgba(247,144,9,0.15)'),
+      ('confirmed', 'Confirmed',  '#12B76A', 'rgba(18,183,106,0.08)','rgba(18,183,106,0.15)'),
+      ('cancelled', 'Cancelled',  '#F04438', 'rgba(240,68,56,0.08)', 'rgba(240,68,56,0.12)'),
+      ('no_show',   'No Show',    '#94a3b8', 'rgba(3,12,24,0.04)',   'rgba(3,12,24,0.08)')
+    ] %}
+    <div class="insp-grid">
+      {% for slug, label, color, bg, brd in insp_map %}
+      {% set cnt = inspection_status.get(slug, 0) %}
+      <div class="insp-tile" style="background:{{ bg }};border-color:{{ brd }}">
+        <div class="it-n" style="color:{{ color }}">{{ cnt }}</div>
+        <div class="it-l">{{ label }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% set total_insp = inspection_status.values()|sum %}
+    {% set conf = inspection_status.get('confirmed', 0) %}
+    {% if total_insp > 0 %}
+    <div style="padding:0 18px 16px">
+      <div style="font-size:11px;font-weight:700;color:rgba(3,12,24,0.38);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Confirmation Rate</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="flex:1;height:8px;background:rgba(3,12,24,0.07);border-radius:999px;overflow:hidden">
+          <div style="height:100%;border-radius:999px;background:linear-gradient(90deg,#12B76A,#34d399);width:{{ ((conf/total_insp)*100)|int }}%"></div>
+        </div>
+        <span style="font-size:13px;font-weight:800;color:#030C18">{{ ((conf/total_insp)*100)|round|int }}%</span>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Lead Source Breakdown -->
+  <div class="chart-card" style="margin-bottom:0">
+    <div class="chart-head">
+      <div class="chart-icon" style="background:rgba(247,144,9,0.09)">
+        <svg viewBox="0 0 24 24" stroke="#F79009"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      </div>
+      <span class="chart-title">Lead Source Breakdown</span>
+      <span class="chart-badge">{{ total_leads }} total</span>
+    </div>
+    {% if lead_sources %}
+    {% set max_src = lead_sources[0].n if lead_sources else 1 %}
+    {% for row in lead_sources %}
+    <div class="src-row">
+      <span class="src-label">{{ row.src }}</span>
+      <div class="src-bar-bg">
+        <div class="src-bar-fill" style="width:{{ ((row.n / max_src) * 100) | int }}%"></div>
+      </div>
+      <span class="src-n">{{ row.n }}</span>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="empty-state">No lead data yet.</div>
+    {% endif %}
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     ROW F — Portfolio Value + Popular Areas
+══════════════════════════════════════════════════════ -->
+<div class="sdiv" style="margin-top:22px">Inventory &amp; Market Intelligence</div>
+
+<div class="rp-grid-2">
+
+  <!-- Portfolio by status -->
   <div class="chart-card" style="margin-bottom:0">
     <div class="chart-head">
       <div class="chart-icon" style="background:rgba(8,145,178,0.09)">
         <svg viewBox="0 0 24 24" stroke="#0891b2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
       </div>
-      <span class="chart-title">Portfolio Value Breakdown</span>
+      <span class="chart-title">Portfolio Value by Status</span>
     </div>
     {% if portfolio %}
-    {% set status_colors = {'available':'#12B76A','sold':'#F04438','under_offer':'#F79009','let':'#1a56db','off_market':'#94a3b8'} %}
+    {% set stat_colors={'available':'#12B76A','sold':'#F04438','under_offer':'#F79009','let':'#1a56db','off_market':'#94a3b8'} %}
     {% for row in portfolio %}
     <div class="port-row">
-      <span class="port-dot" style="background:{{ status_colors.get(row.status, '#94a3b8') }}"></span>
-      <span class="port-label">{{ (row.status or 'unknown') | replace('_',' ') }}</span>
-      <span class="port-count">{{ row.cnt }} listing{{ 's' if row.cnt != 1 else '' }}</span>
+      <span class="port-dot" style="background:{{ stat_colors.get(row.status,'#94a3b8') }}"></span>
+      <span class="port-label">{{ (row.status or 'unknown')|replace('_',' ') }}</span>
+      <span class="port-count">{{ row.cnt }} listing{{ 's' if row.cnt != 1 }}</span>
       {% if row.total_value > 0 %}
       <span class="port-value">₦{{ '{:,.0f}'.format(row.total_value) }}</span>
       {% else %}
-      <span class="port-value" style="color:rgba(3,12,24,0.30)">—</span>
+      <span class="port-value" style="color:rgba(3,12,24,0.28)">—</span>
       {% endif %}
     </div>
     {% endfor %}
+    {% if avg_deal_value > 0 %}
+    <div style="padding:12px 18px;border-top:1px solid rgba(3,12,24,0.06);display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:12px;color:rgba(3,12,24,0.40);font-weight:600">Avg deal value (closed/let)</span>
+      <span style="font-size:13px;font-weight:800;color:#030C18">₦{{ '{:,.0f}'.format(avg_deal_value) }}</span>
+    </div>
+    {% endif %}
     {% else %}
     <div class="empty-state">No listings yet.</div>
     {% endif %}
   </div>
 
-  <!-- Popular Areas -->
+  <!-- Popular areas -->
   <div class="chart-card" style="margin-bottom:0">
     <div class="chart-head">
       <div class="chart-icon" style="background:rgba(247,144,9,0.09)">
         <svg viewBox="0 0 24 24" stroke="#F79009"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
       </div>
       <span class="chart-title">Where Buyers Are Looking</span>
-      <span class="chart-badge">Top areas</span>
+      <span class="chart-badge">Top 10</span>
     </div>
     {% if popular_areas %}
     <div class="area-tags">
       {% set max_n = popular_areas[0].n if popular_areas else 1 %}
       {% for row in popular_areas %}
-      {% set size = 11 + ((row.n / max_n) * 5) | int %}
-      <div class="area-tag" style="font-size:{{ size }}px">
-        {{ row.preferred_area }}
-        <span class="area-tag-count">{{ row.n }}</span>
+      {% set fsz = 11 + ((row.n / max_n) * 4)|int %}
+      <div class="area-tag" style="font-size:{{ fsz }}px">
+        {{ row.preferred_area }}<span class="area-tag-n">{{ row.n }}</span>
       </div>
       {% endfor %}
     </div>
@@ -555,53 +758,63 @@
 </div>
 
 <!-- ══════════════════════════════════════════════════════
-     ROW 5 — Top Listings (full width)
+     ROW G — Most Viewed Listings (full width)
 ══════════════════════════════════════════════════════ -->
-<div class="section-divider" style="margin-top:24px">Listing Performance</div>
+<div class="sdiv" style="margin-top:22px">Listing Performance</div>
 
 <div class="chart-card">
   <div class="chart-head">
     <div class="chart-icon" style="background:rgba(3,12,24,0.06)">
-      <svg viewBox="0 0 24 24" stroke="rgba(3,12,24,0.50)"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      <svg viewBox="0 0 24 24" stroke="rgba(3,12,24,0.45)"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
     </div>
     <span class="chart-title">Most Viewed Listings</span>
-    <span class="chart-badge">Top 5</span>
+    <span class="chart-badge">Top 8</span>
   </div>
   {% if top_listings %}
-  <div class="tl-wrap">
-    <table class="tl-table">
+  <div style="overflow-x:auto">
+    <table class="erp-table">
       <thead>
         <tr>
+          <th>#</th>
           <th>Property</th>
+          <th>Type</th>
           <th>Location</th>
-          <th>Asking Price</th>
+          <th class="r">Asking Price</th>
           <th>Status</th>
-          <th style="text-align:right">AI Views</th>
+          <th class="r">Views</th>
         </tr>
       </thead>
       <tbody>
         {% for lst in top_listings %}
         <tr>
-          <td><div class="tl-title" title="{{ lst.title }}">{{ lst.title }}</div></td>
-          <td><span class="tl-loc">{{ lst.location or '—' }}</span></td>
-          <td class="tl-price">
-            {% if lst.price %}₦{{ '{:,.0f}'.format(lst.price) }}{% else %}<span style="color:rgba(3,12,24,0.30)">—</span>{% endif %}
+          <td style="color:rgba(3,12,24,0.30);font-weight:700;font-size:12px">{{ loop.index }}</td>
+          <td>
+            <a href="{{ url_for('estate.listing_view', listing_id=lst.id) }}" style="font-weight:700;color:#030C18;text-decoration:none;font-size:13px;max-width:220px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ lst.title }}">
+              {{ lst.title }}
+            </a>
           </td>
           <td>
-            <span class="tl-stat {{ lst.status or 'off_market' }}">
-              {{ (lst.status or 'Off Market') | replace('_',' ') | title }}
+            <span style="font-size:11.5px;font-weight:700;text-transform:capitalize;color:rgba(3,12,24,0.50)">
+              {{ (lst.property_type or '—')|replace('_',' ') }}
             </span>
           </td>
-          <td style="text-align:right">
-            <span class="tl-num">{{ lst.view_count or 0 }}</span>
+          <td>
+            <span style="font-size:12px;color:rgba(3,12,24,0.42)">
+              {{ lst.neighbourhood or lst.location or '—' }}{% if lst.state %}, {{ lst.state }}{% endif %}
+            </span>
           </td>
+          <td class="r" style="font-weight:700;white-space:nowrap">
+            {% if lst.price %}₦{{ '{:,.0f}'.format(lst.price) }}{% else %}<span style="color:rgba(3,12,24,0.28)">—</span>{% endif %}
+          </td>
+          <td><span class="lst-stat {{ lst.status or 'off_market' }}">{{ (lst.status or 'Off Market')|replace('_',' ')|title }}</span></td>
+          <td class="r"><span style="font-size:14px;font-weight:800;color:#030C18">{{ lst.view_count or 0 }}</span></td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
   {% else %}
-  <div class="empty-state">No listing data yet. Add properties to start tracking views.</div>
+  <div class="empty-state">No listings yet. Add properties to start tracking views.</div>
   {% endif %}
 </div>
 
@@ -610,70 +823,127 @@
 {% block scripts %}
 <script>
 (function(){
-  const labels = {{ daily_labels | safe }};
-  const values = {{ daily_values | safe }};
-  if(!labels.length) return;
+  const _labels = {{ trend_labels|safe }};
+  const _values = {{ trend_values|safe }};
+  const _mLabels   = {{ monthly_labels|safe }};
+  const _mLeads    = {{ monthly_leads|safe }};
+  const _mListings = {{ monthly_listings|safe }};
+  const _mClose    = {{ monthly_closings|safe }};
+  const _tLabels   = {{ type_labels|safe }};
+  const _tValues   = {{ type_values|safe }};
 
-  const ctx = document.getElementById('leadTrendChart');
-  if(!ctx) return;
+  const TOOLTIP_STYLE = {
+    backgroundColor:'#030C18', titleColor:'rgba(255,255,255,0.6)',
+    bodyColor:'#fff', padding:10, cornerRadius:8,
+    displayColors:false
+  };
 
-  new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: labels,
-      datasets: [{
-        label: 'New Leads',
-        data: values,
-        borderColor: '#1a56db',
-        backgroundColor: 'rgba(26,86,219,0.08)',
-        borderWidth: 2.5,
-        pointRadius: values.length > 20 ? 0 : 4,
-        pointHoverRadius: 5,
-        pointBackgroundColor: '#1a56db',
-        fill: true,
-        tension: 0.4,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: '#030C18',
-          titleColor: 'rgba(255,255,255,0.7)',
-          bodyColor: '#fff',
-          padding: 10,
-          callbacks: {
-            label: ctx => ` ${ctx.parsed.y} new lead${ctx.parsed.y !== 1 ? 's' : ''}`
-          }
-        }
+  /* ── Lead Trend Chart ── */
+  const trendCtx = document.getElementById('trendChart');
+  if(trendCtx && _labels.length){
+    new Chart(trendCtx, {
+      type:'line',
+      data:{
+        labels:_labels,
+        datasets:[{
+          label:'New Leads', data:_values,
+          borderColor:'#1a56db', backgroundColor:'rgba(26,86,219,0.07)',
+          borderWidth:2.5, fill:true, tension:0.4,
+          pointRadius:_labels.length > 25 ? 0 : 4,
+          pointHoverRadius:5, pointBackgroundColor:'#1a56db'
+        }]
       },
-      scales: {
-        x: {
-          grid: { display: false },
-          ticks: {
-            font: { size: 11 },
-            color: 'rgba(3,12,24,0.38)',
-            maxRotation: 0,
-            autoSkip: true,
-            maxTicksLimit: 10
-          }
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        interaction:{mode:'index', intersect:false},
+        plugins:{
+          legend:{display:false},
+          tooltip:{...TOOLTIP_STYLE, callbacks:{label:c=>` ${c.parsed.y} lead${c.parsed.y!==1?'s':''}`}}
         },
-        y: {
-          beginAtZero: true,
-          grid: { color: 'rgba(3,12,24,0.06)' },
-          ticks: {
-            font: { size: 11 },
-            color: 'rgba(3,12,24,0.38)',
-            stepSize: 1,
-            precision: 0
-          }
+        scales:{
+          x:{grid:{display:false}, ticks:{font:{size:11},color:'rgba(3,12,24,0.35)',maxRotation:0,autoSkip:true,maxTicksLimit:12}},
+          y:{beginAtZero:true, grid:{color:'rgba(3,12,24,0.06)'}, ticks:{font:{size:11},color:'rgba(3,12,24,0.35)',precision:0,stepSize:1}}
         }
       }
-    }
-  });
+    });
+  }
+
+  /* ── Property Type Doughnut ── */
+  const typeCtx = document.getElementById('typeChart');
+  if(typeCtx && _tValues.length){
+    const TYPE_COLORS = ['#1a56db','#12B76A','#F79009','#7c3aed','#0891b2','#F04438'];
+    new Chart(typeCtx, {
+      type:'doughnut',
+      data:{
+        labels:_tLabels,
+        datasets:[{
+          data:_tValues,
+          backgroundColor:TYPE_COLORS.slice(0,_tValues.length),
+          borderWidth:0, hoverOffset:6
+        }]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false, cutout:'68%',
+        plugins:{
+          legend:{display:false},
+          tooltip:{...TOOLTIP_STYLE, callbacks:{
+            label:c=>{
+              const t=_tValues.reduce((a,b)=>a+b,0);
+              const pct=t>0?Math.round(c.raw/t*100):0;
+              return ` ${c.label}: ${c.raw} (${pct}%)`;
+            }
+          }}
+        }
+      }
+    });
+  }
+
+  /* ── 12-Month Bar Chart ── */
+  const mCtx = document.getElementById('monthlyChart');
+  if(mCtx){
+    new Chart(mCtx, {
+      type:'bar',
+      data:{
+        labels:_mLabels,
+        datasets:[
+          {
+            label:'New Leads',
+            data:_mLeads,
+            backgroundColor:'rgba(26,86,219,0.75)',
+            borderRadius:4, borderSkipped:false
+          },
+          {
+            label:'Listings Added',
+            data:_mListings,
+            backgroundColor:'rgba(124,58,237,0.55)',
+            borderRadius:4, borderSkipped:false
+          },
+          {
+            label:'Closed Deals',
+            data:_mClose,
+            backgroundColor:'rgba(18,183,106,0.75)',
+            borderRadius:4, borderSkipped:false
+          }
+        ]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        interaction:{mode:'index', intersect:false},
+        plugins:{
+          legend:{display:false},
+          tooltip:{
+            ...TOOLTIP_STYLE,
+            callbacks:{label:c=>` ${c.dataset.label}: ${c.parsed.y}`}
+          }
+        },
+        scales:{
+          x:{grid:{display:false}, ticks:{font:{size:11},color:'rgba(3,12,24,0.35)'}},
+          y:{beginAtZero:true, grid:{color:'rgba(3,12,24,0.06)'},
+             ticks:{font:{size:11},color:'rgba(3,12,24,0.35)',precision:0,stepSize:1}}
+        }
+      }
+    });
+  }
 })();
 </script>
 {% endblock %}

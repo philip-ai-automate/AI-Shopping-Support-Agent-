@@ -1766,6 +1766,21 @@ def qr_code():
 
 # ── Reports ────────────────────────────────────────────────────────────────────
 
+def _reports_since_sql(period):
+    """Return (since_sql_fragment, trend_trunc, trend_fmt, label) for a period key."""
+    if period == "90d":
+        return "NOW() - INTERVAL '90 days'", "DATE", "Mon DD", "Last 90 Days"
+    if period == "6m":
+        return "NOW() - INTERVAL '6 months'", "week", "Mon DD", "Last 6 Months"
+    if period == "ytd":
+        return "DATE_TRUNC('year', NOW())", "month", "Mon YYYY", "Year to Date"
+    if period == "1y":
+        return "NOW() - INTERVAL '1 year'", "month", "Mon YYYY", "Last 12 Months"
+    if period == "all":
+        return "'2000-01-01'::timestamptz", "month", "Mon YYYY", "All Time"
+    return "NOW() - INTERVAL '30 days'", "DATE", "Mon DD", "Last 30 Days"  # default 30d
+
+
 @estate_bp.route("/estate/reports")
 def reports():
     redir = _require_re_login()
@@ -1773,157 +1788,203 @@ def reports():
     tenant_id = _re_tenant_id()
     tenant    = _get_tenant(tenant_id)
 
+    period = request.args.get("period", "30d")
+    if period not in ("30d", "90d", "6m", "ytd", "1y", "all"):
+        period = "30d"
+    since_sql, trend_trunc, trend_fmt, period_label = _reports_since_sql(period)
+
     conn = get_db_connection()
     data = {}
     if conn:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-        # Listings by status
-        cur.execute("""
-            SELECT status, COUNT(*) AS n
-            FROM re_property_listings WHERE tenant_id=%s
-            GROUP BY status
-        """, (tenant_id,))
-        data["by_status"] = {r["status"]: r["n"] for r in cur.fetchall()}
+        # ── Period-scoped KPIs ──────────────────────────────────────────────────
+        cur.execute(f"SELECT COUNT(*) AS n FROM re_customers WHERE tenant_id=%s AND created_at >= {since_sql}", (tenant_id,))
+        data["period_leads"] = int((cur.fetchone() or {}).get("n", 0) or 0)
 
-        # Daily leads – last 30 days (for trend chart)
-        cur.execute("""
-            SELECT TO_CHAR(DATE(created_at), 'Mon DD') AS day, COUNT(*) AS n
-            FROM re_customers
-            WHERE tenant_id=%s AND created_at >= NOW() - INTERVAL '30 days'
-            GROUP BY DATE(created_at), day ORDER BY DATE(created_at)
-        """, (tenant_id,))
-        daily_rows = cur.fetchall()
-        data["daily_leads_labels"] = [r["day"] for r in daily_rows]
-        data["daily_leads_values"] = [int(r["n"]) for r in daily_rows]
+        cur.execute(f"SELECT COUNT(*) AS n FROM re_inspection_bookings WHERE tenant_id=%s AND created_at >= {since_sql}", (tenant_id,))
+        data["period_inspections"] = int((cur.fetchone() or {}).get("n", 0) or 0)
 
-        # Lead status breakdown (pipeline)
-        cur.execute("""
-            SELECT lead_status, COUNT(*) AS n
-            FROM re_customers WHERE tenant_id=%s
-            GROUP BY lead_status
-        """, (tenant_id,))
-        data["lead_status"] = {r["lead_status"]: r["n"] for r in cur.fetchall()}
+        cur.execute(f"SELECT COUNT(*) AS n FROM re_inspection_bookings WHERE tenant_id=%s AND status='confirmed' AND created_at >= {since_sql}", (tenant_id,))
+        data["period_inspections_confirmed"] = int((cur.fetchone() or {}).get("n", 0) or 0)
 
-        # Full conversion counts
-        cur.execute("""
-            SELECT
-                COUNT(*) AS total,
-                SUM(CASE WHEN lead_status IN ('inspection_booked','negotiating','closed') THEN 1 ELSE 0 END) AS progressed,
-                SUM(CASE WHEN lead_status = 'closed' THEN 1 ELSE 0 END) AS closed_count
-            FROM re_customers WHERE tenant_id=%s
-        """, (tenant_id,))
-        conv = cur.fetchone() or {}
-        data["conversion"] = {
-            "total":     int(conv.get("total") or 0),
-            "progressed":int(conv.get("progressed") or 0),
-            "closed":    int(conv.get("closed_count") or 0),
-        }
+        cur.execute(f"SELECT COUNT(*) AS n FROM re_handoff_requests WHERE tenant_id=%s AND created_at >= {since_sql}", (tenant_id,))
+        data["period_handoffs"] = int((cur.fetchone() or {}).get("n", 0) or 0)
 
-        # Top enquired listings (by view_count)
-        cur.execute("""
-            SELECT id, title, location, price, view_count, status
-            FROM re_property_listings WHERE tenant_id=%s
-            ORDER BY view_count DESC LIMIT 5
-        """, (tenant_id,))
-        data["top_listings"] = cur.fetchall()
+        cur.execute(f"SELECT COUNT(*) AS n FROM re_follow_up_queue WHERE tenant_id=%s AND status='sent' AND send_at >= {since_sql}", (tenant_id,))
+        data["period_followups"] = int((cur.fetchone() or {}).get("n", 0) or 0)
 
-        # Popular areas buyers are asking about
-        cur.execute("""
-            SELECT preferred_area, COUNT(*) AS n
-            FROM re_customers
-            WHERE tenant_id=%s AND preferred_area IS NOT NULL
-            GROUP BY preferred_area ORDER BY n DESC LIMIT 8
-        """, (tenant_id,))
-        data["popular_areas"] = cur.fetchall()
+        cur.execute(f"SELECT COUNT(*) AS n FROM re_listing_broadcasts WHERE tenant_id=%s AND created_at >= {since_sql}", (tenant_id,))
+        data["period_broadcasts"] = int((cur.fetchone() or {}).get("n", 0) or 0)
 
-        # Inspection bookings this month
-        cur.execute("""
-            SELECT COUNT(*) AS n FROM re_inspection_bookings
-            WHERE tenant_id=%s AND created_at >= NOW() - INTERVAL '30 days'
-        """, (tenant_id,))
-        data["inspections_30d"] = int((cur.fetchone() or {}).get("n", 0) or 0)
+        # ── Lead trend chart (period-scoped) ────────────────────────────────────
+        if trend_trunc == "DATE":
+            cur.execute(f"""
+                SELECT TO_CHAR(DATE(created_at), 'Mon DD') AS bucket,
+                       DATE(created_at) AS sort_key, COUNT(*) AS n
+                FROM re_customers WHERE tenant_id=%s AND created_at >= {since_sql}
+                GROUP BY DATE(created_at), bucket ORDER BY sort_key
+            """, (tenant_id,))
+        else:
+            cur.execute(f"""
+                SELECT TO_CHAR(DATE_TRUNC('{trend_trunc}', created_at), '{trend_fmt}') AS bucket,
+                       DATE_TRUNC('{trend_trunc}', created_at) AS sort_key, COUNT(*) AS n
+                FROM re_customers WHERE tenant_id=%s AND created_at >= {since_sql}
+                GROUP BY DATE_TRUNC('{trend_trunc}', created_at), bucket ORDER BY sort_key
+            """, (tenant_id,))
+        trend_rows = cur.fetchall()
+        data["trend_labels"] = [r["bucket"] for r in trend_rows]
+        data["trend_values"] = [int(r["n"]) for r in trend_rows]
 
-        # Confirmed inspections
-        cur.execute("""
-            SELECT COUNT(*) AS n FROM re_inspection_bookings
-            WHERE tenant_id=%s AND status='confirmed'
-              AND created_at >= NOW() - INTERVAL '30 days'
-        """, (tenant_id,))
-        data["inspections_confirmed"] = int((cur.fetchone() or {}).get("n", 0) or 0)
+        # ── All-time aggregates ─────────────────────────────────────────────────
+        cur.execute("SELECT lead_status, COUNT(*) AS n FROM re_customers WHERE tenant_id=%s GROUP BY lead_status", (tenant_id,))
+        pipeline = {r["lead_status"]: int(r["n"]) for r in cur.fetchall()}
+        data["pipeline"] = pipeline
+        data["total_leads"] = sum(pipeline.values())
+        data["closed_deals"] = pipeline.get("closed", 0)
+        conv_numer = sum(pipeline.get(s, 0) for s in ("inspection_booked", "negotiating", "closed"))
+        data["conv_rate"] = round(conv_numer / data["total_leads"] * 100) if data["total_leads"] else 0
 
-        # Handoff requests this month
+        # Portfolio by status
         cur.execute("""
-            SELECT COUNT(*) AS n FROM re_handoff_requests
-            WHERE tenant_id=%s AND created_at >= NOW() - INTERVAL '30 days'
-        """, (tenant_id,))
-        data["handoffs_30d"] = int((cur.fetchone() or {}).get("n", 0) or 0)
-
-        # Follow-ups sent this month
-        cur.execute("""
-            SELECT COUNT(*) AS n FROM re_follow_up_queue
-            WHERE tenant_id=%s AND status='sent'
-              AND send_at >= NOW() - INTERVAL '30 days'
-        """, (tenant_id,))
-        data["followups_sent"] = int((cur.fetchone() or {}).get("n", 0) or 0)
-
-        # Broadcasts sent this month
-        cur.execute("""
-            SELECT COUNT(*) AS n FROM re_listing_broadcasts
-            WHERE tenant_id=%s AND created_at >= NOW() - INTERVAL '30 days'
-        """, (tenant_id,))
-        data["broadcasts_sent"] = int((cur.fetchone() or {}).get("n", 0) or 0)
-
-        # Month-over-month: leads
-        cur.execute("""
-            SELECT
-                COUNT(CASE WHEN created_at >= date_trunc('month', NOW()) THEN 1 END) AS this_month,
-                COUNT(CASE WHEN created_at >= date_trunc('month', NOW() - INTERVAL '1 month')
-                            AND created_at < date_trunc('month', NOW()) THEN 1 END) AS last_month
-            FROM re_customers WHERE tenant_id=%s
-        """, (tenant_id,))
-        mom = cur.fetchone() or {}
-        data["mom_leads"] = {"this": int(mom.get("this_month") or 0), "last": int(mom.get("last_month") or 0)}
-
-        # Month-over-month: inspections
-        cur.execute("""
-            SELECT
-                COUNT(CASE WHEN created_at >= date_trunc('month', NOW()) THEN 1 END) AS this_month,
-                COUNT(CASE WHEN created_at >= date_trunc('month', NOW() - INTERVAL '1 month')
-                            AND created_at < date_trunc('month', NOW()) THEN 1 END) AS last_month
-            FROM re_inspection_bookings WHERE tenant_id=%s
-        """, (tenant_id,))
-        mom_insp = cur.fetchone() or {}
-        data["mom_inspections"] = {"this": int(mom_insp.get("this_month") or 0), "last": int(mom_insp.get("last_month") or 0)}
-
-        # Portfolio value by status (for value breakdown)
-        cur.execute("""
-            SELECT status, COUNT(*) AS cnt, COALESCE(SUM(price), 0) AS total_value
+            SELECT status, COUNT(*) AS cnt, COALESCE(SUM(price),0) AS total_value,
+                   COALESCE(AVG(price),0) AS avg_price
             FROM re_property_listings WHERE tenant_id=%s
             GROUP BY status ORDER BY total_value DESC
         """, (tenant_id,))
         port_rows = cur.fetchall()
         data["portfolio"] = port_rows
-        data["portfolio_available_value"] = int(sum(
-            r["total_value"] for r in port_rows if r["status"] == "available"
-        ))
-        data["portfolio_total_value"] = int(sum(r["total_value"] for r in port_rows))
+        data["portfolio_value"] = int(sum(r["total_value"] for r in port_rows if r["status"] == "available"))
 
-        # New listings added this month
+        # Revenue earned (agency fees on sold/let listings)
         cur.execute("""
-            SELECT COUNT(*) AS n FROM re_property_listings
-            WHERE tenant_id=%s AND created_at >= date_trunc('month', NOW())
+            SELECT COALESCE(SUM(price * agency_fee_pct / 100), 0) AS rev,
+                   COALESCE(AVG(price), 0) AS avg_deal,
+                   COUNT(*) AS cnt
+            FROM re_property_listings
+            WHERE tenant_id=%s AND status IN ('sold','let') AND agency_fee_pct > 0 AND price > 0
         """, (tenant_id,))
+        rev_row = cur.fetchone() or {}
+        data["revenue_earned"] = float(rev_row.get("rev", 0) or 0)
+        data["avg_deal_value"] = float(rev_row.get("avg_deal", 0) or 0)
+        data["deals_count"]    = int(rev_row.get("cnt", 0) or 0)
+
+        # Property type breakdown
+        cur.execute("""
+            SELECT property_type, COUNT(*) AS n, COALESCE(SUM(price),0) AS value
+            FROM re_property_listings WHERE tenant_id=%s AND property_type IS NOT NULL
+            GROUP BY property_type ORDER BY n DESC
+        """, (tenant_id,))
+        data["type_breakdown"] = cur.fetchall()
+
+        # Transaction type breakdown
+        cur.execute("""
+            SELECT transaction_type, COUNT(*) AS n, COALESCE(SUM(price),0) AS value
+            FROM re_property_listings WHERE tenant_id=%s AND transaction_type IS NOT NULL
+            GROUP BY transaction_type ORDER BY n DESC
+        """, (tenant_id,))
+        data["txn_breakdown"] = cur.fetchall()
+
+        # 12-month bar chart (always fixed)
+        cur.execute("""
+            SELECT TO_CHAR(DATE_TRUNC('month', gs), 'Mon YY') AS label,
+                   DATE_TRUNC('month', gs) AS m
+            FROM generate_series(
+                DATE_TRUNC('month', NOW() - INTERVAL '11 months'),
+                DATE_TRUNC('month', NOW()),
+                INTERVAL '1 month'
+            ) gs ORDER BY m
+        """)
+        months = cur.fetchall()
+        data["monthly_labels"] = [r["label"] for r in months]
+        month_starts = [r["m"] for r in months]
+
+        cur.execute("""
+            SELECT DATE_TRUNC('month', created_at) AS m, COUNT(*) AS n
+            FROM re_customers WHERE tenant_id=%s AND created_at >= NOW() - INTERVAL '11 months'
+            GROUP BY m
+        """, (tenant_id,))
+        leads_by_m = {r["m"]: int(r["n"]) for r in cur.fetchall()}
+
+        cur.execute("""
+            SELECT DATE_TRUNC('month', created_at) AS m, COUNT(*) AS n
+            FROM re_property_listings WHERE tenant_id=%s AND created_at >= NOW() - INTERVAL '11 months'
+            GROUP BY m
+        """, (tenant_id,))
+        listings_by_m = {r["m"]: int(r["n"]) for r in cur.fetchall()}
+
+        cur.execute("""
+            SELECT DATE_TRUNC('month', updated_at) AS m, COUNT(*) AS n
+            FROM re_property_listings WHERE tenant_id=%s AND status IN ('sold','let')
+              AND updated_at >= NOW() - INTERVAL '11 months'
+            GROUP BY m
+        """, (tenant_id,))
+        closings_by_m = {r["m"]: int(r["n"]) for r in cur.fetchall()}
+
+        data["monthly_leads"]    = [leads_by_m.get(m, 0) for m in month_starts]
+        data["monthly_listings"] = [listings_by_m.get(m, 0) for m in month_starts]
+        data["monthly_closings"] = [closings_by_m.get(m, 0) for m in month_starts]
+
+        # Inspection breakdown by status
+        cur.execute("SELECT status, COUNT(*) AS n FROM re_inspection_bookings WHERE tenant_id=%s GROUP BY status", (tenant_id,))
+        data["inspection_status"] = {r["status"]: int(r["n"]) for r in cur.fetchall()}
+
+        # Popular areas
+        cur.execute("""
+            SELECT preferred_area, COUNT(*) AS n FROM re_customers
+            WHERE tenant_id=%s AND preferred_area IS NOT NULL
+            GROUP BY preferred_area ORDER BY n DESC LIMIT 10
+        """, (tenant_id,))
+        data["popular_areas"] = cur.fetchall()
+
+        # Lead source breakdown
+        cur.execute("""
+            SELECT COALESCE(NULLIF(source,''),'WhatsApp') AS src, COUNT(*) AS n
+            FROM re_customers WHERE tenant_id=%s
+            GROUP BY src ORDER BY n DESC
+        """, (tenant_id,))
+        data["lead_sources"] = cur.fetchall()
+
+        # Top listings by views
+        cur.execute("""
+            SELECT id, title, location, neighbourhood, state, price, view_count, status, property_type
+            FROM re_property_listings WHERE tenant_id=%s
+            ORDER BY view_count DESC NULLS LAST LIMIT 8
+        """, (tenant_id,))
+        data["top_listings"] = cur.fetchall()
+
+        # New listings this month
+        cur.execute("SELECT COUNT(*) AS n FROM re_property_listings WHERE tenant_id=%s AND created_at >= DATE_TRUNC('month', NOW())", (tenant_id,))
         data["new_listings_month"] = int((cur.fetchone() or {}).get("n", 0) or 0)
 
-        # Staff performance leaderboard
+        # MoM: leads
+        cur.execute("""
+            SELECT COUNT(CASE WHEN created_at >= DATE_TRUNC('month', NOW()) THEN 1 END) AS this_m,
+                   COUNT(CASE WHEN created_at >= DATE_TRUNC('month', NOW()-INTERVAL '1 month')
+                               AND created_at < DATE_TRUNC('month', NOW()) THEN 1 END) AS last_m
+            FROM re_customers WHERE tenant_id=%s
+        """, (tenant_id,))
+        mm = cur.fetchone() or {}
+        data["mom_leads"] = {"this": int(mm.get("this_m") or 0), "last": int(mm.get("last_m") or 0)}
+
+        # MoM: inspections
+        cur.execute("""
+            SELECT COUNT(CASE WHEN created_at >= DATE_TRUNC('month', NOW()) THEN 1 END) AS this_m,
+                   COUNT(CASE WHEN created_at >= DATE_TRUNC('month', NOW()-INTERVAL '1 month')
+                               AND created_at < DATE_TRUNC('month', NOW()) THEN 1 END) AS last_m
+            FROM re_inspection_bookings WHERE tenant_id=%s
+        """, (tenant_id,))
+        mmi = cur.fetchone() or {}
+        data["mom_inspections"] = {"this": int(mmi.get("this_m") or 0), "last": int(mmi.get("last_m") or 0)}
+
+        # Staff leaderboard
         cur.execute("""
             SELECT s.first_name || ' ' || s.last_name AS name, s.role,
                    COUNT(c.id) AS total_leads,
                    SUM(CASE WHEN c.lead_status IN ('inspection_booked','negotiating','closed') THEN 1 ELSE 0 END) AS progressed,
                    SUM(CASE WHEN c.lead_status = 'closed' THEN 1 ELSE 0 END) AS closed
             FROM re_staff s
-            LEFT JOIN re_customers c ON c.assigned_to = s.id AND c.tenant_id = s.tenant_id
+            LEFT JOIN re_customers c ON c.assigned_to=s.id AND c.tenant_id=s.tenant_id
             WHERE s.tenant_id=%s AND s.is_active=TRUE
             GROUP BY s.id, s.first_name, s.last_name, s.role
             ORDER BY closed DESC NULLS LAST, progressed DESC NULLS LAST, total_leads DESC NULLS LAST
@@ -1932,42 +1993,84 @@ def reports():
 
         cur.close(); conn.close()
 
-    total_leads = data.get("conversion", {}).get("total", 0)
-    progressed  = data.get("conversion", {}).get("progressed", 0)
-    conv_rate   = round((progressed / total_leads) * 100) if total_leads > 0 else 0
-
-    stats = {
-        "total_conversations":   sum(data.get("lead_status", {}).values()),
-        "qualified_buyers":      data.get("lead_status", {}).get("qualified", 0),
-        "inspections":           data.get("inspections_30d", 0),
-        "inspections_confirmed": data.get("inspections_confirmed", 0),
-        "handoffs":              data.get("handoffs_30d", 0),
-        "followups_sent":        data.get("followups_sent", 0),
-        "broadcasts_sent":       data.get("broadcasts_sent", 0),
-        "conv_rate":             conv_rate,
-        "total_leads":           total_leads,
-        "closed_deals":          data.get("conversion", {}).get("closed", 0),
-        "portfolio_value":       data.get("portfolio_available_value", 0),
-        "new_listings_month":    data.get("new_listings_month", 0),
-        "mom_leads":             data.get("mom_leads", {"this": 0, "last": 0}),
-        "mom_inspections":       data.get("mom_inspections", {"this": 0, "last": 0}),
-    }
-
-    top_listings = []
-    for lst in data.get("top_listings", []):
-        row = dict(lst)
-        row.setdefault("enquiry_count", row.get("view_count", 0))
-        top_listings.append(row)
-
     return render_template("estate/reports.html",
-                           tenant=tenant, stats=stats,
-                           pipeline=data.get("lead_status", {}),
-                           top_listings=top_listings,
-                           popular_areas=data.get("popular_areas", []),
-                           staff_perf=data.get("staff_perf", []),
-                           portfolio=data.get("portfolio", []),
-                           daily_labels=_json.dumps(data.get("daily_leads_labels", [])),
-                           daily_values=_json.dumps(data.get("daily_leads_values", [])))
+        tenant=tenant,
+        period=period,
+        period_label=period_label,
+        # Period-scoped
+        period_leads=data.get("period_leads", 0),
+        period_inspections=data.get("period_inspections", 0),
+        period_inspections_confirmed=data.get("period_inspections_confirmed", 0),
+        period_handoffs=data.get("period_handoffs", 0),
+        period_followups=data.get("period_followups", 0),
+        period_broadcasts=data.get("period_broadcasts", 0),
+        # All-time
+        total_leads=data.get("total_leads", 0),
+        closed_deals=data.get("closed_deals", 0),
+        conv_rate=data.get("conv_rate", 0),
+        revenue_earned=data.get("revenue_earned", 0),
+        avg_deal_value=data.get("avg_deal_value", 0),
+        deals_count=data.get("deals_count", 0),
+        portfolio_value=data.get("portfolio_value", 0),
+        new_listings_month=data.get("new_listings_month", 0),
+        mom_leads=data.get("mom_leads", {"this": 0, "last": 0}),
+        mom_inspections=data.get("mom_inspections", {"this": 0, "last": 0}),
+        pipeline=data.get("pipeline", {}),
+        portfolio=data.get("portfolio", []),
+        type_breakdown=data.get("type_breakdown", []),
+        txn_breakdown=data.get("txn_breakdown", []),
+        popular_areas=data.get("popular_areas", []),
+        lead_sources=data.get("lead_sources", []),
+        top_listings=data.get("top_listings", []),
+        staff_perf=data.get("staff_perf", []),
+        inspection_status=data.get("inspection_status", {}),
+        trend_labels=_json.dumps(data.get("trend_labels", [])),
+        trend_values=_json.dumps(data.get("trend_values", [])),
+        monthly_labels=_json.dumps(data.get("monthly_labels", [])),
+        monthly_leads=_json.dumps(data.get("monthly_leads", [])),
+        monthly_listings=_json.dumps(data.get("monthly_listings", [])),
+        monthly_closings=_json.dumps(data.get("monthly_closings", [])),
+        type_labels=_json.dumps([r["property_type"] for r in data.get("type_breakdown", [])]),
+        type_values=_json.dumps([int(r["n"]) for r in data.get("type_breakdown", [])]),
+    )
+
+
+@estate_bp.route("/estate/reports/export.csv")
+def reports_export_csv():
+    import csv, io
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+
+    conn = get_db_connection()
+    rows = []
+    if conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT title, property_type, transaction_type, status, location, state,
+                   price, view_count, created_at, updated_at
+            FROM re_property_listings WHERE tenant_id=%s ORDER BY created_at DESC
+        """, (tenant_id,))
+        rows = cur.fetchall()
+        cur.close(); conn.close()
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["Title","Type","Transaction","Status","Location","State","Price (₦)","Views","Created","Updated"])
+    for r in rows:
+        writer.writerow([
+            r["title"], r["property_type"], r["transaction_type"], r["status"],
+            r["location"], r["state"], r["price"] or "", r["view_count"] or 0,
+            r["created_at"].strftime("%Y-%m-%d") if r["created_at"] else "",
+            r["updated_at"].strftime("%Y-%m-%d") if r["updated_at"] else "",
+        ])
+
+    from flask import Response
+    return Response(
+        buf.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment;filename=listings_export.csv"}
+    )
 
 
 # ── Settings ───────────────────────────────────────────────────────────────────
