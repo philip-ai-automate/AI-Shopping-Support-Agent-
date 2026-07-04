@@ -91,10 +91,11 @@ def customers():
             FROM customers c
             JOIN tenants t ON t.id=c.tenant_id
             LEFT JOIN tenant_balances tb ON tb.tenant_id=t.id
-            WHERE LOWER(c.email) LIKE %s
+            WHERE t.is_demo = FALSE
+              AND (LOWER(c.email) LIKE %s
                OR LOWER(t.domain) LIKE %s
                OR LOWER(t.name) LIKE %s
-               OR LOWER(CONCAT(COALESCE(c.first_name,''),' ',COALESCE(c.last_name,''))) LIKE %s
+               OR LOWER(CONCAT(COALESCE(c.first_name,''),' ',COALESCE(c.last_name,''))) LIKE %s)
             ORDER BY c.created_at DESC LIMIT 300""",
             (f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%"))
     else:
@@ -106,6 +107,7 @@ def customers():
             FROM customers c
             JOIN tenants t ON t.id=c.tenant_id
             LEFT JOIN tenant_balances tb ON tb.tenant_id=t.id
+            WHERE t.is_demo = FALSE
             ORDER BY c.created_at DESC LIMIT 300""")
 
     rows = cur.fetchall() or []
@@ -3876,6 +3878,28 @@ def ambassadors():
     ambs = cur.fetchall() or []
     cur.close(); conn.close()
     return render_template("portal/admin_ambassadors.html", ambassadors=ambs)
+
+
+@portal_admin_bp.route("/ambassadors/demo-accounts", methods=["GET"])
+def ambassador_demo_accounts():
+    r = _require_admin()
+    if r: return r
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT a.id AS ambassador_id, a.first_name, a.last_name, a.email AS ambassador_email,
+               a.ref_code, a.status AS ambassador_status,
+               t.id AS tenant_id, t.name AS tenant_name, t.status AS tenant_status, t.created_at,
+               c.id AS customer_id, c.email AS demo_email
+        FROM ambassadors a
+        JOIN tenants t ON t.id = a.demo_tenant_id
+        LEFT JOIN customers c ON c.tenant_id = t.id
+        WHERE a.demo_tenant_id IS NOT NULL
+        ORDER BY t.created_at DESC
+    """)
+    demos = cur.fetchall() or []
+    cur.close(); conn.close()
+    return render_template("portal/admin_ambassador_demos.html", demos=demos)
 
 
 @portal_admin_bp.route("/ambassadors/report", methods=["GET"])

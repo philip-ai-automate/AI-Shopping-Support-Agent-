@@ -269,6 +269,11 @@
        style="padding-left:36px;font-size:12.5px">
       <span class="asb-icon">📊</span> Reports
     </a>
+    <a class="asb-link {% if request.endpoint=='portal_admin.ambassador_demo_accounts' %}active{% endif %}"
+       href="{{ url_for('portal_admin.ambassador_demo_accounts') }}"
+       style="padding-left:36px;font-size:12.5px">
+      <span class="asb-icon">🧪</span> Demo Accounts
+    </a>
     <a class="asb-link {% if request.endpoint=='portal_admin.admin_leads' %}active{% endif %}"
        href="{{ url_for('portal_admin.admin_leads') }}"
        style="padding-left:36px;font-size:12.5px">
@@ -343,6 +348,7 @@
     { icon:'⚙️', title:'Settings',           desc:'Trial days, password and admin config',     url:'{{ url_for("portal_admin.admin_settings") }}',      tags:'settings admin password trial days config' },
     { icon:'🛒', title:'Recovery Queue',     desc:'View abandoned cart recovery queue',        url:'{{ url_for("portal_admin.recovery_queue") }}',      tags:'cart recovery abandoned queue' },
     { icon:'🌟', title:'Ambassadors',        desc:'Manage ambassador referral accounts',       url:'{{ url_for("portal_admin.ambassadors") }}',         tags:'ambassadors referrals partners commission' },
+    { icon:'🧪', title:'Demo Accounts',      desc:'Ambassador demo/sandbox shop accounts',     url:'{{ url_for("portal_admin.ambassador_demo_accounts") }}', tags:'ambassador demo sandbox test accounts' },
     { icon:'🤝', title:'Sales Reps',         desc:'Manage sales representative accounts',      url:'{{ url_for("portal_admin.sales_reps") }}',          tags:'sales reps team agents representatives' },
   ];
 

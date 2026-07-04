@@ -1,0 +1,95 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Ambassador Demo Accounts — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+  .amb-table-wrap{overflow-x:auto}
+  .amb-table{width:100%;border-collapse:collapse;font-size:13px}
+  .amb-table th{padding:10px 12px;text-align:left;font-size:11px;font-weight:700;
+                text-transform:uppercase;letter-spacing:.05em;color:var(--muted);
+                border-bottom:1px solid var(--line);white-space:nowrap}
+  .amb-table td{padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+  .amb-table tr:last-child td{border-bottom:none}
+  .amb-table tr:hover{background:rgba(3,12,24,0.025)}
+  .amb-name{font-weight:700;font-size:13px}
+  .amb-email{font-size:12px;color:var(--muted)}
+  .ref-chip{background:rgba(3,12,24,0.06);padding:2px 8px;border-radius:6px;
+            font-family:monospace;font-size:11px}
+  .empty-row td{text-align:center;color:var(--muted);padding:40px 20px!important}
+</style>
+
+<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+  <h1 class="section-title">Ambassador Demo Accounts</h1>
+  <a href="{{ url_for('portal_admin.ambassadors') }}" class="btn btn-sm">🌟 Back to Ambassadors</a>
+</div>
+<p style="color:var(--muted);font-size:13px;margin-top:-8px;margin-bottom:18px">
+  Sandbox shop each ambassador uses to demo the portal to prospects. Not real merchant signups —
+  kept separate from <a href="{{ url_for('portal_admin.customers') }}">Customers</a>.
+</p>
+
+<div class="card" style="padding:0">
+  <div class="amb-table-wrap">
+    <table class="amb-table">
+      <thead>
+        <tr>
+          <th>Ambassador</th>
+          <th>Ref Code</th>
+          <th>Ambassador Status</th>
+          <th>Demo Shop</th>
+          <th>Demo Login Email</th>
+          <th>Tenant Status</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if not demos %}
+        <tr class="empty-row"><td colspan="7">No ambassador demo accounts yet.</td></tr>
+        {% endif %}
+        {% for d in demos %}
+        <tr>
+          <td>
+            <div class="amb-name">{{ d.first_name }} {{ d.last_name }}</div>
+            <div class="amb-email">{{ d.ambassador_email }}</div>
+          </td>
+          <td><span class="ref-chip">{{ d.ref_code }}</span></td>
+          <td>
+            {% if d.ambassador_status == 'active' %}
+              <span class="pill pill-green">Active</span>
+            {% elif d.ambassador_status == 'pending' %}
+              <span class="pill pill-warn">Pending</span>
+            {% elif d.ambassador_status == 'suspended' %}
+              <span class="pill pill-red">Suspended</span>
+            {% elif d.ambassador_status == 'rejected' %}
+              <span class="pill pill-red">Rejected</span>
+            {% elif d.ambassador_status == 'terminated' %}
+              <span class="pill pill-grey">Terminated</span>
+            {% else %}
+              <span class="pill pill-grey">{{ d.ambassador_status|title }}</span>
+            {% endif %}
+          </td>
+          <td>{{ d.tenant_name or '—' }}</td>
+          <td style="font-size:12px">
+            {% if d.customer_id %}
+              <a href="{{ url_for('portal_admin.customer_detail', customer_id=d.customer_id) }}">{{ d.demo_email }}</a>
+            {% else %}
+              {{ d.demo_email or '—' }}
+            {% endif %}
+          </td>
+          <td>
+            {% if d.tenant_status == 'active' %}
+              <span class="pill pill-green">Active</span>
+            {% elif d.tenant_status == 'pending' %}
+              <span class="pill pill-warn">Pending</span>
+            {% else %}
+              <span class="pill pill-grey">{{ d.tenant_status|title }}</span>
+            {% endif %}
+          </td>
+          <td style="font-size:12px;color:var(--muted);white-space:nowrap">
+            {{ d.created_at.strftime('%d %b %Y') if d.created_at else '—' }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
