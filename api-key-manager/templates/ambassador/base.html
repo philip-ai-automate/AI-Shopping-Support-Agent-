@@ -107,6 +107,10 @@
        href="{{ url_for('ambassador.team') }}">
       <span class="asb-icon">🏅</span><span>My Team</span>
     </a>
+    <a class="asb-link {% if request.endpoint=='ambassador.team_pipeline' %}active{% endif %}"
+       href="{{ url_for('ambassador.team_pipeline') }}">
+      <span class="asb-icon">📊</span><span>Team Pipeline</span>
+    </a>
     {% endif %}
     <a class="asb-link {% if request.endpoint=='ambassador.earnings' %}active{% endif %}"
        href="{{ url_for('ambassador.earnings') }}">

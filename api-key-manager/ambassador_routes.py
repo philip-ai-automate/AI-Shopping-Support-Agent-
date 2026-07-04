@@ -948,6 +948,189 @@ def team_reactivate(recruit_id: int):
     return redirect(url_for("ambassador.team"))
 
 
+# ── Team Pipeline (Sales Manager oversight of recruits' CRM leads) ──────────
+
+def _team_lead_owned_by_me(lead_id: int):
+    """Return the lead row if its ambassador was recruited by the logged-in sales manager."""
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT al.* FROM ambassador_leads al
+        JOIN ambassadors a ON a.id = al.ambassador_id
+        WHERE al.id=%s AND a.recruited_by_id=%s
+    """, (lead_id, _amb_id()))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    return row
+
+@ambassador_bp.route("/ambassador/team/pipeline")
+def team_pipeline():
+    r = _require_sales_manager()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT al.*, a.first_name || ' ' || a.last_name AS ambassador_name
+        FROM ambassador_leads al
+        JOIN ambassadors a ON a.id = al.ambassador_id
+        WHERE a.recruited_by_id=%s AND al.dropped_at IS NULL
+        ORDER BY CASE al.stage
+            WHEN 'lead' THEN 0 WHEN 'contacted' THEN 1 WHEN 'demo_done' THEN 2
+            WHEN 'requirements_confirmed' THEN 3 WHEN 'onboarding' THEN 4
+            WHEN 'active_client' THEN 5 WHEN 'support' THEN 6 ELSE 7 END,
+            al.created_at DESC
+    """, (amb["id"],))
+    leads = [dict(l) for l in cur.fetchall()]
+
+    cur.execute("""
+        SELECT al.*, a.first_name || ' ' || a.last_name AS ambassador_name
+        FROM ambassador_leads al
+        JOIN ambassadors a ON a.id = al.ambassador_id
+        WHERE a.recruited_by_id=%s AND al.dropped_at IS NOT NULL
+        ORDER BY al.dropped_at DESC
+    """, (amb["id"],))
+    dropped_leads = [dict(l) for l in cur.fetchall()]
+    cur.close(); conn.close()
+
+    stage_counts = {s: 0 for s in STAGE_ORDER}
+    for l in leads:
+        stage_counts[l["stage"]] = stage_counts.get(l["stage"], 0) + 1
+
+    return render_template("ambassador/team_pipeline.html", amb=amb, leads=leads,
+        dropped_leads=dropped_leads, stage_counts=stage_counts, stage_order=STAGE_ORDER,
+        stage_labels=STAGE_LABELS, stage_descriptions=STAGE_DESCRIPTIONS, next_stage=next_stage)
+
+
+@ambassador_bp.route("/ambassador/team/pipeline/<int:lead_id>/advance", methods=["POST"])
+def team_lead_advance(lead_id: int):
+    r = _require_sales_manager()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+    lead = _team_lead_owned_by_me(lead_id)
+    if not lead:
+        flash("Lead not found in your team.", "danger")
+        return redirect(url_for("ambassador.team_pipeline"))
+
+    target = next_stage(lead["stage"])
+    if not target:
+        flash("This lead is already at the final stage.", "warning")
+        return redirect(url_for("ambassador.team_pipeline"))
+
+    f = request.form
+    updates = {"stage": target}
+    conn = get_db_connection()
+    cur  = conn.cursor()
+
+    if target == "contacted":
+        contact_channel  = (f.get("contact_channel") or "").strip()
+        contact_date     = (f.get("contact_date") or "").strip()
+        contact_response = (f.get("contact_response") or "").strip()
+        if not contact_channel or not contact_date:
+            cur.close(); conn.close()
+            flash("Contact channel and date are required.", "danger")
+            return redirect(url_for("ambassador.team_pipeline"))
+        updates.update(contact_channel=contact_channel, contact_date=contact_date,
+                       contact_response=contact_response or None)
+
+    elif target == "demo_done":
+        demo_date     = (f.get("demo_date") or "").strip()
+        demo_reaction = (f.get("demo_reaction") or "").strip()
+        if not demo_date:
+            cur.close(); conn.close()
+            flash("Demo date is required.", "danger")
+            return redirect(url_for("ambassador.team_pipeline"))
+        updates.update(demo_date=demo_date, demo_reaction=demo_reaction or None)
+
+    elif target == "requirements_confirmed":
+        req_phone    = f.get("req_phone") == "1"
+        req_meta     = f.get("req_meta_account") == "1"
+        req_whatsapp = f.get("req_whatsapp_connected") == "1"
+        req_products = f.get("req_product_list") == "1"
+        if not (req_phone and req_meta and req_whatsapp and req_products):
+            cur.close(); conn.close()
+            flash("All 4 requirements must be confirmed before advancing.", "danger")
+            return redirect(url_for("ambassador.team_pipeline"))
+        updates.update(req_phone=True, req_meta_account=True,
+                       req_whatsapp_connected=True, req_product_list=True)
+
+    elif target == "onboarding":
+        onboarding_date  = (f.get("onboarding_date") or "").strip()
+        onboarding_notes = (f.get("onboarding_notes") or "").strip()
+        if not onboarding_date:
+            cur.close(); conn.close()
+            flash("Onboarding date is required.", "danger")
+            return redirect(url_for("ambassador.team_pipeline"))
+        updates.update(onboarding_date=onboarding_date, onboarding_notes=onboarding_notes or None)
+
+    elif target == "active_client":
+        tenant_id_raw = (f.get("tenant_id") or "").strip()
+        tenant_id = int(tenant_id_raw) if tenant_id_raw.isdigit() else None
+        if tenant_id:
+            cur2 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur2.execute("SELECT ref_code FROM ambassadors WHERE id=%s", (lead["ambassador_id"],))
+            lead_amb = cur2.fetchone()
+            cur2.execute("SELECT id FROM tenants WHERE id=%s AND ref_code=%s",
+                        (tenant_id, lead_amb["ref_code"] if lead_amb else None))
+            match = cur2.fetchone()
+            cur2.close()
+            if not match:
+                cur.close(); conn.close()
+                flash("Selected client doesn't match that ambassador's referral code.", "danger")
+                return redirect(url_for("ambassador.team_pipeline"))
+        updates["tenant_id"] = tenant_id
+
+    set_clause = ", ".join(f"{k}=%s" for k in updates)
+    cur.execute(f"UPDATE ambassador_leads SET {set_clause} WHERE id=%s",
+               list(updates.values()) + [lead_id])
+    conn.commit()
+    cur.close(); conn.close()
+
+    record_stage_change(lead_id, lead["stage"], target, f"{amb['first_name']} {amb['last_name']} (Sales Manager)")
+    flash(f"{lead['business_name']} moved to {STAGE_LABELS[target]}.", "success")
+    return redirect(url_for("ambassador.team_pipeline"))
+
+
+@ambassador_bp.route("/ambassador/team/pipeline/<int:lead_id>/drop", methods=["POST"])
+def team_lead_drop(lead_id: int):
+    r = _require_sales_manager()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+    lead = _team_lead_owned_by_me(lead_id)
+    if not lead:
+        flash("Lead not found in your team.", "danger")
+        return redirect(url_for("ambassador.team_pipeline"))
+
+    reason = (request.form.get("reason") or "").strip() or None
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("UPDATE ambassador_leads SET dropped_at=NOW(), dropped_reason=%s WHERE id=%s",
+               (reason, lead_id))
+    conn.commit()
+    cur.close(); conn.close()
+    record_stage_change(lead_id, lead["stage"], "dropped",
+                        f"{amb['first_name']} {amb['last_name']} (Sales Manager)", reason)
+    flash(f"{lead['business_name']} marked as dropped.", "warning")
+    return redirect(url_for("ambassador.team_pipeline"))
+
+
+@ambassador_bp.route("/ambassador/team/pipeline/<int:lead_id>/history")
+def team_lead_history(lead_id: int):
+    r = _require_sales_manager()
+    if r: return r
+    lead = _team_lead_owned_by_me(lead_id)
+    from flask import jsonify
+    if not lead:
+        return jsonify({"error": "Not found"}), 404
+    history = get_stage_history(lead_id)
+    return jsonify([
+        {"from_stage": h["from_stage"], "to_stage": h["to_stage"], "changed_by": h["changed_by"],
+         "notes": h["notes"], "created_at": h["created_at"].isoformat() if h["created_at"] else ""}
+        for h in history
+    ])
+
+
 # ── Earnings ───────────────────────────────────────────────────────────────
 
 @ambassador_bp.route("/ambassador/earnings")
