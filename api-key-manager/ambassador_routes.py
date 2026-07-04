@@ -999,9 +999,63 @@ def team_pipeline():
     for l in leads:
         stage_counts[l["stage"]] = stage_counts.get(l["stage"], 0) + 1
 
+    conn2 = get_db_connection()
+    cur2  = conn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur2.execute("""
+        SELECT id, first_name, last_name, ref_code FROM ambassadors
+        WHERE recruited_by_id=%s AND status='active' ORDER BY first_name, last_name
+    """, (amb["id"],))
+    recruits = cur2.fetchall() or []
+    cur2.close(); conn2.close()
+
     return render_template("ambassador/team_pipeline.html", amb=amb, leads=leads,
         dropped_leads=dropped_leads, stage_counts=stage_counts, stage_order=STAGE_ORDER,
-        stage_labels=STAGE_LABELS, stage_descriptions=STAGE_DESCRIPTIONS, next_stage=next_stage)
+        stage_labels=STAGE_LABELS, stage_descriptions=STAGE_DESCRIPTIONS, next_stage=next_stage,
+        recruits=recruits)
+
+
+@ambassador_bp.route("/ambassador/team/pipeline/create", methods=["POST"])
+def team_lead_create():
+    r = _require_sales_manager()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+
+    recruit_id_raw = (request.form.get("ambassador_id") or "").strip()
+    business_name  = (request.form.get("business_name") or "").strip()
+    industry       = (request.form.get("industry")      or "").strip() or None
+    contact_name   = (request.form.get("contact_name")  or "").strip() or None
+    phone          = (request.form.get("phone")         or "").strip() or None
+    email          = (request.form.get("email")          or "").strip() or None
+    notes          = (request.form.get("notes")          or "").strip() or None
+
+    if not recruit_id_raw.isdigit() or not business_name:
+        flash("Ambassador and business name are required.", "danger")
+        return redirect(url_for("ambassador.team_pipeline"))
+    recruit_id = int(recruit_id_raw)
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    # Ownership check: the selected ambassador must actually be one of this manager's recruits
+    cur.execute("SELECT 1 FROM ambassadors WHERE id=%s AND recruited_by_id=%s", (recruit_id, amb["id"]))
+    if not cur.fetchone():
+        cur.close(); conn.close()
+        flash("That ambassador is not on your team.", "danger")
+        return redirect(url_for("ambassador.team_pipeline"))
+
+    cur2 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur2.execute("""
+        INSERT INTO ambassador_leads
+          (ambassador_id, business_name, industry, contact_name, phone, email, notes, stage)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, 'lead')
+        RETURNING id
+    """, (recruit_id, business_name, industry, contact_name, phone, email, notes))
+    new_id = cur2.fetchone()["id"]
+    conn.commit()
+    cur2.close(); cur.close(); conn.close()
+
+    record_stage_change(new_id, None, "lead", f"{amb['first_name']} {amb['last_name']} (Sales Manager)")
+    flash(f"{business_name} added to the pipeline.", "success")
+    return redirect(url_for("ambassador.team_pipeline"))
 
 
 @ambassador_bp.route("/ambassador/team/pipeline/<int:lead_id>/advance", methods=["POST"])

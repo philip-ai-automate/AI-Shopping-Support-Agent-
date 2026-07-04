@@ -43,8 +43,58 @@
 
 <div class="page-header" style="margin-bottom:16px">
   <h1 class="section-title">CRM Pipeline</h1>
-  <span class="muted" style="font-size:13px">{{ leads|length }} active</span>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span class="muted" style="font-size:13px">{{ leads|length }} active</span>
+    <button class="btn btn-primary" onclick="document.getElementById('addLeadForm').classList.toggle('open')">+ Add Lead</button>
+  </div>
 </div>
+
+<div class="card" id="addLeadForm" style="display:none;margin-bottom:20px">
+  <div class="section-title" style="margin-bottom:14px">Add a Lead on Behalf of an Ambassador</div>
+  <form method="POST" action="{{ url_for('portal_admin.admin_lead_create') }}">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div>
+        <label class="flbl">Ambassador</label>
+        <select name="ambassador_id" class="finp" required>
+          <option value="">Select…</option>
+          {% for a in ambassadors %}
+          <option value="{{ a.id }}">{{ a.first_name }} {{ a.last_name }} ({{ a.ref_code }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="flbl">Business Name</label>
+        <input type="text" name="business_name" class="finp" required/>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div>
+        <label class="flbl">Industry</label>
+        <input type="text" name="industry" class="finp"/>
+      </div>
+      <div>
+        <label class="flbl">Contact Name</label>
+        <input type="text" name="contact_name" class="finp"/>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div>
+        <label class="flbl">Phone</label>
+        <input type="tel" name="phone" class="finp"/>
+      </div>
+      <div>
+        <label class="flbl">Email</label>
+        <input type="email" name="email" class="finp"/>
+      </div>
+    </div>
+    <div style="margin-bottom:14px">
+      <label class="flbl">Notes</label>
+      <textarea name="notes" class="finp"></textarea>
+    </div>
+    <button type="submit" class="btn btn-primary">Add to Pipeline</button>
+  </form>
+</div>
+<style>#addLeadForm.open{display:block !important}</style>
 
 <div class="stage-funnel">
   {% for s in stage_order %}
