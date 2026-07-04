@@ -71,6 +71,8 @@
             <form method="POST" action="{{ url_for('ambassador.team_approve', recruit_id=rc.id) }}" style="display:inline">
               <button type="submit" class="btn btn-sm btn-primary">Approve</button>
             </form>
+            <button type="button" class="btn btn-sm btn-danger"
+                    onclick="rejectRecruit({{ rc.id }}, '{{ (rc.first_name ~ ' ' ~ rc.last_name)|e }}')">Reject</button>
             {% elif rc.status == 'active' %}
             <form method="POST" action="{{ url_for('ambassador.team_suspend', recruit_id=rc.id) }}" style="display:inline">
               <button type="submit" class="btn btn-sm">Suspend</button>
@@ -91,6 +93,17 @@
 </div>
 
 <script>
+function rejectRecruit(id, name) {
+  const reason = prompt(`Reject ${name}'s application? Optionally give a reason:`, '');
+  if (reason === null) return;
+  const f = document.createElement('form');
+  f.method = 'POST'; f.action = `/ambassador/team/${id}/reject`;
+  const input = document.createElement('input');
+  input.type = 'hidden'; input.name = 'reason'; input.value = reason;
+  f.appendChild(input);
+  document.body.appendChild(f); f.submit();
+}
+
 function copyRecruiterLink(btn) {
   const text = document.getElementById('recruiterLink').textContent;
   navigator.clipboard.writeText(text).then(() => {

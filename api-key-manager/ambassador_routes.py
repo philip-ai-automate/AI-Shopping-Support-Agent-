@@ -766,6 +766,37 @@ def team_approve(recruit_id: int):
     flash(f"{recruit['first_name']} {recruit['last_name']} approved.", "success")
     return redirect(url_for("ambassador.team"))
 
+@ambassador_bp.route("/ambassador/team/<int:recruit_id>/reject", methods=["POST"])
+def team_reject(recruit_id: int):
+    r = _require_sales_manager()
+    if r: return r
+    recruit = _recruit_owned_by_me(recruit_id)
+    if not recruit:
+        flash("Ambassador not found in your team.", "danger")
+        return redirect(url_for("ambassador.team"))
+    if recruit["status"] != "pending":
+        flash("Only pending applications can be rejected.", "warning")
+        return redirect(url_for("ambassador.team"))
+
+    reason  = (request.form.get("reason") or "").strip() or None
+    manager = _get_ambassador(_amb_id())
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("""
+        UPDATE ambassadors SET status='rejected', rejected_at=NOW(), rejected_reason=%s WHERE id=%s
+    """, (reason, recruit_id))
+    conn.commit()
+    cur.close(); conn.close()
+    insert_audit_log(
+        admin_username=f"{manager['first_name']} {manager['last_name']} (Sales Manager)",
+        action="ambassador_reject",
+        details={"ambassador_id": recruit_id, "ambassador_name": f"{recruit['first_name']} {recruit['last_name']}",
+                 "ref_code": recruit['ref_code'], "old_status": recruit['status'], "new_status": "rejected",
+                 "reason": reason},
+    )
+    flash(f"{recruit['first_name']} {recruit['last_name']}'s application was rejected.", "warning")
+    return redirect(url_for("ambassador.team"))
+
 @ambassador_bp.route("/ambassador/team/<int:recruit_id>/suspend", methods=["POST"])
 def team_suspend(recruit_id: int):
     r = _require_sales_manager()
