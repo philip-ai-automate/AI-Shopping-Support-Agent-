@@ -337,7 +337,7 @@
             data-whatsapp="{{ (a.whatsapp_number or '')|lower }}"
             onclick="openPanel({{ a.id }})">
           <td>
-            <div class="amb-name">{{ a.first_name }} {{ a.last_name }}</div>
+            <div class="amb-name">{{ a.first_name }} {{ a.last_name }}{% if a.role == 'sales_manager' %} <span title="Sales Manager">🏅</span>{% endif %}</div>
             <div class="amb-email">{{ a.phone or '' }}</div>
           </td>
           <td style="font-size:12px">{{ a.email }}</td>
@@ -507,6 +507,20 @@
       <div class="modal-field">
         <label class="modal-label">SWIFT Code <span style="font-weight:400;color:#9ca3af">(opt)</span></label>
         <input type="text" name="swift_code" id="ef_swift_code" class="modal-input"/>
+      </div>
+
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+                  color:var(--muted);margin:14px 0 10px">Recruitment</div>
+      <div class="modal-field">
+        <label class="modal-label">Recruited By <span style="font-weight:400;color:#9ca3af">(optional — the Sales Manager who recruited this ambassador)</span></label>
+        <select name="recruited_by_id" id="ef_recruited_by_id" class="modal-input" style="appearance:none;-webkit-appearance:none;
+          background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='7' viewBox='0 0 12 7'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7280' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E\");
+          background-repeat:no-repeat;background-position:right 12px center;padding-right:34px;cursor:pointer">
+          <option value="">— None —</option>
+          {% for sm in sales_managers %}
+          <option value="{{ sm.id }}">{{ sm.first_name }} {{ sm.last_name }} ({{ sm.ref_code }})</option>
+          {% endfor %}
+        </select>
       </div>
 
       <div class="modal-actions">
@@ -687,8 +701,27 @@ function renderPanel(d) {
         <div class="sp-item"><div class="sp-label">Total Earned</div><div class="sp-val">₦${Number(d.total_earned||0).toLocaleString()}</div></div>
         <div class="sp-item"><div class="sp-label">Ref Code</div><div class="sp-val mono">${d.ref_code||'—'}</div></div>
         ${d.partnership_start ? `<div class="sp-item"><div class="sp-label">Partner Since</div><div class="sp-val">${fmtDate(d.partnership_start)}</div></div>` : ''}
+        ${d.role === 'sales_manager' ? `<div class="sp-item full"><div class="sp-label">Role</div><div class="sp-val">🏅 Sales Manager</div></div>` : ''}
+        ${d.recruiter_name ? `<div class="sp-item full"><div class="sp-label">Recruited By</div><div class="sp-val">${d.recruiter_name}</div></div>` : ''}
       </div>
     </div>
+
+    ${d.recruits && d.recruits.length ? `
+    <div class="sp-section">
+      <div class="sp-section-title">Recruited Ambassadors (${d.recruits.length})</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${d.recruits.map(rc => `
+          <div class="sp-item full" style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div style="font-size:12.5px;font-weight:700">${rc.name}</div>
+              <div style="font-size:11px;color:var(--muted)">${rc.ref_code} · ₦${Number(rc.total_earned||0).toLocaleString()} earned</div>
+            </div>
+            <span class="pill ${rc.status === 'active' ? 'pill-green' : rc.status === 'suspended' ? 'pill-red' : 'pill-grey'}" style="font-size:10px">${rc.status}</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    ` : ''}
 
     ${d.rejected_reason ? `<div class="sp-section"><div class="sp-section-title" style="color:var(--bad)">Rejection Reason</div>
       <div style="font-size:13px;color:var(--ink);background:#fff5f5;border:1px solid #fecaca;border-radius:8px;padding:10px 12px">${d.rejected_reason}</div></div>` : ''}
@@ -714,10 +747,10 @@ function renderPanel(d) {
   `;
 
   /* Foot buttons based on status */
-  renderFootButtons(d.status, d.id);
+  renderFootButtons(d.status, d.id, d.role);
 }
 
-function renderFootButtons(status, id) {
+function renderFootButtons(status, id, role) {
   const foot = document.getElementById('spFoot');
   let btns = '';
   if (status === 'pending') {
@@ -748,8 +781,26 @@ function renderFootButtons(status, id) {
       <button class="sp-btn" onclick="openEditModal()">Edit</button>
     `;
   }
+  if (status === 'active' || status === 'suspended') {
+    if (role === 'sales_manager') {
+      btns += `<button class="sp-btn" onclick="toggleRole(${id},'ambassador')">Revert to Ambassador</button>`;
+    } else {
+      btns += `<button class="sp-btn" onclick="toggleRole(${id},'sales_manager')">Make Sales Manager</button>`;
+    }
+  }
   btns += `<button class="sp-btn" onclick="openQrModal(${id})">QR Code</button>`;
   foot.innerHTML = btns;
+}
+
+function toggleRole(id, newRole) {
+  const label = newRole === 'sales_manager' ? 'promote this ambassador to Sales Manager' : 'revert this Sales Manager back to a regular ambassador';
+  if (!confirm(`Are you sure you want to ${label}?`)) return;
+  const f = document.createElement('form');
+  f.method = 'POST'; f.action = `/admin/ambassadors/${id}/set-role`;
+  const input = document.createElement('input');
+  input.type = 'hidden'; input.name = 'role'; input.value = newRole;
+  f.appendChild(input);
+  document.body.appendChild(f); f.submit();
 }
 
 /* ── QR modal ── */
@@ -856,6 +907,7 @@ function openEditModal() {
   document.getElementById('ef_account_name').value  = d.account_name  || '';
   document.getElementById('ef_sort_code').value     = d.sort_code     || '';
   document.getElementById('ef_swift_code').value    = d.swift_code    || '';
+  document.getElementById('ef_recruited_by_id').value = d.recruited_by_id || '';
   document.getElementById('editModal').classList.add('open');
 }
 function closeEditModal() {

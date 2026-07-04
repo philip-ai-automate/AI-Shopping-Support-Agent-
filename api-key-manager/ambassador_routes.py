@@ -17,7 +17,7 @@ import psycopg2.extras
 from datetime import date, timedelta, datetime
 from werkzeug.utils import secure_filename
 from flask import (Blueprint, render_template, request, redirect,
-                   url_for, session, flash)
+                   url_for, session, flash, g)
 
 UPLOAD_FOLDER      = os.path.join(os.path.dirname(__file__), 'static', 'uploads', 'ambassador_ids')
 QUAL_UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static', 'uploads', 'ambassador_quals')
@@ -31,14 +31,16 @@ QUAL_ORDER = [
 def _allowed_doc(filename: str) -> bool:
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_DOC_EXTS
 
-from db import get_db_connection
+from db import get_db_connection, insert_audit_log
 from portal_utils import send_email
 
 ambassador_bp = Blueprint("ambassador", __name__)
 
 BRAND         = "#030C18"
 BASE_URL      = os.getenv("PORTAL_BASE_URL", "https://portal.phixtra.com")
-COMMISSION_PC = 0.30   # 30% for self-closed referral-link signups
+COMMISSION_PC          = 0.20   # 20% ambassador commission on subscription payments
+SALES_MANAGER_OVERRIDE = 0.05   # 5% override to the sales manager who recruited the ambassador
+                                 # (recurring subscription commission only, not the upsell bonus)
 
 TURNSTILE_SECRET       = os.getenv("TURNSTILE_SECRET_KEY", "")
 RATE_LIMIT_MAX_ATTEMPTS = 5
@@ -64,6 +66,24 @@ def _require_amb():
 
 def _amb_id() -> int:
     return int(session["ambassador_id"])
+
+
+@ambassador_bp.context_processor
+def inject_amb_role():
+    """Make `_amb_role` available in every ambassador template (for nav gating)."""
+    if not _amb_logged_in():
+        return {"_amb_role": None}
+    if not hasattr(g, "_cached_amb_role"):
+        try:
+            conn = get_db_connection()
+            cur  = conn.cursor()
+            cur.execute("SELECT role FROM ambassadors WHERE id=%s", (_amb_id(),))
+            row = cur.fetchone()
+            cur.close(); conn.close()
+            g._cached_amb_role = row[0] if row else None
+        except Exception:
+            g._cached_amb_role = None
+    return {"_amb_role": g._cached_amb_role}
 
 def _hash_pw(pw: str) -> str:
     return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
@@ -357,7 +377,23 @@ def register():
         return redirect(url_for("ambassador.dashboard"))
 
     if request.method == "GET":
-        return render_template("ambassador/register.html")
+        recruiter_code = (request.args.get("recruiter") or "").strip()
+        recruiter_name = None
+        if recruiter_code:
+            conn = get_db_connection()
+            cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("""
+                SELECT first_name, last_name FROM ambassadors
+                WHERE ref_code=%s AND role='sales_manager' AND status='active'
+            """, (recruiter_code,))
+            rec = cur.fetchone()
+            cur.close(); conn.close()
+            if rec:
+                recruiter_name = f"{rec['first_name']} {rec['last_name']}"
+            else:
+                recruiter_code = None
+        return render_template("ambassador/register.html",
+                               recruiter_code=recruiter_code, recruiter_name=recruiter_name)
 
     # ── Parse all fields ────────────────────────────────────────────────────
     first         = (request.form.get("first_name")            or "").strip()
@@ -461,6 +497,21 @@ def register():
     ref_code = _generate_ref_code(first, last)
     pw_hash  = _hash_pw(pw)
 
+    # ── Resolve recruiter (if any) ───────────────────────────────────────────
+    recruiter_code = (request.form.get("recruiter") or "").strip()
+    recruited_by_id = None
+    if recruiter_code:
+        conn0 = get_db_connection()
+        cur0  = conn0.cursor()
+        cur0.execute("""
+            SELECT id FROM ambassadors
+            WHERE ref_code=%s AND role='sales_manager' AND status='active'
+        """, (recruiter_code,))
+        rec_row = cur0.fetchone()
+        cur0.close(); conn0.close()
+        if rec_row:
+            recruited_by_id = rec_row[0]
+
     # ── Insert ───────────────────────────────────────────────────────────────
     conn = get_db_connection()
     cur  = conn.cursor()
@@ -471,13 +522,13 @@ def register():
                 status, date_of_birth, gender, nationality, address, location,
                 highest_qualification, id_document_path, id_document_type,
                 bank_name, account_number, account_name, sort_code, swift_code,
-                qual_document_path)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,'pending',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                qual_document_path, recruited_by_id)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,'pending',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """, (first, last, email, phone, whatsapp, pw_hash, ref_code,
               dob, gender, nationality, address, location,
               qualification, id_doc_path, id_doc_type,
               bank_name, account_num, account_name, sort_code, swift_code,
-              qual_doc_path))
+              qual_doc_path, recruited_by_id))
         conn.commit()
     except psycopg2.errors.UniqueViolation as e:
         conn.rollback()
@@ -629,6 +680,139 @@ def referrals():
     cur.close(); conn.close()
 
     return render_template("ambassador/referrals.html", amb=amb, referrals=all_referrals)
+
+
+# ── My Team (Sales Manager only) ────────────────────────────────────────────
+
+def _require_sales_manager():
+    r = _require_amb()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+    if not amb or amb.get("role") != "sales_manager":
+        flash("This page is only available to Sales Managers.", "warning")
+        return redirect(url_for("ambassador.dashboard"))
+    return None
+
+@ambassador_bp.route("/ambassador/team")
+def team():
+    r = _require_sales_manager()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT a.id, a.first_name, a.last_name, a.email, a.ref_code, a.status, a.created_at,
+               (SELECT COUNT(*) FROM tenants t WHERE t.ref_code=a.ref_code AND t.status='active') AS active_clients,
+               (SELECT COALESCE(SUM(commission_amount),0) FROM ambassador_commissions ac
+                WHERE ac.ambassador_id=a.id) AS recruit_earned,
+               (SELECT COALESCE(SUM(ac.commission_amount),0) FROM ambassador_commissions ac
+                JOIN tenants t ON t.id = ac.tenant_id
+                WHERE ac.ambassador_id=%s AND ac.commission_type='override' AND t.ref_code=a.ref_code) AS override_earned
+        FROM ambassadors a
+        WHERE a.recruited_by_id = %s
+        ORDER BY CASE a.status WHEN 'pending' THEN 0 WHEN 'active' THEN 1 ELSE 2 END, a.created_at DESC
+    """, (amb["id"], amb["id"]))
+    recruits = cur.fetchall() or []
+    cur.close(); conn.close()
+
+    recruiter_link = f"{BASE_URL}/ambassador/register?recruiter={amb['ref_code']}"
+    return render_template("ambassador/team.html", amb=amb, recruits=recruits, recruiter_link=recruiter_link)
+
+
+def _recruit_owned_by_me(recruit_id: int):
+    """Return the recruit row if it belongs to the logged-in sales manager, else None."""
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM ambassadors WHERE id=%s AND recruited_by_id=%s", (recruit_id, _amb_id()))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    return row
+
+@ambassador_bp.route("/ambassador/team/<int:recruit_id>/approve", methods=["POST"])
+def team_approve(recruit_id: int):
+    r = _require_sales_manager()
+    if r: return r
+    recruit = _recruit_owned_by_me(recruit_id)
+    if not recruit:
+        flash("Ambassador not found in your team.", "danger")
+        return redirect(url_for("ambassador.team"))
+
+    manager = _get_ambassador(_amb_id())
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("""
+        UPDATE ambassadors
+           SET status='active', approved_at=NOW(), approved_by=%s, partnership_start=%s
+         WHERE id=%s
+    """, (f"{manager['first_name']} {manager['last_name']} (Sales Manager)", date.today(), recruit_id))
+    conn.commit()
+    cur.close(); conn.close()
+    insert_audit_log(
+        admin_username=f"{manager['first_name']} {manager['last_name']} (Sales Manager)",
+        action="ambassador_approve",
+        details={"ambassador_id": recruit_id, "ambassador_name": f"{recruit['first_name']} {recruit['last_name']}",
+                 "ref_code": recruit['ref_code'], "old_status": recruit['status'], "new_status": "active"},
+    )
+    try:
+        from ambassador_demo import create_ambassador_demo
+        create_ambassador_demo(recruit['id'], recruit['first_name'], recruit['ref_code'])
+    except Exception as _e:
+        print("⚠️ team_approve demo tenant creation failed:", _e)
+    try:
+        _send_approved_email(recruit['first_name'], recruit['email'], recruit['ref_code'])
+    except Exception as _e:
+        print("⚠️ team_approve approval email failed:", _e)
+    flash(f"{recruit['first_name']} {recruit['last_name']} approved.", "success")
+    return redirect(url_for("ambassador.team"))
+
+@ambassador_bp.route("/ambassador/team/<int:recruit_id>/suspend", methods=["POST"])
+def team_suspend(recruit_id: int):
+    r = _require_sales_manager()
+    if r: return r
+    recruit = _recruit_owned_by_me(recruit_id)
+    if not recruit:
+        flash("Ambassador not found in your team.", "danger")
+        return redirect(url_for("ambassador.team"))
+
+    manager = _get_ambassador(_amb_id())
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("UPDATE ambassadors SET status='suspended' WHERE id=%s", (recruit_id,))
+    conn.commit()
+    cur.close(); conn.close()
+    insert_audit_log(
+        admin_username=f"{manager['first_name']} {manager['last_name']} (Sales Manager)",
+        action="ambassador_suspend",
+        details={"ambassador_id": recruit_id, "ambassador_name": f"{recruit['first_name']} {recruit['last_name']}",
+                 "ref_code": recruit['ref_code'], "old_status": recruit['status'], "new_status": "suspended"},
+    )
+    flash(f"{recruit['first_name']} {recruit['last_name']} suspended.", "warning")
+    return redirect(url_for("ambassador.team"))
+
+@ambassador_bp.route("/ambassador/team/<int:recruit_id>/reactivate", methods=["POST"])
+def team_reactivate(recruit_id: int):
+    r = _require_sales_manager()
+    if r: return r
+    recruit = _recruit_owned_by_me(recruit_id)
+    if not recruit:
+        flash("Ambassador not found in your team.", "danger")
+        return redirect(url_for("ambassador.team"))
+
+    manager = _get_ambassador(_amb_id())
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("UPDATE ambassadors SET status='active' WHERE id=%s", (recruit_id,))
+    conn.commit()
+    cur.close(); conn.close()
+    insert_audit_log(
+        admin_username=f"{manager['first_name']} {manager['last_name']} (Sales Manager)",
+        action="ambassador_reactivate",
+        details={"ambassador_id": recruit_id, "ambassador_name": f"{recruit['first_name']} {recruit['last_name']}",
+                 "ref_code": recruit['ref_code'], "old_status": recruit['status'], "new_status": "active"},
+    )
+    flash(f"{recruit['first_name']} {recruit['last_name']} reactivated.", "success")
+    return redirect(url_for("ambassador.team"))
 
 
 # ── Earnings ───────────────────────────────────────────────────────────────
@@ -1091,7 +1275,7 @@ def record_ambassador_commission(tenant_id: int, plan_id: int, prev_plan_id: int
     amb = dict(amb)
     cur2 = conn.cursor()
 
-    # 30% subscription commission (if eligible, from first payment)
+    # 20% subscription commission (if eligible, from first payment)
     if _commission_eligible(amb) and float(amount or 0) > 0:
         commission = round(float(amount) * COMMISSION_PC, 2)
         cur2.execute("""
@@ -1099,7 +1283,25 @@ def record_ambassador_commission(tenant_id: int, plan_id: int, prev_plan_id: int
               (ambassador_id, tenant_id, commission_type, currency, source_amount, commission_amount, description)
             VALUES (%s,%s,'subscription',%s,%s,%s,%s)
         """, (amb["id"], tenant_id, currency, float(amount), commission,
-              f"30% of {currency} {float(amount):.2f} subscription payment"))
+              f"20% of {currency} {float(amount):.2f} subscription payment"))
+
+        # 5% override to the sales manager who recruited this ambassador (if any, and still active)
+        if amb.get("recruited_by_id"):
+            cur3 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur3.execute("""
+                SELECT id, first_name, last_name FROM ambassadors
+                WHERE id=%s AND role='sales_manager' AND status='active'
+            """, (amb["recruited_by_id"],))
+            manager = cur3.fetchone()
+            cur3.close()
+            if manager:
+                override = round(float(amount) * SALES_MANAGER_OVERRIDE, 2)
+                cur2.execute("""
+                    INSERT INTO ambassador_commissions
+                      (ambassador_id, tenant_id, commission_type, currency, source_amount, commission_amount, description)
+                    VALUES (%s,%s,'override',%s,%s,%s,%s)
+                """, (manager["id"], tenant_id, currency, float(amount), override,
+                      f"5% override — {amb['first_name']} {amb['last_name']}'s referral"))
 
     # One-time upsell bonus (per upgrade path, once per tenant)
     bonus = UPSELL_BONUSES.get((prev_slug, new_slug))

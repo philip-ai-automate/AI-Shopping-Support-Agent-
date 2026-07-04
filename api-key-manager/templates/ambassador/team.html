@@ -1,0 +1,103 @@
+{% extends "ambassador/base.html" %}
+{% block title %}My Team — Ambassador Hub{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="section-title">My Team</h1>
+  <span class="muted" style="font-size:13px">{{ recruits|length }} recruited</span>
+</div>
+
+<div class="card" style="margin-bottom:20px">
+  <div class="section-title" style="margin-bottom:10px">Your Recruiter Link</div>
+  <p class="muted" style="font-size:13px;margin-bottom:12px">
+    Share this link with people you want to bring in as ambassadors. Anyone who registers through
+    it is automatically added to your team, and you'll earn a 5% override on their recurring
+    subscription commissions.
+  </p>
+  <div style="display:flex;align-items:center;gap:8px;background:rgba(3,12,24,.04);border:1px solid var(--line);
+              border-radius:10px;padding:9px 12px">
+    <span id="recruiterLink" style="font-size:12.5px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ recruiter_link }}</span>
+    <button onclick="copyRecruiterLink(this)" class="btn btn-sm">Copy</button>
+  </div>
+</div>
+
+<div class="card" style="padding:0">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Ref Code</th>
+          <th>Active Clients</th>
+          <th>Their Earnings</th>
+          <th>Your Override</th>
+          <th>Status</th>
+          <th>Recruited</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if not recruits %}
+        <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:40px">
+          No one recruited yet. Share your recruiter link above to build your team.
+        </td></tr>
+        {% endif %}
+        {% for rc in recruits %}
+        <tr>
+          <td>
+            <strong>{{ rc.first_name }} {{ rc.last_name }}</strong>
+            <div class="muted" style="font-size:11.5px">{{ rc.email }}</div>
+          </td>
+          <td><code style="background:rgba(3,12,24,.06);padding:2px 7px;border-radius:6px;font-size:12px">{{ rc.ref_code }}</code></td>
+          <td style="text-align:center">{{ rc.active_clients or 0 }}</td>
+          <td>₦{{ "{:,.0f}".format(rc.recruit_earned or 0) }}</td>
+          <td><strong>₦{{ "{:,.0f}".format(rc.override_earned or 0) }}</strong></td>
+          <td>
+            {% if rc.status == 'active' %}
+              <span class="pill pill-green">Active</span>
+            {% elif rc.status == 'pending' %}
+              <span class="pill pill-warn">Pending</span>
+            {% elif rc.status == 'suspended' %}
+              <span class="pill pill-red">Suspended</span>
+            {% elif rc.status == 'terminated' %}
+              <span class="pill pill-grey">Terminated</span>
+            {% else %}
+              <span class="pill pill-grey">{{ rc.status|title }}</span>
+            {% endif %}
+          </td>
+          <td class="muted">{{ rc.created_at.strftime('%d %b %Y') if rc.created_at else '—' }}</td>
+          <td style="white-space:nowrap;display:flex;gap:6px;flex-wrap:wrap">
+            {% if rc.status == 'pending' %}
+            <form method="POST" action="{{ url_for('ambassador.team_approve', recruit_id=rc.id) }}" style="display:inline">
+              <button type="submit" class="btn btn-sm btn-primary">Approve</button>
+            </form>
+            {% elif rc.status == 'active' %}
+            <form method="POST" action="{{ url_for('ambassador.team_suspend', recruit_id=rc.id) }}" style="display:inline">
+              <button type="submit" class="btn btn-sm">Suspend</button>
+            </form>
+            {% elif rc.status == 'suspended' %}
+            <form method="POST" action="{{ url_for('ambassador.team_reactivate', recruit_id=rc.id) }}" style="display:inline">
+              <button type="submit" class="btn btn-sm btn-primary">Reactivate</button>
+            </form>
+            {% else %}
+            <span class="muted" style="font-size:12px">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+function copyRecruiterLink(btn) {
+  const text = document.getElementById('recruiterLink').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = orig; }, 2000);
+  });
+}
+</script>
+{% endblock %}

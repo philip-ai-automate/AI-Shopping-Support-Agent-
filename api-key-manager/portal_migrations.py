@@ -308,6 +308,17 @@ def ensure_portal_tables():
                     "ALTER TABLE ambassadors ADD COLUMN demo_token VARCHAR(64) UNIQUE"
                 )
 
+        # ── Sales Manager role + recruitment hierarchy ────────────────────────────
+        if _table_exists(cur, "ambassadors"):
+            if not _column_exists(cur, "ambassadors", "role"):
+                cur.execute(
+                    "ALTER TABLE ambassadors ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'ambassador'"
+                )
+            if not _column_exists(cur, "ambassadors", "recruited_by_id"):
+                cur.execute(
+                    "ALTER TABLE ambassadors ADD COLUMN recruited_by_id INTEGER REFERENCES ambassadors(id)"
+                )
+
         # ── tenant_agents: AI agent profiles per tenant ──────────────────────────
         if not _table_exists(cur, "tenant_agents"):
             cur.execute("""

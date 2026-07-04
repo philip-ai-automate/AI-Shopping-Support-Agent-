@@ -102,6 +102,12 @@
        href="{{ url_for('ambassador.referrals') }}">
       <span class="asb-icon">👥</span><span>My Referrals</span>
     </a>
+    {% if _amb_role == 'sales_manager' %}
+    <a class="asb-link {% if request.endpoint=='ambassador.team' %}active{% endif %}"
+       href="{{ url_for('ambassador.team') }}">
+      <span class="asb-icon">🏅</span><span>My Team</span>
+    </a>
+    {% endif %}
     <a class="asb-link {% if request.endpoint=='ambassador.earnings' %}active{% endif %}"
        href="{{ url_for('ambassador.earnings') }}">
       <span class="asb-icon">💰</span><span>Earnings</span>

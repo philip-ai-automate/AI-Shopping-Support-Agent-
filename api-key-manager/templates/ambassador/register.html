@@ -296,7 +296,14 @@
   <div class="prog-step"><div class="prog-circle" id="pc7">7</div></div>
 </div>
 
+{% if recruiter_name %}
+<div style="background:#eef6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#1e3a8a">
+  You're signing up as a recruit of <strong>{{ recruiter_name }}</strong>.
+</div>
+{% endif %}
+
 <form method="POST" enctype="multipart/form-data" id="regForm" novalidate>
+  {% if recruiter_code %}<input type="hidden" name="recruiter" value="{{ recruiter_code }}"/>{% endif %}
 
   <!-- ── Step 1: Personal Details ── -->
   <div class="step active" id="step1">

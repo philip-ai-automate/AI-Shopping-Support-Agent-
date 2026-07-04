@@ -3876,9 +3876,17 @@ def ambassadors():
         ORDER BY CASE a.status WHEN 'pending' THEN 0 WHEN 'active' THEN 1 ELSE 2 END, a.created_at DESC
     """)
     ambs = cur.fetchall() or []
+
+    cur.execute("""
+        SELECT id, first_name, last_name, ref_code FROM ambassadors
+        WHERE role='sales_manager' ORDER BY first_name, last_name
+    """)
+    sales_managers = cur.fetchall() or []
+
     cur.close(); conn.close()
     base_url = os.getenv("PORTAL_BASE_URL", "https://portal.phixtra.com")
-    return render_template("portal/admin_ambassadors.html", ambassadors=ambs, base_url=base_url)
+    return render_template("portal/admin_ambassadors.html", ambassadors=ambs,
+                           sales_managers=sales_managers, base_url=base_url)
 
 
 @portal_admin_bp.route("/ambassadors/demo-accounts", methods=["GET"])
@@ -4341,12 +4349,13 @@ def ambassador_edit(amb_id: int):
     f = request.form
     conn = get_db_connection()
     cur  = conn.cursor()
+    recruited_by_id = (f.get("recruited_by_id") or "").strip()
     cur.execute("""
         UPDATE ambassadors SET
             first_name=%s, last_name=%s, email=%s, phone=%s, whatsapp_number=%s,
             date_of_birth=%s, gender=%s, nationality=%s, address=%s, location=%s,
             highest_qualification=%s, bank_name=%s, account_number=%s,
-            account_name=%s, sort_code=%s, swift_code=%s
+            account_name=%s, sort_code=%s, swift_code=%s, recruited_by_id=%s
         WHERE id=%s
     """, (
         (f.get("first_name") or "").strip(),
@@ -4365,11 +4374,35 @@ def ambassador_edit(amb_id: int):
         (f.get("account_name")    or "").strip() or None,
         (f.get("sort_code")  or "").strip() or None,
         (f.get("swift_code") or "").strip() or None,
+        int(recruited_by_id) if recruited_by_id.isdigit() else None,
         amb_id,
     ))
     conn.commit()
     cur.close(); conn.close()
     flash("Ambassador details updated.", "success")
+    return redirect(url_for("portal_admin.ambassadors"))
+
+
+@portal_admin_bp.route("/ambassadors/<int:amb_id>/set-role", methods=["POST"])
+def ambassador_set_role(amb_id: int):
+    r = _require_admin()
+    if r: return r
+    new_role = "sales_manager" if (request.form.get("role") == "sales_manager") else "ambassador"
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT first_name, last_name, ref_code, role FROM ambassadors WHERE id=%s", (amb_id,))
+    amb = cur.fetchone()
+    cur2 = conn.cursor()
+    cur2.execute("UPDATE ambassadors SET role=%s WHERE id=%s", (new_role, amb_id))
+    conn.commit()
+    cur2.close(); cur.close(); conn.close()
+    if amb:
+        insert_audit_log(
+            admin_username=_admin_user(), action="ambassador_set_role",
+            details={"ambassador_id": amb_id, "ambassador_name": f"{amb['first_name']} {amb['last_name']}",
+                     "ref_code": amb['ref_code'], "old_role": amb['role'], "new_role": new_role},
+        )
+        flash(f"{amb['first_name']} {amb['last_name']} is now a {new_role.replace('_',' ')}.", "success")
     return redirect(url_for("portal_admin.ambassadors"))
 
 
@@ -4400,6 +4433,22 @@ def ambassador_detail(amb_id: int):
         LIMIT 20
     """, (amb_id,))
     history = cur.fetchall() or []
+
+    recruiter_name = None
+    if row.get("recruited_by_id"):
+        cur.execute("SELECT first_name, last_name FROM ambassadors WHERE id=%s", (row["recruited_by_id"],))
+        rec = cur.fetchone()
+        if rec:
+            recruiter_name = f"{rec['first_name']} {rec['last_name']}"
+
+    cur.execute("""
+        SELECT id, first_name, last_name, status, ref_code,
+               (SELECT COALESCE(SUM(commission_amount),0) FROM ambassador_commissions ac
+                WHERE ac.ambassador_id=ambassadors.id) AS total_earned
+        FROM ambassadors WHERE recruited_by_id=%s
+        ORDER BY first_name, last_name
+    """, (amb_id,))
+    recruits = cur.fetchall() or []
     cur.close(); conn.close()
 
     amb = dict(row)
@@ -4421,6 +4470,12 @@ def ambassador_detail(amb_id: int):
             "created_at": h["created_at"].isoformat() if h["created_at"] else "",
         })
     amb["status_history"] = status_history
+    amb["recruiter_name"] = recruiter_name
+    amb["recruits"] = [
+        {"id": rc["id"], "name": f"{rc['first_name']} {rc['last_name']}", "status": rc["status"],
+         "ref_code": rc["ref_code"], "total_earned": float(rc["total_earned"] or 0)}
+        for rc in recruits
+    ]
 
     from flask import jsonify
     return jsonify(amb)
