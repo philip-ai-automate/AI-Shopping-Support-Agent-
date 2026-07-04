@@ -3877,7 +3877,8 @@ def ambassadors():
     """)
     ambs = cur.fetchall() or []
     cur.close(); conn.close()
-    return render_template("portal/admin_ambassadors.html", ambassadors=ambs)
+    base_url = os.getenv("PORTAL_BASE_URL", "https://portal.phixtra.com")
+    return render_template("portal/admin_ambassadors.html", ambassadors=ambs, base_url=base_url)
 
 
 @portal_admin_bp.route("/ambassadors/demo-accounts", methods=["GET"])
@@ -3900,6 +3901,99 @@ def ambassador_demo_accounts():
     demos = cur.fetchall() or []
     cur.close(); conn.close()
     return render_template("portal/admin_ambassador_demos.html", demos=demos)
+
+
+@portal_admin_bp.route("/ambassadors/<int:amb_id>/qr.png")
+def ambassador_qr(amb_id: int):
+    r = _require_admin()
+    if r: return r
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT first_name, last_name, ref_code FROM ambassadors WHERE id=%s", (amb_id,))
+    amb = cur.fetchone()
+    cur.close(); conn.close()
+
+    if not amb:
+        return "Not found", 404
+
+    base_url = os.getenv("PORTAL_BASE_URL", "https://portal.phixtra.com")
+    url = f"{base_url}/register?ref={amb['ref_code']}"
+
+    import qrcode
+    qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=10, border=4)
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    as_dl = request.args.get("download") == "1"
+    safe_name = f"{amb['first_name']} {amb['last_name']}".strip().replace(" ", "-").lower()
+    return send_file(buf, mimetype="image/png",
+                     as_attachment=as_dl,
+                     download_name=f"phixtra-qr-{safe_name}.png")
+
+
+@portal_admin_bp.route("/ambassadors/<int:amb_id>/email-qr", methods=["POST"])
+def ambassador_email_qr(amb_id: int):
+    r = _require_admin()
+    if r: return r
+
+    to_email = (request.form.get("to_email") or "").strip().lower()
+    if not to_email:
+        return {"error": "No email address provided."}, 400
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT first_name, last_name, ref_code FROM ambassadors WHERE id=%s", (amb_id,))
+    amb = cur.fetchone()
+    cur.close(); conn.close()
+
+    if not amb:
+        return {"error": "Ambassador not found."}, 404
+
+    base_url = os.getenv("PORTAL_BASE_URL", "https://portal.phixtra.com")
+    url      = f"{base_url}/register?ref={amb['ref_code']}"
+
+    import qrcode
+    qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=12, border=4)
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    png_bytes = buf.getvalue()
+
+    full_name = f"{amb['first_name']} {amb['last_name']}".strip()
+    safe_name = full_name.replace(" ", "-").lower()
+    BRAND = "#030C18"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:560px">
+      <h2 style="color:{BRAND}">Your PhiXtra Ambassador QR Code</h2>
+      <p>Hi {amb['first_name']},</p>
+      <p>Here is your personal QR code. Share it with businesses — when they scan it and sign up,
+         they'll be linked to you automatically.</p>
+      <p><strong>Your referral link:</strong><br>
+         <a href="{url}" style="color:{BRAND}">{url}</a></p>
+      <p>The QR code PNG is attached to this email. You can print it, add it to slides,
+         or share it digitally.</p>
+      <p style="color:#888;font-size:12px">Questions? Contact support@phixtra.com</p>
+    </div>"""
+
+    ok = send_email_with_attachment(
+        to_email=to_email,
+        subject=f"Your PhiXtra Ambassador QR Code — {full_name}",
+        html_body=html,
+        attachment_bytes=png_bytes,
+        attachment_filename=f"phixtra-qr-{safe_name}.png",
+        text_body=f"Your PhiXtra referral link: {url}",
+    )
+
+    if ok:
+        return {"success": True, "message": f"QR code emailed to {to_email}."}, 200
+    else:
+        return {"error": "Failed to send email. Check SMTP settings."}, 500
 
 
 @portal_admin_bp.route("/ambassadors/report", methods=["GET"])

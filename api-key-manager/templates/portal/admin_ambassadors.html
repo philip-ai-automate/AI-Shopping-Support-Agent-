@@ -133,6 +133,13 @@
                  font-weight:700;cursor:pointer;font-family:inherit;color:#fff;background:var(--ink)}
   .modal-confirm.danger{background:var(--bad)}
   .modal-confirm:hover{opacity:.9}
+
+  /* ── QR modal ── */
+  .qr-url-bar{display:flex;align-items:center;gap:8px;background:rgba(3,12,24,.04);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:14px;text-align:left}
+  .qr-url-bar span{font-size:11px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .email-row{display:flex;gap:8px;margin-bottom:14px;text-align:left}
+  .email-row input{flex:1;min-width:0}
+  .send-status{font-size:12px;min-height:18px;text-align:center;margin-top:4px}
 </style>
 
 <div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
@@ -510,6 +517,34 @@
   </div>
 </div>
 
+<!-- ── QR modal ── -->
+<div class="modal-over" id="qrModal" onclick="if(event.target===this)closeQrModal()">
+  <div class="modal-card" style="text-align:center">
+    <div class="modal-title" id="qrTitle"></div>
+    <p class="modal-sub">Scan to register under this ambassador's referral link.</p>
+    <img id="qrImg" src="" alt="Ambassador QR"
+         style="width:200px;height:200px;border:1px solid var(--line);border-radius:12px;margin-bottom:16px"/>
+    <div class="qr-url-bar">
+      <span id="qrUrl"></span>
+      <button onclick="copyQrUrl()" class="btn btn-sm" style="padding:4px 10px;font-size:12px">Copy</button>
+    </div>
+
+    <div style="border-top:1px solid var(--line);padding-top:14px;margin-top:2px;text-align:left">
+      <label style="font-size:12px;font-weight:700;display:block;margin-bottom:6px">Email QR to ambassador</label>
+      <div class="email-row">
+        <input type="email" id="qrEmail" placeholder="ambassador@example.com" class="modal-input" style="font-size:13px"/>
+        <button onclick="sendAmbQrEmail()" class="btn btn-sm modal-confirm" id="sendQrBtn" style="flex:0 0 auto">Send</button>
+      </div>
+      <div class="send-status" id="qrSendStatus"></div>
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:center;margin-top:14px">
+      <a id="qrDownload" href="#" class="btn btn-primary btn-sm" download>Download PNG</a>
+      <button onclick="closeQrModal()" class="btn btn-sm">Close</button>
+    </div>
+  </div>
+</div>
+
 <script>
 let activeFilter = 'all';
 let currentAmbId = null;
@@ -675,6 +710,7 @@ function renderFootButtons(status, id) {
     `;
   } else if (status === 'active') {
     btns = `
+      <button class="sp-btn" onclick="openQrModal(${id})">QR Code</button>
       <button class="sp-btn" onclick="openEditModal()">Edit</button>
       <button class="sp-btn warn" onclick="doSuspend(${id})">Suspend</button>
       <button class="sp-btn danger" onclick="openReasonModal(${id},'terminate','Terminate Ambassador','This will permanently end their ambassador status.')">Terminate</button>
@@ -682,6 +718,7 @@ function renderFootButtons(status, id) {
   } else if (status === 'suspended') {
     btns = `
       <button class="sp-btn primary" onclick="doReactivate(${id})">Reactivate</button>
+      <button class="sp-btn" onclick="openQrModal(${id})">QR Code</button>
       <button class="sp-btn" onclick="openEditModal()">Edit</button>
       <button class="sp-btn danger" onclick="openReasonModal(${id},'terminate','Terminate Ambassador','This will permanently end their ambassador status.')">Terminate</button>
     `;
@@ -698,6 +735,68 @@ function renderFootButtons(status, id) {
   }
   foot.innerHTML = btns;
 }
+
+/* ── QR modal ── */
+var AMB_QR_URL       = "{{ url_for('portal_admin.ambassador_qr', amb_id=0) }}";
+var AMB_QR_EMAIL_URL = "{{ url_for('portal_admin.ambassador_email_qr', amb_id=0) }}";
+
+var BASE_URL = "{{ base_url }}";
+
+function openQrModal(id) {
+  const d = currentAmbData;
+  if (!d || d.id !== id) return;
+  const qrSrc  = AMB_QR_URL.replace('/0/', '/' + id + '/');
+  const regUrl = BASE_URL + '/register?ref=' + encodeURIComponent(d.ref_code);
+
+  document.getElementById('qrTitle').textContent = `${d.first_name} ${d.last_name} — QR Code`;
+  document.getElementById('qrImg').src = qrSrc;
+  document.getElementById('qrUrl').textContent = regUrl;
+  document.getElementById('qrDownload').href = qrSrc + '?download=1';
+  document.getElementById('qrDownload').download = `phixtra-qr-${d.ref_code}.png`;
+  document.getElementById('qrEmail').value = d.email || '';
+  document.getElementById('qrSendStatus').textContent = '';
+  document.getElementById('qrModal').classList.add('open');
+}
+function closeQrModal() {
+  document.getElementById('qrModal').classList.remove('open');
+}
+function copyQrUrl() {
+  const text = document.getElementById('qrUrl').textContent;
+  navigator.clipboard.writeText(text);
+}
+function sendAmbQrEmail() {
+  const email = document.getElementById('qrEmail').value.trim();
+  if (!email) { alert('Please enter an email address.'); return; }
+  const btn = document.getElementById('sendQrBtn');
+  const status = document.getElementById('qrSendStatus');
+  btn.disabled = true; btn.textContent = 'Sending…'; status.textContent = '';
+
+  const endpoint = AMB_QR_EMAIL_URL.replace('/0/', '/' + currentAmbId + '/');
+  const fd = new FormData();
+  fd.append('to_email', email);
+
+  fetch(endpoint, { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        status.style.color = 'var(--good, green)';
+        status.textContent = '✓ ' + data.message;
+      } else {
+        status.style.color = 'var(--bad, red)';
+        status.textContent = '✗ ' + (data.error || 'Failed to send.');
+      }
+    })
+    .catch(() => {
+      status.style.color = 'var(--bad, red)';
+      status.textContent = '✗ Network error. Please try again.';
+    })
+    .finally(() => {
+      btn.disabled = false; btn.textContent = 'Send';
+    });
+}
+document.getElementById('qrModal').addEventListener('click', function(e) {
+  if (e.target === this) closeQrModal();
+});
 
 /* ── Form actions (simple POST) ── */
 function postTo(url) {

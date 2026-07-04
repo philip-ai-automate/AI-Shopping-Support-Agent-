@@ -279,10 +279,6 @@
        style="padding-left:36px;font-size:12.5px">
       <span class="asb-icon">🎯</span> Leads
     </a>
-    <a class="asb-link {% if request.endpoint=='portal_admin.sales_reps' %}active{% endif %}"
-       href="{{ url_for('portal_admin.sales_reps') }}">
-      <span class="asb-icon">🤝</span> Sales Reps
-    </a>
   </div>
 
   <div class="asb-footer">
@@ -349,7 +345,6 @@
     { icon:'🛒', title:'Recovery Queue',     desc:'View abandoned cart recovery queue',        url:'{{ url_for("portal_admin.recovery_queue") }}',      tags:'cart recovery abandoned queue' },
     { icon:'🌟', title:'Ambassadors',        desc:'Manage ambassador referral accounts',       url:'{{ url_for("portal_admin.ambassadors") }}',         tags:'ambassadors referrals partners commission' },
     { icon:'🧪', title:'Demo Accounts',      desc:'Ambassador demo/sandbox shop accounts',     url:'{{ url_for("portal_admin.ambassador_demo_accounts") }}', tags:'ambassador demo sandbox test accounts' },
-    { icon:'🤝', title:'Sales Reps',         desc:'Manage sales representative accounts',      url:'{{ url_for("portal_admin.sales_reps") }}',          tags:'sales reps team agents representatives' },
   ];
 
   var input   = document.getElementById('asbSearchInput');
