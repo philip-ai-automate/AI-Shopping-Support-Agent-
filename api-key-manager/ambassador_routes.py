@@ -724,11 +724,29 @@ def team():
         LIMIT 12
     """, (amb["id"],))
     monthly_override = cur.fetchall() or []
+
+    cur.execute("""
+        SELECT t.ref_code AS recruit_ref_code, date_trunc('month', ac.created_at) AS month,
+               SUM(ac.commission_amount) AS total
+        FROM ambassador_commissions ac
+        JOIN tenants t ON t.id = ac.tenant_id
+        WHERE ac.ambassador_id=%s AND ac.commission_type='override'
+        GROUP BY t.ref_code, month
+        ORDER BY month DESC
+    """, (amb["id"],))
+    per_recruit_rows = cur.fetchall() or []
     cur.close(); conn.close()
+
+    per_recruit_monthly = {}
+    for row in per_recruit_rows:
+        per_recruit_monthly.setdefault(row["recruit_ref_code"], []).append(
+            {"month": row["month"], "total": float(row["total"] or 0)}
+        )
 
     recruiter_link = f"{BASE_URL}/ambassador/register?recruiter={amb['ref_code']}"
     return render_template("ambassador/team.html", amb=amb, recruits=recruits,
-                           monthly_override=monthly_override, recruiter_link=recruiter_link)
+                           monthly_override=monthly_override, per_recruit_monthly=per_recruit_monthly,
+                           recruiter_link=recruiter_link)
 
 
 def _recruit_owned_by_me(recruit_id: int):
