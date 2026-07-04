@@ -699,41 +699,54 @@ def team():
     if r: return r
     amb = _get_ambassador(_amb_id())
 
+    date_from = (request.args.get("from") or "").strip() or None
+    date_to   = (request.args.get("to") or "").strip() or None
+
+    # Date filter applied to ambassador_commissions.created_at (as a date, inclusive both ends)
+    range_clause = ""
+    range_params = []
+    if date_from:
+        range_clause += " AND ac.created_at::date >= %s"
+        range_params.append(date_from)
+    if date_to:
+        range_clause += " AND ac.created_at::date <= %s"
+        range_params.append(date_to)
+
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("""
+    cur.execute(f"""
         SELECT a.id, a.first_name, a.last_name, a.email, a.ref_code, a.status, a.created_at,
                (SELECT COUNT(*) FROM tenants t WHERE t.ref_code=a.ref_code AND t.status='active') AS active_clients,
-               (SELECT COALESCE(SUM(commission_amount),0) FROM ambassador_commissions ac
-                WHERE ac.ambassador_id=a.id) AS recruit_earned,
+               (SELECT COALESCE(SUM(ac.commission_amount),0) FROM ambassador_commissions ac
+                WHERE ac.ambassador_id=a.id {range_clause}) AS recruit_earned,
                (SELECT COALESCE(SUM(ac.commission_amount),0) FROM ambassador_commissions ac
                 JOIN tenants t ON t.id = ac.tenant_id
-                WHERE ac.ambassador_id=%s AND ac.commission_type='override' AND t.ref_code=a.ref_code) AS override_earned
+                WHERE ac.ambassador_id=%s AND ac.commission_type='override' AND t.ref_code=a.ref_code {range_clause}) AS override_earned
         FROM ambassadors a
         WHERE a.recruited_by_id = %s
         ORDER BY CASE a.status WHEN 'pending' THEN 0 WHEN 'active' THEN 1 ELSE 2 END, a.created_at DESC
-    """, (amb["id"], amb["id"]))
+    """, [*range_params, amb["id"], *range_params, amb["id"]])
     recruits = cur.fetchall() or []
 
-    cur.execute("""
-        SELECT date_trunc('month', created_at) AS month, COALESCE(SUM(commission_amount),0) AS total
-        FROM ambassador_commissions
-        WHERE ambassador_id=%s AND commission_type='override'
+    cur.execute(f"""
+        SELECT date_trunc('month', ac.created_at) AS month, COALESCE(SUM(ac.commission_amount),0) AS total
+        FROM ambassador_commissions ac
+        WHERE ac.ambassador_id=%s AND ac.commission_type='override' {range_clause}
         GROUP BY month
         ORDER BY month DESC
-        LIMIT 12
-    """, (amb["id"],))
+        {"" if (date_from or date_to) else "LIMIT 12"}
+    """, [amb["id"], *range_params])
     monthly_override = cur.fetchall() or []
 
-    cur.execute("""
+    cur.execute(f"""
         SELECT t.ref_code AS recruit_ref_code, date_trunc('month', ac.created_at) AS month,
                SUM(ac.commission_amount) AS total
         FROM ambassador_commissions ac
         JOIN tenants t ON t.id = ac.tenant_id
-        WHERE ac.ambassador_id=%s AND ac.commission_type='override'
+        WHERE ac.ambassador_id=%s AND ac.commission_type='override' {range_clause}
         GROUP BY t.ref_code, month
         ORDER BY month DESC
-    """, (amb["id"],))
+    """, [amb["id"], *range_params])
     per_recruit_rows = cur.fetchall() or []
     cur.close(); conn.close()
 
@@ -746,7 +759,7 @@ def team():
     recruiter_link = f"{BASE_URL}/ambassador/register?recruiter={amb['ref_code']}"
     return render_template("ambassador/team.html", amb=amb, recruits=recruits,
                            monthly_override=monthly_override, per_recruit_monthly=per_recruit_monthly,
-                           recruiter_link=recruiter_link)
+                           recruiter_link=recruiter_link, date_from=date_from, date_to=date_to)
 
 
 def _recruit_owned_by_me(recruit_id: int):

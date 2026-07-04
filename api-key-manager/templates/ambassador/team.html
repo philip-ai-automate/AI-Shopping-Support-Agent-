@@ -8,6 +8,27 @@
 </div>
 
 <div class="card" style="margin-bottom:20px">
+  <div class="section-title" style="margin-bottom:10px">Date Range</div>
+  <form method="GET" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+    <div class="form-group" style="margin:0">
+      <label>From</label>
+      <input type="date" name="from" value="{{ date_from or '' }}"/>
+    </div>
+    <div class="form-group" style="margin:0">
+      <label>To</label>
+      <input type="date" name="to" value="{{ date_to or '' }}"/>
+    </div>
+    <button type="submit" class="btn btn-primary" style="height:38px">Apply</button>
+    {% if date_from or date_to %}
+    <a href="{{ url_for('ambassador.team') }}" class="btn btn-sm" style="height:38px;display:flex;align-items:center">Clear</a>
+    {% endif %}
+  </form>
+  {% if not date_from and not date_to %}
+  <p class="muted" style="font-size:12px;margin-top:8px;margin-bottom:0">Showing last 12 months by default. Set a range above to filter everything on this page — recruit totals and both monthly breakdowns.</p>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-bottom:20px">
   <div class="section-title" style="margin-bottom:10px">Your Recruiter Link</div>
   <p class="muted" style="font-size:13px;margin-bottom:12px">
     Share this link with people you want to bring in as ambassadors. Anyone who registers through
