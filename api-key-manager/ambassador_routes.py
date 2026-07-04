@@ -6,6 +6,7 @@ then they can log in to see referrals, earnings, QR code and tier progress.
 import os
 import io
 import csv
+import re
 import json as _json
 import uuid
 import secrets
@@ -1831,6 +1832,49 @@ def record_ambassador_commission(tenant_id: int, plan_id: int, prev_plan_id: int
                     VALUES (%s,%s,'override',%s,%s,%s,%s)
                 """, (manager["id"], tenant_id, currency, float(amount), override,
                       f"5% override — {amb['first_name']} {amb['last_name']}'s referral"))
+
+    # Auto-link this payment event to a matching open lead in the ambassador's pipeline.
+    # Matches on exact email or last-10-digits phone (whichever the lead has on file);
+    # no match is the normal case for signups that never had a pre-existing lead logged.
+    if float(amount or 0) > 0:
+        cur4 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur4.execute("SELECT email, phone_number FROM customers WHERE tenant_id=%s LIMIT 1", (tenant_id,))
+        customer = cur4.fetchone()
+        if customer:
+            cust_email = (customer.get("email") or "").strip().lower()
+            cust_phone_digits = re.sub(r"\D", "", customer.get("phone_number") or "")[-10:]
+
+            cur4.execute("""
+                SELECT * FROM ambassador_leads
+                WHERE ambassador_id=%s AND dropped_at IS NULL AND tenant_id IS NULL
+                  AND stage NOT IN ('active_client', 'support')
+                ORDER BY created_at DESC
+            """, (amb["id"],))
+            candidates = cur4.fetchall() or []
+
+            matched_lead, match_reason = None, None
+            for lead in candidates:
+                lead_email = (lead.get("email") or "").strip().lower()
+                lead_phone_digits = re.sub(r"\D", "", lead.get("phone") or "")[-10:]
+                if cust_email and lead_email and cust_email == lead_email:
+                    matched_lead, match_reason = lead, "email"
+                    break
+                if cust_phone_digits and lead_phone_digits and len(cust_phone_digits) >= 7 \
+                        and cust_phone_digits == lead_phone_digits:
+                    matched_lead, match_reason = lead, "phone"
+                    break
+
+            if matched_lead:
+                cur2.execute("""
+                    UPDATE ambassador_leads SET stage='active_client', tenant_id=%s WHERE id=%s
+                """, (tenant_id, matched_lead["id"]))
+                conn.commit()
+                record_stage_change(
+                    matched_lead["id"], matched_lead["stage"], "active_client",
+                    "System (auto-linked on signup)",
+                    f"Matched by {match_reason} when subscription payment posted",
+                )
+        cur4.close()
 
     # One-time upsell bonus (per upgrade path, once per tenant)
     bonus = UPSELL_BONUSES.get((prev_slug, new_slug))
