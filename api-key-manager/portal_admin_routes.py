@@ -4410,14 +4410,28 @@ def ambassador_set_role(amb_id: int):
 def ambassador_detail(amb_id: int):
     r = _require_admin()
     if r: return r
+
+    date_from = (request.args.get("from") or "").strip() or None
+    date_to   = (request.args.get("to") or "").strip() or None
+
+    range_clause = ""
+    range_params = []
+    if date_from:
+        range_clause += " AND ac.created_at::date >= %s"
+        range_params.append(date_from)
+    if date_to:
+        range_clause += " AND ac.created_at::date <= %s"
+        range_params.append(date_to)
+
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("""
+    cur.execute(f"""
         SELECT a.*,
                (SELECT COUNT(*) FROM tenants t WHERE t.ref_code=a.ref_code AND t.status='active') AS active_clients,
-               (SELECT COALESCE(SUM(commission_amount),0) FROM ambassador_commissions ac WHERE ac.ambassador_id=a.id) AS total_earned
+               (SELECT COALESCE(SUM(ac.commission_amount),0) FROM ambassador_commissions ac
+                WHERE ac.ambassador_id=a.id {range_clause}) AS total_earned
         FROM ambassadors a WHERE a.id=%s
-    """, (amb_id,))
+    """, [*range_params, amb_id])
     row = cur.fetchone()
     if not row:
         cur.close(); conn.close()
@@ -4441,34 +4455,34 @@ def ambassador_detail(amb_id: int):
         if rec:
             recruiter_name = f"{rec['first_name']} {rec['last_name']}"
 
-    cur.execute("""
+    cur.execute(f"""
         SELECT id, first_name, last_name, status, ref_code,
-               (SELECT COALESCE(SUM(commission_amount),0) FROM ambassador_commissions ac
-                WHERE ac.ambassador_id=ambassadors.id) AS total_earned
+               (SELECT COALESCE(SUM(ac.commission_amount),0) FROM ambassador_commissions ac
+                WHERE ac.ambassador_id=ambassadors.id {range_clause}) AS total_earned
         FROM ambassadors WHERE recruited_by_id=%s
         ORDER BY first_name, last_name
-    """, (amb_id,))
+    """, [*range_params, amb_id])
     recruits = cur.fetchall() or []
 
-    cur.execute("""
-        SELECT date_trunc('month', created_at) AS month, COALESCE(SUM(commission_amount),0) AS total
-        FROM ambassador_commissions
-        WHERE ambassador_id=%s AND commission_type='override'
+    cur.execute(f"""
+        SELECT date_trunc('month', ac.created_at) AS month, COALESCE(SUM(ac.commission_amount),0) AS total
+        FROM ambassador_commissions ac
+        WHERE ac.ambassador_id=%s AND ac.commission_type='override' {range_clause}
         GROUP BY month
         ORDER BY month DESC
-        LIMIT 12
-    """, (amb_id,))
+        {"" if (date_from or date_to) else "LIMIT 12"}
+    """, [amb_id, *range_params])
     monthly_override = cur.fetchall() or []
 
-    cur.execute("""
+    cur.execute(f"""
         SELECT t.ref_code AS recruit_ref_code, date_trunc('month', ac.created_at) AS month,
                SUM(ac.commission_amount) AS total
         FROM ambassador_commissions ac
         JOIN tenants t ON t.id = ac.tenant_id
-        WHERE ac.ambassador_id=%s AND ac.commission_type='override'
+        WHERE ac.ambassador_id=%s AND ac.commission_type='override' {range_clause}
         GROUP BY t.ref_code, month
         ORDER BY month DESC
-    """, (amb_id,))
+    """, [amb_id, *range_params])
     per_recruit_rows = cur.fetchall() or []
     cur.close(); conn.close()
 
@@ -4508,6 +4522,8 @@ def ambassador_detail(amb_id: int):
         for m in monthly_override
     ]
     amb["per_recruit_monthly"] = per_recruit_monthly
+    amb["date_from"] = date_from or ""
+    amb["date_to"] = date_to or ""
 
     from flask import jsonify
     return jsonify(amb)

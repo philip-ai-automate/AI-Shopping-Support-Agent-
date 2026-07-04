@@ -586,7 +586,7 @@ function applyFilter() {
 }
 
 /* ── Side panel ── */
-function openPanel(id) {
+function openPanel(id, dateFrom, dateTo) {
   currentAmbId = id;
   document.querySelectorAll('.amb-row').forEach(r => {
     r.classList.toggle('selected', parseInt(r.dataset.id) === id);
@@ -597,13 +597,27 @@ function openPanel(id) {
     '<div style="text-align:center;padding:40px 0;color:var(--muted)">Loading…</div>';
   document.getElementById('spFoot').innerHTML = '';
 
-  fetch(`/admin/ambassadors/${id}/detail`)
+  const params = new URLSearchParams();
+  if (dateFrom) params.set('from', dateFrom);
+  if (dateTo)   params.set('to', dateTo);
+  const qs = params.toString();
+
+  fetch(`/admin/ambassadors/${id}/detail${qs ? '?' + qs : ''}`)
     .then(r => r.json())
     .then(d => { currentAmbData = d; renderPanel(d); })
     .catch(() => {
       document.getElementById('spBody').innerHTML =
         '<div style="color:var(--bad);padding:20px">Failed to load details.</div>';
     });
+}
+
+function applyDateFilter() {
+  const from = document.getElementById('spDateFrom').value;
+  const to   = document.getElementById('spDateTo').value;
+  openPanel(currentAmbId, from, to);
+}
+function clearDateFilter() {
+  openPanel(currentAmbId);
 }
 
 function closePanel() {
@@ -649,6 +663,16 @@ function renderPanel(d) {
       <span style="width:8px;height:8px;border-radius:50%;background:${statusColor};flex-shrink:0;display:inline-block"></span>
       <span style="font-size:12px;font-weight:700;color:${statusColor};text-transform:capitalize">${d.status}</span>
       <span style="color:var(--muted);font-size:12px;margin-left:auto">Applied ${fmtDate(d.created_at)}</span>
+    </div>
+
+    <div class="sp-section">
+      <div class="sp-section-title">Date Range <span style="font-weight:400;text-transform:none;color:#9ca3af">(filters earnings below)</span></div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <input type="date" id="spDateFrom" value="${d.date_from || ''}" class="modal-input" style="flex:1;min-width:120px;padding:6px 8px;font-size:12px"/>
+        <input type="date" id="spDateTo" value="${d.date_to || ''}" class="modal-input" style="flex:1;min-width:120px;padding:6px 8px;font-size:12px"/>
+        <button class="sp-btn" style="flex:0 0 auto;padding:6px 10px;font-size:11.5px" onclick="applyDateFilter()">Apply</button>
+        ${(d.date_from || d.date_to) ? `<button class="sp-btn" style="flex:0 0 auto;padding:6px 10px;font-size:11.5px" onclick="clearDateFilter()">Clear</button>` : ''}
+      </div>
     </div>
 
     <div class="sp-section">
