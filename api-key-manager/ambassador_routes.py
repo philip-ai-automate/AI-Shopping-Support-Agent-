@@ -5,6 +5,7 @@ then they can log in to see referrals, earnings, QR code and tier progress.
 """
 import os
 import io
+import csv
 import json as _json
 import uuid
 import secrets
@@ -17,7 +18,7 @@ import psycopg2.extras
 from datetime import date, timedelta, datetime
 from werkzeug.utils import secure_filename
 from flask import (Blueprint, render_template, request, redirect,
-                   url_for, session, flash, g)
+                   url_for, session, flash, g, Response)
 
 UPLOAD_FOLDER      = os.path.join(os.path.dirname(__file__), 'static', 'uploads', 'ambassador_ids')
 QUAL_UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static', 'uploads', 'ambassador_quals')
@@ -760,6 +761,63 @@ def team():
     return render_template("ambassador/team.html", amb=amb, recruits=recruits,
                            monthly_override=monthly_override, per_recruit_monthly=per_recruit_monthly,
                            recruiter_link=recruiter_link, date_from=date_from, date_to=date_to)
+
+
+@ambassador_bp.route("/ambassador/team/export")
+def team_export():
+    r = _require_sales_manager()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+
+    date_from = (request.args.get("from") or "").strip() or None
+    date_to   = (request.args.get("to") or "").strip() or None
+
+    range_clause = ""
+    range_params = []
+    if date_from:
+        range_clause += " AND ac.created_at::date >= %s"
+        range_params.append(date_from)
+    if date_to:
+        range_clause += " AND ac.created_at::date <= %s"
+        range_params.append(date_to)
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(f"""
+        SELECT rec.first_name, rec.last_name, rec.ref_code, rec.status,
+               date_trunc('month', ac.created_at) AS month, SUM(ac.commission_amount) AS total
+        FROM ambassador_commissions ac
+        JOIN tenants t ON t.id = ac.tenant_id
+        JOIN ambassadors rec ON rec.ref_code = t.ref_code
+        WHERE ac.ambassador_id=%s AND ac.commission_type='override' AND rec.recruited_by_id=%s {range_clause}
+        GROUP BY rec.id, rec.first_name, rec.last_name, rec.ref_code, rec.status, month
+        ORDER BY month DESC, rec.first_name, rec.last_name
+    """, [amb["id"], amb["id"], *range_params])
+    rows = cur.fetchall() or []
+    cur.close(); conn.close()
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["Month", "Recruit Name", "Ref Code", "Recruit Status", "Your Override Earned (NGN)"])
+    for row in rows:
+        writer.writerow([
+            row["month"].strftime("%B %Y"),
+            f"{row['first_name']} {row['last_name']}",
+            row["ref_code"],
+            row["status"],
+            f"{float(row['total'] or 0):.2f}",
+        ])
+
+    range_label = ""
+    if date_from or date_to:
+        range_label = f"_{date_from or 'start'}_to_{date_to or 'end'}"
+    filename = f"team-earnings-{amb['ref_code']}{range_label}.csv"
+
+    return Response(
+        buf.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 def _recruit_owned_by_me(recruit_id: int):

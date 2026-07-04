@@ -672,6 +672,7 @@ function renderPanel(d) {
         <input type="date" id="spDateTo" value="${d.date_to || ''}" class="modal-input" style="flex:1;min-width:120px;padding:6px 8px;font-size:12px"/>
         <button class="sp-btn" style="flex:0 0 auto;padding:6px 10px;font-size:11.5px" onclick="applyDateFilter()">Apply</button>
         ${(d.date_from || d.date_to) ? `<button class="sp-btn" style="flex:0 0 auto;padding:6px 10px;font-size:11.5px" onclick="clearDateFilter()">Clear</button>` : ''}
+        ${d.role === 'sales_manager' ? `<a class="sp-btn" style="flex:0 0 auto;padding:6px 10px;font-size:11.5px" href="/admin/ambassadors/${d.id}/export-earnings?from=${d.date_from||''}&to=${d.date_to||''}">⬇ Export CSV</a>` : ''}
       </div>
     </div>
 

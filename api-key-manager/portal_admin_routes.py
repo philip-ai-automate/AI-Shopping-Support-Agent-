@@ -4529,6 +4529,68 @@ def ambassador_detail(amb_id: int):
     return jsonify(amb)
 
 
+@portal_admin_bp.route("/ambassadors/<int:amb_id>/export-earnings")
+def ambassador_export_earnings(amb_id: int):
+    r = _require_admin()
+    if r: return r
+
+    date_from = (request.args.get("from") or "").strip() or None
+    date_to   = (request.args.get("to") or "").strip() or None
+
+    range_clause = ""
+    range_params = []
+    if date_from:
+        range_clause += " AND ac.created_at::date >= %s"
+        range_params.append(date_from)
+    if date_to:
+        range_clause += " AND ac.created_at::date <= %s"
+        range_params.append(date_to)
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT ref_code FROM ambassadors WHERE id=%s", (amb_id,))
+    amb_row = cur.fetchone()
+    if not amb_row:
+        cur.close(); conn.close()
+        return "Not found", 404
+
+    cur.execute(f"""
+        SELECT rec.first_name, rec.last_name, rec.ref_code, rec.status,
+               date_trunc('month', ac.created_at) AS month, SUM(ac.commission_amount) AS total
+        FROM ambassador_commissions ac
+        JOIN tenants t ON t.id = ac.tenant_id
+        JOIN ambassadors rec ON rec.ref_code = t.ref_code
+        WHERE ac.ambassador_id=%s AND ac.commission_type='override' AND rec.recruited_by_id=%s {range_clause}
+        GROUP BY rec.id, rec.first_name, rec.last_name, rec.ref_code, rec.status, month
+        ORDER BY month DESC, rec.first_name, rec.last_name
+    """, [amb_id, amb_id, *range_params])
+    rows = cur.fetchall() or []
+    cur.close(); conn.close()
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["Month", "Recruit Name", "Ref Code", "Recruit Status", "Sales Manager Override Earned (NGN)"])
+    for row in rows:
+        writer.writerow([
+            row["month"].strftime("%B %Y"),
+            f"{row['first_name']} {row['last_name']}",
+            row["ref_code"],
+            row["status"],
+            f"{float(row['total'] or 0):.2f}",
+        ])
+
+    range_label = ""
+    if date_from or date_to:
+        range_label = f"_{date_from or 'start'}_to_{date_to or 'end'}"
+    filename = f"team-earnings-{amb_row['ref_code']}{range_label}.csv"
+
+    return Response(
+        buf.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
 @portal_admin_bp.route("/ambassadors/<int:amb_id>/id-doc")
 def ambassador_id_doc(amb_id: int):
     r = _require_admin()

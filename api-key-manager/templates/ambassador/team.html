@@ -22,6 +22,8 @@
     {% if date_from or date_to %}
     <a href="{{ url_for('ambassador.team') }}" class="btn btn-sm" style="height:38px;display:flex;align-items:center">Clear</a>
     {% endif %}
+    <a href="{{ url_for('ambassador.team_export') }}?from={{ date_from or '' }}&to={{ date_to or '' }}"
+       class="btn btn-sm" style="height:38px;display:flex;align-items:center;margin-left:auto">⬇ Export CSV</a>
   </form>
   {% if not date_from and not date_to %}
   <p class="muted" style="font-size:12px;margin-top:8px;margin-bottom:0">Showing last 12 months by default. Set a range above to filter everything on this page — recruit totals and both monthly breakdowns.</p>
