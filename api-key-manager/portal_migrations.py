@@ -63,6 +63,54 @@ def ensure_portal_tables():
                 ALTER TABLE ambassador_commissions
                 ALTER COLUMN tenant_id DROP NOT NULL
             """)
+
+        # ── CRM pipeline columns on ambassador_leads (replaces flat status model) ──
+        _lead_pipeline_columns = [
+            ("industry",               "TEXT"),
+            ("stage",                  "VARCHAR(30) NOT NULL DEFAULT 'lead'"),
+            ("contact_channel",        "TEXT"),
+            ("contact_date",           "DATE"),
+            ("contact_response",       "TEXT"),
+            ("demo_date",              "DATE"),
+            ("demo_reaction",          "TEXT"),
+            ("req_phone",              "BOOLEAN NOT NULL DEFAULT FALSE"),
+            ("req_meta_account",       "BOOLEAN NOT NULL DEFAULT FALSE"),
+            ("req_whatsapp_connected", "BOOLEAN NOT NULL DEFAULT FALSE"),
+            ("req_product_list",       "BOOLEAN NOT NULL DEFAULT FALSE"),
+            ("onboarding_date",        "DATE"),
+            ("onboarding_notes",       "TEXT"),
+            ("tenant_id",              "INTEGER REFERENCES tenants(id)"),
+            ("dropped_at",             "TIMESTAMPTZ"),
+            ("dropped_reason",         "TEXT"),
+            ("last_reviewed_at",       "TIMESTAMPTZ"),
+        ]
+        for col_name, col_def in _lead_pipeline_columns:
+            if not _column_exists(cur, "ambassador_leads", col_name):
+                cur.execute(f"ALTER TABLE ambassador_leads ADD COLUMN {col_name} {col_def}")
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS lead_stage_history (
+                id          SERIAL PRIMARY KEY,
+                lead_id     INTEGER NOT NULL REFERENCES ambassador_leads(id) ON DELETE CASCADE,
+                from_stage  VARCHAR(30),
+                to_stage    VARCHAR(30) NOT NULL,
+                changed_by  TEXT,
+                notes       TEXT,
+                created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS lead_support_tickets (
+                id          SERIAL PRIMARY KEY,
+                lead_id     INTEGER NOT NULL REFERENCES ambassador_leads(id) ON DELETE CASCADE,
+                subject     TEXT NOT NULL,
+                notes       TEXT,
+                created_by  TEXT,
+                created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                resolved_at TIMESTAMPTZ
+            )
+        """)
         conn.commit()
 
         # ── catalogue_categories ──────────────────────────────────────────

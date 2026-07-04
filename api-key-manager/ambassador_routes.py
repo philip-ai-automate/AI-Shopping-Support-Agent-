@@ -33,6 +33,8 @@ def _allowed_doc(filename: str) -> bool:
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_DOC_EXTS
 
 from db import get_db_connection, insert_audit_log
+from lead_pipeline import (STAGE_ORDER, STAGE_LABELS, STAGE_DESCRIPTIONS,
+                            next_stage, record_stage_change, get_stage_history)
 from portal_utils import send_email
 
 ambassador_bp = Blueprint("ambassador", __name__)
@@ -1316,6 +1318,7 @@ def leads():
 
     if request.method == "POST":
         business_name = (request.form.get("business_name") or "").strip()
+        industry      = (request.form.get("industry")      or "").strip() or None
         contact_name  = (request.form.get("contact_name")  or "").strip() or None
         phone         = (request.form.get("phone")         or "").strip() or None
         email         = (request.form.get("email")         or "").strip() or None
@@ -1326,25 +1329,50 @@ def leads():
             return redirect(url_for("ambassador.leads"))
 
         conn = get_db_connection()
-        cur  = conn.cursor()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             INSERT INTO ambassador_leads
-              (ambassador_id, business_name, contact_name, phone, email, notes)
-            VALUES (%s, %s, %s, %s, %s, %s)
-        """, (amb["id"], business_name, contact_name, phone, email, notes))
+              (ambassador_id, business_name, industry, contact_name, phone, email, notes, stage)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'lead')
+            RETURNING id
+        """, (amb["id"], business_name, industry, contact_name, phone, email, notes))
+        new_id = cur.fetchone()["id"]
         conn.commit()
         cur.close(); conn.close()
-        flash("Lead submitted successfully. We'll follow up shortly.", "success")
+        record_stage_change(new_id, None, "lead", f"{amb['first_name']} {amb['last_name']}")
+        flash("Lead added to your pipeline.", "success")
         return redirect(url_for("ambassador.leads"))
 
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
-        SELECT * FROM ambassador_leads WHERE ambassador_id=%s ORDER BY created_at DESC
+        SELECT * FROM ambassador_leads
+        WHERE ambassador_id=%s AND dropped_at IS NULL
+        ORDER BY CASE stage
+            WHEN 'lead' THEN 0 WHEN 'contacted' THEN 1 WHEN 'demo_done' THEN 2
+            WHEN 'requirements_confirmed' THEN 3 WHEN 'onboarding' THEN 4
+            WHEN 'active_client' THEN 5 WHEN 'support' THEN 6 ELSE 7 END,
+            created_at DESC
     """, (amb["id"],))
-    submitted_leads = [dict(r) for r in cur.fetchall()]
+    pipeline_leads = [dict(l) for l in cur.fetchall()]
 
-    # Self-closed clients (referral link signups)
+    cur.execute("""
+        SELECT * FROM ambassador_leads WHERE ambassador_id=%s AND dropped_at IS NOT NULL
+        ORDER BY dropped_at DESC
+    """, (amb["id"],))
+    dropped_leads = [dict(l) for l in cur.fetchall()]
+
+    # Tenants referred by this ambassador, available to link at the Active Client stage
+    cur.execute("""
+        SELECT t.id, t.name FROM tenants t
+        WHERE t.ref_code=%s AND t.id NOT IN (
+            SELECT tenant_id FROM ambassador_leads WHERE tenant_id IS NOT NULL
+        )
+        ORDER BY t.created_at DESC
+    """, (amb["ref_code"],))
+    linkable_tenants = [dict(t) for t in cur.fetchall()]
+
+    # Self-closed clients (referral link signups, tracked separately from the manual pipeline)
     cur.execute("""
         SELECT t.name, t.status, p.name AS plan_name, p.price_ngn,
                t.created_at,
@@ -1359,8 +1387,195 @@ def leads():
     self_closed = [dict(r) for r in cur.fetchall()]
 
     cur.close(); conn.close()
+
+    stage_counts = {s: 0 for s in STAGE_ORDER}
+    for l in pipeline_leads:
+        stage_counts[l["stage"]] = stage_counts.get(l["stage"], 0) + 1
+
     return render_template("ambassador/leads.html",
-        amb=amb, submitted_leads=submitted_leads, self_closed=self_closed)
+        amb=amb, pipeline_leads=pipeline_leads, dropped_leads=dropped_leads,
+        linkable_tenants=linkable_tenants, self_closed=self_closed, stage_counts=stage_counts,
+        stage_order=STAGE_ORDER, stage_labels=STAGE_LABELS, stage_descriptions=STAGE_DESCRIPTIONS,
+        next_stage=next_stage)
+
+
+@ambassador_bp.route("/ambassador/leads/<int:lead_id>/advance", methods=["POST"])
+def lead_advance(lead_id: int):
+    r = _require_amb()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM ambassador_leads WHERE id=%s AND ambassador_id=%s", (lead_id, amb["id"]))
+    lead = cur.fetchone()
+    if not lead:
+        cur.close(); conn.close()
+        flash("Lead not found.", "danger")
+        return redirect(url_for("ambassador.leads"))
+
+    target = next_stage(lead["stage"])
+    if not target:
+        cur.close(); conn.close()
+        flash("This lead is already at the final stage.", "warning")
+        return redirect(url_for("ambassador.leads"))
+
+    f = request.form
+    updates = {"stage": target}
+
+    if target == "contacted":
+        contact_channel  = (f.get("contact_channel") or "").strip()
+        contact_date     = (f.get("contact_date") or "").strip()
+        contact_response = (f.get("contact_response") or "").strip()
+        if not contact_channel or not contact_date:
+            cur.close(); conn.close()
+            flash("Contact channel and date are required.", "danger")
+            return redirect(url_for("ambassador.leads"))
+        updates.update(contact_channel=contact_channel, contact_date=contact_date,
+                       contact_response=contact_response or None)
+
+    elif target == "demo_done":
+        demo_date     = (f.get("demo_date") or "").strip()
+        demo_reaction = (f.get("demo_reaction") or "").strip()
+        if not demo_date:
+            cur.close(); conn.close()
+            flash("Demo date is required.", "danger")
+            return redirect(url_for("ambassador.leads"))
+        updates.update(demo_date=demo_date, demo_reaction=demo_reaction or None)
+
+    elif target == "requirements_confirmed":
+        req_phone    = f.get("req_phone") == "1"
+        req_meta     = f.get("req_meta_account") == "1"
+        req_whatsapp = f.get("req_whatsapp_connected") == "1"
+        req_products = f.get("req_product_list") == "1"
+        if not (req_phone and req_meta and req_whatsapp and req_products):
+            cur.close(); conn.close()
+            flash("All 4 requirements must be confirmed before advancing.", "danger")
+            return redirect(url_for("ambassador.leads"))
+        updates.update(req_phone=True, req_meta_account=True,
+                       req_whatsapp_connected=True, req_product_list=True)
+
+    elif target == "onboarding":
+        onboarding_date  = (f.get("onboarding_date") or "").strip()
+        onboarding_notes = (f.get("onboarding_notes") or "").strip()
+        if not onboarding_date:
+            cur.close(); conn.close()
+            flash("Onboarding date is required.", "danger")
+            return redirect(url_for("ambassador.leads"))
+        updates.update(onboarding_date=onboarding_date, onboarding_notes=onboarding_notes or None)
+
+    elif target == "active_client":
+        tenant_id_raw = (f.get("tenant_id") or "").strip()
+        tenant_id = int(tenant_id_raw) if tenant_id_raw.isdigit() else None
+        if tenant_id:
+            cur.execute("SELECT id FROM tenants WHERE id=%s AND ref_code=%s", (tenant_id, amb["ref_code"]))
+            if not cur.fetchone():
+                cur.close(); conn.close()
+                flash("Selected client doesn't match your referral code.", "danger")
+                return redirect(url_for("ambassador.leads"))
+        updates["tenant_id"] = tenant_id
+
+    set_clause = ", ".join(f"{k}=%s" for k in updates)
+    cur2 = conn.cursor()
+    cur2.execute(f"UPDATE ambassador_leads SET {set_clause} WHERE id=%s",
+                list(updates.values()) + [lead_id])
+    conn.commit()
+    cur2.close(); cur.close(); conn.close()
+
+    record_stage_change(lead_id, lead["stage"], target, f"{amb['first_name']} {amb['last_name']}")
+    flash(f"{lead['business_name']} moved to {STAGE_LABELS[target]}.", "success")
+    return redirect(url_for("ambassador.leads"))
+
+
+@ambassador_bp.route("/ambassador/leads/<int:lead_id>/drop", methods=["POST"])
+def lead_drop(lead_id: int):
+    r = _require_amb()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+    reason = (request.form.get("reason") or "").strip() or None
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM ambassador_leads WHERE id=%s AND ambassador_id=%s", (lead_id, amb["id"]))
+    lead = cur.fetchone()
+    if not lead:
+        cur.close(); conn.close()
+        flash("Lead not found.", "danger")
+        return redirect(url_for("ambassador.leads"))
+
+    cur2 = conn.cursor()
+    cur2.execute("UPDATE ambassador_leads SET dropped_at=NOW(), dropped_reason=%s WHERE id=%s",
+                (reason, lead_id))
+    conn.commit()
+    cur2.close(); cur.close(); conn.close()
+    record_stage_change(lead_id, lead["stage"], "dropped", f"{amb['first_name']} {amb['last_name']}", reason)
+    flash(f"{lead['business_name']} marked as dropped.", "warning")
+    return redirect(url_for("ambassador.leads"))
+
+
+@ambassador_bp.route("/ambassador/leads/<int:lead_id>/tickets", methods=["POST"])
+def lead_add_ticket(lead_id: int):
+    r = _require_amb()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+    subject = (request.form.get("subject") or "").strip()
+    notes   = (request.form.get("notes") or "").strip() or None
+    if not subject:
+        flash("Ticket subject is required.", "danger")
+        return redirect(url_for("ambassador.leads"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("SELECT 1 FROM ambassador_leads WHERE id=%s AND ambassador_id=%s", (lead_id, amb["id"]))
+    if not cur.fetchone():
+        cur.close(); conn.close()
+        flash("Lead not found.", "danger")
+        return redirect(url_for("ambassador.leads"))
+    cur.execute("""
+        INSERT INTO lead_support_tickets (lead_id, subject, notes, created_by)
+        VALUES (%s, %s, %s, %s)
+    """, (lead_id, subject, notes, f"{amb['first_name']} {amb['last_name']}"))
+    conn.commit()
+    cur.close(); conn.close()
+    flash("Ticket logged.", "success")
+    return redirect(url_for("ambassador.leads"))
+
+
+@ambassador_bp.route("/ambassador/leads/<int:lead_id>/review", methods=["POST"])
+def lead_mark_reviewed(lead_id: int):
+    r = _require_amb()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("UPDATE ambassador_leads SET last_reviewed_at=NOW() WHERE id=%s AND ambassador_id=%s",
+                (lead_id, amb["id"]))
+    conn.commit()
+    cur.close(); conn.close()
+    flash("Marked as reviewed.", "success")
+    return redirect(url_for("ambassador.leads"))
+
+
+@ambassador_bp.route("/ambassador/leads/<int:lead_id>/history")
+def lead_history(lead_id: int):
+    r = _require_amb()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("SELECT 1 FROM ambassador_leads WHERE id=%s AND ambassador_id=%s", (lead_id, amb["id"]))
+    owned = cur.fetchone()
+    cur.close(); conn.close()
+    if not owned:
+        from flask import jsonify
+        return jsonify({"error": "Not found"}), 404
+    history = get_stage_history(lead_id)
+    from flask import jsonify
+    return jsonify([
+        {"from_stage": h["from_stage"], "to_stage": h["to_stage"], "changed_by": h["changed_by"],
+         "notes": h["notes"], "created_at": h["created_at"].isoformat() if h["created_at"] else ""}
+        for h in history
+    ])
 
 
 @ambassador_bp.route("/ambassador/contract")
