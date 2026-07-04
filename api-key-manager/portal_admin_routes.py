@@ -16,6 +16,8 @@ from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, send_file, Response)
 
 from db import get_db_connection, insert_audit_log
+from lead_pipeline import (STAGE_ORDER, STAGE_LABELS, STAGE_DESCRIPTIONS,
+                            next_stage, record_stage_change, get_stage_history)
 from portal_utils import money_fmt, tokens_to_credits, credits_to_tokens, send_email_with_attachment
 
 portal_admin_bp = Blueprint("portal_admin", __name__)
@@ -4625,7 +4627,7 @@ def ambassador_qual_doc(amb_id: int):
     return send_from_directory(static_dir, row["qual_document_path"])
 
 
-# ── Ambassador Leads ───────────────────────────────────────────────────────
+# ── Ambassador/Sales Manager CRM Pipeline (admin oversight) ─────────────────
 
 @portal_admin_bp.route("/admin/leads", methods=["GET"])
 def admin_leads():
@@ -4639,80 +4641,157 @@ def admin_leads():
                a.email AS ambassador_email
         FROM ambassador_leads al
         JOIN ambassadors a ON a.id = al.ambassador_id
-        ORDER BY
-          CASE al.status WHEN 'new' THEN 0 WHEN 'contacted' THEN 1
-                         WHEN 'negotiating' THEN 2 ELSE 3 END,
-          al.created_at DESC
+        WHERE al.dropped_at IS NULL
+        ORDER BY CASE al.stage
+            WHEN 'lead' THEN 0 WHEN 'contacted' THEN 1 WHEN 'demo_done' THEN 2
+            WHEN 'requirements_confirmed' THEN 3 WHEN 'onboarding' THEN 4
+            WHEN 'active_client' THEN 5 WHEN 'support' THEN 6 ELSE 7 END,
+            al.created_at DESC
     """)
     leads = [dict(r) for r in cur.fetchall()]
+
+    cur.execute("""
+        SELECT al.*, a.first_name || ' ' || a.last_name AS ambassador_name
+        FROM ambassador_leads al
+        JOIN ambassadors a ON a.id = al.ambassador_id
+        WHERE al.dropped_at IS NOT NULL
+        ORDER BY al.dropped_at DESC
+    """)
+    dropped_leads = [dict(r) for r in cur.fetchall()]
     cur.close(); conn.close()
-    return render_template("portal/admin_leads.html", leads=leads)
+
+    stage_counts = {s: 0 for s in STAGE_ORDER}
+    for l in leads:
+        stage_counts[l["stage"]] = stage_counts.get(l["stage"], 0) + 1
+
+    return render_template("portal/admin_leads.html", leads=leads, dropped_leads=dropped_leads,
+        stage_counts=stage_counts, stage_order=STAGE_ORDER, stage_labels=STAGE_LABELS,
+        stage_descriptions=STAGE_DESCRIPTIONS, next_stage=next_stage)
 
 
-@portal_admin_bp.route("/admin/leads/<int:lead_id>/status", methods=["POST"])
-def lead_update_status(lead_id: int):
+@portal_admin_bp.route("/admin/leads/<int:lead_id>/advance", methods=["POST"])
+def lead_advance(lead_id: int):
     r = _require_admin()
     if r: return r
-    new_status = (request.form.get("status") or "").strip()
-    allowed = {"contacted", "negotiating", "closed_won", "closed_lost"}
-    if new_status not in allowed:
-        flash("Invalid status.", "danger")
-        return redirect(url_for("portal_admin.admin_leads"))
-
-    conn = get_db_connection()
-    cur  = conn.cursor()
-    if new_status in ("closed_won", "closed_lost"):
-        cur.execute("UPDATE ambassador_leads SET status=%s, closed_at=NOW() WHERE id=%s",
-                    (new_status, lead_id))
-    else:
-        cur.execute("UPDATE ambassador_leads SET status=%s, closed_at=NULL WHERE id=%s",
-                    (new_status, lead_id))
-    conn.commit()
-    cur.close(); conn.close()
-    flash("Lead status updated.", "success")
-    return redirect(url_for("portal_admin.admin_leads"))
-
-
-@portal_admin_bp.route("/admin/leads/<int:lead_id>/commission", methods=["POST"])
-def lead_record_commission(lead_id: int):
-    r = _require_admin()
-    if r: return r
-
-    amount_str = (request.form.get("amount") or "").strip()
-    try:
-        amount = float(amount_str)
-        if amount <= 0:
-            raise ValueError
-    except ValueError:
-        flash("Please enter a valid subscription amount.", "danger")
-        return redirect(url_for("portal_admin.admin_leads"))
 
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT * FROM ambassador_leads WHERE id=%s", (lead_id,))
     lead = cur.fetchone()
-    if not lead or lead["status"] != "closed_won":
+    if not lead:
         cur.close(); conn.close()
-        flash("Lead must be marked Closed Won before recording commission.", "warning")
-        return redirect(url_for("portal_admin.admin_leads"))
-    if lead["commission_triggered"]:
-        cur.close(); conn.close()
-        flash("Commission has already been recorded for this lead.", "warning")
+        flash("Lead not found.", "danger")
         return redirect(url_for("portal_admin.admin_leads"))
 
-    commission = round(amount * 0.20, 2)
+    target = next_stage(lead["stage"])
+    if not target:
+        cur.close(); conn.close()
+        flash("This lead is already at the final stage.", "warning")
+        return redirect(url_for("portal_admin.admin_leads"))
+
+    f = request.form
+    updates = {"stage": target}
+
+    if target == "contacted":
+        contact_channel  = (f.get("contact_channel") or "").strip()
+        contact_date     = (f.get("contact_date") or "").strip()
+        contact_response = (f.get("contact_response") or "").strip()
+        if not contact_channel or not contact_date:
+            cur.close(); conn.close()
+            flash("Contact channel and date are required.", "danger")
+            return redirect(url_for("portal_admin.admin_leads"))
+        updates.update(contact_channel=contact_channel, contact_date=contact_date,
+                       contact_response=contact_response or None)
+
+    elif target == "demo_done":
+        demo_date     = (f.get("demo_date") or "").strip()
+        demo_reaction = (f.get("demo_reaction") or "").strip()
+        if not demo_date:
+            cur.close(); conn.close()
+            flash("Demo date is required.", "danger")
+            return redirect(url_for("portal_admin.admin_leads"))
+        updates.update(demo_date=demo_date, demo_reaction=demo_reaction or None)
+
+    elif target == "requirements_confirmed":
+        req_phone    = f.get("req_phone") == "1"
+        req_meta     = f.get("req_meta_account") == "1"
+        req_whatsapp = f.get("req_whatsapp_connected") == "1"
+        req_products = f.get("req_product_list") == "1"
+        if not (req_phone and req_meta and req_whatsapp and req_products):
+            cur.close(); conn.close()
+            flash("All 4 requirements must be confirmed before advancing.", "danger")
+            return redirect(url_for("portal_admin.admin_leads"))
+        updates.update(req_phone=True, req_meta_account=True,
+                       req_whatsapp_connected=True, req_product_list=True)
+
+    elif target == "onboarding":
+        onboarding_date  = (f.get("onboarding_date") or "").strip()
+        onboarding_notes = (f.get("onboarding_notes") or "").strip()
+        if not onboarding_date:
+            cur.close(); conn.close()
+            flash("Onboarding date is required.", "danger")
+            return redirect(url_for("portal_admin.admin_leads"))
+        updates.update(onboarding_date=onboarding_date, onboarding_notes=onboarding_notes or None)
+
+    elif target == "active_client":
+        tenant_id_raw = (f.get("tenant_id") or "").strip()
+        tenant_id = int(tenant_id_raw) if tenant_id_raw.isdigit() else None
+        if tenant_id:
+            cur.execute("SELECT a.ref_code FROM ambassadors a WHERE a.id=%s", (lead["ambassador_id"],))
+            amb_row = cur.fetchone()
+            cur.execute("SELECT id FROM tenants WHERE id=%s AND ref_code=%s",
+                       (tenant_id, amb_row["ref_code"] if amb_row else None))
+            if not cur.fetchone():
+                cur.close(); conn.close()
+                flash("Selected client doesn't match this ambassador's referral code.", "danger")
+                return redirect(url_for("portal_admin.admin_leads"))
+        updates["tenant_id"] = tenant_id
+
+    set_clause = ", ".join(f"{k}=%s" for k in updates)
     cur2 = conn.cursor()
-    cur2.execute("""
-        INSERT INTO ambassador_commissions
-          (ambassador_id, tenant_id, commission_type, currency,
-           source_amount, commission_amount, description)
-        VALUES (%s, NULL, 'lead_commission', 'NGN', %s, %s, %s)
-    """, (lead["ambassador_id"], amount, commission,
-          f"20% lead commission — {lead['business_name']} (₦{amount:,.0f} subscription)"))
-    cur2.execute("""
-        UPDATE ambassador_leads SET commission_triggered=TRUE WHERE id=%s
-    """, (lead_id,))
+    cur2.execute(f"UPDATE ambassador_leads SET {set_clause} WHERE id=%s",
+                list(updates.values()) + [lead_id])
     conn.commit()
     cur2.close(); cur.close(); conn.close()
-    flash(f"₦{commission:,.0f} commission recorded successfully.", "success")
+
+    record_stage_change(lead_id, lead["stage"], target, f"{_admin_user()} (Admin)")
+    flash(f"{lead['business_name']} moved to {STAGE_LABELS[target]}.", "success")
     return redirect(url_for("portal_admin.admin_leads"))
+
+
+@portal_admin_bp.route("/admin/leads/<int:lead_id>/drop", methods=["POST"])
+def lead_drop_admin(lead_id: int):
+    r = _require_admin()
+    if r: return r
+    reason = (request.form.get("reason") or "").strip() or None
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM ambassador_leads WHERE id=%s", (lead_id,))
+    lead = cur.fetchone()
+    if not lead:
+        cur.close(); conn.close()
+        flash("Lead not found.", "danger")
+        return redirect(url_for("portal_admin.admin_leads"))
+
+    cur2 = conn.cursor()
+    cur2.execute("UPDATE ambassador_leads SET dropped_at=NOW(), dropped_reason=%s WHERE id=%s",
+                (reason, lead_id))
+    conn.commit()
+    cur2.close(); cur.close(); conn.close()
+    record_stage_change(lead_id, lead["stage"], "dropped", f"{_admin_user()} (Admin)", reason)
+    flash(f"{lead['business_name']} marked as dropped.", "warning")
+    return redirect(url_for("portal_admin.admin_leads"))
+
+
+@portal_admin_bp.route("/admin/leads/<int:lead_id>/history")
+def lead_history_admin(lead_id: int):
+    r = _require_admin()
+    if r: return r
+    history = get_stage_history(lead_id)
+    from flask import jsonify
+    return jsonify([
+        {"from_stage": h["from_stage"], "to_stage": h["to_stage"], "changed_by": h["changed_by"],
+         "notes": h["notes"], "created_at": h["created_at"].isoformat() if h["created_at"] else ""}
+        for h in history
+    ])

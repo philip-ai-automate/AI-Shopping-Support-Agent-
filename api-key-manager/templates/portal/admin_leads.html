@@ -1,128 +1,101 @@
 {% extends "portal/admin_base.html" %}
-{% block title %}Ambassador Leads — PhiXtra Admin{% endblock %}
+{% block title %}CRM Pipeline — PhiXtra Admin{% endblock %}
 {% block content %}
 <style>
-  .status-pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}
-  .s-new{background:#f1f5f9;color:#475569}
-  .s-contacted{background:#dbeafe;color:#1d4ed8}
-  .s-negotiating{background:#fef9c3;color:#92400e}
-  .s-closed_won{background:#dcfce7;color:#15803d}
-  .s-closed_lost{background:#fee2e2;color:#991b1b}
+  .stage-funnel{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
+  .stage-chip{flex:1;min-width:110px;background:#fff;border:1.5px solid var(--line);border-radius:12px;
+              padding:10px 12px;text-align:center}
+  .stage-chip .n{font-size:20px;font-weight:900;letter-spacing:-.5px}
+  .stage-chip .lbl{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;
+                    letter-spacing:.04em;margin-top:2px}
 
-  .action-form{display:inline}
-  .action-select{padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;
-                 font-size:12px;font-family:inherit;background:#fff;cursor:pointer;
-                 color:var(--ink);outline:none}
-  .action-btn{padding:5px 12px;border-radius:8px;border:1.5px solid var(--line);
-              background:#fff;font-size:12px;font-weight:600;cursor:pointer;
-              font-family:inherit;transition:background .15s;color:var(--ink)}
-  .action-btn:hover{background:#f3f4f6}
-  .action-btn.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
-  .action-btn.primary:hover{background:#1a2535}
+  .stage-pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
+  .st-lead{background:#f1f5f9;color:#475569}
+  .st-contacted{background:#dbeafe;color:#1d4ed8}
+  .st-demo_done{background:#e0e7ff;color:#4338ca}
+  .st-requirements_confirmed{background:#fef9c3;color:#92400e}
+  .st-onboarding{background:#fed7aa;color:#9a3412}
+  .st-active_client{background:#dcfce7;color:#15803d}
+  .st-support{background:#cffafe;color:#0e7490}
+  .st-dropped{background:#fee2e2;color:#991b1b}
 
-  .commission-form{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-  .commission-input{width:120px;padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;
-                    font-size:12px;font-family:inherit;outline:none}
-  .commission-input:focus{border-color:var(--ink)}
-
-  .notes-cell{max-width:200px;font-size:12px;color:var(--muted);
-              white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .modal-over{position:fixed;inset:0;background:rgba(3,12,24,.4);z-index:400;
+              display:none;align-items:center;justify-content:center;padding:20px}
+  .modal-over.open{display:flex}
+  .modal-card{background:#fff;border-radius:18px;padding:26px;width:100%;max-width:480px;
+              max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(3,12,24,.18)}
+  .modal-title{font-size:16px;font-weight:800;margin-bottom:4px}
+  .modal-sub{font-size:12.5px;color:var(--muted);margin-bottom:16px;line-height:1.5}
+  .modal-actions{display:flex;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
+  .modal-cancel{flex:0 0 auto;padding:9px 16px;background:#fff;border:1.5px solid var(--line);
+                border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+  .modal-confirm{flex:1;padding:9px;border:none;border-radius:9px;font-size:13px;
+                 font-weight:700;cursor:pointer;font-family:inherit;color:#fff;background:var(--ink)}
+  .req-check{display:flex;align-items:center;gap:8px;padding:8px 10px;background:#f8f9fb;
+             border-radius:8px;margin-bottom:6px;font-size:13px}
+  .flbl{display:block;font-size:11px;font-weight:700;text-transform:uppercase;
+        letter-spacing:.05em;color:#6b7280;margin-bottom:5px}
+  .finp{width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:10px;
+        font-size:13.5px;color:#030C18;outline:none;font-family:inherit;background:#fff}
+  textarea.finp{resize:vertical;min-height:70px}
+  .lead-actions{display:flex;gap:6px;flex-wrap:wrap}
 </style>
 
-<div class="page-header" style="margin-bottom:20px">
-  <h1 style="font-size:22px;font-weight:800;letter-spacing:-.4px">Ambassador Leads</h1>
-  <span style="font-size:13px;color:var(--muted)">{{ leads|length }} total</span>
+<div class="page-header" style="margin-bottom:16px">
+  <h1 class="section-title">CRM Pipeline</h1>
+  <span class="muted" style="font-size:13px">{{ leads|length }} active</span>
 </div>
 
-<div style="background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden">
-  <div style="overflow-x:auto">
-    <table style="width:100%;border-collapse:collapse;font-size:13px">
+<div class="stage-funnel">
+  {% for s in stage_order %}
+  <div class="stage-chip">
+    <div class="n">{{ stage_counts.get(s, 0) }}</div>
+    <div class="lbl">{{ stage_labels[s] }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card" style="padding:0">
+  <div class="table-wrap">
+    <table>
       <thead>
-        <tr style="border-bottom:2px solid var(--line)">
-          <th style="padding:11px 14px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Business</th>
-          <th style="padding:11px 14px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Contact</th>
-          <th style="padding:11px 14px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Ambassador</th>
-          <th style="padding:11px 14px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Notes</th>
-          <th style="padding:11px 14px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Status</th>
-          <th style="padding:11px 14px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Commission</th>
-          <th style="padding:11px 14px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Submitted</th>
+        <tr>
+          <th>Business</th>
+          <th>Ambassador</th>
+          <th>Industry</th>
+          <th>Contact</th>
+          <th>Stage</th>
+          <th>Added</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
         {% if not leads %}
-        <tr>
-          <td colspan="7" style="text-align:center;padding:48px;color:var(--muted)">
-            No leads submitted yet.
-          </td>
-        </tr>
+        <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:40px">No active leads.</td></tr>
         {% endif %}
-
-        {% for lead in leads %}
-        <tr style="border-bottom:1px solid var(--line)">
-          <td style="padding:12px 14px;vertical-align:middle">
-            <strong>{{ lead.business_name }}</strong>
+        {% for l in leads %}
+        <tr>
+          <td><strong>{{ l.business_name }}</strong></td>
+          <td>
+            <div>{{ l.ambassador_name }}</div>
+            <div class="muted" style="font-size:11.5px">{{ l.ambassador_email }}</div>
           </td>
-          <td style="padding:12px 14px;vertical-align:middle">
-            {% if lead.contact_name %}<div>{{ lead.contact_name }}</div>{% endif %}
-            {% if lead.phone %}<div style="color:var(--muted);font-size:12px">{{ lead.phone }}</div>{% endif %}
-            {% if lead.email %}<div style="color:var(--muted);font-size:12px">{{ lead.email }}</div>{% endif %}
-            {% if not lead.contact_name and not lead.phone and not lead.email %}
-              <span style="color:var(--muted)">—</span>
+          <td class="muted">{{ l.industry or '—' }}</td>
+          <td class="muted" style="font-size:12px">
+            {{ l.contact_name or '' }}{% if l.phone %}<br>{{ l.phone }}{% endif %}
+          </td>
+          <td><span class="stage-pill st-{{ l.stage }}">{{ stage_labels[l.stage] }}</span></td>
+          <td class="muted">{{ l.created_at.strftime('%d %b %Y') if l.created_at else '—' }}</td>
+          <td class="lead-actions">
+            {% set target = next_stage(l.stage) %}
+            {% if target %}
+            <button class="btn btn-sm btn-primary"
+                    onclick='openAdvanceModal({{ l.id }}, "{{ l.business_name|e }}", "{{ target }}")'>
+              → {{ stage_labels[target] }}
+            </button>
             {% endif %}
-          </td>
-          <td style="padding:12px 14px;vertical-align:middle">
-            <div>{{ lead.ambassador_name }}</div>
-            <div style="font-size:12px;color:var(--muted)">{{ lead.ambassador_email }}</div>
-          </td>
-          <td style="padding:12px 14px;vertical-align:middle">
-            <div class="notes-cell" title="{{ lead.notes or '' }}">
-              {{ lead.notes or '—' }}
-            </div>
-          </td>
-          <td style="padding:12px 14px;vertical-align:middle">
-            <div style="display:flex;flex-direction:column;gap:8px">
-              <span class="status-pill s-{{ lead.status }}">
-                {{ lead.status.replace('_', ' ').title() }}
-              </span>
-              {% if lead.status not in ('closed_won', 'closed_lost') %}
-              <form class="action-form" method="POST"
-                    action="{{ url_for('portal_admin.lead_update_status', lead_id=lead.id) }}">
-                <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
-                  <select class="action-select" name="status">
-                    <option value="contacted" {% if lead.status=='contacted' %}selected{% endif %}>Contacted</option>
-                    <option value="negotiating" {% if lead.status=='negotiating' %}selected{% endif %}>Negotiating</option>
-                    <option value="closed_won">Closed Won</option>
-                    <option value="closed_lost">Closed Lost</option>
-                  </select>
-                  <button class="action-btn" type="submit">Update</button>
-                </div>
-              </form>
-              {% endif %}
-            </div>
-          </td>
-          <td style="padding:12px 14px;vertical-align:middle">
-            {% if lead.commission_triggered %}
-              <span style="display:inline-flex;align-items:center;gap:5px;
-                           padding:4px 10px;background:#dcfce7;border-radius:20px;
-                           font-size:11px;font-weight:700;color:#15803d">
-                ✓ Recorded
-              </span>
-            {% elif lead.status == 'closed_won' %}
-              <form class="action-form" method="POST"
-                    action="{{ url_for('portal_admin.lead_record_commission', lead_id=lead.id) }}">
-                <div class="commission-form">
-                  <span style="font-size:12px;color:var(--muted)">Sub. amount:</span>
-                  <input class="commission-input" type="number" name="amount"
-                         placeholder="e.g. 25000" min="1" step="any" required/>
-                  <button class="action-btn primary" type="submit">Record 20%</button>
-                </div>
-              </form>
-            {% else %}
-              <span style="color:var(--muted);font-size:12px">—</span>
-            {% endif %}
-          </td>
-          <td style="padding:12px 14px;vertical-align:middle;color:var(--muted);white-space:nowrap">
-            {{ lead.created_at.strftime('%d %b %Y') if lead.created_at else '—' }}
+            <button class="btn btn-sm" onclick="openHistoryModal({{ l.id }})">History</button>
+            <button class="btn btn-sm btn-danger" onclick="openDropModal({{ l.id }}, '{{ l.business_name|e }}')">Drop</button>
           </td>
         </tr>
         {% endfor %}
@@ -130,4 +103,161 @@
     </table>
   </div>
 </div>
+
+{% if dropped_leads %}
+<div class="card" style="margin-top:20px">
+  <div class="section-title" style="margin-bottom:10px">Dropped ({{ dropped_leads|length }})</div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Business</th><th>Ambassador</th><th>Last Stage</th><th>Reason</th><th>Dropped</th></tr></thead>
+      <tbody>
+        {% for l in dropped_leads %}
+        <tr>
+          <td>{{ l.business_name }}</td>
+          <td class="muted">{{ l.ambassador_name }}</td>
+          <td><span class="stage-pill st-{{ l.stage }}">{{ stage_labels[l.stage] }}</span></td>
+          <td class="muted">{{ l.dropped_reason or '—' }}</td>
+          <td class="muted">{{ l.dropped_at.strftime('%d %b %Y') if l.dropped_at else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Advance modal ── -->
+<div class="modal-over" id="advanceModal" onclick="if(event.target===this)closeAdvanceModal()">
+  <div class="modal-card">
+    <div class="modal-title" id="advTitle"></div>
+    <p class="modal-sub" id="advSub"></p>
+    <form method="POST" id="advForm">
+      <div id="advFields"></div>
+      <div class="modal-actions">
+        <button type="button" class="modal-cancel" onclick="closeAdvanceModal()">Cancel</button>
+        <button type="submit" class="modal-confirm">Confirm</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Drop modal ── -->
+<div class="modal-over" id="dropModal" onclick="if(event.target===this)closeDropModal()">
+  <div class="modal-card">
+    <div class="modal-title" id="dropTitle"></div>
+    <p class="modal-sub">This removes the lead from the active pipeline (kept in the Dropped list below).</p>
+    <form method="POST" id="dropForm">
+      <label class="flbl">Reason <span style="font-weight:400;color:#9ca3af">(optional)</span></label>
+      <textarea name="reason" class="finp"></textarea>
+      <div class="modal-actions">
+        <button type="button" class="modal-cancel" onclick="closeDropModal()">Cancel</button>
+        <button type="submit" class="modal-confirm" style="background:var(--bad)">Drop Lead</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── History modal ── -->
+<div class="modal-over" id="historyModal" onclick="if(event.target===this)closeHistoryModal()">
+  <div class="modal-card">
+    <div class="modal-title">Stage History</div>
+    <div id="historyBody" style="margin-top:10px">Loading…</div>
+    <div class="modal-actions">
+      <button type="button" class="modal-cancel" onclick="closeHistoryModal()" style="flex:1">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function closeAdvanceModal(){ document.getElementById('advanceModal').classList.remove('open'); }
+function closeDropModal(){ document.getElementById('dropModal').classList.remove('open'); }
+function closeHistoryModal(){ document.getElementById('historyModal').classList.remove('open'); }
+
+const STAGE_LABELS = {{ stage_labels|tojson }};
+const STAGE_DESC    = {{ stage_descriptions|tojson }};
+
+function openAdvanceModal(id, name, targetStage) {
+  document.getElementById('advForm').action = `/admin/leads/${id}/advance`;
+  document.getElementById('advTitle').textContent = `Move ${name} to ${STAGE_LABELS[targetStage]}`;
+  document.getElementById('advSub').textContent = STAGE_DESC[targetStage] || '';
+
+  let html = '';
+  if (targetStage === 'contacted') {
+    html = `
+      <label class="flbl">Contact Channel</label>
+      <select name="contact_channel" class="finp" required style="margin-bottom:12px">
+        <option value="">Select…</option>
+        <option value="whatsapp">WhatsApp</option>
+        <option value="phone_call">Phone Call</option>
+        <option value="email">Email</option>
+        <option value="in_person">In Person</option>
+      </select>
+      <label class="flbl">Contact Date</label>
+      <input type="date" name="contact_date" class="finp" required style="margin-bottom:12px"/>
+      <label class="flbl">Response / Notes</label>
+      <textarea name="contact_response" class="finp"></textarea>
+    `;
+  } else if (targetStage === 'demo_done') {
+    html = `
+      <label class="flbl">Demo Date</label>
+      <input type="date" name="demo_date" class="finp" required style="margin-bottom:12px"/>
+      <label class="flbl">Prospect Reaction</label>
+      <textarea name="demo_reaction" class="finp"></textarea>
+    `;
+  } else if (targetStage === 'requirements_confirmed') {
+    html = `
+      <label class="req-check"><input type="checkbox" name="req_phone" value="1" required/> Business-only phone number confirmed</label>
+      <label class="req-check"><input type="checkbox" name="req_meta_account" value="1" required/> Meta Business Account confirmed</label>
+      <label class="req-check"><input type="checkbox" name="req_whatsapp_connected" value="1" required/> WhatsApp connected to Meta confirmed</label>
+      <label class="req-check"><input type="checkbox" name="req_product_list" value="1" required/> Product list spreadsheet confirmed</label>
+    `;
+  } else if (targetStage === 'onboarding') {
+    html = `
+      <label class="flbl">Onboarding Date</label>
+      <input type="date" name="onboarding_date" class="finp" required style="margin-bottom:12px"/>
+      <label class="flbl">Setup Notes</label>
+      <textarea name="onboarding_notes" class="finp"></textarea>
+    `;
+  } else if (targetStage === 'active_client') {
+    html = `
+      <label class="flbl">Tenant ID to Link <span style="font-weight:400;color:#9ca3af">(optional — from Customers page)</span></label>
+      <input type="number" name="tenant_id" class="finp"/>
+      <p class="muted" style="font-size:11.5px;margin-top:6px">Commission is already automatic once they're paying — this just links the pipeline record to their account. Must match the ambassador's own referral code.</p>
+    `;
+  } else if (targetStage === 'support') {
+    html = `<p class="muted" style="font-size:13px">No extra info needed — this moves the client into ongoing support tracking.</p>`;
+  }
+  document.getElementById('advFields').innerHTML = html;
+  document.getElementById('advanceModal').classList.add('open');
+}
+
+function openDropModal(id, name) {
+  document.getElementById('dropForm').action = `/admin/leads/${id}/drop`;
+  document.getElementById('dropTitle').textContent = `Drop ${name}?`;
+  document.getElementById('dropModal').classList.add('open');
+}
+
+function openHistoryModal(id) {
+  document.getElementById('historyBody').innerHTML = 'Loading…';
+  document.getElementById('historyModal').classList.add('open');
+  fetch(`/admin/leads/${id}/history`)
+    .then(r => r.json())
+    .then(rows => {
+      if (!rows.length) {
+        document.getElementById('historyBody').innerHTML = '<p class="muted" style="font-size:13px">No history yet.</p>';
+        return;
+      }
+      document.getElementById('historyBody').innerHTML = rows.map(h => `
+        <div style="padding:8px 0;border-bottom:1px solid var(--line);font-size:12.5px">
+          <strong>${STAGE_LABELS[h.to_stage] || h.to_stage}</strong>
+          <span class="muted"> — ${new Date(h.created_at).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</span>
+          <div class="muted" style="font-size:11.5px">by ${h.changed_by || '—'}${h.notes ? ' — ' + h.notes : ''}</div>
+        </div>
+      `).join('');
+    })
+    .catch(() => {
+      document.getElementById('historyBody').innerHTML = '<p style="color:var(--bad);font-size:13px">Failed to load.</p>';
+    });
+}
+</script>
 {% endblock %}
