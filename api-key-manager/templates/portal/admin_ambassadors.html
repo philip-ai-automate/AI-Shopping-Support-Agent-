@@ -710,7 +710,6 @@ function renderFootButtons(status, id) {
     `;
   } else if (status === 'active') {
     btns = `
-      <button class="sp-btn" onclick="openQrModal(${id})">QR Code</button>
       <button class="sp-btn" onclick="openEditModal()">Edit</button>
       <button class="sp-btn warn" onclick="doSuspend(${id})">Suspend</button>
       <button class="sp-btn danger" onclick="openReasonModal(${id},'terminate','Terminate Ambassador','This will permanently end their ambassador status.')">Terminate</button>
@@ -718,7 +717,6 @@ function renderFootButtons(status, id) {
   } else if (status === 'suspended') {
     btns = `
       <button class="sp-btn primary" onclick="doReactivate(${id})">Reactivate</button>
-      <button class="sp-btn" onclick="openQrModal(${id})">QR Code</button>
       <button class="sp-btn" onclick="openEditModal()">Edit</button>
       <button class="sp-btn danger" onclick="openReasonModal(${id},'terminate','Terminate Ambassador','This will permanently end their ambassador status.')">Terminate</button>
     `;
@@ -733,6 +731,7 @@ function renderFootButtons(status, id) {
       <button class="sp-btn" onclick="openEditModal()">Edit</button>
     `;
   }
+  btns += `<button class="sp-btn" onclick="openQrModal(${id})">QR Code</button>`;
   foot.innerHTML = btns;
 }
 
