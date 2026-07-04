@@ -4449,7 +4449,34 @@ def ambassador_detail(amb_id: int):
         ORDER BY first_name, last_name
     """, (amb_id,))
     recruits = cur.fetchall() or []
+
+    cur.execute("""
+        SELECT date_trunc('month', created_at) AS month, COALESCE(SUM(commission_amount),0) AS total
+        FROM ambassador_commissions
+        WHERE ambassador_id=%s AND commission_type='override'
+        GROUP BY month
+        ORDER BY month DESC
+        LIMIT 12
+    """, (amb_id,))
+    monthly_override = cur.fetchall() or []
+
+    cur.execute("""
+        SELECT t.ref_code AS recruit_ref_code, date_trunc('month', ac.created_at) AS month,
+               SUM(ac.commission_amount) AS total
+        FROM ambassador_commissions ac
+        JOIN tenants t ON t.id = ac.tenant_id
+        WHERE ac.ambassador_id=%s AND ac.commission_type='override'
+        GROUP BY t.ref_code, month
+        ORDER BY month DESC
+    """, (amb_id,))
+    per_recruit_rows = cur.fetchall() or []
     cur.close(); conn.close()
+
+    per_recruit_monthly = {}
+    for pr in per_recruit_rows:
+        per_recruit_monthly.setdefault(pr["recruit_ref_code"], []).append(
+            {"month": pr["month"].isoformat(), "total": float(pr["total"] or 0)}
+        )
 
     amb = dict(row)
     for k, v in amb.items():
@@ -4476,6 +4503,11 @@ def ambassador_detail(amb_id: int):
          "ref_code": rc["ref_code"], "total_earned": float(rc["total_earned"] or 0)}
         for rc in recruits
     ]
+    amb["monthly_override"] = [
+        {"month": m["month"].isoformat(), "total": float(m["total"] or 0)}
+        for m in monthly_override
+    ]
+    amb["per_recruit_monthly"] = per_recruit_monthly
 
     from flask import jsonify
     return jsonify(amb)
