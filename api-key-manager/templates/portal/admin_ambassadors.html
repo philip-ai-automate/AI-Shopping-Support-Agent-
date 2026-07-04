@@ -694,6 +694,23 @@ function renderPanel(d) {
       <div style="font-size:13px;color:var(--ink);background:#fff5f5;border:1px solid #fecaca;border-radius:8px;padding:10px 12px">${d.rejected_reason}</div></div>` : ''}
     ${d.terminated_reason ? `<div class="sp-section"><div class="sp-section-title" style="color:var(--bad)">Termination Reason</div>
       <div style="font-size:13px;color:var(--ink);background:#fff5f5;border:1px solid #fecaca;border-radius:8px;padding:10px 12px">${d.terminated_reason}</div></div>` : ''}
+
+    <div class="sp-section">
+      <div class="sp-section-title">Status History</div>
+      ${(d.status_history && d.status_history.length) ? `
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${d.status_history.map(h => `
+            <div class="sp-item full" style="display:flex;flex-direction:column;gap:2px">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span style="font-size:12.5px;font-weight:700">${(h.old_status||'—')} → ${(h.new_status||'—')}</span>
+                <span style="font-size:11px;color:var(--muted)">${fmtDate(h.created_at)}</span>
+              </div>
+              <div style="font-size:11.5px;color:var(--muted)">by ${h.admin_username||'—'}${h.reason ? ' — ' + h.reason : ''}</div>
+            </div>
+          `).join('')}
+        </div>
+      ` : `<span style="color:var(--muted);font-size:12px">No status changes recorded yet.</span>`}
+    </div>
   `;
 
   /* Foot buttons based on status */

@@ -4212,6 +4212,11 @@ def ambassador_approve(amb_id: int):
         """, (_admin_user(), _date.today(), amb_id))
         conn.commit()
         cur2.close()
+        insert_audit_log(
+            admin_username=_admin_user(), action="ambassador_approve",
+            details={"ambassador_id": amb_id, "ambassador_name": f"{amb['first_name']} {amb['last_name']}",
+                     "ref_code": amb['ref_code'], "old_status": amb['status'], "new_status": "active"},
+        )
         # Create demo portal tenant for this ambassador
         try:
             from ambassador_demo import create_ambassador_demo
@@ -4240,10 +4245,19 @@ def ambassador_suspend(amb_id: int):
     r = _require_admin()
     if r: return r
     conn = get_db_connection()
-    cur  = conn.cursor()
-    cur.execute("UPDATE ambassadors SET status='suspended' WHERE id=%s", (amb_id,))
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT first_name, last_name, ref_code, status FROM ambassadors WHERE id=%s", (amb_id,))
+    amb = cur.fetchone()
+    cur2 = conn.cursor()
+    cur2.execute("UPDATE ambassadors SET status='suspended' WHERE id=%s", (amb_id,))
     conn.commit()
-    cur.close(); conn.close()
+    cur2.close(); cur.close(); conn.close()
+    if amb:
+        insert_audit_log(
+            admin_username=_admin_user(), action="ambassador_suspend",
+            details={"ambassador_id": amb_id, "ambassador_name": f"{amb['first_name']} {amb['last_name']}",
+                     "ref_code": amb['ref_code'], "old_status": amb['status'], "new_status": "suspended"},
+        )
     flash("Ambassador suspended.", "warning")
     return redirect(url_for("portal_admin.ambassadors"))
 
@@ -4253,10 +4267,19 @@ def ambassador_reactivate(amb_id: int):
     r = _require_admin()
     if r: return r
     conn = get_db_connection()
-    cur  = conn.cursor()
-    cur.execute("UPDATE ambassadors SET status='active' WHERE id=%s", (amb_id,))
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT first_name, last_name, ref_code, status FROM ambassadors WHERE id=%s", (amb_id,))
+    amb = cur.fetchone()
+    cur2 = conn.cursor()
+    cur2.execute("UPDATE ambassadors SET status='active' WHERE id=%s", (amb_id,))
     conn.commit()
-    cur.close(); conn.close()
+    cur2.close(); cur.close(); conn.close()
+    if amb:
+        insert_audit_log(
+            admin_username=_admin_user(), action="ambassador_reactivate",
+            details={"ambassador_id": amb_id, "ambassador_name": f"{amb['first_name']} {amb['last_name']}",
+                     "ref_code": amb['ref_code'], "old_status": amb['status'], "new_status": "active"},
+        )
     flash("Ambassador reactivated.", "success")
     return redirect(url_for("portal_admin.ambassadors"))
 
@@ -4267,11 +4290,21 @@ def ambassador_reject(amb_id: int):
     if r: return r
     reason = (request.form.get("reason") or "").strip() or None
     conn = get_db_connection()
-    cur  = conn.cursor()
-    cur.execute("UPDATE ambassadors SET status='rejected', rejected_at=NOW(), rejected_reason=%s WHERE id=%s",
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT first_name, last_name, ref_code, status FROM ambassadors WHERE id=%s", (amb_id,))
+    amb = cur.fetchone()
+    cur2 = conn.cursor()
+    cur2.execute("UPDATE ambassadors SET status='rejected', rejected_at=NOW(), rejected_reason=%s WHERE id=%s",
                 (reason, amb_id))
     conn.commit()
-    cur.close(); conn.close()
+    cur2.close(); cur.close(); conn.close()
+    if amb:
+        insert_audit_log(
+            admin_username=_admin_user(), action="ambassador_reject",
+            details={"ambassador_id": amb_id, "ambassador_name": f"{amb['first_name']} {amb['last_name']}",
+                     "ref_code": amb['ref_code'], "old_status": amb['status'], "new_status": "rejected",
+                     "reason": reason},
+        )
     flash("Ambassador application rejected.", "warning")
     return redirect(url_for("portal_admin.ambassadors"))
 
@@ -4282,11 +4315,21 @@ def ambassador_terminate(amb_id: int):
     if r: return r
     reason = (request.form.get("reason") or "").strip() or None
     conn = get_db_connection()
-    cur  = conn.cursor()
-    cur.execute("UPDATE ambassadors SET status='terminated', terminated_at=NOW(), terminated_reason=%s WHERE id=%s",
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT first_name, last_name, ref_code, status FROM ambassadors WHERE id=%s", (amb_id,))
+    amb = cur.fetchone()
+    cur2 = conn.cursor()
+    cur2.execute("UPDATE ambassadors SET status='terminated', terminated_at=NOW(), terminated_reason=%s WHERE id=%s",
                 (reason, amb_id))
     conn.commit()
-    cur.close(); conn.close()
+    cur2.close(); cur.close(); conn.close()
+    if amb:
+        insert_audit_log(
+            admin_username=_admin_user(), action="ambassador_terminate",
+            details={"ambassador_id": amb_id, "ambassador_name": f"{amb['first_name']} {amb['last_name']}",
+                     "ref_code": amb['ref_code'], "old_status": amb['status'], "new_status": "terminated",
+                     "reason": reason},
+        )
     flash("Ambassador terminated.", "danger")
     return redirect(url_for("portal_admin.ambassadors"))
 
@@ -4343,16 +4386,42 @@ def ambassador_detail(amb_id: int):
         FROM ambassadors a WHERE a.id=%s
     """, (amb_id,))
     row = cur.fetchone()
-    cur.close(); conn.close()
     if not row:
+        cur.close(); conn.close()
         from flask import jsonify
         return jsonify({"error": "Not found"}), 404
+
+    cur.execute("""
+        SELECT admin_username, action, details, created_at
+        FROM audit_logs
+        WHERE action LIKE 'ambassador_%%'
+          AND (details::jsonb->>'ambassador_id')::int = %s
+        ORDER BY created_at DESC
+        LIMIT 20
+    """, (amb_id,))
+    history = cur.fetchall() or []
+    cur.close(); conn.close()
+
     amb = dict(row)
     for k, v in amb.items():
         if hasattr(v, 'isoformat'):
             amb[k] = v.isoformat()
         elif v is None:
             amb[k] = ""
+
+    status_history = []
+    for h in history:
+        details = _json.loads(h["details"]) if h["details"] else {}
+        status_history.append({
+            "admin_username": h["admin_username"],
+            "action": h["action"],
+            "old_status": details.get("old_status"),
+            "new_status": details.get("new_status"),
+            "reason": details.get("reason"),
+            "created_at": h["created_at"].isoformat() if h["created_at"] else "",
+        })
+    amb["status_history"] = status_history
+
     from flask import jsonify
     return jsonify(amb)
 
