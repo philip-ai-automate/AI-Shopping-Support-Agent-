@@ -714,10 +714,21 @@ def team():
         ORDER BY CASE a.status WHEN 'pending' THEN 0 WHEN 'active' THEN 1 ELSE 2 END, a.created_at DESC
     """, (amb["id"], amb["id"]))
     recruits = cur.fetchall() or []
+
+    cur.execute("""
+        SELECT date_trunc('month', created_at) AS month, COALESCE(SUM(commission_amount),0) AS total
+        FROM ambassador_commissions
+        WHERE ambassador_id=%s AND commission_type='override'
+        GROUP BY month
+        ORDER BY month DESC
+        LIMIT 12
+    """, (amb["id"],))
+    monthly_override = cur.fetchall() or []
     cur.close(); conn.close()
 
     recruiter_link = f"{BASE_URL}/ambassador/register?recruiter={amb['ref_code']}"
-    return render_template("ambassador/team.html", amb=amb, recruits=recruits, recruiter_link=recruiter_link)
+    return render_template("ambassador/team.html", amb=amb, recruits=recruits,
+                           monthly_override=monthly_override, recruiter_link=recruiter_link)
 
 
 def _recruit_owned_by_me(recruit_id: int):

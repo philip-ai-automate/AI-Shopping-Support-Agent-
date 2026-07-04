@@ -21,6 +21,29 @@
   </div>
 </div>
 
+<div class="card" style="margin-bottom:20px">
+  <div class="section-title" style="margin-bottom:10px">Your Override Earnings by Month</div>
+  {% if monthly_override %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Month</th><th>Override Earned</th></tr>
+      </thead>
+      <tbody>
+        {% for m in monthly_override %}
+        <tr>
+          <td>{{ m.month.strftime('%B %Y') }}</td>
+          <td><strong>₦{{ "{:,.0f}".format(m.total or 0) }}</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted" style="font-size:13px">No override earnings recorded yet.</p>
+  {% endif %}
+</div>
+
 <div class="card" style="padding:0">
   <div class="table-wrap">
     <table>
