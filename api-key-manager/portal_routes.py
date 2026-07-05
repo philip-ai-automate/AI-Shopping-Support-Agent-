@@ -1635,6 +1635,7 @@ def dashboard():
     handoff_stats   = _get_wa_handoff_stats(tenant_id) if wa_connection else {
         "handoffs_7d":0,"open_now":0,"avg_response_min":None,"missed_7d":0,"daily":[],
     }
+    wa_open_handoffs = _get_open_wa_handoffs(tenant_id) if wa_connection else []
 
     # ── Lead counts for dashboard KPI card ────────────────────────────────
     lead_hot_count  = 0
@@ -1664,9 +1665,10 @@ def dashboard():
         plan_info       = plan_info,
         lead_hot_count  = lead_hot_count,
         lead_warm_count = lead_warm_count,
-        wa_connection   = wa_connection,
-        wa_stats        = wa_stats,
-        handoff_stats   = handoff_stats,
+        wa_connection    = wa_connection,
+        wa_stats         = wa_stats,
+        handoff_stats    = handoff_stats,
+        wa_open_handoffs = wa_open_handoffs,
     )
 
 
@@ -13075,6 +13077,36 @@ def _get_wa_handoff_stats(tenant_id: int) -> dict:
     except Exception as e:
         print("⚠️ _get_wa_handoff_stats error:", e)
         return empty
+
+
+def _get_open_wa_handoffs(tenant_id: int) -> list:
+    """Fetch open WhatsApp handoffs (AI stopped, waiting on a human reply) for
+    the top-of-dashboard alert banner. Returns an empty list on any error —
+    never crashes the dashboard."""
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT h.customer_phone, h.escalated_at,
+                   EXTRACT(EPOCH FROM (NOW() - h.escalated_at)) / 60 AS waiting_minutes,
+                   (SELECT content FROM wa_message_log m
+                    WHERE m.tenant_id = h.tenant_id
+                      AND m.customer_phone = h.customer_phone
+                      AND m.direction = 'inbound'
+                    ORDER BY m.created_at DESC LIMIT 1) AS last_message
+            FROM wa_handoff_state h
+            WHERE h.tenant_id = %s AND h.resolved_at IS NULL
+            ORDER BY h.escalated_at ASC
+            LIMIT 20
+        """, (tenant_id,))
+        rows = cur.fetchall() or []
+        cur.close(); conn.close()
+        for r in rows:
+            r["waiting_minutes"] = int(r["waiting_minutes"]) if r.get("waiting_minutes") is not None else None
+        return rows
+    except Exception as e:
+        print("⚠️ _get_open_wa_handoffs error:", e)
+        return []
 
 
 # MY INBOX — all WhatsApp conversations for this tenant
