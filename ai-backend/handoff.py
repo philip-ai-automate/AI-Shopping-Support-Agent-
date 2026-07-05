@@ -1,12 +1,14 @@
 """
 handoff.py  —  Human handoff detection for the PhiXtra AI chat endpoint.
 
-When the AI includes [HANDOFF REQUESTED] in its reply (triggered by the
-system instruction), this module:
-  1. Strips the hidden tag from the customer-facing answer
-  2. Extracts a WhatsApp/phone number if one was shared in the conversation
-  3. Logs a row to the handoff_requests table
-  4. Sends an immediate email alert to the store owner
+The model reports needs_handoff as a structured JSON field (see llm.py's
+structured_handoff mode) rather than a hidden text tag — models don't
+reliably include a literal string in free-text output even when they intend
+to escalate, which silently drops the alert. Given needs_handoff=True, this
+module:
+  1. Extracts a WhatsApp/phone number if one was shared in the conversation
+  2. Logs a row to the handoff_requests table
+  3. Sends an immediate email alert to the store owner
 
 All operations are best-effort — failures are logged but never crash /chat.
 """
@@ -17,9 +19,6 @@ import smtplib
 import psycopg2.extras
 from email.message import EmailMessage
 from db import get_db_connection
-
-# ── The trigger tag the AI embeds when handoff is needed ─────────────────────
-HANDOFF_TAG = "[HANDOFF REQUESTED]"
 
 # Regex to extract phone / WhatsApp numbers from text.
 # Matches international and local formats:  +44 7911 123456  /  07911123456  /  +1-800-555-0100
@@ -218,12 +217,12 @@ def build_handoff_instruction(tenant_id: int) -> str:
         "",
         "",
         "[HANDOFF RULES — READ CAREFULLY]",
-        f"The hidden tag {HANDOFF_TAG} signals that this visitor needs a human team member.",
-        "When you include it, ALSO warmly tell the visitor that a team member will be in touch",
-        "shortly. Never show the tag text itself to the visitor — it is stripped automatically.",
-        "Place " + HANDOFF_TAG + " on the very last line of your reply, after your message to the visitor.",
+        "Your response includes a separate needs_handoff field (true/false). Set it to true",
+        "when this visitor needs a human team member — evaluate this on EVERY reply, not just",
+        "when asked directly. When you set needs_handoff to true, ALSO warmly tell the visitor",
+        "in your reply text that a team member will be in touch shortly.",
         "",
-        "Trigger a handoff (add " + HANDOFF_TAG + " to your reply) when ANY of the following occur:",
+        "Set needs_handoff to true when ANY of the following occur:",
     ]
 
     if visitor_rules:
@@ -253,16 +252,17 @@ def build_handoff_instruction(tenant_id: int) -> str:
 
 def detect_and_process_handoff(
     answer: str,
+    needs_handoff: bool,
     user_message: str,
     tenant_id: int,
     session_id: str,
     store_domain: str = "",
 ) -> tuple:
     """
-    Checks if the AI included [HANDOFF REQUESTED] in its reply.
+    Given the model's structured needs_handoff decision (see llm.py's
+    structured_handoff mode), logs a handoff request when needed.
 
-    If yes:
-      - Strips the tag from the answer (visitor never sees it)
+    If needs_handoff:
       - Extracts a phone number if one was already mentioned in the conversation
       - Logs to handoff_requests table
 
@@ -271,22 +271,19 @@ def detect_and_process_handoff(
     contact details or clicks Skip on the in-widget form. This guarantees
     staff receive exactly ONE email, containing everything available.
 
-    Returns (clean_answer_str, handoff_triggered_bool).
+    Returns (answer_str, handoff_triggered_bool).
     This function never raises.
     """
-    if HANDOFF_TAG not in answer:
-        print(f"ℹ️ [HANDOFF] Tag not present in AI reply for session={session_id} — no handoff triggered (this is normal for non-handoff messages)")
+    if not needs_handoff:
+        print(f"ℹ️ [HANDOFF] needs_handoff=False for session={session_id} — no handoff triggered (this is normal for non-handoff messages)")
         return answer, False
 
     print(f"🙋 [HANDOFF] Triggered for tenant_id={tenant_id} session={session_id}")
 
-    # 1. Strip the hidden tag from the reply the visitor sees
-    clean_answer = answer.replace(HANDOFF_TAG, "").strip()
+    # 1. Try to extract a phone number already mentioned in the conversation
+    whatsapp_number = _extract_phone(user_message) or _extract_phone(answer)
 
-    # 2. Try to extract a phone number already mentioned in the conversation
-    whatsapp_number = _extract_phone(user_message) or _extract_phone(clean_answer)
-
-    # 3. Log to DB — email will be sent when the contact form is submitted or skipped
+    # 2. Log to DB — email will be sent when the contact form is submitted or skipped
     _log_handoff_db(
         tenant_id=tenant_id,
         session_id=session_id,
@@ -295,7 +292,7 @@ def detect_and_process_handoff(
     )
 
     print(f"✅ [HANDOFF] Logged to DB for session={session_id} — waiting for contact form")
-    return clean_answer, True
+    return answer, True
 
 
 # ── Contact capture ─────────────────────────────────────────────────────────

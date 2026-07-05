@@ -149,7 +149,7 @@ def generate_recovery_email_ai(
         original_limit = _os.getenv("LLM_MAX_OUTPUT_TOKENS")
         _os.environ["LLM_MAX_OUTPUT_TOKENS"] = "600"
 
-        answer, _usage = ask_llm(
+        answer, _needs_handoff, _usage = ask_llm(
             system_prompt=(
                 "You are an expert ecommerce email copywriter. "
                 "Write concise, warm, conversion-focused cart abandonment emails. "

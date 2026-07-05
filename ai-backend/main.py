@@ -596,7 +596,9 @@ def chat(req: ChatRequest):
     # ───────────────────────────────────────────────────────────────────────
 
 
-    answer, usage = ask_llm(system_prompt, req.message, context_chunks, history=history)
+    answer, needs_handoff, usage = ask_llm(
+        system_prompt, req.message, context_chunks, history=history, structured_handoff=True
+    )
 
     # ── Human handoff detection (best-effort, never crashes /chat) ───────────
     handoff_triggered = False
@@ -604,6 +606,7 @@ def chat(req: ChatRequest):
         from handoff import detect_and_process_handoff
         answer, handoff_triggered = detect_and_process_handoff(
             answer=answer,
+            needs_handoff=bool(needs_handoff),
             user_message=req.message,
             tenant_id=int(tenant_id),
             session_id=session_id,
@@ -1557,7 +1560,7 @@ def cart_recovery_reply(req: CartRecoveryReplyRequest):
 
     context_chunks, _ = search_documents_with_meta(req.message, tenant_id)
 
-    answer, usage = ask_llm(
+    answer, _needs_handoff, usage = ask_llm(
         system_prompt=recovery_system_prompt,
         user_message=req.message,
         context_chunks=context_chunks,

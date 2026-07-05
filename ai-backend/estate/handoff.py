@@ -1,8 +1,10 @@
 """
 estate/handoff.py — Human handoff for PhiXtra Real Estate AI.
 
-Reads re_handoff_rules, detects [HANDOFF REQUESTED] in AI reply,
-logs to re_handoff_requests, and emails the estate agent.
+Reads re_handoff_rules, checks the model's structured needs_handoff decision
+(see estate/llm.py's structured_handoff mode — more reliable than scanning
+free text for a hidden tag), logs to re_handoff_requests, and emails the
+estate agent.
 """
 import os
 import sys
@@ -13,7 +15,6 @@ from email.message import EmailMessage
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from db import get_db_connection
 
-HANDOFF_TAG    = "[HANDOFF REQUESTED]"
 _PORTAL_BASE   = os.getenv("PORTAL_BASE_URL", "https://portal.phixtra.com").rstrip("/")
 BRAND          = "#030C18"
 
@@ -49,12 +50,12 @@ def build_handoff_instruction(tenant_id: int) -> str:
     lines = [
         "", "",
         "[HANDOFF RULES — READ CAREFULLY]",
-        f"The tag {HANDOFF_TAG} signals this buyer needs a human agent.",
-        "When you include it, warmly tell the buyer that an agent will contact them shortly.",
-        "Never show the raw tag to the buyer — it is stripped automatically.",
-        f"Place {HANDOFF_TAG} on the very last line of your reply.",
+        "Your response includes a separate needs_handoff field (true/false). Set it to true",
+        "when this buyer needs a human agent — evaluate this on EVERY reply, not just when",
+        "asked directly. When you set needs_handoff to true, ALSO warmly tell the buyer in",
+        "your reply text that an agent will contact them shortly.",
         "",
-        "Trigger a handoff when ANY of the following occur:",
+        "Set needs_handoff to true when ANY of the following occur:",
     ]
     if visitor_rules:
         lines += ["", "BUYER SAYS OR ASKS (buyer-initiated):"]
@@ -269,6 +270,7 @@ def _send_alert_email(
 
 def detect_and_process_handoff(
     answer: str,
+    needs_handoff: bool,
     user_message: str,
     tenant_id: int,
     customer_id: int,
@@ -276,20 +278,19 @@ def detect_and_process_handoff(
     listing_id: int | None = None,
 ) -> tuple:
     """
-    Check if AI included [HANDOFF REQUESTED]. If so:
-    - Strip the tag from the answer
+    Given the model's structured needs_handoff decision (see estate/llm.py's
+    structured_handoff mode), if true:
     - Build buyer summary from re_customers
     - Log to re_handoff_requests
     - Send email alert to tenant
 
-    Returns (clean_answer, handoff_triggered_bool). Never raises.
+    Returns (answer, handoff_triggered_bool). Never raises.
     """
-    if HANDOFF_TAG not in answer:
+    if not needs_handoff:
         return answer, False
 
     print(f"🙋 [ESTATE HANDOFF] tenant={tenant_id} customer={customer_id} action={action_type}")
 
-    clean         = answer.replace(HANDOFF_TAG, "").strip()
     buyer_summary = build_buyer_summary(tenant_id, customer_id)
 
     _log_handoff(
@@ -310,4 +311,4 @@ def detect_and_process_handoff(
             action_type=action_type,
         )
 
-    return clean, True
+    return answer, True

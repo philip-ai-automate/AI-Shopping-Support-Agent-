@@ -39,7 +39,7 @@ from .search import (
     format_listings_for_context, format_listing_price,
 )
 from .handoff import (
-    build_handoff_instruction, detect_and_process_handoff, HANDOFF_TAG,
+    build_handoff_instruction, detect_and_process_handoff,
 )
 from .llm import estate_ask_llm
 from .inspections import book_slot
@@ -818,11 +818,12 @@ def estate_chat(req: EstateChatRequest):
     add_message(tenant_id, customer_id, "user", req.message, embedding=embedding)
 
     # ── LLM call ─────────────────────────────────────────────────────────────
-    answer, _usage = estate_ask_llm(
-        system_prompt  = system_prompt,
-        user_message   = req.message,
-        context_chunks = context_chunks,
-        history        = history,
+    answer, needs_handoff, _usage = estate_ask_llm(
+        system_prompt      = system_prompt,
+        user_message       = req.message,
+        context_chunks     = context_chunks,
+        history            = history,
+        structured_handoff = True,
     )
 
     # ── Parse BUYER_PROFILE tag ───────────────────────────────────────────────
@@ -874,12 +875,13 @@ def estate_chat(req: EstateChatRequest):
     first_listing_id  = raw_listings[0]["id"] if raw_listings else None
     try:
         answer, handoff_triggered = detect_and_process_handoff(
-            answer       = answer,
-            user_message = req.message,
-            tenant_id    = tenant_id,
-            customer_id  = customer_id,
-            action_type  = "general",
-            listing_id   = first_listing_id,
+            answer        = answer,
+            needs_handoff = bool(needs_handoff),
+            user_message  = req.message,
+            tenant_id     = tenant_id,
+            customer_id   = customer_id,
+            action_type   = "general",
+            listing_id    = first_listing_id,
         )
     except Exception as e:
         print(f"⚠️ [ESTATE] handoff error: {e}")

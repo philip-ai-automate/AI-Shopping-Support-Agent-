@@ -1,4 +1,5 @@
 from openai import OpenAI
+import json
 import os
 from dotenv import load_dotenv
 
@@ -62,10 +63,36 @@ def _format_context(context_chunks) -> str:
         lines.append(f"[{i}] {c}")
     return "\n\n".join(lines)
 
-def ask_llm(system_prompt, user_message, context_chunks, history=None):
+_HANDOFF_RESPONSE_SCHEMA = {
+    "name": "chat_reply",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "reply": {
+                "type": "string",
+                "description": "The reply to show the visitor, exactly as you would normally write it.",
+            },
+            "needs_handoff": {
+                "type": "boolean",
+                "description": "True if this conversation should be escalated to a human team member per the handoff rules in the system prompt, false otherwise.",
+            },
+        },
+        "required": ["reply", "needs_handoff"],
+        "additionalProperties": False,
+    },
+}
+
+
+def ask_llm(system_prompt, user_message, context_chunks, history=None, structured_handoff=False):
     """
     Returns:
-      (answer_text, usage_dict)
+      (answer_text, needs_handoff, usage_dict)
+
+    needs_handoff is None unless structured_handoff=True, in which case it's
+    a bool read from the model's structured JSON output — this is the
+    reliable alternative to scanning free text for a hidden tag, which the
+    model doesn't always include even when it intends to escalate.
 
     usage_dict example:
       {"prompt_tokens": 123, "completion_tokens": 45, "total_tokens": 168}
@@ -91,14 +118,34 @@ def ask_llm(system_prompt, user_message, context_chunks, history=None):
 
     max_out = int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "1200"))
 
-    response = _get_client().chat.completions.create(
+    create_kwargs = dict(
         model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"),
         messages=messages,
         temperature=0.3,
-        max_tokens=max_out
+        max_tokens=max_out,
     )
+    if structured_handoff:
+        create_kwargs["response_format"] = {
+            "type": "json_schema",
+            "json_schema": _HANDOFF_RESPONSE_SCHEMA,
+        }
 
-    answer = response.choices[0].message.content
+    response = _get_client().chat.completions.create(**create_kwargs)
+
+    raw_content = response.choices[0].message.content
+    needs_handoff = None
+    if structured_handoff:
+        try:
+            parsed = json.loads(raw_content)
+            answer = parsed.get("reply", "") or ""
+            needs_handoff = bool(parsed.get("needs_handoff", False))
+        except Exception as e:
+            print(f"⚠️ ask_llm: failed to parse structured JSON reply, falling back to raw text: {e}")
+            answer = raw_content
+            needs_handoff = False
+    else:
+        answer = raw_content
+
     usage = {}
     try:
         if getattr(response, "usage", None):
@@ -110,4 +157,4 @@ def ask_llm(system_prompt, user_message, context_chunks, history=None):
     except Exception:
         usage = {}
 
-    return answer, usage
+    return answer, needs_handoff, usage
