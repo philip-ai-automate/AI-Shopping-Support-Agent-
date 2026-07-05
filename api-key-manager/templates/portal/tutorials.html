@@ -128,9 +128,6 @@
     <button class="tut-nav-item" id="card-whatsapp-connect" onclick="showGuide('whatsapp-connect')">
       <span class="tut-nav-icon">🔌</span><span class="tut-nav-label">WhatsApp Connect</span>
     </button>
-    <button class="tut-nav-item" id="card-whatsapp-inbox" onclick="showGuide('whatsapp-inbox')">
-      <span class="tut-nav-icon">📥</span><span class="tut-nav-label">Agent Inbox</span>
-    </button>
     <button class="tut-nav-item" id="card-whatsapp-handoff-reports" onclick="showGuide('whatsapp-handoff-reports')">
       <span class="tut-nav-icon">📋</span><span class="tut-nav-label">Handoff Reports</span>
     </button>
@@ -333,7 +330,7 @@
       <div class="step-num">1</div>
       <div>
         <div class="step-title">Check your WhatsApp connection &amp; plan</div>
-        <div class="step-desc">The green strip at the top shows your connected number, current plan, and credit balance, and lets you open the Agent Inbox or buy more credits in one click.</div>
+        <div class="step-desc">The green strip at the top shows your connected number, current plan, and credit balance, and lets you open your Inbox or buy more credits in one click.</div>
       </div>
     </div>
     <div class="setup-step">
@@ -397,6 +394,13 @@
         <div class="step-title">Know when a customer needs you</div>
         <div class="step-desc">A 🔴 red dot next to a customer's name means your AI has stepped aside and they're waiting for a human — usually because one of your Handoff Rules was triggered. Reply as normal, then click <strong>🔴 Mark Resolved</strong> in the top right once you're done so the AI resumes handling that conversation.</div>
         <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/conv-needs-agent.png') }}" alt="Conversation needing agent attention screenshot">
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">6</div>
+      <div>
+        <div class="step-title">Proactively take over a conversation</div>
+        <div class="step-desc">Don't want to wait for a Handoff Rule to trigger? Open any conversation the AI is still handling and click <strong>✋ Take Over</strong> in the top right. The AI pauses immediately and won't reply again until you click <strong>🔴 Mark Resolved</strong>.</div>
       </div>
     </div>
   </div>
@@ -663,37 +667,6 @@
   </div>
 </div><!-- end guide-whatsapp-connect -->
 
-<!-- ── Agent Inbox Guide ────────────────────────────────────────────────── -->
-<div class="guide-section" id="guide-whatsapp-inbox">
-  <div class="card" style="margin-bottom:20px">
-    <div class="card-title">Agent Inbox</div>
-    <p class="muted" style="font-size:13px;margin-bottom:20px">The dedicated queue for conversations your AI has stepped aside from — and how to step in yourself.</p>
-
-    <div class="setup-step">
-      <div class="step-num">1</div>
-      <div>
-        <div class="step-title">Reply to conversations that need a human</div>
-        <div class="step-desc">The left panel lists every conversation currently waiting on a person — either because the customer asked for one, or one of your Handoff Rules triggered it. Click one to open the chat, type your reply in the box at the bottom, and send as normal.</div>
-        <img class="tut-shot in-step" src="{{ url_for('static', filename='portal/tutorial/wa-inbox-handoffs.png') }}" alt="Agent Inbox active handoffs screenshot">
-      </div>
-    </div>
-    <div class="setup-step">
-      <div class="step-num">2</div>
-      <div>
-        <div class="step-title">Hand the conversation back to the AI</div>
-        <div class="step-desc">Once you've sorted the customer out, click <strong>✓ Resolve &amp; Return to AI</strong> above the chat. The AI resumes replying to that customer on its very next message — there's nothing else to configure.</div>
-      </div>
-    </div>
-    <div class="setup-step">
-      <div class="step-num">3</div>
-      <div>
-        <div class="step-title">Proactively take over a conversation</div>
-        <div class="step-desc">Below the handoff queue, <strong>Recent AI Conversations</strong> lists chats the AI is still handling normally. If you want to jump into one yourself — without waiting for the customer to ask or a rule to trigger — click <strong>Take Over</strong>. It moves into the queue above tagged "Taken Over" so you can reply directly.</div>
-      </div>
-    </div>
-  </div>
-</div><!-- end guide-whatsapp-inbox -->
-
 <!-- ── Handoff Reports Guide ────────────────────────────────────────────── -->
 <div class="guide-section" id="guide-whatsapp-handoff-reports">
   <div class="card" style="margin-bottom:20px">
@@ -719,7 +692,7 @@
       <div class="step-num">3</div>
       <div>
         <div class="step-title">Jump straight to an open handoff</div>
-        <div class="step-desc">The "Open right now" tile includes an <strong>Open inbox →</strong> shortcut, and the Recent Handoffs list below shows each customer's status (Open, Missed, or Resolved) — click through to the Agent Inbox to reply.</div>
+        <div class="step-desc">The "Open right now" tile includes an <strong>Open inbox →</strong> shortcut, and the Recent Handoffs list below shows each customer's status (Open, Missed, or Resolved) — click through to Conversations to reply.</div>
       </div>
     </div>
   </div>

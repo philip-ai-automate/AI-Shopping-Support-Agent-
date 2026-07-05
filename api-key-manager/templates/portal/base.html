@@ -483,7 +483,7 @@
     </a>
 
     <!-- ── WhatsApp group ── -->
-    {% set _wa_group = request.endpoint in ('portal.whatsapp_connect', 'portal.whatsapp_inbox', 'portal.whatsapp_reports', 'portal.billing_plans') or (request.endpoint == 'portal.whatsapp_templates' and _tenant_features.get('whatsapp_message_templates')) %}
+    {% set _wa_group = request.endpoint in ('portal.whatsapp_connect', 'portal.whatsapp_reports', 'portal.billing_plans') or (request.endpoint == 'portal.whatsapp_templates' and _tenant_features.get('whatsapp_message_templates')) %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _wa_group %}open{% endif %}"
            data-tour="nav-whatsapp" onclick="sbToggle(this)">
@@ -496,10 +496,6 @@
         <a href="{{ url_for('portal.whatsapp_connect') }}"
            class="{% if request.endpoint == 'portal.whatsapp_connect' %}active{% endif %}">
           Connect
-        </a>
-        <a href="{{ url_for('portal.whatsapp_inbox') }}"
-           class="{% if request.endpoint == 'portal.whatsapp_inbox' %}active{% endif %}">
-          Agent Inbox
         </a>
         <a href="{{ url_for('portal.whatsapp_reports') }}"
            class="{% if request.endpoint == 'portal.whatsapp_reports' %}active{% endif %}">
@@ -1153,14 +1149,13 @@
 (function(){
   var INDEX = [
     { icon:'📊', title:'Dashboard',             desc:'Overview, stats and WhatsApp status',           url:'{{ url_for("portal.dashboard") }}',                  tags:'home overview live stats kpi' },
-    { icon:'💬', title:'Conversations',          desc:'WhatsApp chats and customer messages',          url:'{{ url_for("portal.my_inbox") }}',                   tags:'inbox messages chat unread replies' },
+    { icon:'💬', title:'Conversations',          desc:'WhatsApp chats and customer messages',          url:'{{ url_for("portal.my_inbox") }}',                   tags:'inbox messages chat unread replies handoff human agent live takeover' },
     { icon:'📣', title:'Campaigns',              desc:'Send WhatsApp broadcast messages',              url:'{{ url_for("portal.whatsapp_campaigns") }}',         tags:'broadcast blast promotions bulk send' },
     { icon:'📊', title:'Campaign Reports',       desc:'See how your campaigns performed',              url:'{{ url_for("portal.whatsapp_campaigns_reports") }}', tags:'campaign analytics results' },
     { icon:'👥', title:'Contacts',               desc:'View and manage all your customers',            url:'{{ url_for("portal.whatsapp_contacts") }}',          tags:'customers phone numbers contacts list' },
     { icon:'🔥', title:'Leads',                  desc:'Customers with strong buying intent',           url:'{{ url_for("portal.leads_page") }}',                 tags:'hot warm cold intent prospects pipeline' },
     { icon:'🧾', title:'Orders',                 desc:'View all orders and purchase history',          url:'{{ url_for("portal.orders") }}',                     tags:'sales purchases transactions history' },
     { icon:'📱', title:'WhatsApp Connect',       desc:'Connect or manage your WhatsApp number',       url:'{{ url_for("portal.whatsapp_connect") }}',           tags:'connect phone qr code number link setup' },
-    { icon:'📥', title:'Agent Inbox',            desc:'WhatsApp messages needing a human reply',      url:'{{ url_for("portal.whatsapp_inbox") }}',             tags:'handoff human agent live reply inbox' },
     { icon:'📊', title:'Handoff Reports',        desc:'Response times, missed handoffs, performance',  url:'{{ url_for("portal.whatsapp_reports") }}',           tags:'handoff response time missed reports analytics' },
     { icon:'📈', title:'WhatsApp Report',        desc:'Usage stats for your WhatsApp channel',        url:'{{ url_for("portal.reports_page") }}',               tags:'usage stats messages sent received analytics' },
     { icon:'📋', title:'WhatsApp Plan',          desc:'View or upgrade your WhatsApp plan',           url:'{{ url_for("portal.billing_plans") }}',              tags:'plan upgrade subscription quota limit whatsapp' },

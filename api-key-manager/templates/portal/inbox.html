@@ -536,11 +536,21 @@ html, body { overflow: hidden; height: 100%; }
         </div>
         {% if active_handoff_session %}
         <form method="POST"
-              action="{{ url_for('portal.whatsapp_inbox_resolve', session_id=active_handoff_session) }}"
+              action="{{ url_for('portal.inbox_resolve', session_id=active_handoff_session) }}"
               onsubmit="return confirm('Mark resolved? The AI assistant will resume this conversation.')">
           <button type="submit" class="btn btn-sm"
                   style="background:#FEF3F2;color:#B42318;border:1px solid #FDA29B;white-space:nowrap">
             🔴 Mark Resolved
+          </button>
+        </form>
+        {% else %}
+        <form method="POST"
+              action="{{ url_for('portal.inbox_takeover') }}"
+              onsubmit="return confirm('Take over this conversation? The AI assistant will pause and stop replying until you mark it resolved.')">
+          <input type="hidden" name="customer_phone" value="{{ active_phone }}">
+          <button type="submit" class="btn btn-sm"
+                  style="background:#F2F4F7;color:var(--ink);border:1px solid var(--line);white-space:nowrap">
+            ✋ Take Over
           </button>
         </form>
         {% endif %}

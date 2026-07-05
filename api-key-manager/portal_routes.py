@@ -6432,7 +6432,7 @@ def settings_business():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# WHATSAPP — Connect, Agent Inbox, Template Management
+# WHATSAPP — Connect, Template Management
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _get_wa_connection(tenant_id: int) -> dict | None:
@@ -7361,130 +7361,14 @@ def whatsapp_save_templates():
     return redirect(url_for("portal.whatsapp_templates"))
 
 
-@portal_bp.route("/whatsapp/inbox")
-def whatsapp_inbox():
-    r = _require_login()
-    if r: return r
-    customer  = _get_customer(_customer_id())
-    tenant_id = int(customer["tenant_id"])
-    connection = _get_wa_connection(tenant_id)
-
-    handoffs = []
-    recent_convos = []
-    try:
-        conn = get_db_connection()
-        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-
-        # Active handoffs (AI stopped, merchant needs to reply)
-        cur.execute("""
-            SELECT session_id, customer_phone, escalated_at, takeover
-            FROM wa_handoff_state
-            WHERE tenant_id = %s AND resolved_at IS NULL
-            ORDER BY escalated_at DESC
-        """, (tenant_id,))
-        handoffs = cur.fetchall() or []
-
-        for h in handoffs:
-            cur.execute("""
-                SELECT direction, content, message_type, created_at
-                FROM wa_message_log
-                WHERE tenant_id = %s AND customer_phone = %s
-                ORDER BY created_at DESC LIMIT 30
-            """, (tenant_id, h["customer_phone"]))
-            msgs = cur.fetchall() or []
-            h["messages"] = list(reversed(msgs))
-
-        # Recent AI-handled conversations (no active handoff) — merchant can take over
-        handoff_phones = {h["customer_phone"] for h in handoffs}
-        cur.execute("""
-            SELECT customer_phone,
-                   MAX(created_at) AS last_message_at,
-                   COUNT(*) FILTER (WHERE direction='inbound') AS inbound_count
-            FROM wa_message_log
-            WHERE tenant_id = %s
-              AND created_at > NOW() - INTERVAL '48 hours'
-            GROUP BY customer_phone
-            ORDER BY last_message_at DESC
-            LIMIT 20
-        """, (tenant_id,))
-        all_recent = cur.fetchall() or []
-        recent_convos = [r for r in all_recent if r["customer_phone"] not in handoff_phones][:10]
-
-        cur.close(); conn.close()
-    except Exception as e:
-        print("⚠️ whatsapp_inbox error:", e)
-
-    return render_template("portal/whatsapp_inbox.html",
-                           customer=customer,
-                           connection=connection,
-                           handoffs=handoffs,
-                           recent_convos=recent_convos)
-
-
-@portal_bp.route("/whatsapp/inbox/<path:session_id>/reply", methods=["POST"])
-def whatsapp_inbox_reply(session_id: str):
+@portal_bp.route("/inbox/<path:session_id>/resolve", methods=["POST"])
+def inbox_resolve(session_id: str):
     r = _require_login()
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
-    reply_text = (request.form.get("reply") or "").strip()
-    if not reply_text:
-        flash("Reply cannot be empty.", "danger")
-        return redirect(url_for("portal.whatsapp_inbox"))
-
-    # Verify handoff belongs to this tenant and pull credentials
-    try:
-        conn = get_db_connection()
-        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("""
-            SELECT h.customer_phone, t.phone_number_id, t.access_token
-            FROM wa_handoff_state h
-            JOIN wa_tenants t ON t.tenant_id = h.tenant_id AND t.active = TRUE
-            WHERE h.session_id = %s AND h.tenant_id = %s AND h.resolved_at IS NULL
-        """, (session_id, tenant_id))
-        row = cur.fetchone()
-        cur.close(); conn.close()
-    except Exception as e:
-        print("⚠️ whatsapp_inbox_reply lookup error:", e)
-        row = None
-
-    if not row:
-        flash("Conversation not found or already resolved.", "danger")
-        return redirect(url_for("portal.whatsapp_inbox"))
-
-    ok = _send_wa_text_from_portal(
-        row["phone_number_id"], row["access_token"],
-        row["customer_phone"], reply_text
-    )
-
-    if ok:
-        try:
-            conn = get_db_connection()
-            cur  = conn.cursor()
-            cur.execute("""
-                INSERT INTO wa_message_log
-                  (tenant_id, phone_number_id, customer_phone, direction, content, message_type)
-                VALUES (%s, %s, %s, 'outbound', %s, 'agent_reply')
-            """, (tenant_id, row["phone_number_id"], row["customer_phone"], reply_text))
-            conn.commit()
-            cur.close(); conn.close()
-        except Exception as e:
-            print("⚠️ whatsapp_inbox_reply log error:", e)
-        flash("Message sent. ✅", "success")
-    else:
-        flash("Failed to send via WhatsApp — check your credentials.", "danger")
-
-    return redirect(url_for("portal.whatsapp_inbox"))
-
-
-@portal_bp.route("/whatsapp/inbox/<path:session_id>/resolve", methods=["POST"])
-def whatsapp_inbox_resolve(session_id: str):
-    r = _require_login()
-    if r: return r
-    customer  = _get_customer(_customer_id())
-    tenant_id = int(customer["tenant_id"])
-
+    phone_redirect = None
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
@@ -7492,23 +7376,27 @@ def whatsapp_inbox_resolve(session_id: str):
             UPDATE wa_handoff_state
             SET resolved_at = NOW()
             WHERE session_id = %s AND tenant_id = %s AND resolved_at IS NULL
+            RETURNING customer_phone
         """, (session_id, tenant_id))
+        row = cur.fetchone()
         conn.commit()
-        affected = cur.rowcount
         cur.close(); conn.close()
-        if affected:
+        if row:
+            phone_redirect = row[0]
             flash("Conversation resolved — AI assistant will resume. ✅", "success")
         else:
             flash("Conversation not found or already resolved.", "warning")
     except Exception as e:
-        print("⚠️ whatsapp_inbox_resolve error:", e)
+        print("⚠️ inbox_resolve error:", e)
         flash("Could not resolve conversation. Please try again.", "danger")
 
-    return redirect(url_for("portal.whatsapp_inbox"))
+    if phone_redirect:
+        return redirect(url_for("portal.my_inbox", phone=phone_redirect))
+    return redirect(url_for("portal.my_inbox"))
 
 
-@portal_bp.route("/whatsapp/inbox/takeover", methods=["POST"])
-def whatsapp_inbox_takeover():
+@portal_bp.route("/inbox/takeover", methods=["POST"])
+def inbox_takeover():
     """Merchant manually takes over an AI-handled conversation."""
     r = _require_login()
     if r: return r
@@ -7518,7 +7406,7 @@ def whatsapp_inbox_takeover():
     customer_phone = (request.form.get("customer_phone") or "").strip().lstrip("+")
     if not customer_phone:
         flash("Invalid customer phone.", "danger")
-        return redirect(url_for("portal.whatsapp_inbox"))
+        return redirect(url_for("portal.my_inbox"))
 
     try:
         conn = get_db_connection()
@@ -7533,7 +7421,7 @@ def whatsapp_inbox_takeover():
         if not wa_row:
             flash("No active WhatsApp connection found.", "danger")
             cur.close(); conn.close()
-            return redirect(url_for("portal.whatsapp_inbox"))
+            return redirect(url_for("portal.my_inbox"))
 
         phone_number_id = wa_row["phone_number_id"]
         session_id = f"wa-meta-{phone_number_id}-{customer_phone}"
@@ -7553,12 +7441,12 @@ def whatsapp_inbox_takeover():
         cur.close(); cur2.close(); conn.close()
 
         flash(f"You have taken over the conversation with +{customer_phone}. AI is paused. ✅", "success")
-        return redirect(url_for("portal.whatsapp_inbox") + f"?session={session_id}")
+        return redirect(url_for("portal.my_inbox", phone=customer_phone))
 
     except Exception as e:
-        print("⚠️ whatsapp_inbox_takeover error:", e)
+        print("⚠️ inbox_takeover error:", e)
         flash("Could not take over conversation. Please try again.", "danger")
-        return redirect(url_for("portal.whatsapp_inbox"))
+        return redirect(url_for("portal.my_inbox"))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
