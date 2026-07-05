@@ -1304,7 +1304,7 @@ def demo_qr_image():
                      download_name="phixtra-demo-whatsapp-qr.png")
 
 
-# ── AI Playground — remote demo, ambassador screen-shares this ──────────────
+# ── AI WhatsApp Playground — remote demo, ambassador screen-shares this ─────
 # Same demo store as Demo QR Code (profitbuyz.com / DEMO_WA_NUMBER), but for
 # prospects who aren't physically present: the ambassador drives it live
 # over a screen share (Teams/Zoom) instead of handing over a phone to scan.

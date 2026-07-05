@@ -77,6 +77,28 @@
   </div>
 </div>
 
+<!-- ── AI WhatsApp Playground card ───────────────────────────────────── -->
+<div style="background:linear-gradient(135deg,#0a4d3e 0%,#128C7E 100%);border-radius:14px;
+            padding:18px 20px;margin-bottom:20px;display:flex;align-items:center;gap:16px;
+            flex-wrap:wrap">
+  <span style="font-size:32px;flex-shrink:0">🖥️</span>
+  <div style="flex:1;min-width:180px">
+    <div style="font-size:14px;font-weight:800;color:#fff">AI WhatsApp Playground</div>
+    <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:3px;line-height:1.5">
+      A live WhatsApp-look-alike chat with the real PhiXtra AI. Screen-share this over Teams/Zoom to demo to prospects who aren't physically with you.
+    </div>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;flex-shrink:0">
+    <a href="{{ url_for('ambassador.playground_page') }}"
+       style="display:inline-flex;align-items:center;gap:7px;padding:9px 16px;
+              background:#25D366;color:#fff;border-radius:10px;font-size:13px;
+              font-weight:700;text-decoration:none;white-space:nowrap;transition:background .15s"
+       onmouseover="this.style.background='#1da851'" onmouseout="this.style.background='#25D366'">
+      🖥️ Open AI WhatsApp Playground
+    </a>
+  </div>
+</div>
+
 <!-- ── WhatsApp support banner ────────────────────────────────────────── -->
 <a href="https://chat.whatsapp.com/KKRG7lVuxq6LVGMdLHYaqG" target="_blank" rel="noopener"
    style="display:flex;align-items:center;gap:14px;background:#dcfce7;border:1px solid #bbf7d0;
