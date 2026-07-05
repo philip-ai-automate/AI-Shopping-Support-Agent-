@@ -17,10 +17,6 @@
   height: calc(100vh - 170px);
   min-height: 480px;
 }
-@media(max-width:860px) {
-  .pg-wrap { grid-template-columns: 1fr; height: auto; }
-  .pg-side  { display: none; }
-}
 
 /* ── WhatsApp chat column ─────────────────────────────────────────────── */
 .wa-outer {
@@ -181,6 +177,12 @@
   transition: background .13s, border-color .13s;
 }
 .tip-btn:hover { background: #eef0f4; border-color: rgba(3,12,24,0.18); }
+
+/* ── Mobile: single column, tips panel hidden to prioritise the chat ──── */
+@media(max-width:860px) {
+  .pg-wrap { grid-template-columns: 1fr; height: auto; }
+  .pg-side  { display: none; }
+}
 </style>
 {% endblock %}
 
