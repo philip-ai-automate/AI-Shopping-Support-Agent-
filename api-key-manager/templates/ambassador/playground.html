@@ -1,0 +1,434 @@
+{% extends "ambassador/base.html" %}
+{% block title %}AI Playground — Ambassador Hub{% endblock %}
+
+{% block head %}
+<style>
+/* ── Page layout ──────────────────────────────────────────────────────── */
+.pg-page {
+  display: flex; flex-direction: column; gap: 16px;
+}
+.pg-heading h1 { font-size: 20px; font-weight: 800; margin: 0 0 4px; color: #fff; }
+.pg-heading p  { font-size: 13px; color: rgba(255,255,255,.55); margin: 0; }
+
+.pg-wrap {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  gap: 16px;
+  height: calc(100vh - 170px);
+  min-height: 480px;
+}
+@media(max-width:860px) {
+  .pg-wrap { grid-template-columns: 1fr; height: auto; }
+  .pg-side  { display: none; }
+}
+
+/* ── WhatsApp chat column ─────────────────────────────────────────────── */
+.wa-outer {
+  display: flex; flex-direction: column; overflow: hidden;
+  border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,.35);
+}
+
+.wa-header {
+  background: #128C7E; color: #fff; padding: 12px 18px;
+  display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+.wa-avatar {
+  width: 42px; height: 42px; border-radius: 50%;
+  background: #25D366; display: flex; align-items: center; justify-content: center;
+  font-size: 18px; font-weight: 800; color: #fff; flex-shrink: 0;
+}
+.wa-header-info strong { display: block; font-size: 15px; font-weight: 700; line-height: 1.25; }
+.wa-header-info span   { font-size: 12px; opacity: .85; }
+.wa-online-dot {
+  display: inline-block; width: 7px; height: 7px;
+  background: #25D366; border-radius: 50%; margin-right: 4px; vertical-align: middle;
+}
+.wa-header-actions { margin-left: auto; display: flex; gap: 8px; }
+.wa-header-actions button {
+  background: rgba(255,255,255,0.15); border: none; color: #fff;
+  padding: 7px 15px; border-radius: 8px; font-size: 12px; font-weight: 600;
+  cursor: pointer; font-family: inherit; transition: background .15s;
+}
+.wa-header-actions button:hover { background: rgba(255,255,255,0.28); }
+
+.pg-info-bar {
+  background: #fff8e1; border-bottom: 1px solid #ffe082;
+  padding: 8px 18px; font-size: 12px; color: #6d5100;
+  display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+}
+
+.wa-chat {
+  flex: 1; overflow-y: auto; padding: 16px 16px 8px;
+  display: flex; flex-direction: column; gap: 6px; min-height: 0;
+  background-color: #efeae2;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23c9bfa8' fill-opacity='0.18'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+
+.wa-msg { display: flex; max-width: 75%; }
+.wa-msg.user      { align-self: flex-end;   justify-content: flex-end; }
+.wa-msg.assistant { align-self: flex-start; }
+
+.wa-bubble {
+  padding: 8px 12px; border-radius: 8px;
+  font-size: 14px; line-height: 1.55; word-break: break-word;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+}
+.wa-msg.user      .wa-bubble { background: #dcf8c6; color: #111; border-bottom-right-radius: 2px; }
+.wa-msg.assistant .wa-bubble { background: #fff;    color: #111; border-bottom-left-radius:  2px; }
+.wa-time { font-size: 10px; color: rgba(0,0,0,0.42); text-align: right; margin-top: 3px; }
+.wa-ticks { color: #34b7f1; margin-left: 3px; }
+
+.wa-typing { align-self: flex-start; display: none; }
+.wa-typing.visible { display: flex; }
+.wa-typing-bubble {
+  background: #fff; border-radius: 8px; border-bottom-left-radius: 2px;
+  padding: 10px 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+  display: flex; gap: 4px; align-items: center;
+}
+.wa-typing-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #90949c; animation: waBounce 1.2s infinite;
+}
+.wa-typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.wa-typing-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes waBounce {
+  0%, 60%, 100% { transform: translateY(0); }
+  30%            { transform: translateY(-6px); }
+}
+
+.wa-handoff-alert {
+  align-self: center; max-width: 80%;
+  background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px;
+  padding: 7px 14px; font-size: 12px; font-weight: 600;
+  color: #5c4300; text-align: center;
+}
+
+.wa-date-stamp {
+  align-self: center;
+  background: rgba(255,255,255,0.75); border-radius: 6px;
+  padding: 3px 10px; font-size: 11px; color: rgba(0,0,0,0.48);
+  margin: 4px 0;
+}
+
+/* Product cards */
+.wa-cards { display: flex; flex-direction: column; gap: 8px; align-self: flex-start; }
+.wa-prod-card {
+  background: #fff; border-radius: 8px; overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.18); width: 260px;
+}
+.wa-prod-img {
+  width: 100%; height: 130px; object-fit: cover; display: block; background: #dde;
+}
+.wa-prod-img-placeholder {
+  width: 100%; height: 130px;
+  background: linear-gradient(135deg, #0f6b5a, #25D366);
+  display: flex; align-items: center; justify-content: center; font-size: 38px;
+}
+.wa-prod-body { padding: 10px 12px; }
+.wa-prod-title { font-size: 13px; font-weight: 700; color: #111; margin-bottom: 3px; line-height: 1.3; }
+.wa-prod-price { font-size: 13px; font-weight: 800; color: #128C7E; margin-bottom: 5px; }
+.wa-prod-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.wa-chip {
+  background: #f0faf7; border: 1px solid #c0e8d5;
+  color: #0f6b5a; font-size: 10px; font-weight: 650;
+  padding: 2px 7px; border-radius: 999px;
+}
+.wa-chip.out { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+.wa-prod-cta {
+  display: inline-block; background: #25D366; color: #fff; text-decoration: none;
+  border-radius: 20px; padding: 6px 16px; font-size: 12px; font-weight: 700;
+  transition: background .15s;
+}
+.wa-prod-cta:hover { background: #1da851; }
+
+.wa-input-bar {
+  background: #f0f2f5; padding: 8px 12px;
+  display: flex; align-items: flex-end; gap: 8px; flex-shrink: 0;
+  border-top: 1px solid rgba(0,0,0,0.10);
+}
+.wa-input {
+  flex: 1; padding: 10px 14px; border-radius: 24px;
+  border: none; background: #fff; font-size: 14px; font-family: inherit;
+  outline: none; box-shadow: 0 1px 3px rgba(0,0,0,0.10);
+  resize: none; min-height: 42px; max-height: 120px; line-height: 1.4;
+  overflow-y: auto;
+}
+.wa-send-btn {
+  width: 44px; height: 44px; border-radius: 50%; background: #25D366;
+  border: none; color: #fff; font-size: 20px; cursor: pointer; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s; box-shadow: 0 2px 8px rgba(37,211,102,0.35);
+}
+.wa-send-btn:hover    { background: #1da851; }
+.wa-send-btn:disabled { background: #bbb; cursor: not-allowed; box-shadow: none; }
+
+/* ── Right side panel ─────────────────────────────────────────────── */
+.pg-side {
+  background: #fff; border-radius: 16px;
+  display: flex; flex-direction: column; overflow-y: auto; min-height: 0;
+  box-shadow: 0 4px 24px rgba(0,0,0,.35);
+}
+.pg-side-section { padding: 16px 18px; border-bottom: 1px solid rgba(3,12,24,0.07); }
+.pg-side-title {
+  font-size: 10px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .08em; color: rgba(3,12,24,0.38); margin-bottom: 10px;
+}
+.tip-btn {
+  text-align: left; background: #f8f9fc; border: 1px solid rgba(3,12,24,0.09);
+  padding: 8px 10px; border-radius: 8px; font-size: 12px; cursor: pointer;
+  font-family: inherit; color: #333; line-height: 1.4; width: 100%;
+  transition: background .13s, border-color .13s;
+}
+.tip-btn:hover { background: #eef0f4; border-color: rgba(3,12,24,0.18); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pg-page">
+
+  <div class="pg-heading">
+    <h1>🖥️ AI Playground</h1>
+    <p>Live demo of the real PhiXtra AI on {{ business_name }}'s WhatsApp number — screen-share this with a remote prospect exactly as you'd hand them a phone in person.</p>
+  </div>
+
+  {% if api_key_missing %}
+  <div style="padding:40px 24px;text-align:center;background:#fff;border-radius:16px">
+    <div style="font-size:32px;margin-bottom:16px">⚠️</div>
+    <h2 style="margin-bottom:8px">Demo store not available</h2>
+    <p class="muted">Could not find an active API key for the demo WhatsApp number. Please contact support.</p>
+  </div>
+  {% else %}
+
+  <div class="pg-wrap">
+
+    <!-- ── Left: WhatsApp playground ──────────────────────────────── -->
+    <div class="wa-outer">
+
+      <div class="wa-header">
+        <div class="wa-avatar">{{ business_name[0]|upper }}</div>
+        <div class="wa-header-info">
+          <strong>{{ business_name }}</strong>
+          <span><span class="wa-online-dot"></span>+{{ demo_wa_number }} &middot; online</span>
+        </div>
+        <div class="wa-header-actions">
+          <button onclick="restartDemo()">↺ Restart Demo</button>
+        </div>
+      </div>
+
+      <div class="pg-info-bar">
+        🎬 This is the real AI answering live — type as if you're a customer messaging {{ business_name }} on WhatsApp.
+      </div>
+
+      <div class="wa-chat" id="waChat">
+        <div class="wa-date-stamp">TODAY</div>
+
+        <div class="wa-msg assistant" id="welcomeMsg">
+          <div class="wa-bubble">
+            👋 This is a live WhatsApp simulation. Type a message below — try asking about a product, price, or say "I want to speak to a human" to see the handoff feature.
+            <div class="wa-time">{{ now.strftime('%H:%M') }}</div>
+          </div>
+        </div>
+
+        <div class="wa-typing" id="waTyping">
+          <div class="wa-typing-bubble">
+            <div class="wa-typing-dot"></div>
+            <div class="wa-typing-dot"></div>
+            <div class="wa-typing-dot"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="wa-input-bar">
+        <textarea class="wa-input" id="waInput" rows="1"
+                  placeholder="Type a message…"
+                  onkeydown="handleKey(event)"
+                  oninput="autoResize(this)"></textarea>
+        <button class="wa-send-btn" id="waSendBtn" onclick="sendMessage()" title="Send">&#10148;</button>
+      </div>
+
+    </div>
+
+    <!-- ── Right: tips + status ───────────────────────────────────── -->
+    <div class="pg-side">
+      <div class="pg-side-section">
+        <div class="pg-side-title">Try These</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          {% for tip in [
+            "Do you have any iPhone below 700k?",
+            "What's the price of the iPhone 13?",
+            "Does it come with a warranty?",
+            "I want to speak to a human agent please",
+            "I am not happy with my order, very angry",
+          ] %}
+          <button class="tip-btn" onclick="useTip(this)">"{{ tip }}"</button>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="pg-side-section">
+        <div class="pg-side-title">Handoff</div>
+        <div id="handoffPanel" style="font-size:13px;color:rgba(3,12,24,0.38);font-style:italic">Not triggered</div>
+      </div>
+
+      <div class="pg-side-section" style="flex:1">
+        <div class="pg-side-title">Presenting Tip</div>
+        <p class="muted" style="font-size:12px;line-height:1.6;margin:0">
+          Screen-share this tab over Teams/Zoom and type as the customer. Click <strong>Restart Demo</strong> before each new prospect to start a clean conversation.
+        </p>
+      </div>
+    </div>
+
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if not api_key_missing %}
+<script>
+const CHAT_URL   = "{{ url_for('ambassador.playground_chat') }}";
+let SESSION_ID   = "{{ session_id }}";
+let sending      = false;
+
+function nowStr() {
+  return new Date().toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
+
+function useTip(btn) {
+  const input = document.getElementById('waInput');
+  input.value = btn.textContent.replace(/^"|"$/g,'');
+  input.focus();
+  autoResize(input);
+}
+
+function scrollBottom() {
+  const c = document.getElementById('waChat');
+  c.scrollTop = c.scrollHeight;
+}
+
+function addBubble(role, text) {
+  const chat   = document.getElementById('waChat');
+  const typing = document.getElementById('waTyping');
+  const div    = document.createElement('div');
+  div.className = 'wa-msg ' + role;
+  const ticks = role === 'user' ? ' <span class="wa-ticks">✓✓</span>' : '';
+  div.innerHTML = `<div class="wa-bubble">${esc(text).replace(/\n/g,'<br>')}<div class="wa-time">${nowStr()}${ticks}</div></div>`;
+  chat.insertBefore(div, typing);
+  scrollBottom();
+}
+
+function addCards(products) {
+  if (!products || !products.length) return;
+
+  const chat   = document.getElementById('waChat');
+  const typing = document.getElementById('waTyping');
+  const wrap   = document.createElement('div');
+  wrap.className = 'wa-cards';
+
+  products.forEach(p => {
+    const card = document.createElement('div');
+    card.className = 'wa-prod-card';
+    const img = p.image_url
+      ? `<img class="wa-prod-img" src="${esc(p.image_url)}" alt="" loading="lazy"
+              onerror="this.style.display='none';this.nextSibling.style.display='flex'">
+         <div class="wa-prod-img-placeholder" style="display:none">🛍️</div>`
+      : `<div class="wa-prod-img-placeholder">🛍️</div>`;
+    const chips = [];
+    if (p.brand) chips.push(p.brand);
+    chips.push(p.in_stock === false ? 'Out of stock' : 'In stock');
+    card.innerHTML = `
+      ${img}
+      <div class="wa-prod-body">
+        <div class="wa-prod-title">${esc(p.name||'Product')}</div>
+        <div class="wa-prod-price">${esc(p.price||'')}</div>
+        <div class="wa-prod-chips">${chips.map(c=>`<span class="wa-chip${c==='Out of stock'?' out':''}">${esc(c)}</span>`).join('')}</div>
+        ${p.url ? `<a class="wa-prod-cta" href="${esc(p.url)}" target="_blank" rel="noopener">View Product →</a>` : ''}
+      </div>`;
+    wrap.appendChild(card);
+  });
+
+  chat.insertBefore(wrap, typing);
+  scrollBottom();
+}
+
+function addHandoffAlert() {
+  const chat   = document.getElementById('waChat');
+  const typing = document.getElementById('waTyping');
+  const div    = document.createElement('div');
+  div.className = 'wa-handoff-alert';
+  div.textContent = '🔔 Handoff triggered — this is exactly what a real merchant sees when a customer needs a human.';
+  chat.insertBefore(div, typing);
+  scrollBottom();
+
+  const hp = document.getElementById('handoffPanel');
+  hp.style.color = '#92400e'; hp.style.fontStyle = 'normal';
+  hp.innerHTML = '🔔 <strong>Triggered</strong>';
+}
+
+async function sendMessage() {
+  if (sending) return;
+  const input = document.getElementById('waInput');
+  const msg   = input.value.trim();
+  if (!msg) return;
+
+  sending = true;
+  document.getElementById('waSendBtn').disabled = true;
+  input.value = ''; input.style.height = 'auto';
+
+  const welcome = document.getElementById('welcomeMsg');
+  if (welcome) welcome.remove();
+
+  addBubble('user', msg);
+  document.getElementById('waTyping').classList.add('visible');
+  scrollBottom();
+
+  try {
+    const res  = await fetch(CHAT_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({message: msg, session_id: SESSION_ID})
+    });
+    const data = await res.json();
+    document.getElementById('waTyping').classList.remove('visible');
+
+    if (data.error) {
+      addBubble('assistant', '⚠️ Error: ' + data.error);
+    } else {
+      if (data.reply) addBubble('assistant', data.reply);
+      if (data.product_recommendations && data.product_recommendations.length) addCards(data.product_recommendations);
+      if (data.handoff_triggered) addHandoffAlert();
+    }
+  } catch(err) {
+    document.getElementById('waTyping').classList.remove('visible');
+    addBubble('assistant', '⚠️ Connection error — please try again.');
+  }
+
+  sending = false;
+  document.getElementById('waSendBtn').disabled = false;
+  input.focus();
+}
+
+function restartDemo() {
+  if (!confirm('Start a brand-new demo conversation? Current chat will be cleared.')) return;
+  location.reload();
+}
+
+document.getElementById('waInput').focus();
+</script>
+{% endif %}
+{% endblock %}

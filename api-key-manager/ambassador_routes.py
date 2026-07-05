@@ -1304,6 +1304,89 @@ def demo_qr_image():
                      download_name="phixtra-demo-whatsapp-qr.png")
 
 
+# ── AI Playground — remote demo, ambassador screen-shares this ──────────────
+# Same demo store as Demo QR Code (profitbuyz.com / DEMO_WA_NUMBER), but for
+# prospects who aren't physically present: the ambassador drives it live
+# over a screen share (Teams/Zoom) instead of handing over a phone to scan.
+
+def _get_playground_api_key():
+    """Look up the demo store's live API key from its connected WhatsApp number.
+    Never hardcode the key itself — always resolved fresh so key rotation
+    doesn't require a redeploy."""
+    conn = get_db_connection()
+    if not conn:
+        return None, None
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT t.id AS tenant_id, t.name AS business_name, k.api_key_plain
+            FROM wa_tenants w
+            JOIN tenants t   ON t.id = w.tenant_id
+            JOIN api_keys k  ON k.tenant_id = t.id AND k.is_active = TRUE
+            WHERE w.display_phone_number = %s AND w.active = TRUE
+            LIMIT 1
+        """, (DEMO_WA_NUMBER,))
+        row = cur.fetchone()
+        cur.close()
+        if row:
+            return row["api_key_plain"], row["business_name"]
+        return None, None
+    except Exception as e:
+        print(f"⚠️ _get_playground_api_key error: {e}")
+        return None, None
+    finally:
+        conn.close()
+
+
+@ambassador_bp.route("/ambassador/playground")
+def playground_page():
+    r = _require_amb()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+    api_key, business_name = _get_playground_api_key()
+    session_id = f"playground-{uuid.uuid4().hex}"
+    return render_template(
+        "ambassador/playground.html",
+        amb=amb,
+        demo_wa_number=DEMO_WA_NUMBER,
+        business_name=business_name or "ProfitBuyz",
+        api_key_missing=not bool(api_key),
+        session_id=session_id,
+        now=datetime.now(),
+    )
+
+
+@ambassador_bp.route("/ambassador/playground/chat", methods=["POST"])
+def playground_chat():
+    r = _require_amb()
+    if r: return {"error": "Not logged in"}, 401
+
+    from flask import jsonify
+    data       = request.get_json(silent=True) or {}
+    message    = (data.get("message") or "").strip()
+    session_id = (data.get("session_id") or "").strip()
+    if not message or not session_id:
+        return jsonify({"error": "Missing message or session_id"}), 400
+
+    api_key, _ = _get_playground_api_key()
+    if not api_key:
+        return jsonify({"error": "Demo store API key not found — please contact support"}), 500
+
+    ai_backend_url = os.getenv("AI_BACKEND_URL", "http://127.0.0.1:8000")
+    try:
+        import requests as _requests
+        resp = _requests.post(
+            f"{ai_backend_url}/chat",
+            json={"api_key": api_key, "message": message, "session_id": session_id},
+            timeout=30,
+        )
+        result = resp.json()
+    except Exception as e:
+        return jsonify({"error": f"AI backend unavailable: {e}"}), 500
+
+    return jsonify(result)
+
+
 @ambassador_bp.route("/ambassador/demo-access")
 def demo_portal_access():
     """One-click auto-login into the ambassador's personal demo portal."""
