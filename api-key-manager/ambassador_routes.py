@@ -1029,11 +1029,19 @@ def team_approve(recruit_id: int):
     manager = _get_ambassador(_amb_id())
     conn = get_db_connection()
     cur  = conn.cursor()
+    approved_by = f"{manager['first_name']} {manager['last_name']} (Sales Manager)"
     cur.execute("""
         UPDATE ambassadors
            SET status='active', approved_at=NOW(), approved_by=%s, partnership_start=%s
          WHERE id=%s
-    """, (f"{manager['first_name']} {manager['last_name']} (Sales Manager)", date.today(), recruit_id))
+    """, (approved_by, date.today(), recruit_id))
+    cur.execute("""
+        INSERT INTO ambassador_products (ambassador_id, product, status, partnership_start, approved_at, approved_by)
+        VALUES (%s, 'portal', 'active', %s, NOW(), %s)
+        ON CONFLICT (ambassador_id, product) DO UPDATE
+            SET status='active', partnership_start=EXCLUDED.partnership_start,
+                approved_at=NOW(), approved_by=EXCLUDED.approved_by
+    """, (recruit_id, date.today(), approved_by))
     conn.commit()
     cur.close(); conn.close()
     insert_audit_log(
