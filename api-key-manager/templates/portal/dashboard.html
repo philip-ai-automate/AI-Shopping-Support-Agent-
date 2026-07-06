@@ -9,19 +9,29 @@
 
 /* WhatsApp hero strip */
 .wa-hero {
+  position:relative; overflow:hidden;
   display:flex; align-items:center; justify-content:space-between;
   flex-wrap:wrap; gap:12px;
   background:#fff; border:1px solid var(--line); border-radius:18px;
   padding:16px 22px; margin-bottom:20px;
-  border-left:4px solid #25D366;
+  border-left:4px solid #25D366; transition:.15s;
 }
-.wa-hero-left  { display:flex; align-items:center; gap:14px }
+.wa-hero.is-live::before{
+  content:''; position:absolute; inset:0; pointer-events:none;
+  background:radial-gradient(circle at 100% 0%, #25D366, transparent 55%); opacity:.05;
+}
+.wa-hero-left  { display:flex; align-items:center; gap:14px; position:relative }
 .wa-status-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0 }
-.wa-status-dot.live { background:#25D366; box-shadow:0 0 0 3px rgba(37,211,102,.20) }
+.wa-status-dot.live { background:#25D366; box-shadow:0 0 0 3px rgba(37,211,102,.20); animation:waPulse 2s infinite }
 .wa-status-dot.off  { background:#9ca3af }
+@keyframes waPulse {
+  0%   { box-shadow:0 0 0 0 rgba(37,211,102,.35) }
+  70%  { box-shadow:0 0 0 8px rgba(37,211,102,0) }
+  100% { box-shadow:0 0 0 0 rgba(37,211,102,0) }
+}
 .wa-number     { font-size:17px; font-weight:800; letter-spacing:-.2px }
 .wa-status-lbl { font-size:12px; color:var(--muted); margin-top:1px }
-.wa-actions    { display:flex; gap:8px; flex-wrap:wrap }
+.wa-actions    { display:flex; gap:8px; flex-wrap:wrap; position:relative }
 
 /* KPI cards */
 .kpi-grid-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:20px }
@@ -33,29 +43,39 @@
 
 .kpi-card {
   background:#fff; border:1px solid var(--line); border-radius:18px;
-  padding:18px 20px; position:relative; overflow:hidden;
+  padding:18px 20px; position:relative; overflow:hidden; transition:.15s;
+}
+.kpi-card:hover { box-shadow:0 6px 20px rgba(3,12,24,.06); transform:translateY(-1px) }
+.kpi-card::before {
+  content:''; position:absolute; inset:0; opacity:.05; pointer-events:none;
 }
 .kpi-card-icon {
-  width:38px; height:38px; border-radius:12px;
+  width:38px; height:38px; border-radius:12px; position:relative;
   display:flex; align-items:center; justify-content:center;
   font-size:18px; margin-bottom:12px; flex-shrink:0;
 }
-.kpi-card-val  { font-size:28px; font-weight:800; letter-spacing:-.5px; line-height:1 }
-.kpi-card-label{ font-size:12px; color:var(--muted); margin-top:4px; font-weight:500 }
-.kpi-card-sub  { font-size:12px; color:var(--muted); margin-top:8px; padding-top:8px; border-top:1px solid var(--line) }
+.kpi-card-val  { position:relative; font-size:28px; font-weight:800; letter-spacing:-.5px; line-height:1 }
+.kpi-card-label{ position:relative; font-size:12px; color:var(--muted); margin-top:4px; font-weight:500 }
+.kpi-card-sub  { position:relative; font-size:12px; color:var(--muted); margin-top:8px; padding-top:8px; border-top:1px solid var(--line) }
 .kpi-card-sub b{ color:var(--ink) }
 .kpi-card-action { margin-top:10px }
 
 /* Urgent pulse on awaiting */
 .kpi-urgent .kpi-card-val { color:#b91c1c }
 .kpi-urgent { border-top:3px solid #F04438 }
+.kpi-urgent::before{ background:radial-gradient(circle at 100% 0%, #F04438, transparent 60%) }
 .kpi-green  { border-top:3px solid #25D366 }
+.kpi-green::before{ background:radial-gradient(circle at 100% 0%, #25D366, transparent 60%) }
 .kpi-blue   { border-top:3px solid #0288D1 }
+.kpi-blue::before{ background:radial-gradient(circle at 100% 0%, #0288D1, transparent 60%) }
 .kpi-amber  { border-top:3px solid #F79009 }
+.kpi-amber::before{ background:radial-gradient(circle at 100% 0%, #F79009, transparent 60%) }
 .kpi-ink    { border-top:3px solid var(--ink) }
+.kpi-ink::before{ background:radial-gradient(circle at 100% 0%, #030C18, transparent 60%) }
 
 /* Chart */
-.chart-card { background:#fff; border:1px solid var(--line); border-radius:18px; padding:20px 22px; margin-bottom:20px }
+.chart-card { background:#fff; border:1px solid var(--line); border-radius:18px; padding:20px 22px; margin-bottom:20px; transition:.15s }
+.chart-card:hover { box-shadow:0 6px 20px rgba(3,12,24,.05) }
 .chart-header{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:14px }
 .chart-legend{ display:flex; gap:16px }
 .chart-legend-item{ display:flex; align-items:center; gap:5px; font-size:12px; color:var(--muted) }
@@ -63,10 +83,17 @@
 
 /* Section header */
 .section-hd {
-  display:flex; align-items:center; justify-content:space-between;
-  flex-wrap:wrap; gap:8px; margin-bottom:14px;
+  display:flex; align-items:center; gap:10px;
+  margin:26px 0 14px;
 }
-.section-hd-title { font-size:13px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.06em }
+.section-hd:first-of-type{ margin-top:4px }
+.section-hd-icon{ font-size:14px }
+.section-hd-title { font-size:12.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.07em }
+.section-hd-line{ flex:1; height:1px; background:var(--line) }
+
+/* Handoff cards */
+.handoff-card{ transition:.15s }
+.handoff-card:hover{ border-color:rgba(3,12,24,.16) !important; box-shadow:0 4px 14px rgba(3,12,24,.05) }
 </style>
 
 {# ═══════════════════════════════════════════════════════════════
@@ -206,12 +233,12 @@
 {# ═══════════════════════════════════════════════════════════════
    WHATSAPP HERO — connection status + quick actions
 ═══════════════════════════════════════════════════════════════ #}
-<div class="wa-hero" id="tour-wa-hero">
+<div class="wa-hero {% if wa_connection %}is-live{% endif %}" id="tour-wa-hero">
   <div class="wa-hero-left">
     {% if wa_connection %}
     <div class="wa-status-dot live"></div>
     <div>
-      <div class="wa-number">+{{ wa_connection.display_phone_number or wa_connection.phone_number_id }}</div>
+      <div class="wa-number">{{ (wa_connection.display_phone_number or wa_connection.phone_number_id)|with_plus }}</div>
       <div class="wa-status-lbl">WhatsApp connected · AI assistant active</div>
     </div>
     {% else %}
@@ -239,6 +266,7 @@
    WHATSAPP STATS — 4 cards
 ═══════════════════════════════════════════════════════════════ #}
 {% if wa_connection %}
+<div class="section-hd"><span class="section-hd-icon">📊</span><span class="section-hd-title">Today's Activity</span><span class="section-hd-line"></span></div>
 <div class="kpi-grid-4" id="tour-kpi">
 
   {# Messages received #}
@@ -297,7 +325,9 @@
         </div>
       </div>
     </div>
+    {% if _has_woocommerce %}
     <a href="{{ url_for('portal.chat_archive') }}" class="btn btn-sm" style="font-size:12px">View Chat Archive →</a>
+    {% endif %}
   </div>
 
   {# Handoff cards #}
@@ -320,7 +350,7 @@
       {% set _wa_digits = hf.whatsapp_number | replace(' ','') | replace('-','') | replace('(','') | replace(')','') %}
     {% endif %}
 
-    <div style="background:#f9fafb;border:1px solid var(--line);border-radius:14px;padding:14px 16px;
+    <div class="handoff-card" style="background:#f9fafb;border:1px solid var(--line);border-radius:14px;padding:14px 16px;
                 display:flex;align-items:flex-start;gap:14px">
 
       {# Avatar #}
@@ -392,6 +422,7 @@
 {# ═══════════════════════════════════════════════════════════════
    AI & BUSINESS ROW — 3 cards
 ═══════════════════════════════════════════════════════════════ #}
+<div class="section-hd"><span class="section-hd-icon">💼</span><span class="section-hd-title">Business Overview</span><span class="section-hd-line"></span></div>
 <div class="kpi-grid-3">
 
   {# AI sessions #}
@@ -439,6 +470,7 @@
 {# ═══════════════════════════════════════════════════════════════
    MESSAGE VOLUME CHART — inbound vs outbound per day
 ═══════════════════════════════════════════════════════════════ #}
+<div class="section-hd"><span class="section-hd-icon">📈</span><span class="section-hd-title">Performance</span><span class="section-hd-line"></span></div>
 <div class="chart-card">
   <div class="chart-header">
     <div>
@@ -573,7 +605,7 @@
 {% if customer.tenant_source_type == 'whatsapp' %}
 
 
-  {% if not onboarding.website_wizard_dismissed %}
+  {% if not onboarding.website_wizard_dismissed and not _is_demo_tenant %}
   <details style="margin-bottom:20px">
     <summary style="list-style:none;cursor:pointer;outline:none">
       <div class="card" style="border-color:rgba(3,12,24,.10);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:16px 22px;margin-bottom:0">
@@ -625,6 +657,7 @@
   {% endif %}
 {% endif %}
 
+<div class="section-hd"><span class="section-hd-icon">🔑</span><span class="section-hd-title">Developer</span><span class="section-hd-line"></span></div>
 {# ═══════════════════════════════════════════════════════════════
    API KEYS TABLE
 ═══════════════════════════════════════════════════════════════ #}

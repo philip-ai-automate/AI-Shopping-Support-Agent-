@@ -90,8 +90,8 @@ print("   Done.")
 # ── 2. Create tenant ──────────────────────────────────────────────────────────
 print("🏢  Creating demo tenant...")
 cur.execute("""
-    INSERT INTO tenants (name, plan_id, plan_period_start, billing_cycle, trial_ends_at)
-    VALUES (%s, 3, %s, 'monthly', NULL)
+    INSERT INTO tenants (name, plan_id, plan_period_start, billing_cycle, trial_ends_at, is_demo, source_type)
+    VALUES (%s, 3, %s, 'monthly', NULL, TRUE, 'whatsapp')
     RETURNING id
 """, (DEMO_BUSINESS, date.today().replace(day=1)))
 tenant_id = cur.fetchone()["id"]
@@ -123,7 +123,7 @@ cur.execute("""
     INSERT INTO api_keys (tenant_id, api_key_hash, api_key_plain, website, key_type,
                           is_active, token_limit, tokens_used,
                           trial_activated_at, trial_expires_at, created_at)
-    VALUES (%s, %s, %s, 'techmart.ng', 'paid', TRUE,
+    VALUES (%s, %s, %s, 'techmart.ng', 'whatsapp', TRUE,
             -1, 0, NOW() - INTERVAL '20 days', NOW() + INTERVAL '10 days', NOW() - INTERVAL '20 days')
     RETURNING id
 """, (tenant_id, pw_hash(plain_key), plain_key))

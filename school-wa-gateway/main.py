@@ -5,15 +5,41 @@ Port 8002. Handles inbound parent messages forwarded from the merchant gateway.
 import os
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Response, BackgroundTasks
 from fastapi.responses import PlainTextResponse
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+
+from school_plan_reset import router as plan_reset_router, run_school_plan_resets
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger("school-gateway")
 
-app = FastAPI(title="PhiXtra School WA Gateway")
+# Termly/annual plan expiry sweep: 00:10 UTC daily (staggered after the
+# merchant gateway's own 00:05 plan reset job)
+_scheduler = AsyncIOScheduler()
+_scheduler.add_job(
+    run_school_plan_resets,
+    CronTrigger(hour=0, minute=10, timezone="UTC"),
+    id="school_plan_period_reset",
+    replace_existing=True,
+    misfire_grace_time=3600,
+)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    _scheduler.start()
+    log.info("✅ [SCHEDULER] School plan expiry sweep: 00:10 UTC daily")
+    yield
+    _scheduler.shutdown(wait=False)
+
+
+app = FastAPI(title="PhiXtra School WA Gateway", lifespan=lifespan)
+app.include_router(plan_reset_router)
 
 VERIFY_TOKEN = os.getenv("SCHOOL_WA_VERIFY_TOKEN", "school-phixtra-webhook-2025")
 

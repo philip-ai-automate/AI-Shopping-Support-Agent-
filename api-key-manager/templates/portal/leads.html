@@ -3,69 +3,158 @@
 {% block content %}
 
 <style>
-.leads-header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:24px }
-.leads-kpi-row { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:24px }
-@media(max-width:640px){ .leads-kpi-row { grid-template-columns:1fr 1fr } }
-.leads-kpi { background:#fff; border:1px solid var(--line); border-radius:18px; padding:18px 20px }
-.leads-kpi-val { font-size:32px; font-weight:800; letter-spacing:-.5px; line-height:1 }
-.leads-kpi-label { font-size:13px; color:var(--muted); margin-top:4px }
+.leads-hero {
+  display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px;
+  margin-bottom:22px;
+}
+.leads-hero-left { display:flex; align-items:center; gap:14px }
+.leads-hero-icon {
+  width:48px; height:48px; border-radius:14px; flex-shrink:0;
+  background:linear-gradient(135deg, #F04438, #F79009);
+  display:flex; align-items:center; justify-content:center; font-size:22px;
+  box-shadow:0 6px 16px rgba(240,68,56,.25);
+}
+.leads-hero h1 { font-size:22px; font-weight:800; letter-spacing:-.4px; margin:0 }
+.leads-hero p { margin:3px 0 0; font-size:13.5px; color:var(--muted) }
 
-.lead-card {
+.leads-kpi-row { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:22px }
+@media(max-width:640px){ .leads-kpi-row { grid-template-columns:1fr; } }
+.leads-kpi {
+  position:relative; overflow:hidden;
   background:#fff; border:1px solid var(--line); border-radius:18px;
-  padding:18px 20px; margin-bottom:14px;
-  display:flex; align-items:flex-start; gap:16px;
-  transition:.15s; cursor:pointer; text-decoration:none; color:inherit;
+  padding:20px 22px; display:flex; align-items:center; gap:16px;
+  transition:.15s;
 }
-.lead-card:hover { border-color:rgba(3,12,24,.22); box-shadow:0 4px 18px rgba(3,12,24,.07); text-decoration:none; color:inherit }
-.lead-card.hot  { border-left:4px solid #F04438 }
-.lead-card.warm { border-left:4px solid #F79009 }
+.leads-kpi:hover { box-shadow:0 6px 20px rgba(3,12,24,.06); transform:translateY(-1px) }
+.leads-kpi::before {
+  content:''; position:absolute; inset:0; opacity:.05; pointer-events:none;
+}
+.leads-kpi.hot::before  { background:radial-gradient(circle at 100% 0%, #F04438, transparent 60%) }
+.leads-kpi.warm::before { background:radial-gradient(circle at 100% 0%, #F79009, transparent 60%) }
+.leads-kpi.total::before{ background:radial-gradient(circle at 100% 0%, #030C18, transparent 60%) }
+.leads-kpi-icon {
+  width:44px; height:44px; border-radius:12px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center; font-size:19px;
+}
+.leads-kpi.hot  .leads-kpi-icon { background:rgba(240,68,56,.12) }
+.leads-kpi.warm .leads-kpi-icon { background:rgba(247,144,9,.12) }
+.leads-kpi.total .leads-kpi-icon{ background:rgba(3,12,24,.06) }
+.leads-kpi-val { font-size:30px; font-weight:800; letter-spacing:-.6px; line-height:1 }
+.leads-kpi-label { font-size:12.5px; color:var(--muted); margin-top:4px; font-weight:500 }
 
-.lead-avatar {
-  width:46px; height:46px; border-radius:50%; flex-shrink:0;
-  display:flex; align-items:center; justify-content:center;
-  font-size:15px; font-weight:700; color:#fff;
+.leads-toolbar {
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:18px;
 }
-.lead-body { flex:1; min-width:0 }
-.lead-top { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:4px }
-.lead-name { font-size:15px; font-weight:700 }
-.lead-phone { font-size:12px; color:var(--muted) }
-.lead-tier-badge {
-  font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px;
-  display:inline-flex; align-items:center; gap:3px; flex-shrink:0;
+.leads-search {
+  position:relative; flex:1; min-width:200px; max-width:320px;
 }
-.lead-tier-badge.hot  { background:rgba(240,68,56,.10); color:#b91c1c }
-.lead-tier-badge.warm { background:rgba(247,144,9,.10); color:#92400e }
-.lead-preview { font-size:13px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:520px; margin-bottom:6px }
-.lead-signals { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:4px }
-.lead-signal-tag {
-  font-size:11px; background:rgba(3,12,24,.05); border:1px solid var(--line);
-  border-radius:999px; padding:2px 8px; color:var(--muted);
+.leads-search input {
+  width:100%; padding:9px 14px 9px 36px; border-radius:999px; border:1.5px solid var(--line);
+  font-size:13.5px; font-family:inherit; outline:none; background:#fff; transition:.15s;
 }
-.lead-meta { font-size:12px; color:var(--muted) }
-.lead-score-ring {
-  flex-shrink:0; width:44px; height:44px;
-  display:flex; align-items:center; justify-content:center;
-  flex-direction:column;
-}
-.lead-score-num { font-size:16px; font-weight:800; line-height:1 }
-.lead-score-lbl { font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em }
+.leads-search input:focus { border-color:rgba(3,12,24,.3); box-shadow:0 0 0 3px rgba(3,12,24,.05) }
+.leads-search-icon { position:absolute; left:13px; top:50%; transform:translateY(-50%); font-size:13px; color:var(--muted); pointer-events:none }
 
-.empty-leads { text-align:center; padding:60px 20px; color:var(--muted) }
-.empty-leads-icon { font-size:48px; margin-bottom:14px }
-
-.filter-bar { display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap }
+.filter-bar { display:flex; gap:8px; flex-wrap:wrap }
 .filter-btn {
   padding:7px 16px; border-radius:999px; font-size:13px; font-weight:600;
   border:1px solid var(--line); background:#fff; cursor:pointer; transition:.12s;
 }
 .filter-btn:hover { background:rgba(3,12,24,.05) }
 .filter-btn.active { background:var(--ink); color:#fff; border-color:var(--ink) }
+
+.sort-select {
+  padding:8px 14px; border-radius:999px; border:1.5px solid var(--line);
+  font-size:13px; font-weight:600; font-family:inherit; background:#fff; cursor:pointer;
+  color:var(--ink); margin-left:auto;
+}
+
+.lead-card {
+  position:relative;
+  background:#fff; border:1px solid var(--line); border-radius:18px;
+  padding:18px 20px; margin-bottom:12px;
+  display:flex; align-items:center; gap:16px;
+  transition:.15s; cursor:pointer; text-decoration:none; color:inherit;
+}
+.lead-card:hover { border-color:rgba(3,12,24,.2); box-shadow:0 8px 22px rgba(3,12,24,.08); text-decoration:none; color:inherit; transform:translateY(-1px) }
+.lead-card.hot  { border-left:4px solid #F04438 }
+.lead-card.warm { border-left:4px solid #F79009 }
+
+.lead-ribbon {
+  position:absolute; top:14px; right:18px;
+  font-size:10.5px; font-weight:700; padding:3px 10px; border-radius:999px;
+  display:inline-flex; align-items:center; gap:4px;
+}
+.lead-ribbon.hot  { background:rgba(240,68,56,.10); color:#b91c1c }
+.lead-ribbon.warm { background:rgba(247,144,9,.10); color:#92400e }
+
+.lead-avatar-wrap { position:relative; flex-shrink:0 }
+.lead-avatar {
+  width:46px; height:46px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:15px; font-weight:700; color:#fff;
+  box-shadow:0 0 0 3px #fff, 0 0 0 4.5px var(--ring-color, var(--line));
+}
+.lead-needs-agent-dot {
+  position:absolute; top:-2px; right:-2px; width:13px; height:13px; border-radius:50%;
+  background:#F04438; border:2.5px solid #fff;
+  animation:pulseDot 1.8s infinite;
+}
+@keyframes pulseDot {
+  0%   { box-shadow:0 0 0 0 rgba(240,68,56,.5) }
+  70%  { box-shadow:0 0 0 7px rgba(240,68,56,0) }
+  100% { box-shadow:0 0 0 0 rgba(240,68,56,0) }
+}
+
+.lead-body { flex:1; min-width:0; padding-right:70px }
+.lead-top { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; margin-bottom:5px }
+.lead-name { font-size:15px; font-weight:700 }
+.lead-phone { font-size:12px; color:var(--muted) }
+.lead-preview {
+  font-size:13px; color:var(--muted); white-space:nowrap; overflow:hidden;
+  text-overflow:ellipsis; max-width:100%; margin-bottom:7px;
+}
+.lead-signals { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:6px }
+.lead-signal-tag {
+  font-size:11px; font-weight:600; border-radius:999px; padding:2px 9px;
+}
+.lead-signal-tag.hot  { background:rgba(240,68,56,.07); color:#b91c1c; border:1px solid rgba(240,68,56,.15) }
+.lead-signal-tag.warm { background:rgba(247,144,9,.07); color:#92400e; border:1px solid rgba(247,144,9,.15) }
+.lead-meta { font-size:12px; color:var(--muted) }
+.lead-meta .awaiting { color:#b91c1c; font-weight:700 }
+
+.lead-right { display:flex; align-items:center; gap:14px; flex-shrink:0 }
+.lead-score-ring { position:relative; width:48px; height:48px; flex-shrink:0 }
+.lead-score-ring svg { transform:rotate(-90deg) }
+.lead-score-ring-bg { fill:none; stroke:rgba(3,12,24,.07); stroke-width:4 }
+.lead-score-ring-fg { fill:none; stroke-width:4; stroke-linecap:round; transition:stroke-dashoffset .5s ease }
+.lead-score-num {
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  font-size:13px; font-weight:800;
+}
+.lead-open-btn {
+  display:none; align-items:center; gap:4px; font-size:12.5px; font-weight:700;
+  padding:8px 14px; border-radius:999px; background:var(--ink); color:#fff; white-space:nowrap;
+}
+@media(min-width:860px){ .lead-open-btn { display:inline-flex } }
+
+.empty-leads { text-align:center; padding:60px 20px; color:var(--muted) }
+.empty-leads-icon { font-size:48px; margin-bottom:14px }
+
+@media(max-width:640px){
+  .lead-body { padding-right:0 }
+  .lead-right { flex-direction:column-reverse; gap:8px }
+  .lead-ribbon { position:static; margin-top:4px; display:inline-flex }
+}
 </style>
 
-<div class="leads-header">
-  <div>
-    <h1 style="font-size:22px;font-weight:800;letter-spacing:-.3px;margin:0">🔥 Leads</h1>
-    <p class="muted" style="margin:3px 0 0;font-size:14px">Conversations with buying signals — prioritise these chats</p>
+<div class="leads-hero">
+  <div class="leads-hero-left">
+    <div class="leads-hero-icon">🔥</div>
+    <div>
+      <h1>Leads</h1>
+      <p>Conversations with buying signals — prioritise these chats</p>
+    </div>
   </div>
   <a href="{{ url_for('portal.my_inbox') }}" class="btn btn-sm">← Back to Inbox</a>
 </div>
@@ -82,25 +171,44 @@
 
 {# KPI strip #}
 <div class="leads-kpi-row">
-  <div class="leads-kpi" style="border-top:3px solid #F04438">
-    <div class="leads-kpi-val" style="color:#b91c1c">{{ hot_count }}</div>
-    <div class="leads-kpi-label">🔥 Hot leads — reply now</div>
+  <div class="leads-kpi hot">
+    <div class="leads-kpi-icon">🔥</div>
+    <div>
+      <div class="leads-kpi-val" style="color:#b91c1c">{{ hot_count }}</div>
+      <div class="leads-kpi-label">Hot leads — reply now</div>
+    </div>
   </div>
-  <div class="leads-kpi" style="border-top:3px solid #F79009">
-    <div class="leads-kpi-val" style="color:#92400e">{{ warm_count }}</div>
-    <div class="leads-kpi-label">⭐ Warm leads — worth reading</div>
+  <div class="leads-kpi warm">
+    <div class="leads-kpi-icon">⭐</div>
+    <div>
+      <div class="leads-kpi-val" style="color:#92400e">{{ warm_count }}</div>
+      <div class="leads-kpi-label">Warm leads — worth reading</div>
+    </div>
   </div>
-  <div class="leads-kpi" style="border-top:3px solid var(--line)">
-    <div class="leads-kpi-val">{{ leads|length }}</div>
-    <div class="leads-kpi-label">Total leads identified</div>
+  <div class="leads-kpi total">
+    <div class="leads-kpi-icon">📊</div>
+    <div>
+      <div class="leads-kpi-val">{{ leads|length }}</div>
+      <div class="leads-kpi-label">Total leads identified</div>
+    </div>
   </div>
 </div>
 
-{# Filter bar #}
-<div class="filter-bar">
-  <button class="filter-btn active" data-tier="all" onclick="filterLeads(this,'all')">All ({{ leads|length }})</button>
-  <button class="filter-btn" data-tier="hot"  onclick="filterLeads(this,'hot')">🔥 Hot ({{ hot_count }})</button>
-  <button class="filter-btn" data-tier="warm" onclick="filterLeads(this,'warm')">⭐ Warm ({{ warm_count }})</button>
+{# Toolbar: search + filter + sort #}
+<div class="leads-toolbar">
+  <div class="leads-search">
+    <span class="leads-search-icon">🔍</span>
+    <input type="text" id="leadsSearch" placeholder="Search by name or phone…" oninput="applyLeadFilters()"/>
+  </div>
+  <div class="filter-bar">
+    <button class="filter-btn active" data-tier="all" onclick="filterTier(this,'all')">All ({{ leads|length }})</button>
+    <button class="filter-btn" data-tier="hot"  onclick="filterTier(this,'hot')">🔥 Hot ({{ hot_count }})</button>
+    <button class="filter-btn" data-tier="warm" onclick="filterTier(this,'warm')">⭐ Warm ({{ warm_count }})</button>
+  </div>
+  <select class="sort-select" id="leadsSort" onchange="applyLeadFilters()">
+    <option value="score">Sort: Highest score</option>
+    <option value="recent">Sort: Most recent</option>
+  </select>
 </div>
 
 {% if not leads %}
@@ -120,18 +228,30 @@
 {% set _col = avatar_color(c.customer_phone) %}
 {% set _ini = avatar_initials(c.display_name, c.customer_phone) %}
 {% set _name = c.display_name if c.display_name else '+' + c.customer_phone %}
+{% set _ring = '#F04438' if c.lead_tier == 'hot' else '#F79009' %}
+{% set _circ = 2 * 3.14159 * 20 %}
+{% set _offset = _circ - (_circ * (c.lead_score / 100)) %}
 <a class="lead-card {{ c.lead_tier }}" data-tier="{{ c.lead_tier }}"
+   data-name="{{ (_name ~ ' ' ~ c.customer_phone)|lower }}"
+   data-score="{{ c.lead_score }}"
+   data-time="{{ c.last_message_at.isoformat() if c.last_message_at else '' }}"
    href="{{ url_for('portal.my_inbox') }}?phone={{ c.customer_phone }}">
 
-  <div class="lead-avatar" style="background:{{ _col }}">{{ _ini }}</div>
+  <span class="lead-ribbon {{ c.lead_tier }}">
+    {% if c.lead_tier == 'hot' %}🔥 Hot{% else %}⭐ Warm{% endif %}
+  </span>
+
+  <div class="lead-avatar-wrap">
+    <div class="lead-avatar" style="background:{{ _col }};--ring-color:{{ _ring }}55">{{ _ini }}</div>
+    {% if c.handoff_status == 'needs_agent' %}
+    <div class="lead-needs-agent-dot" title="Customer asked for a human agent"></div>
+    {% endif %}
+  </div>
 
   <div class="lead-body">
     <div class="lead-top">
       <span class="lead-name">{{ _name }}</span>
       {% if c.display_name %}<span class="lead-phone">+{{ c.customer_phone }}</span>{% endif %}
-      <span class="lead-tier-badge {{ c.lead_tier }}">
-        {% if c.lead_tier == 'hot' %}🔥 Hot lead{% else %}⭐ Warm lead{% endif %}
-      </span>
     </div>
 
     {% if c.last_content %}
@@ -143,7 +263,7 @@
     {% if c.lead_signals %}
     <div class="lead-signals">
       {% for sig in c.lead_signals[:5] %}
-      <span class="lead-signal-tag">{{ sig }}</span>
+      <span class="lead-signal-tag {{ c.lead_tier }}">{{ sig }}</span>
       {% endfor %}
     </div>
     {% endif %}
@@ -152,16 +272,23 @@
       {{ c.inbound_count }} inbound message{{ 's' if c.inbound_count != 1 else '' }}
       {% if c.last_message_at %}· {{ c.last_message_at.strftime('%d %b %H:%M') }}{% endif %}
       {% if c.last_direction == 'inbound' %}
-        · <span style="color:#b91c1c;font-weight:600">Awaiting your reply</span>
+        · <span class="awaiting">Awaiting your reply</span>
       {% endif %}
     </div>
   </div>
 
-  <div class="lead-score-ring">
-    <div class="lead-score-num" style="color:{% if c.lead_tier=='hot' %}#b91c1c{% elif c.lead_tier=='warm' %}#92400e{% else %}var(--muted){% endif %}">
-      {{ c.lead_score }}
+  <div class="lead-right">
+    <div class="lead-score-ring">
+      <svg width="48" height="48" viewBox="0 0 48 48">
+        <circle class="lead-score-ring-bg" cx="24" cy="24" r="20"/>
+        <circle class="lead-score-ring-fg" cx="24" cy="24" r="20"
+                stroke="{{ _ring }}"
+                stroke-dasharray="{{ _circ }}"
+                stroke-dashoffset="{{ _offset }}"/>
+      </svg>
+      <div class="lead-score-num" style="color:{{ _ring }}">{{ c.lead_score }}</div>
     </div>
-    <div class="lead-score-lbl">score</div>
+    <span class="lead-open-btn">Open chat →</span>
   </div>
 
 </a>
@@ -172,12 +299,35 @@
 {% endif %}{# connection #}
 
 <script>
-function filterLeads(btn, tier) {
+function filterTier(btn, tier) {
   document.querySelectorAll('.filter-btn').forEach(function(b){ b.classList.remove('active'); });
   btn.classList.add('active');
-  document.querySelectorAll('.lead-card').forEach(function(el){
-    el.style.display = (tier === 'all' || el.getAttribute('data-tier') === tier) ? '' : 'none';
+  applyLeadFilters();
+}
+
+function applyLeadFilters() {
+  var activeBtn = document.querySelector('.filter-btn.active');
+  var tier = activeBtn ? activeBtn.getAttribute('data-tier') : 'all';
+  var query = (document.getElementById('leadsSearch').value || '').toLowerCase().trim();
+  var sortBy = document.getElementById('leadsSort').value;
+  var list = document.getElementById('leadsList');
+  if (!list) return;
+
+  var cards = Array.prototype.slice.call(list.querySelectorAll('.lead-card'));
+
+  cards.forEach(function(el){
+    var matchesTier  = (tier === 'all' || el.getAttribute('data-tier') === tier);
+    var matchesQuery = (!query || el.getAttribute('data-name').indexOf(query) !== -1);
+    el.style.display = (matchesTier && matchesQuery) ? '' : 'none';
   });
+
+  cards.sort(function(a, b){
+    if (sortBy === 'recent') {
+      return (b.getAttribute('data-time') || '').localeCompare(a.getAttribute('data-time') || '');
+    }
+    return parseInt(b.getAttribute('data-score')) - parseInt(a.getAttribute('data-score'));
+  });
+  cards.forEach(function(el){ list.appendChild(el); });
 }
 </script>
 

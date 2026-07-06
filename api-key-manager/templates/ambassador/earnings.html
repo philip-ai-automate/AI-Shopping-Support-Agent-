@@ -10,6 +10,17 @@
   </div>
 </div>
 
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">
+  <a href="{{ url_for('ambassador.earnings', product='all') }}"
+     class="btn btn-sm{% if selected_product=='all' %} btn-primary{% endif %}">All Products</a>
+  {% for p in product_order %}
+  <a href="{{ url_for('ambassador.earnings', product=p) }}"
+     class="btn btn-sm{% if selected_product==p %} btn-primary{% endif %}">
+    {{ product_config[p].icon }} {{ product_config[p].label }}
+  </a>
+  {% endfor %}
+</div>
+
 <div class="card" style="padding:0">
   <div class="table-wrap">
     <table>
@@ -35,6 +46,8 @@
           <td>
             {% if e.commission_type == 'upsell_bonus' %}
               <span class="pill pill-warn">★ Upsell Bonus</span>
+            {% elif e.commission_type == 'override' %}
+              <span class="pill pill-grey">Team Override</span>
             {% else %}
               <span class="pill pill-blue">Subscription</span>
             {% endif %}

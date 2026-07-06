@@ -18,6 +18,16 @@
     outline:none;border-color:var(--brand);
   }
 
+  /* ── Date banner ── */
+  .att-date-banner{
+    display:flex;align-items:center;gap:10px;margin-bottom:14px;
+    font-size:14px;font-weight:600;color:var(--ink);
+  }
+  .att-today-pill{
+    font-size:11px;font-weight:700;color:var(--brand);background:var(--brand-light);
+    padding:3px 10px;border-radius:20px;
+  }
+
   /* ── Arm tabs ── */
   .arm-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
   .arm-tab{
@@ -41,40 +51,69 @@
   .dot.late{background:#F79009}
   .dot.total{background:var(--brand)}
 
-  /* ── Student rows ── */
-  .att-list{display:flex;flex-direction:column;gap:6px;margin-bottom:80px}
-  .att-row{
-    display:flex;align-items:center;gap:14px;
-    padding:14px 16px;border-radius:12px;
-    border:2px solid var(--line);background:#fff;
-    cursor:pointer;transition:.12s;user-select:none;
-    -webkit-tap-highlight-color:transparent;
+  /* ── Mark-all shortcuts ── */
+  .quick-bar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+  .quick-btn{
+    padding:6px 14px;border-radius:8px;font-size:12.5px;font-weight:600;
+    border:1.5px solid var(--line);background:#fff;cursor:pointer;
+    color:var(--muted);transition:.1s;
   }
-  .att-row[data-status=present]{background:#F0FDF4;border-color:#A6F4C5}
-  .att-row[data-status=absent] {background:#FFF1F0;border-color:#FECDCA}
-  .att-row[data-status=late]   {background:#FFFBEB;border-color:#FDE68A}
-  .att-row:active{transform:scale(.99)}
+  .quick-btn:hover{border-color:var(--brand);color:var(--brand)}
 
-  .att-status-dot{
-    width:14px;height:14px;border-radius:50%;flex-shrink:0;border:2px solid transparent;
+  /* ── Search box ── */
+  .att-search-wrap{flex:1;min-width:160px;max-width:280px;margin-left:auto;position:relative}
+  .att-search{
+    width:100%;padding:7px 12px 7px 30px;border:1.5px solid var(--line);
+    border-radius:8px;font-size:13px;color:var(--ink);background:#fff;
   }
-  [data-status=present] .att-status-dot{background:#12B76A;border-color:#12B76A}
-  [data-status=absent]  .att-status-dot{background:#F04438;border-color:#F04438}
-  [data-status=late]    .att-status-dot{background:#F79009;border-color:#F79009}
-  [data-status=]        .att-status-dot{background:var(--line);border-color:var(--line)}
+  .att-search:focus{outline:none;border-color:var(--brand)}
+  .att-search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);
+    font-size:12px;color:var(--muted);pointer-events:none}
+  .att-row.search-hidden{display:none}
+  .att-no-match{display:none;padding:24px;text-align:center;color:var(--muted);font-size:13.5px}
+
+  /* ── Student rows ── */
+  .att-list{display:flex;flex-direction:column;gap:8px;margin-bottom:90px}
+  .att-row{
+    display:flex;align-items:center;gap:12px;
+    padding:12px 14px;border-radius:12px;
+    border:1.5px solid var(--line);background:#fff;
+    transition:.12s;
+  }
+  .att-row[data-status=present]{background:#F8FFFB;border-color:#D3F4E0}
+  .att-row[data-status=absent] {background:#FFFAFA;border-color:#FBDADA}
+  .att-row[data-status=late]   {background:#FFFDF6;border-color:#FBEFC9}
+
+  .att-avatar{
+    width:38px;height:38px;border-radius:50%;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    color:#fff;font-size:14px;font-weight:700;
+  }
+  .att-row.c0 .att-avatar{background:#1D6AF5}
+  .att-row.c1 .att-avatar{background:#12B76A}
+  .att-row.c2 .att-avatar{background:#F79009}
+  .att-row.c3 .att-avatar{background:#7C3AED}
+  .att-row.c4 .att-avatar{background:#EC4899}
+  .att-row.c5 .att-avatar{background:#0BA5EC}
 
   .att-info{flex:1;min-width:0}
-  .att-name{font-size:15px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .att-meta{font-size:12px;color:var(--muted);margin-top:2px}
+  .att-name{font-size:14.5px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .att-meta{font-size:12px;color:var(--muted);margin-top:1px}
+  .att-marked{font-size:11px;color:var(--muted);margin-top:2px}
+  .att-marked .t{font-weight:700;color:rgba(10,22,40,0.55)}
 
-  .att-label{
-    font-size:12px;font-weight:700;padding:4px 10px;border-radius:20px;
-    white-space:nowrap;text-align:right;min-width:56px;
+  /* ── Segmented status control ── */
+  .att-seg{display:flex;border:1.5px solid var(--line);border-radius:10px;overflow:hidden;flex-shrink:0}
+  .seg-btn{
+    width:44px;height:38px;display:flex;align-items:center;justify-content:center;
+    font-size:16px;background:#fff;border:none;border-right:1.5px solid var(--line);
+    color:var(--muted);cursor:pointer;transition:.1s;
   }
-  [data-status=present] .att-label{color:#027A48;background:#DCFCE7}
-  [data-status=absent]  .att-label{color:#B42318;background:#FFE4E1}
-  [data-status=late]    .att-label{color:#B45309;background:#FEF3C7}
-  [data-status=]        .att-label{color:var(--muted);background:#F3F4F6}
+  .seg-btn:last-child{border-right:none}
+  .seg-btn:hover{background:#F7F9FC}
+  .seg-btn.active.seg-present{background:#12B76A;color:#fff}
+  .seg-btn.active.seg-late{background:#F79009;color:#fff}
+  .seg-btn.active.seg-absent{background:#F04438;color:#fff}
 
   /* ── Sticky save bar ── */
   .save-bar{
@@ -87,20 +126,17 @@
   .save-bar-meta{font-size:13px;color:var(--muted);flex:1}
   .save-bar-warn{font-size:12px;color:var(--warn)}
 
-  /* ── Mark-all shortcuts ── */
-  .quick-bar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
-  .quick-btn{
-    padding:6px 14px;border-radius:8px;font-size:12.5px;font-weight:600;
-    border:1.5px solid var(--line);background:#fff;cursor:pointer;
-    color:var(--muted);transition:.1s;
-  }
-  .quick-btn:hover{border-color:var(--brand);color:var(--brand)}
+  /* ── Save button busy state ── */
+  .btn[disabled]{opacity:.6;cursor:not-allowed}
 
   @media(max-width:600px){
     .att-controls{flex-direction:column}
     .att-controls select,.att-controls input[type=date]{width:100%}
     .save-bar{flex-wrap:wrap;padding:12px 16px;gap:8px}
     .save-bar .btn{min-width:auto;flex:1}
+    .att-search-wrap{max-width:none;margin-left:0;width:100%}
+    .seg-btn{width:38px}
+    .att-name{white-space:normal}
   }
 </style>
 {% endblock %}
@@ -109,7 +145,7 @@
 <div class="page-header">
   <div>
     <h1>Mark Attendance</h1>
-    <p>Tap a student to toggle their status</p>
+    <p>Set each student's status — present, late, or absent</p>
   </div>
   <a class="btn btn-outline" href="{{ url_for('school.attendance_history') }}">History</a>
 </div>
@@ -148,6 +184,11 @@
 
 {% if selected_class %}
 
+<div class="att-date-banner">
+  📅 {{ date_label }}
+  {% if is_today %}<span class="att-today-pill">Today</span>{% endif %}
+</div>
+
 {# ── Arm tabs (if multiple arms exist) ── #}
 {% if arms|length > 1 %}
 <div class="arm-tabs">
@@ -175,6 +216,12 @@
   <button type="button" class="quick-btn" onclick="markAll('present')">✓ All Present</button>
   <button type="button" class="quick-btn" onclick="markAll('absent')">✗ All Absent</button>
   <button type="button" class="quick-btn" onclick="resetAll()">Reset</button>
+  {% if students|length > 8 %}
+  <div class="att-search-wrap">
+    <span class="att-search-icon">🔎</span>
+    <input type="text" class="att-search" id="att-search" placeholder="Find a student…" oninput="filterStudents(this.value)"/>
+  </div>
+  {% endif %}
 </div>
 
 {# ── Student list ── #}
@@ -186,19 +233,19 @@
   <div id="late-inputs"></div>
 
   {% for s in students %}
-  {% set cur_status = existing.get(s.id, '') %}
   <input type="hidden" name="student_ids[]" value="{{ s.id }}"/>
   {% endfor %}
 
   <div class="att-list" id="att-list">
     {% for s in students %}
     {% set cur_status = existing.get(s.id, 'present') %}
-    <div class="att-row"
+    {% set meta = existing_meta.get(s.id) %}
+    <div class="att-row c{{ loop.index0 % 6 }}"
          id="row-{{ s.id }}"
          data-id="{{ s.id }}"
          data-status="{{ cur_status }}"
-         onclick="cycleStatus({{ s.id }})">
-      <div class="att-status-dot" id="dot-{{ s.id }}"></div>
+         data-name="{{ s.full_name|lower }}">
+      <div class="att-avatar">{{ s.full_name[0]|upper }}</div>
       <div class="att-info">
         <div class="att-name">{{ s.full_name }}</div>
         {% if s.student_number or (arms|length > 1) %}
@@ -207,11 +254,22 @@
           {% if s.student_number %} · {{ s.student_number }}{% endif %}
         </div>
         {% endif %}
+        {% if meta and meta.marked_at %}
+        <div class="att-marked">Marked <span class="t">{{ meta.marked_at }}</span>{% if meta.marked_by %} by {{ meta.marked_by }}{% endif %}</div>
+        {% endif %}
       </div>
-      <div class="att-label" id="lbl-{{ s.id }}">Present</div>
+      <div class="att-seg" role="group" aria-label="Attendance status for {{ s.full_name }}">
+        <button type="button" class="seg-btn seg-present" id="seg-{{ s.id }}-present"
+                title="Present" aria-label="Mark present" onclick="setStatus({{ s.id }},'present')">✓</button>
+        <button type="button" class="seg-btn seg-late" id="seg-{{ s.id }}-late"
+                title="Late" aria-label="Mark late" onclick="setStatus({{ s.id }},'late')">⏰</button>
+        <button type="button" class="seg-btn seg-absent" id="seg-{{ s.id }}-absent"
+                title="Absent" aria-label="Mark absent" onclick="setStatus({{ s.id }},'absent')">✗</button>
+      </div>
     </div>
     {% endfor %}
   </div>
+  <div class="att-no-match" id="att-no-match">No student matches your search.</div>
 </form>
 
 {# ── Sticky save bar ── #}
@@ -228,27 +286,27 @@
 </div>
 
 <script>
-const CYCLE  = ['present','absent','late'];
 const LABELS = {present:'Present',absent:'Absent',late:'Late'};
 
-// Initial state from server
-const state = {};
+// Initial state from server (kept separate so we can detect unsaved edits)
+const initialState = {};
 {% for s in students %}
-state[{{ s.id }}] = {{ ('"' + existing.get(s.id, 'present') + '"')|safe }};
+initialState[{{ s.id }}] = {{ ('"' + existing.get(s.id, 'present') + '"')|safe }};
 {% endfor %}
+const state = Object.assign({}, initialState);
+let formSubmitting = false;
 
-function cycleStatus(id) {
-  const cur = state[id];
-  const next = CYCLE[(CYCLE.indexOf(cur) + 1) % CYCLE.length];
-  applyStatus(id, next);
+function setStatus(id, status) {
+  applyStatus(id, status);
 }
 
 function applyStatus(id, status) {
   state[id] = status;
   const row = document.getElementById('row-' + id);
-  const lbl = document.getElementById('lbl-' + id);
   row.dataset.status = status;
-  lbl.textContent = LABELS[status] || 'Present';
+  ['present','late','absent'].forEach(s => {
+    document.getElementById('seg-' + id + '-' + s).classList.toggle('active', s === status);
+  });
   syncHidden();
   updateCounts();
 }
@@ -258,9 +316,7 @@ function markAll(status) {
 }
 
 function resetAll() {
-  {% for s in students %}
-  applyStatus({{ s.id }}, {{ ('"' + existing.get(s.id, 'present') + '"')|safe }});
-  {% endfor %}
+  Object.keys(initialState).forEach(id => applyStatus(parseInt(id), initialState[id]));
 }
 
 function syncHidden() {
@@ -287,9 +343,38 @@ function updateCounts() {
   document.getElementById('save-meta').textContent = meta.join(' · ');
 }
 
-// Initialise on load
-syncHidden();
-updateCounts();
+function hasUnsavedChanges() {
+  return Object.keys(state).some(id => state[id] !== initialState[id]);
+}
+
+function filterStudents(query) {
+  const q = query.trim().toLowerCase();
+  let visible = 0;
+  document.querySelectorAll('.att-row').forEach(row => {
+    const match = !q || row.dataset.name.includes(q);
+    row.classList.toggle('search-hidden', !match);
+    if (match) visible++;
+  });
+  document.getElementById('att-no-match').style.display = visible ? 'none' : 'block';
+}
+
+// Warn before leaving the page with unmarked edits
+window.addEventListener('beforeunload', function (e) {
+  if (formSubmitting || !hasUnsavedChanges()) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+
+// Prevent double-submit and show busy state on save
+document.getElementById('att-form').addEventListener('submit', function () {
+  formSubmitting = true;
+  const btn = document.getElementById('save-btn');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+});
+
+// Initialise on load — set initial active segment per row + counts
+Object.keys(state).forEach(id => applyStatus(parseInt(id), state[id]));
 </script>
 
 {% else %}

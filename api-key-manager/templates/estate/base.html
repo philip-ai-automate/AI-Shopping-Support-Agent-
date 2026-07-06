@@ -210,9 +210,15 @@
       <span class="sb-icon">🏠</span> Dashboard
     </a>
 
+    {% set _plan = _re_tenant.plan_slug if _re_tenant else 'free' %}
+    {% set _growth_plus = _plan in ('growth','pro') %}
+    {% set _starter_plus = _plan in ('starter','growth','pro') %}
+
     <a class="sb-link {% if request.endpoint in ('estate.pipeline','estate.lead_detail') %}active{% endif %}"
-       href="{{ url_for('estate.pipeline') }}">
+       href="{{ url_for('estate.pipeline') }}"
+       {% if not _growth_plus %}style="opacity:.45"{% endif %}>
       <span class="sb-icon">📊</span> Pipeline
+      {% if not _growth_plus %}<span style="margin-left:auto;font-size:11px">🔒</span>{% endif %}
     </a>
 
     <a class="sb-link {% if request.endpoint in ('estate.listings','estate.listing_new','estate.listing_edit') %}active{% endif %}"
@@ -235,10 +241,12 @@
     </a>
 
     <a class="sb-link {% if request.endpoint == 'estate.contacts' %}active{% endif %}"
-       href="{{ url_for('estate.contacts') }}">
+       href="{{ url_for('estate.contacts') }}"
+       {% if not _growth_plus %}style="opacity:.45"{% endif %}>
       <span class="sb-icon">👤</span> Contacts
+      {% if not _growth_plus %}<span style="margin-left:auto;font-size:11px">🔒</span>{% endif %}
     </a>
-    {% if _re_is_admin %}
+    {% if _re_is_admin and _growth_plus %}
     <a class="sb-link {% if request.endpoint == 'estate.contact_segments' %}active{% endif %}"
        href="{{ url_for('estate.contact_segments') }}"
        style="padding-left:2.2rem;font-size:13px;color:{% if request.endpoint == 'estate.contact_segments' %}#030C18{% else %}rgba(3,12,24,0.50){% endif %}">
@@ -247,8 +255,10 @@
     {% endif %}
 
     <a class="sb-link {% if request.endpoint == 'estate.broadcast' %}active{% endif %}"
-       href="{{ url_for('estate.broadcast') }}">
+       href="{{ url_for('estate.broadcast') }}"
+       {% if not _growth_plus %}style="opacity:.45"{% endif %}>
       <span class="sb-icon">📣</span> Broadcast
+      {% if not _growth_plus %}<span style="margin-left:auto;font-size:11px">🔒</span>{% endif %}
     </a>
 
     <a class="sb-link {% if request.endpoint == 'estate.qr_code' %}active{% endif %}"
@@ -257,13 +267,17 @@
     </a>
 
     <a class="sb-link {% if request.endpoint == 'estate.inspections' %}active{% endif %}"
-       href="{{ url_for('estate.inspections') }}">
+       href="{{ url_for('estate.inspections') }}"
+       {% if not _growth_plus %}style="opacity:.45"{% endif %}>
       <span class="sb-icon">🗓️</span> Inspections
+      {% if not _growth_plus %}<span style="margin-left:auto;font-size:11px">🔒</span>{% endif %}
     </a>
 
     <a class="sb-link {% if request.endpoint == 'estate.reports' %}active{% endif %}"
-       href="{{ url_for('estate.reports') }}">
+       href="{{ url_for('estate.reports') }}"
+       {% if not _growth_plus %}style="opacity:.45"{% endif %}>
       <span class="sb-icon">📊</span> Reports
+      {% if not _growth_plus %}<span style="margin-left:auto;font-size:11px">🔒</span>{% endif %}
     </a>
 
     <div class="sb-divider"></div>
@@ -313,10 +327,16 @@
 
     {% if _re_is_admin %}
     <a class="sb-link {% if request.endpoint == 'estate.team' %}active{% endif %}"
-       href="{{ url_for('estate.team') }}">
+       href="{{ url_for('estate.team') }}"
+       {% if not _growth_plus %}style="opacity:.45"{% endif %}>
       <span class="sb-icon">👥</span> Team
+      {% if not _growth_plus %}<span style="margin-left:auto;font-size:11px">🔒</span>{% endif %}
     </a>
     {% endif %}
+
+    <a class="sb-link" href="https://phixtra.com/real-estate-pricing/" target="_blank" rel="noopener">
+      <span class="sb-icon">💰</span> View Pricing
+    </a>
 
     <a class="sb-link" href="https://phixtra.com" target="_blank" rel="noopener">
       <span class="sb-icon">🌐</span> PhiXtra Home

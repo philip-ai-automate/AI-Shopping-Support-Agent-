@@ -1,0 +1,39 @@
+{% extends "school/base.html" %}
+{% block title %}Upgrade Required{% endblock %}
+
+{% block head %}
+<style>
+  .upgrade-wrap{display:flex;align-items:center;justify-content:center;min-height:60vh}
+  .upgrade-card{
+    background:#fff;border:1px solid var(--line);border-radius:14px;
+    max-width:440px;width:100%;padding:36px 32px;text-align:center;
+  }
+  .upgrade-icon{
+    width:56px;height:56px;border-radius:14px;background:var(--brand-light);
+    display:flex;align-items:center;justify-content:center;margin:0 auto 18px;
+    font-size:26px;
+  }
+  .upgrade-title{font-size:17px;font-weight:750;color:var(--ink);margin-bottom:8px}
+  .upgrade-desc{font-size:13.5px;color:var(--muted);line-height:1.6;margin-bottom:22px}
+  .upgrade-desc strong{color:var(--txt)}
+  .upgrade-btn{
+    display:inline-block;padding:11px 24px;border-radius:9px;
+    background:var(--brand);color:#fff;font-size:13.5px;font-weight:650;
+  }
+  .upgrade-btn:hover{text-decoration:none;opacity:.92}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="upgrade-wrap">
+  <div class="upgrade-card">
+    <div class="upgrade-icon">🔒</div>
+    <div class="upgrade-title">{{ feature_label }} is a {{ min_plan_name }}+ feature</div>
+    <div class="upgrade-desc">
+      Your school is currently on the <strong>{{ current_plan }}</strong> plan.
+      Upgrade to <strong>{{ min_plan_name }}</strong> or higher to unlock this feature.
+    </div>
+    <a class="upgrade-btn" href="{{ url_for('school.settings') }}">View Plans</a>
+  </div>
+</div>
+{% endblock %}

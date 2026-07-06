@@ -18,40 +18,6 @@
   .settings-card-sub{font-size:12.5px;color:var(--muted);margin-top:2px}
   .settings-card-body{padding:22px}
 
-  /* ── Staff table ── */
-  .staff-list{display:flex;flex-direction:column;gap:8px;margin-bottom:20px}
-  .staff-row{
-    display:flex;align-items:center;gap:12px;padding:12px 14px;
-    border:1px solid var(--line);border-radius:10px;background:#FAFBFD;
-    flex-wrap:wrap;
-  }
-  .staff-row.me-row{background:#EEF4FF;border-color:#C7D9FD}
-  .staff-avatar{
-    width:36px;height:36px;border-radius:50%;background:var(--brand);
-    color:#fff;font-size:14px;font-weight:700;flex-shrink:0;
-    display:flex;align-items:center;justify-content:center;
-  }
-  .staff-info{flex:1;min-width:120px}
-  .staff-name{font-size:14px;font-weight:600;color:var(--ink)}
-  .staff-meta{font-size:12px;color:var(--muted);margin-top:2px}
-  .role-chip{
-    font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:12px;
-    white-space:nowrap;
-  }
-  .role-admin  {background:#EEF4FF;color:#1D6AF5}
-  .role-teacher{background:#F3F4F6;color:var(--muted)}
-  .role-bursar {background:#FEF3C7;color:#92400E}
-  .staff-login{font-size:11.5px;color:var(--muted);white-space:nowrap}
-
-  /* ── Add staff modal ── */
-  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);
-                 z-index:200;align-items:center;justify-content:center;padding:20px}
-  .modal-box{background:#fff;border-radius:14px;padding:28px;width:100%;
-             max-width:520px;max-height:90vh;overflow-y:auto}
-  .modal-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
-  .modal-hd-title{font-size:16px;font-weight:750;color:var(--ink)}
-  .modal-close{border:none;background:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1}
-
   /* ── Danger zone ── */
   .danger-zone{
     border:1px solid #FECDCA;border-radius:12px;padding:16px 18px;
@@ -59,11 +25,6 @@
   }
   .danger-title{font-size:13.5px;font-weight:700;color:var(--bad);margin-bottom:4px}
   .danger-desc{font-size:12.5px;color:rgba(10,22,40,.6);margin-bottom:10px}
-
-  @media(max-width:600px){
-    .staff-row{flex-wrap:wrap}
-    .staff-login{display:none}
-  }
 </style>
 {% endblock %}
 
@@ -152,61 +113,8 @@
 {% endif %}
 
 {# ════════════════════════════════
-   2. Staff Management (admin only)
+   Staff accounts moved to their own page — see sidebar → Staff
 ════════════════════════════════ #}
-{% if is_admin %}
-<div class="settings-card" id="staff">
-  <div class="settings-card-head">
-    <div>
-      <div class="settings-card-title">Staff Accounts</div>
-      <div class="settings-card-sub">{{ staff_list|length }} active member{{ 's' if staff_list|length != 1 }}</div>
-    </div>
-    <button class="btn btn-outline" style="padding:7px 16px;font-size:13px"
-            onclick="document.getElementById('add-staff-modal').style.display='flex'">
-      + Add Staff
-    </button>
-  </div>
-  <div class="settings-card-body">
-    {% if staff_list %}
-    <div class="staff-list">
-      {% for s in staff_list %}
-      <div class="staff-row {% if s.id == me.id %}me-row{% endif %}">
-        <div class="staff-avatar">{{ s.full_name[0] | upper }}</div>
-        <div class="staff-info">
-          <div class="staff-name">
-            {{ s.full_name }}
-            {% if s.id == me.id %}<span style="font-size:11px;color:var(--brand);font-weight:600"> (you)</span>{% endif %}
-          </div>
-          <div class="staff-meta">
-            {{ s.email }}
-            {% if s.class_assigned %} · Class: {{ s.class_assigned }}{% endif %}
-          </div>
-        </div>
-        <span class="role-chip role-{{ s.role }}">{{ s.role | capitalize }}</span>
-        <div class="staff-login">
-          {{ s.last_login.strftime('Last: %d %b') if s.last_login else 'Never logged in' }}
-        </div>
-        {% if s.id != me.id %}
-        <form method="POST"
-              action="{{ url_for('school.staff_remove', staff_id=s.id) }}"
-              onsubmit="return confirm('Remove {{ s.full_name }}? They will lose access immediately.')">
-          <button class="btn btn-outline"
-                  style="padding:5px 12px;font-size:12.5px;color:var(--bad);border-color:var(--bad)">
-            Remove
-          </button>
-        </form>
-        {% endif %}
-      </div>
-      {% endfor %}
-    </div>
-    {% else %}
-    <div style="text-align:center;padding:20px;color:var(--muted);font-size:13.5px">
-      No other staff yet. Add teachers and bursars so they can log in.
-    </div>
-    {% endif %}
-  </div>
-</div>
-{% endif %}
 
 {# ════════════════════════════════
    4. My Account
@@ -244,66 +152,7 @@
 
 </div>{# end settings-stack #}
 
-{# ── Add Staff Modal ── #}
-{% if is_admin %}
-<div id="add-staff-modal" class="modal-overlay">
-  <div class="modal-box">
-    <div class="modal-hd">
-      <span class="modal-hd-title">Add Staff Member</span>
-      <button class="modal-close"
-              onclick="document.getElementById('add-staff-modal').style.display='none'">×</button>
-    </div>
-    <form method="POST" action="{{ url_for('school.staff_add') }}">
-      <div class="form-row g2">
-        <div class="form-group">
-          <label>Full Name <span style="color:var(--bad)">*</span></label>
-          <input type="text" name="full_name" required placeholder="Mrs. Aisha Bello"/>
-        </div>
-        <div class="form-group">
-          <label>Email <span style="color:var(--bad)">*</span></label>
-          <input type="email" name="email" required placeholder="teacher@school.edu.ng"/>
-        </div>
-      </div>
-      <div class="form-row g2">
-        <div class="form-group">
-          <label>Password <span style="color:var(--bad)">*</span></label>
-          <input type="password" name="password" required minlength="6"/>
-        </div>
-        <div class="form-group">
-          <label>Role</label>
-          <select name="role">
-            <option value="teacher">Teacher</option>
-            <option value="bursar">Bursar</option>
-            <option value="admin">Admin</option>
-          </select>
-        </div>
-      </div>
-      <div class="form-group">
-        <label>Class Assigned <span style="font-size:11.5px;color:var(--muted)">(teachers only)</span></label>
-        <input type="text" name="class_assigned" placeholder="e.g. JSS1 or JSS1A"/>
-        <span style="font-size:11.5px;color:var(--muted);margin-top:3px">
-          The teacher's attendance page will default to this class.
-        </span>
-      </div>
-      <div style="display:flex;gap:8px;margin-top:4px">
-        <button class="btn btn-primary" type="submit">Add Staff Member</button>
-        <button type="button" class="btn btn-outline"
-                onclick="document.getElementById('add-staff-modal').style.display='none'">
-          Cancel
-        </button>
-      </div>
-    </form>
-  </div>
-</div>
-{% endif %}
-
 <script>
-// Auto-open add modal if redirected with #staff and flash success?
-document.getElementById('add-staff-modal') && document.getElementById('add-staff-modal')
-  .addEventListener('click', function(e) {
-    if (e.target === this) this.style.display = 'none';
-  });
-
 // Jump to anchor on load
 if (window.location.hash) {
   var el = document.getElementById(window.location.hash.slice(1));

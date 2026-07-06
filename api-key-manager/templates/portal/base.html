@@ -459,16 +459,27 @@
       </div>
     </div>
 
-    <!-- Contacts -->
-    <a class="sb-link {% if request.endpoint == 'portal.whatsapp_contacts' %}active{% endif %}"
-       href="{{ url_for('portal.whatsapp_contacts') }}" data-tour="nav-contacts">
-      <span class="sb-icon">👥</span> Contacts
-    </a>
-    <!-- Segments -->
-    <a class="sb-link {% if request.endpoint in ('portal.whatsapp_segments','portal.whatsapp_segment_detail') %}active{% endif %}"
-       href="{{ url_for('portal.whatsapp_segments') }}" style="padding-left:36px;font-size:12px">
-      <span class="sb-icon" style="font-size:13px">🗂️</span> Segments
-    </a>
+    <!-- ── Contacts group ── -->
+    {% set _contacts_group = request.endpoint in ('portal.whatsapp_contacts', 'portal.whatsapp_segments', 'portal.whatsapp_segment_detail') %}
+    <div class="sb-group">
+      <div class="sb-group-toggle {% if _contacts_group %}open{% endif %}"
+           data-tour="nav-contacts" onclick="sbToggle(this)">
+        <span class="sb-gtitle">
+          <span class="sb-icon">👥</span> Contacts
+        </span>
+        <span class="sb-arrow">▾</span>
+      </div>
+      <div class="sb-sub {% if _contacts_group %}open{% endif %}">
+        <a href="{{ url_for('portal.whatsapp_contacts') }}"
+           class="{% if request.endpoint == 'portal.whatsapp_contacts' %}active{% endif %}">
+          All Contacts
+        </a>
+        <a href="{{ url_for('portal.whatsapp_segments') }}"
+           class="{% if request.endpoint in ('portal.whatsapp_segments','portal.whatsapp_segment_detail') %}active{% endif %}">
+          Segments
+        </a>
+      </div>
+    </div>
 
     <!-- Leads -->
     <a class="sb-link {% if request.endpoint == 'portal.leads_page' %}active{% endif %}"
@@ -476,10 +487,10 @@
       <span class="sb-icon">🔥</span> Leads
     </a>
 
-    <!-- Orders -->
-    <a class="sb-link {% if request.endpoint in ('portal.orders', 'portal.order_detail') %}active{% endif %}"
-       href="{{ url_for('portal.orders') }}">
-      <span class="sb-icon">🧾</span> Orders
+    <!-- Sales Pipeline -->
+    <a class="sb-link {% if request.endpoint == 'portal.sales_pipeline' %}active{% endif %}"
+       href="{{ url_for('portal.sales_pipeline') }}">
+      <span class="sb-icon">🧭</span> Sales Pipeline
     </a>
 
     <!-- ── WhatsApp group ── -->
@@ -526,12 +537,14 @@
     <!-- ── Ecommerce group ── -->
     {% set _commerce_group = request.endpoint in (
         'portal.products', 'portal.product_add', 'portal.product_edit',
-        'portal.product_delete', 'portal.customers', 'portal.customer_detail',
+        'portal.product_delete', 'portal.orders', 'portal.order_detail',
+        'portal.customers', 'portal.customer_detail',
         'portal.catalogue_browse', 'portal.catalogue_category', 'portal.catalogue_selections',
         'portal.woo_sync',
         'portal.data_sources', 'portal.data_source_upload', 'portal.data_source_map',
         'portal.data_source_sync', 'portal.data_source_delete', 'portal.data_source_google_connect',
-        'portal.data_source_google_callback', 'portal.data_source_google_setup') %}
+        'portal.data_source_google_callback', 'portal.data_source_google_setup',
+        'portal.wa_discount_settings') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _commerce_group %}open{% endif %}"
            data-tour="nav-ecommerce" onclick="sbToggle(this)">
@@ -544,6 +557,10 @@
         <a href="{{ url_for('portal.products') }}"
            class="{% if request.endpoint in ('portal.products','portal.product_add','portal.product_edit') %}active{% endif %}">
           My Products
+        </a>
+        <a href="{{ url_for('portal.orders') }}"
+           class="{% if request.endpoint in ('portal.orders', 'portal.order_detail') %}active{% endif %}">
+          🧾 Orders
         </a>
         {% if not _has_woocommerce %}
         <a href="{{ url_for('portal.catalogue_browse') }}"
@@ -565,25 +582,17 @@
            class="{% if request.endpoint in ('portal.data_sources','portal.data_source_upload','portal.data_source_map','portal.data_source_sync','portal.data_source_delete','portal.data_source_google_connect','portal.data_source_google_callback','portal.data_source_google_setup') %}active{% endif %}">
           🗂️ Product Import
         </a>
+        <a href="{{ url_for('portal.wa_discount_settings') }}"
+           class="{% if request.endpoint == 'portal.wa_discount_settings' %}active{% endif %}">
+          💰 Discount Settings
+        </a>
       </div>
     </div>
-
-    <!-- Discount Settings -->
-    <a class="sb-link {% if request.endpoint == 'portal.wa_discount_settings' %}active{% endif %}"
-       href="{{ url_for('portal.wa_discount_settings') }}">
-      <span class="sb-icon">💰</span> Discount Settings
-    </a>
 
     <!-- Store Information -->
     <a class="sb-link {% if request.endpoint == 'portal.store_info' %}active{% endif %}"
        href="{{ url_for('portal.store_info') }}">
       <span class="sb-icon">🏪</span> Store Information
-    </a>
-
-    <!-- Payment Gateways -->
-    <a class="sb-link {% if request.endpoint == 'portal.payment_settings' %}active{% endif %}"
-       href="{{ url_for('portal.payment_settings') }}">
-      <span class="sb-icon">💳</span> Payment Gateways
     </a>
 
     <!-- ── AI Assistant group ── -->
@@ -692,7 +701,7 @@
     <div class="sb-divider"></div>
 
     <!-- ── Billing group ── -->
-    {% set _bill_group = request.endpoint in ('portal.billing', 'portal.invoices', 'portal.billing_subscribe', 'portal.billing_subscribe_checkout') %}
+    {% set _bill_group = request.endpoint in ('portal.billing', 'portal.invoices', 'portal.billing_subscribe', 'portal.billing_subscribe_checkout', 'portal.payment_settings') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _bill_group %}open{% endif %}"
            data-tour="nav-billing" onclick="sbToggle(this)">
@@ -714,6 +723,10 @@
            class="{% if request.endpoint == 'portal.invoices' %}active{% endif %}">
           Invoices
         </a>
+        <a href="{{ url_for('portal.payment_settings') }}"
+           class="{% if request.endpoint == 'portal.payment_settings' %}active{% endif %}">
+          💳 Payment Gateways
+        </a>
       </div>
     </div>
 
@@ -721,6 +734,12 @@
     <a class="sb-link {% if request.endpoint == 'portal.tutorials' %}active{% endif %}"
        href="{{ url_for('portal.tutorials') }}">
       <span class="sb-icon">📚</span> Help & Tutorials
+    </a>
+
+    <!-- Video Tutorials -->
+    <a class="sb-link {% if request.endpoint == 'portal.video_tutorials' %}active{% endif %}"
+       href="{{ url_for('portal.video_tutorials') }}">
+      <span class="sb-icon">🎬</span> Video Tutorials
     </a>
 
     <!-- Account Settings -->
@@ -1153,7 +1172,8 @@
     { icon:'📣', title:'Campaigns',              desc:'Send WhatsApp broadcast messages',              url:'{{ url_for("portal.whatsapp_campaigns") }}',         tags:'broadcast blast promotions bulk send' },
     { icon:'📊', title:'Campaign Reports',       desc:'See how your campaigns performed',              url:'{{ url_for("portal.whatsapp_campaigns_reports") }}', tags:'campaign analytics results' },
     { icon:'👥', title:'Contacts',               desc:'View and manage all your customers',            url:'{{ url_for("portal.whatsapp_contacts") }}',          tags:'customers phone numbers contacts list' },
-    { icon:'🔥', title:'Leads',                  desc:'Customers with strong buying intent',           url:'{{ url_for("portal.leads_page") }}',                 tags:'hot warm cold intent prospects pipeline' },
+    { icon:'🔥', title:'Leads',                  desc:'Customers with strong buying intent',           url:'{{ url_for("portal.leads_page") }}',                 tags:'hot warm cold intent prospects' },
+    { icon:'🧭', title:'Sales Pipeline',         desc:'Track your own customers and deals by stage',  url:'{{ url_for("portal.sales_pipeline") }}',             tags:'crm pipeline deals stages sales customers negotiate' },
     { icon:'🧾', title:'Orders',                 desc:'View all orders and purchase history',          url:'{{ url_for("portal.orders") }}',                     tags:'sales purchases transactions history' },
     { icon:'📱', title:'WhatsApp Connect',       desc:'Connect or manage your WhatsApp number',       url:'{{ url_for("portal.whatsapp_connect") }}',           tags:'connect phone qr code number link setup' },
     { icon:'📊', title:'Handoff Reports',        desc:'Response times, missed handoffs, performance',  url:'{{ url_for("portal.whatsapp_reports") }}',           tags:'handoff response time missed reports analytics' },
@@ -1175,6 +1195,7 @@
     { icon:'💳', title:'Buy Credits',            desc:'Top up your AI credit balance',               url:'{{ url_for("portal.billing") }}',                    tags:'credits buy top up balance tokens recharge' },
     { icon:'🧾', title:'Invoices',               desc:'Download your billing receipts',               url:'{{ url_for("portal.invoices") }}',                   tags:'invoice receipt billing history download pdf payment' },
     { icon:'📚', title:'Help & Tutorials',       desc:'Guides to get the most from PhiXtra',         url:'{{ url_for("portal.tutorials") }}',                  tags:'help guide tutorial support how to faq learn' },
+    { icon:'🎬', title:'Video Tutorials',        desc:'Watch short walkthroughs of key features',    url:'{{ url_for("portal.video_tutorials") }}',            tags:'video tutorial watch walkthrough demo guide' },
     { icon:'⚙️', title:'Account Settings',       desc:'Update profile, password and preferences',    url:'{{ url_for("portal.settings") }}',                   tags:'settings account profile password email notification preferences' },
     {% if _has_woocommerce %}
     { icon:'📂', title:'My Catalogue',           desc:'Browse and select products from catalogue',    url:'{{ url_for("portal.catalogue_browse") }}',           tags:'catalogue browse products select' },

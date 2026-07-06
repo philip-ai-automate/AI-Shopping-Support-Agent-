@@ -113,6 +113,50 @@ def ensure_portal_tables():
         """)
         conn.commit()
 
+        # ── merchant_pipeline_leads — merchant-facing Sales Pipeline CRM ──────
+        # Deliberately a SEPARATE table (and separate history table below) from
+        # ambassador_leads/lead_stage_history: this tracks a merchant's own
+        # customers/deals, not PhiXtra onboarding leads. Keeping them fully
+        # isolated avoids any lead_id collision between the two systems.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS merchant_pipeline_leads (
+                id                  SERIAL PRIMARY KEY,
+                tenant_id           INTEGER NOT NULL REFERENCES tenants(id),
+                customer_name       TEXT NOT NULL,
+                contact_person      TEXT,
+                phone               TEXT,
+                email               TEXT,
+                notes               TEXT,
+                deal_value          NUMERIC,
+                stage               VARCHAR(30) NOT NULL DEFAULT 'new_lead',
+                contact_channel     TEXT,
+                contact_date        DATE,
+                contact_notes       TEXT,
+                qualified_date      DATE,
+                qualified_notes     TEXT,
+                proposal_date       DATE,
+                proposal_notes      TEXT,
+                negotiation_notes   TEXT,
+                won_date            DATE,
+                dropped_at          TIMESTAMPTZ,
+                dropped_reason      TEXT,
+                created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS merchant_pipeline_stage_history (
+                id          SERIAL PRIMARY KEY,
+                lead_id     INTEGER NOT NULL REFERENCES merchant_pipeline_leads(id) ON DELETE CASCADE,
+                from_stage  VARCHAR(30),
+                to_stage    VARCHAR(30) NOT NULL,
+                changed_by  TEXT,
+                notes       TEXT,
+                created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        conn.commit()
+
         # ── catalogue_categories ──────────────────────────────────────────
         cur.execute("""
             CREATE TABLE IF NOT EXISTS catalogue_categories (
@@ -636,6 +680,112 @@ def ensure_portal_tables():
                 VALUES (%s, %s, %s, %s, TRUE)
                 ON CONFLICT (slug) DO NOTHING
             """, (tpl_name, tpl_slug, dept_id, _json.dumps(attrs)))
+
+        conn.commit()
+
+        # ── ambassador_products: per-product membership/approval ──────────
+        # Extends the ambassador program from Portal-only to Portal + School +
+        # Estate. One ambassador identity/login/ref_code (unchanged), but each
+        # product is approved and tiered independently via this table.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS ambassador_products (
+                id                 SERIAL PRIMARY KEY,
+                ambassador_id      INT NOT NULL REFERENCES ambassadors(id) ON DELETE CASCADE,
+                product            VARCHAR(20) NOT NULL,
+                status             VARCHAR(20) NOT NULL DEFAULT 'pending',
+                partnership_start  DATE,
+                approved_at        TIMESTAMPTZ,
+                approved_by        VARCHAR(100),
+                rejected_at        TIMESTAMPTZ,
+                rejected_reason    TEXT,
+                terminated_at      TIMESTAMPTZ,
+                terminated_reason  TEXT,
+                created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (ambassador_id, product)
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_amb_products_ambassador
+                ON ambassador_products(ambassador_id)
+        """)
+
+        # Backfill: every existing ambassador gets an active 'portal' row,
+        # carrying over their current status/partnership_start/approval info.
+        # Decision (2026-07-06): existing ambassadors stay Portal-only until
+        # they separately apply for School/Estate — no auto-enrollment.
+        cur.execute("""
+            INSERT INTO ambassador_products
+                (ambassador_id, product, status, partnership_start, approved_at, approved_by)
+            SELECT id, 'portal', status, partnership_start, approved_at, approved_by
+            FROM ambassadors
+            ON CONFLICT (ambassador_id, product) DO NOTHING
+        """)
+
+        # ── ref_code capture on School + Estate ────────────────────────────
+        # Referral tracking parity with portal `tenants.ref_code` — School and
+        # Estate registration previously had no way to record who referred them.
+        if not _column_exists(cur, "school_profiles", "ref_code"):
+            cur.execute("ALTER TABLE school_profiles ADD COLUMN ref_code VARCHAR(30)")
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_school_profiles_ref_code
+                    ON school_profiles(ref_code) WHERE ref_code IS NOT NULL
+            """)
+        if not _column_exists(cur, "re_tenants", "ref_code"):
+            cur.execute("ALTER TABLE re_tenants ADD COLUMN ref_code VARCHAR(30)")
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_re_tenants_ref_code
+                    ON re_tenants(ref_code) WHERE ref_code IS NOT NULL
+            """)
+
+        # ── ambassador_commissions / ambassador_leads: product-aware ──────
+        # Both tables could only ever link to a merchant `tenants` row. Add
+        # sibling nullable FKs so a School or Estate referral can be recorded
+        # too, disambiguated by the new `product` column.
+        for _tbl in ("ambassador_commissions", "ambassador_leads"):
+            if not _column_exists(cur, _tbl, "product"):
+                cur.execute(
+                    f"ALTER TABLE {_tbl} ADD COLUMN product VARCHAR(20) NOT NULL DEFAULT 'portal'"
+                )
+            if not _column_exists(cur, _tbl, "school_id"):
+                cur.execute(
+                    f"ALTER TABLE {_tbl} ADD COLUMN school_id INT REFERENCES school_profiles(id) ON DELETE SET NULL"
+                )
+            if not _column_exists(cur, _tbl, "estate_tenant_id"):
+                cur.execute(
+                    f"ALTER TABLE {_tbl} ADD COLUMN estate_tenant_id INT REFERENCES re_tenants(id) ON DELETE SET NULL"
+                )
+            cur.execute(
+                f"CREATE INDEX IF NOT EXISTS idx_{_tbl}_school ON {_tbl}(school_id)"
+            )
+            cur.execute(
+                f"CREATE INDEX IF NOT EXISTS idx_{_tbl}_estate ON {_tbl}(estate_tenant_id)"
+            )
+            _check_name = f"{_tbl}_one_product_link"
+            if not _constraint_exists(cur, _check_name):
+                cur.execute(f"""
+                    ALTER TABLE {_tbl} ADD CONSTRAINT {_check_name} CHECK (
+                        (CASE WHEN tenant_id IS NOT NULL THEN 1 ELSE 0 END +
+                         CASE WHEN school_id IS NOT NULL THEN 1 ELSE 0 END +
+                         CASE WHEN estate_tenant_id IS NOT NULL THEN 1 ELSE 0 END) <= 1
+                    )
+                """)
+
+            # Fix-up for DBs where the school_id/estate_tenant_id FKs were already
+            # created without ON DELETE SET NULL (bug found 2026-07-06: deleting a
+            # school/estate tenant with any commission/lead history raised a FK
+            # violation — e.g. blocked Estate's self-serve "delete my account").
+            for _fk_col, _fk_table in (("school_id", "school_profiles"), ("estate_tenant_id", "re_tenants")):
+                cur.execute("""
+                    SELECT confdeltype FROM pg_constraint
+                    WHERE conrelid = %s::regclass AND conname = %s
+                """, (_tbl, f"{_tbl}_{_fk_col}_fkey"))
+                _row = cur.fetchone()
+                if _row and _row[0] != 'n':  # 'n' = ON DELETE SET NULL
+                    cur.execute(f"ALTER TABLE {_tbl} DROP CONSTRAINT {_tbl}_{_fk_col}_fkey")
+                    cur.execute(f"""
+                        ALTER TABLE {_tbl} ADD CONSTRAINT {_tbl}_{_fk_col}_fkey
+                            FOREIGN KEY ({_fk_col}) REFERENCES {_fk_table}(id) ON DELETE SET NULL
+                    """)
 
         conn.commit()
     except Exception as e:

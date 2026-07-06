@@ -1,0 +1,722 @@
+{% extends "portal/base.html" %}
+{% block title %}Sales Pipeline — PhiXtra Portal{% endblock %}
+{% block content %}
+
+<style>
+  .sp-hero { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; margin-bottom:22px }
+  .sp-hero-left { display:flex; align-items:center; gap:14px }
+  .sp-hero-icon {
+    width:48px; height:48px; border-radius:14px; flex-shrink:0;
+    background:linear-gradient(135deg, #2563eb, #7c3aed);
+    display:flex; align-items:center; justify-content:center; font-size:22px;
+    box-shadow:0 6px 16px rgba(37,99,235,.25);
+  }
+  .sp-hero h1 { font-size:22px; font-weight:800; letter-spacing:-.4px; margin:0 }
+  .sp-hero p { margin:3px 0 0; font-size:13.5px; color:var(--muted) }
+  .sp-hero p a { color:var(--ink); font-weight:600 }
+
+  .sp-kpi-row { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:22px }
+  @media(max-width:640px){ .sp-kpi-row { grid-template-columns:1fr } }
+  .sp-kpi {
+    position:relative; overflow:hidden;
+    background:#fff; border:1px solid var(--line); border-radius:18px;
+    padding:20px 22px; display:flex; align-items:center; gap:16px; transition:.15s;
+  }
+  .sp-kpi:hover { box-shadow:0 6px 20px rgba(3,12,24,.06); transform:translateY(-1px) }
+  .sp-kpi-icon {
+    width:44px; height:44px; border-radius:12px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center; font-size:19px;
+  }
+  .sp-kpi.active .sp-kpi-icon { background:rgba(37,99,235,.12) }
+  .sp-kpi.value  .sp-kpi-icon { background:rgba(124,58,237,.12) }
+  .sp-kpi.won    .sp-kpi-icon { background:rgba(21,128,61,.12) }
+  .sp-kpi-val { font-size:26px; font-weight:800; letter-spacing:-.5px; line-height:1 }
+  .sp-kpi-label { font-size:12.5px; color:var(--muted); margin-top:4px; font-weight:500 }
+
+  .stage-funnel{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}
+  .stage-chip{
+    flex:1;min-width:118px;border-radius:14px;padding:12px 14px;text-align:center;
+    border:1.5px solid var(--chip-border, var(--line));
+    background:var(--chip-bg, #fff);
+    transition:.15s;
+  }
+  .stage-chip:hover{ transform:translateY(-1px); box-shadow:0 4px 14px rgba(3,12,24,.06) }
+  .stage-chip .ic{font-size:16px;margin-bottom:4px}
+  .stage-chip .n{font-size:22px;font-weight:900;letter-spacing:-.5px;color:var(--chip-fg, var(--ink))}
+  .stage-chip .lbl{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;
+                    letter-spacing:.04em;margin-top:2px}
+
+  .stage-pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
+  .st-new_lead{background:#f1f5f9;color:#475569}
+  .st-contacted{background:#dbeafe;color:#1d4ed8}
+  .st-qualified{background:#e0e7ff;color:#4338ca}
+  .st-proposal_sent{background:#fef9c3;color:#92400e}
+  .st-negotiating{background:#fed7aa;color:#9a3412}
+  .st-won{background:#dcfce7;color:#15803d}
+  .st-dropped{background:#fee2e2;color:#991b1b}
+
+  .sp-toolbar{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:16px }
+  .sp-search{ position:relative; flex:1; min-width:200px; max-width:300px }
+  .sp-search input{
+    width:100%; padding:9px 14px 9px 36px; border-radius:999px; border:1.5px solid var(--line);
+    font-size:13.5px; font-family:inherit; outline:none; background:#fff; transition:.15s;
+  }
+  .sp-search input:focus{ border-color:rgba(3,12,24,.3); box-shadow:0 0 0 3px rgba(3,12,24,.05) }
+  .sp-search-icon{ position:absolute; left:13px; top:50%; transform:translateY(-50%); font-size:13px; color:var(--muted); pointer-events:none }
+  .stage-filter-bar{ display:flex; gap:8px; flex-wrap:wrap }
+  .stage-filter-btn{
+    padding:6px 14px; border-radius:999px; font-size:12.5px; font-weight:600;
+    border:1px solid var(--line); background:#fff; cursor:pointer; transition:.12s;
+  }
+  .stage-filter-btn:hover{ background:rgba(3,12,24,.05) }
+  .stage-filter-btn.active{ background:var(--ink); color:#fff; border-color:var(--ink) }
+
+  .cust-avatar{
+    width:34px;height:34px;border-radius:50%;flex-shrink:0;
+    display:inline-flex;align-items:center;justify-content:center;
+    font-size:12px;font-weight:700;color:#fff;margin-right:10px;
+  }
+  .cust-cell{ display:flex; align-items:center }
+
+  .lead-form{background:#fff;border:1.5px solid var(--line);border-radius:16px;padding:24px;margin-bottom:20px}
+  .lf-title{font-size:15px;font-weight:800;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+  .frow{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+  .frow.single{grid-template-columns:1fr}
+  .flbl{display:block;font-size:11px;font-weight:700;text-transform:uppercase;
+        letter-spacing:.05em;color:#6b7280;margin-bottom:5px}
+  .finp{width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:10px;
+        font-size:13.5px;color:#030C18;outline:none;font-family:inherit;
+        transition:border-color .15s;background:#fff}
+  .finp:focus{border-color:#030C18;box-shadow:0 0 0 3px rgba(3,12,24,.06)}
+  textarea.finp{resize:vertical;min-height:70px}
+
+  .modal-over{position:fixed;inset:0;background:rgba(3,12,24,.4);z-index:400;
+              display:none;align-items:center;justify-content:center;padding:20px}
+  .modal-over.open{display:flex}
+  .modal-card{background:#fff;border-radius:18px;padding:26px;width:100%;max-width:480px;
+              max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(3,12,24,.18)}
+  .modal-title{font-size:16px;font-weight:800;margin-bottom:4px}
+  .modal-sub{font-size:12.5px;color:var(--muted);margin-bottom:16px;line-height:1.5}
+  .modal-actions{display:flex;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
+  .modal-cancel{flex:0 0 auto;padding:9px 16px;background:#fff;border:1.5px solid var(--line);
+                border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+  .modal-confirm{flex:1;padding:9px;border:none;border-radius:9px;font-size:13px;
+                 font-weight:700;cursor:pointer;font-family:inherit;color:#fff;background:var(--ink)}
+
+  .lead-row td{vertical-align:top}
+  .lead-actions{display:flex;gap:6px;flex-wrap:wrap}
+
+  @media(max-width:600px){ .frow{grid-template-columns:1fr} }
+</style>
+
+<div class="sp-hero">
+  <div class="sp-hero-left">
+    <div class="sp-hero-icon">🧭</div>
+    <div>
+      <h1>Sales Pipeline</h1>
+      <p>Track your own customers and deals — separate from <a href="{{ url_for('portal.leads_page') }}">Leads</a>. Best for high-value items that take time to close.</p>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px">
+    <button class="btn" onclick="spTourStart()">🎓 Take a Tour</button>
+    <button class="btn btn-primary" data-sptour="add-deal-btn" onclick="document.getElementById('addLeadForm').classList.toggle('open')">+ Add Deal</button>
+  </div>
+</div>
+
+{# KPI strip #}
+<div class="sp-kpi-row">
+  <div class="sp-kpi active">
+    <div class="sp-kpi-icon">🧭</div>
+    <div>
+      <div class="sp-kpi-val">{{ leads|length }}</div>
+      <div class="sp-kpi-label">Active deals</div>
+    </div>
+  </div>
+  <div class="sp-kpi value">
+    <div class="sp-kpi-icon">💰</div>
+    <div>
+      <div class="sp-kpi-val">₦{{ '{:,.0f}'.format(total_pipeline_value) }}</div>
+      <div class="sp-kpi-label">Open pipeline value</div>
+    </div>
+  </div>
+  <div class="sp-kpi won">
+    <div class="sp-kpi-icon">🏆</div>
+    <div>
+      <div class="sp-kpi-val" style="color:#15803d">₦{{ '{:,.0f}'.format(won_value) }}</div>
+      <div class="sp-kpi-label">Won ({{ stage_counts.get('won', 0) }} deal{{ 's' if stage_counts.get('won', 0) != 1 else '' }})</div>
+    </div>
+  </div>
+</div>
+
+{% set stage_icons = {'new_lead':'🆕','contacted':'📞','qualified':'✅','proposal_sent':'📄','negotiating':'🤝','won':'🏆'} %}
+{% set stage_colors = {
+  'new_lead':      {'bg':'#f8fafc','border':'#e2e8f0','fg':'#475569'},
+  'contacted':     {'bg':'#eff6ff','border':'#bfdbfe','fg':'#1d4ed8'},
+  'qualified':     {'bg':'#eef2ff','border':'#c7d2fe','fg':'#4338ca'},
+  'proposal_sent': {'bg':'#fffbeb','border':'#fde68a','fg':'#92400e'},
+  'negotiating':   {'bg':'#fff7ed','border':'#fed7aa','fg':'#9a3412'},
+  'won':           {'bg':'#f0fdf4','border':'#bbf7d0','fg':'#15803d'},
+} %}
+
+<!-- Stage funnel summary -->
+<div class="stage-funnel" data-sptour="stage-funnel">
+  {% for s in stage_order %}
+  {% set sc = stage_colors[s] %}
+  <div class="stage-chip" style="--chip-bg:{{ sc.bg }};--chip-border:{{ sc.border }};--chip-fg:{{ sc.fg }}">
+    <div class="ic">{{ stage_icons[s] }}</div>
+    <div class="n">{{ stage_counts.get(s, 0) }}</div>
+    <div class="lbl">{{ stage_labels[s] }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Add deal form (toggled) -->
+<div class="lead-form" id="addLeadForm" style="display:none">
+  <div class="lf-title">➕ Add a New Deal</div>
+  <form method="POST">
+    <div class="frow">
+      <div>
+        <label class="flbl">Customer / Business Name</label>
+        <input type="text" name="customer_name" class="finp" required/>
+      </div>
+      <div>
+        <label class="flbl">Contact Person</label>
+        <input type="text" name="contact_person" class="finp"/>
+      </div>
+    </div>
+    <div class="frow">
+      <div>
+        <label class="flbl">Phone</label>
+        <input type="tel" name="phone" class="finp"/>
+      </div>
+      <div>
+        <label class="flbl">Email</label>
+        <input type="email" name="email" class="finp"/>
+      </div>
+    </div>
+    <div class="frow">
+      <div>
+        <label class="flbl">Estimated Deal Value</label>
+        <input type="number" step="0.01" name="deal_value" class="finp" placeholder="e.g. 450000"/>
+      </div>
+      <div></div>
+    </div>
+    <div class="frow single">
+      <div>
+        <label class="flbl">Notes</label>
+        <textarea name="notes" class="finp" placeholder="What are they looking for?"></textarea>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">Add to Pipeline</button>
+  </form>
+</div>
+
+<style>
+#addLeadForm.open{display:block !important}
+</style>
+
+{% macro cust_color(name) %}{% set _p=['#5C6BC0','#26A69A','#0288D1','#388E3C','#F57C00','#8E24AA','#E53935','#00838F'] %}{{ _p[(name|length)%8] }}{% endmacro %}
+{% macro cust_initials(name) %}{% set _w=name.split() %}{% if _w|length>=2 %}{{ _w[0][0]|upper }}{{ _w[1][0]|upper }}{% else %}{{ name[:2]|upper }}{% endif %}{% endmacro %}
+
+{% if leads %}
+{# Search + stage filter toolbar #}
+<div class="sp-toolbar">
+  <div class="sp-search">
+    <span class="sp-search-icon">🔍</span>
+    <input type="text" id="pipelineSearch" placeholder="Search by customer or contact…" oninput="applyPipelineFilters()"/>
+  </div>
+  <div class="stage-filter-bar">
+    <button class="stage-filter-btn active" data-stage="all" onclick="filterStage(this,'all')">All ({{ leads|length }})</button>
+    {% for s in stage_order %}
+    <button class="stage-filter-btn" data-stage="{{ s }}" onclick="filterStage(this,'{{ s }}')">{{ stage_icons[s] }} {{ stage_labels[s] }} ({{ stage_counts.get(s, 0) }})</button>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Pipeline table -->
+<div class="card" style="padding:0" data-sptour="pipeline-table">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Customer</th>
+          <th>Contact</th>
+          <th>Deal Value</th>
+          <th>Stage</th>
+          <th>Added</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="pipelineTbody">
+        {% if not leads %}
+        <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:40px">
+          No deals yet. Add one above to start your pipeline.
+        </td></tr>
+        {% endif %}
+        {% for l in leads %}
+        <tr class="lead-row" data-stage="{{ l.stage }}"
+            data-name="{{ (l.customer_name ~ ' ' ~ (l.contact_person or ''))|lower }}">
+          <td>
+            <div class="cust-cell">
+              <span class="cust-avatar" style="background:{{ cust_color(l.customer_name) }}">{{ cust_initials(l.customer_name) }}</span>
+              <strong>{{ l.customer_name }}</strong>
+            </div>
+          </td>
+          <td class="muted" style="font-size:12px">
+            {{ l.contact_person or '' }}{% if l.phone %}<br>{{ l.phone }}{% endif %}
+          </td>
+          <td class="muted">{{ '₦{:,.0f}'.format(l.deal_value) if l.deal_value else '—' }}</td>
+          <td><span class="stage-pill st-{{ l.stage }}">{{ stage_labels[l.stage] }}</span></td>
+          <td class="muted">{{ l.created_at.strftime('%d %b %Y') if l.created_at else '—' }}</td>
+          <td class="lead-actions">
+            {% set target = next_stage(l.stage) %}
+            {% if target %}
+            <button class="btn btn-sm btn-primary"
+                    onclick='openAdvanceModal({{ l.id }}, "{{ l.customer_name|e }}", "{{ target }}", {{ (l.deal_value or "null") }})'>
+              → {{ stage_labels[target] }}
+            </button>
+            {% endif %}
+            <button class="btn btn-sm" {% if loop.first %}data-sptour="history-btn"{% endif %} onclick="openHistoryModal({{ l.id }})">History</button>
+            <button class="btn btn-sm btn-danger" {% if loop.first %}data-sptour="drop-btn"{% endif %} onclick="openDropModal({{ l.id }}, '{{ l.customer_name|e }}')">Drop</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if dropped_leads %}
+<div class="card" style="margin-top:20px" data-sptour="dropped-section">
+  <div class="section-title" style="margin-bottom:10px">Dropped ({{ dropped_leads|length }})</div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Customer</th><th>Last Stage</th><th>Reason</th><th>Dropped</th></tr></thead>
+      <tbody>
+        {% for l in dropped_leads %}
+        <tr>
+          <td>{{ l.customer_name }}</td>
+          <td><span class="stage-pill st-{{ l.stage }}">{{ stage_labels[l.stage] }}</span></td>
+          <td class="muted">{{ l.dropped_reason or '—' }}</td>
+          <td class="muted">{{ l.dropped_at.strftime('%d %b %Y') if l.dropped_at else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Advance modal ── -->
+<div class="modal-over" id="advanceModal" onclick="if(event.target===this)closeAdvanceModal()">
+  <div class="modal-card">
+    <div class="modal-title" id="advTitle"></div>
+    <p class="modal-sub" id="advSub"></p>
+    <form method="POST" id="advForm">
+      <div id="advFields"></div>
+      <div class="modal-actions">
+        <button type="button" class="modal-cancel" onclick="closeAdvanceModal()">Cancel</button>
+        <button type="submit" class="modal-confirm">Confirm</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Drop modal ── -->
+<div class="modal-over" id="dropModal" onclick="if(event.target===this)closeDropModal()">
+  <div class="modal-card">
+    <div class="modal-title" id="dropTitle"></div>
+    <p class="modal-sub">This removes the deal from your active pipeline (kept in the Dropped list below).</p>
+    <form method="POST" id="dropForm">
+      <label class="flbl">Reason <span style="font-weight:400;color:#9ca3af">(optional)</span></label>
+      <textarea name="reason" class="finp"></textarea>
+      <div class="modal-actions">
+        <button type="button" class="modal-cancel" onclick="closeDropModal()">Cancel</button>
+        <button type="submit" class="modal-confirm" style="background:var(--bad)">Drop Deal</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── History modal ── -->
+<div class="modal-over" id="historyModal" onclick="if(event.target===this)closeHistoryModal()">
+  <div class="modal-card">
+    <div class="modal-title">Stage History</div>
+    <div id="historyBody" style="margin-top:10px">Loading…</div>
+    <div class="modal-actions">
+      <button type="button" class="modal-cancel" onclick="closeHistoryModal()" style="flex:1">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function closeAdvanceModal(){ document.getElementById('advanceModal').classList.remove('open'); }
+function closeDropModal(){ document.getElementById('dropModal').classList.remove('open'); }
+function closeHistoryModal(){ document.getElementById('historyModal').classList.remove('open'); }
+
+const STAGE_LABELS = {{ stage_labels|tojson }};
+const STAGE_DESC    = {{ stage_descriptions|tojson }};
+
+function openAdvanceModal(id, name, targetStage, currentValue) {
+  document.getElementById('advForm').action = `/sales-pipeline/${id}/advance`;
+  document.getElementById('advTitle').textContent = `Move ${name} to ${STAGE_LABELS[targetStage]}`;
+  document.getElementById('advSub').textContent = STAGE_DESC[targetStage] || '';
+
+  let html = '';
+  if (targetStage === 'contacted') {
+    html = `
+      <label class="flbl">Contact Channel</label>
+      <select name="contact_channel" class="finp" required style="margin-bottom:12px">
+        <option value="">Select…</option>
+        <option value="phone_call">Phone Call</option>
+        <option value="whatsapp">WhatsApp</option>
+        <option value="email">Email</option>
+        <option value="in_person">In Person</option>
+      </select>
+      <label class="flbl">Contact Date</label>
+      <input type="date" name="contact_date" class="finp" required style="margin-bottom:12px"/>
+      <label class="flbl">Notes</label>
+      <textarea name="contact_notes" class="finp" placeholder="What did they say?"></textarea>
+    `;
+  } else if (targetStage === 'qualified') {
+    html = `
+      <label class="flbl">Qualified Date</label>
+      <input type="date" name="qualified_date" class="finp" required style="margin-bottom:12px"/>
+      <label class="flbl">Notes</label>
+      <textarea name="qualified_notes" class="finp" placeholder="Confirmed budget, timeline, and genuine need"></textarea>
+    `;
+  } else if (targetStage === 'proposal_sent') {
+    html = `
+      <label class="flbl">Proposal Date</label>
+      <input type="date" name="proposal_date" class="finp" required style="margin-bottom:12px"/>
+      <label class="flbl">Deal Value <span style="font-weight:400;color:#9ca3af">(optional — updates the quoted amount)</span></label>
+      <input type="number" step="0.01" name="deal_value" class="finp" value="${currentValue !== null ? currentValue : ''}" style="margin-bottom:12px"/>
+      <label class="flbl">Notes</label>
+      <textarea name="proposal_notes" class="finp" placeholder="What was quoted?"></textarea>
+    `;
+  } else if (targetStage === 'negotiating') {
+    html = `
+      <label class="flbl">Notes</label>
+      <textarea name="negotiation_notes" class="finp" placeholder="What's being discussed? Price, terms, delivery?"></textarea>
+    `;
+  } else if (targetStage === 'won') {
+    html = `
+      <label class="flbl">Won Date</label>
+      <input type="date" name="won_date" class="finp" required style="margin-bottom:12px"/>
+      <label class="flbl">Final Deal Value <span style="font-weight:400;color:#9ca3af">(optional — updates the closed amount)</span></label>
+      <input type="number" step="0.01" name="deal_value" class="finp" value="${currentValue !== null ? currentValue : ''}"/>
+    `;
+  }
+  document.getElementById('advFields').innerHTML = html;
+  document.getElementById('advanceModal').classList.add('open');
+}
+
+function openDropModal(id, name) {
+  document.getElementById('dropForm').action = `/sales-pipeline/${id}/drop`;
+  document.getElementById('dropTitle').textContent = `Drop ${name}?`;
+  document.getElementById('dropModal').classList.add('open');
+}
+
+function openHistoryModal(id) {
+  document.getElementById('historyBody').innerHTML = 'Loading…';
+  document.getElementById('historyModal').classList.add('open');
+  fetch(`/sales-pipeline/${id}/history`)
+    .then(r => r.json())
+    .then(rows => {
+      if (!rows.length) {
+        document.getElementById('historyBody').innerHTML = '<p class="muted" style="font-size:13px">No history yet.</p>';
+        return;
+      }
+      document.getElementById('historyBody').innerHTML = rows.map(h => `
+        <div style="padding:8px 0;border-bottom:1px solid var(--line);font-size:12.5px">
+          <strong>${STAGE_LABELS[h.to_stage] || h.to_stage}</strong>
+          <span class="muted"> — ${new Date(h.created_at).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</span>
+          <div class="muted" style="font-size:11.5px">by ${h.changed_by || '—'}${h.notes ? ' — ' + h.notes : ''}</div>
+        </div>
+      `).join('');
+    })
+    .catch(() => {
+      document.getElementById('historyBody').innerHTML = '<p style="color:var(--bad);font-size:13px">Failed to load.</p>';
+    });
+}
+
+function spTourCloseModals() {
+  closeAdvanceModal(); closeDropModal(); closeHistoryModal();
+}
+
+function filterStage(btn, stage) {
+  document.querySelectorAll('.stage-filter-btn').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  applyPipelineFilters();
+}
+
+function applyPipelineFilters() {
+  var activeBtn = document.querySelector('.stage-filter-btn.active');
+  var stage = activeBtn ? activeBtn.getAttribute('data-stage') : 'all';
+  var searchEl = document.getElementById('pipelineSearch');
+  var query = searchEl ? (searchEl.value || '').toLowerCase().trim() : '';
+  document.querySelectorAll('#pipelineTbody .lead-row').forEach(function(row){
+    var matchesStage = (stage === 'all' || row.getAttribute('data-stage') === stage);
+    var matchesQuery = (!query || row.getAttribute('data-name').indexOf(query) !== -1);
+    row.style.display = (matchesStage && matchesQuery) ? '' : 'none';
+  });
+}
+</script>
+
+<!-- ══════════════ GUIDED TOUR (self-contained to this page — distinct ids/fns from the site-wide dashboard tour in base.html) ══════════════ -->
+<div id="spTourBackdrop"  style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(3,12,24,0);"></div>
+<div id="spTourHighlight" style="display:none;position:fixed;z-index:9001;pointer-events:none;border-radius:14px;
+     box-shadow:0 0 0 4px #2563eb,0 0 0 8px rgba(37,99,235,0.25);
+     transition:top .25s,left .25s,width .25s,height .25s;"></div>
+<div id="spTourTooltip"  style="display:none;position:fixed;z-index:9002;background:#fff;border-radius:20px;
+     padding:24px 26px;width:340px;max-height:70vh;overflow-y:auto;box-shadow:0 24px 64px rgba(3,12,24,0.22);
+     border:1px solid rgba(3,12,24,0.09);">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+    <span id="spTourStepLabel" style="font-size:11px;font-weight:700;color:rgba(3,12,24,0.40);
+          text-transform:uppercase;letter-spacing:.08em;"></span>
+    <div style="display:flex;gap:3px;" id="spTourDots"></div>
+  </div>
+  <div id="spTourTitle" style="font-size:17px;font-weight:800;color:#030C18;margin-bottom:8px;letter-spacing:-.3px;line-height:1.2;"></div>
+  <div id="spTourBody"  style="font-size:13px;color:rgba(3,12,24,0.68);line-height:1.65;margin-bottom:20px;"></div>
+  <div style="display:flex;align-items:center;justify-content:space-between;">
+    <button onclick="spTourEnd()"
+            style="font-size:12px;color:rgba(3,12,24,0.40);background:none;border:none;cursor:pointer;padding:0;font-family:inherit;">
+      Skip tour
+    </button>
+    <div style="display:flex;gap:8px;">
+      <button id="spTourPrevBtn" onclick="spTourPrev()"
+              style="padding:9px 16px;border-radius:11px;border:1px solid rgba(3,12,24,0.14);
+                     background:#fff;color:rgba(3,12,24,0.65);font-size:13px;font-weight:600;
+                     cursor:pointer;font-family:inherit;transition:.15s;">← Back</button>
+      <button id="spTourNextBtn" onclick="spTourNext()"
+              style="padding:9px 18px;border-radius:11px;border:none;
+                     background:#030C18;color:#fff;font-size:13px;font-weight:700;
+                     cursor:pointer;font-family:inherit;transition:.15s;">Next →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var STEPS = [
+    { sel: null, pos: 'center',
+      title: '👋 Welcome to your Sales Pipeline',
+      body: 'Track your own customers and deals through your sales process — great for high-value items that take time to close (real estate, vehicles, appliances, B2B). This tour will open each real stage form so you know exactly what to fill in. Skip anytime with Esc or "Skip tour".' },
+
+    { sel: '[data-sptour="stage-funnel"]', pos: 'bottom',
+      title: '📊 The 6 Pipeline Stages',
+      body: 'Every deal moves left to right: <b>New Lead → Contacted → Qualified → Proposal Sent → Negotiating → Won</b>. A deal can be dropped as Lost from any stage, with a reason.<br><br>' +
+            '<i>Example: a customer asks about a sofa set in your showroom → add them as a New Lead → call them → once they confirm budget and need, move them to Qualified.</i><br><br>' +
+            'Next, let\'s open the real form for each stage.' },
+
+    { sel: '[data-sptour="add-deal-btn"]', pos: 'bottom',
+      title: '+ Add a New Deal',
+      body: 'Click here the moment a prospective customer shows interest — before you\'ve even contacted them.<br><br>' +
+            '<i>Example: a customer calls asking about a dining set. Add "Adaeze Interiors Ltd", contact person, phone, an estimated deal value, and a note like "Wants a custom sofa set, budget confirmed".</i>' },
+
+    { sel: '[data-sptour="pipeline-table"]', pos: 'top',
+      title: '📋 Your Deals Table',
+      body: 'Every deal you\'ve added lives here with its current stage. Below, we\'ll open the real "advance" form for each stage in turn.' },
+
+    { sel: '#advanceModal .modal-card', pos: 'right',
+      before: function(){ openAdvanceModal(0, 'Example Customer', 'contacted', null); },
+      title: '① → Contacted',
+      body: 'Logged the first time you reach out.<br><br>' +
+            '<b>Contact Channel</b> — e.g. Phone Call<br>' +
+            '<b>Contact Date</b> — e.g. today\'s date<br>' +
+            '<b>Notes</b> — e.g. "Called, very interested, wants a quote by Friday."' },
+
+    { sel: '#advanceModal .modal-card', pos: 'right',
+      before: function(){ openAdvanceModal(0, 'Example Customer', 'qualified', null); },
+      title: '② → Qualified',
+      body: 'Logged once you\'ve confirmed this is a genuine, fundable opportunity.<br><br>' +
+            '<b>Qualified Date</b> — e.g. today\'s date<br>' +
+            '<b>Notes</b> — e.g. "Budget confirmed at ₦450,000, wants delivery within 3 weeks."' },
+
+    { sel: '#advanceModal .modal-card', pos: 'right',
+      before: function(){ openAdvanceModal(0, 'Example Customer', 'proposal_sent', 450000); },
+      title: '③ → Proposal Sent',
+      body: 'Logged once you\'ve sent a quote or formal proposal.<br><br>' +
+            '<b>Proposal Date</b> — e.g. today\'s date<br>' +
+            '<b>Deal Value</b> — optionally update the quoted amount<br>' +
+            '<b>Notes</b> — e.g. "Quoted ₦450,000 for the full sofa set including delivery."' },
+
+    { sel: '#advanceModal .modal-card', pos: 'right',
+      before: function(){ openAdvanceModal(0, 'Example Customer', 'negotiating', 450000); },
+      title: '④ → Negotiating',
+      body: 'Logged while you\'re discussing price, terms, or final details.<br><br>' +
+            '<b>Notes</b> — e.g. "Asked for a 10% discount on bulk order, offered free delivery instead."' },
+
+    { sel: '#advanceModal .modal-card', pos: 'right',
+      before: function(){ openAdvanceModal(0, 'Example Customer', 'won', 450000); },
+      title: '⑤ → Won',
+      body: 'The final stage — the deal is closed and the customer has purchased.<br><br>' +
+            '<b>Won Date</b> — e.g. today\'s date<br>' +
+            '<b>Final Deal Value</b> — optionally update to the actual closed amount.' },
+
+    { sel: '[data-sptour="history-btn"]', pos: 'left',
+      title: '🕘 History',
+      body: 'Opens a full timeline of every stage change for that deal — who changed it, when, and any notes. Handy if you forget exactly where you left off with a customer.' },
+
+    { sel: '[data-sptour="drop-btn"]', pos: 'left',
+      title: '🗑️ Drop a Deal',
+      body: 'If a customer decides not to proceed, click Drop and optionally note why.<br><br>' +
+            '<i>Example: "Chose a cheaper competitor" or "Postponed, revisit in 6 months".</i><br><br>' +
+            'It moves to the Dropped list below — you keep the record without cluttering your active pipeline.' },
+
+    { sel: '[data-sptour="dropped-section"]', pos: 'top',
+      title: '📂 Dropped Deals',
+      body: 'A running record of every deal you\'ve dropped, with the stage it reached and your reason. Nothing is ever deleted.' },
+
+    { sel: null, pos: 'center', last: true,
+      title: '🎉 You\'re ready!',
+      body: 'That\'s your Sales Pipeline covered. Click "🎓 Take a Tour" in the page header any time you want to run through this again.' },
+  ];
+
+  var cur = 0, steps = [];
+  var backdrop, highlight, tooltip;
+
+  function validSteps() {
+    return STEPS.filter(function(s) {
+      if (!s.sel) return true;
+      return !!document.querySelector(s.sel);
+    });
+  }
+
+  function render() {
+    var step = steps[cur];
+    var total = steps.length;
+
+    document.getElementById('spTourStepLabel').textContent = 'Step ' + (cur + 1) + ' of ' + total;
+
+    var dotsEl = document.getElementById('spTourDots');
+    dotsEl.innerHTML = '';
+    steps.forEach(function(_, i) {
+      var d = document.createElement('div');
+      d.style.cssText = 'width:6px;height:6px;border-radius:50%;background:' +
+        (i === cur ? '#030C18' : 'rgba(3,12,24,0.18)') + ';transition:.2s;';
+      dotsEl.appendChild(d);
+    });
+
+    document.getElementById('spTourTitle').textContent = step.title;
+    document.getElementById('spTourBody').innerHTML  = step.body;
+
+    var prevBtn = document.getElementById('spTourPrevBtn');
+    prevBtn.style.display = cur === 0 ? 'none' : '';
+
+    var nextBtn = document.getElementById('spTourNextBtn');
+    nextBtn.textContent = step.last ? 'Done ✓' : 'Next →';
+
+    spTourCloseModals();
+    if (step.before) step.before();
+
+    var el = step.sel ? document.querySelector(step.sel) : null;
+
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      setTimeout(function() {
+        var r = el.getBoundingClientRect();
+        var pad = 6;
+        highlight.style.top    = (r.top  - pad) + 'px';
+        highlight.style.left   = (r.left - pad) + 'px';
+        highlight.style.width  = (r.width  + pad * 2) + 'px';
+        highlight.style.height = (r.height + pad * 2) + 'px';
+        highlight.style.display = 'block';
+        posTooltip(r, step.pos);
+      }, 120);
+    } else {
+      highlight.style.display = 'none';
+      posTooltip(null, step.pos);
+    }
+  }
+
+  function posTooltip(r, pos) {
+    var tt = tooltip;
+    var ttW = 340, margin = 14;
+    var vpW = window.innerWidth, vpH = window.innerHeight;
+
+    tt.style.transform = '';
+
+    if (pos === 'center' || !r) {
+      tt.style.top       = '50%';
+      tt.style.left      = '50%';
+      tt.style.transform = 'translate(-50%, -50%)';
+      tt.style.display   = 'block';
+      return;
+    }
+
+    var top = 0, left = 0;
+
+    if (pos === 'right') {
+      left = r.right + margin;
+      top  = r.top + r.height / 2 - 100;
+    } else if (pos === 'bottom') {
+      left = r.left;
+      top  = r.bottom + margin;
+    } else if (pos === 'top') {
+      left = r.left;
+      top  = r.top - margin - 260;
+    } else if (pos === 'left') {
+      left = r.left - ttW - margin;
+      top  = r.top + r.height / 2 - 100;
+    }
+
+    if (left + ttW + margin > vpW) left = vpW - ttW - margin;
+    if (left < margin) left = margin;
+    if (top < margin) top = margin;
+    if (top + 300 > vpH) top = vpH - 300 - margin;
+
+    tt.style.left    = left + 'px';
+    tt.style.top     = top  + 'px';
+    tt.style.display = 'block';
+  }
+
+  function onKey(e) {
+    if (e.key === 'Escape')     { spTourEnd(); }
+    if (e.key === 'ArrowRight') { spTourNext(); }
+    if (e.key === 'ArrowLeft')  { spTourPrev(); }
+  }
+
+  window.spTourStart = function() {
+    backdrop  = document.getElementById('spTourBackdrop');
+    highlight = document.getElementById('spTourHighlight');
+    tooltip   = document.getElementById('spTourTooltip');
+    steps = validSteps();
+    cur   = 0;
+    backdrop.style.display  = 'block';
+    highlight.style.display = 'none';
+    tooltip.style.display   = 'block';
+    render();
+    document.addEventListener('keydown', onKey);
+  };
+
+  window.spTourNext = function() {
+    if (cur >= steps.length - 1) { spTourEnd(); return; }
+    cur++;
+    render();
+  };
+
+  window.spTourPrev = function() {
+    if (cur <= 0) return;
+    cur--;
+    render();
+  };
+
+  window.spTourEnd = function() {
+    backdrop.style.display  = 'none';
+    highlight.style.display = 'none';
+    tooltip.style.display   = 'none';
+    document.removeEventListener('keydown', onKey);
+    spTourCloseModals();
+    try { localStorage.setItem('phixtra_portal_tour_sales_pipeline', '1'); } catch(e){}
+  };
+
+  document.addEventListener('DOMContentLoaded', function() {
+    var done = false;
+    try { done = !!localStorage.getItem('phixtra_portal_tour_sales_pipeline'); } catch(e){}
+    if (!done) { setTimeout(window.spTourStart, 800); }
+  });
+})();
+</script>
+{% endblock %}

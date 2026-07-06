@@ -126,6 +126,12 @@
 
       <div class="form-group">
         <label style="font-size:12.5px;font-weight:600;color:var(--ink)">Send to</label>
+        {% if staff_class %}
+        <div style="padding:9px 14px;background:#EEF4FF;border-radius:8px;font-size:14px;font-weight:600;color:var(--brand)">
+          {{ staff_class }} parents only ({{ class_counts.get(staff_class, 0) }})
+        </div>
+        <input type="hidden" name="target_class" id="bc-class" value="{{ staff_class }}"/>
+        {% else %}
         <select name="target_class" id="bc-class" onchange="updateReach()">
           <option value="">All Parents ({{ total_parents }})</option>
           {% for c in classes %}
@@ -134,6 +140,7 @@
           </option>
           {% endfor %}
         </select>
+        {% endif %}
       </div>
 
       <div class="form-group">

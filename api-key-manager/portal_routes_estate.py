@@ -4,7 +4,8 @@ Completely separate from the ecommerce portal (portal.phixtra.com).
 All DB operations use re_* tables. Session keys: re_logged_in, re_tenant_id.
 """
 import hashlib
-import os, shutil, secrets, string, json as _json, base64, uuid
+import os, shutil, secrets, string, json as _json, base64, uuid, time
+import urllib.request
 from datetime import datetime, timedelta, date
 
 import bcrypt
@@ -19,6 +20,38 @@ from db import get_db_connection
 from portal_utils import hash_password, verify_password, make_token, send_email
 
 estate_bp = Blueprint("estate", __name__, template_folder="templates")
+
+# ── Exchange rate cache (NGN per 1 USD, refreshed every 24 h) ─────────────────
+_fx_cache = {"rate": 1600.0, "ts": 0.0}
+_FX_TTL   = 86400  # seconds
+
+def _get_usd_rate() -> float:
+    """Return current NGN/USD rate, cached 24 h. Falls back to last known rate."""
+    now = time.time()
+    if _fx_cache["rate"] and now - _fx_cache["ts"] < _FX_TTL:
+        return _fx_cache["rate"]
+    for url in [
+        "https://open.er-api.com/v6/latest/USD",
+        "https://api.exchangerate-api.com/v4/latest/USD",
+    ]:
+        try:
+            with urllib.request.urlopen(url, timeout=5) as resp:
+                data = _json.loads(resp.read())
+                rate = float(data.get("rates", {}).get("NGN") or
+                             data.get("conversion_rates", {}).get("NGN") or 0)
+                if rate > 0:
+                    _fx_cache["rate"] = rate
+                    _fx_cache["ts"]   = now
+                    return rate
+        except Exception:
+            continue
+    return _fx_cache["rate"]  # stale fallback
+
+
+def ngn_to_usd(ngn: float) -> float:
+    """Convert NGN amount to USD using live rate."""
+    rate = _get_usd_rate()
+    return round(ngn / rate, 2) if rate else 0.0
 
 _ESTATE_BASE_URL   = os.getenv("ESTATE_BASE_URL",  "https://home.phixtra.com").rstrip("/")
 _AI_BACKEND_URL    = os.getenv("AI_BACKEND_URL",   "http://127.0.0.1:8000").rstrip("/")
@@ -90,17 +123,24 @@ def _require_admin():
         return redirect(url_for("estate.dashboard"))
     return None
 
-def _re_require_plan(tenant: dict, feat_flag: str, min_plan: str):
-    """Return upgrade redirect if tenant plan lacks the feature, else None."""
-    plan = tenant.get("plan_slug", "free")
+def _re_require_plan(tenant: dict, feature_name: str, min_plan: str,
+                     benefits: list = None):
+    """Return upgrade page if tenant plan is below min_plan, else None."""
+    plan  = tenant.get("plan_slug", "free")
     ORDER = ["free", "starter", "growth", "pro"]
     if ORDER.index(plan) < ORDER.index(min_plan.lower()):
         return render_template("estate/upgrade_required.html",
                                tenant=tenant,
-                               feature_name=feat_flag.replace("_", " ").title(),
-                               required_plan=min_plan,
-                               feature_benefits=None)
+                               feature_name=feature_name,
+                               required_plan=min_plan.title(),
+                               feature_benefits=benefits)
     return None
+
+
+def _re_feat(tenant: dict, flag: str) -> bool:
+    """Check a JSONB feature flag on the tenant's plan."""
+    feats = tenant.get("plan_features") or {}
+    return bool(feats.get(flag, False))
 
 
 # ── DB helpers ─────────────────────────────────────────────────────────────────
@@ -114,14 +154,22 @@ def _get_tenant(tenant_id: int):
         SELECT t.*, t.wa_waba_id AS wa_business_account_id,
                p.slug AS plan_slug, p.name AS plan_name,
                p.listings_limit, p.ai_messages_limit, p.ai_agents_limit,
+               p.broadcasts_limit,
                p.feat_advanced_ai, p.feat_broadcasts, p.feat_follow_up,
-               p.feat_full_reports
+               p.feat_full_reports, p.feat_multi_agents,
+               p.features AS plan_features
         FROM re_tenants t
         LEFT JOIN re_plans p ON p.id = t.plan_id
         WHERE t.id = %s
     """, (tenant_id,))
     row = cur.fetchone()
     cur.close(); conn.close()
+    if row:
+        if isinstance(row.get("plan_features"), str):
+            try:    row["plan_features"] = _json.loads(row["plan_features"])
+            except: row["plan_features"] = {}
+        elif not isinstance(row.get("plan_features"), dict):
+            row["plan_features"] = {}
     return row
 
 def _get_staff_list(tenant_id: int):
@@ -272,6 +320,9 @@ def register():
     if _re_logged_in():
         return redirect(url_for("estate.dashboard"))
     error = None
+    if request.method == "GET":
+        ref = (request.args.get("ref") or "").strip().lower()[:30]
+        return render_template("estate/register.html", error=error, ref_code=ref)
     if request.method == "POST":
         first_name    = request.form.get("first_name", "").strip()
         last_name     = request.form.get("last_name", "").strip()
@@ -280,6 +331,7 @@ def register():
         phone         = request.form.get("phone", "").strip()
         password      = request.form.get("password", "").strip()
         confirm       = request.form.get("confirm_password", "").strip()
+        ref_code      = (request.form.get("ref_code") or "").strip().lower()[:30]
 
         if not all([first_name, business_name, email, password]):
             error = "First name, business name, email and password are required."
@@ -308,11 +360,11 @@ def register():
                         INSERT INTO re_tenants
                             (email, password_hash, business_name, first_name, last_name,
                              phone, system_prompt, plan_id, verify_token,
-                             email_verified, status)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,FALSE,'active')
+                             email_verified, status, ref_code)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,FALSE,'active',%s)
                         RETURNING id
                     """, (email, password_hash, business_name, first_name, last_name,
-                          phone, system_prompt, plan_id, verify_token))
+                          phone, system_prompt, plan_id, verify_token, ref_code or None))
                     tenant_id = cur.fetchone()["id"]
 
                     # Seed default AI agent
@@ -355,7 +407,7 @@ def register():
                     except Exception: pass
                     error = f"Registration error: {e}"
 
-    return render_template("estate/register.html", error=error)
+    return render_template("estate/register.html", error=error, ref_code=ref_code)
 
 
 def _seed_follow_up_templates(cur, tenant_id: int, business_name: str):
@@ -1700,7 +1752,10 @@ def system_instruction():
     tenant_id = _re_tenant_id()
     tenant    = _get_tenant(tenant_id)
 
-    gate = _re_require_plan(tenant, "feat_advanced_ai", "Growth")
+    gate = _re_require_plan(tenant, "Custom AI Prompt", "growth",
+        ["Customise your AI agent's personality, tone, and focus areas",
+         "Define what the AI should and should not discuss",
+         "Give your agency a unique voice on WhatsApp"])
     if gate: return gate
 
     conn = get_db_connection()
@@ -1787,6 +1842,11 @@ def reports():
     if redir: return redir
     tenant_id = _re_tenant_id()
     tenant    = _get_tenant(tenant_id)
+    gate = _re_require_plan(tenant, "Reports & Analytics", "growth",
+        ["Full sales pipeline report with conversion funnel",
+         "Staff performance leaderboard and lead response times",
+         "Inspection stats, buyer trends, and portfolio value breakdown"])
+    if gate: return gate
 
     period = request.args.get("period", "30d")
     if period not in ("30d", "90d", "6m", "ytd", "1y", "all"):
@@ -2504,6 +2564,11 @@ def team():
     if redir: return redir
     tenant_id = _re_tenant_id()
     tenant    = _get_tenant(tenant_id)
+    gate = _re_require_plan(tenant, "Staff Access Control", "growth",
+        ["Create individual logins for every agent on your team",
+         "Assign admin or staff roles with different permissions",
+         "Assign leads to specific agents and track accountability"])
+    if gate: return gate
 
     if request.method == "POST":
         section = request.form.get("section", "")
@@ -2634,6 +2699,13 @@ def billing_plans():
     tenant_id = _re_tenant_id()
     tenant    = _get_tenant(tenant_id)
 
+    if request.args.get("sub_success"):
+        flash("🎉 Subscription activated! Your plan is now live.", "success")
+        return redirect(url_for("estate.billing_plans"))
+    if request.args.get("sub_canceled"):
+        flash("Payment was cancelled. No charge was made.", "info")
+        return redirect(url_for("estate.billing_plans"))
+
     if request.method == "POST":
         plan_slug = request.form.get("plan_slug", "").strip()
         conn = get_db_connection()
@@ -2695,7 +2767,460 @@ def billing_plans():
     return render_template("estate/billing_plans.html",
                            tenant=tenant, plans=plans,
                            used=used, msg_limit=msg_limit, quota_pct=quota_pct,
-                           trial_days_left=trial_days_left)
+                           trial_days_left=trial_days_left,
+                           usd_rate=_get_usd_rate())
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PLAN PAYMENTS — Flutterwave (NGN) + Stripe (USD)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _re_fw_ok() -> bool:
+    return bool(os.getenv("FW_SECRET_KEY"))
+
+def _re_fw_headers() -> dict:
+    return {"Authorization": f"Bearer {os.getenv('FW_SECRET_KEY')}",
+            "Content-Type": "application/json"}
+
+def _re_stripe_ok() -> bool:
+    try:
+        import stripe as _stripe
+        return bool(os.getenv("STRIPE_SECRET_KEY")) and _stripe is not None
+    except ImportError:
+        return False
+
+def _re_fw_get_or_create_plan(plan_id: int, slug: str, name: str,
+                               cycle: str, amount_ngn: int) -> str | None:
+    import requests as _req
+    col = "fw_plan_id_monthly" if cycle == "monthly" else "fw_plan_id_annual"
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(f"SELECT {col} FROM re_plans WHERE id=%s", (plan_id,))
+    row = cur.fetchone(); cur.close(); conn.close()
+    existing = (row or {}).get(col)
+    if existing:
+        return existing
+    label      = f"PhiXtra Home {name} {'Monthly' if cycle=='monthly' else 'Annual'}"
+    fw_interval = "monthly" if cycle == "monthly" else "yearly"
+    try:
+        resp = _req.post("https://api.flutterwave.com/v3/payment-plans",
+                         headers=_re_fw_headers(),
+                         json={"amount": amount_ngn, "name": label,
+                               "interval": fw_interval, "currency": "NGN"},
+                         timeout=15)
+        data = resp.json()
+        if data.get("status") == "success":
+            fw_id = str(data["data"]["id"])
+            conn2 = get_db_connection(); cur2 = conn2.cursor()
+            cur2.execute(f"UPDATE re_plans SET {col}=%s WHERE id=%s", (fw_id, plan_id))
+            conn2.commit(); cur2.close(); conn2.close()
+            return fw_id
+    except Exception as e:
+        print("⚠️ _re_fw_get_or_create_plan error:", e)
+    return None
+
+def _re_stripe_get_or_create_price(plan_id: int, slug: str, name: str,
+                                    cycle: str, amount_usd: float) -> str | None:
+    if not _re_stripe_ok():
+        return None
+    import stripe as _stripe
+    col = "stripe_price_id_monthly" if cycle == "monthly" else "stripe_price_id_annual"
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(f"SELECT {col} FROM re_plans WHERE id=%s", (plan_id,))
+    row = cur.fetchone(); cur.close(); conn.close()
+    existing = (row or {}).get(col)
+    if existing:
+        return existing
+    try:
+        _stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+        products = _stripe.Product.search(
+            query=f'metadata["re_plan_slug"]:"{slug}"', limit=1)
+        if products.data:
+            product_id = products.data[0].id
+        else:
+            prod = _stripe.Product.create(name=f"PhiXtra Home {name}",
+                                          metadata={"re_plan_slug": slug})
+            product_id = prod.id
+        if cycle == "monthly":
+            unit_amount = round(amount_usd * 100)
+            interval, interval_count = "month", 1
+        else:
+            unit_amount = round(amount_usd * 12 * 0.95 * 100)
+            interval, interval_count = "year", 1
+        price = _stripe.Price.create(
+            product=product_id,
+            unit_amount=unit_amount,
+            currency="usd",
+            recurring={"interval": interval, "interval_count": interval_count},
+            metadata={"re_plan_slug": slug, "re_cycle": cycle},
+        )
+        price_id = price.id
+        conn2 = get_db_connection(); cur2 = conn2.cursor()
+        cur2.execute(f"UPDATE re_plans SET {col}=%s WHERE id=%s", (price_id, plan_id))
+        conn2.commit(); cur2.close(); conn2.close()
+        return price_id
+    except Exception as e:
+        print("⚠️ _re_stripe_get_or_create_price error:", e)
+    return None
+
+def _re_activate_subscription(tenant_id: int, plan_id: int, cycle: str,
+                               currency: str, provider: str,
+                               subscription_id: str | None,
+                               provider_customer_id: str | None,
+                               tx_ref: str | None, amount) -> None:
+    from datetime import date as _d, timedelta as _td
+    conn = get_db_connection(); cur = conn.cursor()
+    period_end = _d.today() + _td(days=365 if cycle == "annual" else 31)
+    cur.execute("""
+        UPDATE re_tenants
+           SET plan_id=%s, plan_period_start=CURRENT_DATE, updated_at=NOW()
+         WHERE id=%s
+    """, (plan_id, tenant_id))
+    cur.execute("""
+        UPDATE re_plan_subscriptions SET status='cancelled', updated_at=NOW()
+         WHERE tenant_id=%s AND status='active'
+    """, (tenant_id,))
+    cur.execute("""
+        INSERT INTO re_plan_subscriptions
+               (tenant_id, plan_id, provider, subscription_id, status,
+                billing_cycle, currency, tx_ref, amount,
+                provider_customer_id, plan_period_end, next_billing_date,
+                created_at, updated_at)
+        VALUES (%s,%s,%s,%s,'active',%s,%s,%s,%s,%s,%s,%s,NOW(),NOW())
+    """, (tenant_id, plan_id, provider, subscription_id, cycle,
+          currency, tx_ref, float(amount) if amount else None,
+          provider_customer_id, period_end, period_end))
+    conn.commit(); cur.close(); conn.close()
+
+    # Record ambassador commission if this estate tenant was referred by an ambassador
+    try:
+        from ambassador_routes import record_estate_ambassador_commission
+        record_estate_ambassador_commission(
+            tenant_id=tenant_id, amount=amount, currency=currency,
+        )
+    except Exception as _ce:
+        print("⚠️ ambassador commission hook error (estate):", _ce)
+
+
+@estate_bp.route("/estate/billing/upgrade", methods=["POST"])
+def billing_upgrade():
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    tenant    = _get_tenant(tenant_id)
+
+    plan_slug = (request.form.get("plan_slug") or "").strip()
+    cycle     = request.form.get("cycle", "monthly")
+    currency  = request.form.get("currency", "NGN").upper()
+
+    if cycle not in ("monthly", "annual"):
+        cycle = "monthly"
+    if currency not in ("NGN", "USD"):
+        currency = "NGN"
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM re_plans WHERE slug=%s AND is_active=TRUE", (plan_slug,))
+    plan = cur.fetchone()
+    cur.close(); conn.close()
+
+    if not plan or plan["price_ngn"] == 0:
+        flash("Invalid plan selected.", "danger")
+        return redirect(url_for("estate.billing_plans"))
+
+    # ── Flutterwave (NGN) ──────────────────────────────────────────────────────
+    if currency == "NGN":
+        if not _re_fw_ok():
+            flash("NGN payments not configured yet. Contact support.", "warning")
+            return redirect(url_for("estate.billing_plans"))
+        import requests as _req, time as _t
+        if cycle == "annual":
+            disc = (plan.get("annual_discount_pct") or 5) / 100
+            amount_ngn = round(int(plan["price_ngn"]) * 12 * (1 - disc))
+        else:
+            amount_ngn = int(plan["price_ngn"])
+
+        fw_plan_id = _re_fw_get_or_create_plan(
+            plan["id"], plan_slug, plan["name"], cycle, amount_ngn)
+        if not fw_plan_id:
+            flash("Could not initialise payment plan. Please try again.", "danger")
+            return redirect(url_for("estate.billing_plans"))
+
+        tx_ref = f"REPHIX-{tenant_id}-{plan_slug}-{cycle}-{int(_t.time())}"
+        email  = tenant.get("email", "")
+        biz    = tenant.get("business_name", "")
+        try:
+            resp = _req.post(
+                "https://api.flutterwave.com/v3/payments",
+                headers=_re_fw_headers(),
+                json={
+                    "tx_ref":       tx_ref,
+                    "amount":       amount_ngn,
+                    "currency":     "NGN",
+                    "payment_plan": fw_plan_id,
+                    "redirect_url": f"{_ESTATE_BASE_URL}/estate/billing/fw-callback",
+                    "customer":     {"email": email, "name": biz},
+                    "customizations": {
+                        "title":       "PhiXtra Home Subscription",
+                        "description": f"{plan['name']} Plan — {cycle.title()}",
+                        "logo":        "https://home.phixtra.com/static/portal/phixtra-logo.png",
+                    },
+                    "meta": {
+                        "tenant_id": str(tenant_id),
+                        "plan_id":   str(plan["id"]),
+                        "plan_slug": plan_slug,
+                        "cycle":     cycle,
+                        "amount_ngn": str(amount_ngn),
+                    },
+                },
+                timeout=15,
+            )
+            data = resp.json()
+            if data.get("status") == "success":
+                return redirect(data["data"]["link"])
+            print("FW init error:", data)
+            flash("Payment initialisation failed. Please try again.", "danger")
+        except Exception as e:
+            print("⚠️ estate billing FW error:", e)
+            flash("Could not reach payment provider. Please try again.", "danger")
+        return redirect(url_for("estate.billing_plans"))
+
+    # ── Stripe (USD) ───────────────────────────────────────────────────────────
+    if not _re_stripe_ok():
+        flash("USD payments not configured yet. Contact support.", "warning")
+        return redirect(url_for("estate.billing_plans"))
+
+    import stripe as _stripe
+    amount_usd = float(plan["price_usd"])
+    price_id   = _re_stripe_get_or_create_price(
+        plan["id"], plan_slug, plan["name"], cycle, amount_usd)
+    if not price_id:
+        flash("Could not initialise Stripe price. Please try again.", "danger")
+        return redirect(url_for("estate.billing_plans"))
+
+    try:
+        _stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+        sess = _stripe.checkout.Session.create(
+            mode="subscription",
+            customer_email=tenant.get("email"),
+            line_items=[{"price": price_id, "quantity": 1}],
+            success_url=f"{_ESTATE_BASE_URL}/estate/billing/plans?sub_success=1",
+            cancel_url =f"{_ESTATE_BASE_URL}/estate/billing/plans?sub_canceled=1",
+            metadata={
+                "tenant_id":    str(tenant_id),
+                "plan_id":      str(plan["id"]),
+                "re_plan_slug": plan_slug,   # distinguishes estate from portal in shared webhook
+                "cycle":        cycle,
+                "currency":     "USD",
+                "amount_usd":   str(amount_usd),
+            },
+            subscription_data={"metadata": {
+                "tenant_id":    str(tenant_id),
+                "plan_id":      str(plan["id"]),
+                "re_plan_slug": plan_slug,
+                "cycle":        cycle,
+            }},
+        )
+        return redirect(sess.url)
+    except Exception as e:
+        print("⚠️ estate billing Stripe error:", e)
+        flash("Could not reach Stripe. Please try again.", "danger")
+    return redirect(url_for("estate.billing_plans"))
+
+
+@estate_bp.route("/estate/billing/fw-callback")
+def billing_fw_callback():
+    import requests as _req
+    status         = request.args.get("status", "")
+    tx_ref         = request.args.get("tx_ref", "")
+    transaction_id = request.args.get("transaction_id", "")
+
+    if status != "successful" or not transaction_id:
+        flash("Payment was not completed. Please try again.", "warning")
+        return redirect(url_for("estate.billing_plans"))
+
+    if not _re_fw_ok():
+        flash("Payment gateway not configured.", "danger")
+        return redirect(url_for("estate.billing_plans"))
+
+    try:
+        resp = _req.get(
+            f"https://api.flutterwave.com/v3/transactions/{transaction_id}/verify",
+            headers=_re_fw_headers(), timeout=15)
+        data = resp.json()
+        if data.get("status") != "success":
+            flash("Payment verification failed. Contact support.", "danger")
+            return redirect(url_for("estate.billing_plans"))
+
+        txn  = data["data"]
+        meta = txn.get("meta") or {}
+        if txn.get("status") != "successful":
+            flash("Payment was not successful. Please try again.", "warning")
+            return redirect(url_for("estate.billing_plans"))
+
+        tenant_id  = int(meta.get("tenant_id") or 0)
+        plan_id    = int(meta.get("plan_id")   or 0)
+        plan_slug  = meta.get("plan_slug", "")
+        cycle      = meta.get("cycle", "monthly")
+        amount     = float(meta.get("amount_ngn") or txn.get("amount") or 0)
+
+        if not tenant_id or not plan_id:
+            flash("Payment verified but plan data missing. Contact support.", "danger")
+            return redirect(url_for("estate.billing_plans"))
+
+        _re_activate_subscription(
+            tenant_id=tenant_id, plan_id=plan_id, cycle=cycle,
+            currency="NGN", provider="flutterwave",
+            subscription_id=None,
+            provider_customer_id=(txn.get("customer") or {}).get("email"),
+            tx_ref=tx_ref, amount=amount,
+        )
+        flash(f"🎉 You're now on the {plan_slug.title()} plan!", "success")
+    except Exception as e:
+        print("⚠️ estate billing_fw_callback error:", e)
+        flash("An error occurred verifying your payment. Contact support.", "danger")
+    return redirect(url_for("estate.billing_plans"))
+
+
+@estate_bp.route("/estate/billing/fw-webhook", methods=["POST"])
+def billing_fw_webhook():
+    fw_hash  = request.headers.get("verif-hash", "")
+    expected = os.getenv("FW_WEBHOOK_HASH", "")
+    if expected and fw_hash != expected:
+        return "unauthorized", 401
+
+    try:
+        payload = request.get_json(force=True) or {}
+    except Exception:
+        return "bad payload", 400
+
+    event    = payload.get("event", "")
+    txn_data = payload.get("data", {})
+
+    if event == "subscription.create":
+        sub_code = txn_data.get("id") or txn_data.get("code")
+        email    = (txn_data.get("customer") or {}).get("customer_email", "")
+        if sub_code and email:
+            conn = get_db_connection(); cur = conn.cursor()
+            cur.execute("""
+                UPDATE re_plan_subscriptions
+                   SET subscription_id=%s, updated_at=NOW()
+                 WHERE provider_customer_id=%s AND status='active'
+                   AND subscription_id IS NULL
+                 ORDER BY created_at DESC LIMIT 1
+            """, (str(sub_code), email))
+            conn.commit(); cur.close(); conn.close()
+        return "ok", 200
+
+    if event == "charge.completed" and txn_data.get("status") == "successful":
+        tx_ref_wh = txn_data.get("tx_ref", "")
+        email     = (txn_data.get("customer") or {}).get("email", "")
+        if tx_ref_wh:
+            conn = get_db_connection(); cur = conn.cursor()
+            cur.execute("SELECT id FROM re_plan_subscriptions WHERE tx_ref=%s", (tx_ref_wh,))
+            if cur.fetchone():
+                cur.close(); conn.close()
+                return "ok", 200
+            cur.close(); conn.close()
+        if email:
+            conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("""
+                SELECT ps.tenant_id, ps.plan_id, ps.billing_cycle
+                  FROM re_plan_subscriptions ps
+                  JOIN re_tenants t ON t.id = ps.tenant_id
+                 WHERE t.email=%s AND ps.status='active'
+                 ORDER BY ps.created_at DESC LIMIT 1
+            """, (email,))
+            row = cur.fetchone(); cur.close(); conn.close()
+            if row:
+                amount = float(txn_data.get("charged_amount") or txn_data.get("amount") or 0)
+                _re_activate_subscription(
+                    tenant_id=int(row["tenant_id"]), plan_id=int(row["plan_id"]),
+                    cycle=row["billing_cycle"], currency="NGN",
+                    provider="flutterwave", subscription_id=None,
+                    provider_customer_id=email, tx_ref=tx_ref_wh or None, amount=amount,
+                )
+    return "ok", 200
+
+
+@estate_bp.route("/estate/billing/stripe-webhook", methods=["POST"])
+def billing_stripe_webhook():
+    if not _re_stripe_ok():
+        return "not configured", 400
+    import stripe as _stripe
+    _stripe.api_key     = os.getenv("STRIPE_SECRET_KEY")
+    endpoint_secret     = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+    payload             = request.get_data()
+    sig                 = request.headers.get("Stripe-Signature", "")
+    try:
+        event = _stripe.Webhook.construct_event(payload, sig, endpoint_secret)
+    except Exception as e:
+        print("⚠️ estate Stripe webhook error:", e)
+        return "bad signature", 400
+
+    ev_type = event["type"]
+    obj     = event["data"]["object"]
+
+    if ev_type == "checkout.session.completed":
+        meta      = obj.get("metadata") or {}
+        tenant_id = int(meta.get("tenant_id") or 0)
+        plan_id   = int(meta.get("plan_id")   or 0)
+        cycle     = meta.get("cycle", "monthly")
+        amount_usd = float(meta.get("amount_usd") or 0)
+        sub_id    = obj.get("subscription")
+        email     = (obj.get("customer_details") or {}).get("email", "")
+        if tenant_id and plan_id:
+            _re_activate_subscription(
+                tenant_id=tenant_id, plan_id=plan_id, cycle=cycle,
+                currency="USD", provider="stripe",
+                subscription_id=sub_id,
+                provider_customer_id=email,
+                tx_ref=obj.get("id"), amount=amount_usd,
+            )
+
+    elif ev_type in ("invoice.payment_succeeded",):
+        sub     = obj.get("subscription")
+        email   = (obj.get("customer_email") or "")
+        amount  = float(obj.get("amount_paid") or 0) / 100
+        if sub and email:
+            conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("""
+                SELECT ps.tenant_id, ps.plan_id, ps.billing_cycle
+                  FROM re_plan_subscriptions ps
+                 WHERE ps.subscription_id=%s AND ps.status='active'
+                 LIMIT 1
+            """, (sub,))
+            row = cur.fetchone(); cur.close(); conn.close()
+            if row:
+                _re_activate_subscription(
+                    tenant_id=int(row["tenant_id"]), plan_id=int(row["plan_id"]),
+                    cycle=row["billing_cycle"], currency="USD",
+                    provider="stripe", subscription_id=sub,
+                    provider_customer_id=email, tx_ref=None, amount=amount,
+                )
+
+    elif ev_type in ("customer.subscription.deleted", "customer.subscription.paused"):
+        sub_id = obj.get("id")
+        if sub_id:
+            conn = get_db_connection(); cur = conn.cursor()
+            new_status = "cancelled" if "deleted" in ev_type else "paused"
+            cur.execute("""
+                UPDATE re_plan_subscriptions SET status=%s, updated_at=NOW()
+                 WHERE subscription_id=%s
+            """, (new_status, sub_id))
+            if new_status == "cancelled":
+                cur.execute("""
+                    UPDATE re_tenants SET plan_id=(
+                        SELECT id FROM re_plans WHERE slug='free' LIMIT 1
+                    ), updated_at=NOW()
+                    WHERE id=(
+                        SELECT tenant_id FROM re_plan_subscriptions
+                         WHERE subscription_id=%s LIMIT 1
+                    )
+                """, (sub_id,))
+            conn.commit(); cur.close(); conn.close()
+
+    return "ok", 200
 
 
 # ── Contacts ───────────────────────────────────────────────────────────────────
@@ -2706,6 +3231,11 @@ def contacts():
     if redir: return redir
     tenant_id = _re_tenant_id()
     tenant    = _get_tenant(tenant_id)
+    gate = _re_require_plan(tenant, "Contacts & Buyer CRM", "growth",
+        ["Full buyer database with tags, notes, and segments",
+         "Filter and search contacts by area, budget, or source",
+         "CSV upload and manual contact entry"])
+    if gate: return gate
 
     if request.method == "POST":
         section = request.form.get("section", "")
@@ -3126,6 +3656,11 @@ def pipeline():
     if redir: return redir
     tenant_id = _re_tenant_id()
     tenant    = _get_tenant(tenant_id)
+    gate = _re_require_plan(tenant, "Sales Pipeline", "growth",
+        ["Kanban board: New → Contacted → Qualified → Viewing → Offer → Allocated",
+         "Move leads through stages with one click",
+         "Track budgets and follow-up dates per stage"])
+    if gate: return gate
 
     contacts_by_stage = {s[0]: [] for s in PIPELINE_STAGES}
     stage_stats       = {s[0]: {"count": 0, "total_budget": 0} for s in PIPELINE_STAGES}
@@ -3512,6 +4047,11 @@ def contact_segments():
     if redir: return redir
     tenant_id = _re_tenant_id()
     tenant    = _get_tenant(tenant_id)
+    gate = _re_require_plan(tenant, "Contact Segments", "growth",
+        ["Group buyers into segments like 'Lekki buyers' or '₦50M budget'",
+         "Use segments to target broadcasts to the right audience",
+         "Color-coded segments visible across contacts and broadcast"])
+    if gate: return gate
 
     if request.method == "POST":
         section = request.form.get("section", "")
@@ -3604,6 +4144,11 @@ def message_templates():
     if redir: return redir
     tenant_id = _re_tenant_id()
     tenant    = _get_tenant(tenant_id)
+    gate = _re_require_plan(tenant, "Saved Messages", "growth",
+        ["Save reusable WhatsApp message templates",
+         "Use templates inside broadcasts for faster sending",
+         "Categorise by follow-up, property alert, or inspection"])
+    if gate: return gate
 
     if request.method == "POST":
         section = request.form.get("section","")
@@ -3702,6 +4247,11 @@ def broadcast():
     if redir: return redir
     tenant_id = _re_tenant_id()
     tenant    = _get_tenant(tenant_id)
+    gate = _re_require_plan(tenant, "Listing Broadcasts", "growth",
+        ["Send new property alerts directly to interested buyers on WhatsApp",
+         "Target by segment, area, or budget tag",
+         "Track campaign delivery and history"])
+    if gate: return gate
 
     conn = get_db_connection()
     all_tags      = []
@@ -3896,6 +4446,12 @@ def inspections():
     redir = _require_re_login()
     if redir: return redir
     tenant_id = _re_tenant_id()
+    tenant    = _get_tenant(tenant_id)
+    gate = _re_require_plan(tenant, "Inspection Bookings", "growth",
+        ["Let buyers book property inspections directly via WhatsApp",
+         "Manage available slots and confirmed bookings in one place",
+         "Automatic WhatsApp confirmation sent to buyers"])
+    if gate: return gate
 
     conn = get_db_connection()
     if not conn:

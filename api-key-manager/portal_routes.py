@@ -16,9 +16,15 @@ from db import get_db_connection, insert_audit_log
 from portal_utils import (
     hash_password, verify_password, make_token, utc_now_naive,
     next_invoice_number, credits_to_tokens, tokens_to_credits,
-    calc_vat, money_fmt, send_email,
+    calc_vat, money_fmt, send_email, TUTORIAL_VIDEOS,
 )
 from invoice_pdf import generate_invoice_pdf
+from merchant_pipeline import (STAGE_ORDER as PIPELINE_STAGE_ORDER,
+                                STAGE_LABELS as PIPELINE_STAGE_LABELS,
+                                STAGE_DESCRIPTIONS as PIPELINE_STAGE_DESCRIPTIONS,
+                                next_stage as pipeline_next_stage,
+                                record_stage_change as pipeline_record_stage_change,
+                                get_stage_history as pipeline_get_stage_history)
 
 try:
     import stripe
@@ -2084,6 +2090,9 @@ def stripe_webhook():
     if ev_type == "invoice.paid":
         sub_id = ev_obj.get("subscription", "")
         if sub_id:
+            from datetime import date as _d
+
+            # Portal renewal
             conn = get_db_connection()
             cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("""
@@ -2092,7 +2101,6 @@ def stripe_webhook():
             """, (sub_id,))
             row = cur.fetchone()
             if row:
-                from datetime import date as _d
                 cur2 = conn.cursor()
                 cur2.execute("UPDATE tenants SET plan_period_start=%s WHERE id=%s",
                              (_d.today(), int(row["tenant_id"])))
@@ -2105,12 +2113,39 @@ def stripe_webhook():
                 """, (sub_id,))
                 conn.commit(); cur2.close()
             cur.close(); conn.close()
+
+            # Estate renewal
+            conn2 = get_db_connection()
+            cur2  = conn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur2.execute("""
+                SELECT ps.tenant_id, ps.plan_id, ps.billing_cycle
+                  FROM re_plan_subscriptions ps
+                 WHERE ps.subscription_id=%s AND ps.status='active' LIMIT 1
+            """, (sub_id,))
+            re_row = cur2.fetchone()
+            cur2.close(); conn2.close()
+            if re_row:
+                try:
+                    from portal_routes_estate import _re_activate_subscription
+                    amount = float(ev_obj.get("amount_paid") or 0) / 100
+                    _re_activate_subscription(
+                        tenant_id=int(re_row["tenant_id"]),
+                        plan_id=int(re_row["plan_id"]),
+                        cycle=re_row["billing_cycle"],
+                        currency="USD", provider="stripe",
+                        subscription_id=sub_id,
+                        provider_customer_id=ev_obj.get("customer_email"),
+                        tx_ref=None, amount=amount,
+                    )
+                except Exception as _re_e:
+                    print("⚠️ estate invoice.paid error:", _re_e)
         return "ok", 200
 
     # ── Subscription: cancelled or paused — downgrade to Free ─────────────────
     if ev_type in ("customer.subscription.deleted", "customer.subscription.paused"):
         sub_id = ev_obj.get("id", "")
         if sub_id:
+            # Portal
             conn = get_db_connection()
             cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("""
@@ -2131,6 +2166,31 @@ def stripe_webhook():
                 """, (int(row["tenant_id"]),))
                 conn.commit(); cur2.close()
             cur.close(); conn.close()
+
+            # Estate
+            conn2 = get_db_connection()
+            cur2  = conn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur2.execute("""
+                SELECT tenant_id FROM re_plan_subscriptions
+                 WHERE subscription_id=%s LIMIT 1
+            """, (sub_id,))
+            re_row = cur2.fetchone()
+            if re_row:
+                cur3 = conn2.cursor()
+                new_status = "cancelled" if "deleted" in ev_type else "paused"
+                cur3.execute("""
+                    UPDATE re_plan_subscriptions SET status=%s, updated_at=NOW()
+                     WHERE subscription_id=%s
+                """, (new_status, sub_id))
+                if new_status == "cancelled":
+                    cur3.execute("""
+                        UPDATE re_tenants
+                           SET plan_id=(SELECT id FROM re_plans WHERE slug='free' LIMIT 1),
+                               updated_at=NOW()
+                         WHERE id=%s
+                    """, (int(re_row["tenant_id"]),))
+                conn2.commit(); cur3.close()
+            cur2.close(); conn2.close()
         return "ok", 200
 
     if ev_type != "checkout.session.completed":
@@ -2139,7 +2199,28 @@ def stripe_webhook():
     sess_obj = ev_obj
     meta     = sess_obj.get("metadata") or {}
 
-    # ── Subscription checkout completed ───────────────────────────────────────
+    # ── Estate subscription checkout (metadata has re_plan_slug) ─────────────
+    if sess_obj.get("mode") == "subscription" and meta.get("re_plan_slug"):
+        try:
+            from portal_routes_estate import _re_activate_subscription
+            tenant_id  = int(meta.get("tenant_id") or 0)
+            plan_id    = int(meta.get("plan_id")   or 0)
+            cycle      = meta.get("cycle", "monthly")
+            amount_usd = float(meta.get("amount_usd") or 0)
+            sub_id     = sess_obj.get("subscription", "")
+            email      = (sess_obj.get("customer_details") or {}).get("email", "")
+            if tenant_id and plan_id:
+                _re_activate_subscription(
+                    tenant_id=tenant_id, plan_id=plan_id, cycle=cycle,
+                    currency="USD", provider="stripe", subscription_id=sub_id,
+                    provider_customer_id=email, tx_ref=sess_obj.get("id"),
+                    amount=amount_usd,
+                )
+        except Exception as _re_e:
+            print("⚠️ estate Stripe webhook error:", _re_e)
+        return "ok", 200
+
+    # ── Portal subscription checkout completed ────────────────────────────────
     if sess_obj.get("mode") == "subscription" and meta.get("plan_slug"):
         tenant_id  = int(meta.get("tenant_id") or 0)
         plan_id    = int(meta.get("plan_id")   or 0)
@@ -4766,6 +4847,15 @@ def tutorials():
     if r: return r
     customer = _get_customer(_customer_id())
     return render_template("portal/tutorials.html", customer=customer)
+
+
+@portal_bp.route("/video-tutorials", methods=["GET"])
+def video_tutorials():
+    r = _require_login()
+    if r: return r
+    customer = _get_customer(_customer_id())
+    videos = [v for v in TUTORIAL_VIDEOS if v["audience"] == "merchant"]
+    return render_template("portal/video_tutorials.html", customer=customer, videos=videos)
 
 
 @portal_bp.route("/settings", methods=["GET"])
@@ -13809,8 +13899,61 @@ def billing_flutterwave_webhook():
 
     event    = payload.get("event", "")
     txn_data = payload.get("data", {})
+    tx_ref_wh = txn_data.get("tx_ref", "")
 
-    # ── subscription.create — save subscription_code ──────────────────────────
+    # ── Route estate transactions (tx_ref starts with REPHIX-) ───────────────
+    if tx_ref_wh.startswith("REPHIX-") or event == "subscription.create":
+        try:
+            from portal_routes_estate import _re_activate_subscription
+        except ImportError:
+            return "ok", 200
+
+        if event == "subscription.create":
+            sub_code = txn_data.get("id") or txn_data.get("code")
+            email    = (txn_data.get("customer") or {}).get("customer_email", "")
+            if sub_code and email:
+                conn = get_db_connection(); cur = conn.cursor()
+                cur.execute("""
+                    UPDATE re_plan_subscriptions
+                       SET subscription_id=%s, updated_at=NOW()
+                     WHERE provider_customer_id=%s AND status='active'
+                       AND subscription_id IS NULL
+                     ORDER BY created_at DESC LIMIT 1
+                """, (str(sub_code), email))
+                conn.commit(); cur.close(); conn.close()
+            return "ok", 200
+
+        if event == "charge.completed" and txn_data.get("status") == "successful":
+            email = (txn_data.get("customer") or {}).get("email", "")
+            if tx_ref_wh:
+                conn = get_db_connection(); cur = conn.cursor()
+                cur.execute("SELECT id FROM re_plan_subscriptions WHERE tx_ref=%s", (tx_ref_wh,))
+                if cur.fetchone():
+                    cur.close(); conn.close()
+                    return "ok", 200
+                cur.close(); conn.close()
+            if email:
+                conn = get_db_connection()
+                cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cur.execute("""
+                    SELECT ps.tenant_id, ps.plan_id, ps.billing_cycle
+                      FROM re_plan_subscriptions ps
+                      JOIN re_tenants t ON t.id = ps.tenant_id
+                     WHERE t.email=%s AND ps.status='active'
+                     ORDER BY ps.created_at DESC LIMIT 1
+                """, (email,))
+                row = cur.fetchone(); cur.close(); conn.close()
+                if row:
+                    amount = float(txn_data.get("charged_amount") or txn_data.get("amount") or 0)
+                    _re_activate_subscription(
+                        tenant_id=int(row["tenant_id"]), plan_id=int(row["plan_id"]),
+                        cycle=row["billing_cycle"], currency="NGN",
+                        provider="flutterwave", subscription_id=None,
+                        provider_customer_id=email, tx_ref=tx_ref_wh or None, amount=amount,
+                    )
+        return "ok", 200
+
+    # ── subscription.create — portal (no REPHIX prefix handled above) ─────────
     if event == "subscription.create":
         sub_code  = txn_data.get("id") or txn_data.get("code")
         email     = (txn_data.get("customer") or {}).get("customer_email", "")
@@ -13826,11 +13969,10 @@ def billing_flutterwave_webhook():
             conn.commit(); cur.close(); conn.close()
         return "ok", 200
 
-    # ── charge.completed — renew plan period ──────────────────────────────────
+    # ── charge.completed — portal ─────────────────────────────────────────────
     if event == "charge.completed" and txn_data.get("status") == "successful":
         fw_plan   = txn_data.get("plan")
         email     = (txn_data.get("customer") or {}).get("email", "")
-        tx_ref_wh = txn_data.get("tx_ref", "")
 
         # Idempotency: skip if this tx_ref already processed
         if tx_ref_wh:
@@ -14017,6 +14159,231 @@ def leads_page():
         hot_count  = hot_count,
         warm_count = warm_count,
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SALES PIPELINE — merchant-facing CRM for tracking the merchant's own
+# customers/deals (separate from the auto-scored WhatsApp "Leads" page above,
+# and separate from the ambassador CRM pipeline / ambassador_leads table).
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _pipeline_lead_owned_by_tenant(lead_id: int, tenant_id: int):
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM merchant_pipeline_leads WHERE id=%s AND tenant_id=%s", (lead_id, tenant_id))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    return dict(row) if row else None
+
+
+@portal_bp.route("/sales-pipeline", methods=["GET", "POST"])
+def sales_pipeline():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    if request.method == "POST":
+        f = request.form
+        customer_name  = (f.get("customer_name") or "").strip()
+        contact_person = (f.get("contact_person") or "").strip()
+        phone          = (f.get("phone") or "").strip()
+        email          = (f.get("email") or "").strip()
+        deal_value_raw = (f.get("deal_value") or "").strip()
+        notes          = (f.get("notes") or "").strip()
+        if not customer_name:
+            flash("Customer/business name is required.", "danger")
+            return redirect(url_for("portal.sales_pipeline"))
+        deal_value = None
+        if deal_value_raw:
+            try:
+                deal_value = float(deal_value_raw.replace(",", ""))
+            except ValueError:
+                deal_value = None
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("""
+            INSERT INTO merchant_pipeline_leads
+                (tenant_id, customer_name, contact_person, phone, email, notes, deal_value)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """, (tenant_id, customer_name, contact_person or None, phone or None,
+              email or None, notes or None, deal_value))
+        new_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close(); conn.close()
+        pipeline_record_stage_change(new_id, None, "new_lead",
+                                      f"{customer.get('first_name','')} {customer.get('last_name','')}".strip())
+        flash(f"{customer_name} added to your Sales Pipeline.", "success")
+        return redirect(url_for("portal.sales_pipeline"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT * FROM merchant_pipeline_leads
+        WHERE tenant_id=%s AND dropped_at IS NULL
+        ORDER BY created_at DESC
+    """, (tenant_id,))
+    leads = [dict(r) for r in cur.fetchall()]
+    cur.execute("""
+        SELECT * FROM merchant_pipeline_leads
+        WHERE tenant_id=%s AND dropped_at IS NOT NULL
+        ORDER BY dropped_at DESC
+    """, (tenant_id,))
+    dropped_leads = [dict(r) for r in cur.fetchall()]
+    cur.close(); conn.close()
+
+    stage_counts = {}
+    for l in leads:
+        stage_counts[l["stage"]] = stage_counts.get(l["stage"], 0) + 1
+
+    total_pipeline_value = sum(float(l["deal_value"]) for l in leads
+                                if l.get("deal_value") and l["stage"] != "won")
+    won_value = sum(float(l["deal_value"]) for l in leads
+                     if l.get("deal_value") and l["stage"] == "won")
+
+    return render_template(
+        "portal/sales_pipeline.html",
+        customer              = customer,
+        leads                 = leads,
+        dropped_leads         = dropped_leads,
+        stage_order           = PIPELINE_STAGE_ORDER,
+        stage_labels          = PIPELINE_STAGE_LABELS,
+        stage_descriptions    = PIPELINE_STAGE_DESCRIPTIONS,
+        stage_counts          = stage_counts,
+        next_stage            = pipeline_next_stage,
+        total_pipeline_value  = total_pipeline_value,
+        won_value             = won_value,
+    )
+
+
+@portal_bp.route("/sales-pipeline/<int:lead_id>/advance", methods=["POST"])
+def sales_pipeline_advance(lead_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    lead = _pipeline_lead_owned_by_tenant(lead_id, tenant_id)
+    if not lead:
+        flash("Deal not found.", "danger")
+        return redirect(url_for("portal.sales_pipeline"))
+
+    target = pipeline_next_stage(lead["stage"])
+    if not target:
+        flash("This deal is already at the final stage.", "warning")
+        return redirect(url_for("portal.sales_pipeline"))
+
+    f = request.form
+    updates = {"stage": target}
+    conn = get_db_connection()
+    cur  = conn.cursor()
+
+    if target == "contacted":
+        contact_channel = (f.get("contact_channel") or "").strip()
+        contact_date    = (f.get("contact_date") or "").strip()
+        contact_notes   = (f.get("contact_notes") or "").strip()
+        if not contact_channel or not contact_date:
+            cur.close(); conn.close()
+            flash("Contact channel and date are required.", "danger")
+            return redirect(url_for("portal.sales_pipeline"))
+        updates.update(contact_channel=contact_channel, contact_date=contact_date,
+                       contact_notes=contact_notes or None)
+
+    elif target == "qualified":
+        qualified_date  = (f.get("qualified_date") or "").strip()
+        qualified_notes = (f.get("qualified_notes") or "").strip()
+        if not qualified_date:
+            cur.close(); conn.close()
+            flash("Qualified date is required.", "danger")
+            return redirect(url_for("portal.sales_pipeline"))
+        updates.update(qualified_date=qualified_date, qualified_notes=qualified_notes or None)
+
+    elif target == "proposal_sent":
+        proposal_date  = (f.get("proposal_date") or "").strip()
+        deal_value_raw = (f.get("deal_value") or "").strip()
+        proposal_notes = (f.get("proposal_notes") or "").strip()
+        if not proposal_date:
+            cur.close(); conn.close()
+            flash("Proposal date is required.", "danger")
+            return redirect(url_for("portal.sales_pipeline"))
+        if deal_value_raw:
+            try:
+                updates["deal_value"] = float(deal_value_raw.replace(",", ""))
+            except ValueError:
+                pass
+        updates.update(proposal_date=proposal_date, proposal_notes=proposal_notes or None)
+
+    elif target == "negotiating":
+        negotiation_notes = (f.get("negotiation_notes") or "").strip()
+        updates.update(negotiation_notes=negotiation_notes or None)
+
+    elif target == "won":
+        won_date       = (f.get("won_date") or "").strip()
+        deal_value_raw = (f.get("deal_value") or "").strip()
+        if not won_date:
+            cur.close(); conn.close()
+            flash("Won date is required.", "danger")
+            return redirect(url_for("portal.sales_pipeline"))
+        if deal_value_raw:
+            try:
+                updates["deal_value"] = float(deal_value_raw.replace(",", ""))
+            except ValueError:
+                pass
+        updates["won_date"] = won_date
+
+    set_clause = ", ".join(f"{k}=%s" for k in updates)
+    cur.execute(f"UPDATE merchant_pipeline_leads SET {set_clause} WHERE id=%s",
+               list(updates.values()) + [lead_id])
+    conn.commit()
+    cur.close(); conn.close()
+
+    changed_by = f"{customer.get('first_name','')} {customer.get('last_name','')}".strip()
+    pipeline_record_stage_change(lead_id, lead["stage"], target, changed_by)
+    flash(f"{lead['customer_name']} moved to {PIPELINE_STAGE_LABELS[target]}.", "success")
+    return redirect(url_for("portal.sales_pipeline"))
+
+
+@portal_bp.route("/sales-pipeline/<int:lead_id>/drop", methods=["POST"])
+def sales_pipeline_drop(lead_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    lead = _pipeline_lead_owned_by_tenant(lead_id, tenant_id)
+    if not lead:
+        flash("Deal not found.", "danger")
+        return redirect(url_for("portal.sales_pipeline"))
+
+    reason = (request.form.get("reason") or "").strip()
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("""
+        UPDATE merchant_pipeline_leads SET dropped_at=NOW(), dropped_reason=%s WHERE id=%s
+    """, (reason or None, lead_id))
+    conn.commit()
+    cur.close(); conn.close()
+
+    changed_by = f"{customer.get('first_name','')} {customer.get('last_name','')}".strip()
+    pipeline_record_stage_change(lead_id, lead["stage"], "dropped", changed_by, reason or None)
+    flash(f"{lead['customer_name']} dropped from the pipeline.", "success")
+    return redirect(url_for("portal.sales_pipeline"))
+
+
+@portal_bp.route("/sales-pipeline/<int:lead_id>/history")
+def sales_pipeline_history(lead_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    lead = _pipeline_lead_owned_by_tenant(lead_id, tenant_id)
+    if not lead:
+        return jsonify({"error": "Not found"}), 404
+    history = pipeline_get_stage_history(lead_id)
+    return jsonify([
+        {"from_stage": h["from_stage"], "to_stage": h["to_stage"], "changed_by": h["changed_by"],
+         "notes": h["notes"], "created_at": h["created_at"].isoformat() if h["created_at"] else ""}
+        for h in history
+    ])
 
 
 # ══════════════════════════════════════════════════════════════════════════════

@@ -107,10 +107,10 @@
     <h1>AI Knowledge Base</h1>
     <p>{{ entries|length }} entr{{ 'ies' if entries|length != 1 else 'y' }} — parents get instant answers on WhatsApp</p>
   </div>
-  <button class="btn btn-primary"
-          onclick="openAdd()">
-    + Add Entry
-  </button>
+  <div style="display:flex;gap:8px">
+    <a class="btn btn-outline" href="{{ url_for('school.knowledge_documents') }}">📄 Documents</a>
+    <button class="btn btn-primary" onclick="openAdd()">+ Add Entry</button>
+  </div>
 </div>
 
 {# ── AI info strip ── #}

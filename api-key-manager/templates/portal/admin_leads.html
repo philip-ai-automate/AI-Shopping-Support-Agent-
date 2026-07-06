@@ -63,25 +63,35 @@
         </select>
       </div>
       <div>
-        <label class="flbl">Business Name</label>
-        <input type="text" name="business_name" class="finp" required/>
+        <label class="flbl">Product</label>
+        <select name="product" class="finp">
+          {% for p, label in product_labels.items() %}
+          <option value="{{ p }}">{{ product_icons[p] }} {{ label }}</option>
+          {% endfor %}
+        </select>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div>
+        <label class="flbl">Business Name</label>
+        <input type="text" name="business_name" class="finp" required/>
+      </div>
       <div>
         <label class="flbl">Industry</label>
         <input type="text" name="industry" class="finp"/>
       </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
       <div>
         <label class="flbl">Contact Name</label>
         <input type="text" name="contact_name" class="finp"/>
       </div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
       <div>
         <label class="flbl">Phone</label>
         <input type="tel" name="phone" class="finp"/>
       </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
       <div>
         <label class="flbl">Email</label>
         <input type="email" name="email" class="finp"/>
@@ -112,6 +122,7 @@
         <tr>
           <th>Business</th>
           <th>Ambassador</th>
+          <th>Product</th>
           <th>Industry</th>
           <th>Contact</th>
           <th>Stage</th>
@@ -121,7 +132,7 @@
       </thead>
       <tbody>
         {% if not leads %}
-        <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:40px">No active leads.</td></tr>
+        <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:40px">No active leads.</td></tr>
         {% endif %}
         {% for l in leads %}
         <tr>
@@ -130,6 +141,7 @@
             <div>{{ l.ambassador_name }}</div>
             <div class="muted" style="font-size:11.5px">{{ l.ambassador_email }}</div>
           </td>
+          <td class="muted">{{ product_icons[l.product or 'portal'] }} {{ product_labels[l.product or 'portal'] }}</td>
           <td class="muted">{{ l.industry or '—' }}</td>
           <td class="muted" style="font-size:12px">
             {{ l.contact_name or '' }}{% if l.phone %}<br>{{ l.phone }}{% endif %}

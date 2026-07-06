@@ -317,6 +317,7 @@
           <th>Email</th>
           <th>Location</th>
           <th>Ref Code</th>
+          <th>Products</th>
           <th>Clients</th>
           <th>Earned</th>
           <th>Status</th>
@@ -325,7 +326,7 @@
       </thead>
       <tbody id="ambTbody">
         {% if not ambassadors %}
-        <tr class="empty-row"><td colspan="8">No ambassadors yet.</td></tr>
+        <tr class="empty-row"><td colspan="9">No ambassadors yet.</td></tr>
         {% endif %}
         {% for a in ambassadors %}
         {% set ac = a.active_clients or 0 %}
@@ -343,6 +344,15 @@
           <td style="font-size:12px">{{ a.email }}</td>
           <td style="font-size:12px;color:var(--muted)">{{ a.location or '—' }}</td>
           <td><span class="ref-chip">{{ a.ref_code }}</span></td>
+          <td style="white-space:nowrap">
+            {% set pmap = products_by_amb.get(a.id, {}) %}
+            {% for prod, icon in {'portal':'🛍️','school':'🏫','estate':'🏠'}.items() %}
+            {% set pstatus = pmap.get(prod, 'not_enrolled') %}
+            <span title="{{ prod|title }}: {{ pstatus|title }}"
+                  style="opacity:{{ '1' if pstatus == 'active' else ('0.55' if pstatus == 'pending' else '0.25') }};
+                         filter:{{ '' if pstatus == 'active' else 'grayscale(60%)' }}">{{ icon }}</span>
+            {% endfor %}
+          </td>
           <td style="text-align:center;font-weight:700">{{ ac }}</td>
           <td style="font-weight:700">₦{{ "{:,.0f}".format(a.total_earned or 0) }}</td>
           <td>
@@ -720,6 +730,11 @@ function renderPanel(d) {
     </div>
 
     <div class="sp-section">
+      <div class="sp-section-title">Products</div>
+      <div id="spProducts"></div>
+    </div>
+
+    <div class="sp-section">
       <div class="sp-section-title">Performance</div>
       <div class="sp-grid">
         <div class="sp-item"><div class="sp-label">Active Clients</div><div class="sp-val">${d.active_clients||0}</div></div>
@@ -803,8 +818,57 @@ function renderPanel(d) {
     </div>
   `;
 
+  /* Products section (Portal / School / Estate per-product approval) */
+  if (d.products) {
+    document.getElementById('spProducts').innerHTML =
+      renderProductRow('portal', 'Portal (Merchant)', '🛍️', d.products.portal) +
+      renderProductRow('school', 'School', '🏫', d.products.school) +
+      renderProductRow('estate', 'Real Estate', '🏠', d.products.estate);
+  }
+
   /* Foot buttons based on status */
   renderFootButtons(d.status, d.id, d.role);
+}
+
+const PRODUCT_STATUS_COLORS = {
+  active:'#0a7a3c', pending:'#7a4f00', suspended:'#b02020',
+  rejected:'#991b1b', terminated:'#030C18', not_enrolled:'#9ca3af'
+};
+
+function renderProductRow(product, label, icon, info) {
+  if (!info) return '';
+  const color = PRODUCT_STATUS_COLORS[info.status] || '#555';
+  let actions = '';
+  if (product === 'portal') {
+    actions = '<span style="font-size:10.5px;color:var(--muted)">via main actions</span>';
+  } else if (info.status === 'pending') {
+    actions = `<button class="sp-btn" style="padding:4px 10px;font-size:11px" onclick="doProductApprove(${currentAmbId},'${product}')">Approve</button>
+               <button class="sp-btn danger" style="padding:4px 10px;font-size:11px" onclick="openProductReasonModal(${currentAmbId},'${product}','reject','Reject ${label} Application')">Reject</button>`;
+  } else if (info.status === 'active') {
+    actions = `<button class="sp-btn warn" style="padding:4px 10px;font-size:11px" onclick="doProductSuspend(${currentAmbId},'${product}')">Suspend</button>`;
+  } else if (['suspended','rejected','terminated'].includes(info.status)) {
+    actions = `<button class="sp-btn primary" style="padding:4px 10px;font-size:11px" onclick="doProductReactivate(${currentAmbId},'${product}')">Reactivate</button>`;
+  } else if (info.status === 'not_enrolled') {
+    actions = '<span style="font-size:10.5px;color:var(--muted)">Not applied</span>';
+  }
+  return `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12.5px;font-weight:700">${icon} ${label}</div>
+        <div style="font-size:11px;color:${color};text-transform:capitalize">${info.status.replace('_',' ')}${info.active_clients ? ' · ' + info.active_clients + ' active' : ''}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${actions}</div>
+    </div>`;
+}
+
+function doProductApprove(id, product)    { postTo(`/admin/ambassadors/${id}/products/${product}/approve`); }
+function doProductSuspend(id, product)    { postTo(`/admin/ambassadors/${id}/products/${product}/suspend`); }
+function doProductReactivate(id, product) { postTo(`/admin/ambassadors/${id}/products/${product}/reactivate`); }
+function openProductReasonModal(id, product, action, title) {
+  document.getElementById('reasonModalTitle').textContent = title;
+  document.getElementById('reasonModalSub').textContent   = 'Please provide a reason (optional).';
+  document.getElementById('reasonForm').action = `/admin/ambassadors/${id}/products/${product}/${action}`;
+  document.getElementById('reasonModal').classList.add('open');
 }
 
 function renderFootButtons(status, id, role) {

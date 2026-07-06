@@ -1,0 +1,125 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}School Plans Management — PhiXtra Admin{% endblock %}
+
+{% block content %}
+<style>
+.plans-table { width:100%; border-collapse:collapse; background:#fff;
+               border:1px solid var(--line); border-radius:14px; overflow:hidden }
+.plans-table th { padding:10px 14px; text-align:left; font-size:11px; font-weight:700;
+                  color:var(--muted); text-transform:uppercase; letter-spacing:.05em;
+                  background:#fafafa; border-bottom:1px solid var(--line) }
+.plans-table td { padding:11px 14px; border-bottom:1px solid rgba(3,12,24,.05);
+                  font-size:13px; vertical-align:middle }
+.plans-table tr:last-child td { border-bottom:none }
+.feat-y { color:#12B76A; font-weight:700 }
+.feat-n { color:#d1d5db }
+
+.school-table { width:100%; border-collapse:collapse; background:#fff;
+                border:1px solid var(--line); border-radius:14px; overflow:hidden; margin-top:28px }
+.school-table th { padding:10px 14px; text-align:left; font-size:11px; font-weight:700;
+                   color:var(--muted); text-transform:uppercase; letter-spacing:.05em;
+                   background:#fafafa; border-bottom:1px solid var(--line) }
+.school-table td { padding:10px 14px; border-bottom:1px solid rgba(3,12,24,.05);
+                   font-size:13px; vertical-align:middle }
+.school-table tr:last-child td { border-bottom:none }
+
+.meter-sm { height:6px; background:#f0f0f2; border-radius:999px; width:80px; display:inline-block; vertical-align:middle; margin-right:6px }
+.meter-sm-fill { height:100%; border-radius:999px; background:#12B76A }
+.meter-sm-fill.warn   { background:#F79009 }
+.meter-sm-fill.danger { background:#F04438 }
+</style>
+
+<div class="page-header" style="margin-bottom:24px">
+  <div><div class="section-title">School Plans Management</div>
+  <p class="muted">View plan definitions and assign plans to schools (school.phixtra.com)</p></div>
+</div>
+
+{# ── Plan definitions ──────────────────────────────────────────────────────── #}
+<div class="section-title" style="font-size:13px;margin-bottom:12px">Plan Definitions</div>
+<div style="overflow-x:auto">
+<table class="plans-table">
+  <thead>
+    <tr>
+      <th>Plan</th>
+      <th>Students</th>
+      <th>Termly</th>
+      <th>Annual</th>
+      <th>AI Msgs</th>
+      <th>Staff</th>
+      <th>Doc RAG</th>
+      <th>Broadcasts</th>
+      <th>Custom Templates</th>
+      <th>Priority Support</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in plans %}
+    <tr>
+      <td><strong>{{ p.name }}</strong> <span style="font-size:11px;color:var(--muted)">({{ p.slug }})</span></td>
+      <td>{{ p.student_min }}–{{ p.student_max if p.student_max != -1 else '∞' }}</td>
+      <td>{% if p.price_ngn_termly is none %}Custom{% else %}₦{{ "{:,}".format(p.price_ngn_termly) }}{% endif %}</td>
+      <td>{% if p.price_ngn_annual is none %}Custom{% else %}₦{{ "{:,}".format(p.price_ngn_annual) }}{% endif %}</td>
+      <td>{{ p.ai_messages_limit if p.ai_messages_limit != -1 else '∞' }}</td>
+      <td>{{ p.staff_limit if p.staff_limit != -1 else '∞' }}</td>
+      <td><span class="{% if p.feat_document_rag %}feat-y{% else %}feat-n{% endif %}">{{ '✓' if p.feat_document_rag else '✗' }}</span></td>
+      <td><span class="{% if p.feat_broadcasts %}feat-y{% else %}feat-n{% endif %}">{{ '✓' if p.feat_broadcasts else '✗' }}</span></td>
+      <td><span class="{% if p.feat_custom_templates %}feat-y{% else %}feat-n{% endif %}">{{ '✓' if p.feat_custom_templates else '✗' }}</span></td>
+      <td><span class="{% if p.feat_priority_support %}feat-y{% else %}feat-n{% endif %}">{{ '✓' if p.feat_priority_support else '✗' }}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{# ── School plan assignment ─────────────────────────────────────────────────── #}
+<div class="section-title" style="font-size:13px;margin:28px 0 12px">School Plans</div>
+<div style="overflow-x:auto">
+<table class="school-table">
+  <thead>
+    <tr>
+      <th>School</th>
+      <th>Current Plan</th>
+      <th>Students</th>
+      <th>AI Usage this period</th>
+      <th>Cycle</th>
+      <th>Change plan</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for s in schools %}
+    {% set pct = [((s.msgs_used / s.msgs_limit * 100)|int if s.msgs_limit > 0 else 0), 100]|min %}
+    <tr>
+      <td><strong>{{ s.school_name }}</strong> <span style="font-size:11px;color:var(--muted)">#{{ s.school_id }}</span></td>
+      <td><span class="pill {% if s.plan_slug in ('established','enterprise') %}pill-green{% elif s.plan_slug == 'growing' %}pill-green{% elif s.plan_slug == 'starter' %}pill-warn{% else %}pill-grey{% endif %}">
+        {{ s.plan_name }}
+      </span></td>
+      <td>{{ s.student_count }}</td>
+      <td>
+        <div class="meter-sm">
+          <div class="meter-sm-fill {% if pct >= 100 %}danger{% elif pct >= 80 %}warn{% endif %}"
+               style="width:{{ pct }}%"></div>
+        </div>
+        {{ s.msgs_used }} / {{ s.msgs_limit if s.msgs_limit != -1 else '∞' }}
+      </td>
+      <td>{{ s.billing_cycle | capitalize }}</td>
+      <td>
+        <form method="POST" action="{{ url_for('portal_admin.admin_school_plans_assign', school_id=s.school_id) }}"
+              style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select name="plan_id" style="padding:5px 8px;border-radius:8px;border:1px solid var(--line);font-size:12px">
+            {% for p in plans %}
+            <option value="{{ p.id }}" {% if p.slug == s.plan_slug %}selected{% endif %}>{{ p.name }}</option>
+            {% endfor %}
+          </select>
+          <select name="billing_cycle" style="padding:5px 8px;border-radius:8px;border:1px solid var(--line);font-size:12px">
+            <option value="termly" {% if s.billing_cycle == 'termly' %}selected{% endif %}>Termly</option>
+            <option value="annual" {% if s.billing_cycle == 'annual'  %}selected{% endif %}>Annual</option>
+          </select>
+          <button type="submit" class="btn btn-sm btn-primary">Save</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

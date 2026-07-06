@@ -57,11 +57,23 @@
 {% block content %}
 <div class="page-header">
   <h1 class="section-title">My Pipeline</h1>
-  <button class="btn btn-primary" onclick="document.getElementById('addLeadForm').classList.toggle('open')">+ Add Lead</button>
+  <div style="display:flex;gap:8px">
+    <button class="btn" onclick="ambTourStart()">🎓 Take a Tour</button>
+    <button class="btn btn-primary" data-tour="add-lead-btn" onclick="document.getElementById('addLeadForm').classList.toggle('open')">+ Add Lead</button>
+  </div>
+</div>
+
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">
+  {% for p in product_order %}
+  <a href="{{ url_for('ambassador.leads', product=p) }}"
+     class="btn btn-sm{% if selected_product==p %} btn-primary{% endif %}">
+    {{ product_config[p].icon }} {{ product_config[p].label }}
+  </a>
+  {% endfor %}
 </div>
 
 <!-- Stage funnel summary -->
-<div class="stage-funnel">
+<div class="stage-funnel" data-tour="stage-funnel">
   {% for s in stage_order %}
   <div class="stage-chip">
     <div class="n">{{ stage_counts.get(s, 0) }}</div>
@@ -76,13 +88,24 @@
   <form method="POST">
     <div class="frow">
       <div>
+        <label class="flbl">Product</label>
+        <select name="product" class="finp">
+          {% for p in product_order %}
+          <option value="{{ p }}" {% if p == selected_product %}selected{% endif %}>{{ product_config[p].icon }} {{ product_config[p].label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
         <label class="flbl">Business Name</label>
         <input type="text" name="business_name" class="finp" required/>
       </div>
+    </div>
+    <div class="frow">
       <div>
         <label class="flbl">Industry</label>
         <input type="text" name="industry" class="finp" placeholder="e.g. Fashion, Electronics"/>
       </div>
+      <div></div>
     </div>
     <div class="frow">
       <div>
@@ -116,7 +139,7 @@
 </style>
 
 <!-- Pipeline table -->
-<div class="card" style="padding:0">
+<div class="card" style="padding:0" data-tour="pipeline-table">
   <div class="table-wrap">
     <table>
       <thead>
@@ -148,6 +171,7 @@
             {% set target = next_stage(l.stage) %}
             {% if target %}
             <button class="btn btn-sm btn-primary"
+                    {% if loop.first %}data-tour="advance-btn"{% endif %}
                     onclick='openAdvanceModal({{ l.id }}, "{{ l.business_name|e }}", "{{ target }}", {{ linkable_tenants|tojson }})'>
               → {{ stage_labels[target] }}
             </button>
@@ -158,8 +182,8 @@
               <button type="submit" class="btn btn-sm">Mark Reviewed</button>
             </form>
             {% endif %}
-            <button class="btn btn-sm" onclick="openHistoryModal({{ l.id }})">History</button>
-            <button class="btn btn-sm btn-danger" onclick="openDropModal({{ l.id }}, '{{ l.business_name|e }}')">Drop</button>
+            <button class="btn btn-sm" {% if loop.first %}data-tour="history-btn"{% endif %} onclick="openHistoryModal({{ l.id }})">History</button>
+            <button class="btn btn-sm btn-danger" {% if loop.first %}data-tour="drop-btn"{% endif %} onclick="openDropModal({{ l.id }}, '{{ l.business_name|e }}')">Drop</button>
           </td>
         </tr>
         {% if l.last_reviewed_at %}
@@ -174,7 +198,7 @@
 </div>
 
 {% if dropped_leads %}
-<div class="card" style="margin-top:20px">
+<div class="card" style="margin-top:20px" data-tour="dropped-section">
   <div class="section-title" style="margin-bottom:10px">Dropped ({{ dropped_leads|length }})</div>
   <div class="table-wrap">
     <table>
@@ -195,7 +219,7 @@
 {% endif %}
 
 {% if self_closed %}
-<div class="card" style="margin-top:20px;padding:0">
+<div class="card" style="margin-top:20px;padding:0" data-tour="self-closed-section">
   <div style="padding:16px 16px 0"><div class="section-title">Self-Closed via Your Referral Link</div>
   <p class="muted" style="font-size:12.5px;margin-top:4px">Clients who signed up directly through your link — you earn 20% of every subscription payment automatically.</p></div>
   <div class="table-wrap">
@@ -288,6 +312,10 @@ function closeAdvanceModal(){ document.getElementById('advanceModal').classList.
 function closeDropModal(){ document.getElementById('dropModal').classList.remove('open'); }
 function closeTicketModal(){ document.getElementById('ticketModal').classList.remove('open'); }
 function closeHistoryModal(){ document.getElementById('historyModal').classList.remove('open'); }
+
+window.ambTourCloseModals = function() {
+  closeAdvanceModal(); closeDropModal(); closeTicketModal(); closeHistoryModal();
+};
 
 const STAGE_LABELS = {{ stage_labels|tojson }};
 const STAGE_DESC    = {{ stage_descriptions|tojson }};
@@ -385,5 +413,91 @@ function openHistoryModal(id) {
       document.getElementById('historyBody').innerHTML = '<p style="color:var(--bad);font-size:13px">Failed to load.</p>';
     });
 }
+
+ambTourInit([
+  { sel: null, pos: 'center',
+    title: '👋 Welcome to My Pipeline',
+    body: 'This is where you track every business you personally bring onto PhiXtra — from the moment you spot them to the day they become a paying, active client. This tour will open each real form so you can see exactly what to fill in at every stage. Skip anytime with Esc or "Skip tour".' },
+
+  { sel: '[data-tour="stage-funnel"]', pos: 'bottom',
+    title: '📊 The 7 Pipeline Stages',
+    body: 'Every lead moves left to right through these stages: <b>Lead → Contacted → Demo Done → Requirements Confirmed → Onboarding → Active Client → Support</b>.<br><br>' +
+          '<i>Example: you spot "Sunrise Fashion Store" on Instagram → add them as a Lead → WhatsApp them → once they reply, move them to Contacted.</i><br><br>' +
+          'Next, let\'s open the real form for each stage so you know exactly what to fill in.' },
+
+  { sel: '[data-tour="add-lead-btn"]', pos: 'bottom',
+    title: '+ Add a New Lead',
+    body: 'Click here the moment you find a new prospect — don\'t wait until after you\'ve contacted them.<br><br>' +
+          '<i>Example: you meet a shop owner at a trade fair. Add "Sunrise Fashion Store", industry "Fashion Retail", contact name, phone number, and a note like "Interested, wants pricing info".</i>' },
+
+  { sel: '[data-tour="pipeline-table"]', pos: 'top',
+    title: '📋 Your Leads Table',
+    body: 'Every lead you\'ve added lives here, with its current stage shown as a coloured pill. Below, we\'ll open the real "advance" form for each stage in turn — this is exactly what you\'ll see when you click the blue button next to one of your own leads.' },
+
+  { sel: '#advanceModal .modal-card', pos: 'right',
+    before: function(){ openAdvanceModal(0, 'Example Business', 'contacted', []); },
+    title: '① → Contacted',
+    body: 'Logged the first time you reach out.<br><br>' +
+          '<b>Contact Channel</b> — e.g. WhatsApp<br>' +
+          '<b>Contact Date</b> — e.g. today\'s date<br>' +
+          '<b>Response / Notes</b> — e.g. "Sent an intro message on WhatsApp, they replied asking for a demo next week."' },
+
+  { sel: '#advanceModal .modal-card', pos: 'right',
+    before: function(){ openAdvanceModal(0, 'Example Business', 'demo_done', []); },
+    title: '② → Demo Done',
+    body: 'Logged once you\'ve shown the AI live (e.g. by scanning your QR code with them).<br><br>' +
+          '<b>Demo Date</b> — e.g. 10 Jul 2026<br>' +
+          '<b>Prospect Reaction</b> — e.g. "Loved the AI replying instantly to customer questions, asked how much it costs."' },
+
+  { sel: '#advanceModal .modal-card', pos: 'right',
+    before: function(){ openAdvanceModal(0, 'Example Business', 'requirements_confirmed', []); },
+    title: '③ → Requirements Confirmed',
+    body: 'All 4 boxes must be ticked before you can continue:<br>' +
+          '☑ Business-only phone number confirmed<br>' +
+          '☑ Meta Business Account confirmed<br>' +
+          '☑ WhatsApp connected to Meta confirmed<br>' +
+          '☑ Product list spreadsheet confirmed<br><br>' +
+          '<i>Example: you verify the client has a dedicated number (not the owner\'s personal WhatsApp), a Meta Business Account already created, WhatsApp linked to it, and a spreadsheet of their products ready to upload.</i>' },
+
+  { sel: '#advanceModal .modal-card', pos: 'right',
+    before: function(){ openAdvanceModal(0, 'Example Business', 'onboarding', []); },
+    title: '④ → Onboarding',
+    body: 'Logged once their account setup is underway.<br><br>' +
+          '<b>Onboarding Date</b> — e.g. 12 Jul 2026<br>' +
+          '<b>Setup Notes</b> — e.g. "Uploaded 40 products, connected WhatsApp number, sent login details to the owner."' },
+
+  { sel: '#advanceModal .modal-card', pos: 'right',
+    before: function(){ openAdvanceModal(0, 'Example Business', 'active_client', []); },
+    title: '⑤ → Active Client',
+    body: 'They\'re now live and paying. You can optionally <b>link their PhiXtra account</b> from the dropdown once they\'ve actually signed up.<br><br>' +
+          '<i>Example: "Sunrise Fashion Store" signs up on the portal — you find their name in the dropdown and link it, purely for your own record-keeping. Commission is already automatic the moment they pay — it does not depend on this link.</i>' },
+
+  { sel: '#advanceModal .modal-card', pos: 'right',
+    before: function(){ openAdvanceModal(0, 'Example Business', 'support', []); },
+    title: '⑥ → Support',
+    body: 'The final stage — no extra info needed, just click Confirm. This marks the client as fully onboarded and moves them into ongoing support tracking. You\'ll keep earning commission for as long as they stay subscribed.' },
+
+  { sel: '[data-tour="history-btn"]', pos: 'left',
+    title: '🕘 History',
+    body: 'Opens a full timeline of every stage change for that lead — who changed it, when, and any notes. Handy if you forget exactly where you left off with a prospect.' },
+
+  { sel: '[data-tour="drop-btn"]', pos: 'left',
+    title: '🗑️ Drop a Lead',
+    body: 'If a business decides not to proceed, click Drop and optionally note why.<br><br>' +
+          '<i>Example: "Chose a competitor" or "Not ready, revisit in 3 months".</i><br><br>' +
+          'They move to the Dropped list below — you keep the record without cluttering your active pipeline.' },
+
+  { sel: '[data-tour="dropped-section"]', pos: 'top',
+    title: '📂 Dropped Leads',
+    body: 'A running record of every lead you\'ve dropped, with the stage they were at and your reason. Nothing is ever deleted — you can always see the full history of who you approached.' },
+
+  { sel: '[data-tour="self-closed-section"]', pos: 'top',
+    title: '💸 Self-Closed via Your Referral Link',
+    body: 'These are businesses that signed up directly through your personal referral link, without you manually tracking them through the pipeline above. You still earn 20% of every subscription payment automatically — this table is just for visibility.' },
+
+  { sel: null, pos: 'center', last: true,
+    title: '🎉 You\'re ready!',
+    body: 'That\'s My Pipeline covered. Click "🎓 Take a Tour" in the page header any time you want to run through this again.' },
+], 'phixtra_amb_tour_my_pipeline', true);
 </script>
 {% endblock %}

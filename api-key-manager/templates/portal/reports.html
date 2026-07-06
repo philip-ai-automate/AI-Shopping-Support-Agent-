@@ -3,20 +3,48 @@
 
 {% block head %}
 <style>
+/* ── Hero + sections ────────────────────────────────────────────────────────── */
+.wr-hero { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; margin-bottom:22px }
+.wr-hero-left { display:flex; align-items:center; gap:14px }
+.wr-hero-icon {
+  width:48px; height:48px; border-radius:14px; flex-shrink:0;
+  background:linear-gradient(135deg, #0288D1, #26A69A);
+  display:flex; align-items:center; justify-content:center; font-size:22px;
+  box-shadow:0 6px 16px rgba(2,136,209,.28);
+}
+.wr-hero h1 { font-size:22px; font-weight:800; letter-spacing:-.4px; margin:0 }
+.wr-hero p { margin:3px 0 0; font-size:13.5px; color:var(--muted) }
+
+.section-hd { display:flex; align-items:center; gap:10px; margin:26px 0 14px }
+.section-hd:first-of-type { margin-top:0 }
+.section-hd-title { font-size:12.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.07em }
+.section-hd-line { flex:1; height:1px; background:var(--line) }
+
 /* ── Stats grid ─────────────────────────────────────────────────────────────── */
 .rpt-stats {
-  display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:28px;
+  display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:22px;
 }
 @media(max-width:860px){ .rpt-stats { grid-template-columns:repeat(2,1fr) } }
 @media(max-width:480px){ .rpt-stats { grid-template-columns:1fr 1fr } }
 
 .rpt-card {
-  background:#fff; border:1px solid var(--line); border-radius:14px; padding:18px 20px;
+  position:relative; overflow:hidden; transition:.15s;
+  background:#fff; border:1px solid var(--line); border-top:3px solid var(--line); border-radius:14px; padding:18px 20px;
 }
-.rpt-val  { font-size:30px; font-weight:800; letter-spacing:-.6px; line-height:1.1 }
-.rpt-sub  { font-size:12px; color:var(--muted); margin-top:5px }
+.rpt-card:hover { box-shadow:0 6px 20px rgba(3,12,24,.06); transform:translateY(-1px) }
+.rpt-card::before { content:''; position:absolute; inset:0; opacity:.05; pointer-events:none }
+.rpt-card.c-blue  { border-top-color:#0288D1 }
+.rpt-card.c-blue::before  { background:radial-gradient(circle at 100% 0%, #0288D1, transparent 60%) }
+.rpt-card.c-amber { border-top-color:#F79009 }
+.rpt-card.c-amber::before { background:radial-gradient(circle at 100% 0%, #F79009, transparent 60%) }
+.rpt-card.c-purple{ border-top-color:#7c3aed }
+.rpt-card.c-purple::before{ background:radial-gradient(circle at 100% 0%, #7c3aed, transparent 60%) }
+.rpt-card.c-green { border-top-color:#25D366 }
+.rpt-card.c-green::before { background:radial-gradient(circle at 100% 0%, #25D366, transparent 60%) }
+.rpt-val  { position:relative; font-size:28px; font-weight:800; letter-spacing:-.6px; line-height:1.1 }
+.rpt-sub  { position:relative; font-size:12px; color:var(--muted); margin-top:5px }
 .rpt-pill {
-  display:inline-block; margin-top:8px; font-size:11px; font-weight:700;
+  position:relative; display:inline-block; margin-top:8px; font-size:11px; font-weight:700;
   padding:2px 8px; border-radius:999px;
 }
 .pill-red  { background:#FEF3F2; color:#B42318 }
@@ -28,13 +56,15 @@
 
 /* ── Bar chart ──────────────────────────────────────────────────────────────── */
 .chart-card {
-  background:#fff; border:1px solid var(--line); border-radius:14px; padding:20px 24px;
+  background:#fff; border:1px solid var(--line); border-radius:14px; padding:20px 24px; transition:.15s;
 }
+.chart-card:hover { box-shadow:0 6px 20px rgba(3,12,24,.05) }
 .chart-title { font-size:13px; font-weight:700; margin-bottom:16px; color:var(--txt) }
 .chart-wrap  { display:flex; align-items:flex-end; gap:5px; height:120px }
 .bar-col     { flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; height:100% }
-.bar-body    { width:100%; border-radius:4px 4px 0 0; background:var(--ink);
-               transition:height .3s ease; min-height:2px; }
+.bar-body    { width:100%; border-radius:4px 4px 0 0; background:linear-gradient(180deg, #26A69A, #0288D1);
+               transition:height .3s ease, opacity .15s; min-height:2px; }
+.bar-body:hover { opacity:.8 }
 .bar-zero    { background:#e5e7eb }
 .bar-lbl     { font-size:9px; color:var(--muted); white-space:nowrap; transform:rotate(-45deg);
                transform-origin:top left; margin-top:4px; display:block }
@@ -42,8 +72,9 @@
 
 /* ── Top products ────────────────────────────────────────────────────────────── */
 .prod-rank-card {
-  background:#fff; border:1px solid var(--line); border-radius:14px; overflow:hidden;
+  background:#fff; border:1px solid var(--line); border-radius:14px; overflow:hidden; transition:.15s;
 }
+.prod-rank-card:hover { box-shadow:0 6px 20px rgba(3,12,24,.05) }
 .prod-rank-header {
   padding:14px 18px; border-bottom:1px solid var(--line);
   font-size:13px; font-weight:700; background:#fafafa;
@@ -53,7 +84,13 @@
   padding:11px 18px; border-bottom:1px solid rgba(3,12,24,.05);
 }
 .prod-rank-row:last-child { border-bottom:none }
-.rank-num   { font-size:12px; font-weight:800; color:var(--muted); min-width:18px; text-align:right }
+.rank-num {
+  font-size:11px; font-weight:800; min-width:22px; height:22px; border-radius:50%; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center; color:#fff; background:#cbd5e1;
+}
+.rank-num.gold   { background:#F79009 }
+.rank-num.silver { background:#94a3b8 }
+.rank-num.bronze { background:#B45309 }
 .rank-name  { flex:1; font-size:13px; font-weight:600; min-width:0;
               white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
 .rank-views {
@@ -68,22 +105,26 @@
 
 {% block content %}
 
-<div class="page-header" style="margin-bottom:24px">
-  <div>
-    <div class="section-title">WhatsApp Report</div>
-    <p class="muted">Last 30 days · WhatsApp activity summary</p>
+<div class="wr-hero">
+  <div class="wr-hero-left">
+    <div class="wr-hero-icon">📈</div>
+    <div>
+      <h1>WhatsApp Report</h1>
+      <p>Last 30 days · WhatsApp activity summary</p>
+    </div>
   </div>
 </div>
 
+<div class="section-hd"><span>📊</span><span class="section-hd-title">Overview</span><span class="section-hd-line"></span></div>
 {# ── Summary cards ─────────────────────────────────────────────────────────── #}
 <div class="rpt-stats">
 
-  <div class="rpt-card">
+  <div class="rpt-card c-blue">
     <div class="rpt-val">{{ conversations_30d }}</div>
     <div class="rpt-sub">Conversations</div>
   </div>
 
-  <div class="rpt-card">
+  <div class="rpt-card c-amber">
     <div class="rpt-val">{{ handoffs_30d }}</div>
     <div class="rpt-sub">Handoffs to agent</div>
     {% if conversations_30d %}
@@ -93,16 +134,16 @@
     {% endif %}
   </div>
 
-  <div class="rpt-card">
+  <div class="rpt-card c-purple">
     <div class="rpt-val">{{ new_customers_30d }}</div>
     <div class="rpt-sub">New customers</div>
   </div>
 
-  <div class="rpt-card">
+  <div class="rpt-card c-green">
     <div class="rpt-val">{{ orders_30d }}</div>
     <div class="rpt-sub">Orders placed</div>
     {% if revenue_30d %}
-    <div style="font-size:13px;font-weight:700;color:var(--good);margin-top:6px">
+    <div style="position:relative;font-size:13px;font-weight:700;color:var(--good);margin-top:6px">
       ₦{{ "{:,.0f}".format(revenue_30d) }}
     </div>
     {% endif %}
@@ -110,6 +151,7 @@
 
 </div>
 
+<div class="section-hd"><span>📈</span><span class="section-hd-title">Trends</span><span class="section-hd-line"></span></div>
 {# ── Chart + Top products ──────────────────────────────────────────────────── #}
 <div class="rpt-grid">
 
@@ -146,7 +188,7 @@
     {% else %}
     {% for p in top_products %}
     <div class="prod-rank-row">
-      <span class="rank-num">{{ loop.index }}</span>
+      <span class="rank-num {% if loop.index == 1 %}gold{% elif loop.index == 2 %}silver{% elif loop.index == 3 %}bronze{% endif %}">{{ loop.index }}</span>
       <span class="rank-name" title="{{ p.product_name or p.product_id }}">
         {{ p.product_name or p.product_id }}
       </span>

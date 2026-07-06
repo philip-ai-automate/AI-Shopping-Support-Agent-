@@ -58,13 +58,29 @@
 <div class="page-header">
   <div>
     <h1>Fee Management</h1>
-    <p>Create schedules, track payments, send WhatsApp reminders</p>
+    <p>{% if staff_class %}{{ staff_class }} fee schedules — view and send reminders{% else %}Create schedules, track payments, send WhatsApp reminders{% endif %}</p>
   </div>
+  {% if session.get('school_role') in ('admin', 'bursar') %}
   <button class="btn btn-primary"
           onclick="document.getElementById('add-modal').style.display='flex'">
     + New Schedule
   </button>
+  {% endif %}
 </div>
+
+{% if session.get('school_role') in ('admin', 'bursar') %}
+<div style="margin-bottom:18px;font-size:12.5px;padding:9px 14px;border-radius:10px;
+            border:1px solid var(--line);
+            {% if has_payment_gateway %}background:rgba(18,183,106,0.06){% else %}background:rgba(247,144,9,0.06){% endif %}">
+  {% if has_payment_gateway %}
+    <span style="color:var(--good);font-weight:600">🔗 Online payments connected</span>
+    — reminders include a WhatsApp pay link. <a href="{{ url_for('school.integrations') }}">Manage</a>
+  {% else %}
+    <span style="color:var(--warn);font-weight:600">🔗 Online payments not connected</span>
+    — parents can't pay from WhatsApp yet. <a href="{{ url_for('school.integrations') }}">Set up in Payments</a>
+  {% endif %}
+</div>
+{% endif %}
 
 {# ── Summary stats ── #}
 {% if schedules %}
@@ -158,10 +174,12 @@
 <div class="empty-state">
   <div class="big">💰</div>
   <p>No fee schedules yet.
+     {% if session.get('school_role') in ('admin', 'bursar') %}
      <button class="btn btn-primary" style="margin-top:10px"
              onclick="document.getElementById('add-modal').style.display='flex'">
        Create First Schedule →
      </button>
+     {% endif %}
   </p>
 </div>
 {% endif %}

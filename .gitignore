@@ -26,6 +26,14 @@ api-key-manager/invoices/
 # ── Plugin zips (large binaries — distribute separately) ──────────────────────
 api-key-manager/static/plugin_zips/
 
+# ── Tutorial video build artifacts (large, regenerable from tutorial_studio scripts) ──
+api-key-manager/tutorial_studio/_workspace/
+api-key-manager/static/portal/tutorial/videos/
+
+# ── User-uploaded content (PII — ID docs, qualification proofs, listing photos) ──
+api-key-manager/static/uploads/
+api-key-manager/static/estate_images/
+
 # ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db

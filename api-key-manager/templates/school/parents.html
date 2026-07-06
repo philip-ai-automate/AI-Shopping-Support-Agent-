@@ -9,91 +9,143 @@
   .pr-stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px}
   .pr-stat .val{font-size:26px;font-weight:750;color:var(--ink);line-height:1;margin-bottom:4px}
   .pr-stat .lbl{font-size:12px;color:var(--muted);font-weight:500}
+  .pr-stat.warn .val{color:var(--warn)}
 
   /* ── Toolbar ── */
-  .pr-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
-  .pr-search{
-    flex:1;min-width:180px;padding:9px 13px;
-    border:1.5px solid var(--line);border-radius:9px;font-size:14px;background:#fff;
-  }
+  .pr-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+  .pr-search{flex:1;min-width:180px;padding:9px 13px;border:1.5px solid var(--line);
+             border-radius:9px;font-size:14px;background:#fff}
   .pr-search:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(29,106,245,.10)}
+  .pr-result-count{font-size:12px;color:var(--muted);margin-bottom:14px;min-height:16px}
 
-  /* ── Parent cards ── */
+  /* ── View toggle ── */
+  .view-tabs{display:flex;gap:0;border:1.5px solid var(--line);border-radius:9px;overflow:hidden;flex-shrink:0}
+  .view-tab{padding:7px 14px;font-size:12.5px;font-weight:600;cursor:pointer;
+            background:#fff;color:var(--muted);border:none;transition:.1s}
+  .view-tab.active{background:var(--brand);color:#fff}
+  .view-tab:not(:last-child){border-right:1.5px solid var(--line)}
+
+  /* ── Avatar ── */
+  .pr-avatar{width:38px;height:38px;border-radius:50%;color:#fff;
+             font-size:14px;font-weight:700;flex-shrink:0;background:#CCC;
+             display:flex;align-items:center;justify-content:center}
+
+  /* ════ CARD VIEW ════ */
   .pr-list{display:flex;flex-direction:column;gap:10px}
   .pr-card{
-    background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px;
-    display:grid;grid-template-columns:1fr auto;gap:12px;align-items:start;
+    background:#fff;border:1px solid var(--line);border-radius:12px;
+    padding:14px 16px;display:flex;gap:12px;align-items:flex-start;
+    transition:border-color .12s;
   }
-  .pr-card.opted-out{border-left:3px solid var(--warn)}
-  .pr-name{font-size:15px;font-weight:700;color:var(--ink);margin-bottom:3px}
-  .pr-meta{font-size:12.5px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap;
-           align-items:center;margin-bottom:10px}
-  .wa-num{font-family:monospace;font-size:12.5px}
+  .pr-card:hover{border-color:#C7D9FD}
+  .pr-card.no-child{border-left:3px solid var(--warn)}
+  .pr-card.opted-out{border-left:3px solid #FDA29B}
+  .pr-body{flex:1;min-width:0}
+  .pr-top{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-bottom:8px}
+  .pr-name-btn{font-size:14.5px;font-weight:700;color:var(--ink);
+               background:none;border:none;padding:0;cursor:pointer;
+               font-family:inherit;text-align:left}
+  .pr-name-btn:hover{color:var(--brand);text-decoration:underline}
+  .pr-rel{font-size:11.5px;font-weight:600;padding:2px 8px;background:#F7F9FC;
+          color:var(--muted);border-radius:8px;border:1px solid var(--line)}
+  .pr-wa{font-size:12px;color:var(--muted);font-family:monospace;display:flex;
+         align-items:center;gap:4px}
+  .opted-out-badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;
+                   background:#FEF3C7;color:#92400E;white-space:nowrap}
 
-  /* ── Children chips ── */
-  .child-chips{display:flex;flex-wrap:wrap;gap:6px}
-  .child-chip{
-    display:inline-flex;align-items:center;gap:5px;
-    padding:4px 10px;background:#EEF4FF;color:var(--brand);
-    border-radius:20px;font-size:12px;font-weight:600;
-  }
-  .child-chip .unlink-btn{
-    border:none;background:none;color:var(--muted);cursor:pointer;
-    font-size:13px;line-height:1;padding:0 2px;
-  }
+  /* ── Child chips ── */
+  .child-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .child-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;
+              background:#EEF4FF;color:var(--brand);border-radius:20px;
+              font-size:12px;font-weight:600}
+  .child-chip .unlink-btn{border:none;background:none;color:var(--muted);cursor:pointer;
+                           font-size:13px;line-height:1;padding:0 2px}
   .child-chip .unlink-btn:hover{color:var(--bad)}
-  .no-child{font-size:12.5px;color:var(--warn);font-weight:600}
+  .no-child-tag{font-size:12px;color:var(--warn);font-weight:600}
+  .add-child-btn{font-size:12px;font-weight:600;color:var(--brand);cursor:pointer;
+                 border:none;background:none;padding:2px 0;margin-left:4px}
+  .add-child-btn:hover{text-decoration:underline}
 
-  /* ── Link btn ── */
-  .link-toggle{
-    font-size:12px;font-weight:600;color:var(--brand);cursor:pointer;
-    border:none;background:none;padding:0;margin-top:8px;display:block;
-  }
-  .link-toggle:hover{text-decoration:underline}
-  .link-form{display:none;margin-top:8px}
-  .link-form.open{display:block}
-  .link-form select{
-    width:100%;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;
-    font-size:13px;margin-bottom:8px;
-  }
+  /* ── Card icon actions ── */
+  .pr-icon-actions{display:flex;flex-direction:column;gap:4px;flex-shrink:0}
+  .btn-icon{width:30px;height:30px;border-radius:8px;border:1.5px solid var(--line);
+            background:#fff;cursor:pointer;transition:.12s;
+            display:inline-flex;align-items:center;justify-content:center;
+            color:var(--muted);padding:0;flex-shrink:0}
+  .btn-icon:hover{border-color:#C7D9FD;background:#EEF4FF;color:var(--brand)}
+  .btn-icon.danger:hover{border-color:#FECDCA;background:#FFF1F0;color:var(--bad)}
 
-  /* ── Card actions ── */
-  .pr-actions{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0}
+  /* ════ TABLE VIEW ════ */
+  #table-view .table-wrap{margin-top:0}
+  #table-view td{vertical-align:middle}
 
-  /* ── Opted-out badge ── */
-  .opted-out-badge{
-    font-size:11px;font-weight:700;padding:3px 8px;border-radius:10px;
-    background:#FEF3C7;color:#92400E;white-space:nowrap;
-  }
+  /* ── Student picker ── */
+  .student-pick{max-height:220px;overflow-y:auto;border:1.5px solid var(--line);
+                border-radius:8px;padding:6px}
+  .student-pick label{display:flex;align-items:center;gap:8px;padding:6px 8px;
+                       border-radius:6px;cursor:pointer;font-size:13px}
+  .student-pick label:hover{background:#F3F7FF}
+  .student-pick input[type=checkbox]{accent-color:var(--brand);width:15px;height:15px}
+  .student-cls{font-size:11.5px;color:var(--muted);margin-left:auto;white-space:nowrap}
+  .pick-search{width:100%;padding:7px 10px;border:1.5px solid var(--line);border-radius:7px;
+               font-size:13px;margin-bottom:6px;box-sizing:border-box}
+  .pick-search:focus{outline:none;border-color:var(--brand)}
 
   /* ── Modals ── */
   .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);
                  z-index:200;align-items:center;justify-content:center;padding:20px}
-  .modal-box{background:#fff;border-radius:14px;padding:28px;width:100%;
+  .modal-box{background:#fff;border-radius:14px;width:100%;
              max-width:520px;max-height:90vh;overflow-y:auto}
-  .modal-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+  .modal-hd{display:flex;justify-content:space-between;align-items:center;
+            padding:20px 24px 16px;border-bottom:1px solid var(--line)}
   .modal-hd-title{font-size:16px;font-weight:750;color:var(--ink)}
   .modal-close{border:none;background:none;font-size:22px;cursor:pointer;
-               color:var(--muted);line-height:1}
+               color:var(--muted);line-height:1;padding:0}
   .modal-close:hover{color:var(--ink)}
+  .modal-body{padding:20px 24px 24px}
+  .modal-danger-head{background:#FFF1F0;border-radius:14px 14px 0 0;
+    padding:20px 24px;display:flex;align-items:center;gap:12px;
+    border-bottom:1px solid #FECDCA}
+  .modal-danger-icon{width:40px;height:40px;border-radius:10px;background:#FEE4E2;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .modal-danger-title{font-size:15px;font-weight:750;color:var(--bad)}
+  .modal-danger-sub{font-size:12.5px;color:#B42318;margin-top:2px}
 
-  /* ── Student multi-select ── */
-  .student-pick{
-    max-height:220px;overflow-y:auto;border:1.5px solid var(--line);
-    border-radius:8px;padding:6px;
-  }
-  .student-pick label{
-    display:flex;align-items:center;gap:8px;padding:6px 8px;
-    border-radius:6px;cursor:pointer;font-size:13px;
-  }
-  .student-pick label:hover{background:#F3F7FF}
-  .student-pick input[type=checkbox]{accent-color:var(--brand);width:15px;height:15px}
-  .student-cls{font-size:11.5px;color:var(--muted);margin-left:auto;white-space:nowrap}
-  .pick-search{
-    width:100%;padding:7px 10px;border:1.5px solid var(--line);border-radius:7px;
-    font-size:13px;margin-bottom:6px;box-sizing:border-box;
-  }
-  .pick-search:focus{outline:none;border-color:var(--brand)}
+  /* ── Side panel ── */
+  .panel-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.22);z-index:190}
+  .panel-backdrop.show{display:block}
+  .parent-panel{position:fixed;top:0;right:-420px;height:100%;width:400px;max-width:95vw;
+    background:#fff;box-shadow:-4px 0 32px rgba(10,22,40,.15);z-index:191;
+    transition:right .24s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;overflow:hidden}
+  .parent-panel.open{right:0}
+  .sp-head{display:flex;align-items:center;gap:14px;
+    padding:20px 18px 16px;border-bottom:1px solid var(--line);flex-shrink:0}
+  .sp-avatar{width:46px;height:46px;border-radius:50%;color:#fff;
+    font-size:17px;font-weight:700;flex-shrink:0;display:flex;align-items:center;
+    justify-content:center;background:#CCC}
+  .sp-name{font-size:16px;font-weight:750;color:var(--ink);line-height:1.25}
+  .sp-sub{font-size:12px;color:var(--muted);margin-top:3px}
+  .sp-close{margin-left:auto;border:none;background:none;font-size:22px;
+    cursor:pointer;color:var(--muted);line-height:1;padding:4px;flex-shrink:0}
+  .sp-close:hover{color:var(--ink)}
+  .sp-body{padding:16px 18px;flex:1;overflow-y:auto}
+  .sp-field{margin-bottom:12px}
+  .sp-label{font-size:10.5px;font-weight:700;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px}
+  .sp-value{font-size:14px;color:var(--ink);font-weight:500}
+  .sp-divider{border:none;border-top:1px solid var(--line);margin:14px 0}
+  .sp-section-title{font-size:11.5px;font-weight:700;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px}
+  .sp-child-card{background:#F7F9FC;border:1px solid var(--line);border-radius:10px;
+    padding:10px 13px;margin-bottom:8px}
+  .sp-child-name{font-size:13.5px;font-weight:650;color:var(--ink)}
+  .sp-child-cls{font-size:11.5px;color:var(--muted);margin-top:1px}
+  .sp-no-child{text-align:center;padding:20px 16px;color:var(--muted);font-size:13px}
+  .sp-actions{padding:14px 18px;border-top:1px solid var(--line);flex-shrink:0;
+    display:none;gap:8px;flex-wrap:wrap}
+  .sp-loader{text-align:center;padding:36px;color:var(--muted);font-size:13px}
+  .sp-wa{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;
+    color:#027A48;background:#ECFDF5;padding:3px 9px;border-radius:8px;margin-top:4px}
 </style>
 {% endblock %}
 
@@ -105,12 +157,10 @@
        registered, {{ stats.linked_count or 0 }} with children linked</p>
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
-    <button class="btn btn-outline"
-            onclick="document.getElementById('import-modal').style.display='flex'">
+    <button class="btn btn-outline" type="button" onclick="openModal('import-modal')">
       ⬆ Import CSV
     </button>
-    <button class="btn btn-primary"
-            onclick="document.getElementById('add-modal').style.display='flex'">
+    <button class="btn btn-primary" type="button" onclick="openModal('add-modal')">
       + Add Parent
     </button>
   </div>
@@ -124,11 +174,11 @@
   </div>
   <div class="pr-stat">
     <div class="val">{{ stats.linked_count or 0 }}</div>
-    <div class="lbl">With children linked</div>
+    <div class="lbl">Children linked</div>
   </div>
-  <div class="pr-stat">
-    <div class="val">{{ (stats.total or 0) - (stats.linked_count or 0) }}</div>
-    <div class="lbl">No child linked yet</div>
+  <div class="pr-stat {% if (stats.opted_out or 0) > 0 %}warn{% endif %}">
+    <div class="val">{{ stats.opted_out or 0 }}</div>
+    <div class="lbl">Opted out of WA</div>
   </div>
 </div>
 
@@ -137,7 +187,7 @@
 <div class="flash warning" style="margin-bottom:16px">
   {{ unlinked_count }} parent{{ 's are' if unlinked_count != 1 else ' is' }}
   not linked to any student — they won't receive attendance or fee alerts.
-  Use <strong>+ Add Child</strong> on each card to link them.
+  Click a parent name to open their profile and add children.
 </div>
 {% endif %}
 
@@ -147,91 +197,75 @@
          placeholder="Search by name or WhatsApp number…"
          oninput="filterParents()"
          value="{{ q }}"/>
+  <div class="view-tabs">
+    <button class="view-tab active" id="tab-cards" onclick="setView('cards')" type="button">Cards</button>
+    <button class="view-tab" id="tab-table" onclick="setView('table')" type="button">Table</button>
+  </div>
 </div>
+<div class="pr-result-count" id="pr-result-count"></div>
 
-{# ── Parent list ── #}
+{# ════ CARD VIEW ════ #}
+<div id="cards-view">
 {% if parents %}
 <div class="pr-list" id="pr-list">
   {% for p in parents %}
   {% set child_list = p.child_list if p.child_list else [] %}
-  <div class="pr-card {% if not p.is_opted_in %}opted-out{% endif %}"
+  {% set linked_ids = child_list | map(attribute='id') | list %}
+  <div class="pr-card {% if child_list | length == 0 %}no-child{% elif not p.is_opted_in %}opted-out{% endif %}"
        data-name="{{ p.full_name | lower }}"
        data-num="{{ p.whatsapp_number | lower }}">
 
-    <div>
-      <div class="pr-name">{{ p.full_name }}</div>
-      <div class="pr-meta">
-        <span class="wa-num">📱 {{ p.whatsapp_number }}</span>
-        <span>{{ p.relationship }}</span>
-        {% if not p.is_opted_in %}
-        <span class="opted-out-badge">Opted out</span>
-        {% endif %}
+    <div class="pr-avatar" data-avname="{{ p.full_name }}">{{ p.full_name[0] | upper }}</div>
+
+    <div class="pr-body">
+      <div class="pr-top">
+        <button type="button" class="pr-name-btn"
+                onclick="openParentPanel({{ p.id }})">{{ p.full_name }}</button>
+        <span class="pr-rel">{{ p.relationship }}</span>
+        <span class="pr-wa">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="#12B76A"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+          {{ p.whatsapp_number }}
+        </span>
+        {% if not p.is_opted_in %}<span class="opted-out-badge">Opted out</span>{% endif %}
       </div>
 
-      {# Children chips #}
       <div class="child-chips">
         {% if child_list %}
           {% for child in child_list %}
           <span class="child-chip">
-            {{ child.name }} ({{ child.class }})
+            {{ child.name }} ({{ child['class'] }} {{ child.arm if child.arm else '' }})
             <form method="POST"
                   action="{{ url_for('school.parents_unlink', parent_id=p.id, student_id=child.id) }}"
                   style="display:inline"
-                  onsubmit="return confirm('Unlink {{ child.name | e }}?')">
+                  onsubmit="return confirmUnlink(event, '{{ child.name | e }}')">
               <button class="unlink-btn" type="submit" title="Unlink">×</button>
             </form>
           </span>
           {% endfor %}
         {% else %}
-          <span class="no-child">No children linked</span>
+          <span class="no-child-tag">No children linked</span>
+        {% endif %}
+        {% set avail = [] %}
+        {% for s in student_options %}
+          {% if s.id not in linked_ids %}{% set _ = avail.append(s) %}{% endif %}
+        {% endfor %}
+        {% if avail %}
+        <button type="button" class="add-child-btn"
+                onclick='openAddChild({{ p.id }}, {{ p.full_name | tojson }})'>+ Add Child</button>
         {% endif %}
       </div>
-
-      {# Link student form — show students not already linked #}
-      {% set linked_ids = child_list | map(attribute='id') | list %}
-      {% set avail = [] %}
-      {% for s in student_options %}
-        {% if s.id not in linked_ids %}
-          {% set _ = avail.append(s) %}
-        {% endif %}
-      {% endfor %}
-      {% if avail %}
-      <button class="link-toggle" onclick="toggleLink(this)">+ Add Child</button>
-      <form method="POST"
-            action="{{ url_for('school.parents_link', parent_id=p.id) }}"
-            class="link-form">
-        <input class="pick-search" type="text" placeholder="Filter students…"
-               oninput="filterPick(this)"/>
-        <div class="student-pick">
-          {% for s in avail %}
-          <label data-name="{{ s.full_name | lower }}">
-            <input type="checkbox" name="student_ids" value="{{ s.id }}"/>
-            {{ s.full_name }}
-            <span class="student-cls">{{ s.class_name }} {{ s.arm }}</span>
-          </label>
-          {% endfor %}
-        </div>
-        <div style="display:flex;gap:8px;margin-top:8px">
-          <button class="btn btn-primary btn-sm" type="submit">Link</button>
-          <button type="button" class="btn btn-outline btn-sm"
-                  onclick="toggleLink(this.closest('.pr-card').querySelector('.link-toggle'))">
-            Cancel
-          </button>
-        </div>
-      </form>
-      {% endif %}
     </div>
 
-    <div class="pr-actions">
+    <div class="pr-icon-actions">
       {% if session.get('school_role') == 'admin' %}
-      <form method="POST"
-            action="{{ url_for('school.parents_delete', parent_id=p.id) }}"
-            onsubmit="return confirm('Remove {{ p.full_name | e }}? This cannot be undone.')">
-        <button class="btn btn-outline"
-                style="font-size:12px;padding:5px 10px;color:var(--bad);border-color:var(--bad)">
-          Remove
-        </button>
-      </form>
+      <button type="button" class="btn-icon" title="Edit parent"
+              onclick='openEdit({{ p.id }}, {{ p.full_name | tojson }}, {{ p.whatsapp_number | tojson }}, {{ p.relationship | tojson }})'>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      </button>
+      <button type="button" class="btn-icon danger" title="Remove parent"
+              onclick='openDelete({{ p.id }}, {{ p.full_name | tojson }})'>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+      </button>
       {% endif %}
     </div>
   </div>
@@ -248,31 +282,121 @@
   <div class="big">👨‍👩‍👧</div>
   <p>No parents added yet.</p>
   <div style="display:flex;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap">
-    <button class="btn btn-primary"
-            onclick="document.getElementById('add-modal').style.display='flex'">
-      Add Parent
-    </button>
-    <button class="btn btn-outline"
-            onclick="document.getElementById('import-modal').style.display='flex'">
-      Import CSV
-    </button>
+    <button class="btn btn-primary" type="button" onclick="openModal('add-modal')">Add Parent</button>
+    <button class="btn btn-outline" type="button" onclick="openModal('import-modal')">Import CSV</button>
   </div>
 </div>
 {% endif %}
+</div>
 
-{# ── Add parent modal ── #}
+{# ════ TABLE VIEW ════ #}
+<div id="table-view" style="display:none">
+{% if parents %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>WhatsApp</th>
+        <th>Relationship</th>
+        <th>Children</th>
+        <th>Status</th>
+        {% if session.get('school_role') == 'admin' %}<th>Actions</th>{% endif %}
+      </tr>
+    </thead>
+    <tbody id="table-body">
+      {% for p in parents %}
+      {% set child_list = p.child_list if p.child_list else [] %}
+      {% set linked_ids = child_list | map(attribute='id') | list %}
+      <tr data-name="{{ p.full_name | lower }}" data-num="{{ p.whatsapp_number | lower }}">
+        <td>
+          <div style="display:flex;align-items:center;gap:9px">
+            <div class="pr-avatar" data-avname="{{ p.full_name }}"
+                 style="width:28px;height:28px;font-size:11px">
+              {{ p.full_name[0] | upper }}
+            </div>
+            <button type="button" class="pr-name-btn" style="font-size:13.5px"
+                    onclick="openParentPanel({{ p.id }})">{{ p.full_name }}</button>
+          </div>
+        </td>
+        <td style="font-size:12.5px;font-family:monospace;color:var(--muted)">
+          {{ p.whatsapp_number }}
+        </td>
+        <td style="font-size:13px;color:var(--muted)">{{ p.relationship }}</td>
+        <td>
+          {% if child_list | length > 0 %}
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;
+                font-weight:600;color:var(--brand);background:#EEF4FF;
+                padding:3px 9px;border-radius:10px;cursor:pointer"
+                onclick="openParentPanel({{ p.id }})">
+            {{ child_list | length }} child{{ 'ren' if child_list | length != 1 }}
+          </span>
+          {% else %}
+          <span style="font-size:12px;color:var(--warn);font-weight:600">None</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if p.is_opted_in %}
+          <span style="font-size:11.5px;font-weight:600;color:#027A48;
+                background:#ECFDF5;padding:2px 8px;border-radius:8px">Active</span>
+          {% else %}
+          <span class="opted-out-badge">Opted out</span>
+          {% endif %}
+        </td>
+        {% if session.get('school_role') == 'admin' %}
+        <td>
+          <div style="display:flex;gap:4px">
+            <button type="button" class="btn-icon" title="Edit"
+                    onclick='openEdit({{ p.id }}, {{ p.full_name | tojson }}, {{ p.whatsapp_number | tojson }}, {{ p.relationship | tojson }})'>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button type="button" class="btn-icon danger" title="Remove"
+                    onclick='openDelete({{ p.id }}, {{ p.full_name | tojson }})'>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+            </button>
+          </div>
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+</div>
+
+{# ════ PARENT DETAIL SIDE PANEL ════ #}
+<div class="panel-backdrop" id="panel-backdrop" onclick="closeParentPanel()"></div>
+<div class="parent-panel" id="parent-panel">
+  <div class="sp-head">
+    <div class="sp-avatar" id="sp-avatar"></div>
+    <div style="min-width:0;flex:1">
+      <div class="sp-name" id="sp-name">Loading…</div>
+      <div class="sp-sub" id="sp-sub"></div>
+    </div>
+    <button class="sp-close" onclick="closeParentPanel()">×</button>
+  </div>
+  <div class="sp-body" id="sp-body">
+    <div class="sp-loader">Loading parent details…</div>
+  </div>
+  <div class="sp-actions" id="sp-actions"></div>
+</div>
+
+{# ════ MODALS ════ #}
+
+{# Add Parent #}
 <div id="add-modal" class="modal-overlay">
   <div class="modal-box">
     <div class="modal-hd">
       <span class="modal-hd-title">Add Parent</span>
-      <button class="modal-close"
-              onclick="document.getElementById('add-modal').style.display='none'">×</button>
+      <button class="modal-close" type="button" onclick="closeModal('add-modal')">×</button>
     </div>
+    <div class="modal-body">
     <form method="POST" action="{{ url_for('school.parents_add') }}">
       <div class="form-row g2">
         <div class="form-group">
           <label>Full Name <span style="color:var(--bad)">*</span></label>
-          <input type="text" name="full_name" required placeholder="Mrs Adeyemi"/>
+          <input type="text" name="full_name" id="add-name-input" required placeholder="Mrs Adeyemi"/>
         </div>
         <div class="form-group">
           <label>Relationship</label>
@@ -286,8 +410,7 @@
       </div>
       <div class="form-group">
         <label>WhatsApp Number <span style="color:var(--bad)">*</span></label>
-        <input type="tel" name="whatsapp_number" required
-               placeholder="2348012345678"/>
+        <input type="tel" name="whatsapp_number" required placeholder="2348012345678"/>
         <p class="field-hint">Include country code, digits only (e.g. 2348012345678).</p>
       </div>
       <div class="form-group">
@@ -306,21 +429,122 @@
       </div>
       <div style="display:flex;gap:8px;margin-top:4px">
         <button class="btn btn-primary" type="submit">Add Parent</button>
-        <button type="button" class="btn btn-outline"
-                onclick="document.getElementById('add-modal').style.display='none'">Cancel</button>
+        <button type="button" class="btn btn-outline" onclick="closeModal('add-modal')">Cancel</button>
       </div>
     </form>
+    </div>
   </div>
 </div>
 
-{# ── Import modal ── #}
+{# Edit Parent #}
+<div id="edit-modal" class="modal-overlay">
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-hd">
+      <span class="modal-hd-title">Edit Parent</span>
+      <button class="modal-close" type="button" onclick="closeModal('edit-modal')">×</button>
+    </div>
+    <div class="modal-body">
+    <form method="POST" id="edit-form">
+      <div class="form-row g2">
+        <div class="form-group">
+          <label>Full Name <span style="color:var(--bad)">*</span></label>
+          <input type="text" name="full_name" id="edit-name" required/>
+        </div>
+        <div class="form-group">
+          <label>Relationship</label>
+          <select name="relationship" id="edit-rel">
+            <option>Mother</option>
+            <option>Father</option>
+            <option>Parent</option>
+            <option>Guardian</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>WhatsApp Number <span style="color:var(--bad)">*</span></label>
+        <input type="tel" name="whatsapp_number" id="edit-wa" required/>
+        <p class="field-hint">Include country code, digits only.</p>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button class="btn btn-primary" type="submit">Save Changes</button>
+        <button type="button" class="btn btn-outline" onclick="closeModal('edit-modal')">Cancel</button>
+      </div>
+    </form>
+    </div>
+  </div>
+</div>
+
+{# Add Child modal #}
+<div id="add-child-modal" class="modal-overlay">
+  <div class="modal-box" style="max-width:460px">
+    <div class="modal-hd">
+      <span class="modal-hd-title">Add Child — <span id="add-child-parent-name"></span></span>
+      <button class="modal-close" type="button" onclick="closeModal('add-child-modal')">×</button>
+    </div>
+    <div class="modal-body">
+    <form method="POST" id="add-child-form">
+      <div class="form-group">
+        <label>Select students to link</label>
+        <input class="pick-search" type="text" placeholder="Filter students…"
+               oninput="filterPick(this)"/>
+        <div class="student-pick" id="add-child-pick">
+          {% for s in student_options %}
+          <label data-name="{{ s.full_name | lower }}" data-sid="{{ s.id }}">
+            <input type="checkbox" name="student_ids" value="{{ s.id }}"/>
+            {{ s.full_name }}
+            <span class="student-cls">{{ s.class_name }} {{ s.arm }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button class="btn btn-primary" type="submit">Link</button>
+        <button type="button" class="btn btn-outline" onclick="closeModal('add-child-modal')">Cancel</button>
+      </div>
+    </form>
+    </div>
+  </div>
+</div>
+
+{# Delete Parent #}
+<div id="delete-modal" class="modal-overlay">
+  <div class="modal-box" style="max-width:400px">
+    <div class="modal-danger-head">
+      <div class="modal-danger-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#B42318" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+      </div>
+      <div>
+        <div class="modal-danger-title">Remove Parent</div>
+        <div class="modal-danger-sub">This action cannot be undone</div>
+      </div>
+      <button type="button" class="modal-close" style="margin-left:auto"
+              onclick="closeModal('delete-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:14px;color:var(--txt);margin-bottom:20px;line-height:1.6">
+        Remove <strong id="delete-name"></strong>? All child links will also be removed.
+      </p>
+      <form method="POST" id="delete-form">
+        <div style="display:flex;gap:8px">
+          <button class="btn" type="submit"
+                  style="background:var(--bad);color:#fff;border:none;padding:10px 20px;font-weight:700">
+            Yes, Remove
+          </button>
+          <button type="button" class="btn btn-outline" onclick="closeModal('delete-modal')">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# Import #}
 <div id="import-modal" class="modal-overlay">
   <div class="modal-box" style="max-width:460px">
     <div class="modal-hd">
       <span class="modal-hd-title">Import Parents (CSV)</span>
-      <button class="modal-close"
-              onclick="document.getElementById('import-modal').style.display='none'">×</button>
+      <button class="modal-close" type="button" onclick="closeModal('import-modal')">×</button>
     </div>
+    <div class="modal-body">
     <p style="font-size:13px;color:var(--muted);margin-bottom:8px;line-height:1.6">
       Upload a CSV with parent contacts. Match to students via student number.
     </p>
@@ -328,12 +552,9 @@
                 margin-bottom:8px;overflow-x:auto">full_name, whatsapp_number, relationship, student_number</pre>
     <p style="margin-bottom:16px">
       <a href="{{ url_for('school.parents_csv_template') }}"
-         style="font-size:13px;font-weight:600;color:var(--brand)">
-        ⬇ Download sample template
-      </a>
+         style="font-size:13px;font-weight:600;color:var(--brand)">⬇ Download sample template</a>
     </p>
-    <form method="POST" action="{{ url_for('school.parents_import') }}"
-          enctype="multipart/form-data">
+    <form method="POST" action="{{ url_for('school.parents_import') }}" enctype="multipart/form-data">
       <div class="form-group">
         <label>Select CSV File</label>
         <input type="file" name="csv_file" accept=".csv" required/>
@@ -344,35 +565,196 @@
       </p>
       <div style="display:flex;gap:8px">
         <button class="btn btn-primary" type="submit">Import</button>
-        <button type="button" class="btn btn-outline"
-                onclick="document.getElementById('import-modal').style.display='none'">Cancel</button>
+        <button type="button" class="btn btn-outline" onclick="closeModal('import-modal')">Cancel</button>
       </div>
     </form>
+    </div>
   </div>
 </div>
 
 <script>
+var _view = 'cards';
+var _AVATAR_COLORS = ['#4F46E5','#0EA5E9','#0D9488','#D97706','#DC2626','#7C3AED','#DB2777','#059669'];
+var _IS_ADMIN = {{ 'true' if session.get('school_role') == 'admin' else 'false' }};
+var _TOTAL = {{ parents | length }};
+
+function _avatarColor(name) {
+  var h = 0;
+  for (var i = 0; i < name.length; i++) h = ((h * 31) + name.charCodeAt(i)) | 0;
+  return _AVATAR_COLORS[Math.abs(h) % _AVATAR_COLORS.length];
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.pr-avatar[data-avname]').forEach(function(el) {
+    el.style.background = _avatarColor(el.dataset.avname);
+  });
+});
+
+/* ── Modal helpers ── */
+function openModal(id) {
+  var el = document.getElementById(id);
+  el.style.display = 'flex';
+  var first = el.querySelector('input[type=text],input[type=tel]');
+  if (first) setTimeout(function() { first.focus(); }, 60);
+}
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+/* ── View toggle ── */
+function setView(v) {
+  _view = v;
+  document.getElementById('cards-view').style.display = v === 'cards' ? '' : 'none';
+  document.getElementById('table-view').style.display = v === 'table' ? '' : 'none';
+  document.getElementById('tab-cards').classList.toggle('active', v === 'cards');
+  document.getElementById('tab-table').classList.toggle('active', v === 'table');
+  filterParents();
+}
+
+/* ── Search filter ── */
 function filterParents() {
   var q = document.getElementById('pr-search').value.toLowerCase();
-  var cards = document.querySelectorAll('#pr-list .pr-card');
   var visible = 0;
-  cards.forEach(function(c) {
-    var match = !q || c.dataset.name.includes(q) || c.dataset.num.includes(q);
-    c.style.display = match ? '' : 'none';
-    if (match) visible++;
+  if (_view === 'cards') {
+    var cards = document.querySelectorAll('#pr-list .pr-card');
+    cards.forEach(function(c) {
+      var match = !q || c.dataset.name.includes(q) || c.dataset.num.includes(q);
+      c.style.display = match ? '' : 'none';
+      if (match) visible++;
+    });
+    var nr = document.getElementById('no-results');
+    if (nr) nr.style.display = (visible === 0 && cards.length > 0) ? 'block' : 'none';
+  } else {
+    document.querySelectorAll('#table-body tr').forEach(function(r) {
+      var match = !q || r.dataset.name.includes(q) || r.dataset.num.includes(q);
+      r.style.display = match ? '' : 'none';
+      if (match) visible++;
+    });
+  }
+  var counter = document.getElementById('pr-result-count');
+  if (counter) {
+    counter.textContent = (q && visible < _TOTAL)
+      ? 'Showing ' + visible + ' of ' + _TOTAL + ' parents' : '';
+  }
+}
+
+/* ── Parent detail panel ── */
+function openParentPanel(id) {
+  var panel    = document.getElementById('parent-panel');
+  var backdrop = document.getElementById('panel-backdrop');
+  var spAv     = document.getElementById('sp-avatar');
+  spAv.textContent = ''; spAv.style.background = '#CCC';
+  document.getElementById('sp-name').textContent = 'Loading…';
+  document.getElementById('sp-sub').textContent = '';
+  document.getElementById('sp-body').innerHTML = '<div class="sp-loader">Loading…</div>';
+  document.getElementById('sp-actions').style.display = 'none';
+  panel.classList.add('open');
+  backdrop.classList.add('show');
+
+  fetch('/school/parents/' + id + '/summary')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.error) { document.getElementById('sp-body').innerHTML = '<div class="sp-loader">Not found.</div>'; return; }
+      var initial = (d.full_name || '?')[0].toUpperCase();
+      spAv.textContent = initial;
+      spAv.style.background = _avatarColor(d.full_name || '');
+      document.getElementById('sp-name').textContent = d.full_name;
+      document.getElementById('sp-sub').textContent = d.relationship +
+        (d.is_opted_in ? ' · Active on WA' : ' · Opted out of WA');
+
+      var body = '';
+      body += '<div class="sp-field"><div class="sp-label">WhatsApp</div>';
+      body += '<span class="sp-wa">';
+      body += '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>';
+      body += esc(d.whatsapp_number) + '</span></div>';
+      body += '<div class="sp-field"><div class="sp-label">WA Status</div>';
+      body += '<div class="sp-value">' + (d.is_opted_in
+        ? '<span style="color:#027A48;font-weight:600">✓ Opted in — will receive alerts</span>'
+        : '<span style="color:#92400E;font-weight:600">✕ Opted out — no WA messages sent</span>') + '</div></div>';
+
+      body += '<hr class="sp-divider">';
+      body += '<div class="sp-section-title">Linked Children</div>';
+      if (d.children && d.children.length > 0) {
+        d.children.forEach(function(c) {
+          body += '<div class="sp-child-card">';
+          body += '<div class="sp-child-name">' + esc(c.full_name) + '</div>';
+          body += '<div class="sp-child-cls">' + esc(c.class_name) + ' ' + esc(c.arm || '') +
+            (c.student_number ? ' · ' + esc(c.student_number) : '') + '</div>';
+          body += '</div>';
+        });
+      } else {
+        body += '<div class="sp-no-child"><p>No children linked yet.</p></div>';
+      }
+      document.getElementById('sp-body').innerHTML = body;
+
+      if (_IS_ADMIN) {
+        var acts = document.getElementById('sp-actions');
+        acts.style.display = 'flex';
+        acts.innerHTML = '';
+        var eb = document.createElement('button');
+        eb.type = 'button'; eb.className = 'btn btn-outline';
+        eb.style.fontSize = '13px'; eb.textContent = 'Edit';
+        eb.onclick = function() {
+          closeParentPanel();
+          openEdit(d.id, d.full_name, d.whatsapp_number, d.relationship);
+        };
+        var ab = document.createElement('button');
+        ab.type = 'button'; ab.className = 'btn btn-outline';
+        ab.style.fontSize = '13px'; ab.textContent = '+ Add Child';
+        ab.onclick = function() { closeParentPanel(); openAddChild(d.id, d.full_name); };
+        acts.appendChild(eb);
+        acts.appendChild(ab);
+      }
+    })
+    .catch(function() {
+      document.getElementById('sp-body').innerHTML = '<div class="sp-loader">Could not load details.</div>';
+    });
+}
+
+function closeParentPanel() {
+  document.getElementById('parent-panel').classList.remove('open');
+  document.getElementById('panel-backdrop').classList.remove('show');
+}
+
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ── Edit parent ── */
+function openEdit(id, name, wa, rel) {
+  document.getElementById('edit-form').action = '/school/parents/' + id + '/edit';
+  document.getElementById('edit-name').value = name;
+  document.getElementById('edit-wa').value = wa;
+  var relSel = document.getElementById('edit-rel');
+  for (var i = 0; i < relSel.options.length; i++) {
+    if (relSel.options[i].value === rel) { relSel.selectedIndex = i; break; }
+  }
+  openModal('edit-modal');
+}
+
+/* ── Add Child modal ── */
+function openAddChild(parentId, parentName) {
+  document.getElementById('add-child-form').action = '/school/parents/' + parentId + '/link';
+  document.getElementById('add-child-parent-name').textContent = parentName;
+  // reset all checkboxes in the picker
+  document.querySelectorAll('#add-child-pick input[type=checkbox]').forEach(function(cb) {
+    cb.checked = false;
   });
-  var nr = document.getElementById('no-results');
-  if (nr) nr.style.display = (visible === 0 && cards.length > 0) ? 'block' : 'none';
+  openModal('add-child-modal');
 }
 
-function toggleLink(btn) {
-  var card = btn.closest('.pr-card');
-  var form = card.querySelector('.link-form');
-  if (!form) return;
-  var open = form.classList.toggle('open');
-  btn.textContent = open ? '− Cancel' : '+ Add Child';
+/* ── Delete parent ── */
+function openDelete(id, name) {
+  document.getElementById('delete-name').textContent = name;
+  document.getElementById('delete-form').action = '/school/parents/' + id + '/delete';
+  openModal('delete-modal');
 }
 
+/* ── Unlink confirm (replaces browser confirm) ── */
+function confirmUnlink(e, childName) {
+  if (!confirm('Unlink ' + childName + '?')) { e.preventDefault(); return false; }
+  return true;
+}
+
+/* ── Student picker filter ── */
 function filterPick(input) {
   var q = input.value.toLowerCase();
   var pick = input.nextElementSibling;
@@ -382,10 +764,23 @@ function filterPick(input) {
   });
 }
 
-['add-modal','import-modal'].forEach(function(id) {
-  document.getElementById(id).addEventListener('click', function(e) {
-    if (e.target === this) this.style.display = 'none';
-  });
+/* ── Keyboard shortcuts ── */
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    ['add-modal','edit-modal','add-child-modal','delete-modal','import-modal'].forEach(closeModal);
+    closeParentPanel();
+  }
 });
+
+/* ── Close modals on overlay click ── */
+['add-modal','edit-modal','add-child-modal','delete-modal','import-modal'].forEach(function(id) {
+  var el = document.getElementById(id);
+  if (el) el.addEventListener('click', function(e) { if (e.target === this) this.style.display = 'none'; });
+});
+
+(function() {
+  var q = {{ q | tojson }};
+  if (q) filterParents();
+})();
 </script>
 {% endblock %}

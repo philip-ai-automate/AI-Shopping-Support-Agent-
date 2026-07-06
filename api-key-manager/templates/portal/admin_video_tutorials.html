@@ -1,0 +1,37 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Video Tutorials — PhiXtra Admin{% endblock %}
+
+{% block content %}
+<style>
+.vt-grid { display:flex; flex-direction:column; gap:20px }
+.vt-card {
+  background:#fff; border:1px solid var(--line); border-radius:14px; overflow:hidden;
+}
+.vt-header { padding:14px 20px; border-bottom:1px solid var(--line); background:#fafafa }
+.vt-title { font-size:15px; font-weight:800 }
+.vt-sub { font-size:12px; color:var(--muted); margin-top:2px }
+.vt-body { padding:20px; display:flex; justify-content:center; background:#000 }
+.vt-body video { width:100%; max-width:820px; border-radius:8px; display:block }
+</style>
+
+<div class="page-header">
+  <div class="section-title">Video Tutorials</div>
+</div>
+
+<div class="vt-grid">
+  {% for v in videos %}
+  <div class="vt-card">
+    <div class="vt-header">
+      <div class="vt-title">{{ v.title }}</div>
+      <div class="vt-sub">{{ v.sub }}</div>
+    </div>
+    <div class="vt-body">
+      <video controls preload="metadata">
+        <source src="{{ url_for('static', filename='portal/tutorial/videos/' ~ v.slug ~ '-tutorial.mp4') }}" type="video/mp4">
+        Your browser does not support the video tag.
+      </video>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -35,6 +35,14 @@ def create_app():
     flask_app.register_blueprint(school_bp, url_prefix="/school")
     flask_app.register_blueprint(estate_bp)
 
+    @flask_app.template_filter("with_plus")
+    def _with_plus(value):
+        """Prefix '+' only if not already present. Meta's display_phone_number
+        comes back already formatted with a leading '+' — templates that did
+        `+{{ display_phone_number }}` produced a literal double '++'."""
+        s = str(value or "")
+        return s if s.startswith("+") else f"+{s}"
+
     from flask import request, redirect
 
     @flask_app.before_request

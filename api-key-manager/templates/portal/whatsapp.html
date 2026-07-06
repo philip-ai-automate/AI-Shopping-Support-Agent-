@@ -117,14 +117,42 @@
   }
   .modal-title { font-size: 18px; font-weight: 800; margin-bottom: 6px; }
   .modal-sub   { font-size: 13px; color: var(--muted); margin-bottom: 20px; }
+
+  /* ── Hero + section organization ── */
+  .wai-hero { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; margin-bottom:22px }
+  .wai-hero-left { display:flex; align-items:center; gap:14px }
+  .wai-hero-icon {
+    width:48px; height:48px; border-radius:14px; flex-shrink:0;
+    background:linear-gradient(135deg, #25D366, #128C7E);
+    display:flex; align-items:center; justify-content:center; font-size:22px;
+    box-shadow:0 6px 16px rgba(37,211,102,.28);
+  }
+  .wai-hero h1 { font-size:22px; font-weight:800; letter-spacing:-.4px; margin:0 }
+  .wai-hero p { margin:3px 0 0; font-size:13.5px; color:var(--muted) }
+  .section-hd { display:flex; align-items:center; gap:10px; margin:26px 0 14px }
+  .section-hd:first-of-type { margin-top:0 }
+  .section-hd-title { font-size:12.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.07em }
+  .section-hd-line { flex:1; height:1px; background:var(--line) }
+
+  /* ── Connection card ── */
+  .wa-conn-card { border-radius:14px; padding:16px 18px; margin-bottom:12px; transition:.15s; border:1.5px solid var(--line); border-left-width:4px }
+  .wa-conn-card:hover { box-shadow:0 4px 14px rgba(3,12,24,.05) }
+  .wa-conn-card.is-active { border-left-color:#25D366 }
+  .wa-conn-card.is-inactive { border-left-color:#d1d5db; opacity:.7 }
+
+  /* ── Webhook step cards (reuses existing .setup-step/.step-num look) ── */
+  .wh-step-num { background:#128C7E }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <div>
-    <div class="section-title">WhatsApp Integration</div>
-    <p class="muted">Connect your Meta WhatsApp Business account so your AI assistant can reply on WhatsApp.</p>
+<div class="wai-hero">
+  <div class="wai-hero-left">
+    <div class="wai-hero-icon">💬</div>
+    <div>
+      <h1>WhatsApp Integration</h1>
+      <p>Connect your Meta WhatsApp Business account so your AI assistant can reply on WhatsApp.</p>
+    </div>
   </div>
   {% if connections %}
   <a href="{{ url_for('portal.my_inbox') }}" class="btn btn-primary">Open Inbox</a>
@@ -132,6 +160,7 @@
 </div>
 
 <!-- ── Connected Numbers ─────────────────────────────────────────────────── -->
+<div class="section-hd"><span>🔌</span><span class="section-hd-title">Connected Numbers</span><span class="section-hd-line"></span></div>
 <div class="card" style="margin-bottom:20px">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
     <div class="card-title" style="margin-bottom:0">WhatsApp Numbers</div>
@@ -140,9 +169,7 @@
 
   {% if connections %}
     {% for cn in connections %}
-    <div style="border:1.5px solid {% if cn.active %}var(--line){% else %}#f0f0f2{% endif %};
-                border-radius:14px;padding:16px 18px;margin-bottom:12px;
-                {% if not cn.active %}opacity:.65{% endif %}">
+    <div class="wa-conn-card {{ 'is-active' if cn.active else 'is-inactive' }}">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
         <div style="flex:1;min-width:0">
           <!-- Status + number -->
@@ -297,6 +324,7 @@
 {% endif %}
 
 <!-- ── Connect Section ───────────────────────────────────────────────────── -->
+<div class="section-hd"><span>➕</span><span class="section-hd-title">Add a Number</span><span class="section-hd-line"></span></div>
 {% if embedded_enabled %}
 <!-- ════════════════════════════════════════════════════════════
      EMBEDDED SIGNUP (Tech Provider mode — Meta approved)
@@ -640,36 +668,53 @@
     </p>
   </div>
 
-  <ol style="font-size:13px;line-height:1.6;padding-left:20px;display:flex;flex-direction:column;gap:12px">
-    <li>
-      Open the
-      <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener"
-         style="color:var(--ink);font-weight:600">Meta App Dashboard ↗</a>
-      and select your app.
-    </li>
-    <li>
-      In the left sidebar go to <strong>WhatsApp → Configuration</strong>.<br>
-      <span class="muted" style="font-size:12px">Direct link (replace <code>YOUR_APP_ID</code>):
-        <a href="https://developers.facebook.com/apps/YOUR_APP_ID/whatsapp-business/wa-dev-console/"
-           target="_blank" rel="noopener" style="color:var(--ink)">
-          developers.facebook.com/apps/YOUR_APP_ID/whatsapp-business/wa-dev-console/ ↗
-        </a>
-      </span>
-    </li>
-    <li>
-      Scroll down to the <strong>Webhook</strong> section and click <strong>Edit</strong>.
-    </li>
-    <li>
-      In the <strong>Callback URL</strong> field paste the URL shown above.<br>
-      In the <strong>Verify Token</strong> field paste the token shown above.<br>
-      Click <strong>Verify and Save</strong> — Meta will call your webhook immediately to confirm it works.
-    </li>
-    <li>
-      After saving, click <strong>Manage</strong> next to Webhook Fields, find <strong>messages</strong>
-      and toggle it to <strong>Subscribed</strong>.
-      <br><span class="muted" style="font-size:12px">Without this, Meta will not forward incoming customer messages to PhiXtra.</span>
-    </li>
-  </ol>
+  <div>
+    <div class="setup-step">
+      <div class="step-num wh-step-num">1</div>
+      <div>
+        <div class="step-desc" style="margin-bottom:0">
+          Open the
+          <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener"
+             style="color:var(--ink);font-weight:600">Meta App Dashboard ↗</a>
+          and select your app.
+        </div>
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num wh-step-num">2</div>
+      <div>
+        <div class="step-desc" style="margin-bottom:4px">In the left sidebar go to <strong>WhatsApp → Configuration</strong>.</div>
+        <span class="muted" style="font-size:12px">Direct link (replace <code>YOUR_APP_ID</code>):
+          <a href="https://developers.facebook.com/apps/YOUR_APP_ID/whatsapp-business/wa-dev-console/"
+             target="_blank" rel="noopener" style="color:var(--ink)">
+            developers.facebook.com/apps/YOUR_APP_ID/whatsapp-business/wa-dev-console/ ↗
+          </a>
+        </span>
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num wh-step-num">3</div>
+      <div class="step-desc" style="margin-bottom:0">Scroll down to the <strong>Webhook</strong> section and click <strong>Edit</strong>.</div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num wh-step-num">4</div>
+      <div class="step-desc" style="margin-bottom:0">
+        In the <strong>Callback URL</strong> field paste the URL shown above.<br>
+        In the <strong>Verify Token</strong> field paste the token shown above.<br>
+        Click <strong>Verify and Save</strong> — Meta will call your webhook immediately to confirm it works.
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num wh-step-num">5</div>
+      <div>
+        <div class="step-desc" style="margin-bottom:4px">
+          After saving, click <strong>Manage</strong> next to Webhook Fields, find <strong>messages</strong>
+          and toggle it to <strong>Subscribed</strong>.
+        </div>
+        <span class="muted" style="font-size:12px">Without this, Meta will not forward incoming customer messages to PhiXtra.</span>
+      </div>
+    </div>
+  </div>
 </div>
 
 {% if embedded_enabled %}
@@ -756,7 +801,8 @@ function useApiKey(evt) {
 </script>
 
 {# ── Personal WhatsApp notification number ────────────────────────────────── #}
-<div class="card" style="margin-top:24px">
+<div class="section-hd"><span>🔔</span><span class="section-hd-title">Alerts</span><span class="section-hd-line"></span></div>
+<div class="card">
   <div class="card-title">🔔 Alert Notifications</div>
 
   <div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>{% if success %}Payment Received{% else %}Payment Not Confirmed{% endif %} — {{ payment.school_name }}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:ui-sans-serif,system-ui,-apple-system,sans-serif;
+         min-height:100vh;background:#F7F9FC;display:flex;align-items:center;
+         justify-content:center;padding:24px;color:rgba(10,22,40,0.90)}
+    .card{width:100%;max-width:420px;background:#fff;border-radius:16px;
+          border:1px solid rgba(10,22,40,0.10);padding:36px 28px;text-align:center;
+          box-shadow:0 8px 30px rgba(10,22,40,0.06)}
+    .ico{font-size:44px;margin-bottom:14px}
+    h1{font-size:20px;font-weight:700;margin-bottom:8px}
+    p{font-size:13.5px;color:rgba(10,22,40,0.55);line-height:1.5}
+    .btn{display:inline-block;margin-top:22px;padding:12px 22px;border-radius:12px;
+         background:#1D6AF5;color:#fff;font-size:14px;font-weight:700;text-decoration:none}
+  </style>
+</head>
+<body>
+<div class="card">
+  {% if success %}
+    <div class="ico">✅</div>
+    <h1>Payment received</h1>
+    <p>Thank you! {{ payment.student_name }}'s payment towards {{ payment.fee_name }} has
+       been confirmed. A WhatsApp confirmation has been sent to the registered parent number.</p>
+  {% else %}
+    <div class="ico">⏳</div>
+    <h1>Payment not confirmed yet</h1>
+    <p>We couldn't confirm this payment automatically. If money left your account,
+       don't worry — it will reflect shortly, or contact the school with your
+       transaction reference.</p>
+    <a class="btn" href="{{ url_for('school.pay_page', token=token) }}">Back to payment page</a>
+  {% endif %}
+</div>
+</body>
+</html>

@@ -1,0 +1,170 @@
+{% extends "school/base.html" %}
+{% block title %}Send Absence Notifications — {{ school.school_name }}{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Template status card ── */
+  .tpl-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:18px}
+  .tpl-head{display:flex;align-items:center;gap:10px;margin-bottom:4px;flex-wrap:wrap}
+  .tpl-title{font-weight:700;font-size:14px;color:var(--ink)}
+  .tpl-help{font-size:12.5px;color:var(--muted);margin-bottom:0;line-height:1.5}
+  .tpl-toggle{font-size:12.5px;color:var(--brand);font-weight:600;text-decoration:none}
+  .tpl-toggle:hover{text-decoration:underline}
+
+  /* ── Controls ── */
+  .notify-controls{
+    background:#fff;border:1px solid var(--line);border-radius:12px;
+    padding:16px 20px;margin-bottom:16px;
+    display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;
+  }
+  .notify-controls .form-group{margin-bottom:0;min-width:0}
+  .notify-controls select,.notify-controls input[type=date]{
+    min-width:130px;padding:9px 12px;border:1.5px solid var(--line);
+    border-radius:8px;font-size:14px;background:#fff;color:var(--ink);
+  }
+  .notify-controls select:focus,.notify-controls input[type=date]:focus{outline:none;border-color:var(--brand)}
+
+  .notify-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px}
+  .notify-summary{font-size:13px;color:var(--muted)}
+  .notify-summary strong{color:var(--ink)}
+
+  /* ── Absentee rows ── */
+  .notify-list{display:flex;flex-direction:column;gap:8px;margin-bottom:24px}
+  .notify-row{
+    display:flex;align-items:center;gap:14px;padding:14px 16px;
+    border-radius:12px;border:1.5px solid var(--line);background:#fff;
+  }
+  .notify-avatar{
+    width:36px;height:36px;border-radius:50%;flex-shrink:0;background:#FFF1F0;
+    color:#B42318;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;
+  }
+  .notify-info{flex:1;min-width:0}
+  .notify-name{font-size:14.5px;font-weight:600;color:var(--ink)}
+  .notify-meta{font-size:12px;color:var(--muted);margin-top:2px}
+  .notify-parents{font-size:12px;color:var(--muted);margin-top:3px}
+  .notify-status{flex-shrink:0;text-align:right}
+  .notify-action{flex-shrink:0}
+
+  @media(max-width:600px){
+    .notify-controls{flex-direction:column}
+    .notify-controls select,.notify-controls input[type=date]{width:100%}
+    .notify-row{flex-wrap:wrap}
+    .notify-status,.notify-action{margin-left:50px}
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Send Absence Notifications</h1>
+    <p>Notify parents by WhatsApp when their child is marked absent</p>
+  </div>
+  <a class="btn btn-outline" href="{{ url_for('school.attendance') }}">← Mark Attendance</a>
+</div>
+
+{# ── Template setup ── #}
+<div class="tpl-card">
+  <div class="tpl-head">
+    <span class="tpl-title">WhatsApp Template</span>
+    {% if template %}
+    <span class="pill pill-green">Configured — {{ template.template_name }} ({{ template.language_code }})</span>
+    {% else %}
+    <span class="pill pill-red">Not set up</span>
+    {% endif %}
+    {% if session.get('school_role') in ('admin', 'bursar') %}
+    <a class="tpl-toggle" style="margin-left:auto" href="{{ url_for('school.settings_templates') }}">
+      Manage in Settings →
+    </a>
+    {% endif %}
+  </div>
+  <p class="tpl-help">
+    Meta requires a <strong>pre-approved message template</strong> to send WhatsApp messages that the
+    parent didn't start — like an absence alert. A plain text message will silently fail to deliver
+    unless the parent messaged your school's WhatsApp number in the last 24 hours.
+  </p>
+</div>
+
+{# ── Controls ── #}
+<form method="GET" id="filter-form">
+  <div class="notify-controls">
+    <div class="form-group">
+      <label style="font-size:12px;font-weight:600;color:var(--muted)">Date</label>
+      <input type="date" name="date" value="{{ date_str }}" onchange="this.form.submit()"/>
+    </div>
+    {% if not staff_class or session.get('school_role') == 'admin' %}
+    <div class="form-group">
+      <label style="font-size:12px;font-weight:600;color:var(--muted)">Class</label>
+      <select name="class" onchange="this.form.submit()">
+        <option value="">All Classes</option>
+        {% for c in classes %}
+        <option value="{{ c }}" {% if c == selected_class %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% else %}
+    <input type="hidden" name="class" value="{{ selected_class }}"/>
+    {% endif %}
+  </div>
+</form>
+
+<div class="notify-toolbar">
+  <div class="notify-summary">
+    📅 {{ date_label }} — <strong>{{ absentees|length }}</strong> student(s) marked absent
+  </div>
+  {% if absentees and template %}
+  <form method="POST" action="{{ url_for('school.attendance_notify_send_all') }}">
+    <input type="hidden" name="date" value="{{ date_str }}"/>
+    <input type="hidden" name="class" value="{{ selected_class }}"/>
+    <button type="submit" class="btn btn-primary btn-sm">Send All Pending</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if absentees %}
+<div class="notify-list">
+  {% for a in absentees %}
+  <div class="notify-row">
+    <div class="notify-avatar">{{ a.full_name[0]|upper }}</div>
+    <div class="notify-info">
+      <div class="notify-name">{{ a.full_name }}</div>
+      <div class="notify-meta">{{ a.class_name }}{{ a.arm }}</div>
+      {% if a.parents %}
+      <div class="notify-parents">
+        {% for p in a.parents %}
+          {{ p.full_name }}{% if not p.is_opted_in %} <span style="color:var(--warn)">(not opted in)</span>{% endif %}{% if not loop.last %}, {% endif %}
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="notify-parents" style="color:var(--warn)">No parent linked</div>
+      {% endif %}
+    </div>
+    <div class="notify-status">
+      {% if a.wa_notified %}
+      <span class="pill pill-green">✓ Notified</span>
+      {% if a.marked_at %}<div class="notify-meta">{{ a.marked_at.strftime('%H:%M') }}</div>{% endif %}
+      {% else %}
+      <span class="pill pill-grey">Not sent</span>
+      {% endif %}
+    </div>
+    <div class="notify-action">
+      <form method="POST" action="{{ url_for('school.attendance_notify_send') }}">
+        <input type="hidden" name="date" value="{{ date_str }}"/>
+        <input type="hidden" name="class" value="{{ selected_class }}"/>
+        <input type="hidden" name="student_id" value="{{ a.student_id }}"/>
+        <button type="submit" class="btn btn-outline btn-sm"
+                {% if not template or not a.parents %}disabled title="{% if not template %}Set up a template first{% else %}No parent linked{% endif %}"{% endif %}>
+          {% if a.wa_notified %}Resend{% else %}Send{% endif %}
+        </button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <div class="big">🎉</div>
+  <p>No absences recorded for {{ date_label }}{% if selected_class %} in {{ selected_class }}{% endif %}.</p>
+</div>
+{% endif %}
+{% endblock %}

@@ -6,31 +6,50 @@
   <h1 class="section-title">My QR Code</h1>
 </div>
 
+{% if active_products|length > 1 %}
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">
+  {% for p in active_products %}
+  <a href="{{ url_for('ambassador.qr_page', product=p) }}"
+     class="btn btn-sm{% if selected_product==p %} btn-primary{% endif %}">
+    {{ product_config[p].icon }} {{ product_config[p].label }}
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if not active_products %}
+<div class="card" style="max-width:480px">
+  <div style="font-size:13px;color:var(--muted)">
+    You're not yet approved to sell any product. Apply from your
+    <a href="{{ url_for('ambassador.dashboard') }}">dashboard</a> first.
+  </div>
+</div>
+{% else %}
 <div class="card" style="max-width:480px">
   <div style="text-align:center;padding:8px 0 24px">
-    <img src="{{ url_for('ambassador.qr_image') }}" alt="Your referral QR code"
+    <img src="{{ url_for('ambassador.qr_image', product=selected_product) }}" alt="Your referral QR code"
          style="width:220px;height:220px;border:1px solid var(--line);border-radius:16px;margin-bottom:20px"/>
 
-    <div style="font-size:13px;color:var(--muted);margin-bottom:6px">Your referral link</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:6px">Your {{ product_config[selected_product].label }} referral link</div>
     <div style="background:rgba(3,12,24,.04);border:1px solid var(--line);border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:8px;margin-bottom:20px;text-align:left">
       <span id="refUrl" style="font-size:12px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-        {{ base_url }}/register?ref={{ amb.ref_code }}
+        {{ register_url }}
       </span>
       <button onclick="copyLink(this)" class="btn btn-sm" style="flex-shrink:0">Copy</button>
     </div>
 
     <div style="display:flex;gap:10px;justify-content:center">
-      <a href="{{ url_for('ambassador.qr_image', download='1') }}"
+      <a href="{{ url_for('ambassador.qr_image', download='1', product=selected_product) }}"
          class="btn btn-primary" download>Download PNG</a>
     </div>
   </div>
 
   <div style="border-top:1px solid var(--line);padding-top:16px;font-size:12px;color:var(--muted);line-height:1.6">
     <strong>How it works:</strong> When a business scans this QR code or visits your referral link and signs up,
-    they are automatically linked to your ambassador account. You earn 20% of every subscription payment
-    they make, and upgrade bonuses of ₦5,000–₦20,000 depending on which plan they move to.
+    they are automatically linked to your ambassador account. You earn 20% of every subscription payment they make{% if selected_product == 'portal' %}, and upgrade bonuses of ₦5,000–₦20,000 depending on which plan they move to{% endif %}.
   </div>
 </div>
+{% endif %}
 
 <script>
 function copyLink(btn) {

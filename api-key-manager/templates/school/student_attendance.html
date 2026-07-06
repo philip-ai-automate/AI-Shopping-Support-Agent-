@@ -1,0 +1,237 @@
+{% extends "school/base.html" %}
+{% block title %}{{ student.full_name }} — Attendance — {{ school.school_name }}{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Stat cards ── */
+  .sa-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+  @media(max-width:700px){.sa-stats{grid-template-columns:repeat(2,1fr)}}
+  .sa-stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .sa-stat .val{font-size:26px;font-weight:750;color:var(--ink);line-height:1}
+  .sa-stat .lbl{font-size:12px;color:var(--muted);margin-top:5px;font-weight:500}
+  .sa-stat.accent-green .val{color:var(--good)}
+  .sa-stat.accent-red   .val{color:var(--bad)}
+  .sa-stat.accent-blue  .val{color:var(--brand)}
+
+  /* ── View tabs ── */
+  .view-tabs{display:flex;gap:6px;margin-bottom:14px}
+  .view-tab{
+    padding:7px 18px;border-radius:20px;font-size:13px;font-weight:600;
+    border:1.5px solid var(--line);background:#fff;color:var(--muted);text-decoration:none;
+  }
+  .view-tab:hover{border-color:var(--brand);color:var(--brand)}
+  .view-tab.active{background:var(--brand);border-color:var(--brand);color:#fff}
+
+  /* ── Calendar card ── */
+  .cal-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:20px}
+  .cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+  .cal-nav-label{font-size:16px;font-weight:700;color:var(--ink)}
+  .cal-nav-btns{display:flex;gap:8px;align-items:center}
+  .cal-nav-btn{
+    width:32px;height:32px;border-radius:8px;border:1.5px solid var(--line);background:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--ink);
+    cursor:pointer;text-decoration:none;
+  }
+  .cal-nav-btn:hover{border-color:var(--brand);color:var(--brand)}
+  .cal-nav-btn.disabled{opacity:.35;pointer-events:none}
+  .cal-today-btn{
+    font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:8px;
+    border:1.5px solid var(--line);background:#fff;color:var(--muted);text-decoration:none;
+  }
+  .cal-today-btn:hover{border-color:var(--brand);color:var(--brand)}
+
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+  .cal-dow{font-size:11px;font-weight:700;color:var(--muted);text-align:center;
+           text-transform:uppercase;letter-spacing:.04em;padding-bottom:4px}
+  .cal-day{
+    aspect-ratio:1;border-radius:10px;border:1.5px solid var(--line);background:#fff;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+    position:relative;
+  }
+  .cal-day.blank{border-color:transparent;background:transparent}
+  .cal-day .dnum{font-size:13px;font-weight:600;color:var(--ink)}
+  .cal-day.future .dnum{color:var(--muted);opacity:.5}
+  .cal-day.today{border-color:var(--brand);border-width:2px}
+  .cal-day[data-status=present]{background:#F0FDF4;border-color:#A6F4C5}
+  .cal-day[data-status=present] .dnum{color:#027A48}
+  .cal-day[data-status=absent]{background:#FFF1F0;border-color:#FECDCA}
+  .cal-day[data-status=absent] .dnum{color:#B42318}
+  .cal-day[data-status=late]{background:#FFFBEB;border-color:#FDE68A}
+  .cal-day[data-status=late] .dnum{color:#B45309}
+  .cal-day .dstatus{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+  .cal-day[data-status=present] .dstatus{color:#027A48}
+  .cal-day[data-status=absent] .dstatus{color:#B42318}
+  .cal-day[data-status=late] .dstatus{color:#B45309}
+
+  /* ── Week list ── */
+  .week-list{display:flex;flex-direction:column;gap:6px}
+  .week-row{
+    display:flex;align-items:center;gap:14px;padding:14px 16px;
+    border-radius:10px;border:1.5px solid var(--line);background:#fff;
+  }
+  .week-row.today{border-color:var(--brand);border-width:2px}
+  .week-row[data-status=present]{background:#F0FDF4;border-color:#A6F4C5}
+  .week-row[data-status=absent]{background:#FFF1F0;border-color:#FECDCA}
+  .week-row[data-status=late]{background:#FFFBEB;border-color:#FDE68A}
+  .wk-dow{width:110px;flex-shrink:0;font-size:14px;font-weight:700;color:var(--ink)}
+  .wk-today-pill{font-size:10px;font-weight:700;color:var(--brand);background:var(--brand-light);
+                 padding:2px 7px;border-radius:10px;vertical-align:middle}
+  .wk-date{flex:1;font-size:13px;color:var(--muted)}
+  .week-row.future .wk-date{opacity:.6}
+  .wk-status{flex-shrink:0}
+  .wk-muted{font-size:12.5px;color:var(--muted)}
+
+  .cal-legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;font-size:12.5px;color:var(--muted)}
+  .cal-legend span{display:flex;align-items:center;gap:6px}
+  .cal-legend .sw{width:12px;height:12px;border-radius:4px;flex-shrink:0}
+  .sw.present{background:#A6F4C5;border:1px solid #12B76A}
+  .sw.absent{background:#FECDCA;border:1px solid #F04438}
+  .sw.late{background:#FDE68A;border:1px solid #F79009}
+  .sw.none{background:#fff;border:1.5px solid var(--line)}
+
+  /* ── Notable days list ── */
+  .nd-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px}
+  .nd-title{font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;
+            letter-spacing:.5px;margin-bottom:14px}
+  .nd-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .nd-row:last-child{border-bottom:none}
+  .nd-date{flex:1;font-size:13.5px;font-weight:500;color:var(--ink)}
+  .nd-chip{font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:20px}
+  .nd-chip.absent{background:#FFE4E1;color:#B91C1C}
+  .nd-chip.late{background:#FEF3C7;color:#92400E}
+  .nd-remark{font-size:12px;color:var(--brand);font-weight:600}
+  .nd-remark:hover{text-decoration:underline}
+
+  @media(max-width:600px){
+    .cal-day .dstatus{display:none}
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ student.full_name }}</h1>
+    <p>{{ student.class_name }}{{ student.arm }}{% if student.student_number %} · {{ student.student_number }}{% endif %} — Monthly attendance</p>
+  </div>
+  <a class="btn btn-outline" href="{{ url_for('school.students') }}">← Students</a>
+</div>
+
+{# ── Summary stats ── #}
+<div class="sa-stats">
+  <div class="sa-stat accent-blue">
+    <div class="val">{{ tracked_n }}</div>
+    <div class="lbl">Days tracked</div>
+  </div>
+  <div class="sa-stat {% if att_pct >= 90 %}accent-green{% elif att_pct < 75 %}accent-red{% endif %}">
+    <div class="val">{{ att_pct }}%</div>
+    <div class="lbl">Attendance rate</div>
+  </div>
+  <div class="sa-stat {% if absent_n > 0 %}accent-red{% endif %}">
+    <div class="val">{{ absent_n }}</div>
+    <div class="lbl">Absences</div>
+  </div>
+  <div class="sa-stat">
+    <div class="val">{{ late_n }}</div>
+    <div class="lbl">Late arrivals</div>
+  </div>
+</div>
+
+{# ── View tabs ── #}
+<div class="view-tabs">
+  <a class="view-tab {% if view == 'month' %}active{% endif %}"
+     href="{{ url_for('school.student_attendance', student_id=student.id, view='month') }}">Month</a>
+  <a class="view-tab {% if view == 'week' %}active{% endif %}"
+     href="{{ url_for('school.student_attendance', student_id=student.id, view='week') }}">Week</a>
+</div>
+
+{# ── Calendar ── #}
+<div class="cal-card">
+  <div class="cal-nav">
+    <div class="cal-nav-label">{{ period_label }}</div>
+    <div class="cal-nav-btns">
+      {% if not is_current_period %}
+      <a class="cal-today-btn" href="{{ url_for('school.student_attendance', student_id=student.id, view=view) }}">
+        {{ 'This Week' if view == 'week' else 'Today' }}
+      </a>
+      {% endif %}
+      <a class="cal-nav-btn"
+         href="{{ url_for('school.student_attendance', student_id=student.id, view=view, **({'week': prev_period} if view == 'week' else {'month': prev_period})) }}">‹</a>
+      <a class="cal-nav-btn {% if not can_go_next %}disabled{% endif %}"
+         href="{{ url_for('school.student_attendance', student_id=student.id, view=view, **({'week': next_period} if view == 'week' else {'month': next_period})) }}">›</a>
+    </div>
+  </div>
+
+  {% if view == 'week' %}
+  <div class="week-list">
+    {% for d in days %}
+    <div class="week-row {% if d.is_today %}today{% endif %} {% if d.is_future %}future{% endif %}"
+         data-status="{{ d.status or '' }}">
+      <div class="wk-dow">{{ d.dow }}{% if d.is_today %} <span class="wk-today-pill">Today</span>{% endif %}</div>
+      <div class="wk-date">{{ d.date.strftime('%b %d, %Y') }}</div>
+      <div class="wk-status">
+        {% if d.status == 'present' %}<span class="nd-chip" style="background:#DCFCE7;color:#15803D">✓ Present</span>
+        {% elif d.status == 'absent' %}<span class="nd-chip absent">✗ Absent</span>
+        {% elif d.status == 'late' %}<span class="nd-chip late">⏰ Late</span>
+        {% elif d.is_future %}<span class="wk-muted">—</span>
+        {% else %}<span class="wk-muted">No record</span>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="cal-grid">
+    {% for dow in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}
+    <div class="cal-dow">{{ dow }}</div>
+    {% endfor %}
+
+    {% for week in weeks %}
+    {% for d in week %}
+    {% if d.in_month %}
+    <div class="cal-day {% if d.is_today %}today{% endif %} {% if d.is_future %}future{% endif %}"
+         data-status="{{ d.status or '' }}">
+      <div class="dnum">{{ d.day }}</div>
+      {% if d.status %}
+      <div class="dstatus">{{ d.status[:3] }}</div>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="cal-day blank"></div>
+    {% endif %}
+    {% endfor %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="cal-legend">
+    <span><span class="sw present"></span> Present</span>
+    <span><span class="sw absent"></span> Absent</span>
+    <span><span class="sw late"></span> Late</span>
+    <span><span class="sw none"></span> No record (weekend / holiday)</span>
+  </div>
+</div>
+
+{# ── Notable days ── #}
+{% if notable_days %}
+<div class="nd-card">
+  <div class="nd-title">Absences &amp; Late Days — {{ period_label }}</div>
+  {% for n in notable_days %}
+  <div class="nd-row">
+    <div class="nd-date">{{ n.date }}</div>
+    <span class="nd-chip {{ n.status }}">{% if n.status == 'absent' %}✗ Absent{% else %}⏰ Late{% endif %}</span>
+    <a class="nd-remark"
+       href="{{ url_for('school.attendance', **{'class': student.class_name, 'date': n.date, 'arm': student.arm}) }}">
+      Re-mark →
+    </a>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if tracked_n == 0 %}
+<div class="empty-state">
+  <div class="big">📅</div>
+  <p>No attendance records for {{ student.full_name }} in {{ period_label }}.</p>
+</div>
+{% endif %}
+{% endblock %}

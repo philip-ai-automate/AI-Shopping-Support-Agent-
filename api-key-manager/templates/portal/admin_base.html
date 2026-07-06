@@ -248,9 +248,17 @@
        href="{{ url_for('portal_admin.admin_plans') }}">
       <span class="asb-icon">📋</span> Plans
     </a>
+    <a class="asb-link {% if request.endpoint in ('portal_admin.admin_school_plans','portal_admin.admin_school_plans_assign') %}active{% endif %}"
+       href="{{ url_for('portal_admin.admin_school_plans') }}">
+      <span class="asb-icon">🏫</span> School Plans
+    </a>
     <a class="asb-link {% if request.endpoint=='portal_admin.wa_diagnostics' %}active{% endif %}"
        href="{{ url_for('portal_admin.wa_diagnostics') }}">
       <span class="asb-icon">📡</span> WA Diagnostics
+    </a>
+    <a class="asb-link {% if request.endpoint=='portal_admin.video_tutorials' %}active{% endif %}"
+       href="{{ url_for('portal_admin.video_tutorials') }}">
+      <span class="asb-icon">🎬</span> Video Tutorials
     </a>
     <a class="asb-link {% if request.endpoint=='portal_admin.admin_settings' %}active{% endif %}"
        href="{{ url_for('portal_admin.admin_settings') }}">
@@ -340,6 +348,7 @@
     { icon:'📦', title:'Credit Packages',    desc:'Manage top-up credit packages and pricing', url:'{{ url_for("portal_admin.credit_packages") }}',    tags:'packages credits pricing billing top up' },
     { icon:'🔌', title:'Plugins',            desc:'Manage downloadable WooCommerce plugins',   url:'{{ url_for("portal_admin.plugins") }}',             tags:'plugins woocommerce download wordpress' },
     { icon:'📋', title:'Plans',              desc:'Manage WhatsApp subscription plans',        url:'{{ url_for("portal_admin.admin_plans") }}',         tags:'plans subscription whatsapp quota limits assign' },
+    { icon:'🏫', title:'School Plans',       desc:'Manage school.phixtra.com subscription plans', url:'{{ url_for("portal_admin.admin_school_plans") }}', tags:'school plans subscription quota limits assign termly' },
     { icon:'📡', title:'WA Diagnostics',     desc:'Debug WhatsApp connection issues',          url:'{{ url_for("portal_admin.wa_diagnostics") }}',      tags:'whatsapp diagnostics debug connection status check' },
     { icon:'⚙️', title:'Settings',           desc:'Trial days, password and admin config',     url:'{{ url_for("portal_admin.admin_settings") }}',      tags:'settings admin password trial days config' },
     { icon:'🛒', title:'Recovery Queue',     desc:'View abandoned cart recovery queue',        url:'{{ url_for("portal_admin.recovery_queue") }}',      tags:'cart recovery abandoned queue' },

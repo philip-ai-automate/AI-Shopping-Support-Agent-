@@ -1,0 +1,288 @@
+{% extends "school/base.html" %}
+{% block title %}Integrations — {{ school.school_name }}{% endblock %}
+
+{% block head %}
+<style>
+  .int-grid{
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
+    gap:16px;
+  }
+  .int-card{
+    background:#fff;border:1px solid var(--line);border-radius:14px;
+    padding:20px;display:flex;flex-direction:column;gap:12px;
+  }
+  .int-card-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .int-card-top-left{display:flex;align-items:center;gap:12px}
+  .int-logo{
+    width:44px;height:44px;border-radius:10px;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    font-size:19px;font-weight:800;color:#fff;
+  }
+  .int-name{font-size:15px;font-weight:750;color:var(--ink)}
+  .int-badge{
+    font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+    padding:2px 8px;border-radius:10px;background:#F7F9FC;color:var(--muted);
+    border:1px solid var(--line);margin-top:3px;display:inline-block;
+  }
+  .int-badge.connected{background:#DCFCE7;color:#15803D;border-color:#A6F4C5}
+  .int-desc{font-size:13px;color:var(--muted);line-height:1.55}
+  .int-connect-btn{
+    border:1.5px solid var(--line);background:#fff;color:var(--muted);
+    font-size:13px;font-weight:650;padding:9px 14px;border-radius:9px;
+    cursor:not-allowed;width:100%;
+  }
+  .int-card.soon{opacity:.9}
+  .int-more{
+    border:1.5px dashed var(--line);border-radius:14px;
+    display:flex;align-items:center;justify-content:center;
+    padding:20px;color:var(--muted);font-size:13px;text-align:center;
+    grid-column:1/-1;
+  }
+
+  .health-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;flex-shrink:0}
+  .health-green{background:var(--good)}
+  .health-amber{background:var(--warn)}
+  .health-red  {background:var(--bad)}
+
+  .key-row{display:flex;align-items:center;gap:8px;background:rgba(10,22,40,0.03);
+    border:1px solid var(--line);border-radius:9px;padding:8px 11px;
+    font-family:"SF Mono","Fira Code",monospace;font-size:12.5px}
+  .key-value{flex:1;word-break:break-all;letter-spacing:.02em}
+
+  .webhook-bar{display:flex;align-items:center;gap:8px;padding:8px 11px;
+    border-radius:9px;border:1px solid var(--line);font-size:12px}
+  .webhook-bar.health-green{border-color:rgba(18,183,106,0.30);background:rgba(18,183,106,0.06)}
+  .webhook-bar.health-amber{border-color:rgba(247,144,9,0.30);background:rgba(247,144,9,0.06)}
+  .webhook-bar.health-red  {border-color:rgba(240,68,56,0.30);background:rgba(240,68,56,0.05)}
+
+  .int-connect-toggle summary{
+    font-size:13px;font-weight:650;cursor:pointer;color:var(--brand);
+    list-style:none;padding:9px 0;
+  }
+  .int-connect-toggle summary::-webkit-details-marker{display:none}
+  .int-form-inner{margin-top:10px}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Integrations</h1>
+    <p>Connect third-party services to extend what your school portal can do</p>
+  </div>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+  <div class="flash {{ cat }}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+{% if both_connected %}
+<div class="int-card" style="margin-bottom:16px">
+  <div class="int-name" style="margin-bottom:2px">Default for parent payments</div>
+  <p class="int-desc" style="margin-bottom:4px">Both are connected — choose which one parents are sent to when paying a fee.</p>
+  <form method="POST" action="{{ url_for('school.payments_default') }}" style="display:flex;gap:16px;flex-wrap:wrap">
+    <label style="display:flex;align-items:center;gap:6px;font-size:13.5px">
+      <input type="radio" name="gateway" value="paystack" onchange="this.form.submit()"
+             {{ 'checked' if default_gateway == 'paystack' or not default_gateway }}>
+      Use Paystack
+    </label>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13.5px">
+      <input type="radio" name="gateway" value="flutterwave" onchange="this.form.submit()"
+             {{ 'checked' if default_gateway == 'flutterwave' }}>
+      Use Flutterwave
+    </label>
+  </form>
+</div>
+{% endif %}
+
+<div class="int-grid">
+
+  <!-- PAYSTACK -->
+  <div class="int-card">
+    <div class="int-card-top">
+      <div class="int-card-top-left">
+        <div class="int-logo" style="background:#011B33">P</div>
+        <div>
+          <div class="int-name">Paystack</div>
+          {% if paystack and paystack.is_active %}
+            <span class="int-badge connected">Connected</span>
+          {% else %}
+            <span class="int-badge">Not connected</span>
+          {% endif %}
+        </div>
+      </div>
+      {% if paystack and paystack.is_active %}
+      <form method="POST" action="{{ url_for('school.payments_paystack_remove') }}"
+            onsubmit="return confirm('Disconnect Paystack? Parents will no longer be able to pay online until you reconnect.')">
+        <button type="submit" class="btn btn-danger btn-sm">Disconnect</button>
+      </form>
+      {% endif %}
+    </div>
+
+    <div class="int-desc">
+      Accept fee payments online and let parents pay directly from a WhatsApp reminder link.
+    </div>
+
+    {% if paystack and paystack.is_active %}
+    <div class="webhook-bar health-{{ paystack.health }}">
+      <span class="health-dot health-{{ paystack.health }}"></span>
+      {% if paystack.health == 'green' %}Webhook active
+      {% elif paystack.health == 'amber' %}No webhook in 24–48h — check Paystack dashboard
+      {% else %}No webhook received yet{% endif %}
+    </div>
+    <div class="key-row"><span class="key-value">{{ paystack.public_key or '—' }}</span></div>
+    <div class="key-row"><span class="key-value">{{ paystack.secret_masked or '••••••••••••••••' }}</span></div>
+    <div class="key-row" style="gap:8px">
+      <span class="key-value" id="ps-webhook-url">{{ school_base_url }}/school/webhooks/school-paystack/{{ school.id }}</span>
+      <button type="button" class="btn btn-sm"
+              onclick="navigator.clipboard.writeText(document.getElementById('ps-webhook-url').textContent.trim());this.textContent='Copied!'">Copy</button>
+    </div>
+
+    <details class="int-connect-toggle">
+      <summary>Update Keys</summary>
+      <div class="int-form-inner">
+        <form method="POST" action="{{ url_for('school.payments_paystack') }}">
+          <div class="form-group">
+            <label>Public Key</label>
+            <input type="text" name="public_key" required placeholder="pk_live_xxxxxxxxxxxxxxxxxxxx"
+                   value="{{ paystack.public_key or '' }}">
+          </div>
+          <div class="form-group">
+            <label>Secret Key</label>
+            <input type="password" name="secret_key" required autocomplete="new-password"
+                   placeholder="sk_live_xxxxxxxxxxxxxxxxxxxx">
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm">Update Keys</button>
+        </form>
+      </div>
+    </details>
+
+    {% else %}
+    <details class="int-connect-toggle">
+      <summary>+ Connect Paystack</summary>
+      <div class="int-form-inner">
+        <form method="POST" action="{{ url_for('school.payments_paystack') }}">
+          <div class="form-group">
+            <label>Public Key</label>
+            <input type="text" name="public_key" required placeholder="pk_live_xxxxxxxxxxxxxxxxxxxx">
+          </div>
+          <div class="form-group">
+            <label>Secret Key</label>
+            <input type="password" name="secret_key" required autocomplete="new-password"
+                   placeholder="sk_live_xxxxxxxxxxxxxxxxxxxx">
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm">Connect Paystack</button>
+        </form>
+      </div>
+    </details>
+    {% endif %}
+  </div>
+
+  <!-- FLUTTERWAVE -->
+  <div class="int-card">
+    <div class="int-card-top">
+      <div class="int-card-top-left">
+        <div class="int-logo" style="background:#F5A623">F</div>
+        <div>
+          <div class="int-name">Flutterwave</div>
+          {% if flutterwave and flutterwave.is_active %}
+            <span class="int-badge connected">Connected</span>
+          {% else %}
+            <span class="int-badge">Not connected</span>
+          {% endif %}
+        </div>
+      </div>
+      {% if flutterwave and flutterwave.is_active %}
+      <form method="POST" action="{{ url_for('school.payments_flutterwave_remove') }}"
+            onsubmit="return confirm('Disconnect Flutterwave? Parents will no longer be able to pay online until you reconnect.')">
+        <button type="submit" class="btn btn-danger btn-sm">Disconnect</button>
+      </form>
+      {% endif %}
+    </div>
+
+    <div class="int-desc">
+      Accept fee payments online and let parents pay directly from a WhatsApp reminder link.
+    </div>
+
+    {% if flutterwave and flutterwave.is_active %}
+    <div class="webhook-bar health-{{ flutterwave.health }}">
+      <span class="health-dot health-{{ flutterwave.health }}"></span>
+      {% if flutterwave.health == 'green' %}Webhook active
+      {% elif flutterwave.health == 'amber' %}No webhook in 24–48h — check Flutterwave dashboard
+      {% else %}No webhook received yet{% endif %}
+    </div>
+    <div class="key-row"><span class="key-value">{{ flutterwave.public_key or '—' }}</span></div>
+    <div class="key-row"><span class="key-value">{{ flutterwave.secret_masked or '••••••••••••••••' }}</span></div>
+    <div class="key-row" style="gap:8px">
+      <span class="key-value" id="fw-webhook-url">{{ school_base_url }}/school/webhooks/school-flutterwave/{{ school.id }}</span>
+      <button type="button" class="btn btn-sm"
+              onclick="navigator.clipboard.writeText(document.getElementById('fw-webhook-url').textContent.trim());this.textContent='Copied!'">Copy</button>
+    </div>
+    <p class="int-desc" style="font-size:11.5px">
+      Set your Flutterwave account's webhook secret hash to the same value as your Secret Key above.
+    </p>
+
+    <details class="int-connect-toggle">
+      <summary>Update Keys</summary>
+      <div class="int-form-inner">
+        <form method="POST" action="{{ url_for('school.payments_flutterwave') }}">
+          <div class="form-group">
+            <label>Public Key</label>
+            <input type="text" name="public_key" required placeholder="FLWPUBK-xxxxxxxxxxxxxxxxxxxx-X"
+                   value="{{ flutterwave.public_key or '' }}">
+          </div>
+          <div class="form-group">
+            <label>Secret Key</label>
+            <input type="password" name="secret_key" required autocomplete="new-password"
+                   placeholder="FLWSECK-xxxxxxxxxxxxxxxxxxxx-X">
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm">Update Keys</button>
+        </form>
+      </div>
+    </details>
+
+    {% else %}
+    <details class="int-connect-toggle">
+      <summary>+ Connect Flutterwave</summary>
+      <div class="int-form-inner">
+        <form method="POST" action="{{ url_for('school.payments_flutterwave') }}">
+          <div class="form-group">
+            <label>Public Key</label>
+            <input type="text" name="public_key" required placeholder="FLWPUBK-xxxxxxxxxxxxxxxxxxxx-X">
+          </div>
+          <div class="form-group">
+            <label>Secret Key</label>
+            <input type="password" name="secret_key" required autocomplete="new-password"
+                   placeholder="FLWSECK-xxxxxxxxxxxxxxxxxxxx-X">
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm">Connect Flutterwave</button>
+        </form>
+      </div>
+    </details>
+    {% endif %}
+  </div>
+
+  <div class="int-card soon">
+    <div class="int-card-top">
+      <div class="int-card-top-left">
+        <div class="int-logo" style="background:#00A651">R</div>
+        <div>
+          <div class="int-name">Remita</div>
+          <span class="int-badge">Coming soon</span>
+        </div>
+      </div>
+    </div>
+    <div class="int-desc">
+      Generate Remita RRR invoices for fees and let parents pay at any bank, POS, or online — common for government-affiliated schools.
+    </div>
+    <button class="int-connect-btn" type="button" disabled title="Coming soon">Connect</button>
+  </div>
+
+  <div class="int-more">
+    More integrations (SMS, results delivery, accounting export) are on the way.
+  </div>
+
+</div>
+{% endblock %}

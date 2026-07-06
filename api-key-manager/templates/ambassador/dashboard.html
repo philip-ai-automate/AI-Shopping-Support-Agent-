@@ -28,6 +28,7 @@
       👋 Welcome back,
     </div>
     <h1 class="section-title">{{ amb.first_name }} {{ amb.last_name }}</h1>
+    {% if tier %}
     <div style="font-size:13px;color:var(--muted);margin-top:4px">
       {{ tier.name }}
       {% if amb.partnership_start %}
@@ -39,7 +40,22 @@
         &nbsp;•&nbsp; <span style="color:var(--good);font-weight:700">Lifetime</span>
       {% endif %}
     </div>
+    {% endif %}
   </div>
+</div>
+
+<!-- ── Product tabs ───────────────────────────────────────────────────── -->
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">
+  <a href="{{ url_for('ambassador.dashboard', product='all') }}"
+     class="btn btn-sm{% if selected_product=='all' %} btn-primary{% endif %}">All Products</a>
+  {% for p in product_order %}
+  <a href="{{ url_for('ambassador.dashboard', product=p) }}"
+     class="btn btn-sm{% if selected_product==p %} btn-primary{% endif %}">
+    {{ products_ui[p].icon }} {{ products_ui[p].label }}
+    {% if products_ui[p].status == 'pending' %}<span class="pill pill-warn" style="margin-left:6px">Pending</span>{% endif %}
+    {% if products_ui[p].status == 'not_enrolled' %}<span class="pill pill-grey" style="margin-left:6px">Not enrolled</span>{% endif %}
+  </a>
+  {% endfor %}
 </div>
 
 <!-- ── Demo portal card ───────────────────────────────────────────────── -->
@@ -99,24 +115,9 @@
   </div>
 </div>
 
-<!-- ── WhatsApp support banner ────────────────────────────────────────── -->
-<a href="https://chat.whatsapp.com/KKRG7lVuxq6LVGMdLHYaqG" target="_blank" rel="noopener"
-   style="display:flex;align-items:center;gap:14px;background:#dcfce7;border:1px solid #bbf7d0;
-          border-radius:14px;padding:14px 18px;margin-bottom:20px;text-decoration:none;
-          color:#15803d;transition:background .15s"
-   onmouseover="this.style.background='#bbf7d0'" onmouseout="this.style.background='#dcfce7'">
-  <span style="font-size:26px;flex-shrink:0">💬</span>
-  <div style="flex:1;min-width:0">
-    <div style="font-size:13px;font-weight:700;color:#15803d">Ambassador WhatsApp Support Group</div>
-    <div style="font-size:12px;color:#166534;margin-top:2px">
-      Get quick help from the PhiXtra team when you're pitching or onboarding a client in the field.
-    </div>
-  </div>
-  <span style="font-size:13px;font-weight:700;color:#15803d;white-space:nowrap;flex-shrink:0">Join Group →</span>
-</a>
-
 <!-- ── Stat cards ─────────────────────────────────────────────────────── -->
 <div class="stat-grid">
+  {% if tier %}
   <div class="stat-card">
     <div class="stat-label">Tier</div>
     <div class="stat-value" style="font-size:16px;padding-top:4px">{{ tier.name }}</div>
@@ -129,6 +130,18 @@
     <div class="stat-value">{{ active_clients }}</div>
     <div class="stat-sub">paying subscribers</div>
   </div>
+  {% else %}
+  <div class="stat-card">
+    <div class="stat-label">Products Active</div>
+    <div class="stat-value">{{ products_ui.values()|selectattr('status','equalto','active')|list|length }}</div>
+    <div class="stat-sub">of {{ product_order|length }} products</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Total Active Clients</div>
+    <div class="stat-value">{{ products_ui.values()|sum(attribute='active_clients') }}</div>
+    <div class="stat-sub">across all products</div>
+  </div>
+  {% endif %}
   <div class="stat-card">
     <div class="stat-label">Total Earnings</div>
     <div class="stat-value" style="font-size:20px">₦{{ "{:,.0f}".format(total_earnings) }}</div>
@@ -141,9 +154,10 @@
   </div>
 </div>
 
+{% if tier %}
 <!-- ── Tier progress ──────────────────────────────────────────────────── -->
 <div class="card" style="margin-bottom:20px">
-  <div style="font-size:13px;font-weight:700;margin-bottom:12px">Tier Progress</div>
+  <div style="font-size:13px;font-weight:700;margin-bottom:12px">Tier Progress — {{ products_ui[selected_product].label }}</div>
   <div class="tier-bar-wrap">
     <div class="tier-labels">
       <span>Standard<br><span style="font-weight:400">1 client</span></span>
@@ -165,56 +179,75 @@
     {% endif %}
   </div>
 </div>
+{% endif %}
 
-<!-- ── QR + link ──────────────────────────────────────────────────────── -->
+<!-- ── Your Links (per-product) ──────────────────────────────────────── -->
 <div class="card" style="margin-bottom:20px">
-  <div style="font-size:13px;font-weight:700;margin-bottom:16px">Your Referral QR Code</div>
-  <div class="flex-qr" style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
-    <img src="{{ url_for('ambassador.qr_image') }}" alt="Your QR code"
-         style="width:140px;height:140px;border:1px solid var(--line);border-radius:12px;flex-shrink:0"/>
-    <div style="flex:1;min-width:200px">
-      <div style="font-size:13px;color:var(--muted);margin-bottom:10px">
-        Share this QR code or link with businesses. When they scan and sign up, they're tracked under your account automatically.
+  <div style="font-size:13px;font-weight:700;margin-bottom:16px">Your Referral Links</div>
+  {% for p in product_order %}
+  {% set pu = products_ui[p] %}
+  <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:12px 0;{% if not loop.last %}border-bottom:1px solid var(--line){% endif %}">
+    <div style="min-width:150px;font-size:13px;font-weight:700">{{ pu.icon }} {{ pu.label }}</div>
+    {% if pu.status == 'active' %}
+      <div style="flex:1;min-width:200px;background:rgba(3,12,24,.04);border:1px solid var(--line);border-radius:10px;padding:8px 12px;display:flex;align-items:center;gap:8px">
+        <span class="ref-link-text" style="font-size:12px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ pu.register_url }}</span>
+        <button onclick="copyProductLink(this)" class="btn btn-sm" style="flex-shrink:0">Copy</button>
       </div>
-      <div style="background:rgba(3,12,24,.04);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px">
-        <span id="refLink" style="font-size:12px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-          {{ base_url }}/register?ref={{ amb.ref_code }}
-        </span>
-        <button onclick="copyLink(this)" class="btn btn-sm" style="flex-shrink:0">Copy</button>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <a href="{{ url_for('ambassador.qr_image', download='1') }}" class="btn btn-primary btn-sm" download>Download QR</a>
-        <a href="{{ url_for('ambassador.qr_page') }}" class="btn btn-sm">Full QR Page →</a>
-      </div>
-    </div>
+      <a href="{{ url_for('ambassador.qr_page', product=p) }}" class="btn btn-sm">QR Code →</a>
+    {% elif pu.status == 'pending' %}
+      <span class="pill pill-warn">Application pending review</span>
+    {% elif pu.status in ('suspended','rejected','terminated') %}
+      <span class="pill pill-grey">{{ pu.status|title }}</span>
+    {% else %}
+      <form method="POST" action="{{ url_for('ambassador.apply_product') }}" style="margin:0">
+        <input type="hidden" name="product" value="{{ p }}"/>
+        <button type="submit" class="btn btn-sm btn-primary">Apply to sell {{ pu.label }} →</button>
+      </form>
+    {% endif %}
   </div>
+  {% endfor %}
 </div>
+
+<script>
+function copyProductLink(btn) {
+  var text = btn.previousElementSibling.textContent.trim();
+  navigator.clipboard.writeText(text).then(function() {
+    var orig = btn.textContent;
+    btn.textContent = "Copied!";
+    setTimeout(function(){ btn.textContent = orig; }, 2000);
+  });
+}
+</script>
 
 
 <!-- ── Recent referrals ───────────────────────────────────────────────── -->
 <div class="card" style="padding:0">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 0">
     <div style="font-size:13px;font-weight:700">Recent Referrals</div>
-    <a href="{{ url_for('ambassador.referrals') }}" class="btn btn-sm">View All →</a>
+    <a href="{{ url_for('ambassador.referrals', product=(selected_product if selected_product != 'all' else 'portal')) }}" class="btn btn-sm">View All →</a>
   </div>
   <div class="table-wrap">
     <table>
       <thead>
         <tr>
+          {% if selected_product == 'all' %}<th>Product</th>{% endif %}
           <th>Business</th>
           <th>Plan</th>
           <th>Status</th>
-          <th>Monthly Value</th>
+          <th>Value</th>
         </tr>
       </thead>
       <tbody>
         {% if not recent_referrals %}
-        <tr><td colspan="4" style="text-align:center;color:var(--muted);padding:28px">
+        <tr><td colspan="{{ 5 if selected_product == 'all' else 4 }}" style="text-align:center;color:var(--muted);padding:28px">
           No referrals yet — share your QR code to get started!
         </td></tr>
         {% endif %}
         {% for r in recent_referrals %}
         <tr>
+          {% if selected_product == 'all' %}
+          <td>{{ products_ui[r.product].icon }} {{ products_ui[r.product].label }}</td>
+          {% endif %}
           <td><strong>{{ r.name }}</strong></td>
           <td>
             {{ r.plan_name or 'Free' }}
@@ -232,8 +265,8 @@
             {% endif %}
           </td>
           <td class="muted">
-            {% if r.price_ngn and r.status == 'active' %}
-              ₦{{ "{:,.0f}".format(r.price_ngn) }}/mo
+            {% if r.price and r.status == 'active' %}
+              ₦{{ "{:,.0f}".format(r.price) }}{{ '/term' if r.product == 'school' else '/mo' }}
             {% else %}
               —
             {% endif %}

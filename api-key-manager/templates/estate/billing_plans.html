@@ -3,6 +3,36 @@
 
 {% block head %}
 <style>
+/* ── Currency / cycle toggle ── */
+.billing-toggles{
+  display:flex;align-items:center;gap:24px;flex-wrap:wrap;
+  margin-bottom:24px;
+}
+.billing-toggle-group{display:flex;align-items:center;gap:10px;}
+.billing-toggle-label{font-size:12px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;color:rgba(3,12,24,0.40);}
+.toggle-pill{
+  display:inline-flex;background:rgba(3,12,24,0.07);
+  border-radius:999px;padding:3px;gap:0;
+}
+.toggle-pill button{
+  padding:6px 16px;border-radius:999px;font-size:13px;font-weight:700;
+  color:rgba(3,12,24,0.45);cursor:pointer;transition:all .15s;
+  background:transparent;border:none;font-family:inherit;
+}
+.toggle-pill button.active{
+  background:#030C18;color:#fff;
+  box-shadow:0 2px 8px rgba(3,12,24,0.20);
+}
+.annual-badge{
+  font-size:10.5px;font-weight:800;color:#0a7a3c;
+  background:rgba(18,183,106,0.12);padding:2px 8px;border-radius:5px;
+  display:none;
+}
+.annual-badge.visible{display:inline-block;}
+.fx-note{font-size:11.5px;color:rgba(3,12,24,0.38);margin-top:4px;}
+</style>
+<style>
 /* ── Usage summary bar ── */
 .usage-card{
   background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:16px;
@@ -209,11 +239,30 @@
 
 </div>
 
+<!-- ── Currency / Cycle toggles ── -->
+<div class="billing-toggles">
+  <div class="billing-toggle-group">
+    <span class="billing-toggle-label">Currency</span>
+    <div class="toggle-pill">
+      <button class="active" id="btn-ngn" onclick="reBillingCurrency('NGN')">₦ Naira</button>
+      <button id="btn-usd" onclick="reBillingCurrency('USD')">$ USD</button>
+    </div>
+  </div>
+  <div class="billing-toggle-group">
+    <span class="billing-toggle-label">Billing</span>
+    <div class="toggle-pill">
+      <button class="active" id="btn-monthly" onclick="reBillingCycle('monthly')">Monthly</button>
+      <button id="btn-annual" onclick="reBillingCycle('annual')">Annual</button>
+    </div>
+    <span class="annual-badge" id="annual-save-badge">Save 5% (2 months free)</span>
+  </div>
+  <span class="fx-note" id="re-fx-note"></span>
+</div>
+
 <!-- ── Plan cards ── -->
 {% set plan_order = ['free','starter','growth','pro'] %}
 {% set current_idx = plan_order.index(tenant.plan_slug) if tenant.plan_slug in plan_order else 0 %}
 
-<!-- Determine popular plan slug (middle-ish tier) -->
 {% set popular_slug = plans[1].slug if plans | length >= 2 else '' %}
 
 <div class="plan-grid">
@@ -246,7 +295,11 @@
         {% if plan.price_ngn == 0 %}
         <span class="plan-price-val">Free</span>
         {% else %}
-        <span class="plan-price-val">₦{{ '{:,.0f}'.format(plan.price_ngn) }}</span>
+        <span class="plan-price-val re-price-val"
+              data-ngn="{{ plan.price_ngn }}"
+              data-usd="{{ plan.price_usd }}">
+          ₦{{ '{:,.0f}'.format(plan.price_ngn) }}
+        </span>
         <span class="plan-price-period">/month</span>
         {% endif %}
       </div>
@@ -350,17 +403,69 @@
         <span class="plan-feat-label" style="{% if not plan.features.get('custom_prompt') %}color:rgba(3,12,24,0.35){% endif %}">Custom AI Prompt</span>
       </div>
 
+      <!-- Sales Pipeline -->
+      <div class="plan-feat">
+        <div class="plan-feat-icon {% if plan.features.get('pipeline') %}yes{% else %}no{% endif %}">
+          {% if plan.features.get('pipeline') %}
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          {% else %}
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          {% endif %}
+        </div>
+        <span class="plan-feat-label" style="{% if not plan.features.get('pipeline') %}color:rgba(3,12,24,0.35){% endif %}">Sales Pipeline</span>
+      </div>
+
+      <!-- Staff Access Control -->
+      <div class="plan-feat">
+        <div class="plan-feat-icon {% if plan.features.get('staff_access') %}yes{% else %}no{% endif %}">
+          {% if plan.features.get('staff_access') %}
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          {% else %}
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          {% endif %}
+        </div>
+        <span class="plan-feat-label" style="{% if not plan.features.get('staff_access') %}color:rgba(3,12,24,0.35){% endif %}">Staff Access Control</span>
+      </div>
+
+      <!-- Support -->
+      <div class="plan-feat">
+        <div class="plan-feat-icon {% if plan.features.get('support_level','none') != 'none' %}yes{% else %}no{% endif %}">
+          {% if plan.features.get('support_level','none') != 'none' %}
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          {% else %}
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          {% endif %}
+        </div>
+        {% set sl = plan.features.get('support_level','none') %}
+        <span class="plan-feat-label" style="{% if sl == 'none' %}color:rgba(3,12,24,0.35){% endif %}">
+          {% if sl == 'none' %}No Support
+          {% elif sl == 'email' %}Email Support
+          {% elif sl == 'email_whatsapp' %}Email &amp; WhatsApp Support
+          {% elif sl == 'email_whatsapp_dedicated' %}Email, WhatsApp &amp; Dedicated Technical Support
+          {% else %}Support{% endif %}
+        </span>
+      </div>
+
     </div>
 
     <!-- CTA -->
     <div class="plan-cta">
       {% if is_current %}
       <button class="plan-btn current-plan" disabled>Current Plan</button>
-      {% else %}
+      {% elif plan.price_ngn == 0 %}
       <form method="POST" action="{{ url_for('estate.billing_plans') }}">
         <input type="hidden" name="plan_slug" value="{{ plan.slug }}"/>
+        <button type="submit" class="plan-btn downgrade">Switch to Free</button>
+      </form>
+      {% else %}
+      <form method="POST" action="{{ url_for('estate.billing_upgrade') }}"
+            class="re-upgrade-form">
+        <input type="hidden" name="plan_slug"  value="{{ plan.slug }}"/>
+        <input type="hidden" name="cycle"      value="monthly" class="re-cycle-input"/>
+        <input type="hidden" name="currency"   value="NGN"     class="re-currency-input"/>
         {% if this_idx > current_idx %}
-        <button type="submit" class="plan-btn upgrade {% if is_popular %}popular{% endif %}">
+        <button type="submit"
+                class="plan-btn upgrade {% if is_popular %}popular{% endif %}">
           Upgrade to {{ plan.name }}
         </button>
         {% else %}
@@ -379,7 +484,71 @@
 <!-- ── Footer note ── -->
 <div class="billing-note">
   <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-  Payments processed securely via Paystack &nbsp;·&nbsp; All prices in Nigerian Naira (₦) &nbsp;·&nbsp; Cancel anytime
+  ₦ Naira payments via Flutterwave &nbsp;·&nbsp; $ USD payments via Stripe &nbsp;·&nbsp; Secured &amp; encrypted &nbsp;·&nbsp; Cancel anytime
 </div>
+
+<script>
+(function(){
+  var _cur = 'NGN', _cycle = 'monthly';
+  var USD_PRICES = {
+    {% for plan in plans %}
+    '{{ plan.slug }}': {{ plan.price_usd or 0 }},
+    {% endfor %}
+  };
+  var NGN_PRICES = {
+    {% for plan in plans %}
+    '{{ plan.slug }}': {{ plan.price_ngn or 0 }},
+    {% endfor %}
+  };
+
+  function fmt(val, cur){
+    if(val === 0) return 'Free';
+    if(cur === 'USD') return '$' + val.toFixed(0);
+    return '₦' + parseInt(val).toLocaleString();
+  }
+
+  function updatePrices(){
+    document.querySelectorAll('.re-price-val[data-ngn]').forEach(function(el){
+      var slug = el.closest('.plan-card') && el.closest('.plan-card').className.match(/tier-(\w+)/);
+      slug = slug ? slug[1] : null;
+      if(!slug) return;
+      var base = _cur === 'USD' ? USD_PRICES[slug] : NGN_PRICES[slug];
+      if(!base) return;
+      var amount = _cycle === 'annual' ? (base * 12 * 0.95) : base;
+      var suffix = _cycle === 'annual' ? '/yr' : '/mo';
+      el.textContent = fmt(amount, _cur) + suffix;
+    });
+  }
+
+  function syncForms(){
+    document.querySelectorAll('.re-cycle-input').forEach(function(i){ i.value = _cycle; });
+    document.querySelectorAll('.re-currency-input').forEach(function(i){ i.value = _cur; });
+  }
+
+  window.reBillingCurrency = function(cur){
+    _cur = cur;
+    document.getElementById('btn-ngn').classList.toggle('active', cur==='NGN');
+    document.getElementById('btn-usd').classList.toggle('active', cur==='USD');
+    var note = document.getElementById('re-fx-note');
+    if(note) note.textContent = cur === 'USD' ? 'USD prices charged at fixed rate via Stripe' : '';
+    updatePrices(); syncForms();
+  };
+
+  window.reBillingCycle = function(cycle){
+    _cycle = cycle;
+    document.getElementById('btn-monthly').classList.toggle('active', cycle==='monthly');
+    document.getElementById('btn-annual').classList.toggle('active', cycle==='annual');
+    var badge = document.getElementById('annual-save-badge');
+    if(badge) badge.classList.toggle('visible', cycle==='annual');
+    updatePrices(); syncForms();
+  };
+
+  // Init on load
+  updatePrices();
+  syncForms();
+
+  // success/cancel params handled server-side via flash
+})();
+</script>
 
 {% endblock %}

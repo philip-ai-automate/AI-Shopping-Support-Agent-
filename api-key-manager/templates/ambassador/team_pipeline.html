@@ -48,8 +48,9 @@
   <h1 class="section-title">Team Pipeline</h1>
   <div style="display:flex;align-items:center;gap:12px">
     <span class="muted" style="font-size:13px">{{ leads|length }} active</span>
+    <button class="btn" onclick="ambTourStart()">🎓 Take a Tour</button>
     {% if recruits %}
-    <button class="btn btn-primary" onclick="document.getElementById('addLeadForm').classList.toggle('open')">+ Add Lead</button>
+    <button class="btn btn-primary" data-tour="add-lead-btn" onclick="document.getElementById('addLeadForm').classList.toggle('open')">+ Add Lead</button>
     {% endif %}
   </div>
 </div>
@@ -73,29 +74,40 @@
         </select>
       </div>
       <div>
-        <label class="flbl">Business Name</label>
-        <input type="text" name="business_name" class="finp" required/>
+        <label class="flbl">Product</label>
+        <select name="product" class="finp">
+          {% for p in product_order %}
+          <option value="{{ p }}">{{ product_config[p].icon }} {{ product_config[p].label }}</option>
+          {% endfor %}
+        </select>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div>
+        <label class="flbl">Business Name</label>
+        <input type="text" name="business_name" class="finp" required/>
+      </div>
       <div>
         <label class="flbl">Industry</label>
         <input type="text" name="industry" class="finp"/>
       </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
       <div>
         <label class="flbl">Contact Name</label>
         <input type="text" name="contact_name" class="finp"/>
       </div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
       <div>
         <label class="flbl">Phone</label>
         <input type="tel" name="phone" class="finp"/>
       </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
       <div>
         <label class="flbl">Email</label>
         <input type="email" name="email" class="finp"/>
       </div>
+      <div></div>
     </div>
     <div style="margin-bottom:14px">
       <label class="flbl">Notes</label>
@@ -107,7 +119,7 @@
 <style>#addLeadForm.open{display:block !important}</style>
 {% endif %}
 
-<div class="stage-funnel">
+<div class="stage-funnel" data-tour="stage-funnel">
   {% for s in stage_order %}
   <div class="stage-chip">
     <div class="n">{{ stage_counts.get(s, 0) }}</div>
@@ -116,13 +128,14 @@
   {% endfor %}
 </div>
 
-<div class="card" style="padding:0">
+<div class="card" style="padding:0" data-tour="pipeline-table">
   <div class="table-wrap">
     <table>
       <thead>
         <tr>
           <th>Business</th>
-          <th>Ambassador</th>
+          <th data-tour="ambassador-col">Ambassador</th>
+          <th>Product</th>
           <th>Industry</th>
           <th>Contact</th>
           <th>Stage</th>
@@ -132,7 +145,7 @@
       </thead>
       <tbody>
         {% if not leads %}
-        <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:40px">
+        <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:40px">
           No leads yet from your recruited ambassadors.
         </td></tr>
         {% endif %}
@@ -140,6 +153,7 @@
         <tr>
           <td><strong>{{ l.business_name }}</strong></td>
           <td class="muted">{{ l.ambassador_name }}</td>
+          <td class="muted">{{ product_config[l.product or 'portal'].icon }} {{ product_config[l.product or 'portal'].label }}</td>
           <td class="muted">{{ l.industry or '—' }}</td>
           <td class="muted" style="font-size:12px">
             {{ l.contact_name or '' }}{% if l.phone %}<br>{{ l.phone }}{% endif %}
@@ -150,12 +164,13 @@
             {% set target = next_stage(l.stage) %}
             {% if target %}
             <button class="btn btn-sm btn-primary"
+                    {% if loop.first %}data-tour="advance-btn"{% endif %}
                     onclick='openAdvanceModal({{ l.id }}, "{{ l.business_name|e }}", "{{ target }}")'>
               → {{ stage_labels[target] }}
             </button>
             {% endif %}
-            <button class="btn btn-sm" onclick="openHistoryModal({{ l.id }})">History</button>
-            <button class="btn btn-sm btn-danger" onclick="openDropModal({{ l.id }}, '{{ l.business_name|e }}')">Drop</button>
+            <button class="btn btn-sm" {% if loop.first %}data-tour="history-btn"{% endif %} onclick="openHistoryModal({{ l.id }})">History</button>
+            <button class="btn btn-sm btn-danger" {% if loop.first %}data-tour="drop-btn"{% endif %} onclick="openDropModal({{ l.id }}, '{{ l.business_name|e }}')">Drop</button>
           </td>
         </tr>
         {% endfor %}
@@ -165,7 +180,7 @@
 </div>
 
 {% if dropped_leads %}
-<div class="card" style="margin-top:20px">
+<div class="card" style="margin-top:20px" data-tour="dropped-section">
   <div class="section-title" style="margin-bottom:10px">Dropped ({{ dropped_leads|length }})</div>
   <div class="table-wrap">
     <table>
@@ -232,6 +247,10 @@
 function closeAdvanceModal(){ document.getElementById('advanceModal').classList.remove('open'); }
 function closeDropModal(){ document.getElementById('dropModal').classList.remove('open'); }
 function closeHistoryModal(){ document.getElementById('historyModal').classList.remove('open'); }
+
+window.ambTourCloseModals = function() {
+  closeAdvanceModal(); closeDropModal(); closeHistoryModal();
+};
 
 const STAGE_LABELS = {{ stage_labels|tojson }};
 const STAGE_DESC    = {{ stage_descriptions|tojson }};
@@ -319,5 +338,90 @@ function openHistoryModal(id) {
       document.getElementById('historyBody').innerHTML = '<p style="color:var(--bad);font-size:13px">Failed to load.</p>';
     });
 }
+
+ambTourInit([
+  { sel: null, pos: 'center',
+    title: '👋 Welcome to Team Pipeline',
+    body: 'As a sales manager, this gives you one view over every lead your recruited ambassadors are working — separate from your own personal pipeline. This tour will open each real form so you know exactly what your ambassadors are filling in at every stage. Skip anytime with Esc or "Skip tour".' },
+
+  { sel: '[data-tour="stage-funnel"]', pos: 'bottom',
+    title: '📊 The 7 Pipeline Stages',
+    body: 'Every lead your team brings in moves left to right through these stages: <b>Lead → Contacted → Demo Done → Requirements Confirmed → Onboarding → Active Client → Support</b>.<br><br>' +
+          '<i>Example: your ambassador Chidi demos the AI to "GreenLeaf Pharmacy" — the moment he marks it Demo Done, the count in this funnel updates here so you can see team-wide progress at a glance.</i><br><br>' +
+          'Next, let\'s open the real form for each stage.' },
+
+  { sel: '[data-tour="add-lead-btn"]', pos: 'bottom',
+    title: '+ Add a Lead on Behalf of a Recruit',
+    body: 'Use this if one of your ambassadors reports a new lead to you directly — by phone, WhatsApp, or in person — and needs you to log it for them.<br><br>' +
+          '<i>Example: an ambassador calls you and says "I just spoke to Sunrise Fashion Store, can you add them for me?" — select that ambassador from the dropdown, then fill in the business details.</i>' },
+
+  { sel: '[data-tour="pipeline-table"]', pos: 'top',
+    title: '📋 Every Lead, Across Your Whole Team',
+    body: 'Unlike your own "My Pipeline" page, this table shows leads from all the ambassadors you recruited — not just your own. Below, we\'ll open the real "advance" form for each stage — the same form your ambassadors see, and one you can use yourself if you step in on a lead directly.' },
+
+  { sel: '[data-tour="ambassador-col"]', pos: 'bottom',
+    title: '👤 The Ambassador Column',
+    body: 'Shows exactly who owns each lead. Scan this column to spot who\'s actively bringing in business and who might need a nudge or some coaching.<br><br>' +
+          '<i>Example: if "Chidi O." keeps appearing next to Active Client while others only have Leads sitting untouched, that\'s a coaching opportunity.</i>' },
+
+  { sel: '#advanceModal .modal-card', pos: 'right',
+    before: function(){ openAdvanceModal(0, 'Example Business', 'contacted'); },
+    title: '① → Contacted',
+    body: 'Logged the first time an ambassador reaches out.<br><br>' +
+          '<b>Contact Channel</b> — e.g. WhatsApp<br>' +
+          '<b>Contact Date</b> — e.g. today\'s date<br>' +
+          '<b>Response / Notes</b> — e.g. "Sent an intro message on WhatsApp, they replied asking for a demo next week."' },
+
+  { sel: '#advanceModal .modal-card', pos: 'right',
+    before: function(){ openAdvanceModal(0, 'Example Business', 'demo_done'); },
+    title: '② → Demo Done',
+    body: 'Logged once the AI has been shown live to the prospect (e.g. by scanning the ambassador\'s QR code with them).<br><br>' +
+          '<b>Demo Date</b> — e.g. 10 Jul 2026<br>' +
+          '<b>Prospect Reaction</b> — e.g. "Loved the AI replying instantly to customer questions, asked how much it costs."' },
+
+  { sel: '#advanceModal .modal-card', pos: 'right',
+    before: function(){ openAdvanceModal(0, 'Example Business', 'requirements_confirmed'); },
+    title: '③ → Requirements Confirmed',
+    body: 'All 4 boxes must be ticked before advancing further:<br>' +
+          '☑ Business-only phone number confirmed<br>' +
+          '☑ Meta Business Account confirmed<br>' +
+          '☑ WhatsApp connected to Meta confirmed<br>' +
+          '☑ Product list spreadsheet confirmed<br><br>' +
+          '<i>Example: the ambassador verifies the client has a dedicated number (not the owner\'s personal WhatsApp), a Meta Business Account already created, WhatsApp linked to it, and a spreadsheet of their products ready to upload.</i>' },
+
+  { sel: '#advanceModal .modal-card', pos: 'right',
+    before: function(){ openAdvanceModal(0, 'Example Business', 'onboarding'); },
+    title: '④ → Onboarding',
+    body: 'Logged once the client\'s account setup is underway.<br><br>' +
+          '<b>Onboarding Date</b> — e.g. 12 Jul 2026<br>' +
+          '<b>Setup Notes</b> — e.g. "Uploaded 40 products, connected WhatsApp number, sent login details to the owner."' },
+
+  { sel: '#advanceModal .modal-card', pos: 'right',
+    before: function(){ openAdvanceModal(0, 'Example Business', 'active_client'); },
+    title: '⑤ → Active Client',
+    body: 'They\'re now live and paying. You can optionally enter their <b>Tenant ID</b> to link the pipeline record to their live account, purely for record-keeping.<br><br>' +
+          '<i>Commission is already automatic the moment they pay — it does not depend on this link.</i>' },
+
+  { sel: '#advanceModal .modal-card', pos: 'right',
+    before: function(){ openAdvanceModal(0, 'Example Business', 'support'); },
+    title: '⑥ → Support',
+    body: 'The final stage — no extra info needed. This marks the client as fully onboarded and moves them into ongoing support tracking.' },
+
+  { sel: '[data-tour="history-btn"]', pos: 'left',
+    title: '🕘 History',
+    body: 'Opens the full stage-change timeline for that lead — who changed it, when, and any notes. Useful when reviewing how a deal actually progressed.' },
+
+  { sel: '[data-tour="drop-btn"]', pos: 'left',
+    title: '🗑️ Drop a Lead',
+    body: 'If a business isn\'t proceeding, drop it with an optional reason (e.g. "Chose a competitor"). It moves into the Dropped list below rather than disappearing — nothing is lost.' },
+
+  { sel: '[data-tour="dropped-section"]', pos: 'top',
+    title: '📂 Dropped Leads',
+    body: 'A record of every dropped lead across your team, with the stage it reached and the reason given — useful for spotting patterns (e.g. lots of drops at Demo Done might mean the pitch needs work).' },
+
+  { sel: null, pos: 'center', last: true,
+    title: '🎉 You\'re ready!',
+    body: 'That\'s Team Pipeline covered. Click "🎓 Take a Tour" in the page header any time you want to run through this again.' },
+], 'phixtra_amb_tour_team_pipeline', true);
 </script>
 {% endblock %}

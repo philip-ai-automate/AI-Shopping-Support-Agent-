@@ -184,7 +184,9 @@
   <a class="qa-btn" href="{{ url_for('school.students') }}">🎒 Students</a>
   <a class="qa-btn" href="{{ url_for('school.parents') }}">👨‍👩‍👧 Parents</a>
   <a class="qa-btn" href="{{ url_for('school.fees') }}">💰 Fees</a>
+  {% if session.get('school_role') in ('admin', 'bursar') %}
   <a class="qa-btn" href="{{ url_for('school.knowledge') }}">🧠 AI Knowledge</a>
+  {% endif %}
 </div>
 
 {# ── Main two-column grid ── #}

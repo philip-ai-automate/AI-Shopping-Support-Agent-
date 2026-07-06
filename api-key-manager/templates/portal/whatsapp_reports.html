@@ -3,21 +3,46 @@
 
 {% block head %}
 <style>
-  .rpt-summary { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:24px }
-  @media(max-width:900px){ .rpt-summary { grid-template-columns:repeat(2,1fr) } }
-  @media(max-width:480px){ .rpt-summary { grid-template-columns:1fr } }
+  .rh-hero { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; margin-bottom:22px }
+  .rh-hero-left { display:flex; align-items:center; gap:14px }
+  .rh-hero-icon {
+    width:48px; height:48px; border-radius:14px; flex-shrink:0;
+    background:linear-gradient(135deg, #F79009, #F04438);
+    display:flex; align-items:center; justify-content:center; font-size:22px;
+    box-shadow:0 6px 16px rgba(240,68,56,.25);
+  }
+  .rh-hero h1 { font-size:22px; font-weight:800; letter-spacing:-.4px; margin:0 }
+  .rh-hero p { margin:3px 0 0; font-size:13.5px; color:var(--muted) }
+
+  .section-hd { display:flex; align-items:center; gap:10px; margin:26px 0 14px }
+  .section-hd:first-of-type { margin-top:0 }
+  .section-hd-title { font-size:12.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.07em }
+  .section-hd-line { flex:1; height:1px; background:var(--line) }
+
+  .rpt-summary { display:grid; grid-template-columns:repeat(5,1fr); gap:16px; margin-bottom:22px }
+  @media(max-width:1100px){ .rpt-summary { grid-template-columns:repeat(3,1fr) } }
+  @media(max-width:640px){ .rpt-summary { grid-template-columns:repeat(2,1fr) } }
+  @media(max-width:400px){ .rpt-summary { grid-template-columns:1fr } }
 
   .rpt-card {
+    position:relative; overflow:hidden; transition:.15s;
     background:#fff; border:1px solid var(--line); border-radius:16px;
     padding:18px 20px;
   }
-  .rpt-card-val   { font-size:30px; font-weight:800; letter-spacing:-.5px; line-height:1 }
-  .rpt-card-label { font-size:12px; color:var(--muted); margin-top:5px; font-weight:500 }
+  .rpt-card:hover { box-shadow:0 6px 20px rgba(3,12,24,.06); transform:translateY(-1px) }
+  .rpt-card::before { content:''; position:absolute; inset:0; opacity:.05; pointer-events:none }
+  .rpt-card-val   { position:relative; font-size:28px; font-weight:800; letter-spacing:-.5px; line-height:1 }
+  .rpt-card-label { position:relative; font-size:12px; color:var(--muted); margin-top:5px; font-weight:500 }
   .rpt-amber { border-top:3px solid #F79009 }
+  .rpt-amber::before { background:radial-gradient(circle at 100% 0%, #F79009, transparent 60%) }
   .rpt-red   { border-top:3px solid #F04438 }
+  .rpt-red::before { background:radial-gradient(circle at 100% 0%, #F04438, transparent 60%) }
   .rpt-blue  { border-top:3px solid #0288D1 }
+  .rpt-blue::before { background:radial-gradient(circle at 100% 0%, #0288D1, transparent 60%) }
   .rpt-green { border-top:3px solid #25D366 }
+  .rpt-green::before { background:radial-gradient(circle at 100% 0%, #25D366, transparent 60%) }
   .rpt-ink   { border-top:3px solid var(--ink) }
+  .rpt-ink::before { background:radial-gradient(circle at 100% 0%, #030C18, transparent 60%) }
 
   .period-tabs { display:flex; gap:6px; margin-bottom:22px; flex-wrap:wrap }
   .period-tab  {
@@ -44,14 +69,24 @@
                    padding:2px 8px; border-radius:999px }
   .badge-takeover{ background:#EDE9FE; color:#5B21B6; font-size:11px; font-weight:700;
                    padding:2px 8px; border-radius:999px }
+
+  .cust-avatar {
+    width:30px; height:30px; border-radius:50%; flex-shrink:0;
+    display:inline-flex; align-items:center; justify-content:center;
+    font-size:11px; font-weight:700; color:#fff; margin-right:9px;
+  }
+  .cust-cell { display:flex; align-items:center }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="page-header" style="margin-bottom:20px">
-  <div>
-    <div class="section-title">WhatsApp Reports</div>
-    <p class="muted">Agent handoff performance and conversation trends.</p>
+<div class="rh-hero">
+  <div class="rh-hero-left">
+    <div class="rh-hero-icon">🙋</div>
+    <div>
+      <h1>Handoff Reports</h1>
+      <p>Agent handoff performance and conversation trends.</p>
+    </div>
   </div>
   <a href="{{ url_for('portal.my_inbox') }}" class="btn btn-sm">← Inbox</a>
 </div>
@@ -65,6 +100,7 @@
 
 {% else %}
 
+<div class="section-hd"><span>📊</span><span class="section-hd-title">Overview</span><span class="section-hd-line"></span></div>
 <!-- Period tabs -->
 <div class="period-tabs">
   {% for d, label in [(7,'Last 7 days'),(14,'Last 14 days'),(30,'Last 30 days'),(90,'Last 90 days')] %}
@@ -73,11 +109,17 @@
 </div>
 
 <!-- Summary cards -->
+{% set _resolved_pct = ((summary.total_resolved or 0) / summary.total_handoffs * 100) | round(0) if (summary.total_handoffs or 0) > 0 else none %}
 <div class="rpt-summary">
 
   <div class="rpt-card rpt-amber">
     <div class="rpt-card-val">{{ summary.total_handoffs or 0 }}</div>
     <div class="rpt-card-label">Total handoffs triggered</div>
+  </div>
+
+  <div class="rpt-card rpt-green">
+    <div class="rpt-card-val">{{ summary.total_resolved or 0 }}</div>
+    <div class="rpt-card-label">Resolved{% if _resolved_pct is not none %} ({{ _resolved_pct|int }}%){% endif %}</div>
   </div>
 
   <div class="rpt-card rpt-blue">
@@ -100,7 +142,7 @@
     <div class="rpt-card-val">{{ summary.open_now or 0 }}</div>
     <div class="rpt-card-label">Open right now</div>
     {% if (summary.open_now or 0) > 0 %}
-    <div style="margin-top:8px">
+    <div style="margin-top:8px;position:relative">
       <a href="{{ url_for('portal.my_inbox') }}" style="font-size:12px;color:#b91c1c;font-weight:600">Open inbox →</a>
     </div>
     {% endif %}
@@ -110,6 +152,7 @@
 
 <!-- Day-by-day breakdown -->
 {% if daily %}
+<div class="section-hd"><span>📅</span><span class="section-hd-title">Day-by-Day Breakdown</span><span class="section-hd-line"></span></div>
 <div class="card" style="margin-bottom:24px">
   <div style="font-size:15px;font-weight:700;margin-bottom:16px">Day-by-day breakdown</div>
   <div style="overflow-x:auto">
@@ -154,6 +197,8 @@
 
 <!-- Recent handoffs list -->
 {% if recent %}
+<div class="section-hd"><span>🕘</span><span class="section-hd-title">Recent Handoffs</span><span class="section-hd-line"></span></div>
+{% macro av_color(phone) %}{% set _p=['#5C6BC0','#26A69A','#0288D1','#388E3C','#F57C00','#8E24AA','#E53935','#00838F'] %}{{ _p[(phone[-1:]|int(default=0))%8] }}{% endmacro %}
 <div class="card">
   <div style="font-size:15px;font-weight:700;margin-bottom:16px">Recent handoffs</div>
   <div style="overflow-x:auto">
@@ -175,7 +220,12 @@
           {% set resp_min = (resp_sec / 60)|round(1) %}
         {% endif %}
         <tr>
-          <td style="font-weight:600">+{{ h.customer_phone }}</td>
+          <td>
+            <div class="cust-cell">
+              <span class="cust-avatar" style="background:{{ av_color(h.customer_phone) }}">{{ h.customer_phone[-2:] }}</span>
+              <strong>+{{ h.customer_phone }}</strong>
+            </div>
+          </td>
           <td class="muted">{{ h.escalated_at.strftime('%d %b · %H:%M') if h.escalated_at else '—' }}</td>
           <td class="muted">
             {% if h.first_reply_at %}

@@ -192,6 +192,7 @@
       {% endif %}
 
       <form method="POST">
+        <input type="hidden" name="ref_code" value="{{ ref_code or '' }}"/>
         <div class="ef-row">
           <div class="ef-group">
             <label class="ef-label">First Name *</label>

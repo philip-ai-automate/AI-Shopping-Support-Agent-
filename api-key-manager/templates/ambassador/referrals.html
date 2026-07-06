@@ -7,13 +7,22 @@
   <span class="muted" style="font-size:13px">{{ referrals|length }} total</span>
 </div>
 
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">
+  {% for p in product_order %}
+  <a href="{{ url_for('ambassador.referrals', product=p) }}"
+     class="btn btn-sm{% if selected_product==p %} btn-primary{% endif %}">
+    {{ product_config[p].icon }} {{ product_config[p].label }}
+  </a>
+  {% endfor %}
+</div>
+
 <div class="card" style="padding:0">
   <div class="table-wrap">
     <table>
       <thead>
         <tr>
           <th>Business</th>
-          <th>Domain</th>
+          <th>{{ detail_label }}</th>
           <th>Plan</th>
           <th>Status</th>
           <th>Earned</th>
@@ -34,7 +43,7 @@
               <span class="pill pill-warn" style="margin-left:4px;font-size:10px">★ Bonus</span>
             {% endif %}
           </td>
-          <td class="muted">{{ r.domain or '—' }}</td>
+          <td class="muted">{{ r.detail or '—' }}</td>
           <td>{{ r.plan_name or 'Free' }}</td>
           <td>
             {% if r.status == 'active' %}

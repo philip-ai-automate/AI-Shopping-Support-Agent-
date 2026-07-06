@@ -63,15 +63,80 @@
       background:var(--brand-light);color:var(--brand);font-weight:650;
     }
     .sb-link .icon{font-size:15px;flex-shrink:0;width:18px;text-align:center}
+    .sb-link .label{flex:1}
+    .sb-link.has-submenu{padding-right:8px}
+
+    /* ── Expand/collapse chevron — clear hit target + obvious rotation ── */
+    .sb-chevron{
+      display:flex;align-items:center;justify-content:center;flex-shrink:0;
+      width:26px;height:26px;border-radius:7px;
+      color:rgba(10,22,40,0.55);
+      transition:transform .18s ease,background .12s,color .12s;
+    }
+    .sb-chevron:hover{background:rgba(10,22,40,0.10);color:var(--ink)}
+    .sb-link.active .sb-chevron{color:var(--brand)}
+    .sb-chevron svg{width:13px;height:13px;flex-shrink:0}
+    /* Closed = pointing right ("expand me"); open = rotated down ("showing contents") */
+    .sb-chevron.open{transform:rotate(90deg)}
+    .sb-link.active .sb-chevron:hover{background:rgba(29,106,245,0.12)}
+
+    .sb-submenu{
+      max-height:0;overflow:hidden;transition:max-height .2s ease;
+      margin-left:21px;border-left:2px solid var(--line);padding-left:0;
+    }
+    .sb-submenu.open{max-height:160px}
+    .sb-sublink{
+      display:flex;align-items:center;gap:8px;
+      padding:8px 12px 8px 17px;margin-left:-2px;border-radius:8px;
+      font-size:13px;font-weight:500;color:rgba(10,22,40,0.55);
+      cursor:pointer;transition:.12s;text-decoration:none;
+    }
+    .sb-sublink:hover{background:rgba(10,22,40,0.05);color:var(--ink);text-decoration:none}
+    .sb-sublink.active{background:var(--brand-light);color:var(--brand);font-weight:650}
     .sb-footer{padding:12px 16px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
     .sb-footer a{color:var(--muted)}
     .sb-footer a:hover{color:var(--ink)}
 
     /* ── Main content ── */
     .main{margin-left:var(--sidebar-w);padding:28px 32px;min-height:100vh}
+
+    /* ── Mobile top bar + sidebar overlay ── */
+    .sb-mobile-topbar{
+      display:none;position:fixed;top:0;left:0;right:0;z-index:150;
+      height:54px;background:var(--ink);
+      align-items:center;gap:12px;padding:0 16px;
+      box-shadow:0 2px 12px rgba(10,22,40,0.25);
+    }
+    .sb-mobile-toggle{
+      background:none;border:none;color:#fff;cursor:pointer;
+      width:40px;height:40px;display:flex;align-items:center;justify-content:center;
+      border-radius:8px;flex-shrink:0;font-size:20px;transition:.15s;
+    }
+    .sb-mobile-toggle:hover{background:rgba(255,255,255,0.10)}
+    .sb-mobile-title{font-size:15px;font-weight:700;color:#fff;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+    .sb-overlay{
+      display:none;position:fixed;inset:0;background:rgba(10,22,40,0.55);
+      z-index:99;backdrop-filter:blur(2px);
+    }
+    .sb-overlay.active{display:block}
+    .sb-close{
+      display:none;align-self:flex-end;margin:12px 12px 0;
+      background:rgba(10,22,40,0.07);border:none;color:var(--ink);
+      width:34px;height:34px;border-radius:8px;cursor:pointer;
+      font-size:18px;align-items:center;justify-content:center;
+      flex-shrink:0;transition:.15s;
+    }
+    .sb-close:hover{background:rgba(10,22,40,0.14)}
+
     @media(max-width:768px){
-      .sidebar{display:none}
-      .main{margin-left:0;padding:16px}
+      .sidebar{
+        transform:translateX(-260px);width:260px;transition:transform .25s;z-index:200;
+      }
+      .sidebar.sb-open{transform:translateX(0)}
+      .sb-mobile-topbar{display:flex}
+      .sb-close{display:flex}
+      .main{margin-left:0;padding:16px;padding-top:70px}
     }
 
     /* ── Page header ── */
@@ -180,7 +245,8 @@
 </head>
 <body>
 
-<nav class="sidebar">
+<nav class="sidebar" id="phixtraSchoolSidebar">
+  <button class="sb-close" id="sbClose" aria-label="Close menu">&#10005;</button>
   <a class="sb-brand" href="{{ url_for('school.dashboard') }}">
     <div class="sb-logo">S</div>
     <div class="sb-brand-text">
@@ -210,10 +276,28 @@
     </a>
 
     <div class="sb-section">Daily Operations</div>
-    <a class="sb-link {% if 'attendance' in request.endpoint %}active{% endif %}"
+    {% set attendance_open = request.endpoint in ('school.attendance', 'school.attendance_history', 'school.student_attendance', 'school.attendance_notify') %}
+    <a class="sb-link has-submenu {% if request.endpoint in ('school.attendance', 'school.student_attendance') %}active{% endif %}"
        href="{{ url_for('school.attendance') }}">
-      <span class="icon">✅</span> Attendance
+      <span class="icon">✅</span> <span class="label">Attendance</span>
+      <span class="sb-chevron {% if attendance_open %}open{% endif %}" id="sb-chev-attendance"
+            role="button" aria-expanded="{{ 'true' if attendance_open else 'false' }}"
+            aria-controls="sb-sub-attendance" title="Show/hide Attendance options"
+            onclick="event.preventDefault(); event.stopPropagation(); toggleSubmenu('attendance');">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+             stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"></polyline></svg>
+      </span>
     </a>
+    <div class="sb-submenu {% if attendance_open %}open{% endif %}" id="sb-sub-attendance">
+      <a class="sb-sublink {% if request.endpoint == 'school.attendance_history' %}active{% endif %}"
+         href="{{ url_for('school.attendance_history') }}">
+        📋 History
+      </a>
+      <a class="sb-sublink {% if request.endpoint == 'school.attendance_notify' %}active{% endif %}"
+         href="{{ url_for('school.attendance_notify') }}">
+        📲 Send Notifications
+      </a>
+    </div>
 
     <div class="sb-section">Finance</div>
     <a class="sb-link {% if 'fee' in request.endpoint %}active{% endif %}"
@@ -226,20 +310,36 @@
        href="{{ url_for('school.broadcast') }}">
       <span class="icon">📢</span> Broadcast
     </a>
+
+    {% if session.get('school_role') in ('admin', 'bursar') %}
+    <div class="sb-section">Admin</div>
     <a class="sb-link {% if 'knowledge' in request.endpoint %}active{% endif %}"
        href="{{ url_for('school.knowledge') }}">
       <span class="icon">🧠</span> AI Knowledge
     </a>
-
-    {% if session.get('school_role') in ('admin', 'bursar') %}
-    <div class="sb-section">Admin</div>
     <a class="sb-link {% if request.endpoint == 'school.wa_connect' %}active{% endif %}"
        href="{{ url_for('school.wa_connect') }}">
       <span class="icon">📱</span> Connect WhatsApp
     </a>
-    <a class="sb-link {% if 'settings' in request.endpoint %}active{% endif %}"
+    <a class="sb-link {% if request.endpoint == 'school.integrations' %}active{% endif %}"
+       href="{{ url_for('school.integrations') }}">
+      <span class="icon">🔌</span> Integrations
+    </a>
+    <a class="sb-link {% if request.endpoint and request.endpoint.startswith('school.settings') and 'templates' not in request.endpoint %}active{% endif %}"
        href="{{ url_for('school.settings') }}">
       <span class="icon">⚙️</span> Settings
+    </a>
+    <a class="sb-link {% if request.endpoint and request.endpoint.startswith('school.staff') %}active{% endif %}"
+       href="{{ url_for('school.staff') }}">
+      <span class="icon">👩‍🏫</span> Staff
+    </a>
+    <a class="sb-link {% if 'settings_templates' in request.endpoint %}active{% endif %}"
+       href="{{ url_for('school.settings_templates') }}">
+      <span class="icon">🔔</span> WhatsApp Templates
+    </a>
+    <a class="sb-link {% if request.endpoint and request.endpoint.startswith('school.billing') %}active{% endif %}"
+       href="{{ url_for('school.billing_plans') }}">
+      <span class="icon">💳</span> Plans &amp; Billing
     </a>
     {% endif %}
   </div>
@@ -248,6 +348,14 @@
   </div>
   {% endif %}
 </nav>
+
+{% if session.get('school_logged_in') %}
+<div class="sb-mobile-topbar" id="sbMobileTopbar">
+  <button class="sb-mobile-toggle" id="sbMobileToggle" aria-label="Open menu">&#9776;</button>
+  <span class="sb-mobile-title">{{ session.get('school_name', 'PhiXtra School') }}</span>
+</div>
+<div class="sb-overlay" id="sbOverlay"></div>
+{% endif %}
 
 <main class="main">
   {% with messages = get_flashed_messages(with_categories=true) %}
@@ -258,5 +366,38 @@
   {% block content %}{% endblock %}
 </main>
 
+<script>
+function toggleSubmenu(key) {
+  var menu = document.getElementById('sb-sub-' + key);
+  var chev = document.getElementById('sb-chev-' + key);
+  menu.classList.toggle('open');
+  chev.classList.toggle('open');
+  chev.setAttribute('aria-expanded', chev.classList.contains('open') ? 'true' : 'false');
+}
+
+(function(){
+  var sidebar   = document.getElementById('phixtraSchoolSidebar');
+  var overlay   = document.getElementById('sbOverlay');
+  var mobileBtn = document.getElementById('sbMobileToggle');
+  var closeBtn  = document.getElementById('sbClose');
+
+  function openSidebar() {
+    if (!sidebar) return;
+    sidebar.classList.add('sb-open');
+    if (overlay) overlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeSidebar() {
+    if (!sidebar) return;
+    sidebar.classList.remove('sb-open');
+    if (overlay) overlay.classList.remove('active');
+    document.body.style.overflow = '';
+  }
+
+  if (mobileBtn) mobileBtn.addEventListener('click', function(e){ e.stopPropagation(); openSidebar(); });
+  if (closeBtn)  closeBtn.addEventListener('click', closeSidebar);
+  if (overlay)   overlay.addEventListener('click', closeSidebar);
+})();
+</script>
 </body>
 </html>

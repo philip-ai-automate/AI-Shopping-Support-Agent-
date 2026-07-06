@@ -1,0 +1,95 @@
+{% extends "school/base.html" %}
+{% block title %}WhatsApp Templates — {{ school.school_name }}{% endblock %}
+
+{% block head %}
+<style>
+  .tpl-stack{display:flex;flex-direction:column;gap:18px}
+  .tpl-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px 22px}
+  .tpl-head{display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap}
+  .tpl-icon{font-size:20px}
+  .tpl-title{font-weight:750;font-size:14.5px;color:var(--ink)}
+  .tpl-desc{font-size:12.5px;color:var(--muted);margin-bottom:14px;line-height:1.5}
+  .tpl-vars{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .tpl-vars code{background:#F2F4F7;padding:1px 5px;border-radius:4px;font-size:11px}
+
+  .tpl-row{display:grid;grid-template-columns:1fr 140px auto;gap:12px;align-items:end;margin-top:14px}
+  @media(max-width:640px){.tpl-row{grid-template-columns:1fr}}
+
+  .tpl-sample{
+    margin-top:14px;padding:12px 14px;background:#F7F9FC;border:1px dashed var(--line);
+    border-radius:10px;font-size:12.5px;color:var(--txt);line-height:1.6;
+  }
+  .tpl-status-row{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>WhatsApp Templates</h1>
+    <p>Map your Meta-approved template names to PhiXtra notifications</p>
+  </div>
+  <a class="btn btn-outline" href="https://business.facebook.com/wa/manage/message-templates/"
+     target="_blank" rel="noopener">Open Meta Template Manager ↗</a>
+</div>
+
+{% if not school.wa_phone_number_id %}
+<div class="empty-state">
+  <div class="big">📵</div>
+  <p>WhatsApp is not connected. <a href="{{ url_for('school.wa_connect') }}">Connect WhatsApp</a> before configuring templates.</p>
+</div>
+{% else %}
+
+<div class="tpl-stack">
+  {% for t in template_types %}
+  {% set cfg = configured.get(t.type) %}
+  <div class="tpl-card">
+    <div class="tpl-head">
+      <span class="tpl-icon">{{ t.icon }}</span>
+      <span class="tpl-title">{{ t.label }}</span>
+      {% if cfg %}
+      <span class="pill pill-green" style="margin-left:auto">Configured</span>
+      {% else %}
+      <span class="pill pill-grey" style="margin-left:auto">Not set</span>
+      {% endif %}
+    </div>
+    <p class="tpl-desc">
+      {{ t.description }}<br>
+      <span class="tpl-vars">Variables, in order: {{ t.variables }}</span>
+    </p>
+
+    <form method="POST" action="{{ url_for('school.settings_templates_save') }}">
+      <input type="hidden" name="template_type" value="{{ t.type }}"/>
+      <div class="tpl-row">
+        <div class="form-group" style="margin:0">
+          <label>Template Name (exact, as approved in Meta)</label>
+          <input type="text" name="template_name" value="{{ cfg.template_name if cfg else '' }}"
+                 placeholder="e.g. school_{{ t.type }}"/>
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>Language Code</label>
+          <input type="text" name="language_code" value="{{ cfg.language_code if cfg else 'en_US' }}" placeholder="en_US"/>
+        </div>
+        <button type="submit" class="btn btn-primary" style="height:42px">Save</button>
+      </div>
+    </form>
+
+    {% if cfg %}
+    <div class="tpl-status-row">
+      <form method="POST" action="{{ url_for('school.settings_templates_check_status') }}">
+        <input type="hidden" name="template_type" value="{{ t.type }}"/>
+        <button type="submit" class="btn btn-outline btn-sm">Check Approval Status</button>
+      </form>
+    </div>
+    {% endif %}
+
+    <div class="tpl-sample">
+      <strong>Suggested template body</strong> (submit this for approval in Meta Business Manager, category <code>Utility</code>):<br>
+      "{{ t.sample }}"
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% endif %}
+{% endblock %}

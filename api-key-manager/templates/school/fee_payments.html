@@ -110,19 +110,36 @@
       </div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
+      {% if not is_teacher %}
       <button class="btn btn-outline"
               onclick="document.getElementById('import-modal').style.display='flex'">
         ⬆ Import CSV
       </button>
+      {% endif %}
       <form method="POST" action="{{ url_for('school.fee_remind', schedule_id=schedule.id) }}"
             onsubmit="return confirm('Send WhatsApp reminder to {{ (pay_stats.unpaid_count or 0) + (pay_stats.partial_count or 0) }} unpaid/partial parents?')">
         <button class="btn btn-outline" type="submit"
-                {% if not school.wa_phone_number_id %}disabled title="WhatsApp not connected"{% endif %}>
-          📲 Remind ({{ (pay_stats.unpaid_count or 0) + (pay_stats.partial_count or 0) }})
+                {% if not school.wa_phone_number_id %}disabled title="WhatsApp not connected"
+                {% elif not fee_template %}disabled title="Set up a fee reminder template in Settings → WhatsApp Templates"
+                {% endif %}>
+          📲 Send All Pending ({{ (pay_stats.unpaid_count or 0) + (pay_stats.partial_count or 0) }})
         </button>
       </form>
       <a class="btn btn-outline" href="{{ url_for('school.fees') }}">← Back</a>
     </div>
+  </div>
+
+  {# ── Template status strip ── #}
+  <div style="margin-top:12px;font-size:12.5px;color:var(--muted)">
+    WhatsApp template:
+    {% if fee_template %}
+    <span class="pill pill-green" style="margin-left:4px">{{ fee_template.template_name }} ({{ fee_template.language_code }})</span>
+    {% else %}
+    <span class="pill pill-red" style="margin-left:4px">Not set up</span>
+    {% if session.get('school_role') in ('admin', 'bursar') %}
+    — <a href="{{ url_for('school.settings_templates') }}">Set up in Settings →</a>
+    {% endif %}
+    {% endif %}
   </div>
 
   {# ── Collection progress ── #}
@@ -191,7 +208,21 @@
         {{ p.class_name }}{{ p.arm }}
         {% if p.student_number %} · {{ p.student_number }}{% endif %}
         {% if p.payment_ref %} · Ref: {{ p.payment_ref }}{% endif %}
+        {% if p.paid_via_gateway %}
+        <span class="status-chip" style="background:#EEF4FF;color:#1D6AF5;padding:1px 8px;font-size:11px">
+          via {{ p.paid_via_gateway | title }}
+        </span>
+        {% endif %}
       </div>
+      {% if p.status != 'paid' %}
+      <div class="pay-smeta">
+        {% if p.last_reminded_at %}
+        Reminded {{ p.last_reminded_at.strftime('%d %b, %H:%M') }}{% if p.reminded_by_name %} by {{ p.reminded_by_name }}{% endif %}
+        {% else %}
+        Not yet reminded
+        {% endif %}
+      </div>
+      {% endif %}
     </div>
 
     <div class="mini-prog">
@@ -214,10 +245,28 @@
 
     <div class="pay-date">{{ p.payment_date.strftime('%d %b') if p.payment_date else '—' }}</div>
 
+    {% if p.status != 'paid' %}
+    <form method="POST" action="{{ url_for('school.fee_remind_one', schedule_id=schedule.id, student_id=p.student_id) }}">
+      <button class="btn btn-outline" style="padding:6px 12px;font-size:12.5px"
+              {% if not fee_template %}disabled title="Set up a fee reminder template in Settings → WhatsApp Templates"{% endif %}>
+        📲 {{ 'Resend' if p.last_reminded_at else 'Remind' }}
+      </button>
+    </form>
+    {% endif %}
+
+    {% if p.status != 'paid' and has_payment_gateway and p.payment_token %}
+    <button type="button" class="btn btn-outline" style="padding:6px 12px;font-size:12.5px"
+            onclick="navigator.clipboard.writeText('{{ school_pay_base_url }}/pay/{{ p.payment_token }}');this.textContent='Copied!'">
+      🔗 Copy Link
+    </button>
+    {% endif %}
+
+    {% if not is_teacher %}
     <button class="btn btn-outline" style="padding:6px 12px;font-size:12.5px"
             onclick="openPayment({{ p.student_id }}, '{{ p.full_name | e }}', {{ p.amount_paid }}, {{ schedule.amount }})">
       Record
     </button>
+    {% endif %}
   </div>
   {% endfor %}
 </div>

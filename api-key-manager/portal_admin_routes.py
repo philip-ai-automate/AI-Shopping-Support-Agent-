@@ -18,9 +18,16 @@ from flask import (Blueprint, render_template, request, redirect,
 from db import get_db_connection, insert_audit_log
 from lead_pipeline import (STAGE_ORDER, STAGE_LABELS, STAGE_DESCRIPTIONS,
                             next_stage, record_stage_change, get_stage_history)
-from portal_utils import money_fmt, tokens_to_credits, credits_to_tokens, send_email_with_attachment
+from portal_utils import (money_fmt, tokens_to_credits, credits_to_tokens,
+                          send_email_with_attachment, TUTORIAL_VIDEOS)
 
 portal_admin_bp = Blueprint("portal_admin", __name__)
+
+# Multi-product ambassador program — mirrors ambassador_routes.PRODUCT_CONFIG labels.
+PRODUCT_LABELS = {"portal": "Portal (Merchant)", "school": "School", "estate": "Real Estate"}
+PRODUCT_ICONS  = {"portal": "🛍️", "school": "🏫", "estate": "🏠"}
+LEAD_LINK_COL  = {"portal": "tenant_id", "school": "school_id", "estate": "estate_tenant_id"}
+LEAD_REF_TABLE = {"portal": "tenants",   "school": "school_profiles", "estate": "re_tenants"}
 
 
 def _admin_logged_in() -> bool:
@@ -3754,6 +3761,63 @@ def admin_plans_assign(tenant_id: int):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# SCHOOL PLANS MANAGEMENT — admin view/assign plans to schools (school.phixtra.com)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@portal_admin_bp.route("/school-plans")
+def admin_school_plans():
+    _require_admin()
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cur.execute("SELECT * FROM school_plans ORDER BY sort_order")
+    plans = cur.fetchall() or []
+
+    cur.execute("""
+        SELECT s.id AS school_id, s.school_name,
+               s.billing_cycle, s.plan_period_start,
+               COALESCE(p.slug, 'free') AS plan_slug,
+               COALESCE(p.name, 'Free') AS plan_name,
+               (SELECT COUNT(*) FROM school_students st
+                WHERE st.school_id=s.id AND st.is_active=TRUE) AS student_count,
+               (SELECT COUNT(*) FROM school_chat_history ch
+                WHERE ch.school_id=s.id AND ch.role='assistant'
+                  AND ch.created_at >= COALESCE(s.plan_period_start, CURRENT_DATE - 30)) AS msgs_used,
+               COALESCE(p.ai_messages_limit, 100) AS msgs_limit
+        FROM school_profiles s
+        LEFT JOIN school_plans p ON p.id = s.plan_id
+        ORDER BY s.school_name
+    """)
+    schools = cur.fetchall() or []
+    cur.close(); conn.close()
+
+    return render_template("portal/admin_school_plans.html",
+                           plans=plans, schools=schools)
+
+
+@portal_admin_bp.route("/school-plans/assign/<int:school_id>", methods=["POST"])
+def admin_school_plans_assign(school_id: int):
+    _require_admin()
+    plan_id       = int(request.form.get("plan_id") or 1)
+    billing_cycle = request.form.get("billing_cycle", "termly")
+    from datetime import date as _d
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("""
+        UPDATE school_profiles
+        SET plan_id=%s, billing_cycle=%s, plan_period_start=%s,
+            quota_notified_at=NULL, renewal_notified_at=NULL
+        WHERE id=%s
+    """, (plan_id, billing_cycle, _d.today(), school_id))
+    conn.commit()
+    cur.close(); conn.close()
+    insert_audit_log(action="school_plan_assign", admin_username=_admin_user(),
+                     details={"school_id": school_id, "plan_id": plan_id, "billing_cycle": billing_cycle})
+    flash(f"Plan updated for school #{school_id}.", "success")
+    return redirect(url_for("portal_admin.admin_school_plans"))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # WHATSAPP DIAGNOSTICS — admin troubleshooting tool
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -3885,10 +3949,16 @@ def ambassadors():
     """)
     sales_managers = cur.fetchall() or []
 
+    cur.execute("SELECT ambassador_id, product, status FROM ambassador_products")
+    products_by_amb = {}
+    for pr in (cur.fetchall() or []):
+        products_by_amb.setdefault(pr["ambassador_id"], {})[pr["product"]] = pr["status"]
+
     cur.close(); conn.close()
     base_url = os.getenv("PORTAL_BASE_URL", "https://portal.phixtra.com")
     return render_template("portal/admin_ambassadors.html", ambassadors=ambs,
-                           sales_managers=sales_managers, base_url=base_url)
+                           sales_managers=sales_managers, base_url=base_url,
+                           products_by_amb=products_by_amb)
 
 
 @portal_admin_bp.route("/ambassadors/demo-accounts", methods=["GET"])
@@ -4220,6 +4290,13 @@ def ambassador_approve(amb_id: int):
                SET status='active', approved_at=NOW(), approved_by=%s, partnership_start=%s
              WHERE id=%s
         """, (_admin_user(), _date.today(), amb_id))
+        cur2.execute("""
+            INSERT INTO ambassador_products (ambassador_id, product, status, partnership_start, approved_at, approved_by)
+            VALUES (%s, 'portal', 'active', %s, NOW(), %s)
+            ON CONFLICT (ambassador_id, product) DO UPDATE
+                SET status='active', partnership_start=EXCLUDED.partnership_start,
+                    approved_at=NOW(), approved_by=EXCLUDED.approved_by
+        """, (amb_id, _date.today(), _admin_user()))
         conn.commit()
         cur2.close()
         insert_audit_log(
@@ -4260,6 +4337,9 @@ def ambassador_suspend(amb_id: int):
     amb = cur.fetchone()
     cur2 = conn.cursor()
     cur2.execute("UPDATE ambassadors SET status='suspended' WHERE id=%s", (amb_id,))
+    cur2.execute("""
+        UPDATE ambassador_products SET status='suspended' WHERE ambassador_id=%s AND product='portal'
+    """, (amb_id,))
     conn.commit()
     cur2.close(); cur.close(); conn.close()
     if amb:
@@ -4282,6 +4362,9 @@ def ambassador_reactivate(amb_id: int):
     amb = cur.fetchone()
     cur2 = conn.cursor()
     cur2.execute("UPDATE ambassadors SET status='active' WHERE id=%s", (amb_id,))
+    cur2.execute("""
+        UPDATE ambassador_products SET status='active' WHERE ambassador_id=%s AND product='portal'
+    """, (amb_id,))
     conn.commit()
     cur2.close(); cur.close(); conn.close()
     if amb:
@@ -4306,6 +4389,10 @@ def ambassador_reject(amb_id: int):
     cur2 = conn.cursor()
     cur2.execute("UPDATE ambassadors SET status='rejected', rejected_at=NOW(), rejected_reason=%s WHERE id=%s",
                 (reason, amb_id))
+    cur2.execute("""
+        UPDATE ambassador_products SET status='rejected', rejected_at=NOW(), rejected_reason=%s
+         WHERE ambassador_id=%s AND product='portal'
+    """, (reason, amb_id))
     conn.commit()
     cur2.close(); cur.close(); conn.close()
     if amb:
@@ -4331,6 +4418,10 @@ def ambassador_terminate(amb_id: int):
     cur2 = conn.cursor()
     cur2.execute("UPDATE ambassadors SET status='terminated', terminated_at=NOW(), terminated_reason=%s WHERE id=%s",
                 (reason, amb_id))
+    cur2.execute("""
+        UPDATE ambassador_products SET status='terminated', terminated_at=NOW(), terminated_reason=%s
+         WHERE ambassador_id=%s AND product='portal'
+    """, (reason, amb_id))
     conn.commit()
     cur2.close(); cur.close(); conn.close()
     if amb:
@@ -4341,6 +4432,128 @@ def ambassador_terminate(amb_id: int):
                      "reason": reason},
         )
     flash("Ambassador terminated.", "danger")
+    return redirect(url_for("portal_admin.ambassadors"))
+
+
+# ── Per-product (School / Estate) approval ──────────────────────────────────
+# Portal keeps the routes above (mirrored into ambassador_products by them).
+# School/Estate approval only ever touches the ambassador_products row —
+# never the top-level ambassadors.status, which gates login and is owned by
+# the Portal flow.
+
+@portal_admin_bp.route("/ambassadors/<int:amb_id>/products/<product>/approve", methods=["POST"])
+def ambassador_product_approve(amb_id: int, product: str):
+    r = _require_admin()
+    if r: return r
+    if product not in ("school", "estate"):
+        flash("Invalid product.", "danger")
+        return redirect(url_for("portal_admin.ambassadors"))
+    from datetime import date as _date
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT first_name, last_name, ref_code FROM ambassadors WHERE id=%s", (amb_id,))
+    amb = cur.fetchone()
+    if amb:
+        cur2 = conn.cursor()
+        cur2.execute("""
+            INSERT INTO ambassador_products (ambassador_id, product, status, partnership_start, approved_at, approved_by)
+            VALUES (%s, %s, 'active', %s, NOW(), %s)
+            ON CONFLICT (ambassador_id, product) DO UPDATE
+                SET status='active', partnership_start=EXCLUDED.partnership_start,
+                    approved_at=NOW(), approved_by=EXCLUDED.approved_by
+        """, (amb_id, product, _date.today(), _admin_user()))
+        conn.commit()
+        cur2.close()
+        insert_audit_log(
+            admin_username=_admin_user(), action="ambassador_product_approve",
+            details={"ambassador_id": amb_id, "ambassador_name": f"{amb['first_name']} {amb['last_name']}",
+                     "ref_code": amb['ref_code'], "product": product, "new_status": "active"},
+        )
+        flash(f"{amb['first_name']} {amb['last_name']} approved to sell {PRODUCT_LABELS[product]}.", "success")
+    cur.close(); conn.close()
+    return redirect(url_for("portal_admin.ambassadors"))
+
+
+@portal_admin_bp.route("/ambassadors/<int:amb_id>/products/<product>/reject", methods=["POST"])
+def ambassador_product_reject(amb_id: int, product: str):
+    r = _require_admin()
+    if r: return r
+    if product not in ("school", "estate"):
+        flash("Invalid product.", "danger")
+        return redirect(url_for("portal_admin.ambassadors"))
+    reason = (request.form.get("reason") or "").strip() or None
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT first_name, last_name, ref_code FROM ambassadors WHERE id=%s", (amb_id,))
+    amb = cur.fetchone()
+    cur2 = conn.cursor()
+    cur2.execute("""
+        UPDATE ambassador_products SET status='rejected', rejected_at=NOW(), rejected_reason=%s
+         WHERE ambassador_id=%s AND product=%s
+    """, (reason, amb_id, product))
+    conn.commit()
+    cur2.close(); cur.close(); conn.close()
+    if amb:
+        insert_audit_log(
+            admin_username=_admin_user(), action="ambassador_product_reject",
+            details={"ambassador_id": amb_id, "ambassador_name": f"{amb['first_name']} {amb['last_name']}",
+                     "ref_code": amb['ref_code'], "product": product, "new_status": "rejected", "reason": reason},
+        )
+    flash(f"{PRODUCT_LABELS[product]} application rejected.", "warning")
+    return redirect(url_for("portal_admin.ambassadors"))
+
+
+@portal_admin_bp.route("/ambassadors/<int:amb_id>/products/<product>/suspend", methods=["POST"])
+def ambassador_product_suspend(amb_id: int, product: str):
+    r = _require_admin()
+    if r: return r
+    if product not in ("school", "estate"):
+        flash("Invalid product.", "danger")
+        return redirect(url_for("portal_admin.ambassadors"))
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT first_name, last_name, ref_code FROM ambassadors WHERE id=%s", (amb_id,))
+    amb = cur.fetchone()
+    cur2 = conn.cursor()
+    cur2.execute("""
+        UPDATE ambassador_products SET status='suspended' WHERE ambassador_id=%s AND product=%s
+    """, (amb_id, product))
+    conn.commit()
+    cur2.close(); cur.close(); conn.close()
+    if amb:
+        insert_audit_log(
+            admin_username=_admin_user(), action="ambassador_product_suspend",
+            details={"ambassador_id": amb_id, "ambassador_name": f"{amb['first_name']} {amb['last_name']}",
+                     "ref_code": amb['ref_code'], "product": product, "new_status": "suspended"},
+        )
+    flash(f"{PRODUCT_LABELS[product]} access suspended.", "warning")
+    return redirect(url_for("portal_admin.ambassadors"))
+
+
+@portal_admin_bp.route("/ambassadors/<int:amb_id>/products/<product>/reactivate", methods=["POST"])
+def ambassador_product_reactivate(amb_id: int, product: str):
+    r = _require_admin()
+    if r: return r
+    if product not in ("school", "estate"):
+        flash("Invalid product.", "danger")
+        return redirect(url_for("portal_admin.ambassadors"))
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT first_name, last_name, ref_code FROM ambassadors WHERE id=%s", (amb_id,))
+    amb = cur.fetchone()
+    cur2 = conn.cursor()
+    cur2.execute("""
+        UPDATE ambassador_products SET status='active' WHERE ambassador_id=%s AND product=%s
+    """, (amb_id, product))
+    conn.commit()
+    cur2.close(); cur.close(); conn.close()
+    if amb:
+        insert_audit_log(
+            admin_username=_admin_user(), action="ambassador_product_reactivate",
+            details={"ambassador_id": amb_id, "ambassador_name": f"{amb['first_name']} {amb['last_name']}",
+                     "ref_code": amb['ref_code'], "product": product, "new_status": "active"},
+        )
+    flash(f"{PRODUCT_LABELS[product]} access reactivated.", "success")
     return redirect(url_for("portal_admin.ambassadors"))
 
 
@@ -4527,6 +4740,29 @@ def ambassador_detail(amb_id: int):
     amb["date_from"] = date_from or ""
     amb["date_to"] = date_to or ""
 
+    conn2 = get_db_connection()
+    cur2  = conn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur2.execute("SELECT product, status, partnership_start, rejected_reason FROM ambassador_products WHERE ambassador_id=%s", (amb_id,))
+    prod_rows = {p["product"]: p for p in (cur2.fetchall() or [])}
+    ref_code = row["ref_code"]
+    cur2.execute("SELECT COUNT(*) AS n FROM school_profiles WHERE ref_code=%s AND is_active=TRUE", (ref_code,))
+    school_active = (cur2.fetchone() or {}).get("n", 0)
+    cur2.execute("SELECT COUNT(*) AS n FROM re_tenants WHERE ref_code=%s AND status='active'", (ref_code,))
+    estate_active = (cur2.fetchone() or {}).get("n", 0)
+    cur2.close(); conn2.close()
+
+    active_counts = {"portal": amb["active_clients"], "school": school_active, "estate": estate_active}
+    products = {}
+    for p in ("portal", "school", "estate"):
+        pr = prod_rows.get(p)
+        products[p] = {
+            "status": pr["status"] if pr else "not_enrolled",
+            "partnership_start": pr["partnership_start"].isoformat() if pr and pr.get("partnership_start") else None,
+            "rejected_reason": pr.get("rejected_reason") if pr else None,
+            "active_clients": active_counts[p],
+        }
+    amb["products"] = products
+
     from flask import jsonify
     return jsonify(amb)
 
@@ -4627,6 +4863,7 @@ def ambassador_qual_doc(amb_id: int):
     return send_from_directory(static_dir, row["qual_document_path"])
 
 
+
 # ── Ambassador/Sales Manager CRM Pipeline (admin oversight) ─────────────────
 
 @portal_admin_bp.route("/admin/leads", methods=["GET"])
@@ -4675,7 +4912,8 @@ def admin_leads():
 
     return render_template("portal/admin_leads.html", leads=leads, dropped_leads=dropped_leads,
         stage_counts=stage_counts, stage_order=STAGE_ORDER, stage_labels=STAGE_LABELS,
-        stage_descriptions=STAGE_DESCRIPTIONS, next_stage=next_stage, ambassadors=ambassadors)
+        stage_descriptions=STAGE_DESCRIPTIONS, next_stage=next_stage, ambassadors=ambassadors,
+        product_labels=PRODUCT_LABELS, product_icons=PRODUCT_ICONS)
 
 
 @portal_admin_bp.route("/admin/leads/create", methods=["POST"])
@@ -4690,6 +4928,9 @@ def admin_lead_create():
     phone             = (request.form.get("phone")         or "").strip() or None
     email             = (request.form.get("email")          or "").strip() or None
     notes             = (request.form.get("notes")          or "").strip() or None
+    product           = (request.form.get("product")        or "portal").strip().lower()
+    if product not in PRODUCT_LABELS:
+        product = "portal"
 
     if not ambassador_id_raw.isdigit() or not business_name:
         flash("Ambassador and business name are required.", "danger")
@@ -4706,10 +4947,10 @@ def admin_lead_create():
 
     cur.execute("""
         INSERT INTO ambassador_leads
-          (ambassador_id, business_name, industry, contact_name, phone, email, notes, stage)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, 'lead')
+          (ambassador_id, business_name, industry, contact_name, phone, email, notes, stage, product)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, 'lead', %s)
         RETURNING id
-    """, (ambassador_id, business_name, industry, contact_name, phone, email, notes))
+    """, (ambassador_id, business_name, industry, contact_name, phone, email, notes, product))
     new_id = cur.fetchone()["id"]
     conn.commit()
     cur.close(); conn.close()
@@ -4784,18 +5025,21 @@ def lead_advance(lead_id: int):
         updates.update(onboarding_date=onboarding_date, onboarding_notes=onboarding_notes or None)
 
     elif target == "active_client":
+        lead_product = lead.get("product") or "portal"
+        link_col     = LEAD_LINK_COL[lead_product]
+        ref_table    = LEAD_REF_TABLE[lead_product]
         tenant_id_raw = (f.get("tenant_id") or "").strip()
         tenant_id = int(tenant_id_raw) if tenant_id_raw.isdigit() else None
         if tenant_id:
             cur.execute("SELECT a.ref_code FROM ambassadors a WHERE a.id=%s", (lead["ambassador_id"],))
             amb_row = cur.fetchone()
-            cur.execute("SELECT id FROM tenants WHERE id=%s AND ref_code=%s",
+            cur.execute(f"SELECT id FROM {ref_table} WHERE id=%s AND ref_code=%s",
                        (tenant_id, amb_row["ref_code"] if amb_row else None))
             if not cur.fetchone():
                 cur.close(); conn.close()
                 flash("Selected client doesn't match this ambassador's referral code.", "danger")
                 return redirect(url_for("portal_admin.admin_leads"))
-        updates["tenant_id"] = tenant_id
+        updates[link_col] = tenant_id
 
     set_clause = ", ".join(f"{k}=%s" for k in updates)
     cur2 = conn.cursor()
@@ -4832,6 +5076,13 @@ def lead_drop_admin(lead_id: int):
     record_stage_change(lead_id, lead["stage"], "dropped", f"{_admin_user()} (Admin)", reason)
     flash(f"{lead['business_name']} marked as dropped.", "warning")
     return redirect(url_for("portal_admin.admin_leads"))
+
+
+@portal_admin_bp.route("/video-tutorials")
+def video_tutorials():
+    r = _require_admin()
+    if r: return r
+    return render_template("portal/admin_video_tutorials.html", videos=TUTORIAL_VIDEOS)
 
 
 @portal_admin_bp.route("/admin/leads/<int:lead_id>/history")

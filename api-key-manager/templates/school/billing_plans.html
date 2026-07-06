@@ -1,0 +1,194 @@
+{% extends "school/base.html" %}
+{% block title %}Plans & Billing — PhiXtra School{% endblock %}
+
+{% block head %}
+<style>
+.usage-card { background:#fff; border:1px solid var(--line); border-radius:14px; padding:24px; margin-bottom:28px }
+.usage-header { display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px; margin-bottom:18px }
+.usage-plan-name { font-size:20px; font-weight:800 }
+.usage-cycle  { font-size:12px; color:var(--muted); margin-top:3px }
+
+.meter-row { margin-bottom:14px }
+.meter-row:last-child { margin-bottom:0 }
+.meter-labels { display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin-bottom:5px }
+.meter-bar { height:10px; background:#f0f0f2; border-radius:999px; overflow:hidden }
+.meter-fill { height:100%; border-radius:999px; background:linear-gradient(90deg,#12B76A,#027A48) }
+.meter-fill.warn   { background:linear-gradient(90deg,#F79009,#B54708) }
+.meter-fill.danger { background:linear-gradient(90deg,#F04438,#B42318) }
+
+.plans-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:16px }
+@media(max-width:1100px){ .plans-grid { grid-template-columns:repeat(3,1fr) } }
+@media(max-width:700px){ .plans-grid { grid-template-columns:repeat(2,1fr) } }
+@media(max-width:480px){ .plans-grid { grid-template-columns:1fr } }
+
+.plan-card { background:#fff; border:2px solid var(--line); border-radius:16px;
+  padding:22px 18px; display:flex; flex-direction:column; position:relative }
+.plan-card.current { border-color:var(--ink); box-shadow:0 0 0 3px rgba(3,12,24,.06) }
+.current-badge { position:absolute; top:-12px; left:50%; transform:translateX(-50%);
+  background:var(--ink); color:#fff; font-size:11px; font-weight:700; padding:3px 12px;
+  border-radius:999px; white-space:nowrap }
+
+.plan-name  { font-size:15px; font-weight:800; margin-bottom:4px }
+.plan-price { font-size:24px; font-weight:800; letter-spacing:-.5px; line-height:1 }
+.plan-period{ font-size:11px; color:var(--muted); margin-top:4px; margin-bottom:14px }
+.plan-annual{ font-size:11px; color:var(--good); font-weight:600 }
+.plan-divider{ height:1px; background:var(--line); margin:12px 0 }
+
+.plan-features { list-style:none; padding:0; margin:0 0 16px; display:flex; flex-direction:column; gap:7px }
+.plan-features li { display:flex; gap:6px; font-size:12px; align-items:flex-start }
+.feat-yes { color:#12B76A; font-size:13px; flex-shrink:0; margin-top:1px }
+.feat-no  { color:#d1d5db; font-size:13px; flex-shrink:0; margin-top:1px }
+.feat-lbl.muted { color:var(--muted) }
+
+.plan-cta { margin-top:auto; display:flex; flex-direction:column; gap:6px }
+.btn-upgrade { width:100%; padding:9px; border-radius:9px; font-size:12.5px; font-weight:700;
+  border:none; cursor:pointer; text-align:center }
+.btn-upgrade-primary { background:var(--ink); color:#fff }
+.btn-upgrade-primary:hover { background:#000 }
+.btn-upgrade-outline { background:#fff; color:var(--txt); border:2px solid var(--line) }
+.btn-current { background:#f4f4f5; color:var(--muted); cursor:default }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header" style="margin-bottom:24px">
+  <div>
+    <div class="section-title">Plans &amp; Billing</div>
+    <p class="muted">Manage your school's subscription and view usage</p>
+  </div>
+</div>
+
+{% set ai_limit = current.ai_messages_limit if current.ai_messages_limit is defined else -1 %}
+{% set ai_pct = ([(msgs_used / ai_limit * 100)|int, 100]|min) if ai_limit and ai_limit > 0 else 0 %}
+{% set stu_limit = current.student_max if current.student_max is defined else -1 %}
+{% set stu_pct = ([(student_count / stu_limit * 100)|int, 100]|min) if stu_limit and stu_limit > 0 else 0 %}
+{% set staff_limit = current.staff_limit if current.staff_limit is defined else -1 %}
+{% set staff_pct = ([(staff_count / staff_limit * 100)|int, 100]|min) if staff_limit and staff_limit > 0 else 0 %}
+
+<div class="usage-card">
+  <div class="usage-header">
+    <div>
+      <div class="usage-plan-name">{{ current.name }} Plan</div>
+      <div class="usage-cycle">
+        {{ (school.billing_cycle or 'termly') | capitalize }} billing
+        &nbsp;·&nbsp; Period from {{ school.plan_period_start.strftime('%-d %b %Y') if school.plan_period_start }}
+      </div>
+    </div>
+  </div>
+
+  <div class="meter-row">
+    <div class="meter-labels">
+      <span>AI conversations this period</span>
+      <span>{{ msgs_used }} / {{ ai_limit if ai_limit != -1 else '∞' }}</span>
+    </div>
+    <div class="meter-bar">
+      <div class="meter-fill {% if ai_pct >= 100 %}danger{% elif ai_pct >= 80 %}warn{% endif %}" style="width:{{ ai_pct }}%"></div>
+    </div>
+  </div>
+
+  <div class="meter-row">
+    <div class="meter-labels">
+      <span>Students</span>
+      <span>{{ student_count }} / {{ stu_limit if stu_limit != -1 else '∞' }}</span>
+    </div>
+    <div class="meter-bar">
+      <div class="meter-fill {% if stu_pct >= 100 %}danger{% elif stu_pct >= 80 %}warn{% endif %}" style="width:{{ stu_pct }}%"></div>
+    </div>
+  </div>
+
+  <div class="meter-row">
+    <div class="meter-labels">
+      <span>Staff logins</span>
+      <span>{{ staff_count }} / {{ staff_limit if staff_limit != -1 else '∞' }}</span>
+    </div>
+    <div class="meter-bar">
+      <div class="meter-fill {% if staff_pct >= 100 %}danger{% elif staff_pct >= 80 %}warn{% endif %}" style="width:{{ staff_pct }}%"></div>
+    </div>
+  </div>
+</div>
+
+<div class="plans-grid">
+{% for plan in all_plans %}
+{% set is_current = plan.slug == current.slug %}
+{% set has_price = plan.price_ngn_termly is not none %}
+{% set disc_pct = ((1 - (plan.price_ngn_annual / (plan.price_ngn_termly * 3))) * 100)|round|int if has_price and plan.price_ngn_termly > 0 else 0 %}
+
+<div class="plan-card {% if is_current %}current{% endif %}">
+  {% if is_current %}<span class="current-badge">Current plan</span>{% endif %}
+
+  <div class="plan-name">{{ plan.name }}</div>
+  <div class="plan-price">
+    {% if not has_price %}Custom
+    {% elif plan.price_ngn_termly == 0 %}Free
+    {% else %}₦{{ "{:,}".format(plan.price_ngn_termly) }}{% endif %}
+  </div>
+  {% if has_price and plan.price_ngn_termly > 0 %}
+  <div class="plan-period">
+    per term
+    <span class="plan-annual"><br>or ₦{{ "{:,}".format(plan.price_ngn_annual) }}/yr ({{ disc_pct }}% off)</span>
+  </div>
+  {% elif not has_price %}
+  <div class="plan-period">1000+ students — contact us</div>
+  {% else %}
+  <div class="plan-period">forever free · up to {{ plan.student_max }} students</div>
+  {% endif %}
+
+  <div class="plan-divider"></div>
+
+  <ul class="plan-features">
+    <li><span class="feat-yes">✓</span><span>
+      {{ plan.student_min }}–{{ plan.student_max if plan.student_max != -1 else '∞' }} students
+    </span></li>
+    <li><span class="feat-yes">✓</span><span>
+      {{ plan.ai_messages_limit if plan.ai_messages_limit != -1 else 'Unlimited' }} AI conversations/mo
+    </span></li>
+    <li><span class="feat-yes">✓</span><span>
+      {{ plan.staff_limit if plan.staff_limit != -1 else 'Unlimited' }} staff logins
+    </span></li>
+    {% for flag, label in [
+        ('feat_document_rag',     'Document upload (Knowledge Base)'),
+        ('feat_broadcasts',       'Broadcast messaging'),
+        ('feat_custom_templates','Custom WhatsApp templates'),
+        ('feat_priority_support','Priority support'),
+    ] %}
+    <li>
+      {% if plan[flag] %}
+      <span class="feat-yes">✓</span><span class="feat-lbl">{{ label }}</span>
+      {% else %}
+      <span class="feat-no">✗</span><span class="feat-lbl muted">{{ label }}</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+
+  <div class="plan-cta">
+    {% if is_current %}
+    <span class="btn-upgrade btn-current">Current plan</span>
+    {% elif not has_price %}
+    <a href="mailto:support@phixtra.com?subject=Enterprise%20plan%20enquiry"
+       class="btn-upgrade btn-upgrade-outline" style="text-decoration:none;display:block">Contact Sales</a>
+    {% elif plan.price_ngn_termly == 0 %}
+    <span class="btn-upgrade btn-upgrade-outline" style="cursor:default">Downgrade</span>
+    {% else %}
+    <form method="POST" action="{{ url_for('school.billing_plan_upgrade') }}">
+      <input type="hidden" name="plan_slug" value="{{ plan.slug }}">
+      <input type="hidden" name="cycle" value="termly">
+      <button type="submit" class="btn-upgrade btn-upgrade-primary">Pay Termly</button>
+    </form>
+    <form method="POST" action="{{ url_for('school.billing_plan_upgrade') }}">
+      <input type="hidden" name="plan_slug" value="{{ plan.slug }}">
+      <input type="hidden" name="cycle" value="annual">
+      <button type="submit" class="btn-upgrade btn-upgrade-outline">Pay Annually ({{ disc_pct }}% off)</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+</div>
+
+<p style="font-size:12px;color:var(--muted);margin-top:20px;text-align:center">
+  Payments are processed securely via Flutterwave (NGN). A term of runway is added to your account on payment.
+</p>
+
+{% endblock %}

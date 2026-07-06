@@ -227,6 +227,7 @@
     {% endwith %}
 
     <form method="POST" autocomplete="on">
+      <input type="hidden" name="ref_code" value="{{ ref_code or '' }}"/>
 
       <div class="section-divider">School Information</div>
 

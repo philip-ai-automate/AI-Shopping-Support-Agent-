@@ -90,13 +90,31 @@
     <div class="asb-brand-sub">Ambassador Hub</div>
   </div>
   <div class="asb-nav">
+    <a class="asb-link {% if request.endpoint=='ambassador.dashboard' %}active{% endif %}"
+       href="{{ url_for('ambassador.dashboard') }}">
+      <span class="asb-icon">🏠</span><span>Dashboard</span>
+    </a>
     <a class="asb-link {% if request.endpoint=='ambassador.getting_started' %}active{% endif %}"
        href="{{ url_for('ambassador.getting_started') }}">
       <span class="asb-icon">🚀</span><span>Getting Started</span>
     </a>
-    <a class="asb-link {% if request.endpoint=='ambassador.dashboard' %}active{% endif %}"
-       href="{{ url_for('ambassador.dashboard') }}">
-      <span class="asb-icon">🏠</span><span>Dashboard</span>
+    <a class="asb-link {% if request.endpoint=='ambassador.playground_page' %}active{% endif %}"
+       href="{{ url_for('ambassador.playground_page') }}">
+      <span class="asb-icon">🖥️</span><span>AI WhatsApp Playground</span>
+    </a>
+    <a class="asb-link"
+       href="{{ url_for('ambassador.demo_portal_access') }}"
+       target="_blank" rel="noopener"
+       style="background:rgba(37,99,235,.18);color:#93c5fd;font-weight:700">
+      <span class="asb-icon">🎮</span><span>My Demo Portal</span>
+    </a>
+    <a class="asb-link {% if request.endpoint=='ambassador.qr_page' %}active{% endif %}"
+       href="{{ url_for('ambassador.qr_page') }}">
+      <span class="asb-icon">📱</span><span>My QR Code</span>
+    </a>
+    <a class="asb-link {% if request.endpoint=='ambassador.demo_qr_page' %}active{% endif %}"
+       href="{{ url_for('ambassador.demo_qr_page') }}">
+      <span class="asb-icon">📲</span><span>Demo QR Code</span>
     </a>
     <a class="asb-link {% if request.endpoint=='ambassador.referrals' %}active{% endif %}"
        href="{{ url_for('ambassador.referrals') }}">
@@ -107,6 +125,12 @@
        href="{{ url_for('ambassador.team') }}">
       <span class="asb-icon">🏅</span><span>My Team</span>
     </a>
+    {% endif %}
+    <a class="asb-link {% if request.endpoint=='ambassador.leads' %}active{% endif %}"
+       href="{{ url_for('ambassador.leads') }}">
+      <span class="asb-icon">🎯</span><span>My Pipeline</span>
+    </a>
+    {% if _amb_role == 'sales_manager' %}
     <a class="asb-link {% if request.endpoint=='ambassador.team_pipeline' %}active{% endif %}"
        href="{{ url_for('ambassador.team_pipeline') }}">
       <span class="asb-icon">📊</span><span>Team Pipeline</span>
@@ -116,38 +140,13 @@
        href="{{ url_for('ambassador.earnings') }}">
       <span class="asb-icon">💰</span><span>Earnings</span>
     </a>
-    <a class="asb-link {% if request.endpoint=='ambassador.qr_page' %}active{% endif %}"
-       href="{{ url_for('ambassador.qr_page') }}">
-      <span class="asb-icon">📱</span><span>My QR Code</span>
-    </a>
-    <a class="asb-link {% if request.endpoint=='ambassador.demo_qr_page' %}active{% endif %}"
-       href="{{ url_for('ambassador.demo_qr_page') }}">
-      <span class="asb-icon">📲</span><span>Demo QR Code</span>
-    </a>
-    <a class="asb-link {% if request.endpoint=='ambassador.playground_page' %}active{% endif %}"
-       href="{{ url_for('ambassador.playground_page') }}">
-      <span class="asb-icon">🖥️</span><span>AI WhatsApp Playground</span>
-    </a>
     <a class="asb-link {% if request.endpoint=='ambassador.checklist' %}active{% endif %}"
        href="{{ url_for('ambassador.checklist') }}">
       <span class="asb-icon">📋</span><span>Client Checklist</span>
     </a>
-    <a class="asb-link {% if request.endpoint=='ambassador.leads' %}active{% endif %}"
-       href="{{ url_for('ambassador.leads') }}">
-      <span class="asb-icon">🎯</span><span>My Pipeline</span>
-    </a>
     <a class="asb-link {% if request.endpoint=='ambassador.contract' %}active{% endif %}"
        href="{{ url_for('ambassador.contract') }}">
       <span class="asb-icon">📄</span><span>My Contract</span>
-    </a>
-    <a class="asb-link"
-       href="{{ url_for('ambassador.demo_portal_access') }}"
-       target="_blank" rel="noopener"
-       style="background:rgba(37,99,235,.18);color:#93c5fd;font-weight:700;margin-top:6px">
-      <span class="asb-icon">🎮</span><span>My Demo Portal</span>
-    </a>
-    <a class="asb-link" href="https://chat.whatsapp.com/KKRG7lVuxq6LVGMdLHYaqG" target="_blank" rel="noopener">
-      <span class="asb-icon">💬</span><span>Support Group</span>
     </a>
   </div>
   <div class="asb-footer">
@@ -156,6 +155,195 @@
     </a>
   </div>
 </nav>
+
+<!-- ══════════════ GUIDED TOUR (generic engine, steps supplied per-page) ══════════════ -->
+<div id="ambTourBackdrop"  style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(3,12,24,0);"></div>
+<div id="ambTourHighlight" style="display:none;position:fixed;z-index:9001;pointer-events:none;border-radius:14px;
+     box-shadow:0 0 0 4px #2563eb,0 0 0 8px rgba(37,99,235,0.25);
+     transition:top .25s,left .25s,width .25s,height .25s;"></div>
+<div id="ambTourTooltip"  style="display:none;position:fixed;z-index:9002;background:#fff;border-radius:20px;
+     padding:24px 26px;width:340px;max-height:70vh;overflow-y:auto;box-shadow:0 24px 64px rgba(3,12,24,0.22);
+     border:1px solid rgba(3,12,24,0.09);">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+    <span id="ambTourStepLabel" style="font-size:11px;font-weight:700;color:rgba(3,12,24,0.40);
+          text-transform:uppercase;letter-spacing:.08em;"></span>
+    <div style="display:flex;gap:3px;" id="ambTourDots"></div>
+  </div>
+  <div id="ambTourTitle" style="font-size:17px;font-weight:800;color:#030C18;margin-bottom:8px;letter-spacing:-.3px;line-height:1.2;"></div>
+  <div id="ambTourBody"  style="font-size:13px;color:rgba(3,12,24,0.68);line-height:1.65;margin-bottom:20px;"></div>
+  <div style="display:flex;align-items:center;justify-content:space-between;">
+    <button onclick="ambTourEnd()"
+            style="font-size:12px;color:rgba(3,12,24,0.40);background:none;border:none;cursor:pointer;padding:0;font-family:inherit;">
+      Skip tour
+    </button>
+    <div style="display:flex;gap:8px;">
+      <button id="ambTourPrevBtn" onclick="ambTourPrev()"
+              style="padding:9px 16px;border-radius:11px;border:1px solid rgba(3,12,24,0.14);
+                     background:#fff;color:rgba(3,12,24,0.65);font-size:13px;font-weight:600;
+                     cursor:pointer;font-family:inherit;transition:.15s;">← Back</button>
+      <button id="ambTourNextBtn" onclick="ambTourNext()"
+              style="padding:9px 18px;border-radius:11px;border:none;
+                     background:#030C18;color:#fff;font-size:13px;font-weight:700;
+                     cursor:pointer;font-family:inherit;transition:.15s;">Next →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var cur = 0, steps = [], allSteps = [], storageKey = null;
+  var backdrop, highlight, tooltip;
+
+  function validSteps() {
+    return allSteps.filter(function(s) {
+      if (!s.sel) return true;
+      return !!document.querySelector(s.sel);
+    });
+  }
+
+  function render() {
+    var step = steps[cur];
+    var total = steps.length;
+
+    document.getElementById('ambTourStepLabel').textContent = 'Step ' + (cur + 1) + ' of ' + total;
+
+    var dotsEl = document.getElementById('ambTourDots');
+    dotsEl.innerHTML = '';
+    steps.forEach(function(_, i) {
+      var d = document.createElement('div');
+      d.style.cssText = 'width:6px;height:6px;border-radius:50%;background:' +
+        (i === cur ? '#030C18' : 'rgba(3,12,24,0.18)') + ';transition:.2s;';
+      dotsEl.appendChild(d);
+    });
+
+    document.getElementById('ambTourTitle').textContent = step.title;
+    document.getElementById('ambTourBody').innerHTML  = step.body;
+
+    var prevBtn = document.getElementById('ambTourPrevBtn');
+    prevBtn.style.display = cur === 0 ? 'none' : '';
+
+    var nextBtn = document.getElementById('ambTourNextBtn');
+    nextBtn.textContent = step.last ? 'Done ✓' : 'Next →';
+
+    // Close any modal left open by a previous step, then let this step open
+    // its own (e.g. to show the real "advance to X" form as a live example).
+    if (window.ambTourCloseModals) window.ambTourCloseModals();
+    if (step.before) step.before();
+
+    var el = step.sel ? document.querySelector(step.sel) : null;
+
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      setTimeout(function() {
+        var r = el.getBoundingClientRect();
+        var pad = 6;
+        highlight.style.top    = (r.top  - pad) + 'px';
+        highlight.style.left   = (r.left - pad) + 'px';
+        highlight.style.width  = (r.width  + pad * 2) + 'px';
+        highlight.style.height = (r.height + pad * 2) + 'px';
+        highlight.style.display = 'block';
+        posTooltip(r, step.pos);
+      }, 120);
+    } else {
+      highlight.style.display = 'none';
+      posTooltip(null, step.pos);
+    }
+  }
+
+  function posTooltip(r, pos) {
+    var tt = tooltip;
+    var ttW = 340, margin = 14;
+    var vpW = window.innerWidth, vpH = window.innerHeight;
+
+    tt.style.transform = '';
+
+    if (pos === 'center' || !r) {
+      tt.style.top       = '50%';
+      tt.style.left      = '50%';
+      tt.style.transform = 'translate(-50%, -50%)';
+      tt.style.display   = 'block';
+      return;
+    }
+
+    var top = 0, left = 0;
+
+    if (pos === 'right') {
+      left = r.right + margin;
+      top  = r.top + r.height / 2 - 100;
+    } else if (pos === 'bottom') {
+      left = r.left;
+      top  = r.bottom + margin;
+    } else if (pos === 'top') {
+      left = r.left;
+      top  = r.top - margin - 260;
+    }
+
+    if (left + ttW + margin > vpW) left = vpW - ttW - margin;
+    if (left < margin) left = margin;
+    if (top < margin) top = margin;
+    if (top + 300 > vpH) top = vpH - 300 - margin;
+
+    tt.style.left    = left + 'px';
+    tt.style.top     = top  + 'px';
+    tt.style.display = 'block';
+  }
+
+  function onKey(e) {
+    if (e.key === 'Escape')     { ambTourEnd(); }
+    if (e.key === 'ArrowRight') { ambTourNext(); }
+    if (e.key === 'ArrowLeft')  { ambTourPrev(); }
+  }
+
+  window.ambTourStart = function() {
+    if (!allSteps.length) return;
+    steps = validSteps();
+    cur   = 0;
+    backdrop.style.display  = 'block';
+    highlight.style.display = 'none';
+    tooltip.style.display   = 'block';
+    render();
+    document.addEventListener('keydown', onKey);
+  };
+
+  window.ambTourNext = function() {
+    if (cur >= steps.length - 1) { ambTourEnd(); return; }
+    cur++;
+    render();
+  };
+
+  window.ambTourPrev = function() {
+    if (cur <= 0) return;
+    cur--;
+    render();
+  };
+
+  window.ambTourEnd = function() {
+    backdrop.style.display  = 'none';
+    highlight.style.display = 'none';
+    tooltip.style.display   = 'none';
+    document.removeEventListener('keydown', onKey);
+    if (window.ambTourCloseModals) window.ambTourCloseModals();
+    if (storageKey) { try { localStorage.setItem(storageKey, '1'); } catch(e){} }
+  };
+
+  // Called by each page with its own step list + a unique storage key (for the
+  // "seen it before" auto-start check) + whether to auto-start for first-time visitors.
+  window.ambTourInit = function(pageSteps, key, autoStart) {
+    allSteps   = pageSteps;
+    storageKey = key;
+    document.addEventListener('DOMContentLoaded', function() {
+      backdrop  = document.getElementById('ambTourBackdrop');
+      highlight = document.getElementById('ambTourHighlight');
+      tooltip   = document.getElementById('ambTourTooltip');
+      var done = false;
+      try { done = !!localStorage.getItem(key); } catch(e){}
+      if (autoStart && !done) {
+        setTimeout(window.ambTourStart, 800);
+      }
+    });
+  };
+})();
+</script>
 
 <main class="amb-main">
   {% with messages = get_flashed_messages(with_categories=true) %}

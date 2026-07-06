@@ -395,7 +395,7 @@ html, body { overflow: hidden; height: 100%; }
         <div class="inbox-topbar-title">Conversations</div>
         <div class="inbox-topbar-sub">
           {% if connection %}
-            WhatsApp · +{{ connection.display_phone_number or connection.phone_number_id }}
+            WhatsApp · {{ (connection.display_phone_number or connection.phone_number_id)|with_plus }}
             {% if conversations %}&nbsp;·&nbsp;{{ conversations|length }} conversation{{ 's' if conversations|length != 1 }}{% endif %}
           {% else %}
             WhatsApp not connected
@@ -457,7 +457,7 @@ html, body { overflow: hidden; height: 100%; }
         {% if not conversations %}
         <div class="conv-empty-msg">
           <div style="font-size:36px;opacity:.25;margin-bottom:10px">💬</div>
-          Send a WhatsApp message to +{{ connection.display_phone_number or connection.phone_number_id }} to get started.
+          Send a WhatsApp message to {{ (connection.display_phone_number or connection.phone_number_id)|with_plus }} to get started.
         </div>
         {% endif %}
 

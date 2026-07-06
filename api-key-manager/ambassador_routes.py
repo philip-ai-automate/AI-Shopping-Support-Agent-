@@ -57,6 +57,22 @@ UPSELL_BONUSES = {
     ("free",    "pro"):   20000,
 }
 
+# Multi-product ambassador program: Portal (merchant), School, Real Estate.
+# One ambassador identity/login/ref_code sells across all three — each is
+# approved/tiered independently via the ambassador_products table.
+_SCHOOL_BASE_URL = os.getenv("SCHOOL_BASE_URL", "https://school.phixtra.com").rstrip("/")
+_ESTATE_BASE_URL = os.getenv("ESTATE_BASE_URL", "https://home.phixtra.com").rstrip("/")
+
+PRODUCT_ORDER = ["portal", "school", "estate"]
+PRODUCT_CONFIG = {
+    "portal": {"label": "Portal (Merchant)", "icon": "🛍️",
+               "register_url": lambda code: f"{BASE_URL}/register?ref={code}"},
+    "school": {"label": "School",            "icon": "🏫",
+               "register_url": lambda code: f"{_SCHOOL_BASE_URL}/school/register?ref={code}"},
+    "estate": {"label": "Real Estate",       "icon": "🏠",
+               "register_url": lambda code: f"{_ESTATE_BASE_URL}/estate/register?ref={code}"},
+}
+
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -162,16 +178,79 @@ def _get_ambassador(amb_id: int) -> dict | None:
     cur.close(); conn.close()
     return dict(row) if row else None
 
-def _active_client_count(ref_code: str) -> int:
+def _active_client_count(ref_code: str, product: str = "portal") -> int:
     conn = get_db_connection()
     cur  = conn.cursor()
-    cur.execute(
-        "SELECT COUNT(*) FROM tenants WHERE ref_code=%s AND status='active'",
-        (ref_code,)
-    )
+    if product == "school":
+        cur.execute(
+            "SELECT COUNT(*) FROM school_profiles WHERE ref_code=%s AND is_active=TRUE",
+            (ref_code,)
+        )
+    elif product == "estate":
+        cur.execute(
+            "SELECT COUNT(*) FROM re_tenants WHERE ref_code=%s AND status='active'",
+            (ref_code,)
+        )
+    else:
+        cur.execute(
+            "SELECT COUNT(*) FROM tenants WHERE ref_code=%s AND status='active'",
+            (ref_code,)
+        )
     count = int((cur.fetchone() or [0])[0])
     cur.close(); conn.close()
     return count
+
+def _get_ambassador_product(ambassador_id: int, product: str) -> dict | None:
+    """The per-product (Portal/School/Estate) membership row for an ambassador."""
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        "SELECT * FROM ambassador_products WHERE ambassador_id=%s AND product=%s",
+        (ambassador_id, product)
+    )
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    return dict(row) if row else None
+
+def _get_ambassador_products_map(ambassador_id: int) -> dict:
+    """All of an ambassador's product membership rows, keyed by product."""
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM ambassador_products WHERE ambassador_id=%s", (ambassador_id,))
+    rows = {r["product"]: dict(r) for r in (cur.fetchall() or [])}
+    cur.close(); conn.close()
+    return rows
+
+def _product_commission_eligible(ambassador_id: int, ref_code: str, product: str) -> bool:
+    """
+    Same eligibility rule as _commission_eligible() but scoped to a single
+    product's own ambassador_products row (status + partnership_start),
+    for School/Estate where approval is tracked separately from the legacy
+    Portal-only `ambassadors.status` field.
+
+    Also requires the base ambassador account itself to be 'active' — if an
+    admin suspends/terminates/rejects someone at the account level (the main
+    Suspend/Terminate buttons, which only directly touch `ambassadors.status`
+    + the 'portal' ambassador_products row), that must stop ALL commission
+    accrual, not just Portal's. Without this check a portal-suspended
+    ambassador with a separately-active School/Estate row would keep earning
+    silently while locked out of login entirely (bug found + fixed 2026-07-06).
+    """
+    base = _get_ambassador(ambassador_id)
+    if not base or base.get("status") != "active":
+        return False
+    ap = _get_ambassador_product(ambassador_id, product)
+    if not ap or ap.get("status") != "active":
+        return False
+    ps = ap.get("partnership_start")
+    if not ps:
+        return False
+    active = _active_client_count(ref_code, product)
+    tier   = _tier_info(active, ps)
+    if tier["months"] is None:
+        return True
+    expiry = ps + timedelta(days=30 * tier["months"])
+    return date.today() <= expiry
 
 def _tier_info(active_clients: int, partnership_start) -> dict:
     """Return tier name, commission months (None=lifetime), next tier info."""
@@ -254,9 +333,6 @@ def _send_admin_ambassador_signup_email(first: str, last: str, email: str, phone
         text_body=f"New ambassador application from {first} {last} <{email}>.\nReview: {admin_link}",
     )
 
-WA_GROUP_LINK = "https://chat.whatsapp.com/KKRG7lVuxq6LVGMdLHYaqG"
-
-
 def _send_whatsapp_welcome(first_name: str, whatsapp_number: str, ref_code: str) -> bool:
     """Send a WhatsApp welcome message to a newly approved ambassador."""
     phone_number_id = os.getenv("WA_OTP_PHONE_NUMBER_ID", "")
@@ -277,11 +353,8 @@ def _send_whatsapp_welcome(first_name: str, whatsapp_number: str, ref_code: str)
     message = (
         f"Hello {first_name}! 🎉\n\n"
         f"Your PhiXtra Ambassador application has been *approved* — welcome to the team!\n\n"
-        f"Here are your two most important first steps:\n\n"
-        f"*1️⃣ Join the Ambassador WhatsApp Support Group*\n"
-        f"This is where our team supports you in the field — quick answers, tips, and updates:\n"
-        f"{WA_GROUP_LINK}\n\n"
-        f"*2️⃣ Complete your Getting Started guide*\n"
+        f"Here's your most important first step:\n\n"
+        f"*Complete your Getting Started guide*\n"
         f"Log in to your Ambassador Hub and go through the Getting Started section. "
         f"It covers who to approach, how to pitch, how to demo PhiXtra, and how you earn:\n"
         f"{login_link}\n\n"
@@ -346,18 +419,6 @@ def _send_approved_email(amb_name: str, amb_email: str, ref_code: str):
          <strong>₦15,000</strong> (Starter→Pro),
          or <strong>₦20,000</strong> (Free→Pro).</p>
 
-      <div style="background:#dcfce7;border:1px solid #bbf7d0;border-radius:12px;padding:16px 20px;margin:20px 0">
-        <p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#15803d">💬 Join the Ambassador WhatsApp Support Group</p>
-        <p style="margin:0 0 14px;font-size:13px;color:#166534;line-height:1.5">
-          When you're out in the field pitching or onboarding a client, our team is ready to help fast.
-          Join the group to get quick answers, tips, and updates directly from PhiXtra.
-        </p>
-        <a href="{WA_GROUP_LINK}" style="background:#16a34a;color:#fff;padding:10px 20px;
-           border-radius:10px;text-decoration:none;display:inline-block;font-weight:700;font-size:13px">
-          Join WhatsApp Group →
-        </a>
-      </div>
-
       <p style="color:#888;font-size:12px">Questions? Contact support@phixtra.com</p>
     </div>"""
     send_email(amb_email, "You're approved — Welcome to PhiXtra Ambassadors!", html,
@@ -368,8 +429,7 @@ def _send_approved_email(amb_name: str, amb_email: str, ref_code: str):
                    f"- 30% on clients who sign up via your referral link\n"
                    f"- 20% on leads you submit that our team closes\n\n"
                    f"Upsell bonuses: ₦5k (Starter→Growth), ₦10k (Growth→Pro), "
-                   f"₦15k (Starter→Pro), ₦20k (Free→Pro)\n\n"
-                   f"Join our Ambassador WhatsApp support group: {WA_GROUP_LINK}"
+                   f"₦15k (Starter→Pro), ₦20k (Free→Pro)"
                ))
 
 
@@ -419,6 +479,7 @@ def register():
     account_name  = (request.form.get("account_name")          or "").strip()
     sort_code     = (request.form.get("sort_code")             or "").strip() or None
     swift_code    = (request.form.get("swift_code")            or "").strip() or None
+    extra_products = [p for p in request.form.getlist("products") if p in ("school", "estate")]
 
     def _bail(msg, cat="danger"):
         flash(msg, cat)
@@ -533,6 +594,17 @@ def register():
               qualification, id_doc_path, id_doc_type,
               bank_name, account_num, account_name, sort_code, swift_code,
               qual_doc_path, recruited_by_id))
+        cur.execute("""
+            INSERT INTO ambassador_products (ambassador_id, product, status)
+            SELECT id, 'portal', 'pending' FROM ambassadors WHERE email=%s
+            ON CONFLICT (ambassador_id, product) DO NOTHING
+        """, (email,))
+        for _extra in extra_products:
+            cur.execute("""
+                INSERT INTO ambassador_products (ambassador_id, product, status)
+                SELECT id, %s, 'pending' FROM ambassadors WHERE email=%s
+                ON CONFLICT (ambassador_id, product) DO NOTHING
+            """, (_extra, email))
         conn.commit()
     except psycopg2.errors.UniqueViolation as e:
         conn.rollback()
@@ -606,58 +678,177 @@ def logout():
 
 # ── Dashboard ──────────────────────────────────────────────────────────────
 
+_RECENT_REFERRALS_SQL = {
+    "portal": """
+        SELECT 'portal' AS product, t.name AS name, p.name AS plan_name,
+               p.price_ngn AS price, t.status, t.created_at,
+               EXISTS(SELECT 1 FROM ambassador_commissions ac
+                      WHERE ac.ambassador_id=%s AND ac.tenant_id=t.id
+                        AND ac.commission_type='upsell_bonus') AS has_bonus
+        FROM tenants t
+        LEFT JOIN plans p ON p.id = t.plan_id
+        WHERE t.ref_code=%s
+        ORDER BY t.created_at DESC LIMIT %s
+    """,
+    "school": """
+        SELECT 'school' AS product, sp.school_name AS name, spl.name AS plan_name,
+               spl.price_ngn_termly AS price,
+               CASE WHEN sp.is_active THEN 'active' ELSE 'inactive' END AS status,
+               sp.created_at, FALSE AS has_bonus
+        FROM school_profiles sp
+        LEFT JOIN school_plans spl ON spl.id = sp.plan_id
+        WHERE sp.ref_code=%s
+        ORDER BY sp.created_at DESC LIMIT %s
+    """,
+    "estate": """
+        SELECT 'estate' AS product, rt.business_name AS name, rp.name AS plan_name,
+               rp.price_ngn AS price, rt.status, rt.created_at, FALSE AS has_bonus
+        FROM re_tenants rt
+        LEFT JOIN re_plans rp ON rp.id = rt.plan_id
+        WHERE rt.ref_code=%s
+        ORDER BY rt.created_at DESC LIMIT %s
+    """,
+}
+
+def _fetch_recent_referrals(cur, ref_code: str, ambassador_id: int, product: str, limit: int = 5):
+    if product == "all":
+        cur.execute(f"""
+            SELECT * FROM (
+                ({_RECENT_REFERRALS_SQL['portal'].replace('LIMIT %s', 'LIMIT 20')})
+                UNION ALL
+                ({_RECENT_REFERRALS_SQL['school'].replace('LIMIT %s', 'LIMIT 20')})
+                UNION ALL
+                ({_RECENT_REFERRALS_SQL['estate'].replace('LIMIT %s', 'LIMIT 20')})
+            ) combined
+            ORDER BY created_at DESC LIMIT %s
+        """, (ambassador_id, ref_code, ref_code, ref_code, limit))
+    elif product == "portal":
+        cur.execute(_RECENT_REFERRALS_SQL["portal"], (ambassador_id, ref_code, limit))
+    else:
+        cur.execute(_RECENT_REFERRALS_SQL[product], (ref_code, limit))
+    return cur.fetchall() or []
+
+
 @ambassador_bp.route("/ambassador/dashboard")
 def dashboard():
     r = _require_amb()
     if r: return r
     amb = _get_ambassador(_amb_id())
 
+    selected = (request.args.get("product") or "all").strip().lower()
+    if selected not in ("all", *PRODUCT_ORDER):
+        selected = "all"
+
+    amb_products = _get_ambassador_products_map(amb["id"])
+    products_ui = {}
+    for p in PRODUCT_ORDER:
+        row = amb_products.get(p)
+        products_ui[p] = {
+            "label": PRODUCT_CONFIG[p]["label"],
+            "icon": PRODUCT_CONFIG[p]["icon"],
+            "status": row["status"] if row else "not_enrolled",
+            "active_clients": _active_client_count(amb["ref_code"], p) if row and row["status"] == "active" else 0,
+            "register_url": PRODUCT_CONFIG[p]["register_url"](amb["ref_code"]),
+        }
+
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    active_clients = _active_client_count(amb["ref_code"])
-    tier           = _tier_info(active_clients, amb.get("partnership_start"))
+    earnings_filter, earnings_params = "", [amb["id"]]
+    if selected != "all":
+        earnings_filter = " AND product=%s"
+        earnings_params.append(selected)
 
-    # Total earnings
     cur.execute(
-        "SELECT COALESCE(SUM(commission_amount),0) AS total FROM ambassador_commissions WHERE ambassador_id=%s",
-        (amb["id"],)
+        f"SELECT COALESCE(SUM(commission_amount),0) AS total FROM ambassador_commissions WHERE ambassador_id=%s{earnings_filter}",
+        earnings_params
     )
     total_earnings = float((cur.fetchone() or {}).get("total") or 0)
 
-    # This month
     cur.execute(
-        """SELECT COALESCE(SUM(commission_amount),0) AS total
+        f"""SELECT COALESCE(SUM(commission_amount),0) AS total
            FROM ambassador_commissions
-           WHERE ambassador_id=%s AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', NOW())""",
-        (amb["id"],)
+           WHERE ambassador_id=%s AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', NOW()){earnings_filter}""",
+        earnings_params
     )
     month_earnings = float((cur.fetchone() or {}).get("total") or 0)
 
-    # Recent 5 referrals
-    cur.execute("""
-        SELECT t.name, t.status, p.name AS plan_name, p.price_ngn,
-               t.created_at,
-               EXISTS(SELECT 1 FROM ambassador_commissions ac
-                      WHERE ac.ambassador_id=%s AND ac.tenant_id=t.id
-                        AND ac.commission_type='upsell_bonus') AS has_bonus
-        FROM tenants t
-        LEFT JOIN plans p ON p.id = t.plan_id
-        WHERE t.ref_code = %s
-        ORDER BY t.created_at DESC
-        LIMIT 5
-    """, (amb["id"], amb["ref_code"]))
-    recent_referrals = cur.fetchall() or []
+    active_clients, tier = None, None
+    if selected != "all":
+        ap = amb_products.get(selected)
+        active_clients = _active_client_count(amb["ref_code"], selected)
+        tier = _tier_info(active_clients, ap.get("partnership_start") if ap else None)
+
+    recent_referrals = _fetch_recent_referrals(cur, amb["ref_code"], amb["id"], selected)
 
     cur.close(); conn.close()
 
     return render_template("ambassador/dashboard.html",
         amb=amb, tier=tier, active_clients=active_clients,
         total_earnings=total_earnings, month_earnings=month_earnings,
-        recent_referrals=recent_referrals, base_url=BASE_URL)
+        recent_referrals=recent_referrals, base_url=BASE_URL,
+        selected_product=selected, products_ui=products_ui, product_order=PRODUCT_ORDER)
+
+
+@ambassador_bp.route("/ambassador/products/apply", methods=["POST"])
+def apply_product():
+    r = _require_amb()
+    if r: return r
+    product = (request.form.get("product") or "").strip().lower()
+    if product not in ("school", "estate"):
+        flash("Invalid product.", "danger")
+        return redirect(url_for("ambassador.dashboard"))
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("""
+        INSERT INTO ambassador_products (ambassador_id, product, status)
+        VALUES (%s, %s, 'pending')
+        ON CONFLICT (ambassador_id, product) DO NOTHING
+    """, (_amb_id(), product))
+    conn.commit(); cur.close(); conn.close()
+    flash(f"Application submitted for {PRODUCT_CONFIG[product]['label']} — you'll be notified once approved.", "success")
+    return redirect(url_for("ambassador.dashboard", product=product))
 
 
 # ── Referrals ──────────────────────────────────────────────────────────────
+
+_REFERRALS_SQL = {
+    "portal": """
+        SELECT t.id, t.name, t.domain AS detail, t.status, t.created_at,
+               p.name AS plan_name,
+               EXISTS(SELECT 1 FROM ambassador_commissions ac
+                      WHERE ac.ambassador_id=%(amb_id)s AND ac.tenant_id=t.id
+                        AND ac.commission_type='upsell_bonus') AS has_bonus,
+               COALESCE((SELECT SUM(commission_amount) FROM ambassador_commissions ac
+                         WHERE ac.ambassador_id=%(amb_id)s AND ac.tenant_id=t.id), 0) AS earned
+        FROM tenants t
+        LEFT JOIN plans p ON p.id = t.plan_id
+        WHERE t.ref_code = %(ref_code)s
+        ORDER BY t.created_at DESC
+    """,
+    "school": """
+        SELECT sp.id, sp.school_name AS name, sp.state AS detail,
+               CASE WHEN sp.is_active THEN 'active' ELSE 'inactive' END AS status,
+               sp.created_at, spl.name AS plan_name, FALSE AS has_bonus,
+               COALESCE((SELECT SUM(commission_amount) FROM ambassador_commissions ac
+                         WHERE ac.ambassador_id=%(amb_id)s AND ac.school_id=sp.id), 0) AS earned
+        FROM school_profiles sp
+        LEFT JOIN school_plans spl ON spl.id = sp.plan_id
+        WHERE sp.ref_code = %(ref_code)s
+        ORDER BY sp.created_at DESC
+    """,
+    "estate": """
+        SELECT rt.id, rt.business_name AS name, rt.phone AS detail, rt.status,
+               rt.created_at, rp.name AS plan_name, FALSE AS has_bonus,
+               COALESCE((SELECT SUM(commission_amount) FROM ambassador_commissions ac
+                         WHERE ac.ambassador_id=%(amb_id)s AND ac.estate_tenant_id=rt.id), 0) AS earned
+        FROM re_tenants rt
+        LEFT JOIN re_plans rp ON rp.id = rt.plan_id
+        WHERE rt.ref_code = %(ref_code)s
+        ORDER BY rt.created_at DESC
+    """,
+}
+_REFERRALS_DETAIL_LABEL = {"portal": "Domain", "school": "State", "estate": "Phone"}
 
 @ambassador_bp.route("/ambassador/referrals")
 def referrals():
@@ -665,25 +856,19 @@ def referrals():
     if r: return r
     amb = _get_ambassador(_amb_id())
 
+    selected = (request.args.get("product") or "portal").strip().lower()
+    if selected not in PRODUCT_ORDER:
+        selected = "portal"
+
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("""
-        SELECT t.id, t.name, t.domain, t.status, t.created_at,
-               p.name AS plan_name, p.price_ngn,
-               EXISTS(SELECT 1 FROM ambassador_commissions ac
-                      WHERE ac.ambassador_id=%s AND ac.tenant_id=t.id
-                        AND ac.commission_type='upsell_bonus') AS has_bonus,
-               COALESCE((SELECT SUM(commission_amount) FROM ambassador_commissions ac
-                         WHERE ac.ambassador_id=%s AND ac.tenant_id=t.id), 0) AS earned
-        FROM tenants t
-        LEFT JOIN plans p ON p.id = t.plan_id
-        WHERE t.ref_code = %s
-        ORDER BY t.created_at DESC
-    """, (amb["id"], amb["id"], amb["ref_code"]))
+    cur.execute(_REFERRALS_SQL[selected], {"amb_id": amb["id"], "ref_code": amb["ref_code"]})
     all_referrals = cur.fetchall() or []
     cur.close(); conn.close()
 
-    return render_template("ambassador/referrals.html", amb=amb, referrals=all_referrals)
+    return render_template("ambassador/referrals.html", amb=amb, referrals=all_referrals,
+        selected_product=selected, product_order=PRODUCT_ORDER, product_config=PRODUCT_CONFIG,
+        detail_label=_REFERRALS_DETAIL_LABEL[selected])
 
 
 # ── My Team (Sales Manager only) ────────────────────────────────────────────
@@ -1011,7 +1196,7 @@ def team_pipeline():
     return render_template("ambassador/team_pipeline.html", amb=amb, leads=leads,
         dropped_leads=dropped_leads, stage_counts=stage_counts, stage_order=STAGE_ORDER,
         stage_labels=STAGE_LABELS, stage_descriptions=STAGE_DESCRIPTIONS, next_stage=next_stage,
-        recruits=recruits)
+        recruits=recruits, product_order=PRODUCT_ORDER, product_config=PRODUCT_CONFIG)
 
 
 @ambassador_bp.route("/ambassador/team/pipeline/create", methods=["POST"])
@@ -1027,6 +1212,9 @@ def team_lead_create():
     phone          = (request.form.get("phone")         or "").strip() or None
     email          = (request.form.get("email")          or "").strip() or None
     notes          = (request.form.get("notes")          or "").strip() or None
+    product        = (request.form.get("product")        or "portal").strip().lower()
+    if product not in PRODUCT_ORDER:
+        product = "portal"
 
     if not recruit_id_raw.isdigit() or not business_name:
         flash("Ambassador and business name are required.", "danger")
@@ -1045,10 +1233,10 @@ def team_lead_create():
     cur2 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur2.execute("""
         INSERT INTO ambassador_leads
-          (ambassador_id, business_name, industry, contact_name, phone, email, notes, stage)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, 'lead')
+          (ambassador_id, business_name, industry, contact_name, phone, email, notes, stage, product)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, 'lead', %s)
         RETURNING id
-    """, (recruit_id, business_name, industry, contact_name, phone, email, notes))
+    """, (recruit_id, business_name, industry, contact_name, phone, email, notes, product))
     new_id = cur2.fetchone()["id"]
     conn.commit()
     cur2.close(); cur.close(); conn.close()
@@ -1120,13 +1308,16 @@ def team_lead_advance(lead_id: int):
         updates.update(onboarding_date=onboarding_date, onboarding_notes=onboarding_notes or None)
 
     elif target == "active_client":
+        lead_product  = lead.get("product") or "portal"
+        link_col      = _LEAD_LINK_COL[lead_product]
+        ref_table     = _LEAD_REF_TABLE[lead_product]
         tenant_id_raw = (f.get("tenant_id") or "").strip()
         tenant_id = int(tenant_id_raw) if tenant_id_raw.isdigit() else None
         if tenant_id:
             cur2 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur2.execute("SELECT ref_code FROM ambassadors WHERE id=%s", (lead["ambassador_id"],))
             lead_amb = cur2.fetchone()
-            cur2.execute("SELECT id FROM tenants WHERE id=%s AND ref_code=%s",
+            cur2.execute(f"SELECT id FROM {ref_table} WHERE id=%s AND ref_code=%s",
                         (tenant_id, lead_amb["ref_code"] if lead_amb else None))
             match = cur2.fetchone()
             cur2.close()
@@ -1134,7 +1325,7 @@ def team_lead_advance(lead_id: int):
                 cur.close(); conn.close()
                 flash("Selected client doesn't match that ambassador's referral code.", "danger")
                 return redirect(url_for("ambassador.team_pipeline"))
-        updates["tenant_id"] = tenant_id
+        updates[link_col] = tenant_id
 
     set_clause = ", ".join(f"{k}=%s" for k in updates)
     cur.execute(f"UPDATE ambassador_leads SET {set_clause} WHERE id=%s",
@@ -1194,26 +1385,39 @@ def earnings():
     if r: return r
     amb = _get_ambassador(_amb_id())
 
+    selected = (request.args.get("product") or "all").strip().lower()
+    if selected not in ("all", *PRODUCT_ORDER):
+        selected = "all"
+
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
+    filt, params = "", [amb["id"]]
+    if selected != "all":
+        filt = " AND ac.product=%s"
+        params.append(selected)
+
     cur.execute(
-        "SELECT COALESCE(SUM(commission_amount),0) AS total FROM ambassador_commissions WHERE ambassador_id=%s",
-        (amb["id"],)
+        f"SELECT COALESCE(SUM(commission_amount),0) AS total FROM ambassador_commissions ac WHERE ac.ambassador_id=%s{filt}",
+        params
     )
     total = float((cur.fetchone() or {}).get("total") or 0)
 
-    cur.execute("""
-        SELECT ac.*, t.name AS tenant_name
+    cur.execute(f"""
+        SELECT ac.*,
+               COALESCE(t.name, sp.school_name, rt.business_name) AS tenant_name
         FROM ambassador_commissions ac
-        JOIN tenants t ON t.id = ac.tenant_id
-        WHERE ac.ambassador_id=%s
+        LEFT JOIN tenants t ON t.id = ac.tenant_id
+        LEFT JOIN school_profiles sp ON sp.id = ac.school_id
+        LEFT JOIN re_tenants rt ON rt.id = ac.estate_tenant_id
+        WHERE ac.ambassador_id=%s{filt}
         ORDER BY ac.created_at DESC
-    """, (amb["id"],))
+    """, params)
     entries = cur.fetchall() or []
     cur.close(); conn.close()
 
-    return render_template("ambassador/earnings.html", amb=amb, entries=entries, total=total)
+    return render_template("ambassador/earnings.html", amb=amb, entries=entries, total=total,
+        selected_product=selected, product_order=PRODUCT_ORDER, product_config=PRODUCT_CONFIG)
 
 
 # ── QR Code ────────────────────────────────────────────────────────────────
@@ -1223,7 +1427,17 @@ def qr_page():
     r = _require_amb()
     if r: return r
     amb = _get_ambassador(_amb_id())
-    return render_template("ambassador/qr.html", amb=amb, base_url=BASE_URL)
+    amb_products = _get_ambassador_products_map(amb["id"])
+    active_products = [p for p in PRODUCT_ORDER if amb_products.get(p, {}).get("status") == "active"]
+
+    selected = (request.args.get("product") or "portal").strip().lower()
+    if selected not in active_products:
+        selected = active_products[0] if active_products else "portal"
+
+    register_url = PRODUCT_CONFIG[selected]["register_url"](amb["ref_code"])
+    return render_template("ambassador/qr.html", amb=amb, base_url=BASE_URL,
+        selected_product=selected, active_products=active_products,
+        product_config=PRODUCT_CONFIG, register_url=register_url)
 
 
 GS_TOPICS = [
@@ -1431,7 +1645,10 @@ def qr_image():
     r = _require_amb()
     if r: return r
     amb     = _get_ambassador(_amb_id())
-    reg_url = f"{BASE_URL}/register?ref={amb['ref_code']}"
+    product = (request.args.get("product") or "portal").strip().lower()
+    if product not in PRODUCT_ORDER:
+        product = "portal"
+    reg_url = PRODUCT_CONFIG[product]["register_url"](amb["ref_code"])
 
     import qrcode
     from flask import send_file
@@ -1631,6 +1848,59 @@ def faq_pdf():
     )
 
 
+_LINKABLE_SQL = {
+    "portal": """
+        SELECT id, name FROM tenants WHERE ref_code=%s AND id NOT IN (
+            SELECT tenant_id FROM ambassador_leads WHERE tenant_id IS NOT NULL)
+        ORDER BY created_at DESC
+    """,
+    "school": """
+        SELECT id, school_name AS name FROM school_profiles WHERE ref_code=%s AND id NOT IN (
+            SELECT school_id FROM ambassador_leads WHERE school_id IS NOT NULL)
+        ORDER BY created_at DESC
+    """,
+    "estate": """
+        SELECT id, business_name AS name FROM re_tenants WHERE ref_code=%s AND id NOT IN (
+            SELECT estate_tenant_id FROM ambassador_leads WHERE estate_tenant_id IS NOT NULL)
+        ORDER BY created_at DESC
+    """,
+}
+_SELF_CLOSED_SQL = {
+    "portal": """
+        SELECT t.name, t.status, p.name AS plan_name, p.price_ngn AS price, t.created_at,
+               COALESCE(SUM(ac.commission_amount),0) AS earned
+        FROM tenants t
+        LEFT JOIN plans p ON p.id=t.plan_id
+        LEFT JOIN ambassador_commissions ac ON ac.tenant_id=t.id AND ac.ambassador_id=%(amb_id)s
+        WHERE t.ref_code=%(ref_code)s
+        GROUP BY t.id, t.name, t.status, p.name, p.price_ngn, t.created_at
+        ORDER BY t.created_at DESC
+    """,
+    "school": """
+        SELECT sp.school_name AS name, CASE WHEN sp.is_active THEN 'active' ELSE 'inactive' END AS status,
+               spl.name AS plan_name, spl.price_ngn_termly AS price, sp.created_at,
+               COALESCE(SUM(ac.commission_amount),0) AS earned
+        FROM school_profiles sp
+        LEFT JOIN school_plans spl ON spl.id=sp.plan_id
+        LEFT JOIN ambassador_commissions ac ON ac.school_id=sp.id AND ac.ambassador_id=%(amb_id)s
+        WHERE sp.ref_code=%(ref_code)s
+        GROUP BY sp.id, sp.school_name, sp.is_active, spl.name, spl.price_ngn_termly, sp.created_at
+        ORDER BY sp.created_at DESC
+    """,
+    "estate": """
+        SELECT rt.business_name AS name, rt.status, rp.name AS plan_name, rp.price_ngn AS price, rt.created_at,
+               COALESCE(SUM(ac.commission_amount),0) AS earned
+        FROM re_tenants rt
+        LEFT JOIN re_plans rp ON rp.id=rt.plan_id
+        LEFT JOIN ambassador_commissions ac ON ac.estate_tenant_id=rt.id AND ac.ambassador_id=%(amb_id)s
+        WHERE rt.ref_code=%(ref_code)s
+        GROUP BY rt.id, rt.business_name, rt.status, rp.name, rp.price_ngn, rt.created_at
+        ORDER BY rt.created_at DESC
+    """,
+}
+_LEAD_LINK_COL   = {"portal": "tenant_id", "school": "school_id", "estate": "estate_tenant_id"}
+_LEAD_REF_TABLE  = {"portal": "tenants",   "school": "school_profiles", "estate": "re_tenants"}
+
 @ambassador_bp.route("/ambassador/leads", methods=["GET", "POST"])
 def leads():
     r = _require_amb()
@@ -1644,67 +1914,58 @@ def leads():
         phone         = (request.form.get("phone")         or "").strip() or None
         email         = (request.form.get("email")         or "").strip() or None
         notes         = (request.form.get("notes")         or "").strip() or None
+        product       = (request.form.get("product")       or "portal").strip().lower()
+        if product not in PRODUCT_ORDER:
+            product = "portal"
 
         if not business_name:
             flash("Business name is required.", "danger")
-            return redirect(url_for("ambassador.leads"))
+            return redirect(url_for("ambassador.leads", product=product))
 
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             INSERT INTO ambassador_leads
-              (ambassador_id, business_name, industry, contact_name, phone, email, notes, stage)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, 'lead')
+              (ambassador_id, business_name, industry, contact_name, phone, email, notes, stage, product)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'lead', %s)
             RETURNING id
-        """, (amb["id"], business_name, industry, contact_name, phone, email, notes))
+        """, (amb["id"], business_name, industry, contact_name, phone, email, notes, product))
         new_id = cur.fetchone()["id"]
         conn.commit()
         cur.close(); conn.close()
         record_stage_change(new_id, None, "lead", f"{amb['first_name']} {amb['last_name']}")
         flash("Lead added to your pipeline.", "success")
-        return redirect(url_for("ambassador.leads"))
+        return redirect(url_for("ambassador.leads", product=product))
+
+    selected = (request.args.get("product") or "portal").strip().lower()
+    if selected not in PRODUCT_ORDER:
+        selected = "portal"
 
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
         SELECT * FROM ambassador_leads
-        WHERE ambassador_id=%s AND dropped_at IS NULL
+        WHERE ambassador_id=%s AND product=%s AND dropped_at IS NULL
         ORDER BY CASE stage
             WHEN 'lead' THEN 0 WHEN 'contacted' THEN 1 WHEN 'demo_done' THEN 2
             WHEN 'requirements_confirmed' THEN 3 WHEN 'onboarding' THEN 4
             WHEN 'active_client' THEN 5 WHEN 'support' THEN 6 ELSE 7 END,
             created_at DESC
-    """, (amb["id"],))
+    """, (amb["id"], selected))
     pipeline_leads = [dict(l) for l in cur.fetchall()]
 
     cur.execute("""
-        SELECT * FROM ambassador_leads WHERE ambassador_id=%s AND dropped_at IS NOT NULL
+        SELECT * FROM ambassador_leads WHERE ambassador_id=%s AND product=%s AND dropped_at IS NOT NULL
         ORDER BY dropped_at DESC
-    """, (amb["id"],))
+    """, (amb["id"], selected))
     dropped_leads = [dict(l) for l in cur.fetchall()]
 
-    # Tenants referred by this ambassador, available to link at the Active Client stage
-    cur.execute("""
-        SELECT t.id, t.name FROM tenants t
-        WHERE t.ref_code=%s AND t.id NOT IN (
-            SELECT tenant_id FROM ambassador_leads WHERE tenant_id IS NOT NULL
-        )
-        ORDER BY t.created_at DESC
-    """, (amb["ref_code"],))
+    # Referred clients available to link at the Active Client stage (per-product)
+    cur.execute(_LINKABLE_SQL[selected], (amb["ref_code"],))
     linkable_tenants = [dict(t) for t in cur.fetchall()]
 
     # Self-closed clients (referral link signups, tracked separately from the manual pipeline)
-    cur.execute("""
-        SELECT t.name, t.status, p.name AS plan_name, p.price_ngn,
-               t.created_at,
-               COALESCE(SUM(ac.commission_amount), 0) AS earned
-        FROM tenants t
-        LEFT JOIN plans p ON p.id = t.plan_id
-        LEFT JOIN ambassador_commissions ac ON ac.tenant_id = t.id AND ac.ambassador_id=%s
-        WHERE t.ref_code = %s
-        GROUP BY t.id, t.name, t.status, p.name, p.price_ngn, t.created_at
-        ORDER BY t.created_at DESC
-    """, (amb["id"], amb["ref_code"]))
+    cur.execute(_SELF_CLOSED_SQL[selected], {"amb_id": amb["id"], "ref_code": amb["ref_code"]})
     self_closed = [dict(r) for r in cur.fetchall()]
 
     cur.close(); conn.close()
@@ -1717,7 +1978,8 @@ def leads():
         amb=amb, pipeline_leads=pipeline_leads, dropped_leads=dropped_leads,
         linkable_tenants=linkable_tenants, self_closed=self_closed, stage_counts=stage_counts,
         stage_order=STAGE_ORDER, stage_labels=STAGE_LABELS, stage_descriptions=STAGE_DESCRIPTIONS,
-        next_stage=next_stage)
+        next_stage=next_stage, selected_product=selected, product_order=PRODUCT_ORDER,
+        product_config=PRODUCT_CONFIG)
 
 
 @ambassador_bp.route("/ambassador/leads/<int:lead_id>/advance", methods=["POST"])
@@ -1735,11 +1997,13 @@ def lead_advance(lead_id: int):
         flash("Lead not found.", "danger")
         return redirect(url_for("ambassador.leads"))
 
+    lead_product = lead.get("product") or "portal"
+
     target = next_stage(lead["stage"])
     if not target:
         cur.close(); conn.close()
         flash("This lead is already at the final stage.", "warning")
-        return redirect(url_for("ambassador.leads"))
+        return redirect(url_for("ambassador.leads", product=lead_product))
 
     f = request.form
     updates = {"stage": target}
@@ -1751,7 +2015,7 @@ def lead_advance(lead_id: int):
         if not contact_channel or not contact_date:
             cur.close(); conn.close()
             flash("Contact channel and date are required.", "danger")
-            return redirect(url_for("ambassador.leads"))
+            return redirect(url_for("ambassador.leads", product=lead_product))
         updates.update(contact_channel=contact_channel, contact_date=contact_date,
                        contact_response=contact_response or None)
 
@@ -1761,7 +2025,7 @@ def lead_advance(lead_id: int):
         if not demo_date:
             cur.close(); conn.close()
             flash("Demo date is required.", "danger")
-            return redirect(url_for("ambassador.leads"))
+            return redirect(url_for("ambassador.leads", product=lead_product))
         updates.update(demo_date=demo_date, demo_reaction=demo_reaction or None)
 
     elif target == "requirements_confirmed":
@@ -1772,7 +2036,7 @@ def lead_advance(lead_id: int):
         if not (req_phone and req_meta and req_whatsapp and req_products):
             cur.close(); conn.close()
             flash("All 4 requirements must be confirmed before advancing.", "danger")
-            return redirect(url_for("ambassador.leads"))
+            return redirect(url_for("ambassador.leads", product=lead_product))
         updates.update(req_phone=True, req_meta_account=True,
                        req_whatsapp_connected=True, req_product_list=True)
 
@@ -1782,19 +2046,21 @@ def lead_advance(lead_id: int):
         if not onboarding_date:
             cur.close(); conn.close()
             flash("Onboarding date is required.", "danger")
-            return redirect(url_for("ambassador.leads"))
+            return redirect(url_for("ambassador.leads", product=lead_product))
         updates.update(onboarding_date=onboarding_date, onboarding_notes=onboarding_notes or None)
 
     elif target == "active_client":
+        link_col      = _LEAD_LINK_COL[lead_product]
+        ref_table     = _LEAD_REF_TABLE[lead_product]
         tenant_id_raw = (f.get("tenant_id") or "").strip()
         tenant_id = int(tenant_id_raw) if tenant_id_raw.isdigit() else None
         if tenant_id:
-            cur.execute("SELECT id FROM tenants WHERE id=%s AND ref_code=%s", (tenant_id, amb["ref_code"]))
+            cur.execute(f"SELECT id FROM {ref_table} WHERE id=%s AND ref_code=%s", (tenant_id, amb["ref_code"]))
             if not cur.fetchone():
                 cur.close(); conn.close()
                 flash("Selected client doesn't match your referral code.", "danger")
-                return redirect(url_for("ambassador.leads"))
-        updates["tenant_id"] = tenant_id
+                return redirect(url_for("ambassador.leads", product=lead_product))
+        updates[link_col] = tenant_id
 
     set_clause = ", ".join(f"{k}=%s" for k in updates)
     cur2 = conn.cursor()
@@ -1805,7 +2071,7 @@ def lead_advance(lead_id: int):
 
     record_stage_change(lead_id, lead["stage"], target, f"{amb['first_name']} {amb['last_name']}")
     flash(f"{lead['business_name']} moved to {STAGE_LABELS[target]}.", "success")
-    return redirect(url_for("ambassador.leads"))
+    return redirect(url_for("ambassador.leads", product=lead_product))
 
 
 @ambassador_bp.route("/ambassador/leads/<int:lead_id>/drop", methods=["POST"])
@@ -1831,7 +2097,7 @@ def lead_drop(lead_id: int):
     cur2.close(); cur.close(); conn.close()
     record_stage_change(lead_id, lead["stage"], "dropped", f"{amb['first_name']} {amb['last_name']}", reason)
     flash(f"{lead['business_name']} marked as dropped.", "warning")
-    return redirect(url_for("ambassador.leads"))
+    return redirect(url_for("ambassador.leads", product=lead.get("product") or "portal"))
 
 
 @ambassador_bp.route("/ambassador/leads/<int:lead_id>/tickets", methods=["POST"])
@@ -1984,7 +2250,7 @@ def record_ambassador_commission(tenant_id: int, plan_id: int, prev_plan_id: int
             cur4.execute("""
                 SELECT * FROM ambassador_leads
                 WHERE ambassador_id=%s AND dropped_at IS NULL AND tenant_id IS NULL
-                  AND stage NOT IN ('active_client', 'support')
+                  AND product='portal' AND stage NOT IN ('active_client', 'support')
                 ORDER BY created_at DESC
             """, (amb["id"],))
             candidates = cur4.fetchall() or []
@@ -2033,3 +2299,85 @@ def record_ambassador_commission(tenant_id: int, plan_id: int, prev_plan_id: int
 
     conn.commit()
     cur2.close(); cur.close(); conn.close()
+
+
+def _record_product_commission(product: str, target_id: int, amount, currency: str,
+                                description_prefix: str) -> None:
+    """
+    Shared implementation for School and Estate commission recording — flat
+    20% of the payment, plus the 5% sales-manager override, exactly mirroring
+    the subscription-commission portion of record_ambassador_commission()
+    above. No upsell-bonus/lead-auto-link logic: School (termly billing) and
+    Estate don't have Portal's Starter→Growth-style plan-upgrade bonus
+    structure, so that part is intentionally out of scope for v1.
+
+    `target_id` is the school_profiles.id or re_tenants.id being paid for;
+    `product` is 'school' or 'estate' and selects which table/column to use.
+    """
+    if product not in ("school", "estate"):
+        raise ValueError(f"_record_product_commission: unsupported product {product!r}")
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    ref_table = "school_profiles" if product == "school" else "re_tenants"
+    cur.execute(f"SELECT ref_code FROM {ref_table} WHERE id=%s", (target_id,))
+    row = cur.fetchone()
+    if not row or not row.get("ref_code"):
+        cur.close(); conn.close()
+        return
+    ref_code = row["ref_code"]
+
+    cur.execute("SELECT * FROM ambassadors WHERE ref_code=%s", (ref_code,))
+    amb = cur.fetchone()
+    if not amb:
+        cur.close(); conn.close()
+        return
+    amb = dict(amb)
+
+    if float(amount or 0) <= 0 or not _product_commission_eligible(amb["id"], ref_code, product):
+        cur.close(); conn.close()
+        return
+
+    link_col = "school_id" if product == "school" else "estate_tenant_id"
+    cur2 = conn.cursor()
+
+    commission = round(float(amount) * COMMISSION_PC, 2)
+    cur2.execute(f"""
+        INSERT INTO ambassador_commissions
+          (ambassador_id, product, {link_col}, commission_type, currency,
+           source_amount, commission_amount, description)
+        VALUES (%s,%s,%s,'subscription',%s,%s,%s,%s)
+    """, (amb["id"], product, target_id, currency, float(amount), commission,
+          f"20% of {currency} {float(amount):.2f} {description_prefix}"))
+
+    if amb.get("recruited_by_id"):
+        cur3 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur3.execute("""
+            SELECT id, first_name, last_name FROM ambassadors
+            WHERE id=%s AND role='sales_manager' AND status='active'
+        """, (amb["recruited_by_id"],))
+        manager = cur3.fetchone()
+        cur3.close()
+        if manager:
+            override = round(float(amount) * SALES_MANAGER_OVERRIDE, 2)
+            cur2.execute(f"""
+                INSERT INTO ambassador_commissions
+                  (ambassador_id, product, {link_col}, commission_type, currency,
+                   source_amount, commission_amount, description)
+                VALUES (%s,%s,%s,'override',%s,%s,%s,%s)
+            """, (manager["id"], product, target_id, currency, float(amount), override,
+                  f"5% override — {amb['first_name']} {amb['last_name']}'s referral"))
+
+    conn.commit()
+    cur2.close(); cur.close(); conn.close()
+
+
+def record_school_ambassador_commission(school_id: int, amount, currency: str = "NGN") -> None:
+    """Called after a successful School plan payment (school_billing.py)."""
+    _record_product_commission("school", school_id, amount, currency, "school plan payment")
+
+
+def record_estate_ambassador_commission(tenant_id: int, amount, currency: str = "NGN") -> None:
+    """Called after a successful Estate subscription activation (_re_activate_subscription)."""
+    _record_product_commission("estate", tenant_id, amount, currency, "subscription payment")

@@ -65,8 +65,12 @@
   .hist-row:last-child{border-bottom:none}
   .hist-row.absent-row{background:#FFF8F8}
   .hist-row.late-row  {background:#FFFDF0}
-  .hist-name{flex:1;font-size:14px;font-weight:500;color:var(--ink)}
+  .hist-name{flex:1;font-size:14px;font-weight:500;color:var(--ink);text-decoration:none}
+  .hist-name:hover{color:var(--brand);text-decoration:underline}
   .hist-class{font-size:12px;color:var(--muted);white-space:nowrap}
+  .hist-time{font-size:11.5px;color:var(--muted);white-space:nowrap}
+  .hist-time .t{font-weight:600;color:rgba(10,22,40,0.6)}
+  @media(max-width:600px){.hist-time{display:none}}
   .wa-dot{width:8px;height:8px;border-radius:50%;background:#25D366;flex-shrink:0;title:"WA sent"}
   .wa-dot.unsent{background:var(--line)}
 
@@ -83,7 +87,8 @@
   .ab-rank{width:24px;height:24px;border-radius:50%;background:#FEE2E2;
            color:#B91C1C;font-size:12px;font-weight:700;
            display:flex;align-items:center;justify-content:center;flex-shrink:0}
-  .ab-name{flex:1;font-size:14px;font-weight:600;color:var(--ink)}
+  .ab-name{flex:1;font-size:14px;font-weight:600;color:var(--ink);text-decoration:none}
+  .ab-name:hover{color:var(--brand);text-decoration:underline}
   .ab-class{font-size:12px;color:var(--muted)}
   .ab-count{
     font-size:13px;font-weight:750;color:var(--bad);
@@ -198,8 +203,13 @@
   <div class="date-rows">
     {% for r in rows %}
     <div class="hist-row {% if r.status == 'absent' %}absent-row{% elif r.status == 'late' %}late-row{% endif %}">
-      <div class="hist-name">{{ r.full_name }}</div>
+      <a class="hist-name" href="{{ url_for('school.student_attendance', student_id=r.student_id, month=date_str[:7]) }}">{{ r.full_name }}</a>
       <div class="hist-class">{{ r.class_name }} {{ r.arm }}</div>
+      {% if r.marked_at %}
+      <div class="hist-time" title="{% if r.marked_by_name %}Marked by {{ r.marked_by_name }}{% endif %}">
+        <span class="t">{{ r.marked_at.strftime('%H:%M') }}</span>{% if r.marked_by_name %} · {{ r.marked_by_name }}{% endif %}
+      </div>
+      {% endif %}
       <span class="status-chip {% if r.status == 'present' %}chip-present{% elif r.status == 'absent' %}chip-absent{% else %}chip-late{% endif %}">
         {% if r.status == 'present' %}✓ Present
         {% elif r.status == 'absent' %}✗ Absent
@@ -227,7 +237,7 @@
   <div class="absentee-row">
     <div class="ab-rank">{{ loop.index }}</div>
     <div>
-      <div class="ab-name">{{ a.full_name }}</div>
+      <a class="ab-name" href="{{ url_for('school.student_attendance', student_id=a.student_id, month=to_d[:7]) }}">{{ a.full_name }}</a>
       <div class="ab-class">{{ a.class_name }} {{ a.arm }}</div>
     </div>
     <div class="ab-count">{{ a.absent_count }}× absent</div>

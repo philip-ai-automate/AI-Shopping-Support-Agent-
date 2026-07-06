@@ -76,7 +76,7 @@ def _seed_demo_data(cur, tenant_id: int, customer_id: int, first_name: str):
             (tenant_id, api_key_hash, api_key_plain, website, key_type,
              is_active, token_limit, tokens_used,
              trial_activated_at, trial_expires_at, created_at)
-        VALUES (%s, %s, %s, %s, 'paid', TRUE,
+        VALUES (%s, %s, %s, %s, 'whatsapp', TRUE,
                 -1, 0,
                 NOW() - INTERVAL '20 days',
                 NOW() + INTERVAL '10 days',
@@ -393,8 +393,8 @@ def create_ambassador_demo(amb_id: int, first_name: str, ref_code: str) -> dict:
 
         cur2 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur2.execute("""
-            INSERT INTO tenants (name, plan_id, plan_period_start, billing_cycle, trial_ends_at, is_demo)
-            VALUES (%s, 3, %s, 'monthly', NULL, TRUE)
+            INSERT INTO tenants (name, plan_id, plan_period_start, billing_cycle, trial_ends_at, is_demo, source_type)
+            VALUES (%s, 3, %s, 'monthly', NULL, TRUE, 'whatsapp')
             RETURNING id
         """, (business, date.today().replace(day=1)))
         tenant_id = int(cur2.fetchone()["id"])

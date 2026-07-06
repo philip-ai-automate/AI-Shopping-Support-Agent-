@@ -1,0 +1,252 @@
+{% extends "school/base.html" %}
+{% block title %}Staff — {{ school.school_name }}{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Staff list ── */
+  .staff-list{display:flex;flex-direction:column;gap:8px}
+  .staff-row{
+    display:flex;align-items:center;gap:12px;padding:12px 14px;
+    border:1px solid var(--line);border-radius:10px;background:#FAFBFD;
+    flex-wrap:wrap;
+  }
+  .staff-row.me-row{background:#EEF4FF;border-color:#C7D9FD}
+  .staff-row.inactive-row{opacity:.6}
+  .staff-avatar{
+    width:36px;height:36px;border-radius:50%;background:var(--brand);
+    color:#fff;font-size:14px;font-weight:700;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .staff-info{flex:1;min-width:140px}
+  .staff-name{font-size:14px;font-weight:600;color:var(--ink)}
+  .staff-meta{font-size:12px;color:var(--muted);margin-top:2px}
+  .role-chip{font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:12px;white-space:nowrap}
+  .role-admin  {background:#EEF4FF;color:#1D6AF5}
+  .role-teacher{background:#F3F4F6;color:var(--muted)}
+  .role-bursar {background:#FEF3C7;color:#92400E}
+  .status-chip{font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:12px;white-space:nowrap}
+  .status-active  {background:#DCFCE7;color:#15803D}
+  .status-inactive{background:#F3F4F6;color:var(--muted)}
+  .staff-login{font-size:11.5px;color:var(--muted);white-space:nowrap}
+  .staff-actions{display:flex;gap:6px;flex-wrap:wrap}
+  .staff-actions .btn[disabled]{opacity:.45;cursor:not-allowed}
+
+  /* ── Modals ── */
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);
+                 z-index:200;align-items:center;justify-content:center;padding:20px}
+  .modal-box{background:#fff;border-radius:14px;padding:28px;width:100%;
+             max-width:520px;max-height:90vh;overflow-y:auto}
+  .modal-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+  .modal-hd-title{font-size:16px;font-weight:750;color:var(--ink)}
+  .modal-close{border:none;background:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1}
+
+  @media(max-width:600px){
+    .staff-row{flex-wrap:wrap}
+    .staff-login{display:none}
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Staff</h1>
+    <p>{{ staff_list|length }} member{{ 's' if staff_list|length != 1 }} — create teacher/bursar/admin accounts and assign classes</p>
+  </div>
+  <button class="btn btn-primary" onclick="document.getElementById('add-staff-modal').style.display='flex'">
+    + Add Staff
+  </button>
+</div>
+
+{% if staff_list %}
+<div class="staff-list">
+  {% for s in staff_list %}
+  <div class="staff-row {% if s.id == me.id %}me-row{% endif %} {% if not s.is_active %}inactive-row{% endif %}">
+    <div class="staff-avatar">{{ s.full_name[0] | upper }}</div>
+    <div class="staff-info">
+      <div class="staff-name">
+        {{ s.full_name }}
+        {% if s.id == me.id %}<span style="font-size:11px;color:var(--brand);font-weight:600"> (you)</span>{% endif %}
+      </div>
+      <div class="staff-meta">
+        {{ s.email }}
+        {% if s.class_assigned %} · Class: {{ s.class_assigned }}{% endif %}
+      </div>
+    </div>
+    <span class="role-chip role-{{ s.role }}">{{ s.role | capitalize }}</span>
+    <span class="status-chip status-{{ 'active' if s.is_active else 'inactive' }}">
+      {{ 'Active' if s.is_active else 'Inactive' }}
+    </span>
+    <div class="staff-login">
+      {{ s.last_login.strftime('Last: %d %b') if s.last_login else 'Never logged in' }}
+    </div>
+    <div class="staff-actions">
+      <button class="btn btn-outline" style="padding:5px 12px;font-size:12.5px"
+              onclick='openEditStaff({{ s.id }}, {{ s.full_name | tojson }}, {{ s.email | tojson }}, {{ s.role | tojson }}, {{ (s.class_assigned or "") | tojson }})'>
+        Edit
+      </button>
+      {% if s.id != me.id %}
+        {% if s.is_active %}
+        <form method="POST" action="{{ url_for('school.staff_deactivate', staff_id=s.id) }}"
+              onsubmit="return confirm('Deactivate {{ s.full_name }}? They will lose access immediately.')">
+          <button class="btn btn-outline" style="padding:5px 12px;font-size:12.5px;color:var(--warn);border-color:var(--warn)">
+            Deactivate
+          </button>
+        </form>
+        {% else %}
+        <form method="POST" action="{{ url_for('school.staff_reactivate', staff_id=s.id) }}">
+          <button class="btn btn-outline" style="padding:5px 12px;font-size:12.5px;color:var(--good);border-color:var(--good)">
+            Reactivate
+          </button>
+        </form>
+        {% endif %}
+        <form method="POST" action="{{ url_for('school.staff_delete', staff_id=s.id) }}"
+              onsubmit="return confirm('Permanently delete {{ s.full_name }}? This cannot be undone.')">
+          <button class="btn btn-outline" style="padding:5px 12px;font-size:12.5px;color:var(--bad);border-color:var(--bad)"
+                  {% if s.has_history %}disabled title="Has activity history (attendance/reminders/broadcasts/uploads) — deactivate instead"{% endif %}>
+            Delete
+          </button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <div class="big">👥</div>
+  <p>No staff yet. Add teachers and bursars so they can log in.</p>
+</div>
+{% endif %}
+
+{# ── Add Staff Modal ── #}
+<div id="add-staff-modal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-hd">
+      <span class="modal-hd-title">Add Staff Member</span>
+      <button class="modal-close" onclick="document.getElementById('add-staff-modal').style.display='none'">×</button>
+    </div>
+    <form method="POST" action="{{ url_for('school.staff_add') }}">
+      <div class="form-row g2">
+        <div class="form-group">
+          <label>Full Name <span style="color:var(--bad)">*</span></label>
+          <input type="text" name="full_name" required placeholder="Mrs. Aisha Bello"/>
+        </div>
+        <div class="form-group">
+          <label>Email <span style="color:var(--bad)">*</span></label>
+          <input type="email" name="email" required placeholder="teacher@school.edu.ng"/>
+        </div>
+      </div>
+      <div class="form-row g2">
+        <div class="form-group">
+          <label>Password <span style="color:var(--bad)">*</span></label>
+          <input type="password" name="password" required minlength="6"/>
+        </div>
+        <div class="form-group">
+          <label>Role</label>
+          <select name="role">
+            <option value="teacher">Teacher</option>
+            <option value="bursar">Bursar</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Class Assigned <span style="font-size:11.5px;color:var(--muted)">(teachers only)</span></label>
+        <select name="class_assigned">
+          <option value="">— No class —</option>
+          {% for c in classes %}
+          <option value="{{ c }}">{{ c }}</option>
+          {% endfor %}
+        </select>
+        <span style="font-size:11.5px;color:var(--muted);margin-top:3px">
+          The teacher will only see and act on this class.
+        </span>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button class="btn btn-primary" type="submit">Add Staff Member</button>
+        <button type="button" class="btn btn-outline"
+                onclick="document.getElementById('add-staff-modal').style.display='none'">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# ── Edit Staff Modal ── #}
+<div id="edit-staff-modal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-hd">
+      <span class="modal-hd-title">Edit Staff Member</span>
+      <button class="modal-close" onclick="document.getElementById('edit-staff-modal').style.display='none'">×</button>
+    </div>
+    <form method="POST" id="edit-staff-form">
+      <div class="form-row g2">
+        <div class="form-group">
+          <label>Full Name <span style="color:var(--bad)">*</span></label>
+          <input type="text" name="full_name" id="edit-staff-name" required/>
+        </div>
+        <div class="form-group">
+          <label>Email <span style="color:var(--bad)">*</span></label>
+          <input type="email" name="email" id="edit-staff-email" required/>
+        </div>
+      </div>
+      <div class="form-row g2">
+        <div class="form-group">
+          <label>New Password <span style="font-size:11.5px;color:var(--muted)">(leave blank to keep current)</span></label>
+          <input type="password" name="password" id="edit-staff-password" minlength="6"/>
+        </div>
+        <div class="form-group">
+          <label>Role</label>
+          <select name="role" id="edit-staff-role">
+            <option value="teacher">Teacher</option>
+            <option value="bursar">Bursar</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Class Assigned <span style="font-size:11.5px;color:var(--muted)">(teachers only)</span></label>
+        <select name="class_assigned" id="edit-staff-class">
+          <option value="">— No class —</option>
+          {% for c in classes %}
+          <option value="{{ c }}">{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button class="btn btn-primary" type="submit">Save Changes</button>
+        <button type="button" class="btn btn-outline"
+                onclick="document.getElementById('edit-staff-modal').style.display='none'">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openEditStaff(id, name, email, role, classAssigned) {
+  document.getElementById('edit-staff-form').action = '/school/staff/' + id + '/edit';
+  document.getElementById('edit-staff-name').value = name;
+  document.getElementById('edit-staff-email').value = email;
+  document.getElementById('edit-staff-password').value = '';
+  var roleSel = document.getElementById('edit-staff-role');
+  for (var i = 0; i < roleSel.options.length; i++) {
+    if (roleSel.options[i].value === role) { roleSel.selectedIndex = i; break; }
+  }
+  var clsSel = document.getElementById('edit-staff-class');
+  for (var j = 0; j < clsSel.options.length; j++) {
+    if (clsSel.options[j].value === classAssigned) { clsSel.selectedIndex = j; break; }
+  }
+  document.getElementById('edit-staff-modal').style.display = 'flex';
+}
+
+['add-staff-modal', 'edit-staff-modal'].forEach(function(id) {
+  document.getElementById(id).addEventListener('click', function(e) {
+    if (e.target === this) this.style.display = 'none';
+  });
+});
+</script>
+{% endblock %}

@@ -147,3 +147,23 @@ def calc_vat(amount_pence: int, vat_rate: float) -> int:
 def money_fmt(pence: int, currency: str = "gbp") -> str:
     # simple format
     return f"£{pence/100:.2f}" if currency.lower() == "gbp" else f"{pence/100:.2f} {currency.upper()}"
+
+
+# Shared by portal_admin_routes.py (sees every video) and portal_routes.py
+# (filters to audience="merchant" only) — single source of truth so a new
+# tutorial_studio video only needs one registry entry, not two.
+TUTORIAL_VIDEOS = [
+    {"slug": "campaigns", "title": "Campaigns Walkthrough",
+     "sub": "AI-narrated preview — how to create and send a campaign",
+     "audience": "merchant"},
+    {"slug": "whatsapp-merchant-onboarding", "title": "Getting Started with WhatsApp",
+     "sub": "Logging in for the first time and connecting your WhatsApp number",
+     "audience": "merchant"},
+    {"slug": "catalogue-onboarding", "title": "Adding Your Products",
+     "sub": "The setup wizard — picking your categories and products so your AI can answer customer questions",
+     "audience": "merchant"},
+    {"slug": "ambassador-onboarding", "title": "Sales Lead Pipeline",
+     "sub": "For sales ambassadors & sales managers — Lead → Contacted → Demo Done → "
+            "Requirements Confirmed → Onboarding → Active Client → Support",
+     "audience": "ambassador"},
+]

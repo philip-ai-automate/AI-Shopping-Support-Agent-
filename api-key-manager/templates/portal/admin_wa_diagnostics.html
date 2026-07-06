@@ -94,7 +94,7 @@
     <div>
       <div class="diag-biz">{{ t.business_name }}</div>
       <div class="diag-phone">
-        {% if t.display_phone_number %}+{{ t.display_phone_number }}{% else %}No display number{% endif %}
+        {% if t.display_phone_number %}{{ t.display_phone_number|with_plus }}{% else %}No display number{% endif %}
         &nbsp;·&nbsp; tenant #{{ t.tenant_id }}
       </div>
     </div>

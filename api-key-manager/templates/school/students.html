@@ -12,10 +12,11 @@
   .st-stat.warn .val{color:var(--warn)}
 
   /* ── Toolbar ── */
-  .st-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+  .st-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
   .st-search{flex:1;min-width:180px;padding:9px 13px;border:1.5px solid var(--line);
              border-radius:9px;font-size:14px;background:#fff}
   .st-search:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(29,106,245,.10)}
+  .st-result-count{font-size:12px;color:var(--muted);margin-bottom:12px;min-height:16px}
 
   /* ── View toggle ── */
   .view-tabs{display:flex;gap:0;border:1.5px solid var(--line);border-radius:9px;overflow:hidden;flex-shrink:0}
@@ -44,19 +45,51 @@
 
   .group-rows{border:1px solid var(--line);border-top:none;border-radius:0 0 10px 10px;overflow:hidden}
   .st-row{display:flex;align-items:center;gap:12px;padding:10px 14px;
-          border-bottom:1px solid var(--line);background:#fff}
+          border-bottom:1px solid var(--line);background:#fff;transition:background .1s}
   .st-row:last-child{border-bottom:none}
+  .st-row:hover{background:#F7F9FC}
   .st-row.no-parent{background:#FFFBEB}
-  .st-avatar{width:32px;height:32px;border-radius:50%;background:#EEF4FF;
-             color:var(--brand);font-size:13px;font-weight:700;flex-shrink:0;
-             display:flex;align-items:center;justify-content:center}
-  .st-name{font-size:14px;font-weight:600;color:var(--ink);flex:1;min-width:0;
-           white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .st-id{font-size:12px;color:var(--muted);white-space:nowrap}
+  .st-row.no-parent:hover{background:#FEF3C7}
+
+  /* ── Avatar ── */
+  .st-avatar{width:34px;height:34px;border-radius:50%;
+             color:#fff;font-size:13px;font-weight:700;flex-shrink:0;
+             display:flex;align-items:center;justify-content:center;letter-spacing:.01em;
+             background:#CCC}
+
+  /* ── Student name as button ── */
+  .st-name-btn{font-size:14px;font-weight:600;color:var(--ink);flex:1;min-width:0;
+               white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+               background:none;border:none;padding:0;text-align:left;cursor:pointer;
+               font-family:inherit;line-height:1.3}
+  .st-name-btn:hover{color:var(--brand);text-decoration:underline}
+
+  .st-id{font-size:12px;color:var(--muted);white-space:nowrap;width:90px;flex-shrink:0}
   .st-gender{font-size:12px;color:var(--muted);white-space:nowrap}
-  .parent-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-  .parent-dot.linked{background:#12B76A}
-  .parent-dot.missing{background:#F79009}
+
+  /* ── Group column header ── */
+  .group-col-hd{
+    display:flex;align-items:center;gap:12px;padding:6px 14px;
+    background:#F7F9FC;border-bottom:1px solid var(--line);
+  }
+  .group-col-hd span{
+    font-size:10.5px;font-weight:700;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.07em;white-space:nowrap;
+  }
+  .gcol-name{flex:1;min-width:0}
+  .gcol-id{width:90px;flex-shrink:0}
+  .gcol-gender{font-size:10.5px;color:var(--muted)}
+  @media(max-width:600px){.gcol-gender,.gcol-id,.st-gender,.st-id{display:none}}
+
+  /* ── Parent badge (replaces tiny dot) ── */
+  .parent-badge{display:inline-flex;align-items:center;gap:4px;
+                padding:3px 8px;border-radius:10px;font-size:11.5px;font-weight:600;
+                white-space:nowrap;flex-shrink:0;text-decoration:none}
+  .parent-badge.linked{background:#ECFDF5;color:#027A48;cursor:pointer}
+  .parent-badge.linked:hover{background:#D1FAE5}
+  .parent-badge.missing{background:#FFFAEB;color:#92400E;
+                         border:1px dashed #F79009;cursor:pointer}
+  .parent-badge.missing:hover{background:#FEF3C7}
 
   /* ── Admin action buttons ── */
   .row-actions{display:flex;gap:4px;align-items:center;flex-shrink:0}
@@ -140,6 +173,58 @@
     background:rgba(255,255,255,.12);color:#fff;font-weight:600;cursor:pointer;
   }
   .bulk-bar select option{background:#0A1628;color:#fff}
+
+  /* ── Student detail side panel ── */
+  .panel-backdrop{
+    display:none;position:fixed;inset:0;background:rgba(0,0,0,.22);z-index:190;
+  }
+  .panel-backdrop.show{display:block}
+  .student-panel{
+    position:fixed;top:0;right:-420px;height:100%;width:400px;max-width:95vw;
+    background:#fff;box-shadow:-4px 0 32px rgba(10,22,40,.15);z-index:191;
+    transition:right .24s cubic-bezier(.4,0,.2,1);
+    display:flex;flex-direction:column;overflow:hidden;
+  }
+  .student-panel.open{right:0}
+  .sp-head{
+    display:flex;align-items:center;gap:14px;
+    padding:20px 18px 16px;border-bottom:1px solid var(--line);flex-shrink:0;
+  }
+  .sp-avatar{
+    width:46px;height:46px;border-radius:50%;
+    color:#fff;font-size:17px;font-weight:700;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;background:#CCC;
+  }
+  .sp-name{font-size:16px;font-weight:750;color:var(--ink);line-height:1.25}
+  .sp-sub{font-size:12px;color:var(--muted);margin-top:3px}
+  .sp-close{margin-left:auto;border:none;background:none;font-size:22px;
+            cursor:pointer;color:var(--muted);line-height:1;padding:4px;flex-shrink:0}
+  .sp-close:hover{color:var(--ink)}
+  .sp-body{padding:16px 18px;flex:1;overflow-y:auto}
+  .sp-field{margin-bottom:12px}
+  .sp-label{font-size:10.5px;font-weight:700;color:var(--muted);
+            text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px}
+  .sp-value{font-size:14px;color:var(--ink);font-weight:500}
+  .sp-divider{border:none;border-top:1px solid var(--line);margin:14px 0}
+  .sp-section-title{font-size:11.5px;font-weight:700;color:var(--muted);
+                     text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px}
+  .sp-parent-card{
+    background:#F7F9FC;border:1px solid var(--line);border-radius:10px;
+    padding:11px 13px;margin-bottom:8px;
+  }
+  .sp-parent-name{font-size:13.5px;font-weight:650;color:var(--ink)}
+  .sp-parent-rel{font-size:11.5px;color:var(--muted);margin-top:1px}
+  .sp-parent-wa{
+    display:inline-flex;align-items:center;gap:5px;
+    font-size:12px;font-weight:600;color:#027A48;
+    background:#ECFDF5;padding:3px 9px;border-radius:8px;margin-top:7px;
+  }
+  .sp-no-parent{text-align:center;padding:24px 16px;color:var(--muted);font-size:13px}
+  .sp-actions{
+    padding:14px 18px;border-top:1px solid var(--line);flex-shrink:0;
+    display:none;gap:8px;flex-wrap:wrap;
+  }
+  .sp-loader{text-align:center;padding:36px;color:var(--muted);font-size:13px}
 </style>
 {% endblock %}
 
@@ -152,11 +237,11 @@
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
     <button class="btn btn-outline" type="button"
-            onclick="document.getElementById('import-modal').style.display='flex'">
+            onclick="openModal('import-modal')">
       ⬆ Import CSV
     </button>
     <button class="btn btn-primary" type="button"
-            onclick="document.getElementById('add-modal').style.display='flex'">
+            onclick="openModal('add-modal')">
       + Add Student
     </button>
   </div>
@@ -197,6 +282,7 @@
     <button class="view-tab" id="tab-table" onclick="setView('table')" type="button">Table</button>
   </div>
 </div>
+<div class="st-result-count" id="st-result-count"></div>
 
 {# ── Class filter chips ── #}
 {% if classes %}
@@ -224,12 +310,21 @@
              onchange="toggleGroup(this)" title="Select all in {{ group_name }}">
       {% endif %}
       <span class="group-name">{{ group_name }}</span>
-      <span class="group-count">{{ group_students | length }} students</span>
+      <span class="group-count" data-total="{{ group_students | length }}">{{ group_students | length }} students</span>
       {% if no_parent_in_group %}
       <span class="group-warn">{{ no_parent_in_group }} without parent</span>
       {% endif %}
     </div>
     <div class="group-rows">
+      <div class="group-col-hd">
+        {% if session.get('school_role') == 'admin' %}<span style="width:16px;flex-shrink:0"></span>{% endif %}
+        <span style="width:34px;flex-shrink:0"></span>
+        <span class="gcol-name">Name</span>
+        <span class="gcol-id">Student ID</span>
+        <span class="gcol-gender">Gender</span>
+        <span style="flex-shrink:0;visibility:hidden;padding:3px 8px">Parent</span>
+        {% if session.get('school_role') == 'admin' %}<span style="width:98px;flex-shrink:0"></span>{% endif %}
+      </div>
       {% for s in group_students %}
       <div class="st-row {% if s.parent_count == 0 %}no-parent{% endif %}"
            data-name="{{ s.full_name | lower }}"
@@ -238,17 +333,25 @@
         <input type="checkbox" class="st-check student-check" value="{{ s.id }}"
                data-name="{{ s.full_name }}" onchange="updateBulkBar()">
         {% endif %}
-        <div class="st-avatar">{{ s.full_name[0] | upper }}</div>
-        <div class="st-name">{{ s.full_name }}</div>
+        <div class="st-avatar" data-avname="{{ s.full_name }}">{{ s.full_name[0] | upper }}</div>
+        <button type="button" class="st-name-btn"
+                onclick="openStudentPanel({{ s.id }})">{{ s.full_name }}</button>
         <div class="st-id">{{ s.student_number or '—' }}</div>
         <div class="st-gender">{{ s.gender or '—' }}</div>
-        <div class="parent-dot {{ 'linked' if s.parent_count > 0 else 'missing' }}"
-             title="{{ s.parent_count }} parent(s) linked"></div>
+        {% if s.parent_count > 0 %}
+        <span class="parent-badge linked" title="{{ s.parent_count }} parent(s) linked"
+              onclick="openStudentPanel({{ s.id }})">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
+          {{ s.parent_count }}
+        </span>
+        {% else %}
+        <a href="{{ url_for('school.parents') }}" class="parent-badge missing"
+           title="No parent linked — click to add">+ parent</a>
+        {% endif %}
         {% if session.get('school_role') == 'admin' %}
         <div class="row-actions">
-          {# BUG FIX: use single-quoted onclick so tojson double-quotes don't break HTML parsing #}
           <button type="button" class="btn-icon" title="Edit student"
-                  onclick='openEdit({{ s.id }}, {{ s.full_name | tojson }}, {{ (s.student_number or "") | tojson }}, {{ s.class_name | tojson }}, {{ (s.arm or "A") | tojson }}, {{ (s.gender or "") | tojson }})'>
+                  onclick='openEdit({{ s.id }}, {{ (s.first_name or "") | tojson }}, {{ (s.middle_name or "") | tojson }}, {{ (s.last_name or "") | tojson }}, {{ (s.student_number or "") | tojson }}, {{ s.class_name | tojson }}, {{ (s.arm or "A") | tojson }}, {{ (s.gender or "") | tojson }})'>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           </button>
           <button type="button" class="btn-icon promote" title="Promote to new class"
@@ -271,14 +374,8 @@
   <div class="big">🎒</div>
   <p>No students yet.</p>
   <div style="display:flex;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap">
-    <button class="btn btn-primary" type="button"
-            onclick="document.getElementById('add-modal').style.display='flex'">
-      Add Student
-    </button>
-    <button class="btn btn-outline" type="button"
-            onclick="document.getElementById('import-modal').style.display='flex'">
-      Import CSV
-    </button>
+    <button class="btn btn-primary" type="button" onclick="openModal('add-modal')">Add Student</button>
+    <button class="btn btn-outline" type="button" onclick="openModal('import-modal')">Import CSV</button>
   </div>
 </div>
 {% endif %}
@@ -317,22 +414,35 @@
                  data-name="{{ s.full_name }}" onchange="updateBulkBar()">
         </td>
         {% endif %}
-        <td><strong>{{ s.full_name }}</strong></td>
+        <td>
+          <div style="display:flex;align-items:center;gap:9px">
+            <div class="st-avatar" data-avname="{{ s.full_name }}"
+                 style="width:28px;height:28px;font-size:11px">
+              {{ s.full_name[0] | upper }}
+            </div>
+            <button type="button" class="st-name-btn" style="font-size:13.5px"
+                    onclick="openStudentPanel({{ s.id }})">{{ s.full_name }}</button>
+          </div>
+        </td>
         <td class="text-muted text-sm">{{ s.student_number or '—' }}</td>
         <td><span class="pill pill-blue">{{ s.class_name }} {{ s.arm }}</span></td>
         <td class="text-muted text-sm">{{ s.gender or '—' }}</td>
         <td>
           {% if s.parent_count > 0 %}
-          <span class="wa-badge">{{ s.parent_count }}</span>
+          <span class="parent-badge linked" onclick="openStudentPanel({{ s.id }})"
+                title="{{ s.parent_count }} parent(s)">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
+            {{ s.parent_count }}
+          </span>
           {% else %}
-          <span style="font-size:12px;color:var(--warn);font-weight:600">None</span>
+          <a href="{{ url_for('school.parents') }}" class="parent-badge missing">+ parent</a>
           {% endif %}
         </td>
         {% if session.get('school_role') == 'admin' %}
         <td>
           <div class="row-actions">
             <button type="button" class="btn-icon" title="Edit student"
-                    onclick='openEdit({{ s.id }}, {{ s.full_name | tojson }}, {{ (s.student_number or "") | tojson }}, {{ s.class_name | tojson }}, {{ (s.arm or "A") | tojson }}, {{ (s.gender or "") | tojson }})'>
+                    onclick='openEdit({{ s.id }}, {{ (s.first_name or "") | tojson }}, {{ (s.middle_name or "") | tojson }}, {{ (s.last_name or "") | tojson }}, {{ (s.student_number or "") | tojson }}, {{ s.class_name | tojson }}, {{ (s.arm or "A") | tojson }}, {{ (s.gender or "") | tojson }})'>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
             </button>
             <button type="button" class="btn-icon promote" title="Promote to new class"
@@ -384,6 +494,23 @@
 </div>
 {% endif %}
 
+{# ════ STUDENT DETAIL SIDE PANEL ════ #}
+<div class="panel-backdrop" id="panel-backdrop" onclick="closeStudentPanel()"></div>
+<div class="student-panel" id="student-panel">
+  <div class="sp-head">
+    <div class="sp-avatar" id="sp-avatar"></div>
+    <div style="min-width:0;flex:1">
+      <div class="sp-name" id="sp-name">Loading…</div>
+      <div class="sp-sub" id="sp-sub"></div>
+    </div>
+    <button class="sp-close" onclick="closeStudentPanel()">×</button>
+  </div>
+  <div class="sp-body" id="sp-body">
+    <div class="sp-loader">Loading student details…</div>
+  </div>
+  <div class="sp-actions" id="sp-actions"></div>
+</div>
+
 {# ════ MODALS ════ #}
 
 {# Add student #}
@@ -391,16 +518,25 @@
   <div class="modal-box">
     <div class="modal-hd">
       <span class="modal-hd-title">Add Student</span>
-      <button type="button" class="modal-close"
-              onclick="document.getElementById('add-modal').style.display='none'">×</button>
+      <button type="button" class="modal-close" onclick="closeModal('add-modal')">×</button>
     </div>
     <div class="modal-body">
     <form method="POST" action="{{ url_for('school.students_add') }}">
-      <div class="form-row g2">
+      <div class="form-row g3">
         <div class="form-group">
-          <label>Full Name <span style="color:var(--bad)">*</span></label>
-          <input type="text" name="full_name" required placeholder="Temi Adeyemi"/>
+          <label>First Name <span style="color:var(--bad)">*</span></label>
+          <input type="text" name="first_name" id="add-name-input" required placeholder="Temi"/>
         </div>
+        <div class="form-group">
+          <label>Middle Name</label>
+          <input type="text" name="middle_name" placeholder="Ayodele"/>
+        </div>
+        <div class="form-group">
+          <label>Last Name <span style="color:var(--bad)">*</span></label>
+          <input type="text" name="last_name" required placeholder="Adeyemi"/>
+        </div>
+      </div>
+      <div class="form-row g2">
         <div class="form-group">
           <label>Student ID / Number</label>
           <input type="text" name="student_number" placeholder="SCH2025001"/>
@@ -430,8 +566,7 @@
       </div>
       <div style="display:flex;gap:8px;margin-top:4px">
         <button class="btn btn-primary" type="submit">Add Student</button>
-        <button type="button" class="btn btn-outline"
-                onclick="document.getElementById('add-modal').style.display='none'">Cancel</button>
+        <button type="button" class="btn btn-outline" onclick="closeModal('add-modal')">Cancel</button>
       </div>
     </form>
     </div>
@@ -443,15 +578,14 @@
   <div class="modal-box" style="max-width:460px">
     <div class="modal-hd">
       <span class="modal-hd-title">Import Students (CSV)</span>
-      <button type="button" class="modal-close"
-              onclick="document.getElementById('import-modal').style.display='none'">×</button>
+      <button type="button" class="modal-close" onclick="closeModal('import-modal')">×</button>
     </div>
     <div class="modal-body">
     <p style="font-size:13px;color:var(--muted);margin-bottom:8px;line-height:1.6">
       Upload a CSV file. Required columns:
     </p>
     <pre style="font-size:12px;background:#F7F9FC;padding:10px 12px;border-radius:8px;
-                margin-bottom:8px;overflow-x:auto">full_name, class_name, arm, student_number, gender</pre>
+                margin-bottom:8px;overflow-x:auto">first_name, middle_name, last_name, class_name, arm, student_number, gender</pre>
     <p style="margin-bottom:16px">
       <a href="{{ url_for('school.students_csv_template') }}"
          style="font-size:13px;font-weight:600;color:var(--brand)">⬇ Download sample template</a>
@@ -467,8 +601,7 @@
       </p>
       <div style="display:flex;gap:8px">
         <button class="btn btn-primary" type="submit">Import</button>
-        <button type="button" class="btn btn-outline"
-                onclick="document.getElementById('import-modal').style.display='none'">Cancel</button>
+        <button type="button" class="btn btn-outline" onclick="closeModal('import-modal')">Cancel</button>
       </div>
     </form>
     </div>
@@ -480,16 +613,25 @@
   <div class="modal-box" style="max-width:480px">
     <div class="modal-hd">
       <span class="modal-hd-title">Edit Student</span>
-      <button type="button" class="modal-close"
-              onclick="document.getElementById('edit-modal').style.display='none'">×</button>
+      <button type="button" class="modal-close" onclick="closeModal('edit-modal')">×</button>
     </div>
     <div class="modal-body">
     <form method="POST" id="edit-form">
-      <div class="form-row g2">
+      <div class="form-row g3">
         <div class="form-group">
-          <label>Full Name <span style="color:var(--bad)">*</span></label>
-          <input type="text" name="full_name" id="edit-name" required/>
+          <label>First Name <span style="color:var(--bad)">*</span></label>
+          <input type="text" name="first_name" id="edit-first" required/>
         </div>
+        <div class="form-group">
+          <label>Middle Name</label>
+          <input type="text" name="middle_name" id="edit-middle"/>
+        </div>
+        <div class="form-group">
+          <label>Last Name <span style="color:var(--bad)">*</span></label>
+          <input type="text" name="last_name" id="edit-last" required/>
+        </div>
+      </div>
+      <div class="form-row g2">
         <div class="form-group">
           <label>Student ID / Number</label>
           <input type="text" name="student_number" id="edit-number"/>
@@ -520,8 +662,7 @@
       </div>
       <div style="display:flex;gap:8px;margin-top:4px">
         <button class="btn btn-primary" type="submit">Save Changes</button>
-        <button type="button" class="btn btn-outline"
-                onclick="document.getElementById('edit-modal').style.display='none'">Cancel</button>
+        <button type="button" class="btn btn-outline" onclick="closeModal('edit-modal')">Cancel</button>
       </div>
     </form>
     </div>
@@ -533,8 +674,7 @@
   <div class="modal-box" style="max-width:420px">
     <div class="modal-hd">
       <span class="modal-hd-title">Promote Student</span>
-      <button type="button" class="modal-close"
-              onclick="document.getElementById('promote-modal').style.display='none'">×</button>
+      <button type="button" class="modal-close" onclick="closeModal('promote-modal')">×</button>
     </div>
     <div class="modal-body">
     <div class="promote-path">
@@ -568,8 +708,7 @@
       </div>
       <div style="display:flex;gap:8px;margin-top:4px">
         <button class="btn btn-primary" type="submit">↑ Promote</button>
-        <button type="button" class="btn btn-outline"
-                onclick="document.getElementById('promote-modal').style.display='none'">Cancel</button>
+        <button type="button" class="btn btn-outline" onclick="closeModal('promote-modal')">Cancel</button>
       </div>
     </form>
     </div>
@@ -588,7 +727,7 @@
         <div class="modal-danger-sub">This action cannot be undone</div>
       </div>
       <button type="button" class="modal-close" style="margin-left:auto"
-              onclick="document.getElementById('delete-modal').style.display='none'">×</button>
+              onclick="closeModal('delete-modal')">×</button>
     </div>
     <div class="modal-body">
     <p style="font-size:14px;color:var(--txt);margin-bottom:20px;line-height:1.6">
@@ -601,8 +740,7 @@
                 style="background:var(--bad);color:#fff;border:none;padding:10px 20px;font-weight:700">
           Yes, Remove
         </button>
-        <button type="button" class="btn btn-outline"
-                onclick="document.getElementById('delete-modal').style.display='none'">Cancel</button>
+        <button type="button" class="btn btn-outline" onclick="closeModal('delete-modal')">Cancel</button>
       </div>
     </form>
     </div>
@@ -611,6 +749,35 @@
 
 <script>
 var _view = 'group';
+var _AVATAR_COLORS = ['#4F46E5','#0EA5E9','#0D9488','#D97706','#DC2626','#7C3AED','#DB2777','#059669'];
+var _IS_ADMIN = {{ 'true' if session.get('school_role') == 'admin' else 'false' }};
+var _TOTAL_STUDENTS = {{ students | length }};
+
+function _avatarColor(name) {
+  var h = 0;
+  for (var i = 0; i < name.length; i++) {
+    h = ((h * 31) + name.charCodeAt(i)) | 0;
+  }
+  return _AVATAR_COLORS[Math.abs(h) % _AVATAR_COLORS.length];
+}
+
+/* ── Paint all avatars on load ── */
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.st-avatar[data-avname]').forEach(function(el) {
+    el.style.background = _avatarColor(el.dataset.avname);
+  });
+});
+
+/* ── Modal helpers ── */
+function openModal(id) {
+  var el = document.getElementById(id);
+  el.style.display = 'flex';
+  var first = el.querySelector('input[type=text]');
+  if (first) setTimeout(function() { first.focus(); }, 60);
+}
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
+}
 
 /* ── View toggle ── */
 function setView(v) {
@@ -625,9 +792,10 @@ function setView(v) {
 /* ── Search filter ── */
 function filterStudents() {
   var q = document.getElementById('st-search').value.toLowerCase();
+  var totalVisible = 0;
+
   if (_view === 'group') {
     var sections = document.querySelectorAll('#group-view .group-section');
-    var totalVisible = 0;
     sections.forEach(function(sec) {
       var rows = sec.querySelectorAll('.st-row');
       var secVisible = 0;
@@ -638,6 +806,13 @@ function filterStudents() {
       });
       sec.style.display = secVisible > 0 ? '' : 'none';
       totalVisible += secVisible;
+      var badge = sec.querySelector('.group-count');
+      if (badge) {
+        var total = parseInt(badge.dataset.total, 10);
+        badge.textContent = (q && secVisible < total)
+          ? secVisible + ' / ' + total
+          : total + ' student' + (total !== 1 ? 's' : '');
+      }
     });
     var empty = document.getElementById('empty-state');
     var noRes = document.getElementById('no-results');
@@ -647,14 +822,131 @@ function filterStudents() {
     document.querySelectorAll('#table-body tr').forEach(function(row) {
       var match = !q || row.dataset.name.includes(q) || row.dataset.id.includes(q);
       row.style.display = match ? '' : 'none';
+      if (match) totalVisible++;
     });
+  }
+
+  var counter = document.getElementById('st-result-count');
+  if (counter) {
+    counter.textContent = (q && totalVisible < _TOTAL_STUDENTS)
+      ? 'Showing ' + totalVisible + ' of ' + _TOTAL_STUDENTS + ' students'
+      : '';
   }
 }
 
+/* ── Student detail panel ── */
+function openStudentPanel(id) {
+  var panel    = document.getElementById('student-panel');
+  var backdrop = document.getElementById('panel-backdrop');
+  var spAv     = document.getElementById('sp-avatar');
+  spAv.textContent = '';
+  spAv.style.background = '#CCC';
+  document.getElementById('sp-name').textContent = 'Loading…';
+  document.getElementById('sp-sub').textContent = '';
+  document.getElementById('sp-body').innerHTML = '<div class="sp-loader">Loading…</div>';
+  document.getElementById('sp-actions').style.display = 'none';
+  panel.classList.add('open');
+  backdrop.classList.add('show');
+
+  fetch('/school/students/' + id + '/summary')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.error) {
+        document.getElementById('sp-body').innerHTML = '<div class="sp-loader">Not found.</div>';
+        return;
+      }
+      var initial = (d.full_name || '?')[0].toUpperCase();
+      spAv.textContent = initial;
+      spAv.style.background = _avatarColor(d.full_name || '');
+      document.getElementById('sp-name').textContent = d.full_name;
+      document.getElementById('sp-sub').textContent =
+        d.class_name + ' ' + d.arm + (d.student_number ? ' · ' + d.student_number : '');
+
+      var body = '';
+      body += '<div class="sp-field"><div class="sp-label">Class</div>';
+      body += '<div class="sp-value">' + esc(d.class_name) + ' ' + esc(d.arm) + '</div></div>';
+      if (d.student_number) {
+        body += '<div class="sp-field"><div class="sp-label">Student ID</div>';
+        body += '<div class="sp-value">' + esc(d.student_number) + '</div></div>';
+      }
+      if (d.gender) {
+        body += '<div class="sp-field"><div class="sp-label">Gender</div>';
+        body += '<div class="sp-value">' + esc(d.gender) + '</div></div>';
+      }
+      body += '<hr class="sp-divider">';
+      body += '<div class="sp-section-title">Parents / Guardians</div>';
+      if (d.parents && d.parents.length > 0) {
+        d.parents.forEach(function(p) {
+          body += '<div class="sp-parent-card">';
+          body += '<div class="sp-parent-name">' + esc(p.full_name) + '</div>';
+          body += '<div class="sp-parent-rel">' + esc(p.relationship || 'Guardian') + '</div>';
+          if (p.whatsapp_number) {
+            body += '<span class="sp-parent-wa">';
+            body += '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>';
+            body += esc(p.whatsapp_number) + '</span>';
+          }
+          if (!p.is_opted_in) {
+            body += ' <span style="font-size:11px;color:var(--warn);font-weight:600">not opted in</span>';
+          }
+          body += '</div>';
+        });
+      } else {
+        body += '<div class="sp-no-parent">';
+        body += '<p>No parent linked yet.</p>';
+        body += '<a href="/school/parents" class="btn btn-outline" '
+             +  'style="margin-top:10px;display:inline-block;font-size:13px">Add parent →</a>';
+        body += '</div>';
+      }
+      document.getElementById('sp-body').innerHTML = body;
+
+      var acts = document.getElementById('sp-actions');
+      acts.style.display = 'flex';
+      acts.innerHTML = '';
+      var ab = document.createElement('a');
+      ab.className = 'btn btn-outline';
+      ab.style.fontSize = '13px'; ab.textContent = '📅 Attendance';
+      ab.href = '/school/students/' + d.id + '/attendance';
+      acts.appendChild(ab);
+
+      if (_IS_ADMIN) {
+        var eb = document.createElement('button');
+        eb.type = 'button'; eb.className = 'btn btn-outline';
+        eb.style.fontSize = '13px'; eb.textContent = 'Edit';
+        eb.onclick = function() {
+          closeStudentPanel();
+          openEdit(d.id, d.first_name, d.middle_name, d.last_name, d.student_number || '', d.class_name, d.arm || 'A', d.gender || '');
+        };
+        var pb = document.createElement('button');
+        pb.type = 'button'; pb.className = 'btn btn-outline';
+        pb.style.fontSize = '13px'; pb.textContent = '↑ Promote';
+        pb.onclick = function() {
+          closeStudentPanel();
+          openPromote(d.id, d.full_name, d.class_name, d.arm || 'A');
+        };
+        acts.appendChild(eb);
+        acts.appendChild(pb);
+      }
+    })
+    .catch(function() {
+      document.getElementById('sp-body').innerHTML = '<div class="sp-loader">Could not load details.</div>';
+    });
+}
+
+function closeStudentPanel() {
+  document.getElementById('student-panel').classList.remove('open');
+  document.getElementById('panel-backdrop').classList.remove('show');
+}
+
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 /* ── Edit single ── */
-function openEdit(id, name, number, cls, arm, gender) {
+function openEdit(id, first, middle, last, number, cls, arm, gender) {
   document.getElementById('edit-form').action = '/school/students/' + id + '/edit';
-  document.getElementById('edit-name').value   = name;
+  document.getElementById('edit-first').value  = first || '';
+  document.getElementById('edit-middle').value = middle || '';
+  document.getElementById('edit-last').value   = last || '';
   document.getElementById('edit-number').value = number || '';
   document.getElementById('edit-class').value  = cls;
   var armSel = document.getElementById('edit-arm');
@@ -665,7 +957,7 @@ function openEdit(id, name, number, cls, arm, gender) {
   for (var j = 0; j < genSel.options.length; j++) {
     if (genSel.options[j].value === (gender || '')) { genSel.selectedIndex = j; break; }
   }
-  document.getElementById('edit-modal').style.display = 'flex';
+  openModal('edit-modal');
 }
 
 /* ── Promote single ── */
@@ -678,14 +970,14 @@ function openPromote(id, name, currentClass, currentArm) {
   for (var i = 0; i < armSel.options.length; i++) {
     if (armSel.options[i].value === (currentArm || 'A')) { armSel.selectedIndex = i; break; }
   }
-  document.getElementById('promote-modal').style.display = 'flex';
+  openModal('promote-modal');
 }
 
 /* ── Delete single ── */
 function openDelete(id, name) {
   document.getElementById('delete-name').textContent = name;
   document.getElementById('delete-form').action = '/school/students/' + id + '/delete';
-  document.getElementById('delete-modal').style.display = 'flex';
+  openModal('delete-modal');
 }
 
 /* ── Bulk selection ── */
@@ -734,6 +1026,16 @@ function clearSelection() {
   if (allTbl) allTbl.checked = false;
   updateBulkBar();
 }
+
+/* ── Keyboard shortcuts ── */
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    ['add-modal','import-modal','edit-modal','promote-modal','delete-modal'].forEach(function(id) {
+      document.getElementById(id).style.display = 'none';
+    });
+    closeStudentPanel();
+  }
+});
 
 /* ── Close modals on overlay click ── */
 ['add-modal','import-modal','edit-modal','promote-modal','delete-modal'].forEach(function(id) {

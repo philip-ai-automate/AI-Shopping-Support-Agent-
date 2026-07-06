@@ -7,3 +7,6 @@ stripe
 reportlab
 gunicorn
 qrcode[pil]
+openai
+pypdf
+python-docx
