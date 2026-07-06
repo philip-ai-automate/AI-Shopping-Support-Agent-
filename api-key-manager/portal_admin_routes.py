@@ -3944,7 +3944,7 @@ def ambassadors():
     ambs = cur.fetchall() or []
 
     cur.execute("""
-        SELECT id, first_name, last_name, ref_code FROM ambassadors
+        SELECT id, first_name, last_name, ref_code, managed_product FROM ambassadors
         WHERE role='sales_manager' ORDER BY first_name, last_name
     """)
     sales_managers = cur.fetchall() or []
@@ -4290,13 +4290,18 @@ def ambassador_approve(amb_id: int):
                SET status='active', approved_at=NOW(), approved_by=%s, partnership_start=%s
              WHERE id=%s
         """, (_admin_user(), _date.today(), amb_id))
+        # This is base KYC/account approval (unlocks login) — it no longer
+        # force-creates a Portal row. It only activates whatever product
+        # row(s) the ambassador already applied for (via their recruiting
+        # sales manager, or a prior admin "assign" action) and are still
+        # 'pending'. An ambassador with zero ambassador_products rows (an
+        # organic signup with no recruiter) gets none activated here — an
+        # admin must separately assign them a product/manager.
         cur2.execute("""
-            INSERT INTO ambassador_products (ambassador_id, product, status, partnership_start, approved_at, approved_by)
-            VALUES (%s, 'portal', 'active', %s, NOW(), %s)
-            ON CONFLICT (ambassador_id, product) DO UPDATE
-                SET status='active', partnership_start=EXCLUDED.partnership_start,
-                    approved_at=NOW(), approved_by=EXCLUDED.approved_by
-        """, (amb_id, _date.today(), _admin_user()))
+            UPDATE ambassador_products
+               SET status='active', partnership_start=%s, approved_at=NOW(), approved_by=%s
+             WHERE ambassador_id=%s AND status='pending'
+        """, (_date.today(), _admin_user(), amb_id))
         conn.commit()
         cur2.close()
         insert_audit_log(
@@ -4445,7 +4450,7 @@ def ambassador_terminate(amb_id: int):
 def ambassador_product_approve(amb_id: int, product: str):
     r = _require_admin()
     if r: return r
-    if product not in ("school", "estate"):
+    if product not in PRODUCT_LABELS:
         flash("Invalid product.", "danger")
         return redirect(url_for("portal_admin.ambassadors"))
     from datetime import date as _date
@@ -4478,7 +4483,7 @@ def ambassador_product_approve(amb_id: int, product: str):
 def ambassador_product_reject(amb_id: int, product: str):
     r = _require_admin()
     if r: return r
-    if product not in ("school", "estate"):
+    if product not in PRODUCT_LABELS:
         flash("Invalid product.", "danger")
         return redirect(url_for("portal_admin.ambassadors"))
     reason = (request.form.get("reason") or "").strip() or None
@@ -4507,7 +4512,7 @@ def ambassador_product_reject(amb_id: int, product: str):
 def ambassador_product_suspend(amb_id: int, product: str):
     r = _require_admin()
     if r: return r
-    if product not in ("school", "estate"):
+    if product not in PRODUCT_LABELS:
         flash("Invalid product.", "danger")
         return redirect(url_for("portal_admin.ambassadors"))
     conn = get_db_connection()
@@ -4534,7 +4539,7 @@ def ambassador_product_suspend(amb_id: int, product: str):
 def ambassador_product_reactivate(amb_id: int, product: str):
     r = _require_admin()
     if r: return r
-    if product not in ("school", "estate"):
+    if product not in PRODUCT_LABELS:
         flash("Invalid product.", "danger")
         return redirect(url_for("portal_admin.ambassadors"))
     conn = get_db_connection()
@@ -4592,6 +4597,21 @@ def ambassador_edit(amb_id: int):
         int(recruited_by_id) if recruited_by_id.isdigit() else None,
         amb_id,
     ))
+    # Assigning/changing the sales manager also enrolls this ambassador in
+    # that manager's product (matching what registration-via-recruiter-link
+    # would have done) — the main path for attaching an organic (no
+    # recruiter) signup to a manager after the fact. Only creates the row if
+    # missing; never overwrites an existing active/suspended one.
+    if recruited_by_id.isdigit():
+        cur.execute("SELECT managed_product FROM ambassadors WHERE id=%s AND role='sales_manager'",
+                    (int(recruited_by_id),))
+        mgr = cur.fetchone()
+        if mgr and mgr[0]:
+            cur.execute("""
+                INSERT INTO ambassador_products (ambassador_id, product, status)
+                VALUES (%s, %s, 'pending')
+                ON CONFLICT (ambassador_id, product) DO NOTHING
+            """, (amb_id, mgr[0]))
     conn.commit()
     cur.close(); conn.close()
     flash("Ambassador details updated.", "success")
@@ -4603,21 +4623,35 @@ def ambassador_set_role(amb_id: int):
     r = _require_admin()
     if r: return r
     new_role = "sales_manager" if (request.form.get("role") == "sales_manager") else "ambassador"
+    managed_product = (request.form.get("managed_product") or "").strip() or None
+
+    if new_role == "sales_manager":
+        if managed_product not in ("portal", "school", "estate"):
+            flash("Choose which single product this sales manager will run before saving.", "danger")
+            return redirect(url_for("portal_admin.ambassadors"))
+    else:
+        # Demoting to plain ambassador: a manager is scoped to one product,
+        # so the field is meaningless once they're no longer managing a team.
+        managed_product = None
+
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT first_name, last_name, ref_code, role FROM ambassadors WHERE id=%s", (amb_id,))
     amb = cur.fetchone()
     cur2 = conn.cursor()
-    cur2.execute("UPDATE ambassadors SET role=%s WHERE id=%s", (new_role, amb_id))
+    cur2.execute("UPDATE ambassadors SET role=%s, managed_product=%s WHERE id=%s",
+                 (new_role, managed_product, amb_id))
     conn.commit()
     cur2.close(); cur.close(); conn.close()
     if amb:
         insert_audit_log(
             admin_username=_admin_user(), action="ambassador_set_role",
             details={"ambassador_id": amb_id, "ambassador_name": f"{amb['first_name']} {amb['last_name']}",
-                     "ref_code": amb['ref_code'], "old_role": amb['role'], "new_role": new_role},
+                     "ref_code": amb['ref_code'], "old_role": amb['role'], "new_role": new_role,
+                     "managed_product": managed_product},
         )
-        flash(f"{amb['first_name']} {amb['last_name']} is now a {new_role.replace('_',' ')}.", "success")
+        label = f" ({managed_product})" if managed_product else ""
+        flash(f"{amb['first_name']} {amb['last_name']} is now a {new_role.replace('_',' ')}{label}.", "success")
     return redirect(url_for("portal_admin.ambassadors"))
 
 

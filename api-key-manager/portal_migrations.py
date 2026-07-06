@@ -410,6 +410,32 @@ def ensure_portal_tables():
                 cur.execute(
                     "ALTER TABLE ambassadors ADD COLUMN recruited_by_id INTEGER REFERENCES ambassadors(id)"
                 )
+            if not _column_exists(cur, "ambassadors", "managed_product"):
+                cur.execute(
+                    "ALTER TABLE ambassadors ADD COLUMN managed_product VARCHAR(20)"
+                )
+                # Backfill (2026-07-06 redesign): infer each existing sales
+                # manager's product from whichever product their own recruits
+                # are enrolled in most. Ambiguous/no-recruit managers are left
+                # NULL — admin must set managed_product manually before that
+                # manager can recruit again.
+                if _table_exists(cur, "ambassador_products"):
+                    cur.execute("""
+                        UPDATE ambassadors sm
+                        SET managed_product = sub.product
+                        FROM (
+                            SELECT DISTINCT ON (a.recruited_by_id)
+                                   a.recruited_by_id, ap.product
+                            FROM ambassadors a
+                            JOIN ambassador_products ap ON ap.ambassador_id = a.id
+                            WHERE a.recruited_by_id IS NOT NULL
+                            GROUP BY a.recruited_by_id, ap.product
+                            ORDER BY a.recruited_by_id, COUNT(*) DESC
+                        ) sub
+                        WHERE sm.id = sub.recruited_by_id
+                          AND sm.role = 'sales_manager'
+                          AND sm.managed_product IS NULL
+                    """)
 
         # ── tenant_agents: AI agent profiles per tenant ──────────────────────────
         if not _table_exists(cur, "tenant_agents"):
@@ -709,15 +735,23 @@ def ensure_portal_tables():
                 ON ambassador_products(ambassador_id)
         """)
 
-        # Backfill: every existing ambassador gets an active 'portal' row,
-        # carrying over their current status/partnership_start/approval info.
-        # Decision (2026-07-06): existing ambassadors stay Portal-only until
-        # they separately apply for School/Estate — no auto-enrollment.
+        # One-time backfill (2026-07-06): every ambassador that existed BEFORE
+        # the multi-product redesign gets their legacy Portal status carried
+        # over as a 'portal' row. This must never fire for ambassadors created
+        # after the cutoff below — this function runs on every app startup,
+        # and product enrollment now comes solely from a recruiting sales
+        # manager (or an explicit admin assignment), never an automatic
+        # Portal grant. Without this cutoff, restarting the app would
+        # silently re-enroll every ambassador who happens to have zero
+        # ambassador_products rows (including brand-new organic signups
+        # awaiting admin assignment) into Portal on the next restart — a real
+        # bug caught during the 2026-07-07 sales-manager-scoping redesign.
         cur.execute("""
             INSERT INTO ambassador_products
                 (ambassador_id, product, status, partnership_start, approved_at, approved_by)
             SELECT id, 'portal', status, partnership_start, approved_at, approved_by
             FROM ambassadors
+            WHERE created_at < '2026-07-07'::timestamptz
             ON CONFLICT (ambassador_id, product) DO NOTHING
         """)
 

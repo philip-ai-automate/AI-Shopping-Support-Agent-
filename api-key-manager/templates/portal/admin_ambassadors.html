@@ -397,6 +397,30 @@
   <div class="sp-foot" id="spFoot"></div>
 </div>
 
+<!-- ── Role modal (promote to Sales Manager) ── -->
+<div class="modal-over" id="roleModal">
+  <div class="modal-card">
+    <div class="modal-title">Make Sales Manager</div>
+    <div class="modal-sub">A sales manager is scoped to exactly one product — choose which one they'll recruit for.</div>
+    <form method="POST" id="roleForm">
+      <input type="hidden" name="role" value="sales_manager"/>
+      <div class="modal-field">
+        <label class="modal-label">Managed Product</label>
+        <select name="managed_product" class="modal-input" required>
+          <option value="">Choose a product…</option>
+          <option value="portal">🛍️ Portal (Merchant)</option>
+          <option value="school">🏫 School</option>
+          <option value="estate">🏠 Real Estate</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="modal-cancel" onclick="closeRoleModal()">Cancel</button>
+        <button type="submit" class="modal-confirm">Confirm</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- ── Reason modal (reject / terminate) ── -->
 <div class="modal-over" id="reasonModal">
   <div class="modal-card">
@@ -528,9 +552,12 @@
           background-repeat:no-repeat;background-position:right 12px center;padding-right:34px;cursor:pointer">
           <option value="">— None —</option>
           {% for sm in sales_managers %}
-          <option value="{{ sm.id }}">{{ sm.first_name }} {{ sm.last_name }} ({{ sm.ref_code }})</option>
+          <option value="{{ sm.id }}">{{ sm.first_name }} {{ sm.last_name }} ({{ sm.ref_code }}){% if sm.managed_product %} — {{ sm.managed_product }}{% else %} — ⚠ no product set{% endif %}</option>
           {% endfor %}
         </select>
+        <div style="font-size:11px;color:#9ca3af;margin-top:4px">
+          Assigning a Sales Manager here also enrolls this ambassador (as pending) in that manager's product, if not already enrolled.
+        </div>
       </div>
 
       <div class="modal-actions">
@@ -741,7 +768,7 @@ function renderPanel(d) {
         <div class="sp-item"><div class="sp-label">Total Earned</div><div class="sp-val">₦${Number(d.total_earned||0).toLocaleString()}</div></div>
         <div class="sp-item"><div class="sp-label">Ref Code</div><div class="sp-val mono">${d.ref_code||'—'}</div></div>
         ${d.partnership_start ? `<div class="sp-item"><div class="sp-label">Partner Since</div><div class="sp-val">${fmtDate(d.partnership_start)}</div></div>` : ''}
-        ${d.role === 'sales_manager' ? `<div class="sp-item full"><div class="sp-label">Role</div><div class="sp-val">🏅 Sales Manager</div></div>` : ''}
+        ${d.role === 'sales_manager' ? `<div class="sp-item full"><div class="sp-label">Role</div><div class="sp-val">🏅 Sales Manager — ${d.managed_product || '⚠ no product set'}</div></div>` : ''}
         ${d.recruiter_name ? `<div class="sp-item full"><div class="sp-label">Recruited By</div><div class="sp-val">${d.recruiter_name}</div></div>` : ''}
       </div>
     </div>
@@ -839,7 +866,7 @@ function renderProductRow(product, label, icon, info) {
   if (!info) return '';
   const color = PRODUCT_STATUS_COLORS[info.status] || '#555';
   let actions = '';
-  if (product === 'portal') {
+  if (product === 'portal' && info.status !== 'not_enrolled') {
     actions = '<span style="font-size:10.5px;color:var(--muted)">via main actions</span>';
   } else if (info.status === 'pending') {
     actions = `<button class="sp-btn" style="padding:4px 10px;font-size:11px" onclick="doProductApprove(${currentAmbId},'${product}')">Approve</button>
@@ -849,7 +876,7 @@ function renderProductRow(product, label, icon, info) {
   } else if (['suspended','rejected','terminated'].includes(info.status)) {
     actions = `<button class="sp-btn primary" style="padding:4px 10px;font-size:11px" onclick="doProductReactivate(${currentAmbId},'${product}')">Reactivate</button>`;
   } else if (info.status === 'not_enrolled') {
-    actions = '<span style="font-size:10.5px;color:var(--muted)">Not applied</span>';
+    actions = `<button class="sp-btn primary" style="padding:4px 10px;font-size:11px" onclick="doProductApprove(${currentAmbId},'${product}')">Assign</button>`;
   }
   return `
     <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">
@@ -914,14 +941,21 @@ function renderFootButtons(status, id, role) {
 }
 
 function toggleRole(id, newRole) {
-  const label = newRole === 'sales_manager' ? 'promote this ambassador to Sales Manager' : 'revert this Sales Manager back to a regular ambassador';
-  if (!confirm(`Are you sure you want to ${label}?`)) return;
+  if (newRole === 'sales_manager') {
+    document.getElementById('roleForm').action = `/admin/ambassadors/${id}/set-role`;
+    document.getElementById('roleModal').classList.add('open');
+    return;
+  }
+  if (!confirm('Are you sure you want to revert this Sales Manager back to a regular ambassador?')) return;
   const f = document.createElement('form');
   f.method = 'POST'; f.action = `/admin/ambassadors/${id}/set-role`;
   const input = document.createElement('input');
   input.type = 'hidden'; input.name = 'role'; input.value = newRole;
   f.appendChild(input);
   document.body.appendChild(f); f.submit();
+}
+function closeRoleModal() {
+  document.getElementById('roleModal').classList.remove('open');
 }
 
 /* ── QR modal ── */

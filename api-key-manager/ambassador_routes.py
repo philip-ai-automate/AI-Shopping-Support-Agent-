@@ -64,6 +64,14 @@ _SCHOOL_BASE_URL = os.getenv("SCHOOL_BASE_URL", "https://school.phixtra.com").rs
 _ESTATE_BASE_URL = os.getenv("ESTATE_BASE_URL", "https://home.phixtra.com").rstrip("/")
 
 PRODUCT_ORDER = ["portal", "school", "estate"]
+# (client table, ambassador_commissions FK column) per product — used to
+# attribute a sales manager's override earnings back to the specific team
+# member's client, scoped to the manager's own managed_product.
+_CLIENT_JOIN = {
+    "portal": ("tenants", "tenant_id"),
+    "school": ("school_profiles", "school_id"),
+    "estate": ("re_tenants", "estate_tenant_id"),
+}
 PRODUCT_CONFIG = {
     "portal": {"label": "Portal (Merchant)", "icon": "🛍️",
                "register_url": lambda code: f"{BASE_URL}/register?ref={code}"},
@@ -275,6 +283,14 @@ def _tier_info(active_clients: int, partnership_start) -> dict:
 def _commission_eligible(amb: dict) -> bool:
     if amb.get("status") != "active":
         return False
+    # Portal is no longer auto-granted to every ambassador (2026-07-06
+    # redesign) — an ambassador recruited under a School/Estate sales
+    # manager may hold no 'portal' ambassador_products row at all, so this
+    # must be checked explicitly rather than assuming Portal eligibility
+    # from the base account status alone.
+    portal_row = _get_ambassador_product(amb["id"], "portal")
+    if not portal_row or portal_row.get("status") != "active":
+        return False
     ps = amb.get("partnership_start")
     if not ps:
         return False
@@ -443,21 +459,25 @@ def register():
     if request.method == "GET":
         recruiter_code = (request.args.get("recruiter") or "").strip()
         recruiter_name = None
+        recruiter_product = None
         if recruiter_code:
             conn = get_db_connection()
             cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("""
-                SELECT first_name, last_name FROM ambassadors
+                SELECT first_name, last_name, managed_product FROM ambassadors
                 WHERE ref_code=%s AND role='sales_manager' AND status='active'
             """, (recruiter_code,))
             rec = cur.fetchone()
             cur.close(); conn.close()
             if rec:
                 recruiter_name = f"{rec['first_name']} {rec['last_name']}"
+                recruiter_product = rec['managed_product']
             else:
                 recruiter_code = None
+        recruiter_product_label = PRODUCT_CONFIG.get(recruiter_product, {}).get("label") if recruiter_product else None
         return render_template("ambassador/register.html",
-                               recruiter_code=recruiter_code, recruiter_name=recruiter_name)
+                               recruiter_code=recruiter_code, recruiter_name=recruiter_name,
+                               recruiter_product_label=recruiter_product_label)
 
     # ── Parse all fields ────────────────────────────────────────────────────
     first         = (request.form.get("first_name")            or "").strip()
@@ -479,7 +499,6 @@ def register():
     account_name  = (request.form.get("account_name")          or "").strip()
     sort_code     = (request.form.get("sort_code")             or "").strip() or None
     swift_code    = (request.form.get("swift_code")            or "").strip() or None
-    extra_products = [p for p in request.form.getlist("products") if p in ("school", "estate")]
 
     def _bail(msg, cat="danger"):
         flash(msg, cat)
@@ -563,19 +582,24 @@ def register():
     pw_hash  = _hash_pw(pw)
 
     # ── Resolve recruiter (if any) ───────────────────────────────────────────
+    # A recruit's product is derived entirely from their recruiting sales
+    # manager's managed_product — there is no self-service product picker.
+    # No recruiter code (organic signup) means no product is assigned at
+    # signup; an admin must attach a manager/product afterwards.
     recruiter_code = (request.form.get("recruiter") or "").strip()
     recruited_by_id = None
+    recruiter_product = None
     if recruiter_code:
         conn0 = get_db_connection()
         cur0  = conn0.cursor()
         cur0.execute("""
-            SELECT id FROM ambassadors
+            SELECT id, managed_product FROM ambassadors
             WHERE ref_code=%s AND role='sales_manager' AND status='active'
         """, (recruiter_code,))
         rec_row = cur0.fetchone()
         cur0.close(); conn0.close()
         if rec_row:
-            recruited_by_id = rec_row[0]
+            recruited_by_id, recruiter_product = rec_row[0], rec_row[1]
 
     # ── Insert ───────────────────────────────────────────────────────────────
     conn = get_db_connection()
@@ -594,17 +618,12 @@ def register():
               qualification, id_doc_path, id_doc_type,
               bank_name, account_num, account_name, sort_code, swift_code,
               qual_doc_path, recruited_by_id))
-        cur.execute("""
-            INSERT INTO ambassador_products (ambassador_id, product, status)
-            SELECT id, 'portal', 'pending' FROM ambassadors WHERE email=%s
-            ON CONFLICT (ambassador_id, product) DO NOTHING
-        """, (email,))
-        for _extra in extra_products:
+        if recruiter_product:
             cur.execute("""
                 INSERT INTO ambassador_products (ambassador_id, product, status)
                 SELECT id, %s, 'pending' FROM ambassadors WHERE email=%s
                 ON CONFLICT (ambassador_id, product) DO NOTHING
-            """, (_extra, email))
+            """, (recruiter_product, email))
         conn.commit()
     except psycopg2.errors.UniqueViolation as e:
         conn.rollback()
@@ -735,19 +754,27 @@ def dashboard():
     if r: return r
     amb = _get_ambassador(_amb_id())
 
+    amb_products = _get_ambassador_products_map(amb["id"])
+    # Only products this ambassador actually has a row for are ever shown —
+    # they should not see, or be able to discover, products they were not
+    # enrolled in via their sales manager (2026-07-06 visibility redesign).
+    enrolled_products = [p for p in PRODUCT_ORDER if p in amb_products]
+
+    if not enrolled_products:
+        return render_template("ambassador/dashboard_unassigned.html", amb=amb)
+
     selected = (request.args.get("product") or "all").strip().lower()
-    if selected not in ("all", *PRODUCT_ORDER):
+    if selected not in ("all", *enrolled_products):
         selected = "all"
 
-    amb_products = _get_ambassador_products_map(amb["id"])
     products_ui = {}
-    for p in PRODUCT_ORDER:
+    for p in enrolled_products:
         row = amb_products.get(p)
         products_ui[p] = {
             "label": PRODUCT_CONFIG[p]["label"],
             "icon": PRODUCT_CONFIG[p]["icon"],
-            "status": row["status"] if row else "not_enrolled",
-            "active_clients": _active_client_count(amb["ref_code"], p) if row and row["status"] == "active" else 0,
+            "status": row["status"],
+            "active_clients": _active_client_count(amb["ref_code"], p) if row["status"] == "active" else 0,
             "register_url": PRODUCT_CONFIG[p]["register_url"](amb["ref_code"]),
         }
 
@@ -787,27 +814,7 @@ def dashboard():
         amb=amb, tier=tier, active_clients=active_clients,
         total_earnings=total_earnings, month_earnings=month_earnings,
         recent_referrals=recent_referrals, base_url=BASE_URL,
-        selected_product=selected, products_ui=products_ui, product_order=PRODUCT_ORDER)
-
-
-@ambassador_bp.route("/ambassador/products/apply", methods=["POST"])
-def apply_product():
-    r = _require_amb()
-    if r: return r
-    product = (request.form.get("product") or "").strip().lower()
-    if product not in ("school", "estate"):
-        flash("Invalid product.", "danger")
-        return redirect(url_for("ambassador.dashboard"))
-    conn = get_db_connection()
-    cur  = conn.cursor()
-    cur.execute("""
-        INSERT INTO ambassador_products (ambassador_id, product, status)
-        VALUES (%s, %s, 'pending')
-        ON CONFLICT (ambassador_id, product) DO NOTHING
-    """, (_amb_id(), product))
-    conn.commit(); cur.close(); conn.close()
-    flash(f"Application submitted for {PRODUCT_CONFIG[product]['label']} — you'll be notified once approved.", "success")
-    return redirect(url_for("ambassador.dashboard", product=product))
+        selected_product=selected, products_ui=products_ui, product_order=enrolled_products)
 
 
 # ── Referrals ──────────────────────────────────────────────────────────────
@@ -856,9 +863,13 @@ def referrals():
     if r: return r
     amb = _get_ambassador(_amb_id())
 
-    selected = (request.args.get("product") or "portal").strip().lower()
-    if selected not in PRODUCT_ORDER:
-        selected = "portal"
+    enrolled_products = [p for p in PRODUCT_ORDER if p in _get_ambassador_products_map(amb["id"])]
+    if not enrolled_products:
+        return redirect(url_for("ambassador.dashboard"))
+
+    selected = (request.args.get("product") or enrolled_products[0]).strip().lower()
+    if selected not in enrolled_products:
+        selected = enrolled_products[0]
 
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -867,7 +878,7 @@ def referrals():
     cur.close(); conn.close()
 
     return render_template("ambassador/referrals.html", amb=amb, referrals=all_referrals,
-        selected_product=selected, product_order=PRODUCT_ORDER, product_config=PRODUCT_CONFIG,
+        selected_product=selected, product_order=enrolled_products, product_config=PRODUCT_CONFIG,
         detail_label=_REFERRALS_DETAIL_LABEL[selected])
 
 
@@ -887,6 +898,11 @@ def team():
     r = _require_sales_manager()
     if r: return r
     amb = _get_ambassador(_amb_id())
+    # A sales manager runs exactly one product (2026-07-06 redesign) — every
+    # team/earnings figure on this page is scoped to that product, never
+    # mixed with (or defaulted to) Portal.
+    product = amb.get("managed_product") or "portal"
+    client_table, commission_fk = _CLIENT_JOIN[product]
 
     date_from = (request.args.get("from") or "").strip() or None
     date_to   = (request.args.get("to") or "").strip() or None
@@ -905,37 +921,39 @@ def team():
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute(f"""
         SELECT a.id, a.first_name, a.last_name, a.email, a.ref_code, a.status, a.created_at,
-               (SELECT COUNT(*) FROM tenants t WHERE t.ref_code=a.ref_code AND t.status='active') AS active_clients,
                (SELECT COALESCE(SUM(ac.commission_amount),0) FROM ambassador_commissions ac
-                WHERE ac.ambassador_id=a.id {range_clause}) AS recruit_earned,
+                WHERE ac.ambassador_id=a.id AND ac.product=%s {range_clause}) AS recruit_earned,
                (SELECT COALESCE(SUM(ac.commission_amount),0) FROM ambassador_commissions ac
-                JOIN tenants t ON t.id = ac.tenant_id
-                WHERE ac.ambassador_id=%s AND ac.commission_type='override' AND t.ref_code=a.ref_code {range_clause}) AS override_earned
+                JOIN {client_table} c ON c.id = ac.{commission_fk}
+                WHERE ac.ambassador_id=%s AND ac.commission_type='override' AND ac.product=%s
+                  AND c.ref_code=a.ref_code {range_clause}) AS override_earned
         FROM ambassadors a
         WHERE a.recruited_by_id = %s
         ORDER BY CASE a.status WHEN 'pending' THEN 0 WHEN 'active' THEN 1 ELSE 2 END, a.created_at DESC
-    """, [*range_params, amb["id"], *range_params, amb["id"]])
+    """, [product, *range_params, amb["id"], product, *range_params, amb["id"]])
     recruits = cur.fetchall() or []
+    for rec in recruits:
+        rec["active_clients"] = _active_client_count(rec["ref_code"], product)
 
     cur.execute(f"""
         SELECT date_trunc('month', ac.created_at) AS month, COALESCE(SUM(ac.commission_amount),0) AS total
         FROM ambassador_commissions ac
-        WHERE ac.ambassador_id=%s AND ac.commission_type='override' {range_clause}
+        WHERE ac.ambassador_id=%s AND ac.commission_type='override' AND ac.product=%s {range_clause}
         GROUP BY month
         ORDER BY month DESC
         {"" if (date_from or date_to) else "LIMIT 12"}
-    """, [amb["id"], *range_params])
+    """, [amb["id"], product, *range_params])
     monthly_override = cur.fetchall() or []
 
     cur.execute(f"""
-        SELECT t.ref_code AS recruit_ref_code, date_trunc('month', ac.created_at) AS month,
+        SELECT c.ref_code AS recruit_ref_code, date_trunc('month', ac.created_at) AS month,
                SUM(ac.commission_amount) AS total
         FROM ambassador_commissions ac
-        JOIN tenants t ON t.id = ac.tenant_id
-        WHERE ac.ambassador_id=%s AND ac.commission_type='override' {range_clause}
-        GROUP BY t.ref_code, month
+        JOIN {client_table} c ON c.id = ac.{commission_fk}
+        WHERE ac.ambassador_id=%s AND ac.commission_type='override' AND ac.product=%s {range_clause}
+        GROUP BY c.ref_code, month
         ORDER BY month DESC
-    """, [amb["id"], *range_params])
+    """, [amb["id"], product, *range_params])
     per_recruit_rows = cur.fetchall() or []
     cur.close(); conn.close()
 
@@ -956,6 +974,8 @@ def team_export():
     r = _require_sales_manager()
     if r: return r
     amb = _get_ambassador(_amb_id())
+    product = amb.get("managed_product") or "portal"
+    client_table, commission_fk = _CLIENT_JOIN[product]
 
     date_from = (request.args.get("from") or "").strip() or None
     date_to   = (request.args.get("to") or "").strip() or None
@@ -975,12 +995,13 @@ def team_export():
         SELECT rec.first_name, rec.last_name, rec.ref_code, rec.status,
                date_trunc('month', ac.created_at) AS month, SUM(ac.commission_amount) AS total
         FROM ambassador_commissions ac
-        JOIN tenants t ON t.id = ac.tenant_id
-        JOIN ambassadors rec ON rec.ref_code = t.ref_code
-        WHERE ac.ambassador_id=%s AND ac.commission_type='override' AND rec.recruited_by_id=%s {range_clause}
+        JOIN {client_table} c ON c.id = ac.{commission_fk}
+        JOIN ambassadors rec ON rec.ref_code = c.ref_code
+        WHERE ac.ambassador_id=%s AND ac.commission_type='override' AND ac.product=%s
+          AND rec.recruited_by_id=%s {range_clause}
         GROUP BY rec.id, rec.first_name, rec.last_name, rec.ref_code, rec.status, month
         ORDER BY month DESC, rec.first_name, rec.last_name
-    """, [amb["id"], amb["id"], *range_params])
+    """, [amb["id"], product, amb["id"], *range_params])
     rows = cur.fetchall() or []
     cur.close(); conn.close()
 
@@ -1035,13 +1056,14 @@ def team_approve(recruit_id: int):
            SET status='active', approved_at=NOW(), approved_by=%s, partnership_start=%s
          WHERE id=%s
     """, (approved_by, date.today(), recruit_id))
+    # Activates whichever product row(s) this recruit already has pending —
+    # for a recruit who signed up via this manager's own link that's exactly
+    # one row, matching the manager's managed_product. No hardcoded 'portal'.
     cur.execute("""
-        INSERT INTO ambassador_products (ambassador_id, product, status, partnership_start, approved_at, approved_by)
-        VALUES (%s, 'portal', 'active', %s, NOW(), %s)
-        ON CONFLICT (ambassador_id, product) DO UPDATE
-            SET status='active', partnership_start=EXCLUDED.partnership_start,
-                approved_at=NOW(), approved_by=EXCLUDED.approved_by
-    """, (recruit_id, date.today(), approved_by))
+        UPDATE ambassador_products
+           SET status='active', partnership_start=%s, approved_at=NOW(), approved_by=%s
+         WHERE ambassador_id=%s AND status='pending'
+    """, (date.today(), approved_by, recruit_id))
     conn.commit()
     cur.close(); conn.close()
     insert_audit_log(
@@ -1162,6 +1184,7 @@ def team_pipeline():
     r = _require_sales_manager()
     if r: return r
     amb = _get_ambassador(_amb_id())
+    product = amb.get("managed_product") or "portal"
 
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -1169,22 +1192,22 @@ def team_pipeline():
         SELECT al.*, a.first_name || ' ' || a.last_name AS ambassador_name
         FROM ambassador_leads al
         JOIN ambassadors a ON a.id = al.ambassador_id
-        WHERE a.recruited_by_id=%s AND al.dropped_at IS NULL
+        WHERE a.recruited_by_id=%s AND al.product=%s AND al.dropped_at IS NULL
         ORDER BY CASE al.stage
             WHEN 'lead' THEN 0 WHEN 'contacted' THEN 1 WHEN 'demo_done' THEN 2
             WHEN 'requirements_confirmed' THEN 3 WHEN 'onboarding' THEN 4
             WHEN 'active_client' THEN 5 WHEN 'support' THEN 6 ELSE 7 END,
             al.created_at DESC
-    """, (amb["id"],))
+    """, (amb["id"], product))
     leads = [dict(l) for l in cur.fetchall()]
 
     cur.execute("""
         SELECT al.*, a.first_name || ' ' || a.last_name AS ambassador_name
         FROM ambassador_leads al
         JOIN ambassadors a ON a.id = al.ambassador_id
-        WHERE a.recruited_by_id=%s AND al.dropped_at IS NOT NULL
+        WHERE a.recruited_by_id=%s AND al.product=%s AND al.dropped_at IS NOT NULL
         ORDER BY al.dropped_at DESC
-    """, (amb["id"],))
+    """, (amb["id"], product))
     dropped_leads = [dict(l) for l in cur.fetchall()]
     cur.close(); conn.close()
 
@@ -1204,7 +1227,7 @@ def team_pipeline():
     return render_template("ambassador/team_pipeline.html", amb=amb, leads=leads,
         dropped_leads=dropped_leads, stage_counts=stage_counts, stage_order=STAGE_ORDER,
         stage_labels=STAGE_LABELS, stage_descriptions=STAGE_DESCRIPTIONS, next_stage=next_stage,
-        recruits=recruits, product_order=PRODUCT_ORDER, product_config=PRODUCT_CONFIG)
+        recruits=recruits, product_order=[product], product_config=PRODUCT_CONFIG)
 
 
 @ambassador_bp.route("/ambassador/team/pipeline/create", methods=["POST"])
@@ -1220,9 +1243,10 @@ def team_lead_create():
     phone          = (request.form.get("phone")         or "").strip() or None
     email          = (request.form.get("email")          or "").strip() or None
     notes          = (request.form.get("notes")          or "").strip() or None
-    product        = (request.form.get("product")        or "portal").strip().lower()
-    if product not in PRODUCT_ORDER:
-        product = "portal"
+    # A sales manager only ever recruits/manages one product's team — the
+    # lead they add is always tagged with their own managed_product, never
+    # a self-selected one.
+    product        = amb.get("managed_product") or "portal"
 
     if not recruit_id_raw.isdigit() or not business_name:
         flash("Ambassador and business name are required.", "danger")
@@ -1393,8 +1417,12 @@ def earnings():
     if r: return r
     amb = _get_ambassador(_amb_id())
 
+    enrolled_products = [p for p in PRODUCT_ORDER if p in _get_ambassador_products_map(amb["id"])]
+    if not enrolled_products:
+        return redirect(url_for("ambassador.dashboard"))
+
     selected = (request.args.get("product") or "all").strip().lower()
-    if selected not in ("all", *PRODUCT_ORDER):
+    if selected not in ("all", *enrolled_products):
         selected = "all"
 
     conn = get_db_connection()
@@ -1425,7 +1453,7 @@ def earnings():
     cur.close(); conn.close()
 
     return render_template("ambassador/earnings.html", amb=amb, entries=entries, total=total,
-        selected_product=selected, product_order=PRODUCT_ORDER, product_config=PRODUCT_CONFIG)
+        selected_product=selected, product_order=enrolled_products, product_config=PRODUCT_CONFIG)
 
 
 # ── QR Code ────────────────────────────────────────────────────────────────
@@ -1915,6 +1943,10 @@ def leads():
     if r: return r
     amb = _get_ambassador(_amb_id())
 
+    enrolled_products = [p for p in PRODUCT_ORDER if p in _get_ambassador_products_map(amb["id"])]
+    if not enrolled_products:
+        return redirect(url_for("ambassador.dashboard"))
+
     if request.method == "POST":
         business_name = (request.form.get("business_name") or "").strip()
         industry      = (request.form.get("industry")      or "").strip() or None
@@ -1922,9 +1954,9 @@ def leads():
         phone         = (request.form.get("phone")         or "").strip() or None
         email         = (request.form.get("email")         or "").strip() or None
         notes         = (request.form.get("notes")         or "").strip() or None
-        product       = (request.form.get("product")       or "portal").strip().lower()
-        if product not in PRODUCT_ORDER:
-            product = "portal"
+        product       = (request.form.get("product")       or enrolled_products[0]).strip().lower()
+        if product not in enrolled_products:
+            product = enrolled_products[0]
 
         if not business_name:
             flash("Business name is required.", "danger")
@@ -1945,9 +1977,9 @@ def leads():
         flash("Lead added to your pipeline.", "success")
         return redirect(url_for("ambassador.leads", product=product))
 
-    selected = (request.args.get("product") or "portal").strip().lower()
-    if selected not in PRODUCT_ORDER:
-        selected = "portal"
+    selected = (request.args.get("product") or enrolled_products[0]).strip().lower()
+    if selected not in enrolled_products:
+        selected = enrolled_products[0]
 
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -1986,7 +2018,7 @@ def leads():
         amb=amb, pipeline_leads=pipeline_leads, dropped_leads=dropped_leads,
         linkable_tenants=linkable_tenants, self_closed=self_closed, stage_counts=stage_counts,
         stage_order=STAGE_ORDER, stage_labels=STAGE_LABELS, stage_descriptions=STAGE_DESCRIPTIONS,
-        next_stage=next_stage, selected_product=selected, product_order=PRODUCT_ORDER,
+        next_stage=next_stage, selected_product=selected, product_order=enrolled_products,
         product_config=PRODUCT_CONFIG)
 
 

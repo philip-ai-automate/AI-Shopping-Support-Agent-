@@ -53,7 +53,6 @@
      class="btn btn-sm{% if selected_product==p %} btn-primary{% endif %}">
     {{ products_ui[p].icon }} {{ products_ui[p].label }}
     {% if products_ui[p].status == 'pending' %}<span class="pill pill-warn" style="margin-left:6px">Pending</span>{% endif %}
-    {% if products_ui[p].status == 'not_enrolled' %}<span class="pill pill-grey" style="margin-left:6px">Not enrolled</span>{% endif %}
   </a>
   {% endfor %}
 </div>
@@ -198,11 +197,6 @@
       <span class="pill pill-warn">Application pending review</span>
     {% elif pu.status in ('suspended','rejected','terminated') %}
       <span class="pill pill-grey">{{ pu.status|title }}</span>
-    {% else %}
-      <form method="POST" action="{{ url_for('ambassador.apply_product') }}" style="margin:0">
-        <input type="hidden" name="product" value="{{ p }}"/>
-        <button type="submit" class="btn btn-sm btn-primary">Apply to sell {{ pu.label }} →</button>
-      </form>
     {% endif %}
   </div>
   {% endfor %}

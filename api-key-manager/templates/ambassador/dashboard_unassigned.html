@@ -1,0 +1,24 @@
+{% extends "ambassador/base.html" %}
+{% block title %}Dashboard — Ambassador Hub{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:2px">
+      👋 Welcome back,
+    </div>
+    <h1 class="section-title">{{ amb.first_name }} {{ amb.last_name }}</h1>
+  </div>
+</div>
+
+<div class="card" style="max-width:520px;margin:40px auto;text-align:center;padding:36px 28px">
+  <div style="font-size:40px;margin-bottom:10px">⏳</div>
+  <div style="font-size:16px;font-weight:800;margin-bottom:8px">Your account is being set up</div>
+  <div style="font-size:13.5px;color:var(--muted);line-height:1.6">
+    Your details have been received. Our team will assign you to a sales manager and product line
+    shortly — your dashboard will unlock automatically once that's done.
+  </div>
+</div>
+
+{% endblock %}
