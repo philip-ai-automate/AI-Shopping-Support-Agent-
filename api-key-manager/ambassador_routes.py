@@ -34,8 +34,13 @@ def _allowed_doc(filename: str) -> bool:
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_DOC_EXTS
 
 from db import get_db_connection, insert_audit_log
-from lead_pipeline import (STAGE_ORDER, STAGE_LABELS, STAGE_DESCRIPTIONS,
-                            next_stage, record_stage_change, get_stage_history)
+from lead_pipeline import (STAGE_ORDER, STAGE_LABELS, STAGE_DESCRIPTIONS, SCHEDULE_FIELD,
+                            next_stage, record_stage_change, get_stage_history,
+                            build_stage_advance_updates, build_schedule_update,
+                            compute_due_items, lead_edit_payload,
+                            build_requirements_progress_update,
+                            build_onboarding_checklist_update,
+                            format_relative_activity, is_activity_stale)
 from portal_utils import send_email
 
 ambassador_bp = Blueprint("ambassador", __name__)
@@ -1209,11 +1214,25 @@ def team_pipeline():
         ORDER BY al.dropped_at DESC
     """, (amb["id"], product))
     dropped_leads = [dict(l) for l in cur.fetchall()]
+
+    _attach_account_health(cur, leads, product)
+    _attach_ticket_counts(cur, leads)
     cur.close(); conn.close()
 
     stage_counts = {s: 0 for s in STAGE_ORDER}
     for l in leads:
         stage_counts[l["stage"]] = stage_counts.get(l["stage"], 0) + 1
+    due_items = compute_due_items(leads)
+
+    stage_filter = (request.args.get("stage") or "").strip()
+    if stage_filter not in STAGE_ORDER:
+        stage_filter = ""
+    search_q = (request.args.get("q") or "").strip()
+
+    displayed_leads = [l for l in leads if not stage_filter or l["stage"] == stage_filter]
+    if search_q:
+        displayed_leads = [l for l in displayed_leads
+                            if search_q.lower() in (l["business_name"] or "").lower()]
 
     conn2 = get_db_connection()
     cur2  = conn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -1224,10 +1243,13 @@ def team_pipeline():
     recruits = cur2.fetchall() or []
     cur2.close(); conn2.close()
 
-    return render_template("ambassador/team_pipeline.html", amb=amb, leads=leads,
+    return render_template("ambassador/team_pipeline.html", amb=amb, leads=displayed_leads,
         dropped_leads=dropped_leads, stage_counts=stage_counts, stage_order=STAGE_ORDER,
         stage_labels=STAGE_LABELS, stage_descriptions=STAGE_DESCRIPTIONS, next_stage=next_stage,
-        recruits=recruits, product_order=[product], product_config=PRODUCT_CONFIG)
+        recruits=recruits, product_order=[product], product_config=PRODUCT_CONFIG,
+        due_items=due_items, schedule_field=SCHEDULE_FIELD, today=date.today(), stage_filter=stage_filter,
+        lead_edit_payload=lead_edit_payload, search_q=search_q,
+        is_activity_stale=is_activity_stale, format_relative_activity=format_relative_activity)
 
 
 @ambassador_bp.route("/ambassador/team/pipeline/create", methods=["POST"])
@@ -1294,52 +1316,18 @@ def team_lead_advance(lead_id: int):
         return redirect(url_for("ambassador.team_pipeline"))
 
     f = request.form
-    updates = {"stage": target}
+    updates: dict = {}
     conn = get_db_connection()
     cur  = conn.cursor()
 
-    if target == "contacted":
-        contact_channel  = (f.get("contact_channel") or "").strip()
-        contact_date     = (f.get("contact_date") or "").strip()
-        contact_response = (f.get("contact_response") or "").strip()
-        if not contact_channel or not contact_date:
+    if target in ("contacted", "demo_done", "requirements_confirmed", "onboarding", "active_client"):
+        updates, error = build_stage_advance_updates(target, f)
+        if error:
             cur.close(); conn.close()
-            flash("Contact channel and date are required.", "danger")
+            flash(error, "danger")
             return redirect(url_for("ambassador.team_pipeline"))
-        updates.update(contact_channel=contact_channel, contact_date=contact_date,
-                       contact_response=contact_response or None)
 
-    elif target == "demo_done":
-        demo_date     = (f.get("demo_date") or "").strip()
-        demo_reaction = (f.get("demo_reaction") or "").strip()
-        if not demo_date:
-            cur.close(); conn.close()
-            flash("Demo date is required.", "danger")
-            return redirect(url_for("ambassador.team_pipeline"))
-        updates.update(demo_date=demo_date, demo_reaction=demo_reaction or None)
-
-    elif target == "requirements_confirmed":
-        req_phone    = f.get("req_phone") == "1"
-        req_meta     = f.get("req_meta_account") == "1"
-        req_whatsapp = f.get("req_whatsapp_connected") == "1"
-        req_products = f.get("req_product_list") == "1"
-        if not (req_phone and req_meta and req_whatsapp and req_products):
-            cur.close(); conn.close()
-            flash("All 4 requirements must be confirmed before advancing.", "danger")
-            return redirect(url_for("ambassador.team_pipeline"))
-        updates.update(req_phone=True, req_meta_account=True,
-                       req_whatsapp_connected=True, req_product_list=True)
-
-    elif target == "onboarding":
-        onboarding_date  = (f.get("onboarding_date") or "").strip()
-        onboarding_notes = (f.get("onboarding_notes") or "").strip()
-        if not onboarding_date:
-            cur.close(); conn.close()
-            flash("Onboarding date is required.", "danger")
-            return redirect(url_for("ambassador.team_pipeline"))
-        updates.update(onboarding_date=onboarding_date, onboarding_notes=onboarding_notes or None)
-
-    elif target == "active_client":
+    if target == "active_client":
         lead_product  = lead.get("product") or "portal"
         link_col      = _LEAD_LINK_COL[lead_product]
         ref_table     = _LEAD_REF_TABLE[lead_product]
@@ -1359,6 +1347,7 @@ def team_lead_advance(lead_id: int):
                 return redirect(url_for("ambassador.team_pipeline"))
         updates[link_col] = tenant_id
 
+    updates["stage"] = target
     set_clause = ", ".join(f"{k}=%s" for k in updates)
     cur.execute(f"UPDATE ambassador_leads SET {set_clause} WHERE id=%s",
                list(updates.values()) + [lead_id])
@@ -1367,6 +1356,158 @@ def team_lead_advance(lead_id: int):
 
     record_stage_change(lead_id, lead["stage"], target, f"{amb['first_name']} {amb['last_name']} (Sales Manager)")
     flash(f"{lead['business_name']} moved to {STAGE_LABELS[target]}.", "success")
+    return redirect(url_for("ambassador.team_pipeline"))
+
+
+@ambassador_bp.route("/ambassador/team/pipeline/<int:lead_id>/onboarding-checklist", methods=["POST"])
+def team_lead_onboarding_checklist(lead_id: int):
+    r = _require_sales_manager()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+    lead = _team_lead_owned_by_me(lead_id)
+    if not lead:
+        flash("Lead not found in your team.", "danger")
+        return redirect(url_for("ambassador.team_pipeline"))
+
+    updates = build_onboarding_checklist_update(request.form)
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    set_clause = ", ".join(f"{k}=%s" for k in updates)
+    cur.execute(f"UPDATE ambassador_leads SET {set_clause} WHERE id=%s",
+               list(updates.values()) + [lead_id])
+    conn.commit()
+    cur.close(); conn.close()
+
+    done = sum([updates["onboard_products_uploaded"], updates["onboard_whatsapp_connected"],
+                updates["onboard_login_sent"], updates["onboard_client_trained"]])
+    flash(f"{lead['business_name']}: onboarding checklist saved ({done}/4).", "success")
+    return redirect(url_for("ambassador.team_pipeline"))
+
+
+@ambassador_bp.route("/ambassador/team/pipeline/<int:lead_id>/schedule", methods=["POST"])
+def team_lead_schedule(lead_id: int):
+    r = _require_sales_manager()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+    lead = _team_lead_owned_by_me(lead_id)
+    if not lead:
+        flash("Lead not found in your team.", "danger")
+        return redirect(url_for("ambassador.team_pipeline"))
+
+    target = next_stage(lead["stage"])
+    updates, error = build_schedule_update(target, request.form.get("scheduled_date"))
+    if error:
+        flash(error, "danger")
+        return redirect(url_for("ambassador.team_pipeline"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    set_clause = ", ".join(f"{k}=%s" for k in updates)
+    cur.execute(f"UPDATE ambassador_leads SET {set_clause} WHERE id=%s",
+               list(updates.values()) + [lead_id])
+    conn.commit()
+    cur.close(); conn.close()
+
+    flash(f"{lead['business_name']}: {STAGE_LABELS[target]} scheduled for "
+          f"{request.form.get('scheduled_date')}.", "success")
+    return redirect(url_for("ambassador.team_pipeline"))
+
+
+@ambassador_bp.route("/ambassador/team/pipeline/<int:lead_id>/requirements", methods=["POST"])
+def team_lead_requirements_progress(lead_id: int):
+    r = _require_sales_manager()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+    lead = _team_lead_owned_by_me(lead_id)
+    if not lead:
+        flash("Lead not found in your team.", "danger")
+        return redirect(url_for("ambassador.team_pipeline"))
+
+    updates = build_requirements_progress_update(request.form)
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    set_clause = ", ".join(f"{k}=%s" for k in updates)
+    cur.execute(f"UPDATE ambassador_leads SET {set_clause} WHERE id=%s",
+               list(updates.values()) + [lead_id])
+    conn.commit()
+    cur.close(); conn.close()
+
+    done = sum([updates["req_phone"], updates["req_meta_account"],
+                updates["req_whatsapp_connected"], updates["req_product_list"]])
+    flash(f"{lead['business_name']}: requirements progress saved ({done}/4).", "success")
+    return redirect(url_for("ambassador.team_pipeline"))
+
+
+@ambassador_bp.route("/ambassador/team/pipeline/<int:lead_id>/edit", methods=["POST"])
+def team_lead_edit(lead_id: int):
+    r = _require_sales_manager()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+    lead = _team_lead_owned_by_me(lead_id)
+    if not lead:
+        flash("Lead not found in your team.", "danger")
+        return redirect(url_for("ambassador.team_pipeline"))
+
+    lead_product  = lead.get("product") or "portal"
+    current_stage = lead["stage"]
+    f = request.form
+    updates: dict = {}
+    conn = get_db_connection()
+    cur  = conn.cursor()
+
+    if current_stage in ("contacted", "demo_done", "requirements_confirmed", "onboarding", "active_client"):
+        updates, error = build_stage_advance_updates(current_stage, f)
+        if error:
+            cur.close(); conn.close()
+            flash(error, "danger")
+            return redirect(url_for("ambassador.team_pipeline"))
+    else:
+        updates["stage"] = current_stage
+
+    if current_stage == "active_client":
+        link_col      = _LEAD_LINK_COL[lead_product]
+        ref_table     = _LEAD_REF_TABLE[lead_product]
+        tenant_id_raw = (f.get("tenant_id") or "").strip()
+        tenant_id = int(tenant_id_raw) if tenant_id_raw.isdigit() else None
+        if tenant_id:
+            cur2 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur2.execute("SELECT ref_code FROM ambassadors WHERE id=%s", (lead["ambassador_id"],))
+            lead_amb = cur2.fetchone()
+            cur2.execute(f"SELECT id FROM {ref_table} WHERE id=%s AND ref_code=%s",
+                        (tenant_id, lead_amb["ref_code"] if lead_amb else None))
+            match = cur2.fetchone()
+            cur2.close()
+            if not match:
+                cur.close(); conn.close()
+                flash("Selected client doesn't match that ambassador's referral code.", "danger")
+                return redirect(url_for("ambassador.team_pipeline"))
+        updates[link_col] = tenant_id
+
+    business_name = (f.get("business_name") or "").strip()
+    if not business_name:
+        cur.close(); conn.close()
+        flash("Business name is required.", "danger")
+        return redirect(url_for("ambassador.team_pipeline"))
+    updates.update(
+        business_name = business_name,
+        industry      = (f.get("industry")     or "").strip() or None,
+        contact_name  = (f.get("contact_name") or "").strip() or None,
+        phone         = (f.get("phone")        or "").strip() or None,
+        email         = (f.get("email")        or "").strip() or None,
+        notes         = (f.get("notes")        or "").strip() or None,
+    )
+
+    set_clause = ", ".join(f"{k}=%s" for k in updates)
+    cur.execute(f"UPDATE ambassador_leads SET {set_clause} WHERE id=%s",
+               list(updates.values()) + [lead_id])
+    conn.commit()
+    cur.close(); conn.close()
+
+    record_stage_change(lead_id, current_stage, "edited",
+                        f"{amb['first_name']} {amb['last_name']} (Sales Manager)", "Lead details corrected")
+    flash(f"{business_name} updated.", "success")
     return redirect(url_for("ambassador.team_pipeline"))
 
 
@@ -1407,6 +1548,90 @@ def team_lead_history(lead_id: int):
          "notes": h["notes"], "created_at": h["created_at"].isoformat() if h["created_at"] else ""}
         for h in history
     ])
+
+
+@ambassador_bp.route("/ambassador/team/pipeline/<int:lead_id>/tickets", methods=["GET", "POST"])
+def team_lead_tickets(lead_id: int):
+    from flask import jsonify
+    r = _require_sales_manager()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+    lead = _team_lead_owned_by_me(lead_id)
+    if not lead:
+        if request.method == "GET":
+            return jsonify({"error": "Not found"}), 404
+        flash("Lead not found in your team.", "danger")
+        return redirect(url_for("ambassador.team_pipeline"))
+
+    if request.method == "GET":
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT id, subject, notes, created_by, created_at, resolved_at
+            FROM lead_support_tickets WHERE lead_id=%s ORDER BY created_at DESC
+        """, (lead_id,))
+        tickets = cur.fetchall()
+        cur.close(); conn.close()
+        return jsonify([{
+            "id": t["id"], "subject": t["subject"], "notes": t["notes"],
+            "created_by": t["created_by"],
+            "created_at": t["created_at"].isoformat() if t["created_at"] else "",
+            "resolved_at": t["resolved_at"].isoformat() if t["resolved_at"] else None,
+        } for t in tickets])
+
+    subject = (request.form.get("subject") or "").strip()
+    notes   = (request.form.get("notes") or "").strip() or None
+    if not subject:
+        flash("Ticket subject is required.", "danger")
+        return redirect(url_for("ambassador.team_pipeline"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("""
+        INSERT INTO lead_support_tickets (lead_id, subject, notes, created_by)
+        VALUES (%s, %s, %s, %s)
+    """, (lead_id, subject, notes, f"{amb['first_name']} {amb['last_name']} (Sales Manager)"))
+    conn.commit()
+    cur.close(); conn.close()
+    flash("Ticket logged.", "success")
+    return redirect(url_for("ambassador.team_pipeline"))
+
+
+@ambassador_bp.route("/ambassador/team/pipeline/<int:lead_id>/tickets/<int:ticket_id>/resolve", methods=["POST"])
+def team_lead_ticket_resolve(lead_id: int, ticket_id: int):
+    r = _require_sales_manager()
+    if r: return r
+    lead = _team_lead_owned_by_me(lead_id)
+    if not lead:
+        flash("Lead not found in your team.", "danger")
+        return redirect(url_for("ambassador.team_pipeline"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("UPDATE lead_support_tickets SET resolved_at=NOW() WHERE id=%s AND lead_id=%s",
+                (ticket_id, lead_id))
+    conn.commit()
+    cur.close(); conn.close()
+    flash("Ticket resolved.", "success")
+    return redirect(url_for("ambassador.team_pipeline"))
+
+
+@ambassador_bp.route("/ambassador/team/pipeline/<int:lead_id>/review", methods=["POST"])
+def team_lead_mark_reviewed(lead_id: int):
+    r = _require_sales_manager()
+    if r: return r
+    lead = _team_lead_owned_by_me(lead_id)
+    if not lead:
+        flash("Lead not found in your team.", "danger")
+        return redirect(url_for("ambassador.team_pipeline"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("UPDATE ambassador_leads SET last_reviewed_at=NOW() WHERE id=%s", (lead_id,))
+    conn.commit()
+    cur.close(); conn.close()
+    flash("Marked as reviewed.", "success")
+    return redirect(url_for("ambassador.team_pipeline"))
 
 
 # ── Earnings ───────────────────────────────────────────────────────────────
@@ -1552,89 +1777,6 @@ def demo_qr_image():
     as_dl = request.args.get("download") == "1"
     return send_file(buf, mimetype="image/png", as_attachment=as_dl,
                      download_name="phixtra-demo-whatsapp-qr.png")
-
-
-# ── AI WhatsApp Playground — remote demo, ambassador screen-shares this ─────
-# Same demo store as Demo QR Code (profitbuyz.com / DEMO_WA_NUMBER), but for
-# prospects who aren't physically present: the ambassador drives it live
-# over a screen share (Teams/Zoom) instead of handing over a phone to scan.
-
-def _get_playground_api_key():
-    """Look up the demo store's live API key from its connected WhatsApp number.
-    Never hardcode the key itself — always resolved fresh so key rotation
-    doesn't require a redeploy."""
-    conn = get_db_connection()
-    if not conn:
-        return None, None
-    try:
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("""
-            SELECT t.id AS tenant_id, t.name AS business_name, k.api_key_plain
-            FROM wa_tenants w
-            JOIN tenants t   ON t.id = w.tenant_id
-            JOIN api_keys k  ON k.tenant_id = t.id AND k.is_active = TRUE
-            WHERE w.display_phone_number = %s AND w.active = TRUE
-            LIMIT 1
-        """, (DEMO_WA_NUMBER,))
-        row = cur.fetchone()
-        cur.close()
-        if row:
-            return row["api_key_plain"], row["business_name"]
-        return None, None
-    except Exception as e:
-        print(f"⚠️ _get_playground_api_key error: {e}")
-        return None, None
-    finally:
-        conn.close()
-
-
-@ambassador_bp.route("/ambassador/playground")
-def playground_page():
-    r = _require_amb()
-    if r: return r
-    amb = _get_ambassador(_amb_id())
-    api_key, business_name = _get_playground_api_key()
-    session_id = f"playground-{uuid.uuid4().hex}"
-    return render_template(
-        "ambassador/playground.html",
-        amb=amb,
-        demo_wa_number=DEMO_WA_NUMBER,
-        business_name=business_name or "ProfitBuyz",
-        api_key_missing=not bool(api_key),
-        session_id=session_id,
-        now=datetime.now(),
-    )
-
-
-@ambassador_bp.route("/ambassador/playground/chat", methods=["POST"])
-def playground_chat():
-    r = _require_amb()
-    if r: return {"error": "Not logged in"}, 401
-
-    from flask import jsonify
-    data       = request.get_json(silent=True) or {}
-    message    = (data.get("message") or "").strip()
-    session_id = (data.get("session_id") or "").strip()
-    if not message or not session_id:
-        return jsonify({"error": "Missing message or session_id"}), 400
-
-    api_key, _ = _get_playground_api_key()
-    if not api_key:
-        return jsonify({"error": "Demo store API key not found — please contact support"}), 500
-
-    ai_backend_url = os.getenv("AI_BACKEND_URL", "http://127.0.0.1:8000")
-    try:
-        import requests as _requests
-        resp = _requests.post(
-            f"{ai_backend_url}/chat",
-            json={"api_key": api_key, "message": message, "session_id": session_id},
-            timeout=30,
-        )
-        result = resp.json()
-    except Exception as e:
-        return jsonify({"error": f"AI backend unavailable: {e}"}), 500
-
-    return jsonify(result)
 
 
 @ambassador_bp.route("/ambassador/demo-access")
@@ -1937,6 +2079,76 @@ _SELF_CLOSED_SQL = {
 _LEAD_LINK_COL   = {"portal": "tenant_id", "school": "school_id", "estate": "estate_tenant_id"}
 _LEAD_REF_TABLE  = {"portal": "tenants",   "school": "school_profiles", "estate": "re_tenants"}
 
+# Live account health for leads already linked to a real tenant/school/estate
+# account (active_client/support stage) — plan, status, and last product
+# usage, pulled straight from the account itself rather than the pipeline's
+# own (static, one-time) fields. Subscription tables (plan_subscriptions etc)
+# are still empty in production as of 2026-07-07, so status/plan come from
+# the account row directly, not those tables.
+_ACCOUNT_HEALTH_SQL = {
+    "portal": """
+        SELECT t.id, t.status, p.name AS plan_name,
+               GREATEST(
+                 (SELECT MAX(created_at) FROM chat_messages WHERE tenant_id=t.id),
+                 (SELECT MAX(created_at) FROM wa_message_log WHERE tenant_id=t.id)
+               ) AS last_activity
+        FROM tenants t LEFT JOIN plans p ON p.id=t.plan_id
+        WHERE t.id = ANY(%s)
+    """,
+    "school": """
+        SELECT sp.id, CASE WHEN sp.is_active THEN 'active' ELSE 'inactive' END AS status,
+               spl.name AS plan_name,
+               (SELECT MAX(created_at) FROM school_chat_history WHERE school_id=sp.id) AS last_activity
+        FROM school_profiles sp LEFT JOIN school_plans spl ON spl.id=sp.plan_id
+        WHERE sp.id = ANY(%s)
+    """,
+    "estate": """
+        SELECT rt.id, rt.status, rp.name AS plan_name,
+               GREATEST(
+                 (SELECT MAX(created_at) FROM re_chat_messages WHERE tenant_id=rt.id),
+                 (SELECT MAX(created_at) FROM re_wa_message_log WHERE tenant_id=rt.id)
+               ) AS last_activity
+        FROM re_tenants rt LEFT JOIN re_plans rp ON rp.id=rt.plan_id
+        WHERE rt.id = ANY(%s)
+    """,
+}
+
+
+def _attach_account_health(cur, leads_list: list[dict], product: str) -> None:
+    """Mutates each lead dict in `leads_list`, adding an `account_health` key
+    (dict or None) for any lead linked to a real tenant/school/estate account."""
+    link_col = _LEAD_LINK_COL[product]
+    linked_ids = list({l[link_col] for l in leads_list if l.get(link_col)})
+    health_map = {}
+    if linked_ids:
+        cur.execute(_ACCOUNT_HEALTH_SQL[product], (linked_ids,))
+        for row in cur.fetchall():
+            health_map[row["id"]] = {
+                "status":        row["status"],
+                "plan_name":     row["plan_name"],
+                "last_activity": format_relative_activity(row["last_activity"]),
+                "stale":         is_activity_stale(row["last_activity"]),
+            }
+    for l in leads_list:
+        l["account_health"] = health_map.get(l.get(link_col))
+
+
+def _attach_ticket_counts(cur, leads_list: list[dict]) -> None:
+    """Mutates each Support-stage lead dict, adding `open_tickets` (int) —
+    the count of unresolved lead_support_tickets rows. Batched, one query."""
+    ids = [l["id"] for l in leads_list if l.get("stage") == "support"]
+    counts = {}
+    if ids:
+        cur.execute("""
+            SELECT lead_id, COUNT(*) AS n FROM lead_support_tickets
+            WHERE lead_id = ANY(%s) AND resolved_at IS NULL
+            GROUP BY lead_id
+        """, (ids,))
+        for row in cur.fetchall():
+            counts[row["lead_id"]] = row["n"]
+    for l in leads_list:
+        l["open_tickets"] = counts.get(l["id"], 0)
+
 @ambassador_bp.route("/ambassador/leads", methods=["GET", "POST"])
 def leads():
     r = _require_amb()
@@ -2008,18 +2220,34 @@ def leads():
     cur.execute(_SELF_CLOSED_SQL[selected], {"amb_id": amb["id"], "ref_code": amb["ref_code"]})
     self_closed = [dict(r) for r in cur.fetchall()]
 
+    _attach_account_health(cur, pipeline_leads, selected)
+    _attach_ticket_counts(cur, pipeline_leads)
     cur.close(); conn.close()
 
     stage_counts = {s: 0 for s in STAGE_ORDER}
     for l in pipeline_leads:
         stage_counts[l["stage"]] = stage_counts.get(l["stage"], 0) + 1
+    due_items = compute_due_items(pipeline_leads)
+
+    stage_filter = (request.args.get("stage") or "").strip()
+    if stage_filter not in STAGE_ORDER:
+        stage_filter = ""
+    search_q = (request.args.get("q") or "").strip()
+
+    displayed_leads = [l for l in pipeline_leads if not stage_filter or l["stage"] == stage_filter]
+    if search_q:
+        displayed_leads = [l for l in displayed_leads
+                            if search_q.lower() in (l["business_name"] or "").lower()]
 
     return render_template("ambassador/leads.html",
-        amb=amb, pipeline_leads=pipeline_leads, dropped_leads=dropped_leads,
+        amb=amb, pipeline_leads=displayed_leads, dropped_leads=dropped_leads,
         linkable_tenants=linkable_tenants, self_closed=self_closed, stage_counts=stage_counts,
         stage_order=STAGE_ORDER, stage_labels=STAGE_LABELS, stage_descriptions=STAGE_DESCRIPTIONS,
         next_stage=next_stage, selected_product=selected, product_order=enrolled_products,
-        product_config=PRODUCT_CONFIG)
+        product_config=PRODUCT_CONFIG, due_items=due_items,
+        schedule_field=SCHEDULE_FIELD, today=date.today(),
+        lead_edit_payload=lead_edit_payload, stage_filter=stage_filter, search_q=search_q,
+        is_activity_stale=is_activity_stale, format_relative_activity=format_relative_activity)
 
 
 @ambassador_bp.route("/ambassador/leads/<int:lead_id>/advance", methods=["POST"])
@@ -2046,50 +2274,16 @@ def lead_advance(lead_id: int):
         return redirect(url_for("ambassador.leads", product=lead_product))
 
     f = request.form
-    updates = {"stage": target}
+    updates: dict = {}
 
-    if target == "contacted":
-        contact_channel  = (f.get("contact_channel") or "").strip()
-        contact_date     = (f.get("contact_date") or "").strip()
-        contact_response = (f.get("contact_response") or "").strip()
-        if not contact_channel or not contact_date:
+    if target in ("contacted", "demo_done", "requirements_confirmed", "onboarding", "active_client"):
+        updates, error = build_stage_advance_updates(target, f)
+        if error:
             cur.close(); conn.close()
-            flash("Contact channel and date are required.", "danger")
+            flash(error, "danger")
             return redirect(url_for("ambassador.leads", product=lead_product))
-        updates.update(contact_channel=contact_channel, contact_date=contact_date,
-                       contact_response=contact_response or None)
 
-    elif target == "demo_done":
-        demo_date     = (f.get("demo_date") or "").strip()
-        demo_reaction = (f.get("demo_reaction") or "").strip()
-        if not demo_date:
-            cur.close(); conn.close()
-            flash("Demo date is required.", "danger")
-            return redirect(url_for("ambassador.leads", product=lead_product))
-        updates.update(demo_date=demo_date, demo_reaction=demo_reaction or None)
-
-    elif target == "requirements_confirmed":
-        req_phone    = f.get("req_phone") == "1"
-        req_meta     = f.get("req_meta_account") == "1"
-        req_whatsapp = f.get("req_whatsapp_connected") == "1"
-        req_products = f.get("req_product_list") == "1"
-        if not (req_phone and req_meta and req_whatsapp and req_products):
-            cur.close(); conn.close()
-            flash("All 4 requirements must be confirmed before advancing.", "danger")
-            return redirect(url_for("ambassador.leads", product=lead_product))
-        updates.update(req_phone=True, req_meta_account=True,
-                       req_whatsapp_connected=True, req_product_list=True)
-
-    elif target == "onboarding":
-        onboarding_date  = (f.get("onboarding_date") or "").strip()
-        onboarding_notes = (f.get("onboarding_notes") or "").strip()
-        if not onboarding_date:
-            cur.close(); conn.close()
-            flash("Onboarding date is required.", "danger")
-            return redirect(url_for("ambassador.leads", product=lead_product))
-        updates.update(onboarding_date=onboarding_date, onboarding_notes=onboarding_notes or None)
-
-    elif target == "active_client":
+    if target == "active_client":
         link_col      = _LEAD_LINK_COL[lead_product]
         ref_table     = _LEAD_REF_TABLE[lead_product]
         tenant_id_raw = (f.get("tenant_id") or "").strip()
@@ -2102,6 +2296,7 @@ def lead_advance(lead_id: int):
                 return redirect(url_for("ambassador.leads", product=lead_product))
         updates[link_col] = tenant_id
 
+    updates["stage"] = target
     set_clause = ", ".join(f"{k}=%s" for k in updates)
     cur2 = conn.cursor()
     cur2.execute(f"UPDATE ambassador_leads SET {set_clause} WHERE id=%s",
@@ -2111,6 +2306,172 @@ def lead_advance(lead_id: int):
 
     record_stage_change(lead_id, lead["stage"], target, f"{amb['first_name']} {amb['last_name']}")
     flash(f"{lead['business_name']} moved to {STAGE_LABELS[target]}.", "success")
+    return redirect(url_for("ambassador.leads", product=lead_product))
+
+
+@ambassador_bp.route("/ambassador/leads/<int:lead_id>/onboarding-checklist", methods=["POST"])
+def lead_onboarding_checklist(lead_id: int):
+    r = _require_amb()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM ambassador_leads WHERE id=%s AND ambassador_id=%s", (lead_id, amb["id"]))
+    lead = cur.fetchone()
+    if not lead:
+        cur.close(); conn.close()
+        flash("Lead not found.", "danger")
+        return redirect(url_for("ambassador.leads"))
+
+    lead_product = lead.get("product") or "portal"
+    updates = build_onboarding_checklist_update(request.form)
+
+    set_clause = ", ".join(f"{k}=%s" for k in updates)
+    cur2 = conn.cursor()
+    cur2.execute(f"UPDATE ambassador_leads SET {set_clause} WHERE id=%s",
+                list(updates.values()) + [lead_id])
+    conn.commit()
+    cur2.close(); cur.close(); conn.close()
+
+    done = sum([updates["onboard_products_uploaded"], updates["onboard_whatsapp_connected"],
+                updates["onboard_login_sent"], updates["onboard_client_trained"]])
+    flash(f"{lead['business_name']}: onboarding checklist saved ({done}/4).", "success")
+    return redirect(url_for("ambassador.leads", product=lead_product))
+
+
+@ambassador_bp.route("/ambassador/leads/<int:lead_id>/schedule", methods=["POST"])
+def lead_schedule(lead_id: int):
+    r = _require_amb()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM ambassador_leads WHERE id=%s AND ambassador_id=%s", (lead_id, amb["id"]))
+    lead = cur.fetchone()
+    if not lead:
+        cur.close(); conn.close()
+        flash("Lead not found.", "danger")
+        return redirect(url_for("ambassador.leads"))
+
+    lead_product = lead.get("product") or "portal"
+    target = next_stage(lead["stage"])
+    updates, error = build_schedule_update(target, request.form.get("scheduled_date"))
+    if error:
+        cur.close(); conn.close()
+        flash(error, "danger")
+        return redirect(url_for("ambassador.leads", product=lead_product))
+
+    set_clause = ", ".join(f"{k}=%s" for k in updates)
+    cur2 = conn.cursor()
+    cur2.execute(f"UPDATE ambassador_leads SET {set_clause} WHERE id=%s",
+                list(updates.values()) + [lead_id])
+    conn.commit()
+    cur2.close(); cur.close(); conn.close()
+
+    flash(f"{lead['business_name']}: {STAGE_LABELS[target]} scheduled for "
+          f"{request.form.get('scheduled_date')}.", "success")
+    return redirect(url_for("ambassador.leads", product=lead_product))
+
+
+@ambassador_bp.route("/ambassador/leads/<int:lead_id>/requirements", methods=["POST"])
+def lead_requirements_progress(lead_id: int):
+    r = _require_amb()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM ambassador_leads WHERE id=%s AND ambassador_id=%s", (lead_id, amb["id"]))
+    lead = cur.fetchone()
+    if not lead:
+        cur.close(); conn.close()
+        flash("Lead not found.", "danger")
+        return redirect(url_for("ambassador.leads"))
+
+    lead_product = lead.get("product") or "portal"
+    updates = build_requirements_progress_update(request.form)
+
+    set_clause = ", ".join(f"{k}=%s" for k in updates)
+    cur2 = conn.cursor()
+    cur2.execute(f"UPDATE ambassador_leads SET {set_clause} WHERE id=%s",
+                list(updates.values()) + [lead_id])
+    conn.commit()
+    cur2.close(); cur.close(); conn.close()
+
+    done = sum([updates["req_phone"], updates["req_meta_account"],
+                updates["req_whatsapp_connected"], updates["req_product_list"]])
+    flash(f"{lead['business_name']}: requirements progress saved ({done}/4).", "success")
+    return redirect(url_for("ambassador.leads", product=lead_product))
+
+
+@ambassador_bp.route("/ambassador/leads/<int:lead_id>/edit", methods=["POST"])
+def lead_edit(lead_id: int):
+    r = _require_amb()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM ambassador_leads WHERE id=%s AND ambassador_id=%s", (lead_id, amb["id"]))
+    lead = cur.fetchone()
+    if not lead:
+        cur.close(); conn.close()
+        flash("Lead not found.", "danger")
+        return redirect(url_for("ambassador.leads"))
+
+    lead_product  = lead.get("product") or "portal"
+    current_stage = lead["stage"]
+    f = request.form
+    updates: dict = {}
+
+    if current_stage in ("contacted", "demo_done", "requirements_confirmed", "onboarding", "active_client"):
+        updates, error = build_stage_advance_updates(current_stage, f)
+        if error:
+            cur.close(); conn.close()
+            flash(error, "danger")
+            return redirect(url_for("ambassador.leads", product=lead_product))
+    else:
+        updates["stage"] = current_stage
+
+    if current_stage == "active_client":
+        link_col      = _LEAD_LINK_COL[lead_product]
+        ref_table     = _LEAD_REF_TABLE[lead_product]
+        tenant_id_raw = (f.get("tenant_id") or "").strip()
+        tenant_id = int(tenant_id_raw) if tenant_id_raw.isdigit() else None
+        if tenant_id:
+            cur.execute(f"SELECT id FROM {ref_table} WHERE id=%s AND ref_code=%s", (tenant_id, amb["ref_code"]))
+            if not cur.fetchone():
+                cur.close(); conn.close()
+                flash("Selected client doesn't match your referral code.", "danger")
+                return redirect(url_for("ambassador.leads", product=lead_product))
+        updates[link_col] = tenant_id
+
+    business_name = (f.get("business_name") or "").strip()
+    if not business_name:
+        cur.close(); conn.close()
+        flash("Business name is required.", "danger")
+        return redirect(url_for("ambassador.leads", product=lead_product))
+    updates.update(
+        business_name = business_name,
+        industry      = (f.get("industry")     or "").strip() or None,
+        contact_name  = (f.get("contact_name") or "").strip() or None,
+        phone         = (f.get("phone")        or "").strip() or None,
+        email         = (f.get("email")        or "").strip() or None,
+        notes         = (f.get("notes")        or "").strip() or None,
+    )
+
+    set_clause = ", ".join(f"{k}=%s" for k in updates)
+    cur2 = conn.cursor()
+    cur2.execute(f"UPDATE ambassador_leads SET {set_clause} WHERE id=%s",
+                list(updates.values()) + [lead_id])
+    conn.commit()
+    cur2.close(); cur.close(); conn.close()
+
+    record_stage_change(lead_id, current_stage, "edited",
+                        f"{amb['first_name']} {amb['last_name']}", "Lead details corrected")
+    flash(f"{business_name} updated.", "success")
     return redirect(url_for("ambassador.leads", product=lead_product))
 
 
@@ -2140,32 +2501,79 @@ def lead_drop(lead_id: int):
     return redirect(url_for("ambassador.leads", product=lead.get("product") or "portal"))
 
 
-@ambassador_bp.route("/ambassador/leads/<int:lead_id>/tickets", methods=["POST"])
-def lead_add_ticket(lead_id: int):
+@ambassador_bp.route("/ambassador/leads/<int:lead_id>/tickets", methods=["GET", "POST"])
+def lead_tickets(lead_id: int):
+    from flask import jsonify
     r = _require_amb()
     if r: return r
     amb = _get_ambassador(_amb_id())
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM ambassador_leads WHERE id=%s AND ambassador_id=%s", (lead_id, amb["id"]))
+    lead = cur.fetchone()
+    if not lead:
+        cur.close(); conn.close()
+        if request.method == "GET":
+            return jsonify({"error": "Not found"}), 404
+        flash("Lead not found.", "danger")
+        return redirect(url_for("ambassador.leads"))
+
+    if request.method == "GET":
+        cur.execute("""
+            SELECT id, subject, notes, created_by, created_at, resolved_at
+            FROM lead_support_tickets WHERE lead_id=%s ORDER BY created_at DESC
+        """, (lead_id,))
+        tickets = cur.fetchall()
+        cur.close(); conn.close()
+        return jsonify([{
+            "id": t["id"], "subject": t["subject"], "notes": t["notes"],
+            "created_by": t["created_by"],
+            "created_at": t["created_at"].isoformat() if t["created_at"] else "",
+            "resolved_at": t["resolved_at"].isoformat() if t["resolved_at"] else None,
+        } for t in tickets])
+
+    lead_product = lead.get("product") or "portal"
     subject = (request.form.get("subject") or "").strip()
     notes   = (request.form.get("notes") or "").strip() or None
     if not subject:
-        flash("Ticket subject is required.", "danger")
-        return redirect(url_for("ambassador.leads"))
-
-    conn = get_db_connection()
-    cur  = conn.cursor()
-    cur.execute("SELECT 1 FROM ambassador_leads WHERE id=%s AND ambassador_id=%s", (lead_id, amb["id"]))
-    if not cur.fetchone():
         cur.close(); conn.close()
-        flash("Lead not found.", "danger")
-        return redirect(url_for("ambassador.leads"))
-    cur.execute("""
+        flash("Ticket subject is required.", "danger")
+        return redirect(url_for("ambassador.leads", product=lead_product))
+
+    cur2 = conn.cursor()
+    cur2.execute("""
         INSERT INTO lead_support_tickets (lead_id, subject, notes, created_by)
         VALUES (%s, %s, %s, %s)
     """, (lead_id, subject, notes, f"{amb['first_name']} {amb['last_name']}"))
     conn.commit()
-    cur.close(); conn.close()
+    cur2.close(); cur.close(); conn.close()
     flash("Ticket logged.", "success")
-    return redirect(url_for("ambassador.leads"))
+    return redirect(url_for("ambassador.leads", product=lead_product))
+
+
+@ambassador_bp.route("/ambassador/leads/<int:lead_id>/tickets/<int:ticket_id>/resolve", methods=["POST"])
+def lead_ticket_resolve(lead_id: int, ticket_id: int):
+    r = _require_amb()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT product FROM ambassador_leads WHERE id=%s AND ambassador_id=%s", (lead_id, amb["id"]))
+    lead = cur.fetchone()
+    if not lead:
+        cur.close(); conn.close()
+        flash("Lead not found.", "danger")
+        return redirect(url_for("ambassador.leads"))
+
+    cur2 = conn.cursor()
+    cur2.execute("UPDATE lead_support_tickets SET resolved_at=NOW() WHERE id=%s AND lead_id=%s",
+                (ticket_id, lead_id))
+    conn.commit()
+    cur2.close(); cur.close(); conn.close()
+    flash("Ticket resolved.", "success")
+    return redirect(url_for("ambassador.leads", product=lead.get("product") or "portal"))
 
 
 @ambassador_bp.route("/ambassador/leads/<int:lead_id>/review", methods=["POST"])
@@ -2174,13 +2582,18 @@ def lead_mark_reviewed(lead_id: int):
     if r: return r
     amb = _get_ambassador(_amb_id())
     conn = get_db_connection()
-    cur  = conn.cursor()
-    cur.execute("UPDATE ambassador_leads SET last_reviewed_at=NOW() WHERE id=%s AND ambassador_id=%s",
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""UPDATE ambassador_leads SET last_reviewed_at=NOW()
+                    WHERE id=%s AND ambassador_id=%s RETURNING product""",
                 (lead_id, amb["id"]))
+    row = cur.fetchone()
     conn.commit()
     cur.close(); conn.close()
+    if not row:
+        flash("Lead not found.", "danger")
+        return redirect(url_for("ambassador.leads"))
     flash("Marked as reviewed.", "success")
-    return redirect(url_for("ambassador.leads"))
+    return redirect(url_for("ambassador.leads", product=row.get("product") or "portal"))
 
 
 @ambassador_bp.route("/ambassador/leads/<int:lead_id>/history")

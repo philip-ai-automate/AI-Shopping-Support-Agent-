@@ -83,6 +83,25 @@ def ensure_portal_tables():
             ("dropped_at",             "TIMESTAMPTZ"),
             ("dropped_reason",         "TEXT"),
             ("last_reviewed_at",       "TIMESTAMPTZ"),
+            # Scheduled-vs-completed split: these hold a *planned* date for the
+            # next activity (e.g. "demo booked for 9 Jul") without touching
+            # `stage` or the completion date columns above. Cleared once the
+            # matching completion date is actually logged.
+            ("contact_scheduled_date",     "DATE"),
+            ("demo_scheduled_date",        "DATE"),
+            ("onboarding_scheduled_date",  "DATE"),
+            # Free-text context for partial requirements-checklist progress,
+            # e.g. "waiting on dedicated phone number" — lets the 4 req_*
+            # checkboxes be saved incrementally before all 4 are true.
+            ("requirements_notes",         "TEXT"),
+            # Onboarding checklist — this is the work done *during* the
+            # onboarding stage, so unlike req_*/requirements_confirmed (which
+            # gates entry into a stage) these gate the EXIT into active_client.
+            ("onboard_products_uploaded",  "BOOLEAN NOT NULL DEFAULT FALSE"),
+            ("onboard_whatsapp_connected", "BOOLEAN NOT NULL DEFAULT FALSE"),
+            ("onboard_login_sent",         "BOOLEAN NOT NULL DEFAULT FALSE"),
+            ("onboard_client_trained",     "BOOLEAN NOT NULL DEFAULT FALSE"),
+            ("onboarding_checklist_notes", "TEXT"),
         ]
         for col_name, col_def in _lead_pipeline_columns:
             if not _column_exists(cur, "ambassador_leads", col_name):
@@ -342,6 +361,8 @@ def ensure_portal_tables():
             cur.execute("ALTER TABLE tenants ADD COLUMN is_founder BOOLEAN NOT NULL DEFAULT FALSE")
         if not _column_exists(cur, "tenants", "founder_year"):
             cur.execute("ALTER TABLE tenants ADD COLUMN founder_year SMALLINT NOT NULL DEFAULT 0")
+        if not _column_exists(cur, "tenants", "trial_granted_at"):
+            cur.execute("ALTER TABLE tenants ADD COLUMN trial_granted_at TIMESTAMPTZ DEFAULT NULL")
 
         # ── wa_campaign_recipients ─────────────────────────────────────────────
         cur.execute("""

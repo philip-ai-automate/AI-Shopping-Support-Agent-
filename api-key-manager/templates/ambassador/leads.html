@@ -5,8 +5,12 @@
 <style>
   .stage-funnel{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
   .stage-chip{flex:1;min-width:110px;background:#fff;border:1.5px solid var(--line);border-radius:12px;
-              padding:10px 12px;text-align:center}
-  .stage-chip .n{font-size:20px;font-weight:900;letter-spacing:-.5px}
+              padding:10px 12px;text-align:center;cursor:pointer;text-decoration:none;display:block;
+              transition:border-color .15s,background .15s}
+  .stage-chip:hover{border-color:#9ca3af}
+  .stage-chip.active{background:var(--ink);border-color:var(--ink)}
+  .stage-chip.active .n, .stage-chip.active .lbl{color:#fff}
+  .stage-chip .n{font-size:20px;font-weight:900;letter-spacing:-.5px;color:#030C18}
   .stage-chip .lbl{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;
                     letter-spacing:.04em;margin-top:2px}
 
@@ -50,6 +54,26 @@
   .lead-row td{vertical-align:top}
   .lead-actions{display:flex;gap:6px;flex-wrap:wrap}
 
+  .sched-badge{display:inline-block;margin-top:5px;font-size:10.5px;font-weight:700;
+               padding:2px 8px;border-radius:20px;background:#eef2ff;color:#3730a3}
+  .sched-badge.overdue{background:#fee2e2;color:#991b1b}
+  .sched-badge.ready{background:#dcfce7;color:#15803d}
+
+  .health-badge{display:inline-block;margin-top:5px;font-size:10.5px;font-weight:700;
+                padding:2px 8px;border-radius:20px}
+  .health-badge.healthy{background:#dcfce7;color:#15803d}
+  .health-badge.warning{background:#fef9c3;color:#92400e}
+  .health-badge.risk{background:#fee2e2;color:#991b1b}
+  .health-badge.unlinked{background:#f1f5f9;color:#64748b}
+
+  .due-panel{background:#fff;border:1.5px solid var(--line);border-radius:16px;padding:16px 18px;margin-bottom:20px}
+  .due-panel .dp-title{font-size:13px;font-weight:800;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+  .due-row{display:flex;align-items:center;justify-content:space-between;gap:10px;
+           padding:8px 0;border-top:1px solid var(--line);font-size:12.5px}
+  .due-row:first-of-type{border-top:none}
+  .due-date{font-weight:700;font-size:11.5px;padding:2px 9px;border-radius:20px;background:#eef2ff;color:#3730a3;white-space:nowrap}
+  .due-date.overdue{background:#fee2e2;color:#991b1b}
+
   @media(max-width:600px){ .frow{grid-template-columns:1fr} }
 </style>
 {% endblock %}
@@ -72,13 +96,44 @@
   {% endfor %}
 </div>
 
-<!-- Stage funnel summary -->
+<form method="GET" style="display:flex;gap:8px;margin-bottom:20px" data-tour="search-box">
+  <input type="hidden" name="product" value="{{ selected_product }}">
+  {% if stage_filter %}<input type="hidden" name="stage" value="{{ stage_filter }}">{% endif %}
+  <input type="search" name="q" value="{{ search_q or '' }}" placeholder="🔍 Search leads by business name…"
+         class="finp" style="max-width:320px">
+  <button type="submit" class="btn btn-sm">Search</button>
+  {% if search_q %}
+  <a class="btn btn-sm" href="{{ url_for('ambassador.leads', product=selected_product, stage=stage_filter or none) }}">Clear</a>
+  {% endif %}
+</form>
+
+{% if due_items %}
+<div class="due-panel" data-tour="due-panel">
+  <div class="dp-title">📅 Due This Week ({{ due_items|length }})</div>
+  {% for d in due_items %}
+  <div class="due-row">
+    <span><strong>{{ d.business_name }}</strong> — {{ stage_labels[d.target_stage] }}</span>
+    <span class="due-date{% if d.overdue %} overdue{% endif %}">
+      {{ 'Overdue — ' if d.overdue }}{{ d.date.strftime('%d %b') }}
+    </span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Stage funnel summary — click a stage to filter the table below -->
 <div class="stage-funnel" data-tour="stage-funnel">
+  <a class="stage-chip{% if not stage_filter %} active{% endif %}"
+     href="{{ url_for('ambassador.leads', product=selected_product) }}">
+    <div class="n">{{ stage_counts.values()|sum }}</div>
+    <div class="lbl">All</div>
+  </a>
   {% for s in stage_order %}
-  <div class="stage-chip">
+  <a class="stage-chip{% if stage_filter==s %} active{% endif %}"
+     href="{{ url_for('ambassador.leads', product=selected_product, stage=s) }}">
     <div class="n">{{ stage_counts.get(s, 0) }}</div>
     <div class="lbl">{{ stage_labels[s] }}</div>
-  </div>
+  </a>
   {% endfor %}
 </div>
 
@@ -155,7 +210,18 @@
       <tbody>
         {% if not pipeline_leads %}
         <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:40px">
+          {% if search_q and stage_filter %}
+          No leads matching "{{ search_q }}" at {{ stage_labels[stage_filter] }}.
+          <a href="{{ url_for('ambassador.leads', product=selected_product) }}">Clear filters</a>
+          {% elif search_q %}
+          No leads matching "{{ search_q }}".
+          <a href="{{ url_for('ambassador.leads', product=selected_product) }}">Clear search</a>
+          {% elif stage_filter %}
+          No leads at {{ stage_labels[stage_filter] }}.
+          <a href="{{ url_for('ambassador.leads', product=selected_product) }}">Clear filter</a>
+          {% else %}
           No leads yet. Add one above to start your pipeline.
+          {% endif %}
         </td></tr>
         {% endif %}
         {% for l in pipeline_leads %}
@@ -165,32 +231,79 @@
           <td class="muted" style="font-size:12px">
             {{ l.contact_name or '' }}{% if l.phone %}<br>{{ l.phone }}{% endif %}
           </td>
-          <td><span class="stage-pill st-{{ l.stage }}">{{ stage_labels[l.stage] }}</span></td>
+          <td>
+            <span class="stage-pill st-{{ l.stage }}">{{ stage_labels[l.stage] }}</span>
+            {% set sched_col = schedule_field.get(next_stage(l.stage)) %}
+            {% set sched_date = l[sched_col] if sched_col else None %}
+            {% if sched_date %}
+            {% set overdue = sched_date < today %}
+            <br><span class="sched-badge{% if overdue %} overdue{% endif %}">
+              📅 {{ stage_labels[next_stage(l.stage)] }} {{ 'overdue ' if overdue else '' }}{{ sched_date.strftime('%d %b') }}
+            </span>
+            {% endif %}
+            {% set req_count = l.req_phone|int + l.req_meta_account|int + l.req_whatsapp_connected|int + l.req_product_list|int %}
+            {% if next_stage(l.stage) == 'requirements_confirmed' and req_count > 0 %}
+            <br><span class="sched-badge{% if req_count==4 %} ready{% endif %}">
+              {% if req_count==4 %}✅ Ready to advance{% else %}📋 {{ req_count }}/4 requirements{% endif %}
+            </span>
+            {% endif %}
+            {% set onboard_count = l.onboard_products_uploaded|int + l.onboard_whatsapp_connected|int + l.onboard_login_sent|int + l.onboard_client_trained|int %}
+            {% if next_stage(l.stage) == 'active_client' and onboard_count > 0 %}
+            <br><span class="sched-badge{% if onboard_count==4 %} ready{% endif %}">
+              {% if onboard_count==4 %}✅ Ready to activate{% else %}🛠️ {{ onboard_count }}/4 onboarding steps{% endif %}
+            </span>
+            {% endif %}
+            {% if l.stage in ('active_client', 'support') %}
+              {% if l.account_health %}
+              {% set h = l.account_health %}
+              {% set hcls = 'risk' if h.status != 'active' else ('warning' if h.stale else 'healthy') %}
+              <br><span class="health-badge {{ hcls }}">
+                {{ '🟢' if hcls=='healthy' else ('🟠' if hcls=='warning' else '🔴') }}
+                {{ h.plan_name or 'No plan' }} · {{ h.status }} · {{ h.last_activity }}
+              </span>
+              {% else %}
+              <br><span class="health-badge unlinked">🔗 Not linked — use Edit to link account</span>
+              {% endif %}
+            {% endif %}
+            {% if l.stage == 'support' %}
+              {% set review_stale = is_activity_stale(l.last_reviewed_at, 30) %}
+              <br><span class="health-badge {{ 'risk' if not l.last_reviewed_at else ('warning' if review_stale else 'healthy') }}">
+                {% if not l.last_reviewed_at %}⚠️ Never reviewed
+                {% elif review_stale %}🕘 Review due — last {{ format_relative_activity(l.last_reviewed_at) }}
+                {% else %}✅ Reviewed {{ format_relative_activity(l.last_reviewed_at) }}{% endif %}
+              </span>
+              {% if l.open_tickets > 0 %}
+              <br><span class="health-badge risk">🎫 {{ l.open_tickets }} open ticket{{ 's' if l.open_tickets != 1 else '' }}</span>
+              {% endif %}
+            {% endif %}
+          </td>
           <td class="muted">{{ l.created_at.strftime('%d %b %Y') if l.created_at else '—' }}</td>
           <td class="lead-actions">
             {% set target = next_stage(l.stage) %}
             {% if target %}
             <button class="btn btn-sm btn-primary"
                     {% if loop.first %}data-tour="advance-btn"{% endif %}
-                    onclick='openAdvanceModal({{ l.id }}, "{{ l.business_name|e }}", "{{ target }}", {{ linkable_tenants|tojson }})'>
+                    onclick='openAdvanceModal({{ l.id }}, "{{ l.business_name|e }}", "{{ target }}", {{ linkable_tenants|tojson }}, {{ (sched_date.isoformat() if sched_date else "")|tojson }}, {{ {"req_phone": l.req_phone, "req_meta_account": l.req_meta_account, "req_whatsapp_connected": l.req_whatsapp_connected, "req_product_list": l.req_product_list, "requirements_notes": l.requirements_notes}|tojson }}, {{ {"onboard_products_uploaded": l.onboard_products_uploaded, "onboard_whatsapp_connected": l.onboard_whatsapp_connected, "onboard_login_sent": l.onboard_login_sent, "onboard_client_trained": l.onboard_client_trained, "onboarding_checklist_notes": l.onboarding_checklist_notes}|tojson }})'>
               → {{ stage_labels[target] }}
             </button>
+            {% if target in schedule_field %}
+            <button class="btn btn-sm" onclick='openScheduleModal({{ l.id }}, "{{ l.business_name|e }}", "{{ target }}", {{ (sched_date.isoformat() if sched_date else "")|tojson }})'>
+              📅 Schedule
+            </button>
+            {% endif %}
             {% endif %}
             {% if l.stage == "support" %}
             <button class="btn btn-sm" onclick="openTicketModal({{ l.id }}, '{{ l.business_name|e }}')">Log Ticket</button>
+            <button class="btn btn-sm" onclick="openTicketsListModal({{ l.id }})">🎫 Tickets{% if l.open_tickets > 0 %} ({{ l.open_tickets }}){% endif %}</button>
             <form method="POST" action="{{ url_for('ambassador.lead_mark_reviewed', lead_id=l.id) }}" style="display:inline">
               <button type="submit" class="btn btn-sm">Mark Reviewed</button>
             </form>
             {% endif %}
+            <button class="btn btn-sm" {% if loop.first %}data-tour="edit-btn"{% endif %} onclick='openEditModal({{ l.id }}, {{ lead_edit_payload(l)|tojson }}, {{ linkable_tenants|tojson }})'>✏️ Edit</button>
             <button class="btn btn-sm" {% if loop.first %}data-tour="history-btn"{% endif %} onclick="openHistoryModal({{ l.id }})">History</button>
             <button class="btn btn-sm btn-danger" {% if loop.first %}data-tour="drop-btn"{% endif %} onclick="openDropModal({{ l.id }}, '{{ l.business_name|e }}')">Drop</button>
           </td>
         </tr>
-        {% if l.last_reviewed_at %}
-        <tr><td colspan="6" style="padding-top:0;color:var(--muted);font-size:11.5px">
-          Last reviewed {{ l.last_reviewed_at.strftime('%d %b %Y') }}
-        </td></tr>
-        {% endif %}
         {% endfor %}
       </tbody>
     </table>
@@ -257,7 +370,39 @@
       <div id="advFields"></div>
       <div class="modal-actions">
         <button type="button" class="modal-cancel" onclick="closeAdvanceModal()">Cancel</button>
+        <button type="submit" formnovalidate id="advSaveBtn" class="modal-cancel" style="flex:1;display:none">💾 Save Progress</button>
         <button type="submit" class="modal-confirm">Confirm</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Edit modal ── -->
+<div class="modal-over" id="editModal" onclick="if(event.target===this)closeEditModal()">
+  <div class="modal-card" style="max-width:520px">
+    <div class="modal-title" id="editTitle">Edit Lead</div>
+    <p class="modal-sub">Correct anything already logged for this lead — this doesn't move its stage.</p>
+    <form method="POST" id="editForm">
+      <div id="editFields"></div>
+      <div class="modal-actions">
+        <button type="button" class="modal-cancel" onclick="closeEditModal()">Cancel</button>
+        <button type="submit" class="modal-confirm">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Schedule modal ── -->
+<div class="modal-over" id="scheduleModal" onclick="if(event.target===this)closeScheduleModal()">
+  <div class="modal-card">
+    <div class="modal-title" id="schedTitle"></div>
+    <p class="modal-sub">Books a planned date without moving the lead's stage yet — mark it done once it actually happens.</p>
+    <form method="POST" id="scheduleForm">
+      <label class="flbl">Planned Date</label>
+      <input type="date" name="scheduled_date" id="schedDateInput" class="finp" required/>
+      <div class="modal-actions">
+        <button type="button" class="modal-cancel" onclick="closeScheduleModal()">Cancel</button>
+        <button type="submit" class="modal-confirm">Save Date</button>
       </div>
     </form>
   </div>
@@ -307,27 +452,189 @@
   </div>
 </div>
 
+<!-- ── Tickets list modal ── -->
+<div class="modal-over" id="ticketsListModal" onclick="if(event.target===this)closeTicketsListModal()">
+  <div class="modal-card">
+    <div class="modal-title">Support Tickets</div>
+    <div id="ticketsListBody" style="margin-top:10px">Loading…</div>
+    <div class="modal-actions">
+      <button type="button" class="modal-cancel" onclick="closeTicketsListModal()" style="flex:1">Close</button>
+    </div>
+  </div>
+</div>
+
 <script>
 function closeAdvanceModal(){ document.getElementById('advanceModal').classList.remove('open'); }
+function closeEditModal(){ document.getElementById('editModal').classList.remove('open'); }
+function closeScheduleModal(){ document.getElementById('scheduleModal').classList.remove('open'); }
 function closeDropModal(){ document.getElementById('dropModal').classList.remove('open'); }
 function closeTicketModal(){ document.getElementById('ticketModal').classList.remove('open'); }
 function closeHistoryModal(){ document.getElementById('historyModal').classList.remove('open'); }
+function closeTicketsListModal(){ document.getElementById('ticketsListModal').classList.remove('open'); }
 
 window.ambTourCloseModals = function() {
-  closeAdvanceModal(); closeDropModal(); closeTicketModal(); closeHistoryModal();
+  closeAdvanceModal(); closeEditModal(); closeScheduleModal(); closeDropModal(); closeTicketModal(); closeHistoryModal(); closeTicketsListModal();
 };
+
+function openTicketsListModal(id) {
+  document.getElementById('ticketsListBody').innerHTML = 'Loading…';
+  document.getElementById('ticketsListModal').classList.add('open');
+  fetch(`/ambassador/leads/${id}/tickets`)
+    .then(r => r.json())
+    .then(rows => {
+      if (!rows.length) {
+        document.getElementById('ticketsListBody').innerHTML = '<p class="muted" style="font-size:13px">No tickets logged yet.</p>';
+        return;
+      }
+      document.getElementById('ticketsListBody').innerHTML = rows.map(t => `
+        <div style="padding:10px 0;border-bottom:1px solid var(--line);font-size:12.5px">
+          <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
+            <strong>${t.subject}</strong>
+            ${t.resolved_at
+              ? '<span class="pill pill-grey">Resolved</span>'
+              : `<form method="POST" action="/ambassador/leads/${id}/tickets/${t.id}/resolve" style="display:inline">
+                   <button type="submit" class="btn btn-sm">Resolve</button>
+                 </form>`}
+          </div>
+          ${t.notes ? `<div class="muted" style="margin-top:2px">${t.notes}</div>` : ''}
+          <div class="muted" style="font-size:11.5px;margin-top:4px">
+            Logged by ${t.created_by || '—'} — ${new Date(t.created_at).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}
+            ${t.resolved_at ? ` · Resolved ${new Date(t.resolved_at).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}` : ''}
+          </div>
+        </div>
+      `).join('');
+    })
+    .catch(() => {
+      document.getElementById('ticketsListBody').innerHTML = '<p style="color:var(--bad);font-size:13px">Failed to load.</p>';
+    });
+}
 
 const STAGE_LABELS = {{ stage_labels|tojson }};
 const STAGE_DESC    = {{ stage_descriptions|tojson }};
+const TODAY_ISO     = new Date().toISOString().slice(0, 10);
 
-function openAdvanceModal(id, name, targetStage, linkableTenants) {
+function openScheduleModal(id, name, targetStage, currentScheduledDate) {
+  document.getElementById('scheduleForm').action = `/ambassador/leads/${id}/schedule`;
+  document.getElementById('schedTitle').textContent = `Schedule ${STAGE_LABELS[targetStage]} — ${name}`;
+  document.getElementById('schedDateInput').value = currentScheduledDate || '';
+  document.getElementById('scheduleModal').classList.add('open');
+}
+
+function openEditModal(id, data, linkableTenants) {
+  document.getElementById('editForm').action = `/ambassador/leads/${id}/edit`;
+  document.getElementById('editTitle').textContent = `Edit — ${data.business_name}`;
+
+  const esc = (s) => (s == null ? '' : String(s).replace(/"/g, '&quot;'));
+  let html = `
+    <div class="frow">
+      <div><label class="flbl">Business Name</label>
+        <input type="text" name="business_name" class="finp" required value="${esc(data.business_name)}"/></div>
+      <div><label class="flbl">Industry</label>
+        <input type="text" name="industry" class="finp" value="${esc(data.industry)}"/></div>
+    </div>
+    <div class="frow">
+      <div><label class="flbl">Contact Name</label>
+        <input type="text" name="contact_name" class="finp" value="${esc(data.contact_name)}"/></div>
+      <div><label class="flbl">Phone</label>
+        <input type="tel" name="phone" class="finp" value="${esc(data.phone)}"/></div>
+    </div>
+    <div class="frow">
+      <div><label class="flbl">Email</label>
+        <input type="email" name="email" class="finp" value="${esc(data.email)}"/></div>
+      <div></div>
+    </div>
+    <div style="margin-bottom:14px">
+      <label class="flbl">Notes</label>
+      <textarea name="notes" class="finp">${esc(data.notes)}</textarea>
+    </div>
+  `;
+
+  if (data.stage === 'contacted') {
+    html += `
+      <label class="flbl">Contact Channel</label>
+      <select name="contact_channel" class="finp" required style="margin-bottom:12px">
+        <option value="whatsapp"${data.contact_channel==='whatsapp'?' selected':''}>WhatsApp</option>
+        <option value="phone_call"${data.contact_channel==='phone_call'?' selected':''}>Phone Call</option>
+        <option value="email"${data.contact_channel==='email'?' selected':''}>Email</option>
+        <option value="in_person"${data.contact_channel==='in_person'?' selected':''}>In Person</option>
+      </select>
+      <label class="flbl">Contact Date <span style="font-weight:400;color:#9ca3af">(today or earlier)</span></label>
+      <input type="date" name="contact_date" class="finp" required max="${TODAY_ISO}" value="${esc(data.contact_date)}" style="margin-bottom:12px"/>
+      <label class="flbl">Response / Notes</label>
+      <textarea name="contact_response" class="finp">${esc(data.contact_response)}</textarea>
+    `;
+  } else if (data.stage === 'demo_done') {
+    html += `
+      <label class="flbl">Demo Date <span style="font-weight:400;color:#9ca3af">(today or earlier)</span></label>
+      <input type="date" name="demo_date" class="finp" required max="${TODAY_ISO}" value="${esc(data.demo_date)}" style="margin-bottom:12px"/>
+      <label class="flbl">Prospect Reaction</label>
+      <textarea name="demo_reaction" class="finp">${esc(data.demo_reaction)}</textarea>
+    `;
+  } else if (data.stage === 'requirements_confirmed') {
+    html += `
+      <label class="req-check"><input type="checkbox" name="req_phone" value="1"${data.req_phone?' checked':''}/> Business-only phone number confirmed</label>
+      <label class="req-check"><input type="checkbox" name="req_meta_account" value="1"${data.req_meta_account?' checked':''}/> Meta Business Account confirmed</label>
+      <label class="req-check"><input type="checkbox" name="req_whatsapp_connected" value="1"${data.req_whatsapp_connected?' checked':''}/> WhatsApp connected to Meta confirmed</label>
+      <label class="req-check"><input type="checkbox" name="req_product_list" value="1"${data.req_product_list?' checked':''}/> Product list spreadsheet confirmed</label>
+      <label class="flbl" style="margin-top:10px">Notes</label>
+      <textarea name="requirements_notes" class="finp">${esc(data.requirements_notes)}</textarea>
+    `;
+  } else if (data.stage === 'onboarding') {
+    html += `
+      <label class="flbl">Onboarding Date <span style="font-weight:400;color:#9ca3af">(today or earlier)</span></label>
+      <input type="date" name="onboarding_date" class="finp" required max="${TODAY_ISO}" value="${esc(data.onboarding_date)}" style="margin-bottom:12px"/>
+      <label class="flbl">Setup Notes</label>
+      <textarea name="onboarding_notes" class="finp">${esc(data.onboarding_notes)}</textarea>
+    `;
+  } else if (data.stage === 'active_client') {
+    const currentId = data.tenant_id || data.school_id || data.estate_tenant_id || '';
+    let options = '<option value="">— Not linked —</option>';
+    (linkableTenants || []).forEach(t => {
+      options += `<option value="${t.id}"${String(t.id)===String(currentId)?' selected':''}>${t.name}</option>`;
+    });
+    html += `
+      <label class="req-check"><input type="checkbox" name="onboard_products_uploaded" value="1"${data.onboard_products_uploaded?' checked':''}/> Products uploaded to catalogue</label>
+      <label class="req-check"><input type="checkbox" name="onboard_whatsapp_connected" value="1"${data.onboard_whatsapp_connected?' checked':''}/> WhatsApp number connected</label>
+      <label class="req-check"><input type="checkbox" name="onboard_login_sent" value="1"${data.onboard_login_sent?' checked':''}/> Login details sent to owner</label>
+      <label class="req-check"><input type="checkbox" name="onboard_client_trained" value="1"${data.onboard_client_trained?' checked':''}/> Client walked through the platform</label>
+      <label class="flbl" style="margin-top:10px">Checklist Notes</label>
+      <textarea name="onboarding_checklist_notes" class="finp">${esc(data.onboarding_checklist_notes)}</textarea>
+      <label class="flbl" style="margin-top:10px">Link to Signed-Up Client <span style="font-weight:400;color:#9ca3af">(optional)</span></label>
+      <select name="tenant_id" class="finp">${options}</select>
+    `;
+  }
+
+  document.getElementById('editFields').innerHTML = html;
+  document.getElementById('editModal').classList.add('open');
+}
+
+function openAdvanceModal(id, name, targetStage, linkableTenants, scheduledDate, reqProgress, onboardProgress) {
   document.getElementById('advForm').action = `/ambassador/leads/${id}/advance`;
   document.getElementById('advTitle').textContent = `Move ${name} to ${STAGE_LABELS[targetStage]}`;
   document.getElementById('advSub').textContent = STAGE_DESC[targetStage] || '';
 
+  const saveBtn = document.getElementById('advSaveBtn');
+  if (targetStage === 'requirements_confirmed') {
+    saveBtn.style.display = '';
+    saveBtn.setAttribute('formaction', `/ambassador/leads/${id}/requirements`);
+  } else if (targetStage === 'active_client') {
+    saveBtn.style.display = '';
+    saveBtn.setAttribute('formaction', `/ambassador/leads/${id}/onboarding-checklist`);
+  } else {
+    saveBtn.style.display = 'none';
+  }
+  const op = onboardProgress || {};
+
+  const hint = scheduledDate
+    ? `<p class="muted" style="font-size:11.5px;margin:-4px 0 12px">📅 Scheduled for ${scheduledDate} — only confirm once it's actually happened.</p>`
+    : '';
+  const prefill = (scheduledDate && scheduledDate <= TODAY_ISO) ? scheduledDate : '';
+  const rp = reqProgress || {};
+
   let html = '';
   if (targetStage === 'contacted') {
     html = `
+      ${hint}
       <label class="flbl">Contact Channel</label>
       <select name="contact_channel" class="finp" required style="margin-bottom:12px">
         <option value="">Select…</option>
@@ -336,29 +643,34 @@ function openAdvanceModal(id, name, targetStage, linkableTenants) {
         <option value="email">Email</option>
         <option value="in_person">In Person</option>
       </select>
-      <label class="flbl">Contact Date</label>
-      <input type="date" name="contact_date" class="finp" required style="margin-bottom:12px"/>
+      <label class="flbl">Contact Date <span style="font-weight:400;color:#9ca3af">(today or earlier)</span></label>
+      <input type="date" name="contact_date" class="finp" required max="${TODAY_ISO}" value="${prefill}" style="margin-bottom:12px"/>
       <label class="flbl">Response / Notes</label>
       <textarea name="contact_response" class="finp"></textarea>
     `;
   } else if (targetStage === 'demo_done') {
     html = `
-      <label class="flbl">Demo Date</label>
-      <input type="date" name="demo_date" class="finp" required style="margin-bottom:12px"/>
+      ${hint}
+      <label class="flbl">Demo Date <span style="font-weight:400;color:#9ca3af">(today or earlier)</span></label>
+      <input type="date" name="demo_date" class="finp" required max="${TODAY_ISO}" value="${prefill}" style="margin-bottom:12px"/>
       <label class="flbl">Prospect Reaction</label>
       <textarea name="demo_reaction" class="finp" placeholder="e.g. Very interested, asked about pricing"></textarea>
     `;
   } else if (targetStage === 'requirements_confirmed') {
     html = `
-      <label class="req-check"><input type="checkbox" name="req_phone" value="1" required/> Business-only phone number confirmed</label>
-      <label class="req-check"><input type="checkbox" name="req_meta_account" value="1" required/> Meta Business Account confirmed</label>
-      <label class="req-check"><input type="checkbox" name="req_whatsapp_connected" value="1" required/> WhatsApp connected to Meta confirmed</label>
-      <label class="req-check"><input type="checkbox" name="req_product_list" value="1" required/> Product list spreadsheet confirmed</label>
+      <p class="muted" style="font-size:11.5px;margin:-4px 0 12px">Tick off what's confirmed so far and hit "💾 Save Progress" — you don't need all 4 done to save. "Confirm" (moves the lead forward) still needs all 4.</p>
+      <label class="req-check"><input type="checkbox" name="req_phone" value="1"${rp.req_phone?' checked':''}/> Business-only phone number confirmed</label>
+      <label class="req-check"><input type="checkbox" name="req_meta_account" value="1"${rp.req_meta_account?' checked':''}/> Meta Business Account confirmed</label>
+      <label class="req-check"><input type="checkbox" name="req_whatsapp_connected" value="1"${rp.req_whatsapp_connected?' checked':''}/> WhatsApp connected to Meta confirmed</label>
+      <label class="req-check"><input type="checkbox" name="req_product_list" value="1"${rp.req_product_list?' checked':''}/> Product list spreadsheet confirmed</label>
+      <label class="flbl" style="margin-top:10px">Notes <span style="font-weight:400;color:#9ca3af">(optional — e.g. what's still pending)</span></label>
+      <textarea name="requirements_notes" class="finp">${rp.requirements_notes || ''}</textarea>
     `;
   } else if (targetStage === 'onboarding') {
     html = `
-      <label class="flbl">Onboarding Date</label>
-      <input type="date" name="onboarding_date" class="finp" required style="margin-bottom:12px"/>
+      ${hint}
+      <label class="flbl">Onboarding Date <span style="font-weight:400;color:#9ca3af">(today or earlier)</span></label>
+      <input type="date" name="onboarding_date" class="finp" required max="${TODAY_ISO}" value="${prefill}" style="margin-bottom:12px"/>
       <label class="flbl">Setup Notes</label>
       <textarea name="onboarding_notes" class="finp"></textarea>
     `;
@@ -368,7 +680,14 @@ function openAdvanceModal(id, name, targetStage, linkableTenants) {
       options += `<option value="${t.id}">${t.name}</option>`;
     });
     html = `
-      <label class="flbl">Link to Signed-Up Client <span style="font-weight:400;color:#9ca3af">(optional)</span></label>
+      <p class="muted" style="font-size:11.5px;margin:-4px 0 12px">Tick off onboarding steps as they're done and hit "💾 Save Progress" — all 4 are needed before marking Active Client.</p>
+      <label class="req-check"><input type="checkbox" name="onboard_products_uploaded" value="1"${op.onboard_products_uploaded?' checked':''}/> Products uploaded to catalogue</label>
+      <label class="req-check"><input type="checkbox" name="onboard_whatsapp_connected" value="1"${op.onboard_whatsapp_connected?' checked':''}/> WhatsApp number connected</label>
+      <label class="req-check"><input type="checkbox" name="onboard_login_sent" value="1"${op.onboard_login_sent?' checked':''}/> Login details sent to owner</label>
+      <label class="req-check"><input type="checkbox" name="onboard_client_trained" value="1"${op.onboard_client_trained?' checked':''}/> Client walked through the platform</label>
+      <label class="flbl" style="margin-top:10px">Checklist Notes <span style="font-weight:400;color:#9ca3af">(optional)</span></label>
+      <textarea name="onboarding_checklist_notes" class="finp">${op.onboarding_checklist_notes || ''}</textarea>
+      <label class="flbl" style="margin-top:10px">Link to Signed-Up Client <span style="font-weight:400;color:#9ca3af">(optional)</span></label>
       <select name="tenant_id" class="finp">${options}</select>
       <p class="muted" style="font-size:11.5px;margin-top:6px">Commission is already automatic once they're paying — this just links your pipeline record to their account.</p>
     `;
