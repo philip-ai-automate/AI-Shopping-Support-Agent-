@@ -1,0 +1,142 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Ambassador Login Audit — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+  .aud-filters{display:grid;grid-template-columns:repeat(5,1fr) auto;gap:10px;
+               align-items:end;margin-bottom:18px}
+  @media(max-width:1000px){.aud-filters{grid-template-columns:1fr 1fr}}
+  .aud-filters label{display:block;font-size:11px;font-weight:700;color:var(--muted);
+               text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px}
+  .aud-filters select,.aud-filters input{width:100%;padding:8px 10px;border:1.5px solid var(--line);
+               border-radius:9px;font-size:13px;font-family:inherit;outline:none}
+  .aud-filters select:focus,.aud-filters input:focus{border-color:var(--ink)}
+
+  .aud-table-wrap{overflow-x:auto;border:1.5px solid var(--line);border-radius:14px;background:#fff}
+  .aud-table{width:100%;border-collapse:collapse;font-size:13px}
+  .aud-table th{padding:10px 12px;text-align:left;font-size:11px;font-weight:700;
+                text-transform:uppercase;letter-spacing:.04em;color:var(--muted);
+                background:#f8f9fb;border-bottom:1.5px solid var(--line);white-space:nowrap}
+  .aud-table td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle;white-space:nowrap}
+  .aud-table td.wrap{white-space:normal;max-width:260px;overflow:hidden;text-overflow:ellipsis}
+  .aud-table tr:last-child td{border-bottom:none}
+
+  .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700}
+  .pill-green{background:#D1FAE5;color:#065F46}
+  .pill-red{background:#FEE2E2;color:#991B1B}
+  .pill-grey{background:#F3F4F6;color:#6B7280}
+
+  .aud-empty{text-align:center;padding:48px 20px;color:var(--muted)}
+  .aud-empty-icon{font-size:36px;margin-bottom:10px}
+</style>
+
+<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;
+     flex-wrap:wrap;gap:10px;margin-bottom:20px">
+  <div>
+    <h1 class="section-title">🔒 Ambassador Login Audit</h1>
+    <div style="font-size:13px;color:var(--muted);margin-top:2px">
+      Every login attempt (success, failure, logout) with time, IP and device
+    </div>
+  </div>
+  <a href="{{ url_for('portal_admin.ambassadors') }}" class="btn btn-sm">← Back to Ambassadors</a>
+</div>
+
+{% if selected_amb %}
+<div style="margin-bottom:14px;font-size:13px;color:var(--muted)">
+  Showing activity for
+  <strong style="color:var(--ink)">{{ selected_amb.first_name }} {{ selected_amb.last_name }}</strong>
+  ({{ selected_amb.email }}) —
+  <a href="{{ url_for('portal_admin.ambassador_audit') }}">clear filter</a>
+</div>
+{% endif %}
+
+<form method="GET" class="aud-filters">
+  <div>
+    <label>Ambassador</label>
+    <select name="ambassador_id">
+      <option value="">All ambassadors</option>
+      {% for a in all_ambassadors %}
+      <option value="{{ a.id }}" {% if f_ambassador_id == a.id|string %}selected{% endif %}>
+        {{ a.first_name }} {{ a.last_name }} ({{ a.email }})
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label>Event</label>
+    <select name="event_type">
+      <option value="">All events</option>
+      <option value="login_success" {% if f_event_type == 'login_success' %}selected{% endif %}>Login success</option>
+      <option value="login_failed" {% if f_event_type == 'login_failed' %}selected{% endif %}>Login failed</option>
+      <option value="logout" {% if f_event_type == 'logout' %}selected{% endif %}>Logout</option>
+    </select>
+  </div>
+  <div>
+    <label>From</label>
+    <input type="date" name="from" value="{{ f_from }}">
+  </div>
+  <div>
+    <label>To</label>
+    <input type="date" name="to" value="{{ f_to }}">
+  </div>
+  <div>
+    <label>IP address</label>
+    <input type="text" name="ip" value="{{ f_ip }}" placeholder="e.g. 102.89.1.1">
+  </div>
+  <div>
+    <button type="submit" class="btn btn-primary btn-sm" style="width:100%">Filter</button>
+  </div>
+</form>
+
+<div class="aud-table-wrap">
+  {% if events %}
+  <table class="aud-table">
+    <thead>
+      <tr>
+        <th>Date &amp; Time</th>
+        <th>Ambassador</th>
+        <th>Event</th>
+        <th>Reason</th>
+        <th>IP Address</th>
+        <th>Device</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in events %}
+      <tr>
+        <td>{{ e.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+        <td>
+          {% if e.ambassador_id %}
+          <a href="{{ url_for('portal_admin.ambassador_audit', ambassador_id=e.ambassador_id) }}">
+            {{ e.first_name }} {{ e.last_name }}
+          </a>
+          <div style="font-size:11px;color:var(--muted)">{{ e.ambassador_email }}</div>
+          {% else %}
+          <span style="color:var(--muted)">Unknown</span>
+          <div style="font-size:11px;color:var(--muted)">{{ e.email_attempted or '—' }}</div>
+          {% endif %}
+        </td>
+        <td>
+          {% if e.event_type == 'login_success' %}
+          <span class="pill pill-green">Login success</span>
+          {% elif e.event_type == 'login_failed' %}
+          <span class="pill pill-red">Login failed</span>
+          {% else %}
+          <span class="pill pill-grey">Logout</span>
+          {% endif %}
+        </td>
+        <td>{{ e.failure_reason or '—' }}</td>
+        <td style="font-family:monospace;font-size:12px">{{ e.ip_address or '—' }}</td>
+        <td class="wrap" style="font-size:12px;color:var(--muted)">{{ e.user_agent or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="aud-empty">
+    <div class="aud-empty-icon">🔍</div>
+    <div>No login activity found for these filters.</div>
+  </div>
+  {% endif %}
+</div>
+<div style="font-size:11.5px;color:var(--muted);margin-top:10px">Showing up to 300 most recent events.</div>
+{% endblock %}

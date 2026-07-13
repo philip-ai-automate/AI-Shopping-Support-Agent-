@@ -183,6 +183,34 @@ def _log_login_attempt(ip: str, email: str):
     cur.close(); conn.close()
 
 
+def _log_ambassador_event(event_type: str, ambassador_id: int | None = None,
+                           email_attempted: str | None = None,
+                           failure_reason: str | None = None):
+    """Permanent audit trail entry for ambassador login/logout. Never raises."""
+    try:
+        ip = request.remote_addr or "unknown"
+        ua = (request.headers.get("User-Agent") or "")[:500]
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute(
+            """INSERT INTO ambassador_audit_log
+               (ambassador_id, email_attempted, event_type, failure_reason, ip_address, user_agent)
+               VALUES (%s, %s, %s, %s, %s, %s)""",
+            (ambassador_id, email_attempted, event_type, failure_reason, ip, ua)
+        )
+        conn.commit()
+        cur.close(); conn.close()
+    except Exception:
+        try:
+            if 'cur' in locals(): cur.close()
+        except Exception:
+            pass
+        try:
+            if 'conn' in locals(): conn.close()
+        except Exception:
+            pass
+
+
 def _get_ambassador(amb_id: int) -> dict | None:
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -662,6 +690,7 @@ def login():
 
     # ── Rate limit: block after 5 failed attempts in 15 minutes ─────────────
     if _is_rate_limited(ip):
+        _log_ambassador_event("login_failed", email_attempted=email, failure_reason="rate_limited")
         flash(
             f"Too many failed login attempts from your location. "
             f"Please wait {RATE_LIMIT_WINDOW_MINS} minutes and try again.",
@@ -677,24 +706,33 @@ def login():
 
     if not amb or not _check_pw(pw, amb["password_hash"]):
         _log_login_attempt(ip, email)   # count only genuine auth failures
+        _log_ambassador_event("login_failed", email_attempted=email, failure_reason="bad_credentials")
         flash("Invalid email or password.", "danger")
         return render_template("ambassador/login.html")
 
     if amb["status"] == "pending":
+        _log_ambassador_event("login_failed", ambassador_id=int(amb["id"]),
+                               email_attempted=email, failure_reason="pending_status")
         flash("Your application is still under review. We'll notify you once approved.", "warning")
         return render_template("ambassador/login.html")
 
     if amb["status"] == "suspended":
+        _log_ambassador_event("login_failed", ambassador_id=int(amb["id"]),
+                               email_attempted=email, failure_reason="suspended_status")
         flash("Your account has been suspended. Please contact support@phixtra.com.", "danger")
         return render_template("ambassador/login.html")
 
     session["ambassador_logged_in"] = True
     session["ambassador_id"]        = int(amb["id"])
+    _log_ambassador_event("login_success", ambassador_id=int(amb["id"]), email_attempted=email)
     return redirect(url_for("ambassador.dashboard"))
 
 
 @ambassador_bp.route("/ambassador/logout")
 def logout():
+    amb_id = session.get("ambassador_id")
+    if amb_id:
+        _log_ambassador_event("logout", ambassador_id=int(amb_id))
     session.pop("ambassador_logged_in", None)
     session.pop("ambassador_id", None)
     return redirect(url_for("ambassador.login"))

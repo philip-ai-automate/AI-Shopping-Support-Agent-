@@ -395,6 +395,28 @@ def ensure_portal_tables():
             ON login_attempts(ip_address, attempted_at)
         """)
 
+        # ── ambassador_audit_log: permanent login audit trail (success/fail/logout) ──
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS ambassador_audit_log (
+                id              SERIAL       PRIMARY KEY,
+                ambassador_id   INTEGER      REFERENCES ambassadors(id),
+                email_attempted VARCHAR(255),
+                event_type      VARCHAR(20)  NOT NULL,
+                failure_reason  VARCHAR(50),
+                ip_address      VARCHAR(45),
+                user_agent      TEXT,
+                created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_amb_audit_ambassador
+            ON ambassador_audit_log(ambassador_id, created_at)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_amb_audit_event
+            ON ambassador_audit_log(event_type, created_at)
+        """)
+
         # ── Unique constraints on ambassadors: block duplicate phone / whatsapp ──
         if _table_exists(cur, "ambassadors"):
             if not _constraint_exists(cur, "ambassadors_phone_key"):

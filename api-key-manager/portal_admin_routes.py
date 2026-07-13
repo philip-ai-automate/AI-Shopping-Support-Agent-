@@ -4101,6 +4101,66 @@ def ambassador_report():
     return render_template("portal/admin_ambassador_report.html", ambassadors=ambs, counts=counts)
 
 
+@portal_admin_bp.route("/ambassador-audit", methods=["GET"])
+def ambassador_audit():
+    r = _require_admin()
+    if r: return r
+
+    amb_id     = (request.args.get("ambassador_id") or "").strip()
+    event_type = (request.args.get("event_type") or "").strip()
+    date_from  = (request.args.get("from") or "").strip()
+    date_to    = (request.args.get("to") or "").strip()
+    ip         = (request.args.get("ip") or "").strip()
+
+    where  = ["1=1"]
+    params = []
+    if amb_id:
+        where.append("l.ambassador_id = %s")
+        params.append(amb_id)
+    if event_type:
+        where.append("l.event_type = %s")
+        params.append(event_type)
+    if date_from:
+        where.append("l.created_at::date >= %s")
+        params.append(date_from)
+    if date_to:
+        where.append("l.created_at::date <= %s")
+        params.append(date_to)
+    if ip:
+        where.append("l.ip_address = %s")
+        params.append(ip)
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(f"""
+        SELECT l.*, a.first_name, a.last_name, a.email AS ambassador_email
+        FROM ambassador_audit_log l
+        LEFT JOIN ambassadors a ON a.id = l.ambassador_id
+        WHERE {' AND '.join(where)}
+        ORDER BY l.created_at DESC
+        LIMIT 300
+    """, params)
+    events = cur.fetchall() or []
+
+    selected_amb = None
+    if amb_id:
+        cur.execute("SELECT id, first_name, last_name, email FROM ambassadors WHERE id=%s", (amb_id,))
+        selected_amb = cur.fetchone()
+
+    cur.execute("SELECT id, first_name, last_name, email FROM ambassadors ORDER BY first_name, last_name")
+    all_ambassadors = cur.fetchall() or []
+    cur.close(); conn.close()
+
+    return render_template(
+        "portal/admin_ambassador_audit.html",
+        events=events,
+        all_ambassadors=all_ambassadors,
+        selected_amb=selected_amb,
+        f_ambassador_id=amb_id, f_event_type=event_type,
+        f_from=date_from, f_to=date_to, f_ip=ip,
+    )
+
+
 @portal_admin_bp.route("/ambassadors/report/download", methods=["POST"])
 def ambassador_report_download():
     r = _require_admin()

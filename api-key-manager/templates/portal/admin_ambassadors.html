@@ -146,6 +146,7 @@
   <h1 class="section-title">Ambassadors</h1>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
     <a href="{{ url_for('portal_admin.ambassador_report') }}" class="btn btn-sm">📊 Reports</a>
+    <a href="{{ url_for('portal_admin.ambassador_audit') }}" class="btn btn-sm">🔒 Login Audit</a>
     <button onclick="openChecklistModal()" class="btn btn-sm">📋 Client Checklist</button>
   </div>
 </div>
@@ -937,6 +938,7 @@ function renderFootButtons(status, id, role) {
     }
   }
   btns += `<button class="sp-btn" onclick="openQrModal(${id})">QR Code</button>`;
+  btns += `<a class="sp-btn" href="${AMB_AUDIT_URL}?ambassador_id=${id}">🔒 Login Activity</a>`;
   foot.innerHTML = btns;
 }
 
@@ -961,6 +963,7 @@ function closeRoleModal() {
 /* ── QR modal ── */
 var AMB_QR_URL       = "{{ url_for('portal_admin.ambassador_qr', amb_id=0) }}";
 var AMB_QR_EMAIL_URL = "{{ url_for('portal_admin.ambassador_email_qr', amb_id=0) }}";
+var AMB_AUDIT_URL    = "{{ url_for('portal_admin.ambassador_audit') }}";
 
 var BASE_URL = "{{ base_url }}";
 
