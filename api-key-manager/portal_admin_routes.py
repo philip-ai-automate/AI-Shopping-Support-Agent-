@@ -75,6 +75,8 @@ def logout():
     session.pop("portal_admin_logged_in", None)
     session.pop("portal_admin_username",  None)
     session.pop("impersonate_customer_id", None)
+    session.pop("impersonate_ambassador_id", None)
+    session.pop("ambassador_logged_in", None)
     return redirect(url_for("portal_admin.login"))
 
 
@@ -609,6 +611,28 @@ def stop_impersonate():
     session.pop("impersonate_customer_id", None)
     flash("Impersonation stopped.", "success")
     return redirect(url_for("portal_admin.customers"))
+
+
+@portal_admin_bp.route("/impersonate-ambassador/<int:ambassador_id>")
+def impersonate_ambassador(ambassador_id: int):
+    r = _require_admin()
+    if r: return r
+    session["ambassador_logged_in"]      = True
+    session["impersonate_ambassador_id"] = int(ambassador_id)
+    insert_audit_log(admin_username=_admin_user(), action="impersonate_ambassador_start",
+                     details={"ambassador_id": ambassador_id})
+    flash("Impersonating ambassador — you see the hub as they do.", "warning")
+    return redirect(url_for("ambassador.dashboard"))
+
+
+@portal_admin_bp.route("/stop-impersonate-ambassador")
+def stop_impersonate_ambassador():
+    r = _require_admin()
+    if r: return r
+    session.pop("impersonate_ambassador_id", None)
+    session.pop("ambassador_logged_in", None)
+    flash("Ambassador impersonation stopped.", "success")
+    return redirect(url_for("portal_admin.ambassadors"))
 
 
 # ══════════════════════════════════════════════════════════════════════════════

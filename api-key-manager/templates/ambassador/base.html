@@ -26,6 +26,18 @@
     /* Main */
     .amb-main{margin-left:220px;flex:1;padding:32px;min-height:100vh}
     .page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
+
+    /* Admin impersonation bar */
+    .amb-impersonate-bar{
+      position:fixed; top:0; left:220px; right:0;
+      background:#F79009; color:#fff; text-align:center;
+      padding:8px; font-size:13px; font-weight:650; z-index:150;
+    }
+    .amb-impersonate-bar a{color:#fff;font-weight:800;text-decoration:underline}
+    body:has(.amb-impersonate-bar) .amb-main{padding-top:64px}
+    @media(max-width:768px){
+      .amb-impersonate-bar{left:60px}
+    }
     .section-title{font-size:22px;font-weight:800;letter-spacing:-.4px}
 
     /* Cards */
@@ -83,6 +95,13 @@
   {% block head %}{% endblock %}
 </head>
 <body>
+
+{% if session.get('impersonate_ambassador_id') %}
+<div class="amb-impersonate-bar">
+  👁 Admin impersonating ambassador —
+  <a href="{{ url_for('portal_admin.stop_impersonate_ambassador') }}">Stop impersonation</a>
+</div>
+{% endif %}
 
 <nav class="amb-sidebar">
   <div class="asb-brand">

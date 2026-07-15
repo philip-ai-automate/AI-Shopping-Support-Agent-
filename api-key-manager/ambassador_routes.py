@@ -98,6 +98,8 @@ def _require_amb():
     return None
 
 def _amb_id() -> int:
+    if session.get("impersonate_ambassador_id"):
+        return int(session["impersonate_ambassador_id"])
     return int(session["ambassador_id"])
 
 
@@ -735,6 +737,7 @@ def logout():
         _log_ambassador_event("logout", ambassador_id=int(amb_id))
     session.pop("ambassador_logged_in", None)
     session.pop("ambassador_id", None)
+    session.pop("impersonate_ambassador_id", None)
     return redirect(url_for("ambassador.login"))
 
 

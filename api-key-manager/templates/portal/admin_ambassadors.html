@@ -939,6 +939,8 @@ function renderFootButtons(status, id, role) {
   }
   btns += `<button class="sp-btn" onclick="openQrModal(${id})">QR Code</button>`;
   btns += `<a class="sp-btn" href="${AMB_AUDIT_URL}?ambassador_id=${id}">🔒 Login Activity</a>`;
+  btns += `<a class="sp-btn warn" href="${AMB_IMPERSONATE_URL.replace('/0', '/' + id)}"
+             onclick="return confirm('View the Ambassador Hub as this ambassador?')">👁 Impersonate</a>`;
   foot.innerHTML = btns;
 }
 
@@ -961,9 +963,10 @@ function closeRoleModal() {
 }
 
 /* ── QR modal ── */
-var AMB_QR_URL       = "{{ url_for('portal_admin.ambassador_qr', amb_id=0) }}";
-var AMB_QR_EMAIL_URL = "{{ url_for('portal_admin.ambassador_email_qr', amb_id=0) }}";
-var AMB_AUDIT_URL    = "{{ url_for('portal_admin.ambassador_audit') }}";
+var AMB_QR_URL          = "{{ url_for('portal_admin.ambassador_qr', amb_id=0) }}";
+var AMB_QR_EMAIL_URL    = "{{ url_for('portal_admin.ambassador_email_qr', amb_id=0) }}";
+var AMB_AUDIT_URL       = "{{ url_for('portal_admin.ambassador_audit') }}";
+var AMB_IMPERSONATE_URL = "{{ url_for('portal_admin.impersonate_ambassador', ambassador_id=0) }}";
 
 var BASE_URL = "{{ base_url }}";
 
