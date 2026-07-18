@@ -64,12 +64,6 @@
   </div>
 </div>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% for cat, msg in messages %}
-  <div class="flash {{ cat }}">{{ msg }}</div>
-  {% endfor %}
-{% endwith %}
-
 <!-- ═══════════════════════════════════════════════
      PAYSTACK
 ════════════════════════════════════════════════ -->

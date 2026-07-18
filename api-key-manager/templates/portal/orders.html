@@ -56,12 +56,6 @@
   </a>
 </div>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% for cat, msg in messages %}
-  <div class="flash {{ cat }}">{{ msg }}</div>
-  {% endfor %}
-{% endwith %}
-
 <!-- KPI row (today's stats) -->
 <div class="kpi-row">
   <div class="kpi-card">

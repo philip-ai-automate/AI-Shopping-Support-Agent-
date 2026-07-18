@@ -87,12 +87,6 @@
   </div>
 </div>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% for cat, msg in messages %}
-  <div class="flash {{ cat }}">{{ msg }}</div>
-  {% endfor %}
-{% endwith %}
-
 {% if has_azure_index and wa_stats.get('total_products') %}
 <div class="card" style="margin-bottom:20px;padding:16px 20px">
   <span style="font-size:20px;font-weight:800">{{ wa_stats.total_products }}</span>

@@ -615,13 +615,6 @@ html, body { overflow: hidden; height: 100%; }
 
       {# Reply bar #}
       <div class="chat-reply">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
-            {% for category, message in messages %}
-              <div class="flash {{ category }}" style="margin-bottom:8px">{{ message | safe }}</div>
-            {% endfor %}
-          {% endif %}
-        {% endwith %}
         <div class="reply-wrap">
           <div class="emoji-picker" id="emojiPicker">
             <div class="ep-tabs" id="epTabs"></div>

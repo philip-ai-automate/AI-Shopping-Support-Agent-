@@ -364,15 +364,6 @@
     Changes take effect on the next recovery session.
   </p>
 
-  {% with msgs = get_flashed_messages(with_categories=true) %}
-    {% for cat, msg in msgs %}
-      <div class="pill {% if cat == 'success' %}pill-green{% elif cat == 'warning' %}pill-warn{% else %}pill-red{% endif %}"
-           style="display:block;margin-bottom:12px;padding:9px 14px;font-size:13px;border-radius:10px">
-        {{ msg }}
-      </div>
-    {% endfor %}
-  {% endwith %}
-
   <form method="POST" action="{{ url_for('portal.cart_recovery_save_settings') }}">
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">

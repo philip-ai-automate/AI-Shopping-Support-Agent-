@@ -10,12 +10,6 @@
   <a href="{{ url_for('portal.billing_subscribe') }}" class="btn btn-sm">← Back to Plans</a>
 </div>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% for cat, msg in messages %}
-    <div class="flash {{ cat }}">{{ msg }}</div>
-  {% endfor %}
-{% endwith %}
-
 <div class="grid g2" style="align-items:start;gap:20px;">
 
   {# ══ LEFT: Plan summary ══ #}

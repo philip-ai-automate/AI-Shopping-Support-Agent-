@@ -10,12 +10,6 @@
   </div>
 </div>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}{% for cat, msg in messages %}
-    <div class="flash {{ cat }}">{{ msg }}</div>
-  {% endfor %}{% endif %}
-{% endwith %}
-
 <!-- ── UPLOAD FORM ───────────────────────────────────────────────────────── -->
 <div class="card" style="margin-bottom:20px">
   <div class="card-title">Upload / Replace a Plugin</div>

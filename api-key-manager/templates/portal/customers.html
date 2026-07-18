@@ -48,12 +48,6 @@
   {% endif %}
 </div>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% for cat, msg in messages %}
-  <div class="flash {{ cat }}">{{ msg }}</div>
-  {% endfor %}
-{% endwith %}
-
 <!-- Search -->
 <form method="GET" class="search-bar">
   <input type="search" name="q" value="{{ q }}"

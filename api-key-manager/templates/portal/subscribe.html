@@ -10,12 +10,6 @@
   <a href="{{ url_for('portal.billing') }}" class="btn btn-sm">← Back to Billing</a>
 </div>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% for cat, msg in messages %}
-    <div class="flash {{ cat }}">{{ msg }}</div>
-  {% endfor %}
-{% endwith %}
-
 {# ══ CURRENT SUBSCRIPTION BANNER ══ #}
 {% if active_sub %}
 <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;

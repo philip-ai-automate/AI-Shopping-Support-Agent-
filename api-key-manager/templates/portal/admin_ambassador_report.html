@@ -97,12 +97,6 @@
   <a href="{{ url_for('portal_admin.ambassadors') }}" class="btn btn-sm">← Back to Ambassadors</a>
 </div>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% for cat, msg in messages %}
-    <div class="flash {{ cat }}" style="margin-bottom:14px">{{ msg }}</div>
-  {% endfor %}
-{% endwith %}
-
 <form method="POST" action="{{ url_for('portal_admin.ambassador_report_download') }}" id="reportForm">
 
 <div class="rpt-wrap">
