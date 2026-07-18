@@ -73,7 +73,7 @@ def generate_speech(api_key, text):
         "https://api.heygen.com/v3/voices/speech",
         headers={"X-Api-Key": api_key, "Content-Type": "application/json"},
         json={"text": text, "voice_id": VOICE_ID},
-        timeout=30,
+        timeout=90,
     )
     resp.raise_for_status()
     data = resp.json()["data"]

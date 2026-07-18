@@ -162,8 +162,22 @@ TUTORIAL_VIDEOS = [
     {"slug": "catalogue-onboarding", "title": "Adding Your Products",
      "sub": "The setup wizard — picking your categories and products so your AI can answer customer questions",
      "audience": "merchant"},
+    {"slug": "store-info", "title": "Store Information",
+     "sub": "What your AI reads to answer customer questions — delivery, returns, payment, FAQs and more",
+     "audience": "merchant"},
+    {"slug": "product-import", "title": "Product Import",
+     "sub": "Bulk-import your catalogue from a spreadsheet — upload, map columns, and sync in one flow",
+     "audience": "merchant"},
     {"slug": "ambassador-onboarding", "title": "Sales Lead Pipeline",
      "sub": "For sales ambassadors & sales managers — Lead → Contacted → Demo Done → "
             "Requirements Confirmed → Onboarding → Active Client → Support",
      "audience": "ambassador"},
+    {"slug": "discount-settings", "title": "Discount Settings",
+     "sub": "Set your discount mode, a storewide default, and per-product overrides "
+            "for WhatsApp negotiations",
+     "audience": "merchant"},
+    {"slug": "product-photo-upload", "title": "Add a Product Photo",
+     "sub": "No website needed — upload a photo straight from your device so "
+            "your AI can show it to customers on WhatsApp",
+     "audience": "merchant"},
 ]
