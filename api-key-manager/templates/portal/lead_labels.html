@@ -1,0 +1,238 @@
+{% extends "portal/base.html" %}
+{% block title %}Labels — PhiXtra Portal{% endblock %}
+{% block content %}
+
+<style>
+  .lbl-hero { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; margin-bottom:22px }
+  .lbl-hero-left { display:flex; align-items:center; gap:14px }
+  .lbl-hero-icon {
+    width:48px; height:48px; border-radius:14px; flex-shrink:0;
+    background:linear-gradient(135deg, #f59e0b, #ef4444);
+    display:flex; align-items:center; justify-content:center; font-size:22px;
+    box-shadow:0 6px 16px rgba(239,68,68,.25);
+  }
+  .lbl-hero h1 { font-size:22px; font-weight:800; letter-spacing:-.4px; margin:0 }
+  .lbl-hero p { margin:3px 0 0; font-size:13.5px; color:var(--muted) }
+  .lbl-hero p a { color:var(--ink); font-weight:600 }
+
+  .lbl-create-row { display:flex; gap:8px; margin-bottom:18px }
+  .lbl-create-row input { flex:1; max-width:320px }
+
+  .lbl-table th { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase;
+                  letter-spacing:.06em; padding:11px 20px; text-align:left; background:#f8fafc;
+                  border-bottom:1px solid rgba(3,12,24,.07) }
+  .lbl-table td { padding:14px 20px; font-size:13.5px; border-bottom:1px solid rgba(3,12,24,.05); vertical-align:middle }
+  .lbl-table tr:last-child td { border-bottom:none }
+  .lbl-pill { display:inline-block; padding:4px 12px; border-radius:20px; font-size:12px; font-weight:700;
+              background:#fee2e2; color:#991b1b }
+  .lbl-empty { display:flex; flex-direction:column; align-items:center; padding:56px 20px; color:var(--muted); text-align:center }
+  .lbl-empty-icon { width:64px; height:64px; border-radius:18px; background:linear-gradient(135deg,#fef2f2,#fee2e2);
+                     display:flex; align-items:center; justify-content:center; font-size:26px; margin-bottom:14px }
+
+  .finp{width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:10px;
+        font-size:13.5px;color:#030C18;outline:none;font-family:inherit;
+        transition:border-color .15s;background:#fff}
+  .finp:focus{border-color:#030C18;box-shadow:0 0 0 3px rgba(3,12,24,.06)}
+
+  .modal-over{position:fixed;inset:0;background:rgba(3,12,24,.4);z-index:400;
+              display:none;align-items:center;justify-content:center;padding:20px}
+  .modal-over.open{display:flex}
+  .modal-card{background:#fff;border-radius:18px;padding:26px;width:100%;max-width:480px;
+              max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(3,12,24,.18)}
+  .modal-title{font-size:16px;font-weight:800;margin-bottom:4px}
+  .modal-sub{font-size:12.5px;color:var(--muted);margin-bottom:16px;line-height:1.5}
+  .modal-actions{display:flex;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
+  .modal-cancel{flex:0 0 auto;padding:9px 16px;background:#fff;border:1.5px solid var(--line);
+                border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+</style>
+
+<div class="lbl-hero">
+  <div class="lbl-hero-left">
+    <div class="lbl-hero-icon">🏷️</div>
+    <div>
+      <h1>Labels</h1>
+      <p>Freeform status tags for Sales Pipeline contacts (e.g. "Bounced", "VIP") — separate from <a href="{{ url_for('portal.email_campaigns', view='segments') }}">Segments</a>, which are for choosing who to email.</p>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <a href="{{ url_for('portal.lead_labels_import_bounces') }}" class="btn">📥 Import Bounces</a>
+    <a href="{{ url_for('portal.sales_pipeline') }}" class="btn btn-primary">🧭 Go to Sales Pipeline</a>
+  </div>
+</div>
+
+<div class="card" style="padding:20px">
+  <form method="POST" action="{{ url_for('portal.lead_labels_create') }}" class="lbl-create-row" onsubmit="return submitCreateLabel(event)">
+    <input type="text" name="name" id="newLabelName" class="finp" placeholder="New label name, e.g. VIP" required>
+    <button type="submit" class="btn btn-primary">+ Create Label</button>
+  </form>
+
+  {% if labels %}
+  <div class="table-wrap">
+    <table class="lbl-table">
+      <thead>
+        <tr><th>Label</th><th>Contacts</th><th>Created</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for l in labels %}
+        <tr>
+          <td><span class="lbl-pill">{{ l.name }}</span></td>
+          <td class="muted">{{ l.member_count }} contact{{ 's' if l.member_count != 1 else '' }}</td>
+          <td class="muted">{{ l.created_at.strftime('%d %b %Y') if l.created_at else '—' }}</td>
+          <td style="text-align:right">
+            <button type="button" class="btn btn-sm" onclick="openMembersModal({{ l.id }}, {{ l.name|tojson }})">View / Edit</button>
+            <form method="POST" action="{{ url_for('portal.lead_labels_delete', label_id=l.id) }}" style="display:inline"
+                  onsubmit="return confirm('Delete the {{ l.name }} label? This removes it from every contact it\'s on — contacts themselves are not affected.')">
+              <input type="hidden" name="redirect" value="1">
+              <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="lbl-empty">
+    <div class="lbl-empty-icon">🏷️</div>
+    <h3 style="font-size:15px;font-weight:700;color:var(--ink);margin:0 0 6px">No labels yet</h3>
+    <p style="font-size:13px;margin:0;max-width:320px">Create one above, or select contacts in the Sales Pipeline and use "Add to Label" — either way works.</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── Members modal ── -->
+<div class="modal-over" id="labelMembersModal" onclick="if(event.target===this)closeMembersModal()">
+  <div class="modal-card" style="max-width:560px">
+    <div class="modal-title" id="lmTitle">Label</div>
+    <p class="modal-sub">Search Sales Pipeline contacts to add, or remove one below.</p>
+
+    <div style="position:relative;margin-bottom:16px">
+      <input type="text" class="finp" id="lmAddSearch" autocomplete="off" placeholder="Search contacts by name or email…"
+             oninput="onLmSearchInput()" onblur="setTimeout(function(){document.getElementById('lmAddResults').style.display='none'}, 200)">
+      <div id="lmAddResults" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:50;
+           background:#fff;border:1px solid rgba(3,12,24,.1);border-radius:11px;box-shadow:0 10px 30px rgba(0,0,0,.12);
+           max-height:220px;overflow-y:auto"></div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;margin-bottom:8px">
+      Contacts in this label
+    </div>
+    <div id="lmMembersWrap" style="max-height:280px;overflow-y:auto">
+      <div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Loading…</div>
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" class="modal-cancel" onclick="closeMembersModal()">Done</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function submitCreateLabel(ev) {
+  ev.preventDefault();
+  var input = document.getElementById('newLabelName');
+  var name = input.value.trim();
+  if (!name) return false;
+  var fd = new FormData();
+  fd.append('name', name);
+  fetch('{{ url_for("portal.lead_labels_create") }}', { method: 'POST', body: fd })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (data.error) { alert(data.error); return; }
+      window.location.reload();
+    })
+    .catch(function(){ alert('Could not create label — check your connection'); });
+  return false;
+}
+
+var currentLabelId = null;
+
+function openMembersModal(labelId, labelName) {
+  currentLabelId = labelId;
+  document.getElementById('lmTitle').textContent = labelName;
+  document.getElementById('lmAddSearch').value = '';
+  document.getElementById('labelMembersModal').classList.add('open');
+  loadMembers();
+}
+function closeMembersModal() {
+  document.getElementById('labelMembersModal').classList.remove('open');
+  currentLabelId = null;
+}
+
+function loadMembers() {
+  var wrap = document.getElementById('lmMembersWrap');
+  wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Loading…</div>';
+  fetch('/labels/' + currentLabelId + '/members')
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      var members = data.members || [];
+      if (members.length === 0) {
+        wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">No contacts labeled yet.</div>';
+        return;
+      }
+      wrap.innerHTML = members.map(function(m){
+        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 4px;border-bottom:1px solid rgba(3,12,24,.05)">'
+          + '<div><div style="font-weight:600;font-size:13px">' + escapeHtmlLm(m.name || '') + '</div>'
+          + '<div style="font-size:11.5px;color:var(--muted)">' + escapeHtmlLm(m.email || 'no email') + '</div></div>'
+          + '<button type="button" class="btn btn-sm btn-ghost" onclick="removeMember(' + m.id + ')">Remove</button>'
+          + '</div>';
+      }).join('');
+    })
+    .catch(function(){ wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--bad)">Could not load contacts.</div>'; });
+}
+
+function removeMember(leadId) {
+  var fd = new FormData();
+  fd.append('lead_id', leadId);
+  fetch('/labels/' + currentLabelId + '/members/remove', { method: 'POST', body: fd })
+    .then(function(r){ return r.json(); })
+    .then(function(){ loadMembers(); })
+    .catch(function(){ alert('Could not remove contact — check your connection'); });
+}
+
+var lmSearchTimer = null;
+function onLmSearchInput() {
+  clearTimeout(lmSearchTimer);
+  var q = document.getElementById('lmAddSearch').value.trim();
+  if (!q) { document.getElementById('lmAddResults').style.display = 'none'; return; }
+  lmSearchTimer = setTimeout(function() {
+    fetch('/labels/search-leads?q=' + encodeURIComponent(q) + '&exclude_label_id=' + currentLabelId)
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        var leads = data.leads || [];
+        var results = document.getElementById('lmAddResults');
+        if (leads.length === 0) {
+          results.innerHTML = '<div style="padding:10px;font-size:12.5px;color:var(--muted)">No matches</div>';
+        } else {
+          results.innerHTML = leads.map(function(l){
+            return '<div style="padding:9px 12px;cursor:pointer;font-size:13px" '
+              + 'onmousedown="addMember(' + l.id + ')" onmouseover="this.style.background=\'#f1f5f9\'" onmouseout="this.style.background=\'\'">'
+              + '<strong>' + escapeHtmlLm(l.name || '') + '</strong>'
+              + (l.email ? ' <span style="color:var(--muted)">— ' + escapeHtmlLm(l.email) + '</span>' : '')
+              + '</div>';
+          }).join('');
+        }
+        results.style.display = 'block';
+      });
+  }, 250);
+}
+
+function addMember(leadId) {
+  var fd = new FormData();
+  fd.append('lead_ids', leadId);
+  fetch('/labels/' + currentLabelId + '/members/bulk-add', { method: 'POST', body: fd })
+    .then(function(r){ return r.json(); })
+    .then(function(){
+      document.getElementById('lmAddSearch').value = '';
+      document.getElementById('lmAddResults').style.display = 'none';
+      loadMembers();
+    })
+    .catch(function(){ alert('Could not add contact — check your connection'); });
+}
+
+function escapeHtmlLm(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+</script>
+
+{% endblock %}

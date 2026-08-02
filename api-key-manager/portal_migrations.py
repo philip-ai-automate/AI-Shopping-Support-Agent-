@@ -40,6 +40,15 @@ def ensure_portal_tables():
     conn = get_db_connection()
     cur  = conn.cursor()
     try:
+        # ── admin_users: role/permissions for scoped support-team logins ──
+        if not _column_exists(cur, "admin_users", "role"):
+            cur.execute("ALTER TABLE admin_users ADD COLUMN role VARCHAR NOT NULL DEFAULT 'owner'")
+        if not _column_exists(cur, "admin_users", "permissions"):
+            cur.execute("ALTER TABLE admin_users ADD COLUMN permissions JSONB NOT NULL DEFAULT '{}'")
+        if not _column_exists(cur, "admin_users", "active"):
+            cur.execute("ALTER TABLE admin_users ADD COLUMN active BOOLEAN NOT NULL DEFAULT TRUE")
+        conn.commit()
+
         # ── ambassador_leads ──────────────────────────────────────────────
         cur.execute("""
             CREATE TABLE IF NOT EXISTS ambassador_leads (
@@ -172,6 +181,22 @@ def ensure_portal_tables():
                 changed_by  TEXT,
                 notes       TEXT,
                 created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        conn.commit()
+
+        # ── brevo_tenants — per-tenant Brevo API key + synced list ─────────
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS brevo_tenants (
+                id              SERIAL PRIMARY KEY,
+                tenant_id       INTEGER NOT NULL UNIQUE REFERENCES tenants(id),
+                api_key         TEXT NOT NULL,
+                folder_id       INTEGER,
+                list_id         INTEGER,
+                list_name       TEXT,
+                connected_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                last_synced_at  TIMESTAMPTZ,
+                last_sync_count INTEGER
             )
         """)
         conn.commit()
@@ -379,6 +404,148 @@ def ensure_portal_tables():
         cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_wcr_campaign
                 ON wa_campaign_recipients(campaign_id)
+        """)
+        # meta_message_id: lets the async delivery-status webhook (sent →
+        # delivered → read, or failed with Meta's real rejection reason) match
+        # back to the recipient row it belongs to — the initial send only
+        # knows "accepted by Meta", not what happens to the message after.
+        if not _column_exists(cur, "wa_campaign_recipients", "meta_message_id"):
+            cur.execute("ALTER TABLE wa_campaign_recipients ADD COLUMN meta_message_id VARCHAR(128)")
+        if not _column_exists(cur, "wa_campaign_recipients", "updated_at"):
+            cur.execute("ALTER TABLE wa_campaign_recipients ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW()")
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_wcr_meta_message_id
+                ON wa_campaign_recipients(meta_message_id)
+        """)
+
+        # ── email_domains: per-tenant ZeptoMail sending identity ────────────────
+        # Admin-configured, not tenant self-serve: the Mail Agent + domain
+        # verification (SPF/DKIM) happen manually in the ZeptoMail dashboard
+        # under the platform's own ZeptoMail account (ZeptoMail's domain/agent
+        # management API requires a separate OAuth2 grant, not worth building
+        # for this volume yet). An admin pastes the resulting Send Mail Token
+        # here per tenant after doing that setup. Token is encrypted at rest
+        # with the same Fernet helper Zoho/Google Sheets use (_encrypt_ds).
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS email_domains (
+                id                  SERIAL PRIMARY KEY,
+                tenant_id           INTEGER      NOT NULL UNIQUE,
+                domain              VARCHAR(255) NOT NULL,
+                from_email          VARCHAR(255) NOT NULL,
+                from_name           VARCHAR(120),
+                zeptomail_token_enc TEXT         NOT NULL,
+                status              VARCHAR(20)  NOT NULL DEFAULT 'active',
+                created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+            )
+        """)
+
+        # ── email_campaigns ───────────────────────────────────────────────────
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS email_campaigns (
+                id             BIGSERIAL PRIMARY KEY,
+                tenant_id      INTEGER      NOT NULL,
+                name           VARCHAR(255) NOT NULL,
+                subject        VARCHAR(255) NOT NULL,
+                preheader      VARCHAR(255),
+                html_body      TEXT         NOT NULL,
+                status         VARCHAR(20)  NOT NULL DEFAULT 'draft',
+                scheduled_at   TIMESTAMPTZ,
+                segment_id     INTEGER,
+                recipients     TEXT,
+                total_count    INTEGER      NOT NULL DEFAULT 0,
+                sent_count     INTEGER      NOT NULL DEFAULT 0,
+                failed_count   INTEGER      NOT NULL DEFAULT 0,
+                from_domain_id INTEGER REFERENCES email_domains(id),
+                created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                completed_at   TIMESTAMPTZ
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_email_campaigns_tenant
+                ON email_campaigns(tenant_id)
+        """)
+        if not _column_exists(cur, "email_campaigns", "exclude_label_ids"):
+            cur.execute("ALTER TABLE email_campaigns ADD COLUMN exclude_label_ids INTEGER[]")
+
+        # ── email_campaign_recipients ────────────────────────────────────────
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS email_campaign_recipients (
+                id          BIGSERIAL PRIMARY KEY,
+                campaign_id BIGINT       NOT NULL REFERENCES email_campaigns(id) ON DELETE CASCADE,
+                tenant_id   INTEGER      NOT NULL,
+                email       VARCHAR(255) NOT NULL,
+                status      VARCHAR(20)  NOT NULL DEFAULT 'pending',
+                error_msg   TEXT,
+                sent_at     TIMESTAMPTZ
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_ecr_campaign
+                ON email_campaign_recipients(campaign_id)
+        """)
+
+        # ── email_suppressions: unsubscribe/bounce/complaint do-not-email list ──
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS email_suppressions (
+                id         BIGSERIAL PRIMARY KEY,
+                tenant_id  INTEGER      NOT NULL,
+                email      VARCHAR(255) NOT NULL,
+                reason     VARCHAR(20)  NOT NULL DEFAULT 'unsubscribe',
+                created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                UNIQUE(tenant_id, email)
+            )
+        """)
+
+        # ── email_segments / email_segment_leads: reusable named groups of Sales
+        # Pipeline contacts, so a campaign can target a saved subset instead of
+        # only "all pipeline contacts" or a one-off pasted list ──────────────────
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS email_segments (
+                id         SERIAL PRIMARY KEY,
+                tenant_id  INTEGER      NOT NULL,
+                name       VARCHAR(120) NOT NULL,
+                created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_email_segments_tenant
+                ON email_segments(tenant_id)
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS email_segment_leads (
+                segment_id INTEGER NOT NULL REFERENCES email_segments(id) ON DELETE CASCADE,
+                lead_id    INTEGER NOT NULL REFERENCES merchant_pipeline_leads(id) ON DELETE CASCADE,
+                added_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (segment_id, lead_id)
+            )
+        """)
+
+        # ── lead_labels / lead_label_leads: freeform status tags on a Sales Pipeline
+        # lead (e.g. "Bounced", "VIP"). Deliberately a separate system from
+        # email_segments — a segment is an audience you'd email; a label is a fact
+        # about the lead itself, and must never show up as something you can pick as
+        # a campaign's send-to audience. ─────────────────────────────────────────
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS lead_labels (
+                id         SERIAL PRIMARY KEY,
+                tenant_id  INTEGER      NOT NULL,
+                name       VARCHAR(60)  NOT NULL,
+                created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                UNIQUE(tenant_id, name)
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_lead_labels_tenant
+                ON lead_labels(tenant_id)
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS lead_label_leads (
+                label_id INTEGER NOT NULL REFERENCES lead_labels(id) ON DELETE CASCADE,
+                lead_id  INTEGER NOT NULL REFERENCES merchant_pipeline_leads(id) ON DELETE CASCADE,
+                added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (label_id, lead_id)
+            )
         """)
 
         # ── login_attempts: rate-limit failed ambassador logins ───────────────────
@@ -863,6 +1030,387 @@ def ensure_portal_tables():
                         ALTER TABLE {_tbl} ADD CONSTRAINT {_tbl}_{_fk_col}_fkey
                             FOREIGN KEY ({_fk_col}) REFERENCES {_fk_table}(id) ON DELETE SET NULL
                     """)
+
+        # ── ambassador_documents: admin-shared files (PDF/Word/Excel/PPT) ──
+        # Admin uploads a document from /admin and tags it with which
+        # product(s) (portal/school/estate) it applies to. Ambassadors see
+        # it on their own /ambassador/documents page, gated by which
+        # products they are 'active' on in ambassador_products.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS ambassador_documents (
+                id                 SERIAL PRIMARY KEY,
+                title              VARCHAR(255) NOT NULL,
+                description        TEXT,
+                original_filename  VARCHAR(255) NOT NULL,
+                stored_filename    VARCHAR(255) NOT NULL,
+                file_ext           VARCHAR(10) NOT NULL,
+                file_size_bytes    BIGINT,
+                products           TEXT[] NOT NULL,
+                uploaded_by        VARCHAR(255),
+                created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_ambassador_documents_products
+                ON ambassador_documents USING GIN(products)
+        """)
+
+        # ── ambassador_broadcasts: admin WhatsApp broadcasts to ambassadors ──
+        # Log of each admin-sent WhatsApp update (via one reusable Meta
+        # template) — who it targeted, recipient ids, and delivery counts.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS ambassador_broadcasts (
+                id             SERIAL PRIMARY KEY,
+                message_body   TEXT NOT NULL,
+                target_product VARCHAR(20) NOT NULL,
+                recipient_ids  JSONB NOT NULL,
+                total_count    INT NOT NULL DEFAULT 0,
+                sent_count     INT NOT NULL DEFAULT 0,
+                failed_count   INT NOT NULL DEFAULT 0,
+                skipped_count  INT NOT NULL DEFAULT 0,
+                status         VARCHAR(20) NOT NULL DEFAULT 'sending',
+                created_by     VARCHAR(255),
+                created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                sent_at        TIMESTAMPTZ
+            )
+        """)
+        if not _column_exists(cur, "ambassador_broadcasts", "failed_recipients"):
+            cur.execute("""
+                ALTER TABLE ambassador_broadcasts
+                ADD COLUMN failed_recipients JSONB NOT NULL DEFAULT '[]'::jsonb
+            """)
+
+        # ── Visual Product Match: Pro-plan feature gate ─────────────────────
+        # Mirrors feat_crm/feat_advanced_ai — a plan-level capability flag.
+        # Only 'pro' gets TRUE; per-tenant opt-in still lives in
+        # tenants.features JSON (visual_product_match key), same pattern as
+        # product_recommendation/related_products.
+        if not _column_exists(cur, "plans", "feat_visual_match"):
+            cur.execute("""
+                ALTER TABLE plans
+                ADD COLUMN feat_visual_match BOOLEAN NOT NULL DEFAULT FALSE
+            """)
+            cur.execute("UPDATE plans SET feat_visual_match = TRUE WHERE slug = 'pro'")
+
+        # ── Email Campaigns: Pro-plan-only feature gate ─────────────────────
+        # Unlike feat_broadcasts (Starter+), this is Pro-only — native ZeptoMail
+        # bulk email has a real per-message send cost, so it's reserved for the
+        # top tier rather than opened up during a "product discovery" period.
+        # Gating always applies regardless of WhatsApp connection status (see
+        # _require_email_campaigns_plan in portal_routes.py) — unlike
+        # _require_plan_feature, there is no web-only-tenant bypass here.
+        if not _column_exists(cur, "plans", "feat_email_campaigns"):
+            cur.execute("""
+                ALTER TABLE plans
+                ADD COLUMN feat_email_campaigns BOOLEAN NOT NULL DEFAULT FALSE
+            """)
+            cur.execute("UPDATE plans SET feat_email_campaigns = TRUE WHERE slug = 'pro'")
+
+        # ── Visual Product Match: image embedding column on documents ──────
+        # Additive, nullable — existing text `embedding` column and all
+        # search.py queries are untouched. Populated by ai-backend/image_search.py
+        # (sync-on-write) and a one-off backfill for existing rows.
+        if not _column_exists(cur, "documents", "image_embedding"):
+            cur.execute("ALTER TABLE documents ADD COLUMN image_embedding vector(512)")
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_documents_image_embedding ON documents
+                    USING hnsw (image_embedding vector_cosine_ops)
+                    WITH (m = 16, ef_construction = 64)
+            """)
+
+        # ── feature_releases: Ambassador "What's New" board ─────────────────
+        # Lets admins publish new sellable capabilities (e.g. Visual Product
+        # Match) as sales-enablement cards ambassadors/sales managers see in
+        # their Hub. Publishing optionally fires a WhatsApp broadcast reusing
+        # the existing ambassador_broadcasts send path (send_ambassador_wa_template).
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS feature_releases (
+                id                 SERIAL PRIMARY KEY,
+                title              VARCHAR(200) NOT NULL,
+                summary            TEXT NOT NULL,
+                pitch_notes        TEXT,
+                demo_instructions  TEXT,
+                playbook_note      VARCHAR(255),
+                product            VARCHAR(20) NOT NULL DEFAULT 'all',
+                min_plan           VARCHAR(40) NOT NULL DEFAULT 'All plans',
+                status             VARCHAR(20) NOT NULL DEFAULT 'draft',
+                notify_whatsapp    BOOLEAN NOT NULL DEFAULT TRUE,
+                broadcast_id       INT REFERENCES ambassador_broadcasts(id) ON DELETE SET NULL,
+                created_by         VARCHAR(255),
+                published_at       TIMESTAMPTZ,
+                created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+
+        # ── Ambassador password reset ─────────────────────────────────────────
+        if _table_exists(cur, "ambassadors"):
+            if not _column_exists(cur, "ambassadors", "reset_token"):
+                cur.execute(
+                    "ALTER TABLE ambassadors ADD COLUMN reset_token VARCHAR(64) UNIQUE"
+                )
+            if not _column_exists(cur, "ambassadors", "reset_expires_at"):
+                cur.execute(
+                    "ALTER TABLE ambassadors ADD COLUMN reset_expires_at TIMESTAMP"
+                )
+
+        # ── Ambassador inactivity policy (day 3 reminder / day 7 deactivate /
+        # day 30 soft-delete) ─────────────────────────────────────────────────
+        if _table_exists(cur, "ambassadors"):
+            if not _column_exists(cur, "ambassadors", "last_login_at"):
+                cur.execute(
+                    "ALTER TABLE ambassadors ADD COLUMN last_login_at TIMESTAMPTZ"
+                )
+            if not _column_exists(cur, "ambassadors", "inactivity_reminder_sent_at"):
+                cur.execute(
+                    "ALTER TABLE ambassadors ADD COLUMN inactivity_reminder_sent_at TIMESTAMPTZ"
+                )
+            if not _column_exists(cur, "ambassadors", "suspended_at"):
+                cur.execute(
+                    "ALTER TABLE ambassadors ADD COLUMN suspended_at TIMESTAMPTZ"
+                )
+            if not _column_exists(cur, "ambassadors", "suspended_reason"):
+                cur.execute(
+                    "ALTER TABLE ambassadors ADD COLUMN suspended_reason VARCHAR(50)"
+                )
+            if not _column_exists(cur, "ambassadors", "deleted_at"):
+                cur.execute(
+                    "ALTER TABLE ambassadors ADD COLUMN deleted_at TIMESTAMPTZ"
+                )
+
+        # ── Sales Pipeline → Brevo sync UX: per-lead sync tracking ─────────
+        # updated_at lets sync tell "changed since last push" apart from
+        # "never changed" so the default sync can skip already-current leads.
+        if _table_exists(cur, "merchant_pipeline_leads"):
+            if not _column_exists(cur, "merchant_pipeline_leads", "updated_at"):
+                cur.execute(
+                    "ALTER TABLE merchant_pipeline_leads ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+                )
+            if not _column_exists(cur, "merchant_pipeline_leads", "brevo_synced_at"):
+                cur.execute(
+                    "ALTER TABLE merchant_pipeline_leads ADD COLUMN brevo_synced_at TIMESTAMPTZ"
+                )
+
+        # ── Sales Pipeline → Brevo sync UX: background sync progress ───────
+        # Large syncs (hundreds+ of leads) run in a background thread rather
+        # than blocking the request, since one HTTP call per lead to Brevo
+        # can take minutes — these columns let the poll endpoint report
+        # progress from any gunicorn worker, not just the one running the sync.
+        if _table_exists(cur, "brevo_tenants"):
+            if not _column_exists(cur, "brevo_tenants", "sync_status"):
+                cur.execute(
+                    "ALTER TABLE brevo_tenants ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'idle'"
+                )
+            if not _column_exists(cur, "brevo_tenants", "sync_total"):
+                cur.execute(
+                    "ALTER TABLE brevo_tenants ADD COLUMN sync_total INTEGER NOT NULL DEFAULT 0"
+                )
+            if not _column_exists(cur, "brevo_tenants", "sync_progress"):
+                cur.execute(
+                    "ALTER TABLE brevo_tenants ADD COLUMN sync_progress INTEGER NOT NULL DEFAULT 0"
+                )
+            if not _column_exists(cur, "brevo_tenants", "sync_started_at"):
+                cur.execute(
+                    "ALTER TABLE brevo_tenants ADD COLUMN sync_started_at TIMESTAMPTZ"
+                )
+            if not _column_exists(cur, "brevo_tenants", "sync_skipped"):
+                cur.execute(
+                    "ALTER TABLE brevo_tenants ADD COLUMN sync_skipped INTEGER NOT NULL DEFAULT 0"
+                )
+            if not _column_exists(cur, "brevo_tenants", "sync_synced_ids"):
+                cur.execute(
+                    "ALTER TABLE brevo_tenants ADD COLUMN sync_synced_ids TEXT"
+                )
+            if not _column_exists(cur, "brevo_tenants", "sync_failed_json"):
+                cur.execute(
+                    "ALTER TABLE brevo_tenants ADD COLUMN sync_failed_json TEXT"
+                )
+            if not _column_exists(cur, "brevo_tenants", "sync_error"):
+                cur.execute(
+                    "ALTER TABLE brevo_tenants ADD COLUMN sync_error TEXT"
+                )
+
+        # ── zoho_campaigns_tenants — per-tenant Zoho Campaigns OAuth + synced
+        # list. Unlike Brevo (static API key), Zoho requires OAuth2: each
+        # tenant authorizes their own Zoho account, and we store their
+        # refresh token (encrypted) plus the accounts-server host Zoho
+        # returned for their data center (US/EU/IN/etc — refresh calls must
+        # go back to that same DC, never a hardcoded accounts.zoho.com).
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS zoho_campaigns_tenants (
+                id                SERIAL PRIMARY KEY,
+                tenant_id         INTEGER NOT NULL UNIQUE REFERENCES tenants(id),
+                refresh_token_enc TEXT NOT NULL,
+                accounts_server   TEXT NOT NULL DEFAULT 'https://accounts.zoho.com',
+                list_key          TEXT,
+                list_name         TEXT,
+                connected_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                last_synced_at    TIMESTAMPTZ,
+                last_sync_count   INTEGER,
+                sync_status       TEXT NOT NULL DEFAULT 'idle',
+                sync_total        INTEGER NOT NULL DEFAULT 0,
+                sync_progress     INTEGER NOT NULL DEFAULT 0,
+                sync_started_at   TIMESTAMPTZ,
+                sync_skipped      INTEGER NOT NULL DEFAULT 0,
+                sync_synced_ids   TEXT,
+                sync_failed_json  TEXT,
+                sync_error        TEXT
+            )
+        """)
+
+        if _table_exists(cur, "merchant_pipeline_leads"):
+            if not _column_exists(cur, "merchant_pipeline_leads", "zoho_synced_at"):
+                cur.execute(
+                    "ALTER TABLE merchant_pipeline_leads ADD COLUMN zoho_synced_at TIMESTAMPTZ"
+                )
+
+        # ── wa_contacts: personalization phrase for outbound sales campaigns ──
+        if _table_exists(cur, "wa_contacts"):
+            if not _column_exists(cur, "wa_contacts", "personalization_note"):
+                cur.execute(
+                    "ALTER TABLE wa_contacts ADD COLUMN personalization_note TEXT"
+                )
+            # STOP opt-out: set by the WhatsApp gateway when a customer replies
+            # STOP/UNSUBSCRIBE/etc; checked by the portal's campaign sender so
+            # opted-out contacts are never sent a marketing template again.
+            if not _column_exists(cur, "wa_contacts", "opted_out"):
+                cur.execute(
+                    "ALTER TABLE wa_contacts ADD COLUMN opted_out BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+            if not _column_exists(cur, "wa_contacts", "opted_out_at"):
+                cur.execute(
+                    "ALTER TABLE wa_contacts ADD COLUMN opted_out_at TIMESTAMPTZ"
+                )
+
+        # ── wa_history_imports — tracks each chat-history upload batch, so an
+        # import can be listed and undone as a unit (delete by batch id) ──────
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS wa_history_imports (
+                id              SERIAL PRIMARY KEY,
+                tenant_id       INTEGER NOT NULL REFERENCES tenants(id),
+                wa_tenant_id    INTEGER REFERENCES wa_tenants(id),
+                customer_phone  VARCHAR(32) NOT NULL,
+                customer_label  TEXT,
+                source_filename TEXT,
+                message_count   INTEGER NOT NULL DEFAULT 0,
+                skipped_media   INTEGER NOT NULL DEFAULT 0,
+                skipped_system  INTEGER NOT NULL DEFAULT 0,
+                imported_by     TEXT,
+                created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+
+        # ── wa_message_log: flag imported rows so they never get counted in
+        # live dashboard stats (today/month/active-conversation aggregates),
+        # and can be traced back to / deleted with their import batch ────────
+        if not _column_exists(cur, "wa_message_log", "is_historical"):
+            cur.execute(
+                "ALTER TABLE wa_message_log ADD COLUMN is_historical BOOLEAN NOT NULL DEFAULT FALSE"
+            )
+        if not _column_exists(cur, "wa_message_log", "import_batch_id"):
+            cur.execute(
+                "ALTER TABLE wa_message_log ADD COLUMN import_batch_id INTEGER "
+                "REFERENCES wa_history_imports(id) ON DELETE CASCADE"
+            )
+        # media_url: populated only by history-import media extraction (a
+        # "With Media" .zip export) — live Meta webhook messages never set
+        # this, since Meta's inbound media is a short-lived ID, not a
+        # permanent URL; content there stays caption-only as before.
+        if not _column_exists(cur, "wa_message_log", "media_url"):
+            cur.execute("ALTER TABLE wa_message_log ADD COLUMN media_url TEXT")
+
+        if not _column_exists(cur, "wa_history_imports", "media_extracted"):
+            cur.execute(
+                "ALTER TABLE wa_history_imports ADD COLUMN media_extracted INTEGER NOT NULL DEFAULT 0"
+            )
+
+        # ── wa_campaigns: which connected number a campaign sends from ──────
+        # Nullable — existing campaigns predate this column. _send_campaign_now
+        # falls back to the tenant's oldest active connection (deterministic,
+        # matching the old accidental behavior) when it's NULL.
+        if not _column_exists(cur, "wa_campaigns", "wa_tenant_id"):
+            cur.execute(
+                "ALTER TABLE wa_campaigns ADD COLUMN wa_tenant_id INTEGER REFERENCES wa_tenants(id)"
+            )
+
+        # ── customers.hear_about_us: "How did you hear about us?" — captured at
+        # registration for marketing-channel attribution. Nullable since existing
+        # customers registered before this field existed; new signups are required
+        # to answer it (enforced in the /register route, not the DB).
+        if not _column_exists(cur, "customers", "hear_about_us"):
+            cur.execute("ALTER TABLE customers ADD COLUMN hear_about_us VARCHAR(30)")
+
+        # ── team_members: Shared Team Inbox — staff logins scoped to a tenant ──
+        # Single flat 'agent' role for v1 (Inbox-only, enforced by a
+        # before_request allowlist in portal_routes.py). The owner's login
+        # stays the `customers` row; team members are additional logins that
+        # share the same tenant_id.
+        if not _table_exists(cur, "team_members"):
+            cur.execute("""
+                CREATE TABLE team_members (
+                    id                SERIAL PRIMARY KEY,
+                    tenant_id         INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    name              VARCHAR(200) NOT NULL,
+                    email             VARCHAR(255) NOT NULL UNIQUE,
+                    password_hash     VARCHAR(255),
+                    role              VARCHAR(30) NOT NULL DEFAULT 'agent',
+                    is_active         BOOLEAN NOT NULL DEFAULT TRUE,
+                    invite_token      VARCHAR(64),
+                    invite_expires_at TIMESTAMPTZ,
+                    invited_by        INTEGER REFERENCES customers(id),
+                    last_login_at     TIMESTAMPTZ,
+                    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+
+        # ── team_member_agents: which AI Agent(s) a team member may see ────────
+        # A team member with ZERO rows here sees NOTHING in the Inbox — this
+        # is a deny-by-default access-control table, not a soft label like
+        # wa_conversation_assignments above. Real FK on purpose (unlike the
+        # assignment table) since this genuinely gates data access.
+        if not _table_exists(cur, "team_member_agents"):
+            cur.execute("""
+                CREATE TABLE team_member_agents (
+                    team_member_id INTEGER NOT NULL REFERENCES team_members(id) ON DELETE CASCADE,
+                    tenant_agent_id INTEGER NOT NULL REFERENCES tenant_agents(id) ON DELETE CASCADE,
+                    PRIMARY KEY (team_member_id, tenant_agent_id)
+                )
+            """)
+
+        # ── wa_conversation_assignments: "who's handling this chat" ────────────
+        # assigned_to_key/label are denormalized strings ("owner:<id>" /
+        # "team:<id>") rather than a polymorphic FK, since the owner and team
+        # members live in two different tables and this is a soft
+        # coordination record, not an access-control one.
+        if not _table_exists(cur, "wa_conversation_assignments"):
+            cur.execute("""
+                CREATE TABLE wa_conversation_assignments (
+                    id               SERIAL PRIMARY KEY,
+                    tenant_id        INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    customer_phone   VARCHAR(40) NOT NULL,
+                    assigned_to_key  VARCHAR(60) NOT NULL,
+                    assigned_to_label VARCHAR(200) NOT NULL,
+                    assigned_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    UNIQUE (tenant_id, customer_phone)
+                )
+            """)
+
+        # ── plans.staff_limit: extra team seats beyond the owner ───────────────
+        # Defaults to 0 (COALESCE at read time) — a tenant on a plan with no
+        # staff_limit set does not silently get a free team seat.
+        if not _column_exists(cur, "plans", "staff_limit"):
+            cur.execute("ALTER TABLE plans ADD COLUMN staff_limit INTEGER")
+            cur.execute("UPDATE plans SET staff_limit = 0  WHERE slug = 'free'")
+            cur.execute("UPDATE plans SET staff_limit = 1  WHERE slug = 'starter'")
+            cur.execute("UPDATE plans SET staff_limit = 3  WHERE slug = 'growth'")
+            cur.execute("UPDATE plans SET staff_limit = 10 WHERE slug = 'pro'")
+
+        # ── wa_message_log.sent_by_label: which human sent a manual reply ──────
+        # Set only on outbound 'agent_reply' rows sent via the Inbox, so the
+        # chat bubble can show the actual staff member's name instead of a
+        # generic "You" once more than one human can reply on an account.
+        if not _column_exists(cur, "wa_message_log", "sent_by_label"):
+            cur.execute("ALTER TABLE wa_message_log ADD COLUMN sent_by_label VARCHAR(200)")
 
         conn.commit()
     except Exception as e:

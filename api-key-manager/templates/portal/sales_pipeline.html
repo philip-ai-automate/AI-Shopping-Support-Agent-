@@ -38,9 +38,10 @@
     flex:1;min-width:118px;border-radius:14px;padding:12px 14px;text-align:center;
     border:1.5px solid var(--chip-border, var(--line));
     background:var(--chip-bg, #fff);
-    transition:.15s;
+    transition:.15s; display:block; text-decoration:none; color:inherit; cursor:pointer;
   }
   .stage-chip:hover{ transform:translateY(-1px); box-shadow:0 4px 14px rgba(3,12,24,.06) }
+  .stage-chip.active{ border-width:2px; box-shadow:0 0 0 1px var(--chip-fg, var(--ink)) inset }
   .stage-chip .ic{font-size:16px;margin-bottom:4px}
   .stage-chip .n{font-size:22px;font-weight:900;letter-spacing:-.5px;color:var(--chip-fg, var(--ink))}
   .stage-chip .lbl{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;
@@ -55,7 +56,14 @@
   .st-won{background:#dcfce7;color:#15803d}
   .st-dropped{background:#fee2e2;color:#991b1b}
 
-  .sp-toolbar{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:16px }
+  .sp-toolbar{ display:flex; flex-direction:column; gap:12px; margin-bottom:16px }
+  .sp-toolbar-row{ display:flex; align-items:center; gap:12px; flex-wrap:wrap }
+  .sp-toolbar-row-controls{ justify-content:space-between; padding-top:12px; border-top:1px solid rgba(3,12,24,.06) }
+  .sp-toolbar-group{ display:flex; align-items:center; gap:10px; flex-wrap:wrap }
+  .sp-result-badge{
+    font-size:12.5px; font-weight:700; color:var(--ink); white-space:nowrap;
+    padding:6px 12px; background:rgba(3,12,24,.05); border-radius:999px; margin-left:auto;
+  }
   .sp-search{ position:relative; flex:1; min-width:200px; max-width:300px }
   .sp-search input{
     width:100%; padding:9px 14px 9px 36px; border-radius:999px; border:1.5px solid var(--line);
@@ -63,13 +71,6 @@
   }
   .sp-search input:focus{ border-color:rgba(3,12,24,.3); box-shadow:0 0 0 3px rgba(3,12,24,.05) }
   .sp-search-icon{ position:absolute; left:13px; top:50%; transform:translateY(-50%); font-size:13px; color:var(--muted); pointer-events:none }
-  .stage-filter-bar{ display:flex; gap:8px; flex-wrap:wrap }
-  .stage-filter-btn{
-    padding:6px 14px; border-radius:999px; font-size:12.5px; font-weight:600;
-    border:1px solid var(--line); background:#fff; cursor:pointer; transition:.12s;
-  }
-  .stage-filter-btn:hover{ background:rgba(3,12,24,.05) }
-  .stage-filter-btn.active{ background:var(--ink); color:#fff; border-color:var(--ink) }
 
   .cust-avatar{
     width:34px;height:34px;border-radius:50%;flex-shrink:0;
@@ -106,6 +107,52 @@
   .lead-row td{vertical-align:top}
   .lead-actions{display:flex;gap:6px;flex-wrap:wrap}
 
+  .bulk-action-bar{display:flex;align-items:center;gap:14px;background:#eef2ff;border:1.5px solid #c7d2fe;
+                    border-radius:12px;padding:10px 16px;margin-bottom:14px;font-size:13px;color:var(--ink)}
+  .seg-picker-row{display:flex;align-items:center;justify-content:space-between;gap:10px;
+                   padding:11px 14px;border:1.5px solid var(--line);border-radius:10px;margin-bottom:8px;
+                   cursor:pointer;transition:.12s}
+  .seg-picker-row:hover{border-color:#030C18;background:rgba(3,12,24,.03)}
+  .seg-picker-name{font-weight:700;font-size:13px}
+  .seg-picker-count{font-size:11px;color:var(--muted)}
+
+  .col-picker-wrap { position:relative }
+  .col-picker-btn {
+    display:inline-flex; align-items:center; gap:6px;
+    background:#fff; color:var(--ink); font-size:12px; font-weight:600;
+    padding:7px 12px; border-radius:999px; border:1.5px solid var(--line); cursor:pointer; transition:.12s;
+  }
+  .col-picker-btn:hover { background:rgba(3,12,24,.05) }
+  .col-picker-menu {
+    display:none; position:absolute; top:calc(100% + 6px); right:0; z-index:60;
+    background:#fff; border:1px solid rgba(3,12,24,.1); border-radius:11px;
+    box-shadow:0 10px 30px rgba(0,0,0,.12); padding:8px; min-width:190px;
+  }
+  .col-picker-menu.open { display:block }
+  .col-picker-item {
+    display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:7px;
+    font-size:12.5px; color:var(--ink); cursor:pointer; user-select:none;
+  }
+  .col-picker-item:hover { background:#f1f5f9 }
+  .col-picker-item input { width:14px; height:14px; cursor:pointer }
+  table th[data-col].col-hidden, table td[data-col].col-hidden { display:none }
+  .channel-picker-wrap { position:relative }
+  .label-filter-menu { min-width:230px }
+  .label-filter-row { display:flex; align-items:center; justify-content:space-between; gap:10px;
+                       padding:6px 8px; border-radius:7px }
+  .label-filter-row:hover { background:#f1f5f9 }
+  .label-filter-name { font-size:12.5px; color:var(--ink) }
+  .label-filter-modes { display:flex; gap:4px; flex-shrink:0 }
+  .label-mode-pill {
+    display:inline-flex; align-items:center; gap:0; padding:3px 9px; border-radius:999px;
+    font-size:11px; font-weight:700; border:1.5px solid var(--line); cursor:pointer;
+    user-select:none; color:var(--muted);
+  }
+  .label-mode-pill input { display:none }
+  .label-mode-pill.active { background:#e0e7ff; color:#4338ca; border-color:#c7d2fe }
+  .label-mode-pill.hide.active { background:#fee2e2; color:#991b1b; border-color:#fecaca }
+  .channel-picker-wrap .col-picker-menu { right:auto; left:0 }
+
   @media(max-width:600px){ .frow{grid-template-columns:1fr} }
 </style>
 
@@ -117,7 +164,7 @@
       <p>Track your own customers and deals — separate from <a href="{{ url_for('portal.leads_page') }}">Leads</a>. Best for high-value items that take time to close.</p>
     </div>
   </div>
-  <div style="display:flex;gap:8px">
+  <div style="display:flex;align-items:center;gap:8px">
     <button class="btn" onclick="spTourStart()">🎓 Take a Tour</button>
     <button class="btn btn-primary" data-sptour="add-deal-btn" onclick="document.getElementById('addLeadForm').classList.toggle('open')">+ Add Deal</button>
   </div>
@@ -128,7 +175,7 @@
   <div class="sp-kpi active">
     <div class="sp-kpi-icon">🧭</div>
     <div>
-      <div class="sp-kpi-val">{{ leads|length }}</div>
+      <div class="sp-kpi-val">{{ stage_counts.values()|sum }}</div>
       <div class="sp-kpi-label">Active deals</div>
     </div>
   </div>
@@ -157,16 +204,29 @@
   'negotiating':   {'bg':'#fff7ed','border':'#fed7aa','fg':'#9a3412'},
   'won':           {'bg':'#f0fdf4','border':'#bbf7d0','fg':'#15803d'},
 } %}
+{% set filter_args = {'per_page': per_page, 'has_phone': '1' if has_phone else none,
+                       'has_whatsapp': '1' if has_whatsapp else none, 'has_email': '1' if has_email else none,
+                       'hide_segment': hide_segment_ids or none, 'hide_label': hide_label_ids or none,
+                       'label': show_label_ids or none} %}
 
-<!-- Stage funnel summary -->
+<!-- Stage funnel summary — click a stage to filter -->
 <div class="stage-funnel" data-sptour="stage-funnel">
+  <a href="{{ url_for('portal.sales_pipeline', stage='all', q=search, **filter_args) }}"
+     class="stage-chip {{ 'active' if stage_filter == 'all' }}"
+     style="--chip-bg:#f8fafc;--chip-border:#e2e8f0;--chip-fg:#334155">
+    <div class="ic">🧭</div>
+    <div class="n">{{ stage_counts.values()|sum }}</div>
+    <div class="lbl">All</div>
+  </a>
   {% for s in stage_order %}
   {% set sc = stage_colors[s] %}
-  <div class="stage-chip" style="--chip-bg:{{ sc.bg }};--chip-border:{{ sc.border }};--chip-fg:{{ sc.fg }}">
+  <a href="{{ url_for('portal.sales_pipeline', stage=s, q=search, **filter_args) }}"
+     class="stage-chip {{ 'active' if stage_filter == s }}"
+     style="--chip-bg:{{ sc.bg }};--chip-border:{{ sc.border }};--chip-fg:{{ sc.fg }}">
     <div class="ic">{{ stage_icons[s] }}</div>
     <div class="n">{{ stage_counts.get(s, 0) }}</div>
     <div class="lbl">{{ stage_labels[s] }}</div>
-  </div>
+  </a>
   {% endfor %}
 </div>
 
@@ -196,10 +256,13 @@
     </div>
     <div class="frow">
       <div>
+        <label class="flbl">WhatsApp Number <span style="font-weight:400;color:#9ca3af">(if different from phone)</span></label>
+        <input type="tel" name="whatsapp_number" class="finp"/>
+      </div>
+      <div>
         <label class="flbl">Estimated Deal Value</label>
         <input type="number" step="0.01" name="deal_value" class="finp" placeholder="e.g. 450000"/>
       </div>
-      <div></div>
     </div>
     <div class="frow single">
       <div>
@@ -218,21 +281,134 @@
 {% macro cust_color(name) %}{% set _p=['#5C6BC0','#26A69A','#0288D1','#388E3C','#F57C00','#8E24AA','#E53935','#00838F'] %}{{ _p[(name|length)%8] }}{% endmacro %}
 {% macro cust_initials(name) %}{% set _w=name.split() %}{% if _w|length>=2 %}{{ _w[0][0]|upper }}{{ _w[1][0]|upper }}{% else %}{{ name[:2]|upper }}{% endif %}{% endmacro %}
 
-{% if leads %}
-{# Search + stage filter toolbar #}
-<div class="sp-toolbar">
-  <div class="sp-search">
-    <span class="sp-search-icon">🔍</span>
-    <input type="text" id="pipelineSearch" placeholder="Search by customer or contact…" oninput="applyPipelineFilters()"/>
+{% set pipeline_has_any_leads = stage_counts.values()|sum > 0 %}
+{% if pipeline_has_any_leads %}
+{# Search + stage filter toolbar — GET form, filtering/pagination happen server-side #}
+<form method="GET" action="{{ url_for('portal.sales_pipeline') }}" class="sp-toolbar">
+  <div class="sp-toolbar-row">
+    <div class="sp-search">
+      <span class="sp-search-icon">🔍</span>
+      <input type="text" name="q" value="{{ search }}" placeholder="Search by customer or contact…"/>
+    </div>
+    <button type="submit" class="btn btn-sm">Search</button>
+    {% if search %}
+    <a href="{{ url_for('portal.sales_pipeline', stage=stage_filter, **filter_args) }}"
+       class="btn btn-sm btn-ghost" style="text-decoration:none">Clear search</a>
+    {% endif %}
+    <span class="sp-result-badge">{{ filtered_total }} result{{ 's' if filtered_total != 1 else '' }}</span>
   </div>
-  <div class="stage-filter-bar">
-    <button class="stage-filter-btn active" data-stage="all" onclick="filterStage(this,'all')">All ({{ leads|length }})</button>
-    {% for s in stage_order %}
-    <button class="stage-filter-btn" data-stage="{{ s }}" onclick="filterStage(this,'{{ s }}')">{{ stage_icons[s] }} {{ stage_labels[s] }} ({{ stage_counts.get(s, 0) }})</button>
-    {% endfor %}
+  <div class="sp-toolbar-row sp-toolbar-row-controls">
+    <div class="sp-toolbar-group">
+      <div class="channel-picker-wrap">
+        <button type="button" class="col-picker-btn" onclick="toggleChannelPicker()">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+          Filter{% set channel_count = (has_phone|int) + (has_whatsapp|int) + (has_email|int) %}{% if channel_count %} ({{ channel_count }}){% endif %}
+        </button>
+        <div class="col-picker-menu" id="channelPickerMenu">
+          <label class="col-picker-item">
+            <input type="checkbox" name="has_phone" value="1" {% if has_phone %}checked{% endif %} onchange="this.form.submit()">
+            📱 Has Phone
+          </label>
+          <label class="col-picker-item">
+            <input type="checkbox" name="has_whatsapp" value="1" {% if has_whatsapp %}checked{% endif %} onchange="this.form.submit()">
+            💬 Has WhatsApp
+          </label>
+          <label class="col-picker-item">
+            <input type="checkbox" name="has_email" value="1" {% if has_email %}checked{% endif %} onchange="this.form.submit()">
+            ✉️ Has Email
+          </label>
+        </div>
+      </div>
+      {% if all_segments %}
+      <div class="col-picker-wrap seg-picker-wrap">
+        <button type="button" class="col-picker-btn" onclick="toggleSegPicker()">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+          Hide segments{% if hide_segment_ids %} ({{ hide_segment_ids|length }}){% endif %}
+        </button>
+        <div class="col-picker-menu" id="segPickerMenu">
+          {% for seg in all_segments %}
+          <label class="col-picker-item">
+            <input type="checkbox" name="hide_segment" value="{{ seg.id }}"
+                   {% if seg.id in hide_segment_ids %}checked{% endif %}
+                   onchange="this.form.submit()">
+            {{ seg.name }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+      {% if all_labels %}
+      <div class="col-picker-wrap label-picker-wrap">
+        <button type="button" class="col-picker-btn" onclick="toggleLabelPicker()">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+          Label{% set label_filter_count = (show_label_ids|length) + (hide_label_ids|length) %}{% if label_filter_count %} ({{ label_filter_count }}){% endif %}
+        </button>
+        <div class="col-picker-menu label-filter-menu" id="labelPickerMenu">
+          {% for lb in all_labels %}
+          <div class="label-filter-row">
+            <span class="label-filter-name">{{ lb.name }}</span>
+            <span class="label-filter-modes">
+              <label class="label-mode-pill {{ 'active' if lb.id in show_label_ids }}">
+                <input type="checkbox" name="label" value="{{ lb.id }}"
+                       {% if lb.id in show_label_ids %}checked{% endif %}
+                       onchange="onLabelModeChange(this)">
+                Only
+              </label>
+              <label class="label-mode-pill hide {{ 'active' if lb.id in hide_label_ids }}">
+                <input type="checkbox" name="hide_label" value="{{ lb.id }}"
+                       {% if lb.id in hide_label_ids %}checked{% endif %}
+                       onchange="onLabelModeChange(this)">
+                Hide
+              </label>
+            </span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+      <div class="col-picker-wrap">
+        <button type="button" class="col-picker-btn" onclick="toggleColPicker()">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="16" rx="1"/><rect x="14" y="4" width="7" height="16" rx="1"/></svg>
+          Columns
+        </button>
+        <div class="col-picker-menu" id="colPickerMenu">
+          <label class="col-picker-item"><input type="checkbox" data-col-toggle="segment" checked>Segment</label>
+          <label class="col-picker-item"><input type="checkbox" data-col-toggle="label" checked>Label</label>
+          <label class="col-picker-item"><input type="checkbox" data-col-toggle="contact_person" checked>Contact Person</label>
+          <label class="col-picker-item"><input type="checkbox" data-col-toggle="phone" checked>Phone</label>
+          <label class="col-picker-item"><input type="checkbox" data-col-toggle="whatsapp">WhatsApp Number</label>
+          <label class="col-picker-item"><input type="checkbox" data-col-toggle="email">Email</label>
+          <label class="col-picker-item"><input type="checkbox" data-col-toggle="deal_value" checked>Deal Value</label>
+          <label class="col-picker-item"><input type="checkbox" data-col-toggle="stage" checked>Stage</label>
+          <label class="col-picker-item"><input type="checkbox" data-col-toggle="added" checked>Added</label>
+        </div>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
+        Per page
+        <select name="per_page" onchange="this.form.submit()"
+                style="padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit">
+          {% for opt in per_page_options %}
+          <option value="{{ opt }}" {% if per_page == opt %}selected{% endif %}>{{ 'All' if opt == 'all' else opt }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+    <a href="{{ url_for('portal.sales_pipeline_export', stage=stage_filter, q=search, **filter_args) }}"
+       class="btn" style="text-decoration:none">⬇️ Export CSV</a>
   </div>
-</div>
+  {% if stage_filter != 'all' %}<input type="hidden" name="stage" value="{{ stage_filter }}">{% endif %}
+</form>
 {% endif %}
+
+{% set is_phixtra_support_account = (customer.tenant_id == 19) %}
+{% set empty_colspan = 13 if is_phixtra_support_account else 12 %}
+
+<div class="bulk-action-bar" id="bulkActionBar" style="display:none">
+  <span><strong id="bulkSelectedCount">0</strong> selected</span>
+  <button type="button" class="btn btn-sm btn-primary" onclick="openBulkSegmentModal()">📋 Add to Segment</button>
+  <button type="button" class="btn btn-sm btn-primary" onclick="openBulkLabelModal()">🏷️ Add to Label</button>
+  <button type="button" class="btn btn-sm" onclick="clearLeadSelection()">Clear</button>
+</div>
 
 <!-- Pipeline table -->
 <div class="card" style="padding:0" data-sptour="pipeline-table">
@@ -240,35 +416,76 @@
     <table>
       <thead>
         <tr>
+          <th style="width:34px"><input type="checkbox" id="selectAllLeadsCb" onchange="toggleSelectAllLeads(this)"></th>
           <th>Customer</th>
-          <th>Contact</th>
-          <th>Deal Value</th>
-          <th>Stage</th>
-          <th>Added</th>
+          <th data-col="segment">Segment</th>
+          <th data-col="label">Label</th>
+          <th data-col="contact_person">Contact Person</th>
+          <th data-col="phone">Phone</th>
+          <th data-col="whatsapp" class="col-hidden">WhatsApp Number</th>
+          <th data-col="email" class="col-hidden">Email</th>
+          <th data-col="deal_value">Deal Value</th>
+          <th data-col="stage">Stage</th>
+          <th data-col="added">Added</th>
+          {% if is_phixtra_support_account %}
+          <th data-col="ambassador">Assigned Ambassador</th>
+          {% endif %}
           <th>Actions</th>
         </tr>
       </thead>
       <tbody id="pipelineTbody">
         {% if not leads %}
-        <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:40px">
+        <tr><td colspan="{{ empty_colspan }}" style="text-align:center;color:var(--muted);padding:40px">
+          {% if search or stage_filter != 'all' or has_phone or has_whatsapp or has_email or hide_segment_ids or hide_label_ids or show_label_ids %}
+          No deals match your search or filters.
+          {% else %}
           No deals yet. Add one above to start your pipeline.
+          {% endif %}
         </td></tr>
         {% endif %}
         {% for l in leads %}
-        <tr class="lead-row" data-stage="{{ l.stage }}"
-            data-name="{{ (l.customer_name ~ ' ' ~ (l.contact_person or ''))|lower }}">
+        <tr class="lead-row" data-stage="{{ l.stage }}" data-lead-id="{{ l.id }}">
+          <td><input type="checkbox" class="lead-select-cb" onchange="updateBulkBar()"></td>
           <td>
             <div class="cust-cell">
               <span class="cust-avatar" style="background:{{ cust_color(l.customer_name) }}">{{ cust_initials(l.customer_name) }}</span>
-              <strong>{{ l.customer_name }}</strong>
+              <strong class="biz-name-cell">{{ l.customer_name }}</strong>
             </div>
           </td>
-          <td class="muted" style="font-size:12px">
-            {{ l.contact_person or '' }}{% if l.phone %}<br>{{ l.phone }}{% endif %}
+          <td data-col="segment" style="font-size:11px">
+            {% if l.segment_names %}
+              {% for sname in l.segment_names %}
+              <span class="stage-pill" style="background:#e0e7ff;color:#4338ca;margin:1px 3px 1px 0">{{ sname }}</span>
+              {% endfor %}
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
           </td>
-          <td class="muted">{{ '₦{:,.0f}'.format(l.deal_value) if l.deal_value else '—' }}</td>
-          <td><span class="stage-pill st-{{ l.stage }}">{{ stage_labels[l.stage] }}</span></td>
-          <td class="muted">{{ l.created_at.strftime('%d %b %Y') if l.created_at else '—' }}</td>
+          <td data-col="label" style="font-size:11px">
+            {% if l.label_names %}
+              {% for lname in l.label_names %}
+              <span class="stage-pill" style="background:#fee2e2;color:#991b1b;margin:1px 3px 1px 0">{{ lname }}</span>
+              {% endfor %}
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+          <td data-col="contact_person" class="muted" style="font-size:12px">{{ l.contact_person or '—' }}</td>
+          <td data-col="phone" class="muted" style="font-size:12px">{{ l.phone or '—' }}</td>
+          <td data-col="whatsapp" class="col-hidden muted" style="font-size:12px">{{ l.whatsapp_number or '—' }}</td>
+          <td data-col="email" class="col-hidden muted" style="font-size:12px">{{ l.email or '—' }}</td>
+          <td data-col="deal_value" class="muted">{{ '₦{:,.0f}'.format(l.deal_value) if l.deal_value else '—' }}</td>
+          <td data-col="stage"><span class="stage-pill st-{{ l.stage }}">{{ stage_labels[l.stage] }}</span></td>
+          <td data-col="added" class="muted">{{ l.created_at.strftime('%d %b %Y') if l.created_at else '—' }}</td>
+          {% if is_phixtra_support_account %}
+          <td data-col="ambassador" style="font-size:12px">
+            {% if l.assigned_ambassador_name %}
+              <span class="stage-pill" style="background:#dcfce7;color:#166534">{{ l.assigned_ambassador_name }}</span>
+            {% else %}
+              <span class="muted">Unassigned</span>
+            {% endif %}
+          </td>
+          {% endif %}
           <td class="lead-actions">
             {% set target = next_stage(l.stage) %}
             {% if target %}
@@ -276,6 +493,11 @@
                     onclick='openAdvanceModal({{ l.id }}, "{{ l.customer_name|e }}", "{{ target }}", {{ (l.deal_value or "null") }})'>
               → {{ stage_labels[target] }}
             </button>
+            {% endif %}
+            <button class="btn btn-sm" {% if loop.first %}data-sptour="edit-btn"{% endif %}
+                    onclick='openEditModal({{ l.id }}, {{ (l.customer_name or "")|tojson }}, {{ (l.contact_person or "")|tojson }}, {{ (l.phone or "")|tojson }}, {{ (l.email or "")|tojson }}, {{ (l.deal_value if l.deal_value is not none else "")|tojson }}, {{ (l.notes or "")|tojson }}, {{ (l.whatsapp_number or "")|tojson }})'>✏️ Edit</button>
+            {% if is_phixtra_support_account %}
+            <button class="btn btn-sm" onclick='openAssignAmbassadorModal({{ l.id }}, {{ (l.customer_name or "")|tojson }}, {{ l.assigned_ambassador_id or "null" }})'>🎯 Assign</button>
             {% endif %}
             <button class="btn btn-sm" {% if loop.first %}data-sptour="history-btn"{% endif %} onclick="openHistoryModal({{ l.id }})">History</button>
             <button class="btn btn-sm btn-danger" {% if loop.first %}data-sptour="drop-btn"{% endif %} onclick="openDropModal({{ l.id }}, '{{ l.customer_name|e }}')">Drop</button>
@@ -285,6 +507,38 @@
       </tbody>
     </table>
   </div>
+  {% if leads %}
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
+              padding:12px 18px;border-top:1px solid rgba(3,12,24,.06)">
+    <span style="font-size:12px;color:var(--muted)">
+      {% if per_page == 'all' %}Showing all {{ filtered_total }}{% else %}Showing {{ ((page-1)*per_page|int)+1 }}–{{ [page*per_page|int, filtered_total]|min }} of {{ filtered_total }}{% endif %}
+    </span>
+    {% if total_pages > 1 %}
+    {% set base_args = {'q': search, 'stage': stage_filter, 'per_page': per_page,
+                         'has_phone': '1' if has_phone else none, 'has_whatsapp': '1' if has_whatsapp else none,
+                         'has_email': '1' if has_email else none, 'hide_segment': hide_segment_ids or none,
+                         'hide_label': hide_label_ids or none, 'label': show_label_ids or none} %}
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+      <a href="{{ url_for('portal.sales_pipeline', page=page-1, **base_args) if page > 1 else '#' }}"
+         class="btn btn-sm btn-ghost" style="text-decoration:none;
+         {% if page <= 1 %}pointer-events:none;opacity:.4{% endif %}">← Prev</a>
+      {% for p in range(1, total_pages + 1) %}
+        {% if p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
+      <a href="{{ url_for('portal.sales_pipeline', page=p, **base_args) }}"
+         class="btn btn-sm {{ 'btn-primary' if p == page else 'btn-ghost' }}"
+         style="text-decoration:none;padding:6px 11px;font-size:12px;min-width:30px;text-align:center">{{ p }}</a>
+        {% elif p == page - 3 or p == page + 3 %}
+      <span style="color:var(--muted);font-size:12px">…</span>
+        {% endif %}
+      {% endfor %}
+      <a href="{{ url_for('portal.sales_pipeline', page=page+1, **base_args) if page < total_pages else '#' }}"
+         class="btn btn-sm btn-ghost" style="text-decoration:none;
+         {% if page >= total_pages %}pointer-events:none;opacity:.4{% endif %}">Next →</a>
+      <span style="font-size:11.5px;color:var(--muted);margin-left:6px">Page {{ page }} of {{ total_pages }}</span>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
 </div>
 
 {% if dropped_leads %}
@@ -296,7 +550,7 @@
       <tbody>
         {% for l in dropped_leads %}
         <tr>
-          <td>{{ l.customer_name }}</td>
+          <td><span class="biz-name-cell">{{ l.customer_name }}</span></td>
           <td><span class="stage-pill st-{{ l.stage }}">{{ stage_labels[l.stage] }}</span></td>
           <td class="muted">{{ l.dropped_reason or '—' }}</td>
           <td class="muted">{{ l.dropped_at.strftime('%d %b %Y') if l.dropped_at else '—' }}</td>
@@ -323,6 +577,48 @@
   </div>
 </div>
 
+<!-- ── Bulk "Add to Segment" modal ── -->
+<div class="modal-over" id="bulkSegModal" onclick="if(event.target===this)closeBulkSegmentModal()">
+  <div class="modal-card">
+    <div class="modal-title">Add <span id="bulkSegCount">0</span> contact(s) to a segment</div>
+    <p class="modal-sub">Segments are reusable groups you can target with an Email Campaign. Pick an existing one, or create a new one below.</p>
+
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <input type="text" class="finp" id="bulkSegNewName" placeholder="New segment name…" style="margin:0">
+      <button type="button" class="modal-confirm" style="flex:0 0 auto;padding:9px 16px" onclick="createSegmentAndBulkAdd()">+ Create &amp; Add</button>
+    </div>
+
+    <div id="bulkSegListWrap">
+      <div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Loading segments…</div>
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" class="modal-cancel" onclick="closeBulkSegmentModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Bulk "Add to Label" modal ── -->
+<div class="modal-over" id="bulkLabelModal" onclick="if(event.target===this)closeBulkLabelModal()">
+  <div class="modal-card">
+    <div class="modal-title">Add <span id="bulkLabelCount">0</span> contact(s) to a label</div>
+    <p class="modal-sub">Labels are status tags on a contact (e.g. Bounced, VIP) — separate from Segments, which are audiences for Email Campaigns. Pick an existing one, or create a new one below.</p>
+
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <input type="text" class="finp" id="bulkLabelNewName" placeholder="New label name…" style="margin:0">
+      <button type="button" class="modal-confirm" style="flex:0 0 auto;padding:9px 16px" onclick="createLabelAndBulkAdd()">+ Create &amp; Add</button>
+    </div>
+
+    <div id="bulkLabelListWrap">
+      <div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Loading labels…</div>
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" class="modal-cancel" onclick="closeBulkLabelModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Drop modal ── -->
 <div class="modal-over" id="dropModal" onclick="if(event.target===this)closeDropModal()">
   <div class="modal-card">
@@ -339,6 +635,64 @@
   </div>
 </div>
 
+<!-- ── Edit modal ── -->
+<div class="modal-over" id="editModal" onclick="if(event.target===this)closeEditModal()">
+  <div class="modal-card">
+    <div class="modal-title" id="editTitle">Edit Deal</div>
+    <p class="modal-sub">Correct anything already logged for this deal — this doesn't move its stage.</p>
+    <form method="POST" id="editForm">
+      <div class="frow">
+        <div><label class="flbl">Customer / Business Name</label>
+          <input type="text" name="customer_name" id="editCustomerName" class="finp" required/></div>
+        <div><label class="flbl">Contact Person</label>
+          <input type="text" name="contact_person" id="editContactPerson" class="finp"/></div>
+      </div>
+      <div class="frow">
+        <div><label class="flbl">Phone</label>
+          <input type="tel" name="phone" id="editPhone" class="finp"/></div>
+        <div><label class="flbl">Email</label>
+          <input type="email" name="email" id="editEmail" class="finp"/></div>
+      </div>
+      <div class="frow">
+        <div><label class="flbl">WhatsApp Number <span style="font-weight:400;color:#9ca3af">(if different from phone)</span></label>
+          <input type="tel" name="whatsapp_number" id="editWhatsapp" class="finp"/></div>
+        <div></div>
+      </div>
+      <label class="flbl">Deal Value <span style="font-weight:400;color:#9ca3af">(optional)</span></label>
+      <input type="number" step="0.01" name="deal_value" id="editDealValue" class="finp" style="margin-bottom:14px"/>
+      <label class="flbl">Notes</label>
+      <textarea name="notes" id="editNotes" class="finp"></textarea>
+      <div class="modal-actions">
+        <button type="button" class="modal-cancel" onclick="closeEditModal()">Cancel</button>
+        <button type="submit" class="modal-confirm">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if is_phixtra_support_account %}
+<!-- ── Assign Ambassador modal ── -->
+<div class="modal-over" id="assignAmbassadorModal" onclick="if(event.target===this)closeAssignAmbassadorModal()">
+  <div class="modal-card">
+    <div class="modal-title" id="assignAmbassadorTitle">Assign to Ambassador</div>
+    <p class="modal-sub">When this contact becomes a paying client, the assigned ambassador earns 20% commission on their payments (company-sourced lead rate, vs. 30% for the ambassador's own direct referrals).</p>
+    <form method="POST" id="assignAmbassadorForm">
+      <label class="flbl">Ambassador</label>
+      <select name="ambassador_id" id="assignAmbassadorSelect" class="finp" style="margin-bottom:14px">
+        <option value="">— Unassigned —</option>
+        {% for a in all_ambassadors %}
+        <option value="{{ a.id }}">{{ a.first_name }} {{ a.last_name }} ({{ a.ref_code }})</option>
+        {% endfor %}
+      </select>
+      <div class="modal-actions">
+        <button type="button" class="modal-cancel" onclick="closeAssignAmbassadorModal()">Cancel</button>
+        <button type="submit" class="modal-confirm">Save Assignment</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
 <!-- ── History modal ── -->
 <div class="modal-over" id="historyModal" onclick="if(event.target===this)closeHistoryModal()">
   <div class="modal-card">
@@ -354,6 +708,249 @@
 function closeAdvanceModal(){ document.getElementById('advanceModal').classList.remove('open'); }
 function closeDropModal(){ document.getElementById('dropModal').classList.remove('open'); }
 function closeHistoryModal(){ document.getElementById('historyModal').classList.remove('open'); }
+function closeEditModal(){ document.getElementById('editModal').classList.remove('open'); }
+function closeAssignAmbassadorModal(){ var m = document.getElementById('assignAmbassadorModal'); if (m) m.classList.remove('open'); }
+
+// ── Bulk-select + "Add to Segment" ──────────────────────────────────────────
+function getSelectedLeadIds() {
+  return [...document.querySelectorAll('#pipelineTbody .lead-select-cb:checked')]
+    .map(function(cb){ return cb.closest('.lead-row').dataset.leadId; });
+}
+function updateBulkBar() {
+  var ids = getSelectedLeadIds();
+  document.getElementById('bulkSelectedCount').textContent = ids.length;
+  document.getElementById('bulkActionBar').style.display = ids.length > 0 ? 'flex' : 'none';
+  var rows = document.querySelectorAll('#pipelineTbody .lead-row');
+  var selectAllCb = document.getElementById('selectAllLeadsCb');
+  selectAllCb.checked = rows.length > 0 && [...rows].every(function(r){ return r.querySelector('.lead-select-cb').checked; });
+}
+function toggleSelectAllLeads(cb) {
+  document.querySelectorAll('#pipelineTbody .lead-row').forEach(function(r){ r.querySelector('.lead-select-cb').checked = cb.checked; });
+  updateBulkBar();
+}
+function clearLeadSelection() {
+  document.querySelectorAll('#pipelineTbody .lead-select-cb:checked').forEach(function(cb){ cb.checked = false; });
+  updateBulkBar();
+}
+
+function openBulkSegmentModal() {
+  var count = getSelectedLeadIds().length;
+  if (count === 0) return;
+  document.getElementById('bulkSegCount').textContent = count;
+  document.getElementById('bulkSegNewName').value = '';
+  document.getElementById('bulkSegModal').classList.add('open');
+  renderBulkSegList();
+}
+function closeBulkSegmentModal() {
+  document.getElementById('bulkSegModal').classList.remove('open');
+}
+
+function renderBulkSegList() {
+  var wrap = document.getElementById('bulkSegListWrap');
+  wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Loading segments…</div>';
+  fetch('/email/segments')
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      var segments = data.segments || [];
+      if (segments.length === 0) {
+        wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">No segments yet — create one above.</div>';
+        return;
+      }
+      wrap.innerHTML = segments.map(function(s){
+        return '<div class="seg-picker-row" data-seg-id="' + s.id + '" onclick="addSelectedToSegment(this.dataset.segId)">'
+          + '<span class="seg-picker-name">' + escapeHtmlSp(s.name) + '</span>'
+          + '<span class="seg-picker-count">' + s.member_count + ' contact(s)</span>'
+          + '</div>';
+      }).join('');
+    })
+    .catch(function(){ wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--bad)">Could not load segments.</div>'; });
+}
+
+function bulkAddToSegment(segmentId) {
+  var ids = getSelectedLeadIds();
+  if (ids.length === 0) return;
+  var fd = new FormData();
+  ids.forEach(function(id){ fd.append('lead_ids', id); });
+  return fetch('/email/segments/' + segmentId + '/members/bulk-add', { method: 'POST', body: fd })
+    .then(function(r){ return r.json(); });
+}
+function addSelectedToSegment(segmentId) {
+  bulkAddToSegment(segmentId).then(function(data){
+    if (data.error) { alert(data.error); return; }
+    var skipped = data.requested - data.added;
+    var msg = 'Added ' + data.added + ' contact(s) to the segment.';
+    if (skipped > 0) msg += ' (' + skipped + ' skipped — already in the segment or missing an email address.)';
+    alert(msg);
+    closeBulkSegmentModal();
+    clearLeadSelection();
+  }).catch(function(){ alert('Could not add contacts — check your connection'); });
+}
+function createSegmentAndBulkAdd() {
+  var input = document.getElementById('bulkSegNewName');
+  var name = input.value.trim();
+  if (!name) { input.focus(); return; }
+  var fd = new FormData();
+  fd.append('name', name);
+  fetch('/email/segments/create', { method: 'POST', body: fd })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (data.error) { alert(data.error); return; }
+      addSelectedToSegment(data.id);
+    })
+    .catch(function(){ alert('Could not create segment — check your connection'); });
+}
+function escapeHtmlSp(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function openBulkLabelModal() {
+  var count = getSelectedLeadIds().length;
+  if (count === 0) return;
+  document.getElementById('bulkLabelCount').textContent = count;
+  document.getElementById('bulkLabelNewName').value = '';
+  document.getElementById('bulkLabelModal').classList.add('open');
+  renderBulkLabelList();
+}
+function closeBulkLabelModal() {
+  document.getElementById('bulkLabelModal').classList.remove('open');
+}
+
+function renderBulkLabelList() {
+  var wrap = document.getElementById('bulkLabelListWrap');
+  wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Loading labels…</div>';
+  fetch('/labels/list')
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      var labels = data.labels || [];
+      if (labels.length === 0) {
+        wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">No labels yet — create one above.</div>';
+        return;
+      }
+      wrap.innerHTML = labels.map(function(lb){
+        return '<div class="seg-picker-row" data-label-id="' + lb.id + '" onclick="addSelectedToLabel(this.dataset.labelId)">'
+          + '<span class="seg-picker-name">' + escapeHtmlSp(lb.name) + '</span>'
+          + '<span class="seg-picker-count">' + lb.member_count + ' contact(s)</span>'
+          + '</div>';
+      }).join('');
+    })
+    .catch(function(){ wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--bad)">Could not load labels.</div>'; });
+}
+
+function bulkAddToLabel(labelId) {
+  var ids = getSelectedLeadIds();
+  if (ids.length === 0) return;
+  var fd = new FormData();
+  ids.forEach(function(id){ fd.append('lead_ids', id); });
+  return fetch('/labels/' + labelId + '/members/bulk-add', { method: 'POST', body: fd })
+    .then(function(r){ return r.json(); });
+}
+function addSelectedToLabel(labelId) {
+  bulkAddToLabel(labelId).then(function(data){
+    if (data.error) { alert(data.error); return; }
+    var skipped = data.requested - data.added;
+    var msg = 'Added ' + data.added + ' contact(s) to the label.';
+    if (skipped > 0) msg += ' (' + skipped + ' already had it.)';
+    alert(msg);
+    closeBulkLabelModal();
+    clearLeadSelection();
+    location.reload();
+  }).catch(function(){ alert('Could not add contacts — check your connection'); });
+}
+function createLabelAndBulkAdd() {
+  var input = document.getElementById('bulkLabelNewName');
+  var name = input.value.trim();
+  if (!name) { input.focus(); return; }
+  var fd = new FormData();
+  fd.append('name', name);
+  fetch('/labels/create', { method: 'POST', body: fd })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (data.error) { alert(data.error); return; }
+      addSelectedToLabel(data.id);
+    })
+    .catch(function(){ alert('Could not create label — check your connection'); });
+}
+
+function openEditModal(id, customerName, contactPerson, phone, email, dealValue, notes, whatsappNumber) {
+  document.getElementById('editForm').action = `/sales-pipeline/${id}/edit`;
+  document.getElementById('editTitle').textContent = `Edit — ${customerName}`;
+  document.getElementById('editCustomerName').value  = customerName || '';
+  document.getElementById('editContactPerson').value = contactPerson || '';
+  document.getElementById('editPhone').value         = phone || '';
+  document.getElementById('editEmail').value         = email || '';
+  document.getElementById('editWhatsapp').value       = whatsappNumber || '';
+  document.getElementById('editDealValue').value      = dealValue !== '' ? dealValue : '';
+  document.getElementById('editNotes').value          = notes || '';
+  document.getElementById('editModal').classList.add('open');
+}
+
+function openAssignAmbassadorModal(id, customerName, currentAmbassadorId) {
+  document.getElementById('assignAmbassadorForm').action = `/sales-pipeline/${id}/assign-ambassador`;
+  document.getElementById('assignAmbassadorTitle').textContent = `Assign to Ambassador — ${customerName}`;
+  document.getElementById('assignAmbassadorSelect').value = currentAmbassadorId !== null ? currentAmbassadorId : '';
+  document.getElementById('assignAmbassadorModal').classList.add('open');
+}
+
+/* ── Column picker ───────────────────────────────────────────────────── */
+const COL_STORAGE_KEY = 'phixtra_pipeline_visible_cols';
+const colCheckboxes = [...document.querySelectorAll('[data-col-toggle]')];
+
+function applyColumnVisibility() {
+  colCheckboxes.forEach(function(cb) {
+    var col = cb.dataset.colToggle;
+    document.querySelectorAll('[data-col="' + col + '"]').forEach(function(el) {
+      el.classList.toggle('col-hidden', !cb.checked);
+    });
+  });
+}
+function saveColumnPrefs() {
+  var visible = colCheckboxes.filter(function(cb){ return cb.checked }).map(function(cb){ return cb.dataset.colToggle });
+  localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(visible));
+}
+function loadColumnPrefs() {
+  var raw = localStorage.getItem(COL_STORAGE_KEY);
+  if (!raw) return;
+  try {
+    var visible = JSON.parse(raw);
+    colCheckboxes.forEach(function(cb){ cb.checked = visible.indexOf(cb.dataset.colToggle) !== -1 });
+  } catch (e) {}
+}
+colCheckboxes.forEach(function(cb) {
+  cb.addEventListener('change', function() { applyColumnVisibility(); saveColumnPrefs(); });
+});
+loadColumnPrefs();
+applyColumnVisibility();
+
+function toggleColPicker() {
+  document.getElementById('colPickerMenu').classList.toggle('open');
+}
+function toggleSegPicker() {
+  document.getElementById('segPickerMenu').classList.toggle('open');
+}
+function toggleLabelPicker() {
+  document.getElementById('labelPickerMenu').classList.toggle('open');
+}
+function toggleChannelPicker() {
+  document.getElementById('channelPickerMenu').classList.toggle('open');
+}
+function onLabelModeChange(cb) {
+  if (cb.checked) {
+    var otherName = cb.name === 'label' ? 'hide_label' : 'label';
+    var other = document.querySelector('input[name="' + otherName + '"][value="' + cb.value + '"]');
+    if (other) other.checked = false;
+  }
+  cb.form.submit();
+}
+document.addEventListener('click', function(e) {
+  var colWrap = document.querySelector('.col-picker-wrap:not(.seg-picker-wrap):not(.label-picker-wrap)');
+  if (colWrap && !colWrap.contains(e.target)) document.getElementById('colPickerMenu').classList.remove('open');
+  var segWrap = document.querySelector('.seg-picker-wrap');
+  if (segWrap && !segWrap.contains(e.target)) document.getElementById('segPickerMenu').classList.remove('open');
+  var labelWrap = document.querySelector('.label-picker-wrap');
+  if (labelWrap && !labelWrap.contains(e.target)) document.getElementById('labelPickerMenu').classList.remove('open');
+  var channelWrap = document.querySelector('.channel-picker-wrap');
+  if (channelWrap && !channelWrap.contains(e.target)) document.getElementById('channelPickerMenu').classList.remove('open');
+});
 
 const STAGE_LABELS = {{ stage_labels|tojson }};
 const STAGE_DESC    = {{ stage_descriptions|tojson }};
@@ -442,26 +1039,12 @@ function openHistoryModal(id) {
 }
 
 function spTourCloseModals() {
-  closeAdvanceModal(); closeDropModal(); closeHistoryModal();
+  closeAdvanceModal(); closeDropModal(); closeHistoryModal(); closeEditModal(); closeAssignAmbassadorModal();
 }
 
-function filterStage(btn, stage) {
-  document.querySelectorAll('.stage-filter-btn').forEach(function(b){ b.classList.remove('active'); });
-  btn.classList.add('active');
-  applyPipelineFilters();
-}
-
-function applyPipelineFilters() {
-  var activeBtn = document.querySelector('.stage-filter-btn.active');
-  var stage = activeBtn ? activeBtn.getAttribute('data-stage') : 'all';
-  var searchEl = document.getElementById('pipelineSearch');
-  var query = searchEl ? (searchEl.value || '').toLowerCase().trim() : '';
-  document.querySelectorAll('#pipelineTbody .lead-row').forEach(function(row){
-    var matchesStage = (stage === 'all' || row.getAttribute('data-stage') === stage);
-    var matchesQuery = (!query || row.getAttribute('data-name').indexOf(query) !== -1);
-    row.style.display = (matchesStage && matchesQuery) ? '' : 'none';
-  });
-}
+// Search/stage/channel filters and pagination are now plain GET navigations
+// (see the toolbar form + pagination links) — the server does the filtering.
+// CSV export is a dedicated server route too, so it isn't capped by pagination.
 </script>
 
 <!-- ══════════════ GUIDED TOUR (self-contained to this page — distinct ids/fns from the site-wide dashboard tour in base.html) ══════════════ -->

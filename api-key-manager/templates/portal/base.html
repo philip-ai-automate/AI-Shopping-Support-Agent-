@@ -308,6 +308,7 @@
     table{width:100%;border-collapse:collapse}
     th,td{padding:11px 14px;font-size:13px;border-bottom:1px solid rgba(3,12,24,0.07);text-align:left}
     th{font-weight:700;color:var(--muted);background:rgba(3,12,24,0.025)}
+    .biz-name-cell{display:inline-block;max-width:220px;word-break:break-word;overflow-wrap:break-word;vertical-align:top}
     tbody tr:last-child td{border-bottom:none}
     tbody tr:hover{background:rgba(3,12,24,0.018)}
 
@@ -487,11 +488,53 @@
       <span class="sb-icon">🔥</span> Leads
     </a>
 
-    <!-- Sales Pipeline -->
-    <a class="sb-link {% if request.endpoint == 'portal.sales_pipeline' %}active{% endif %}"
-       href="{{ url_for('portal.sales_pipeline') }}">
-      <span class="sb-icon">🧭</span> Sales Pipeline
-    </a>
+    <!-- ── Sales Pipeline group ── -->
+    {% set _sales_pipeline_group = request.endpoint in ('portal.sales_pipeline', 'portal.lead_labels_page', 'portal.lead_labels_import_bounces') %}
+    <div class="sb-group">
+      <div class="sb-group-toggle {% if _sales_pipeline_group %}open{% endif %}"
+           onclick="sbToggle(this)">
+        <span class="sb-gtitle">
+          <span class="sb-icon">🧭</span> Sales Pipeline
+        </span>
+        <span class="sb-arrow">▾</span>
+      </div>
+      <div class="sb-sub {% if _sales_pipeline_group %}open{% endif %}">
+        <a href="{{ url_for('portal.sales_pipeline') }}"
+           class="{% if request.endpoint == 'portal.sales_pipeline' %}active{% endif %}">
+          All Deals
+        </a>
+        <a href="{{ url_for('portal.lead_labels_page') }}"
+           class="{% if request.endpoint in ('portal.lead_labels_page', 'portal.lead_labels_import_bounces') %}active{% endif %}">
+          🏷️ Labels
+        </a>
+      </div>
+    </div>
+
+    <!-- ── Email Campaigns group ── -->
+    {% set _email_camp_group = request.endpoint in ('portal.email_campaigns','portal.email_campaign_report','portal.email_campaigns_reports') %}
+    <div class="sb-group">
+      <div class="sb-group-toggle {% if _email_camp_group %}open{% endif %}"
+           onclick="sbToggle(this)">
+        <span class="sb-gtitle">
+          <span class="sb-icon">✉️</span> Email Campaigns
+        </span>
+        <span class="sb-arrow">▾</span>
+      </div>
+      <div class="sb-sub {% if _email_camp_group %}open{% endif %}">
+        <a href="{{ url_for('portal.email_campaigns') }}"
+           class="{% if request.endpoint == 'portal.email_campaigns' and request.args.get('view') != 'segments' %}active{% endif %}">
+          All Campaigns
+        </a>
+        <a href="{{ url_for('portal.email_campaigns', view='segments') }}"
+           class="{% if request.endpoint == 'portal.email_campaigns' and request.args.get('view') == 'segments' %}active{% endif %}">
+          Email Segment
+        </a>
+        <a href="{{ url_for('portal.email_campaigns_reports') }}"
+           class="{% if request.endpoint in ('portal.email_campaigns_reports','portal.email_campaign_report') %}active{% endif %}">
+          Reports
+        </a>
+      </div>
+    </div>
 
     <!-- ── WhatsApp group ── -->
     {% set _wa_group = request.endpoint in ('portal.whatsapp_connect', 'portal.whatsapp_reports', 'portal.billing_plans') or (request.endpoint == 'portal.whatsapp_templates' and _tenant_features.get('whatsapp_message_templates')) %}
@@ -594,6 +637,15 @@
        href="{{ url_for('portal.store_info') }}">
       <span class="sb-icon">🏪</span> Store Information
     </a>
+
+    {% if not session.get('team_member_id') %}
+    <!-- Team (Shared Team Inbox) — owner-only, hidden for staff logins since
+         they're restricted to the Inbox by the before_request allowlist -->
+    <a class="sb-link {% if request.endpoint == 'portal.team_page' %}active{% endif %}"
+       href="{{ url_for('portal.team_page') }}">
+      <span class="sb-icon">👥</span> Team
+    </a>
+    {% endif %}
 
     <!-- ── AI Assistant group ── -->
     {% set _ai_group = request.endpoint in ('portal.api_keys', 'portal.ai_instruction', 'portal.handoff_rules', 'portal.ai_agents', 'portal.ai_agents_new', 'portal.ai_agents_edit') or (request.endpoint == 'portal.verified_specs_settings' and customer is defined and customer and customer.tenant_source_type != 'whatsapp') %}
@@ -1174,6 +1226,9 @@
     { icon:'👥', title:'Contacts',               desc:'View and manage all your customers',            url:'{{ url_for("portal.whatsapp_contacts") }}',          tags:'customers phone numbers contacts list' },
     { icon:'🔥', title:'Leads',                  desc:'Customers with strong buying intent',           url:'{{ url_for("portal.leads_page") }}',                 tags:'hot warm cold intent prospects' },
     { icon:'🧭', title:'Sales Pipeline',         desc:'Track your own customers and deals by stage',  url:'{{ url_for("portal.sales_pipeline") }}',             tags:'crm pipeline deals stages sales customers negotiate' },
+    { icon:'🏷️', title:'Labels',                 desc:'Tag Sales Pipeline contacts (Bounced, VIP…)',  url:'{{ url_for("portal.lead_labels_page") }}',           tags:'tags status bounced vip labels' },
+    { icon:'✉️', title:'Email Campaigns',        desc:'Compose and send bulk email to your contacts', url:'{{ url_for("portal.email_campaigns") }}',            tags:'email campaign newsletter bulk send marketing zeptomail' },
+    { icon:'📊', title:'Email Campaign Reports', desc:'See how your email campaigns performed',       url:'{{ url_for("portal.email_campaigns_reports") }}',    tags:'email campaign analytics results delivery' },
     { icon:'🧾', title:'Orders',                 desc:'View all orders and purchase history',          url:'{{ url_for("portal.orders") }}',                     tags:'sales purchases transactions history' },
     { icon:'📱', title:'WhatsApp Connect',       desc:'Connect or manage your WhatsApp number',       url:'{{ url_for("portal.whatsapp_connect") }}',           tags:'connect phone qr code number link setup' },
     { icon:'📊', title:'Handoff Reports',        desc:'Response times, missed handoffs, performance',  url:'{{ url_for("portal.whatsapp_reports") }}',           tags:'handoff response time missed reports analytics' },

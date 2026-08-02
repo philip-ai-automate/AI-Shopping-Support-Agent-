@@ -1,0 +1,1472 @@
+{% extends "portal/base.html" %}
+{% block title %}Email Campaigns — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+<style>
+/* ── Rich text editor (Quill) ───────────────────────────────────────── */
+#quillToolbar.ql-toolbar.ql-snow {
+  border: 1.5px solid #e2e8f0; border-bottom: none; border-radius: 10px 10px 0 0;
+  background: #f8fafc; padding: 8px 10px;
+}
+#quillEditor.ql-container.ql-snow {
+  border: 1.5px solid #e2e8f0; border-radius: 0 0 10px 10px;
+  font-family: inherit; font-size: 14px; min-height: 160px;
+}
+#quillEditor .ql-editor { min-height: 160px; }
+#quillEditor .ql-editor.ql-blank::before { color: #94a3b8; font-style: normal; }
+
+/* Force plain-number/plain-name labels in the size & font pickers — Quill's default
+   snow.css assumes its own class-based whitelist (small/large/huge, sans-serif/serif/
+   monospace) and would otherwise mangle our custom point-size/named-font values. */
+#quillToolbar .ql-picker.ql-size .ql-picker-label::before,
+#quillToolbar .ql-picker.ql-size .ql-picker-item::before,
+#quillToolbar .ql-picker.ql-font .ql-picker-label::before,
+#quillToolbar .ql-picker.ql-font .ql-picker-item::before {
+  content: attr(data-label) !important;
+}
+#quillToolbar .ql-picker.ql-size { width: 70px; }
+#quillToolbar .ql-picker.ql-font { width: 130px; }
+
+/* ── Page layout ─────────────────────────────────────────────────────── */
+.camp-hero {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  border-radius: 16px;
+  padding: 28px 32px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.camp-hero-left h1 { font-size: 22px; font-weight: 800; color: #fff; margin: 0 0 4px; letter-spacing: -.3px; }
+.camp-hero-left p  { font-size: 13px; color: rgba(255,255,255,.55); margin: 0; }
+.btn-new-camp {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: #6366f1; color: #fff; font-size: 14px; font-weight: 700;
+  padding: 11px 22px; border-radius: 10px; border: none; cursor: pointer;
+  transition: .15s; white-space: nowrap; flex-shrink: 0;
+}
+.btn-new-camp:hover { background: #4f46e5; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(99,102,241,.35); }
+
+/* ── Stats row ───────────────────────────────────────────────────────── */
+.camp-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px; }
+.stat-card {
+  background: #fff; border: 1px solid rgba(3,12,24,.08); border-radius: 14px;
+  padding: 18px 20px; display: flex; flex-direction: column; gap: 4px;
+}
+.stat-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.stat-value { font-size: 26px; font-weight: 800; color: var(--ink); line-height: 1; }
+.stat-sub   { font-size: 11px; color: var(--muted); }
+
+/* ── Campaign table ──────────────────────────────────────────────────── */
+.section-card { background: #fff; border: 1px solid rgba(3,12,24,.08); border-radius: 16px; overflow: hidden; margin-bottom: 24px; }
+.section-card-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid rgba(3,12,24,.07); }
+.section-card-header h2 { font-size: 15px; font-weight: 700; color: var(--ink); margin: 0; }
+.camp-table { width: 100%; border-collapse: collapse; }
+.camp-table th {
+  font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em;
+  padding: 11px 20px; text-align: left; background: #f8fafc; border-bottom: 1px solid rgba(3,12,24,.07);
+}
+.camp-table td { padding: 14px 20px; font-size: 13px; border-bottom: 1px solid rgba(3,12,24,.05); vertical-align: middle; }
+.camp-table tr:last-child td { border-bottom: none; }
+.camp-table tbody tr:hover td { background: #fafbfc; }
+
+/* ── Badges ──────────────────────────────────────────────────────────── */
+.badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; letter-spacing: .03em; }
+.badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.badge-draft     { background: #f1f5f9; color: #64748b; } .badge-draft::before     { background: #94a3b8; }
+.badge-scheduled { background: #fef3c7; color: #92400e; } .badge-scheduled::before { background: #f59e0b; }
+.badge-running   { background: #dcfce7; color: #166534; } .badge-running::before   { background: #22c55e; animation: pulse 1s infinite; }
+.badge-done      { background: #dcfce7; color: #166534; } .badge-done::before      { background: #16a34a; }
+.badge-failed    { background: #fee2e2; color: #991b1b; } .badge-failed::before    { background: #ef4444; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+.prog-wrap { background: #e2e8f0; border-radius: 99px; height: 5px; min-width: 80px; overflow: hidden; }
+.prog-fill  { height: 5px; border-radius: 99px; background: #22c55e; transition: width .3s; }
+
+.act-btn {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600;
+  padding: 5px 12px; border-radius: 7px; border: 1px solid; cursor: pointer; background: #fff; transition: .12s;
+}
+.act-btn-send  { color: #16a34a; border-color: rgba(22,163,74,.3); }  .act-btn-send:hover  { background: #f0fdf4; }
+.act-btn-test  { color: #6366f1; border-color: rgba(99,102,241,.3); } .act-btn-test:hover  { background: #eef2ff; }
+.act-btn-del   { color: #dc2626; border-color: rgba(220,38,38,.25); } .act-btn-del:hover   { background: #fef2f2; }
+
+.empty-state { display: flex; flex-direction: column; align-items: center; padding: 64px 20px; color: var(--muted); text-align: center; }
+.empty-icon-wrap {
+  width: 72px; height: 72px; border-radius: 20px; background: linear-gradient(135deg, #eef2ff, #e0e7ff);
+  display: flex; align-items: center; justify-content: center; margin-bottom: 16px; font-size: 30px;
+}
+.empty-state h3 { font-size: 15px; font-weight: 700; color: var(--ink); margin: 0 0 6px; }
+.empty-state p  { font-size: 13px; margin: 0; max-width: 320px; }
+
+.sender-note {
+  display: flex; align-items: center; gap: 10px; background: #eef2ff; border: 1px solid #c7d2fe;
+  border-radius: 12px; padding: 12px 16px; font-size: 12px; color: #3730a3; margin-bottom: 20px;
+}
+.sender-note.warn { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+
+/* ═══ DRAWER (centered modal) ═══ */
+/* .drawer-overlay and .drawer are SIBLING elements in the HTML, not parent/child —
+   so .drawer positions and centers itself independently via fixed+transform rather
+   than relying on flex centering from a parent it isn't actually inside. */
+.drawer-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 800; backdrop-filter: blur(2px);
+}
+.drawer-overlay.open { display: block; }
+.drawer {
+  position: fixed; top: 50%; left: 50%; width: 680px; max-width: 94vw; height: auto; max-height: 88vh;
+  background: #fff; border-radius: 18px; z-index: 801; box-shadow: 0 24px 70px rgba(0,0,0,.28);
+  display: flex; flex-direction: column; overflow: hidden;
+  transform: translate(-50%, -50%) scale(.96); opacity: 0; pointer-events: none;
+  transition: transform .2s cubic-bezier(.4,0,.2,1), opacity .15s;
+}
+.drawer.open { transform: translate(-50%, -50%) scale(1); opacity: 1; pointer-events: auto; }
+.drawer-head { display: flex; align-items: center; justify-content: space-between; padding: 22px 28px; border-bottom: 1px solid rgba(3,12,24,.08); flex-shrink: 0; background: #0f172a; }
+.drawer-head-left h2 { font-size: 17px; font-weight: 800; color: #fff; margin: 0 0 2px; }
+.drawer-head-left p  { font-size: 12px; color: rgba(255,255,255,.5); margin: 0; }
+.drawer-close {
+  width: 36px; height: 36px; border-radius: 8px; border: 1px solid rgba(255,255,255,.15);
+  background: rgba(255,255,255,.08); color: rgba(255,255,255,.7); display: flex; align-items: center;
+  justify-content: center; cursor: pointer; transition: .12s; font-size: 18px; flex-shrink: 0;
+}
+.drawer-close:hover { background: rgba(255,255,255,.15); color: #fff; }
+
+.steps-bar { display: flex; padding: 0 28px; border-bottom: 1px solid rgba(3,12,24,.08); flex-shrink: 0; background: #f8fafc; }
+.step-tab { display: flex; align-items: center; gap: 8px; padding: 14px 4px; margin-right: 24px; font-size: 12px; font-weight: 600; color: #94a3b8; border-bottom: 2px solid transparent; transition: .15s; white-space: nowrap; }
+.step-tab.active { color: #0f172a; border-bottom-color: #6366f1; }
+.step-tab.done   { color: #16a34a; }
+.step-num { width: 20px; height: 20px; border-radius: 50%; background: #e2e8f0; color: #64748b; font-size: 10px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.step-tab.active .step-num { background: #6366f1; color: #fff; }
+.step-tab.done   .step-num { background: #16a34a; color: #fff; }
+
+.drawer-body { flex: 1; overflow-y: auto; padding: 28px; }
+.step-panel { display: none; }
+.step-panel.active { display: block; }
+
+.field { margin-bottom: 22px; }
+.field-label { display: block; font-size: 12px; font-weight: 700; color: #374151; margin-bottom: 7px; letter-spacing: .02em; }
+.field-hint { font-size: 11px; color: #94a3b8; font-weight: 400; margin-left: 6px; }
+.field-input, .field-textarea, .field-select {
+  width: 100%; padding: 11px 14px; border: 1.5px solid #e2e8f0; border-radius: 10px; font-size: 14px;
+  font-family: inherit; color: var(--ink); background: #fff; outline: none;
+  transition: border-color .15s, box-shadow .15s; box-sizing: border-box;
+}
+.field-input:focus, .field-textarea:focus, .field-select:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,.12); }
+.field-textarea { resize: vertical; min-height: 110px; }
+.field-row { display: grid; gap: 16px; }
+.field-row.cols-2 { grid-template-columns: 1fr 1fr; }
+
+.recip-wrap { position: relative; }
+.recip-counter { position: absolute; bottom: 10px; right: 12px; font-size: 11px; font-weight: 700; color: #94a3b8; background: #fff; padding: 2px 6px; border-radius: 6px; pointer-events: none; }
+.recip-counter.has-nums { color: #16a34a; }
+
+.recip-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+.recip-options.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+.recip-opt, .send-opt {
+  border: 2px solid #e2e8f0; border-radius: 12px; padding: 16px; cursor: pointer; transition: .15s;
+  display: flex; align-items: flex-start; gap: 12px;
+}
+.recip-opt:hover, .send-opt:hover { border-color: #cbd5e1; background: #f8fafc; }
+.recip-opt.selected, .send-opt.selected { border-color: #6366f1; background: #eef2ff; }
+.recip-opt-icon, .send-opt-icon {
+  width: 38px; height: 38px; border-radius: 10px; background: #f1f5f9; display: flex; align-items: center;
+  justify-content: center; font-size: 18px; flex-shrink: 0; transition: .15s;
+}
+.recip-opt.selected .recip-opt-icon, .send-opt.selected .send-opt-icon { background: #e0e7ff; }
+.recip-opt-text strong, .send-opt-text strong { display: block; font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 2px; }
+.recip-opt-text small, .send-opt-text small  { font-size: 11px; color: #94a3b8; }
+
+.send-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+#scheduleField { display: none; margin-top: 4px; }
+#scheduleField.show { display: block; }
+#manualRecipField { display: none; margin-top: 4px; }
+#manualRecipField.show { display: block; }
+#segmentRecipField { display: none; margin-top: 4px; }
+#segmentRecipField.show { display: block; }
+#excludeLabelField { display: none; margin-top: 18px; }
+#excludeLabelField.show { display: block; }
+.excl-label-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.excl-label-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px;
+  border: 1.5px solid #e2e8f0; border-radius: 999px; font-size: 12.5px; cursor: pointer; user-select: none; }
+.excl-label-chip input { width: 13px; height: 13px; cursor: pointer; }
+
+.review-row { display: flex; justify-content: space-between; align-items: flex-start; padding: 14px 0; border-bottom: 1px solid rgba(3,12,24,.06); gap: 16px; }
+.review-row:last-child { border-bottom: none; }
+.review-key { font-size: 12px; font-weight: 600; color: #64748b; flex-shrink: 0; min-width: 130px; }
+.review-val { font-size: 13px; font-weight: 600; color: var(--ink); text-align: right; word-break: break-word; }
+
+.drawer-foot { padding: 18px 28px; border-top: 1px solid rgba(3,12,24,.08); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; background: #f8fafc; }
+.drawer-foot-right { display: flex; gap: 10px; }
+.btn-ghost { padding: 10px 18px; border-radius: 9px; border: 1.5px solid #e2e8f0; background: #fff; font-size: 13px; font-weight: 600; color: #64748b; cursor: pointer; transition: .12s; }
+.btn-ghost:hover { border-color: #cbd5e1; color: #374151; }
+.btn-next { padding: 10px 22px; border-radius: 9px; border: none; background: #0f172a; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; transition: .15s; display: inline-flex; align-items: center; gap: 6px; }
+.btn-next:hover { background: #1e293b; }
+.btn-launch { padding: 10px 22px; border-radius: 9px; border: none; background: #6366f1; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; transition: .15s; display: inline-flex; align-items: center; gap: 6px; }
+.btn-launch:hover { background: #4f46e5; box-shadow: 0 4px 16px rgba(99,102,241,.3); }
+
+.drawer-section-head { font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 16px; display: flex; align-items: center; gap: 8px; }
+.drawer-section-head::after { content: ''; flex: 1; height: 1px; background: rgba(3,12,24,.07); }
+
+.btn-upload {
+  display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border-radius: 9px;
+  border: 1.5px solid #6366f1; background: #eef2ff; color: #4f46e5; font-size: 13px; font-weight: 700;
+  cursor: pointer; transition: .15s; white-space: nowrap; flex-shrink: 0;
+}
+.btn-upload:hover { background: #e0e7ff; }
+.btn-upload.uploading { opacity: .6; pointer-events: none; }
+
+/* ── Template mode toggle + custom HTML panel ───────────────────────── */
+.raw-html-preview {
+  width: 100%; height: 320px; border: 1.5px solid #e2e8f0; border-radius: 10px; background: #fff;
+}
+
+/* ── Preview button + modal + inline review preview ─────────────────── */
+.btn-preview {
+  padding: 10px 16px; border-radius: 9px; border: 1.5px solid #e2e8f0; background: #fff;
+  font-size: 13px; font-weight: 700; color: #374151; cursor: pointer; transition: .12s;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.btn-preview:hover { border-color: #cbd5e1; background: #f8fafc; }
+
+.preview-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 900; }
+.preview-overlay.open { display: block; }
+.preview-modal {
+  position: fixed; top: 50%; left: 50%; width: 640px; max-width: 94vw; height: 82vh;
+  background: #fff; border-radius: 16px; z-index: 901; box-shadow: 0 24px 70px rgba(0,0,0,.3);
+  display: flex; flex-direction: column; overflow: hidden; transform: translate(-50%, -50%);
+}
+.preview-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid rgba(3,12,24,.08); flex-shrink: 0; }
+.preview-head h3 { margin: 0; font-size: 15px; font-weight: 800; color: var(--ink); }
+
+/* Desktop/mobile device toggle — shared by the popup preview modal and the inline
+   Review-step preview. Toggling just constrains the iframe's width; the iframe
+   content itself is a real, fully responsive HTML email, so this shows genuine
+   reflow rather than a simulated screenshot. */
+.device-toggle { display: flex; gap: 8px; padding: 10px 16px; border-bottom: 1px solid rgba(3,12,24,.08); background: #fff; flex-shrink: 0; }
+.device-btn {
+  padding: 6px 14px; border-radius: 7px; border: 1.5px solid #e2e8f0; background: #fff;
+  font-size: 12px; font-weight: 700; color: #64748b; cursor: pointer; transition: .12s;
+}
+.device-btn:hover { border-color: #cbd5e1; }
+.device-btn.active { border-color: #6366f1; background: #eef2ff; color: #4f46e5; }
+
+.preview-body { flex: 1; overflow: hidden; position: relative; background: #f1f5f9; display: flex; flex-direction: column; }
+.preview-frame-wrap { flex: 1; overflow: auto; display: flex; justify-content: center; padding: 20px 0; }
+.preview-frame {
+  width: 100%; max-width: 600px; height: 100%; border: none; background: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08); transition: width .2s, max-width .2s;
+}
+.preview-frame-wrap.mobile .preview-frame { width: 375px; max-width: 375px; border-radius: 20px; box-shadow: 0 0 0 8px #0f172a; }
+
+.review-preview-wrap {
+  border: 1.5px solid #e2e8f0; border-top: none; border-radius: 0 0 10px 10px; overflow: auto;
+  height: 360px; background: #e2e8f0; display: flex; justify-content: center; padding: 16px 0;
+}
+.review-preview-wrap iframe {
+  width: 100%; max-width: 600px; height: 100%; border: none; background: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08); transition: width .2s, max-width .2s;
+}
+.review-preview-wrap.mobile iframe { width: 375px; max-width: 375px; border-radius: 20px; box-shadow: 0 0 0 8px #0f172a; }
+
+.seg-modal-body { padding: 20px 24px; overflow-y: auto; flex: 1; }
+.seg-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 12px 14px; border: 1.5px solid #e2e8f0; border-radius: 10px; margin-bottom: 8px;
+}
+.seg-row-name { font-weight: 700; font-size: 13px; color: var(--ink); }
+.seg-row-count { font-size: 11px; color: #94a3b8; }
+.seg-row-actions { display: flex; gap: 8px; }
+.seg-members-head, .seg-member-row {
+  display: grid; grid-template-columns: 24px 1fr 1fr; grid-template-areas: "cb name email";
+  align-items: center; gap: 14px;
+}
+.seg-members-head {
+  padding: 0 12px 8px; font-size: 11px; font-weight: 700; color: #94a3b8;
+  text-transform: uppercase; letter-spacing: .04em; border-bottom: 1.5px solid #e2e8f0;
+  position: sticky; top: 0; background: #fff;
+}
+.seg-members-head span:first-child { grid-area: cb; }
+.seg-members-head span:nth-child(2) { grid-area: name; }
+.seg-members-head span:nth-child(3) { grid-area: email; }
+.seg-member-row {
+  padding: 10px 12px; border-bottom: 1px solid rgba(3,12,24,.06); font-size: 13px;
+}
+.seg-member-row:last-child { border-bottom: none; }
+.seg-remove-btn {
+  grid-area: cb; width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid #e2e8f0;
+  background: #fff; color: #94a3b8; font-size: 12px; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; padding: 0; transition: .12s;
+}
+.seg-remove-btn:hover { border-color: #ef4444; color: #ef4444; background: #fef2f2; }
+.seg-member-name, .seg-member-email {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.seg-member-name { grid-area: name; font-weight: 600; color: var(--ink); }
+.seg-member-email { grid-area: email; color: #64748b; }
+
+.seg-add-results {
+  position: absolute; left: 0; right: 0; top: 100%; margin-top: 4px; background: #fff;
+  border: 1.5px solid #e2e8f0; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.1);
+  max-height: 240px; overflow-y: auto; z-index: 20;
+}
+.seg-add-result {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px 14px;
+  cursor: pointer; font-size: 13px; border-bottom: 1px solid rgba(3,12,24,.05);
+}
+.seg-add-result:last-child { border-bottom: none; }
+.seg-add-result:hover { background: #f8fafc; }
+.seg-add-result .seg-member-name, .seg-add-result .seg-member-email { grid-area: auto; }
+.seg-add-empty { padding: 14px; text-align: center; font-size: 12px; color: #94a3b8; }
+
+@media (max-width: 680px) {
+  .camp-stats { grid-template-columns: 1fr 1fr; }
+  .camp-hero { flex-direction: column; align-items: flex-start; }
+  .drawer { width: 100%; max-width: 100%; height: 100%; max-height: 100%; border-radius: 0; }
+  .field-row.cols-2, .recip-options, .recip-options.cols-3, .send-options { grid-template-columns: 1fr; }
+  .seg-members-head { display: none; }
+  .seg-member-row {
+    grid-template-columns: 20px 1fr; grid-template-areas: "cb name" "cb email"; row-gap: 2px;
+  }
+  .seg-remove-btn { align-self: start; margin-top: 2px; }
+  .seg-member-email { font-size: 11px; }
+  .seg-add-result { grid-template-columns: 1fr; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="camp-hero">
+  <div class="camp-hero-left">
+    <h1>Email Campaigns</h1>
+    <p>Compose and send bulk email straight from PhiXtra.</p>
+  </div>
+  <div style="display:flex;gap:10px">
+    <button class="btn-preview" onclick="openSegmentsModal()">📋 Segments</button>
+    <button class="btn-new-camp" onclick="openDrawer()">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      New Campaign
+    </button>
+  </div>
+</div>
+
+{% if not sender %}
+<div class="sender-note warn">
+  ⚠️ No email sending identity is configured for your account yet. You can draft campaigns now,
+  but sending is disabled until support enables it. <a href="mailto:support@phixtra.com" style="color:#92400e;font-weight:700">Contact support</a>.
+</div>
+{% endif %}
+
+{% set total_camps = campaigns|length %}
+{% set sent_camps  = campaigns|selectattr('status','equalto','done')|list|length %}
+{% set sched_camps = campaigns|selectattr('status','equalto','scheduled')|list|length %}
+{% set total_msgs  = campaigns|sum(attribute='sent_count') %}
+
+<div class="camp-stats">
+  <div class="stat-card">
+    <div class="stat-label">Total Campaigns</div>
+    <div class="stat-value">{{ total_camps }}</div>
+    <div class="stat-sub">All time</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Completed</div>
+    <div class="stat-value" style="color:#16a34a">{{ sent_camps }}</div>
+    <div class="stat-sub">Successfully sent</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Scheduled</div>
+    <div class="stat-value" style="color:#d97706">{{ sched_camps }}</div>
+    <div class="stat-sub">Queued to send</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Emails Sent</div>
+    <div class="stat-value" style="color:#6366f1">{{ total_msgs }}</div>
+    <div class="stat-sub">Total recipients reached</div>
+  </div>
+</div>
+
+<div class="section-card">
+  <div class="section-card-header">
+    <h2>All Campaigns</h2>
+    <span style="font-size:12px;color:var(--muted)">{{ campaigns|length }} total</span>
+  </div>
+
+  {% if not campaigns %}
+  <div class="empty-state">
+    <div class="empty-icon-wrap">✉️</div>
+    <h3>No campaigns yet</h3>
+    <p>Create your first email campaign to reach your Sales Pipeline contacts.</p>
+  </div>
+  {% else %}
+  <div style="overflow-x:auto">
+    <table class="camp-table">
+      <thead>
+        <tr>
+          <th>Campaign</th>
+          <th>Subject</th>
+          <th>Status</th>
+          <th>Recipients</th>
+          <th>Delivery</th>
+          <th>Scheduled</th>
+          <th>Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in campaigns %}
+        <tr>
+          <td><div style="font-weight:700;font-size:13px">{{ c.name }}</div></td>
+          <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.subject }}</td>
+          <td>
+            <span class="badge badge-{{ c.status }}">
+              {% if c.status == 'draft' %}Draft
+              {% elif c.status == 'scheduled' %}Scheduled
+              {% elif c.status == 'running' %}Sending…
+              {% elif c.status == 'done' %}Completed
+              {% elif c.status == 'failed' %}Failed
+              {% endif %}
+            </span>
+          </td>
+          <td style="font-weight:600">{{ c.total_count }}</td>
+          <td style="min-width:120px">
+            {% if c.status in ('done','running','failed') and c.total_count %}
+            {% set pct = ((c.sent_count / c.total_count * 100)|int) %}
+            <div style="margin-bottom:5px">
+              <div class="prog-wrap"><div class="prog-fill" style="width:{{ pct }}%{% if c.failed_count %};background:#ef4444{% endif %}"></div></div>
+            </div>
+            <div style="font-size:11px;color:var(--muted)">
+              <span style="color:#16a34a;font-weight:600">{{ c.sent_count }} sent</span>
+              {% if c.failed_count %} · <span style="color:#ef4444">{{ c.failed_count }} failed</span>{% endif %}
+            </div>
+            {% else %}—{% endif %}
+          </td>
+          <td style="font-size:12px;color:var(--muted);white-space:nowrap">
+            {% if c.scheduled_at %}{{ c.scheduled_at.strftime('%d %b %Y %H:%M') }}{% else %}—{% endif %}
+          </td>
+          <td style="font-size:12px;color:var(--muted);white-space:nowrap">{{ c.created_at.strftime('%d %b %Y') if c.created_at else '' }}</td>
+          <td style="white-space:nowrap">
+            {% if c.status != 'running' %}
+            <button type="button" class="act-btn" style="color:#0f172a;border-color:rgba(15,23,42,.2)"
+                    onclick="editCampaign({{ c.id }})">
+              ✎ Edit
+            </button>
+            {% endif %}
+            {% if c.status in ('draft','scheduled') %}
+            <button type="button" class="act-btn act-btn-test" style="margin-left:6px" onclick="sendTest({{ c.id }}, this)">
+              ✉️ Test
+            </button>
+            <form method="POST" action="{{ url_for('portal.email_campaigns_send', campaign_id=c.id) }}"
+                  style="display:inline;margin-left:6px"
+                  onsubmit="return confirm('Send this campaign now to {{ c.total_count }} recipient(s)?')">
+              <button type="submit" class="act-btn act-btn-send">Send</button>
+            </form>
+            <form method="POST" action="{{ url_for('portal.email_campaigns_delete', campaign_id=c.id) }}"
+                  style="display:inline;margin-left:6px"
+                  onsubmit="return confirm('Delete \"{{ c.name }}\"?')">
+              <button type="submit" class="act-btn act-btn-del">Delete</button>
+            </form>
+            {% endif %}
+            {% if c.status in ('done','failed','running') %}
+            <a href="{{ url_for('portal.email_campaign_report', campaign_id=c.id) }}"
+               class="act-btn" style="color:#2563eb;border-color:rgba(37,99,235,.25);text-decoration:none">
+              Report
+            </a>
+            {% endif %}
+            {% if c.status != 'running' %}
+            <button type="button" class="act-btn" style="color:#7c3aed;border-color:rgba(124,58,237,.25);margin-left:6px"
+                    onclick="duplicateCampaign({{ c.id }})">
+              ⧉ Duplicate
+            </button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ═══ NEW CAMPAIGN DRAWER ═══ -->
+<div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+
+<div class="drawer" id="campDrawer">
+  <div class="drawer-head">
+    <div class="drawer-head-left">
+      <h2>New Email Campaign</h2>
+      <p>Set up your campaign in 3 steps</p>
+    </div>
+    <button class="drawer-close" onclick="closeDrawer()">✕</button>
+  </div>
+
+  <div class="steps-bar">
+    <div class="step-tab active" id="stab-1"><span class="step-num">1</span> Message</div>
+    <div class="step-tab" id="stab-2"><span class="step-num">2</span> Recipients</div>
+    <div class="step-tab" id="stab-3"><span class="step-num">3</span> Schedule &amp; Launch</div>
+  </div>
+
+  <div class="drawer-body" id="drawerBody">
+    <form id="campForm" method="POST" action="{{ url_for('portal.email_campaigns_create') }}">
+
+      <!-- Step 1: Message -->
+      <div class="step-panel active" id="panel-1">
+        <div class="drawer-section-head">Campaign details</div>
+        <div class="field">
+          <label class="field-label">Campaign name <span class="field-hint">internal only, contacts won't see this</span></label>
+          <input type="text" class="field-input" id="f-name" name="name" placeholder="e.g. July newsletter">
+        </div>
+        <div class="field-row cols-2">
+          <div class="field">
+            <label class="field-label">Subject line</label>
+            <input type="text" class="field-input" id="f-subject" name="subject" placeholder="What's the email about?">
+          </div>
+          <div class="field">
+            <label class="field-label">Preheader <span class="field-hint">optional preview text</span></label>
+            <input type="text" class="field-input" id="f-preheader" name="preheader" placeholder="Shown next to the subject in inboxes">
+          </div>
+        </div>
+
+        <div class="drawer-section-head" style="margin-top:28px">Content</div>
+        <div class="recip-options" style="margin-bottom:20px">
+          <div class="recip-opt selected" id="optModeBuilder" onclick="selectTemplateMode('structured')">
+            <div class="recip-opt-icon">🎨</div>
+            <div class="recip-opt-text">
+              <strong>Template Builder</strong>
+              <small>Design with the rich-text editor</small>
+            </div>
+          </div>
+          <div class="recip-opt" id="optModeRaw" onclick="selectTemplateMode('raw')">
+            <div class="recip-opt-icon">🧩</div>
+            <div class="recip-opt-text">
+              <strong>Custom HTML</strong>
+              <small>Paste or upload your own template, sent exactly as-is</small>
+            </div>
+          </div>
+        </div>
+        <input type="hidden" id="f-template-mode" name="template_mode" value="structured">
+
+        <div id="rawHtmlFields" style="display:none">
+          <div class="field">
+            <label class="field-label">Custom HTML <span class="field-hint">sent exactly as written — no branding wrapper applied</span></label>
+            <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+              <button type="button" class="btn-upload" onclick="document.getElementById('rawHtmlFileInput').click()">📤 Upload .html file</button>
+              <input type="file" id="rawHtmlFileInput" accept=".html,.htm,text/html" style="display:none" onchange="loadRawHtmlFile(this)">
+            </div>
+            <textarea class="field-textarea" id="f-raw-html" name="raw_html"
+                      placeholder="<html>…</html>" style="min-height:180px;font-family:monospace;font-size:12px"
+                      oninput="updateRawHtmlPreview()"></textarea>
+          </div>
+          <div class="field">
+            <label class="field-label">Live preview <span class="field-hint">exactly how the email will render</span></label>
+            <iframe id="rawHtmlPreview" class="raw-html-preview" sandbox=""></iframe>
+          </div>
+        </div>
+
+        <div id="builderFields">
+        <div class="field">
+          <label class="field-label">Heading</label>
+          <input type="text" class="field-input" id="f-hero" name="hero_heading" placeholder="Main headline of the email">
+        </div>
+        <div class="field">
+          <label class="field-label">Message</label>
+          <div id="quillToolbar">
+            <select class="ql-header">
+              <option value="1">Heading 1</option>
+              <option value="2">Heading 2</option>
+              <option value="3">Heading 3</option>
+              <option selected>Normal text</option>
+            </select>
+            <select class="ql-font">
+              <option value="" selected>Default font</option>
+              <option value="Calibri">Calibri</option>
+              <option value="Arial">Arial</option>
+              <option value="Georgia">Georgia</option>
+              <option value="Times New Roman">Times New Roman</option>
+              <option value="Courier New">Courier New</option>
+              <option value="Verdana">Verdana</option>
+              <option value="Tahoma">Tahoma</option>
+              <option value="Trebuchet MS">Trebuchet MS</option>
+            </select>
+            <select class="ql-size">
+              <option value="8pt">8</option>
+              <option value="9pt">9</option>
+              <option value="10pt">10</option>
+              <option value="10.5pt">10.5</option>
+              <option value="11pt">11</option>
+              <option value="12pt" selected>12</option>
+              <option value="14pt">14</option>
+              <option value="16pt">16</option>
+              <option value="18pt">18</option>
+              <option value="20pt">20</option>
+              <option value="24pt">24</option>
+              <option value="28pt">28</option>
+              <option value="32pt">32</option>
+              <option value="36pt">36</option>
+              <option value="48pt">48</option>
+              <option value="72pt">72</option>
+            </select>
+            <button class="ql-bold" title="Bold"></button>
+            <button class="ql-italic" title="Italic"></button>
+            <button class="ql-underline" title="Underline"></button>
+            <select class="ql-color" title="Font colour"></select>
+            <select class="ql-background" title="Highlight colour"></select>
+            <select class="ql-align" title="Alignment"></select>
+            <button class="ql-list" value="ordered" title="Numbered list"></button>
+            <button class="ql-list" value="bullet" title="Bulleted list"></button>
+            <button class="ql-link" title="Insert link"></button>
+            <button class="ql-image" title="Insert image"></button>
+            <button class="ql-clean" title="Clear formatting"></button>
+          </div>
+          <div id="quillEditor"></div>
+          <input type="hidden" id="f-body" name="body_html">
+        </div>
+        <div class="field">
+          <label class="field-label">Header image <span class="field-hint">optional</span></label>
+          <div style="display:flex;gap:10px;align-items:center">
+            <button type="button" class="btn-upload" id="btnUpload" onclick="document.getElementById('f-image-file').click()">
+              📤 Upload from computer
+            </button>
+            <input type="file" id="f-image-file" accept="image/jpeg,image/png" style="display:none" onchange="uploadImage(this)">
+          </div>
+          <input type="hidden" id="f-image-url" name="image_url">
+          <div id="uploadStatus" style="font-size:12px;color:#64748b;margin-top:8px"></div>
+          <div id="imgPreviewWrap" style="display:none;margin-top:10px">
+            <img id="imgPreview" style="max-width:200px;border-radius:8px;border:1px solid #e2e8f0">
+          </div>
+        </div>
+        <div class="field-row cols-2">
+          <div class="field">
+            <label class="field-label">Button text <span class="field-hint">optional</span></label>
+            <input type="text" class="field-input" id="f-cta-text" name="cta_text" placeholder="e.g. Shop Now">
+          </div>
+          <div class="field">
+            <label class="field-label">Button link</label>
+            <input type="text" class="field-input" id="f-cta-url" name="cta_url" placeholder="https://…">
+          </div>
+        </div>
+        </div>
+      </div>
+
+      <!-- Step 2: Recipients -->
+      <div class="step-panel" id="panel-2">
+        <div class="drawer-section-head">Who should get this?</div>
+        <div class="recip-options cols-3">
+          <div class="recip-opt selected" id="optPipeline" onclick="selectRecipientSource('pipeline')">
+            <div class="recip-opt-icon">🧭</div>
+            <div class="recip-opt-text">
+              <strong>Sales Pipeline contacts</strong>
+              <small>{{ pipeline_email_count }} contact(s) with an email address</small>
+            </div>
+          </div>
+          <div class="recip-opt" id="optSegment" onclick="selectRecipientSource('segment')">
+            <div class="recip-opt-icon">📋</div>
+            <div class="recip-opt-text">
+              <strong>Segment</strong>
+              <small>A saved group of Sales Pipeline contacts</small>
+            </div>
+          </div>
+          <div class="recip-opt" id="optManual" onclick="selectRecipientSource('manual')">
+            <div class="recip-opt-icon">✍️</div>
+            <div class="recip-opt-text">
+              <strong>Paste email addresses</strong>
+              <small>One per line</small>
+            </div>
+          </div>
+        </div>
+        <input type="hidden" id="f-recipient-source" name="recipient_source" value="pipeline">
+
+        <div id="segmentRecipField">
+          <div class="field">
+            <label class="field-label">Segment
+              <span class="field-hint"><a href="javascript:void(0)" onclick="openSegmentsModal()">Manage segments</a></span>
+            </label>
+            <select class="field-input" id="f-segment-id" name="segment_id"></select>
+            <div id="segmentEmptyNote" style="display:none;font-size:12px;color:#94a3b8;margin-top:6px">
+              No segments yet. <a href="javascript:void(0)" onclick="openSegmentsModal()">Create one</a>.
+            </div>
+          </div>
+        </div>
+
+        <div id="manualRecipField">
+          <div class="field recip-wrap">
+            <label class="field-label">Email addresses</label>
+            <textarea class="field-textarea" id="f-recipients" name="recipients"
+                      placeholder="jane@example.com&#10;john@example.com" oninput="countRecipients()"></textarea>
+            <span class="recip-counter" id="recipCounter">0 addresses</span>
+          </div>
+        </div>
+
+        <div id="excludeLabelField">
+          <div class="field">
+            <label class="field-label">Exclude label
+              <span class="field-hint"><a href="{{ url_for('portal.lead_labels_page') }}" target="_blank">Manage labels</a></span>
+            </label>
+            <div class="excl-label-list" id="excludeLabelList">
+              <div style="font-size:12px;color:#94a3b8">Loading…</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3: Schedule & Launch -->
+      <div class="step-panel" id="panel-3">
+        <div class="drawer-section-head">When should this send?</div>
+        <div class="send-options">
+          <div class="send-opt selected" id="optNow" onclick="selectTiming('now')">
+            <div class="send-opt-icon">⚡</div>
+            <div class="send-opt-text"><strong>Send Now</strong><small>Starts immediately after launch</small></div>
+          </div>
+          <div class="send-opt" id="optSched" onclick="selectTiming('schedule')">
+            <div class="send-opt-icon">📅</div>
+            <div class="send-opt-text"><strong>Schedule</strong><small>Pick a future date &amp; time</small></div>
+          </div>
+        </div>
+        <input type="hidden" id="f-sendnow" name="send_now" value="1">
+
+        <div id="scheduleField" class="field">
+          <label class="field-label">Send date &amp; time</label>
+          <input type="datetime-local" class="field-input" id="f-scheddt" name="scheduled_at">
+        </div>
+
+        <div class="drawer-section-head" style="margin-top:28px">Review</div>
+        <div class="review-row"><div class="review-key">Campaign</div><div class="review-val" id="rv-name">—</div></div>
+        <div class="review-row"><div class="review-key">Subject</div><div class="review-val" id="rv-subject">—</div></div>
+        <div class="review-row"><div class="review-key">Recipients</div><div class="review-val" id="rv-recip">—</div></div>
+        <div class="review-row"><div class="review-key">Timing</div><div class="review-val" id="rv-time">—</div></div>
+
+        <div class="drawer-section-head" style="margin-top:28px">Preview <span class="field-hint">exactly what recipients will receive</span></div>
+        <div class="device-toggle" style="border:1.5px solid #e2e8f0;border-bottom:none;border-radius:10px 10px 0 0">
+          <button type="button" class="device-btn active" id="rvDeviceDesktop" onclick="setReviewDevice('desktop')">🖥 Desktop</button>
+          <button type="button" class="device-btn" id="rvDeviceMobile" onclick="setReviewDevice('mobile')">📱 Mobile</button>
+        </div>
+        <div class="review-preview-wrap" id="reviewPreviewWrap">
+          <div id="reviewPreviewLoading" style="padding:40px;text-align:center;color:#94a3b8;font-size:13px">Loading preview…</div>
+          <iframe id="reviewPreviewFrame" sandbox="" style="display:none"></iframe>
+        </div>
+      </div>
+
+    </form>
+  </div>
+
+  <div class="drawer-foot">
+    <div style="display:flex;gap:10px;align-items:center">
+      <button class="btn-ghost" id="btnBack" style="display:none" onclick="prevStep()">← Back</button>
+      <button type="button" class="btn-preview" onclick="openPreview()">👁 Preview</button>
+      <button type="button" class="btn-preview" id="btnSendTestDraft" onclick="sendTestDraft()">✉️ Send Test</button>
+    </div>
+    <div class="drawer-foot-right">
+      <button class="btn-ghost" onclick="closeDrawer()">Cancel</button>
+      <button class="btn-next" id="btnNext" onclick="nextStep()">Continue →</button>
+      <button class="btn-launch" id="btnLaunch" style="display:none" onclick="submitCampaign()">🚀 Launch Campaign</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ PREVIEW MODAL ═══ -->
+<div class="preview-overlay" id="previewOverlay" onclick="closePreview()">
+  <div class="preview-modal" onclick="event.stopPropagation()">
+    <div class="preview-head">
+      <h3>Email Preview</h3>
+      <button type="button" class="drawer-close" style="background:#f1f5f9;border-color:rgba(3,12,24,.1);color:#64748b" onclick="closePreview()">✕</button>
+    </div>
+    <div class="device-toggle">
+      <button type="button" class="device-btn active" id="pvDeviceDesktop" onclick="setPreviewDevice('desktop')">🖥 Desktop</button>
+      <button type="button" class="device-btn" id="pvDeviceMobile" onclick="setPreviewDevice('mobile')">📱 Mobile</button>
+    </div>
+    <div class="preview-body">
+      <div id="previewLoading" style="padding:40px;text-align:center;color:#94a3b8;font-size:13px">Loading preview…</div>
+      <div id="previewError" style="display:none;padding:24px;text-align:center;color:#dc2626;font-size:13px"></div>
+      <div class="preview-frame-wrap" id="previewFrameWrap">
+        <iframe id="previewFrame" class="preview-frame" sandbox="" style="display:none"></iframe>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SEGMENTS MODAL ═══ -->
+<div class="preview-overlay" id="segmentsOverlay" onclick="closeSegmentsModal()">
+  <div class="preview-modal" style="height:auto;max-height:80vh" onclick="event.stopPropagation()">
+    <div class="preview-head">
+      <h3>Segments</h3>
+      <button type="button" class="drawer-close" style="background:#f1f5f9;border-color:rgba(3,12,24,.1);color:#64748b" onclick="closeSegmentsModal()">✕</button>
+    </div>
+    <div class="seg-modal-body">
+      <div style="display:flex;gap:8px;margin-bottom:18px">
+        <input type="text" class="field-input" id="segNewName" placeholder="New segment name, e.g. VIP customers" style="flex:1">
+        <button type="button" class="btn-launch" style="padding:0 18px" onclick="createSegment()">+ Create</button>
+      </div>
+      <div id="segmentsListWrap">
+        <div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">Loading…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MANAGE SEGMENT MEMBERS MODAL ═══ -->
+<div class="preview-overlay" id="segMembersOverlay" onclick="closeSegMembersModal()">
+  <div class="preview-modal" style="height:auto;max-height:80vh" onclick="event.stopPropagation()">
+    <div class="preview-head">
+      <h3 id="segMembersTitle">Manage segment</h3>
+      <button type="button" class="drawer-close" style="background:#f1f5f9;border-color:rgba(3,12,24,.1);color:#64748b" onclick="closeSegMembersModal()">✕</button>
+    </div>
+    <div class="seg-modal-body">
+      <div class="field" style="position:relative;margin-bottom:0">
+        <label class="field-label">Add a contact</label>
+        <input type="text" class="field-input" id="segAddSearch" autocomplete="off"
+               placeholder="Search Sales Pipeline contacts by name or email…"
+               oninput="onSegAddSearchInput()"
+               onblur="setTimeout(() => { document.getElementById('segAddResults').style.display='none' }, 200)">
+        <div id="segAddResults" class="seg-add-results" style="display:none"></div>
+      </div>
+
+      <div class="drawer-section-head" style="margin-top:22px">
+        Contacts in this segment <span class="field-hint" id="segMembersHeadCount"></span>
+      </div>
+      <div id="segMembersListWrap">
+        <div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">Loading…</div>
+      </div>
+    </div>
+    <div class="drawer-foot">
+      <span id="segMembersCount" style="font-size:12px;color:var(--muted)"></span>
+      <button type="button" class="btn-launch" onclick="closeSegMembersModal()">Done</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
+<script>
+/* Point-based font sizes (like MS Word's size box) and named fonts, both applied as
+   inline styles (font-size/font-family) so they survive in email clients — unlike Quill's
+   default class-based size/font formats, which need Quill's own stylesheet to mean anything. */
+var SizeStyle = Quill.import('attributors/style/size')
+SizeStyle.whitelist = ['8pt','9pt','10pt','10.5pt','11pt','12pt','14pt','16pt','18pt','20pt','24pt','28pt','32pt','36pt','48pt','72pt']
+Quill.register(SizeStyle, true)
+
+var FontStyle = Quill.import('attributors/style/font')
+FontStyle.whitelist = ['Calibri','Arial','Georgia','Times New Roman','Courier New','Verdana','Tahoma','Trebuchet MS']
+Quill.register(FontStyle, true)
+
+var quill = new Quill('#quillEditor', {
+  theme: 'snow',
+  placeholder: 'Write your message…',
+  modules: {
+    toolbar: {
+      container: '#quillToolbar',
+      handlers: {
+        image: function() {
+          var input = document.createElement('input')
+          input.setAttribute('type', 'file')
+          input.setAttribute('accept', 'image/jpeg,image/png')
+          input.click()
+          input.onchange = function() {
+            var file = input.files[0]
+            if (!file) return
+            var formData = new FormData()
+            formData.append('image', file)
+            fetch('{{ url_for("portal.email_campaigns_upload_image") }}', { method: 'POST', body: formData })
+              .then(function(r) { return r.json() })
+              .then(function(data) {
+                if (data.url) {
+                  var range = quill.getSelection(true)
+                  quill.insertEmbed(range.index, 'image', data.url, 'user')
+                  quill.setSelection(range.index + 1)
+                } else {
+                  alert('Image upload failed: ' + (data.error || 'unknown error'))
+                }
+              })
+              .catch(function() { alert('Image upload failed — check your connection') })
+          }
+        }
+      }
+    }
+  }
+})
+quill.on('text-change', function() {
+  document.getElementById('f-body').value = quill.root.innerHTML
+})
+
+const CAMPAIGN_CREATE_URL = "{{ url_for('portal.email_campaigns_create') }}"
+
+function openDrawer(title) {
+  document.getElementById('drawerOverlay').classList.add('open')
+  document.getElementById('campDrawer').classList.add('open')
+  document.body.style.overflow = 'hidden'
+  resetDrawer()
+  document.getElementById('campForm').action = CAMPAIGN_CREATE_URL
+  document.querySelector('.drawer-head-left h2').textContent = title || 'New Email Campaign'
+}
+
+function duplicateCampaign(id) {
+  fetch('/email/campaigns/' + id + '/duplicate-data')
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { alert(data.error); return }
+      openDrawer('Duplicate Campaign')
+      document.getElementById('f-name').value      = data.name + ' (copy)'
+      document.getElementById('f-subject').value    = data.subject
+      document.getElementById('f-preheader').value  = data.preheader
+      selectTemplateMode('raw')
+      document.getElementById('f-raw-html').value = data.html_body
+      updateRawHtmlPreview()
+      // Content is already filled in — jump straight to picking a fresh audience.
+      goStep(2)
+    })
+    .catch(() => alert('Could not load campaign — check your connection'))
+}
+
+function editCampaign(id) {
+  fetch('/email/campaigns/' + id + '/edit-data')
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { alert(data.error); return }
+      openDrawer('Edit Campaign')
+      document.getElementById('campForm').action = '/email/campaigns/' + id + '/update'
+      document.getElementById('f-name').value      = data.name
+      document.getElementById('f-subject').value    = data.subject
+      document.getElementById('f-preheader').value  = data.preheader
+      selectTemplateMode('raw')
+      document.getElementById('f-raw-html').value = data.html_body
+      updateRawHtmlPreview()
+      selectRecipientSource('manual')
+      document.getElementById('f-recipients').value = data.recipients.join('\n')
+      countRecipients()
+      if (data.scheduled_at) {
+        selectTiming('schedule')
+        document.getElementById('f-scheddt').value = data.scheduled_at
+      } else {
+        selectTiming('now')
+      }
+      goStep(1)
+    })
+    .catch(() => alert('Could not load campaign — check your connection'))
+}
+
+function closeDrawer() {
+  document.getElementById('drawerOverlay').classList.remove('open')
+  document.getElementById('campDrawer').classList.remove('open')
+  document.body.style.overflow = ''
+}
+
+// ── Segments modal ──────────────────────────────────────────────────────────
+function openSegmentsModal() {
+  document.getElementById('segmentsOverlay').classList.add('open')
+  document.getElementById('segNewName').value = ''
+  renderSegmentsList()
+}
+function closeSegmentsModal() {
+  document.getElementById('segmentsOverlay').classList.remove('open')
+}
+
+function renderSegmentsList() {
+  const wrap = document.getElementById('segmentsListWrap')
+  wrap.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">Loading…</div>'
+  fetch('/email/segments')
+    .then(r => r.json())
+    .then(data => {
+      const segments = data.segments || []
+      if (segments.length === 0) {
+        wrap.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">No segments yet — create one above.</div>'
+        return
+      }
+      wrap.innerHTML = segments.map(s => `
+        <div class="seg-row">
+          <div>
+            <div class="seg-row-name">${escapeHtml(s.name)}</div>
+            <div class="seg-row-count">${s.member_count} contact(s)</div>
+          </div>
+          <div class="seg-row-actions">
+            <button type="button" class="act-btn" data-seg-id="${s.id}" data-seg-name="${escapeHtml(s.name)}"
+                    onclick="openSegMembersModal(this.dataset.segId, this.dataset.segName)">Manage contacts</button>
+            <button type="button" class="act-btn act-btn-del" data-seg-id="${s.id}" data-seg-name="${escapeHtml(s.name)}"
+                    onclick="deleteSegment(this.dataset.segId, this.dataset.segName)">Delete</button>
+          </div>
+        </div>
+      `).join('')
+    })
+    .catch(() => { wrap.innerHTML = '<div style="padding:20px;text-align:center;color:#dc2626;font-size:13px">Could not load segments.</div>' })
+}
+
+function createSegment() {
+  const input = document.getElementById('segNewName')
+  const name = input.value.trim()
+  if (!name) { shake('segNewName'); return }
+  const fd = new FormData()
+  fd.append('name', name)
+  fetch('/email/segments/create', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { alert(data.error); return }
+      input.value = ''
+      renderSegmentsList()
+    })
+    .catch(() => alert('Could not create segment — check your connection'))
+}
+
+function deleteSegment(id, name) {
+  if (!confirm('Delete segment "' + name + '"? This does not delete the contacts themselves.')) return
+  fetch('/email/segments/' + id + '/delete', { method: 'POST' })
+    .then(r => r.json())
+    .then(() => renderSegmentsList())
+    .catch(() => alert('Could not delete segment — check your connection'))
+}
+
+// ── Manage segment members modal ────────────────────────────────────────────
+// Shows only the segment's actual members (never the full Sales Pipeline list —
+// this tenant alone has 2600+ leads, a checkbox-everyone list doesn't scale).
+// Adding is a typeahead search, one contact at a time, mirroring the existing
+// single add/remove pattern already used for WhatsApp segments.
+let segMembersState = { segmentId: null, members: [] }
+
+function openSegMembersModal(segmentId, segmentName) {
+  document.getElementById('segMembersOverlay').classList.add('open')
+  document.getElementById('segMembersTitle').textContent = 'Manage contacts — ' + segmentName
+  document.getElementById('segAddSearch').value = ''
+  document.getElementById('segAddResults').style.display = 'none'
+  document.getElementById('segMembersListWrap').innerHTML =
+    '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">Loading…</div>'
+  segMembersState = { segmentId: segmentId, members: [] }
+  loadSegMembers()
+}
+function closeSegMembersModal() {
+  document.getElementById('segMembersOverlay').classList.remove('open')
+  renderSegmentsList() // refresh member counts on the segments list behind it
+}
+
+function loadSegMembers() {
+  fetch('/email/segments/' + segMembersState.segmentId + '/members')
+    .then(r => r.json())
+    .then(data => {
+      segMembersState.members = data.members || []
+      renderSegMembersList()
+    })
+    .catch(() => {
+      document.getElementById('segMembersListWrap').innerHTML =
+        '<div style="padding:20px;text-align:center;color:#dc2626;font-size:13px">Could not load contacts.</div>'
+    })
+}
+
+function renderSegMembersList() {
+  const wrap = document.getElementById('segMembersListWrap')
+  const members = segMembersState.members
+  document.getElementById('segMembersHeadCount').textContent = '(' + members.length + ')'
+  document.getElementById('segMembersCount').textContent = members.length + (members.length === 1 ? ' contact' : ' contacts')
+  if (members.length === 0) {
+    wrap.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">No contacts added yet — search above to add some.</div>'
+    return
+  }
+  const rows = members.map(m => `
+    <div class="seg-member-row">
+      <button type="button" class="seg-remove-btn" title="Remove from segment" onclick="removeSegMember(${m.id})">✕</button>
+      <span class="seg-member-name" title="${escapeHtml(m.name)}">${escapeHtml(m.name)}</span>
+      <span class="seg-member-email" title="${escapeHtml(m.email)}">${escapeHtml(m.email)}</span>
+    </div>
+  `).join('')
+  wrap.innerHTML = '<div class="seg-members-head"><span></span><span>Name</span><span>Email</span></div>' + rows
+}
+
+let segAddSearchTimer = null
+function onSegAddSearchInput() {
+  clearTimeout(segAddSearchTimer)
+  const q = document.getElementById('segAddSearch').value.trim()
+  if (q.length < 2) { document.getElementById('segAddResults').style.display = 'none'; return }
+  segAddSearchTimer = setTimeout(() => runSegAddSearch(q), 250)
+}
+function runSegAddSearch(q) {
+  const url = '/email/campaigns/pipeline-leads-json?q=' + encodeURIComponent(q) +
+              '&exclude_segment_id=' + segMembersState.segmentId
+  fetch(url)
+    .then(r => r.json())
+    .then(data => {
+      const results = document.getElementById('segAddResults')
+      const leads = data.leads || []
+      if (leads.length === 0) {
+        results.innerHTML = '<div class="seg-add-empty">No matching contacts (or already added).</div>'
+      } else {
+        results.innerHTML = leads.map(l => `
+          <div class="seg-add-result" onclick="addSegMember(${l.id})">
+            <span class="seg-member-name" title="${escapeHtml(l.name)}">${escapeHtml(l.name)}</span>
+            <span class="seg-member-email" title="${escapeHtml(l.email)}">${escapeHtml(l.email)}</span>
+          </div>
+        `).join('')
+      }
+      results.style.display = 'block'
+    })
+    .catch(() => {})
+}
+function addSegMember(leadId) {
+  const fd = new FormData()
+  fd.append('lead_id', leadId)
+  fetch('/email/segments/' + segMembersState.segmentId + '/members/add', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { alert(data.error); return }
+      segMembersState.members.push(data.member)
+      segMembersState.members.sort((a, b) => a.name.localeCompare(b.name))
+      renderSegMembersList()
+      document.getElementById('segAddSearch').value = ''
+      document.getElementById('segAddResults').style.display = 'none'
+    })
+    .catch(() => alert('Could not add contact — check your connection'))
+}
+function removeSegMember(leadId) {
+  const fd = new FormData()
+  fd.append('lead_id', leadId)
+  fetch('/email/segments/' + segMembersState.segmentId + '/members/remove', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { alert(data.error); return }
+      segMembersState.members = segMembersState.members.filter(m => m.id !== leadId)
+      renderSegMembersList()
+    })
+    .catch(() => alert('Could not remove contact — check your connection'))
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+let currentStep = 1
+const TOTAL_STEPS = 3
+
+function goStep(n) {
+  for (let i = 1; i <= TOTAL_STEPS; i++) {
+    const panel = document.getElementById('panel-' + i)
+    const tab   = document.getElementById('stab-' + i)
+    if (panel) panel.classList.toggle('active', i === n)
+    if (tab) {
+      tab.classList.remove('active', 'done')
+      if (i === n) tab.classList.add('active')
+      else if (i < n) tab.classList.add('done')
+    }
+  }
+  currentStep = n
+  document.getElementById('btnBack').style.display   = n > 1 ? 'inline-flex' : 'none'
+  document.getElementById('btnNext').style.display   = n < TOTAL_STEPS ? 'inline-flex' : 'none'
+  document.getElementById('btnLaunch').style.display = n === TOTAL_STEPS ? 'inline-flex' : 'none'
+  document.getElementById('drawerBody').scrollTop = 0
+  if (n === TOTAL_STEPS) populateReview()
+}
+function nextStep() { if (!validateStep(currentStep)) return; goStep(currentStep + 1) }
+function prevStep() { goStep(currentStep - 1) }
+
+function resetDrawer() {
+  document.getElementById('campForm').reset()
+  quill.setText('')
+  document.getElementById('f-body').value = ''
+  document.getElementById('recipCounter').textContent = '0 addresses'
+  document.getElementById('recipCounter').classList.remove('has-nums')
+  document.getElementById('scheduleField').classList.remove('show')
+  document.getElementById('manualRecipField').classList.remove('show')
+  document.getElementById('segmentRecipField').classList.remove('show')
+  document.getElementById('imgPreviewWrap').style.display = 'none'
+  document.getElementById('uploadStatus').textContent = ''
+  document.getElementById('f-image-url').value = ''
+  document.getElementById('f-raw-html').value = ''
+  document.getElementById('rawHtmlPreview').srcdoc = ''
+  document.getElementById('reviewPreviewFrame').srcdoc = ''
+  document.getElementById('reviewPreviewFrame').style.display = 'none'
+  setPreviewDevice('desktop')
+  setReviewDevice('desktop')
+  selectTemplateMode('structured')
+  selectRecipientSource('pipeline')
+  selectTiming('now')
+  goStep(1)
+}
+
+function validateStep(n) {
+  if (n === 1) {
+    if (!document.getElementById('f-name').value.trim())    { shake('f-name'); return false }
+    if (!document.getElementById('f-subject').value.trim()) { shake('f-subject'); return false }
+    const mode = document.getElementById('f-template-mode').value
+    if (mode === 'raw') {
+      if (!document.getElementById('f-raw-html').value.trim()) { shake('f-raw-html'); return false }
+    } else {
+      if (!document.getElementById('f-hero').value.trim())    { shake('f-hero'); return false }
+      if (!quill.getText().trim())                            { shake('quillEditor'); return false }
+    }
+  }
+  if (n === 2) {
+    const src = document.getElementById('f-recipient-source').value
+    if (src === 'manual' && parseEmails().length === 0) { shake('f-recipients'); return false }
+    if (src === 'pipeline' && {{ pipeline_email_count }} === 0) {
+      alert('No Sales Pipeline contacts have an email address yet. Choose "Paste email addresses" instead.')
+      return false
+    }
+    if (src === 'segment' && !document.getElementById('f-segment-id').value) {
+      alert('Choose a segment, or create one first via "Manage segments".')
+      return false
+    }
+  }
+  if (n === 3) {
+    const isSchedule = document.getElementById('f-sendnow').value === '0'
+    if (isSchedule && !document.getElementById('f-scheddt').value) { shake('f-scheddt'); return false }
+  }
+  return true
+}
+function shake(id) {
+  const el = document.getElementById(id)
+  if (!el) return
+  el.style.borderColor = '#ef4444'
+  el.style.boxShadow   = '0 0 0 3px rgba(239,68,68,.15)'
+  el.focus()
+  setTimeout(() => { el.style.borderColor = ''; el.style.boxShadow = '' }, 1800)
+}
+
+function parseEmails() {
+  return document.getElementById('f-recipients').value.split('\n').map(l => l.trim()).filter(l => l.includes('@'))
+}
+function countRecipients() {
+  const n = parseEmails().length
+  const counter = document.getElementById('recipCounter')
+  counter.textContent = n + (n === 1 ? ' address' : ' addresses')
+  counter.classList.toggle('has-nums', n > 0)
+}
+
+function selectRecipientSource(src) {
+  document.getElementById('optPipeline').classList.toggle('selected', src === 'pipeline')
+  document.getElementById('optSegment').classList.toggle('selected', src === 'segment')
+  document.getElementById('optManual').classList.toggle('selected', src === 'manual')
+  document.getElementById('f-recipient-source').value = src
+  document.getElementById('segmentRecipField').classList.toggle('show', src === 'segment')
+  document.getElementById('manualRecipField').classList.toggle('show', src === 'manual')
+  document.getElementById('excludeLabelField').classList.toggle('show', src === 'pipeline' || src === 'segment')
+  if (src === 'segment') loadSegmentsIntoSelect()
+  if (src === 'pipeline' || src === 'segment') loadExcludeLabelChecklist()
+}
+
+function loadExcludeLabelChecklist() {
+  const wrap = document.getElementById('excludeLabelList')
+  if (wrap.dataset.loaded === '1') return
+  fetch('/labels/list')
+    .then(r => r.json())
+    .then(data => {
+      const labels = data.labels || []
+      if (labels.length === 0) {
+        wrap.innerHTML = '<div style="font-size:12px;color:#94a3b8">No labels yet — nothing to exclude.</div>'
+        return
+      }
+      wrap.innerHTML = labels.map(lb => `
+        <label class="excl-label-chip">
+          <input type="checkbox" name="exclude_label_ids" value="${lb.id}">
+          ${escapeHtml(lb.name)}
+        </label>
+      `).join('')
+      wrap.dataset.loaded = '1'
+    })
+    .catch(() => { wrap.innerHTML = '<div style="font-size:12px;color:#dc2626">Could not load labels.</div>' })
+}
+
+function loadSegmentsIntoSelect() {
+  fetch('/email/segments')
+    .then(r => r.json())
+    .then(data => {
+      const sel = document.getElementById('f-segment-id')
+      const emptyNote = document.getElementById('segmentEmptyNote')
+      const segments = data.segments || []
+      const prevValue = sel.value
+      sel.innerHTML = ''
+      segments.forEach(s => {
+        const opt = document.createElement('option')
+        opt.value = s.id
+        opt.textContent = s.name + ' (' + s.member_count + ')'
+        sel.appendChild(opt)
+      })
+      if (prevValue && segments.some(s => String(s.id) === prevValue)) sel.value = prevValue
+      emptyNote.style.display = segments.length === 0 ? 'block' : 'none'
+      sel.style.display = segments.length === 0 ? 'none' : ''
+    })
+    .catch(() => {})
+}
+
+function selectTiming(mode) {
+  document.getElementById('optNow').classList.toggle('selected', mode === 'now')
+  document.getElementById('optSched').classList.toggle('selected', mode === 'schedule')
+  const sf = document.getElementById('scheduleField')
+  const dt = document.getElementById('f-scheddt')
+  if (mode === 'schedule') { sf.classList.add('show'); dt.required = true }
+  else { sf.classList.remove('show'); dt.required = false }
+  document.getElementById('f-sendnow').value = mode === 'now' ? '1' : '0'
+}
+
+function populateReview() {
+  document.getElementById('rv-name').textContent    = document.getElementById('f-name').value.trim() || '—'
+  document.getElementById('rv-subject').textContent = document.getElementById('f-subject').value.trim() || '—'
+
+  const src = document.getElementById('f-recipient-source').value
+  const count = src === 'pipeline' ? {{ pipeline_email_count }} : parseEmails().length
+  document.getElementById('rv-recip').textContent = count + (count === 1 ? ' recipient' : ' recipients') +
+    (src === 'pipeline' ? ' (Sales Pipeline)' : ' (pasted)')
+
+  const isNow = document.getElementById('f-sendnow').value === '1'
+  const dt    = document.getElementById('f-scheddt').value
+  let timeText = 'Send immediately'
+  if (!isNow && dt) {
+    const d = new Date(dt)
+    timeText = d.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) +
+               ' at ' + d.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' })
+  }
+  document.getElementById('rv-time').textContent = timeText
+
+  const loading = document.getElementById('reviewPreviewLoading')
+  const frame   = document.getElementById('reviewPreviewFrame')
+  loading.style.display = 'block'
+  frame.style.display = 'none'
+  fetchPreview(function(html, err) {
+    loading.style.display = 'none'
+    frame.srcdoc = err ? '<p style="font:13px sans-serif;color:#dc2626;padding:20px">' + err + '</p>' : html
+    frame.style.display = 'block'
+  })
+}
+
+function fetchPreview(callback) {
+  const fd = new FormData(document.getElementById('campForm'))
+  fetch('{{ url_for("portal.email_campaigns_preview") }}', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      if (data.html !== undefined) callback(data.html, null)
+      else callback(null, data.error || 'Could not build preview')
+    })
+    .catch(() => callback(null, 'Could not build preview — check your connection'))
+}
+
+function openPreview() {
+  document.getElementById('previewOverlay').classList.add('open')
+  const loading = document.getElementById('previewLoading')
+  const errBox  = document.getElementById('previewError')
+  const frame   = document.getElementById('previewFrame')
+  loading.style.display = 'block'
+  errBox.style.display = 'none'
+  frame.style.display = 'none'
+  fetchPreview(function(html, err) {
+    loading.style.display = 'none'
+    if (err) {
+      errBox.textContent = err
+      errBox.style.display = 'block'
+      return
+    }
+    frame.srcdoc = html
+    frame.style.display = 'block'
+  })
+}
+function closePreview() {
+  document.getElementById('previewOverlay').classList.remove('open')
+}
+function setPreviewDevice(mode) {
+  document.getElementById('pvDeviceDesktop').classList.toggle('active', mode === 'desktop')
+  document.getElementById('pvDeviceMobile').classList.toggle('active', mode === 'mobile')
+  document.getElementById('previewFrameWrap').classList.toggle('mobile', mode === 'mobile')
+}
+function setReviewDevice(mode) {
+  document.getElementById('rvDeviceDesktop').classList.toggle('active', mode === 'desktop')
+  document.getElementById('rvDeviceMobile').classList.toggle('active', mode === 'mobile')
+  document.getElementById('reviewPreviewWrap').classList.toggle('mobile', mode === 'mobile')
+}
+
+function uploadImage(input) {
+  const file = input.files[0]
+  if (!file) return
+  const btn    = document.getElementById('btnUpload')
+  const status = document.getElementById('uploadStatus')
+  btn.classList.add('uploading')
+  status.textContent = 'Uploading…'
+  status.style.color = '#64748b'
+
+  const formData = new FormData()
+  formData.append('image', file)
+
+  fetch('{{ url_for("portal.email_campaigns_upload_image") }}', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+      btn.classList.remove('uploading')
+      if (data.url) {
+        document.getElementById('f-image-url').value = data.url
+        status.textContent = 'Upload complete!'
+        status.style.color = '#16a34a'
+        document.getElementById('imgPreview').src = data.url
+        document.getElementById('imgPreviewWrap').style.display = 'block'
+      } else {
+        status.textContent = 'Error: ' + (data.error || 'Upload failed')
+        status.style.color = '#dc2626'
+      }
+      input.value = ''
+    })
+    .catch(() => {
+      btn.classList.remove('uploading')
+      status.textContent = 'Upload failed — check your connection'
+      status.style.color = '#dc2626'
+      input.value = ''
+    })
+}
+
+function selectTemplateMode(mode) {
+  document.getElementById('optModeBuilder').classList.toggle('selected', mode === 'structured')
+  document.getElementById('optModeRaw').classList.toggle('selected', mode === 'raw')
+  document.getElementById('f-template-mode').value = mode
+  document.getElementById('builderFields').style.display  = mode === 'structured' ? '' : 'none'
+  document.getElementById('rawHtmlFields').style.display   = mode === 'raw' ? '' : 'none'
+  if (mode === 'raw') updateRawHtmlPreview()
+}
+function loadRawHtmlFile(input) {
+  const file = input.files[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = function(e) {
+    document.getElementById('f-raw-html').value = e.target.result
+    updateRawHtmlPreview()
+  }
+  reader.readAsText(file)
+}
+function updateRawHtmlPreview() {
+  document.getElementById('rawHtmlPreview').srcdoc = document.getElementById('f-raw-html').value
+}
+
+function sendTestDraft() {
+  const btn = document.getElementById('btnSendTestDraft')
+  const original = btn.textContent
+  btn.disabled = true
+  btn.textContent = 'Sending…'
+  const fd = new FormData(document.getElementById('campForm'))
+  fetch('{{ url_for("portal.email_campaigns_send_test_draft") }}', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) { alert('Test email sent to ' + data.sent_to) }
+      else { alert('Could not send test: ' + (data.error || 'unknown error')) }
+    })
+    .catch(() => alert('Could not send test — check your connection'))
+    .finally(() => { btn.disabled = false; btn.textContent = original })
+}
+
+function sendTest(campaignId, btn) {
+  const original = btn.textContent
+  btn.disabled = true
+  btn.textContent = 'Sending…'
+  fetch('/email/campaigns/' + campaignId + '/send-test', { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) { alert('Test email sent to ' + data.sent_to) }
+      else { alert('Could not send test: ' + (data.error || 'unknown error')) }
+    })
+    .catch(() => alert('Could not send test — check your connection'))
+    .finally(() => { btn.disabled = false; btn.textContent = original })
+}
+
+(function() {
+  if (document.querySelector('.badge-running')) { setTimeout(() => { window.location.reload() }, 3000) }
+})()
+
+function submitCampaign() {
+  if (!validateStep(3)) return
+  const btn = document.getElementById('btnLaunch')
+  btn.disabled = true
+  btn.textContent = 'Launching…'
+  document.getElementById('campForm').submit()
+}
+
+if (new URLSearchParams(window.location.search).get('view') === 'segments') {
+  openSegmentsModal()
+}
+</script>
+
+{% endblock %}

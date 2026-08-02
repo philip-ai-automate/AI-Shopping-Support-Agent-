@@ -1,0 +1,49 @@
+{% extends "portal/base.html" %}
+{% block title %}Import Bounces — PhiXtra Portal{% endblock %}
+{% block content %}
+
+<style>
+  .ibnc-hero { display:flex; align-items:center; gap:14px; margin-bottom:22px }
+  .ibnc-hero-icon {
+    width:48px; height:48px; border-radius:14px; flex-shrink:0;
+    background:linear-gradient(135deg, #f59e0b, #ef4444);
+    display:flex; align-items:center; justify-content:center; font-size:22px;
+    box-shadow:0 6px 16px rgba(239,68,68,.25);
+  }
+  .ibnc-hero h1 { font-size:22px; font-weight:800; letter-spacing:-.4px; margin:0 }
+  .ibnc-hero p { margin:3px 0 0; font-size:13.5px; color:var(--muted) }
+
+  .ibnc-drop { border:1.5px dashed var(--line); border-radius:14px; padding:32px; text-align:center; margin-bottom:18px }
+  .ibnc-result { background:#f0fdf4; border:1.5px solid #bbf7d0; border-radius:12px; padding:18px 20px; margin-bottom:18px }
+  .ibnc-result-row { display:flex; justify-content:space-between; padding:6px 0; font-size:13.5px }
+  .ibnc-result-row strong { font-weight:800 }
+</style>
+
+<div class="ibnc-hero">
+  <div class="ibnc-hero-icon">📥</div>
+  <div>
+    <h1>Import Bounces</h1>
+    <p>Upload a ZeptoMail bounce report — hard-bounced emails get blocked from future campaigns and tagged with the <a href="{{ url_for('portal.lead_labels_page') }}">Bounced</a> label automatically.</p>
+  </div>
+</div>
+
+{% if result %}
+<div class="ibnc-result">
+  <div class="ibnc-result-row"><span>Hard-bounced emails found in file</span><strong>{{ result.file_bounces }}</strong></div>
+  <div class="ibnc-result-row"><span>Matched a Sales Pipeline contact</span><strong>{{ result.matched_leads }}</strong></div>
+  <div class="ibnc-result-row"><span>Newly labeled "Bounced"</span><strong>{{ result.labeled }}</strong></div>
+</div>
+{% endif %}
+
+<div class="card" style="padding:20px">
+  <form method="POST" enctype="multipart/form-data">
+    <div class="ibnc-drop">
+      <input type="file" name="bounce_file" accept=".csv" required>
+      <p class="muted" style="margin-top:10px">CSV export from ZeptoMail's Message Reports page, with a "HARD BOUNCE" and "TO" column.</p>
+    </div>
+    <button type="submit" class="btn btn-primary">Import</button>
+    <a href="{{ url_for('portal.lead_labels_page') }}" class="btn btn-ghost">Back to Labels</a>
+  </form>
+</div>
+
+{% endblock %}
