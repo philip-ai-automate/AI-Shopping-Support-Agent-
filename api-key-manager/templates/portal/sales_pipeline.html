@@ -405,6 +405,7 @@
 
 <div class="bulk-action-bar" id="bulkActionBar" style="display:none">
   <span><strong id="bulkSelectedCount">0</strong> selected</span>
+  <button type="button" class="btn btn-sm btn-primary" onclick="openBulkAdvanceModal()">➡️ Move Stage</button>
   <button type="button" class="btn btn-sm btn-primary" onclick="openBulkSegmentModal()">📋 Add to Segment</button>
   <button type="button" class="btn btn-sm btn-primary" onclick="openBulkLabelModal()">🏷️ Add to Label</button>
   <button type="button" class="btn btn-sm" onclick="clearLeadSelection()">Clear</button>
@@ -572,6 +573,28 @@
       <div class="modal-actions">
         <button type="button" class="modal-cancel" onclick="closeAdvanceModal()">Cancel</button>
         <button type="submit" class="modal-confirm">Confirm</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Bulk "Move Stage" modal ── -->
+<div class="modal-over" id="bulkAdvanceModal" onclick="if(event.target===this)closeBulkAdvanceModal()">
+  <div class="modal-card">
+    <div class="modal-title">Move <span id="bulkAdvCount">0</span> contact(s) to a stage</div>
+    <p class="modal-sub">Everyone selected moves to the same stage with the same details below — handy right after a campaign, e.g. mark everyone you just emailed as Contacted.</p>
+    <form id="bulkAdvForm" onsubmit="return submitBulkAdvance(event)">
+      <label class="flbl">Move to</label>
+      <select id="bulkAdvStage" class="finp" required style="margin-bottom:12px" onchange="renderBulkAdvanceFields()">
+        <option value="">Select a stage…</option>
+        {% for s in stage_order %}
+        <option value="{{ s }}">{{ stage_labels[s] }}</option>
+        {% endfor %}
+      </select>
+      <div id="bulkAdvFields"></div>
+      <div class="modal-actions">
+        <button type="button" class="modal-cancel" onclick="closeBulkAdvanceModal()">Cancel</button>
+        <button type="submit" class="modal-confirm">Move Contacts</button>
       </div>
     </form>
   </div>
@@ -955,14 +978,9 @@ document.addEventListener('click', function(e) {
 const STAGE_LABELS = {{ stage_labels|tojson }};
 const STAGE_DESC    = {{ stage_descriptions|tojson }};
 
-function openAdvanceModal(id, name, targetStage, currentValue) {
-  document.getElementById('advForm').action = `/sales-pipeline/${id}/advance`;
-  document.getElementById('advTitle').textContent = `Move ${name} to ${STAGE_LABELS[targetStage]}`;
-  document.getElementById('advSub').textContent = STAGE_DESC[targetStage] || '';
-
-  let html = '';
+function buildAdvanceFieldsHtml(targetStage, currentValue) {
   if (targetStage === 'contacted') {
-    html = `
+    return `
       <label class="flbl">Contact Channel</label>
       <select name="contact_channel" class="finp" required style="margin-bottom:12px">
         <option value="">Select…</option>
@@ -977,14 +995,14 @@ function openAdvanceModal(id, name, targetStage, currentValue) {
       <textarea name="contact_notes" class="finp" placeholder="What did they say?"></textarea>
     `;
   } else if (targetStage === 'qualified') {
-    html = `
+    return `
       <label class="flbl">Qualified Date</label>
       <input type="date" name="qualified_date" class="finp" required style="margin-bottom:12px"/>
       <label class="flbl">Notes</label>
       <textarea name="qualified_notes" class="finp" placeholder="Confirmed budget, timeline, and genuine need"></textarea>
     `;
   } else if (targetStage === 'proposal_sent') {
-    html = `
+    return `
       <label class="flbl">Proposal Date</label>
       <input type="date" name="proposal_date" class="finp" required style="margin-bottom:12px"/>
       <label class="flbl">Deal Value <span style="font-weight:400;color:#9ca3af">(optional — updates the quoted amount)</span></label>
@@ -993,20 +1011,64 @@ function openAdvanceModal(id, name, targetStage, currentValue) {
       <textarea name="proposal_notes" class="finp" placeholder="What was quoted?"></textarea>
     `;
   } else if (targetStage === 'negotiating') {
-    html = `
+    return `
       <label class="flbl">Notes</label>
       <textarea name="negotiation_notes" class="finp" placeholder="What's being discussed? Price, terms, delivery?"></textarea>
     `;
   } else if (targetStage === 'won') {
-    html = `
+    return `
       <label class="flbl">Won Date</label>
       <input type="date" name="won_date" class="finp" required style="margin-bottom:12px"/>
       <label class="flbl">Final Deal Value <span style="font-weight:400;color:#9ca3af">(optional — updates the closed amount)</span></label>
       <input type="number" step="0.01" name="deal_value" class="finp" value="${currentValue !== null ? currentValue : ''}"/>
     `;
   }
-  document.getElementById('advFields').innerHTML = html;
+  return '';
+}
+
+function openAdvanceModal(id, name, targetStage, currentValue) {
+  document.getElementById('advForm').action = `/sales-pipeline/${id}/advance`;
+  document.getElementById('advTitle').textContent = `Move ${name} to ${STAGE_LABELS[targetStage]}`;
+  document.getElementById('advSub').textContent = STAGE_DESC[targetStage] || '';
+  document.getElementById('advFields').innerHTML = buildAdvanceFieldsHtml(targetStage, currentValue);
   document.getElementById('advanceModal').classList.add('open');
+}
+
+function openBulkAdvanceModal() {
+  var count = getSelectedLeadIds().length;
+  if (count === 0) return;
+  document.getElementById('bulkAdvCount').textContent = count;
+  document.getElementById('bulkAdvStage').value = '';
+  document.getElementById('bulkAdvFields').innerHTML = '';
+  document.getElementById('bulkAdvanceModal').classList.add('open');
+}
+function closeBulkAdvanceModal() {
+  document.getElementById('bulkAdvanceModal').classList.remove('open');
+}
+function renderBulkAdvanceFields() {
+  var stage = document.getElementById('bulkAdvStage').value;
+  document.getElementById('bulkAdvFields').innerHTML = stage ? buildAdvanceFieldsHtml(stage, null) : '';
+}
+function submitBulkAdvance(ev) {
+  ev.preventDefault();
+  var stage = document.getElementById('bulkAdvStage').value;
+  if (!stage) return false;
+  var ids = getSelectedLeadIds();
+  if (ids.length === 0) return false;
+  var fd = new FormData(document.getElementById('bulkAdvForm'));
+  fd.append('target_stage', stage);
+  ids.forEach(function(id){ fd.append('lead_ids', id); });
+  fetch('/sales-pipeline/bulk-advance', { method: 'POST', body: fd })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (data.error) { alert(data.error); return; }
+      alert('Moved ' + data.updated + ' contact(s) to ' + data.stage_label + '.');
+      closeBulkAdvanceModal();
+      clearLeadSelection();
+      location.reload();
+    })
+    .catch(function(){ alert('Could not move contacts — check your connection'); });
+  return false;
 }
 
 function openDropModal(id, name) {

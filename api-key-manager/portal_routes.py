@@ -18140,6 +18140,103 @@ def sales_pipeline_advance(lead_id: int):
     return redirect(url_for("portal.sales_pipeline"))
 
 
+@portal_bp.route("/sales-pipeline/bulk-advance", methods=["POST"])
+def sales_pipeline_bulk_advance():
+    """Move many selected leads to the same stage in one action — e.g. after sending
+    an email campaign, select the recipients and mark them all Contacted (with a
+    shared channel/date/note) instead of clicking Advance on each one individually.
+    Reuses the exact same per-stage required fields as the single-lead Advance route
+    so the data captured is identical either way, and each lead still gets its own
+    stage-history row."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    lead_ids = list({int(v) for v in request.form.getlist("lead_ids") if v.isdigit()})
+    target   = (request.form.get("target_stage") or "").strip()
+    if not lead_ids:
+        return jsonify({"error": "No contacts selected."}), 400
+    if target not in PIPELINE_STAGE_ORDER:
+        return jsonify({"error": "Choose a stage to move them to."}), 400
+
+    f = request.form
+    updates = {"stage": target}
+
+    if target == "contacted":
+        contact_channel = (f.get("contact_channel") or "").strip()
+        contact_date    = (f.get("contact_date") or "").strip()
+        contact_notes   = (f.get("contact_notes") or "").strip()
+        if not contact_channel or not contact_date:
+            return jsonify({"error": "Contact channel and date are required."}), 400
+        updates.update(contact_channel=contact_channel, contact_date=contact_date,
+                       contact_notes=contact_notes or None)
+    elif target == "qualified":
+        qualified_date  = (f.get("qualified_date") or "").strip()
+        qualified_notes = (f.get("qualified_notes") or "").strip()
+        if not qualified_date:
+            return jsonify({"error": "Qualified date is required."}), 400
+        updates.update(qualified_date=qualified_date, qualified_notes=qualified_notes or None)
+    elif target == "proposal_sent":
+        proposal_date  = (f.get("proposal_date") or "").strip()
+        deal_value_raw = (f.get("deal_value") or "").strip()
+        proposal_notes = (f.get("proposal_notes") or "").strip()
+        if not proposal_date:
+            return jsonify({"error": "Proposal date is required."}), 400
+        if deal_value_raw:
+            try:
+                updates["deal_value"] = float(deal_value_raw.replace(",", ""))
+            except ValueError:
+                pass
+        updates.update(proposal_date=proposal_date, proposal_notes=proposal_notes or None)
+    elif target == "negotiating":
+        negotiation_notes = (f.get("negotiation_notes") or "").strip()
+        updates.update(negotiation_notes=negotiation_notes or None)
+    elif target == "won":
+        won_date       = (f.get("won_date") or "").strip()
+        deal_value_raw = (f.get("deal_value") or "").strip()
+        if not won_date:
+            return jsonify({"error": "Won date is required."}), 400
+        if deal_value_raw:
+            try:
+                updates["deal_value"] = float(deal_value_raw.replace(",", ""))
+            except ValueError:
+                pass
+        updates["won_date"] = won_date
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT id, stage, customer_name FROM merchant_pipeline_leads "
+            "WHERE id = ANY(%s) AND tenant_id=%s AND dropped_at IS NULL",
+            (lead_ids, tenant_id),
+        )
+        leads = cur.fetchall()
+        if not leads:
+            cur.close(); conn.close()
+            return jsonify({"error": "No matching contacts found."}), 404
+
+        set_clause = ", ".join(f"{k}=%s" for k in updates) + ", updated_at=NOW()"
+        values = list(updates.values())
+        for lead in leads:
+            cur.execute(f"UPDATE merchant_pipeline_leads SET {set_clause} WHERE id=%s",
+                        values + [lead["id"]])
+        conn.commit()
+
+        changed_by = f"{customer.get('first_name','')} {customer.get('last_name','')}".strip()
+        for lead in leads:
+            pipeline_record_stage_change(lead["id"], lead["stage"], target, changed_by)
+        cur.close(); conn.close()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    return jsonify({
+        "ok": True, "updated": len(leads), "requested": len(lead_ids),
+        "stage_label": PIPELINE_STAGE_LABELS[target],
+    })
+
+
 @portal_bp.route("/sales-pipeline/<int:lead_id>/drop", methods=["POST"])
 def sales_pipeline_drop(lead_id: int):
     r = _require_login()
