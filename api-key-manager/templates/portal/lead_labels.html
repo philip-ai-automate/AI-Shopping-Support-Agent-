@@ -54,7 +54,7 @@
       <p>Freeform status tags for Sales Pipeline contacts (e.g. "Bounced", "VIP") — separate from <a href="{{ url_for('portal.email_campaigns', view='segments') }}">Segments</a>, which are for choosing who to email.</p>
     </div>
   </div>
-  <div style="display:flex;align-items:center;gap:8px">
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <a href="{{ url_for('portal.lead_labels_import_bounces') }}" class="btn">📥 Import Bounces</a>
     <a href="{{ url_for('portal.sales_pipeline') }}" class="btn btn-primary">🧭 Go to Sales Pipeline</a>
   </div>
@@ -172,9 +172,10 @@ function loadMembers() {
       }
       wrap.innerHTML = members.map(function(m){
         return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 4px;border-bottom:1px solid rgba(3,12,24,.05)">'
-          + '<div><div style="font-weight:600;font-size:13px">' + escapeHtmlLm(m.name || '') + '</div>'
-          + '<div style="font-size:11.5px;color:var(--muted)">' + escapeHtmlLm(m.email || 'no email') + '</div></div>'
-          + '<button type="button" class="btn btn-sm btn-ghost" onclick="removeMember(' + m.id + ')">Remove</button>'
+          + '<div style="min-width:0;flex:1">'
+          + '<div style="font-weight:600;font-size:13px;overflow-wrap:break-word">' + escapeHtmlLm(m.name || '') + '</div>'
+          + '<div style="font-size:11.5px;color:var(--muted);overflow-wrap:break-word">' + escapeHtmlLm(m.email || 'no email') + '</div></div>'
+          + '<button type="button" class="btn btn-sm btn-ghost" style="flex-shrink:0" onclick="removeMember(' + m.id + ')">Remove</button>'
           + '</div>';
       }).join('');
     })
