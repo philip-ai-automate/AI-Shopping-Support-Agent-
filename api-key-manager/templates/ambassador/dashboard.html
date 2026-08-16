@@ -42,6 +42,7 @@
     </div>
     {% endif %}
   </div>
+  <a href="{{ url_for('ambassador.logout') }}" class="btn btn-sm">⎋ Logout</a>
 </div>
 
 <!-- ── Product tabs ───────────────────────────────────────────────────── -->
@@ -57,6 +58,7 @@
   {% endfor %}
 </div>
 
+{% if _amb_has_portal %}
 <!-- ── Demo portal card ───────────────────────────────────────────────── -->
 <div style="background:linear-gradient(135deg,#030C18 0%,#1e3a5f 100%);border-radius:14px;
             padding:18px 20px;margin-bottom:20px;display:flex;align-items:center;gap:16px;
@@ -91,28 +93,34 @@
     </form>
   </div>
 </div>
+{% endif %}
 
-<!-- ── AI WhatsApp Playground card ───────────────────────────────────── -->
-<div style="background:linear-gradient(135deg,#0a4d3e 0%,#128C7E 100%);border-radius:14px;
+{% if _amb_has_school %}
+<!-- ── Demo School Portal card ────────────────────────────────────────── -->
+<div style="background:linear-gradient(135deg,#030C18 0%,#1e3a5f 100%);border-radius:14px;
             padding:18px 20px;margin-bottom:20px;display:flex;align-items:center;gap:16px;
             flex-wrap:wrap">
-  <span style="font-size:32px;flex-shrink:0">🖥️</span>
+  <span style="font-size:32px;flex-shrink:0">🏫</span>
   <div style="flex:1;min-width:180px">
-    <div style="font-size:14px;font-weight:800;color:#fff">AI WhatsApp Playground</div>
-    <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:3px;line-height:1.5">
-      A live WhatsApp-look-alike chat with the real PhiXtra AI. Screen-share this over Teams/Zoom to demo to prospects who aren't physically with you.
+    <div style="font-size:14px;font-weight:800;color:#fff">Demo School Portal</div>
+    <div style="font-size:12px;color:rgba(255,255,255,.6);margin-top:3px;line-height:1.5">
+      A shared demo school account pre-loaded with sample students, staff, attendance, and fees. Log in to show a proprietor the real admin dashboard.
+    </div>
+    <div style="font-size:12px;color:rgba(255,255,255,.85);margin-top:8px">
+      <strong>Email:</strong> demo@school.phixtra.com &nbsp;·&nbsp; <strong>Password:</strong> ask your PhiXtra contact
     </div>
   </div>
   <div style="display:flex;gap:10px;flex-wrap:wrap;flex-shrink:0">
-    <a href="{{ url_for('ambassador.playground_page') }}"
+    <a href="https://school.phixtra.com/login" target="_blank" rel="noopener"
        style="display:inline-flex;align-items:center;gap:7px;padding:9px 16px;
-              background:#25D366;color:#fff;border-radius:10px;font-size:13px;
+              background:#2563eb;color:#fff;border-radius:10px;font-size:13px;
               font-weight:700;text-decoration:none;white-space:nowrap;transition:background .15s"
-       onmouseover="this.style.background='#1da851'" onmouseout="this.style.background='#25D366'">
-      🖥️ Open AI WhatsApp Playground
+       onmouseover="this.style.background='#1d4ed8'" onmouseout="this.style.background='#2563eb'">
+      🖥️ Open Demo School Portal
     </a>
   </div>
 </div>
+{% endif %}
 
 <!-- ── Stat cards ─────────────────────────────────────────────────────── -->
 <div class="stat-grid">

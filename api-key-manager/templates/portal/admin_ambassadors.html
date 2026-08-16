@@ -409,7 +409,7 @@
         <label class="modal-label">Managed Product</label>
         <select name="managed_product" class="modal-input" required>
           <option value="">Choose a product…</option>
-          <option value="portal">🛍️ Portal (Merchant)</option>
+          <option value="portal">🛍️ PhiXtra Sales</option>
           <option value="school">🏫 School</option>
           <option value="estate">🏠 Real Estate</option>
         </select>
@@ -849,9 +849,9 @@ function renderPanel(d) {
   /* Products section (Portal / School / Estate per-product approval) */
   if (d.products) {
     document.getElementById('spProducts').innerHTML =
-      renderProductRow('portal', 'Portal (Merchant)', '🛍️', d.products.portal) +
-      renderProductRow('school', 'School', '🏫', d.products.school) +
-      renderProductRow('estate', 'Real Estate', '🏠', d.products.estate);
+      renderProductRow('portal', 'PhiXtra Sales', '🛍️', d.products.portal, d.status) +
+      renderProductRow('school', 'School', '🏫', d.products.school, d.status) +
+      renderProductRow('estate', 'Real Estate', '🏠', d.products.estate, d.status);
   }
 
   /* Foot buttons based on status */
@@ -863,11 +863,18 @@ const PRODUCT_STATUS_COLORS = {
   rejected:'#991b1b', terminated:'#030C18', not_enrolled:'#9ca3af'
 };
 
-function renderProductRow(product, label, icon, info) {
+function renderProductRow(product, label, icon, info, baseStatus) {
   if (!info) return '';
   const color = PRODUCT_STATUS_COLORS[info.status] || '#555';
   let actions = '';
-  if (product === 'portal' && info.status !== 'not_enrolled') {
+  // Portal normally follows the top-level Approve/Suspend/Terminate/Reactivate
+  // buttons (which mirror into this row automatically) — so while the base
+  // account itself is pending/rejected/suspended/terminated, defer to those.
+  // But if the base account is already 'active' and this row has drifted out
+  // of sync with it (e.g. rejected/suspended independently of the account),
+  // there is no top-level button left that can fix it — fall through to the
+  // same per-product controls school/estate already use.
+  if (product === 'portal' && info.status !== 'not_enrolled' && baseStatus !== 'active') {
     actions = '<span style="font-size:10.5px;color:var(--muted)">via main actions</span>';
   } else if (info.status === 'pending') {
     actions = `<button class="sp-btn" style="padding:4px 10px;font-size:11px" onclick="doProductApprove(${currentAmbId},'${product}')">Approve</button>
@@ -905,6 +912,7 @@ function renderFootButtons(status, id, role) {
   if (status === 'pending') {
     btns = `
       <button class="sp-btn primary" onclick="doApprove(${id})">Approve</button>
+      <button class="sp-btn" onclick="openEditModal()">Edit</button>
       <button class="sp-btn danger" onclick="openReasonModal(${id},'reject','Reject Application','This will mark the application as rejected.')">Reject</button>
     `;
   } else if (status === 'active') {

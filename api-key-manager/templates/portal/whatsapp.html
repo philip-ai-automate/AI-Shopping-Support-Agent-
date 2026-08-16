@@ -154,9 +154,12 @@
       <p>Connect your Meta WhatsApp Business account so your AI assistant can reply on WhatsApp.</p>
     </div>
   </div>
-  {% if connections %}
-  <a href="{{ url_for('portal.my_inbox') }}" class="btn btn-primary">Open Inbox</a>
-  {% endif %}
+  <div style="display:flex;gap:10px;flex-wrap:wrap">
+    <a href="{{ url_for('portal.whatsapp_history_import') }}" class="btn" style="border:1px solid var(--line)">🗂️ Import Chat History</a>
+    {% if connections %}
+    <a href="{{ url_for('portal.my_inbox') }}" class="btn btn-primary">Open Inbox</a>
+    {% endif %}
+  </div>
 </div>
 
 <!-- ── Connected Numbers ─────────────────────────────────────────────────── -->
@@ -164,7 +167,12 @@
 <div class="card" style="margin-bottom:20px">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
     <div class="card-title" style="margin-bottom:0">WhatsApp Numbers</div>
-    <span style="font-size:12px;color:var(--muted)">{{ connections|length }} number{{ 's' if connections|length != 1 else '' }} connected</span>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:12px;color:var(--muted)">{{ connections|length }} number{{ 's' if connections|length != 1 else '' }} connected</span>
+      {% if connections %}
+      <a href="{{ url_for('portal.whatsapp_connect') }}#manual-connect" class="btn btn-sm" style="border:1px solid var(--line)">➕ Add Another Number</a>
+      {% endif %}
+    </div>
   </div>
 
   {% if connections %}
@@ -235,6 +243,7 @@
 
         <!-- Actions -->
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex-shrink:0">
+          <a href="{{ url_for('portal.whatsapp_connect', edit_wa_id=cn.id) }}#manual-connect" class="btn btn-sm">✏️ Edit</a>
           {% if cn.active %}
           <button onclick="document.getElementById('qrModal_{{ cn.id }}').classList.add('open')"
                   class="btn btn-sm">QR Code</button>
@@ -531,7 +540,7 @@
 </script>
 
 <!-- ── Manual Setup (collapsible fallback) ─────────────────────────────── -->
-<details style="margin-bottom:20px" id="manualSetupDetails">
+<details style="margin-bottom:20px" id="manualSetupDetails" {{ 'open' if edit_connection }}>
   <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;
                   justify-content:space-between;gap:12px;
                   padding:13px 16px;border:1px solid var(--line);border-radius:14px;
@@ -554,15 +563,19 @@
   <style>
     .manual-chevron.open { transform: rotate(180deg); }
   </style>
-  <div style="border:1px solid var(--line);border-top:none;border-radius:0 0 14px 14px;
+  <div id="manual-connect" style="border:1px solid var(--line);border-top:none;border-radius:0 0 14px 14px;
               padding:20px 18px;background:rgba(3,12,24,.02)">
 
 {% else %}
 <!-- ════════════════════════════════════════════════════════════
      MANUAL SETUP (default mode — no Meta Tech Provider approval yet)
 ═════════════════════════════════════════════════════════════ -->
-<div class="card" style="margin-bottom:20px">
-  <div class="card-title">{{ 'Update Credentials' if connection else 'Connect WhatsApp' }}</div>
+<div class="card" style="margin-bottom:20px" id="manual-connect">
+  <div class="card-title">
+    {% if edit_connection %}Update Credentials — {{ edit_connection.display_phone_number or edit_connection.phone_number_id }}
+    {% elif connections %}Connect Another Number
+    {% else %}Connect WhatsApp{% endif %}
+  </div>
   <div class="flash warning" style="margin-bottom:18px">
     Embedded Signup is not yet configured on this server (META_APP_ID / META_CONFIG_ID missing).
     Enter your credentials manually below, or contact support to enable Embedded Signup.
@@ -573,13 +586,21 @@
       Find these values in <strong>Meta Business Manager → WhatsApp → API Setup</strong>.
     </p>
 
+    {% if edit_connection %}
+    <div class="flash" style="background:rgba(15,61,99,.06);border:1px solid rgba(15,61,99,.2);margin-bottom:16px;font-size:12.5px">
+      Editing <strong>{{ edit_connection.display_phone_number or edit_connection.phone_number_id }}</strong>.
+      <a href="{{ url_for('portal.whatsapp_connect') }}#manual-connect" style="color:var(--ink);font-weight:700">Add a different number instead →</a>
+    </div>
+    {% endif %}
+
     <form method="POST" action="{{ url_for('portal.whatsapp_save_connection') }}">
+      <input type="hidden" name="wa_id" value="{{ edit_connection.id if edit_connection else '' }}">
 
       <div class="form-row" style="margin-bottom:14px">
         <div class="form-group" style="margin:0">
           <label>Phone Number ID <span style="color:var(--bad)">*</span></label>
           <input type="text" name="phone_number_id"
-                 value="{{ connection.phone_number_id if connection else '' }}"
+                 value="{{ edit_connection.phone_number_id if edit_connection else '' }}"
                  placeholder="e.g. 107563218543210" required>
           <p class="muted" style="margin-top:4px;font-size:12px">
             Meta App Dashboard → WhatsApp → API Setup
@@ -588,7 +609,7 @@
         <div class="form-group" style="margin:0">
           <label>WABA ID <span class="muted">(optional)</span></label>
           <input type="text" name="waba_id"
-                 value="{{ connection.waba_id if connection else '' }}"
+                 value="{{ edit_connection.waba_id if edit_connection else '' }}"
                  placeholder="e.g. 102345678901234">
         </div>
       </div>
@@ -596,8 +617,8 @@
       <div class="form-group">
         <label>Access Token <span style="color:var(--bad)">*</span></label>
         <input type="password" name="access_token"
-               placeholder="{{ '•••••••• (leave blank to keep current)' if connection else 'Paste your access token from Meta API Setup' }}"
-               {{ 'required' if not connection else '' }}>
+               placeholder="{{ '•••••••• (leave blank to keep current)' if edit_connection else 'Paste your access token from Meta API Setup' }}"
+               {{ 'required' if not edit_connection else '' }}>
         <p class="muted" style="margin-top:4px;font-size:12px">
           You can use the <strong>temporary 24-hour token</strong> from Meta App Dashboard → WhatsApp → API Setup to test.
           For production, replace it with a <strong>permanent System User token</strong> from
@@ -613,7 +634,7 @@
           <span class="muted" style="font-weight:400">(recommended for production)</span>
         </label>
         <input type="password" name="app_secret"
-               placeholder="{{ '•••••••• (leave blank to keep current)' if connection and connection.app_secret else 'Paste your Meta App Secret' }}">
+               placeholder="{{ '•••••••• (leave blank to keep current)' if edit_connection and edit_connection.app_secret else 'Paste your Meta App Secret' }}">
         <p class="muted" style="margin-top:4px;font-size:12px">
           Found in <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener"
           style="color:var(--ink)">Meta App Dashboard ↗</a> → App Settings → Basic → App Secret.
@@ -624,7 +645,7 @@
 
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <button type="submit" name="action" value="connect" class="btn btn-primary">
-          {{ 'Update Connection' if connection else 'Connect WhatsApp' }}
+          {{ 'Update Connection' if edit_connection else 'Connect WhatsApp' }}
         </button>
         <button type="submit" name="action" value="save" class="btn btn-sm"
                 style="border-color:rgba(3,12,24,.2);color:var(--muted)">

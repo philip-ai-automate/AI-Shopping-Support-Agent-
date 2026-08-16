@@ -91,13 +91,12 @@ def _extract_buyer_fields(message: str, existing_profile: dict) -> dict:
             profile_hint = f" (buyer previously mentioned: {existing_profile['preferred_area']})"
 
         resp = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5.6-luna",
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user",   "content": f"Message{profile_hint}: {message}"},
             ],
-            temperature=0,
-            max_tokens=80,
+            max_completion_tokens=80,
         )
         raw = (resp.choices[0].message.content or "").strip()
         return _json.loads(raw) if raw else {}

@@ -52,6 +52,21 @@
     background:rgba(3,12,24,0.02);border-radius:12px;border:1px dashed var(--line);
     margin-bottom:16px}
   .not-connected .nc-icon{font-size:28px;opacity:.35;margin-bottom:8px}
+
+  /* ── Checkout toggle ── */
+  .toggle-row{display:flex;align-items:center;justify-content:space-between;gap:16px;
+    padding:14px 16px;border-radius:12px;border:1px solid var(--line);
+    background:rgba(3,12,24,0.02);margin-bottom:16px}
+  .toggle-info strong{display:block;font-size:14px;font-weight:650}
+  .toggle-info span{font-size:12px;color:var(--muted)}
+  .switch{position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0}
+  .switch input{opacity:0;width:0;height:0}
+  .slider{position:absolute;cursor:pointer;inset:0;border-radius:999px;
+    background:rgba(3,12,24,.15);transition:.2s}
+  .slider:before{content:"";position:absolute;height:18px;width:18px;left:3px;bottom:3px;
+    background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 4px rgba(0,0,0,.2)}
+  input:checked + .slider{background:var(--good)}
+  input:checked + .slider:before{transform:translateX(20px)}
 </style>
 {% endblock %}
 
@@ -219,6 +234,37 @@
 
   {% if flutterwave and flutterwave.is_active %}
 
+  <div class="toggle-row">
+    <div class="toggle-info">
+      <strong>Offer Flutterwave at WhatsApp checkout</strong>
+      <span>
+        {% if not can_fw_checkout %}
+          <span style="display:inline-block;background:rgba(251,191,36,0.15);color:#92600a;
+                       border:1px solid rgba(251,191,36,0.40);border-radius:5px;
+                       padding:1px 6px;font-weight:600;margin-right:4px">🔒 Pro plan</span>
+          Upgrade to Pro to let customers pay online instead of by bank transfer only.
+        {% elif flutterwave.wa_checkout_enabled %}
+          Customers see a "Pay online" option alongside bank transfer.
+        {% else %}
+          Off by default — customers only see bank transfer until you turn this on.
+        {% endif %}
+      </span>
+    </div>
+    {% if can_fw_checkout %}
+    <form method="POST" action="{{ url_for('portal.payment_settings_flutterwave_toggle_checkout') }}">
+      <label class="switch">
+        <input type="checkbox" onchange="this.form.submit()"
+               {% if flutterwave.wa_checkout_enabled %}checked{% endif %}>
+        <span class="slider"></span>
+      </label>
+    </form>
+    {% else %}
+    <a href="{{ url_for('portal.billing_plans') }}" class="btn btn-primary btn-sm" style="white-space:nowrap">
+      Upgrade to Pro
+    </a>
+    {% endif %}
+  </div>
+
   <div class="webhook-bar health-{{ flutterwave.health }}">
     <span class="health-dot health-{{ flutterwave.health }}"></span>
     {% if flutterwave.health == 'green' %}
@@ -255,15 +301,36 @@
   </div>
 
   <div class="form-section">
-    <div class="form-section-title">Webhook URL (paste this in Flutterwave dashboard)</div>
-    <div class="key-row">
-      <span class="key-value" id="fw-webhook-url">
-        https://api.phixtra.com/webhooks/flutterwave/{{ customer.tenant_id }}
-      </span>
-      <button class="reveal-btn"
-              onclick="navigator.clipboard.writeText(document.getElementById('fw-webhook-url').textContent.trim());this.textContent='Copied!'">
-        Copy
-      </button>
+    <div class="form-section-title">Enable automatic payment confirmation</div>
+    <p class="muted" style="font-size:13px;margin:0 0 12px">
+      Two copy-paste steps in your Flutterwave dashboard (<b>Settings → Webhooks</b>)
+      and customers who tap the payment link will be confirmed automatically — no
+      manual "Verify Payment" click needed.
+    </p>
+    <div style="margin-bottom:10px">
+      <label style="margin-bottom:5px">1. Webhook URL</label>
+      <div class="key-row">
+        <span class="key-value" id="fw-webhook-url">{{ fw_webhook_url }}</span>
+        <button class="reveal-btn"
+                onclick="navigator.clipboard.writeText(document.getElementById('fw-webhook-url').textContent.trim());this.textContent='Copied!'">
+          Copy
+        </button>
+      </div>
+    </div>
+    <div>
+      <label style="margin-bottom:5px">2. Secret Hash</label>
+      <div class="key-row">
+        <span class="key-value" id="fw-webhook-hash">{{ flutterwave.webhook_secret_hash or '—' }}</span>
+        <button class="reveal-btn"
+                onclick="navigator.clipboard.writeText(document.getElementById('fw-webhook-hash').textContent.trim());this.textContent='Copied!'">
+          Copy
+        </button>
+      </div>
+      <p class="muted" style="font-size:12px;margin-top:6px">
+        We generated this automatically — just paste it into the "Secret Hash" field
+        in Flutterwave next to the webhook URL above. It's how Flutterwave proves
+        the payment notification really came from them.
+      </p>
     </div>
   </div>
 
@@ -296,6 +363,23 @@
                placeholder="FLWSECK-xxxxxxxxxxxxxxxxxxxx-X">
       </div>
     </div>
+    <div class="form-row" style="margin-top:14px">
+      <div class="form-group" style="margin-bottom:0">
+        <label>Send reminder after (hours)</label>
+        <input type="number" name="fw_reminder_after_hours" step="0.1" min="0.1"
+               placeholder="0.5"
+               value="{{ flutterwave.reminder_after_hours if flutterwave and flutterwave.reminder_after_hours else 0.5 }}">
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label>Cancel order if unpaid after (hours)</label>
+        <input type="number" name="fw_cancel_after_hours" step="1" min="1"
+               placeholder="24"
+               value="{{ flutterwave.cancel_after_hours if flutterwave and flutterwave.cancel_after_hours else 24 }}">
+      </div>
+    </div>
+    <p class="muted" style="margin:6px 0 0;font-size:12px">
+      A customer who doesn't pay gets one reminder, then the order auto-cancels if they still haven't paid.
+    </p>
     <div style="margin-top:14px">
       <button type="submit" class="btn btn-primary btn-sm">
         {{ 'Update Keys' if (flutterwave and flutterwave.is_active) else 'Connect Flutterwave' }}
@@ -377,7 +461,24 @@
              placeholder="Exact name as it appears on the account"
              value="{{ bank.account_name if bank else '' }}">
     </div>
-    <button type="submit" class="btn btn-primary btn-sm">
+    <div class="form-row" style="margin-top:14px">
+      <div class="form-group" style="margin-bottom:0">
+        <label>Send reminder after (hours)</label>
+        <input type="number" name="bank_reminder_after_hours" step="0.5" min="0.5"
+               placeholder="4"
+               value="{{ bank.reminder_after_hours if bank and bank.reminder_after_hours else 4 }}">
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label>Cancel order if unpaid after (hours)</label>
+        <input type="number" name="bank_cancel_after_hours" step="1" min="1"
+               placeholder="48"
+               value="{{ bank.cancel_after_hours if bank and bank.cancel_after_hours else 48 }}">
+      </div>
+    </div>
+    <p class="muted" style="margin:6px 0 0;font-size:12px">
+      A customer who doesn't send payment proof gets one reminder, then the order auto-cancels if they still haven't sent it.
+    </p>
+    <button type="submit" class="btn btn-primary btn-sm" style="margin-top:14px">
       {{ 'Update Bank Account' if bank else 'Save Bank Account' }}
     </button>
   </form>

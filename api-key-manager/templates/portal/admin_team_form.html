@@ -1,0 +1,73 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}{{ 'Edit' if admin else 'New' }} Support Login — PhiXtra Admin{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="section-title">{{ '✏️ Edit Permissions — ' + admin.username if admin else '➕ New Support Login' }}</h1>
+  <a href="{{ url_for('portal_admin.admin_team') }}" class="btn btn-sm">← Back to Team</a>
+</div>
+
+<form method="POST"
+      action="{{ url_for('portal_admin.admin_team_edit', admin_id=admin.id) if admin else url_for('portal_admin.admin_team_new') }}">
+
+  {% if not admin %}
+  <div class="card" style="max-width:420px;margin-bottom:20px">
+    <p class="card-title">Login Details</p>
+    <div class="form-group">
+      <label>Username</label>
+      <input name="username" required placeholder="e.g. support_amaka"/>
+    </div>
+    <p class="muted" style="font-size:12.5px">
+      A random password is generated and shown once after creation — share it securely with the support agent.
+    </p>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <p class="card-title">Module Permissions</p>
+    <p class="muted" style="font-size:13px;margin-bottom:16px">
+      Tick the actions this login is allowed to perform in each module. Only modules with a matching
+      admin route are listed — Settings and Team management are owner-only and cannot be delegated.
+      Ticking Create/Modify/Delete automatically implies View.
+    </p>
+
+    <div class="table-wrap" style="border:none">
+      <table>
+        <thead>
+          <tr>
+            <th>Module</th>
+            <th style="text-align:center">View</th>
+            <th style="text-align:center">Create</th>
+            <th style="text-align:center">Modify</th>
+            <th style="text-align:center">Delete</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for mod_key, mod in modules.items() %}
+          {% set current = (admin.permissions.get(mod_key) if admin else {}) or {} %}
+          <tr>
+            <td><strong>{{ mod.label }}</strong></td>
+            {% for action in ['view', 'create', 'modify', 'delete'] %}
+              <td style="text-align:center">
+                {% if action in mod.actions %}
+                  <input type="checkbox" name="perm__{{ mod_key }}__{{ action }}"
+                         {% if current.get(action) %}checked{% endif %} />
+                {% else %}
+                  <span class="muted">—</span>
+                {% endif %}
+              </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div style="margin-top:16px">
+    <button type="submit" class="btn btn-primary">{{ 'Save Permissions' if admin else 'Create Support Login' }}</button>
+    <a href="{{ url_for('portal_admin.admin_team') }}" class="btn">Cancel</a>
+  </div>
+</form>
+
+{% endblock %}

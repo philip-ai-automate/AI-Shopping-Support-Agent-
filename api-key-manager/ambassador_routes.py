@@ -16,14 +16,20 @@ import urllib.parse
 import bcrypt
 import psycopg2
 import psycopg2.extras
-from datetime import date, timedelta, datetime
+from datetime import date, timedelta, datetime, timezone
 from werkzeug.utils import secure_filename
 from flask import (Blueprint, render_template, request, redirect,
-                   url_for, session, flash, g, Response)
+                   url_for, session, flash, g, Response, send_from_directory)
 
 UPLOAD_FOLDER      = os.path.join(os.path.dirname(__file__), 'static', 'uploads', 'ambassador_ids')
 QUAL_UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static', 'uploads', 'ambassador_quals')
 ALLOWED_DOC_EXTS   = {'jpg', 'jpeg', 'png', 'pdf'}
+
+DOCS_UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static', 'uploads', 'ambassador_documents')
+AMB_DOC_ICONS = {
+    'pdf': '📕', 'doc': '📘', 'docx': '📘',
+    'xls': '📗', 'xlsx': '📗', 'ppt': '📙', 'pptx': '📙',
+}
 
 QUAL_ORDER = [
     'OND', 'HND', 'BSc/BA/BEng', 'MSc/MA/MEng', 'PhD',
@@ -41,15 +47,24 @@ from lead_pipeline import (STAGE_ORDER, STAGE_LABELS, STAGE_DESCRIPTIONS, SCHEDU
                             build_requirements_progress_update,
                             build_onboarding_checklist_update,
                             format_relative_activity, is_activity_stale)
-from portal_utils import send_email
+from portal_utils import send_email, make_token, utc_now_naive
 
 ambassador_bp = Blueprint("ambassador", __name__)
 
 BRAND         = "#030C18"
 BASE_URL      = os.getenv("PORTAL_BASE_URL", "https://portal.phixtra.com")
-COMMISSION_PC          = 0.20   # 20% ambassador commission on subscription payments
+# Two commission tiers:
+# - DIRECT: client signed up through the ambassador's own referral link (ref_code
+#   on the tenant/school/estate record resolves to this ambassador).
+# - ASSIGNED: client came from PhiXtra's own company sales pipeline
+#   (support@phixtra.com's Sales Pipeline, merchant_pipeline_leads) and was
+#   handed to this ambassador via assigned_ambassador_id. Matched by contact
+#   email/phone at first-payment time; see _match_company_assigned_lead().
+DIRECT_COMMISSION_PC   = 0.30   # 30% — ambassador's own direct referral
+ASSIGNED_COMMISSION_PC = 0.20   # 20% — company-sourced lead assigned to the ambassador
 SALES_MANAGER_OVERRIDE = 0.05   # 5% override to the sales manager who recruited the ambassador
                                  # (recurring subscription commission only, not the upsell bonus)
+PHIXTRA_SUPPORT_TENANT_ID = 19   # support@phixtra.com — owns the company sales pipeline
 
 TURNSTILE_SECRET       = os.getenv("TURNSTILE_SECRET_KEY", "")
 RATE_LIMIT_MAX_ATTEMPTS = 5
@@ -78,7 +93,7 @@ _CLIENT_JOIN = {
     "estate": ("re_tenants", "estate_tenant_id"),
 }
 PRODUCT_CONFIG = {
-    "portal": {"label": "Portal (Merchant)", "icon": "🛍️",
+    "portal": {"label": "PhiXtra Sales", "icon": "🛍️",
                "register_url": lambda code: f"{BASE_URL}/register?ref={code}"},
     "school": {"label": "School",            "icon": "🏫",
                "register_url": lambda code: f"{_SCHOOL_BASE_URL}/school/register?ref={code}"},
@@ -119,6 +134,95 @@ def inject_amb_role():
         except Exception:
             g._cached_amb_role = None
     return {"_amb_role": g._cached_amb_role}
+
+
+@ambassador_bp.context_processor
+def inject_amb_has_portal():
+    """Whether this ambassador has Portal active — gates the 'My Demo Portal'
+    nav link/dashboard card, which only make sense for Portal (they open a
+    personal WhatsApp-merchant demo tenant via ambassador_demo.py; School and
+    Estate have no per-ambassador demo tenant, only a shared demo login)."""
+    if not _amb_logged_in():
+        return {"_amb_has_portal": False}
+    if not hasattr(g, "_cached_amb_has_portal"):
+        try:
+            amb = _get_ambassador(_amb_id())
+            if amb:
+                _, active = _gs_resolve_product(amb)
+                g._cached_amb_has_portal = "portal" in active
+            else:
+                g._cached_amb_has_portal = False
+        except Exception:
+            g._cached_amb_has_portal = False
+    return {"_amb_has_portal": g._cached_amb_has_portal}
+
+
+@ambassador_bp.context_processor
+def inject_amb_has_school():
+    """Whether this ambassador has School active — gates the 'Demo School
+    Portal' nav link/dashboard card (the shared demo@school.phixtra.com admin
+    dashboard login, not a personal tenant like Portal's)."""
+    if not _amb_logged_in():
+        return {"_amb_has_school": False}
+    if not hasattr(g, "_cached_amb_has_school"):
+        try:
+            amb = _get_ambassador(_amb_id())
+            if amb:
+                _, active = _gs_resolve_product(amb)
+                g._cached_amb_has_school = "school" in active
+            else:
+                g._cached_amb_has_school = False
+        except Exception:
+            g._cached_amb_has_school = False
+    return {"_amb_has_school": g._cached_amb_has_school}
+
+
+@ambassador_bp.context_processor
+def inject_amb_demo_wa_number():
+    """The live demo WhatsApp number for this ambassador's current product
+    (honors ?product= like the rest of Getting Started) — gates the 'Demo
+    Chat on WhatsApp' nav link. None for products with no live demo number
+    yet (e.g. Estate), which hides the link."""
+    if not _amb_logged_in():
+        return {"_amb_demo_wa_number": None}
+    try:
+        amb = _get_ambassador(_amb_id())
+        if not amb:
+            return {"_amb_demo_wa_number": None}
+        selected, _ = _gs_resolve_product(amb)
+        return {"_amb_demo_wa_number": DEMO_WA_NUMBERS.get(selected)}
+    except Exception:
+        return {"_amb_demo_wa_number": None}
+
+
+@ambassador_bp.context_processor
+def inject_amb_whats_new_count():
+    """Count of published releases (for this ambassador's enrolled products,
+    or product='all') from the last 14 days — drives the NEW badge on the
+    'What's New' nav link. No per-ambassador read-tracking in v1, so this is
+    a simple recency window rather than an unseen-count."""
+    if not _amb_logged_in():
+        return {"_amb_whats_new_count": 0}
+    if not hasattr(g, "_cached_amb_whats_new_count"):
+        try:
+            amb = _get_ambassador(_amb_id())
+            _, active = _gs_resolve_product(amb) if amb else (None, [])
+            if not active:
+                g._cached_amb_whats_new_count = 0
+            else:
+                conn = get_db_connection()
+                cur  = conn.cursor()
+                cur.execute("""
+                    SELECT COUNT(*) FROM feature_releases
+                    WHERE status='published' AND published_at > NOW() - INTERVAL '14 days'
+                      AND (product='all' OR product = ANY(%s))
+                """, (active,))
+                g._cached_amb_whats_new_count = int((cur.fetchone() or [0])[0])
+                cur.close(); conn.close()
+        except Exception:
+            g._cached_amb_whats_new_count = 0
+    return {"_amb_whats_new_count": g._cached_amb_whats_new_count}
+
 
 def _hash_pw(pw: str) -> str:
     return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
@@ -444,6 +548,109 @@ def _send_whatsapp_welcome(first_name: str, whatsapp_number: str, ref_code: str)
         return False
 
 
+def _get_setting(key: str) -> str | None:
+    """Read a value from the generic portal_settings key-value table
+    (same table admin_settings.html uses for trial_default_days)."""
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("SELECT setting_value FROM portal_settings WHERE setting_key=%s", (key,))
+        row = cur.fetchone()
+        cur.close(); conn.close()
+        return row[0] if row else None
+    except Exception:
+        return None
+
+
+def send_ambassador_wa_template(to: str, first_name: str, body_text: str) -> bool:
+    """Send the shared 'ambassador update' WhatsApp template — works outside
+    the 24h session window (unlike _send_whatsapp_welcome's freeform text),
+    since it's Meta-approved. Template name/language come from portal_settings
+    (set once via /admin/ambassador-broadcast). Body fills the template's two
+    placeholders: {{1}}=first_name, {{2}}=body_text."""
+    phone_number_id = os.getenv("WA_OTP_PHONE_NUMBER_ID", "")
+    access_token    = os.getenv("WA_OTP_ACCESS_TOKEN", "")
+    template_name   = _get_setting("ambassador_wa_template_name")
+    language_code   = _get_setting("ambassador_wa_template_language") or "en_US"
+    if not phone_number_id or not access_token or not template_name:
+        print("⚠️ WhatsApp template not configured — skipping ambassador broadcast send")
+        return False
+
+    number = "".join(c for c in (to or "") if c.isdigit())
+    if not number:
+        return False
+
+    try:
+        import urllib.request as _urlreq
+        import json as _json
+        data = _json.dumps({
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": number,
+            "type": "template",
+            "template": {
+                "name": template_name,
+                "language": {"code": language_code},
+                "components": [{
+                    "type": "body",
+                    "parameters": [
+                        {"type": "text", "text": first_name or "there"},
+                        {"type": "text", "text": body_text},
+                    ],
+                }],
+            },
+        }).encode()
+        req = _urlreq.Request(
+            f"https://graph.facebook.com/v19.0/{phone_number_id}/messages",
+            data=data,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with _urlreq.urlopen(req, timeout=10) as resp:
+            ok = resp.status == 200
+            if not ok:
+                print(f"⚠️ Ambassador WA template send failed: HTTP {resp.status}")
+            return ok
+    except Exception as e:
+        print(f"⚠️ send_ambassador_wa_template error: {e}")
+        return False
+
+
+def check_ambassador_template_status() -> str:
+    """Query Meta for the configured ambassador template's review status.
+    Returns 'APPROVED' | 'PENDING' | 'REJECTED' | 'NOT_FOUND' | 'NOT_CONFIGURED' | 'ERROR'.
+    Mirrors school_wa.py's check_template_status() but for the shared house
+    WABA (WA_OTP_WABA_ID) rather than a per-school WABA."""
+    template_name = _get_setting("ambassador_wa_template_name")
+    waba_id       = os.getenv("WA_OTP_WABA_ID", "")
+    access_token  = os.getenv("WA_OTP_ACCESS_TOKEN", "")
+    if not template_name:
+        return "NOT_CONFIGURED"
+    if not waba_id or not access_token:
+        return "ERROR"
+    try:
+        import urllib.request as _urlreq
+        import urllib.parse as _urlparse
+        import json as _json
+        qs = _urlparse.urlencode({"name": template_name})
+        req = _urlreq.Request(
+            f"https://graph.facebook.com/v19.0/{waba_id}/message_templates?{qs}",
+            headers={"Authorization": f"Bearer {access_token}"},
+            method="GET",
+        )
+        with _urlreq.urlopen(req, timeout=10) as resp:
+            data = _json.loads(resp.read()).get("data", [])
+            if not data:
+                return "NOT_FOUND"
+            return data[0].get("status", "ERROR")
+    except Exception as e:
+        print(f"⚠️ check_ambassador_template_status error: {e}")
+        return "ERROR"
+
+
 def _send_approved_email(amb_name: str, amb_email: str, ref_code: str):
     link     = f"{BASE_URL}/ambassador/login"
     ref_link = f"{BASE_URL}/register?ref={ref_code}"
@@ -461,8 +668,7 @@ def _send_approved_email(amb_name: str, amb_email: str, ref_code: str):
       <ul style="line-height:1.9;padding-left:20px">
         <li><strong>30% commission</strong> on every subscription payment from clients who sign up
             directly through your referral link</li>
-        <li><strong>20% commission</strong> on clients you refer as a lead via the Ambassador Hub
-            and our team closes</li>
+        <li><strong>20% commission</strong> on clients PhiXtra's own team sources and assigns to you</li>
       </ul>
       <p>You also earn one-time upsell bonuses when referred clients upgrade:
          <strong>₦5,000</strong> (Starter→Growth),
@@ -478,7 +684,7 @@ def _send_approved_email(amb_name: str, amb_email: str, ref_code: str):
                    f"Your referral link: {ref_link}\n\n"
                    f"Commission rates:\n"
                    f"- 30% on clients who sign up via your referral link\n"
-                   f"- 20% on leads you submit that our team closes\n\n"
+                   f"- 20% on clients PhiXtra's own team sources and assigns to you\n\n"
                    f"Upsell bonuses: ₦5k (Starter→Growth), ₦10k (Growth→Pro), "
                    f"₦15k (Starter→Pro), ₦20k (Free→Pro)"
                ))
@@ -596,22 +802,22 @@ def register():
     file.save(os.path.join(UPLOAD_FOLDER, filename))
     id_doc_path = f"uploads/ambassador_ids/{filename}"
 
-    # ── Qualification proof upload ───────────────────────────────────────────
+    # ── Qualification proof upload (optional for now) ───────────────────────
     qual_file = request.files.get("qual_document")
-    if not qual_file or not qual_file.filename:
-        return _bail("Please upload proof of your educational qualification.")
-    if not _allowed_doc(qual_file.filename):
-        return _bail("Qualification document must be a JPG, PNG, or PDF file.")
-    qual_file.seek(0, 2)
-    if qual_file.tell() > MAX_UPLOAD_BYTES:
-        return _bail("Qualification document must be 5 MB or smaller.")
-    qual_file.seek(0)
+    qual_doc_path = None
+    if qual_file and qual_file.filename:
+        if not _allowed_doc(qual_file.filename):
+            return _bail("Qualification document must be a JPG, PNG, or PDF file.")
+        qual_file.seek(0, 2)
+        if qual_file.tell() > MAX_UPLOAD_BYTES:
+            return _bail("Qualification document must be 5 MB or smaller.")
+        qual_file.seek(0)
 
-    qual_ext      = qual_file.filename.rsplit('.', 1)[1].lower()
-    qual_filename = f"{uuid.uuid4().hex}.{qual_ext}"
-    os.makedirs(QUAL_UPLOAD_FOLDER, exist_ok=True)
-    qual_file.save(os.path.join(QUAL_UPLOAD_FOLDER, qual_filename))
-    qual_doc_path = f"uploads/ambassador_quals/{qual_filename}"
+        qual_ext      = qual_file.filename.rsplit('.', 1)[1].lower()
+        qual_filename = f"{uuid.uuid4().hex}.{qual_ext}"
+        os.makedirs(QUAL_UPLOAD_FOLDER, exist_ok=True)
+        qual_file.save(os.path.join(QUAL_UPLOAD_FOLDER, qual_filename))
+        qual_doc_path = f"uploads/ambassador_quals/{qual_filename}"
 
     ref_code = _generate_ref_code(first, last)
     pw_hash  = _hash_pw(pw)
@@ -724,6 +930,18 @@ def login():
         flash("Your account has been suspended. Please contact support@phixtra.com.", "danger")
         return render_template("ambassador/login.html")
 
+    if amb["status"] == "deleted":
+        _log_ambassador_event("login_failed", ambassador_id=int(amb["id"]),
+                               email_attempted=email, failure_reason="deleted_status")
+        flash("This account no longer exists. Please contact support@phixtra.com.", "danger")
+        return render_template("ambassador/login.html")
+
+    conn2 = get_db_connection()
+    cur2  = conn2.cursor()
+    cur2.execute("UPDATE ambassadors SET last_login_at = now() WHERE id = %s", (int(amb["id"]),))
+    conn2.commit()
+    cur2.close(); conn2.close()
+
     session["ambassador_logged_in"] = True
     session["ambassador_id"]        = int(amb["id"])
     _log_ambassador_event("login_success", ambassador_id=int(amb["id"]), email_attempted=email)
@@ -738,6 +956,92 @@ def logout():
     session.pop("ambassador_logged_in", None)
     session.pop("ambassador_id", None)
     session.pop("impersonate_ambassador_id", None)
+    return redirect(url_for("ambassador.login"))
+
+
+def _send_ambassador_reset_email(email: str, token: str, greeting: str) -> bool:
+    try:
+        base = request.host_url.rstrip("/")
+    except Exception:
+        base = "https://portal.phixtra.com"
+    link = f"{base}/ambassador/reset?token={token}"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:520px">
+      <h2 style="color:{BRAND}">Reset your Ambassador password</h2>
+      <p>Hi {greeting},</p>
+      <p>Click below to reset your PhiXtra Ambassador Hub password. This link expires in 2 hours.</p>
+      <p><a href="{link}" style="background:{BRAND};color:#fff;padding:10px 18px;border-radius:12px;text-decoration:none;display:inline-block">Reset password</a></p>
+      <p style="color:#888;font-size:12px">If you didn't request this, ignore this email.</p>
+    </div>"""
+    return send_email(email, "Reset your PhiXtra Ambassador password", html, text_body=f"Reset: {link}")
+
+
+@ambassador_bp.route("/ambassador/forgot", methods=["GET", "POST"])
+def forgot_password():
+    if request.method == "GET":
+        return render_template("ambassador/forgot.html")
+
+    email = (request.form.get("email") or "").strip().lower()
+    if not email:
+        flash("Enter your email address.", "danger")
+        return redirect(url_for("ambassador.forgot_password"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT id, first_name FROM ambassadors WHERE email=%s", (email,))
+    amb = cur.fetchone()
+
+    if amb:
+        token   = make_token(24)
+        expires = utc_now_naive() + timedelta(hours=2)
+        cur2 = conn.cursor()
+        cur2.execute("UPDATE ambassadors SET reset_token=%s, reset_expires_at=%s WHERE id=%s",
+                     (token, expires, int(amb["id"])))
+        conn.commit()
+        cur2.close()
+        _send_ambassador_reset_email(email, token, (amb.get("first_name") or "there"))
+
+    cur.close(); conn.close()
+    flash("If that email is registered, a reset link is on its way.", "success")
+    return redirect(url_for("ambassador.login"))
+
+
+@ambassador_bp.route("/ambassador/reset", methods=["GET", "POST"])
+def reset_password():
+    token = (request.args.get("token") or request.form.get("token") or "").strip()
+    if request.method == "GET":
+        return render_template("ambassador/reset.html", token=token)
+
+    password = (request.form.get("password") or "").strip()
+    if len(password) < 8:
+        flash("Password must be at least 8 characters.", "danger")
+        return redirect(url_for("ambassador.reset_password", token=token))
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT id, reset_expires_at FROM ambassadors WHERE reset_token=%s", (token,))
+    amb = cur.fetchone()
+    if not amb:
+        cur.close(); conn.close()
+        flash("Reset link is invalid or has expired.", "danger")
+        return redirect(url_for("ambassador.login"))
+
+    exp = amb.get("reset_expires_at")
+    if not exp or utc_now_naive() > exp:
+        cur2 = conn.cursor()
+        cur2.execute("UPDATE ambassadors SET reset_token=NULL, reset_expires_at=NULL WHERE id=%s", (int(amb["id"]),))
+        conn.commit()
+        cur2.close(); cur.close(); conn.close()
+        flash("Reset link expired. Request a new one.", "warning")
+        return redirect(url_for("ambassador.forgot_password"))
+
+    cur2 = conn.cursor()
+    cur2.execute("UPDATE ambassadors SET password_hash=%s, reset_token=NULL, reset_expires_at=NULL WHERE id=%s",
+                 (_hash_pw(password), int(amb["id"])))
+    conn.commit()
+    cur2.close(); cur.close(); conn.close()
+
+    flash("Password updated ✅  Please log in.", "success")
     return redirect(url_for("ambassador.login"))
 
 
@@ -926,6 +1230,76 @@ def referrals():
     return render_template("ambassador/referrals.html", amb=amb, referrals=all_referrals,
         selected_product=selected, product_order=enrolled_products, product_config=PRODUCT_CONFIG,
         detail_label=_REFERRALS_DETAIL_LABEL[selected])
+
+
+# ── Documents (admin-shared files) ──────────────────────────────────────────
+
+def _amb_active_products(amb: dict) -> list:
+    """Products this ambassador is currently 'active' on, per ambassador_products.
+    Mirrors dashboard()/referrals()/earnings()'s enrollment resolution — unlike
+    _gs_resolve_product() (used only by the static Getting Started/Checklist
+    pages), this does NOT hard-lock sales managers to their single
+    managed_product, so document visibility stays in sync with whatever the
+    admin's per-product Approve/Suspend/Reactivate panel actually shows."""
+    amb_products = _get_ambassador_products_map(amb["id"])
+    return [p for p in PRODUCT_ORDER if amb_products.get(p, {}).get("status") == "active"]
+
+
+@ambassador_bp.route("/ambassador/documents")
+def documents():
+    r = _require_amb()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+    active_products = _amb_active_products(amb)
+
+    if not active_products:
+        return render_template("ambassador/documents.html", amb=amb, docs=[],
+            selected_product="all", active_products=[], product_config=PRODUCT_CONFIG,
+            doc_icons=AMB_DOC_ICONS)
+
+    selected = (request.args.get("product") or "all").strip().lower()
+    if selected not in ("all", *active_products):
+        selected = "all"
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    if selected == "all":
+        cur.execute("""
+            SELECT * FROM ambassador_documents WHERE products && %s::text[]
+            ORDER BY created_at DESC
+        """, (active_products,))
+    else:
+        cur.execute("""
+            SELECT * FROM ambassador_documents WHERE %s = ANY(products)
+            ORDER BY created_at DESC
+        """, (selected,))
+    docs = cur.fetchall() or []
+    cur.close(); conn.close()
+
+    return render_template("ambassador/documents.html", amb=amb, docs=docs,
+        selected_product=selected, active_products=active_products, product_config=PRODUCT_CONFIG,
+        doc_icons=AMB_DOC_ICONS)
+
+
+@ambassador_bp.route("/ambassador/documents/<int:doc_id>/download")
+def document_download(doc_id: int):
+    r = _require_amb()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+    active_products = _amb_active_products(amb)
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM ambassador_documents WHERE id=%s", (doc_id,))
+    doc = cur.fetchone()
+    cur.close(); conn.close()
+
+    if not doc or not any(p in active_products for p in doc["products"]):
+        flash("You don't have access to that document.", "warning")
+        return redirect(url_for("ambassador.documents"))
+
+    return send_from_directory(DOCS_UPLOAD_FOLDER, doc["stored_filename"],
+                                as_attachment=True, download_name=doc["original_filename"])
 
 
 # ── My Team (Sales Manager only) ────────────────────────────────────────────
@@ -1234,26 +1608,36 @@ def team_pipeline():
 
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    # LEFT JOIN + OR on sales_manager_id: a lead normally belongs to this
+    # manager's queue because they recruited the ambassador who brought it in
+    # (a.recruited_by_id). But a customer who signed up on their own (company
+    # campaign/promo, no ambassador involved) can also be handed to a manager
+    # directly by the admin — those rows have ambassador_id NULL and
+    # al.sales_manager_id set instead, so the JOIN must not exclude them.
     cur.execute("""
-        SELECT al.*, a.first_name || ' ' || a.last_name AS ambassador_name
+        SELECT al.*,
+               COALESCE(a.first_name || ' ' || a.last_name, 'Company Campaign') AS ambassador_name
         FROM ambassador_leads al
-        JOIN ambassadors a ON a.id = al.ambassador_id
-        WHERE a.recruited_by_id=%s AND al.product=%s AND al.dropped_at IS NULL
+        LEFT JOIN ambassadors a ON a.id = al.ambassador_id
+        WHERE (a.recruited_by_id=%s OR al.sales_manager_id=%s)
+          AND al.product=%s AND al.dropped_at IS NULL
         ORDER BY CASE al.stage
             WHEN 'lead' THEN 0 WHEN 'contacted' THEN 1 WHEN 'demo_done' THEN 2
             WHEN 'requirements_confirmed' THEN 3 WHEN 'onboarding' THEN 4
             WHEN 'active_client' THEN 5 WHEN 'support' THEN 6 ELSE 7 END,
             al.created_at DESC
-    """, (amb["id"], product))
+    """, (amb["id"], amb["id"], product))
     leads = [dict(l) for l in cur.fetchall()]
 
     cur.execute("""
-        SELECT al.*, a.first_name || ' ' || a.last_name AS ambassador_name
+        SELECT al.*,
+               COALESCE(a.first_name || ' ' || a.last_name, 'Company Campaign') AS ambassador_name
         FROM ambassador_leads al
-        JOIN ambassadors a ON a.id = al.ambassador_id
-        WHERE a.recruited_by_id=%s AND al.product=%s AND al.dropped_at IS NOT NULL
+        LEFT JOIN ambassadors a ON a.id = al.ambassador_id
+        WHERE (a.recruited_by_id=%s OR al.sales_manager_id=%s)
+          AND al.product=%s AND al.dropped_at IS NOT NULL
         ORDER BY al.dropped_at DESC
-    """, (amb["id"], product))
+    """, (amb["id"], amb["id"], product))
     dropped_leads = [dict(l) for l in cur.fetchall()]
 
     _attach_account_health(cur, leads, product)
@@ -1275,6 +1659,23 @@ def team_pipeline():
         displayed_leads = [l for l in displayed_leads
                             if search_q.lower() in (l["business_name"] or "").lower()]
 
+    PER_PAGE_OPTIONS = ["25", "50", "100", "300", "500", "all"]
+    per_page_raw = (request.args.get("per_page") or "100").strip().lower()
+    if per_page_raw not in PER_PAGE_OPTIONS:
+        per_page_raw = "100"
+    page_raw = request.args.get("page", "1")
+    page = int(page_raw) if page_raw.isdigit() and int(page_raw) > 0 else 1
+
+    filtered_total = len(displayed_leads)
+    if per_page_raw == "all":
+        total_pages = 1
+        page = 1
+    else:
+        per_page = int(per_page_raw)
+        total_pages = max(1, -(-filtered_total // per_page))
+        page = min(page, total_pages)
+        displayed_leads = displayed_leads[(page - 1) * per_page: page * per_page]
+
     conn2 = get_db_connection()
     cur2  = conn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur2.execute("""
@@ -1290,7 +1691,8 @@ def team_pipeline():
         recruits=recruits, product_order=[product], product_config=PRODUCT_CONFIG,
         due_items=due_items, schedule_field=SCHEDULE_FIELD, today=date.today(), stage_filter=stage_filter,
         lead_edit_payload=lead_edit_payload, search_q=search_q,
-        is_activity_stale=is_activity_stale, format_relative_activity=format_relative_activity)
+        is_activity_stale=is_activity_stale, format_relative_activity=format_relative_activity,
+        filtered_total=filtered_total, per_page=per_page_raw, page=page, total_pages=total_pages)
 
 
 @ambassador_bp.route("/ambassador/team/pipeline/create", methods=["POST"])
@@ -1718,8 +2120,38 @@ def earnings():
     entries = cur.fetchall() or []
     cur.close(); conn.close()
 
+    # Group entries by calendar month (most recent first) for the monthly
+    # breakdown, and derive the chart series (oldest-to-newest, capped at the
+    # last 6 months) plus a this-month-vs-last-month delta from the same data
+    # — avoids a second SQL pass since `entries` already carries every row.
+    months = {}
+    for e in entries:
+        key = e["created_at"].strftime("%Y-%m") if e["created_at"] else "unknown"
+        if key not in months:
+            months[key] = {
+                "key": key,
+                "label": e["created_at"].strftime("%b %Y") if e["created_at"] else "Unknown",
+                "total": 0.0,
+                "rows": [],
+            }
+        months[key]["total"] += float(e["commission_amount"] or 0)
+        months[key]["rows"].append(e)
+
+    monthly_desc = sorted(months.values(), key=lambda m: m["key"], reverse=True)
+    chart_months = sorted(months.values(), key=lambda m: m["key"])[-6:]
+    chart_max = max((m["total"] for m in chart_months), default=0) or 1
+
+    this_month_total = monthly_desc[0]["total"] if monthly_desc else 0.0
+    last_month_total = monthly_desc[1]["total"] if len(monthly_desc) > 1 else None
+    if last_month_total:
+        mom_change_pct = round((this_month_total - last_month_total) / last_month_total * 100)
+    else:
+        mom_change_pct = None
+
     return render_template("ambassador/earnings.html", amb=amb, entries=entries, total=total,
-        selected_product=selected, product_order=enrolled_products, product_config=PRODUCT_CONFIG)
+        selected_product=selected, product_order=enrolled_products, product_config=PRODUCT_CONFIG,
+        monthly_desc=monthly_desc, chart_months=chart_months, chart_max=chart_max,
+        this_month_total=this_month_total, mom_change_pct=mom_change_pct)
 
 
 # ── QR Code ────────────────────────────────────────────────────────────────
@@ -1729,12 +2161,7 @@ def qr_page():
     r = _require_amb()
     if r: return r
     amb = _get_ambassador(_amb_id())
-    amb_products = _get_ambassador_products_map(amb["id"])
-    active_products = [p for p in PRODUCT_ORDER if amb_products.get(p, {}).get("status") == "active"]
-
-    selected = (request.args.get("product") or "portal").strip().lower()
-    if selected not in active_products:
-        selected = active_products[0] if active_products else "portal"
+    selected, active_products = _gs_resolve_product(amb)
 
     register_url = PRODUCT_CONFIG[selected]["register_url"](amb["ref_code"])
     return render_template("ambassador/qr.html", amb=amb, base_url=BASE_URL,
@@ -1743,25 +2170,45 @@ def qr_page():
 
 
 GS_TOPICS = [
-    ("understand-phixtra",  "Understand PhiXtra",      "🗺️", "Learn what PhiXtra is, what it does, and explore a live demo portal account before you pitch"),
-    ("your-link",           "Your Link & QR Code",    "🔗", "Your personal sign-up link and QR code — every shop that uses it is tracked to your account"),
-    ("who-to-approach",     "Who to Approach",         "👥", "Start with phone and computer shops — find out how to spot a good one and where to find them"),
-    ("pitch-messages",      "Pitch Messages",          "💬", "Ready-to-send WhatsApp messages and a step-by-step script for when you walk into a shop"),
+    ("understand-phixtra",  "Understand PhiXtra",      "🗺️", "Learn what PhiXtra does for your product line, and explore a live demo before you pitch"),
+    ("your-link",           "Your Link & QR Code",    "🔗", "Your personal sign-up link and QR code — every prospect who uses it is tracked to your account"),
+    ("who-to-approach",     "Who to Approach",         "👥", "Find out who to approach and how to spot a good prospect"),
+    ("pitch-messages",      "Pitch Messages",          "💬", "Ready-to-send messages and a step-by-step script for your first conversation"),
     ("common-questions",    "Common Questions",        "💡", "Answers to the questions prospects ask most — ready to copy and send, or share as a PDF"),
-    ("demo-to-business",    "Demo to Business",        "🎬", "Show a live PhiXtra AI demo using the profitbuyz.com WhatsApp account — iPhone questions only for now"),
-    ("client-requirements", "Client Requirements",     "📋", "Four things a shop must have ready before they can go live on PhiXtra"),
-    ("after-signup",        "After They Sign Up",      "🤝", "Five things to do after a shop signs up to make sure they go live fast and you start earning"),
-    ("how-you-earn",        "How You Earn",            "💰", "Your 30% monthly cut, how your level goes up, and the bonuses you earn when shops upgrade"),
+    ("demo-to-business",    "Demo to Business",        "🎬", "Show a live demo to a prospect before they sign up"),
+    ("client-requirements", "Client Requirements",     "📋", "What a prospect must have ready before they can go live"),
+    ("after-signup",        "After They Sign Up",      "🤝", "What to do after a prospect signs up so they go live fast and you start earning"),
+    ("how-you-earn",        "How You Earn",            "💰", "Your 30% monthly cut, how your level goes up, and the bonuses available"),
 ]
 
-DEMO_WA_NUMBER = "447778391737"  # profitbuyz.com WhatsApp demo account
+DEMO_WA_NUMBER        = "447778391737"  # profitbuyz.com WhatsApp demo account (Portal)
+DEMO_WA_NUMBER_SCHOOL = "447552468307"  # demo@school.phixtra.com WhatsApp demo account (School)
+DEMO_WA_NUMBERS = {"portal": DEMO_WA_NUMBER, "school": DEMO_WA_NUMBER_SCHOOL}
+
+def _gs_resolve_product(amb: dict) -> tuple[str, list[str]]:
+    """Resolve the active product list and selected product for an ambassador's
+    Getting Started view, honoring ?product=. Mirrors qr_page()'s resolution
+    logic (ambassador_routes.py ~1686-1701) so both stay consistent."""
+    if amb.get("role") == "sales_manager":
+        active_products = [amb.get("managed_product") or "portal"]
+    else:
+        amb_products = _get_ambassador_products_map(amb["id"])
+        active_products = [p for p in PRODUCT_ORDER if amb_products.get(p, {}).get("status") == "active"]
+        if not active_products:
+            active_products = ["portal"]
+    selected = (request.args.get("product") or "").strip().lower()
+    if selected not in active_products:
+        selected = active_products[0]
+    return selected, active_products
 
 @ambassador_bp.route("/ambassador/getting-started")
 def getting_started():
     r = _require_amb()
     if r: return r
     amb = _get_ambassador(_amb_id())
-    return render_template("ambassador/getting_started.html", amb=amb, topics=GS_TOPICS)
+    selected_product, active_products = _gs_resolve_product(amb)
+    return render_template("ambassador/getting_started.html", amb=amb, topics=GS_TOPICS,
+        selected_product=selected_product, active_products=active_products, product_config=PRODUCT_CONFIG)
 
 @ambassador_bp.route("/ambassador/getting-started/<topic>")
 def getting_started_topic(topic):
@@ -1772,16 +2219,52 @@ def getting_started_topic(topic):
         return redirect(url_for("ambassador.getting_started"))
     amb    = _get_ambassador(_amb_id())
     idx    = valid.index(topic)
+    selected_product, active_products = _gs_resolve_product(amb)
+    topic_key = topic.replace('-', '_')
+    if selected_product in ("portal", "school", "estate"):
+        content_tpl = f"ambassador/gs_content/{topic_key}_{selected_product}.html"
+    else:
+        content_tpl = "ambassador/gs_content/_coming_soon.html"
+    register_url = PRODUCT_CONFIG[selected_product]["register_url"](amb["ref_code"])
     return render_template(
-        f"ambassador/gs_{topic.replace('-', '_')}.html",
-        amb=amb, base_url=BASE_URL,
+        f"ambassador/gs_{topic_key}.html",
+        amb=amb, base_url=BASE_URL, register_url=register_url,
         current=GS_TOPICS[idx],
         prev_topic=GS_TOPICS[idx - 1] if idx > 0 else None,
         next_topic=GS_TOPICS[idx + 1] if idx < len(GS_TOPICS) - 1 else None,
         topic_index=idx + 1,
         topic_count=len(GS_TOPICS),
-        demo_wa_number=DEMO_WA_NUMBER,
+        demo_wa_number=DEMO_WA_NUMBERS.get(selected_product),
+        content_tpl=content_tpl,
+        selected_product=selected_product, active_products=active_products, product_config=PRODUCT_CONFIG,
     )
+
+
+@ambassador_bp.route("/ambassador/whats-new")
+def whats_new():
+    """Sales-enablement feed of published feature releases, scoped to this
+    ambassador's enrolled products (or product='all' releases)."""
+    r = _require_amb()
+    if r: return r
+    amb = _get_ambassador(_amb_id())
+    _, active = _gs_resolve_product(amb)
+
+    if not active:
+        return render_template("ambassador/whats_new.html", amb=amb, releases=[],
+            product_config=PRODUCT_CONFIG, now=datetime.now(timezone.utc))
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT * FROM feature_releases
+        WHERE status='published' AND (product='all' OR product = ANY(%s))
+        ORDER BY published_at DESC
+    """, (active,))
+    releases = cur.fetchall() or []
+    cur.close(); conn.close()
+
+    return render_template("ambassador/whats_new.html", amb=amb, releases=releases,
+        product_config=PRODUCT_CONFIG, now=datetime.now(timezone.utc))
 
 
 @ambassador_bp.route("/ambassador/checklist")
@@ -1789,7 +2272,13 @@ def checklist():
     r = _require_amb()
     if r: return r
     amb = _get_ambassador(_amb_id())
-    return render_template("ambassador/checklist.html", amb=amb)
+    selected_product, active_products = _gs_resolve_product(amb)
+    if selected_product in ("portal", "school", "estate"):
+        content_tpl = f"ambassador/gs_content/checklist_{selected_product}.html"
+    else:
+        content_tpl = "ambassador/gs_content/_coming_soon.html"
+    return render_template("ambassador/checklist.html", amb=amb, content_tpl=content_tpl,
+        selected_product=selected_product, active_products=active_products, product_config=PRODUCT_CONFIG)
 
 
 @ambassador_bp.route("/ambassador/demo-qr")
@@ -1797,7 +2286,14 @@ def demo_qr_page():
     r = _require_amb()
     if r: return r
     amb = _get_ambassador(_amb_id())
-    return render_template("ambassador/demo_qr.html", amb=amb, demo_wa_number=DEMO_WA_NUMBER)
+    selected_product, active_products = _gs_resolve_product(amb)
+    if selected_product in ("portal", "school", "estate"):
+        content_tpl = f"ambassador/gs_content/demo_{selected_product}.html"
+    else:
+        content_tpl = "ambassador/gs_content/_coming_soon.html"
+    return render_template("ambassador/demo_qr.html", amb=amb, demo_wa_number=DEMO_WA_NUMBERS.get(selected_product),
+        content_tpl=content_tpl,
+        selected_product=selected_product, active_products=active_products, product_config=PRODUCT_CONFIG)
 
 
 @ambassador_bp.route("/ambassador/demo-qr.png")
@@ -1806,7 +2302,9 @@ def demo_qr_image():
     if r: return r
     import qrcode
     from flask import send_file
-    wa_url = f"https://wa.me/{DEMO_WA_NUMBER}"
+    product = (request.args.get("product") or "portal").strip().lower()
+    wa_number = DEMO_WA_NUMBERS.get(product, DEMO_WA_NUMBER)
+    wa_url = f"https://wa.me/{wa_number}"
     qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M,
                        box_size=10, border=4)
     qr.add_data(wa_url)
@@ -2280,6 +2778,23 @@ def leads():
         displayed_leads = [l for l in displayed_leads
                             if search_q.lower() in (l["business_name"] or "").lower()]
 
+    PER_PAGE_OPTIONS = ["25", "50", "100", "300", "500", "all"]
+    per_page_raw = (request.args.get("per_page") or "100").strip().lower()
+    if per_page_raw not in PER_PAGE_OPTIONS:
+        per_page_raw = "100"
+    page_raw = request.args.get("page", "1")
+    page = int(page_raw) if page_raw.isdigit() and int(page_raw) > 0 else 1
+
+    filtered_total = len(displayed_leads)
+    if per_page_raw == "all":
+        total_pages = 1
+        page = 1
+    else:
+        per_page = int(per_page_raw)
+        total_pages = max(1, -(-filtered_total // per_page))
+        page = min(page, total_pages)
+        displayed_leads = displayed_leads[(page - 1) * per_page: page * per_page]
+
     return render_template("ambassador/leads.html",
         amb=amb, pipeline_leads=displayed_leads, dropped_leads=dropped_leads,
         linkable_tenants=linkable_tenants, self_closed=self_closed, stage_counts=stage_counts,
@@ -2288,7 +2803,8 @@ def leads():
         product_config=PRODUCT_CONFIG, due_items=due_items,
         schedule_field=SCHEDULE_FIELD, today=date.today(),
         lead_edit_payload=lead_edit_payload, stage_filter=stage_filter, search_q=search_q,
-        is_activity_stale=is_activity_stale, format_relative_activity=format_relative_activity)
+        is_activity_stale=is_activity_stale, format_relative_activity=format_relative_activity,
+        filtered_total=filtered_total, per_page=per_page_raw, page=page, total_pages=total_pages)
 
 
 @ambassador_bp.route("/ambassador/leads/<int:lead_id>/advance", methods=["POST"])
@@ -2667,11 +3183,71 @@ def contract():
     return render_template("ambassador/contract.html", amb=amb)
 
 
+def _resolve_company_assigned_ambassador(cur, conn, product: str, target_id: int,
+                                          contact_email: str, contact_phone_digits: str):
+    """
+    Looks up whether `target_id` (a tenants.id / school_profiles.id / re_tenants.id)
+    corresponds to a support@phixtra.com Sales Pipeline contact (merchant_pipeline_leads)
+    that was assigned to an ambassador. Returns that ambassador's id, or None.
+
+    Once matched, the pipeline row is permanently linked via the product's
+    converted_*_id column, so renewal payments resolve the same ambassador
+    without re-matching by email/phone (which could drift or collide later).
+    Pipeline contacts staff have marked "dropped" (deal fell through) are
+    excluded from matching, same as the Ambassador Hub's own lead auto-link.
+    `cur` must be a RealDictCursor.
+    """
+    link_col = {"portal": "converted_portal_tenant_id",
+                "school": "converted_school_id",
+                "estate": "converted_estate_tenant_id"}[product]
+
+    cur.execute(f"""
+        SELECT assigned_ambassador_id FROM merchant_pipeline_leads
+        WHERE tenant_id=%s AND {link_col}=%s LIMIT 1
+    """, (PHIXTRA_SUPPORT_TENANT_ID, target_id))
+    row = cur.fetchone()
+    if row:
+        return row["assigned_ambassador_id"]
+
+    if not contact_email and not contact_phone_digits:
+        return None
+
+    cur.execute(f"""
+        SELECT id, email, phone, assigned_ambassador_id FROM merchant_pipeline_leads
+        WHERE tenant_id=%s AND assigned_ambassador_id IS NOT NULL AND {link_col} IS NULL
+          AND dropped_at IS NULL
+        ORDER BY created_at DESC
+    """, (PHIXTRA_SUPPORT_TENANT_ID,))
+    candidates = cur.fetchall() or []
+
+    matched = None
+    for lead in candidates:
+        lead_email = (lead.get("email") or "").strip().lower()
+        lead_phone_digits = re.sub(r"\D", "", lead.get("phone") or "")[-10:]
+        if contact_email and lead_email and contact_email == lead_email:
+            matched = lead
+            break
+        if contact_phone_digits and lead_phone_digits and len(contact_phone_digits) >= 7 \
+                and contact_phone_digits == lead_phone_digits:
+            matched = lead
+            break
+
+    if not matched:
+        return None
+
+    cur.execute(f"UPDATE merchant_pipeline_leads SET {link_col}=%s, updated_at=NOW() WHERE id=%s",
+                (target_id, matched["id"]))
+    conn.commit()
+    return matched["assigned_ambassador_id"]
+
+
 def record_ambassador_commission(tenant_id: int, plan_id: int, prev_plan_id: int,
                                   amount, currency: str) -> None:
     """
     Called after a successful subscription payment.
-    - Records 20% commission if ambassador is eligible.
+    - Records commission if ambassador is eligible: 30% for the ambassador's own
+      direct referral-link signup, or 20% if the client came from PhiXtra's own
+      company sales pipeline and was assigned to this ambassador.
     - Records upsell bonus for Starter→Growth (₦5k), Growth→Pro (₦10k), Starter→Pro (₦15k), Free→Pro (₦20k).
     """
     conn = get_db_connection()
@@ -2683,34 +3259,58 @@ def record_ambassador_commission(tenant_id: int, plan_id: int, prev_plan_id: int
     new_slug  = slug_map.get(plan_id, "")
     prev_slug = slug_map.get(prev_plan_id, "")
 
-    # Find the tenant's ref_code
+    # The tenant's own customer contact — used both to resolve a company-assigned
+    # ambassador below and for the Ambassador Hub lead auto-link further down.
+    cur.execute("SELECT email, phone_number FROM customers WHERE tenant_id=%s LIMIT 1", (tenant_id,))
+    customer_row = cur.fetchone()
+    cust_email = (customer_row.get("email") or "").strip().lower() if customer_row else ""
+    cust_phone_digits = re.sub(r"\D", "", (customer_row.get("phone_number") or "") if customer_row else "")[-10:]
+
+    # Resolve ambassador + commission rate:
+    # 1. Direct referral — tenant's ref_code belongs to an active ambassador -> 30%.
+    # 2. Company-assigned lead — no usable ref_code, but this tenant matches a
+    #    support@phixtra.com Sales Pipeline contact assigned to an ambassador -> 20%.
     cur.execute("SELECT ref_code FROM tenants WHERE id=%s", (tenant_id,))
     row = cur.fetchone()
-    if not row or not row.get("ref_code"):
+    ref_code = row["ref_code"] if row else None
+
+    # IMPORTANT: the company-assigned fallback only applies when there is NO
+    # ref_code at all. If a ref_code is present but its ambassador is inactive
+    # (suspended/terminated/rejected), that client's origin is still "this
+    # ambassador's referral" — the correct outcome is simply no commission
+    # this time, never falling through to credit a different ambassador via
+    # the company Sales Pipeline just because of an unrelated email/phone match.
+    amb, rate = None, None
+    if ref_code:
+        cur.execute("SELECT * FROM ambassadors WHERE ref_code=%s AND status='active'", (ref_code,))
+        amb_row = cur.fetchone()
+        if amb_row:
+            amb, rate = dict(amb_row), DIRECT_COMMISSION_PC
+    else:
+        assigned_ambassador_id = _resolve_company_assigned_ambassador(
+            cur, conn, "portal", tenant_id, cust_email, cust_phone_digits
+        )
+        if assigned_ambassador_id:
+            cur.execute("SELECT * FROM ambassadors WHERE id=%s AND status='active'", (assigned_ambassador_id,))
+            amb_row = cur.fetchone()
+            if amb_row:
+                amb, rate = dict(amb_row), ASSIGNED_COMMISSION_PC
+
+    if amb is None:
         cur.close(); conn.close()
         return
 
-    ref_code = row["ref_code"]
-
-    # Find the active ambassador for this ref_code
-    cur.execute("SELECT * FROM ambassadors WHERE ref_code=%s AND status='active'", (ref_code,))
-    amb = cur.fetchone()
-    if not amb:
-        cur.close(); conn.close()
-        return
-
-    amb = dict(amb)
     cur2 = conn.cursor()
 
-    # 20% subscription commission (if eligible, from first payment)
+    # Subscription commission (if eligible, from first payment)
     if _commission_eligible(amb) and float(amount or 0) > 0:
-        commission = round(float(amount) * COMMISSION_PC, 2)
+        commission = round(float(amount) * rate, 2)
         cur2.execute("""
             INSERT INTO ambassador_commissions
               (ambassador_id, tenant_id, commission_type, currency, source_amount, commission_amount, description)
             VALUES (%s,%s,'subscription',%s,%s,%s,%s)
         """, (amb["id"], tenant_id, currency, float(amount), commission,
-              f"20% of {currency} {float(amount):.2f} subscription payment"))
+              f"{rate*100:.0f}% of {currency} {float(amount):.2f} subscription payment"))
 
         # 5% override to the sales manager who recruited this ambassador (if any, and still active)
         if amb.get("recruited_by_id"):
@@ -2730,47 +3330,44 @@ def record_ambassador_commission(tenant_id: int, plan_id: int, prev_plan_id: int
                 """, (manager["id"], tenant_id, currency, float(amount), override,
                       f"5% override — {amb['first_name']} {amb['last_name']}'s referral"))
 
-    # Auto-link this payment event to a matching open lead in the ambassador's pipeline.
-    # Matches on exact email or last-10-digits phone (whichever the lead has on file);
-    # no match is the normal case for signups that never had a pre-existing lead logged.
-    if float(amount or 0) > 0:
+    # Auto-link this payment event to a matching open lead in the ambassador's OWN
+    # Ambassador Hub pipeline. This is separate from the commission-tier resolution
+    # above — it's just the ambassador's personal lead-tracking/reporting, and does
+    # not affect the 30%/20% rate. Matches on exact email or last-10-digits phone
+    # (whichever the lead has on file); no match is the normal case for signups
+    # that never had a pre-existing lead logged.
+    if float(amount or 0) > 0 and customer_row:
         cur4 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur4.execute("SELECT email, phone_number FROM customers WHERE tenant_id=%s LIMIT 1", (tenant_id,))
-        customer = cur4.fetchone()
-        if customer:
-            cust_email = (customer.get("email") or "").strip().lower()
-            cust_phone_digits = re.sub(r"\D", "", customer.get("phone_number") or "")[-10:]
+        cur4.execute("""
+            SELECT * FROM ambassador_leads
+            WHERE ambassador_id=%s AND dropped_at IS NULL AND tenant_id IS NULL
+              AND product='portal' AND stage NOT IN ('active_client', 'support')
+            ORDER BY created_at DESC
+        """, (amb["id"],))
+        candidates = cur4.fetchall() or []
 
-            cur4.execute("""
-                SELECT * FROM ambassador_leads
-                WHERE ambassador_id=%s AND dropped_at IS NULL AND tenant_id IS NULL
-                  AND product='portal' AND stage NOT IN ('active_client', 'support')
-                ORDER BY created_at DESC
-            """, (amb["id"],))
-            candidates = cur4.fetchall() or []
+        matched_lead, match_reason = None, None
+        for lead in candidates:
+            lead_email = (lead.get("email") or "").strip().lower()
+            lead_phone_digits = re.sub(r"\D", "", lead.get("phone") or "")[-10:]
+            if cust_email and lead_email and cust_email == lead_email:
+                matched_lead, match_reason = lead, "email"
+                break
+            if cust_phone_digits and lead_phone_digits and len(cust_phone_digits) >= 7 \
+                    and cust_phone_digits == lead_phone_digits:
+                matched_lead, match_reason = lead, "phone"
+                break
 
-            matched_lead, match_reason = None, None
-            for lead in candidates:
-                lead_email = (lead.get("email") or "").strip().lower()
-                lead_phone_digits = re.sub(r"\D", "", lead.get("phone") or "")[-10:]
-                if cust_email and lead_email and cust_email == lead_email:
-                    matched_lead, match_reason = lead, "email"
-                    break
-                if cust_phone_digits and lead_phone_digits and len(cust_phone_digits) >= 7 \
-                        and cust_phone_digits == lead_phone_digits:
-                    matched_lead, match_reason = lead, "phone"
-                    break
-
-            if matched_lead:
-                cur2.execute("""
-                    UPDATE ambassador_leads SET stage='active_client', tenant_id=%s WHERE id=%s
-                """, (tenant_id, matched_lead["id"]))
-                conn.commit()
-                record_stage_change(
-                    matched_lead["id"], matched_lead["stage"], "active_client",
-                    "System (auto-linked on signup)",
-                    f"Matched by {match_reason} when subscription payment posted",
-                )
+        if matched_lead:
+            cur2.execute("""
+                UPDATE ambassador_leads SET stage='active_client', tenant_id=%s WHERE id=%s
+            """, (tenant_id, matched_lead["id"]))
+            conn.commit()
+            record_stage_change(
+                matched_lead["id"], matched_lead["stage"], "active_client",
+                "System (auto-linked on signup)",
+                f"Matched by {match_reason} when subscription payment posted",
+            )
         cur4.close()
 
     # One-time upsell bonus (per upgrade path, once per tenant)
@@ -2798,12 +3395,15 @@ def record_ambassador_commission(tenant_id: int, plan_id: int, prev_plan_id: int
 def _record_product_commission(product: str, target_id: int, amount, currency: str,
                                 description_prefix: str) -> None:
     """
-    Shared implementation for School and Estate commission recording — flat
-    20% of the payment, plus the 5% sales-manager override, exactly mirroring
-    the subscription-commission portion of record_ambassador_commission()
-    above. No upsell-bonus/lead-auto-link logic: School (termly billing) and
-    Estate don't have Portal's Starter→Growth-style plan-upgrade bonus
-    structure, so that part is intentionally out of scope for v1.
+    Shared implementation for School and Estate commission recording — 30% for
+    the ambassador's own direct referral-link signup, or 20% if the client came
+    from PhiXtra's own company sales pipeline and was assigned to this
+    ambassador (see _resolve_company_assigned_ambassador), plus the 5%
+    sales-manager override, exactly mirroring the subscription-commission
+    portion of record_ambassador_commission() above. No upsell-bonus/lead-
+    auto-link logic: School (termly billing) and Estate don't have Portal's
+    Starter→Growth-style plan-upgrade bonus structure, so that part is
+    intentionally out of scope for v1.
 
     `target_id` is the school_profiles.id or re_tenants.id being paid for;
     `product` is 'school' or 'estate' and selects which table/column to use.
@@ -2815,35 +3415,61 @@ def _record_product_commission(product: str, target_id: int, amount, currency: s
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     ref_table = "school_profiles" if product == "school" else "re_tenants"
-    cur.execute(f"SELECT ref_code FROM {ref_table} WHERE id=%s", (target_id,))
+    contact_cols = "ref_code, contact_email AS email, NULL AS phone" if product == "school" \
+        else "ref_code, COALESCE(contact_email, email) AS email, COALESCE(contact_phone, phone) AS phone"
+    cur.execute(f"SELECT {contact_cols} FROM {ref_table} WHERE id=%s", (target_id,))
     row = cur.fetchone()
-    if not row or not row.get("ref_code"):
+    if not row:
         cur.close(); conn.close()
         return
-    ref_code = row["ref_code"]
+    ref_code = row.get("ref_code")
+    contact_email = (row.get("email") or "").strip().lower()
+    contact_phone_digits = re.sub(r"\D", "", row.get("phone") or "")[-10:]
 
-    cur.execute("SELECT * FROM ambassadors WHERE ref_code=%s", (ref_code,))
-    amb = cur.fetchone()
-    if not amb:
+    # IMPORTANT: the company-assigned fallback only applies when there is NO
+    # ref_code at all. If a ref_code is present but its ambassador is inactive
+    # (suspended/terminated/rejected), that client's origin is still "this
+    # ambassador's referral" — the correct outcome is simply no commission
+    # this time, never falling through to credit a different ambassador via
+    # the company Sales Pipeline just because of an unrelated email/phone match.
+    amb, rate = None, None
+    if ref_code:
+        cur.execute("SELECT * FROM ambassadors WHERE ref_code=%s AND status='active'", (ref_code,))
+        amb_row = cur.fetchone()
+        if amb_row:
+            amb, rate = dict(amb_row), DIRECT_COMMISSION_PC
+    else:
+        assigned_ambassador_id = _resolve_company_assigned_ambassador(
+            cur, conn, product, target_id, contact_email, contact_phone_digits
+        )
+        if assigned_ambassador_id:
+            cur.execute("SELECT * FROM ambassadors WHERE id=%s AND status='active'", (assigned_ambassador_id,))
+            amb_row = cur.fetchone()
+            if amb_row:
+                amb, rate = dict(amb_row), ASSIGNED_COMMISSION_PC
+
+    if amb is None:
         cur.close(); conn.close()
         return
-    amb = dict(amb)
 
-    if float(amount or 0) <= 0 or not _product_commission_eligible(amb["id"], ref_code, product):
+    # Tier/eligibility is always counted against the ambassador's own ref_code
+    # (their unique link), not the target's — the target's ref_code column is
+    # null for company-assigned clients, but the ambassador still has their own.
+    if float(amount or 0) <= 0 or not _product_commission_eligible(amb["id"], amb.get("ref_code"), product):
         cur.close(); conn.close()
         return
 
     link_col = "school_id" if product == "school" else "estate_tenant_id"
     cur2 = conn.cursor()
 
-    commission = round(float(amount) * COMMISSION_PC, 2)
+    commission = round(float(amount) * rate, 2)
     cur2.execute(f"""
         INSERT INTO ambassador_commissions
           (ambassador_id, product, {link_col}, commission_type, currency,
            source_amount, commission_amount, description)
         VALUES (%s,%s,%s,'subscription',%s,%s,%s,%s)
     """, (amb["id"], product, target_id, currency, float(amount), commission,
-          f"20% of {currency} {float(amount):.2f} {description_prefix}"))
+          f"{rate*100:.0f}% of {currency} {float(amount):.2f} {description_prefix}"))
 
     if amb.get("recruited_by_id"):
         cur3 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)

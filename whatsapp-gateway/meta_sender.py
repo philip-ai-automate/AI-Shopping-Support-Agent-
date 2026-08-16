@@ -1,5 +1,8 @@
 import asyncio
+import io
+
 import httpx
+from PIL import Image
 
 _GRAPH_BASE = "https://graph.facebook.com/v19.0"
 
@@ -15,6 +18,24 @@ _RETRYABLE      = {429, 500, 502, 503, 504}
 def _trunc(s: str, max_len: int) -> str:
     s = (s or "").strip()
     return s if len(s) <= max_len else s[: max_len - 1] + "…"
+
+
+def _split_variant_title(name: str) -> tuple:
+    """
+    Catalogue product titles follow "{Base Name} - {attr1} / {attr2} / ...}"
+    (e.g. "Apple iPhone 11 [UK Used] - black / very-good / 128gb"). WhatsApp
+    list rows only show 24 characters, which cuts off right before the
+    attributes — every variant of the same product then looks identical.
+    Returns (short_title, base_name): short_title leads with the distinguishing
+    attributes (compacted so they fit); base_name goes in the description instead.
+    """
+    name = (name or "").strip()
+    if " - " in name:
+        base, _, attrs = name.rpartition(" - ")
+        if "/" in attrs:
+            parts = [p.strip() for p in attrs.split("/") if p.strip()]
+            return "·".join(parts), base.strip()
+    return name, ""
 
 
 async def _send(phone_number_id: str, access_token: str, payload: dict) -> bool:
@@ -91,6 +112,31 @@ async def mark_as_read(phone_number_id: str, access_token: str, message_id: str)
 
 
 
+# ── Approved template (works outside the 24h session window) ──────────────────
+
+async def send_template(
+    phone_number_id: str,
+    access_token: str,
+    to: str,
+    template_name: str,
+    language_code: str,
+    body_params: list[str],
+) -> bool:
+    return await _send(phone_number_id, access_token, {
+        "messaging_product": "whatsapp",
+        "to": to.lstrip("+"),
+        "type": "template",
+        "template": {
+            "name": template_name,
+            "language": {"code": language_code},
+            "components": [{
+                "type": "body",
+                "parameters": [{"type": "text", "text": p} for p in body_params],
+            }],
+        },
+    })
+
+
 # ── Plain text ────────────────────────────────────────────────────────────────
 
 async def send_text(
@@ -128,8 +174,11 @@ async def send_interactive_list(
         price = p.get("price") or ""
         in_stock = p.get("in_stock", True)
 
-        title = _trunc(name, 24)
-        desc_parts = [price] if price else []
+        variant_title, base_name = _split_variant_title(name)
+        title = _trunc(variant_title, 24)
+        desc_parts = [base_name] if base_name else []
+        if price:
+            desc_parts.append(price)
         desc_parts.append("In stock" if in_stock else "Out of stock")
         description = _trunc(" · ".join(desc_parts), 72)
 
@@ -206,7 +255,12 @@ async def send_image_with_caption(
     image_url: str,
     caption: str,
 ) -> bool:
-    """Send a product image with a caption containing name, price, stock, and URL."""
+    """Send a product image with a caption containing name, price, stock, and URL.
+
+    Only reliable for images already in a WhatsApp-supported format (JPEG/PNG) —
+    WhatsApp fetches image_url itself and rejects anything else (e.g. WebP)
+    with no visible error. For catalog product photos, which may be in any
+    format merchants' stores happen to export, use send_product_image instead."""
     return await _send(phone_number_id, access_token, {
         "messaging_product": "whatsapp",
         "recipient_type": "individual",
@@ -214,6 +268,90 @@ async def send_image_with_caption(
         "type": "image",
         "image": {
             "link": image_url,
+            "caption": _trunc(caption, 1024),
+        },
+    })
+
+
+def _convert_to_jpeg(raw: bytes) -> bytes | None:
+    """Convert arbitrary image bytes (WebP, PNG-with-alpha, etc.) to JPEG,
+    which WhatsApp always accepts. Flattens transparency onto white, since
+    JPEG has no alpha channel."""
+    try:
+        img = Image.open(io.BytesIO(raw))
+        if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+            background = Image.new("RGB", img.size, (255, 255, 255))
+            background.paste(img.convert("RGBA"), mask=img.convert("RGBA").split()[-1])
+            img = background
+        else:
+            img = img.convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+        return buf.getvalue()
+    except Exception as e:
+        print(f"⚠️ [META] image conversion failed: {e}")
+        return None
+
+
+async def _upload_media(phone_number_id: str, access_token: str, jpeg_bytes: bytes) -> str | None:
+    """Upload image bytes to Meta's Media API, returning a media id for use
+    in a subsequent send (avoids WhatsApp having to fetch a URL itself)."""
+    url = f"{_GRAPH_BASE}/{phone_number_id}/media"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    files = {"file": ("product.jpg", jpeg_bytes, "image/jpeg")}
+    data = {"messaging_product": "whatsapp", "type": "image/jpeg"}
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.post(url, headers=headers, data=data, files=files)
+        if r.status_code == 200:
+            return r.json().get("id")
+        print(f"⚠️ [META] media upload failed status={r.status_code} body={r.text[:300]}")
+        return None
+    except Exception as e:
+        print(f"⚠️ [META] media upload error: {e}")
+        return None
+
+
+async def send_product_image(
+    phone_number_id: str,
+    access_token: str,
+    to: str,
+    image_url: str,
+    caption: str,
+) -> bool:
+    """Download a product photo from the merchant's store, convert it to
+    JPEG regardless of its original format, upload it to Meta, then send it.
+
+    Use this (not send_image_with_caption) for any catalog product photo —
+    merchants' stores may export WebP, PNG, or other formats WhatsApp's
+    outbound image message doesn't accept, and WhatsApp fetching the link
+    itself gives no visible error when it silently rejects the format."""
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            r = await client.get(image_url)
+        if r.status_code != 200 or not r.content:
+            print(f"⚠️ [META] product image download failed status={r.status_code} url={image_url}")
+            return False
+        raw = r.content
+    except Exception as e:
+        print(f"⚠️ [META] product image download error url={image_url}: {e}")
+        return False
+
+    jpeg_bytes = _convert_to_jpeg(raw)
+    if not jpeg_bytes:
+        return False
+
+    media_id = await _upload_media(phone_number_id, access_token, jpeg_bytes)
+    if not media_id:
+        return False
+
+    return await _send(phone_number_id, access_token, {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": to,
+        "type": "image",
+        "image": {
+            "id": media_id,
             "caption": _trunc(caption, 1024),
         },
     })

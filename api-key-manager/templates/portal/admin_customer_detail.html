@@ -21,6 +21,7 @@
     <table style="border:none">
       <tr><td class="muted" style="border:none;padding:4px 0">First name</td><td style="border:none;padding:4px 8px">{{ customer.first_name or '—' }}</td></tr>
       <tr><td class="muted" style="border:none;padding:4px 0">Last name</td><td style="border:none;padding:4px 8px">{{ customer.last_name or '—' }}</td></tr>
+      <tr><td class="muted" style="border:none;padding:4px 0">Business Name</td><td style="border:none;padding:4px 8px"><strong>{{ customer.tenant_name or '—' }}</strong></td></tr>
       <tr><td class="muted" style="border:none;padding:4px 0">Email</td><td style="border:none;padding:4px 8px">{{ customer.email }}</td></tr>
       <tr><td class="muted" style="border:none;padding:4px 0">Phone</td><td style="border:none;padding:4px 8px">{{ customer.phone_number or '—' }}</td></tr>
       <tr><td class="muted" style="border:none;padding:4px 0">Domain</td><td style="border:none;padding:4px 8px">{{ customer.domain }}</td></tr>
@@ -30,6 +31,8 @@
           <td style="border:none;padding:4px 8px">{% if customer.is_active %}<span class="pill pill-green">Active</span>{% else %}<span class="pill pill-red">Disabled</span>{% endif %}</td></tr>
       <tr><td class="muted" style="border:none;padding:4px 0">Signed up</td>
           <td style="border:none;padding:4px 8px">{{ customer.created_at.strftime('%Y-%m-%d %H:%M') if customer.created_at else '—' }}</td></tr>
+      <tr><td class="muted" style="border:none;padding:4px 0">How did you hear about us</td>
+          <td style="border:none;padding:4px 8px">{{ customer.hear_about_us_label }}</td></tr>
       {% if onboarding_other %}
       <tr><td class="muted" style="border:none;padding:4px 0">Other category</td>
           <td style="border:none;padding:4px 8px">
@@ -340,6 +343,61 @@
   </form>
 </div>
 
+<div class="card" style="margin-bottom:16px; border:2px solid #fbcfe8;">
+  <div class="card-title" style="color:#9d174d;">✉️ Email Campaigns — Sending Identity</div>
+  <p style="font-size:13px;color:#6b7280;margin:0 0 16px 0">
+    {% if email_sender %}
+      Currently sending as <strong>{{ email_sender.from_name or email_sender.from_email }}</strong>
+      &lt;{{ email_sender.from_email }}&gt; via domain <strong>{{ email_sender.domain }}</strong>.
+      Create the Mail Agent + verify SPF/DKIM for this domain in the ZeptoMail dashboard first,
+      then paste the resulting Send Mail Token below to rotate it — leave it blank to keep the
+      current token.
+    {% else %}
+      No dedicated sending domain configured — campaigns from this tenant fall back to the shared
+      PhiXtra identity. To give this tenant their own branded sender, create a Mail Agent and
+      verify their domain's SPF/DKIM records in the ZeptoMail dashboard first, then fill this in.
+    {% endif %}
+  </p>
+  <form method="POST"
+        action="{{ url_for('portal_admin.customer_email_sender_save', customer_id=customer.id) }}"
+        style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+    <div>
+      <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">Domain</label>
+      <input type="text" name="domain" placeholder="merchant.com"
+             value="{{ email_sender.domain if email_sender else '' }}"
+             style="padding:8px 12px;border-radius:9px;border:1px solid rgba(3,12,24,.18);
+                    font-size:13px;font-family:inherit;background:#fff;min-width:160px">
+    </div>
+    <div>
+      <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">From email</label>
+      <input type="email" name="from_email" placeholder="campaigns@merchant.com"
+             value="{{ email_sender.from_email if email_sender else '' }}"
+             style="padding:8px 12px;border-radius:9px;border:1px solid rgba(3,12,24,.18);
+                    font-size:13px;font-family:inherit;background:#fff;min-width:200px">
+    </div>
+    <div>
+      <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">From name</label>
+      <input type="text" name="from_name" placeholder="Merchant Business Name"
+             value="{{ email_sender.from_name if email_sender else '' }}"
+             style="padding:8px 12px;border-radius:9px;border:1px solid rgba(3,12,24,.18);
+                    font-size:13px;font-family:inherit;background:#fff;min-width:180px">
+    </div>
+    <div>
+      <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">Send Mail Token</label>
+      <input type="password" name="send_mail_token"
+             placeholder="{{ 'leave blank to keep current' if email_sender else 'paste ZeptoMail token' }}"
+             style="padding:8px 12px;border-radius:9px;border:1px solid rgba(3,12,24,.18);
+                    font-size:13px;font-family:inherit;background:#fff;min-width:220px">
+    </div>
+    <div>
+      <button type="submit" class="btn btn-primary btn-sm"
+              onclick="return confirm('Save email sending identity for {{ customer.tenant_name }}?')">
+        Save
+      </button>
+    </div>
+  </form>
+</div>
+
 <div class="card" style="margin-bottom:16px; border:2px solid #dbeafe;">
   <div class="card-title" style="color:#1d4ed8;">🔌 Feature Management</div>
   <p style="font-size:13px; color:#6b7280; margin:0 0 16px 0;">
@@ -568,6 +626,49 @@
         </p>
       </div>
     </div>
+
+    {# Visual Product Match — Pro plan only #}
+    {% if customer.plan_slug == 'pro' %}
+    <div style="display:flex; align-items:flex-start; gap:12px; padding:14px;
+                background:#fff7ed; border:1px solid #fdba74; border-radius:8px; margin-bottom:10px;">
+      <input type="checkbox"
+             name="feat_visual_match"
+             id="feat_visual_match"
+             style="width:auto; margin-top:3px;"
+             {% if tenant_features.get('visual_product_match') %}checked{% endif %}/>
+      <div style="flex:1">
+        <label for="feat_visual_match" style="margin:0; font-weight:700; cursor:pointer; font-size:14px;">
+          📸 Shop by Sending a Photo
+        </label>
+        <p style="margin:4px 0 0 0; font-size:12px; color:#374151;">
+          When a customer sends a photo on WhatsApp, the AI matches it against this store's product
+          photos and confirms availability/price automatically. Pro plan only.
+        </p>
+        <div style="margin-top:10px;">
+          <label style="font-size:12px; font-weight:700; display:block; margin-bottom:4px;">
+            When a photo can't be confidently matched:
+          </label>
+          <select name="visual_match_on_uncertain" style="padding:6px 10px; border-radius:8px;
+                  border:1px solid rgba(3,12,24,.18); font-size:13px; font-family:inherit; background:#fff;">
+            <option value="clarify" {% if tenant_features.get('visual_match_on_uncertain', 'clarify') == 'clarify' %}selected{% endif %}>
+              Ask the customer to clarify
+            </option>
+            <option value="handoff" {% if tenant_features.get('visual_match_on_uncertain') == 'handoff' %}selected{% endif %}>
+              Hand off to a team member
+            </option>
+          </select>
+        </div>
+        <p style="margin:10px 0 0 0; font-size:11px; color:#6b7280;">
+          Current status:
+          {% if tenant_features.get('visual_product_match') %}
+            <span style="color:#059669; font-weight:700;">✓ ACTIVE</span>
+          {% else %}
+            <span style="color:#9ca3af; font-weight:700;">✗ Inactive</span>
+          {% endif %}
+        </p>
+      </div>
+    </div>
+    {% endif %}
 
 <button type="submit" class="btn btn-primary btn-sm"
             onclick="return confirm('Save feature settings for this customer?')">

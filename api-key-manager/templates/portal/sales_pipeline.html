@@ -207,7 +207,8 @@
 {% set filter_args = {'per_page': per_page, 'has_phone': '1' if has_phone else none,
                        'has_whatsapp': '1' if has_whatsapp else none, 'has_email': '1' if has_email else none,
                        'hide_segment': hide_segment_ids or none, 'hide_label': hide_label_ids or none,
-                       'label': show_label_ids or none} %}
+                       'label': show_label_ids or none, 'hide_sms_segment': hide_sms_segment_ids or none,
+                       'hide_wa_segment': hide_wa_segment_ids or none} %}
 
 <!-- Stage funnel summary — click a stage to filter -->
 <div class="stage-funnel" data-sptour="stage-funnel">
@@ -323,13 +324,49 @@
       <div class="col-picker-wrap seg-picker-wrap">
         <button type="button" class="col-picker-btn" onclick="toggleSegPicker()">
           <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
-          Hide segments{% if hide_segment_ids %} ({{ hide_segment_ids|length }}){% endif %}
+          Hide Email segments{% if hide_segment_ids %} ({{ hide_segment_ids|length }}){% endif %}
         </button>
         <div class="col-picker-menu" id="segPickerMenu">
           {% for seg in all_segments %}
           <label class="col-picker-item">
             <input type="checkbox" name="hide_segment" value="{{ seg.id }}"
                    {% if seg.id in hide_segment_ids %}checked{% endif %}
+                   onchange="this.form.submit()">
+            {{ seg.name }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+      {% if all_wa_segments %}
+      <div class="col-picker-wrap wa-seg-picker-wrap">
+        <button type="button" class="col-picker-btn" onclick="toggleWaSegPicker()">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+          Hide WhatsApp segments{% if hide_wa_segment_ids %} ({{ hide_wa_segment_ids|length }}){% endif %}
+        </button>
+        <div class="col-picker-menu" id="waSegPickerMenu">
+          {% for seg in all_wa_segments %}
+          <label class="col-picker-item">
+            <input type="checkbox" name="hide_wa_segment" value="{{ seg.id }}"
+                   {% if seg.id in hide_wa_segment_ids %}checked{% endif %}
+                   onchange="this.form.submit()">
+            {{ seg.name }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+      {% if customer.tenant_id == 19 and all_sms_segments %}
+      <div class="col-picker-wrap sms-seg-picker-wrap">
+        <button type="button" class="col-picker-btn" onclick="toggleSmsSegPicker()">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+          Hide SMS segments{% if hide_sms_segment_ids %} ({{ hide_sms_segment_ids|length }}){% endif %}
+        </button>
+        <div class="col-picker-menu" id="smsSegPickerMenu">
+          {% for seg in all_sms_segments %}
+          <label class="col-picker-item">
+            <input type="checkbox" name="hide_sms_segment" value="{{ seg.id }}"
+                   {% if seg.id in hide_sms_segment_ids %}checked{% endif %}
                    onchange="this.form.submit()">
             {{ seg.name }}
           </label>
@@ -372,7 +409,8 @@
           Columns
         </button>
         <div class="col-picker-menu" id="colPickerMenu">
-          <label class="col-picker-item"><input type="checkbox" data-col-toggle="segment" checked>Segment</label>
+          <label class="col-picker-item"><input type="checkbox" data-col-toggle="segment" checked>Email Segment</label>
+          <label class="col-picker-item"><input type="checkbox" data-col-toggle="wa_segment" checked>WhatsApp Segment</label>
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="label" checked>Label</label>
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="contact_person" checked>Contact Person</label>
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="phone" checked>Phone</label>
@@ -395,18 +433,25 @@
     </div>
     <a href="{{ url_for('portal.sales_pipeline_export', stage=stage_filter, q=search, **filter_args) }}"
        class="btn" style="text-decoration:none">⬇️ Export CSV</a>
+    {% if customer.tenant_id == 19 %}
+    <a href="{{ url_for('portal.sms_campaigns') }}" class="btn btn-primary" style="text-decoration:none">📟 SMS</a>
+    {% endif %}
   </div>
   {% if stage_filter != 'all' %}<input type="hidden" name="stage" value="{{ stage_filter }}">{% endif %}
 </form>
 {% endif %}
 
 {% set is_phixtra_support_account = (customer.tenant_id == 19) %}
-{% set empty_colspan = 13 if is_phixtra_support_account else 12 %}
+{% set empty_colspan = 15 if is_phixtra_support_account else 13 %}
 
 <div class="bulk-action-bar" id="bulkActionBar" style="display:none">
   <span><strong id="bulkSelectedCount">0</strong> selected</span>
   <button type="button" class="btn btn-sm btn-primary" onclick="openBulkAdvanceModal()">➡️ Move Stage</button>
-  <button type="button" class="btn btn-sm btn-primary" onclick="openBulkSegmentModal()">📋 Add to Segment</button>
+  <button type="button" class="btn btn-sm btn-primary" onclick="openBulkSegmentModal()">📋 Add to Email Segment</button>
+  <button type="button" class="btn btn-sm btn-primary" onclick="openBulkWaSegmentModal()">📱 Add to WhatsApp Segment</button>
+  {% if is_phixtra_support_account %}
+  <button type="button" class="btn btn-sm btn-primary" onclick="openBulkSmsSegmentModal()">📟 Add to SMS Segment</button>
+  {% endif %}
   <button type="button" class="btn btn-sm btn-primary" onclick="openBulkLabelModal()">🏷️ Add to Label</button>
   <button type="button" class="btn btn-sm" onclick="clearLeadSelection()">Clear</button>
 </div>
@@ -419,7 +464,11 @@
         <tr>
           <th style="width:34px"><input type="checkbox" id="selectAllLeadsCb" onchange="toggleSelectAllLeads(this)"></th>
           <th>Customer</th>
-          <th data-col="segment">Segment</th>
+          <th data-col="segment">Email Segment</th>
+          <th data-col="wa_segment">WhatsApp Segment</th>
+          {% if is_phixtra_support_account %}
+          <th data-col="sms_segment">SMS Segment</th>
+          {% endif %}
           <th data-col="label">Label</th>
           <th data-col="contact_person">Contact Person</th>
           <th data-col="phone">Phone</th>
@@ -437,7 +486,7 @@
       <tbody id="pipelineTbody">
         {% if not leads %}
         <tr><td colspan="{{ empty_colspan }}" style="text-align:center;color:var(--muted);padding:40px">
-          {% if search or stage_filter != 'all' or has_phone or has_whatsapp or has_email or hide_segment_ids or hide_label_ids or show_label_ids %}
+          {% if search or stage_filter != 'all' or has_phone or has_whatsapp or has_email or hide_segment_ids or hide_label_ids or show_label_ids or hide_sms_segment_ids or hide_wa_segment_ids %}
           No deals match your search or filters.
           {% else %}
           No deals yet. Add one above to start your pipeline.
@@ -462,6 +511,26 @@
               <span class="muted">—</span>
             {% endif %}
           </td>
+          <td data-col="wa_segment" style="font-size:11px">
+            {% if l.wa_segment_names %}
+              {% for sname in l.wa_segment_names %}
+              <span class="stage-pill" style="background:#d1fae5;color:#065f46;margin:1px 3px 1px 0">{{ sname }}</span>
+              {% endfor %}
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+          {% if is_phixtra_support_account %}
+          <td data-col="sms_segment" style="font-size:11px">
+            {% if l.sms_segment_names %}
+              {% for sname in l.sms_segment_names %}
+              <span class="stage-pill" style="background:#dbeafe;color:#1e40af;margin:1px 3px 1px 0">{{ sname }}</span>
+              {% endfor %}
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+          {% endif %}
           <td data-col="label" style="font-size:11px">
             {% if l.label_names %}
               {% for lname in l.label_names %}
@@ -518,6 +587,8 @@
     {% set base_args = {'q': search, 'stage': stage_filter, 'per_page': per_page,
                          'has_phone': '1' if has_phone else none, 'has_whatsapp': '1' if has_whatsapp else none,
                          'has_email': '1' if has_email else none, 'hide_segment': hide_segment_ids or none,
+                         'hide_sms_segment': hide_sms_segment_ids or none,
+                         'hide_wa_segment': hide_wa_segment_ids or none,
                          'hide_label': hide_label_ids or none, 'label': show_label_ids or none} %}
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
       <a href="{{ url_for('portal.sales_pipeline', page=page-1, **base_args) if page > 1 else '#' }}"
@@ -600,11 +671,11 @@
   </div>
 </div>
 
-<!-- ── Bulk "Add to Segment" modal ── -->
+<!-- ── Bulk "Add to Email Segment" modal ── -->
 <div class="modal-over" id="bulkSegModal" onclick="if(event.target===this)closeBulkSegmentModal()">
   <div class="modal-card">
-    <div class="modal-title">Add <span id="bulkSegCount">0</span> contact(s) to a segment</div>
-    <p class="modal-sub">Segments are reusable groups you can target with an Email Campaign. Pick an existing one, or create a new one below.</p>
+    <div class="modal-title">Add <span id="bulkSegCount">0</span> contact(s) to an Email Segment</div>
+    <p class="modal-sub">Email Segments are reusable groups you can target with an Email Campaign. Pick an existing one, or create a new one below.</p>
 
     <div style="display:flex;gap:8px;margin-bottom:16px">
       <input type="text" class="finp" id="bulkSegNewName" placeholder="New segment name…" style="margin:0">
@@ -617,6 +688,27 @@
 
     <div class="modal-actions">
       <button type="button" class="modal-cancel" onclick="closeBulkSegmentModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Bulk "Add to WhatsApp Segment" modal ── -->
+<div class="modal-over" id="bulkWaSegModal" onclick="if(event.target===this)closeBulkWaSegmentModal()">
+  <div class="modal-card">
+    <div class="modal-title">Add <span id="bulkWaSegCount">0</span> contact(s) to a WhatsApp Segment</div>
+    <p class="modal-sub">WhatsApp Segments are reusable groups you can target with a WhatsApp Campaign. Pick an existing one, or create a new one below.</p>
+
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <input type="text" class="finp" id="bulkWaSegNewName" placeholder="New segment name…" style="margin:0">
+      <button type="button" class="modal-confirm" style="flex:0 0 auto;padding:9px 16px" onclick="createWaSegmentAndBulkAdd()">+ Create &amp; Add</button>
+    </div>
+
+    <div id="bulkWaSegListWrap">
+      <div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Loading segments…</div>
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" class="modal-cancel" onclick="closeBulkWaSegmentModal()">Close</button>
     </div>
   </div>
 </div>
@@ -716,6 +808,29 @@
 </div>
 {% endif %}
 
+<!-- ── Bulk "Add to SMS Segment" modal (support@phixtra.com only) ── -->
+{% if is_phixtra_support_account %}
+<div class="modal-over" id="bulkSmsSegModal" onclick="if(event.target===this)closeBulkSmsSegmentModal()">
+  <div class="modal-card">
+    <div class="modal-title">Add <span id="bulkSmsSegCount">0</span> contact(s) to an SMS Segment</div>
+    <p class="modal-sub">SMS Segments are reusable groups you can target with SMS Campaign (under the SMS menu). Pick an existing one, or create a new one below.</p>
+
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <input type="text" class="finp" id="bulkSmsSegNewName" placeholder="New segment name…" style="margin:0">
+      <button type="button" class="modal-confirm" style="flex:0 0 auto;padding:9px 16px" onclick="createSmsSegmentAndBulkAdd()">+ Create &amp; Add</button>
+    </div>
+
+    <div id="bulkSmsSegListWrap">
+      <div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Loading segments…</div>
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" class="modal-cancel" onclick="closeBulkSmsSegmentModal()">Close</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <!-- ── History modal ── -->
 <div class="modal-over" id="historyModal" onclick="if(event.target===this)closeHistoryModal()">
   <div class="modal-card">
@@ -733,6 +848,74 @@ function closeDropModal(){ document.getElementById('dropModal').classList.remove
 function closeHistoryModal(){ document.getElementById('historyModal').classList.remove('open'); }
 function closeEditModal(){ document.getElementById('editModal').classList.remove('open'); }
 function closeAssignAmbassadorModal(){ var m = document.getElementById('assignAmbassadorModal'); if (m) m.classList.remove('open'); }
+
+// ── Bulk-select + "Add to SMS Segment" (mirrors Add to WhatsApp Segment above,
+// support@phixtra.com only) — populates SMS Segments manageable under the SMS
+// sidebar menu's Compose drawer. ─────────────────────────────────────────────
+function openBulkSmsSegmentModal() {
+  var count = getSelectedLeadIds().length;
+  if (count === 0) return;
+  document.getElementById('bulkSmsSegCount').textContent = count;
+  document.getElementById('bulkSmsSegNewName').value = '';
+  document.getElementById('bulkSmsSegModal').classList.add('open');
+  renderBulkSmsSegList();
+}
+function closeBulkSmsSegmentModal() {
+  document.getElementById('bulkSmsSegModal').classList.remove('open');
+}
+function renderBulkSmsSegList() {
+  var wrap = document.getElementById('bulkSmsSegListWrap');
+  wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Loading segments…</div>';
+  fetch('/sms/segments')
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      var segments = data.segments || [];
+      if (segments.length === 0) {
+        wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">No segments yet — create one above.</div>';
+        return;
+      }
+      wrap.innerHTML = segments.map(function(s){
+        return '<div class="seg-picker-row" data-seg-id="' + s.id + '" onclick="addSelectedToSmsSegment(this.dataset.segId)">'
+          + '<span class="seg-picker-name">' + escapeHtmlSp(s.name) + '</span>'
+          + '<span class="seg-picker-count">' + s.member_count + ' contact(s)</span>'
+          + '</div>';
+      }).join('');
+    })
+    .catch(function(){ wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--bad)">Could not load segments.</div>'; });
+}
+function bulkAddToSmsSegment(segmentId) {
+  var ids = getSelectedLeadIds();
+  if (ids.length === 0) return;
+  var fd = new FormData();
+  ids.forEach(function(id){ fd.append('lead_ids', id); });
+  return fetch('/sms/segments/' + segmentId + '/members/bulk-add', { method: 'POST', body: fd })
+    .then(function(r){ return r.json(); });
+}
+function addSelectedToSmsSegment(segmentId) {
+  bulkAddToSmsSegment(segmentId).then(function(data){
+    if (data.error) { alert(data.error); return; }
+    var skipped = data.requested - data.added;
+    var msg = 'Added ' + data.added + ' contact(s) to the SMS Segment.';
+    if (skipped > 0) msg += ' (' + skipped + ' skipped — already in the segment or missing a phone number.)';
+    alert(msg);
+    closeBulkSmsSegmentModal();
+    clearLeadSelection();
+  }).catch(function(){ alert('Could not add contacts — check your connection'); });
+}
+function createSmsSegmentAndBulkAdd() {
+  var input = document.getElementById('bulkSmsSegNewName');
+  var name = input.value.trim();
+  if (!name) { input.focus(); return; }
+  var fd = new FormData();
+  fd.append('name', name);
+  fetch('/sms/segments/create', { method: 'POST', body: fd })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (data.error) { alert(data.error); return; }
+      addSelectedToSmsSegment(data.id);
+    })
+    .catch(function(){ alert('Could not create segment — check your connection'); });
+}
 
 // ── Bulk-select + "Add to Segment" ──────────────────────────────────────────
 function getSelectedLeadIds() {
@@ -801,7 +984,7 @@ function addSelectedToSegment(segmentId) {
   bulkAddToSegment(segmentId).then(function(data){
     if (data.error) { alert(data.error); return; }
     var skipped = data.requested - data.added;
-    var msg = 'Added ' + data.added + ' contact(s) to the segment.';
+    var msg = 'Added ' + data.added + ' contact(s) to the Email Segment.';
     if (skipped > 0) msg += ' (' + skipped + ' skipped — already in the segment or missing an email address.)';
     alert(msg);
     closeBulkSegmentModal();
@@ -824,6 +1007,74 @@ function createSegmentAndBulkAdd() {
 }
 function escapeHtmlSp(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Bulk-select + "Add to WhatsApp Segment" (mirrors Add to Segment above) ──
+function openBulkWaSegmentModal() {
+  var count = getSelectedLeadIds().length;
+  if (count === 0) return;
+  document.getElementById('bulkWaSegCount').textContent = count;
+  document.getElementById('bulkWaSegNewName').value = '';
+  document.getElementById('bulkWaSegModal').classList.add('open');
+  renderBulkWaSegList();
+}
+function closeBulkWaSegmentModal() {
+  document.getElementById('bulkWaSegModal').classList.remove('open');
+}
+
+function renderBulkWaSegList() {
+  var wrap = document.getElementById('bulkWaSegListWrap');
+  wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Loading segments…</div>';
+  fetch('/whatsapp/pipeline-segments')
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      var segments = data.segments || [];
+      if (segments.length === 0) {
+        wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">No segments yet — create one above.</div>';
+        return;
+      }
+      wrap.innerHTML = segments.map(function(s){
+        return '<div class="seg-picker-row" data-seg-id="' + s.id + '" onclick="addSelectedToWaSegment(this.dataset.segId)">'
+          + '<span class="seg-picker-name">' + escapeHtmlSp(s.name) + '</span>'
+          + '<span class="seg-picker-count">' + s.member_count + ' contact(s)</span>'
+          + '</div>';
+      }).join('');
+    })
+    .catch(function(){ wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--bad)">Could not load segments.</div>'; });
+}
+
+function bulkAddToWaSegment(segmentId) {
+  var ids = getSelectedLeadIds();
+  if (ids.length === 0) return;
+  var fd = new FormData();
+  ids.forEach(function(id){ fd.append('lead_ids', id); });
+  return fetch('/whatsapp/pipeline-segments/' + segmentId + '/members/bulk-add', { method: 'POST', body: fd })
+    .then(function(r){ return r.json(); });
+}
+function addSelectedToWaSegment(segmentId) {
+  bulkAddToWaSegment(segmentId).then(function(data){
+    if (data.error) { alert(data.error); return; }
+    var skipped = data.requested - data.added;
+    var msg = 'Added ' + data.added + ' contact(s) to the WhatsApp Segment.';
+    if (skipped > 0) msg += ' (' + skipped + ' skipped — already in the segment or missing a phone number.)';
+    alert(msg);
+    closeBulkWaSegmentModal();
+    clearLeadSelection();
+  }).catch(function(){ alert('Could not add contacts — check your connection'); });
+}
+function createWaSegmentAndBulkAdd() {
+  var input = document.getElementById('bulkWaSegNewName');
+  var name = input.value.trim();
+  if (!name) { input.focus(); return; }
+  var fd = new FormData();
+  fd.append('name', name);
+  fetch('/whatsapp/pipeline-segments/create', { method: 'POST', body: fd })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (data.error) { alert(data.error); return; }
+      addSelectedToWaSegment(data.id);
+    })
+    .catch(function(){ alert('Could not create segment — check your connection'); });
 }
 
 function openBulkLabelModal() {
@@ -950,6 +1201,12 @@ function toggleColPicker() {
 function toggleSegPicker() {
   document.getElementById('segPickerMenu').classList.toggle('open');
 }
+function toggleWaSegPicker() {
+  document.getElementById('waSegPickerMenu').classList.toggle('open');
+}
+function toggleSmsSegPicker() {
+  document.getElementById('smsSegPickerMenu').classList.toggle('open');
+}
 function toggleLabelPicker() {
   document.getElementById('labelPickerMenu').classList.toggle('open');
 }
@@ -965,10 +1222,14 @@ function onLabelModeChange(cb) {
   cb.form.submit();
 }
 document.addEventListener('click', function(e) {
-  var colWrap = document.querySelector('.col-picker-wrap:not(.seg-picker-wrap):not(.label-picker-wrap)');
+  var colWrap = document.querySelector('.col-picker-wrap:not(.seg-picker-wrap):not(.wa-seg-picker-wrap):not(.label-picker-wrap):not(.sms-seg-picker-wrap)');
   if (colWrap && !colWrap.contains(e.target)) document.getElementById('colPickerMenu').classList.remove('open');
   var segWrap = document.querySelector('.seg-picker-wrap');
   if (segWrap && !segWrap.contains(e.target)) document.getElementById('segPickerMenu').classList.remove('open');
+  var waSegWrap = document.querySelector('.wa-seg-picker-wrap');
+  if (waSegWrap && !waSegWrap.contains(e.target)) document.getElementById('waSegPickerMenu').classList.remove('open');
+  var smsSegWrap = document.querySelector('.sms-seg-picker-wrap');
+  if (smsSegWrap && !smsSegWrap.contains(e.target)) document.getElementById('smsSegPickerMenu').classList.remove('open');
   var labelWrap = document.querySelector('.label-picker-wrap');
   if (labelWrap && !labelWrap.contains(e.target)) document.getElementById('labelPickerMenu').classList.remove('open');
   var channelWrap = document.querySelector('.channel-picker-wrap');

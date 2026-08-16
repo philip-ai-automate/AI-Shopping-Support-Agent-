@@ -66,13 +66,8 @@ def _get_openai_client() -> OpenAI:
 
 
 def _get_pg_conn():
-    return psycopg2.connect(
-        host=os.getenv("PG_HOST", "localhost"),
-        port=int(os.getenv("PG_PORT", "5432")),
-        user=os.getenv("PG_USER"),
-        password=os.getenv("PG_PASSWORD"),
-        dbname=os.getenv("PG_DB"),
-    )
+    from db import get_db_connection
+    return get_db_connection()
 
 
 def _embed_query(text: str) -> List[float]:
@@ -263,14 +258,13 @@ def _parse_filters_sql(query: str, tenant_currency: str = "") -> Tuple[List[str]
             except Exception:
                 pass
 
-    # Stock filter
-    if re.search(
-        r'\bin[\s-]?stock\b|\bonly\s+(?:items?\s+)?(?:in\s+stock|available)\b|\bavailable\s+(?:now|only|items?)\b',
-        q,
-    ):
-        parts.append("in_stock = TRUE")
-    elif re.search(r'\bout[\s-]?of[\s-]?stock\b', q):
-        parts.append("in_stock = FALSE")
+    # Stock filter — default to in-stock products only, unless the customer
+    # explicitly asks about out-of-stock items. Scoped to type='product' so
+    # FAQ/policy pages (in_stock IS NULL) are never excluded by this filter.
+    if re.search(r'\bout[\s-]?of[\s-]?stock\b', q):
+        parts.append("(type <> 'product' OR in_stock = FALSE)")
+    else:
+        parts.append("(type <> 'product' OR in_stock = TRUE)")
 
     # Brand filter
     _brand_m = re.search(
@@ -494,6 +488,22 @@ def search_documents_with_meta(
         print(f"   ⚠️ search failed: {e}")
         return [], []
 
+    # Guarantee FAQ/policy pages (payment terms, shipping, returns, etc.) get a
+    # chance to reach the LLM even when informal phrasing or a strong product
+    # context causes the mixed hybrid search above to return only products.
+    page_top_k = int(os.getenv("RAG_PAGE_TOP_K", "2"))
+    if q_vec is not None and not any(r.get("type") == "page" for r in rows):
+        try:
+            conn = _get_pg_conn()
+            try:
+                page_rows = _run_vector_search(conn, tenant_id, q_vec, page_top_k, ["type = %s"], ["page"])
+            finally:
+                conn.close()
+            existing_ids = {r["id"] for r in rows}
+            rows.extend(r for r in page_rows if r["id"] not in existing_ids)
+        except Exception as e:
+            print(f"   ⚠️ page-supplement search failed: {e}")
+
     chunks: List[str] = []
     raw_docs: List[Dict[str, Any]] = []
     for row in rows:
@@ -502,7 +512,7 @@ def search_documents_with_meta(
             chunks.append(chunk)
             raw_docs.append(row)
 
-    return chunks[:top_k], raw_docs[:top_k]
+    return chunks[:top_k + page_top_k], raw_docs[:top_k + page_top_k]
 
 
 def search_related_products(

@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import psycopg2
 import psycopg2.extras
 import bcrypt
+import requests
 from openai import OpenAI
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
@@ -145,6 +146,24 @@ def stamp_sync_complete(tenant_id: int):
         conn.close()
     except Exception as e:
         print(f"[SYNC] stamp_sync_complete failed (non-fatal): {e}")
+        return
+
+    # Notify the portal so it can upgrade this tenant to its real Pro trial —
+    # this is the actual "channel connected" signal for web merchants (as
+    # opposed to a self-reported onboarding-wizard checkbox). Best-effort:
+    # a portal outage must never break the sync response.
+    try:
+        portal_url = os.getenv("PORTAL_INTERNAL_URL", "").rstrip("/")
+        token      = os.getenv("PHIXTRA_INTERNAL_TOKEN", "")
+        if portal_url and token:
+            requests.post(
+                f"{portal_url}/internal/grant-trial-upgrade",
+                json={"tenant_id": tenant_id},
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=5,
+            )
+    except Exception as e:
+        print(f"[SYNC] grant-trial-upgrade notify failed (non-fatal): {e}")
 
 
 def update_tenant_search_settings(tenant_id: int, index_name: str, semantic_config_name: str = "phixtra-semantic"):
@@ -256,6 +275,65 @@ def _ensure_hybrid_search_schema() -> None:
 
 
 _ensure_hybrid_search_schema()
+
+
+_CODE_NOISE_SYMBOLS = set("{}();=<>`$@#%^&*+~|\\[]")
+
+_CODE_NOISE_KEYWORDS = re.compile(
+    r'(function|const|var|let|document\.|window\.|typeof|import|export|'
+    r'addEventListener|getElementById|querySelector|classList|innerHTML|textContent|'
+    r'tailwind\.config|cubic-bezier|@media|@keyframes|px;|em;|rem;|vh;|vw;|'
+    r'rgba?\(|#[0-9a-fA-F]{3,8}\b|url\(|!important)', re.I
+)
+
+
+def _is_code_token(tok: str) -> bool:
+    if not tok:
+        return False
+    symbol_count = sum(1 for c in tok if c in _CODE_NOISE_SYMBOLS)
+    if symbol_count and symbol_count / len(tok) > 0.2:
+        return True
+    if _CODE_NOISE_KEYWORDS.search(tok):
+        return True
+    if re.match(r'^[a-zA-Z][a-zA-Z0-9]*\.[a-zA-Z]', tok):
+        return True
+    return False
+
+
+def _strip_code_noise(text: str, window: int = 12, threshold: float = 0.35) -> str:
+    """
+    Strip contiguous runs of JS/CSS-like tokens out of synced page/post content.
+
+    Some page builders (Elementor "Custom HTML" widgets, embedded scripts) store
+    raw JavaScript/CSS directly in WordPress's post_content with no <script>/<style>
+    tags around it — wp_strip_all_tags() on the plugin side can't remove it because
+    there's no markup to strip, just code. Left in, that code can push a page's
+    real text (address, hours, policy details, etc.) past the character cap used
+    when building AI answers, so the AI never sees it even though the page was
+    synced. This is a best-effort token-density filter, not a parser: it keeps
+    natural-language runs and drops dense code runs. Verified against real synced
+    content to leave normal prose (prices, emails, phone numbers) untouched.
+    """
+    if not text:
+        return text
+    tokens = text.split(' ')
+    if len(tokens) < window:
+        return text
+
+    flags = [_is_code_token(t) for t in tokens]
+    n = len(tokens)
+    half = window // 2
+    in_code = [False] * n
+    for i in range(n):
+        lo = max(0, i - half)
+        hi = min(n, i + half + 1)
+        seg = flags[lo:hi]
+        if sum(seg) / len(seg) >= threshold:
+            in_code[i] = True
+
+    kept = [tok for tok, bad in zip(tokens, in_code) if not bad]
+    result = ' '.join(kept)
+    return re.sub(r'\s{2,}', ' ', result).strip()
 
 
 def _make_embed_text(d: Dict[str, Any], doc_type: str, title: str) -> str:
@@ -580,7 +658,7 @@ def sync_batch(
 
         safe_key = make_safe_doc_key(it.id, it.type, it.wp_id)
         title = (d.get("title") or it.raw.get("name") or it.raw.get("title") or "").strip()
-        content = (d.get("content") or "").strip()
+        content = _strip_code_noise((d.get("content") or "").strip())
         categories_text = (
             d.get("categories_text")
             or ", ".join([str(c) for c in (d.get("categories") or []) if c])

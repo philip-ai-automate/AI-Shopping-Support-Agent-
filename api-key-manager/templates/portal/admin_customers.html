@@ -44,6 +44,7 @@
       <thead>
         <tr>
           <th>Name</th>
+          <th>Business Name</th>
           <th>Email</th>
           <th>Phone</th>
           <th>Domain</th>
@@ -59,6 +60,7 @@
         {% for c in customers %}
         <tr>
           <td><strong>{{ c.full_name }}</strong></td>
+          <td>{{ c.tenant_name or '—' }}</td>
           <td>{{ c.email }}</td>
           <td class="muted">{{ c.phone_number or '—' }}</td>
           <td class="muted">{{ c.domain }}</td>
@@ -97,7 +99,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="10" class="muted" style="text-align:center;padding:24px">
+        <tr><td colspan="11" class="muted" style="text-align:center;padding:24px">
           No customers found{% if q %} matching "{{ q }}"{% endif %}.
         </td></tr>
         {% endfor %}

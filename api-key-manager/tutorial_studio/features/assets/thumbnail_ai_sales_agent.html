@@ -1,0 +1,94 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    width:1280px; height:720px; overflow:hidden;
+    background:
+      radial-gradient(circle at 82% 78%, rgba(37,211,102,0.18) 0%, transparent 45%),
+      radial-gradient(circle at 12% 15%, rgba(37,211,102,0.10) 0%, transparent 40%),
+      linear-gradient(160deg, #030c18 0%, #01060c 60%, #01050a 100%);
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    position:relative;
+  }
+
+  .logo-badge {
+    position:absolute; top:56px; left:64px;
+    display:inline-block; padding:14px 26px; border-radius:16px;
+    background:#fff; line-height:0;
+  }
+  .logo-badge img { height:46px; display:block; }
+
+  .moon {
+    position:absolute; top:64px; right:80px;
+    font-size:64px; filter: drop-shadow(0 0 24px rgba(255,255,255,0.25));
+  }
+
+  .headline {
+    position:absolute; left:64px; top:190px; width:1000px;
+    font-size:92px; font-weight:900; line-height:1.04; color:#fff;
+    letter-spacing:-1px;
+  }
+  .headline .accent { color:#25D366; }
+
+  .subtext {
+    position:absolute; left:66px; top:470px; width:900px;
+    font-size:34px; font-weight:600; color:#cfe3ee;
+  }
+
+  .chip-row {
+    position:absolute; left:64px; top:560px; display:flex; gap:18px;
+  }
+  .chip {
+    display:flex; align-items:center; gap:10px;
+    padding:14px 26px; border-radius:14px;
+    background:rgba(37,211,102,0.10); border:2px solid #25D366;
+    font-size:26px; font-weight:800; color:#fff;
+  }
+  .chip .dot { width:10px; height:10px; border-radius:50%; background:#25D366; }
+
+  .phone-mock {
+    position:absolute; right:70px; top:150px;
+    width:300px; height:440px; border-radius:36px;
+    background:#0b1620; border:6px solid #16222e;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.55);
+    padding:18px 14px;
+  }
+  .phone-mock .bar {
+    height:14px; border-radius:8px; background:rgba(255,255,255,0.08);
+    margin-bottom:14px;
+  }
+  .bubble {
+    max-width:78%; padding:14px 16px; border-radius:16px;
+    font-size:19px; font-weight:600; margin-bottom:14px; line-height:1.3;
+  }
+  .bubble.in {
+    background:#1f2c38; color:#e7eef4; border-bottom-left-radius:4px;
+  }
+  .bubble.out {
+    background:#25D366; color:#04170c; margin-left:auto; border-bottom-right-radius:4px;
+  }
+</style>
+</head>
+<body>
+  <div class="logo-badge"><img src="phixtra_logo.png" alt="PhiXtra"></div>
+  <div class="moon">🌙</div>
+
+  <div class="headline">Sells While<br>You <span class="accent">Sleep</span></div>
+  <div class="subtext">Your AI Sales Agent replies on WhatsApp — 24/7</div>
+
+  <div class="chip-row">
+    <div class="chip"><span class="dot"></span>Never Lose A Customer</div>
+  </div>
+
+  <div class="phone-mock">
+    <div class="bar" style="width:60%"></div>
+    <div class="bubble in">Do you have this in stock?</div>
+    <div class="bubble out">Yes! Here's full pricing 👇</div>
+    <div class="bubble in">Any discount?</div>
+    <div class="bubble out">5% off, just for you 🎉</div>
+  </div>
+</body>
+</html>

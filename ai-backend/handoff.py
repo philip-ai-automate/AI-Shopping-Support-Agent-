@@ -241,10 +241,14 @@ def build_handoff_instruction(tenant_id: int) -> str:
         "",
         "IMPORTANT RULES:",
         "- For VISITOR-INITIATED triggers: fire when the visitor clearly says something matching the rule.",
-        "- For AI-DECIDED triggers: these are the merchant's explicit instructions — fire them even if",
-        "  you feel you could handle the situation yourself. The merchant has decided these cases must",
+        "- For AI-DECIDED triggers: these are the store's explicit instructions — fire them even if",
+        "  you feel you could handle the situation yourself. The store has decided these cases must",
         "  go to a human. Do NOT skip them just because you can write a polite reply.",
         "- Do NOT trigger a handoff for routine product questions or general browsing.",
+        "- A 'could not answer' trigger means you have NO real answer to give at all. If you were able",
+        "  to substantively answer the question and are only missing one small detail (e.g. a single",
+        "  spec that isn't in the product data), that is NOT a failure to answer — just say so plainly",
+        "  in your reply and continue the conversation normally. Do not hand off over one missing detail.",
     ]
 
     return "\n".join(lines)

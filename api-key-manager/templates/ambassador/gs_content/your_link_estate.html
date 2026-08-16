@@ -1,0 +1,55 @@
+<div class="gs-section">
+  <div class="gs-section-title">Your referral link</div>
+  <p style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.6">
+    When an agency signs up using this link, they are added to your account. You earn money every time they pay their monthly or annual subscription.
+  </p>
+  <div class="ref-box">
+    <span id="refLink" class="ref-url">{{ register_url }}</span>
+    <button class="copy-btn" onclick="copyText('refLink', this)">Copy</button>
+  </div>
+  <div class="gs-tip">
+    <strong>Best way to share:</strong> Paste this link in a WhatsApp chat with an agency owner, post it on your status, or drop it in any real estate group you are in.
+  </div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">Your QR code</div>
+  <p style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.6">
+    An agency owner can point their phone camera at this code and go straight to your sign-up page. No link needed.
+  </p>
+  <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
+    <img src="{{ url_for('ambassador.qr_image', product='estate') }}" alt="Your Real Estate QR code"
+         style="width:130px;height:130px;border:1px solid var(--line);border-radius:12px;flex-shrink:0"/>
+    <div style="flex:1;min-width:180px;display:flex;flex-direction:column;gap:10px">
+      <a href="{{ url_for('ambassador.qr_image', download='1', product='estate') }}" class="btn btn-primary btn-sm" download>
+        Download QR Code
+      </a>
+      <a href="{{ url_for('ambassador.qr_page', product='estate') }}" class="btn btn-sm">View Full QR Page →</a>
+    </div>
+  </div>
+  <div class="gs-tip" style="margin-top:14px">
+    <strong>Pro tip:</strong> Save the QR image as your phone wallpaper or lock screen. When you meet an agency owner, just show your phone — no searching for a link.
+  </div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">Ways to share</div>
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;gap:12px;align-items:flex-start;font-size:13px">
+      <span style="font-size:18px;flex-shrink:0">📲</span>
+      <div><strong>WhatsApp Status</strong> — Post your QR code as a status. Anyone who sees it and scans it is added to your account.</div>
+    </div>
+    <div style="display:flex;gap:12px;align-items:flex-start;font-size:13px">
+      <span style="font-size:18px;flex-shrink:0">💬</span>
+      <div><strong>Direct Message</strong> — Copy your link and send it to an agency owner you are talking to.</div>
+    </div>
+    <div style="display:flex;gap:12px;align-items:flex-start;font-size:13px">
+      <span style="font-size:18px;flex-shrink:0">🖨️</span>
+      <div><strong>Printed flyer</strong> — Download your QR code and print it on a small card to hand out at property expos or agent meetups.</div>
+    </div>
+    <div style="display:flex;gap:12px;align-items:flex-start;font-size:13px">
+      <span style="font-size:18px;flex-shrink:0">👥</span>
+      <div><strong>Real estate WhatsApp groups</strong> — Share in agent or landlord association groups you belong to (ask the admin first).</div>
+    </div>
+  </div>
+</div>

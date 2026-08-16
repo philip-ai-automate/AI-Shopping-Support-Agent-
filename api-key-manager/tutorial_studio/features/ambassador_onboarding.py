@@ -22,6 +22,8 @@ account stays at 0 leads for the next re-recording.
 """
 from playwright.sync_api import TimeoutError as PWTimeoutError
 
+from tutorial_studio.lib import click_visibly, fill_visibly, highlight, move_to, type_visibly
+
 BASE_URL = "https://portal.phixtra.com"
 DEMO_EMAIL = "test@phixtra.com"
 DEMO_PASSWORD = "Demo1234!"
@@ -116,101 +118,116 @@ def login(browser, video_dir):
     return page, ctx
 
 
+LEAD_ROW = "tr.lead-row:has-text('Sunrise Fashion Store')"
+
+
 def _confirm_advance_modal(page):
     page.wait_for_selector("#advanceModal.open", timeout=5000)
-    page.click("#advanceModal .modal-confirm")
+    click_visibly(page, "#advanceModal .modal-confirm")
     page.wait_for_load_state("networkidle")
 
 
 def record(page, hold, mark, beat_ms):
-    # --- landing: land on My Pipeline, camera holds on the stage funnel ---
+    # --- landing: no action — camera holds on the stage funnel ---
     page.goto(f"{BASE_URL}/ambassador/leads", wait_until="networkidle", timeout=20000)
-    hold("landing")
+    hold("landing", motion=[".stage-funnel"])
 
     # --- open_form: reveal the Add Lead form ---
-    page.click('[data-tour="add-lead-btn"]')
-    hold("open_form")
+    click_visibly(page, '[data-tour="add-lead-btn"]')
+    hold("open_form", motion=["#addLeadForm"])
 
     # --- fill_business: name + industry ---
-    page.fill("#addLeadForm input[name=business_name]", "Sunrise Fashion Store")
-    page.fill("#addLeadForm input[name=industry]", "Fashion Retail")
+    type_visibly(page, "#addLeadForm input[name=business_name]", "Sunrise Fashion Store")
+    type_visibly(page, "#addLeadForm input[name=industry]", "Fashion Retail")
     hold("fill_business")
 
     # --- fill_contact: contact name, phone, email ---
-    page.fill("#addLeadForm input[name=contact_name]", "Amaka Eze")
-    page.fill("#addLeadForm input[name=phone]", "2348012345678")
-    page.fill("#addLeadForm input[name=email]", "amaka@sunrisefashion.ng")
+    type_visibly(page, "#addLeadForm input[name=contact_name]", "Amaka Eze")
+    type_visibly(page, "#addLeadForm input[name=phone]", "2348012345678")
+    type_visibly(page, "#addLeadForm input[name=email]", "amaka@sunrisefashion.ng")
     hold("fill_contact")
 
     # --- fill_notes: note + submit, page reloads with the new lead at top ---
-    page.fill("#addLeadForm textarea[name=notes]", "Interested, wants pricing info")
-    page.click("#addLeadForm button[type=submit]")
+    type_visibly(page, "#addLeadForm textarea[name=notes]", "Interested, wants pricing info")
+    click_visibly(page, "#addLeadForm button[type=submit]")
     page.wait_for_load_state("networkidle")
-    hold("fill_notes")
+    hold("fill_notes", motion=[LEAD_ROW])
 
     # --- advance_contacted ---
-    page.click('[data-tour="advance-btn"]')
+    click_visibly(page, f"{LEAD_ROW} button.btn-primary")
     page.wait_for_selector("#advanceModal.open", timeout=5000)
+    move_to(page, "#advFields select[name=contact_channel]")
+    highlight(page, "#advFields select[name=contact_channel]", ms=700)
+    page.wait_for_timeout(400)
     page.select_option("#advFields select[name=contact_channel]", value="whatsapp")
-    page.fill("#advFields input[name=contact_date]", "2026-07-05")
-    page.fill(
+    type_visibly(page, "#advFields input[name=contact_date]", "2026-07-05")
+    fill_visibly(
+        page,
         "#advFields textarea[name=contact_response]",
         "Sent an intro message on WhatsApp, they replied asking for a demo next week.",
     )
     _confirm_advance_modal(page)
-    hold("advance_contacted")
+    hold("advance_contacted", motion=[LEAD_ROW])
 
     # --- advance_demo ---
-    page.click('[data-tour="advance-btn"]')
+    click_visibly(page, f"{LEAD_ROW} button.btn-primary")
     page.wait_for_selector("#advanceModal.open", timeout=5000)
-    page.fill("#advFields input[name=demo_date]", "2026-07-08")
-    page.fill(
+    type_visibly(page, "#advFields input[name=demo_date]", "2026-07-08")
+    fill_visibly(
+        page,
         "#advFields textarea[name=demo_reaction]",
         "Loved the AI replying instantly to customer questions, asked how much it costs.",
     )
     _confirm_advance_modal(page)
-    hold("advance_demo")
+    hold("advance_demo", motion=[LEAD_ROW])
 
     # --- advance_requirements ---
-    page.click('[data-tour="advance-btn"]')
+    click_visibly(page, f"{LEAD_ROW} button.btn-primary")
     page.wait_for_selector("#advanceModal.open", timeout=5000)
     for name in ("req_phone", "req_meta_account", "req_whatsapp_connected", "req_product_list"):
-        page.check(f"#advFields input[name={name}]")
+        click_visibly(page, f"#advFields input[name={name}]", pre_click_ms=300)
     _confirm_advance_modal(page)
-    hold("advance_requirements")
+    hold("advance_requirements", motion=[LEAD_ROW])
 
     # --- advance_onboarding ---
-    page.click('[data-tour="advance-btn"]')
+    click_visibly(page, f"{LEAD_ROW} button.btn-primary")
     page.wait_for_selector("#advanceModal.open", timeout=5000)
-    page.fill("#advFields input[name=onboarding_date]", "2026-07-12")
-    page.fill(
+    type_visibly(page, "#advFields input[name=onboarding_date]", "2026-07-12")
+    fill_visibly(
+        page,
         "#advFields textarea[name=onboarding_notes]",
         "Uploaded 40 products, connected WhatsApp number, sent login details to the owner.",
     )
     _confirm_advance_modal(page)
-    hold("advance_onboarding")
+    hold("advance_onboarding", motion=[LEAD_ROW])
 
-    # --- advance_active: leave the tenant-link dropdown on "Not linked yet" ---
-    page.click('[data-tour="advance-btn"]')
+    # --- advance_active: highlight the checklist the narration describes,
+    # but leave the optional tenant-link dropdown on "Not linked yet" — a
+    # real tenant link is never touched by this synthetic recording.
+    # (#advFields is populated async on modal open — target the container
+    # itself rather than a specific field inside it, more robust to exactly
+    # when the fetch resolves.) ---
+    click_visibly(page, f"{LEAD_ROW} button.btn-primary")
     page.wait_for_selector("#advanceModal.open", timeout=5000)
+    page.wait_for_timeout(400)
+    hold("advance_active", motion=["#advFields"])
     _confirm_advance_modal(page)
-    hold("advance_active")
 
     # --- advance_support: final stage, no extra fields ---
-    page.click('[data-tour="advance-btn"]')
+    click_visibly(page, f"{LEAD_ROW} button.btn-primary")
     _confirm_advance_modal(page)
-    hold("advance_support")
+    hold("advance_support", motion=[LEAD_ROW])
 
     # --- history: open the stage timeline ---
-    page.click('[data-tour="history-btn"]')
+    click_visibly(page, f"{LEAD_ROW} button:has-text('History')")
     page.wait_for_selector("#historyModal.open", timeout=5000)
-    hold("history")
-    page.click("#historyModal .modal-cancel")
+    hold("history", motion=["#historyBody"])
+    click_visibly(page, "#historyModal .modal-cancel")
 
     # --- drop: drop the lead with a reason (cleanup deletes the row after) ---
-    page.click('[data-tour="drop-btn"]')
+    click_visibly(page, f"{LEAD_ROW} button:has-text('Drop')")
     page.wait_for_selector("#dropModal.open", timeout=5000)
-    page.fill("#dropForm textarea[name=reason]", "Demo lead for the tutorial video")
-    page.click("#dropForm .modal-confirm")
+    type_visibly(page, "#dropForm textarea[name=reason]", "Demo lead for the tutorial video")
+    click_visibly(page, "#dropForm .modal-confirm")
     page.wait_for_load_state("networkidle")
-    hold("drop")
+    hold("drop", motion=['[data-tour="dropped-section"]'])

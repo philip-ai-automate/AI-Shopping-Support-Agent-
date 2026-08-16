@@ -1,6 +1,6 @@
 import re
 
-from meta_sender import send_text, send_checkout_message, send_image_with_caption, send_interactive_list
+from meta_sender import send_text, send_checkout_message, send_product_image, send_interactive_list
 from wa_db import get_cached_product, get_session_products, mark_product_viewed, get_document_for_product
 from currency import fmt_ngn
 
@@ -215,7 +215,7 @@ async def handle_list_select(
 
     # Send product image (best-effort, after the text so text arrives first)
     if image_url:
-        sent = await send_image_with_caption(
+        sent = await send_product_image(
             phone_number_id, access_token, customer_phone, image_url,
             (product.get("product_name") or "").split(" - ")[0].strip(),
         )

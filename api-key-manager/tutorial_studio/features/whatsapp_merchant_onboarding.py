@@ -32,6 +32,8 @@ tutorial_studio's cleanup step deletes it afterward).
 """
 from playwright.sync_api import TimeoutError as PWTimeoutError
 
+from tutorial_studio.lib import click_visibly, type_visibly
+
 BASE_URL = "https://portal.phixtra.com"
 TEST_BUSINESS_NAME = "Zemich Boutique"
 TEST_PHONE_PLAIN = "2348033334444"       # what a merchant types into the phone field
@@ -133,44 +135,50 @@ def _read_latest_otp():
 def record(page, hold, mark, beat_ms):
     # --- login_arrive: land on wa-login, enter the WhatsApp number ---
     page.goto(f"{BASE_URL}/wa-login", wait_until="networkidle", timeout=20000)
-    page.fill("input[name=phone]", TEST_PHONE_PLAIN)
+    type_visibly(page, "input[name=phone]", TEST_PHONE_PLAIN)
     hold("login_arrive")
 
-    # --- request_code: submit, land on the verify page ---
-    page.click("button[type=submit]")
+    # --- request_code: submit, land on the verify page — motion re-lands
+    # the cursor on the fresh document after the reload ---
+    click_visibly(page, "button[type=submit]")
     page.wait_for_load_state("networkidle")
     otp = _read_latest_otp()
-    hold("request_code")
+    hold("request_code", motion=["input[name=code]"])
 
     # --- verify_code: enter the code, submit, arrive at the dashboard ---
-    page.fill("input[name=code]", otp)
-    page.click("button[type=submit]")
+    type_visibly(page, "input[name=code]", otp)
+    click_visibly(page, "button[type=submit]")
     try:
         page.wait_for_url(f"{BASE_URL}/dashboard", timeout=15000)
     except PWTimeoutError:
         raise RuntimeError(f"OTP verification failed — current URL: {page.url}")
-    hold("verify_code")
+    hold("verify_code", motion=["#tour-wa-hero"])
 
-    # --- dashboard_status: camera holds on the "not connected" WhatsApp hero ---
+    # --- dashboard_status: no action — camera holds on the "not connected"
+    # WhatsApp hero, cursor drifts there instead of a dead static shot ---
     page.locator("#tour-wa-hero").scroll_into_view_if_needed()
-    hold("dashboard_status")
+    hold("dashboard_status", motion=["#tour-wa-hero"])
 
     # --- click_connect: go to the WhatsApp Connect page ---
-    page.click("a:has-text('Connect WhatsApp')")
+    click_visibly(page, "a:has-text('Connect WhatsApp')")
     page.wait_for_load_state("networkidle")
-    hold("click_connect")
+    hold("click_connect", motion=["#signupBtn"])
 
-    # --- signup_button: hover the one-click button, never click (real Meta OAuth) ---
-    page.locator("#signupBtn").hover()
-    hold("signup_button")
+    # --- signup_button: highlight the one-click button, never click it
+    # (real Meta OAuth popup) — just move/highlight, no click_visibly ---
+    page.locator("#signupBtn").scroll_into_view_if_needed()
+    hold("signup_button", motion=["#signupBtn"])
 
     # --- manual_expand: expand the manual-connect fallback ---
-    page.click("#manualSetupDetails summary")
+    click_visibly(page, "#manualSetupDetails summary")
     hold("manual_expand")
 
-    # --- webhook_info: camera holds on the webhook URL / verify token fields ---
+    # --- webhook_info: no new action — drift between the webhook URL and
+    # verify token boxes instead of a static hold on just one ---
     page.locator("#webhookUrlBox").scroll_into_view_if_needed()
-    hold("webhook_info")
+    hold("webhook_info", motion=["#webhookUrlBox", "#verifyTokenBox"])
 
-    # --- wrap_up: no new action, closing narration ---
-    hold("wrap_up")
+    # --- wrap_up: no action at all in the original — closing narration
+    # recaps the page, so sweep the cursor back across its key elements
+    # instead of a fully dead final shot ---
+    hold("wrap_up", motion=["#signupBtn", "#manualSetupDetails", "#webhookUrlBox"])

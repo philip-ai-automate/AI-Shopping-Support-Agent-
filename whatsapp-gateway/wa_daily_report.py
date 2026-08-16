@@ -369,11 +369,11 @@ async def ensure_templates_submitted() -> None:
         await submit_template_for_tenant(row["tenant_id"], row["waba_id"], row["access_token"])
 
 
-async def _check_template_status(waba_id: str, access_token: str) -> str | None:
-    """Query Meta for the current approval status of phixtra_daily_report in this WABA."""
+async def _check_template_status(waba_id: str, access_token: str, template_name: str) -> str | None:
+    """Query Meta for the current approval status of a named template in this WABA."""
     url = f"{_GRAPH_BASE}/{waba_id}/message_templates"
     params = {
-        "name": _DAILY_REPORT_TEMPLATE_NAME,
+        "name": template_name,
         "fields": "name,status",
         "access_token": access_token,
     }
@@ -387,15 +387,15 @@ async def _check_template_status(waba_id: str, access_token: str) -> str | None:
         return None
 
 
-def _activate_template_record(tenant_id: int) -> None:
+def _activate_template_record(tenant_id: int, template_type: str) -> None:
     conn = get_db_connection()
     if not conn:
         return
     cur = conn.cursor()
     try:
         cur.execute(
-            "UPDATE wa_templates SET active = TRUE WHERE tenant_id = %s AND template_type = 'daily_report'",
-            (tenant_id,)
+            "UPDATE wa_templates SET active = TRUE WHERE tenant_id = %s AND template_type = %s",
+            (tenant_id, template_type)
         )
         conn.commit()
     except Exception:
@@ -407,8 +407,9 @@ def _activate_template_record(tenant_id: int) -> None:
 
 async def poll_and_activate_templates() -> None:
     """
-    Scheduler job (every 2 h): check Meta API for pending templates and
-    activate any that have been approved since last check.
+    Scheduler job (every 2 h): check Meta API for pending templates (any
+    template_type — daily_report, handoff_alert, etc.) and activate any that
+    have been approved since last check.
     """
     conn = get_db_connection()
     if not conn:
@@ -416,11 +417,11 @@ async def poll_and_activate_templates() -> None:
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cur.execute("""
-            SELECT tmpl.tenant_id, wt.waba_id, wt.access_token
+            SELECT tmpl.tenant_id, tmpl.template_type, tmpl.template_name,
+                   wt.waba_id, wt.access_token
             FROM wa_templates tmpl
             JOIN wa_tenants wt ON tmpl.tenant_id = wt.tenant_id
             WHERE tmpl.active = FALSE
-              AND tmpl.template_type = 'daily_report'
               AND wt.waba_id IS NOT NULL
         """)
         rows = cur.fetchall() or []
@@ -436,13 +437,13 @@ async def poll_and_activate_templates() -> None:
 
     print(f"🔍 [TEMPLATE] Polling approval for {len(rows)} pending template(s)…")
     for row in rows:
-        status = await _check_template_status(row["waba_id"], row["access_token"])
+        status = await _check_template_status(row["waba_id"], row["access_token"], row["template_name"])
         tid = row["tenant_id"]
         if status == "APPROVED":
-            _activate_template_record(tid)
-            print(f"✅ [TEMPLATE] tenant={tid} {_DAILY_REPORT_TEMPLATE_NAME} approved — activated")
+            _activate_template_record(tid, row["template_type"])
+            print(f"✅ [TEMPLATE] tenant={tid} {row['template_name']} approved — activated")
         elif status in ("REJECTED", "PAUSED", "DISABLED"):
-            print(f"⚠️ [TEMPLATE] tenant={tid} {_DAILY_REPORT_TEMPLATE_NAME} → {status}")
+            print(f"⚠️ [TEMPLATE] tenant={tid} {row['template_name']} → {status}")
         else:
             print(f"   [TEMPLATE] tenant={tid} still {status or 'unknown'}")
 
@@ -543,7 +544,7 @@ async def send_daily_report_for_tenant(
     tenant_id       = int(wa_tenant["tenant_id"])
     phone_number_id = wa_tenant["phone_number_id"]
     access_token    = wa_tenant["access_token"]
-    tenant_name     = (wa_tenant.get("tenant_name") or f"Merchant {tenant_id}").strip()
+    tenant_name     = (wa_tenant.get("tenant_name") or f"Business {tenant_id}").strip()
 
     # ── Find the recipient phone ──────────────────────────────────────────
     to_phone = _get_merchant_phone(tenant_id, wa_tenant.get("report_phone"))

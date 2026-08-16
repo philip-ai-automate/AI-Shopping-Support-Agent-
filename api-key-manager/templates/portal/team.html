@@ -1,0 +1,199 @@
+{% extends "portal/base.html" %}
+{% block title %}Team — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+.tm-header{display:flex;align-items:flex-start;justify-content:space-between;
+           flex-wrap:wrap;gap:12px;margin-bottom:22px}
+.tm-title{font-size:22px;font-weight:800;letter-spacing:-.3px}
+.tm-subtitle{font-size:13px;color:var(--muted);margin-top:3px;max-width:520px}
+
+.quota-bar{background:#fff;border:1px solid var(--line);border-radius:12px;
+           padding:14px 20px;margin-bottom:20px;display:flex;align-items:center;
+           justify-content:space-between;gap:16px;flex-wrap:wrap}
+.quota-text{font-size:13px;color:var(--muted)}
+.quota-count{font-size:20px;font-weight:800}
+.quota-count span{font-size:13px;font-weight:500;color:var(--muted)}
+.meter-bar{height:8px;background:#f0f0f2;border-radius:999px;overflow:hidden;width:160px;flex-shrink:0}
+.meter-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#12B76A,#027A48);transition:width .4s}
+.meter-fill.full{background:linear-gradient(90deg,#F04438,#B42318)}
+
+.limit-banner{background:#FEF3F2;border:1px solid #FDA29B;border-radius:10px;
+              padding:12px 16px;font-size:13px;color:#B42318;margin-bottom:20px;
+              display:flex;gap:10px;align-items:flex-start}
+
+.invite-card{background:#fff;border:1px solid var(--line);border-radius:12px;
+             padding:18px 20px;margin-bottom:22px}
+.invite-title{font-size:14px;font-weight:700;margin-bottom:12px}
+.invite-row{display:flex;gap:10px;flex-wrap:wrap}
+.invite-row input{flex:1;min-width:180px}
+
+.agent-picker{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.agent-picker-label{font-size:12px;color:var(--muted);margin-bottom:8px}
+.agent-picker-list{display:flex;flex-wrap:wrap;gap:14px}
+.agent-check{font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer}
+.tm-agent-tag{font-size:11px;font-weight:600;background:#EFF4FF;color:#1E3A8A;
+              border:1px solid #C7D7FD;border-radius:999px;padding:2px 9px}
+.tm-agent-tag.none{background:#FEF3F2;color:#B42318;border-color:#FDA29B}
+.tm-agents-edit{margin-top:8px;display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.tm-agents-edit .agent-check{font-size:12px}
+
+.tm-list{display:flex;flex-direction:column;gap:12px}
+.tm-card{background:#fff;border:1.5px solid var(--line);border-radius:14px;
+         padding:16px 20px}
+.tm-card-top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.tm-card-agents{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.tm-info{flex:1;min-width:0;display:flex;align-items:center;gap:12px}
+.tm-avatar{width:38px;height:38px;border-radius:50%;background:var(--ink);color:#fff;
+           display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;flex-shrink:0}
+.tm-name{font-size:14px;font-weight:700}
+.tm-email{font-size:12px;color:var(--muted)}
+.tm-meta{font-size:11px;color:var(--muted);margin-top:2px}
+.tm-pill{font-size:11px;font-weight:600;border-radius:999px;padding:2px 9px;display:inline-block}
+.tm-pill.active{background:#F0FDF4;color:#027A48;border:1px solid #A6F4C5}
+.tm-pill.pending{background:#FFFAEB;color:#B54708;border:1px solid #FEDF89}
+.tm-pill.inactive{background:#F9F9FB;color:var(--muted);border:1px solid var(--line)}
+
+.tm-actions{display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap}
+.btn-edit{background:#f4f4f6;color:var(--ink);border:1px solid var(--line);border-radius:8px;
+          padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;
+          text-decoration:none;display:inline-flex;align-items:center;gap:4px}
+.btn-edit:hover{background:#e8e8ed}
+.btn-del{background:#FEF3F2;color:#B42318;border:1px solid #FDA89B;border-radius:8px;
+         padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:.15s}
+.btn-del:hover{background:#FEE4E2}
+
+.empty-state{text-align:center;padding:48px 24px;color:var(--muted)}
+.empty-icon{font-size:40px;margin-bottom:12px}
+.empty-text{font-size:14px}
+
+@media(max-width:600px){
+  .tm-actions{flex-direction:column;align-items:flex-end}
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page" style="max-width:820px">
+
+  <div class="tm-header">
+    <div>
+      <div class="tm-title">Team</div>
+      <div class="tm-subtitle">Invite staff to log in from their own device and answer customer messages in the shared Inbox. They can't see billing, settings, or anything outside the Inbox.</div>
+    </div>
+  </div>
+
+  <div class="quota-bar">
+    <div>
+      <div class="quota-count">{{ active_count }} <span>/ {{ staff_limit }} seat{{ 's' if staff_limit != 1 }}</span></div>
+      <div class="quota-text">on your current plan</div>
+    </div>
+    <div class="meter-bar">
+      {% set pct = [(active_count / staff_limit * 100)|int, 100]|min if staff_limit else 0 %}
+      <div class="meter-fill {% if active_count >= staff_limit %}full{% endif %}" style="width:{{ pct }}%"></div>
+    </div>
+  </div>
+
+  {% if staff_limit == 0 %}
+  <div class="limit-banner">
+    ⚠️ Your current plan doesn't include team seats.
+    <a href="{{ url_for('portal.billing_plans') }}" style="color:#B42318;font-weight:700;margin-left:4px">Upgrade to invite staff →</a>
+  </div>
+  {% elif active_count >= staff_limit %}
+  <div class="limit-banner">
+    ⚠️ You've used all {{ staff_limit }} team seats on your plan.
+    <a href="{{ url_for('portal.billing_plans') }}" style="color:#B42318;font-weight:700;margin-left:4px">Upgrade to add more →</a>
+  </div>
+  {% endif %}
+
+  <div class="invite-card">
+    <div class="invite-title">Invite a team member</div>
+    <form method="POST" action="{{ url_for('portal.team_invite') }}">
+      <div class="invite-row">
+        <input type="text" name="name" placeholder="Name" required maxlength="200" {% if seats_left <= 0 %}disabled{% endif %}/>
+        <input type="email" name="email" placeholder="Email address" required {% if seats_left <= 0 %}disabled{% endif %}/>
+        <button type="submit" class="btn btn-primary" {% if seats_left <= 0 %}disabled style="opacity:.5;cursor:not-allowed"{% endif %}>Send invite</button>
+      </div>
+      {% if show_agent_picker %}
+      <div class="agent-picker">
+        <div class="agent-picker-label">Which AI Agent(s) can they see? (leave blank and they'll see nothing until you assign one)</div>
+        <div class="agent-picker-list">
+          {% for a in assignable_agents %}
+          <label class="agent-check"><input type="checkbox" name="agent_ids" value="{{ a.id }}"/> {{ a.name }}</label>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    </form>
+  </div>
+
+  {% if members %}
+  <div class="tm-list">
+    {% for m in members %}
+    <div class="tm-card">
+      <div class="tm-card-top">
+      <div class="tm-info">
+        <div class="tm-avatar">{{ m.name[0]|upper if m.name else '?' }}</div>
+        <div>
+          <div class="tm-name">{{ m.name }}
+            {% if not m.is_active %}<span class="tm-pill inactive">Deactivated</span>
+            {% elif m.invite_token %}<span class="tm-pill pending">Invite pending</span>
+            {% else %}<span class="tm-pill active">Active</span>{% endif %}
+          </div>
+          <div class="tm-email">{{ m.email }}</div>
+          <div class="tm-meta">
+            {% if m.last_login_at %}Last login {{ m.last_login_at.strftime('%d %b %Y %H:%M') }}
+            {% elif m.invite_token %}Invited {{ m.created_at.strftime('%d %b %Y') }} — hasn't logged in yet
+            {% else %}Never logged in{% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="tm-actions">
+        {% if m.invite_token and m.is_active %}
+        <form method="POST" action="{{ url_for('portal.team_resend_invite', member_id=m.id) }}" style="display:inline">
+          <button type="submit" class="btn-edit">Resend invite</button>
+        </form>
+        {% endif %}
+        {% if m.is_active %}
+        <form method="POST" action="{{ url_for('portal.team_deactivate', member_id=m.id) }}" style="display:inline"
+              onsubmit="return confirm('Deactivate {{ m.name }}? They will no longer be able to log in.')">
+          <button type="submit" class="btn-edit">Deactivate</button>
+        </form>
+        {% else %}
+        <form method="POST" action="{{ url_for('portal.team_activate', member_id=m.id) }}" style="display:inline">
+          <button type="submit" class="btn-edit" {% if seats_left <= 0 %}disabled style="opacity:.5;cursor:not-allowed"{% endif %}>Re-activate</button>
+        </form>
+        {% endif %}
+        <form method="POST" action="{{ url_for('portal.team_remove', member_id=m.id) }}" style="display:inline"
+              onsubmit="return confirm('Remove {{ m.name }} completely? This can\'t be undone.')">
+          <button type="submit" class="btn-del">Remove</button>
+        </form>
+      </div>
+      </div>
+      {% if show_agent_picker %}
+      <div class="tm-card-agents">
+        {% if m.assigned_agent_names %}
+          {% for nm in m.assigned_agent_names %}<span class="tm-agent-tag">🤖 {{ nm }}</span>{% endfor %}
+        {% else %}
+          <span class="tm-agent-tag none">⚠️ No agent assigned — sees nothing</span>
+        {% endif %}
+        <form method="POST" action="{{ url_for('portal.team_update_agents', member_id=m.id) }}" class="tm-agents-edit">
+          {% for a in assignable_agents %}
+          <label class="agent-check"><input type="checkbox" name="agent_ids" value="{{ a.id }}" {% if a.id in m.assigned_agent_ids %}checked{% endif %}/> {{ a.name }}</label>
+          {% endfor %}
+          <button type="submit" class="btn-edit">Save</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-icon">👥</div>
+    <div class="empty-text">No team members yet.<br>Invite someone above to share the Inbox with them.</div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

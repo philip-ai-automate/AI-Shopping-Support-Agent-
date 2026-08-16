@@ -1,0 +1,122 @@
+<div class="gs-section">
+  <div class="gs-section-title">Monthly commission</div>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:14px">
+    You earn <strong>30% of every payment</strong> from agencies that sign up through your own referral link (20% for clients PhiXtra assigns to you) — monthly or annual, whichever they choose. This is paid automatically — you do not need to ask or send an invoice.
+  </p>
+  <table class="earn-table">
+    <thead>
+      <tr>
+        <th>Level</th>
+        <th>Active Agencies</th>
+        <th>Your Cut</th>
+        <th>How Long</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Standard</strong></td>
+        <td>1 – 9</td>
+        <td>30%</td>
+        <td>12 months</td>
+      </tr>
+      <tr class="highlight">
+        <td><strong>Elite</strong></td>
+        <td>10 – 19</td>
+        <td>30%</td>
+        <td>24 months</td>
+      </tr>
+      <tr>
+        <td><strong>Master</strong> 🏆</td>
+        <td>20+</td>
+        <td>30%</td>
+        <td>Forever</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="gs-tip" style="margin-top:14px">
+    Your level goes up as more of your referred agencies become paying subscribers. The more agencies you bring in, the longer you keep earning from each one.
+  </div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">Real Estate pricing (what your commission is based on)</div>
+  <table class="plan-tbl" style="margin-top:4px">
+    <thead><tr><th>Plan</th><th>Per Month</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Starter</strong></td><td>₦45,000</td></tr>
+      <tr><td><strong>Growth</strong></td><td>₦150,000</td></tr>
+      <tr><td><strong>Pro</strong></td><td>₦400,000</td></tr>
+    </tbody>
+  </table>
+  <div class="gs-tip" style="margin-top:10px">
+    New agencies start on a <strong>free Pro-plan trial</strong>, so they can explore fully before choosing a plan.
+    Unlike Portal, there's no plan-upgrade bonus for Real Estate yet — your earnings come from the 30%/20%
+    commission on each monthly or annual payment.
+  </div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">How much can you make?</div>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:14px">
+    Here are some examples based on agencies paying ₦150,000/month on the Growth plan:
+  </p>
+  <div style="border:1px solid var(--line);border-radius:10px;overflow:hidden">
+    <div style="background:#f8f9fb;padding:10px 14px;border-bottom:1px solid var(--line)">
+      <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:700;
+                  text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">
+        <span>How many agencies you have</span><span>Your monthly earnings</span>
+      </div>
+    </div>
+    <div class="example-row">
+      <div>
+        <div style="font-weight:600">3 agencies on Growth plan</div>
+        <div style="font-size:12px;color:var(--muted)">3 × ₦150,000 × 30%</div>
+      </div>
+      <div style="font-weight:700;color:var(--good)">₦135,000/mo</div>
+    </div>
+    <div class="example-row" style="background:#f8f9fb">
+      <div>
+        <div style="font-weight:600">8 agencies on Growth plan</div>
+        <div style="font-size:12px;color:var(--muted)">8 × ₦150,000 × 30%</div>
+      </div>
+      <div style="font-weight:700;color:var(--good)">₦360,000/mo</div>
+    </div>
+    <div class="example-row">
+      <div>
+        <div style="font-weight:600">15 agencies on Growth plan</div>
+        <div style="font-size:12px;color:var(--muted)">15 × ₦150,000 × 30% — Elite level</div>
+      </div>
+      <div style="font-weight:700;color:var(--good)">₦675,000/mo</div>
+    </div>
+  </div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">Where to see your earnings</div>
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <a href="{{ url_for('ambassador.earnings') }}"
+       style="display:flex;align-items:center;gap:14px;padding:13px 16px;background:#f8f9fb;
+              border:1px solid var(--line);border-radius:12px;text-decoration:none;color:var(--ink);
+              transition:background .15s"
+       onmouseover="this.style.background='#f0f1f8'" onmouseout="this.style.background='#f8f9fb'">
+      <span style="font-size:20px">💰</span>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700">Earnings</div>
+        <div style="font-size:12px;color:var(--muted)">See every payment you have earned</div>
+      </div>
+      <span style="color:var(--muted)">→</span>
+    </a>
+    <a href="{{ url_for('ambassador.dashboard') }}"
+       style="display:flex;align-items:center;gap:14px;padding:13px 16px;background:#f8f9fb;
+              border:1px solid var(--line);border-radius:12px;text-decoration:none;color:var(--ink);
+              transition:background .15s"
+       onmouseover="this.style.background='#f0f1f8'" onmouseout="this.style.background='#f8f9fb'">
+      <span style="font-size:20px">🏠</span>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700">Dashboard</div>
+        <div style="font-size:12px;color:var(--muted)">Monthly totals, your level, and active agencies</div>
+      </div>
+      <span style="color:var(--muted)">→</span>
+    </a>
+  </div>
+</div>

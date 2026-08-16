@@ -31,6 +31,8 @@ video picks up from there, it doesn't re-demonstrate the connect flow).
 """
 from playwright.sync_api import TimeoutError as PWTimeoutError
 
+from tutorial_studio.lib import click_visibly, fill_visibly, type_visibly
+
 BASE_URL = "https://portal.phixtra.com"
 TEST_BUSINESS_NAME = "Zemich Boutique"
 TEST_PHONE_PLAIN = "2348033334444"
@@ -182,104 +184,114 @@ def _add_products(page, category_id, count=2):
     buttons = page.locator(f"button.btn-add[data-category-id='{category_id}']")
     n = min(count, buttons.count())
     for i in range(n):
-        buttons.nth(0).click()  # re-query index 0 each time; clicked buttons re-render as btn-remove
+        click_visibly(page, f"button.btn-add[data-category-id='{category_id}']")
         page.wait_for_timeout(400)
 
 
 def record(page, hold, mark, beat_ms):
-    # --- dashboard_recap: land on dashboard, camera on the connected hero ---
+    # --- dashboard_recap: no action — camera holds on the connected hero ---
     page.goto(f"{BASE_URL}/dashboard", wait_until="networkidle", timeout=20000)
     page.locator("#tour-wa-hero").scroll_into_view_if_needed()
-    hold("dashboard_recap")
+    hold("dashboard_recap", motion=["#tour-wa-hero"])
 
     # --- click_wizard: open the catalogue setup wizard ---
-    page.click("a:has-text('Run Setup Wizard')")
+    click_visibly(page, "a:has-text('Run Setup Wizard')")
     page.wait_for_load_state("networkidle")
-    hold("click_wizard")
+    hold("click_wizard", motion=[f"#dc-{ELECTRONICS_DEPT_ID}"])
 
     # --- pick_department: choose Electronics, advance ---
-    page.click(f"#dc-{ELECTRONICS_DEPT_ID}")
-    page.click("#nextBtn")
+    click_visibly(page, f"#dc-{ELECTRONICS_DEPT_ID}")
+    click_visibly(page, "#nextBtn")
     page.wait_for_load_state("networkidle")
-    hold("pick_department")
+    hold("pick_department", motion=[f"#cl-{LAPTOPS_CAT_ID}"])
 
     # --- pick_categories: choose Laptops + Mobile Phones, advance (lands on Laptops product page) ---
-    page.click(f"#cl-{LAPTOPS_CAT_ID}")
-    page.click(f"#cl-{MOBILE_PHONES_CAT_ID}")
-    page.click("#nextBtn")
+    click_visibly(page, f"#cl-{LAPTOPS_CAT_ID}")
+    click_visibly(page, f"#cl-{MOBILE_PHONES_CAT_ID}")
+    click_visibly(page, "#nextBtn")
     page.wait_for_load_state("networkidle")
-    hold("pick_categories")
+    hold("pick_categories", motion=["input[name=q]"])
 
     # --- product_import: show the bulk spreadsheet/Google Sheets import option, then return ---
     # (not clicking the in-page "Product Import" link — it collides with a
     # same-named sidebar nav entry that intercepts pointer events)
     page.goto(f"{BASE_URL}/data-sources", wait_until="networkidle", timeout=20000)
-    page.locator("text=Download Sample Template").scroll_into_view_if_needed()
-    page.locator("#dropZone").hover()
-    hold("product_import")
+    hold("product_import", motion=["text=Download Sample Template", "#dropZone"])
     page.go_back()
     page.wait_for_load_state("networkidle")
 
     # --- laptops_search_select: search, add 2 products, next category ---
-    page.fill("input[name=q]", "Dell")
-    page.click("button:has-text('Search')")
+    type_visibly(page, "input[name=q]", "Dell")
+    click_visibly(page, "button:has-text('Search')")
     page.wait_for_load_state("networkidle")
     _add_products(page, LAPTOPS_CAT_ID, count=2)
-    page.click("button:has-text('Next Category')")
+    click_visibly(page, "button:has-text('Next Category')")
     page.wait_for_load_state("networkidle")
-    hold("laptops_search_select")
+    hold("laptops_search_select", motion=["input[name=q]"])
 
     # --- phones_search_select: search, add 2 products, go to review ---
-    page.fill("input[name=q]", "iPhone")
-    page.click("button:has-text('Search')")
+    type_visibly(page, "input[name=q]", "iPhone")
+    click_visibly(page, "button:has-text('Search')")
     page.wait_for_load_state("networkidle")
     _add_products(page, MOBILE_PHONES_CAT_ID, count=2)
-    page.click("button:has-text('Review My Selections')")
+    click_visibly(page, "button:has-text('Review My Selections')")
     page.wait_for_load_state("networkidle")
-    hold("phones_search_select")
+    hold("phones_search_select", motion=[".summary-bar"])
 
-    # --- review_selections: camera holds on the grouped review page ---
-    hold("review_selections")
+    # --- review_selections: no new action — drift across the summary bar
+    # and grouped category sections instead of a fully static hold ---
+    hold("review_selections", motion=[".summary-bar", ".cat-section"])
 
     # --- manual_add_product: one-off custom product, typed by hand ---
-    page.click("#toggleCustomForm")
-    page.fill("#cpName", "HP EliteBook Refurbished 840 G5")
-    page.fill("#cpPrice", "185000")
-    page.fill("#cpStock", "5")
-    page.fill("#cpCat", "Laptops")
-    page.fill("#cpDesc", "Refurbished business laptop, 3-month warranty")
-    page.click("button:has-text('Save product')")
+    click_visibly(page, "#toggleCustomForm")
+    type_visibly(page, "#cpName", "HP EliteBook Refurbished 840 G5")
+    type_visibly(page, "#cpPrice", "185000")
+    type_visibly(page, "#cpStock", "5")
+    type_visibly(page, "#cpCat", "Laptops")
+    type_visibly(page, "#cpDesc", "Refurbished business laptop, 3-month warranty")
+    click_visibly(page, "button:has-text('Save product')")
     page.wait_for_timeout(600)
     hold("manual_add_product")
 
     # --- launch_store: finish the wizard, redirects straight to Store Information ---
-    page.click("button:has-text('Launch My Store')")
+    click_visibly(page, "button:has-text('Launch My Store')")
     page.wait_for_load_state("networkidle")
-    hold("launch_store")
+    hold("launch_store", motion=[".wizard-header"])
 
-    # --- store_info_intro: camera holds on the section list ---
-    hold("store_info_intro")
+    # --- store_info_intro: no action — camera holds on the "why this
+    # matters" notice box instead of a dead static shot ---
+    hold("store_info_intro", motion=[".ai-notice"])
 
-    # --- store_info_fill: fill the 3 sections the merchant most needs, save ---
-    page.fill(
+    # --- store_info_fill: fill the 3 sections the merchant most needs, save.
+    # fill_visibly (highlight + instant fill), not type_visibly — these are
+    # full paragraphs, and character-by-character typing would run far
+    # longer than the beat's narration and get cut off by build_video()'s
+    # audio-length mux. ---
+    fill_visibly(
+        page,
         "textarea[name=about_us]",
         "Zemich Boutique is Lagos's trusted electronics retailer, specialising in "
         "laptops and mobile phones from top brands, all backed by genuine warranties.",
     )
-    page.fill(
+    fill_visibly(
+        page,
         "textarea[name=delivery]",
         "We deliver within Lagos in 1-2 business days and nationwide in 3-5 business "
         "days. Delivery fees are calculated at checkout based on your location.",
     )
-    page.fill(
+    fill_visibly(
+        page,
         "textarea[name=returns]",
         "Items can be returned within 7 days of delivery if unopened and in original "
         "packaging. Contact us first to start a return.",
     )
-    page.click("button:has-text('Save & Go to Dashboard')")
+    click_visibly(page, "button:has-text('Save & Go to Dashboard')")
     page.wait_for_load_state("networkidle")
-    hold("store_info_fill")
+    # Redirects to onboarding_wa_connect, not straight to /dashboard — this
+    # test tenant already has a synthetic wa_tenants row, so it renders the
+    # "WhatsApp already connected" confirmation card, not the connect form.
+    hold("store_info_fill", motion=[".wizard-header", "text=WhatsApp already connected"])
 
     # --- wrap_up: clean final shot back on the dashboard ---
     page.goto(f"{BASE_URL}/dashboard", wait_until="networkidle", timeout=20000)
-    hold("wrap_up")
+    hold("wrap_up", motion=["#tour-wa-hero"])

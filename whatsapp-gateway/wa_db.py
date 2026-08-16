@@ -136,6 +136,12 @@ def cache_products(session_id: str, products: list):
     """
     Store product data for a session so interactive_handler can look up
     cart and detail URLs when a customer taps a button.
+
+    Every row written in this call shares the exact same updated_at (SQL
+    NOW() is transaction-start time, identical across every statement in
+    this one commit) — that's what lets get_session_products() identify
+    "the list just shown" as a group, rather than mixing rows in from
+    older, unrelated lists that happen to share the same list_order.
     """
     conn = get_db_connection()
     if not conn:
@@ -150,8 +156,8 @@ def cache_products(session_id: str, products: list):
                 """
                 INSERT INTO wa_product_cache
                   (session_id, product_id, product_name, product_url, cart_url, price,
-                   image_url, in_stock, description, list_order, is_related)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                   image_url, in_stock, description, list_order, is_related, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
                 ON CONFLICT (session_id, product_id) DO UPDATE SET
                   product_name = EXCLUDED.product_name,
                   product_url  = EXCLUDED.product_url,
@@ -161,7 +167,8 @@ def cache_products(session_id: str, products: list):
                   in_stock     = EXCLUDED.in_stock,
                   description  = EXCLUDED.description,
                   list_order   = EXCLUDED.list_order,
-                  is_related   = EXCLUDED.is_related
+                  is_related   = EXCLUDED.is_related,
+                  updated_at   = EXCLUDED.updated_at
                 """,
                 (
                     session_id,
@@ -210,7 +217,9 @@ def get_cached_product(session_id: str, product_id: str) -> dict | None:
 
 
 def get_session_products(session_id: str) -> list:
-    """Return all cached products for a session in the original list order."""
+    """Return the products from the most recently shown list for this
+    session, in list order — never rows from an earlier, different list
+    that happens to share the same session (see cache_products docstring)."""
     conn = get_db_connection()
     if not conn:
         return []
@@ -222,9 +231,12 @@ def get_session_products(session_id: str) -> list:
                    image_url, in_stock, is_related
             FROM wa_product_cache
             WHERE session_id = %s
+              AND updated_at = (
+                    SELECT MAX(updated_at) FROM wa_product_cache WHERE session_id = %s
+                  )
             ORDER BY list_order ASC
             """,
-            (session_id,),
+            (session_id, session_id),
         )
         rows = cur.fetchall() or []
         return [dict(r) for r in rows]
@@ -297,7 +309,7 @@ def get_document_for_product(product_id: str) -> dict | None:
         cur.execute(
             """
             SELECT title, image_url, content, categories_text,
-                   price_min, price_max, spec_key, spec_value
+                   price_min, price_max, spec_key, spec_value, in_stock
             FROM documents
             WHERE id = %s
             """,
@@ -307,6 +319,41 @@ def get_document_for_product(product_id: str) -> dict | None:
         return dict(row) if row else None
     except Exception as e:
         print("⚠️ get_document_for_product error:", e)
+        return None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_manual_product_in_stock(tenant_id: int, product_id) -> bool | None:
+    """
+    Live stock check for the manual (WA-only merchant) `products` catalog,
+    used as a final pre-payment gate — separate from get_product_by_id so
+    that function's None can keep meaning one thing ("no row"), not two.
+
+    Returns True/False if this id belongs to that catalog, or None if it
+    doesn't (e.g. it's a WooCommerce-synced product — checked separately via
+    get_document_for_product's `in_stock` field).
+    """
+    conn = get_db_connection()
+    if not conn:
+        return None
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            """
+            SELECT stock_quantity, reserved_quantity
+            FROM products
+            WHERE tenant_id = %s AND id = %s AND is_active = TRUE
+            """,
+            (tenant_id, product_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return row["stock_quantity"] > row["reserved_quantity"]
+    except Exception as e:
+        print("⚠️ get_manual_product_in_stock error:", e)
         return None
     finally:
         cur.close()
@@ -398,7 +445,11 @@ def log_proactive(
 
 
 def is_campaign_recipient(tenant_id: int, customer_phone: str) -> bool:
-    """Return True if this phone was ever sent a campaign by this tenant."""
+    """Return True if this phone was ever successfully sent a campaign by this
+    tenant. Matches any status the row can advance to after the async Meta
+    delivery webhook updates it (sent/delivered/read), not just the initial
+    'sent' state — otherwise this flips back to False the moment a message
+    is confirmed delivered, which is the opposite of what it should do."""
     conn = get_db_connection()
     if not conn:
         return False
@@ -407,7 +458,7 @@ def is_campaign_recipient(tenant_id: int, customer_phone: str) -> bool:
         cur.execute(
             """
             SELECT 1 FROM wa_campaign_recipients
-            WHERE tenant_id = %s AND phone = %s AND status = 'sent'
+            WHERE tenant_id = %s AND phone = %s AND status IN ('sent', 'delivered', 'read')
             LIMIT 1
             """,
             (tenant_id, customer_phone),
@@ -415,6 +466,59 @@ def is_campaign_recipient(tenant_id: int, customer_phone: str) -> bool:
         return cur.fetchone() is not None
     except Exception as e:
         print("⚠️ is_campaign_recipient error:", e)
+        return False
+    finally:
+        cur.close()
+        conn.close()
+
+
+def update_campaign_recipient_status(
+    meta_message_id: str,
+    status: str,
+    error_code=None,
+    error_title: str = None,
+    error_message: str = None,
+) -> bool:
+    """Advance a campaign recipient row using Meta's async delivery-status
+    webhook (sent → delivered → read, or failed with the real rejection
+    reason, e.g. 131049 = marketing-message engagement throttling). Ignores
+    out-of-order/duplicate webhooks that would downgrade a more-advanced
+    status, since Meta doesn't guarantee delivery order."""
+    rank = {"sent": 1, "delivered": 2, "read": 3, "failed": 4}
+    conn = get_db_connection()
+    if not conn:
+        return False
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT status FROM wa_campaign_recipients WHERE meta_message_id = %s",
+            (meta_message_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return False
+        if rank.get(status, 0) < rank.get(row[0], 0):
+            return True
+
+        error_msg = None
+        if error_code or error_title or error_message:
+            label = f"[{error_code}] " if error_code else ""
+            detail = " — ".join(p for p in (error_title, error_message) if p)
+            error_msg = (label + detail)[:400]
+
+        cur.execute(
+            """
+            UPDATE wa_campaign_recipients
+            SET status = %s, error_msg = COALESCE(%s, error_msg), updated_at = NOW()
+            WHERE meta_message_id = %s
+            """,
+            (status, error_msg, meta_message_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception as e:
+        print("⚠️ update_campaign_recipient_status error:", e)
+        conn.rollback()
         return False
     finally:
         cur.close()
@@ -494,6 +598,30 @@ def create_handoff(session_id: str, tenant_id: int, customer_phone: str):
         conn.commit()
     except Exception as e:
         print("⚠️ create_handoff error:", e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_active_template(tenant_id: int, template_type: str) -> dict | None:
+    """Return {template_name, language_code} for an approved+active template, or None."""
+    conn = get_db_connection()
+    if not conn:
+        return None
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            """
+            SELECT template_name, language_code FROM wa_templates
+            WHERE tenant_id = %s AND template_type = %s AND active = TRUE
+            LIMIT 1
+            """,
+            (tenant_id, template_type),
+        )
+        return cur.fetchone()
+    except Exception as e:
+        print("⚠️ get_active_template error:", e)
+        return None
     finally:
         cur.close()
         conn.close()
@@ -653,6 +781,145 @@ def get_merchant_bank(tenant_id: int) -> dict | None:
         conn.close()
 
 
+def get_active_gateway(tenant_id: int, gateway: str) -> bool:
+    """
+    True only if the tenant has a connected AND key-configured gateway of this
+    type, AND has explicitly turned it on for WhatsApp checkout. Connecting
+    keys alone (via /settings/payments) never enables this by itself — the
+    merchant must flip wa_checkout_enabled on, and it defaults to off.
+
+    For Flutterwave, also re-verifies the tenant's plan has feat_fw_checkout
+    (Pro only) at the moment of checkout — defense in depth, same pattern as
+    the Visual Product Match gate below, so a plan downgrade after enabling
+    takes effect immediately without needing a manual sweep of stored flags.
+    """
+    conn = get_db_connection()
+    if not conn:
+        return False
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        if gateway == "flutterwave":
+            cur.execute(
+                """
+                SELECT 1 FROM payment_gateways pg
+                JOIN tenants t ON t.id = pg.tenant_id
+                JOIN plans   p ON p.id = t.plan_id
+                WHERE pg.tenant_id = %s AND pg.gateway = %s
+                  AND pg.is_active = TRUE AND pg.secret_key_enc IS NOT NULL
+                  AND pg.wa_checkout_enabled = TRUE
+                  AND p.feat_fw_checkout = TRUE
+                """,
+                (tenant_id, gateway),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT 1 FROM payment_gateways
+                WHERE tenant_id = %s AND gateway = %s
+                  AND is_active = TRUE AND secret_key_enc IS NOT NULL
+                  AND wa_checkout_enabled = TRUE
+                """,
+                (tenant_id, gateway),
+            )
+        return cur.fetchone() is not None
+    except Exception as e:
+        print(f"⚠️ get_active_gateway({gateway}) error:", e)
+        return False
+    finally:
+        cur.close()
+        conn.close()
+
+
+def create_wa_order_pending(
+    tenant_id: int,
+    customer_phone: str,
+    customer_name: str,
+    cart: dict,
+    delivery_type: str,
+    delivery_address: str | None,
+) -> tuple[str, str]:
+    """
+    Create order + order_items rows for a gateway-checkout order, ahead of
+    payment (unlike create_wa_order, which is only called after bank-transfer
+    proof arrives). Status stays at the default INTENT_CAPTURED until the
+    Flutterwave webhook confirms payment. Returns (order_id, reference).
+    """
+    import uuid as _uuid
+    conn = get_db_connection()
+    if not conn:
+        raise RuntimeError("DB unavailable")
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            INSERT INTO order_reference_seq (tenant_id, last_seq) VALUES (%s, 1)
+            ON CONFLICT (tenant_id) DO UPDATE SET last_seq = order_reference_seq.last_seq + 1
+            RETURNING last_seq
+            """,
+            (tenant_id,),
+        )
+        seq = cur.fetchone()[0]
+        reference   = f"PHX-{seq:06d}"
+        order_id    = str(_uuid.uuid4())
+        final_price = float(cart.get("final_price") or cart.get("unit_price") or 0)
+
+        cur.execute(
+            """
+            INSERT INTO orders
+                (id, tenant_id, reference, customer_phone, customer_name,
+                 delivery_address, total_amount, payment_gateway)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'flutterwave')
+            """,
+            (
+                order_id, tenant_id, reference,
+                customer_phone, customer_name,
+                delivery_address, final_price,
+            ),
+        )
+        cur.execute(
+            """
+            INSERT INTO order_items
+                (order_id, product_id, product_name, quantity, unit_price, subtotal)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (
+                order_id,
+                cart.get("product_id"),
+                cart.get("product_name", ""),
+                int(cart.get("quantity", 1)),
+                float(cart.get("unit_price", 0)),
+                final_price,
+            ),
+        )
+        conn.commit()
+        return order_id, reference
+    except Exception as e:
+        print("⚠️ create_wa_order_pending error:", e)
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
+def cancel_wa_order(order_id: str):
+    conn = get_db_connection()
+    if not conn:
+        return
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "UPDATE orders SET status='CANCELLED', updated_at=NOW() WHERE id=%s AND status='INTENT_CAPTURED'",
+            (order_id,),
+        )
+        conn.commit()
+    except Exception as e:
+        print("⚠️ cancel_wa_order error:", e)
+    finally:
+        cur.close()
+        conn.close()
+
+
 def get_wa_merchant_settings(tenant_id: int) -> dict:
     conn = get_db_connection()
     if not conn:
@@ -716,6 +983,7 @@ def search_tenant_products(tenant_id: int, query: str) -> list[dict]:
             SELECT id, name, price, stock_quantity, discount_type, discount_value, description
             FROM products
             WHERE tenant_id = %s AND is_active = TRUE
+              AND stock_quantity > reserved_quantity
               AND LOWER(name) LIKE LOWER(%s)
             ORDER BY name ASC
             LIMIT 5
@@ -799,6 +1067,56 @@ def create_wa_order(
         print("⚠️ create_wa_order error:", e)
         conn.rollback()
         raise
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ── Visual Product Match (Pro plan, opt-in) ─────────────────────────────────
+
+def get_visual_match_settings(tenant_id: int) -> dict:
+    """
+    Cheap gate check before the gateway bothers downloading/embedding a
+    customer photo. ai-backend's /visual-match endpoint re-checks this
+    independently (defense in depth) — this is just a fast bail for the
+    99%+ of tenants who don't have the feature.
+    Returns {"enabled": bool, "on_uncertain": "clarify"|"handoff"}.
+    """
+    conn = get_db_connection()
+    if not conn:
+        return {"enabled": False, "on_uncertain": "clarify"}
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            """
+            SELECT p.feat_visual_match, t.features
+            FROM tenants t
+            JOIN plans p ON p.id = t.plan_id
+            WHERE t.id = %s
+            """,
+            (tenant_id,),
+        )
+        row = cur.fetchone()
+        if not row or not row.get("feat_visual_match"):
+            return {"enabled": False, "on_uncertain": "clarify"}
+
+        features = row.get("features")
+        if isinstance(features, str):
+            import json
+            try:
+                features = json.loads(features)
+            except Exception:
+                features = {}
+        elif not isinstance(features, dict):
+            features = {}
+
+        return {
+            "enabled": bool(features.get("visual_product_match", False)),
+            "on_uncertain": features.get("visual_match_on_uncertain", "clarify"),
+        }
+    except Exception as e:
+        print("⚠️ get_visual_match_settings error:", e)
+        return {"enabled": False, "on_uncertain": "clarify"}
     finally:
         cur.close()
         conn.close()

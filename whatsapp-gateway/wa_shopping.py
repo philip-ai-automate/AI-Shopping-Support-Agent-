@@ -17,26 +17,38 @@ Entry: meta_webhook.py routes here when customer has an active wa_shop_session
 """
 
 import json
+import os
 import re
+
+import httpx
 
 from meta_sender import send_text
 from currency import to_ngn, fmt_ngn
 from wa_db import (
     cancel_handoff,
+    cancel_wa_order,
     create_handoff,
     create_wa_order,
+    create_wa_order_pending,
     delete_wa_shop_session,
+    get_active_gateway,
+    get_document_for_product,
+    get_manual_product_in_stock,
     get_merchant_bank,
     get_product_by_id,
     get_product_discount_override,
     get_viewed_products,
     get_wa_merchant_settings,
     get_wa_shop_session,
+    log_message,
     save_wa_shop_session,
     search_tenant_products,
 )
 
 _NUMBER_EMOJI = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
+
+_PORTAL_INTERNAL_URL = os.getenv("PORTAL_INTERNAL_URL", "http://127.0.0.1:5055")
+_INTERNAL_TOKEN      = os.getenv("PHIXTRA_INTERNAL_TOKEN", "")
 
 
 def _resolve_discount(tenant_id: int, product_id: str, def_type: str, def_value: float) -> tuple[str, float]:
@@ -141,13 +153,27 @@ def _wants_proceed_anyway(text: str) -> bool:
 
 # ── Reply helper ──────────────────────────────────────────────────────────────
 
-async def _reply(phone_number_id: str, access_token: str, customer_phone: str, text: str):
+async def _reply(tenant_id: int, phone_number_id: str, access_token: str, customer_phone: str, text: str):
     await send_text(phone_number_id, access_token, customer_phone, text)
+    log_message(tenant_id, phone_number_id, customer_phone, "outbound", text)
+
+
+async def _notify_handoff(tenant_id: int, phone_number_id: str, access_token: str,
+                           customer_phone: str, last_customer_message: str):
+    """
+    Alert the merchant (WA + email) when the shopping flow escalates to
+    HANDOFF_DISCOUNT. Lazy import — meta_webhook.py imports this module at
+    load time, so importing it back at module level would be circular.
+    """
+    from meta_webhook import notify_merchant_handoff
+    await notify_merchant_handoff(tenant_id, phone_number_id, access_token,
+                                   customer_phone, last_customer_message)
 
 
 # ── Payment details message ───────────────────────────────────────────────────
 
 async def _send_payment_details(
+    tenant_id: int,
     phone_number_id: str,
     access_token: str,
     customer_phone: str,
@@ -172,12 +198,12 @@ async def _send_payment_details(
             f"• Account Name: {bank.get('account_name', '—')}\n"
         )
     else:
-        bank_block = "_(The merchant will send payment details shortly)_\n"
+        bank_block = "_(The store will send payment details shortly)_\n"
 
     prefix = "⏰ *Reminder* — we're waiting for your payment proof.\n\n" if reminder else ""
 
     await _reply(
-        phone_number_id, access_token, customer_phone,
+        tenant_id, phone_number_id, access_token, customer_phone,
         f"{prefix}"
         f"🛍️ *Order Summary*\n"
         f"• Product: {pname}\n"
@@ -188,6 +214,153 @@ async def _send_payment_details(
         f"here to confirm your order.\n\n"
         f"_(Reply *CANCEL* to cancel this order)_",
     )
+
+
+async def _request_fw_checkout_link(order_id: str) -> str | None:
+    """Ask the portal to generate a Flutterwave checkout link for this order."""
+    if not _INTERNAL_TOKEN:
+        print("⚠️ [SHOPPING] PHIXTRA_INTERNAL_TOKEN not set — cannot request FW link")
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.post(
+                f"{_PORTAL_INTERNAL_URL}/internal/orders/{order_id}/fw-checkout-link",
+                headers={"Authorization": f"Bearer {_INTERNAL_TOKEN}"},
+            )
+            data = r.json()
+            return data.get("link")
+    except Exception as e:
+        print("⚠️ [SHOPPING] _request_fw_checkout_link:", e)
+        return None
+
+
+async def _send_fw_payment_link(
+    tenant_id: int,
+    phone_number_id: str,
+    access_token: str,
+    customer_phone: str,
+    cart: dict,
+    link: str,
+    reminder: bool = False,
+):
+    final_price = _fmt_price(cart.get("final_price") or cart.get("unit_price") or 0)
+    pname       = cart.get("product_name", "your order")
+    reference   = cart.get("reference", "")
+    prefix      = "⏰ *Reminder* — your payment link is still waiting.\n\n" if reminder else ""
+
+    await _reply(
+        tenant_id, phone_number_id, access_token, customer_phone,
+        f"{prefix}"
+        f"🛍️ *Order Summary*\n"
+        f"• Product: {pname}\n"
+        f"• Amount: *{final_price}*\n"
+        f"• Reference: *{reference}*\n\n"
+        f"💳 Tap to pay securely:\n{link}\n\n"
+        "You'll get a message here the moment your payment is confirmed — "
+        "no need to send a receipt.\n\n"
+        "_(Reply *CANCEL* to cancel this order)_",
+    )
+
+
+async def _use_flutterwave(
+    tenant_id: int,
+    phone_number_id: str,
+    access_token: str,
+    customer_phone: str,
+    session_id: str,
+    cart: dict,
+) -> bool:
+    """Create the order, request a checkout link, and message it to the customer. False on failure."""
+    order_id, reference = create_wa_order_pending(
+        tenant_id        = tenant_id,
+        customer_phone   = customer_phone,
+        customer_name    = cart.get("customer_name", ""),
+        cart             = cart,
+        delivery_type    = cart.get("delivery_type", "pickup"),
+        delivery_address = cart.get("delivery_address"),
+    )
+    link = await _request_fw_checkout_link(order_id)
+    if link:
+        cart["order_id"]  = order_id
+        cart["reference"] = reference
+        cart["fw_link"]   = link
+        await _send_fw_payment_link(tenant_id, phone_number_id, access_token, customer_phone, cart, link)
+        save_wa_shop_session(session_id, tenant_id, customer_phone, "AWAITING_FW_PAYMENT", cart, order_id)
+        return True
+    # Flutterwave call failed — don't strand the customer
+    cancel_wa_order(order_id)
+    print(f"⚠️ [SHOPPING] FW checkout link failed for order {reference}")
+    return False
+
+
+async def _use_bank_transfer(
+    tenant_id: int,
+    phone_number_id: str,
+    access_token: str,
+    customer_phone: str,
+    session_id: str,
+    cart: dict,
+):
+    bank = get_merchant_bank(tenant_id)
+    await _send_payment_details(tenant_id, phone_number_id, access_token, customer_phone, cart, bank)
+    save_wa_shop_session(session_id, tenant_id, customer_phone, "PAYMENT_PENDING", cart)
+
+
+async def _start_payment(
+    tenant_id: int,
+    phone_number_id: str,
+    access_token: str,
+    customer_phone: str,
+    session_id: str,
+    cart: dict,
+):
+    """
+    Offer both payment methods when the merchant has both configured;
+    otherwise go straight to whichever one is available.
+    """
+    # Final stock check — the product may have sold out since it was first
+    # shown earlier in the conversation. Re-verify against live data before
+    # any payment details are sent. A cart's product_id belongs to exactly
+    # one of two catalogs (WooCommerce-synced `documents`, or the manual
+    # WA-only `products` table) — check both; whichever doesn't recognise
+    # the id simply returns "not found" and is ignored.
+    doc = get_document_for_product(cart.get("product_id", ""))
+    woo_out_of_stock = doc is not None and doc.get("in_stock") is False
+
+    manual_in_stock = get_manual_product_in_stock(tenant_id, cart.get("product_id", ""))
+    manual_out_of_stock = manual_in_stock is False
+
+    if woo_out_of_stock or manual_out_of_stock:
+        delete_wa_shop_session(session_id)
+        await _reply(
+            tenant_id, phone_number_id, access_token, customer_phone,
+            f"I'm sorry — *{cart.get('product_name', 'this item')}* just went out of stock, "
+            "so I can't process this order.\n\n"
+            "Feel free to browse and order something else anytime! 😊",
+        )
+        return
+
+    fw_enabled = get_active_gateway(tenant_id, "flutterwave")
+    bank       = get_merchant_bank(tenant_id)
+
+    if fw_enabled and bank:
+        await _reply(
+            tenant_id, phone_number_id, access_token, customer_phone,
+            "How would you like to pay?\n\n"
+            "1️⃣ Pay online (card/bank/USSD) — instant confirmation\n"
+            "2️⃣ Bank transfer — send receipt photo\n\n"
+            "Reply with a *number*.",
+        )
+        save_wa_shop_session(session_id, tenant_id, customer_phone, "CHOOSE_PAYMENT_METHOD", cart)
+        return
+
+    if fw_enabled:
+        if await _use_flutterwave(tenant_id, phone_number_id, access_token, customer_phone, session_id, cart):
+            return
+        # fall through to bank transfer if Flutterwave failed, even with no bank on file
+        # (get_merchant_bank returns None and _send_payment_details handles that gracefully)
+
+    await _use_bank_transfer(tenant_id, phone_number_id, access_token, customer_phone, session_id, cart)
 
 
 # ── Main entry point ──────────────────────────────────────────────────────────
@@ -222,8 +395,22 @@ async def handle_shopping_message(
     if shop_session is None:
         # If the customer already selected/viewed products this session, skip
         # straight to AWAIT_CONFIRM (single) or a numbered choice (multiple).
-        viewed       = get_viewed_products(session_id)
+        # Out-of-stock items are dropped here so they can never enter a cart.
+        viewed_all   = get_viewed_products(session_id)
+        oos_viewed   = [v for v in viewed_all if not v.get("in_stock", True)]
+        viewed       = [v for v in viewed_all if v.get("in_stock", True)]
         direct_disc  = _wants_discount(text)   # customer typed DISCOUNT directly
+
+        if not viewed and oos_viewed:
+            names = ", ".join(v["product_name"] for v in oos_viewed[:3])
+            await _reply(
+                tenant_id, phone_number_id, access_token, customer_phone,
+                f"I'm sorry, *{names}* {'is' if len(oos_viewed) == 1 else 'are'} currently out of stock.\n\n"
+                "Which other product would you like to order?\n"
+                "_(Type the product name or model)_",
+            )
+            save_wa_shop_session(session_id, tenant_id, customer_phone, "AWAIT_PRODUCT", {})
+            return
 
         if len(viewed) == 1:
             v = viewed[0]
@@ -255,18 +442,19 @@ async def handle_shopping_message(
                 if mode == "merchant_only":
                     save_wa_shop_session(session_id, tenant_id, customer_phone, "AWAIT_CONFIRM", new_cart)
                     await _reply(
-                        phone_number_id, access_token, customer_phone,
-                        "I'm passing your discount request to the merchant — they'll be in touch shortly! 🤝\n\n"
+                        tenant_id, phone_number_id, access_token, customer_phone,
+                        "I'm passing your discount request to the store — they'll be in touch shortly! 🤝\n\n"
                         f"The product is *{product_name}* at *{_fmt_price(unit_price)}*.\n"
                         "Reply *CANCEL* to cancel.",
                     )
                     create_handoff(session_id, tenant_id, customer_phone)
+                    await _notify_handoff(tenant_id, phone_number_id, access_token, customer_phone, text)
                     return
                 dv = float(new_cart.get("discount_value") or 0)
                 dt = new_cart.get("discount_type", "percent")
                 if dv == 0:
                     await _reply(
-                        phone_number_id, access_token, customer_phone,
+                        tenant_id, phone_number_id, access_token, customer_phone,
                         f"I'm sorry — no additional discount is available on *{product_name}* at this time.\n\n"
                         f"The best price is *{_fmt_price(unit_price)}*.\n"
                         "Reply *YES* to order at this price, or *NO* to cancel.",
@@ -278,7 +466,7 @@ async def handle_shopping_message(
                 new_cart["discount_applied"] = round(unit_price - discounted, 2)
                 disc_label = f"{dv:.0f}% off → *{_fmt_price(discounted)}*" if dt == "percent" else f"₦{dv:,.0f} off → *{_fmt_price(discounted)}*"
                 await _reply(
-                    phone_number_id, access_token, customer_phone,
+                    tenant_id, phone_number_id, access_token, customer_phone,
                     f"Great news! Here's the best I can do for *{product_name}*:\n\n"
                     f"💰 Original price: ~~{_fmt_price(unit_price)}~~\n"
                     f"🎉 Discount: {disc_label}\n\n"
@@ -290,7 +478,7 @@ async def handle_shopping_message(
                 return
 
             await _reply(
-                phone_number_id, access_token, customer_phone,
+                tenant_id, phone_number_id, access_token, customer_phone,
                 f"📦 *{product_name}*\n"
                 f"💰 Price: *{_fmt_price(unit_price)}*\n\n"
                 "Reply *YES* to confirm this order.\n"
@@ -338,13 +526,13 @@ async def handle_shopping_message(
                     "discount_requested": direct_disc,   # remember the intent
                 },
             )
-            await _reply(phone_number_id, access_token, customer_phone, "\n".join(lines))
+            await _reply(tenant_id, phone_number_id, access_token, customer_phone, "\n".join(lines))
             return
 
         # No prior selection — ask for product name as normal
         save_wa_shop_session(session_id, tenant_id, customer_phone, "AWAIT_PRODUCT", {})
         await _reply(
-            phone_number_id, access_token, customer_phone,
+            tenant_id, phone_number_id, access_token, customer_phone,
             "Sure! Let's get your order started. 🛍️\n\n"
             "Which product would you like to order?\n"
             "_(Type the product name or model — e.g. iPhone 14 or Samsung A54)_",
@@ -357,9 +545,11 @@ async def handle_shopping_message(
 
     # ── Cancel at any pre-payment state ──────────────────────────────────────
     if _wants_cancel(text) and state not in ("PAYMENT_REVIEW", "COMPLETE"):
+        if state == "AWAITING_FW_PAYMENT" and cart.get("order_id"):
+            cancel_wa_order(cart["order_id"])
         delete_wa_shop_session(session_id)
         await _reply(
-            phone_number_id, access_token, customer_phone,
+            tenant_id, phone_number_id, access_token, customer_phone,
             "Order cancelled. No problem — feel free to browse and order anytime! 😊",
         )
         return
@@ -398,15 +588,16 @@ async def handle_shopping_message(
                         if mode == "merchant_only":
                             save_wa_shop_session(session_id, tenant_id, customer_phone, "AWAIT_CONFIRM", new_cart)
                             create_handoff(session_id, tenant_id, customer_phone)
+                            await _notify_handoff(tenant_id, phone_number_id, access_token, customer_phone, text)
                             await _reply(
-                                phone_number_id, access_token, customer_phone,
-                                f"I'm passing your discount request to the merchant for *{picked['name']}* — they'll be in touch! 🤝\n"
+                                tenant_id, phone_number_id, access_token, customer_phone,
+                                f"I'm passing your discount request to the store for *{picked['name']}* — they'll be in touch! 🤝\n"
                                 "Reply *CANCEL* to cancel.",
                             )
                             return
                         if dv == 0:
                             await _reply(
-                                phone_number_id, access_token, customer_phone,
+                                tenant_id, phone_number_id, access_token, customer_phone,
                                 f"I'm sorry — no additional discount is available on *{picked['name']}* at this time.\n\n"
                                 f"Best price: *{_fmt_price(unit)}*\n"
                                 "Reply *YES* to order at this price, or *NO* to cancel.",
@@ -419,7 +610,7 @@ async def handle_shopping_message(
                         disc_label = (f"{dv:.0f}% off → *{_fmt_price(discounted)}*"
                                       if dt == "percent" else f"₦{dv:,.0f} off → *{_fmt_price(discounted)}*")
                         await _reply(
-                            phone_number_id, access_token, customer_phone,
+                            tenant_id, phone_number_id, access_token, customer_phone,
                             f"Great news! Here's the best I can do for *{picked['name']}*:\n\n"
                             f"💰 Original price: {_fmt_price(unit)}\n"
                             f"🎉 Discount: {disc_label}\n\n"
@@ -431,7 +622,7 @@ async def handle_shopping_message(
                         return
 
                     await _reply(
-                        phone_number_id, access_token, customer_phone,
+                        tenant_id, phone_number_id, access_token, customer_phone,
                         f"📦 *{picked['name']}*\n"
                         f"💰 Price: *{_fmt_price(picked['price'])}*\n\n"
                         "Reply *YES* to confirm this order.\n"
@@ -441,7 +632,7 @@ async def handle_shopping_message(
                     save_wa_shop_session(session_id, tenant_id, customer_phone, "AWAIT_CONFIRM", new_cart)
                     return
                 await _reply(
-                    phone_number_id, access_token, customer_phone,
+                    tenant_id, phone_number_id, access_token, customer_phone,
                     f"Please pick a number between 1 and {len(search_results)}.",
                 )
                 return
@@ -453,7 +644,7 @@ async def handle_shopping_message(
 
         if not products:
             await _reply(
-                phone_number_id, access_token, customer_phone,
+                tenant_id, phone_number_id, access_token, customer_phone,
                 f"I couldn't find *{text}* in this store.\n\n"
                 "Please type the product name or model exactly.\n"
                 "_(Reply CANCEL to stop)_",
@@ -472,7 +663,7 @@ async def handle_shopping_message(
                 "final_price":    float(p["price"]),
             }
             await _reply(
-                phone_number_id, access_token, customer_phone,
+                tenant_id, phone_number_id, access_token, customer_phone,
                 f"📦 *{p['name']}*\n"
                 f"💰 Price: *{_fmt_price(p['price'])}*\n\n"
                 "Reply *YES* to confirm this order.\n"
@@ -489,7 +680,7 @@ async def handle_shopping_message(
             emoji = _NUMBER_EMOJI[i] if i < len(_NUMBER_EMOJI) else f"{i + 1}."
             lines.append(f"{emoji}  {p['name']} — {_fmt_price(p['price'])}")
         lines.append("\nReply with a *number* to select.")
-        await _reply(phone_number_id, access_token, customer_phone, "\n".join(lines))
+        await _reply(tenant_id, phone_number_id, access_token, customer_phone, "\n".join(lines))
         save_wa_shop_session(session_id, tenant_id, customer_phone, "AWAIT_PRODUCT", cart)
         return
 
@@ -501,13 +692,14 @@ async def handle_shopping_message(
 
             if mode == "merchant_only":
                 await _reply(
-                    phone_number_id, access_token, customer_phone,
-                    "I'm passing your discount request to the merchant — they'll be in touch shortly! 🤝\n\n"
+                    tenant_id, phone_number_id, access_token, customer_phone,
+                    "I'm passing your discount request to the store — they'll be in touch shortly! 🤝\n\n"
                     "In the meantime:\n"
                     "• Reply *PROCEED* to order at the listed price\n"
                     "• Reply *CANCEL* to cancel your order",
                 )
                 create_handoff(session_id, tenant_id, customer_phone)
+                await _notify_handoff(tenant_id, phone_number_id, access_token, customer_phone, text)
                 cart["pending_handoff"] = True
                 save_wa_shop_session(session_id, tenant_id, customer_phone, "HANDOFF_DISCOUNT", cart)
                 return
@@ -518,7 +710,7 @@ async def handle_shopping_message(
 
             if dv <= 0:
                 await _reply(
-                    phone_number_id, access_token, customer_phone,
+                    tenant_id, phone_number_id, access_token, customer_phone,
                     "I'm sorry — no discounts are available on this item at this time.\n\n"
                     f"The price remains *{_fmt_price(cart['unit_price'])}*.\n"
                     "Reply *YES* to order at this price or *NO* to cancel.",
@@ -535,7 +727,7 @@ async def handle_shopping_message(
                 else f"₦{dv:,.0f} off → *{_fmt_price(discounted)}*"
             )
             await _reply(
-                phone_number_id, access_token, customer_phone,
+                tenant_id, phone_number_id, access_token, customer_phone,
                 f"💡 I can offer you {offer_line}.\n\n"
                 "Reply *YES* to accept this price.\n"
                 "Reply *NO* to order at the full price.\n"
@@ -546,7 +738,7 @@ async def handle_shopping_message(
 
         if _yes(text):
             await _reply(
-                phone_number_id, access_token, customer_phone,
+                tenant_id, phone_number_id, access_token, customer_phone,
                 "Great! What is your *name* for this order?",
             )
             save_wa_shop_session(session_id, tenant_id, customer_phone, "COLLECT_NAME", cart)
@@ -555,14 +747,14 @@ async def handle_shopping_message(
         if _no(text):
             delete_wa_shop_session(session_id)
             await _reply(
-                phone_number_id, access_token, customer_phone,
+                tenant_id, phone_number_id, access_token, customer_phone,
                 "Order cancelled. No worries — browse and order anytime! 😊",
             )
             return
 
         pname = cart.get("product_name", "this product")
         await _reply(
-            phone_number_id, access_token, customer_phone,
+            tenant_id, phone_number_id, access_token, customer_phone,
             f"Reply *YES* to order *{pname}* at "
             f"*{_fmt_price(cart.get('final_price') or cart.get('unit_price', 0))}*.\n"
             "Reply *DISCOUNT* to ask for a discount.\n"
@@ -574,20 +766,21 @@ async def handle_shopping_message(
     if state == "NEGOTIATING":
         if _wants_more_discount(text):
             await _reply(
-                phone_number_id, access_token, customer_phone,
-                "I understand — let me connect you to the merchant for further discussion. 🤝\n\n"
+                tenant_id, phone_number_id, access_token, customer_phone,
+                "I understand — let me connect you to the store for further discussion. 🤝\n\n"
                 "In the meantime:\n"
                 "• Reply *PROCEED* to order at the discounted price I offered\n"
                 "• Reply *CANCEL* to cancel your order",
             )
             create_handoff(session_id, tenant_id, customer_phone)
+            await _notify_handoff(tenant_id, phone_number_id, access_token, customer_phone, text)
             cart["pending_handoff"] = True
             save_wa_shop_session(session_id, tenant_id, customer_phone, "HANDOFF_DISCOUNT", cart)
             return
 
         if _yes(text):
             await _reply(
-                phone_number_id, access_token, customer_phone,
+                tenant_id, phone_number_id, access_token, customer_phone,
                 f"✅ Discount applied! Your price: *{_fmt_price(cart['final_price'])}*\n\n"
                 "What is your *name* for this order?",
             )
@@ -598,7 +791,7 @@ async def handle_shopping_message(
             cart["final_price"] = cart["unit_price"]
             cart.pop("discount_applied", None)
             await _reply(
-                phone_number_id, access_token, customer_phone,
+                tenant_id, phone_number_id, access_token, customer_phone,
                 f"No problem — your price is *{_fmt_price(cart['unit_price'])}*.\n\n"
                 "What is your *name* for this order?",
             )
@@ -608,20 +801,21 @@ async def handle_shopping_message(
         # Catch "still expensive" and similar outside the strict _wants_more_discount set
         if _wants_discount(text):
             await _reply(
-                phone_number_id, access_token, customer_phone,
-                "I'm connecting you to the merchant for further discussion. 🤝\n\n"
+                tenant_id, phone_number_id, access_token, customer_phone,
+                "I'm connecting you to the store for further discussion. 🤝\n\n"
                 "• Reply *PROCEED* to order at the discounted price I offered\n"
                 "• Reply *CANCEL* to cancel your order",
             )
             create_handoff(session_id, tenant_id, customer_phone)
+            await _notify_handoff(tenant_id, phone_number_id, access_token, customer_phone, text)
             cart["pending_handoff"] = True
             save_wa_shop_session(session_id, tenant_id, customer_phone, "HANDOFF_DISCOUNT", cart)
             return
 
         await _reply(
-            phone_number_id, access_token, customer_phone,
+            tenant_id, phone_number_id, access_token, customer_phone,
             "Reply *YES* to accept the discount, *NO* to pay full price, "
-            "or *MORE* to speak to the merchant about a further reduction.",
+            "or *MORE* to speak to the store about a further reduction.",
         )
         return
 
@@ -633,7 +827,7 @@ async def handle_shopping_message(
             pname      = cart.get("product_name", "this product")
             show_price = cart.get("final_price") or cart.get("unit_price", 0)
             await _reply(
-                phone_number_id, access_token, customer_phone,
+                tenant_id, phone_number_id, access_token, customer_phone,
                 f"No problem! Here's your order summary:\n\n"
                 f"📦 *{pname}*\n"
                 f"💰 Price: *{_fmt_price(show_price)}*\n\n"
@@ -647,14 +841,14 @@ async def handle_shopping_message(
             cancel_handoff(session_id)
             delete_wa_shop_session(session_id)
             await _reply(
-                phone_number_id, access_token, customer_phone,
+                tenant_id, phone_number_id, access_token, customer_phone,
                 "Order cancelled. No worries — browse and order anytime! 😊",
             )
             return
 
         await _reply(
-            phone_number_id, access_token, customer_phone,
-            "Your discount request is with the merchant — they'll be in touch soon! 🤝\n\n"
+            tenant_id, phone_number_id, access_token, customer_phone,
+            "Your discount request is with the store — they'll be in touch soon! 🤝\n\n"
             "• Reply *PROCEED* to order at the current price\n"
             "• Reply *CANCEL* to cancel your order",
         )
@@ -668,15 +862,15 @@ async def handle_shopping_message(
     if state == "COLLECT_NAME":
         if len(text) < 2:
             await _reply(
-                phone_number_id, access_token, customer_phone,
+                tenant_id, phone_number_id, access_token, customer_phone,
                 "Please enter your name (at least 2 characters).",
             )
             return
         cart["customer_name"] = text
         await _reply(
-            phone_number_id, access_token, customer_phone,
+            tenant_id, phone_number_id, access_token, customer_phone,
             f"Thanks, *{text}*! 📦\n\n"
-            "Would you like *DELIVERY* to your address or will you *PICKUP* from the merchant?",
+            "Would you like *DELIVERY* to your address or will you *PICKUP* from the store?",
         )
         save_wa_shop_session(session_id, tenant_id, customer_phone, "COLLECT_DELIVERY", cart)
         return
@@ -685,15 +879,13 @@ async def handle_shopping_message(
     if state == "COLLECT_DELIVERY":
         if _wants_pickup(text):
             cart["delivery_type"] = "pickup"
-            bank = get_merchant_bank(tenant_id)
-            await _send_payment_details(phone_number_id, access_token, customer_phone, cart, bank)
-            save_wa_shop_session(session_id, tenant_id, customer_phone, "PAYMENT_PENDING", cart)
+            await _start_payment(tenant_id, phone_number_id, access_token, customer_phone, session_id, cart)
             return
 
         if _wants_delivery(text):
             cart["delivery_type"] = "delivery"
             await _reply(
-                phone_number_id, access_token, customer_phone,
+                tenant_id, phone_number_id, access_token, customer_phone,
                 "Please send your *full delivery address*.\n"
                 "_(Include street, area, city, and any landmark)_",
             )
@@ -701,7 +893,7 @@ async def handle_shopping_message(
             return
 
         await _reply(
-            phone_number_id, access_token, customer_phone,
+            tenant_id, phone_number_id, access_token, customer_phone,
             "Please reply *DELIVERY* for home delivery or *PICKUP* to collect in person.",
         )
         return
@@ -710,19 +902,46 @@ async def handle_shopping_message(
     if state == "COLLECT_ADDRESS":
         if len(text) < 5:
             await _reply(
-                phone_number_id, access_token, customer_phone,
+                tenant_id, phone_number_id, access_token, customer_phone,
                 "Please enter your full delivery address.",
             )
             return
         cart["delivery_address"] = text
-        bank = get_merchant_bank(tenant_id)
-        await _send_payment_details(phone_number_id, access_token, customer_phone, cart, bank)
-        save_wa_shop_session(session_id, tenant_id, customer_phone, "PAYMENT_PENDING", cart)
+        await _start_payment(tenant_id, phone_number_id, access_token, customer_phone, session_id, cart)
         return
 
     # ─────────────────────────────────────────────────────────────────────────
     # STEP 5 — Payment
     # ─────────────────────────────────────────────────────────────────────────
+
+    # ── CHOOSE_PAYMENT_METHOD — both options configured, waiting on 1/2 ───────
+    if state == "CHOOSE_PAYMENT_METHOD":
+        lower = text.strip().lower()
+        if lower in {"1", "online", "card", "pay online", "flutterwave"}:
+            if await _use_flutterwave(tenant_id, phone_number_id, access_token, customer_phone, session_id, cart):
+                return
+            await _use_bank_transfer(tenant_id, phone_number_id, access_token, customer_phone, session_id, cart)
+            return
+        if lower in {"2", "bank", "transfer", "bank transfer"}:
+            await _use_bank_transfer(tenant_id, phone_number_id, access_token, customer_phone, session_id, cart)
+            return
+        await _reply(
+            tenant_id, phone_number_id, access_token, customer_phone,
+            "Please reply *1* to pay online or *2* for bank transfer.\n\n"
+            "_(Reply *CANCEL* to cancel this order)_",
+        )
+        return
+
+    # ── AWAITING_FW_PAYMENT — Flutterwave link sent, waiting on webhook ────────
+    if state == "AWAITING_FW_PAYMENT":
+        link = cart.get("fw_link", "")
+        await _reply(
+            tenant_id, phone_number_id, access_token, customer_phone,
+            f"Your payment link is still waiting:\n{link}\n\n"
+            "You'll get a message here the moment it's confirmed — no need to send anything else.\n\n"
+            "_(Reply *CANCEL* to cancel this order)_",
+        )
+        return
 
     # ── PAYMENT_PENDING — waiting for bank transfer proof image ───────────────
     if state == "PAYMENT_PENDING":
@@ -741,10 +960,10 @@ async def handle_shopping_message(
                 cart["order_id"]   = order_id
                 cart["reference"]  = reference
                 await _reply(
-                    phone_number_id, access_token, customer_phone,
+                    tenant_id, phone_number_id, access_token, customer_phone,
                     f"✅ *Payment proof received!*\n\n"
                     f"Your order reference: *{reference}*\n\n"
-                    "The merchant will verify your payment and confirm shortly. "
+                    "The store will verify your payment and confirm shortly. "
                     "You'll receive a WhatsApp message once it's confirmed.\n\n"
                     "_Need help? Just reply here._",
                 )
@@ -756,15 +975,15 @@ async def handle_shopping_message(
             except Exception as e:
                 print(f"⚠️ [SHOPPING] create_wa_order failed: {e}")
                 await _reply(
-                    phone_number_id, access_token, customer_phone,
-                    "⚠️ There was an issue recording your order. Please try again or contact the merchant.",
+                    tenant_id, phone_number_id, access_token, customer_phone,
+                    "⚠️ There was an issue recording your order. Please try again or contact the store.",
                 )
             return
 
         # Customer sent text instead of photo — remind them
         bank = get_merchant_bank(tenant_id)
         await _send_payment_details(
-            phone_number_id, access_token, customer_phone, cart, bank, reminder=True,
+            tenant_id, phone_number_id, access_token, customer_phone, cart, bank, reminder=True,
         )
         return
 
@@ -776,8 +995,8 @@ async def handle_shopping_message(
     if state == "PAYMENT_REVIEW":
         ref = cart.get("reference", "your order")
         await _reply(
-            phone_number_id, access_token, customer_phone,
-            f"Your order *{ref}* is with the merchant for payment review.\n"
+            tenant_id, phone_number_id, access_token, customer_phone,
+            f"Your order *{ref}* is with the store for payment review.\n"
             "We'll send you a message as soon as it's confirmed. 😊",
         )
         return
@@ -790,7 +1009,7 @@ async def handle_shopping_message(
     if state == "COMPLETE":
         ref = cart.get("reference", "your order")
         await _reply(
-            phone_number_id, access_token, customer_phone,
+            tenant_id, phone_number_id, access_token, customer_phone,
             f"Your order *{ref}* has been completed. Thank you for shopping with us! 🎉\n\n"
             "Feel free to browse and order again anytime.",
         )
@@ -798,7 +1017,7 @@ async def handle_shopping_message(
 
     # ── Fallback ──────────────────────────────────────────────────────────────
     await _reply(
-        phone_number_id, access_token, customer_phone,
+        tenant_id, phone_number_id, access_token, customer_phone,
         "I'm not sure what you mean. Reply *CANCEL* to stop this order, "
         "or follow the prompts above.",
     )

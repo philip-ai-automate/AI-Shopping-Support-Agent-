@@ -48,8 +48,9 @@
       <th>Agents</th>
       <th>Broadcasts</th>
       <th>CRM</th>
-      <th>Adv AI</th>
+      <th>Custom AI</th>
       <th>Integrations</th>
+      <th>Visual Match</th>
       <th>Overage NGN</th>
     </tr>
   </thead>
@@ -66,6 +67,7 @@
       <td><span class="{% if p.feat_crm %}feat-y{% else %}feat-n{% endif %}">{{ '✓' if p.feat_crm else '✗' }}</span></td>
       <td><span class="{% if p.feat_advanced_ai %}feat-y{% else %}feat-n{% endif %}">{{ '✓' if p.feat_advanced_ai else '✗' }}</span></td>
       <td><span class="{% if p.feat_integrations %}feat-y{% else %}feat-n{% endif %}">{{ '✓' if p.feat_integrations else '✗' }}</span></td>
+      <td><span class="{% if p.feat_visual_match %}feat-y{% else %}feat-n{% endif %}">{{ '✓' if p.feat_visual_match else '✗' }}</span></td>
       <td>₦{{ p.overage_per_msg_ngn|int }}</td>
     </tr>
     {% endfor %}

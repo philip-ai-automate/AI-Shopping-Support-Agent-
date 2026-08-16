@@ -6,3 +6,4 @@ python-dotenv
 bcrypt
 openai
 requests
+python-multipart==0.0.32

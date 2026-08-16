@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    width:1440px; height:900px; overflow:hidden;
+    background: radial-gradient(circle at 70% 80%, #0c2333 0%, #030C18 55%, #01060c 100%);
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .wrap { text-align:center; color:#fff; }
+  .logo-badge {
+    display:inline-block; padding:16px 30px; border-radius:18px;
+    background:#fff; line-height:0;
+    opacity:0; animation: fadeUp 0.6s ease-out 0.1s forwards;
+  }
+  .logo-badge img { height:60px; display:block; }
+  .headline {
+    margin-top:36px; font-size:42px; font-weight:800; color:#fff;
+    opacity:0; animation: fadeUp 0.6s ease-out 0.7s forwards;
+  }
+  .subtext {
+    margin-top:16px; font-size:22px; color:#cfe3ee; max-width:800px;
+    opacity:0; animation: fadeUp 0.6s ease-out 1.2s forwards;
+  }
+  .cta-box {
+    margin-top:26px; display:inline-block; padding:18px 40px; border-radius:16px;
+    background:rgba(37,211,102,0.1); border:2px solid #25D366;
+    font-size:28px; font-weight:800; letter-spacing:0.3px; color:#fff;
+    opacity:0; animation: fadeUp 0.6s ease-out 1.7s forwards;
+  }
+  .cta-box b { color:#25D366; }
+  @keyframes fadeUp {
+    from { opacity:0; transform:translateY(18px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+  @keyframes popIn {
+    0%   { opacity:0; transform:scale(0.8); }
+    100% { opacity:1; transform:scale(1); }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="logo-badge"><img src="phixtra_logo.png" alt="PhiXtra"></div>
+    <div class="headline">Never Lose A Customer Again</div>
+    <div class="subtext">This is PhiXtra's AI Sales Agent — WhatsApp that Sells While You Sleep.</div>
+    <div class="cta-box">Get Started Free — <b>portal.phixtra.com/register</b></div>
+  </div>
+</body>
+</html>

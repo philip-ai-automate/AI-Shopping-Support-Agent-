@@ -40,7 +40,7 @@
 {% block content %}
 
 <div class="gs-breadcrumb">
-  <a href="{{ url_for('ambassador.getting_started') }}">← Getting Started</a>
+  <a href="{{ url_for('ambassador.getting_started', product=selected_product) }}">← Getting Started</a>
   <span class="gs-breadcrumb-sep">›</span>
   <span>{{ current[1] }}</span>
 </div>
@@ -58,23 +58,34 @@
   </div>
 </div>
 
+{% if active_products|length > 1 %}
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">
+  {% for p in active_products %}
+  <a href="{{ url_for('ambassador.getting_started_topic', topic=current[0], product=p) }}"
+     class="btn btn-sm{% if selected_product==p %} btn-primary{% endif %}">
+    {{ product_config[p].icon }} {{ product_config[p].label }}
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
 {% block gs_content %}{% endblock %}
 
 <div class="gs-nav">
   {% if prev_topic %}
-  <a class="gs-nav-prev" href="{{ url_for('ambassador.getting_started_topic', topic=prev_topic[0]) }}">
+  <a class="gs-nav-prev" href="{{ url_for('ambassador.getting_started_topic', topic=prev_topic[0], product=selected_product) }}">
     <div class="gs-nav-dir">← Previous</div>
     <div class="gs-nav-label">{{ prev_topic[2] }} {{ prev_topic[1] }}</div>
   </a>
   {% else %}
-  <a class="gs-nav-prev" href="{{ url_for('ambassador.getting_started') }}">
+  <a class="gs-nav-prev" href="{{ url_for('ambassador.getting_started', product=selected_product) }}">
     <div class="gs-nav-dir">← Back</div>
     <div class="gs-nav-label">Getting Started</div>
   </a>
   {% endif %}
 
   {% if next_topic %}
-  <a class="gs-nav-next" href="{{ url_for('ambassador.getting_started_topic', topic=next_topic[0]) }}">
+  <a class="gs-nav-next" href="{{ url_for('ambassador.getting_started_topic', topic=next_topic[0], product=selected_product) }}">
     <div class="gs-nav-dir">Next →</div>
     <div class="gs-nav-label">{{ next_topic[2] }} {{ next_topic[1] }}</div>
   </a>

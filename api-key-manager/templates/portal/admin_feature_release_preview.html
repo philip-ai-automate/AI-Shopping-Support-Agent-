@@ -1,0 +1,94 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Preview — {{ rel.title }} — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+  /* Mirrors templates/ambassador/whats_new.html's card styling exactly. */
+  .wn-card{border:1px solid var(--line);border-radius:16px;padding:22px 24px;
+           background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.05);max-width:640px}
+  .wn-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+  .wn-title{font-size:18px;font-weight:800;margin:0 0 8px;letter-spacing:-.01em}
+  .wn-meta{display:flex;gap:6px;flex-wrap:wrap}
+  .wn-chip{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;
+           padding:3px 10px;border-radius:999px;white-space:nowrap}
+  .wn-chip-product{background:#eff6ff;color:#1d4ed8}
+  .wn-chip-plan{background:#fef3c7;color:#92400e}
+  .wn-new{flex-shrink:0;display:inline-flex;align-items:center;gap:5px;background:#fee2e2;color:#dc2626;
+          font-size:10.5px;font-weight:800;letter-spacing:.03em;padding:4px 10px;border-radius:999px;
+          text-transform:uppercase}
+  .wn-new::before{content:"";width:6px;height:6px;border-radius:50%;background:#dc2626}
+  .wn-summary{font-size:14.5px;color:var(--ink);line-height:1.55;margin:14px 0 16px}
+  .wn-section{border-radius:12px;padding:14px 16px;margin-bottom:10px}
+  .wn-section-pitch{background:#eff6ff;border:1px solid #bfdbfe}
+  .wn-section-demo{background:#f0fdf4;border:1px solid #bbf7d0}
+  .wn-section-label{font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:.03em;margin-bottom:8px}
+  .wn-section-pitch .wn-section-label{color:#1d4ed8}
+  .wn-section-demo .wn-section-label{color:#166534}
+  .wn-section-body{font-size:13.5px;line-height:1.6}
+  .wn-section-pitch .wn-section-body{color:#1e3a8a}
+  .wn-section-demo .wn-section-body{color:#14532d}
+  .wn-section-body p{margin:0 0 8px}
+  .wn-section-body p:last-child{margin-bottom:0}
+  .wn-section-body ul.rt-list{margin:2px 0 8px 18px;padding:0}
+  .wn-section-body ul.rt-list:last-child{margin-bottom:0}
+  .wn-section-body li{margin-bottom:5px}
+  .wn-section-body .rt-subhead{font-weight:800;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;margin:10px 0 5px}
+  .wn-section-body .rt-subhead:first-child{margin-top:0}
+  .wn-playbook{font-size:12.5px;color:var(--muted);font-style:italic;margin-top:2px}
+  .wn-footer{font-size:11px;color:var(--muted);margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+</style>
+
+<div class="page-header">
+  <h1 class="section-title">Preview</h1>
+  <a class="btn btn-sm" href="{{ url_for('portal_admin.feature_releases', edit=rel.id) }}">&larr; Back to Edit</a>
+</div>
+
+<div class="card" style="background:#fffbeb;border-color:#fde68a;margin-bottom:20px;max-width:640px">
+  <strong>🔍 This is exactly how it renders on the ambassador's "What's New" page.</strong>
+  {% if rel.status == 'draft' %}
+  <div style="font-size:12.5px;color:var(--muted);margin-top:4px">
+    This is a draft — ambassadors can't see it yet. The red "New" badge below is shown for
+    illustration; it will actually appear for the first 14 days after you hit Publish.
+  </div>
+  {% endif %}
+</div>
+
+<div class="wn-card">
+  <div class="wn-head">
+    <div>
+      <h3 class="wn-title">{{ rel.title }}</h3>
+      <div class="wn-meta">
+        <span class="wn-chip wn-chip-product">
+          {{ product_config[rel.product].icon if rel.product in product_config else '🌐' }}
+          {{ product_config[rel.product].label if rel.product in product_config else 'All Products' }}
+        </span>
+        <span class="wn-chip wn-chip-plan">🔒 {{ rel.min_plan }}</span>
+      </div>
+    </div>
+    <span class="wn-new">New</span>
+  </div>
+
+  <div class="wn-summary">{{ rel.summary }}</div>
+
+  {% if rel.pitch_notes %}
+  <div class="wn-section wn-section-pitch">
+    <div class="wn-section-label">🎯 How to Pitch It</div>
+    <div class="wn-section-body">{{ rel.pitch_notes | richtext }}</div>
+  </div>
+  {% endif %}
+
+  {% if rel.demo_instructions %}
+  <div class="wn-section wn-section-demo">
+    <div class="wn-section-label">🎬 How to Demo It</div>
+    <div class="wn-section-body">{{ rel.demo_instructions | richtext }}</div>
+  </div>
+  {% endif %}
+
+  {% if rel.playbook_note %}
+  <div class="wn-playbook">📖 <strong>Playbook:</strong> {{ rel.playbook_note }}</div>
+  {% endif %}
+
+  <div class="wn-footer">
+    {% if rel.published_at %}Published {{ rel.published_at.strftime('%d %b %Y') }}{% else %}Not yet published{% endif %}
+  </div>
+</div>
+{% endblock %}

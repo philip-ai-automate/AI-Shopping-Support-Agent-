@@ -89,8 +89,7 @@ def estate_ask_llm(
     create_kwargs = dict(
         model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"),
         messages=messages,
-        temperature=0.3,
-        max_tokens=max_out,
+        max_completion_tokens=max_out,
     )
     if structured_handoff:
         create_kwargs["response_format"] = {

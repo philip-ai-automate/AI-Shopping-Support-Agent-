@@ -1,0 +1,119 @@
+<div class="page-header">
+  <div>
+    <h1 class="section-title">📋 School Requirements Checklist</h1>
+    <div style="font-size:13px;color:var(--muted);margin-top:4px">
+      Share with a school proprietor before onboarding — registration is quick, only 2 things needed
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap" class="no-print">
+    <button onclick="copyChecklist(this)" class="btn btn-sm">Copy Checklist</button>
+    <button onclick="downloadPDF()" class="btn btn-sm">Download PDF</button>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:20px">
+  <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:20px">
+    Registering for PhiXtra School is a simple self-serve sign-up — no SIM card, Meta Business Account,
+    or WhatsApp linking required upfront. Tap each item to see step-by-step instructions.
+  </p>
+
+  <div style="display:flex;flex-direction:column;gap:8px" id="clientChecklist">
+
+    <!-- Req 1 -->
+    <div class="req-item" style="border:1px solid var(--line);border-radius:12px;overflow:hidden">
+      <button onclick="toggleReq(this)" style="width:100%;background:#f8f9fb;border:none;padding:13px 16px;
+              display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;font-family:inherit">
+        <span style="font-size:18px;flex-shrink:0">🖊️</span>
+        <div style="flex:1">
+          <div style="font-size:13.5px;font-weight:700;color:#030C18">A decision-maker ready to register</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">Usually the proprietor or principal, who becomes the account admin</div>
+        </div>
+        <span class="req-arrow" style="font-size:12px;color:var(--muted);flex-shrink:0;transition:transform .2s">▼</span>
+      </button>
+      <div class="req-steps" style="display:none;padding:14px 16px 16px;border-top:1px solid var(--line);background:#fff">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:10px">How to help them get it</div>
+        <ol style="font-size:13px;line-height:1.7;color:#030C18;padding-left:18px;margin:0;display:flex;flex-direction:column;gap:6px">
+          <li>Identify who will register — usually the <strong>proprietor or principal</strong>.</li>
+          <li>They'll need a <strong>working email address</strong> to register and log in.</li>
+          <li>They can invite teachers and other staff into the portal after registering.</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- Req 2 -->
+    <div class="req-item" style="border:1px solid var(--line);border-radius:12px;overflow:hidden">
+      <button onclick="toggleReq(this)" style="width:100%;background:#f8f9fb;border:none;padding:13px 16px;
+              display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;font-family:inherit">
+        <span style="font-size:18px;flex-shrink:0">🏫</span>
+        <div style="flex:1">
+          <div style="font-size:13.5px;font-weight:700;color:#030C18">Basic school details</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">School name, type, state, and roughly how many students</div>
+        </div>
+        <span class="req-arrow" style="font-size:12px;color:var(--muted);flex-shrink:0;transition:transform .2s">▼</span>
+      </button>
+      <div class="req-steps" style="display:none;padding:14px 16px 16px;border-top:1px solid var(--line);background:#fff">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:10px">How to help them get it</div>
+        <ol style="font-size:13px;line-height:1.7;color:#030C18;padding-left:18px;margin:0;display:flex;flex-direction:column;gap:6px">
+          <li>Have the school name, type (nursery, primary, or secondary), and state ready.</li>
+          <li>Know an approximate <strong>student count</strong> — this decides which pricing plan fits (Free, Starter, Growing, Established, or Enterprise).</li>
+          <li>Registration takes about 5 minutes — there's no waiting period before they can log in.</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- Req 3 -->
+    <div class="req-item" style="border:1px solid var(--line);border-radius:12px;overflow:hidden">
+      <button onclick="toggleReq(this)" style="width:100%;background:#f8f9fb;border:none;padding:13px 16px;
+              display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;font-family:inherit">
+        <span style="font-size:18px;flex-shrink:0">📱</span>
+        <div style="flex:1">
+          <div style="font-size:13.5px;font-weight:700;color:#030C18">WhatsApp number (optional, connects later)</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">Only needed for automatic parent notifications — not required to register</div>
+        </div>
+        <span class="req-arrow" style="font-size:12px;color:var(--muted);flex-shrink:0;transition:transform .2s">▼</span>
+      </button>
+      <div class="req-steps" style="display:none;padding:14px 16px 16px;border-top:1px solid var(--line);background:#fff">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:10px">How to help them get it</div>
+        <ol style="font-size:13px;line-height:1.7;color:#030C18;padding-left:18px;margin:0;display:flex;flex-direction:column;gap:6px">
+          <li>Parent WhatsApp notifications (absence alerts, fee reminders) connect as a <strong>separate step after registration</strong>.</li>
+          <li>The PhiXtra team helps connect the number when the school is ready.</li>
+        </ol>
+      </div>
+    </div>
+
+  </div><!-- /clientChecklist -->
+</div>
+
+<script>
+function toggleReq(btn) {
+  var steps = btn.closest('.req-item').querySelector('.req-steps');
+  var arrow = btn.querySelector('.req-arrow');
+  var open  = steps.style.display !== 'none';
+  steps.style.display = open ? 'none' : 'block';
+  arrow.style.transform = open ? '' : 'rotate(180deg)';
+}
+
+function downloadPDF() {
+  document.querySelectorAll('.req-steps').forEach(function(el) { el.style.display = 'block'; });
+  document.querySelectorAll('.req-arrow').forEach(function(el)  { el.style.transform = 'rotate(180deg)'; });
+  window.print();
+}
+
+function copyChecklist(btn) {
+  var text =
+    "✅ PhiXtra School — Requirements Checklist\n\n" +
+    "Before a school can register with PhiXtra School, make sure you have these ready:\n\n" +
+    "🖊️ 1. A decision-maker ready to register\n" +
+    "   Usually the proprietor or principal, who becomes the account admin.\n\n" +
+    "🏫 2. Basic school details\n" +
+    "   School name, type, state, and an approximate student count.\n\n" +
+    "📱 3. WhatsApp number (optional, connects later)\n" +
+    "   Only needed for automatic parent notifications — not required to register.\n\n" +
+    "Need help with any of these steps? Contact your PhiXtra Ambassador.";
+  navigator.clipboard.writeText(text).then(function() {
+    var orig = btn.textContent;
+    btn.textContent = "Copied!";
+    setTimeout(function(){ btn.textContent = orig; }, 2000);
+  });
+}
+</script>

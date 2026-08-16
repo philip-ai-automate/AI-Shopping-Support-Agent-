@@ -111,6 +111,14 @@ def ensure_portal_tables():
             ("onboard_login_sent",         "BOOLEAN NOT NULL DEFAULT FALSE"),
             ("onboard_client_trained",     "BOOLEAN NOT NULL DEFAULT FALSE"),
             ("onboarding_checklist_notes", "TEXT"),
+            # Direct admin→Sales Manager assignment, independent of the normal
+            # ambassador_id/recruited_by_id chain — used for customers who signed
+            # up on their own (company campaign/promo, not an ambassador referral)
+            # but still need a manager chasing them for onboarding follow-up.
+            # ambassador_id stays NULL on these rows; team_pipeline() matches on
+            # this column as well as recruited_by_id so they show up in that
+            # manager's queue like any other lead.
+            ("sales_manager_id",           "INTEGER REFERENCES ambassadors(id)"),
         ]
         for col_name, col_def in _lead_pipeline_columns:
             if not _column_exists(cur, "ambassador_leads", col_name):
@@ -1411,6 +1419,103 @@ def ensure_portal_tables():
         # generic "You" once more than one human can reply on an account.
         if not _column_exists(cur, "wa_message_log", "sent_by_label"):
             cur.execute("ALTER TABLE wa_message_log ADD COLUMN sent_by_label VARCHAR(200)")
+
+        # ── sms_campaigns: Sales Pipeline bulk SMS (support@phixtra.com only) ──
+        # Sends via the single shared BulkSMSNigeria account (see bulksmsng_api.py;
+        # was eBulkSMS until the 2026-08-06 switch).
+        # Recipients are resolved once at send time (Sales Pipeline selection
+        # and/or an uploaded CSV/Excel list, merged and de-duplicated) and
+        # stored as a newline-joined snapshot, same shape as email_campaigns.
+        if not _table_exists(cur, "sms_campaigns"):
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS sms_campaigns (
+                    id           BIGSERIAL PRIMARY KEY,
+                    tenant_id    INTEGER      NOT NULL,
+                    message      TEXT         NOT NULL,
+                    recipients   TEXT,
+                    total_count  INTEGER      NOT NULL DEFAULT 0,
+                    sent_count   INTEGER      NOT NULL DEFAULT 0,
+                    failed_count INTEGER      NOT NULL DEFAULT 0,
+                    status       VARCHAR(20)  NOT NULL DEFAULT 'sending',
+                    error        TEXT,
+                    created_by   VARCHAR(200),
+                    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                    completed_at TIMESTAMPTZ
+                )
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_sms_campaigns_tenant
+                    ON sms_campaigns(tenant_id)
+            """)
+        if not _column_exists(cur, "sms_campaigns", "sender"):
+            cur.execute("ALTER TABLE sms_campaigns ADD COLUMN sender VARCHAR(20)")
+
+        # ── sms_pipeline_segments / sms_pipeline_segment_leads: reusable named
+        # groups of Sales Pipeline contacts for the SMS Campaign tool, mirroring
+        # wa_pipeline_segments/wa_pipeline_segment_leads exactly (same shape).
+        # SMS Campaign is support@phixtra.com-only, but these tables carry a
+        # tenant_id like the others in case that ever changes.
+        if not _table_exists(cur, "sms_pipeline_segments"):
+            cur.execute("""
+                CREATE TABLE sms_pipeline_segments (
+                    id         SERIAL PRIMARY KEY,
+                    tenant_id  INTEGER      NOT NULL,
+                    name       VARCHAR(120) NOT NULL,
+                    created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+                )
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_sms_pipeline_segments_tenant
+                    ON sms_pipeline_segments(tenant_id)
+            """)
+        if not _table_exists(cur, "sms_pipeline_segment_leads"):
+            cur.execute("""
+                CREATE TABLE sms_pipeline_segment_leads (
+                    segment_id INTEGER NOT NULL REFERENCES sms_pipeline_segments(id) ON DELETE CASCADE,
+                    lead_id    INTEGER NOT NULL REFERENCES merchant_pipeline_leads(id) ON DELETE CASCADE,
+                    added_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    PRIMARY KEY (segment_id, lead_id)
+                )
+            """)
+
+        # ── wa_pipeline_segments / wa_pipeline_segment_leads: reusable named
+        # groups of Sales Pipeline contacts for WhatsApp Campaign, mirroring
+        # email_segments/email_segment_leads exactly (same shape, phone instead
+        # of email). Deliberately separate from the older wa_segments/
+        # wa_segment_members pair, which groups wa_contacts (WhatsApp Contacts
+        # page) — a different, unrelated contact table not tied to the CRM.
+        if not _table_exists(cur, "wa_pipeline_segments"):
+            cur.execute("""
+                CREATE TABLE wa_pipeline_segments (
+                    id         SERIAL PRIMARY KEY,
+                    tenant_id  INTEGER      NOT NULL,
+                    name       VARCHAR(120) NOT NULL,
+                    created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+                )
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_wa_pipeline_segments_tenant
+                    ON wa_pipeline_segments(tenant_id)
+            """)
+        if not _table_exists(cur, "wa_pipeline_segment_leads"):
+            cur.execute("""
+                CREATE TABLE wa_pipeline_segment_leads (
+                    segment_id INTEGER NOT NULL REFERENCES wa_pipeline_segments(id) ON DELETE CASCADE,
+                    lead_id    INTEGER NOT NULL REFERENCES merchant_pipeline_leads(id) ON DELETE CASCADE,
+                    added_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    PRIMARY KEY (segment_id, lead_id)
+                )
+            """)
+
+        # ── wa_campaigns.pipeline_segment_id: which WhatsApp Segment (if any)
+        # a campaign was sent to. Separate column from the older segment_id
+        # (wa_segments), left untouched for backward compatibility with
+        # campaigns created before this feature existed.
+        if not _column_exists(cur, "wa_campaigns", "pipeline_segment_id"):
+            cur.execute(
+                "ALTER TABLE wa_campaigns ADD COLUMN pipeline_segment_id "
+                "INTEGER REFERENCES wa_pipeline_segments(id) ON DELETE SET NULL"
+            )
 
         conn.commit()
     except Exception as e:

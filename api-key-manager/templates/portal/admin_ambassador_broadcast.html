@@ -1,0 +1,160 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Ambassador Broadcast — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+  .bcast-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+  @media(max-width:900px){.bcast-grid{grid-template-columns:1fr}}
+  .bcast-count{font-size:12px;color:var(--muted);margin-top:6px}
+  .bcast-empty td{text-align:center;color:var(--muted);padding:40px 20px!important}
+  .tpl-status-pill{margin-left:8px}
+</style>
+
+<div class="page-header">
+  <h1 class="section-title">Ambassador Broadcast</h1>
+</div>
+
+<div class="bcast-grid">
+  <div class="card">
+    <h3 style="margin-bottom:12px">Template Settings</h3>
+    <p style="font-size:12.5px;color:var(--muted);margin-bottom:14px">
+      Enter the name of the Meta-approved template used for all ambassador
+      broadcasts (body: <em>"Hi {{ '{{1}}' }}, here's an update from the
+      PhiXtra Ambassador Team: {{ '{{2}}' }} Thanks for being part of
+      PhiXtra!"</em>). You submit/approve the template directly in Meta
+      Business Manager.
+    </p>
+    <form method="POST" action="{{ url_for('portal_admin.ambassador_broadcast_save_template') }}">
+      <div class="form-group">
+        <label class="modal-label" style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:5px">Template Name</label>
+        <input type="text" name="template_name" value="{{ template_name }}" placeholder="ambassador_update"
+               style="width:100%;padding:9px 12px;border:1.5px solid var(--line);border-radius:9px;font-size:13px" required>
+      </div>
+      <div class="form-group">
+        <label class="modal-label" style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:5px">Language Code</label>
+        <input type="text" name="template_language" value="{{ template_language }}" placeholder="en_US"
+               style="width:100%;padding:9px 12px;border:1.5px solid var(--line);border-radius:9px;font-size:13px">
+      </div>
+      <button type="submit" class="btn btn-primary">Save</button>
+      {% if template_status %}
+        <span class="pill tpl-status-pill
+          {% if template_status=='APPROVED' %}pill-green
+          {% elif template_status=='PENDING' %}pill-warn
+          {% elif template_status in ('REJECTED','ERROR','NOT_FOUND') %}pill-red
+          {% else %}pill-grey{% endif %}">{{ template_status }}</span>
+      {% endif %}
+    </form>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom:12px">Send Broadcast</h3>
+    <form method="POST" action="{{ url_for('portal_admin.ambassador_broadcast_send') }}" id="broadcastForm">
+      <div class="form-group">
+        <label class="modal-label" style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:5px">Target</label>
+        <select name="target_product" id="targetSelect"
+                style="width:100%;padding:9px 12px;border:1.5px solid var(--line);border-radius:9px;font-size:13px">
+          <option value="all">All Ambassadors</option>
+          {% for p, label in product_labels.items() %}
+          <option value="{{ p }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+        <div class="bcast-count" id="targetCount"></div>
+      </div>
+      <div class="form-group">
+        <label class="modal-label" style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:5px">Message</label>
+        <textarea name="message_body" id="messageBody" rows="4" required
+                  style="width:100%;padding:9px 12px;border:1.5px solid var(--line);border-radius:9px;font-size:13px;font-family:inherit"
+                  placeholder="Your message to ambassadors..."></textarea>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button type="button" class="btn" onclick="showPreview()">👁 Preview</button>
+        <button type="submit" class="btn btn-primary" onclick="return confirm('Send this broadcast now?')">Send Broadcast</button>
+      </div>
+    </form>
+
+    <div id="previewWrap" style="display:none;margin-top:16px">
+      <div class="modal-label" style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Preview — what the ambassador sees</div>
+      <div style="background:#e5ddd5;border-radius:12px;padding:16px;display:flex">
+        <div style="background:#fff;border-radius:8px;border-top-left-radius:0;padding:10px 12px;max-width:80%;font-size:13.5px;line-height:1.45;box-shadow:0 1px 1px rgba(0,0,0,0.08);white-space:pre-wrap;word-break:break-word" id="previewBubble"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:12px">History</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Sent</th>
+          <th>Target</th>
+          <th>Message</th>
+          <th>Delivered</th>
+          <th>Failed</th>
+          <th>Skipped</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in history %}
+        <tr>
+          <td>{{ b.created_at.strftime('%d %b %Y %H:%M') }}</td>
+          <td><span class="pill pill-grey">{{ product_labels.get(b.target_product, 'All') }}</span></td>
+          <td style="max-width:340px">{{ b.message_body }}</td>
+          <td>{{ b.sent_count }}</td>
+          <td>
+            {{ b.failed_count }}
+            {% if b.failed_recipients %}
+            <details style="display:inline">
+              <summary style="display:inline;cursor:pointer;color:var(--bad);font-size:11.5px">who?</summary>
+              <div style="font-size:11.5px;color:var(--muted);margin-top:4px">
+                {% for fr in b.failed_recipients %}
+                {{ fr.name }} (#{{ fr.id }}) — {{ fr.whatsapp_number }}<br>
+                {% endfor %}
+              </div>
+            </details>
+            {% endif %}
+          </td>
+          <td>{{ b.skipped_count }}</td>
+        </tr>
+        {% else %}
+        <tr class="bcast-empty"><td colspan="6">No broadcasts sent yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const TARGET_COUNTS  = {{ target_counts|tojson }};
+const TARGET_SAMPLES = {{ target_samples|tojson }};
+
+function updateCount(){
+  const t = document.getElementById('targetSelect').value;
+  const c = TARGET_COUNTS[t] || {sendable:0, skipped:0};
+  document.getElementById('targetCount').textContent =
+    c.sendable + ' will receive it' + (c.skipped ? ', ' + c.skipped + ' skipped (no WhatsApp number)' : '');
+}
+document.getElementById('targetSelect').addEventListener('change', updateCount);
+updateCount();
+
+// Minimal WhatsApp markdown -> HTML (bold/italic/strikethrough), matching
+// how the recipient's WhatsApp client will actually render the message.
+function waFormat(text){
+  const escaped = text
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return escaped
+    .replace(/\*(.+?)\*/g, '<strong>$1</strong>')
+    .replace(/_(.+?)_/g, '<em>$1</em>')
+    .replace(/~(.+?)~/g, '<s>$1</s>');
+}
+
+function showPreview(){
+  const target = document.getElementById('targetSelect').value;
+  const name   = TARGET_SAMPLES[target] || 'Ada';
+  const body   = document.getElementById('messageBody').value.trim() || '(your message will appear here)';
+  const full   = "Hi " + name + ", here's an update from the PhiXtra Ambassador Team: " + body + " Thanks for being part of PhiXtra!";
+  document.getElementById('previewBubble').innerHTML = waFormat(full);
+  document.getElementById('previewWrap').style.display = 'block';
+}
+</script>
+{% endblock %}

@@ -1,0 +1,39 @@
+<div class="card" style="max-width:480px">
+  <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:16px">
+    There's now a live WhatsApp demo for School — scan the code below or open the chat directly to
+    show a prospective school owner the parent AI bot in action. You can also log into the demo
+    dashboard to show attendance, fees, and staff screens.
+  </p>
+
+  <div style="text-align:center;padding:8px 0 24px">
+    <img src="{{ url_for('ambassador.demo_qr_image', product='school') }}" alt="School WhatsApp demo QR code"
+         style="width:220px;height:220px;border:1px solid var(--line);border-radius:16px;margin-bottom:20px"/>
+
+    <div style="font-size:13px;color:var(--muted);margin-bottom:6px">WhatsApp Demo Number</div>
+    <div style="background:rgba(3,12,24,.04);border:1px solid var(--line);border-radius:10px;padding:10px 14px;
+                display:flex;align-items:center;gap:8px;margin-bottom:20px;text-align:left">
+      <span style="font-size:13px;color:var(--ink);flex:1;font-weight:600">+{{ demo_wa_number }}</span>
+      <a href="https://wa.me/{{ demo_wa_number }}" target="_blank" rel="noopener"
+         class="btn btn-sm" style="flex-shrink:0">Open Chat</a>
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:center">
+      <a href="{{ url_for('ambassador.demo_qr_image', download='1', product='school') }}"
+         class="btn btn-primary" download>Download PNG</a>
+    </div>
+  </div>
+
+  <div style="border-top:1px solid var(--line);padding-top:16px;margin-bottom:16px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px">Demo dashboard login</div>
+    <div style="font-size:13px;margin-bottom:4px"><strong>Email:</strong> demo@school.phixtra.com</div>
+    <div style="font-size:13px;margin-bottom:12px"><strong>Password:</strong> ask your PhiXtra contact if this has changed</div>
+    <a href="https://school.phixtra.com/login" target="_blank" rel="noopener" class="btn btn-sm"
+       style="width:100%;text-align:center;display:block">Open School Demo Login →</a>
+  </div>
+
+  <div style="border-top:1px solid var(--line);padding-top:16px;font-size:12px;color:var(--muted);line-height:1.6">
+    <strong>How to use it:</strong> Show this QR code to a prospective school proprietor and ask them to scan
+    it — it opens a WhatsApp chat with the demo school's AI, which can answer fee and attendance questions
+    live. For the full picture, also log into the demo dashboard to show attendance, fees, and staff screens.
+  </div>
+</div>

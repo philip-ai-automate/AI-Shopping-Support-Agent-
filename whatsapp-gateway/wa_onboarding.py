@@ -233,7 +233,7 @@ async def _reply(phone: str, message: str):
 
 async def _complete_registration(phone: str, collected: dict):
     """Provision the merchant, save their products, send success message."""
-    biz_name = collected.get("business_name", f"WA Merchant {phone[-4:]}")
+    biz_name = collected.get("business_name", f"WA Business {phone[-4:]}")
     products = collected.get("products", [])
     category = collected.get("category")
 
@@ -307,7 +307,7 @@ async def handle_onboarding_message(msg: dict):
         if not _wants_setup(text):
             await _reply(
                 phone,
-                "👋 Hello! This is the *Phixtra* merchant registration line.\n\n"
+                "👋 Hello! This is the *Phixtra* business registration line.\n\n"
                 "To set up your AI-powered WhatsApp store, send the word:\n\n"
                 "*SETUP*",
             )

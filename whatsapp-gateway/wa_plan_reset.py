@@ -14,6 +14,7 @@ This is what makes the AI message quota "refresh" each billing period.
 
 from datetime import date, datetime
 from fastapi import APIRouter, Header, HTTPException
+import json
 import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -29,6 +30,18 @@ router = APIRouter()
 _INTERNAL_TOKEN  = os.getenv("PHIXTRA_INTERNAL_TOKEN", "")
 _PORTAL_BASE_URL = os.getenv("PORTAL_BASE_URL", "https://portal.phixtra.com").rstrip("/")
 _BRAND           = "#030C18"
+
+# Keep in sync with portal_routes.py::_build_free_features(). Duplicated here
+# because whatsapp-gateway and api-key-manager are separate deployable
+# services with no shared Python package. All flags off — a tenant earns
+# them back through _grant_trial_upgrade() on its next real connection.
+_FREE_PLAN_FEATURES_JSON = json.dumps({
+    "product_recommendation":    False,
+    "related_products":          False,
+    "cart_recovery":             False,
+    "verified_specs_web_lookup": False,
+    "chat_archive_unlimited":    False,
+})
 
 
 def _send_plain_email(to_email: str, subject: str, html: str, text: str = "") -> None:
@@ -172,9 +185,10 @@ def run_plan_resets() -> dict:
                 SET founder_year      = 2,
                     plan_id           = (SELECT id FROM plans WHERE slug='free' LIMIT 1),
                     trial_ends_at     = NULL,
-                    quota_notified_at = NULL
+                    quota_notified_at = NULL,
+                    features          = %s
                 WHERE id = ANY(%s)
-            """, (founder_ids,))
+            """, (_FREE_PLAN_FEATURES_JSON, founder_ids))
             conn.commit()
             print(f"✅ [PLAN RESET] {len(founder_ids)} founder(s) moved to Year 2")
 
@@ -209,11 +223,12 @@ def run_plan_resets() -> dict:
             UPDATE tenants
             SET plan_id       = (SELECT id FROM plans WHERE slug='free' LIMIT 1),
                 trial_ends_at = NULL,
-                quota_notified_at = NULL
+                quota_notified_at = NULL,
+                features      = %s
             WHERE (is_founder = FALSE OR is_founder IS NULL)
               AND trial_ends_at IS NOT NULL
               AND trial_ends_at <= CURRENT_DATE
-        """)
+        """, (_FREE_PLAN_FEATURES_JSON,))
         results["trials_expired"] = cur.rowcount
         conn.commit()
 

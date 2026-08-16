@@ -45,6 +45,10 @@
     <button type="submit" class="btn">Log In</button>
   </form>
 
+  <div class="register-link" style="margin-top:14px">
+    <a href="{{ url_for('ambassador.forgot_password') }}">Forgot password?</a>
+  </div>
+
   <div class="register-link">Not an ambassador yet?
     <a href="{{ url_for('ambassador.register') }}">Apply now</a>
   </div>

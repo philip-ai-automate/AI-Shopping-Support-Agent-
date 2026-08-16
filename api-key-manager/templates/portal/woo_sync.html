@@ -121,8 +121,9 @@
 <div class="ws-info-banner">
   <span style="font-size:16px">ℹ️</span>
   <div>
-    This data is <strong>read-only</strong>. To add, edit, or remove products, log into your WooCommerce store
-    and run a <strong>Full Sync</strong> from the PhiXtra Export plugin settings.
+    Products are <strong>read-only</strong> here — to add, edit, or remove a product, log into your WooCommerce store
+    and run a <strong>Full Sync</strong> from the PhiXtra Export plugin settings. Pages and posts can be deleted
+    below if they're outdated, but note a future Full Sync will bring back anything still live on your site.
     {% if last_sync %}
       Last sync: <strong>{{ last_sync.strftime('%d %b %Y, %H:%M') }}</strong>.
     {% endif %}
@@ -193,12 +194,32 @@
   </div>
 </form>
 
+{# ── Bulk delete form target (checkboxes below point to this via form="") ── #}
+<form id="woo-bulk-form" method="POST" action="{{ url_for('portal.woo_sync_bulk_delete') }}">
+  <input type="hidden" name="type_f" value="{{ type_f }}">
+  <input type="hidden" name="q" value="{{ q }}">
+  <input type="hidden" name="stock_f" value="{{ stock_f }}">
+  <input type="hidden" name="page_n" value="{{ page }}">
+</form>
+
+{% if docs %}
+<div class="ws-bulk-bar" id="ws-bulk-bar" style="display:none;align-items:center;gap:10px;padding:10px 18px;background:#fff3f2;border:1px solid rgba(240,68,56,.3);border-radius:12px 12px 0 0;font-size:13px">
+  <span id="ws-bulk-count" style="font-weight:600"></span>
+  <button type="submit" form="woo-bulk-form" class="btn btn-sm"
+          style="margin-left:auto;color:var(--bad,#b02020);border-color:rgba(240,68,56,.3)"
+          onclick="return confirm('Delete the selected items? The AI will stop using them to answer customers.')">
+    🗑 Delete selected
+  </button>
+</div>
+{% endif %}
+
 {# ── Table ── #}
 <div class="ws-wrap">
   {% if docs %}
   <table class="ws-table">
     <thead>
       <tr>
+        <th style="width:32px"><input type="checkbox" id="ws-select-all"></th>
         <th style="width:54px"></th>
         <th>Title</th>
         <th>Type</th>
@@ -212,6 +233,11 @@
     <tbody>
       {% for d in docs %}
       <tr>
+        <td>
+          {% if d.type in ('page', 'post') %}
+          <input type="checkbox" class="ws-row-check" name="doc_ids" value="{{ d.id }}" form="woo-bulk-form">
+          {% endif %}
+        </td>
         <td>
           {% if d.image_url %}
             <img src="{{ d.image_url }}" alt="" class="ws-thumb" loading="lazy">
@@ -271,10 +297,22 @@
             {{ d.updated_at.strftime('%d %b %Y') }}
           {% else %}—{% endif %}
         </td>
-        <td>
+        <td style="white-space:nowrap">
           {% if d.url %}
           <a href="{{ d.url }}" target="_blank" rel="noopener"
              class="btn btn-sm" title="View on store">↗</a>
+          {% endif %}
+          {% if d.type in ('page', 'post') %}
+          <form method="POST" action="{{ url_for('portal.woo_sync_delete') }}"
+                style="display:inline" onsubmit="return confirm('Delete this {{ d.type }}? The AI will stop using it to answer customers.')">
+            <input type="hidden" name="doc_id" value="{{ d.id }}">
+            <input type="hidden" name="type_f" value="{{ type_f }}">
+            <input type="hidden" name="q" value="{{ q }}">
+            <input type="hidden" name="stock_f" value="{{ stock_f }}">
+            <input type="hidden" name="page_n" value="{{ page }}">
+            <button type="submit" class="btn btn-sm" title="Delete"
+                    style="color:var(--bad,#b02020);border-color:rgba(240,68,56,.3)">🗑</button>
+          </form>
           {% endif %}
         </td>
       </tr>
@@ -322,4 +360,40 @@
   </div>
   {% endif %}
 </div>
+
+<script>
+(function () {
+  var selectAll = document.getElementById('ws-select-all');
+  var bar       = document.getElementById('ws-bulk-bar');
+  var countLbl  = document.getElementById('ws-bulk-count');
+
+  function checks() {
+    return Array.prototype.slice.call(document.querySelectorAll('.ws-row-check'));
+  }
+
+  function refresh() {
+    var checked = checks().filter(function (c) { return c.checked; });
+    if (bar) {
+      bar.style.display = checked.length ? 'flex' : 'none';
+    }
+    if (countLbl) {
+      countLbl.textContent = checked.length + ' item' + (checked.length !== 1 ? 's' : '') + ' selected';
+    }
+    if (selectAll) {
+      var all = checks();
+      selectAll.checked = all.length > 0 && checked.length === all.length;
+    }
+  }
+
+  if (selectAll) {
+    selectAll.addEventListener('change', function () {
+      checks().forEach(function (c) { c.checked = selectAll.checked; });
+      refresh();
+    });
+  }
+
+  checks().forEach(function (c) { c.addEventListener('change', refresh); });
+  refresh();
+})();
+</script>
 {% endblock %}

@@ -143,7 +143,7 @@
 <style>#addLeadForm.open{display:block !important}</style>
 {% endif %}
 
-<form method="GET" style="display:flex;gap:8px;margin-bottom:20px" data-tour="search-box">
+<form method="GET" style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;align-items:center" data-tour="search-box">
   {% if stage_filter %}<input type="hidden" name="stage" value="{{ stage_filter }}">{% endif %}
   <input type="search" name="q" value="{{ search_q or '' }}" placeholder="🔍 Search leads by business name…"
          class="finp" style="max-width:320px">
@@ -151,6 +151,14 @@
   {% if search_q %}
   <a class="btn btn-sm" href="{{ url_for('ambassador.team_pipeline', stage=stage_filter or none) }}">Clear</a>
   {% endif %}
+  <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-left:auto">
+    Per page
+    <select name="per_page" onchange="this.form.submit()" class="finp" style="padding:6px 10px;font-size:12px;width:auto">
+      {% for opt in ['25','50','100','300','500','all'] %}
+      <option value="{{ opt }}" {% if per_page == opt %}selected{% endif %}>{{ 'All' if opt == 'all' else opt }}</option>
+      {% endfor %}
+    </select>
+  </label>
 </form>
 
 {% if due_items %}
@@ -214,12 +222,12 @@
         {% endif %}
         {% for l in leads %}
         <tr>
-          <td><strong>{{ l.business_name }}</strong></td>
+          <td><strong class="biz-name-cell">{{ l.business_name }}</strong></td>
           <td class="muted">{{ l.ambassador_name }}</td>
           <td class="muted">{{ product_config[l.product or 'portal'].icon }} {{ product_config[l.product or 'portal'].label }}</td>
           <td class="muted">{{ l.industry or '—' }}</td>
           <td class="muted" style="font-size:12px">
-            {{ l.contact_name or '' }}{% if l.phone %}<br>{{ l.phone }}{% endif %}
+            {{ l.contact_name or '' }}{% if l.phone %}<br>{{ l.phone }}{% elif l.email %}<br>{{ l.email }}{% endif %}
           </td>
           <td>
             <span class="stage-pill st-{{ l.stage }}">{{ stage_labels[l.stage] }}</span>
@@ -298,6 +306,25 @@
       </tbody>
     </table>
   </div>
+  {% if total_pages > 1 %}
+  <div style="display:flex;align-items:center;justify-content:center;gap:6px;
+              padding:14px 18px;border-top:1px solid var(--line);flex-wrap:wrap">
+    {% set base_args = {'stage': stage_filter or none, 'q': search_q or none, 'per_page': per_page} %}
+    <a href="{{ url_for('ambassador.team_pipeline', page=page-1, **base_args) if page > 1 else '#' }}"
+       class="btn btn-sm" style="{% if page <= 1 %}pointer-events:none;opacity:.4{% endif %}">← Prev</a>
+    {% for p in range(1, total_pages + 1) %}
+      {% if p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
+    <a href="{{ url_for('ambassador.team_pipeline', page=p, **base_args) }}"
+       class="btn btn-sm{% if p == page %} btn-primary{% endif %}" style="min-width:30px;text-align:center">{{ p }}</a>
+      {% elif p == page - 3 or p == page + 3 %}
+    <span style="color:var(--muted);font-size:12px">…</span>
+      {% endif %}
+    {% endfor %}
+    <a href="{{ url_for('ambassador.team_pipeline', page=page+1, **base_args) if page < total_pages else '#' }}"
+       class="btn btn-sm" style="{% if page >= total_pages %}pointer-events:none;opacity:.4{% endif %}">Next →</a>
+    <span style="font-size:11.5px;color:var(--muted);margin-left:8px">Page {{ page }} of {{ total_pages }}</span>
+  </div>
+  {% endif %}
 </div>
 
 {% if dropped_leads %}

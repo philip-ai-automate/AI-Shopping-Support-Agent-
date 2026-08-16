@@ -151,12 +151,12 @@
 <div class="left-panel">
   <div class="brand-logo"><span class="brand-dot"></span> PhiXtra AI</div>
   <h2 class="left-headline">Earn while you grow the PhiXtra network</h2>
-  <p class="left-sub">Join our Ambassador programme and earn 20% on every client you sign up — with lifetime earning potential.</p>
+  <p class="left-sub">Join our Ambassador programme and earn 30% on every client you sign up — with lifetime earning potential.</p>
   <div class="perks">
     <div class="perk-item">
       <div class="perk-icon">💸</div>
-      <div><div class="perk-title">20% Commission</div>
-           <div class="perk-desc">20% on every client, whether self-closed or closed by our team</div></div>
+      <div><div class="perk-title">30% Commission</div>
+           <div class="perk-desc">30% on clients who sign up through your own referral link; 20% on clients PhiXtra assigns to you</div></div>
     </div>
     <div class="perk-item">
       <div class="perk-icon">⭐</div>
@@ -529,7 +529,7 @@
     </div>
 
     <div class="field" style="margin-top:4px">
-      <label class="lbl">Upload Proof of Qualification <span class="req">*</span></label>
+      <label class="lbl">Upload Proof of Qualification <span class="opt">(optional)</span></label>
       <div style="font-size:11.5px;color:#6b7280;margin-bottom:8px;line-height:1.5">
         Upload your certificate, statement of result, or official transcript
       </div>
@@ -697,9 +697,9 @@
 
         <p style="margin-bottom:10px"><strong>2. Commission Structure</strong></p>
         <p style="margin-bottom:8px"><strong>2.1 Self-Closed Referrals</strong><br>
-        Where a business signs up directly through the Ambassador's unique referral link, the Ambassador earns <strong>20% of the client's monthly subscription fee</strong> for the duration of their active commission window (see Clause 4).</p>
-        <p style="margin-bottom:8px"><strong>2.2 Submitted Leads</strong><br>
-        Where the Ambassador submits a business lead via the PhiXtra Ambassador Portal and PhiXtra AI's team closes and onboards the client, the Ambassador earns <strong>20% of the client's monthly subscription fee</strong>, beginning from the date the client activates a paid subscription.</p>
+        Where a business signs up directly through the Ambassador's unique referral link, the Ambassador earns <strong>30% of the client's monthly subscription fee</strong> for the duration of their active commission window (see Clause 4).</p>
+        <p style="margin-bottom:8px"><strong>2.2 Company-Assigned Leads</strong><br>
+        Where PhiXtra AI sources a prospective client through its own sales channels and assigns that client to the Ambassador, the Ambassador earns <strong>20% of the client's monthly subscription fee</strong>, beginning from the date the client activates a paid subscription.</p>
         <p style="margin-bottom:10px"><strong>2.3 Upsell Bonuses</strong><br>
         The Ambassador earns a one-time bonus when a referred client upgrades to a higher plan:</p>
         <table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:16px">
@@ -780,7 +780,8 @@
                 border-radius:12px;display:flex;align-items:flex-start;gap:12px;transition:border-color .15s">
       <input type="checkbox" name="contract_agreed" id="contract_agreed" value="1"
              style="width:18px;height:18px;margin-top:1px;flex-shrink:0;
-                    accent-color:#030C18;cursor:pointer;border-radius:4px"/>
+                    accent-color:#030C18;cursor:pointer;border-radius:4px;
+                    -webkit-appearance:checkbox;appearance:auto"/>
       <label for="contract_agreed"
              style="font-size:13.5px;font-weight:600;color:#030C18;cursor:pointer;line-height:1.45">
         I have read and agree to the PhiXtra AI Ambassador Partnership Agreement
@@ -881,8 +882,6 @@ const RULES = {
   ],
   3: [
     {id:'highest_qualification', err:'err_highest_qualification', ok: v => v !== ''},
-    {id:'qual_document', err:'err_qual_document',
-     ok: () => document.getElementById('qual_document').files.length > 0, isFile: true},
   ],
   4: [
     {id:'id_document_type', err:'err_id_document_type', ok: v => v !== ''},

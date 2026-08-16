@@ -454,10 +454,9 @@ def handle_message(phone_number_id: str, sender_wa: str, message_text: str) -> b
     # 6. Call OpenAI
     try:
         response = _openai.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5.6-luna",
             messages=messages,
-            max_tokens=450,
-            temperature=0.4,
+            max_completion_tokens=450,
         )
         reply = response.choices[0].message.content.strip()
     except Exception as e:

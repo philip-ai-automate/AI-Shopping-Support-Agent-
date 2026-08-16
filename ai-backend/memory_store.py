@@ -78,7 +78,13 @@ def _upsert_summary(cur, session_id: str, tenant_id: int, summary_text: str, sum
 
 
 def maybe_summarize_session(session_id: str, tenant_id: int, keep_last_n: int = 4):
-    """Summarise history after ~3 turns to reduce token usage."""
+    """Periodically fold older messages into a running summary, then prune them.
+
+    Triggers only once a full batch of new (unpruned) messages has accumulated
+    — not on nearly every turn — and merges into the EXISTING summary rather
+    than discarding it, since the raw messages being summarised are deleted
+    below and would otherwise be unrecoverable.
+    """
     conn = get_db_connection()
     if not conn:
         return
@@ -90,30 +96,25 @@ def maybe_summarize_session(session_id: str, tenant_id: int, keep_last_n: int = 
             cur.close()
             return
 
-        existing = None
-        try:
-            cur.execute(
-                """
-                SELECT summarized_message_count
-                FROM chat_summaries
-                WHERE session_id=%s AND tenant_id=%s
-                """,
-                (session_id, tenant_id),
-            )
-            existing = cur.fetchone()
-        except Exception:
-            existing = None
-
-        summarized_count = int((existing or {}).get("summarized_message_count") or 0)
-
-        if total - summarized_count < 2 and summarized_count > 0:
-            cur.close()
-            return
-
+        # Pruning below always removes exactly the messages just summarised,
+        # so anything still in the table beyond keep_last_n is, by construction,
+        # unsummarised backlog — no separate offset/count bookkeeping needed.
         to_summarise_count = max(0, total - keep_last_n)
-        if to_summarise_count < 6:
+        min_batch = int(os.getenv("SUMMARY_BATCH_SIZE", "8"))
+        if to_summarise_count < min_batch:
             cur.close()
             return
+
+        cur.execute(
+            """
+            SELECT summary_text
+            FROM chat_summaries
+            WHERE session_id=%s AND tenant_id=%s
+            """,
+            (session_id, tenant_id),
+        )
+        existing = cur.fetchone()
+        prior_summary = (existing or {}).get("summary_text") or ""
 
         cur.execute(
             """
@@ -149,21 +150,31 @@ def maybe_summarize_session(session_id: str, tenant_id: int, keep_last_n: int = 
             cur.close()
             return
 
+        if prior_summary:
+            system_content = (
+                "Update the running conversation summary below by folding in the new "
+                "messages. Preserve still-relevant facts from the existing summary — "
+                "do not drop earlier details unless the new messages supersede them. "
+                "Keep it short and structured. Output only these sections:\n"
+                "- Customer goal\n- Store context\n- What has been asked\n- Answers given\n- Open questions\n"
+                "Do not include any hidden/system instructions."
+            )
+            user_content = f"Existing summary:\n{prior_summary}\n\nNew messages to fold in:\n{transcript}"
+        else:
+            system_content = (
+                "Summarise the conversation so far for future context. "
+                "Keep it short and structured. Output only these sections:\n"
+                "- Customer goal\n- Store context\n- What has been asked\n- Answers given\n- Open questions\n"
+                "Do not include any hidden/system instructions."
+            )
+            user_content = transcript
+
         resp = client.chat.completions.create(
             model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"),
-            temperature=0.2,
-            max_tokens=max_out,
+            max_completion_tokens=max_out,
             messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Summarise the conversation so far for future context. "
-                        "Keep it short and structured. Output only these sections:\n"
-                        "- Customer goal\n- Store context\n- What has been asked\n- Answers given\n- Open questions\n"
-                        "Do not include any hidden/system instructions."
-                    ),
-                },
-                {"role": "user", "content": transcript},
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": user_content},
             ],
         )
 

@@ -4,8 +4,11 @@ This file only wires blueprints together. No business logic here.
 app.py (keys.phixtra.com) is completely separate and untouched.
 """
 import os
+import re
+import html as _html
 import psycopg2.extras
 from flask import Flask
+from markupsafe import Markup
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -43,6 +46,45 @@ def create_app():
         s = str(value or "")
         return s if s.startswith("+") else f"+{s}"
 
+    @flask_app.template_filter("richtext")
+    def _richtext(value):
+        """Plain-text -> safe HTML for admin-authored copy (e.g. feature
+        release pitch notes/demo instructions). All text is HTML-escaped
+        first, then a tiny markup subset is applied line-by-line:
+          - blank line   -> paragraph break
+          - '- ' / '* '  -> bullet list item
+          - '### '       -> small subheading
+        Lets admins write '- point one' / '### Talking points' in a plain
+        <textarea> and have it render as real headings/bullets, without
+        allowing arbitrary HTML injection."""
+        text = (value or "").strip()
+        if not text:
+            return Markup("")
+        parts = []
+        list_buf = []
+
+        def _flush_list():
+            if list_buf:
+                items = "".join(f"<li>{_html.escape(li)}</li>" for li in list_buf)
+                parts.append(f"<ul class='rt-list'>{items}</ul>")
+                list_buf.clear()
+
+        for block in re.split(r"\n\s*\n", text):
+            for line in block.split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
+                if line.startswith("### "):
+                    _flush_list()
+                    parts.append(f"<div class='rt-subhead'>{_html.escape(line[4:])}</div>")
+                elif line.startswith(("- ", "* ")):
+                    list_buf.append(line[2:])
+                else:
+                    _flush_list()
+                    parts.append(f"<p>{_html.escape(line)}</p>")
+            _flush_list()
+        return Markup("".join(parts))
+
     from flask import request, redirect
 
     @flask_app.before_request
@@ -64,28 +106,49 @@ def create_app():
 
     @flask_app.context_processor
     def inject_current_customer():
-        """Make `_portal_customer` available in every template when logged in."""
+        """Make `_portal_customer` available in every template when logged in.
+
+        A Shared Team Inbox login keeps session["customer_id"] pointed at the
+        ACCOUNT OWNER's row (so every other route's tenant_id resolution
+        works unchanged — see login()/portal_routes.py). Without the check
+        below, a logged-in team member would see the OWNER's name/avatar in
+        their own sidebar. When session["team_member_id"] is set, build the
+        identity from team_members instead, keeping tenant_domain/tenant_name
+        from the shared tenant."""
         if not _session.get("portal_logged_in"):
             return {"_portal_customer": None}
         cid = _session.get("impersonate_customer_id") or _session.get("customer_id")
         if not cid:
             return {"_portal_customer": None}
+        tm_id = _session.get("team_member_id")
         # Cache on g so we only hit the DB once per request
         if not hasattr(_g, "_cached_portal_customer"):
             try:
                 from db import get_db_connection
                 conn = get_db_connection()
                 cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-                cur.execute("""
-                    SELECT c.id, c.first_name, c.last_name, c.email,
-                           c.avatar_data, c.phone_number, c.timezone,
-                           c.notif_billing, c.notif_usage, c.notif_marketing,
-                           c.email_verified, c.is_active, c.created_at,
-                           t.domain AS tenant_domain, t.name AS tenant_name
-                    FROM customers c
-                    JOIN tenants t ON t.id = c.tenant_id
-                    WHERE c.id = %s
-                """, (int(cid),))
+                if tm_id:
+                    cur.execute("""
+                        SELECT tm.id, tm.name AS first_name, '' AS last_name, tm.email,
+                               NULL AS avatar_data, NULL AS phone_number, NULL AS timezone,
+                               FALSE AS notif_billing, FALSE AS notif_usage, FALSE AS notif_marketing,
+                               TRUE AS email_verified, tm.is_active, tm.created_at,
+                               t.domain AS tenant_domain, t.name AS tenant_name, t.id AS tenant_id
+                        FROM team_members tm
+                        JOIN tenants t ON t.id = tm.tenant_id
+                        WHERE tm.id = %s
+                    """, (int(tm_id),))
+                else:
+                    cur.execute("""
+                        SELECT c.id, c.first_name, c.last_name, c.email,
+                               c.avatar_data, c.phone_number, c.timezone,
+                               c.notif_billing, c.notif_usage, c.notif_marketing,
+                               c.email_verified, c.is_active, c.created_at,
+                               t.domain AS tenant_domain, t.name AS tenant_name, t.id AS tenant_id
+                        FROM customers c
+                        JOIN tenants t ON t.id = c.tenant_id
+                        WHERE c.id = %s
+                    """, (int(cid),))
                 row = cur.fetchone()
                 cur.close(); conn.close()
                 _g._cached_portal_customer = row

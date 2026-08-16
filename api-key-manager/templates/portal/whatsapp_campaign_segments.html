@@ -1,0 +1,259 @@
+{% extends "portal/base.html" %}
+{% block title %}WhatsApp Segments — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+.seg-hero {
+  background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);
+  border-radius:16px; padding:24px 28px; margin-bottom:20px;
+  display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+}
+.seg-hero-left h1 { font-size:21px; font-weight:800; color:#fff; margin:0 0 4px; }
+.seg-hero-left p  { font-size:13px; color:rgba(255,255,255,.5); margin:0; }
+.seg-hero-back { font-size:12px; color:rgba(255,255,255,.55); text-decoration:none; display:inline-flex; align-items:center; gap:5px; margin-bottom:8px; }
+.seg-hero-back:hover { color:#fff; }
+
+.seg-create-row { display:flex; gap:8px; }
+.seg-create-row input {
+  padding:10px 14px; border-radius:9px; border:1.5px solid rgba(255,255,255,.18);
+  background:rgba(255,255,255,.08); color:#fff; font-size:13px; width:220px;
+}
+.seg-create-row input::placeholder { color:rgba(255,255,255,.45); }
+.seg-create-row input:focus { outline:none; border-color:rgba(255,255,255,.4); }
+.btn-primary { display:inline-flex; align-items:center; gap:7px; background:#6366f1; color:#fff; font-size:13px; font-weight:700; padding:10px 16px; border-radius:9px; border:none; cursor:pointer; transition:.15s; white-space:nowrap; }
+.btn-primary:hover { background:#4f46e5; }
+.btn-ghost { display:inline-flex; align-items:center; gap:6px; padding:9px 16px; border-radius:9px; border:1.5px solid #e2e8f0; background:#fff; font-size:13px; font-weight:600; color:#64748b; cursor:pointer; transition:.12s; text-decoration:none; }
+.btn-ghost:hover { border-color:#cbd5e1; color:#374151; }
+.btn-danger { padding:9px 14px; border-radius:9px; border:none; background:#dc2626; color:#fff; font-size:12px; font-weight:700; cursor:pointer; }
+
+/* Segment grid */
+.seg-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:16px; }
+.seg-card { background:#fff; border:1px solid rgba(3,12,24,.08); border-radius:14px; padding:18px 20px; display:flex; flex-direction:column; gap:14px; transition:.15s; }
+.seg-card:hover { box-shadow:0 4px 20px rgba(0,0,0,.08); }
+.seg-card-name { font-size:15px; font-weight:800; color:var(--ink); }
+.seg-card-count { font-size:12px; color:var(--muted); margin-top:2px; }
+.seg-card-actions { display:flex; gap:8px; }
+
+.empty-state { display:flex; flex-direction:column; align-items:center; padding:60px 20px; color:var(--muted); text-align:center; }
+.empty-icon-wrap { width:72px; height:72px; border-radius:20px; background:linear-gradient(135deg,#ede9fe,#ddd6fe); display:flex; align-items:center; justify-content:center; margin-bottom:16px; font-size:28px; }
+.empty-state h3 { font-size:15px; font-weight:700; color:var(--ink); margin:0 0 6px; }
+.empty-state p  { font-size:13px; margin:0; max-width:320px; line-height:1.5; }
+
+/* Manage-one-segment view */
+.card { background:#fff; border:1px solid rgba(3,12,24,.08); border-radius:14px; overflow:hidden; }
+.seg-detail-body { padding:20px 24px; }
+.seg-add-wrap { position:relative; margin-bottom:22px; }
+.field-label { display:block; font-size:12px; font-weight:700; color:var(--ink); margin-bottom:6px; }
+.field-input { width:100%; padding:10px 14px; border-radius:9px; border:1.5px solid #e2e8f0; font-size:13px; font-family:inherit; box-sizing:border-box; }
+.field-input:focus { outline:none; border-color:#6366f1; }
+.seg-add-results {
+  position:absolute; left:0; right:0; top:100%; margin-top:4px; background:#fff;
+  border:1.5px solid #e2e8f0; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.1);
+  max-height:240px; overflow-y:auto; z-index:20;
+}
+.seg-add-result { display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:10px 14px; cursor:pointer; font-size:13px; border-bottom:1px solid rgba(3,12,24,.05); }
+.seg-add-result:last-child { border-bottom:none; }
+.seg-add-result:hover { background:#f8fafc; }
+.seg-add-empty { padding:14px; text-align:center; font-size:12px; color:#94a3b8; }
+
+.seg-members-head, .seg-member-row {
+  display:grid; grid-template-columns:24px 1fr 1fr; grid-template-areas:"cb name phone"; align-items:center; gap:14px;
+}
+.seg-members-head {
+  padding:0 0 8px; font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:.04em;
+  border-bottom:1.5px solid #e2e8f0;
+}
+.seg-members-head span:nth-child(1) { grid-area:cb; }
+.seg-members-head span:nth-child(2) { grid-area:name; }
+.seg-members-head span:nth-child(3) { grid-area:phone; }
+.seg-member-row { padding:10px 0; border-bottom:1px solid rgba(3,12,24,.06); font-size:13px; }
+.seg-member-row:last-child { border-bottom:none; }
+.seg-remove-btn {
+  grid-area:cb; width:22px; height:22px; border-radius:50%; border:1.5px solid #e2e8f0; background:#fff;
+  color:#94a3b8; font-size:12px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; transition:.12s;
+}
+.seg-remove-btn:hover { border-color:#ef4444; color:#ef4444; background:#fef2f2; }
+.seg-member-name, .seg-member-phone { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.seg-member-name { grid-area:name; font-weight:600; color:var(--ink); }
+.seg-member-phone { grid-area:phone; color:#64748b; }
+
+@media (max-width: 680px) {
+  .seg-hero { flex-direction:column; align-items:flex-start; }
+  .seg-members-head { display:none; }
+  .seg-member-row { grid-template-columns:20px 1fr; grid-template-areas:"cb name" "cb phone"; row-gap:2px; padding:10px 0; }
+  .seg-remove-btn { align-self:start; margin-top:2px; }
+  .seg-member-phone { font-size:11px; }
+  .seg-add-result { grid-template-columns:1fr; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+{% if active_segment %}
+<a href="{{ url_for('portal.whatsapp_campaign_segments_page') }}" class="seg-hero-back">← Back to all WhatsApp Segments</a>
+{% else %}
+<a href="{{ url_for('portal.whatsapp_campaigns') }}" class="seg-hero-back">← Back to WhatsApp Campaigns</a>
+{% endif %}
+
+{% if active_segment %}
+<!-- ── Manage one segment's contacts ─────────────────────────────────── -->
+<div class="seg-hero">
+  <div class="seg-hero-left">
+    <h1>{{ active_segment.name }}</h1>
+    <p>{{ members|length }} contact(s) in this WhatsApp Segment</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="seg-detail-body">
+    <div class="seg-add-wrap">
+      <label class="field-label">Add a contact</label>
+      <input type="text" class="field-input" id="segAddSearch" autocomplete="off"
+             placeholder="Search Sales Pipeline contacts by name or phone…"
+             oninput="onSegAddSearchInput()"
+             onblur="setTimeout(() => { document.getElementById('segAddResults').style.display='none' }, 200)">
+      <div id="segAddResults" class="seg-add-results" style="display:none"></div>
+    </div>
+
+    {% if members %}
+    <div class="seg-members-head"><span></span><span>Name</span><span>Phone</span></div>
+    {% for m in members %}
+    <div class="seg-member-row">
+      <button type="button" class="seg-remove-btn" title="Remove from segment" onclick="removeSegMember({{ m.id }})">✕</button>
+      <span class="seg-member-name" title="{{ m.name }}">{{ m.name }}</span>
+      <span class="seg-member-phone" title="{{ m.phone }}">{{ m.phone }}</span>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="empty-state" style="padding:30px 20px">
+      <p>No contacts added yet — search above to add some.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% else %}
+<!-- ── Segment list ──────────────────────────────────────────────────── -->
+<div class="seg-hero">
+  <div class="seg-hero-left">
+    <h1>WhatsApp Segments</h1>
+    <p>Saved groups of Sales Pipeline contacts, for targeting WhatsApp Campaigns.</p>
+  </div>
+  <form class="seg-create-row" onsubmit="createSegment(event)">
+    <input type="text" id="segNewName" placeholder="New segment name, e.g. VIP customers">
+    <button type="submit" class="btn-primary">+ Create</button>
+  </form>
+</div>
+
+{% if segments %}
+<div class="seg-grid">
+  {% for s in segments %}
+  <div class="seg-card">
+    <div>
+      <div class="seg-card-name">{{ s.name }}</div>
+      <div class="seg-card-count">{{ s.member_count }} contact(s)</div>
+    </div>
+    <div class="seg-card-actions">
+      <a class="btn-ghost" href="{{ url_for('portal.whatsapp_campaign_segments_page', segment_id=s.id) }}">Manage contacts</a>
+      <button type="button" class="btn-danger" onclick="deleteSegment({{ s.id }}, '{{ s.name|replace("'", "\\'") }}')">Delete</button>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card">
+  <div class="empty-state">
+    <div class="empty-icon-wrap">📋</div>
+    <h3>No WhatsApp Segments yet</h3>
+    <p>Create one above, then add Sales Pipeline contacts to it — you'll be able to target it directly from a WhatsApp Campaign.</p>
+  </div>
+</div>
+{% endif %}
+{% endif %}
+
+<script>
+function createSegment(e) {
+  e.preventDefault()
+  const input = document.getElementById('segNewName')
+  const name = input.value.trim()
+  if (!name) { input.focus(); return }
+  const fd = new FormData()
+  fd.append('name', name)
+  fetch('/whatsapp/pipeline-segments/create', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { alert(data.error); return }
+      window.location.reload()
+    })
+    .catch(() => alert('Could not create segment — check your connection'))
+}
+
+function deleteSegment(id, name) {
+  if (!confirm('Delete segment "' + name + '"? This does not delete the contacts themselves.')) return
+  fetch('/whatsapp/pipeline-segments/' + id + '/delete', { method: 'POST' })
+    .then(r => r.json())
+    .then(() => window.location.reload())
+    .catch(() => alert('Could not delete segment — check your connection'))
+}
+
+{% if active_segment %}
+const ACTIVE_SEGMENT_ID = {{ active_segment.id }}
+
+let segAddSearchTimer = null
+function onSegAddSearchInput() {
+  clearTimeout(segAddSearchTimer)
+  const q = document.getElementById('segAddSearch').value.trim()
+  if (q.length < 2) { document.getElementById('segAddResults').style.display = 'none'; return }
+  segAddSearchTimer = setTimeout(() => runSegAddSearch(q), 250)
+}
+function runSegAddSearch(q) {
+  const url = '/whatsapp/campaigns/pipeline-leads-json?q=' + encodeURIComponent(q) +
+              '&exclude_segment_id=' + ACTIVE_SEGMENT_ID
+  fetch(url)
+    .then(r => r.json())
+    .then(data => {
+      const results = document.getElementById('segAddResults')
+      const leads = data.leads || []
+      if (leads.length === 0) {
+        results.innerHTML = '<div class="seg-add-empty">No matching contacts (or already added).</div>'
+      } else {
+        results.innerHTML = leads.map(l => `
+          <div class="seg-add-result" onclick="addSegMember(${l.id})">
+            <span class="seg-member-name" title="${escapeHtml(l.name)}">${escapeHtml(l.name)}</span>
+            <span class="seg-member-phone" title="${escapeHtml(l.phone)}">${escapeHtml(l.phone)}</span>
+          </div>
+        `).join('')
+      }
+      results.style.display = 'block'
+    })
+    .catch(() => {})
+}
+function addSegMember(leadId) {
+  const fd = new FormData()
+  fd.append('lead_id', leadId)
+  fetch('/whatsapp/pipeline-segments/' + ACTIVE_SEGMENT_ID + '/members/add', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { alert(data.error); return }
+      window.location.reload()
+    })
+    .catch(() => alert('Could not add contact — check your connection'))
+}
+function removeSegMember(leadId) {
+  const fd = new FormData()
+  fd.append('lead_id', leadId)
+  fetch('/whatsapp/pipeline-segments/' + ACTIVE_SEGMENT_ID + '/members/remove', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { alert(data.error); return }
+      window.location.reload()
+    })
+    .catch(() => alert('Could not remove contact — check your connection'))
+}
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+{% endif %}
+</script>
+{% endblock %}

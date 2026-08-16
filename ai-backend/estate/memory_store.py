@@ -196,8 +196,7 @@ def maybe_summarize(tenant_id: int, customer_id: int, keep_last_n: int = 4):
 
         resp = client.chat.completions.create(
             model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"),
-            temperature=0.2,
-            max_tokens=int(os.getenv("SUMMARY_MAX_TOKENS", "220")),
+            max_completion_tokens=int(os.getenv("SUMMARY_MAX_TOKENS", "220")),
             messages=[
                 {
                     "role": "system",

@@ -15,13 +15,14 @@ from fastapi.responses import PlainTextResponse
 
 from tenant_router import get_tenant_by_phone_number_id
 from wa_db import get_db_connection as _get_db
-from message_normalizer import normalize
-from meta_sender import send_text, mark_as_read
+from message_normalizer import normalize, extract_statuses
+from meta_sender import send_text, send_template, mark_as_read
 from response_formatter import dispatch_response
 from interactive_handler import handle_addcart, handle_details, handle_list_select
-from wa_db import log_message, is_handoff_active, is_campaign_recipient, create_handoff, cache_products, get_wa_shop_session, delete_wa_shop_session, get_viewed_products
+from wa_db import log_message, is_handoff_active, is_campaign_recipient, create_handoff, cache_products, get_wa_shop_session, delete_wa_shop_session, get_viewed_products, get_active_template, update_campaign_recipient_status, get_session_products, mark_product_viewed
 from wa_onboarding import handle_onboarding_message
 from wa_shopping import handle_shopping_message
+from visual_match import evaluate_visual_match
 
 router = APIRouter()
 
@@ -58,6 +59,47 @@ _DISCOUNT_KEYWORDS = frozenset({
     "give me a discount", "can i get a discount", "offer a discount",
     "better price", "lower price", "negotiate",
 })
+
+# Exact-match only (not substring) — "stop" as a bare word in normal shopping
+# chat ("please stop, show me the red one instead") must NOT trigger this.
+_OPT_OUT_KEYWORDS = frozenset({
+    "stop", "unsubscribe", "cancel", "opt out", "optout",
+    "stop messages", "remove me", "unsub",
+})
+
+
+def _wants_opt_out(text: str) -> bool:
+    return (text or "").strip().lower() in _OPT_OUT_KEYWORDS
+
+
+async def _handle_opt_out(tenant_id: int, customer_phone: str, phone_number_id: str, access_token: str) -> None:
+    """Records the opt-out (upsert — the customer may not have an existing
+    wa_contacts row yet) and confirms it back to the customer. Called instead
+    of all normal AI/shopping/handoff processing for this message."""
+    try:
+        conn = _get_db()
+        if conn:
+            cur = conn.cursor()
+            cur.execute(
+                """INSERT INTO wa_contacts (tenant_id, phone, opted_out, opted_out_at, source)
+                       VALUES (%s, %s, TRUE, NOW(), 'whatsapp')
+                   ON CONFLICT (tenant_id, phone) DO UPDATE
+                       SET opted_out=TRUE, opted_out_at=NOW()""",
+                (tenant_id, "+" + customer_phone.lstrip("+")),
+            )
+            conn.commit()
+            cur.close(); conn.close()
+    except Exception as e:
+        print(f"⚠️ [META] opt-out DB write error tenant={tenant_id} phone={customer_phone}: {e}")
+
+    try:
+        await send_text(
+            phone_number_id, access_token, customer_phone,
+            "You've been unsubscribed from marketing messages and won't receive further campaign texts. "
+            "This won't affect your ability to message us directly.",
+        )
+    except Exception as e:
+        print(f"⚠️ [META] opt-out confirmation send error: {e}")
 
 
 def _send_handoff_email(
@@ -163,7 +205,7 @@ async def notify_merchant_handoff(
         if not row:
             return
 
-        biz_name    = (row[0] or f"Merchant {tenant_id}").strip()
+        biz_name    = (row[0] or f"Business {tenant_id}").strip()
         to_phone    = ((row[1] or row[2] or "")).strip().lstrip("+")
         alert_email = (row[3] or "").strip()
 
@@ -183,8 +225,21 @@ async def notify_merchant_handoff(
         )
 
         if to_phone:
-            await send_text(phone_number_id, access_token, to_phone, msg)
-            print(f"✅ [HANDOFF NOTIFY] WA sent to merchant {to_phone} for tenant={tenant_id}")
+            # Prefer the approved template — works even outside the 24h session
+            # window (see phixtra_daily_report incident). Falls back to plain
+            # text, which only delivers if the merchant messaged the business
+            # number in the last 24h.
+            tmpl = get_active_template(tenant_id, "handoff_alert")
+            sent = False
+            if tmpl:
+                sent = await send_template(
+                    phone_number_id, access_token, to_phone,
+                    tmpl["template_name"], tmpl["language_code"],
+                    [biz_name, customer_phone, preview, now_str],
+                )
+            if not sent:
+                await send_text(phone_number_id, access_token, to_phone, msg)
+            print(f"✅ [HANDOFF NOTIFY] WA sent to merchant {to_phone} for tenant={tenant_id} (via {'template' if sent else 'text'})")
 
         # Email fallback — always fires if an alert email is configured
         if alert_email:
@@ -338,6 +393,25 @@ async def receive_webhook(
     except Exception:
         return {"status": "ok"}
 
+    # Delivery-status callbacks (sent/delivered/read/failed) are a distinct
+    # payload shape from inbound messages — handle and return early so they
+    # never fall through to message-handling logic below.
+    statuses = extract_statuses(payload)
+    if statuses:
+        status_pnid = statuses[0]["phone_number_id"]
+        status_tenant = get_tenant_by_phone_number_id(status_pnid) if status_pnid else None
+        status_secret = (status_tenant or {}).get("app_secret") or ""
+        if not _verify_signature(body, x_hub_signature_256 or "", status_secret):
+            print("⚠️ [META] HMAC mismatch on status webhook — ignoring")
+            return {"status": "ok"}
+        for s in statuses:
+            if s.get("meta_message_id"):
+                update_campaign_recipient_status(
+                    s["meta_message_id"], s["status"],
+                    s.get("error_code"), s.get("error_title"), s.get("error_message"),
+                )
+        return {"status": "ok", "reason": "status_update"}
+
     msg = normalize(payload)
     if msg is None:
         return {"status": "ok", "reason": "ignored"}
@@ -426,6 +500,14 @@ async def receive_webhook(
     # Mark message as read (blue ticks) — fire-and-forget
     asyncio.create_task(mark_as_read(phone_number_id, access_token, meta_message_id))
 
+    # ── STOP opt-out — takes priority over everything else, including an
+    # active handoff. A compliance-relevant request shouldn't get stuck
+    # behind unrelated conversation state. ──────────────────────────────────
+    if _wants_opt_out(text):
+        print(f"🛑 [META] opt-out from={customer_phone} tenant={tenant_id}")
+        await _handle_opt_out(tenant_id, customer_phone, phone_number_id, access_token)
+        return {"status": "ok", "reason": "opted_out"}
+
     # ── Handoff gate ──────────────────────────────────────────────────────────
     if is_handoff_active(session_id):
         # Allow HANDOFF_DISCOUNT sessions through so the customer can proceed or cancel
@@ -433,8 +515,6 @@ async def receive_webhook(
         if _hs and _hs.get("state") == "HANDOFF_DISCOUNT":
             print(f"   [META] HANDOFF_DISCOUNT session — routing to shopping handler")
             await handle_shopping_message(msg, tenant, _hs)
-            log_message(tenant_id, phone_number_id, customer_phone, "outbound",
-                        "[shopping:HANDOFF_DISCOUNT]")
             return {"status": "ok", "reason": "shopping"}
         print(f"   [META] Handoff active for session={session_id} — AI skipped")
         return {"status": "ok", "reason": "handoff_active"}
@@ -447,6 +527,41 @@ async def receive_webhook(
     if not is_handoff_active(session_id) and is_campaign_recipient(tenant_id, customer_phone):
         print(f"   [META] Campaign recipient reply — AI handling session={session_id}")
 
+    # ── Numbered product selection — replaces WhatsApp's old interactive list,
+    # whose 24-character title limit made same-model variants indistinguishable.
+    # The AI now sends a plain numbered list; the customer replies with a bare
+    # number for full details, or "ORDER <number>" / "BUY <number>" to buy.
+    # Resolves against the cached session products (same list_order the
+    # numbered text was built from).
+    _order_num = None
+    if msg.get("message_type") == "text":
+        _bare_num = re.fullmatch(r"(\d{1,2})", text.strip())
+        _order_num = re.fullmatch(r"(?:order|buy)\s+(\d{1,2})", text.strip(), re.IGNORECASE)
+
+        if _bare_num:
+            _session_products = get_session_products(session_id)
+            _idx = int(_bare_num.group(1))
+            if 1 <= _idx <= len(_session_products):
+                _product_id = _session_products[_idx - 1]["product_id"]
+                _handled = await handle_list_select(
+                    phone_number_id, access_token, customer_phone, _product_id, session_id
+                )
+                if _handled:
+                    log_message(tenant_id, phone_number_id, customer_phone, "outbound",
+                                f"[Product detail sent for numbered selection {_idx}]")
+                    return {"status": "ok", "reason": "numbered_detail"}
+                # not resolvable — fall through to AI
+
+        elif _order_num:
+            _session_products = get_session_products(session_id)
+            _idx = int(_order_num.group(1))
+            if 1 <= _idx <= len(_session_products):
+                mark_product_viewed(session_id, _session_products[_idx - 1]["product_id"])
+                print(f"   [META] Numbered order selection idx={_idx} marked viewed for session={session_id}")
+            else:
+                _order_num = None  # out of range — don't force the shopping route
+            # falls through — _order_num truthy routes this to the shopping handler below
+
     # ── Shopping journey routing ──────────────────────────────────────────────
     shop_session = get_wa_shop_session(session_id)
     # COMPLETE sessions are finished — delete so customer can start a fresh order
@@ -457,16 +572,14 @@ async def receive_webhook(
     # not a payment photo), let the AI answer it — shopping session stays open in the DB.
     _shopping_state = shop_session.get("state") if shop_session else None
     _override_to_ai = (
-        _shopping_state in ("PAYMENT_PENDING", "PAYMENT_REVIEW")
+        _shopping_state in ("PAYMENT_PENDING", "PAYMENT_REVIEW", "AWAITING_FW_PAYMENT")
         and msg.get("message_type") == "text"
         and text.strip().lower() not in {"cancel", "stop", "exit", "quit", "cancel order", "abort"}
     )
-    if (shop_session and not _override_to_ai) or _wants_order(text) or _wants_discount_start(text):
+    if (shop_session and not _override_to_ai) or _wants_order(text) or _wants_discount_start(text) or _order_num:
         state_label = shop_session["state"] if shop_session else "new"
         print(f"   [META] Shopping route session={session_id} state={state_label}")
         await handle_shopping_message(msg, tenant, shop_session)
-        log_message(tenant_id, phone_number_id, customer_phone, "outbound",
-                    f"[shopping:{state_label}]")
         return {"status": "ok", "reason": "shopping"}
 
     # ── Interactive button actions that bypass the AI ─────────────────────────
@@ -500,6 +613,76 @@ async def receive_webhook(
             return {"status": "ok", "reason": "list_select_handled"}
         # Not in cache — fall through to AI
 
+    # ── Visual Product Match (Pro plan, opt-in) ────────────────────────────────
+    # "media_url" on an inbound image is actually the WhatsApp media ID
+    # (Meta only ever gives a `link` on outbound messages the gateway sends).
+    visual_match_ctx = ""
+    media_caption = msg.get("media_caption", "")
+    if msg.get("message_type") == "image":
+        print(f"   [META] inbound image message_type={msg.get('message_type')!r} media_url={msg.get('media_url')!r} media_caption={media_caption!r}")
+    if msg.get("message_type") == "image" and msg.get("media_url"):
+        try:
+            vm_result = await evaluate_visual_match(
+                tenant_id, api_key, access_token, msg["media_url"], media_caption,
+            )
+        except Exception as _vm_err:
+            print(f"⚠️ [META] visual match error: {_vm_err}")
+            vm_result = {"branch": "skip"}
+
+        if vm_result["branch"] == "confident":
+            print(f"   [VISUAL_MATCH] confident match session={session_id} product={vm_result['product_title']!r} score={vm_result['score']} in_stock={vm_result['in_stock']}")
+            if vm_result["in_stock"]:
+                visual_match_ctx = (
+                    f"[System note: The customer just sent a photo. Image analysis matched it to "
+                    f"\"{vm_result['product_title']}\" in your catalog with high confidence, and it IS "
+                    f"in stock. Confirm this is the item they mean and recommend it using the normal "
+                    f"product tag format — per your existing rules, do NOT state price, stock status, or "
+                    f"any other detail in your text reply, the automatic product card handles that "
+                    f"accurately. Just write one short confirming sentence and the tag.]"
+                )
+            else:
+                # search_documents_with_meta (which builds the product tag/card) only
+                # returns in-stock items, so this exact product will never resolve to a
+                # card via the tag — must be stated in plain text or the customer never
+                # learns it's unavailable.
+                visual_match_ctx = (
+                    f"[System note: The customer's photo matched \"{vm_result['product_title']}\", but "
+                    f"that exact item is out of stock. Tell them it's out of stock and suggest similar "
+                    f"in-stock alternatives using your normal product tag.]"
+                )
+            text = f"{vm_result['product_title']} — is this available?" if not media_caption.strip() else text
+
+        elif vm_result["branch"] == "suggested":
+            print(f"   [VISUAL_MATCH] suggested match session={session_id} product={vm_result['product_title']!r} score={vm_result['score']}")
+            visual_match_ctx = (
+                f"[System note: The customer just sent a photo. Image analysis suggests it might be "
+                f"\"{vm_result['product_title']}\" in your catalog, but it is not a certain match. "
+                f"Ask the customer to confirm this is the item they mean (name it specifically in your "
+                f"question) — do NOT use the product tag yet and do NOT state price or stock status "
+                f"until they confirm, since you don't yet know for certain which item this is.]"
+            )
+            text = f"{vm_result['product_title']} — is this available?" if not media_caption.strip() else text
+
+        elif vm_result["branch"] == "uncertain" and vm_result["action"] == "handoff":
+            print(f"   [VISUAL_MATCH] uncertain match, handing off session={session_id}")
+            handoff_msg = (
+                "Thanks for the photo! I'm not 100% sure which item that is from our catalog, "
+                "so I'm getting a team member to help confirm — they'll be with you shortly."
+            )
+            await send_text(phone_number_id, access_token, customer_phone, handoff_msg)
+            log_message(tenant_id, phone_number_id, customer_phone, "outbound", handoff_msg)
+            create_handoff(session_id, tenant_id, customer_phone)
+            await notify_merchant_handoff(tenant_id, phone_number_id, access_token, customer_phone, text)
+            return {"status": "ok", "reason": "visual_match_handoff"}
+
+        elif vm_result["branch"] == "uncertain":
+            visual_match_ctx = (
+                "[System note: The customer just sent a photo but it could not be confidently "
+                "matched to a specific item in your catalog. Ask them to tell you the product "
+                "name, or briefly describe it (color/type), so you can help — do not guess "
+                "which product it is.]"
+            )
+
     # ── Inject viewed-product context so AI knows the customer journey ────────
     viewed = get_viewed_products(session_id)
     if viewed:
@@ -528,6 +711,9 @@ async def receive_webhook(
     else:
         ai_message = text
 
+    if visual_match_ctx:
+        ai_message = f"{visual_match_ctx}\n\n{ai_message}"
+
     # When bypassing the shopping handler, tell the AI about the pending order so it
     # can answer the customer's question AND append a one-line payment reminder.
     if _override_to_ai and shop_session:
@@ -543,16 +729,20 @@ async def receive_webhook(
             _price_str = f"₦{float(_price):,.0f}"
         except Exception:
             _price_str = str(_price)
-        _state_hint = (
-            "awaiting payment proof photo"
-            if _shopping_state == "PAYMENT_PENDING"
-            else "under merchant payment review"
-        )
+        if _shopping_state == "PAYMENT_PENDING":
+            _state_hint  = "awaiting payment proof photo"
+            _reminder_ln = "reminding them to send their payment proof photo for this pending order"
+        elif _shopping_state == "AWAITING_FW_PAYMENT":
+            _state_hint  = "awaiting payment via the checkout link already sent"
+            _reminder_ln = "reminding them to tap the payment link already sent above to complete this order"
+        else:
+            _state_hint  = "under store payment review"
+            _reminder_ln = "reminding them their payment is being reviewed and they'll be notified once confirmed"
         _order_ctx = (
             f"[System note: This customer has an ACTIVE ORDER for {_pname} ({_price_str}) "
             f"that is currently {_state_hint}. "
             f"Respond to their question normally, then end with ONE brief sentence "
-            f"reminding them to send their payment proof photo for this pending order.]"
+            f"{_reminder_ln}.]"
         )
         print(f"   [META] Pending-order system_addon set for state={_shopping_state}")
 

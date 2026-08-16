@@ -7,11 +7,12 @@ import psycopg2.extras
 import psycopg2.errors
 import os, secrets, string, json as _json
 import zeptomail_api
+import bulksmsng_api
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
 from flask import (Blueprint, render_template, request, redirect,
-                   url_for, session, flash, send_file, jsonify, send_from_directory)
+                   url_for, session, flash, send_file, jsonify, send_from_directory, Response)
 
 from db import get_db_connection, insert_audit_log
 from portal_utils import (
@@ -782,10 +783,12 @@ def _send_reset_email(email: str, token: str, greeting: str) -> bool:
     return send_email(email, "Reset your PhiXtra password", html, text_body=f"Reset: {link}")
 
 
-def _send_admin_new_signup_email(customer_name: str, customer_email: str, domain: str):
+def _send_admin_new_signup_email(customer_name: str, customer_email: str, domain: str,
+                                  business_name: str = "", hear_about_us: str = ""):
     """Notify admin (support@phixtra.com) of a new trial sign-up so they
     can complete the KB setup: set azure_search_index, azure_semantic_config."""
     admin_portal_link = f"{_PORTAL_BASE_URL}/admin/customers"
+    hear_about_us_label = dict(HEAR_ABOUT_US_OPTIONS).get(hear_about_us, hear_about_us) or "—"
     html = f"""
     <div style="font-family:Arial,sans-serif;max-width:600px">
       <h2 style="color:{BRAND}">&#128226; New PhiXtra Trial Sign-up</h2>
@@ -794,6 +797,10 @@ def _send_admin_new_signup_email(customer_name: str, customer_email: str, domain
             <td style="padding:6px 10px;border:1px solid #e5e7eb">{customer_name}</td></tr>
         <tr><td style="padding:6px 10px;font-weight:700;background:#f3f4f6;border:1px solid #e5e7eb">Email</td>
             <td style="padding:6px 10px;border:1px solid #e5e7eb">{customer_email}</td></tr>
+        <tr><td style="padding:6px 10px;font-weight:700;background:#f3f4f6;border:1px solid #e5e7eb">Business Name</td>
+            <td style="padding:6px 10px;border:1px solid #e5e7eb">{business_name or '—'}</td></tr>
+        <tr><td style="padding:6px 10px;font-weight:700;background:#f3f4f6;border:1px solid #e5e7eb">How did you hear about us</td>
+            <td style="padding:6px 10px;border:1px solid #e5e7eb">{hear_about_us_label}</td></tr>
         <tr><td style="padding:6px 10px;font-weight:700;background:#f3f4f6;border:1px solid #e5e7eb">Store / Channel</td>
             <td style="padding:6px 10px;border:1px solid #e5e7eb">{domain}</td></tr>
       </table>
@@ -814,7 +821,12 @@ def _send_admin_new_signup_email(customer_name: str, customer_email: str, domain
         "support@phixtra.com",
         f"New trial sign-up: {customer_name} ({domain})",
         html,
-        text_body=f"New trial: {customer_name} <{customer_email}> domain={domain}\n\nDefault system prompt applied."
+        text_body=(
+            f"New trial: {customer_name} <{customer_email}> domain={domain}\n"
+            f"Business Name: {business_name or '—'}\n"
+            f"How did you hear about us: {hear_about_us_label}\n\n"
+            f"Default system prompt applied."
+        )
     )
 def _send_welcome_trial_email_wa(
     email: str,
@@ -1296,6 +1308,8 @@ def _register_whatsapp_merchant(
         customer_name=f"{first_name} {last_name}".strip(),
         customer_email=email,
         domain="WA:founder" if is_founder else "WA:pending",
+        business_name=business_name,
+        hear_about_us=hear_about_us,
     )
 
     # NOTE: the founder "your free year starts now" email used to fire here,
@@ -1487,10 +1501,15 @@ def register():
                                   "features": free_features})
 
         # Notify admin so they can complete the KB setup (azure_search_index etc.)
+        # NOTE: web merchants don't fill in a separate "business name" field —
+        # only WhatsApp-only merchants do (register.html's #wa-fields section) —
+        # so business_name is intentionally omitted here; their domain IS their
+        # business identity for this signup type, already shown as Store/Channel.
         _send_admin_new_signup_email(
             customer_name=f"{first_name} {last_name}".strip(),
             customer_email=email,
             domain=tenant_domain,
+            hear_about_us=hear_about_us,
         )
 
     verify_token = make_token(24)
@@ -8831,6 +8850,92 @@ def _normalise_phone(raw: str) -> str:
     return re.sub(r"[^\d]", "", raw)
 
 
+def _find_matching_pipeline_lead(cur, tenant_id: int, phone: str):
+    """Find a Sales Pipeline lead (non-dropped) whose phone/whatsapp_number matches
+    the given phone by digits-only comparison — same matching rule used to fold
+    tenant 19's WhatsApp Contacts into Sales Pipeline. Returns the row or None."""
+    if not phone:
+        return None
+    cur.execute("""
+        SELECT id, customer_name FROM merchant_pipeline_leads
+        WHERE tenant_id=%s AND dropped_at IS NULL
+          AND regexp_replace(COALESCE(whatsapp_number, phone), '[^0-9]', '', 'g')
+              = regexp_replace(%s, '[^0-9]', '', 'g')
+        LIMIT 1
+    """, (tenant_id, phone))
+    return cur.fetchone()
+
+
+def _move_contact_to_pipeline(tenant_id: int, contact_id: int):
+    """Copy a Contact into Sales Pipeline as a new lead. This is a COPY/LINK, not a
+    move that deletes anything — the contact stays in Contacts too, since opt-out
+    and personalization data live there and must keep working for campaigns
+    regardless of where the recipient list came from (see
+    project_wa_campaign_pipeline_integration memory). Skips if a matching lead
+    (by phone) already exists rather than creating a duplicate.
+    Returns (created, status, label) where status is one of:
+    'not_found' / 'no_phone' / 'exists' / 'created'."""
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM wa_contacts WHERE id=%s AND tenant_id=%s", (contact_id, tenant_id))
+    contact = cur.fetchone()
+    if not contact:
+        cur.close(); conn.close()
+        return None, "not_found", None
+    label = contact.get("display_name") or contact.get("phone") or "Contact"
+    if not contact.get("phone"):
+        cur.close(); conn.close()
+        return None, "no_phone", label
+    existing = _find_matching_pipeline_lead(cur, tenant_id, contact["phone"])
+    if existing:
+        cur.close(); conn.close()
+        return False, "exists", label
+    # Sales Pipeline stores phone digits-only (no leading '+'), unlike wa_contacts —
+    # match its existing convention so the new row looks like every other pipeline
+    # lead, not just to the dedupe check (which already normalizes either way).
+    # NOTE: deliberately not calling the module-level _normalise_phone() here — this
+    # file defines that name TWICE (a digits-only version near the top of the
+    # WHATSAPP CONTACTS section, and a later E.164-with-'+' version further down)
+    # and the later definition silently wins for every caller regardless of where
+    # in the file they're written. Normalizing inline avoids that trap.
+    import re as _re_pipeline_phone
+    pipeline_phone = _re_pipeline_phone.sub(r"[^\d]", "", contact["phone"])
+    cur.execute("""
+        INSERT INTO merchant_pipeline_leads
+          (tenant_id, customer_name, phone, whatsapp_number, email, notes, stage, contact_channel)
+        VALUES (%s, %s, %s, %s, %s, %s, 'new_lead', 'whatsapp')
+        RETURNING id
+    """, (tenant_id, label, pipeline_phone, pipeline_phone, contact.get("email"), contact.get("notes")))
+    lead_id = cur.fetchone()["id"]
+    conn.commit()
+    cur.close(); conn.close()
+    return True, "created", label
+
+
+@portal_bp.route("/whatsapp/contacts/<int:contact_id>/move-to-pipeline", methods=["POST"])
+def whatsapp_contact_move_to_pipeline(contact_id: int):
+    """Single-contact 'Add to Sales Pipeline' action — Contacts page and contact
+    detail page both post here."""
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    try:
+        created, status, label = _move_contact_to_pipeline(tenant_id, contact_id)
+        if status == "not_found":
+            flash("Contact not found.", "warning")
+        elif status == "no_phone":
+            flash(f"{label} has no phone number, so it can't be added to Sales Pipeline.", "warning")
+        elif status == "exists":
+            flash(f"{label} is already in Sales Pipeline.", "warning")
+        else:
+            flash(f"{label} added to Sales Pipeline.", "success")
+    except Exception as e:
+        print("⚠️ move_to_pipeline error:", e)
+        flash("Could not add to Sales Pipeline. Please try again.", "danger")
+    return redirect(request.referrer or url_for("portal.whatsapp_contact_detail", contact_id=contact_id))
+
+
 @portal_bp.route("/whatsapp/contacts")
 def whatsapp_contacts():
     r = _require_login()
@@ -8902,8 +9007,17 @@ def whatsapp_contacts():
             limit_clause = "LIMIT %s OFFSET %s"
             limit_params = [per_page, (page - 1) * per_page]
 
+        # in_pipeline: does this contact already have a matching Sales Pipeline lead
+        # (by phone)? Only computed for the current page's rows (cheap), so the list
+        # can show "✓ In Sales Pipeline" instead of an always-actionable button.
         query = f"""
-            SELECT c.* FROM wa_contacts c
+            SELECT c.*, EXISTS (
+                SELECT 1 FROM merchant_pipeline_leads pl
+                WHERE pl.tenant_id = c.tenant_id AND pl.dropped_at IS NULL
+                  AND regexp_replace(COALESCE(pl.whatsapp_number, pl.phone), '[^0-9]', '', 'g')
+                      = regexp_replace(c.phone, '[^0-9]', '', 'g')
+            ) AS in_pipeline
+            FROM wa_contacts c
             {join_clause}
             WHERE {where}
             ORDER BY c.display_name ASC NULLS LAST, c.created_at DESC
@@ -9309,6 +9423,9 @@ def whatsapp_contact_detail(contact_id: int):
         """, (tenant_id, contact["phone"]))
         msg_count = cur.fetchone()["msg_count"]
 
+        # Does this contact already have a matching Sales Pipeline lead?
+        pipeline_lead = _find_matching_pipeline_lead(cur, tenant_id, contact["phone"])
+
         cur.close(); conn.close()
     except Exception as e:
         print("⚠️ contact_detail error:", e)
@@ -9323,6 +9440,7 @@ def whatsapp_contact_detail(contact_id: int):
         contact_segments=contact_segments,
         available_segments=available_segments,
         msg_count=msg_count,
+        pipeline_lead=pipeline_lead,
     )
 
 
@@ -9531,6 +9649,25 @@ def whatsapp_contacts_bulk_action():
                             (seg_id, cid)
                         )
                     flash(f"{len(contact_ids)} contact(s) added to segment.", "success")
+
+        elif action == "move_to_pipeline":
+            # Uses its own helper/connection per contact (see _move_contact_to_pipeline)
+            # rather than the outer cur, since it needs its own dedupe-then-insert logic.
+            created_count = exists_count = skip_count = 0
+            for cid in contact_ids:
+                _created, status, _label = _move_contact_to_pipeline(tenant_id, cid)
+                if status == "created":
+                    created_count += 1
+                elif status == "exists":
+                    exists_count += 1
+                else:
+                    skip_count += 1
+            msg = f"{created_count} contact(s) added to Sales Pipeline."
+            if exists_count:
+                msg += f" {exists_count} already there."
+            if skip_count:
+                msg += f" {skip_count} skipped (no phone number)."
+            flash(msg, "success")
 
         conn.commit()
         cur.close(); conn.close()
@@ -10193,7 +10330,6 @@ def whatsapp_campaigns():
 
     campaigns = []
     proactive_log = []
-    segments = []
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -10210,22 +10346,19 @@ def whatsapp_campaigns():
             (tenant_id,),
         )
         proactive_log = cur.fetchall()
-        cur.execute("""
-            SELECT s.id, s.name, s.color, COUNT(m.contact_id) AS member_count
-            FROM wa_segments s
-            LEFT JOIN wa_segment_members m ON m.segment_id = s.id
-            WHERE s.tenant_id = %s GROUP BY s.id ORDER BY s.name
-        """, (tenant_id,))
-        segments = cur.fetchall()
+        # Sales Pipeline contacts with a phone number — the recipient source
+        # this page's compose drawer sources from (see WhatsApp Segments,
+        # mirroring pipeline_email_count on the Email Campaigns page).
         cur.execute(
-            "SELECT count(*) AS c FROM merchant_pipeline_leads WHERE tenant_id=%s AND phone IS NOT NULL AND dropped_at IS NULL",
+            "SELECT count(*) AS c FROM merchant_pipeline_leads "
+            "WHERE tenant_id=%s AND (whatsapp_number IS NOT NULL OR phone IS NOT NULL) AND dropped_at IS NULL",
             (tenant_id,),
         )
-        pipeline_lead_count = cur.fetchone()["c"]
+        pipeline_phone_count = cur.fetchone()["c"]
         cur.close(); conn.close()
     except Exception as e:
         print("⚠️ whatsapp_campaigns fetch error:", e)
-        pipeline_lead_count = 0
+        pipeline_phone_count = 0
 
     return render_template(
         "portal/whatsapp_campaigns.html",
@@ -10233,8 +10366,7 @@ def whatsapp_campaigns():
         send_from_connections=send_from_connections,
         campaigns=campaigns,
         proactive_log=proactive_log,
-        segments=segments,
-        pipeline_lead_count=pipeline_lead_count,
+        pipeline_phone_count=pipeline_phone_count,
     )
 
 
@@ -10250,7 +10382,8 @@ def whatsapp_campaigns_create():
     template_name    = (request.form.get("template_name") or "").strip()
     language_code    = (request.form.get("language_code") or "en").strip()
     recipients       = (request.form.get("recipients") or "").strip()
-    segment_id_raw   = (request.form.get("segment_id") or "").strip()
+    recipient_source = (request.form.get("recipient_source") or "").strip()
+    pipeline_segment_id_raw = (request.form.get("pipeline_segment_id") or "").strip()
     schedule_str     = (request.form.get("scheduled_at") or "").strip()
     send_now         = request.form.get("send_now") == "1"
     header_type      = (request.form.get("header_type") or "").strip().upper() or None
@@ -10266,26 +10399,46 @@ def whatsapp_campaigns_create():
         header_location = _json.dumps({"latitude": loc_lat, "longitude": loc_lng,
                                         "name": loc_name, "address": loc_address})
 
-    segment_id = None
+    # Recipients now resolve server-side against the Sales Pipeline (same
+    # trusted-query pattern as Email Campaign's _parse_campaign_form), not a
+    # client-side JS copy-paste into the textarea. Three sources:
+    #  - "pipeline": every Sales Pipeline contact with a phone number
+    #  - "segment":  a saved WhatsApp Segment (wa_pipeline_segment_leads),
+    #                itself a group of Sales Pipeline contacts
+    #  - "manual" (or anything else / no pipeline data): the pasted textarea,
+    #                unchanged fallback behavior
+    pipeline_segment_id = None
     phones = []
 
-    # If a segment is selected, pull phones from it
-    if segment_id_raw and segment_id_raw.isdigit():
-        seg_int = int(segment_id_raw)
+    if recipient_source == "pipeline":
+        try:
+            _pc = get_db_connection(); _pcc = _pc.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            _pcc.execute("""
+                SELECT COALESCE(whatsapp_number, phone) AS phone FROM merchant_pipeline_leads
+                WHERE tenant_id=%s AND (whatsapp_number IS NOT NULL OR phone IS NOT NULL) AND dropped_at IS NULL
+            """, (tenant_id,))
+            phones = [r["phone"] for r in _pcc.fetchall()]
+            _pcc.close(); _pc.close()
+        except Exception as _pe:
+            print("⚠️ pipeline phones fetch error:", _pe)
+    elif recipient_source == "segment" and pipeline_segment_id_raw.isdigit():
+        seg_int = int(pipeline_segment_id_raw)
         try:
             _sc = get_db_connection(); _scc = _sc.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            _scc.execute("SELECT id FROM wa_segments WHERE id=%s AND tenant_id=%s", (seg_int, tenant_id))
+            _scc.execute("SELECT id FROM wa_pipeline_segments WHERE id=%s AND tenant_id=%s", (seg_int, tenant_id))
             if _scc.fetchone():
-                segment_id = seg_int
+                pipeline_segment_id = seg_int
                 _scc.execute("""
-                    SELECT c.phone FROM wa_contacts c
-                    JOIN wa_segment_members m ON m.contact_id = c.id
-                    WHERE m.segment_id = %s
+                    SELECT COALESCE(l.whatsapp_number, l.phone) AS phone
+                    FROM wa_pipeline_segment_leads sl
+                    JOIN merchant_pipeline_leads l ON l.id = sl.lead_id
+                    WHERE sl.segment_id = %s AND (l.whatsapp_number IS NOT NULL OR l.phone IS NOT NULL)
+                          AND l.dropped_at IS NULL
                 """, (seg_int,))
                 phones = [r["phone"] for r in _scc.fetchall()]
             _scc.close(); _sc.close()
         except Exception as _se:
-            print("⚠️ segment phones fetch error:", _se)
+            print("⚠️ WhatsApp segment phones fetch error:", _se)
 
     # Fall back to (or supplement with) manually pasted phones
     if not phones and recipients:
@@ -10334,14 +10487,14 @@ def whatsapp_campaigns_create():
             INSERT INTO wa_campaigns
               (tenant_id, name, template_name, language_code, status,
                scheduled_at, total_count, recipients,
-               header_type, header_image_url, header_text, header_location, segment_id,
+               header_type, header_image_url, header_text, header_location, pipeline_segment_id,
                wa_tenant_id)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (tenant_id, name, template_name, language_code, status,
              scheduled_at, len(phones), "\n".join(phones),
-             header_type, header_image_url, header_text, header_location, segment_id,
+             header_type, header_image_url, header_text, header_location, pipeline_segment_id,
              wa_tenant_id),
         )
         campaign_id = cur.fetchone()[0]
@@ -10523,6 +10676,342 @@ def whatsapp_campaigns_upload_image():
 
     public_url = f"https://portal.phixtra.com/static/uploads/campaign_images/{filename}"
     return jsonify({"url": public_url, "media_type": media_type, "filename": f.filename})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WHATSAPP SEGMENTS (Sales Pipeline based) — reusable named groups of Sales
+# Pipeline contacts for WhatsApp Campaign, mirroring the /email/segments routes
+# exactly (same shape, phone instead of email) so WhatsApp Campaign has real
+# parity with Email Campaign's recipient sourcing. Deliberately separate from
+# the older /whatsapp/segments routes (wa_segments/wa_segment_members), which
+# group wa_contacts (WhatsApp Contacts page) — a different, unrelated contact
+# table. This is WHATSAPP SEGMENT; the older one stays "Segments" under Contacts.
+# ══════════════════════════════════════════════════════════════════════════════
+
+@portal_bp.route("/whatsapp/campaigns/segments")
+def whatsapp_campaign_segments_page():
+    """Standalone WhatsApp Segments page (list + manage one segment's contacts) —
+    was previously a popup on the WhatsApp Campaigns page; moved to its own URL
+    so it can be reached/bookmarked/refreshed directly instead of only opening
+    as an overlay. Reuses the same wa_pipeline_segments/wa_pipeline_segment_leads
+    tables and add/remove/create/delete JSON endpoints below."""
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    segment_id_raw = request.args.get("segment_id")
+    segment_id = int(segment_id_raw) if segment_id_raw and segment_id_raw.isdigit() else None
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        """
+        SELECT s.id, s.name,
+               count(sl.lead_id) FILTER (
+                   WHERE (l.whatsapp_number IS NOT NULL OR l.phone IS NOT NULL)
+                         AND l.dropped_at IS NULL
+               ) AS member_count
+        FROM wa_pipeline_segments s
+        LEFT JOIN wa_pipeline_segment_leads sl ON sl.segment_id = s.id
+        LEFT JOIN merchant_pipeline_leads l ON l.id = sl.lead_id
+        WHERE s.tenant_id=%s
+        GROUP BY s.id, s.name
+        ORDER BY s.name
+        """,
+        (tenant_id,),
+    )
+    segments = cur.fetchall()
+
+    active_segment = None
+    members = []
+    if segment_id:
+        cur.execute("SELECT id, name FROM wa_pipeline_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
+        active_segment = cur.fetchone()
+        if active_segment:
+            cur.execute(
+                """
+                SELECT l.id, l.customer_name AS name, COALESCE(l.whatsapp_number, l.phone) AS phone
+                FROM wa_pipeline_segment_leads sl
+                JOIN merchant_pipeline_leads l ON l.id = sl.lead_id
+                WHERE sl.segment_id=%s AND l.tenant_id=%s
+                      AND (l.whatsapp_number IS NOT NULL OR l.phone IS NOT NULL) AND l.dropped_at IS NULL
+                ORDER BY l.customer_name
+                """,
+                (segment_id, tenant_id),
+            )
+            members = cur.fetchall()
+    cur.close(); conn.close()
+
+    return render_template(
+        "portal/whatsapp_campaign_segments.html",
+        customer       = customer,
+        segments       = segments,
+        active_segment = active_segment,
+        members        = members,
+    )
+
+
+@portal_bp.route("/whatsapp/pipeline-segments")
+def whatsapp_pipeline_segments_list():
+    """List this tenant's WhatsApp Segments with live member counts, for the
+    compose drawer's recipient dropdown and the segment manager modal."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            """
+            SELECT s.id, s.name,
+                   count(sl.lead_id) FILTER (
+                       WHERE (l.whatsapp_number IS NOT NULL OR l.phone IS NOT NULL)
+                             AND l.dropped_at IS NULL
+                   ) AS member_count
+            FROM wa_pipeline_segments s
+            LEFT JOIN wa_pipeline_segment_leads sl ON sl.segment_id = s.id
+            LEFT JOIN merchant_pipeline_leads l ON l.id = sl.lead_id
+            WHERE s.tenant_id=%s
+            GROUP BY s.id, s.name
+            ORDER BY s.name
+            """,
+            (tenant_id,),
+        )
+        segments = cur.fetchall()
+        cur.close(); conn.close()
+        return jsonify({"segments": segments})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@portal_bp.route("/whatsapp/pipeline-segments/create", methods=["POST"])
+def whatsapp_pipeline_segments_create():
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    name = (request.form.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Segment name is required."}), 400
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute(
+            "INSERT INTO wa_pipeline_segments (tenant_id, name) VALUES (%s, %s) RETURNING id",
+            (tenant_id, name),
+        )
+        seg_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close(); conn.close()
+        return jsonify({"ok": True, "id": seg_id, "name": name, "member_count": 0})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@portal_bp.route("/whatsapp/pipeline-segments/<int:segment_id>/delete", methods=["POST"])
+def whatsapp_pipeline_segments_delete(segment_id: int):
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("DELETE FROM wa_pipeline_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
+        deleted = cur.rowcount > 0
+        conn.commit()
+        cur.close(); conn.close()
+        return jsonify({"ok": deleted})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@portal_bp.route("/whatsapp/pipeline-segments/<int:segment_id>/members")
+def whatsapp_pipeline_segments_members(segment_id: int):
+    """Return the segment's name plus its actual current members (id/name/phone) —
+    the manage-segment modal shows only these, not every Sales Pipeline contact."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT id, name FROM wa_pipeline_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
+        seg = cur.fetchone()
+        if not seg:
+            cur.close(); conn.close()
+            return jsonify({"error": "Segment not found."}), 404
+        cur.execute(
+            "SELECT l.id, l.customer_name, l.contact_person, "
+            "COALESCE(l.whatsapp_number, l.phone) AS phone "
+            "FROM wa_pipeline_segment_leads sl JOIN merchant_pipeline_leads l ON l.id = sl.lead_id "
+            "WHERE sl.segment_id=%s ORDER BY l.customer_name",
+            (segment_id,),
+        )
+        members = [
+            {"id": row["id"], "name": row["customer_name"] or row["contact_person"] or row["phone"], "phone": row["phone"]}
+            for row in cur.fetchall()
+        ]
+        cur.close(); conn.close()
+        return jsonify({"id": seg["id"], "name": seg["name"], "members": members})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@portal_bp.route("/whatsapp/pipeline-segments/<int:segment_id>/members/add", methods=["POST"])
+def whatsapp_pipeline_segments_add_member(segment_id: int):
+    """Add one Sales Pipeline contact to a WhatsApp Segment — single search-driven
+    add, mirroring /email/segments/<id>/members/add."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    lead_id_raw = (request.form.get("lead_id") or "").strip()
+    if not lead_id_raw.isdigit():
+        return jsonify({"error": "Invalid contact."}), 400
+    lead_id = int(lead_id_raw)
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT id FROM wa_pipeline_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
+        if not cur.fetchone():
+            cur.close(); conn.close()
+            return jsonify({"error": "Segment not found."}), 404
+        cur.execute(
+            "SELECT id, customer_name, contact_person, COALESCE(whatsapp_number, phone) AS phone "
+            "FROM merchant_pipeline_leads "
+            "WHERE id=%s AND tenant_id=%s AND (whatsapp_number IS NOT NULL OR phone IS NOT NULL) AND dropped_at IS NULL",
+            (lead_id, tenant_id),
+        )
+        lead = cur.fetchone()
+        if not lead:
+            cur.close(); conn.close()
+            return jsonify({"error": "Contact not found."}), 404
+        cur.execute(
+            "INSERT INTO wa_pipeline_segment_leads (segment_id, lead_id) VALUES (%s, %s) "
+            "ON CONFLICT (segment_id, lead_id) DO NOTHING",
+            (segment_id, lead_id),
+        )
+        conn.commit()
+        cur.close(); conn.close()
+        return jsonify({"ok": True, "member": {
+            "id": lead["id"],
+            "name": lead["customer_name"] or lead["contact_person"] or lead["phone"],
+            "phone": lead["phone"],
+        }})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@portal_bp.route("/whatsapp/pipeline-segments/<int:segment_id>/members/remove", methods=["POST"])
+def whatsapp_pipeline_segments_remove_member(segment_id: int):
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    lead_id_raw = (request.form.get("lead_id") or "").strip()
+    if not lead_id_raw.isdigit():
+        return jsonify({"error": "Invalid contact."}), 400
+    lead_id = int(lead_id_raw)
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("SELECT id FROM wa_pipeline_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
+        if not cur.fetchone():
+            cur.close(); conn.close()
+            return jsonify({"error": "Segment not found."}), 404
+        cur.execute("DELETE FROM wa_pipeline_segment_leads WHERE segment_id=%s AND lead_id=%s", (segment_id, lead_id))
+        conn.commit()
+        cur.close(); conn.close()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@portal_bp.route("/whatsapp/pipeline-segments/<int:segment_id>/members/bulk-add", methods=["POST"])
+def whatsapp_pipeline_segments_bulk_add_members(segment_id: int):
+    """Add many Sales Pipeline leads to a WhatsApp Segment in one call — used by
+    the Sales Pipeline page's multi-select "Add to WhatsApp Segment" bulk action.
+    Leads without a phone or already dropped are silently skipped (not counted
+    in 'added'), mirroring the email version's eligibility rule."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    lead_ids = list({int(v) for v in request.form.getlist("lead_ids") if v.isdigit()})
+    if not lead_ids:
+        return jsonify({"error": "No contacts selected."}), 400
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("SELECT id FROM wa_pipeline_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
+        if not cur.fetchone():
+            cur.close(); conn.close()
+            return jsonify({"error": "Segment not found."}), 404
+        cur.execute(
+            "INSERT INTO wa_pipeline_segment_leads (segment_id, lead_id) "
+            "SELECT %s, l.id FROM merchant_pipeline_leads l "
+            "WHERE l.id = ANY(%s) AND l.tenant_id=%s "
+            "AND (l.whatsapp_number IS NOT NULL OR l.phone IS NOT NULL) AND l.dropped_at IS NULL "
+            "ON CONFLICT (segment_id, lead_id) DO NOTHING",
+            (segment_id, lead_ids, tenant_id),
+        )
+        added = cur.rowcount
+        conn.commit()
+        cur.close(); conn.close()
+        return jsonify({"ok": True, "added": added, "requested": len(lead_ids)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@portal_bp.route("/whatsapp/campaigns/pipeline-leads-json")
+def whatsapp_campaigns_pipeline_leads_json():
+    """Search Sales Pipeline leads with a phone number, for the manage-segment
+    modal's add-contact typeahead. Requires a query to keep results small —
+    mirrors /email/campaigns/pipeline-leads-json."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    q = (request.args.get("q") or "").strip()
+    exclude_segment_id = (request.args.get("exclude_segment_id") or "").strip()
+
+    where  = ["l.tenant_id=%s", "(l.whatsapp_number IS NOT NULL OR l.phone IS NOT NULL)", "l.dropped_at IS NULL"]
+    params = [tenant_id]
+    if q:
+        where.append("(l.customer_name ILIKE %s OR l.contact_person ILIKE %s OR l.phone ILIKE %s OR l.whatsapp_number ILIKE %s)")
+        like = f"%{q}%"
+        params += [like, like, like, like]
+    if exclude_segment_id.isdigit():
+        where.append("l.id NOT IN (SELECT lead_id FROM wa_pipeline_segment_leads WHERE segment_id=%s)")
+        params.append(int(exclude_segment_id))
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT id, customer_name, contact_person, COALESCE(whatsapp_number, phone) AS phone "
+            "FROM merchant_pipeline_leads l "
+            "WHERE " + " AND ".join(where) + " ORDER BY customer_name LIMIT 20",
+            params,
+        )
+        leads = [
+            {
+                "id": row["id"],
+                "name": row["customer_name"] or row["contact_person"] or row["phone"],
+                "phone": row["phone"],
+            }
+            for row in cur.fetchall()
+        ]
+        cur.close(); conn.close()
+        return jsonify({"leads": leads})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @portal_bp.route("/whatsapp/campaigns/reports")
@@ -14214,6 +14703,22 @@ def _decrypt_key(ciphertext: str) -> str:
         return ""
 
 
+def _parse_payment_timing_fields(reminder_raw, cancel_raw, default_reminder: float, default_cancel: float):
+    """Parse the merchant-entered reminder/cancel hour fields for a payment
+    method. Returns (reminder_hours, cancel_hours, error_message).
+    Blank fields fall back to the given defaults rather than erroring."""
+    try:
+        reminder_hours = float(reminder_raw) if (reminder_raw or "").strip() else default_reminder
+        cancel_hours   = float(cancel_raw) if (cancel_raw or "").strip() else default_cancel
+    except (TypeError, ValueError):
+        return None, None, "Reminder and cancel times must be numbers."
+    if reminder_hours <= 0 or cancel_hours <= 0:
+        return None, None, "Reminder and cancel times must be greater than zero."
+    if reminder_hours >= cancel_hours:
+        return None, None, "The reminder time must be earlier than the cancel time."
+    return reminder_hours, cancel_hours, None
+
+
 def _get_gateway(tenant_id: int, gateway: str) -> dict:
     try:
         conn = get_db_connection()
@@ -14375,6 +14880,16 @@ def payment_settings_flutterwave():
         flash("Both Public Key and Secret Key are required.", "danger")
         return redirect(url_for("portal.payment_settings"))
 
+    reminder_hours, cancel_hours, err = _parse_payment_timing_fields(
+        request.form.get("fw_reminder_after_hours"),
+        request.form.get("fw_cancel_after_hours"),
+        default_reminder=0.5,
+        default_cancel=24,
+    )
+    if err:
+        flash(err, "danger")
+        return redirect(url_for("portal.payment_settings"))
+
     secret_enc = _encrypt_key(secret_key)
     try:
         conn = get_db_connection()
@@ -14388,15 +14903,18 @@ def payment_settings_flutterwave():
         webhook_hash = (existing or {}).get("webhook_secret_hash") or secrets.token_hex(24)
 
         cur.execute("""
-            INSERT INTO payment_gateways (tenant_id, gateway, public_key, secret_key_enc, webhook_secret_hash)
-            VALUES (%s, 'flutterwave', %s, %s, %s)
+            INSERT INTO payment_gateways
+              (tenant_id, gateway, public_key, secret_key_enc, webhook_secret_hash, reminder_after_hours, cancel_after_hours)
+            VALUES (%s, 'flutterwave', %s, %s, %s, %s, %s)
             ON CONFLICT (tenant_id, gateway) DO UPDATE SET
-              public_key          = EXCLUDED.public_key,
-              secret_key_enc      = EXCLUDED.secret_key_enc,
-              webhook_secret_hash = COALESCE(payment_gateways.webhook_secret_hash, EXCLUDED.webhook_secret_hash),
+              public_key            = EXCLUDED.public_key,
+              secret_key_enc        = EXCLUDED.secret_key_enc,
+              webhook_secret_hash   = COALESCE(payment_gateways.webhook_secret_hash, EXCLUDED.webhook_secret_hash),
+              reminder_after_hours  = EXCLUDED.reminder_after_hours,
+              cancel_after_hours    = EXCLUDED.cancel_after_hours,
               is_active=TRUE,
               updated_at     = NOW()
-        """, (tenant_id, public_key, secret_enc, webhook_hash))
+        """, (tenant_id, public_key, secret_enc, webhook_hash, reminder_hours, cancel_hours))
         conn.commit()
         cur.close(); conn.close()
         flash("Flutterwave keys saved. Scroll down for your webhook setup steps.", "success")
@@ -14498,6 +15016,16 @@ def payment_settings_bank():
         flash("All bank account fields are required.", "danger")
         return redirect(url_for("portal.payment_settings"))
 
+    reminder_hours, cancel_hours, err = _parse_payment_timing_fields(
+        request.form.get("bank_reminder_after_hours"),
+        request.form.get("bank_cancel_after_hours"),
+        default_reminder=4,
+        default_cancel=48,
+    )
+    if err:
+        flash(err, "danger")
+        return redirect(url_for("portal.payment_settings"))
+
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
@@ -14510,15 +15038,16 @@ def payment_settings_bank():
         if existing:
             cur.execute("""
                 UPDATE merchant_bank_accounts
-                   SET bank_name=%s, account_number=%s, account_name=%s, updated_at=NOW()
+                   SET bank_name=%s, account_number=%s, account_name=%s,
+                       reminder_after_hours=%s, cancel_after_hours=%s, updated_at=NOW()
                  WHERE tenant_id=%s AND is_primary=TRUE
-            """, (bank_name, account_number, account_name, tenant_id))
+            """, (bank_name, account_number, account_name, reminder_hours, cancel_hours, tenant_id))
         else:
             cur.execute("""
                 INSERT INTO merchant_bank_accounts
-                  (tenant_id, bank_name, account_number, account_name, is_primary)
-                VALUES (%s, %s, %s, %s, TRUE)
-            """, (tenant_id, bank_name, account_number, account_name))
+                  (tenant_id, bank_name, account_number, account_name, reminder_after_hours, cancel_after_hours, is_primary)
+                VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+            """, (tenant_id, bank_name, account_number, account_name, reminder_hours, cancel_hours))
         conn.commit()
         cur.close(); conn.close()
         flash("Bank account saved.", "success")
@@ -15495,6 +16024,72 @@ def woo_sync():
         stock_f     = stock_f,
         q           = q,
     )
+
+
+@portal_bp.route("/woo-sync/delete", methods=["POST"])
+def woo_sync_delete():
+    """Delete a single synced page or post. Products are excluded — those come
+    back on the next Full Sync and should be removed from WooCommerce instead."""
+    r = _require_login()
+    if r: return r
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    doc_id    = (request.form.get("doc_id") or "").strip()
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute(
+        "DELETE FROM documents WHERE id=%s AND tenant_id=%s AND type IN ('page','post')",
+        (doc_id, tenant_id)
+    )
+    deleted = cur.rowcount
+    conn.commit()
+    cur.close(); conn.close()
+
+    if deleted:
+        flash("Item deleted. It won't be used to answer customers anymore.", "success")
+    else:
+        flash("Could not delete that item.", "danger")
+
+    return redirect(url_for("portal.woo_sync",
+                             type=request.form.get("type_f", ""),
+                             q=request.form.get("q", ""),
+                             stock=request.form.get("stock_f", ""),
+                             page=request.form.get("page_n", "")))
+
+
+@portal_bp.route("/woo-sync/bulk-delete", methods=["POST"])
+def woo_sync_bulk_delete():
+    """Delete multiple synced pages/posts at once. Same rules as the single
+    delete — products excluded, and a future Full Sync brings back anything
+    still live on the store."""
+    r = _require_login()
+    if r: return r
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    doc_ids   = [d.strip() for d in request.form.getlist("doc_ids") if d.strip()]
+
+    if doc_ids:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute(
+            "DELETE FROM documents WHERE tenant_id=%s AND type IN ('page','post') AND id = ANY(%s)",
+            (tenant_id, doc_ids)
+        )
+        deleted = cur.rowcount
+        conn.commit()
+        cur.close(); conn.close()
+        flash(f"Deleted {deleted} item{'s' if deleted != 1 else ''}. They won't be used to answer customers anymore.", "success")
+    else:
+        flash("No items selected.", "warning")
+
+    return redirect(url_for("portal.woo_sync",
+                             type=request.form.get("type_f", ""),
+                             q=request.form.get("q", ""),
+                             stock=request.form.get("stock_f", ""),
+                             page=request.form.get("page_n", "")))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -17656,7 +18251,8 @@ PHIXTRA_SUPPORT_TENANT_ID = 19
 
 
 def _pipeline_filter_clauses(tenant_id, search, stage_filter, has_phone, has_whatsapp, has_email,
-                              hide_segment_ids=None, hide_label_ids=None, show_label_ids=None):
+                              hide_segment_ids=None, hide_label_ids=None, show_label_ids=None,
+                              hide_sms_segment_ids=None, hide_wa_segment_ids=None):
     """Build the shared WHERE clauses/params for the Sales Pipeline list and its CSV
     export — kept in one place so the two can never drift apart on what "matches the
     current filters" means."""
@@ -17684,6 +18280,12 @@ def _pipeline_filter_clauses(tenant_id, search, stage_filter, has_phone, has_wha
     if show_label_ids:
         clauses.append("mpl.id IN (SELECT lead_id FROM lead_label_leads WHERE label_id = ANY(%s))")
         params.append(show_label_ids)
+    if hide_sms_segment_ids:
+        clauses.append("mpl.id NOT IN (SELECT lead_id FROM sms_pipeline_segment_leads WHERE segment_id = ANY(%s))")
+        params.append(hide_sms_segment_ids)
+    if hide_wa_segment_ids:
+        clauses.append("mpl.id NOT IN (SELECT lead_id FROM wa_pipeline_segment_leads WHERE segment_id = ANY(%s))")
+        params.append(hide_wa_segment_ids)
     return clauses, params
 
 
@@ -17740,6 +18342,8 @@ def sales_pipeline():
     hide_segment_ids = [int(v) for v in request.args.getlist("hide_segment") if v.isdigit()]
     hide_label_ids   = [int(v) for v in request.args.getlist("hide_label") if v.isdigit()]
     show_label_ids   = [int(v) for v in request.args.getlist("label") if v.isdigit()]
+    hide_sms_segment_ids = [int(v) for v in request.args.getlist("hide_sms_segment") if v.isdigit()]
+    hide_wa_segment_ids  = [int(v) for v in request.args.getlist("hide_wa_segment") if v.isdigit()]
 
     per_page_raw = (request.args.get("per_page") or "50").strip().lower()
     if per_page_raw not in PIPELINE_PER_PAGE_OPTIONS:
@@ -17749,7 +18353,8 @@ def sales_pipeline():
 
     clauses, params = _pipeline_filter_clauses(
         tenant_id, search, stage_filter, has_phone, has_whatsapp, has_email,
-        hide_segment_ids, hide_label_ids, show_label_ids
+        hide_segment_ids, hide_label_ids, show_label_ids, hide_sms_segment_ids,
+        hide_wa_segment_ids
     )
     where = " AND ".join(clauses)
 
@@ -17819,6 +18424,46 @@ def sales_pipeline():
     cur.execute("SELECT id, name FROM email_segments WHERE tenant_id=%s ORDER BY name", (tenant_id,))
     all_segments = cur.fetchall()
 
+    # Which WhatsApp Segment(s), if any, each lead on this page already belongs to —
+    # same badge pattern as email segments above. Available to every tenant, same as
+    # email segments (unlike SMS Segments below, which are support@phixtra.com-only).
+    lead_wa_segment_map = {}
+    if lead_ids_on_page:
+        cur.execute(
+            "SELECT sl.lead_id, s.name FROM wa_pipeline_segment_leads sl "
+            "JOIN wa_pipeline_segments s ON s.id = sl.segment_id "
+            "WHERE sl.lead_id = ANY(%s) AND s.tenant_id=%s",
+            (lead_ids_on_page, tenant_id),
+        )
+        for row in cur.fetchall():
+            lead_wa_segment_map.setdefault(row["lead_id"], []).append(row["name"])
+    for l in leads:
+        l["wa_segment_names"] = lead_wa_segment_map.get(l["id"], [])
+
+    cur.execute("SELECT id, name FROM wa_pipeline_segments WHERE tenant_id=%s ORDER BY name", (tenant_id,))
+    all_wa_segments = cur.fetchall()
+
+    # Which SMS Segment(s), if any, each lead on this page already belongs to — same
+    # badge pattern as email segments above, so a Batch A/B style split can be built
+    # without accidentally double-adding the same lead to two segments. SMS Segments
+    # are support@phixtra.com-only, so this stays empty for every other tenant.
+    lead_sms_segment_map = {}
+    all_sms_segments = []
+    if tenant_id == PHIXTRA_SUPPORT_TENANT_ID:
+        if lead_ids_on_page:
+            cur.execute(
+                "SELECT sl.lead_id, s.name FROM sms_pipeline_segment_leads sl "
+                "JOIN sms_pipeline_segments s ON s.id = sl.segment_id "
+                "WHERE sl.lead_id = ANY(%s) AND s.tenant_id=%s",
+                (lead_ids_on_page, tenant_id),
+            )
+            for row in cur.fetchall():
+                lead_sms_segment_map.setdefault(row["lead_id"], []).append(row["name"])
+        cur.execute("SELECT id, name FROM sms_pipeline_segments WHERE tenant_id=%s ORDER BY name", (tenant_id,))
+        all_sms_segments = cur.fetchall()
+    for l in leads:
+        l["sms_segment_names"] = lead_sms_segment_map.get(l["id"], [])
+
     # Which label(s), if any, each lead on this page has — same pattern as segments
     # above, but a separate table since labels are a lead status, not a campaign
     # audience.
@@ -17885,6 +18530,10 @@ def sales_pipeline():
         has_email             = has_email,
         hide_segment_ids      = hide_segment_ids,
         all_segments          = all_segments,
+        hide_wa_segment_ids   = hide_wa_segment_ids,
+        all_wa_segments       = all_wa_segments,
+        hide_sms_segment_ids  = hide_sms_segment_ids,
+        all_sms_segments      = all_sms_segments,
         hide_label_ids        = hide_label_ids,
         show_label_ids        = show_label_ids,
         all_labels            = all_labels,
@@ -17918,10 +18567,13 @@ def sales_pipeline_export():
     hide_segment_ids = [int(v) for v in request.args.getlist("hide_segment") if v.isdigit()]
     hide_label_ids   = [int(v) for v in request.args.getlist("hide_label") if v.isdigit()]
     show_label_ids   = [int(v) for v in request.args.getlist("label") if v.isdigit()]
+    hide_sms_segment_ids = [int(v) for v in request.args.getlist("hide_sms_segment") if v.isdigit()]
+    hide_wa_segment_ids  = [int(v) for v in request.args.getlist("hide_wa_segment") if v.isdigit()]
 
     clauses, params = _pipeline_filter_clauses(
         tenant_id, search, stage_filter, has_phone, has_whatsapp, has_email,
-        hide_segment_ids, hide_label_ids, show_label_ids
+        hide_segment_ids, hide_label_ids, show_label_ids, hide_sms_segment_ids,
+        hide_wa_segment_ids
     )
     where = " AND ".join(clauses)
 
@@ -18278,6 +18930,597 @@ def sales_pipeline_history(lead_id: int):
          "notes": h["notes"], "created_at": h["created_at"].isoformat() if h["created_at"] else ""}
         for h in history
     ])
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SMS CAMPAIGN (support@phixtra.com only)
+#
+# Sends bulk SMS through PhiXtra's single shared eBulkSMS account. Restricted
+# to PHIXTRA_SUPPORT_TENANT_ID the same way sales_pipeline_assign_ambassador
+# is — every other tenant never sees the "SMS" sidebar menu and every route
+# below 403s if hit directly. Has its own sidebar menu (Sent SMS / Compose and
+# Send SMS / SMS Segments — see sms_campaigns() below) rather than living
+# inside the Sales Pipeline page.
+#
+# Recipients for a send come from one of three sources (recipient_source):
+# every Sales Pipeline contact with a phone, a saved SMS Segment, or an
+# uploaded CSV/Excel list — merged and de-duplicated. Two-step flow: /preview
+# resolves + counts recipients and SMS parts without sending anything; /send
+# takes that resolved list back (as a hidden field, so a file isn't
+# re-uploaded) and actually sends, in a background thread so a
+# multi-thousand-recipient campaign doesn't tie up the request.
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _sms_pipeline_numbers(tenant_id: int) -> list:
+    """Every Sales Pipeline contact's phone number for this tenant (source =
+    'pipeline'). Normalized + de-duplicated by the caller."""
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        "SELECT phone FROM merchant_pipeline_leads "
+        "WHERE tenant_id=%s AND phone IS NOT NULL AND phone <> '' AND dropped_at IS NULL",
+        (tenant_id,),
+    )
+    rows = cur.fetchall()
+    cur.close(); conn.close()
+    return [r["phone"] for r in rows]
+
+
+def _sms_segment_numbers(tenant_id: int, segment_id: int) -> list:
+    """Every member's phone number in a saved SMS Segment (source = 'segment')."""
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        "SELECT l.phone FROM sms_pipeline_segment_leads sl "
+        "JOIN merchant_pipeline_leads l ON l.id = sl.lead_id "
+        "JOIN sms_pipeline_segments s ON s.id = sl.segment_id "
+        "WHERE sl.segment_id=%s AND s.tenant_id=%s "
+        "AND l.phone IS NOT NULL AND l.phone <> '' AND l.dropped_at IS NULL",
+        (segment_id, tenant_id),
+    )
+    rows = cur.fetchall()
+    cur.close(); conn.close()
+    return [r["phone"] for r in rows]
+
+
+@portal_bp.route("/sms/campaign/preview", methods=["POST"])
+def sms_campaign_preview():
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+        return jsonify({"error": "Not available on this account."}), 403
+
+    message = (request.form.get("message") or "").strip()
+    if not message:
+        return jsonify({"error": "Message text is required."}), 400
+
+    recipient_source = (request.form.get("recipient_source") or "").strip()
+    numbers = []
+    seen = set()
+
+    if recipient_source == "pipeline":
+        raw_numbers = _sms_pipeline_numbers(tenant_id)
+    elif recipient_source == "segment":
+        seg_id_raw = (request.form.get("segment_id") or "").strip()
+        if not seg_id_raw.isdigit():
+            return jsonify({"error": "Pick a segment first."}), 400
+        raw_numbers = _sms_segment_numbers(tenant_id, int(seg_id_raw))
+    elif recipient_source == "manual":
+        manual_raw = request.form.get("manual_numbers") or ""
+        raw_numbers = [n for n in _re.split(r"[,\n\r;]+", manual_raw) if n.strip()]
+    else:
+        raw_numbers = []
+
+    for phone in raw_numbers:
+        num = bulksmsng_api.normalize_number(phone)
+        if num and num not in seen:
+            seen.add(num); numbers.append(num)
+
+    upload = request.files.get("file")
+    if upload and upload.filename:
+        file_numbers, err = bulksmsng_api.parse_phone_upload(upload.filename, upload.read())
+        if err and not numbers:
+            return jsonify({"error": err}), 400
+        for num in file_numbers:
+            if num not in seen:
+                seen.add(num); numbers.append(num)
+
+    if not numbers:
+        return jsonify({"error": "No recipients — pick Sales Pipeline contacts, a Segment, type phone number(s), and/or upload a file with phone numbers."}), 400
+
+    parts, chars_per_part = bulksmsng_api.count_sms_parts(message)
+    return jsonify({
+        "count": len(numbers),
+        "parts": parts,
+        "chars_per_part": chars_per_part,
+        "total_units": len(numbers) * parts,
+        "sample": numbers[:5],
+        "resolved_numbers": "\n".join(numbers),
+    })
+
+
+@portal_bp.route("/sms/campaign/send", methods=["POST"])
+def sms_campaign_send():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+        flash("Not available on this account.", "danger")
+        return redirect(url_for("portal.sms_campaigns"))
+
+    message = (request.form.get("message") or "").strip()
+    numbers = [n.strip() for n in (request.form.get("resolved_numbers") or "").splitlines() if n.strip()]
+    if not message or not numbers:
+        flash("Nothing to send — go through Preview first.", "danger")
+        return redirect(url_for("portal.sms_campaigns"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO sms_campaigns (tenant_id, message, recipients, total_count, sender, created_by)
+        VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
+        """,
+        (tenant_id, message, "\n".join(numbers), len(numbers), bulksmsng_api.get_sender_name(),
+         f"{customer.get('first_name','')} {customer.get('last_name','')}".strip() or customer.get("email")),
+    )
+    campaign_id = cur.fetchone()[0]
+    conn.commit()
+    cur.close(); conn.close()
+
+    t = _threading.Thread(target=_send_sms_campaign_now, args=(campaign_id,), daemon=True)
+    t.start()
+
+    flash(f"SMS campaign started — sending to {len(numbers)} recipient(s).", "success")
+    return redirect(url_for("portal.sms_campaigns"))
+
+
+@portal_bp.route("/sms/campaign/<int:campaign_id>/resend", methods=["POST"])
+def sms_campaign_resend(campaign_id: int):
+    """Sends the exact same message to the exact same recipient list again,
+    as a brand-new logged campaign (doesn't touch the original row)."""
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+        flash("Not available on this account.", "danger")
+        return redirect(url_for("portal.sms_campaigns"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM sms_campaigns WHERE id=%s AND tenant_id=%s", (campaign_id, tenant_id))
+    src = cur.fetchone()
+    if not src:
+        cur.close(); conn.close()
+        flash("Campaign not found.", "danger")
+        return redirect(url_for("portal.sms_campaigns"))
+
+    cur2 = conn.cursor()
+    cur2.execute(
+        """
+        INSERT INTO sms_campaigns (tenant_id, message, recipients, total_count, sender, created_by)
+        VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
+        """,
+        (tenant_id, src["message"], src["recipients"], src["total_count"], bulksmsng_api.get_sender_name(),
+         f"{customer.get('first_name','')} {customer.get('last_name','')}".strip() or customer.get("email")),
+    )
+    new_id = cur2.fetchone()[0]
+    conn.commit()
+    cur.close(); cur2.close(); conn.close()
+
+    t = _threading.Thread(target=_send_sms_campaign_now, args=(new_id,), daemon=True)
+    t.start()
+
+    flash(f"Resending to {src['total_count']} recipient(s).", "success")
+    return redirect(url_for("portal.sms_campaigns"))
+
+
+@portal_bp.route("/sms/campaign/<int:campaign_id>/delete", methods=["POST"])
+def sms_campaign_delete(campaign_id: int):
+    """Removes a campaign from your history log only — it obviously can't
+    recall a text already delivered to someone's phone."""
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+        flash("Not available on this account.", "danger")
+        return redirect(url_for("portal.sms_campaigns"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("DELETE FROM sms_campaigns WHERE id=%s AND tenant_id=%s", (campaign_id, tenant_id))
+    deleted = cur.rowcount > 0
+    conn.commit()
+    cur.close(); conn.close()
+
+    flash("Removed from history." if deleted else "Campaign not found.",
+          "success" if deleted else "danger")
+    return redirect(url_for("portal.sms_campaigns"))
+
+
+@portal_bp.route("/sms/campaign/<int:campaign_id>/numbers")
+def sms_campaign_extract_numbers(campaign_id: int):
+    """Downloads the phone numbers a past message was sent to as a .txt file."""
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+        return "Not available on this account.", 403
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT recipients, created_at FROM sms_campaigns WHERE id=%s AND tenant_id=%s", (campaign_id, tenant_id))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    if not row:
+        return "Campaign not found.", 404
+
+    stamp = row["created_at"].strftime("%Y%m%d-%H%M") if row["created_at"] else str(campaign_id)
+    resp = Response((row["recipients"] or "") + "\n", mimetype="text/plain")
+    resp.headers["Content-Disposition"] = f'attachment; filename="sms-{campaign_id}-{stamp}-numbers.txt"'
+    return resp
+
+
+@portal_bp.route("/sms")
+def sms_campaigns():
+    """The 'SMS' sidebar menu's landing page — Sent SMS history by default.
+    ?view=compose or ?view=segments auto-opens the matching drawer/modal on
+    load (same trick whatsapp_campaigns.html uses for its Segments link).
+    ?duplicate=<id> prefills the compose message from a past campaign, with
+    recipients left blank so it can go out to a fresh group."""
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+        flash("Not available on this account.", "danger")
+        return redirect(url_for("portal.dashboard"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        "SELECT * FROM sms_campaigns WHERE tenant_id=%s ORDER BY created_at DESC LIMIT 200",
+        (tenant_id,),
+    )
+    campaigns = cur.fetchall()
+    for c in campaigns:
+        parts, _chars = bulksmsng_api.count_sms_parts(c["message"] or "")
+        c["parts"] = parts
+
+    cur.execute(
+        "SELECT count(*) AS c FROM merchant_pipeline_leads "
+        "WHERE tenant_id=%s AND phone IS NOT NULL AND phone <> '' AND dropped_at IS NULL",
+        (tenant_id,),
+    )
+    pipeline_phone_count = cur.fetchone()["c"]
+
+    duplicate_message = None
+    dup_id_raw = (request.args.get("duplicate") or "").strip()
+    if dup_id_raw.isdigit():
+        cur.execute("SELECT message FROM sms_campaigns WHERE id=%s AND tenant_id=%s", (int(dup_id_raw), tenant_id))
+        dup_row = cur.fetchone()
+        if dup_row:
+            duplicate_message = dup_row["message"]
+
+    cur.close(); conn.close()
+
+    return render_template(
+        "portal/sms_campaigns.html",
+        campaigns=campaigns,
+        pipeline_phone_count=pipeline_phone_count,
+        duplicate_message=duplicate_message,
+    )
+
+
+def _send_sms_campaign_now(campaign_id: int):
+    """Runs in a background thread (mirrors _send_email_campaign_now). Sends
+    via bulksmsng_api.send_bulk_sms, which itself batches the recipient list,
+    then records the outcome on the sms_campaigns row."""
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM sms_campaigns WHERE id=%s", (campaign_id,))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    if not row:
+        return
+
+    numbers = [n for n in (row["recipients"] or "").splitlines() if n.strip()]
+    sent, failed, error = bulksmsng_api.send_bulk_sms(numbers, row["message"])
+
+    conn2 = get_db_connection()
+    cur2  = conn2.cursor()
+    cur2.execute(
+        """
+        UPDATE sms_campaigns
+        SET sent_count=%s, failed_count=%s, status=%s, error=%s, completed_at=NOW()
+        WHERE id=%s
+        """,
+        (sent, failed, "failed" if (error and sent == 0) else "completed", error, campaign_id),
+    )
+    conn2.commit()
+    cur2.close(); conn2.close()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SMS SEGMENTS (Sales Pipeline based) — reusable named groups of Sales Pipeline
+# contacts to target with SMS Campaign, mirroring /whatsapp/pipeline-segments
+# exactly (same shape, own tables). support@phixtra.com only, same gate as the
+# rest of this section.
+# ══════════════════════════════════════════════════════════════════════════════
+
+@portal_bp.route("/sms/segments")
+def sms_pipeline_segments_list():
+    """List this tenant's SMS Segments with live member counts, for the
+    compose drawer's recipient dropdown and the segment manager modal."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+        return jsonify({"error": "Not available on this account."}), 403
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            """
+            SELECT s.id, s.name,
+                   count(sl.lead_id) FILTER (
+                       WHERE l.phone IS NOT NULL AND l.phone <> '' AND l.dropped_at IS NULL
+                   ) AS member_count
+            FROM sms_pipeline_segments s
+            LEFT JOIN sms_pipeline_segment_leads sl ON sl.segment_id = s.id
+            LEFT JOIN merchant_pipeline_leads l ON l.id = sl.lead_id
+            WHERE s.tenant_id=%s
+            GROUP BY s.id, s.name
+            ORDER BY s.name
+            """,
+            (tenant_id,),
+        )
+        segments = cur.fetchall()
+        cur.close(); conn.close()
+        return jsonify({"segments": segments})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@portal_bp.route("/sms/segments/create", methods=["POST"])
+def sms_pipeline_segments_create():
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+        return jsonify({"error": "Not available on this account."}), 403
+    name = (request.form.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Segment name is required."}), 400
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute(
+            "INSERT INTO sms_pipeline_segments (tenant_id, name) VALUES (%s, %s) RETURNING id",
+            (tenant_id, name),
+        )
+        seg_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close(); conn.close()
+        return jsonify({"ok": True, "id": seg_id, "name": name, "member_count": 0})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@portal_bp.route("/sms/segments/<int:segment_id>/delete", methods=["POST"])
+def sms_pipeline_segments_delete(segment_id: int):
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+        return jsonify({"error": "Not available on this account."}), 403
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("DELETE FROM sms_pipeline_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
+        deleted = cur.rowcount > 0
+        conn.commit()
+        cur.close(); conn.close()
+        return jsonify({"ok": deleted})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@portal_bp.route("/sms/segments/<int:segment_id>/members")
+def sms_pipeline_segments_members(segment_id: int):
+    """Return the segment's name plus its actual current members (id/name/phone)."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+        return jsonify({"error": "Not available on this account."}), 403
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT id, name FROM sms_pipeline_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
+        seg = cur.fetchone()
+        if not seg:
+            cur.close(); conn.close()
+            return jsonify({"error": "Segment not found."}), 404
+        cur.execute(
+            "SELECT l.id, l.customer_name, l.contact_person, l.phone "
+            "FROM sms_pipeline_segment_leads sl JOIN merchant_pipeline_leads l ON l.id = sl.lead_id "
+            "WHERE sl.segment_id=%s ORDER BY l.customer_name",
+            (segment_id,),
+        )
+        members = [
+            {"id": row["id"], "name": row["customer_name"] or row["contact_person"] or row["phone"], "phone": row["phone"]}
+            for row in cur.fetchall()
+        ]
+        cur.close(); conn.close()
+        return jsonify({"id": seg["id"], "name": seg["name"], "members": members})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@portal_bp.route("/sms/segments/<int:segment_id>/members/add", methods=["POST"])
+def sms_pipeline_segments_add_member(segment_id: int):
+    """Add one Sales Pipeline contact to an SMS Segment — single search-driven add."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+        return jsonify({"error": "Not available on this account."}), 403
+    lead_id_raw = (request.form.get("lead_id") or "").strip()
+    if not lead_id_raw.isdigit():
+        return jsonify({"error": "Invalid contact."}), 400
+    lead_id = int(lead_id_raw)
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT id FROM sms_pipeline_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
+        if not cur.fetchone():
+            cur.close(); conn.close()
+            return jsonify({"error": "Segment not found."}), 404
+        cur.execute(
+            "SELECT id, customer_name, contact_person, phone "
+            "FROM merchant_pipeline_leads "
+            "WHERE id=%s AND tenant_id=%s AND phone IS NOT NULL AND phone <> '' AND dropped_at IS NULL",
+            (lead_id, tenant_id),
+        )
+        lead = cur.fetchone()
+        if not lead:
+            cur.close(); conn.close()
+            return jsonify({"error": "Contact not found."}), 404
+        cur.execute(
+            "INSERT INTO sms_pipeline_segment_leads (segment_id, lead_id) VALUES (%s, %s) "
+            "ON CONFLICT (segment_id, lead_id) DO NOTHING",
+            (segment_id, lead_id),
+        )
+        conn.commit()
+        cur.close(); conn.close()
+        return jsonify({"ok": True, "member": {
+            "id": lead["id"],
+            "name": lead["customer_name"] or lead["contact_person"] or lead["phone"],
+            "phone": lead["phone"],
+        }})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@portal_bp.route("/sms/segments/<int:segment_id>/members/remove", methods=["POST"])
+def sms_pipeline_segments_remove_member(segment_id: int):
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+        return jsonify({"error": "Not available on this account."}), 403
+    lead_id_raw = (request.form.get("lead_id") or "").strip()
+    if not lead_id_raw.isdigit():
+        return jsonify({"error": "Invalid contact."}), 400
+    lead_id = int(lead_id_raw)
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("SELECT id FROM sms_pipeline_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
+        if not cur.fetchone():
+            cur.close(); conn.close()
+            return jsonify({"error": "Segment not found."}), 404
+        cur.execute("DELETE FROM sms_pipeline_segment_leads WHERE segment_id=%s AND lead_id=%s", (segment_id, lead_id))
+        conn.commit()
+        cur.close(); conn.close()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@portal_bp.route("/sms/segments/<int:segment_id>/members/bulk-add", methods=["POST"])
+def sms_pipeline_segments_bulk_add_members(segment_id: int):
+    """Add many Sales Pipeline leads to an SMS Segment in one call — used by the
+    Sales Pipeline page's multi-select "Add to SMS Segment" bulk action. Leads
+    without a phone or already dropped are silently skipped (not counted in
+    'added'), mirroring the WhatsApp/Email Segment versions' eligibility rule."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+        return jsonify({"error": "Not available on this account."}), 403
+
+    lead_ids = list({int(v) for v in request.form.getlist("lead_ids") if v.isdigit()})
+    if not lead_ids:
+        return jsonify({"error": "No contacts selected."}), 400
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("SELECT id FROM sms_pipeline_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
+        if not cur.fetchone():
+            cur.close(); conn.close()
+            return jsonify({"error": "Segment not found."}), 404
+        cur.execute(
+            "INSERT INTO sms_pipeline_segment_leads (segment_id, lead_id) "
+            "SELECT %s, l.id FROM merchant_pipeline_leads l "
+            "WHERE l.id = ANY(%s) AND l.tenant_id=%s "
+            "AND l.phone IS NOT NULL AND l.phone <> '' AND l.dropped_at IS NULL "
+            "ON CONFLICT (segment_id, lead_id) DO NOTHING",
+            (segment_id, lead_ids, tenant_id),
+        )
+        added = cur.rowcount
+        conn.commit()
+        cur.close(); conn.close()
+        return jsonify({"ok": True, "added": added, "requested": len(lead_ids)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@portal_bp.route("/sms/segments/pipeline-leads-json")
+def sms_pipeline_segments_pipeline_leads_json():
+    """Search Sales Pipeline leads with a phone number, for the manage-segment
+    modal's add-contact typeahead. Mirrors /whatsapp/campaigns/pipeline-leads-json."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+        return jsonify({"error": "Not available on this account."}), 403
+    q = (request.args.get("q") or "").strip()
+    exclude_segment_id = (request.args.get("exclude_segment_id") or "").strip()
+
+    where  = ["l.tenant_id=%s", "l.phone IS NOT NULL", "l.phone <> ''", "l.dropped_at IS NULL"]
+    params = [tenant_id]
+    if q:
+        where.append("(l.customer_name ILIKE %s OR l.contact_person ILIKE %s OR l.phone ILIKE %s)")
+        like = f"%{q}%"
+        params += [like, like, like]
+    if exclude_segment_id.isdigit():
+        where.append("l.id NOT IN (SELECT lead_id FROM sms_pipeline_segment_leads WHERE segment_id=%s)")
+        params.append(int(exclude_segment_id))
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT id, customer_name, contact_person, phone "
+            "FROM merchant_pipeline_leads l "
+            "WHERE " + " AND ".join(where) + " ORDER BY customer_name LIMIT 20",
+            params,
+        )
+        leads = [
+            {"id": row["id"], "name": row["customer_name"] or row["contact_person"] or row["phone"], "phone": row["phone"]}
+            for row in cur.fetchall()
+        ]
+        cur.close(); conn.close()
+        return jsonify({"leads": leads})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # ══════════════════════════════════════════════════════════════════════════════

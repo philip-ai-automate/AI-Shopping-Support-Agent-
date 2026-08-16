@@ -438,20 +438,24 @@
       </span>
     </a>
 
-    <!-- Campaigns -->
+    <!-- WhatsApp Campaigns -->
     {% set _camp_group = request.endpoint in ('portal.whatsapp_campaigns','portal.whatsapp_campaign_report','portal.whatsapp_campaigns_reports') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _camp_group %}open{% endif %}"
            data-tour="nav-campaigns" onclick="sbToggle(this)">
         <span class="sb-gtitle">
-          <span class="sb-icon">📣</span> Campaigns
+          <span class="sb-icon">📣</span> WhatsApp Campaigns
         </span>
         <span class="sb-arrow">▾</span>
       </div>
       <div class="sb-sub {% if _camp_group %}open{% endif %}">
         <a href="{{ url_for('portal.whatsapp_campaigns') }}"
-           class="{% if request.endpoint == 'portal.whatsapp_campaigns' %}active{% endif %}">
+           class="{% if request.endpoint == 'portal.whatsapp_campaigns' and request.args.get('view') != 'segments' %}active{% endif %}">
           All Campaigns
+        </a>
+        <a href="{{ url_for('portal.whatsapp_campaign_segments_page') }}"
+           class="{% if request.endpoint == 'portal.whatsapp_campaign_segments_page' %}active{% endif %}">
+          WhatsApp Segment
         </a>
         <a href="{{ url_for('portal.whatsapp_campaigns_reports') }}"
            class="{% if request.endpoint in ('portal.whatsapp_campaigns_reports','portal.whatsapp_campaign_report') %}active{% endif %}">
@@ -509,6 +513,34 @@
         </a>
       </div>
     </div>
+
+    <!-- ── SMS group (support@phixtra.com only) ── -->
+    {% if _portal_customer and _portal_customer.tenant_id == 19 %}
+    {% set _sms_group = request.endpoint == 'portal.sms_campaigns' %}
+    <div class="sb-group">
+      <div class="sb-group-toggle {% if _sms_group %}open{% endif %}"
+           onclick="sbToggle(this)">
+        <span class="sb-gtitle">
+          <span class="sb-icon">📟</span> SMS
+        </span>
+        <span class="sb-arrow">▾</span>
+      </div>
+      <div class="sb-sub {% if _sms_group %}open{% endif %}">
+        <a href="{{ url_for('portal.sms_campaigns', view='compose') }}"
+           class="{% if request.endpoint == 'portal.sms_campaigns' and request.args.get('view') == 'compose' %}active{% endif %}">
+          Compose and Send SMS
+        </a>
+        <a href="{{ url_for('portal.sms_campaigns') }}"
+           class="{% if request.endpoint == 'portal.sms_campaigns' and request.args.get('view') not in ('compose','segments') %}active{% endif %}">
+          Sent SMS
+        </a>
+        <a href="{{ url_for('portal.sms_campaigns', view='segments') }}"
+           class="{% if request.endpoint == 'portal.sms_campaigns' and request.args.get('view') == 'segments' %}active{% endif %}">
+          SMS Segments
+        </a>
+      </div>
+    </div>
+    {% endif %}
 
     <!-- ── Email Campaigns group ── -->
     {% set _email_camp_group = request.endpoint in ('portal.email_campaigns','portal.email_campaign_report','portal.email_campaigns_reports') %}
@@ -1040,7 +1072,7 @@
       title: '🔥 Leads',
       body:  'Customers showing strong buying intent are listed here. Focus your follow-ups where they will convert best.' },
     { sel: '[data-tour="nav-campaigns"]', pos: 'right',
-      title: '📣 Campaigns',
+      title: '📣 WhatsApp Campaigns',
       body:  'Send WhatsApp broadcast messages to your contacts. Great for promotions, flash sales, and re-engagement.' },
     { sel: '[data-tour="nav-whatsapp"]', pos: 'right',
       title: '📱 WhatsApp',
@@ -1221,12 +1253,18 @@
   var INDEX = [
     { icon:'📊', title:'Dashboard',             desc:'Overview, stats and WhatsApp status',           url:'{{ url_for("portal.dashboard") }}',                  tags:'home overview live stats kpi' },
     { icon:'💬', title:'Conversations',          desc:'WhatsApp chats and customer messages',          url:'{{ url_for("portal.my_inbox") }}',                   tags:'inbox messages chat unread replies handoff human agent live takeover' },
-    { icon:'📣', title:'Campaigns',              desc:'Send WhatsApp broadcast messages',              url:'{{ url_for("portal.whatsapp_campaigns") }}',         tags:'broadcast blast promotions bulk send' },
+    { icon:'📣', title:'WhatsApp Campaigns',      desc:'Send WhatsApp broadcast messages',              url:'{{ url_for("portal.whatsapp_campaigns") }}',         tags:'broadcast blast promotions bulk send' },
+    { icon:'📋', title:'WhatsApp Segment',        desc:'Saved groups of Sales Pipeline contacts for WhatsApp Campaign', url:'{{ url_for("portal.whatsapp_campaign_segments_page") }}', tags:'segment audience group whatsapp campaign' },
     { icon:'📊', title:'Campaign Reports',       desc:'See how your campaigns performed',              url:'{{ url_for("portal.whatsapp_campaigns_reports") }}', tags:'campaign analytics results' },
     { icon:'👥', title:'Contacts',               desc:'View and manage all your customers',            url:'{{ url_for("portal.whatsapp_contacts") }}',          tags:'customers phone numbers contacts list' },
     { icon:'🔥', title:'Leads',                  desc:'Customers with strong buying intent',           url:'{{ url_for("portal.leads_page") }}',                 tags:'hot warm cold intent prospects' },
     { icon:'🧭', title:'Sales Pipeline',         desc:'Track your own customers and deals by stage',  url:'{{ url_for("portal.sales_pipeline") }}',             tags:'crm pipeline deals stages sales customers negotiate' },
     { icon:'🏷️', title:'Labels',                 desc:'Tag Sales Pipeline contacts (Bounced, VIP…)',  url:'{{ url_for("portal.lead_labels_page") }}',           tags:'tags status bounced vip labels' },
+    {% if _portal_customer and _portal_customer.tenant_id == 19 %}
+    { icon:'📟', title:'Sent SMS',                desc:'History of every SMS batch sent',               url:'{{ url_for("portal.sms_campaigns") }}',              tags:'sms text message history resend delete extract numbers' },
+    { icon:'✏️', title:'Compose and Send SMS',    desc:'Write and send a new bulk SMS',                 url:'{{ url_for("portal.sms_campaigns", view="compose") }}', tags:'sms text message compose send bulk campaign' },
+    { icon:'📋', title:'SMS Segments',            desc:'Saved groups of Sales Pipeline contacts for SMS', url:'{{ url_for("portal.sms_campaigns", view="segments") }}', tags:'sms segment audience group campaign' },
+    {% endif %}
     { icon:'✉️', title:'Email Campaigns',        desc:'Compose and send bulk email to your contacts', url:'{{ url_for("portal.email_campaigns") }}',            tags:'email campaign newsletter bulk send marketing zeptomail' },
     { icon:'📊', title:'Email Campaign Reports', desc:'See how your email campaigns performed',       url:'{{ url_for("portal.email_campaigns_reports") }}',    tags:'email campaign analytics results delivery' },
     { icon:'🧾', title:'Orders',                 desc:'View all orders and purchase history',          url:'{{ url_for("portal.orders") }}',                     tags:'sales purchases transactions history' },

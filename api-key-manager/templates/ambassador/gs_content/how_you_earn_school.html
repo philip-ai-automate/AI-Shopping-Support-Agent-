@@ -1,0 +1,124 @@
+<div class="gs-section">
+  <div class="gs-section-title">Commission on every payment</div>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:14px">
+    You earn <strong>30% of every termly or annual payment</strong> from schools that sign up through your own referral link (20% for clients PhiXtra assigns to you) — whichever billing cycle they choose. This is paid automatically each time their payment posts; you do not need to ask or send an invoice.
+  </p>
+  <table class="earn-table">
+    <thead>
+      <tr>
+        <th>Level</th>
+        <th>Active Schools</th>
+        <th>Your Cut</th>
+        <th>How Long</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Standard</strong></td>
+        <td>1 – 9</td>
+        <td>30%</td>
+        <td>12 months</td>
+      </tr>
+      <tr class="highlight">
+        <td><strong>Elite</strong></td>
+        <td>10 – 19</td>
+        <td>30%</td>
+        <td>24 months</td>
+      </tr>
+      <tr>
+        <td><strong>Master</strong> 🏆</td>
+        <td>20+</td>
+        <td>30%</td>
+        <td>Forever</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="gs-tip" style="margin-top:14px">
+    Your level goes up as more of your referred schools become paying subscribers. The more schools you bring in, the longer you keep earning from each one.
+  </div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">School pricing (what your commission is based on)</div>
+  <table class="plan-tbl" style="margin-top:4px">
+    <thead><tr><th>Plan</th><th>Students</th><th>Per Term</th><th>Per Year</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Starter</strong></td><td>51 – 200</td><td>₦45,000</td><td>₦121,500</td></tr>
+      <tr><td><strong>Growing</strong></td><td>201 – 499</td><td>₦90,000</td><td>₦216,000</td></tr>
+      <tr><td><strong>Established</strong></td><td>500 – 999</td><td>₦160,000</td><td>₦384,000</td></tr>
+      <tr><td><strong>Enterprise</strong></td><td>1000+</td><td colspan="2">Custom pricing</td></tr>
+    </tbody>
+  </table>
+  <div class="gs-tip" style="margin-top:10px">
+    <strong>Note:</strong> Unlike Portal, School has no plan-upgrade bonus yet — your earnings come from the 30%/20% commission on each termly or annual payment.
+  </div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">How much can you make?</div>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:14px">
+    Here are some examples based on schools on the Growing plan (₦90,000 per term):
+  </p>
+  <div style="border:1px solid var(--line);border-radius:10px;overflow:hidden">
+    <div style="background:#f8f9fb;padding:10px 14px;border-bottom:1px solid var(--line)">
+      <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:700;
+                  text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">
+        <span>How many schools you have</span><span>Your earnings per term</span>
+      </div>
+    </div>
+    <div class="example-row">
+      <div>
+        <div style="font-weight:600">3 schools on Growing plan</div>
+        <div style="font-size:12px;color:var(--muted)">3 × ₦90,000 × 30%</div>
+      </div>
+      <div style="font-weight:700;color:var(--good)">₦81,000/term</div>
+    </div>
+    <div class="example-row" style="background:#f8f9fb">
+      <div>
+        <div style="font-weight:600">8 schools on Growing plan</div>
+        <div style="font-size:12px;color:var(--muted)">8 × ₦90,000 × 30%</div>
+      </div>
+      <div style="font-weight:700;color:var(--good)">₦216,000/term</div>
+    </div>
+    <div class="example-row">
+      <div>
+        <div style="font-weight:600">15 schools on Growing plan</div>
+        <div style="font-size:12px;color:var(--muted)">15 × ₦90,000 × 30% — Elite level</div>
+      </div>
+      <div style="font-weight:700;color:var(--good)">₦405,000/term</div>
+    </div>
+  </div>
+  <div class="gs-tip" style="margin-top:10px">
+    Most Nigerian private schools run 3 terms a year, so termly commissions repeat 3 times annually per school that stays subscribed.
+  </div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">Where to see your earnings</div>
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <a href="{{ url_for('ambassador.earnings') }}"
+       style="display:flex;align-items:center;gap:14px;padding:13px 16px;background:#f8f9fb;
+              border:1px solid var(--line);border-radius:12px;text-decoration:none;color:var(--ink);
+              transition:background .15s"
+       onmouseover="this.style.background='#f0f1f8'" onmouseout="this.style.background='#f8f9fb'">
+      <span style="font-size:20px">💰</span>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700">Earnings</div>
+        <div style="font-size:12px;color:var(--muted)">See every payment you have earned</div>
+      </div>
+      <span style="color:var(--muted)">→</span>
+    </a>
+    <a href="{{ url_for('ambassador.dashboard') }}"
+       style="display:flex;align-items:center;gap:14px;padding:13px 16px;background:#f8f9fb;
+              border:1px solid var(--line);border-radius:12px;text-decoration:none;color:var(--ink);
+              transition:background .15s"
+       onmouseover="this.style.background='#f0f1f8'" onmouseout="this.style.background='#f8f9fb'">
+      <span style="font-size:20px">🏠</span>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700">Dashboard</div>
+        <div style="font-size:12px;color:var(--muted)">Monthly totals, your level, and active schools</div>
+      </div>
+      <span style="color:var(--muted)">→</span>
+    </a>
+  </div>
+</div>

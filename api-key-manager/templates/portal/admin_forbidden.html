@@ -1,0 +1,14 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Not Permitted — PhiXtra Admin{% endblock %}
+{% block content %}
+
+<div class="card" style="max-width:480px;margin:40px auto;text-align:center;padding:36px 28px">
+  <div style="font-size:40px;margin-bottom:10px">🔒</div>
+  <h1 style="font-size:20px;font-weight:800;margin-bottom:8px">Not Permitted</h1>
+  <p class="muted" style="margin-bottom:20px">
+    Your login doesn't have access to this. Ask an owner to grant the relevant permission from Team.
+  </p>
+  <a href="{{ url_for('portal_admin.customers') }}" class="btn btn-primary btn-sm">Back to Admin</a>
+</div>
+
+{% endblock %}

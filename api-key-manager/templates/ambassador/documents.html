@@ -1,0 +1,62 @@
+{% extends "ambassador/base.html" %}
+{% block title %}Documents — Ambassador Hub{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="section-title">Documents</h1>
+  <span class="muted" style="font-size:13px">{{ docs|length }} available</span>
+</div>
+
+{% if active_products|length > 1 %}
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">
+  <a href="{{ url_for('ambassador.documents', product='all') }}"
+     class="btn btn-sm{% if selected_product=='all' %} btn-primary{% endif %}">All</a>
+  {% for p in active_products %}
+  <a href="{{ url_for('ambassador.documents', product=p) }}"
+     class="btn btn-sm{% if selected_product==p %} btn-primary{% endif %}">
+    {{ product_config[p].icon }} {{ product_config[p].label }}
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card" style="padding:0">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th></th>
+          <th>Title</th>
+          <th>Shared With</th>
+          <th>Size</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if not docs %}
+        <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:40px">
+          No documents shared with you yet.
+        </td></tr>
+        {% endif %}
+        {% for doc in docs %}
+        <tr>
+          <td style="font-size:18px">{{ doc_icons.get(doc.file_ext, '📄') }}</td>
+          <td>
+            <div style="font-weight:700">{{ doc.title }}</div>
+            {% if doc.description %}<div class="muted" style="font-size:12px;margin-top:2px">{{ doc.description }}</div>{% endif %}
+          </td>
+          <td>
+            {% for p in doc.products %}
+              {% if p in active_products %}<span class="pill pill-blue">{{ product_config[p].label }}</span>{% endif %}
+            {% endfor %}
+          </td>
+          <td>{{ "%.1f"|format(doc.file_size_bytes / 1024 / 1024) }} MB</td>
+          <td><a class="btn btn-sm btn-primary" href="{{ url_for('ambassador.document_download', doc_id=doc.id) }}">⬇ Download</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

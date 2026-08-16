@@ -1,4 +1,4 @@
-from meta_sender import send_text, send_interactive_list, send_image_with_caption
+from meta_sender import send_text, send_product_image
 from currency import fmt_ngn
 from wa_db import get_document_for_product
 
@@ -41,9 +41,29 @@ async def _maybe_send_fashion_image(
         return
 
     name = (product.get("name") or product.get("product_name") or "").split(" - ")[0].strip()
-    sent = await send_image_with_caption(phone_number_id, access_token, to, image_url, name)
+    sent = await send_product_image(phone_number_id, access_token, to, image_url, name)
     if not sent:
         print(f"⚠️ [DISPATCH] fashion image send failed for product_id={product_id}")
+
+
+def _format_product_list_text(products: list) -> str:
+    """
+    Plain numbered product list — replaces the old WhatsApp interactive list.
+    No 24-character title limit here, so the full product name is always
+    readable, and the customer can select by replying with the number
+    (see the numbered-selection handling in meta_webhook.py).
+    """
+    lines = []
+    for i, p in enumerate(products, start=1):
+        name     = (p.get("name") or p.get("product_name") or "").strip()
+        price    = fmt_ngn(str(p.get("price") or ""))
+        in_stock = p.get("in_stock", True)
+        price_part = f" — {price}" if price else ""
+        stock_note = "" if in_stock else " (Out of stock)"
+        lines.append(f"{i}. {name}{price_part}{stock_note}")
+    lines.append("")
+    lines.append('Type a number to see more, or to Order type ORDER and the product number. Example ORDER 2')
+    return "\n".join(lines)
 
 
 async def dispatch_response(
@@ -58,32 +78,26 @@ async def dispatch_response(
     Send the AI reply and any product recommendations to the customer.
 
     Flow:
-      no products  → send the AI text reply only
-      1+ products  → send AI text reply, then show all products as an
-                     interactive list ("Products for you" / "View Options").
-                     When the customer selects a row, handle_list_select
-                     in interactive_handler.py sends the rich detail card.
+      always send the AI text reply (if there is one), then a plain numbered
+      list of any product recommendations, in ONE combined text message —
+      no WhatsApp interactive list (its 24-char title limit made same-model
+      variants indistinguishable). The customer picks by replying with a
+      number; meta_webhook.py resolves that against the cached session
+      products (same lookup used for detail/order) and either shows the
+      full detail message or starts an order.
       1 product, Apparel & Fashion category → additionally send the product
-                     photo inline before the list (see _maybe_send_fashion_image).
+                     photo inline before the text (see _maybe_send_fashion_image).
                      All other categories are unaffected.
     """
-    list_products = [
-        {
-            "product_id": str(p.get("product_id") or p.get("id") or ""),
-            "name":       p.get("name") or p.get("product_name") or "",
-            "price":      fmt_ngn(str(p.get("price") or "")),
-            "in_stock":   p.get("in_stock", True),
-            "related":    p.get("related", False),
-        }
-        for p in products
-    ] if products else []
+    if products and len(products) == 1:
+        await _maybe_send_fashion_image(phone_number_id, access_token, to, products[0])
 
-    if list_products:
-        # Products present — send only the interactive list, no text reply.
-        # Sending both causes the customer to see the product list twice
-        # (AI text + "Products for you" cards) which looks broken.
-        if len(products) == 1:
-            await _maybe_send_fashion_image(phone_number_id, access_token, to, products[0])
-        await send_interactive_list(phone_number_id, access_token, to, list_products)
-    elif reply:
-        await send_text(phone_number_id, access_token, to, reply)
+    parts = []
+    if reply:
+        parts.append(reply)
+    if products:
+        parts.append(_format_product_list_text(products))
+
+    combined = "\n\n".join(parts)
+    if combined:
+        await send_text(phone_number_id, access_token, to, combined)

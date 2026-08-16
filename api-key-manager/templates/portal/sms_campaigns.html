@@ -1,0 +1,521 @@
+{% extends "portal/base.html" %}
+{% block title %}SMS — PhiXtra Portal{% endblock %}
+{% block content %}
+
+<style>
+  .sp-hero { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; margin-bottom:22px }
+  .sp-hero-left { display:flex; align-items:center; gap:14px }
+  .sp-hero-icon {
+    width:48px; height:48px; border-radius:14px; flex-shrink:0;
+    background:linear-gradient(135deg, #2563eb, #7c3aed);
+    display:flex; align-items:center; justify-content:center; font-size:22px;
+    box-shadow:0 6px 16px rgba(37,99,235,.25);
+  }
+  .sp-hero h1 { font-size:22px; font-weight:800; letter-spacing:-.4px; margin:0 }
+  .sp-hero p { margin:3px 0 0; font-size:13.5px; color:var(--muted) }
+  .sp-hero-actions { display:flex; gap:10px; flex-wrap:wrap }
+
+  .stage-pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
+  .sms-st-completed{background:#dcfce7;color:#15803d}
+  .sms-st-failed{background:#fee2e2;color:#991b1b}
+  .sms-st-sending{background:#f1f5f9;color:#475569}
+
+  .flbl{display:block;font-size:11px;font-weight:700;text-transform:uppercase;
+        letter-spacing:.05em;color:#6b7280;margin-bottom:5px}
+  .finp{width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:10px;
+        font-size:13.5px;color:#030C18;outline:none;font-family:inherit;
+        transition:border-color .15s;background:#fff}
+  .finp:focus{border-color:#030C18;box-shadow:0 0 0 3px rgba(3,12,24,.06)}
+  textarea.finp{resize:vertical;min-height:90px}
+
+  .modal-over{position:fixed;inset:0;background:rgba(3,12,24,.4);z-index:400;
+              display:none;align-items:center;justify-content:center;padding:20px}
+  .modal-over.open{display:flex}
+  .modal-card{background:#fff;border-radius:18px;padding:26px;width:100%;max-width:560px;
+              max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(3,12,24,.18)}
+  .modal-card.wide{max-width:640px}
+  .modal-title{font-size:16px;font-weight:800;margin-bottom:4px}
+  .modal-sub{font-size:12.5px;color:var(--muted);margin-bottom:16px;line-height:1.5}
+  .modal-actions{display:flex;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
+  .modal-cancel{flex:0 0 auto;padding:9px 16px;background:#fff;border:1.5px solid var(--line);
+                border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+  .modal-confirm{flex:1;padding:9px;border:none;border-radius:9px;font-size:13px;
+                 font-weight:700;cursor:pointer;font-family:inherit;color:#fff;background:var(--ink)}
+
+  .lead-actions{display:flex;gap:6px;flex-wrap:wrap}
+
+  .seg-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 12px 14px; border: 1.5px solid #e2e8f0; border-radius: 10px; margin-bottom: 8px;
+  }
+  .seg-row-name { font-weight: 700; font-size: 13px; color: var(--ink); }
+  .seg-row-count { font-size: 11px; color: #94a3b8; }
+  .seg-row-actions { display: flex; gap: 8px; }
+  .seg-members-head, .seg-member-row {
+    display: grid; grid-template-columns: 24px 1fr 1fr; grid-template-areas: "cb name phone";
+    align-items: center; gap: 14px;
+  }
+  .seg-members-head {
+    padding: 0 12px 8px; font-size: 11px; font-weight: 700; color: #94a3b8;
+    text-transform: uppercase; letter-spacing: .04em; border-bottom: 1.5px solid #e2e8f0;
+  }
+  .seg-member-row { padding: 10px 12px; border-bottom: 1px solid rgba(3,12,24,.06); font-size: 13px; }
+  .seg-member-row:last-child { border-bottom: none; }
+  .seg-remove-btn {
+    grid-area: cb; width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid #e2e8f0;
+    background: #fff; color: #94a3b8; font-size: 12px; line-height: 1; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; padding: 0; transition: .12s;
+  }
+  .seg-remove-btn:hover { border-color: #ef4444; color: #ef4444; background: #fef2f2; }
+  .seg-member-name, .seg-member-phone { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .seg-member-name { grid-area: name; font-weight: 600; color: var(--ink); }
+  .seg-member-phone { grid-area: phone; color: #64748b; }
+  .seg-add-results {
+    position: absolute; left: 0; right: 0; top: 100%; margin-top: 4px; background: #fff;
+    border: 1.5px solid #e2e8f0; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.1);
+    max-height: 220px; overflow-y: auto; z-index: 20;
+  }
+  .seg-add-result {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px 14px;
+    cursor: pointer; font-size: 13px; border-bottom: 1px solid rgba(3,12,24,.05);
+  }
+  .seg-add-result:last-child { border-bottom: none; }
+  .seg-add-result:hover { background: #f8fafc; }
+  .seg-add-empty { padding: 14px; text-align: center; font-size: 12px; color: #94a3b8; }
+</style>
+
+<div class="sp-hero">
+  <div class="sp-hero-left">
+    <div class="sp-hero-icon">📟</div>
+    <div>
+      <h1>SMS</h1>
+      <p>Bulk SMS through PhiXtra's shared eBulkSMS account.</p>
+    </div>
+  </div>
+  <div class="sp-hero-actions">
+    <button type="button" class="btn btn-primary" onclick="openComposeModal()">✏️ Compose New SMS</button>
+    <button type="button" class="btn" onclick="openSegmentsModal()">📋 SMS Segments</button>
+  </div>
+</div>
+
+<!-- Sent SMS -->
+<div class="card" style="padding:0">
+  <div style="padding:20px 22px 0"><div class="section-title" style="margin-bottom:14px">Sent SMS</div></div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Sender</th><th>Message</th><th>Pages</th><th>Recipients</th>
+          <th>Sent</th><th>Failed</th><th>Status</th><th>Timestamp</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in campaigns %}
+        <tr>
+          <td class="muted">{{ c.sender or '—' }}</td>
+          <td style="max-width:320px;white-space:normal;word-break:break-word">{{ c.message }}</td>
+          <td>{{ c.parts }}</td>
+          <td>{{ c.total_count }}</td>
+          <td>{{ c.sent_count }}</td>
+          <td>{{ c.failed_count }}</td>
+          <td><span class="stage-pill sms-st-{{ c.status }}">{{ c.status }}</span></td>
+          <td class="muted">{{ c.created_at.strftime('%d %b %Y %H:%M') if c.created_at else '—' }}</td>
+          <td>
+            <div class="lead-actions">
+              <form method="POST" action="{{ url_for('portal.sms_campaign_resend', campaign_id=c.id) }}"
+                    onsubmit="return confirm('Resend this exact message to the same {{ c.total_count }} recipient(s)?');">
+                <button type="submit" class="btn btn-sm">🔁 Resend</button>
+              </form>
+              <a class="btn btn-sm" href="{{ url_for('portal.sms_campaigns', view='compose', duplicate=c.id) }}">📄 Duplicate</a>
+              <a class="btn btn-sm" href="{{ url_for('portal.sms_campaign_extract_numbers', campaign_id=c.id) }}">⬇️ Numbers</a>
+              <form method="POST" action="{{ url_for('portal.sms_campaign_delete', campaign_id=c.id) }}"
+                    onsubmit="return confirm('Remove this from your history? This can\'t be undone.');">
+                <button type="submit" class="btn btn-sm btn-danger">🗑️ Delete</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" style="text-align:center;color:var(--muted);padding:26px">No SMS sent yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Compose modal ── -->
+<div class="modal-over" id="composeModal" onclick="if(event.target===this)closeComposeModal()">
+  <div class="modal-card">
+    <div id="smsStepCompose">
+      <div class="modal-title">Compose and Send SMS</div>
+      <p class="modal-sub">Sends from PhiXtra's shared SMS number. Plain text only — SMS can't display bold or underlined text on any phone.</p>
+
+      <label class="flbl">Send to</label>
+      <select class="finp" id="smsRecipientSource" onchange="onRecipientSourceChange()" style="margin-bottom:12px">
+        <option value="pipeline">All Sales Pipeline contacts with a phone ({{ pipeline_phone_count }})</option>
+        <option value="segment">A saved SMS Segment</option>
+        <option value="upload">Upload a file</option>
+        <option value="manual">Type phone number(s)</option>
+      </select>
+
+      <div id="smsSegmentPickWrap" style="display:none;margin-bottom:14px">
+        <label class="flbl">Segment</label>
+        <select class="finp" id="smsSegmentSelect"></select>
+      </div>
+      <div id="smsUploadWrap" style="display:none;margin-bottom:14px">
+        <label class="flbl">Upload a list</label>
+        <input type="file" id="smsFileInput" class="finp" accept=".csv,.xlsx,.xls"/>
+      </div>
+      <div id="smsManualWrap" style="display:none;margin-bottom:14px">
+        <label class="flbl">Phone number(s)</label>
+        <textarea id="smsManualInput" class="finp" rows="3"
+                  placeholder="e.g. 08031234567, 08123456789 — separate with a comma or one per line"></textarea>
+      </div>
+
+      <label class="flbl">Message</label>
+      <textarea id="smsMessageInput" class="finp" required placeholder="Your message goes here…" oninput="updateSmsCounter()"></textarea>
+      <p class="muted" id="smsCounterLine" style="font-size:11.5px;margin:6px 0 0">0 characters — 1 text message</p>
+
+      <div class="modal-actions">
+        <button type="button" class="modal-cancel" onclick="closeComposeModal()">Cancel</button>
+        <button type="button" class="modal-confirm" onclick="previewSmsCampaign()" id="smsPreviewBtn">Continue →</button>
+      </div>
+    </div>
+
+    <div id="smsStepConfirm" style="display:none">
+      <div class="modal-title">Confirm SMS Campaign</div>
+      <div style="background:#fef9c3;font-weight:700;padding:10px 12px;border-radius:10px" id="smsConfirmSummary"></div>
+      <p class="muted" style="font-size:12px;margin:10px 0">First few numbers: <span id="smsConfirmSample"></span></p>
+      <form method="POST" action="{{ url_for('portal.sms_campaign_send') }}" id="smsSendForm">
+        <input type="hidden" name="message" id="smsSendMessage"/>
+        <input type="hidden" name="resolved_numbers" id="smsSendNumbers"/>
+        <div class="modal-actions">
+          <button type="button" class="modal-cancel" onclick="backToSmsCompose()">← Back</button>
+          <button type="submit" class="modal-confirm" style="background:var(--bad)">Send Now</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ── SMS Segments modal ── -->
+<div class="modal-over" id="segmentsModal" onclick="if(event.target===this)closeSegmentsModal()">
+  <div class="modal-card wide">
+    <div class="modal-title">SMS Segments</div>
+    <p class="modal-sub">Reusable named groups of Sales Pipeline contacts you can target with SMS Campaign. Pick an existing one to manage, or create a new one below.</p>
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <input type="text" class="finp" id="segNewName" placeholder="New segment name…" style="margin:0">
+      <button type="button" class="modal-confirm" style="flex:0 0 auto;padding:9px 16px" onclick="createSegment()">+ Create</button>
+    </div>
+    <div id="segmentsListWrap">
+      <div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Loading segments…</div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="modal-cancel" onclick="closeSegmentsModal()" style="flex:1">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Manage segment members modal ── -->
+<div class="modal-over" id="segMembersModal" onclick="if(event.target===this)closeSegMembersModal()">
+  <div class="modal-card wide">
+    <div class="modal-title" id="segMembersTitle">Manage segment</div>
+    <div style="position:relative;margin-bottom:18px">
+      <label class="flbl">Add a contact</label>
+      <input type="text" class="finp" id="segAddSearch" autocomplete="off"
+             placeholder="Search Sales Pipeline contacts by name or phone…"
+             oninput="onSegAddSearchInput()"
+             onblur="setTimeout(function(){ document.getElementById('segAddResults').style.display='none' }, 200)">
+      <div id="segAddResults" class="seg-add-results" style="display:none"></div>
+    </div>
+    <label class="flbl">Contacts in this segment <span id="segMembersHeadCount"></span></label>
+    <div id="segMembersListWrap">
+      <div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Loading…</div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="modal-cancel" onclick="closeSegMembersModal()" style="flex:1">Done</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── SMS part/character counter — mirrors ebulksms_api.py's count_sms_parts.
+// Server recomputes the real count at Preview time, this is only an estimate.
+var SMS_GSM7_CHARS = "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà";
+function smsCountParts(message) {
+  if (!message) return {parts: 0, perPart: 160};
+  var isGsm7 = true;
+  for (var i = 0; i < message.length; i++) {
+    if (SMS_GSM7_CHARS.indexOf(message[i]) === -1) { isGsm7 = false; break; }
+  }
+  var len = message.length;
+  if (isGsm7) {
+    if (len <= 160) return {parts: 1, perPart: 160};
+    return {parts: Math.ceil(len / 153), perPart: 153};
+  }
+  if (len <= 70) return {parts: 1, perPart: 70};
+  return {parts: Math.ceil(len / 67), perPart: 67};
+}
+function updateSmsCounter() {
+  var msg = document.getElementById('smsMessageInput').value;
+  var r = smsCountParts(msg);
+  var line = msg.length + ' character' + (msg.length === 1 ? '' : 's');
+  line += r.parts <= 1 ? ' — 1 text message' : ' — ' + r.parts + ' text messages (' + r.perPart + ' chars/page)';
+  document.getElementById('smsCounterLine').textContent = line;
+}
+
+// ── Compose modal ────────────────────────────────────────────────────────
+function openComposeModal(prefillMessage) {
+  document.getElementById('smsRecipientSource').value = 'pipeline';
+  onRecipientSourceChange();
+  document.getElementById('smsFileInput').value = '';
+  document.getElementById('smsManualInput').value = '';
+  document.getElementById('smsMessageInput').value = prefillMessage || '';
+  updateSmsCounter();
+  document.getElementById('smsStepCompose').style.display = '';
+  document.getElementById('smsStepConfirm').style.display = 'none';
+  document.getElementById('composeModal').classList.add('open');
+}
+function closeComposeModal() {
+  document.getElementById('composeModal').classList.remove('open');
+}
+function backToSmsCompose() {
+  document.getElementById('smsStepCompose').style.display = '';
+  document.getElementById('smsStepConfirm').style.display = 'none';
+}
+function onRecipientSourceChange() {
+  var source = document.getElementById('smsRecipientSource').value;
+  document.getElementById('smsSegmentPickWrap').style.display = source === 'segment' ? '' : 'none';
+  document.getElementById('smsUploadWrap').style.display = source === 'upload' ? '' : 'none';
+  document.getElementById('smsManualWrap').style.display = source === 'manual' ? '' : 'none';
+  if (source === 'segment') loadSegmentOptions();
+}
+function loadSegmentOptions() {
+  var sel = document.getElementById('smsSegmentSelect');
+  sel.innerHTML = '<option value="">Loading…</option>';
+  fetch('/sms/segments')
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      var segments = data.segments || [];
+      if (segments.length === 0) {
+        sel.innerHTML = '<option value="">No segments yet — create one via SMS Segments</option>';
+        return;
+      }
+      sel.innerHTML = segments.map(function(s){
+        return '<option value="' + s.id + '">' + escapeHtml(s.name) + ' (' + s.member_count + ' contact(s))</option>';
+      }).join('');
+    })
+    .catch(function(){ sel.innerHTML = '<option value="">Could not load segments</option>'; });
+}
+function previewSmsCampaign() {
+  var message = document.getElementById('smsMessageInput').value.trim();
+  if (!message) { alert('Enter a message first.'); return; }
+  var source = document.getElementById('smsRecipientSource').value;
+  var fd = new FormData();
+  fd.append('message', message);
+  fd.append('recipient_source', source);
+  if (source === 'segment') {
+    var segId = document.getElementById('smsSegmentSelect').value;
+    if (!segId) { alert('Pick a segment first.'); return; }
+    fd.append('segment_id', segId);
+  }
+  if (source === 'upload') {
+    var fileInput = document.getElementById('smsFileInput');
+    if (fileInput.files[0]) fd.append('file', fileInput.files[0]);
+  }
+  if (source === 'manual') {
+    var manualNumbers = document.getElementById('smsManualInput').value.trim();
+    if (!manualNumbers) { alert('Type at least one phone number first.'); return; }
+    fd.append('manual_numbers', manualNumbers);
+  }
+
+  var btn = document.getElementById('smsPreviewBtn');
+  btn.disabled = true; btn.textContent = 'Checking…';
+  fetch('/sms/campaign/preview', { method: 'POST', body: fd })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      btn.disabled = false; btn.textContent = 'Continue →';
+      if (data.error) { alert(data.error); return; }
+      var unitsLine = data.parts <= 1
+        ? ('Sending to ' + data.count + ' people, 1 text message each.')
+        : ('Sending to ' + data.count + ' people, ' + data.parts + ' text messages each — ' + data.total_units + ' SMS units total.');
+      document.getElementById('smsConfirmSummary').textContent = unitsLine;
+      document.getElementById('smsConfirmSample').textContent = data.sample.join(', ') + (data.count > data.sample.length ? ', …' : '');
+      document.getElementById('smsSendMessage').value = message;
+      document.getElementById('smsSendNumbers').value = data.resolved_numbers;
+      document.getElementById('smsStepCompose').style.display = 'none';
+      document.getElementById('smsStepConfirm').style.display = '';
+    })
+    .catch(function(){ btn.disabled = false; btn.textContent = 'Continue →'; alert('Could not check recipients — check your connection'); });
+}
+
+// ── SMS Segments manager ─────────────────────────────────────────────────
+function openSegmentsModal() {
+  document.getElementById('segNewName').value = '';
+  document.getElementById('segmentsModal').classList.add('open');
+  renderSegmentsList();
+}
+function closeSegmentsModal() {
+  document.getElementById('segmentsModal').classList.remove('open');
+}
+function renderSegmentsList() {
+  var wrap = document.getElementById('segmentsListWrap');
+  wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Loading segments…</div>';
+  fetch('/sms/segments')
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      var segments = data.segments || [];
+      if (segments.length === 0) {
+        wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">No segments yet — create one above.</div>';
+        return;
+      }
+      wrap.innerHTML = segments.map(function(s){
+        return '<div class="seg-row">'
+          + '<div><div class="seg-row-name">' + escapeHtml(s.name) + '</div>'
+          + '<div class="seg-row-count">' + s.member_count + ' contact(s)</div></div>'
+          + '<div class="seg-row-actions">'
+          + '<button type="button" class="btn btn-sm" data-seg-id="' + s.id + '" data-seg-name="' + escapeHtml(s.name) + '" '
+          + 'onclick="openSegMembersModal(this.dataset.segId, this.dataset.segName)">Manage contacts</button>'
+          + '<button type="button" class="btn btn-sm btn-danger" data-seg-id="' + s.id + '" data-seg-name="' + escapeHtml(s.name) + '" '
+          + 'onclick="deleteSegment(this.dataset.segId, this.dataset.segName)">Delete</button>'
+          + '</div></div>';
+      }).join('');
+    })
+    .catch(function(){ wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--bad)">Could not load segments.</div>'; });
+}
+function createSegment() {
+  var input = document.getElementById('segNewName');
+  var name = input.value.trim();
+  if (!name) { input.focus(); return; }
+  var fd = new FormData();
+  fd.append('name', name);
+  fetch('/sms/segments/create', { method: 'POST', body: fd })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (data.error) { alert(data.error); return; }
+      input.value = '';
+      renderSegmentsList();
+    })
+    .catch(function(){ alert('Could not create segment — check your connection'); });
+}
+function deleteSegment(id, name) {
+  if (!confirm('Delete segment "' + name + '"? This does not delete the contacts themselves.')) return;
+  fetch('/sms/segments/' + id + '/delete', { method: 'POST' })
+    .then(function(r){ return r.json(); })
+    .then(function(){ renderSegmentsList(); })
+    .catch(function(){ alert('Could not delete segment — check your connection'); });
+}
+
+var segMembersState = { segmentId: null, members: [] };
+function openSegMembersModal(segmentId, segmentName) {
+  document.getElementById('segMembersModal').classList.add('open');
+  document.getElementById('segMembersTitle').textContent = 'Manage contacts — ' + segmentName;
+  document.getElementById('segAddSearch').value = '';
+  document.getElementById('segAddResults').style.display = 'none';
+  document.getElementById('segMembersListWrap').innerHTML =
+    '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Loading…</div>';
+  segMembersState = { segmentId: segmentId, members: [] };
+  loadSegMembers();
+}
+function closeSegMembersModal() {
+  document.getElementById('segMembersModal').classList.remove('open');
+  renderSegmentsList(); // refresh member counts on the segments list behind it
+}
+function loadSegMembers() {
+  fetch('/sms/segments/' + segMembersState.segmentId + '/members')
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      segMembersState.members = data.members || [];
+      renderSegMembersList();
+    })
+    .catch(function(){
+      document.getElementById('segMembersListWrap').innerHTML =
+        '<div style="padding:16px;text-align:center;color:var(--bad)">Could not load contacts.</div>';
+    });
+}
+function renderSegMembersList() {
+  var wrap = document.getElementById('segMembersListWrap');
+  var members = segMembersState.members;
+  document.getElementById('segMembersHeadCount').textContent = '(' + members.length + ')';
+  if (members.length === 0) {
+    wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">No contacts added yet — search above to add some.</div>';
+    return;
+  }
+  var rows = members.map(function(m){
+    return '<div class="seg-member-row">'
+      + '<button type="button" class="seg-remove-btn" title="Remove from segment" onclick="removeSegMember(' + m.id + ')">✕</button>'
+      + '<span class="seg-member-name" title="' + escapeHtml(m.name) + '">' + escapeHtml(m.name) + '</span>'
+      + '<span class="seg-member-phone" title="' + escapeHtml(m.phone) + '">' + escapeHtml(m.phone) + '</span>'
+      + '</div>';
+  }).join('');
+  wrap.innerHTML = '<div class="seg-members-head"><span></span><span>Name</span><span>Phone</span></div>' + rows;
+}
+var segAddSearchTimer = null;
+function onSegAddSearchInput() {
+  clearTimeout(segAddSearchTimer);
+  var q = document.getElementById('segAddSearch').value.trim();
+  if (q.length < 2) { document.getElementById('segAddResults').style.display = 'none'; return; }
+  segAddSearchTimer = setTimeout(function(){ runSegAddSearch(q); }, 250);
+}
+function runSegAddSearch(q) {
+  var url = '/sms/segments/pipeline-leads-json?q=' + encodeURIComponent(q) +
+            '&exclude_segment_id=' + segMembersState.segmentId;
+  fetch(url)
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      var results = document.getElementById('segAddResults');
+      var leads = data.leads || [];
+      if (leads.length === 0) {
+        results.innerHTML = '<div class="seg-add-empty">No matching contacts (or already added).</div>';
+      } else {
+        results.innerHTML = leads.map(function(l){
+          return '<div class="seg-add-result" onclick="addSegMember(' + l.id + ')">'
+            + '<span class="seg-member-name" title="' + escapeHtml(l.name) + '">' + escapeHtml(l.name) + '</span>'
+            + '<span class="seg-member-phone" title="' + escapeHtml(l.phone) + '">' + escapeHtml(l.phone) + '</span>'
+            + '</div>';
+        }).join('');
+      }
+      results.style.display = 'block';
+    })
+    .catch(function(){});
+}
+function addSegMember(leadId) {
+  var fd = new FormData();
+  fd.append('lead_id', leadId);
+  fetch('/sms/segments/' + segMembersState.segmentId + '/members/add', { method: 'POST', body: fd })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (data.error) { alert(data.error); return; }
+      segMembersState.members.push(data.member);
+      segMembersState.members.sort(function(a, b){ return a.name.localeCompare(b.name); });
+      renderSegMembersList();
+      document.getElementById('segAddSearch').value = '';
+      document.getElementById('segAddResults').style.display = 'none';
+    })
+    .catch(function(){ alert('Could not add contact — check your connection'); });
+}
+function removeSegMember(leadId) {
+  var fd = new FormData();
+  fd.append('lead_id', leadId);
+  fetch('/sms/segments/' + segMembersState.segmentId + '/members/remove', { method: 'POST', body: fd })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (data.error) { alert(data.error); return; }
+      segMembersState.members = segMembersState.members.filter(function(m){ return m.id !== leadId; });
+      renderSegMembersList();
+    })
+    .catch(function(){ alert('Could not remove contact — check your connection'); });
+}
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+{% if duplicate_message %}
+document.addEventListener('DOMContentLoaded', function(){ openComposeModal({{ duplicate_message|tojson }}); });
+{% elif request.args.get('view') == 'compose' %}
+document.addEventListener('DOMContentLoaded', function(){ openComposeModal(); });
+{% elif request.args.get('view') == 'segments' %}
+document.addEventListener('DOMContentLoaded', openSegmentsModal);
+{% endif %}
+</script>
+{% endblock %}

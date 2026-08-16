@@ -6,6 +6,7 @@ import psycopg2
 import psycopg2.extras
 import psycopg2.errors
 import os
+import uuid
 import secrets
 import string
 import json as _json
@@ -13,7 +14,7 @@ import csv
 import io
 import bcrypt
 from flask import (Blueprint, render_template, request, redirect,
-                   url_for, session, flash, send_file, Response)
+                   url_for, session, flash, send_file, send_from_directory, Response)
 
 from db import get_db_connection, insert_audit_log
 from lead_pipeline import (STAGE_ORDER, STAGE_LABELS, STAGE_DESCRIPTIONS,
@@ -23,19 +24,79 @@ from portal_utils import (money_fmt, tokens_to_credits, credits_to_tokens,
 
 portal_admin_bp = Blueprint("portal_admin", __name__)
 
+# ══════════════════════════════════════════════════════════════════════════════
+# SUPPORT-TEAM PERMISSIONS — module catalog
+#
+# Each module lists only the actions that actually exist for it (e.g. Invoices
+# has no create/modify/delete route, so it only ever offers "view"). "Settings"
+# and "Team" are intentionally NOT in this catalog — they stay owner-only and
+# can never be delegated to a support login, to prevent privilege escalation.
+# ══════════════════════════════════════════════════════════════════════════════
+ADMIN_MODULES = {
+    "customers":                {"label": "Customers",             "actions": ["view", "modify"]},
+    "impersonate_customer":     {"label": "Impersonate Customers", "actions": ["modify"]},
+    "onboard_wa":                {"label": "Onboard WhatsApp",      "actions": ["create"]},
+    "catalogue":                 {"label": "Catalogue",             "actions": ["view", "create", "modify", "delete"]},
+    "api_keys":                  {"label": "API Keys",              "actions": ["view", "create", "modify", "delete"]},
+    "invoices":                  {"label": "Invoices",              "actions": ["view"]},
+    "credit_packages":           {"label": "Credit Packages",       "actions": ["view", "create", "modify", "delete"]},
+    "plugins":                   {"label": "Plugins",               "actions": ["view", "create", "delete"]},
+    "plans":                     {"label": "Plans",                 "actions": ["view", "modify"]},
+    "school_plans":              {"label": "School Plans",          "actions": ["view", "modify"]},
+    "wa_diagnostics":            {"label": "WA Diagnostics",        "actions": ["view"]},
+    "recovery_queue":            {"label": "Recovery Queue",        "actions": ["view"]},
+    "ambassadors":                {"label": "Ambassadors",           "actions": ["view", "modify", "delete"]},
+    "impersonate_ambassador":    {"label": "Impersonate Ambassadors", "actions": ["modify"]},
+    "ambassador_demo_accounts":  {"label": "Demo Accounts",         "actions": ["view"]},
+    "ambassador_documents":      {"label": "Ambassador Documents",  "actions": ["view", "create", "modify", "delete"]},
+    "ambassador_broadcast":      {"label": "Ambassador Broadcast",  "actions": ["view", "create", "modify"]},
+    "feature_releases":          {"label": "Feature Releases",      "actions": ["view", "create", "modify", "delete"]},
+    "admin_leads":                {"label": "Leads",                 "actions": ["view", "create", "modify"]},
+    "video_tutorials":           {"label": "Video Tutorials",       "actions": ["view"]},
+}
+
 # Multi-product ambassador program — mirrors ambassador_routes.PRODUCT_CONFIG labels.
-PRODUCT_LABELS = {"portal": "Portal (Merchant)", "school": "School", "estate": "Real Estate"}
+PRODUCT_LABELS = {"portal": "PhiXtra Sales", "school": "School", "estate": "Real Estate"}
 PRODUCT_ICONS  = {"portal": "🛍️", "school": "🏫", "estate": "🏠"}
 LEAD_LINK_COL  = {"portal": "tenant_id", "school": "school_id", "estate": "estate_tenant_id"}
 LEAD_REF_TABLE = {"portal": "tenants",   "school": "school_profiles", "estate": "re_tenants"}
+
+# Ambassador document library — shared PDF/Word/Excel/PowerPoint/image files.
+AMB_DOC_UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "static", "uploads", "ambassador_documents")
+AMB_DOC_ALLOWED_EXTS  = {"pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "jpg", "jpeg", "png"}
+AMB_DOC_MAX_BYTES     = 25 * 1024 * 1024  # 25 MB
+AMB_DOC_ICONS = {
+    "pdf": "📕", "doc": "📘", "docx": "📘",
+    "xls": "📗", "xlsx": "📗", "ppt": "📙", "pptx": "📙",
+    "jpg": "🖼️", "jpeg": "🖼️", "png": "🖼️",
+}
 
 
 def _admin_logged_in() -> bool:
     return session.get("portal_admin_logged_in") is True
 
-def _require_admin():
+def _is_owner() -> bool:
+    return session.get("portal_admin_role", "owner") == "owner"
+
+def _require_admin(module: str = None, action: str = "view"):
+    """Gate a route. With no args: just require login (legacy behaviour).
+    With `module`/`action`: also require the permission on support logins —
+    owners always pass. `module` must be a key in ADMIN_MODULES; Settings and
+    Team have no module key and so can never be reached by a support login."""
     if not _admin_logged_in():
         return redirect(url_for("portal_admin.login"))
+    if module and not _is_owner():
+        granted = session.get("portal_admin_permissions", {}).get(module, {})
+        if not granted.get(action):
+            return redirect(url_for("portal_admin.forbidden"))
+    return None
+
+def _require_owner():
+    """Team management and Settings are never delegable — owner-only, always."""
+    if not _admin_logged_in():
+        return redirect(url_for("portal_admin.login"))
+    if not _is_owner():
+        return redirect(url_for("portal_admin.forbidden"))
     return None
 
 def _admin_user() -> str:
@@ -62,8 +123,13 @@ def login():
 
     # Plain-text check — same as app.py (admin_users.password is plaintext by design)
     if admin and password == admin.get("password"):
+        if not admin.get("active", True):
+            flash("This admin login has been deactivated.", "danger")
+            return redirect(url_for("portal_admin.login"))
         session["portal_admin_logged_in"]  = True
         session["portal_admin_username"]   = username
+        session["portal_admin_role"]        = admin.get("role") or "owner"
+        session["portal_admin_permissions"] = _parse_json_maybe(admin.get("permissions"))
         return redirect(url_for("portal_admin.customers"))
 
     flash("Invalid admin login.", "danger")
@@ -74,10 +140,198 @@ def login():
 def logout():
     session.pop("portal_admin_logged_in", None)
     session.pop("portal_admin_username",  None)
+    session.pop("portal_admin_role",       None)
+    session.pop("portal_admin_permissions", None)
     session.pop("impersonate_customer_id", None)
     session.pop("impersonate_ambassador_id", None)
     session.pop("ambassador_logged_in", None)
     return redirect(url_for("portal_admin.login"))
+
+
+@portal_admin_bp.route("/forbidden")
+def forbidden():
+    if not _admin_logged_in():
+        return redirect(url_for("portal_admin.login"))
+    return render_template("portal/admin_forbidden.html"), 403
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TEAM MANAGEMENT — owner-only. Create/edit support logins and their
+# per-module View/Create/Modify/Delete permissions. Never delegable itself.
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _parse_json_maybe(val) -> dict:
+    """psycopg2 sometimes returns JSONB already decoded, sometimes as a raw string
+    depending on connection setup — normalise to a dict either way."""
+    if isinstance(val, str):
+        try:
+            return _json.loads(val) or {}
+        except (ValueError, TypeError):
+            return {}
+    return val or {}
+
+
+def _parse_permissions_form(form) -> dict:
+    """Read the module×action checkbox matrix (name='perm__<module>__<action>')."""
+    perms = {}
+    for mod_key, mod in ADMIN_MODULES.items():
+        granted = {a for a in mod["actions"] if form.get(f"perm__{mod_key}__{a}") == "on"}
+        if not granted:
+            continue
+        # "view" is implicit prerequisite for create/modify/delete
+        if granted - {"view"}:
+            granted.add("view")
+        perms[mod_key] = {a: True for a in granted}
+    return perms
+
+
+@portal_admin_bp.route("/team")
+def admin_team():
+    r = _require_owner()
+    if r: return r
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT id, username, role, permissions, active, created_at FROM admin_users ORDER BY id")
+    admins = cur.fetchall() or []
+    cur.close(); conn.close()
+
+    for a in admins:
+        perms = _parse_json_maybe(a.get("permissions"))
+        a["permissions"] = perms
+        a["module_count"] = len(perms)
+        a["module_labels"] = [ADMIN_MODULES[m]["label"] for m in perms if m in ADMIN_MODULES]
+
+    return render_template("portal/admin_team.html", admins=admins, modules=ADMIN_MODULES,
+                            my_username=_admin_user())
+
+
+@portal_admin_bp.route("/team/new", methods=["GET", "POST"])
+def admin_team_new():
+    r = _require_owner()
+    if r: return r
+
+    if request.method == "GET":
+        return render_template("portal/admin_team_form.html", modules=ADMIN_MODULES, admin=None)
+
+    username = (request.form.get("username") or "").strip()
+    if not username:
+        flash("Username is required.", "danger")
+        return redirect(url_for("portal_admin.admin_team_new"))
+
+    alphabet = string.ascii_letters + string.digits
+    password = ''.join(secrets.choice(alphabet) for _ in range(12))
+    permissions = _parse_permissions_form(request.form)
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT id FROM admin_users WHERE username=%s", (username,))
+    if cur.fetchone():
+        cur.close(); conn.close()
+        flash("That username already exists.", "danger")
+        return redirect(url_for("portal_admin.admin_team_new"))
+
+    cur.execute("""
+        INSERT INTO admin_users (username, password, role, permissions, active)
+        VALUES (%s, %s, 'support', %s, TRUE) RETURNING id""",
+        (username, password, _json.dumps(permissions)))
+    new_id = cur.fetchone()["id"]
+    conn.commit()
+    cur.close(); conn.close()
+
+    insert_audit_log(admin_username=_admin_user(), action="admin_team_create_support",
+                      tenant_id=None, website=None, key_type=None, api_key_id=None)
+    flash(f"Support login '{username}' created. Password: {password} (shown once — share it securely).", "success")
+    return redirect(url_for("portal_admin.admin_team"))
+
+
+@portal_admin_bp.route("/team/<int:admin_id>/edit", methods=["GET", "POST"])
+def admin_team_edit(admin_id: int):
+    r = _require_owner()
+    if r: return r
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM admin_users WHERE id=%s", (admin_id,))
+    admin = cur.fetchone()
+
+    if not admin:
+        cur.close(); conn.close()
+        flash("Admin login not found.", "danger")
+        return redirect(url_for("portal_admin.admin_team"))
+
+    if admin["role"] == "owner":
+        cur.close(); conn.close()
+        flash("Owner accounts are not managed here.", "danger")
+        return redirect(url_for("portal_admin.admin_team"))
+
+    if request.method == "GET":
+        cur.close(); conn.close()
+        admin["permissions"] = _parse_json_maybe(admin.get("permissions"))
+        return render_template("portal/admin_team_form.html", modules=ADMIN_MODULES, admin=admin)
+
+    permissions = _parse_permissions_form(request.form)
+    cur.execute("UPDATE admin_users SET permissions=%s WHERE id=%s",
+                (_json.dumps(permissions), admin_id))
+    conn.commit()
+    cur.close(); conn.close()
+
+    insert_audit_log(admin_username=_admin_user(), action="admin_team_update_permissions",
+                      tenant_id=None, website=None, key_type=None, api_key_id=None)
+    flash(f"Permissions updated for '{admin['username']}'.", "success")
+    return redirect(url_for("portal_admin.admin_team"))
+
+
+@portal_admin_bp.route("/team/<int:admin_id>/toggle-active", methods=["POST"])
+def admin_team_toggle_active(admin_id: int):
+    r = _require_owner()
+    if r: return r
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT username, role, active FROM admin_users WHERE id=%s", (admin_id,))
+    admin = cur.fetchone()
+    if not admin or admin["role"] == "owner":
+        cur.close(); conn.close()
+        flash("That login cannot be modified here.", "danger")
+        return redirect(url_for("portal_admin.admin_team"))
+
+    new_active = not admin["active"]
+    cur.execute("UPDATE admin_users SET active=%s WHERE id=%s", (new_active, admin_id))
+    conn.commit()
+    cur.close(); conn.close()
+
+    insert_audit_log(admin_username=_admin_user(),
+                      action="admin_team_activate" if new_active else "admin_team_deactivate",
+                      tenant_id=None, website=None, key_type=None, api_key_id=None)
+    flash(f"'{admin['username']}' {'reactivated' if new_active else 'deactivated'}.", "success")
+    return redirect(url_for("portal_admin.admin_team"))
+
+
+@portal_admin_bp.route("/team/<int:admin_id>/reset-password", methods=["POST"])
+def admin_team_reset_password(admin_id: int):
+    r = _require_owner()
+    if r: return r
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT username, role FROM admin_users WHERE id=%s", (admin_id,))
+    admin = cur.fetchone()
+    if not admin or admin["role"] == "owner":
+        cur.close(); conn.close()
+        flash("That login cannot be modified here.", "danger")
+        return redirect(url_for("portal_admin.admin_team"))
+
+    alphabet = string.ascii_letters + string.digits
+    new_password = ''.join(secrets.choice(alphabet) for _ in range(12))
+    cur.execute("UPDATE admin_users SET password=%s WHERE id=%s", (new_password, admin_id))
+    conn.commit()
+    cur.close(); conn.close()
+
+    insert_audit_log(admin_username=_admin_user(), action="admin_team_reset_password",
+                      tenant_id=None, website=None, key_type=None, api_key_id=None)
+    flash(f"New password for '{admin['username']}': {new_password} (shown once — share it securely).", "success")
+    return redirect(url_for("portal_admin.admin_team"))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -129,7 +383,7 @@ def _amb_manager_assignments(tenant_ids: list) -> dict:
 
 @portal_admin_bp.route("/customers")
 def customers():
-    r = _require_admin()
+    r = _require_admin("customers", "view")
     if r: return r
 
     q = (request.args.get("q") or "").strip().lower()
@@ -183,7 +437,7 @@ def customers():
 
 @portal_admin_bp.route("/customers/<int:customer_id>")
 def customer_detail(customer_id: int):
-    r = _require_admin()
+    r = _require_admin("customers", "view")
     if r: return r
 
     conn = get_db_connection()
@@ -304,6 +558,12 @@ def customer_detail(customer_id: int):
     ln = (customer.get("last_name")  or "").strip()
     customer["full_name"] = f"{fn} {ln}".strip() or "—"
 
+    # "How did you hear about us" is stored as a slug (e.g. "sales_ambassador") —
+    # map it to its human-readable label for display.
+    from portal_routes import HEAR_ABOUT_US_OPTIONS
+    customer["hear_about_us_label"] = dict(HEAR_ABOUT_US_OPTIONS).get(
+        customer.get("hear_about_us"), customer.get("hear_about_us")) or "—"
+
     assignment = _amb_manager_assignments([tenant_id]).get(tenant_id)
     customer["assigned_manager_id"]   = assignment["manager_id"]   if assignment else None
     customer["assigned_manager_name"] = assignment["manager_name"] if assignment else None
@@ -312,6 +572,13 @@ def customer_detail(customer_id: int):
         inv["total_fmt"] = money_fmt(
             int(inv.get("amount_pence") or 0) + int(inv.get("vat_pence") or 0),
             inv.get("currency") or "gbp")
+
+    conn3 = get_db_connection()
+    cur3 = conn3.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur3.execute("SELECT domain, from_email, from_name, status FROM email_domains WHERE tenant_id=%s",
+                 (tenant_id,))
+    email_sender = cur3.fetchone()
+    cur3.close(); conn3.close()
 
     return render_template("portal/admin_customer_detail.html",
                            customer=customer, keys=keys,
@@ -322,6 +589,7 @@ def customer_detail(customer_id: int):
                            msgs_used=msgs_used,
                            onboarding_other=onboarding_other,
                            tenant_system_prompt=tenant_system_prompt,
+                           email_sender=email_sender,
                            sales_managers=_portal_sales_managers(),
                            admin_new_plain_key=session.pop("admin_new_plain_key", None))
 
@@ -424,7 +692,7 @@ def customer_assign_manager(customer_id: int):
 
 @portal_admin_bp.route("/customers/<int:customer_id>/system-prompt", methods=["POST"])
 def customer_system_prompt_save(customer_id: int):
-    r = _require_admin()
+    r = _require_admin("customers", "modify")
     if r: return r
 
     new_prompt = (request.form.get("system_prompt") or "").strip()
@@ -464,7 +732,7 @@ def customer_system_prompt_save(customer_id: int):
 
 @portal_admin_bp.route("/customers/<int:customer_id>/credit-adjust", methods=["POST"])
 def customer_credit_adjust(customer_id: int):
-    r = _require_admin()
+    r = _require_admin("customers", "modify")
     if r: return r
 
     delta_credits = float(request.form.get("delta_credits") or 0)
@@ -509,7 +777,7 @@ def customer_credit_adjust(customer_id: int):
 
 @portal_admin_bp.route("/customers/<int:customer_id>/toggle-active", methods=["POST"])
 def customer_toggle_active(customer_id: int):
-    r = _require_admin()
+    r = _require_admin("customers", "modify")
     if r: return r
 
     conn = get_db_connection()
@@ -521,7 +789,7 @@ def customer_toggle_active(customer_id: int):
         flash("Customer not found.", "danger")
         return redirect(url_for("portal_admin.customers"))
 
-    new_val = 0 if int(row.get("is_active") or 0) else 1
+    new_val = not bool(row.get("is_active"))
     cur2 = conn.cursor()
     cur2.execute("UPDATE customers SET is_active=%s WHERE id=%s", (new_val, customer_id))
     conn.commit()
@@ -541,7 +809,7 @@ def customer_toggle_active(customer_id: int):
 
 @portal_admin_bp.route("/customers/<int:customer_id>/set-features", methods=["POST"])
 def customer_set_features(customer_id: int):
-    r = _require_admin()
+    r = _require_admin("customers", "modify")
     if r: return r
 
     # Read the feature checkboxes from the form
@@ -552,6 +820,10 @@ def customer_set_features(customer_id: int):
     feat_chat_archive_30d = request.form.get("feat_chat_archive_30days") == "on"
     feat_chat_archive_unl = request.form.get("feat_chat_archive_unlimited") == "on"
     feat_wa_templates     = request.form.get("feat_wa_message_templates") == "on"
+    feat_visual_match     = request.form.get("feat_visual_match") == "on"
+    visual_match_on_uncertain = (request.form.get("visual_match_on_uncertain") or "clarify").strip()
+    if visual_match_on_uncertain not in ("clarify", "handoff"):
+        visual_match_on_uncertain = "clarify"
 
     # Cart recovery sub-settings
     recovery_popup_message = (request.form.get("cart_recovery_popup_message") or "").strip()
@@ -592,11 +864,15 @@ def customer_set_features(customer_id: int):
     if feat_wa_templates:
         features["whatsapp_message_templates"] = True
 
-    features_json = _json.dumps(features) if features else None
-
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT tenant_id FROM customers WHERE id=%s", (customer_id,))
+    cur.execute("""
+        SELECT c.tenant_id, COALESCE(p.slug, 'free') AS plan_slug
+        FROM customers c
+        JOIN tenants t ON t.id = c.tenant_id
+        LEFT JOIN plans p ON p.id = t.plan_id
+        WHERE c.id = %s
+    """, (customer_id,))
     row = cur.fetchone()
     if not row:
         cur.close(); conn.close()
@@ -604,6 +880,14 @@ def customer_set_features(customer_id: int):
         return redirect(url_for("portal_admin.customers"))
 
     tenant_id = int(row["tenant_id"])
+
+    # Visual Product Match — Pro plan only, ignore the checkbox otherwise even
+    # if somehow submitted (e.g. stale form from before a downgrade)
+    if feat_visual_match and row["plan_slug"] == "pro":
+        features["visual_product_match"] = True
+        features["visual_match_on_uncertain"] = visual_match_on_uncertain
+
+    features_json = _json.dumps(features) if features else None
     cur2 = conn.cursor()
     cur2.execute(
         "UPDATE tenants SET features=%s WHERE id=%s",
@@ -629,7 +913,7 @@ def customer_set_features(customer_id: int):
 
 @portal_admin_bp.route("/customers/<int:customer_id>/trial-adjust", methods=["POST"])
 def customer_trial_adjust(customer_id: int):
-    r = _require_admin()
+    r = _require_admin("customers", "modify")
     if r: return r
 
     try:
@@ -688,7 +972,7 @@ def customer_trial_adjust(customer_id: int):
 
 @portal_admin_bp.route("/customers/<int:customer_id>/trial-reset", methods=["POST"])
 def customer_trial_reset(customer_id: int):
-    r = _require_admin()
+    r = _require_admin("customers", "modify")
     if r: return r
 
     conn = get_db_connection()
@@ -743,7 +1027,7 @@ def customer_trial_reset(customer_id: int):
 
 @portal_admin_bp.route("/impersonate/<int:customer_id>")
 def impersonate(customer_id: int):
-    r = _require_admin()
+    r = _require_admin("impersonate_customer", "modify")
     if r: return r
     session["portal_logged_in"]         = True
     session["impersonate_customer_id"]  = int(customer_id)
@@ -764,7 +1048,7 @@ def stop_impersonate():
 
 @portal_admin_bp.route("/impersonate-ambassador/<int:ambassador_id>")
 def impersonate_ambassador(ambassador_id: int):
-    r = _require_admin()
+    r = _require_admin("impersonate_ambassador", "modify")
     if r: return r
     session["ambassador_logged_in"]      = True
     session["impersonate_ambassador_id"] = int(ambassador_id)
@@ -790,7 +1074,7 @@ def stop_impersonate_ambassador():
 
 @portal_admin_bp.route("/api-keys")
 def api_keys():
-    r = _require_admin()
+    r = _require_admin("api_keys", "view")
     if r: return r
 
     q = (request.args.get("q") or "").strip().lower()
@@ -839,14 +1123,24 @@ def api_keys():
     rows = cur.fetchall() or []
     cur.close(); conn.close()
 
+    from datetime import datetime as _dt
+    _now = _dt.utcnow()
     for row in rows:
         row["credits_used"] = tokens_to_credits(int(row.get("tokens_used") or 0))
-        # Status
+        # Status — must mirror the merchant-facing /api-keys logic (portal_routes.py),
+        # which also checks trial expiry, not just is_active. A trial key stays
+        # is_active=TRUE until the (separately scheduled) cron job deactivates it,
+        # so checking is_active alone shows "Active" for trials that expired long ago.
         is_active = row.get("is_active")
+        trial_expires_at = row.get("trial_expires_at")
         if is_active is None:
             row["status"] = "Unknown"
         elif int(is_active) == 0:
             row["status"] = "Revoked"
+        elif row.get("key_type") == "trial" and trial_expires_at and trial_expires_at.replace(tzinfo=None) < _now:
+            row["status"] = "Expired"
+        elif row.get("key_type") == "trial":
+            row["status"] = "Trial"
         else:
             row["status"] = "Active"
 
@@ -855,7 +1149,7 @@ def api_keys():
 
 @portal_admin_bp.route("/api-keys/<int:key_id>/revoke", methods=["POST"])
 def api_keys_revoke(key_id: int):
-    r = _require_admin()
+    r = _require_admin("api_keys", "delete")
     if r: return r
 
     conn = get_db_connection()
@@ -877,7 +1171,7 @@ def api_keys_revoke(key_id: int):
 
 @portal_admin_bp.route("/api-keys/<int:key_id>/reactivate", methods=["POST"])
 def api_keys_reactivate(key_id: int):
-    r = _require_admin()
+    r = _require_admin("api_keys", "modify")
     if r: return r
 
     conn = get_db_connection()
@@ -916,7 +1210,7 @@ def _admin_generate_api_key_and_hash(length: int = 28):
 
 @portal_admin_bp.route("/customers/<int:customer_id>/api-keys/create", methods=["POST"])
 def customer_api_key_create(customer_id: int):
-    r = _require_admin()
+    r = _require_admin("api_keys", "create")
     if r: return r
 
     conn = get_db_connection()
@@ -993,8 +1287,12 @@ def customer_api_key_create(customer_id: int):
 
 @portal_admin_bp.route("/credit-packages", methods=["GET", "POST"])
 def credit_packages():
-    r = _require_admin()
+    r = _require_admin("credit_packages", "view")
     if r: return r
+
+    if request.method == "POST":
+        r = _require_admin("credit_packages", "create")
+        if r: return r
 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -1004,7 +1302,7 @@ def credit_packages():
         credits     = int(request.form.get("credits")  or 0)
         price_pence = int(float(request.form.get("price_gbp") or 0) * 100)
         vat_rate    = float(request.form.get("vat_rate")   or 20.0)
-        is_active = 1 if request.form.get("is_active") == "on" else 0
+        is_active = request.form.get("is_active") == "on"
         sort_order  = int(request.form.get("sort_order")   or 0)
 
         # Stage 3 — package type and billing period
@@ -1087,14 +1385,14 @@ def credit_packages():
 
 @portal_admin_bp.route("/credit-packages/<int:pkg_id>/toggle")
 def credit_packages_toggle(pkg_id: int):
-    r = _require_admin()
+    r = _require_admin("credit_packages", "modify")
     if r: return r
 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT is_active FROM credit_packages WHERE id=%s", (pkg_id,))
     row = cur.fetchone() or {}
-    new_val = 0 if int(row.get("is_active") or 0) else 1
+    new_val = not bool(row.get("is_active"))
     cur2 = conn.cursor()
     cur2.execute("UPDATE credit_packages SET is_active=%s WHERE id=%s", (new_val, pkg_id))
     conn.commit()
@@ -1105,7 +1403,7 @@ def credit_packages_toggle(pkg_id: int):
 
 @portal_admin_bp.route("/credit-packages/<int:pkg_id>/delete", methods=["POST"])
 def credit_packages_delete(pkg_id: int):
-    r = _require_admin()
+    r = _require_admin("credit_packages", "delete")
     if r: return r
 
     conn = get_db_connection()
@@ -1131,14 +1429,14 @@ def credit_packages_delete(pkg_id: int):
 
 @portal_admin_bp.route("/credit-packages/<int:pkg_id>/edit", methods=["POST"])
 def credit_packages_edit(pkg_id: int):
-    r = _require_admin()
+    r = _require_admin("credit_packages", "modify")
     if r: return r
 
     name        = (request.form.get("name")        or "").strip()
     credits     = int(request.form.get("credits")  or 0)
     price_pence = int(float(request.form.get("price_gbp") or 0) * 100)
     vat_rate    = float(request.form.get("vat_rate")   or 20.0)
-    is_active=TRUE if request.form.get("is_active") == "on" else 0
+    is_active = request.form.get("is_active") == "on"
     sort_order  = int(request.form.get("sort_order")   or 0)
 
     # Stage 3 — package type and billing period
@@ -1221,7 +1519,7 @@ PLUGIN_UPLOAD_DIR = "/root/api-key-manager/static/plugin_zips"
 
 @portal_admin_bp.route("/plugins", methods=["GET", "POST"])
 def plugins():
-    r = _require_admin()
+    r = _require_admin("plugins", "view")
     if r: return r
 
     conn = get_db_connection()
@@ -1231,6 +1529,8 @@ def plugins():
         action = (request.form.get("action") or "").strip()
 
         if action == "upload":
+            r = _require_admin("plugins", "create")
+            if r: return r
             plugin_key   = (request.form.get("plugin_key")   or "").strip().lower()
             display_name = (request.form.get("display_name") or "").strip()
             version      = (request.form.get("version")      or "").strip()
@@ -1263,6 +1563,8 @@ def plugins():
                 flash(f"Plugin '{display_name}' uploaded successfully.", "success")
 
         elif action == "delete":
+            r = _require_admin("plugins", "delete")
+            if r: return r
             plugin_key = (request.form.get("plugin_key") or "").strip()
             cur.execute("SELECT * FROM plugin_downloads WHERE plugin_key=%s", (plugin_key,))
             row = cur.fetchone()
@@ -1296,7 +1598,7 @@ def plugins():
 
 @portal_admin_bp.route("/invoices")
 def invoices():
-    r = _require_admin()
+    r = _require_admin("invoices", "view")
     if r: return r
 
     conn = get_db_connection()
@@ -1323,7 +1625,7 @@ def invoices():
 
 @portal_admin_bp.route("/invoice/<int:invoice_id>/download")
 def invoice_download(invoice_id: int):
-    r = _require_admin()
+    r = _require_admin("invoices", "view")
     if r: return r
 
     conn = get_db_connection()
@@ -1350,7 +1652,7 @@ def invoice_download(invoice_id: int):
 
 @portal_admin_bp.route("/recovery-queue")
 def recovery_queue():
-    r = _require_admin()
+    r = _require_admin("recovery_queue", "view")
     if r: return r
 
     # Optional filters from query string
@@ -1498,7 +1800,7 @@ def _get_trial_default_days() -> int:
 
 @portal_admin_bp.route("/settings", methods=["GET"])
 def admin_settings():
-    r = _require_admin()
+    r = _require_owner()
     if r: return r
     username          = _admin_user()
     trial_default_days = _get_trial_default_days()
@@ -1510,7 +1812,7 @@ def admin_settings():
 @portal_admin_bp.route("/onboarding-qr")
 def onboarding_qr():
     """Serve the WhatsApp onboarding QR code card as a downloadable PNG."""
-    r = _require_admin()
+    r = _require_owner()
     if r: return r
     import os
     qr_path = os.path.join(
@@ -1523,7 +1825,7 @@ def onboarding_qr():
 @portal_admin_bp.route("/settings/trial-days", methods=["POST"])
 def admin_save_trial_days():
     """Save the default trial duration (days) into portal_settings."""
-    r = _require_admin()
+    r = _require_owner()
     if r: return r
 
     raw = (request.form.get("trial_default_days") or "").strip()
@@ -1616,7 +1918,7 @@ def admin_change_password():
 @portal_admin_bp.route("/customers/<int:customer_id>/change-email", methods=["POST"])
 def customer_change_email(customer_id: int):
     """Admin can update a customer's email address."""
-    r = _require_admin()
+    r = _require_admin("customers", "modify")
     if r: return r
 
     new_email = (request.form.get("new_email") or "").strip().lower()
@@ -1663,7 +1965,7 @@ def customer_change_email(customer_id: int):
 @portal_admin_bp.route("/customers/<int:customer_id>/send-reset", methods=["POST"])
 def customer_send_reset(customer_id: int):
     """Admin triggers a password reset email for a customer."""
-    r = _require_admin()
+    r = _require_admin("customers", "modify")
     if r: return r
 
     conn = get_db_connection()
@@ -1728,7 +2030,7 @@ _VALID_DOC_TYPES = {"product", "post", "page", "order", "customer"}
 
 @portal_admin_bp.route("/customers/<int:customer_id>/rebuild-index", methods=["POST"])
 def customer_rebuild_index(customer_id: int):
-    r = _require_admin()
+    r = _require_admin("customers", "modify")
     if r: return r
 
     doc_type = (request.form.get("doc_type") or "").strip().lower()
@@ -1798,7 +2100,7 @@ def customer_rebuild_index(customer_id: int):
 
 @portal_admin_bp.route("/onboard-wa", methods=["GET", "POST"])
 def onboard_wa():
-    r = _require_admin()
+    r = _require_admin("onboard_wa", "create")
     if r: return r
 
     if request.method == "POST":
@@ -1891,7 +2193,7 @@ def _catalogue_brands(cur):
 
 @portal_admin_bp.route("/catalogue/phones")
 def catalogue():
-    r = _require_admin()
+    r = _require_admin("catalogue", "view")
     if r: return r
 
     q       = (request.args.get("q") or "").strip()
@@ -1961,7 +2263,7 @@ def catalogue():
 
 @portal_admin_bp.route("/catalogue/phones/<int:phone_id>/edit", methods=["GET", "POST"])
 def catalogue_edit(phone_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "modify")
     if r: return r
 
     conn = get_db_connection()
@@ -2041,7 +2343,7 @@ def catalogue_edit(phone_id: int):
 
 @portal_admin_bp.route("/catalogue/phones/<int:phone_id>/delete", methods=["POST"])
 def catalogue_delete(phone_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "delete")
     if r: return r
 
     conn = get_db_connection()
@@ -2058,12 +2360,16 @@ def catalogue_delete(phone_id: int):
 
 @portal_admin_bp.route("/catalogue/phones/bulk", methods=["POST"])
 def catalogue_bulk():
-    r = _require_admin()
+    r = _require_admin("catalogue", "modify")
     if r: return r
 
     action  = request.form.get("bulk_action", "")
     ids_raw = request.form.getlist("selected_ids")
     ids     = [int(i) for i in ids_raw if i.isdigit()]
+
+    if action == "delete":
+        r = _require_admin("catalogue", "delete")
+        if r: return r
 
     if not ids:
         flash("No rows selected.", "warning")
@@ -2113,7 +2419,7 @@ def catalogue_bulk():
 
 @portal_admin_bp.route("/catalogue/phones/export")
 def catalogue_export():
-    r = _require_admin()
+    r = _require_admin("catalogue", "view")
     if r: return r
 
     q       = (request.args.get("q") or "").strip()
@@ -2166,7 +2472,7 @@ def catalogue_export():
 
 @portal_admin_bp.route("/catalogue/phones/import", methods=["GET", "POST"])
 def catalogue_import():
-    r = _require_admin()
+    r = _require_admin("catalogue", "create")
     if r: return r
 
     if request.method == "GET":
@@ -2270,7 +2576,7 @@ def catalogue_import():
 
 @portal_admin_bp.route("/brands")
 def brands():
-    r = _require_admin()
+    r = _require_admin("catalogue", "view")
     if r: return r
 
     conn = get_db_connection()
@@ -2290,7 +2596,7 @@ def brands():
 
 @portal_admin_bp.route("/brands/add", methods=["POST"])
 def brands_add():
-    r = _require_admin()
+    r = _require_admin("catalogue", "create")
     if r: return r
 
     brand    = (request.form.get("brand") or "").strip()
@@ -2319,7 +2625,7 @@ def brands_add():
 
 @portal_admin_bp.route("/brands/<int:brand_id>/edit", methods=["GET", "POST"])
 def brands_edit(brand_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "modify")
     if r: return r
 
     conn = get_db_connection()
@@ -2351,7 +2657,7 @@ def brands_edit(brand_id: int):
 
 @portal_admin_bp.route("/brands/<int:brand_id>/delete", methods=["POST"])
 def brands_delete(brand_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "delete")
     if r: return r
 
     conn = get_db_connection()
@@ -2429,7 +2735,7 @@ DEPT_ICONS = ["🏪","📱","💊","💄","🛒","🖨","🛋","👗","🔧","�
 
 @portal_admin_bp.route("/catalogue/departments/new", methods=["GET", "POST"])
 def catalogue_department_new():
-    r = _require_admin()
+    r = _require_admin("catalogue", "create")
     if r: return r
 
     if request.method == "GET":
@@ -2468,7 +2774,7 @@ def catalogue_department_new():
 
 @portal_admin_bp.route("/catalogue/departments/<int:dept_id>/edit", methods=["GET", "POST"])
 def catalogue_department_edit(dept_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "modify")
     if r: return r
 
     conn = get_db_connection()
@@ -2503,7 +2809,7 @@ def catalogue_department_edit(dept_id: int):
 
 @portal_admin_bp.route("/catalogue/departments/<int:dept_id>/toggle", methods=["POST"])
 def catalogue_department_toggle(dept_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "modify")
     if r: return r
     conn = get_db_connection()
     cur  = conn.cursor()
@@ -2515,7 +2821,7 @@ def catalogue_department_toggle(dept_id: int):
 
 @portal_admin_bp.route("/catalogue/departments/<int:dept_id>/delete", methods=["POST"])
 def catalogue_department_delete(dept_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "delete")
     if r: return r
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -2538,7 +2844,7 @@ def catalogue_department_delete(dept_id: int):
 
 @portal_admin_bp.route("/catalogue")
 def catalogue_dashboard():
-    r = _require_admin()
+    r = _require_admin("catalogue", "view")
     if r: return r
 
     conn = get_db_connection()
@@ -2597,7 +2903,7 @@ def catalogue_dashboard():
 
 @portal_admin_bp.route("/catalogue/categories/new", methods=["GET", "POST"])
 def catalogue_category_new():
-    r = _require_admin()
+    r = _require_admin("catalogue", "create")
     if r: return r
 
     ICONS = ["📱","💻","🖥","🖵","🔌","📷","🎮","📺","🎧","⌨️","🖱","🔋","📡","🖨","⌚","📻",
@@ -2650,7 +2956,7 @@ def catalogue_category_new():
 
 @portal_admin_bp.route("/catalogue/categories/<int:category_id>/edit", methods=["GET", "POST"])
 def catalogue_category_edit(category_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "modify")
     if r: return r
 
     ICONS = ["📱","💻","🖥","🖵","🔌","📷","🎮","📺","🎧","⌨️","🖱","🔋","📡","🖨","⌚","📻",
@@ -2697,7 +3003,7 @@ def catalogue_category_edit(category_id: int):
 
 @portal_admin_bp.route("/catalogue/categories/<int:category_id>/toggle", methods=["POST"])
 def catalogue_category_toggle(category_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "modify")
     if r: return r
 
     conn = get_db_connection()
@@ -2715,7 +3021,7 @@ def catalogue_category_toggle(category_id: int):
 
 @portal_admin_bp.route("/catalogue/categories/<int:category_id>/delete", methods=["POST"])
 def catalogue_category_delete(category_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "delete")
     if r: return r
 
     conn = get_db_connection()
@@ -2740,7 +3046,7 @@ def catalogue_category_delete(category_id: int):
 
 @portal_admin_bp.route("/catalogue/categories/<int:category_id>/attributes", methods=["GET", "POST"])
 def catalogue_category_attributes(category_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "view")
     if r: return r
 
     conn = get_db_connection()
@@ -2753,6 +3059,16 @@ def catalogue_category_attributes(category_id: int):
 
     if request.method == "POST":
         action = request.form.get("action", "")
+
+        if action in ("add",):
+            r = _require_admin("catalogue", "create")
+            if r: return r
+        elif action == "delete":
+            r = _require_admin("catalogue", "delete")
+            if r: return r
+        elif action in ("toggle_required", "toggle_filterable"):
+            r = _require_admin("catalogue", "modify")
+            if r: return r
 
         if action == "add":
             label = (request.form.get("attribute_label") or "").strip()
@@ -2844,7 +3160,7 @@ def catalogue_category_attributes(category_id: int):
 
 @portal_admin_bp.route("/catalogue/categories/<int:category_id>/apply-template", methods=["POST"])
 def catalogue_apply_template(category_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "modify")
     if r: return r
 
     tpl_id_raw = request.form.get("template_id") or ""
@@ -2916,7 +3232,7 @@ def catalogue_apply_template(category_id: int):
 
 @portal_admin_bp.route("/catalogue/templates")
 def catalogue_templates():
-    r = _require_admin()
+    r = _require_admin("catalogue", "view")
     if r: return r
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -2934,7 +3250,7 @@ def catalogue_templates():
 
 @portal_admin_bp.route("/catalogue/templates/new", methods=["GET", "POST"])
 def catalogue_template_new():
-    r = _require_admin()
+    r = _require_admin("catalogue", "create")
     if r: return r
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -2995,7 +3311,7 @@ def catalogue_template_new():
 
 @portal_admin_bp.route("/catalogue/templates/<int:tpl_id>/edit", methods=["GET", "POST"])
 def catalogue_template_edit(tpl_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "modify")
     if r: return r
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -3060,7 +3376,7 @@ def catalogue_template_edit(tpl_id: int):
 
 @portal_admin_bp.route("/catalogue/templates/<int:tpl_id>/delete", methods=["POST"])
 def catalogue_template_delete(tpl_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "delete")
     if r: return r
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -3082,7 +3398,7 @@ def catalogue_template_delete(tpl_id: int):
 
 @portal_admin_bp.route("/catalogue/categories/<int:category_id>/variants/add", methods=["POST"])
 def catalogue_variant_type_add(category_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "create")
     if r: return r
     name = (request.form.get("variant_name") or "").strip()
     if not name:
@@ -3107,7 +3423,7 @@ def catalogue_variant_type_add(category_id: int):
 
 @portal_admin_bp.route("/catalogue/categories/<int:category_id>/variants/<int:type_id>/delete", methods=["POST"])
 def catalogue_variant_type_delete(category_id: int, type_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "delete")
     if r: return r
     conn = get_db_connection()
     cur  = conn.cursor()
@@ -3125,7 +3441,7 @@ def catalogue_variant_type_delete(category_id: int, type_id: int):
 
 @portal_admin_bp.route("/catalogue/categories/<int:category_id>/variants/<int:type_id>/options/add", methods=["POST"])
 def catalogue_variant_option_add(category_id: int, type_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "create")
     if r: return r
     value = (request.form.get("option_value") or "").strip()
     if not value:
@@ -3150,7 +3466,7 @@ def catalogue_variant_option_add(category_id: int, type_id: int):
 @portal_admin_bp.route("/catalogue/categories/<int:category_id>/variants/<int:type_id>/options/<int:opt_id>/delete",
                         methods=["POST"])
 def catalogue_variant_option_delete(category_id: int, type_id: int, opt_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "delete")
     if r: return r
     conn = get_db_connection()
     cur  = conn.cursor()
@@ -3165,7 +3481,7 @@ def catalogue_variant_option_delete(category_id: int, type_id: int, opt_id: int)
 @portal_admin_bp.route("/catalogue/categories/<int:category_id>/products/<int:product_id>/variants",
                         methods=["POST"])
 def catalogue_product_variants_save(category_id: int, product_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "modify")
     if r: return r
 
     import json as _json, itertools as _it
@@ -3229,7 +3545,7 @@ def catalogue_product_variants_save(category_id: int, product_id: int):
 
 @portal_admin_bp.route("/catalogue/categories/<int:category_id>/products")
 def catalogue_category_products(category_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "view")
     if r: return r
 
     conn = get_db_connection()
@@ -3324,7 +3640,7 @@ def catalogue_category_products(category_id: int):
 @portal_admin_bp.route("/catalogue/categories/<int:category_id>/products/<int:product_id>/edit",
                         methods=["GET", "POST"])
 def catalogue_product_edit(category_id: int, product_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "modify")
     if r: return r
 
     conn = get_db_connection()
@@ -3484,7 +3800,7 @@ def catalogue_product_edit(category_id: int, product_id: int):
 @portal_admin_bp.route("/catalogue/categories/<int:category_id>/products/<int:product_id>/delete",
                         methods=["POST"])
 def catalogue_product_delete(category_id: int, product_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "delete")
     if r: return r
 
     conn = get_db_connection()
@@ -3503,12 +3819,16 @@ def catalogue_product_delete(category_id: int, product_id: int):
 
 @portal_admin_bp.route("/catalogue/categories/<int:category_id>/products/bulk", methods=["POST"])
 def catalogue_products_bulk(category_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "modify")
     if r: return r
 
     ids_raw = request.form.getlist("ids")
     action  = request.form.get("bulk_action", "")
     ids     = [int(x) for x in ids_raw if x.isdigit()]
+
+    if action == "delete":
+        r = _require_admin("catalogue", "delete")
+        if r: return r
 
     if not ids:
         flash("No products selected.", "warning")
@@ -3535,7 +3855,7 @@ def catalogue_products_bulk(category_id: int):
 
 @portal_admin_bp.route("/catalogue/categories/<int:category_id>/template.csv")
 def catalogue_category_template(category_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "view")
     if r: return r
 
     conn = get_db_connection()
@@ -3609,7 +3929,7 @@ def catalogue_category_template(category_id: int):
 
 @portal_admin_bp.route("/catalogue/categories/<int:category_id>/export.csv")
 def catalogue_category_export(category_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "view")
     if r: return r
 
     conn = get_db_connection()
@@ -3671,7 +3991,7 @@ def catalogue_category_export(category_id: int):
 
 @portal_admin_bp.route("/catalogue/categories/<int:category_id>/upload", methods=["GET", "POST"])
 def catalogue_category_upload(category_id: int):
-    r = _require_admin()
+    r = _require_admin("catalogue", "create")
     if r: return r
 
     conn = get_db_connection()
@@ -3870,7 +4190,8 @@ def catalogue_category_upload(category_id: int):
 
 @portal_admin_bp.route("/plans")
 def admin_plans():
-    _require_admin()
+    r = _require_admin("plans", "view")
+    if r: return r
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
@@ -3900,7 +4221,8 @@ def admin_plans():
 
 @portal_admin_bp.route("/plans/assign/<int:tenant_id>", methods=["POST"])
 def admin_plans_assign(tenant_id: int):
-    _require_admin()
+    r = _require_admin("plans", "modify")
+    if r: return r
     plan_id       = int(request.form.get("plan_id") or 1)
     billing_cycle = request.form.get("billing_cycle", "monthly")
     from datetime import date as _d
@@ -3934,12 +4256,92 @@ def admin_plans_assign(tenant_id: int):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# EMAIL CAMPAIGNS — admin-configured per-tenant ZeptoMail sending identity
+# ══════════════════════════════════════════════════════════════════════════════
+# The Mail Agent + domain (SPF/DKIM) are created manually in the ZeptoMail
+# dashboard under the platform's own ZeptoMail account — ZeptoMail's
+# domain/Mail Agent management API needs a separate OAuth2 grant, not worth
+# building for this volume. An admin does that setup once, then pastes the
+# resulting Send Mail Token here per tenant. Tenants without a row here fall
+# back to the shared ZEPTOMAIL_FALLBACK_* identity at send time.
+
+@portal_admin_bp.route("/customers/<int:customer_id>/email-sender", methods=["POST"])
+def customer_email_sender_save(customer_id: int):
+    r = _require_admin("customers", "modify")
+    if r: return r
+
+    from portal_routes import _encrypt_key
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT tenant_id FROM customers WHERE id=%s", (customer_id,))
+    row = cur.fetchone()
+    if not row:
+        cur.close(); conn.close()
+        flash("Customer not found.", "danger")
+        return redirect(url_for("portal_admin.customers"))
+    tenant_id = int(row["tenant_id"])
+
+    domain     = (request.form.get("domain") or "").strip().lower()
+    from_email = (request.form.get("from_email") or "").strip().lower()
+    from_name  = (request.form.get("from_name") or "").strip()
+    token      = (request.form.get("send_mail_token") or "").strip()
+    # ZeptoMail's dashboard displays the token as part of the full header value
+    # ("Authorization: Zoho-enczapikey <token>") — admins pasting that whole
+    # string would otherwise get it double-prefixed at send time, since
+    # zeptomail_api.send_email() already adds "Zoho-enczapikey " itself.
+    if token.lower().startswith("zoho-enczapikey "):
+        token = token[len("Zoho-enczapikey "):].strip()
+
+    if not domain or not from_email:
+        flash("Domain and from-email are required.", "danger")
+        cur.close(); conn.close()
+        return redirect(url_for("portal_admin.customer_detail", customer_id=customer_id))
+
+    cur.execute("SELECT id, zeptomail_token_enc FROM email_domains WHERE tenant_id=%s", (tenant_id,))
+    existing = cur.fetchone()
+
+    # A blank token field on an existing row means "keep the current token" —
+    # the form never echoes the decrypted token back, so it's always blank on
+    # edit unless the admin is deliberately rotating it.
+    if token:
+        token_enc = _encrypt_key(token)
+    elif existing:
+        token_enc = existing["zeptomail_token_enc"]
+    else:
+        flash("A Send Mail Token is required to add a new sending identity.", "danger")
+        cur.close(); conn.close()
+        return redirect(url_for("portal_admin.customer_detail", customer_id=customer_id))
+
+    if existing:
+        cur.execute("""
+            UPDATE email_domains
+            SET domain=%s, from_email=%s, from_name=%s, zeptomail_token_enc=%s,
+                status='active', updated_at=NOW()
+            WHERE tenant_id=%s
+        """, (domain, from_email, from_name, token_enc, tenant_id))
+    else:
+        cur.execute("""
+            INSERT INTO email_domains (tenant_id, domain, from_email, from_name, zeptomail_token_enc)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (tenant_id, domain, from_email, from_name, token_enc))
+    conn.commit()
+    cur.close(); conn.close()
+
+    insert_audit_log(action="email_sender_save", admin_username=_admin_user(),
+                     details={"tenant_id": tenant_id, "domain": domain, "from_email": from_email})
+    flash(f"Email sending identity saved for tenant #{tenant_id}.", "success")
+    return redirect(url_for("portal_admin.customer_detail", customer_id=customer_id))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # SCHOOL PLANS MANAGEMENT — admin view/assign plans to schools (school.phixtra.com)
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_admin_bp.route("/school-plans")
 def admin_school_plans():
-    _require_admin()
+    r = _require_admin("school_plans", "view")
+    if r: return r
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
@@ -3970,7 +4372,8 @@ def admin_school_plans():
 
 @portal_admin_bp.route("/school-plans/assign/<int:school_id>", methods=["POST"])
 def admin_school_plans_assign(school_id: int):
-    _require_admin()
+    r = _require_admin("school_plans", "modify")
+    if r: return r
     plan_id       = int(request.form.get("plan_id") or 1)
     billing_cycle = request.form.get("billing_cycle", "termly")
     from datetime import date as _d
@@ -3996,7 +4399,8 @@ def admin_school_plans_assign(school_id: int):
 
 @portal_admin_bp.route("/wa-diagnostics")
 def wa_diagnostics():
-    _require_admin()
+    r = _require_admin("wa_diagnostics", "view")
+    if r: return r
     from datetime import datetime as _dt, timezone as _tz
 
     conn = get_db_connection()
@@ -4081,7 +4485,7 @@ def wa_diagnostics():
 
 @portal_admin_bp.route("/merchant-signup-qr")
 def merchant_signup_qr():
-    r = _require_admin()
+    r = _require_admin("wa_diagnostics", "view")
     if r: return r
     import qrcode
     from flask import send_file
@@ -4103,7 +4507,7 @@ def merchant_signup_qr():
 
 @portal_admin_bp.route("/ambassadors", methods=["GET"])
 def ambassadors():
-    r = _require_admin()
+    r = _require_admin("ambassadors", "view")
     if r: return r
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -4136,7 +4540,7 @@ def ambassadors():
 
 @portal_admin_bp.route("/ambassadors/demo-accounts", methods=["GET"])
 def ambassador_demo_accounts():
-    r = _require_admin()
+    r = _require_admin("ambassador_demo_accounts", "view")
     if r: return r
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -4158,7 +4562,7 @@ def ambassador_demo_accounts():
 
 @portal_admin_bp.route("/ambassadors/<int:amb_id>/qr.png")
 def ambassador_qr(amb_id: int):
-    r = _require_admin()
+    r = _require_admin("ambassadors", "view")
     if r: return r
 
     conn = get_db_connection()
@@ -4190,7 +4594,7 @@ def ambassador_qr(amb_id: int):
 
 @portal_admin_bp.route("/ambassadors/<int:amb_id>/email-qr", methods=["POST"])
 def ambassador_email_qr(amb_id: int):
-    r = _require_admin()
+    r = _require_admin("ambassadors", "modify")
     if r: return r
 
     to_email = (request.form.get("to_email") or "").strip().lower()
@@ -4251,7 +4655,7 @@ def ambassador_email_qr(amb_id: int):
 
 @portal_admin_bp.route("/ambassadors/report", methods=["GET"])
 def ambassador_report():
-    r = _require_admin()
+    r = _require_admin("ambassadors", "view")
     if r: return r
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -4276,7 +4680,7 @@ def ambassador_report():
 
 @portal_admin_bp.route("/ambassador-audit", methods=["GET"])
 def ambassador_audit():
-    r = _require_admin()
+    r = _require_admin("ambassadors", "view")
     if r: return r
 
     amb_id     = (request.args.get("ambassador_id") or "").strip()
@@ -4336,7 +4740,7 @@ def ambassador_audit():
 
 @portal_admin_bp.route("/ambassadors/report/download", methods=["POST"])
 def ambassador_report_download():
-    r = _require_admin()
+    r = _require_admin("ambassadors", "view")
     if r: return r
 
     import openpyxl
@@ -4509,7 +4913,7 @@ def ambassador_report_download():
 
 @portal_admin_bp.route("/ambassadors/<int:amb_id>/approve", methods=["POST"])
 def ambassador_approve(amb_id: int):
-    r = _require_admin()
+    r = _require_admin("ambassadors", "modify")
     if r: return r
     from datetime import date as _date
     conn = get_db_connection()
@@ -4567,14 +4971,18 @@ def ambassador_approve(amb_id: int):
 
 @portal_admin_bp.route("/ambassadors/<int:amb_id>/suspend", methods=["POST"])
 def ambassador_suspend(amb_id: int):
-    r = _require_admin()
+    r = _require_admin("ambassadors", "modify")
     if r: return r
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT first_name, last_name, ref_code, status FROM ambassadors WHERE id=%s", (amb_id,))
     amb = cur.fetchone()
     cur2 = conn.cursor()
-    cur2.execute("UPDATE ambassadors SET status='suspended' WHERE id=%s", (amb_id,))
+    cur2.execute("""
+        UPDATE ambassadors
+        SET status='suspended', suspended_at=now(), suspended_reason='admin_manual'
+        WHERE id=%s
+    """, (amb_id,))
     cur2.execute("""
         UPDATE ambassador_products SET status='suspended' WHERE ambassador_id=%s AND product='portal'
     """, (amb_id,))
@@ -4592,14 +5000,22 @@ def ambassador_suspend(amb_id: int):
 
 @portal_admin_bp.route("/ambassadors/<int:amb_id>/reactivate", methods=["POST"])
 def ambassador_reactivate(amb_id: int):
-    r = _require_admin()
+    r = _require_admin("ambassadors", "modify")
     if r: return r
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT first_name, last_name, ref_code, status FROM ambassadors WHERE id=%s", (amb_id,))
     amb = cur.fetchone()
     cur2 = conn.cursor()
-    cur2.execute("UPDATE ambassadors SET status='active' WHERE id=%s", (amb_id,))
+    cur2.execute("""
+        UPDATE ambassadors
+        SET status='active',
+            suspended_at=NULL,
+            suspended_reason=NULL,
+            inactivity_reminder_sent_at=NULL,
+            last_login_at=now()
+        WHERE id=%s
+    """, (amb_id,))
     cur2.execute("""
         UPDATE ambassador_products SET status='active' WHERE ambassador_id=%s AND product='portal'
     """, (amb_id,))
@@ -4617,7 +5033,7 @@ def ambassador_reactivate(amb_id: int):
 
 @portal_admin_bp.route("/ambassadors/<int:amb_id>/reject", methods=["POST"])
 def ambassador_reject(amb_id: int):
-    r = _require_admin()
+    r = _require_admin("ambassadors", "modify")
     if r: return r
     reason = (request.form.get("reason") or "").strip() or None
     conn = get_db_connection()
@@ -4646,7 +5062,7 @@ def ambassador_reject(amb_id: int):
 
 @portal_admin_bp.route("/ambassadors/<int:amb_id>/terminate", methods=["POST"])
 def ambassador_terminate(amb_id: int):
-    r = _require_admin()
+    r = _require_admin("ambassadors", "delete")
     if r: return r
     reason = (request.form.get("reason") or "").strip() or None
     conn = get_db_connection()
@@ -4681,7 +5097,7 @@ def ambassador_terminate(amb_id: int):
 
 @portal_admin_bp.route("/ambassadors/<int:amb_id>/products/<product>/approve", methods=["POST"])
 def ambassador_product_approve(amb_id: int, product: str):
-    r = _require_admin()
+    r = _require_admin("ambassadors", "modify")
     if r: return r
     if product not in PRODUCT_LABELS:
         flash("Invalid product.", "danger")
@@ -4714,7 +5130,7 @@ def ambassador_product_approve(amb_id: int, product: str):
 
 @portal_admin_bp.route("/ambassadors/<int:amb_id>/products/<product>/reject", methods=["POST"])
 def ambassador_product_reject(amb_id: int, product: str):
-    r = _require_admin()
+    r = _require_admin("ambassadors", "modify")
     if r: return r
     if product not in PRODUCT_LABELS:
         flash("Invalid product.", "danger")
@@ -4743,7 +5159,7 @@ def ambassador_product_reject(amb_id: int, product: str):
 
 @portal_admin_bp.route("/ambassadors/<int:amb_id>/products/<product>/suspend", methods=["POST"])
 def ambassador_product_suspend(amb_id: int, product: str):
-    r = _require_admin()
+    r = _require_admin("ambassadors", "modify")
     if r: return r
     if product not in PRODUCT_LABELS:
         flash("Invalid product.", "danger")
@@ -4770,7 +5186,7 @@ def ambassador_product_suspend(amb_id: int, product: str):
 
 @portal_admin_bp.route("/ambassadors/<int:amb_id>/products/<product>/reactivate", methods=["POST"])
 def ambassador_product_reactivate(amb_id: int, product: str):
-    r = _require_admin()
+    r = _require_admin("ambassadors", "modify")
     if r: return r
     if product not in PRODUCT_LABELS:
         flash("Invalid product.", "danger")
@@ -4795,65 +5211,78 @@ def ambassador_product_reactivate(amb_id: int, product: str):
     return redirect(url_for("portal_admin.ambassadors"))
 
 
+_AMBASSADOR_DUP_FIELD_LABELS = {
+    "ambassadors_email_key": "email address",
+    "ambassadors_phone_key": "phone number",
+    "ambassadors_whatsapp_key": "WhatsApp number",
+}
+
 @portal_admin_bp.route("/ambassadors/<int:amb_id>/edit", methods=["POST"])
 def ambassador_edit(amb_id: int):
-    r = _require_admin()
+    r = _require_admin("ambassadors", "modify")
     if r: return r
     f = request.form
     conn = get_db_connection()
     cur  = conn.cursor()
     recruited_by_id = (f.get("recruited_by_id") or "").strip()
-    cur.execute("""
-        UPDATE ambassadors SET
-            first_name=%s, last_name=%s, email=%s, phone=%s, whatsapp_number=%s,
-            date_of_birth=%s, gender=%s, nationality=%s, address=%s, location=%s,
-            highest_qualification=%s, bank_name=%s, account_number=%s,
-            account_name=%s, sort_code=%s, swift_code=%s, recruited_by_id=%s
-        WHERE id=%s
-    """, (
-        (f.get("first_name") or "").strip(),
-        (f.get("last_name")  or "").strip(),
-        (f.get("email")      or "").strip().lower(),
-        (f.get("phone")      or "").strip() or None,
-        (f.get("whatsapp_number") or "").strip() or None,
-        (f.get("date_of_birth")   or "").strip() or None,
-        (f.get("gender")     or "").strip() or None,
-        (f.get("nationality") or "").strip() or None,
-        (f.get("address")    or "").strip() or None,
-        (f.get("location")   or "").strip() or None,
-        (f.get("highest_qualification") or "").strip() or None,
-        (f.get("bank_name")       or "").strip() or None,
-        (f.get("account_number")  or "").strip() or None,
-        (f.get("account_name")    or "").strip() or None,
-        (f.get("sort_code")  or "").strip() or None,
-        (f.get("swift_code") or "").strip() or None,
-        int(recruited_by_id) if recruited_by_id.isdigit() else None,
-        amb_id,
-    ))
-    # Assigning/changing the sales manager also enrolls this ambassador in
-    # that manager's product (matching what registration-via-recruiter-link
-    # would have done) — the main path for attaching an organic (no
-    # recruiter) signup to a manager after the fact. Only creates the row if
-    # missing; never overwrites an existing active/suspended one.
-    if recruited_by_id.isdigit():
-        cur.execute("SELECT managed_product FROM ambassadors WHERE id=%s AND role='sales_manager'",
-                    (int(recruited_by_id),))
-        mgr = cur.fetchone()
-        if mgr and mgr[0]:
-            cur.execute("""
-                INSERT INTO ambassador_products (ambassador_id, product, status)
-                VALUES (%s, %s, 'pending')
-                ON CONFLICT (ambassador_id, product) DO NOTHING
-            """, (amb_id, mgr[0]))
-    conn.commit()
-    cur.close(); conn.close()
-    flash("Ambassador details updated.", "success")
+    try:
+        cur.execute("""
+            UPDATE ambassadors SET
+                first_name=%s, last_name=%s, email=%s, phone=%s, whatsapp_number=%s,
+                date_of_birth=%s, gender=%s, nationality=%s, address=%s, location=%s,
+                highest_qualification=%s, bank_name=%s, account_number=%s,
+                account_name=%s, sort_code=%s, swift_code=%s, recruited_by_id=%s
+            WHERE id=%s
+        """, (
+            (f.get("first_name") or "").strip(),
+            (f.get("last_name")  or "").strip(),
+            (f.get("email")      or "").strip().lower(),
+            (f.get("phone")      or "").strip() or None,
+            (f.get("whatsapp_number") or "").strip() or None,
+            (f.get("date_of_birth")   or "").strip() or None,
+            (f.get("gender")     or "").strip() or None,
+            (f.get("nationality") or "").strip() or None,
+            (f.get("address")    or "").strip() or None,
+            (f.get("location")   or "").strip() or None,
+            (f.get("highest_qualification") or "").strip() or None,
+            (f.get("bank_name")       or "").strip() or None,
+            (f.get("account_number")  or "").strip() or None,
+            (f.get("account_name")    or "").strip() or None,
+            (f.get("sort_code")  or "").strip() or None,
+            (f.get("swift_code") or "").strip() or None,
+            int(recruited_by_id) if recruited_by_id.isdigit() else None,
+            amb_id,
+        ))
+        # Assigning/changing the sales manager also enrolls this ambassador in
+        # that manager's product (matching what registration-via-recruiter-link
+        # would have done) — the main path for attaching an organic (no
+        # recruiter) signup to a manager after the fact. Only creates the row if
+        # missing; never overwrites an existing active/suspended one.
+        if recruited_by_id.isdigit():
+            cur.execute("SELECT managed_product FROM ambassadors WHERE id=%s AND role='sales_manager'",
+                        (int(recruited_by_id),))
+            mgr = cur.fetchone()
+            if mgr and mgr[0]:
+                cur.execute("""
+                    INSERT INTO ambassador_products (ambassador_id, product, status)
+                    VALUES (%s, %s, 'pending')
+                    ON CONFLICT (ambassador_id, product) DO NOTHING
+                """, (amb_id, mgr[0]))
+        conn.commit()
+        flash("Ambassador details updated.", "success")
+    except psycopg2.errors.UniqueViolation as e:
+        conn.rollback()
+        constraint = getattr(e.diag, "constraint_name", None)
+        label = _AMBASSADOR_DUP_FIELD_LABELS.get(constraint, "one of the fields")
+        flash(f"Another ambassador already uses that {label}. Please use a different value.", "danger")
+    finally:
+        cur.close(); conn.close()
     return redirect(url_for("portal_admin.ambassadors"))
 
 
 @portal_admin_bp.route("/ambassadors/<int:amb_id>/set-role", methods=["POST"])
 def ambassador_set_role(amb_id: int):
-    r = _require_admin()
+    r = _require_admin("ambassadors", "modify")
     if r: return r
     new_role = "sales_manager" if (request.form.get("role") == "sales_manager") else "ambassador"
     managed_product = (request.form.get("managed_product") or "").strip() or None
@@ -4874,6 +5303,19 @@ def ambassador_set_role(amb_id: int):
     cur2 = conn.cursor()
     cur2.execute("UPDATE ambassadors SET role=%s, managed_product=%s WHERE id=%s",
                  (new_role, managed_product, amb_id))
+    if new_role == "sales_manager":
+        # A sales manager must have an active ambassador_products row for the
+        # product they manage — otherwise dashboard()/qr_page()/leads()/team()
+        # all treat them as "not yet assigned" despite managed_product being set.
+        # Mirrors ambassador_product_approve()'s INSERT ... ON CONFLICT pattern.
+        from datetime import date as _date
+        cur2.execute("""
+            INSERT INTO ambassador_products (ambassador_id, product, status, partnership_start, approved_at, approved_by)
+            VALUES (%s, %s, 'active', %s, NOW(), %s)
+            ON CONFLICT (ambassador_id, product) DO UPDATE
+                SET status='active', partnership_start=EXCLUDED.partnership_start,
+                    approved_at=NOW(), approved_by=EXCLUDED.approved_by
+        """, (amb_id, managed_product, _date.today(), _admin_user()))
     conn.commit()
     cur2.close(); cur.close(); conn.close()
     if amb:
@@ -4890,7 +5332,7 @@ def ambassador_set_role(amb_id: int):
 
 @portal_admin_bp.route("/ambassadors/<int:amb_id>/detail")
 def ambassador_detail(amb_id: int):
-    r = _require_admin()
+    r = _require_admin("ambassadors", "view")
     if r: return r
 
     date_from = (request.args.get("from") or "").strip() or None
@@ -5036,7 +5478,7 @@ def ambassador_detail(amb_id: int):
 
 @portal_admin_bp.route("/ambassadors/<int:amb_id>/export-earnings")
 def ambassador_export_earnings(amb_id: int):
-    r = _require_admin()
+    r = _require_admin("ambassadors", "view")
     if r: return r
 
     date_from = (request.args.get("from") or "").strip() or None
@@ -5098,7 +5540,7 @@ def ambassador_export_earnings(amb_id: int):
 
 @portal_admin_bp.route("/ambassadors/<int:amb_id>/id-doc")
 def ambassador_id_doc(amb_id: int):
-    r = _require_admin()
+    r = _require_admin("ambassadors", "view")
     if r: return r
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -5115,7 +5557,7 @@ def ambassador_id_doc(amb_id: int):
 
 @portal_admin_bp.route("/ambassadors/<int:amb_id>/qual-doc")
 def ambassador_qual_doc(amb_id: int):
-    r = _require_admin()
+    r = _require_admin("ambassadors", "view")
     if r: return r
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -5130,43 +5572,668 @@ def ambassador_qual_doc(amb_id: int):
     return send_from_directory(static_dir, row["qual_document_path"])
 
 
+# ── Ambassador Document Library (admin upload → ambassador download) ───────
+
+def _amb_doc_products_from_form() -> list:
+    """Validate the submitted product checkboxes against the known product
+    whitelist — silently drops anything not in PRODUCT_LABELS."""
+    submitted = request.form.getlist("products")
+    return [p for p in submitted if p in PRODUCT_LABELS]
+
+
+@portal_admin_bp.route("/ambassador-documents", methods=["GET"])
+def ambassador_documents():
+    r = _require_admin("ambassador_documents", "view")
+    if r: return r
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM ambassador_documents ORDER BY created_at DESC")
+    docs = cur.fetchall() or []
+    cur.close(); conn.close()
+    return render_template("portal/admin_ambassador_documents.html", docs=docs,
+                           product_labels=PRODUCT_LABELS, doc_icons=AMB_DOC_ICONS)
+
+
+@portal_admin_bp.route("/ambassador-documents/upload", methods=["POST"])
+def ambassador_document_upload():
+    r = _require_admin("ambassador_documents", "create")
+    if r: return r
+
+    title    = (request.form.get("title") or "").strip()
+    desc     = (request.form.get("description") or "").strip()
+    products = _amb_doc_products_from_form()
+    file     = request.files.get("doc_file")
+
+    if not title:
+        flash("Please give the document a title.", "warning")
+        return redirect(url_for("portal_admin.ambassador_documents"))
+    if not products:
+        flash("Please select at least one product to share this document with.", "warning")
+        return redirect(url_for("portal_admin.ambassador_documents"))
+    if not file or not file.filename:
+        flash("Please choose a file to upload.", "warning")
+        return redirect(url_for("portal_admin.ambassador_documents"))
+
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    if ext not in AMB_DOC_ALLOWED_EXTS:
+        flash("Only PDF, Word, Excel, and PowerPoint files are allowed.", "warning")
+        return redirect(url_for("portal_admin.ambassador_documents"))
+
+    file.seek(0, 2)
+    size_bytes = file.tell()
+    file.seek(0)
+    if size_bytes > AMB_DOC_MAX_BYTES:
+        flash("File is too large — 25 MB maximum.", "warning")
+        return redirect(url_for("portal_admin.ambassador_documents"))
+
+    stored_filename = f"{uuid.uuid4().hex}.{ext}"
+    os.makedirs(AMB_DOC_UPLOAD_FOLDER, exist_ok=True)
+    file.save(os.path.join(AMB_DOC_UPLOAD_FOLDER, stored_filename))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("""
+        INSERT INTO ambassador_documents
+            (title, description, original_filename, stored_filename, file_ext,
+             file_size_bytes, products, uploaded_by)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    """, (title, desc or None, file.filename, stored_filename, ext, size_bytes,
+          products, _admin_user()))
+    conn.commit()
+    cur.close(); conn.close()
+
+    insert_audit_log(admin_username=_admin_user(), action="ambassador_document_upload",
+                      details={"title": title, "products": products})
+    flash(f"'{title}' uploaded and shared.", "success")
+    return redirect(url_for("portal_admin.ambassador_documents"))
+
+
+@portal_admin_bp.route("/ambassador-documents/<int:doc_id>/edit", methods=["POST"])
+def ambassador_document_edit(doc_id: int):
+    r = _require_admin("ambassador_documents", "modify")
+    if r: return r
+
+    title    = (request.form.get("title") or "").strip()
+    desc     = (request.form.get("description") or "").strip()
+    products = _amb_doc_products_from_form()
+    file     = request.files.get("doc_file")
+
+    if not title:
+        flash("Please give the document a title.", "warning")
+        return redirect(url_for("portal_admin.ambassador_documents"))
+    if not products:
+        flash("Please select at least one product to share this document with.", "warning")
+        return redirect(url_for("portal_admin.ambassador_documents"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM ambassador_documents WHERE id=%s", (doc_id,))
+    doc = cur.fetchone()
+    if not doc:
+        cur.close(); conn.close()
+        flash("Document not found.", "warning")
+        return redirect(url_for("portal_admin.ambassador_documents"))
+
+    new_stored_filename = doc["stored_filename"]
+    new_ext             = doc["file_ext"]
+    new_original_name   = doc["original_filename"]
+    new_size            = doc["file_size_bytes"]
+    old_stored_filename = None
+
+    if file and file.filename:
+        ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+        if ext not in AMB_DOC_ALLOWED_EXTS:
+            cur.close(); conn.close()
+            flash("Only PDF, Word, Excel, and PowerPoint files are allowed.", "warning")
+            return redirect(url_for("portal_admin.ambassador_documents"))
+        file.seek(0, 2)
+        size_bytes = file.tell()
+        file.seek(0)
+        if size_bytes > AMB_DOC_MAX_BYTES:
+            cur.close(); conn.close()
+            flash("File is too large — 25 MB maximum.", "warning")
+            return redirect(url_for("portal_admin.ambassador_documents"))
+
+        new_stored_filename = f"{uuid.uuid4().hex}.{ext}"
+        os.makedirs(AMB_DOC_UPLOAD_FOLDER, exist_ok=True)
+        file.save(os.path.join(AMB_DOC_UPLOAD_FOLDER, new_stored_filename))
+        old_stored_filename = doc["stored_filename"]
+        new_ext           = ext
+        new_original_name = file.filename
+        new_size          = size_bytes
+
+    cur.execute("""
+        UPDATE ambassador_documents
+        SET title=%s, description=%s, products=%s,
+            original_filename=%s, stored_filename=%s, file_ext=%s, file_size_bytes=%s,
+            updated_at=NOW()
+        WHERE id=%s
+    """, (title, desc or None, products, new_original_name, new_stored_filename,
+          new_ext, new_size, doc_id))
+    conn.commit()
+    cur.close(); conn.close()
+
+    if old_stored_filename:
+        try:
+            os.remove(os.path.join(AMB_DOC_UPLOAD_FOLDER, old_stored_filename))
+        except OSError:
+            pass
+
+    insert_audit_log(admin_username=_admin_user(), action="ambassador_document_edit",
+                      details={"doc_id": doc_id, "title": title, "products": products})
+    flash(f"'{title}' updated.", "success")
+    return redirect(url_for("portal_admin.ambassador_documents"))
+
+
+@portal_admin_bp.route("/ambassador-documents/<int:doc_id>/delete", methods=["POST"])
+def ambassador_document_delete(doc_id: int):
+    r = _require_admin("ambassador_documents", "delete")
+    if r: return r
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM ambassador_documents WHERE id=%s", (doc_id,))
+    doc = cur.fetchone()
+    if not doc:
+        cur.close(); conn.close()
+        flash("Document not found.", "warning")
+        return redirect(url_for("portal_admin.ambassador_documents"))
+
+    cur.execute("DELETE FROM ambassador_documents WHERE id=%s", (doc_id,))
+    conn.commit()
+    cur.close(); conn.close()
+
+    try:
+        os.remove(os.path.join(AMB_DOC_UPLOAD_FOLDER, doc["stored_filename"]))
+    except OSError:
+        pass
+
+    insert_audit_log(admin_username=_admin_user(), action="ambassador_document_delete",
+                      details={"doc_id": doc_id, "title": doc["title"]})
+    flash(f"'{doc['title']}' deleted.", "success")
+    return redirect(url_for("portal_admin.ambassador_documents"))
+
+
+@portal_admin_bp.route("/ambassador-documents/<int:doc_id>/download")
+def ambassador_document_download(doc_id: int):
+    r = _require_admin("ambassador_documents", "view")
+    if r: return r
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT stored_filename, original_filename FROM ambassador_documents WHERE id=%s", (doc_id,))
+    doc = cur.fetchone()
+    cur.close(); conn.close()
+    if not doc:
+        return "Document not found", 404
+    return send_from_directory(AMB_DOC_UPLOAD_FOLDER, doc["stored_filename"],
+                                as_attachment=True, download_name=doc["original_filename"])
+
+
+@portal_admin_bp.route("/ambassador-documents/<int:doc_id>/preview")
+def ambassador_document_preview(doc_id: int):
+    r = _require_admin("ambassador_documents", "view")
+    if r: return r
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT stored_filename, original_filename FROM ambassador_documents WHERE id=%s", (doc_id,))
+    doc = cur.fetchone()
+    cur.close(); conn.close()
+    if not doc:
+        return "Document not found", 404
+    # Serves inline (no forced download) so the browser opens it in a new tab —
+    # images and PDFs render directly; other types fall back to a normal download.
+    return send_from_directory(AMB_DOC_UPLOAD_FOLDER, doc["stored_filename"],
+                                as_attachment=False, download_name=doc["original_filename"])
+
+
+# ── Ambassador WhatsApp Broadcast ────────────────────────────────────────────
+# Sends a single reusable Meta-approved template ("Hi {{1}}, {{2}}") to
+# ambassadors' whatsapp_number, since Meta blocks freeform business-initiated
+# messages outside a 24h session window. Template name/language are stored in
+# the generic portal_settings key-value table (same one admin_settings.html
+# uses for trial_default_days).
+
+BROADCAST_TARGETS = ["all", "portal", "school", "estate"]
+
+def _resolve_broadcast_candidates(target_product: str) -> list:
+    """All active ambassadors matching the target filter, regardless of
+    whether they have a whatsapp_number on file — caller partitions into
+    sendable vs skipped."""
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    if target_product == "all":
+        cur.execute("SELECT id, first_name, whatsapp_number FROM ambassadors WHERE status='active'")
+    else:
+        cur.execute("""
+            SELECT a.id, a.first_name, a.whatsapp_number FROM ambassadors a
+            JOIN ambassador_products ap ON ap.ambassador_id = a.id
+            WHERE a.status='active' AND ap.product=%s AND ap.status='active'
+        """, (target_product,))
+    rows = cur.fetchall() or []
+    cur.close(); conn.close()
+    return rows
+
+
+@portal_admin_bp.route("/ambassador-broadcast", methods=["GET"])
+def ambassador_broadcast():
+    r = _require_admin("ambassador_broadcast", "view")
+    if r: return r
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT setting_key, setting_value FROM portal_settings
+        WHERE setting_key IN ('ambassador_wa_template_name', 'ambassador_wa_template_language')
+    """)
+    settings = {row["setting_key"]: row["setting_value"] for row in (cur.fetchall() or [])}
+    cur.execute("SELECT * FROM ambassador_broadcasts ORDER BY created_at DESC LIMIT 50")
+    history = cur.fetchall() or []
+    cur.close(); conn.close()
+
+    target_counts = {}
+    target_samples = {}
+    for target in BROADCAST_TARGETS:
+        candidates = _resolve_broadcast_candidates(target)
+        sendable_rows = [c for c in candidates if c.get("whatsapp_number")]
+        target_counts[target] = {"sendable": len(sendable_rows), "skipped": len(candidates) - len(sendable_rows)}
+        target_samples[target] = sendable_rows[0]["first_name"] if sendable_rows else "Ada"
+
+    template_status = None
+    if os.getenv("WA_OTP_WABA_ID"):
+        from ambassador_routes import check_ambassador_template_status
+        template_status = check_ambassador_template_status()
+
+    return render_template("portal/admin_ambassador_broadcast.html",
+        template_name=settings.get("ambassador_wa_template_name") or "",
+        template_language=settings.get("ambassador_wa_template_language") or "en_US",
+        history=history, product_labels=PRODUCT_LABELS, target_counts=target_counts,
+        target_samples=target_samples, template_status=template_status)
+
+
+@portal_admin_bp.route("/ambassador-broadcast/save-template", methods=["POST"])
+def ambassador_broadcast_save_template():
+    r = _require_admin("ambassador_broadcast", "modify")
+    if r: return r
+    name = (request.form.get("template_name") or "").strip()
+    lang = (request.form.get("template_language") or "").strip() or "en_US"
+    if not name:
+        flash("Please enter the approved template name.", "warning")
+        return redirect(url_for("portal_admin.ambassador_broadcast"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("""
+        INSERT INTO portal_settings (setting_key, setting_value) VALUES ('ambassador_wa_template_name', %s)
+        ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value
+    """, (name,))
+    cur.execute("""
+        INSERT INTO portal_settings (setting_key, setting_value) VALUES ('ambassador_wa_template_language', %s)
+        ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value
+    """, (lang,))
+    conn.commit()
+    cur.close(); conn.close()
+    flash("Template settings saved.", "success")
+    return redirect(url_for("portal_admin.ambassador_broadcast"))
+
+
+@portal_admin_bp.route("/ambassador-broadcast/send", methods=["POST"])
+def ambassador_broadcast_send():
+    r = _require_admin("ambassador_broadcast", "create")
+    if r: return r
+
+    message_body   = (request.form.get("message_body") or "").strip()
+    target_product = (request.form.get("target_product") or "").strip().lower()
+
+    if not message_body:
+        flash("Message body cannot be empty.", "warning")
+        return redirect(url_for("portal_admin.ambassador_broadcast"))
+    if target_product not in BROADCAST_TARGETS:
+        flash("Invalid target.", "danger")
+        return redirect(url_for("portal_admin.ambassador_broadcast"))
+
+    candidates = _resolve_broadcast_candidates(target_product)
+    sendable   = [c for c in candidates if c.get("whatsapp_number")]
+    skipped    = len(candidates) - len(sendable)
+
+    if not candidates:
+        flash("No ambassadors match that target.", "warning")
+        return redirect(url_for("portal_admin.ambassador_broadcast"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        INSERT INTO ambassador_broadcasts
+            (message_body, target_product, recipient_ids, total_count, skipped_count, status, created_by)
+        VALUES (%s, %s, %s, %s, %s, 'sending', %s)
+        RETURNING id
+    """, (message_body, target_product, _json.dumps([c["id"] for c in sendable]),
+          len(candidates), skipped, _admin_user()))
+    broadcast_id = cur.fetchone()["id"]
+    conn.commit()
+    cur.close(); conn.close()
+
+    from ambassador_routes import send_ambassador_wa_template
+    import time as _time
+    sent = 0
+    failed = 0
+    failed_recipients = []
+    for c in sendable:
+        ok = send_ambassador_wa_template(c["whatsapp_number"], c.get("first_name") or "", message_body)
+        if ok:
+            sent += 1
+        else:
+            failed += 1
+            failed_recipients.append({"id": c["id"], "name": c.get("first_name") or "",
+                                       "whatsapp_number": c["whatsapp_number"]})
+        _time.sleep(0.25)
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("""
+        UPDATE ambassador_broadcasts
+        SET sent_count=%s, failed_count=%s, failed_recipients=%s, status='sent', sent_at=NOW()
+        WHERE id=%s
+    """, (sent, failed, _json.dumps(failed_recipients), broadcast_id))
+    conn.commit()
+    cur.close(); conn.close()
+
+    insert_audit_log(admin_username=_admin_user(), action="ambassador_broadcast_send",
+                      details={"broadcast_id": broadcast_id, "target_product": target_product,
+                               "sent": sent, "failed": failed, "skipped": skipped,
+                               "failed_recipients": failed_recipients})
+    flash(f"Broadcast sent — {sent} delivered, {failed} failed, {skipped} skipped (no WhatsApp number on file).",
+          "success" if not failed else "warning")
+    return redirect(url_for("portal_admin.ambassador_broadcast"))
+
+
+# ── Ambassador "What's New" release board ────────────────────────────────────
+# Sales-enablement cards for ambassadors/sales managers — what shipped, who
+# it's for, and how to pitch it. Publishing optionally reuses the same
+# WhatsApp broadcast path as Ambassador Broadcast above (one Meta-approved
+# template, logged into the same ambassador_broadcasts table).
+
+def _feature_release_notify(release: dict, admin_user: str) -> tuple[int, int, int, int]:
+    """Sends the release announcement to ambassadors matching release['product']
+    via the existing template-broadcast pipeline, logs it into
+    ambassador_broadcasts (same table Ambassador Broadcast uses), and returns
+    (broadcast_id, sent, failed, skipped)."""
+    target = release["product"] if release["product"] in BROADCAST_TARGETS else "all"
+    candidates = _resolve_broadcast_candidates(target)
+    sendable   = [c for c in candidates if c.get("whatsapp_number")]
+    skipped    = len(candidates) - len(sendable)
+
+    message_body = f"🆕 New: {release['title']} — {release['summary']} See it (and how to pitch it) in your Ambassador Hub under What's New."
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        INSERT INTO ambassador_broadcasts
+            (message_body, target_product, recipient_ids, total_count, skipped_count, status, created_by)
+        VALUES (%s, %s, %s, %s, %s, 'sending', %s)
+        RETURNING id
+    """, (message_body, target, _json.dumps([c["id"] for c in sendable]),
+          len(candidates), skipped, admin_user))
+    broadcast_id = cur.fetchone()["id"]
+    conn.commit()
+    cur.close(); conn.close()
+
+    from ambassador_routes import send_ambassador_wa_template
+    import time as _time
+    sent = 0
+    failed = 0
+    failed_recipients = []
+    for c in sendable:
+        ok = send_ambassador_wa_template(c["whatsapp_number"], c.get("first_name") or "", message_body)
+        if ok:
+            sent += 1
+        else:
+            failed += 1
+            failed_recipients.append({"id": c["id"], "name": c.get("first_name") or "",
+                                       "whatsapp_number": c["whatsapp_number"]})
+        _time.sleep(0.25)
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("""
+        UPDATE ambassador_broadcasts
+        SET sent_count=%s, failed_count=%s, failed_recipients=%s, status='sent', sent_at=NOW()
+        WHERE id=%s
+    """, (sent, failed, _json.dumps(failed_recipients), broadcast_id))
+    conn.commit()
+    cur.close(); conn.close()
+
+    return broadcast_id, sent, failed, skipped
+
+
+@portal_admin_bp.route("/feature-releases", methods=["GET"])
+def feature_releases():
+    r = _require_admin("feature_releases", "view")
+    if r: return r
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM feature_releases ORDER BY created_at DESC")
+    releases = cur.fetchall() or []
+    cur.close(); conn.close()
+
+    edit_release = None
+    edit_id = request.args.get("edit", type=int)
+    if edit_id:
+        edit_release = next((rel for rel in releases if rel["id"] == edit_id), None)
+
+    return render_template("portal/admin_feature_releases.html",
+        releases=releases, edit_release=edit_release, product_labels=PRODUCT_LABELS)
+
+
+@portal_admin_bp.route("/feature-releases/<int:release_id>/preview", methods=["GET"])
+def feature_releases_preview(release_id):
+    """Server-rendered preview using the exact same card markup as
+    ambassador/whats_new.html, so what the admin sees here is guaranteed to
+    match production rather than a re-implemented JS approximation. Works
+    for drafts too (not gated on status='published')."""
+    r = _require_admin("feature_releases", "view")
+    if r: return r
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM feature_releases WHERE id=%s", (release_id,))
+    release = cur.fetchone()
+    cur.close(); conn.close()
+    if not release:
+        flash("Release not found.", "danger")
+        return redirect(url_for("portal_admin.feature_releases"))
+
+    from ambassador_routes import PRODUCT_CONFIG
+    return render_template("portal/admin_feature_release_preview.html",
+        rel=release, product_config=PRODUCT_CONFIG)
+
+
+@portal_admin_bp.route("/feature-releases/save", methods=["POST"])
+def feature_releases_save():
+    release_id  = request.form.get("id", type=int)
+    r = _require_admin("feature_releases", "modify" if release_id else "create")
+    if r: return r
+
+    title       = (request.form.get("title") or "").strip()
+    summary     = (request.form.get("summary") or "").strip()
+    pitch_notes = (request.form.get("pitch_notes") or "").strip() or None
+    demo_instructions = (request.form.get("demo_instructions") or "").strip() or None
+    playbook_note = (request.form.get("playbook_note") or "").strip() or None
+    product     = (request.form.get("product") or "all").strip().lower()
+    min_plan    = (request.form.get("min_plan") or "All plans").strip() or "All plans"
+    notify_whatsapp = request.form.get("notify_whatsapp") == "on"
+
+    if not title or not summary:
+        flash("Title and summary are required.", "warning")
+        return redirect(url_for("portal_admin.feature_releases"))
+    if product not in BROADCAST_TARGETS:
+        flash("Invalid product.", "danger")
+        return redirect(url_for("portal_admin.feature_releases"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    if release_id:
+        cur.execute("""
+            UPDATE feature_releases
+            SET title=%s, summary=%s, pitch_notes=%s, demo_instructions=%s, playbook_note=%s,
+                product=%s, min_plan=%s, notify_whatsapp=%s
+            WHERE id=%s AND status='draft'
+        """, (title, summary, pitch_notes, demo_instructions, playbook_note,
+              product, min_plan, notify_whatsapp, release_id))
+        if cur.rowcount == 0:
+            flash("Only draft releases can be edited — unpublish it first.", "warning")
+        else:
+            flash("Draft saved.", "success")
+    else:
+        cur.execute("""
+            INSERT INTO feature_releases
+                (title, summary, pitch_notes, demo_instructions, playbook_note,
+                 product, min_plan, notify_whatsapp, created_by)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (title, summary, pitch_notes, demo_instructions, playbook_note,
+              product, min_plan, notify_whatsapp, _admin_user()))
+        flash("Draft created.", "success")
+    conn.commit()
+    cur.close(); conn.close()
+    return redirect(url_for("portal_admin.feature_releases"))
+
+
+@portal_admin_bp.route("/feature-releases/<int:release_id>/publish", methods=["POST"])
+def feature_releases_publish(release_id):
+    r = _require_admin("feature_releases", "modify")
+    if r: return r
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM feature_releases WHERE id=%s", (release_id,))
+    release = cur.fetchone()
+    if not release:
+        cur.close(); conn.close()
+        flash("Release not found.", "danger")
+        return redirect(url_for("portal_admin.feature_releases"))
+
+    cur.execute("""
+        UPDATE feature_releases SET status='published', published_at=NOW() WHERE id=%s
+    """, (release_id,))
+    conn.commit()
+    cur.close(); conn.close()
+
+    notice = "Release published."
+    if release["notify_whatsapp"]:
+        broadcast_id, sent, failed, skipped = _feature_release_notify(release, _admin_user())
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("UPDATE feature_releases SET broadcast_id=%s WHERE id=%s", (broadcast_id, release_id))
+        cur.execute("SELECT failed_recipients FROM ambassador_broadcasts WHERE id=%s", (broadcast_id,))
+        failed_recipients = (cur.fetchone() or {}).get("failed_recipients") or []
+        conn.commit()
+        cur.close(); conn.close()
+        notice += f" WhatsApp notice — {sent} delivered, {failed} failed, {skipped} skipped."
+        if failed_recipients:
+            names = ", ".join(f"{r['name']} (#{r['id']})" for r in failed_recipients)
+            notice += f" Failed for: {names} — see Ambassador Broadcast history for numbers."
+
+    insert_audit_log(admin_username=_admin_user(), action="feature_release_publish",
+                      details={"release_id": release_id, "title": release["title"],
+                               "notify_whatsapp": release["notify_whatsapp"]})
+    flash(notice, "success")
+    return redirect(url_for("portal_admin.feature_releases"))
+
+
+@portal_admin_bp.route("/feature-releases/<int:release_id>/unpublish", methods=["POST"])
+def feature_releases_unpublish(release_id):
+    r = _require_admin("feature_releases", "modify")
+    if r: return r
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("UPDATE feature_releases SET status='draft' WHERE id=%s", (release_id,))
+    conn.commit()
+    cur.close(); conn.close()
+    flash("Release unpublished — hidden from the ambassador feed.", "success")
+    return redirect(url_for("portal_admin.feature_releases"))
+
+
+@portal_admin_bp.route("/feature-releases/<int:release_id>/delete", methods=["POST"])
+def feature_releases_delete(release_id):
+    r = _require_admin("feature_releases", "delete")
+    if r: return r
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("DELETE FROM feature_releases WHERE id=%s AND status='draft'", (release_id,))
+    deleted = cur.rowcount > 0
+    conn.commit()
+    cur.close(); conn.close()
+    flash("Draft deleted." if deleted else "Only draft releases can be deleted — unpublish it first.",
+          "success" if deleted else "warning")
+    return redirect(url_for("portal_admin.feature_releases"))
+
 
 # ── Ambassador/Sales Manager CRM Pipeline (admin oversight) ─────────────────
 
 @portal_admin_bp.route("/admin/leads", methods=["GET"])
 def admin_leads():
-    r = _require_admin()
+    r = _require_admin("admin_leads", "view")
     if r: return r
+
+    PER_PAGE_OPTIONS = ["25", "50", "100", "300", "500", "all"]
+    per_page_raw = (request.args.get("per_page") or "100").strip().lower()
+    if per_page_raw not in PER_PAGE_OPTIONS:
+        per_page_raw = "100"
+    page_raw = request.args.get("page", "1")
+    page = int(page_raw) if page_raw.isdigit() and int(page_raw) > 0 else 1
+
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("""
+
+    cur.execute("SELECT COUNT(*) AS c FROM ambassador_leads WHERE dropped_at IS NULL")
+    filtered_total = cur.fetchone()["c"]
+
+    if per_page_raw == "all":
+        total_pages = 1
+        page = 1
+        limit_clause = ""
+        limit_params = []
+    else:
+        per_page = int(per_page_raw)
+        total_pages = max(1, -(-filtered_total // per_page))
+        page = min(page, total_pages)
+        limit_clause = "LIMIT %s OFFSET %s"
+        limit_params = [per_page, (page - 1) * per_page]
+
+    cur.execute(f"""
         SELECT al.*,
-               a.first_name || ' ' || a.last_name AS ambassador_name,
+               COALESCE(a.first_name || ' ' || a.last_name, 'Unassigned') AS ambassador_name,
                a.email AS ambassador_email
         FROM ambassador_leads al
-        JOIN ambassadors a ON a.id = al.ambassador_id
+        LEFT JOIN ambassadors a ON a.id = al.ambassador_id
         WHERE al.dropped_at IS NULL
         ORDER BY CASE al.stage
             WHEN 'lead' THEN 0 WHEN 'contacted' THEN 1 WHEN 'demo_done' THEN 2
             WHEN 'requirements_confirmed' THEN 3 WHEN 'onboarding' THEN 4
             WHEN 'active_client' THEN 5 WHEN 'support' THEN 6 ELSE 7 END,
             al.created_at DESC
-    """)
+        {limit_clause}
+    """, limit_params)
     leads = [dict(r) for r in cur.fetchall()]
 
     cur.execute("""
-        SELECT al.*, a.first_name || ' ' || a.last_name AS ambassador_name
+        SELECT al.*, COALESCE(a.first_name || ' ' || a.last_name, 'Unassigned') AS ambassador_name
         FROM ambassador_leads al
-        JOIN ambassadors a ON a.id = al.ambassador_id
+        LEFT JOIN ambassadors a ON a.id = al.ambassador_id
         WHERE al.dropped_at IS NOT NULL
         ORDER BY al.dropped_at DESC
     """)
     dropped_leads = [dict(r) for r in cur.fetchall()]
-    cur.close(); conn.close()
 
+    cur.execute("""
+        SELECT stage, COUNT(*) AS c FROM ambassador_leads
+        WHERE dropped_at IS NULL GROUP BY stage
+    """)
     stage_counts = {s: 0 for s in STAGE_ORDER}
-    for l in leads:
-        stage_counts[l["stage"]] = stage_counts.get(l["stage"], 0) + 1
+    for row in cur.fetchall():
+        stage_counts[row["stage"]] = row["c"]
+
+    cur.close(); conn.close()
 
     conn2 = get_db_connection()
     cur2  = conn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -5180,12 +6247,13 @@ def admin_leads():
     return render_template("portal/admin_leads.html", leads=leads, dropped_leads=dropped_leads,
         stage_counts=stage_counts, stage_order=STAGE_ORDER, stage_labels=STAGE_LABELS,
         stage_descriptions=STAGE_DESCRIPTIONS, next_stage=next_stage, ambassadors=ambassadors,
-        product_labels=PRODUCT_LABELS, product_icons=PRODUCT_ICONS)
+        product_labels=PRODUCT_LABELS, product_icons=PRODUCT_ICONS,
+        filtered_total=filtered_total, per_page=per_page_raw, page=page, total_pages=total_pages)
 
 
 @portal_admin_bp.route("/admin/leads/create", methods=["POST"])
 def admin_lead_create():
-    r = _require_admin()
+    r = _require_admin("admin_leads", "create")
     if r: return r
 
     ambassador_id_raw = (request.form.get("ambassador_id") or "").strip()
@@ -5229,7 +6297,7 @@ def admin_lead_create():
 
 @portal_admin_bp.route("/admin/leads/<int:lead_id>/advance", methods=["POST"])
 def lead_advance(lead_id: int):
-    r = _require_admin()
+    r = _require_admin("admin_leads", "modify")
     if r: return r
 
     conn = get_db_connection()
@@ -5322,7 +6390,7 @@ def lead_advance(lead_id: int):
 
 @portal_admin_bp.route("/admin/leads/<int:lead_id>/drop", methods=["POST"])
 def lead_drop_admin(lead_id: int):
-    r = _require_admin()
+    r = _require_admin("admin_leads", "modify")
     if r: return r
     reason = (request.form.get("reason") or "").strip() or None
 
@@ -5347,14 +6415,14 @@ def lead_drop_admin(lead_id: int):
 
 @portal_admin_bp.route("/video-tutorials")
 def video_tutorials():
-    r = _require_admin()
+    r = _require_admin("video_tutorials", "view")
     if r: return r
     return render_template("portal/admin_video_tutorials.html", videos=TUTORIAL_VIDEOS)
 
 
 @portal_admin_bp.route("/admin/leads/<int:lead_id>/history")
 def lead_history_admin(lead_id: int):
-    r = _require_admin()
+    r = _require_admin("admin_leads", "view")
     if r: return r
     history = get_stage_history(lead_id)
     from flask import jsonify

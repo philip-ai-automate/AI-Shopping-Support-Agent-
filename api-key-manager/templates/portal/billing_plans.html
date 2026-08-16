@@ -204,22 +204,28 @@
       </span>
     </li>
 
+    <li>
+      <span class="feat-yes">✓</span>
+      <span class="feat-lbl">Automated discount negotiation</span>
+    </li>
+
     {% if plan.feat_broadcasts %}
     <li>
       <span class="feat-yes">✓</span>
       <span class="feat-lbl">
         {% if plan.broadcasts_limit == -1 %}Unlimited{% else %}{{ "{:,}".format(plan.broadcasts_limit) }}{% endif %}
-        broadcasts/mo
+        WhatsApp broadcasts/mo
       </span>
     </li>
     {% else %}
-    <li><span class="feat-no">✗</span><span class="feat-lbl muted">Broadcasts</span></li>
+    <li><span class="feat-no">✗</span><span class="feat-lbl muted">WhatsApp broadcast messaging</span></li>
     {% endif %}
 
     {% for flag, label in [
         ('feat_crm',         'Full CRM'),
-        ('feat_advanced_ai', 'Advanced AI'),
+        ('feat_advanced_ai', 'Custom AI personality'),
         ('feat_integrations','Integrations'),
+        ('feat_visual_match','Shop by sending a photo'),
     ] %}
     <li>
       {% if plan[flag] %}
@@ -229,6 +235,12 @@
       {% endif %}
     </li>
     {% endfor %}
+
+    {% set support_map = {'free': 'Help Center support', 'starter': 'Email support', 'growth': 'Priority email support', 'pro': 'Priority support + onboarding call'} %}
+    <li>
+      <span class="feat-yes">✓</span>
+      <span class="feat-lbl">{{ support_map.get(plan.slug, 'Help Center support') }}</span>
+    </li>
 
     <li>
       <span class="feat-yes">✓</span>

@@ -40,6 +40,29 @@
   <a href="{{ url_for('portal.dashboard') }}" class="btn btn-sm">← Dashboard</a>
 </div>
 
+{% if agents and agents|length > 1 %}
+<div class="card" style="max-width:820px;margin-bottom:18px">
+  <p style="font-size:13px;font-weight:800;margin-bottom:8px">Which AI agent are you editing?</p>
+  <form method="GET" action="{{ url_for('portal.ai_instruction') }}">
+    <select name="agent_id" onchange="this.form.submit()"
+            style="width:100%;padding:9px 12px;border:1.5px solid var(--line);border-radius:9px;font-size:13px;font-family:inherit">
+      {% for a in agents %}
+      <option value="{{ a.id }}" {% if a.id == selected_agent_id %}selected{% endif %}>
+        {{ a.name }}{% if a.assigned_numbers %} — {{ a.assigned_numbers|join(', ') }}{% endif %}
+      </option>
+      {% endfor %}
+    </select>
+  </form>
+</div>
+{% endif %}
+
+{% if is_custom_prompt %}
+<div style="background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.25);
+            border-radius:12px;padding:12px 16px;margin-bottom:18px;font-size:13px;color:#1D4ED8">
+  ✍️ This agent's wording was written by hand, not built from the category wizard — edit it directly in the box below.
+</div>
+{% else %}
+
 {% if has_customisation %}
 <div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.3);
             border-radius:12px;padding:12px 16px;margin-bottom:18px;font-size:13px;color:#166534">
@@ -54,6 +77,7 @@
 
 <div class="card" style="max-width:820px">
   <form method="POST" action="{{ url_for('portal.ai_instruction') }}" id="wizardForm">
+    {% if selected_agent_id %}<input type="hidden" name="agent_id" value="{{ selected_agent_id }}">{% endif %}
 
     <!-- ── Step 1: Business category ──────────────────────────────────────── -->
     <p style="font-size:14px;font-weight:800;margin-bottom:4px">Step 1 — What do you sell?</p>
@@ -152,24 +176,35 @@
     </p>
 
   </form>
+</div>
+{% endif %}
 
-  <!-- ── Full instruction viewer ────────────────────────────────────────── -->
-  <div style="margin-top:20px;border-top:1px solid var(--line);padding-top:16px">
-    <details>
-      <summary style="font-size:13px;font-weight:700;cursor:pointer;color:var(--ink)">
-        View full AI instruction sent to your assistant
-      </summary>
-      <p class="muted" style="font-size:12px;margin:8px 0 6px">
-        This is the complete instruction your AI receives at the start of every conversation, including the base prompt and your wizard settings.
-      </p>
-      <pre style="background:rgba(3,12,24,0.04);border:1px solid var(--line);border-radius:10px;
-                  padding:14px 16px;font-size:12px;line-height:1.7;white-space:pre-wrap;
-                  word-break:break-word;max-height:400px;overflow-y:auto;color:var(--txt);margin:0">{{ full_prompt or '(No instruction configured yet.)' }}</pre>
-    </details>
-  </div>
+<!-- ── Edit wording directly ───────────────────────────────────────────── -->
+<div class="card" style="max-width:820px;margin-top:18px">
+  <details {% if is_custom_prompt %}open{% endif %}>
+    <summary style="font-size:13px;font-weight:700;cursor:pointer;color:var(--ink)">
+      {{ 'Edit the instruction wording directly' if is_custom_prompt else 'Edit full AI instruction directly (advanced)' }}
+    </summary>
+    <p class="muted" style="font-size:12px;margin:8px 0 10px">
+      This is the complete instruction your AI receives at the start of every conversation.
+      {% if not is_custom_prompt %}Editing here saves your own wording exactly as typed — the category wizard above will no longer apply to it afterwards.{% endif %}
+    </p>
+    <form method="POST" action="{{ url_for('portal.ai_instruction') }}">
+      {% if selected_agent_id %}<input type="hidden" name="agent_id" value="{{ selected_agent_id }}">{% endif %}
+      <textarea name="raw_prompt" rows="16"
+                style="width:100%;box-sizing:border-box;background:#fff;border:1.5px solid var(--line);border-radius:10px;
+                       padding:14px 16px;font-size:12px;line-height:1.7;white-space:pre-wrap;
+                       color:var(--txt);font-family:inherit;resize:vertical"
+      >{{ full_prompt }}</textarea>
+      <div style="margin-top:12px">
+        <button type="submit" class="btn btn-primary">Save wording</button>
+      </div>
+    </form>
+  </details>
 </div>
 
 <script>
+if (document.getElementById('wizardForm')) {
 var selectedCategory = 'fashion';
 
 var CATEGORIES = {
@@ -237,5 +272,6 @@ if (saved) {
   document.getElementById('cb-noprice').checked   = saved.indexOf('Never share specific prices') !== -1;
 }
 buildPreview();
+}
 </script>
 {% endblock %}

@@ -1,0 +1,303 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Feature Releases — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+  .rel-empty td{text-align:center;color:var(--muted);padding:40px 20px!important}
+  .rel-grid{display:grid;grid-template-columns:minmax(0,460px) minmax(0,1fr);gap:20px;align-items:start;margin-bottom:24px}
+  @media(max-width:1000px){.rel-grid{grid-template-columns:1fr}}
+
+  .rel-form textarea{font-family:inherit}
+  .rel-form .form-group{margin-bottom:16px}
+  .rel-form label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+  .rel-form .form-hint{font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.5}
+  .rel-form input[type=text],.rel-form select,.rel-form textarea{
+    width:100%;padding:9px 12px;border:1.5px solid var(--line);border-radius:9px;font-size:13px}
+  .rel-checkbox{display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:14px}
+  .rel-section-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;
+                      color:var(--muted);margin:22px 0 12px;padding-top:16px;border-top:1px solid var(--line)}
+  .rel-section-title:first-child{margin-top:0;padding-top:0;border-top:none}
+
+  .rel-title-cell{max-width:260px}
+  .rel-summary-cell{max-width:320px;color:var(--muted);font-size:12.5px}
+
+  /* Live preview panel — matches templates/ambassador/whats_new.html */
+  .rel-preview-title{font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
+  .wn-card{border:1px solid var(--line);border-radius:16px;padding:22px 24px;background:#fff;
+           box-shadow:0 1px 3px rgba(0,0,0,.05)}
+  .wn-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+  .wn-title{font-size:18px;font-weight:800;margin:0 0 8px;letter-spacing:-.01em}
+  .wn-meta{display:flex;gap:6px;flex-wrap:wrap}
+  .wn-chip{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;
+           padding:3px 10px;border-radius:999px;white-space:nowrap}
+  .wn-chip-product{background:#eff6ff;color:#1d4ed8}
+  .wn-chip-plan{background:#fef3c7;color:#92400e}
+  .wn-new{flex-shrink:0;display:inline-flex;align-items:center;gap:5px;background:#fee2e2;color:#dc2626;
+          font-size:10.5px;font-weight:800;letter-spacing:.03em;padding:4px 10px;border-radius:999px;
+          text-transform:uppercase}
+  .wn-new::before{content:"";width:6px;height:6px;border-radius:50%;background:#dc2626}
+  .wn-summary{font-size:14.5px;color:var(--ink);line-height:1.55;margin:14px 0 16px}
+  .wn-section{border-radius:12px;padding:14px 16px;margin-bottom:10px}
+  .wn-section-pitch{background:#eff6ff;border:1px solid #bfdbfe}
+  .wn-section-demo{background:#f0fdf4;border:1px solid #bbf7d0}
+  .wn-section-label{font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:.03em;margin-bottom:8px}
+  .wn-section-pitch .wn-section-label{color:#1d4ed8}
+  .wn-section-demo .wn-section-label{color:#166534}
+  .wn-section-body{font-size:13.5px;line-height:1.6}
+  .wn-section-pitch .wn-section-body{color:#1e3a8a}
+  .wn-section-demo .wn-section-body{color:#14532d}
+  .wn-section-body p{margin:0 0 8px}
+  .wn-section-body p:last-child{margin-bottom:0}
+  .wn-section-body ul.rt-list{margin:2px 0 8px 18px;padding:0}
+  .wn-section-body ul.rt-list:last-child{margin-bottom:0}
+  .wn-section-body li{margin-bottom:5px}
+  .wn-section-body .rt-subhead{font-weight:800;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;margin:10px 0 5px}
+  .wn-section-body .rt-subhead:first-child{margin-top:0}
+  .wn-playbook{font-size:12.5px;color:var(--muted);font-style:italic;margin-top:2px}
+  .wn-footer{font-size:11px;color:var(--muted);margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+  .wn-empty-hint{color:var(--muted);font-size:13px;text-align:center;padding:50px 20px;
+                 border:1.5px dashed var(--line);border-radius:16px}
+
+  .wa-bubble-wrap{background:#e5ddd5;border-radius:12px;padding:16px;display:flex;margin-top:8px}
+  .wa-bubble{background:#fff;border-radius:8px;border-top-left-radius:0;padding:10px 12px;max-width:85%;
+             font-size:13.5px;line-height:1.45;box-shadow:0 1px 1px rgba(0,0,0,0.08);white-space:pre-wrap;word-break:break-word}
+  .wa-off-note{color:var(--muted);font-size:12.5px;font-style:italic;margin-top:8px}
+</style>
+
+<div class="page-header">
+  <h1 class="section-title">{{ 'Edit Draft' if edit_release else 'New Feature Release' }}</h1>
+</div>
+
+<div class="rel-grid">
+  <div class="card">
+    <form method="POST" action="{{ url_for('portal_admin.feature_releases_save') }}" class="rel-form" id="releaseForm">
+      {% if edit_release %}<input type="hidden" name="id" value="{{ edit_release.id }}">{% endif %}
+
+      <div class="rel-section-title">Basics</div>
+      <div class="form-group">
+        <label>Title</label>
+        <input type="text" name="title" id="f_title" required value="{{ edit_release.title if edit_release else '' }}"
+               placeholder="e.g. Visual Product Match">
+      </div>
+      <div class="form-group">
+        <label>Summary (one-liner, shown on the card)</label>
+        <input type="text" name="summary" id="f_summary" required value="{{ edit_release.summary if edit_release else '' }}"
+               placeholder="Customers can send a photo on WhatsApp and get a matching product">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div class="form-group">
+          <label>Product</label>
+          <select name="product" id="f_product">
+            <option value="all" {% if edit_release and edit_release.product=='all' %}selected{% endif %}>All Products</option>
+            {% for p, label in product_labels.items() %}
+            <option value="{{ p }}" {% if edit_release and edit_release.product==p %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Plan Gate (pill, informational)</label>
+          <input type="text" name="min_plan" id="f_min_plan" value="{{ edit_release.min_plan if edit_release else 'All plans' }}"
+                 placeholder="e.g. Pro only">
+        </div>
+      </div>
+
+      <div class="rel-section-title">Sales Enablement</div>
+      <div class="form-group">
+        <label>Pitch Notes — how to sell it</label>
+        <textarea name="pitch_notes" id="f_pitch_notes" rows="5"
+                  placeholder="- Best fit: merchants with a large photo catalogue&#10;- Pitch line: your exact wording here&#10;- Why it matters: the upgrade/urgency angle">{{ edit_release.pitch_notes if edit_release else '' }}</textarea>
+        <div class="form-hint">Start a line with <code>- </code> for a bullet, or <code>### </code> for a small heading. Blank lines start a new paragraph.</div>
+      </div>
+      <div class="form-group">
+        <label>Demo Instructions (optional) — how to show it live</label>
+        <textarea name="demo_instructions" id="f_demo_instructions" rows="4"
+                  placeholder="- Send the demo WhatsApp number a real product photo&#10;- Point out: correct price, live stock status">{{ edit_release.demo_instructions if edit_release else '' }}</textarea>
+        <div class="form-hint">Same formatting as above — bullets and headings supported.</div>
+      </div>
+      <div class="form-group">
+        <label>Playbook Tie-in (optional)</label>
+        <input type="text" name="playbook_note" id="f_playbook_note" value="{{ edit_release.playbook_note if edit_release else '' }}"
+               placeholder="e.g. Use in Step 2/3 of the pitch">
+      </div>
+
+      <div class="rel-section-title">Distribution</div>
+      <label class="rel-checkbox">
+        <input type="checkbox" name="notify_whatsapp" id="f_notify_whatsapp"
+               {% if not edit_release or edit_release.notify_whatsapp %}checked{% endif %}>
+        Notify via WhatsApp when published
+      </label>
+
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button type="submit" class="btn btn-primary">{{ 'Save Draft' if edit_release else 'Create Draft' }}</button>
+        {% if edit_release %}
+        <a class="btn" href="{{ url_for('portal_admin.feature_releases') }}">Cancel</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+
+  <div>
+    <div class="rel-preview-title">Live Preview — updates as you type</div>
+    <div id="previewCard" class="wn-empty-hint">Fill in the form to see a live preview here.</div>
+
+    <div class="rel-preview-title" style="margin-top:20px">WhatsApp Notice Preview</div>
+    <div id="previewWaOff" class="wa-off-note" style="display:none">WhatsApp notify is off — no message will be sent on publish.</div>
+    <div class="wa-bubble-wrap" id="previewWaWrap" style="display:none">
+      <div class="wa-bubble" id="previewWaBubble"></div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:12px">All Releases</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Product</th>
+          <th>Plan Gate</th>
+          <th>Status</th>
+          <th>Published</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for rel in releases %}
+        <tr>
+          <td class="rel-title-cell">
+            <strong>{{ rel.title }}</strong>
+            <div class="rel-summary-cell">{{ rel.summary }}</div>
+          </td>
+          <td><span class="pill pill-grey">{{ product_labels.get(rel.product, 'All') }}</span></td>
+          <td>{{ rel.min_plan }}</td>
+          <td>
+            {% if rel.status == 'published' %}
+            <span class="pill pill-green">Published</span>
+            {% else %}
+            <span class="pill pill-warn">Draft</span>
+            {% endif %}
+          </td>
+          <td>{{ rel.published_at.strftime('%d %b %Y') if rel.published_at else '—' }}</td>
+          <td style="white-space:nowrap">
+            <a class="btn btn-sm" href="{{ url_for('portal_admin.feature_releases_preview', release_id=rel.id) }}" target="_blank" rel="noopener">👁 Preview</a>
+            {% if rel.status == 'draft' %}
+            <a class="btn btn-sm" href="{{ url_for('portal_admin.feature_releases', edit=rel.id) }}">Edit</a>
+            <form method="POST" action="{{ url_for('portal_admin.feature_releases_publish', release_id=rel.id) }}" style="display:inline"
+                  onsubmit="return confirm({{ ('Publish this release?' + (' A WhatsApp notice will be sent to matching ambassadors.' if rel.notify_whatsapp else ''))|tojson }});">
+              <button type="submit" class="btn btn-sm btn-primary">Publish</button>
+            </form>
+            <form method="POST" action="{{ url_for('portal_admin.feature_releases_delete', release_id=rel.id) }}" style="display:inline"
+                  onsubmit="return confirm('Delete this draft?');">
+              <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+            </form>
+            {% else %}
+            <form method="POST" action="{{ url_for('portal_admin.feature_releases_unpublish', release_id=rel.id) }}" style="display:inline"
+                  onsubmit="return confirm('Unpublish? This hides it from the ambassador feed.');">
+              <button type="submit" class="btn btn-sm">Unpublish</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr class="rel-empty"><td colspan="6">No releases yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const PRODUCT_LABELS = {{ product_labels|tojson }};
+const PRODUCT_ICONS  = {"portal":"🛍️","school":"🏫","estate":"🏠"};
+
+function escHtml(text){
+  return (text || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Mirrors the server-side `richtext` Jinja filter (portal_app.py) so the
+// live preview matches what actually renders once saved.
+function richtext(text){
+  text = (text || '').trim();
+  if (!text) return '';
+  const parts = [];
+  let listBuf = [];
+  const flushList = () => {
+    if (listBuf.length) {
+      parts.push('<ul class="rt-list">' + listBuf.map(li => '<li>' + escHtml(li) + '</li>').join('') + '</ul>');
+      listBuf = [];
+    }
+  };
+  text.split(/\n\s*\n/).forEach(block => {
+    block.split('\n').forEach(line => {
+      line = line.trim();
+      if (!line) return;
+      if (line.startsWith('### ')) {
+        flushList();
+        parts.push('<div class="rt-subhead">' + escHtml(line.slice(4)) + '</div>');
+      } else if (line.startsWith('- ') || line.startsWith('* ')) {
+        listBuf.push(line.slice(2));
+      } else {
+        flushList();
+        parts.push('<p>' + escHtml(line) + '</p>');
+      }
+    });
+    flushList();
+  });
+  return parts.join('');
+}
+
+function renderPreview(){
+  const title    = document.getElementById('f_title').value.trim();
+  const summary  = document.getElementById('f_summary').value.trim();
+  const product  = document.getElementById('f_product').value;
+  const minPlan  = document.getElementById('f_min_plan').value.trim() || 'All plans';
+  const pitch    = document.getElementById('f_pitch_notes').value.trim();
+  const demo     = document.getElementById('f_demo_instructions').value.trim();
+  const playbook = document.getElementById('f_playbook_note').value.trim();
+  const notify   = document.getElementById('f_notify_whatsapp').checked;
+
+  if (!title && !summary) {
+    document.getElementById('previewCard').outerHTML = '<div id="previewCard" class="wn-empty-hint">Fill in the form to see a live preview here.</div>';
+    document.getElementById('previewWaWrap').style.display = 'none';
+    document.getElementById('previewWaOff').style.display = 'none';
+    return;
+  }
+
+  const productIcon  = product === 'all' ? '🌐' : (PRODUCT_ICONS[product] || '🌐');
+  const productLabel = product === 'all' ? 'All Products' : (PRODUCT_LABELS[product] || product);
+
+  let html = '<div class="wn-card"><div class="wn-head"><div>'
+    + '<h3 class="wn-title">' + escHtml(title || '(untitled)') + '</h3>'
+    + '<div class="wn-meta">'
+    + '<span class="wn-chip wn-chip-product">' + productIcon + ' ' + escHtml(productLabel) + '</span>'
+    + '<span class="wn-chip wn-chip-plan">🔒 ' + escHtml(minPlan) + '</span>'
+    + '</div></div><span class="wn-new">New</span></div>';
+  if (summary) html += '<div class="wn-summary">' + escHtml(summary) + '</div>';
+  if (pitch)   html += '<div class="wn-section wn-section-pitch"><div class="wn-section-label">🎯 How to Pitch It</div><div class="wn-section-body">' + richtext(pitch) + '</div></div>';
+  if (demo)    html += '<div class="wn-section wn-section-demo"><div class="wn-section-label">🎬 How to Demo It</div><div class="wn-section-body">' + richtext(demo) + '</div></div>';
+  if (playbook) html += '<div class="wn-playbook">📖 <strong>Playbook:</strong> ' + escHtml(playbook) + '</div>';
+  html += '<div class="wn-footer">Published today</div></div>';
+
+  const card = document.getElementById('previewCard');
+  card.className = '';
+  card.innerHTML = html;
+
+  if (notify) {
+    const noticeText = '🆕 New: ' + title + ' — ' + summary + ' See it (and how to pitch it) in your Ambassador Hub under What\'s New.';
+    const full = 'Hi Ada, here\'s an update from the PhiXtra Ambassador Team: ' + noticeText + ' Thanks for being part of PhiXtra!';
+    document.getElementById('previewWaBubble').textContent = full;
+    document.getElementById('previewWaWrap').style.display = 'flex';
+    document.getElementById('previewWaOff').style.display = 'none';
+  } else {
+    document.getElementById('previewWaWrap').style.display = 'none';
+    document.getElementById('previewWaOff').style.display = 'block';
+  }
+}
+
+['f_title','f_summary','f_product','f_min_plan','f_pitch_notes','f_demo_instructions','f_playbook_note','f_notify_whatsapp']
+  .forEach(id => document.getElementById(id).addEventListener('input', renderPreview));
+document.getElementById('f_product').addEventListener('change', renderPreview);
+document.getElementById('f_notify_whatsapp').addEventListener('change', renderPreview);
+renderPreview();
+</script>
+{% endblock %}

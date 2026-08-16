@@ -1,0 +1,76 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    width:1440px; height:900px; overflow:hidden;
+    background: radial-gradient(circle at 30% 20%, #241014 0%, #030C18 55%, #01060c 100%);
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .wrap { text-align:center; color:#fff; width:1000px; }
+  .badge {
+    display:inline-block; padding:8px 22px; border-radius:999px;
+    background:rgba(255,82,82,0.12); border:1px solid rgba(255,82,82,0.4);
+    color:#ff5252; font-size:16px; font-weight:700; letter-spacing:2px;
+    margin-bottom:40px;
+  }
+  .line-list { list-style:none; text-align:left; }
+  .line-item {
+    display:flex; align-items:flex-start; gap:16px;
+    font-size:34px; font-weight:700; color:#e7edf3;
+    margin:0 0 30px 0; opacity:0; transform:translateX(-24px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+  }
+  .line-item.visible { opacity:1; transform:translateX(0); }
+  .line-item .x {
+    flex-shrink:0; color:#ff5252; font-size:26px; font-weight:900;
+    width:40px; height:40px; border-radius:50%; border:2px solid rgba(255,82,82,0.5);
+    display:flex; align-items:center; justify-content:center; margin-top:4px;
+  }
+  .turn-card {
+    display:none; flex-direction:column; align-items:center;
+  }
+  .turn-card.visible { display:flex; }
+  .check {
+    width:88px; height:88px; border-radius:50%; background:#25D366;
+    display:flex; align-items:center; justify-content:center;
+    font-size:44px; color:#fff; animation: popIn 0.5s cubic-bezier(.2,1.4,.4,1);
+  }
+  .turn-text { margin-top:26px; font-size:46px; font-weight:800; color:#fff; }
+  .turn-sub { margin-top:14px; font-size:24px; font-weight:600; color:#8fa6b8; }
+  @keyframes popIn {
+    0%   { opacity:0; transform:scale(0.8); }
+    100% { opacity:1; transform:scale(1); }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="badge" id="badge">SOUND FAMILIAR?</div>
+    <ul class="line-list" id="lineList">
+      <li class="line-item" id="p1"><span class="x">✗</span>A customer messages you on WhatsApp right now.</li>
+      <li class="line-item" id="p2"><span class="x">✗</span>But you're busy. Your battery's low. Or you're fast asleep.</li>
+      <li class="line-item" id="p3"><span class="x">✗</span>By the time you reply, they've already bought from someone else.</li>
+    </ul>
+    <div class="turn-card" id="turnCard">
+      <div class="check">✓</div>
+      <div class="turn-text">Unless your AI Sales Agent replies for you.</div>
+      <div class="turn-sub">Watch this ↓</div>
+    </div>
+  </div>
+  <script>
+    function showPoint(n) {
+      var el = document.getElementById('p' + n);
+      if (el) el.classList.add('visible');
+    }
+    function showTurn() {
+      document.getElementById('lineList').style.display = 'none';
+      document.getElementById('badge').style.display = 'none';
+      document.getElementById('turnCard').classList.add('visible');
+    }
+  </script>
+</body>
+</html>

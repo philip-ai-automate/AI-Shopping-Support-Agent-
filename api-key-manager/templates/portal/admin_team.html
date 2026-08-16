@@ -1,0 +1,84 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Team — PhiXtra Admin{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="section-title">🧑‍💼 Team</h1>
+  <a href="{{ url_for('portal_admin.admin_team_new') }}" class="btn btn-primary btn-sm">+ New Support Login</a>
+</div>
+
+<p class="muted" style="margin-bottom:20px">
+  Support logins can only see and use the admin modules you grant them below.
+  Owner accounts always have full access and are not editable here.
+</p>
+
+<div class="card" style="padding:0">
+  <div class="table-wrap" style="border:none;border-radius:16px">
+    <table>
+      <thead>
+        <tr>
+          <th>Username</th>
+          <th>Role</th>
+          <th>Status</th>
+          <th>Modules granted</th>
+          <th>Created</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in admins %}
+        <tr>
+          <td><strong>{{ a.username }}</strong>{% if a.username == my_username %} <span class="muted" style="font-size:12px">(you)</span>{% endif %}</td>
+          <td>
+            {% if a.role == 'owner' %}
+              <span class="pill pill-green">Owner</span>
+            {% else %}
+              <span class="pill pill-grey">Support</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if a.role == 'owner' %}
+              <span class="pill pill-green">Full access</span>
+            {% elif a.active %}
+              <span class="pill pill-green">Active</span>
+            {% else %}
+              <span class="pill pill-red">Deactivated</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if a.role == 'owner' %}
+              <span class="muted">All modules</span>
+            {% elif a.module_labels %}
+              <span style="font-size:12.5px">{{ a.module_labels|join(', ') }}</span>
+            {% else %}
+              <span class="muted">None yet</span>
+            {% endif %}
+          </td>
+          <td class="muted">{{ a.created_at.strftime('%Y-%m-%d') if a.created_at else '—' }}</td>
+          <td style="display:flex;gap:5px;flex-wrap:wrap">
+            {% if a.role != 'owner' %}
+              <a href="{{ url_for('portal_admin.admin_team_edit', admin_id=a.id) }}" class="btn btn-sm">Edit Permissions</a>
+              <form method="POST" action="{{ url_for('portal_admin.admin_team_reset_password', admin_id=a.id) }}"
+                    onsubmit="return confirm('Reset password for {{ a.username }}? A new password will be shown once.')">
+                <button type="submit" class="btn btn-sm">Reset Password</button>
+              </form>
+              <form method="POST" action="{{ url_for('portal_admin.admin_team_toggle_active', admin_id=a.id) }}"
+                    onsubmit="return confirm('{{ 'Deactivate' if a.active else 'Reactivate' }} {{ a.username }}?')">
+                <button type="submit" class="btn btn-sm {{ 'btn-danger' if a.active else '' }}">
+                  {{ 'Deactivate' if a.active else 'Reactivate' }}
+                </button>
+              </form>
+            {% else %}
+              <span class="muted" style="font-size:12px">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="muted" style="text-align:center;padding:24px">No admin logins yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

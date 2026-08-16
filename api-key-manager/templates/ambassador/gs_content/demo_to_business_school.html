@@ -1,0 +1,133 @@
+<div class="gs-section">
+  <div class="gs-section-title">Why show a demo first?</div>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6">
+    Telling a school proprietor about PhiXtra School is good. <strong>Showing them the parent AI bot answering a real question on WhatsApp is better.</strong> Most proprietors get convinced once they see it working.
+  </p>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">The demo WhatsApp account</div>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:4px">
+    This is a <strong>live PhiXtra School AI account</strong> running on a demo school — Greenfield Academy.
+    It knows real seeded students, classes, attendance, and fee records. You'll use it to show school
+    proprietors exactly what parents will experience.
+  </p>
+  <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:12px;padding:13px 16px;
+              font-size:13px;color:#92400e;display:flex;gap:10px;align-items:flex-start;margin-top:12px">
+    <span style="font-size:18px;flex-shrink:0">📋</span>
+    <div>
+      <strong>Stick to attendance and fee questions about seeded students.</strong> No general FAQ
+      documents have been uploaded to this demo account, so questions like "what time does school close"
+      won't have an answer yet. Attendance/fee questions about real seeded students (classes JSS1, JSS2,
+      SS1, SS2) work reliably.
+    </div>
+  </div>
+  <a class="demo-btn" href="https://wa.me/{{ demo_wa_number }}" target="_blank" rel="noopener">
+    <span style="font-size:20px">💬</span> Open Demo Chat on WhatsApp
+  </a>
+
+  <!-- Demo QR code -->
+  <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--line)">
+    <div style="font-size:13px;font-weight:700;margin-bottom:10px">Demo QR Code</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.6">
+      Share this QR code with a school proprietor so they can scan it and chat with the demo AI themselves — on their own phone.
+    </p>
+    <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
+      <img src="{{ url_for('ambassador.demo_qr_image', product='school') }}" alt="School demo WhatsApp QR code"
+           style="width:140px;height:140px;border:1px solid var(--line);border-radius:12px;flex-shrink:0"/>
+      <div style="flex:1;min-width:180px;display:flex;flex-direction:column;gap:10px">
+        <a href="{{ url_for('ambassador.demo_qr_image', download='1', product='school') }}"
+           class="btn btn-primary btn-sm" download>
+          Download QR Code
+        </a>
+        <div style="font-size:12px;color:var(--muted);line-height:1.55">
+          Download and send as an image on WhatsApp, or show it directly on your screen.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:12px;padding:13px 16px;
+              font-size:13px;color:#3730a3;display:flex;gap:10px;align-items:flex-start;margin-top:20px">
+    <span style="font-size:18px;flex-shrink:0">🙅</span>
+    <div>
+      <strong>If they want to see the dashboard, don't log in and show it yourself.</strong> Arrange it with a Presale Engineer instead — your job is the WhatsApp chat demo above and the close.
+    </div>
+  </div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">How to run the demo</div>
+  <div class="demo-steps">
+    <div class="demo-step">
+      <div class="demo-step-num">1</div>
+      <div>
+        <div class="demo-step-title">Open the demo chat in front of the school proprietor</div>
+        <div class="demo-step-desc">Tap the green button above or scan the QR code. Do this while they are watching.</div>
+      </div>
+    </div>
+    <div class="demo-step">
+      <div class="demo-step-num">2</div>
+      <div>
+        <div class="demo-step-title">Ask an attendance or fee question and send it</div>
+        <div class="demo-step-desc">Use one of the sample questions below. Type it slowly so they can see what you are doing.</div>
+      </div>
+    </div>
+    <div class="demo-step">
+      <div class="demo-step-num">3</div>
+      <div>
+        <div class="demo-step-title">Show them the reply</div>
+        <div class="demo-step-desc">The AI replies in seconds using the school's real records. Hold up your phone so they can read the answer.</div>
+      </div>
+    </div>
+    <div class="demo-step">
+      <div class="demo-step-num">4</div>
+      <div>
+        <div class="demo-step-title">Say this to close</div>
+        <div class="demo-step-desc">"This is exactly what your parents will get once your students are added. You can start free on our Free plan — ready to set your school up? I can register you right now."</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">Sample questions to use during the demo</div>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:12px">
+    Copy any of these into the demo chat — these use real seeded students on the demo account.
+  </p>
+
+  <div class="q-card">
+    <span class="q-text" id="q1">Is Temi Adeyemi present today?</span>
+    <button class="copy-btn" onclick="copyText('q1', this)">Copy</button>
+  </div>
+  <div class="q-card">
+    <span class="q-text" id="q2">What is the fee balance for Emeka Okafor?</span>
+    <button class="copy-btn" onclick="copyText('q2', this)">Copy</button>
+  </div>
+  <div class="q-card">
+    <span class="q-text" id="q3">Which class is Fatima Musa in?</span>
+    <button class="copy-btn" onclick="copyText('q3', this)">Copy</button>
+  </div>
+  <div class="q-card">
+    <span class="q-text" id="q4">Has Chukwudi Eze paid this term's fees?</span>
+    <button class="copy-btn" onclick="copyText('q4', this)">Copy</button>
+  </div>
+
+  <div class="gs-tip" style="margin-top:4px">
+    <strong>Remember:</strong> Stick to attendance and fee questions about seeded students. If a school proprietor asks a general question (school hours, uniform policy, etc.), tell them: "The demo doesn't have that set up yet — your own account will have your school's real FAQs uploaded."
+  </div>
+</div>
+
+<div class="gs-section">
+  <div class="gs-section-title">After the demo</div>
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;gap:12px;align-items:flex-start;font-size:13px">
+      <span style="font-size:16px;flex-shrink:0">👉</span>
+      <div>Show them <strong>your own QR code</strong> — from <a href="{{ url_for('ambassador.getting_started_topic', topic='your-link') }}">Your Link &amp; QR Code</a>, not the Demo QR Code you just used — and ask them to scan it, or paste your referral link directly into the chat. Signing up any other way means the referral isn't tracked and you don't get paid.</div>
+    </div>
+    <div style="display:flex;gap:12px;align-items:flex-start;font-size:13px">
+      <span style="font-size:16px;flex-shrink:0">👉</span>
+      <div>Registration only takes a few minutes — school name, type, state, and admin details</div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,17 @@
+{% extends "portal/base.html" %}
+{% block title %}Join the team — PhiXtra Portal{% endblock %}
+{% block wrap_class %}page-sm{% endblock %}
+{% block content %}
+<div class="card" style="margin-top:12px">
+  <h1 style="font-size:22px;font-weight:800;margin-bottom:6px">Set your password</h1>
+  <p class="muted" style="margin-bottom:22px">At least 8 characters. Once set, you can log in and start answering messages in the shared Inbox.</p>
+  <form method="POST">
+    <input type="hidden" name="token" value="{{ token }}"/>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" name="password" required minlength="8" autofocus placeholder="••••••••"/>
+    </div>
+    <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">Set password & continue</button>
+  </form>
+</div>
+{% endblock %}

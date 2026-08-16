@@ -121,6 +121,31 @@ html, body { overflow: hidden; height: 100%; }
   background: var(--good); color: #fff; font-size: 11px; font-weight: 700;
   display: flex; align-items: center; justify-content: center; padding: 0 5px;
 }
+.agent-dot {
+  flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%;
+  display: inline-block; margin-right: 1px;
+}
+.chat-agent-dot {
+  flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%;
+  display: inline-block;
+}
+.agent-tabs {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 0 12px 10px;
+}
+.agent-tab {
+  display: flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600;
+  color: var(--muted); background: rgba(3,12,24,.05); border: 1px solid transparent;
+  border-radius: 999px; padding: 3px 10px 3px 8px; cursor: pointer; white-space: nowrap;
+  max-width: 130px; overflow: hidden; text-overflow: ellipsis;
+}
+.agent-tab .agent-dot { margin-right: 0 }
+.agent-tab.active { background: #fff; border-color: var(--line); color: var(--ink) }
+.claim-tag {
+  flex-shrink: 0; font-size: 10px; font-weight: 700; color: #027A48;
+  background: #F0FDF4; border: 1px solid #A6F4C5; border-radius: 999px;
+  padding: 1px 7px; white-space: nowrap; max-width: 90px; overflow: hidden; text-overflow: ellipsis;
+}
 .lead-dot {
   flex-shrink: 0; font-size: 13px; line-height: 1;
   title: attr(title);
@@ -251,6 +276,19 @@ html, body { overflow: hidden; height: 100%; }
   content: ''; position: absolute; right: -6px; bottom: 8px;
   border: 6px solid transparent; border-left-color: #dcf8c6; border-right: 0;
 }
+
+/* Imported chat-history media (photos/videos/audio/documents) */
+.bubble-media-img, .bubble-media-video {
+  display: block; max-width: 220px; max-height: 260px; border-radius: 8px;
+  margin-bottom: 4px; cursor: pointer; object-fit: cover;
+}
+.bubble-media-audio { display: block; max-width: 220px; margin-bottom: 4px; }
+.bubble-media-doc {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
+  font-size: 13px; font-weight: 600; text-decoration: none; color: inherit;
+}
+.bubble-media-doc:hover { text-decoration: underline; }
+.bubble-caption { font-size: 14px; line-height: 1.5; word-break: break-word; }
 
 /* Date separator */
 .date-sep {
@@ -445,6 +483,10 @@ html, body { overflow: hidden; height: 100%; }
             <option value="unread">Unread (awaiting reply)</option>
             <option value="replied">Replied</option>
             <option value="leads">🔥 Leads only</option>
+            {% if has_team %}
+            <option value="assigned_me">🙋 Assigned to me</option>
+            <option value="unassigned">Unclaimed</option>
+            {% endif %}
           </select>
           <select id="sortSel" onchange="applyAll()">
             <option value="newest">↓ Newest first</option>
@@ -453,11 +495,27 @@ html, body { overflow: hidden; height: 100%; }
         </div>
       </div>
 
+      {% if multi_number %}
+      <div class="agent-tabs" id="agentTabs">
+        <span class="agent-tab active" data-wa-number-id="" onclick="setAgentTab(this)">All</span>
+        {% for t in agent_tabs %}
+        <span class="agent-tab" data-wa-number-id="{{ t.phone_number_id }}" onclick="setAgentTab(this)">
+          <span class="agent-dot" style="background:{{ t.color }}"></span>{{ t.label }}
+        </span>
+        {% endfor %}
+      </div>
+      {% endif %}
+
       <div class="conv-list-scroll" id="convList">
         {% if not conversations %}
         <div class="conv-empty-msg">
+          {% if no_agents_assigned %}
+          <div style="font-size:36px;opacity:.25;margin-bottom:10px">🔒</div>
+          No AI Agent has been assigned to you yet. Ask the business owner to assign one on the Team page before you can see any conversations.
+          {% else %}
           <div style="font-size:36px;opacity:.25;margin-bottom:10px">💬</div>
           Send a WhatsApp message to {{ (connection.display_phone_number or connection.phone_number_id)|with_plus }} to get started.
+          {% endif %}
         </div>
         {% endif %}
 
@@ -470,9 +528,12 @@ html, body { overflow: hidden; height: 100%; }
            data-name="{{ c.display_name or '' }}"
            data-last-at="{{ c.last_message_at.strftime('%Y%m%d%H%M%S') if c.last_message_at else '0' }}"
            data-last-dir="{{ c.last_direction or 'inbound' }}"
+           data-needs-reply="{{ 'true' if c.needs_reply else 'false' }}"
            data-lead-tier="{{ c.lead_tier or '' }}"
            data-status="{{ c.handoff_status or '' }}"
            data-handoff="{{ c.handoff_session_id or '' }}"
+           data-wa-number-id="{{ c.last_phone_number_id or '' }}"
+           data-assigned-key="{{ c.assigned_to_key or '' }}"
            onclick="mobileOpenChat(event, this)">
           <div class="conv-avatar" style="background:{{ _col }}">{{ _ini }}</div>
           <div class="conv-body">
@@ -480,14 +541,22 @@ html, body { overflow: hidden; height: 100%; }
               <span class="conv-name">
                 {% if c.handoff_status == 'needs_agent' %}<span class="lead-dot" title="Waiting for agent">🔴</span> {% elif c.lead_tier == 'hot' %}<span class="lead-dot" title="Hot lead">🔥</span> {% elif c.lead_tier == 'warm' %}<span class="lead-dot" title="Warm lead">⭐</span> {% endif %}{{ c.display_name if c.display_name else '+' + c.customer_phone }}
               </span>
-              <span class="conv-time">{% if c.last_message_at %}{{ c.last_message_at.strftime('%d %b %H:%M') }}{% endif %}</span>
+              <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+                {% if multi_number and c.agent_color %}
+                <span class="agent-dot" style="background:{{ c.agent_color }}" title="{{ c.conv_agent_name or (c.conv_wa_number|with_plus if c.conv_wa_number else '') }}"></span>
+                {% endif %}
+                <span class="conv-time">{% if c.last_message_at %}{{ c.last_message_at.strftime('%d %b %H:%M') }}{% endif %}</span>
+              </span>
             </div>
             <div class="conv-row2">
               <span class="conv-preview">
                 {% if c.last_direction == 'outbound' %}→{% else %}←{% endif %}
                 {{ (c.last_content or '')|truncate(50) }}
               </span>
-              {% if c.last_direction == 'inbound' %}
+              {% if has_team and c.assigned_to_label %}
+              <span class="claim-tag" title="Claimed by {{ c.assigned_to_label }}">🙋 {{ c.assigned_to_label if c.assigned_to_key != current_actor_key else 'You' }}</span>
+              {% endif %}
+              {% if c.needs_reply %}
               <span class="conv-badge" title="Awaiting reply">●</span>
               {% endif %}
             </div>
@@ -529,11 +598,29 @@ html, body { overflow: hidden; height: 100%; }
               <button type="submit" class="name-save-btn">Save</button>
               <button type="button" class="name-cancel-btn" onclick="closeNameEdit()">Cancel</button>
             </form>
-            <div class="chat-sub">
-              {% if active_name %}+{{ active_phone }} · {% endif %}<span id="msgCountLabel">{{ messages|length }} message{{ 's' if messages|length != 1 }}</span>
+            <div class="chat-sub" style="display:flex;align-items:center;gap:5px">
+              <span>{% if active_name %}+{{ active_phone }} · {% endif %}<span id="msgCountLabel">{{ messages|length }} message{{ 's' if messages|length != 1 }}</span></span>
+              {% if multi_number and active_conv and active_conv.agent_color %}
+              · <span class="chat-agent-dot" style="background:{{ active_conv.agent_color }}"></span><span>{{ active_conv.conv_agent_name or (active_conv.conv_wa_number|with_plus if active_conv.conv_wa_number else '') }}</span>
+              {% endif %}
             </div>
           </div>
         </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+        {% if has_team %}
+          {% if active_conv and active_conv.assigned_to_label %}
+          <span style="font-size:11.5px;font-weight:600;color:var(--muted);white-space:nowrap">
+            {% if active_conv.assigned_to_key == current_actor_key %}🙋 Claimed by you{% else %}🔒 Claimed by {{ active_conv.assigned_to_label }}{% endif %}
+          </span>
+          <form method="POST" action="{{ url_for('portal.inbox_release', phone=active_phone) }}">
+            <button type="submit" class="btn btn-sm" style="background:#F2F4F7;color:var(--ink);border:1px solid var(--line);white-space:nowrap">Release</button>
+          </form>
+          {% else %}
+          <form method="POST" action="{{ url_for('portal.inbox_claim', phone=active_phone) }}">
+            <button type="submit" class="btn btn-sm" style="background:#F0FDF4;color:#027A48;border:1px solid #A6F4C5;white-space:nowrap">🙋 Claim</button>
+          </form>
+          {% endif %}
+        {% endif %}
         {% if active_handoff_session %}
         <form method="POST"
               action="{{ url_for('portal.inbox_resolve', session_id=active_handoff_session) }}"
@@ -554,7 +641,24 @@ html, body { overflow: hidden; height: 100%; }
           </button>
         </form>
         {% endif %}
+        </div>
       </div>
+
+      {% macro msg_body(msg) %}
+        {% if msg.media_url and msg.message_type == 'image' %}
+          <img src="{{ msg.media_url }}" alt="Photo" class="bubble-media-img" onclick="window.open(this.src,'_blank')">
+          {% if msg.content %}<div class="bubble-caption">{{ msg.content }}</div>{% endif %}
+        {% elif msg.media_url and msg.message_type == 'video' %}
+          <video src="{{ msg.media_url }}" controls class="bubble-media-video"></video>
+          {% if msg.content %}<div class="bubble-caption">{{ msg.content }}</div>{% endif %}
+        {% elif msg.media_url and msg.message_type == 'audio' %}
+          <audio src="{{ msg.media_url }}" controls class="bubble-media-audio"></audio>
+        {% elif msg.media_url and msg.message_type == 'document' %}
+          <a href="{{ msg.media_url }}" target="_blank" rel="noopener" class="bubble-media-doc">📄 {{ msg.content or 'Document' }}</a>
+        {% else %}
+          {{ msg.content or '(media message)' }}
+        {% endif %}
+      {% endmacro %}
 
       {# Messages #}
       <div class="chat-messages" id="chatMessages">
@@ -583,17 +687,21 @@ html, body { overflow: hidden; height: 100%; }
               <div class="bubble-col">
                 <div class="bubble-sender">Customer</div>
                 <div class="chat-bubble bubble-in">
-                  {{ msg.content or '(media message)' }}
+                  {{ msg_body(msg) }}
                   <span class="bubble-time">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}</span>
                 </div>
               </div>
             </div>
-            {% elif msg.message_type == 'agent_reply' %}
+            {% elif msg.message_type == 'agent_reply' or msg.is_historical %}
+            {# is_historical outbound rows predate any AI agent — they're the
+               merchant's own imported pre-migration messages, so they get
+               the same "You" label/style as a live human agent reply, never
+               the "AI" label below. #}
             <div class="msg-wrap outbound" data-ts="{{ msg.created_at.isoformat() if msg.created_at else '' }}">
               <div class="bubble-col">
-                <div class="bubble-sender">You</div>
+                <div class="bubble-sender">{{ msg.sent_by_label if (has_team and msg.sent_by_label) else 'You' }}</div>
                 <div class="chat-bubble bubble-agent">
-                  {{ msg.content }}
+                  {{ msg_body(msg) }}
                   <span class="bubble-time">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}</span>
                 </div>
               </div>
@@ -603,7 +711,7 @@ html, body { overflow: hidden; height: 100%; }
               <div class="bubble-col">
                 <div class="bubble-sender">AI</div>
                 <div class="chat-bubble bubble-out">
-                  {{ msg.content }}
+                  {{ msg_body(msg) }}
                   <span class="bubble-time">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}</span>
                 </div>
               </div>
@@ -614,7 +722,23 @@ html, body { overflow: hidden; height: 100%; }
       </div>
 
       {# Reply bar #}
+      {% set must_claim = has_team and not (active_conv and active_conv.assigned_to_key == current_actor_key) %}
       <div class="chat-reply">
+        {% if must_claim %}
+        <div style="padding:16px 20px;text-align:center">
+          {% if active_conv and active_conv.assigned_to_label %}
+          <p style="font-size:13px;color:var(--muted);margin-bottom:10px">🔒 Claimed by {{ active_conv.assigned_to_label }} — release it to reply here.</p>
+          <form method="POST" action="{{ url_for('portal.inbox_release', phone=active_phone) }}">
+            <button type="submit" class="btn btn-sm" style="background:#F2F4F7;color:var(--ink);border:1px solid var(--line)">Release conversation</button>
+          </form>
+          {% else %}
+          <p style="font-size:13px;color:var(--muted);margin-bottom:10px">Claim this conversation before replying, so no one else answers at the same time.</p>
+          <form method="POST" action="{{ url_for('portal.inbox_claim', phone=active_phone) }}">
+            <button type="submit" class="btn btn-primary btn-sm">🙋 Claim & reply</button>
+          </form>
+          {% endif %}
+        </div>
+        {% else %}
         <div class="reply-wrap">
           <div class="emoji-picker" id="emojiPicker">
             <div class="ep-tabs" id="epTabs"></div>
@@ -639,6 +763,7 @@ html, body { overflow: hidden; height: 100%; }
             </form>
           </div>
         </div>
+        {% endif %}
       </div>
       {% endif %}
     </div>
@@ -821,6 +946,14 @@ function saveName(e){
 // ═══════════════════════════════════════════════════════════════════════════════
 // FILTER + SORT
 // ═══════════════════════════════════════════════════════════════════════════════
+var _agentFilter = '';   // '' = All. Otherwise a phone_number_id from an agent tab.
+function setAgentTab(el){
+  _agentFilter = el.getAttribute('data-wa-number-id')||'';
+  var tabs=document.querySelectorAll('.agent-tab');
+  tabs.forEach(function(t){ t.classList.toggle('active', t===el); });
+  applyAll();
+}
+
 function applyAll() {
   var q      = (document.getElementById('phoneSearch').value||'').toLowerCase().trim();
   var filter = document.getElementById('filterSel').value;
@@ -832,16 +965,22 @@ function applyAll() {
   document.getElementById('sortSel').classList.toggle('active-filter',   sort!=='newest');
 
   var visible = items.filter(function(el){
-    var phone  = (el.getAttribute('data-phone')||'').toLowerCase();
-    var name   = (el.getAttribute('data-name')||'').toLowerCase();
-    var dir    = el.getAttribute('data-last-dir')||'inbound';
-    var tier   = el.getAttribute('data-lead-tier')||'';
-    var status = el.getAttribute('data-status')||'';
+    var phone      = (el.getAttribute('data-phone')||'').toLowerCase();
+    var name       = (el.getAttribute('data-name')||'').toLowerCase();
+    var dir        = el.getAttribute('data-last-dir')||'inbound';
+    var needsReply = el.getAttribute('data-needs-reply')==='true';
+    var tier       = el.getAttribute('data-lead-tier')||'';
+    var status     = el.getAttribute('data-status')||'';
+    var waNumberId = el.getAttribute('data-wa-number-id')||'';
+    var assignedKey = el.getAttribute('data-assigned-key')||'';
     if(q && !phone.includes(q) && !name.includes(q)) return false;
     if(filter==='needs_agent' && status!=='needs_agent') return false;
-    if(filter==='unread'      && dir!=='inbound')        return false;
+    if(filter==='unread'      && !needsReply)            return false;
     if(filter==='replied'     && dir!=='outbound')       return false;
     if(filter==='leads'       && !tier)                  return false;
+    if(filter==='assigned_me' && assignedKey!==RT.currentActorKey) return false;
+    if(filter==='unassigned'  && assignedKey)            return false;
+    if(_agentFilter && waNumberId!==_agentFilter)        return false;
     return true;
   });
 
@@ -879,6 +1018,9 @@ function mobileBack(){
 // ═══════════════════════════════════════════════════════════════════════════════
 var INBOX_INIT = {
   phone: {{ active_phone | tojson }},
+  multiNumber: {{ multi_number | tojson }},
+  hasTeam: {{ has_team | tojson }},
+  currentActorKey: {{ current_actor_key | tojson }},
   lastMsgAt: {% if messages and messages[-1].created_at %}"{{ messages[-1].created_at.isoformat() }}"{% else %}null{% endif %},
   convs: {
     {% for c in conversations %}
@@ -891,7 +1033,10 @@ var INBOX_INIT = {
 };
 
 var RT = {
-  phone:     INBOX_INIT.phone,
+  phone:       INBOX_INIT.phone,
+  multiNumber: INBOX_INIT.multiNumber,
+  hasTeam:     INBOX_INIT.hasTeam,
+  currentActorKey: INBOX_INIT.currentActorKey,
   lastMsgAt: INBOX_INIT.lastMsgAt,
   convs:     INBOX_INIT.convs,
   timer:     null,
@@ -934,6 +1079,26 @@ function showToast(msg){
 // Scroll on load
 (function(){ var el=document.getElementById('chatMessages'); if(el) el.scrollTop=el.scrollHeight; })();
 
+// Mirrors the Jinja msg_body() macro used for the initial server-rendered
+// thread — kept in sync manually since one's Jinja and one's JS.
+function msgBodyHtml(msg){
+  if(msg.media_url && msg.message_type==='image'){
+    var cap = msg.content ? '<div class="bubble-caption">'+escHtml(msg.content)+'</div>' : '';
+    return '<img src="'+escHtml(msg.media_url)+'" alt="Photo" class="bubble-media-img" onclick="window.open(this.src,\'_blank\')">'+cap;
+  }
+  if(msg.media_url && msg.message_type==='video'){
+    var cap = msg.content ? '<div class="bubble-caption">'+escHtml(msg.content)+'</div>' : '';
+    return '<video src="'+escHtml(msg.media_url)+'" controls class="bubble-media-video"></video>'+cap;
+  }
+  if(msg.media_url && msg.message_type==='audio'){
+    return '<audio src="'+escHtml(msg.media_url)+'" controls class="bubble-media-audio"></audio>';
+  }
+  if(msg.media_url && msg.message_type==='document'){
+    return '<a href="'+escHtml(msg.media_url)+'" target="_blank" rel="noopener" class="bubble-media-doc">📄 '+escHtml(msg.content||'Document')+'</a>';
+  }
+  return escHtml(msg.content||'(media message)');
+}
+
 function rtAppendMessage(msg, chatEl) {
   var dt=(msg.created_at||'').split('T');
   var dp=dt[0]?dt[0].split('-'):[];
@@ -963,15 +1128,16 @@ function rtAppendMessage(msg, chatEl) {
     playNotifSound();
     inner='<div class="msg-avatar" style="background:'+col+'">'+escHtml(ini)+'</div>'
         +'<div class="bubble-col"><div class="bubble-sender">Customer</div>'
-        +'<div class="chat-bubble bubble-in">'+escHtml(msg.content||'(media message)')
+        +'<div class="chat-bubble bubble-in">'+msgBodyHtml(msg)
         +'<span class="bubble-time">'+timeLabel+'</span></div></div>';
-  } else if(msg.message_type==='agent_reply'){
-    inner='<div class="bubble-col"><div class="bubble-sender">You</div>'
-        +'<div class="chat-bubble bubble-agent">'+escHtml(msg.content||'')
+  } else if(msg.message_type==='agent_reply'||msg.is_historical){
+    var senderLabel=(RT.hasTeam&&msg.sent_by_label)?msg.sent_by_label:'You';
+    inner='<div class="bubble-col"><div class="bubble-sender">'+escHtml(senderLabel)+'</div>'
+        +'<div class="chat-bubble bubble-agent">'+msgBodyHtml(msg)
         +'<span class="bubble-time">'+timeLabel+'</span></div></div>';
   } else {
     inner='<div class="bubble-col"><div class="bubble-sender">AI</div>'
-        +'<div class="chat-bubble bubble-out">'+escHtml(msg.content||'')
+        +'<div class="chat-bubble bubble-out">'+msgBodyHtml(msg)
         +'<span class="bubble-time">'+timeLabel+'</span></div></div>';
   }
   wrap.innerHTML=inner; chatEl.appendChild(wrap);
@@ -996,22 +1162,29 @@ function rtBuildConvItem(c){
   a.setAttribute('data-name',  c.display_name||'');
   a.setAttribute('data-last-at',  fmtLastAt(c.last_message_at));
   a.setAttribute('data-last-dir', c.last_direction||'inbound');
+  a.setAttribute('data-needs-reply', c.needs_reply?'true':'false');
   a.setAttribute('data-lead-tier', c.lead_tier||'');
   a.setAttribute('data-status',   c.handoff_status||'');
   a.setAttribute('data-handoff',  c.handoff_session_id||'');
+  a.setAttribute('data-wa-number-id', c.last_phone_number_id||'');
+  a.setAttribute('data-assigned-key', c.assigned_to_key||'');
   a.addEventListener('click', function(e){ mobileOpenChat(e,a); });
   var col=phoneColor(c.customer_phone); var ini=phoneInitials(c.display_name,c.customer_phone);
   var name=c.display_name||('+'+c.customer_phone);
-  var badge=c.last_direction==='inbound'?'<span class="conv-badge" title="Awaiting reply">●</span>':'';
+  var badge=c.needs_reply?'<span class="conv-badge" title="Awaiting reply">●</span>':'';
   var arrow=c.last_direction==='outbound'?'→':'←';
   var preview=(c.last_content||'').substring(0,50)+((c.last_content||'').length>50?'…':'');
   var statusDot=c.handoff_status==='needs_agent'?'<span class="lead-dot" title="Waiting for agent">🔴</span> ':'';
+  var agentTitle=c.conv_agent_name||(c.conv_wa_number?('+'+String(c.conv_wa_number).replace(/^\+/,'')):'');
+  var agentDot=(RT.multiNumber&&c.agent_color)?'<span class="agent-dot" style="background:'+escHtml(c.agent_color)+'" title="'+escHtml(agentTitle)+'"></span>':'';
+  var claimLabel=(c.assigned_to_key===RT.currentActorKey)?'You':c.assigned_to_label;
+  var claimTag=(RT.hasTeam&&c.assigned_to_label)?'<span class="claim-tag" title="Claimed by '+escHtml(c.assigned_to_label)+'">🙋 '+escHtml(claimLabel)+'</span>':'';
   a.innerHTML=
     '<div class="conv-avatar" style="background:'+col+'">'+escHtml(ini)+'</div>'
     +'<div class="conv-body">'
     +'<div class="conv-row1"><span class="conv-name">'+statusDot+escHtml(name)+'</span>'
-    +'<span class="conv-time">'+fmtTime(c.last_message_at)+'</span></div>'
-    +'<div class="conv-row2"><span class="conv-preview">'+escHtml(arrow+' '+preview)+'</span>'+badge+'</div>'
+    +'<span style="display:flex;align-items:center;gap:6px;flex-shrink:0">'+agentDot+'<span class="conv-time">'+fmtTime(c.last_message_at)+'</span></span></div>'
+    +'<div class="conv-row2"><span class="conv-preview">'+escHtml(arrow+' '+preview)+'</span>'+claimTag+badge+'</div>'
     +'</div>';
   return a;
 }
@@ -1031,19 +1204,27 @@ function rtUpdateConvs(convs){
     } else {
       el.setAttribute('data-last-at',  fmtLastAt(c.last_message_at));
       el.setAttribute('data-last-dir', c.last_direction||'inbound');
+      el.setAttribute('data-needs-reply', c.needs_reply?'true':'false');
       el.setAttribute('data-name',     c.display_name||'');
       el.setAttribute('data-status',   c.handoff_status||'');
       el.setAttribute('data-handoff',  c.handoff_session_id||'');
+      el.setAttribute('data-wa-number-id', c.last_phone_number_id||'');
       var nm=el.querySelector('.conv-name'); if(nm) nm.textContent=c.display_name||('+'+phone);
       var tm=el.querySelector('.conv-time'); if(tm) tm.textContent=fmtTime(c.last_message_at);
       var pv=el.querySelector('.conv-preview');
       if(pv){ var a2=c.last_direction==='outbound'?'→':'←'; pv.textContent=a2+' '+(c.last_content||'').substring(0,50); }
       var bdg=el.querySelector('.conv-badge');
-      if(c.last_direction==='inbound'&&!bdg){
+      if(c.needs_reply&&!bdg){
         var r2=el.querySelector('.conv-row2'); if(r2){ var nb=document.createElement('span'); nb.className='conv-badge'; nb.title='Awaiting reply'; nb.textContent='●'; r2.appendChild(nb); }
-      } else if(c.last_direction!=='inbound'&&bdg){ bdg.parentNode.removeChild(bdg); }
+      } else if(!c.needs_reply&&bdg){ bdg.parentNode.removeChild(bdg); }
+      var agentTitle=c.conv_agent_name||(c.conv_wa_number?('+'+String(c.conv_wa_number).replace(/^\+/,'')):'');
+      var agDot=el.querySelector('.agent-dot');
+      if(RT.multiNumber&&c.agent_color){
+        if(!agDot){ var tw=tm&&tm.parentNode; if(tw){ agDot=document.createElement('span'); agDot.className='agent-dot'; tw.insertBefore(agDot, tm); } }
+        if(agDot){ agDot.style.background=c.agent_color; agDot.title=agentTitle; }
+      } else if(agDot){ agDot.parentNode.removeChild(agDot); }
       if(sort==='newest') list.insertBefore(el,list.firstChild);
-      if(c.last_direction==='inbound'&&phone!==RT.phone){
+      if(c.needs_reply&&phone!==RT.phone){
         el.style.background='rgba(18,183,106,.08)';
         setTimeout(function(){el.style.transition='background 1.4s';el.style.background='';},100);
         showToast('💬 New message from '+(c.display_name||('+'+phone)));
@@ -1057,7 +1238,7 @@ function rtUpdateConvs(convs){
 
 function rtUpdateBadge(convs){
   var badge=document.getElementById('sidebarInboxBadge'); if(!badge) return;
-  var count=convs.filter(function(c){return c.last_direction==='inbound';}).length;
+  var count=convs.filter(function(c){return c.needs_reply;}).length;
   badge.textContent=count<100?String(count):'99+'; badge.style.display=count>0?'':'none';
 }
 

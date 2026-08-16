@@ -1,6 +1,44 @@
 from typing import Optional
 
 
+def extract_statuses(payload: dict) -> Optional[list]:
+    """
+    Parse Meta's async delivery-status webhook (sent/delivered/read/failed).
+    This is a separate payload shape from inbound messages and is the only
+    place the real per-recipient outcome — including the specific error code
+    when a message never delivered (e.g. 131049, marketing-message engagement
+    throttling) — is ever reported. Returns None if this payload isn't a
+    status event.
+    """
+    try:
+        entry = (payload.get("entry") or [{}])[0]
+        change = (entry.get("changes") or [{}])[0]
+        value = change.get("value") or {}
+
+        statuses = value.get("statuses")
+        if not statuses:
+            return None
+
+        phone_number_id = (value.get("metadata") or {}).get("phone_number_id", "")
+
+        out = []
+        for s in statuses:
+            errors = s.get("errors") or []
+            err = errors[0] if errors else {}
+            out.append({
+                "phone_number_id": phone_number_id,
+                "meta_message_id": s.get("id", ""),
+                "status": s.get("status", ""),
+                "error_code": err.get("code"),
+                "error_title": err.get("title"),
+                "error_message": (err.get("error_data") or {}).get("details") or err.get("message"),
+            })
+        return out
+    except Exception as e:
+        print("⚠️ message_normalizer status error:", e)
+        return None
+
+
 def normalize(payload: dict) -> Optional[dict]:
     """
     Parse a raw Meta webhook POST payload into a unified internal dict.
@@ -40,6 +78,7 @@ def normalize(payload: dict) -> Optional[dict]:
 
         text = None
         media_url = None
+        media_caption = ""
         action_type = None
         action_product_id = None
 
@@ -105,6 +144,7 @@ def normalize(payload: dict) -> Optional[dict]:
             media = msg.get(msg_type) or {}
             caption = (media.get("caption") or "").strip()
             media_url = media.get("link") or media.get("id") or ""
+            media_caption = caption
             text = caption if caption else f"[Customer sent a {msg_type}]"
 
         elif msg_type == "location":
@@ -124,6 +164,7 @@ def normalize(payload: dict) -> Optional[dict]:
             "customer_name": customer_name,
             "text": text,
             "media_url": media_url,
+            "media_caption": media_caption,
             "message_type": msg_type,
             "meta_message_id": msg_id,
             "action_type": action_type,

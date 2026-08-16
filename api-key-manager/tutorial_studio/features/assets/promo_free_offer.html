@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    width:1440px; height:900px; overflow:hidden;
+    background: radial-gradient(circle at 30% 20%, #0c2333 0%, #030C18 55%, #01060c 100%);
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .wrap { text-align:center; color:#fff; }
+  .badge {
+    display:inline-block; padding:8px 22px; border-radius:999px;
+    background:rgba(37,211,102,0.12); border:1px solid rgba(37,211,102,0.4);
+    color:#25D366; font-size:16px; font-weight:700; letter-spacing:2px;
+    opacity:0; animation: fadeUp 0.7s ease-out 0.15s forwards;
+  }
+  .feat {
+    margin-top:28px; font-size:30px; font-weight:600; color:#cfe3ee;
+    opacity:0; animation: fadeUp 0.7s ease-out 0.9s forwards;
+  }
+  .feat b { color:#fff; }
+  .free {
+    margin-top:18px; font-size:120px; font-weight:900; letter-spacing:-2px;
+    background: linear-gradient(90deg, #25D366, #7CFFB2);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    opacity:0; animation: popIn 0.6s cubic-bezier(.2,1.4,.4,1) 1.7s forwards;
+  }
+  .urgency {
+    margin-top:26px; font-size:26px; font-weight:600; color:#ffb020;
+    opacity:0; animation: fadeUp 0.7s ease-out 2.6s forwards;
+  }
+  .urgency-dot {
+    display:inline-block; width:10px; height:10px; border-radius:50%;
+    background:#ffb020; margin-right:10px; vertical-align:middle;
+    animation: pulseDot 1.1s ease-in-out infinite 2.6s;
+  }
+  @keyframes fadeUp {
+    from { opacity:0; transform:translateY(18px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+  @keyframes popIn {
+    0%   { opacity:0; transform:scale(0.85); }
+    100% { opacity:1; transform:scale(1); }
+  }
+  @keyframes pulseDot {
+    0%, 100% { box-shadow:0 0 0 0 rgba(255,176,32,0.6); }
+    50%      { box-shadow:0 0 0 10px rgba(255,176,32,0); }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="badge">LIMITED-TIME OFFER</div>
+    <div class="feat">Sales Pipeline CRM <b>+</b> WhatsApp Campaigns</div>
+    <div class="free">100% FREE</div>
+    <div class="urgency"><span class="urgency-dot"></span>Free slots are limited — once they're gone, they're gone.</div>
+  </div>
+</body>
+</html>

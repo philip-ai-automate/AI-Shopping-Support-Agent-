@@ -60,10 +60,16 @@
 .badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .badge-sent   { background: #dcfce7; color: #166534; }
 .badge-sent::before { background: #16a34a; }
+.badge-delivered { background: #dbeafe; color: #1e40af; }
+.badge-delivered::before { background: #2563eb; }
+.badge-read   { background: #ede9fe; color: #5b21b6; }
+.badge-read::before { background: #7c3aed; }
 .badge-failed { background: #fee2e2; color: #991b1b; }
 .badge-failed::before { background: #ef4444; }
 .badge-pending { background: #f1f5f9; color: #64748b; }
 .badge-pending::before { background: #94a3b8; }
+.badge-opted_out { background: #f1f5f9; color: #64748b; }
+.badge-opted_out::before { background: #94a3b8; }
 
 .empty-state {
   display: flex; flex-direction: column; align-items: center;
@@ -96,9 +102,9 @@
   padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
   border: 1.5px solid #e2e8f0; background: #fff; color: #64748b; cursor: pointer; transition: .12s;
 }
-.filter-btn.active-all    { border-color: #0f172a; background: #0f172a; color: #fff; }
-.filter-btn.active-sent   { border-color: #16a34a; background: #dcfce7; color: #166534; }
-.filter-btn.active-failed { border-color: #ef4444; background: #fee2e2; color: #991b1b; }
+.filter-btn.active-all       { border-color: #0f172a; background: #0f172a; color: #fff; }
+.filter-btn.active-delivered { border-color: #2563eb; background: #dbeafe; color: #1e40af; }
+.filter-btn.active-failed    { border-color: #ef4444; background: #fee2e2; color: #991b1b; }
 
 @media (max-width: 680px) {
   .rpt-stats { grid-template-columns: 1fr 1fr; }
@@ -148,14 +154,14 @@
     <div class="rpt-stat-sub">Phone numbers targeted</div>
   </div>
   <div class="rpt-stat">
-    <div class="rpt-stat-label">Sent</div>
+    <div class="rpt-stat-label">Accepted by Meta</div>
     <div class="rpt-stat-value" style="color:#16a34a">{{ sent }}</div>
-    <div class="rpt-stat-sub">Successfully delivered to Meta</div>
+    <div class="rpt-stat-sub">{{ delivered }} confirmed delivered · {{ read }} read</div>
   </div>
   <div class="rpt-stat">
     <div class="rpt-stat-label">Failed</div>
     <div class="rpt-stat-value" style="color:#dc2626">{{ failed }}</div>
-    <div class="rpt-stat-sub">Rejected or errored</div>
+    <div class="rpt-stat-sub">Rejected, errored, or not delivered</div>
   </div>
   <div class="rpt-stat">
     <div class="rpt-stat-label">Delivery Rate</div>
@@ -176,9 +182,9 @@
     <div class="search-bar">
       <input type="text" id="srch" placeholder="Search number…" oninput="filterTable()" autocomplete="off">
       <div class="filter-btns">
-        <button class="filter-btn active-all" id="fAll"    onclick="setFilter('all')">All ({{ recipients|length }})</button>
-        <button class="filter-btn"            id="fSent"   onclick="setFilter('sent')">Sent ({{ recipients|selectattr('status','equalto','sent')|list|length }})</button>
-        <button class="filter-btn"            id="fFailed" onclick="setFilter('failed')">Failed ({{ recipients|selectattr('status','equalto','failed')|list|length }})</button>
+        <button class="filter-btn active-all" id="fAll"       onclick="setFilter('all')">All ({{ recipients|length }})</button>
+        <button class="filter-btn"            id="fDelivered" onclick="setFilter('delivered')">Delivered ({{ delivered }})</button>
+        <button class="filter-btn"            id="fFailed"    onclick="setFilter('failed')">Failed ({{ failed }})</button>
       </div>
     </div>
     {% endif %}
@@ -229,16 +235,18 @@ let _filter = 'all'
 
 function setFilter(f) {
   _filter = f
-  document.getElementById('fAll').className    = 'filter-btn' + (f === 'all'    ? ' active-all'    : '')
-  document.getElementById('fSent').className   = 'filter-btn' + (f === 'sent'   ? ' active-sent'   : '')
-  document.getElementById('fFailed').className = 'filter-btn' + (f === 'failed' ? ' active-failed' : '')
+  document.getElementById('fAll').className       = 'filter-btn' + (f === 'all'       ? ' active-all'       : '')
+  document.getElementById('fDelivered').className = 'filter-btn' + (f === 'delivered' ? ' active-delivered' : '')
+  document.getElementById('fFailed').className    = 'filter-btn' + (f === 'failed'    ? ' active-failed'    : '')
   filterTable()
 }
 
 function filterTable() {
   const q = (document.getElementById('srch').value || '').toLowerCase()
   document.querySelectorAll('#recipTable tbody tr').forEach(row => {
-    const matchStatus = _filter === 'all' || row.dataset.status === _filter
+    const status = row.dataset.status
+    const matchStatus = _filter === 'all' ||
+      (_filter === 'delivered' ? (status === 'delivered' || status === 'read') : status === _filter)
     const matchSearch = !q || row.dataset.phone.includes(q)
     row.style.display = (matchStatus && matchSearch) ? '' : 'none'
   })

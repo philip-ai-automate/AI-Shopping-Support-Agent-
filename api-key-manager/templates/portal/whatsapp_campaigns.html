@@ -1,5 +1,5 @@
 {% extends "portal/base.html" %}
-{% block title %}Campaigns — PhiXtra Portal{% endblock %}
+{% block title %}WhatsApp Campaigns — PhiXtra Portal{% endblock %}
 
 {% block head %}
 <style>
@@ -518,12 +518,49 @@
 .btn-upload:hover { background: #dcfce7; }
 .btn-upload.uploading { opacity: .6; pointer-events: none; }
 
+/* ── Recipients step: source picker (Sales Pipeline / Segment / Manual) ──── */
+.recip-wrap { position: relative; }
+.recip-counter { position: absolute; bottom: 10px; right: 12px; font-size: 11px; font-weight: 700; color: #94a3b8; background: #fff; padding: 2px 6px; border-radius: 6px; pointer-events: none; }
+.recip-counter.has-nums { color: #16a34a; }
+
+.recip-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+.recip-options.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+.recip-opt {
+  border: 2px solid #e2e8f0; border-radius: 12px; padding: 16px; cursor: pointer; transition: .15s;
+  display: flex; align-items: flex-start; gap: 12px;
+}
+.recip-opt:hover { border-color: #cbd5e1; background: #f8fafc; }
+.recip-opt.selected { border-color: #25D366; background: #f0fdf4; }
+.recip-opt-icon {
+  width: 38px; height: 38px; border-radius: 10px; background: #f1f5f9; display: flex; align-items: center;
+  justify-content: center; font-size: 18px; flex-shrink: 0; transition: .15s;
+}
+.recip-opt.selected .recip-opt-icon { background: #dcfce7; }
+.recip-opt-text strong { display: block; font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 2px; }
+.recip-opt-text small  { font-size: 11px; color: #94a3b8; }
+
+#manualRecipField { display: none; margin-top: 4px; }
+#manualRecipField.show { display: block; }
+#segmentRecipField { display: none; margin-top: 4px; }
+#segmentRecipField.show { display: block; }
+
+/* ── "WhatsApp Segments" link (now points to its own page, see
+   whatsapp_campaign_segments.html — this button style is the only piece
+   still used here) ─────────────────────────────────────────────────── */
+.btn-preview {
+  padding: 10px 16px; border-radius: 9px; border: 1.5px solid #e2e8f0; background: #fff;
+  font-size: 13px; font-weight: 700; color: #374151; cursor: pointer; transition: .12s;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.btn-preview:hover { border-color: #cbd5e1; background: #f8fafc; }
+
 @media (max-width: 680px) {
   .camp-stats { grid-template-columns: 1fr 1fr; }
   .camp-hero { flex-direction: column; align-items: flex-start; }
   .drawer { width: 100%; max-width: 100%; }
   .field-row.cols-2 { grid-template-columns: 1fr; }
   .send-options { grid-template-columns: 1fr; }
+  .recip-options, .recip-options.cols-3 { grid-template-columns: 1fr; }
 }
 </style>
 {% endblock %}
@@ -533,14 +570,17 @@
 <!-- ── Hero header ──────────────────────────────────────────────────────── -->
 <div class="camp-hero">
   <div class="camp-hero-left">
-    <h1>Campaigns</h1>
+    <h1>WhatsApp Campaigns</h1>
     <p>Send WhatsApp template messages to your customers at scale.</p>
   </div>
   {% if connection %}
-  <button class="btn-new-camp" onclick="openDrawer()">
-    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-    New Campaign
-  </button>
+  <div style="display:flex;gap:10px;flex-shrink:0">
+    <a class="btn-preview" href="{{ url_for('portal.whatsapp_campaign_segments_page') }}" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);color:#fff;text-decoration:none">📋 WhatsApp Segments</a>
+    <button class="btn-new-camp" onclick="openDrawer()">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      New Campaign
+    </button>
+  </div>
   {% endif %}
 </div>
 
@@ -627,6 +667,9 @@
               {{ c.template_name }}
             </div>
             <div style="font-size:11px;color:var(--muted);margin-top:2px">{{ c.language_code }}</div>
+            {% if c.send_from_number %}
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">📤 {{ c.send_from_number }}{% if c.send_from_agent %} — {{ c.send_from_agent }}{% endif %}</div>
+            {% endif %}
           </td>
           <td>
             <span class="badge badge-{{ c.status }}">
@@ -796,6 +839,20 @@
                  placeholder="e.g. May Flash Sale, Ramadan Promo…" autocomplete="off">
         </div>
 
+        {% if send_from_connections|length > 1 %}
+        <div class="field">
+          <label class="field-label">Send From</label>
+          <select class="field-select" name="wa_tenant_id" id="f-sendfrom" onchange="loadTemplates()">
+            {% for cn in send_from_connections %}
+            <option value="{{ cn.id }}">{{ cn.display_phone_number or cn.phone_number_id }}{% if cn.agent_name %} — {{ cn.agent_name }}{% endif %}</option>
+            {% endfor %}
+          </select>
+          <span class="field-hint">Which connected number this campaign sends from.</span>
+        </div>
+        {% elif send_from_connections|length == 1 %}
+        <input type="hidden" name="wa_tenant_id" value="{{ send_from_connections[0].id }}">
+        {% endif %}
+
         <div class="field">
           <label class="field-label">
             Template
@@ -884,36 +941,55 @@
       <div class="step-panel" id="panel-2">
         <div class="drawer-section-head">Who receives this campaign</div>
 
-        {% if segments %}
-        <div class="field">
-          <label class="field-label">
-            Send to Segment
-            <span class="field-hint">optional — auto-fills phone list from segment members</span>
-          </label>
-          <select class="field-select" name="segment_id" id="f-segment" onchange="loadSegmentPhones(this.value)">
-            <option value="">— paste phone numbers manually —</option>
-            {% for seg in segments %}
-            <option value="{{ seg.id }}" data-color="{{ seg.color }}">
-              {{ seg.name }} ({{ seg.member_count }} contact{{ 's' if seg.member_count != 1 }})
-            </option>
-            {% endfor %}
-          </select>
+        <div class="recip-options cols-3">
+          <div class="recip-opt selected" id="optPipeline" onclick="selectRecipientSource('pipeline')">
+            <div class="recip-opt-icon">🧭</div>
+            <div class="recip-opt-text">
+              <strong>Sales Pipeline contacts</strong>
+              <small>{{ pipeline_phone_count }} contact(s) with a phone number</small>
+            </div>
+          </div>
+          <div class="recip-opt" id="optSegment" onclick="selectRecipientSource('segment')">
+            <div class="recip-opt-icon">📋</div>
+            <div class="recip-opt-text">
+              <strong>WhatsApp Segment</strong>
+              <small>A saved group of Sales Pipeline contacts</small>
+            </div>
+          </div>
+          <div class="recip-opt" id="optManual" onclick="selectRecipientSource('manual')">
+            <div class="recip-opt-icon">✍️</div>
+            <div class="recip-opt-text">
+              <strong>Paste phone numbers</strong>
+              <small>One per line</small>
+            </div>
+          </div>
         </div>
-        <div id="seg-loading" style="display:none;font-size:12px;color:#6366f1;font-weight:600;margin:-10px 0 14px">Loading segment contacts…</div>
-        {% else %}
-        <input type="hidden" name="segment_id" value="">
-        {% endif %}
+        <input type="hidden" id="f-recipient-source" name="recipient_source" value="pipeline">
 
-        <div class="field">
-          <label class="field-label">
-            Phone Numbers
-            <span class="field-hint">One per line · Include country code · No + or spaces</span>
-          </label>
-          <div class="recip-wrap">
-            <textarea class="field-textarea" name="recipients" id="f-recipients"
-                      placeholder="2348012345678&#10;2347098765432&#10;447911123456&#10;19175551234"
-                      oninput="countRecipients(this)" rows="10"></textarea>
-            <div class="recip-counter" id="recipCounter">0 numbers</div>
+        <div id="segmentRecipField">
+          <div class="field">
+            <label class="field-label">WhatsApp Segment
+              <span class="field-hint"><a href="{{ url_for('portal.whatsapp_campaign_segments_page') }}" target="_blank" rel="noopener">Manage segments</a></span>
+            </label>
+            <select class="field-select" id="f-pipeline-segment-id" name="pipeline_segment_id"></select>
+            <div id="segmentEmptyNote" style="display:none;font-size:12px;color:#94a3b8;margin-top:6px">
+              No WhatsApp Segments yet. <a href="{{ url_for('portal.whatsapp_campaign_segments_page') }}" target="_blank" rel="noopener">Create one</a>.
+            </div>
+          </div>
+        </div>
+
+        <div id="manualRecipField">
+          <div class="field">
+            <label class="field-label">
+              Phone Numbers
+              <span class="field-hint">One per line · Include country code · No + or spaces</span>
+            </label>
+            <div class="recip-wrap">
+              <textarea class="field-textarea" name="recipients" id="f-recipients"
+                        placeholder="2348012345678&#10;2347098765432&#10;447911123456&#10;19175551234"
+                        oninput="countRecipients(this)" rows="10"></textarea>
+              <div class="recip-counter" id="recipCounter">0 numbers</div>
+            </div>
           </div>
         </div>
 
@@ -960,6 +1036,12 @@
             <span class="review-key">Campaign name</span>
             <span class="review-val" id="rv-name">—</span>
           </div>
+          {% if send_from_connections|length > 1 %}
+          <div class="review-row">
+            <span class="review-key">Send from</span>
+            <span class="review-val" id="rv-sendfrom">—</span>
+          </div>
+          {% endif %}
           <div class="review-row">
             <span class="review-key">Template</span>
             <span class="review-val" id="rv-template">—</span>
@@ -1014,7 +1096,11 @@ function loadTemplates() {
   sel.innerHTML = '<option value="">— loading… —</option>'
   hint.textContent = 'Loading from Meta…'
 
-  fetch('{{ url_for("portal.whatsapp_campaigns_templates") }}')
+  const sendFromSel = document.getElementById('f-sendfrom')
+  const waId = sendFromSel ? sendFromSel.value : ''
+  const url = '{{ url_for("portal.whatsapp_campaigns_templates") }}' + (waId ? ('?wa_id=' + encodeURIComponent(waId)) : '')
+
+  fetch(url)
     .then(r => r.json())
     .then(templates => {
       if (!templates.length) {
@@ -1126,6 +1212,7 @@ function resetDrawer() {
   document.getElementById('campForm').reset()
   document.getElementById('recipCounter').textContent = '0 numbers'
   document.getElementById('recipCounter').classList.remove('has-nums')
+  selectRecipientSource('pipeline')
   document.getElementById('scheduleField').classList.remove('show')
   document.getElementById('headerMediaField').style.display    = 'none'
   document.getElementById('headerTextField').style.display     = 'none'
@@ -1167,8 +1254,16 @@ function validateStep(n) {
     }
   }
   if (n === 2) {
-    const phones = parsePhones()
-    if (phones.length === 0) { shake('f-recipients'); return false }
+    const src = document.getElementById('f-recipient-source').value
+    if (src === 'manual' && parsePhones().length === 0) { shake('f-recipients'); return false }
+    if (src === 'pipeline' && {{ pipeline_phone_count }} === 0) {
+      alert('No Sales Pipeline contacts have a phone number yet. Choose "Paste phone numbers" instead.')
+      return false
+    }
+    if (src === 'segment' && !document.getElementById('f-pipeline-segment-id').value) {
+      alert('Choose a WhatsApp Segment, or create one first via "Manage segments".')
+      return false
+    }
   }
   if (n === 3) {
     const isSchedule = document.getElementById('f-sendnow').value === '0'
@@ -1202,30 +1297,50 @@ function countRecipients(el) {
   counter.classList.toggle('has-nums', n > 0)
 }
 
-/* ── Load segment phones ─────────────────────────────────────────────── */
-function loadSegmentPhones(segId) {
-  const ta      = document.getElementById('f-recipients')
-  const loading = document.getElementById('seg-loading')
-  if (!segId) {
-    if (loading) loading.style.display = 'none'
-    return
-  }
-  if (loading) loading.style.display = 'block'
-  fetch('/whatsapp/segments/' + segId + '/contacts-json')
+/* ── Recipient source picker (Sales Pipeline / WhatsApp Segment / Manual) ── */
+let pipelineSegmentCounts = {}
+
+function selectRecipientSource(src) {
+  document.getElementById('optPipeline').classList.toggle('selected', src === 'pipeline')
+  document.getElementById('optSegment').classList.toggle('selected', src === 'segment')
+  document.getElementById('optManual').classList.toggle('selected', src === 'manual')
+  document.getElementById('f-recipient-source').value = src
+  document.getElementById('segmentRecipField').classList.toggle('show', src === 'segment')
+  document.getElementById('manualRecipField').classList.toggle('show', src === 'manual')
+  if (src === 'segment') loadPipelineSegmentsIntoSelect()
+}
+
+function loadPipelineSegmentsIntoSelect() {
+  fetch('/whatsapp/pipeline-segments')
     .then(r => r.json())
     .then(data => {
-      if (loading) loading.style.display = 'none'
-      if (data.phones && data.phones.length) {
-        ta.value = data.phones.join('\n')
-        countRecipients(ta)
-      } else {
-        ta.value = ''
-        countRecipients(ta)
-        alert('This segment has no contacts yet.')
-      }
+      const sel = document.getElementById('f-pipeline-segment-id')
+      const emptyNote = document.getElementById('segmentEmptyNote')
+      const segments = data.segments || []
+      pipelineSegmentCounts = {}
+      const prevValue = sel.value
+      sel.innerHTML = ''
+      segments.forEach(s => {
+        pipelineSegmentCounts[s.id] = s.member_count
+        const opt = document.createElement('option')
+        opt.value = s.id
+        opt.textContent = s.name + ' (' + s.member_count + ')'
+        sel.appendChild(opt)
+      })
+      if (prevValue && segments.some(s => String(s.id) === prevValue)) sel.value = prevValue
+      emptyNote.style.display = segments.length === 0 ? 'block' : 'none'
+      sel.style.display = segments.length === 0 ? 'none' : ''
     })
-    .catch(() => { if (loading) loading.style.display='none' })
+    .catch(() => {})
 }
+
+/* "Manage segments"/"Create one" now open the Segments page in a new tab (it's
+   its own standalone page, not a popup) — re-load the dropdown whenever this
+   tab regains focus so a segment just created/edited there shows up without
+   an extra click. */
+window.addEventListener('focus', function() {
+  if (document.getElementById('f-recipient-source').value === 'segment') loadPipelineSegmentsIntoSelect()
+})
 
 /* ── Send timing toggle ─────────────────────────────────────────────── */
 function selectTiming(mode) {
@@ -1246,12 +1361,22 @@ function selectTiming(mode) {
 /* ── Populate review panel ──────────────────────────────────────────── */
 function populateReview() {
   const name   = document.getElementById('f-name').value.trim()
+  const sfSel  = document.getElementById('f-sendfrom')
+  const rvSendFrom = document.getElementById('rv-sendfrom')
+  if (sfSel && rvSendFrom) {
+    const sfOpt = sfSel.options[sfSel.selectedIndex]
+    rvSendFrom.textContent = sfOpt ? sfOpt.textContent.trim() : '—'
+  }
   const sel    = document.getElementById('f-template')
   const tmpl   = sel.value.trim()
   const opt    = sel.options[sel.selectedIndex]
   const cat    = (opt && opt.getAttribute('data-cat')) || ''
   const lang   = document.getElementById('f-lang').value.trim() || 'en'
-  const count  = parsePhones().length
+  const src    = document.getElementById('f-recipient-source').value
+  const segSel = document.getElementById('f-pipeline-segment-id')
+  const count  = src === 'pipeline' ? {{ pipeline_phone_count }}
+               : src === 'segment'  ? (pipelineSegmentCounts[segSel.value] || 0)
+               : parsePhones().length
   const isNow  = document.getElementById('f-sendnow').value === '1'
   const dt     = document.getElementById('f-scheddt').value
 
@@ -1381,5 +1506,7 @@ function submitCampaign() {
   btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/></svg> Launching…'
   document.getElementById('campForm').submit()
 }
+
+
 </script>
 {% endblock %}

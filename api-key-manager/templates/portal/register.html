@@ -6,8 +6,73 @@
 <style>
   label { color: var(--ink) }
 
-  .type-cards-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  @media(max-width:480px){.type-cards-grid{grid-template-columns:1fr}}
+  /* ═══════════════════════════════════════════════════════════
+     SPLIT-PANEL SHELL
+  ═══════════════════════════════════════════════════════════ */
+  .reg-shell{
+    display:grid;grid-template-columns:1fr 1fr;
+    max-width:980px;margin:20px auto 56px;
+    border-radius:24px;overflow:hidden;
+    border:1px solid var(--line);box-shadow:0 24px 60px rgba(3,12,24,0.14);
+    background:#fff;
+  }
+
+  /* ── Brand / value-prop panel ── */
+  .reg-aside{
+    position:relative;overflow:hidden;
+    background:linear-gradient(160deg,#030C18 0%,#0A1E36 70%,#0D2540 100%);
+    color:#fff;padding:52px 44px;
+    display:flex;flex-direction:column;justify-content:center;
+  }
+  .reg-aside::before{
+    content:"";position:absolute;top:-120px;right:-120px;width:320px;height:320px;
+    border-radius:50%;background:radial-gradient(circle,rgba(37,211,102,0.18),transparent 70%);
+  }
+  .reg-aside::after{
+    content:"";position:absolute;bottom:-140px;left:-100px;width:280px;height:280px;
+    border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,0.06),transparent 70%);
+  }
+  .reg-kicker{
+    position:relative;font-size:11px;font-weight:800;letter-spacing:.12em;
+    text-transform:uppercase;color:#3ddc84;margin-bottom:18px;
+  }
+  .reg-aside-title{
+    position:relative;font-size:29px;font-weight:800;line-height:1.22;
+    letter-spacing:-.6px;margin-bottom:14px;
+  }
+  .reg-aside-sub{
+    position:relative;font-size:14px;color:rgba(255,255,255,0.62);
+    line-height:1.65;margin-bottom:34px;max-width:340px;
+  }
+  .reg-benefits{position:relative;list-style:none;display:flex;flex-direction:column;gap:15px;margin-bottom:38px}
+  .reg-benefits li{display:flex;align-items:flex-start;gap:11px;font-size:13.5px;color:rgba(255,255,255,0.90);line-height:1.5}
+  .reg-check{
+    flex-shrink:0;width:20px;height:20px;border-radius:50%;margin-top:1px;
+    background:rgba(37,211,102,0.18);border:1px solid rgba(61,220,132,0.35);
+    color:#3ddc84;display:flex;align-items:center;justify-content:center;
+    font-size:11px;font-weight:800;
+  }
+  .reg-aside-trust{
+    position:relative;display:flex;align-items:center;gap:8px;
+    font-size:12px;color:rgba(255,255,255,0.48);
+    padding-top:22px;border-top:1px solid rgba(255,255,255,0.12);
+  }
+
+  /* ── Form panel ── */
+  .reg-formpane{padding:52px 46px}
+  .reg-form-header{margin-bottom:26px}
+  .reg-form-title{font-size:22px;font-weight:800;letter-spacing:-.3px;margin-bottom:6px}
+
+  @media(max-width:860px){
+    .reg-shell{grid-template-columns:1fr;max-width:520px;margin:8px auto 40px;border-radius:20px}
+    .reg-aside{padding:32px 28px 28px}
+    .reg-aside-title{font-size:21px}
+    .reg-aside-sub{max-width:none;margin-bottom:22px}
+    .reg-benefits{gap:11px;margin-bottom:22px}
+    .reg-formpane{padding:30px 24px 34px}
+  }
+
+  .type-cards-grid{display:grid;grid-template-columns:1fr;gap:10px}
 
   .type-card{border:2px solid var(--line);border-radius:14px;padding:18px 16px;
     cursor:pointer;transition:border-color .15s,background .15s,box-shadow .15s;
@@ -42,8 +107,8 @@
   .field-hint{font-size:12px;margin-top:4px}
   .field-hint.err{color:#dc2626}
   .field-hint.info{color:var(--muted)}
-  input.f-invalid{border-color:#dc2626 !important;outline-color:#dc2626}
-  input.f-valid{border-color:var(--good) !important}
+  input.f-invalid,select.f-invalid{border-color:#dc2626 !important;outline-color:#dc2626}
+  input.f-valid,select.f-valid{border-color:var(--good) !important}
 
   .trust-strip{display:flex;align-items:center;justify-content:center;gap:6px;
     font-size:12px;color:var(--muted);margin-top:10px}
@@ -51,173 +116,220 @@
 {% endblock %}
 
 {% block content %}
-<div class="card" style="margin-top:12px;max-width:680px;margin-left:auto;margin-right:auto">
+<div class="reg-shell">
 
-  <h1 style="font-size:22px;font-weight:800;margin-bottom:4px">
-    Create your account
-  </h1>
-  <p class="muted" style="margin-bottom:22px">No credit card required.</p>
-
-  <form method="POST" action="{{ url_for('portal.register') }}" novalidate id="regForm">
-    <input type="hidden" name="ref_code" value="{{ ref_code or '' }}"/>
-
-    <!-- ── Merchant type selector ─────────────────────────────── -->
-    <div style="margin-bottom:22px">
-      <label style="margin-bottom:4px;display:block">What's your primary sales channel? *</label>
-      <p class="field-hint info" style="margin-bottom:10px">Pick your main channel — you can add others later.</p>
-      <div class="type-cards-grid">
-
-        <label class="type-card sel-wa selected" id="card-whatsapp" onclick="setType('whatsapp')">
-          <input type="radio" name="merchant_type" value="whatsapp" checked/>
-          <span class="type-badge">Most popular</span>
-          <div class="type-radio"></div>
-          <div class="type-icon">💬</div>
-          <div>
-            <div class="type-label">No website</div>
-            <div class="type-desc">Physical shop, market stall, or home-based — I communicate using WhatsApp</div>
-          </div>
-        </label>
-
-        <label class="type-card sel-web" id="card-web" onclick="setType('web')">
-          <input type="radio" name="merchant_type" value="web"/>
-          <div class="type-radio"></div>
-          <div class="type-icon">🌐</div>
-          <div>
-            <div class="type-label">I have a website</div>
-            <div class="type-desc">WooCommerce, Shopify, custom site</div>
-          </div>
-        </label>
-
-      </div>
-    </div>
-
-    <!-- ── Name ──────────────────────────────────────────────── -->
-    <div class="form-row">
-      <div class="form-group">
-        <label>First name *</label>
-        <input type="text" name="first_name" id="fFirstName" required autofocus placeholder="Sarah"
-               value="{{ form_data.get('first_name', '') if form_data else '' }}"/>
-        <p class="field-hint err" id="hFirstName" style="display:none">First name is required.</p>
-      </div>
-      <div class="form-group">
-        <label>Last name *</label>
-        <input type="text" name="last_name" id="fLastName" required placeholder="Jones"
-               value="{{ form_data.get('last_name', '') if form_data else '' }}"/>
-        <p class="field-hint err" id="hLastName" style="display:none">Last name is required.</p>
-      </div>
-    </div>
-
-    <!-- ── Email ─────────────────────────────────────────────── -->
-    <div class="form-group">
-      <label>Email address *</label>
-      <div class="input-wrap">
-        <input type="email" name="email" id="fEmail" required placeholder="sarah@mystore.com"
-               autocomplete="email"
-               value="{{ form_data.get('email', '') if form_data else '' }}"/>
-        <button type="button" class="input-toggle" onclick="toggleReveal('fEmail',this,'email')"
-                aria-label="Show email address">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-        </button>
-      </div>
-      <p class="field-hint err" id="hEmail" style="display:none">A valid email address is required.</p>
-    </div>
-
-    <!-- ── Password ──────────────────────────────────────────── -->
-    <div class="form-group">
-      <label>Password * <span class="muted">(minimum 8 characters)</span></label>
-      <div class="input-wrap">
-        <input type="password" name="password" id="fPassword" required minlength="8" placeholder="••••••••"/>
-        <button type="button" class="input-toggle" onclick="toggleReveal('fPassword',this,'password')"
-                aria-label="Show password">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-        </button>
-      </div>
-      <p class="field-hint err" id="hPassword" style="display:none">Password must be at least 8 characters.</p>
-    </div>
-
-    <!-- ── WEB fields ─────────────────────────────────────────── -->
-    <div id="web-fields">
-      <div class="form-group">
-        <label>Your store domain * <span class="muted">(e.g. mystore.com)</span></label>
-        <input type="text" name="tenant_domain" id="fDomain"
-               placeholder="mystore.com"
-               pattern="[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,}"
-               value="{{ form_data.get('tenant_domain', '') if form_data else '' }}"/>
-        <p class="field-hint info" style="margin-top:4px">Enter just the domain — no https://, no trailing slash.</p>
-        <p class="field-hint err" id="hDomain" style="display:none">A valid store domain is required (e.g. mystore.com).</p>
-      </div>
-      <div class="form-group">
-        <label>Mobile phone <span class="muted">(optional)</span></label>
-        <input type="tel" name="phone_number" placeholder="+234 801 234 5678"
-               value="{{ form_data.get('phone_number', '') if form_data else '' }}"/>
-        <p class="field-hint info" style="margin-top:4px">For billing alerts and optional two-factor authentication.</p>
-      </div>
-    </div>
-
-    <!-- ── WHATSAPP fields ────────────────────────────────────── -->
-    <div id="wa-fields" style="display:none">
-      <div class="form-group">
-        <label>Business name *</label>
-        <input type="text" name="business_name" id="fBusinessName"
-               placeholder="e.g. Sarah's Boutique"
-               value="{{ form_data.get('business_name', '') if form_data else '' }}"/>
-        <p class="field-hint err" id="hBusinessName" style="display:none">Business name is required.</p>
-      </div>
-    </div>
-
-    <!-- Honeypot -->
-    <div style="display:none;visibility:hidden;position:absolute;left:-9999px">
-      <input type="text" name="website" tabindex="-1" autocomplete="off"/>
-    </div>
-
-    <!-- reCAPTCHA -->
-    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
-    <div class="g-recaptcha" data-sitekey="6LdARassAAAAAE2riEDaWAuK-g2DY7e67qoAjOUc"
-         style="margin-bottom:12px"></div>
-
-    <button type="submit" class="btn btn-primary" id="submitBtn"
-            style="width:100%;justify-content:center;margin-top:4px">
-      Create free account
-    </button>
-
-    <p class="field-hint info" style="text-align:center;margin-top:8px">
-      We'll send a verification link to your email — check your inbox after submitting.
-    </p>
-
-    <div class="trust-strip">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+  <!-- ═══════════ Brand / value-proposition panel ═══════════ -->
+  <aside class="reg-aside">
+    <div class="reg-kicker">WhatsApp Business AI</div>
+    <h2 class="reg-aside-title">Turn every WhatsApp message into a sale.</h2>
+    <p class="reg-aside-sub">Your AI assistant answers customers, recommends products, and keeps selling around the clock — even while you sleep.</p>
+    <ul class="reg-benefits">
+      <li><span class="reg-check">&#10003;</span> Still replies when your network is poor or your phone battery dies</li>
+      <li><span class="reg-check">&#10003;</span> Keeps the conversation going while you're busy serving another customer</li>
+      <li><span class="reg-check">&#10003;</span> Answers customers at 2am while you sleep — no sale lost overnight</li>
+      <li><span class="reg-check">&#10003;</span> Free to start — no credit card required</li>
+    </ul>
+    <div class="reg-aside-trust">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0">
         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
         <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
       </svg>
-      Your data is encrypted and never shared.
+      Bank-level encryption. Your data is never shared.
     </div>
-  </form>
+  </aside>
 
-  <div style="margin-top:24px;border-top:1px solid var(--line);padding-top:20px">
-    <p style="font-size:13px;text-align:center;color:var(--muted);margin-bottom:12px">Already have an account?</p>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+  <!-- ═══════════ Form panel ═══════════ -->
+  <div class="reg-formpane">
 
-      <a href="{{ url_for('portal.login') }}" class="btn"
-         style="display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;text-decoration:none">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-          <polyline points="22,6 12,13 2,6"/>
-        </svg>
-        Log in with email
-      </a>
-
-      <a href="{{ url_for('portal.wa_login') }}" class="btn"
-         style="display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;text-decoration:none;border-color:#25D366;color:#128C7E">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="#25D366">
-          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
-          <path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.126 1.532 5.859L.054 23.25a.75.75 0 0 0 .916.916l5.393-1.478A11.955 11.955 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.891 0-3.659-.523-5.168-1.432l-.369-.223-3.836 1.051 1.051-3.836-.223-.369A9.956 9.956 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
-        </svg>
-        Log in with WhatsApp
-      </a>
-
+    <div class="reg-form-header">
+      <h1 class="reg-form-title">Create your account</h1>
+      <p class="muted">Your free WhatsApp AI assistant, ready in under a minute.</p>
     </div>
-  </div>
-</div>
+
+    <form method="POST" action="{{ url_for('portal.register') }}" novalidate id="regForm">
+      <input type="hidden" name="ref_code" value="{{ ref_code or '' }}"/>
+
+      <!-- ── Merchant type selector (hidden for now — WhatsApp-only signup) ── -->
+      <div style="margin-bottom:22px;display:none">
+        <label style="margin-bottom:4px;display:block">What's your primary sales channel? *</label>
+        <p class="field-hint info" style="margin-bottom:10px">Pick your main channel — you can add others later.</p>
+        <div class="type-cards-grid">
+
+          <label class="type-card sel-wa selected" id="card-whatsapp" onclick="setType('whatsapp')">
+            <input type="radio" name="merchant_type" value="whatsapp" checked/>
+            <span class="type-badge">Most popular</span>
+            <div class="type-radio"></div>
+            <div class="type-icon">💬</div>
+            <div>
+              <div class="type-label">No website</div>
+              <div class="type-desc">Physical shop, market stall, or home-based — I communicate using WhatsApp</div>
+            </div>
+          </label>
+
+          <label class="type-card sel-web" id="card-web" onclick="setType('web')" style="display:none">
+            <input type="radio" name="merchant_type" value="web"/>
+            <div class="type-radio"></div>
+            <div class="type-icon">🌐</div>
+            <div>
+              <div class="type-label">I have a website</div>
+              <div class="type-desc">WooCommerce, Shopify, custom site</div>
+            </div>
+          </label>
+
+        </div>
+      </div>
+
+      <!-- ── Name ──────────────────────────────────────────────── -->
+      <div class="form-row">
+        <div class="form-group">
+          <label>First name *</label>
+          <input type="text" name="first_name" id="fFirstName" required autofocus placeholder="Sarah"
+                 autocomplete="given-name"
+                 value="{{ form_data.get('first_name', '') if form_data else '' }}"/>
+          <p class="field-hint err" id="hFirstName" style="display:none">First name is required.</p>
+        </div>
+        <div class="form-group">
+          <label>Last name *</label>
+          <input type="text" name="last_name" id="fLastName" required placeholder="Jones"
+                 autocomplete="family-name"
+                 value="{{ form_data.get('last_name', '') if form_data else '' }}"/>
+          <p class="field-hint err" id="hLastName" style="display:none">Last name is required.</p>
+        </div>
+      </div>
+
+      <!-- ── Email ─────────────────────────────────────────────── -->
+      <div class="form-group">
+        <label>Email address *</label>
+        <input type="email" name="email" id="fEmail" required placeholder="sarah@mystore.com"
+               autocomplete="email"
+               value="{{ form_data.get('email', '') if form_data else '' }}"/>
+        <p class="field-hint err" id="hEmail" style="display:none">A valid email address is required.</p>
+      </div>
+
+      <!-- ── Password ──────────────────────────────────────────── -->
+      <div class="form-group">
+        <label>Password * <span class="muted">(minimum 8 characters)</span></label>
+        <div class="input-wrap">
+          <input type="password" name="password" id="fPassword" required minlength="8" placeholder="••••••••"
+                 autocomplete="new-password"/>
+          <button type="button" class="input-toggle" onclick="toggleReveal('fPassword',this,'password')"
+                  aria-label="Show password">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+        <p class="field-hint err" id="hPassword" style="display:none">Password must be at least 8 characters.</p>
+      </div>
+
+      <!-- ── How did you hear about us ────────────────────────────── -->
+      {% set hau = form_data.get('hear_about_us', '') if form_data else '' %}
+      <div class="form-group">
+        <label>How did you hear about us? *</label>
+        <select name="hear_about_us" id="fHearAboutUs" required>
+          <option value="" disabled {% if not hau %}selected{% endif %}>Select an option</option>
+          {% for value, label in hear_about_us_options %}
+          <option value="{{ value }}" {% if hau == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <p class="field-hint err" id="hHearAboutUs" style="display:none">Please tell us how you heard about us.</p>
+      </div>
+
+      <!-- ── WEB fields ─────────────────────────────────────────── -->
+      <div id="web-fields">
+        <div class="form-group">
+          <label>Your store domain * <span class="muted">(e.g. mystore.com)</span></label>
+          <input type="text" name="tenant_domain" id="fDomain"
+                 placeholder="mystore.com"
+                 pattern="[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,}"
+                 autocomplete="url"
+                 value="{{ form_data.get('tenant_domain', '') if form_data else '' }}"/>
+          <p class="field-hint info" style="margin-top:4px">Enter just the domain — no https://, no trailing slash.</p>
+          <p class="field-hint err" id="hDomain" style="display:none">A valid store domain is required (e.g. mystore.com).</p>
+        </div>
+        <div class="form-group">
+          <label>Mobile phone *</label>
+          <input type="tel" name="phone_number" id="fPhone" placeholder="+234 801 234 5678"
+                 autocomplete="tel"
+                 value="{{ form_data.get('phone_number', '') if form_data else '' }}"/>
+          <p class="field-hint info" style="margin-top:4px">For billing alerts and optional two-factor authentication.</p>
+          <p class="field-hint err" id="hPhone" style="display:none">Mobile phone is required.</p>
+        </div>
+      </div>
+
+      <!-- ── WHATSAPP fields ────────────────────────────────────── -->
+      <div id="wa-fields" style="display:none">
+        <div class="form-group">
+          <label>Business name *</label>
+          <input type="text" name="business_name" id="fBusinessName"
+                 placeholder="e.g. Sarah's Boutique"
+                 autocomplete="organization"
+                 value="{{ form_data.get('business_name', '') if form_data else '' }}"/>
+          <p class="field-hint info" style="margin-top:4px">This is the name your customers will see when they message you.</p>
+          <p class="field-hint err" id="hBusinessName" style="display:none">Business name is required.</p>
+        </div>
+        <div class="form-group">
+          <label>Mobile phone *</label>
+          <input type="tel" name="wa_phone_number" id="fPhoneWa" placeholder="+234 801 234 5678"
+                 autocomplete="tel"
+                 value="{{ form_data.get('wa_phone_number', '') if form_data else '' }}"/>
+          <p class="field-hint info" style="margin-top:4px">For billing alerts and optional two-factor authentication.</p>
+          <p class="field-hint err" id="hPhoneWa" style="display:none">Mobile phone is required.</p>
+        </div>
+      </div>
+
+      <!-- Honeypot -->
+      <div style="display:none;visibility:hidden;position:absolute;left:-9999px">
+        <input type="text" name="website" tabindex="-1" autocomplete="off"/>
+      </div>
+
+      <!-- reCAPTCHA -->
+      <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+      <div class="g-recaptcha" data-sitekey="6LdARassAAAAAE2riEDaWAuK-g2DY7e67qoAjOUc"
+           style="margin-bottom:12px"></div>
+
+      <button type="submit" class="btn btn-primary" id="submitBtn"
+              style="width:100%;justify-content:center;margin-top:4px;padding:12px 16px;font-size:14.5px">
+        Create free account
+      </button>
+
+      <p class="field-hint info" style="text-align:center;margin-top:8px">
+        We'll send a verification link to your email — check your inbox after submitting.
+      </p>
+
+      <div class="trust-strip">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+        Your data is encrypted and never shared.
+      </div>
+    </form>
+
+    <div style="margin-top:24px;border-top:1px solid var(--line);padding-top:20px">
+      <p style="font-size:13px;text-align:center;color:var(--muted);margin-bottom:12px">Already have an account?</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+
+        <a href="{{ url_for('portal.login') }}" class="btn"
+           style="display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;text-decoration:none">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+            <polyline points="22,6 12,13 2,6"/>
+          </svg>
+          Log in with email
+        </a>
+
+        <a href="{{ url_for('portal.wa_login') }}" class="btn"
+           style="display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;text-decoration:none;border-color:#25D366;color:#128C7E">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="#25D366">
+            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+            <path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.126 1.532 5.859L.054 23.25a.75.75 0 0 0 .916.916l5.393-1.478A11.955 11.955 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.891 0-3.659-.523-5.168-1.432l-.369-.223-3.836 1.051 1.051-3.836-.223-.369A9.956 9.956 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
+          </svg>
+          Log in with WhatsApp
+        </a>
+
+      </div>
+    </div>
+  </div><!-- end .reg-formpane -->
+</div><!-- end .reg-shell -->
 
 <script>
 var currentType = 'whatsapp';
@@ -249,19 +361,32 @@ function markOk(id, hintId) {
   if (h) h.style.display = 'none';
 }
 
+var VALIDATORS = [];
+
+// Validates on blur (first touch), then re-validates on every keystroke once
+// touched — so an error clears the moment it's fixed instead of requiring
+// another blur.
 function addBlur(id, hintId, validator) {
+  VALIDATORS.push({id: id, hintId: hintId, validator: validator});
   var el = document.getElementById(id);
   if (!el) return;
-  el.addEventListener('blur', function() {
-    if (!this.value && !this.required) return;
-    if (validator(this.value)) markOk(id, hintId); else markErr(id, hintId);
-  });
+  var touched = false;
+  function check() {
+    if (!el.value && !el.required) { markOk(id, hintId); return true; }
+    var ok = validator(el.value);
+    if (ok) markOk(id, hintId); else markErr(id, hintId);
+    return ok;
+  }
+  el.addEventListener('blur', function(){ touched = true; check(); });
+  el.addEventListener('input', function(){ if (touched) check(); });
+  el.addEventListener('change', function(){ touched = true; check(); });
 }
 
 addBlur('fFirstName', 'hFirstName', function(v){ return v.trim().length > 0; });
 addBlur('fLastName',  'hLastName',  function(v){ return v.trim().length > 0; });
 addBlur('fEmail',     'hEmail',     function(v){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()); });
 addBlur('fPassword',  'hPassword',  function(v){ return v.length >= 8; });
+addBlur('fHearAboutUs', 'hHearAboutUs', function(v){ return v.trim().length > 0; });
 addBlur('fDomain',    'hDomain',    function(v){
   if (currentType !== 'web') return true;
   return /^[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,}$/.test(v.replace(/^https?:\/\//,'').replace(/\/.*$/,''));
@@ -270,17 +395,37 @@ addBlur('fBusinessName', 'hBusinessName', function(v){
   if (currentType !== 'whatsapp') return true;
   return v.trim().length > 0;
 });
+addBlur('fPhone', 'hPhone', function(v){
+  if (currentType !== 'web') return true;
+  return v.trim().length > 0;
+});
+addBlur('fPhoneWa', 'hPhoneWa', function(v){
+  if (currentType !== 'whatsapp') return true;
+  return v.trim().length > 0;
+});
 
-var _waSetupLink = {{ wa_setup_link | tojson }};
-function shareWaLink() {
-  if (navigator.share) {
-    navigator.share({ title:'Get started on WhatsApp',
-      text:'Tap this link to connect with us on WhatsApp and send SETUP to get started.',
-      url:_waSetupLink }).catch(function(){});
-  } else {
-    navigator.clipboard.writeText(_waSetupLink).then(function(){ alert('Link copied to clipboard!'); });
+// Block submit and surface every invalid required field immediately, instead
+// of only finding out after a full server round-trip.
+document.getElementById('regForm').addEventListener('submit', function(e) {
+  var firstInvalid = null;
+  VALIDATORS.forEach(function(f) {
+    var el = document.getElementById(f.id);
+    if (!el || el.offsetParent === null) return; // hidden (wrong merchant_type) — skip
+    if (!el.required && !el.value) return;
+    var ok = f.validator(el.value);
+    if (ok) markOk(f.id, f.hintId); else markErr(f.id, f.hintId);
+    if (!ok && !firstInvalid) firstInvalid = el;
+  });
+  if (firstInvalid) {
+    e.preventDefault();
+    firstInvalid.focus();
+    firstInvalid.scrollIntoView({behavior: 'smooth', block: 'center'});
+    return;
   }
-}
+  var btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Creating account…';
+});
 
 function setType(type) {
   currentType = type;
@@ -292,7 +437,9 @@ function setType(type) {
   document.getElementById('web-fields').style.display = type === 'web' ? '' : 'none';
   document.getElementById('wa-fields').style.display  = type === 'whatsapp' ? '' : 'none';
   document.getElementById('fDomain').required        = (type === 'web');
+  document.getElementById('fPhone').required          = (type === 'web');
   document.getElementById('fBusinessName').required  = (type === 'whatsapp');
+  document.getElementById('fPhoneWa').required        = (type === 'whatsapp');
 }
 
 setType(currentType);

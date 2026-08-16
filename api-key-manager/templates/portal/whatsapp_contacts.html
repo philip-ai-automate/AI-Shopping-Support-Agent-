@@ -117,6 +117,28 @@
 .row-check { width:16px; height:16px; accent-color:#6366f1; cursor:pointer; }
 .select-all-check { width:16px; height:16px; accent-color:#6366f1; cursor:pointer; }
 
+/* ── Column picker ───────────────────────────────────────────────────────── */
+.col-picker-wrap { position:relative; }
+.col-picker-btn {
+  display:inline-flex; align-items:center; gap:6px;
+  background:#fff; color:var(--ink); font-size:12px; font-weight:600;
+  padding:7px 12px; border-radius:8px; border:1.5px solid #e2e8f0; cursor:pointer; transition:.12s;
+}
+.col-picker-btn:hover { border-color:#cbd5e1; background:#f8fafc; }
+.col-picker-menu {
+  display:none; position:absolute; top:calc(100% + 6px); right:0; z-index:60;
+  background:#fff; border:1px solid rgba(3,12,24,.1); border-radius:11px;
+  box-shadow:0 10px 30px rgba(0,0,0,.12); padding:8px; min-width:190px;
+}
+.col-picker-menu.open { display:block; }
+.col-picker-item {
+  display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:7px;
+  font-size:12.5px; color:var(--ink); cursor:pointer; user-select:none;
+}
+.col-picker-item:hover { background:#f1f5f9; }
+.col-picker-item input { width:14px; height:14px; accent-color:#25D366; cursor:pointer; }
+.contacts-table th[data-col].col-hidden, .contacts-table td[data-col].col-hidden { display:none; }
+
 /* ── Bulk action bar ─────────────────────────────────────────────────────── */
 .bulk-bar {
   display:none; position:sticky; bottom:0; left:0; right:0; z-index:50;
@@ -237,7 +259,7 @@
     <p>Manage your CRM — segment, tag, and track every lead through to customer.</p>
   </div>
   <div class="hero-actions">
-    <a href="{{ url_for('portal.whatsapp_contacts_export') }}" class="btn-outline-white">
+    <a href="{{ url_for('portal.whatsapp_contacts_export', q=search, status_filter=status_filter, tag_filter=tag_filter, segment_filter=segment_filter, has_phone='1' if has_phone else '', has_email='1' if has_email else '') }}" class="btn-outline-white" title="Exports contacts matching your current search/filters">
       <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
       Export CSV
     </a>
@@ -350,9 +372,32 @@
         <input type="text" name="q" value="{{ search }}" placeholder="Search by name or phone…" autocomplete="off">
       </div>
       <button type="submit" class="btn-save" style="padding:9px 16px">Search</button>
-      {% if search or status_filter or tag_filter or segment_filter %}
+      <div style="display:flex;align-items:center;gap:12px;font-size:12px;color:var(--muted)">
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+          <input type="checkbox" name="has_phone" value="1" {% if has_phone %}checked{% endif %} onchange="this.form.submit()">
+          Has Phone
+        </label>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+          <input type="checkbox" name="has_email" value="1" {% if has_email %}checked{% endif %} onchange="this.form.submit()">
+          Has Email
+        </label>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+          <input type="checkbox" name="has_pers" value="1" {% if has_pers %}checked{% endif %} onchange="this.form.submit()">
+          Has Personalization
+        </label>
+      </div>
+      {% if search or status_filter or tag_filter or segment_filter or has_phone or has_email or has_pers %}
       <a href="{{ url_for('portal.whatsapp_contacts') }}" class="btn-ghost" style="text-decoration:none">Clear all</a>
       {% endif %}
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-left:auto">
+        Per page
+        <select name="per_page" onchange="this.form.submit()"
+                style="padding:7px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:12px;font-family:inherit">
+          {% for opt in ['25','50','100','300','500','all'] %}
+          <option value="{{ opt }}" {% if per_page == opt %}selected{% endif %}>{{ 'All' if opt == 'all' else opt }}</option>
+          {% endfor %}
+        </select>
+      </label>
     </form>
 
     <!-- Active filter chips -->
@@ -401,7 +446,23 @@
             {% elif segment_filter %}{% set as2 = segments|selectattr('id','equalto',segment_filter|int)|first %}{{ as2.name if as2 else 'Segment' }}
             {% else %}All Contacts{% endif %}
           </h2>
-          <span style="font-size:12px;color:var(--muted)">{{ contacts|length }}{% if total > contacts|length %} of {{ total }}{% endif %} shown</span>
+          <div style="display:flex;align-items:center;gap:14px">
+            <span style="font-size:12px;color:var(--muted)">{{ contacts|length }}{% if filtered_total > contacts|length %} of {{ filtered_total }}{% endif %} shown</span>
+            <div class="col-picker-wrap">
+              <button type="button" class="col-picker-btn" id="colPickerBtn" onclick="toggleColPicker()">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="16" rx="1"/><rect x="14" y="4" width="7" height="16" rx="1"/></svg>
+                Columns
+              </button>
+              <div class="col-picker-menu" id="colPickerMenu">
+                <label class="col-picker-item"><input type="checkbox" data-col-toggle="phone" checked>Phone</label>
+                <label class="col-picker-item"><input type="checkbox" data-col-toggle="email">Email</label>
+                <label class="col-picker-item"><input type="checkbox" data-col-toggle="status" checked>Status</label>
+                <label class="col-picker-item"><input type="checkbox" data-col-toggle="tags" checked>Tags</label>
+                <label class="col-picker-item"><input type="checkbox" data-col-toggle="personalization">Personalization</label>
+                <label class="col-picker-item"><input type="checkbox" data-col-toggle="added" checked>Added</label>
+              </div>
+            </div>
+          </div>
         </div>
 
         {% if not contacts %}
@@ -427,10 +488,12 @@
                 <th style="width:36px"><input type="checkbox" class="select-all-check" id="selectAll" title="Select all"></th>
                 <th style="width:40px"></th>
                 <th>Name</th>
-                <th>Phone</th>
-                <th>Status</th>
-                <th>Tags</th>
-                <th>Added</th>
+                <th data-col="phone">Phone</th>
+                <th data-col="email" class="col-hidden">Email</th>
+                <th data-col="status">Status</th>
+                <th data-col="tags">Tags</th>
+                <th data-col="personalization" class="col-hidden">Personalization</th>
+                <th data-col="added">Added</th>
                 <th></th>
               </tr>
             </thead>
@@ -453,18 +516,25 @@
                   <div style="font-size:11px;color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px" title="{{ c.notes }}">{{ c.notes }}</div>
                   {% endif %}
                 </td>
-                <td>
+                <td data-col="phone">
                   <span class="phone-pill">
                     <svg width="9" height="9" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
                     +{{ c.phone }}
                   </span>
                 </td>
-                <td>
+                <td data-col="email" class="col-hidden">
+                  {% if c.email %}
+                  <span style="font-size:12px;color:var(--ink)">{{ c.email }}</span>
+                  {% else %}
+                  <span style="font-size:11px;color:var(--muted)">—</span>
+                  {% endif %}
+                </td>
+                <td data-col="status">
                   <span class="status-badge badge-{{ c.status or 'lead' }}">
                     <span class="status-dot"></span>{{ (c.status or 'lead')|title }}
                   </span>
                 </td>
-                <td>
+                <td data-col="tags">
                   <div style="display:flex;gap:4px;flex-wrap:wrap;max-width:160px">
                     {% if c.tags %}
                       {% for tag in c.tags[:3] %}
@@ -478,12 +548,32 @@
                     {% endif %}
                   </div>
                 </td>
-                <td style="font-size:11px;color:var(--muted);white-space:nowrap">
+                <td data-col="personalization" class="col-hidden">
+                  {% if c.personalization_note %}
+                  <span style="font-size:12px;color:var(--ink);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block" title="{{ c.personalization_note }}">{{ c.personalization_note }}</span>
+                  {% else %}
+                  <span style="font-size:11px;color:var(--muted)">—</span>
+                  {% endif %}
+                </td>
+                <td data-col="added" style="font-size:11px;color:var(--muted);white-space:nowrap">
                   {{ c.created_at.strftime('%d %b %Y') if c.created_at else '—' }}
                 </td>
                 <td style="white-space:nowrap">
+                  {% if c.in_pipeline %}
+                  <span class="icon-btn" title="Already in Sales Pipeline" style="color:#16a34a;cursor:default">
+                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+                  </span>
+                  {% else %}
+                  <form method="POST"
+                        action="{{ url_for('portal.whatsapp_contact_move_to_pipeline', contact_id=c.id) }}"
+                        style="display:inline;margin-right:4px">
+                    <button type="submit" class="icon-btn" title="Add to Sales Pipeline">
+                      <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                    </button>
+                  </form>
+                  {% endif %}
                   <button type="button" class="icon-btn" title="Edit contact"
-                          onclick="openEdit({{ c.id }}, '{{ (c.display_name or '')|replace("'","\\'")|replace('"','\\"') }}', '{{ (c.notes or '')|replace("'","\\'")|replace('"','\\"')|replace('\n',' ') }}', '{{ c.status or 'lead' }}', '{{ (c.tags or [])|join(',') }}')">
+                          onclick="openEdit({{ c.id }}, '{{ (c.display_name or '')|replace("'","\\'")|replace('"','\\"') }}', '{{ (c.notes or '')|replace("'","\\'")|replace('"','\\"')|replace('\n',' ') }}', '{{ c.status or 'lead' }}', '{{ (c.tags or [])|join(',') }}', '{{ (c.email or '')|replace("'","\\'") }}', '{{ (c.personalization_note or '')|replace("'","\\'")|replace('"','\\"')|replace('\n',' ') }}')">
                     <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                   </button>
                   <form method="POST"
@@ -500,9 +590,28 @@
             </tbody>
           </table>
         </div>
-        {% if total > 500 %}
-        <div style="padding:12px 18px;font-size:12px;color:var(--muted);border-top:1px solid rgba(3,12,24,.06)">
-          Showing first 500 contacts. Use search or filters to narrow results.
+        {% if total_pages > 1 %}
+        <div style="display:flex;align-items:center;justify-content:center;gap:6px;
+                    padding:14px 18px;border-top:1px solid rgba(3,12,24,.06);flex-wrap:wrap">
+          {% set base_args = {'q': search, 'status_filter': status_filter, 'tag_filter': tag_filter,
+                               'segment_filter': segment_filter, 'per_page': per_page,
+                               'has_phone': '1' if has_phone else '', 'has_email': '1' if has_email else ''} %}
+          <a href="{{ url_for('portal.whatsapp_contacts', page=page-1, **base_args) if page > 1 else '#' }}"
+             class="btn-ghost" style="text-decoration:none;padding:6px 12px;font-size:12px;
+             {% if page <= 1 %}pointer-events:none;opacity:.4{% endif %}">← Prev</a>
+          {% for p in range(1, total_pages + 1) %}
+            {% if p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
+          <a href="{{ url_for('portal.whatsapp_contacts', page=p, **base_args) }}"
+             class="{{ 'btn-save' if p == page else 'btn-ghost' }}"
+             style="text-decoration:none;padding:6px 11px;font-size:12px;min-width:30px;text-align:center">{{ p }}</a>
+            {% elif p == page - 3 or p == page + 3 %}
+          <span style="color:var(--muted);font-size:12px">…</span>
+            {% endif %}
+          {% endfor %}
+          <a href="{{ url_for('portal.whatsapp_contacts', page=page+1, **base_args) if page < total_pages else '#' }}"
+             class="btn-ghost" style="text-decoration:none;padding:6px 12px;font-size:12px;
+             {% if page >= total_pages %}pointer-events:none;opacity:.4{% endif %}">Next →</a>
+          <span style="font-size:11.5px;color:var(--muted);margin-left:8px">Page {{ page }} of {{ total_pages }}</span>
         </div>
         {% endif %}
         {% endif %}
@@ -526,6 +635,10 @@
           Add to Segment
         </button>
         {% endif %}
+        <button type="button" class="bulk-btn" onclick="bulkMoveToPipeline()">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          Add to Sales Pipeline
+        </button>
         <button type="button" class="bulk-btn danger" onclick="bulkDelete()">
           <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M3 6h18M19 6l-1 14H6L5 6"/></svg>
           Delete
@@ -561,6 +674,10 @@
         <input class="field-input" type="text" name="display_name" placeholder="e.g. Amira Johnson" autocomplete="off">
       </div>
       <div class="field">
+        <label class="field-label">Email <span class="field-hint">optional</span></label>
+        <input class="field-input" type="email" name="email" placeholder="e.g. amira@business.com" autocomplete="off">
+      </div>
+      <div class="field">
         <label class="field-label">Status <span class="field-hint">optional</span></label>
         <select class="field-select" name="status">
           <option value="lead">Lead</option>
@@ -576,6 +693,10 @@
       <div class="field">
         <label class="field-label">Notes <span class="field-hint">optional</span></label>
         <textarea class="field-textarea" name="notes" placeholder="e.g. Interested in Plan B, follow up Friday…"></textarea>
+      </div>
+      <div class="field">
+        <label class="field-label">Personalization <span class="field-hint">optional — used in campaign messages</span></label>
+        <textarea class="field-textarea" name="personalization_note" placeholder="e.g. a travel agency in Lagos"></textarea>
       </div>
     </form>
   </div>
@@ -604,7 +725,7 @@
           <div class="file-chosen" id="fileChosen"></div>
         </div>
         <div class="format-box">
-          <strong>Expected columns:</strong> <code>phone</code> (required) · <code>name</code> · <code>notes</code><br>
+          <strong>Expected columns:</strong> <code>phone</code> (required) · <code>name</code> · <code>email</code> · <code>notes</code> · <code>personalization</code><br>
           Phone numbers must include country code with no <code>+</code> or spaces.
         </div>
       </form>
@@ -629,6 +750,10 @@
           <input class="field-input" type="text" name="display_name" id="ef-name" placeholder="Full name">
         </div>
         <div class="field">
+          <label class="field-label">Email <span class="field-hint">optional</span></label>
+          <input class="field-input" type="email" name="email" id="ef-email" placeholder="e.g. amira@business.com">
+        </div>
+        <div class="field">
           <label class="field-label">Status</label>
           <select class="field-select" name="status" id="ef-status">
             <option value="lead">Lead</option>
@@ -641,9 +766,13 @@
           <label class="field-label">Tags <span class="field-hint">comma separated</span></label>
           <input class="field-input" type="text" name="tags_csv" id="ef-tags" placeholder="e.g. Lagos, VIP">
         </div>
-        <div class="field" style="margin-bottom:0">
+        <div class="field">
           <label class="field-label">Notes</label>
           <textarea class="field-textarea" name="notes" id="ef-notes" rows="3" placeholder="Optional notes…"></textarea>
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <label class="field-label">Personalization <span class="field-hint">used in campaign messages, e.g. "a fashion boutique in Lagos"</span></label>
+          <textarea class="field-textarea" name="personalization_note" id="ef-personalization" rows="2" placeholder="e.g. a travel agency in Lagos"></textarea>
         </div>
       </form>
     </div>
@@ -709,6 +838,49 @@
 </div>
 
 <script>
+/* ── Column picker ───────────────────────────────────────────────────── */
+const COL_STORAGE_KEY = 'phixtra_contacts_visible_cols'
+const colCheckboxes = [...document.querySelectorAll('[data-col-toggle]')]
+
+function applyColumnVisibility() {
+  colCheckboxes.forEach(cb => {
+    const col = cb.dataset.colToggle
+    document.querySelectorAll(`[data-col="${col}"]`).forEach(el => {
+      el.classList.toggle('col-hidden', !cb.checked)
+    })
+  })
+}
+
+function saveColumnPrefs() {
+  const visible = colCheckboxes.filter(cb => cb.checked).map(cb => cb.dataset.colToggle)
+  localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(visible))
+}
+
+function loadColumnPrefs() {
+  const raw = localStorage.getItem(COL_STORAGE_KEY)
+  if (!raw) return
+  try {
+    const visible = JSON.parse(raw)
+    colCheckboxes.forEach(cb => { cb.checked = visible.includes(cb.dataset.colToggle) })
+  } catch (e) {}
+}
+
+colCheckboxes.forEach(cb => cb.addEventListener('change', () => {
+  applyColumnVisibility()
+  saveColumnPrefs()
+}))
+
+loadColumnPrefs()
+applyColumnVisibility()
+
+function toggleColPicker() {
+  document.getElementById('colPickerMenu').classList.toggle('open')
+}
+document.addEventListener('click', (e) => {
+  const wrap = document.querySelector('.col-picker-wrap')
+  if (wrap && !wrap.contains(e.target)) document.getElementById('colPickerMenu').classList.remove('open')
+})
+
 /* ── Checkbox / bulk selection ───────────────────────────────────────── */
 const selectAll = document.getElementById('selectAll')
 const bulkBar   = document.getElementById('bulkBar')
@@ -774,6 +946,10 @@ function bulkDelete() {
   document.getElementById('bulk-action-input').value = 'delete'
   document.getElementById('bulkForm').submit()
 }
+function bulkMoveToPipeline() {
+  document.getElementById('bulk-action-input').value = 'move_to_pipeline'
+  document.getElementById('bulkForm').submit()
+}
 
 /* ── Add drawer ──────────────────────────────────────────────────────── */
 function openAddDrawer() {
@@ -826,12 +1002,14 @@ if (dz) {
 }
 
 /* ── Edit modal ──────────────────────────────────────────────────────── */
-function openEdit(id, name, notes, status, tagsStr) {
-  document.getElementById('editForm').action = '/whatsapp/contacts/' + id + '/edit'
-  document.getElementById('ef-name').value   = name
-  document.getElementById('ef-notes').value  = notes
-  document.getElementById('ef-status').value = status || 'lead'
-  document.getElementById('ef-tags').value   = tagsStr
+function openEdit(id, name, notes, status, tagsStr, email, personalizationNote) {
+  document.getElementById('editForm').action   = '/whatsapp/contacts/' + id + '/edit'
+  document.getElementById('ef-name').value     = name
+  document.getElementById('ef-notes').value    = notes
+  document.getElementById('ef-status').value   = status || 'lead'
+  document.getElementById('ef-tags').value     = tagsStr
+  document.getElementById('ef-email').value    = email || ''
+  document.getElementById('ef-personalization').value = personalizationNote || ''
   document.getElementById('editModal').classList.add('open')
   document.body.style.overflow = 'hidden'
   setTimeout(() => document.getElementById('ef-name').focus(), 100)

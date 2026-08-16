@@ -14,7 +14,7 @@ def _validate_products(products):
     return safe
 # ===== End Guard =====
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uuid
@@ -25,7 +25,7 @@ import psycopg2.extras
 
 from auth import verify_api_key
 from search import search_documents, search_documents_with_meta, search_related_products, upsert_verified_spec
-from llm import ask_llm
+from llm import ask_llm, classify_relevant_products
 from db import get_db_connection, insert_audit_log
 from memory_store import (
     init_memory_tables,
@@ -49,6 +49,7 @@ from cart_db import (
 from cart_scorer import compute_intent_score, RECOVERY_THRESHOLD
 from cart_recovery import start_recovery_sequence
 from web_spec_lookup import is_spec_question, lookup_spec_verified
+import image_search
 
 
 app = FastAPI(title="ProfitBuyz AI Support API")
@@ -248,6 +249,31 @@ def record_token_usage(
 # We parse and strip it from the visible reply.
 _PRODUCT_TAG_PATTERN = r'<<<PHIXTRA_PRODUCTS:(\[.*?\])>>>'
 
+# Safety net for when the AI breaks its own "never list products in text" rule
+# and writes a bullet/numbered product list alongside a valid tag anyway — the
+# customer would then read about more products than the system actually shows
+# them. Only drops a list line if it repeats an actual product's name/title —
+# NOT any line that merely mentions a price — so a legitimate answer that
+# happens to explain a price difference (e.g. "- Black (₦411,556)") is never
+# touched, only genuine duplicate product listings are.
+_LIST_ITEM_PATTERN = _re.compile(r'^(?:[-•]|\d+\.)\s+')
+
+
+def _strip_duplicate_product_lines(text: str, product_names: list) -> str:
+    norm_names = [n.strip().lower() for n in (product_names or []) if n and n.strip()]
+    if not norm_names:
+        return text
+    keep = []
+    for line in text.split('\n'):
+        stripped_line = line.strip()
+        if _LIST_ITEM_PATTERN.match(stripped_line):
+            low = stripped_line.lower()
+            if any(name in low for name in norm_names):
+                continue  # this line just repeats a product already shown separately
+        keep.append(line)
+    result = '\n'.join(keep)
+    return _re.sub(r'\n{3,}', '\n\n', result).strip()
+
 # ── System prompt instruction appended when feature is enabled ────────────────
 _PRODUCT_REC_INSTRUCTION = (
     "\n\n[PRODUCT DISPLAY — CRITICAL RULE]\n"
@@ -271,9 +297,25 @@ _PRODUCT_REC_INSTRUCTION = (
     "- Maximum 6 products in the tag. Always include as many relevant matches as you find, up to 6.\n"
     "- The tag must always be at the very END — never in the middle.\n"
     "- The tag is stripped automatically before the customer sees your message.\n"
-    "- If you are NOT recommending a specific product, omit the tag entirely."
+    "- If you are NOT recommending a specific product, omit the tag entirely.\n"
+    "- CONSISTENCY: never say things like 'we have several options' or describe more products "
+    "than you put in the tag. If you mention a number or range of options, the tag must contain "
+    "that many (up to 6) — do not undercount. Customers can only tap what's in the tag, so anything "
+    "you describe but don't tag is invisible and unreachable to them."
 )
 
+_SCOPE_INSTRUCTION = (
+    "\n\n[SCOPE RULE]\n"
+    "Stay strictly focused on this business. If the customer's message is a "
+    "greeting, thanks, or small talk, respond naturally and briefly — you do "
+    "not need any store data for that. If the customer asks something with "
+    "nothing to do with this business (general advice, or help with something "
+    "unrelated to the store), do not attempt to answer it — politely say in "
+    "one short sentence that you can only help with questions about this "
+    "business. Never use outside/general knowledge to answer a question about "
+    "this business's products, prices, or policies — only use the store data "
+    "provided to you."
+)
 
 def _check_quota(tenant_id: int) -> dict:
     """
@@ -407,7 +449,7 @@ def chat(req: ChatRequest):
     # Product recommendation instruction goes FIRST — before handoff rules —
     # so it carries maximum weight with the model.
     if rec_enabled:
-        system_prompt = system_prompt + _PRODUCT_REC_INSTRUCTION
+        system_prompt = system_prompt + _PRODUCT_REC_INSTRUCTION + _SCOPE_INSTRUCTION
 
     # ── Handoff rules injection ───────────────────────────────────────────────
     # Read the tenant's active handoff rules from the DB and append them to the
@@ -436,9 +478,13 @@ def chat(req: ChatRequest):
             _intro_reason = "new customer" if _sess_status["is_new"] else "returning customer (inactive 48+ hours)"
             system_prompt += (
                 f"\n\nFIRST-CONTACT GREETING ({_intro_reason}): Before answering the customer's message, "
-                "open with a short, warm welcome and introduce what this business sells or offers "
-                "(2-3 sentences drawn from the context above — business name, main products/services, "
-                "and an invitation to ask questions). "
+                "open with a short, warm welcome, then describe in 2-3 sentences what THIS business "
+                "actually is or does — using ONLY the business description already given to you in "
+                "your instructions above (its name, what it actually offers). Do NOT guess, assume, "
+                "or invent what kind of business this is — e.g. do not describe it as selling generic "
+                "goods like electronics, fashion, or home goods unless your instructions actually say "
+                "so. If your instructions don't clearly describe the business, keep the welcome brief "
+                "and simply invite the customer to ask a question, rather than making something up. "
                 "Do NOT repeat this introduction in future replies — only on this first message."
             )
             print(f"   [INTRO] Injecting business intro for session={session_id} ({_intro_reason})")
@@ -484,30 +530,69 @@ def chat(req: ChatRequest):
         precomputed_embedding=msg_embedding,
     )
 
-    # ── No-hallucination guard ────────────────────────────────────────────────
-    # When the store search returns nothing, explicitly forbid the AI from
-    # inventing product names from its own training knowledge. Without this
-    # guard the LLM recommends phones that are not in the store.
-    if not context_chunks and rec_enabled:
-        if raw_docs:
-            # Products were found in the catalog but carry no text description —
-            # the product cards will show automatically via the fallback. Tell the
-            # AI to give a brief positive intro and let the cards do the talking.
-            system_prompt += (
-                "\n\nNOTE: The store catalog found matching products for this query. "
-                "Write ONE brief intro sentence (e.g. 'Here are some options for you!'). "
-                "Do NOT name any specific product, price, or model in your text — "
-                "the product cards are sent automatically."
-            )
+    # ── No-hallucination guard ───────────────────────────────────────────────
+    # A single classification call, made BEFORE the customer-facing reply is
+    # generated, decides two things: (1) does this message need real facts
+    # about this store (its products, prices, stock, policies, services) to
+    # be answered correctly, and (2) if so, of the candidates the search
+    # actually retrieved, which (if any) genuinely answer it? pgvector
+    # nearest-neighbor search always returns *something*, even when nothing
+    # in the store relates to the query at all (an iPhone-only store asked
+    # for "headphones" gets back the least-dissimilar iPhones, not an empty
+    # result) — so "something came back" was never a safe signal of relevance.
+    #
+    # When no real candidate answers the question — whether the topic is a
+    # product, an order, a payment, or anything else — the AI is told
+    # explicitly not to guess, and left to phrase its own honest reply. A
+    # previous version of this guard skipped the AI entirely and sent one
+    # fixed sentence instead, because earlier testing (on an older model)
+    # showed prose instructions could be overridden by a tenant's own custom
+    # prompt granting "use your general knowledge." Retired now that the
+    # model in use follows system instructions more reliably — if invented
+    # answers reappear, this is the mechanism to revisit.
+    gen_chunks = context_chunks
+    classify_usage = {}
+    if rec_enabled:
+        requires_store_data, relevant_ids, classify_usage = classify_relevant_products(req.message, raw_docs)
+
+        if not requires_store_data:
+            # Greeting / small talk / off-topic — no store facts needed, so
+            # no fabrication risk either way. Let the AI reply normally,
+            # guided by the SCOPE RULE instruction, instead of a rigid script.
+            gen_chunks = []
+        elif not context_chunks:
+            # Data-completeness edge case: a product matched by id but produced
+            # no formattable text (title/content empty in the catalog).
+            # Unrelated to relevance, so this narrow original check is left
+            # exactly as it was — still generation-based, since it's a
+            # "describe these real matched products" instruction, not a
+            # "don't mention anything" one.
+            if raw_docs:
+                system_prompt += (
+                    "\n\nNOTE: The store catalog found matching products for this query. "
+                    "Write ONE brief intro sentence (e.g. 'Here are some options for you!'). "
+                    "Do NOT name any specific product, price, or model in your text — "
+                    "the product cards are sent automatically."
+                )
+            else:
+                system_prompt += (
+                    "\n\nNOTE: Nothing in this store's data answers the customer's question — "
+                    "whether it's about a product, an order, a payment, or anything else. "
+                    "Do not guess, invent details, or describe something unrelated as if it "
+                    "answers the question. Say honestly and briefly that you don't have that "
+                    "information, in your own words suited to what they actually asked, and "
+                    "offer to help with something else."
+                )
         else:
-            system_prompt += (
-                "\n\nCRITICAL — PRODUCT SAFETY RULE: The store database returned NO products "
-                "for this query. You MUST NOT mention, recommend, or suggest any product by name. "
-                "Do not use your own knowledge to suggest products. "
-                "Tell the customer honestly that you don't currently have matching products in stock, "
-                "suggest they ask about a specific model (e.g. iPhone 11, iPhone 12, iPhone 13), "
-                "and offer to show them what is available in the store."
-            )
+            gen_chunks = [c for c, d in zip(context_chunks, raw_docs) if d.get("id") in relevant_ids]
+            if not gen_chunks:
+                system_prompt += (
+                    "\n\nNOTE: None of the store's candidate matches genuinely answer the "
+                    "customer's question. Do not guess, invent details, or describe an "
+                    "unrelated product/candidate as if it answers the question. Say honestly "
+                    "and briefly that you don't have that information, in your own words "
+                    "suited to what they actually asked, and offer to help with something else."
+                )
     # ─────────────────────────────────────────────────────────────────────────
 
     # ── Verified Specs Web Lookup (No Hallucination) ───────────────────────
@@ -597,8 +682,18 @@ def chat(req: ChatRequest):
 
 
     answer, needs_handoff, usage = ask_llm(
-        system_prompt, req.message, context_chunks, history=history, structured_handoff=True
+        system_prompt, req.message, gen_chunks, history=history, structured_handoff=True
     )
+
+    # Fold the relevance-classification call's token cost (if any) into the
+    # usage this turn bills/meters — it's a real API call even on turns that
+    # skip the main generation call.
+    if classify_usage:
+        usage = {
+            "prompt_tokens": int((usage or {}).get("prompt_tokens", 0)) + int(classify_usage.get("prompt_tokens", 0)),
+            "completion_tokens": int((usage or {}).get("completion_tokens", 0)) + int(classify_usage.get("completion_tokens", 0)),
+            "total_tokens": int((usage or {}).get("total_tokens", 0)) + int(classify_usage.get("total_tokens", 0)),
+        }
 
     # ── Human handoff detection (best-effort, never crashes /chat) ───────────
     handoff_triggered = False
@@ -773,6 +868,16 @@ def chat(req: ChatRequest):
             except Exception as parse_err:
                 print(f"   ⚠️ product tag parse failed: {parse_err}")
 
+            # Strip any product list the AI wrote in text despite the "never list
+            # products in text" rule — otherwise the customer reads about more
+            # products than actually appear in the numbered list sent separately.
+            if product_recommendations:
+                _stripped = _strip_duplicate_product_lines(
+                    answer, [p.get("name", "") for p in product_recommendations]
+                )
+                if _stripped:
+                    answer = _stripped
+
         # ── Feature 5: Automated Cross-selling (Related Product Cards) ───────
         # After the main recommendations are built, run a second Azure Search
         # query using the first recommended product's category + price range.
@@ -819,83 +924,6 @@ def chat(req: ChatRequest):
                 print(f"   ⚠️ related_products failed: {rel_err}")
         # ─────────────────────────────────────────────────────────────────────
 
-        # ── Fallback: AI skipped the tag — build list from raw search results ─
-        # This fires when the search found real products but the AI forgot to
-        # include <<<PHIXTRA_PRODUCTS:...>>> in its reply. Without this, the
-        # customer sees a plain-text product list instead of the View Options list.
-        # Guard: only fire if the AI reply actually sounds like a product recommendation.
-        # Without this, greetings like "hello" trigger the fallback because the vector
-        # search always returns something regardless of query relevance.
-        # Only fire the fallback when the AI reply is unambiguously a product
-        # recommendation — not on generic words like "available" or "option"
-        # that appear in any helpful answer (e.g. "I'm available to help").
-        _PRODUCT_SIGNALS = (
-            "here are some", "here are a few", "here are the",
-            "here is a", "here is an",
-            "i found some", "i found a few", "i found these",
-            "take a look at these", "take a look at this",
-            "check out these", "check out this",
-            "currently in stock", "these are available",
-            "options for you", "choices for you",
-            "products for you", "items for you",
-            "we currently have", "we have the following",
-            "following products", "following items", "following options",
-        )
-        _reply_suggests_products = any(p in answer.lower() for p in _PRODUCT_SIGNALS)
-        if not product_recommendations and raw_docs and _reply_suggests_products:
-            def _pid_fb(doc_id):
-                p = (doc_id or "").split("-")
-                return p[1] if len(p) >= 2 and p[0] == "product" else ""
-
-            def _price_fb(pmin, pmax, currency: str = ""):
-                from search import _fmt_currency_val
-                try:
-                    mn = float(pmin) if pmin is not None else None
-                    mx = float(pmax) if pmax is not None else None
-                    if mn is not None and mn <= 0: mn = None
-                    if mx is not None and mx <= 0: mx = None
-                    ref = mn if mn is not None else mx
-                    if ref is not None:
-                        if mn and mx and abs(mx - mn) > 0.01: return f"{_fmt_currency_val(mn, currency)} – {_fmt_currency_val(mx, currency)}"
-                        elif mn: return _fmt_currency_val(mn, currency)
-                        elif mx: return _fmt_currency_val(mx, currency)
-                except Exception: pass
-                return ""
-
-            for _doc in raw_docs[:6]:
-                _pid  = _pid_fb(_doc.get("id", ""))
-                _url  = _doc.get("url") or ""
-                _cart = f"{_url}?add-to-cart={_pid}" if _pid and _url else _url
-                product_recommendations.append({
-                    "name":        _doc.get("title") or "",
-                    "price":       _price_fb(_doc.get("price_min"), _doc.get("price_max"), _doc.get("currency") or ""),
-                    "url":         _url,
-                    "cart_url":    _cart,
-                    "in_stock":    bool(_doc.get("in_stock", True)),
-                    "sku":         _doc.get("sku") or "",
-                    "brand":       _doc.get("brand") or "",
-                    "product_id":  _pid,
-                    "id":          _doc.get("id") or "",
-                    "image_url":   _doc.get("image_url") or "",
-                    "description": (_doc.get("content") or "")[:600],
-                })
-
-            # Only strip the AI's text list if the fallback actually produces
-            # valid product cards (url + product_id + price). When raw_docs are
-            # all pages (no price/product_id), validation produces 0 items and
-            # we must NOT strip — the AI's bullet points are the real answer.
-            valid_fallback = _validate_products(product_recommendations)
-            if valid_fallback:
-                product_recommendations = valid_fallback
-                print(f"   ⚡ tag-fallback: {len(product_recommendations)} product(s) from raw_docs")
-                # Strip any numbered or bulleted product list the AI wrote so
-                # the customer only sees the intro sentence + the View Options list
-                answer = _re.sub(r'\n\d+\.\s+\*.*', '', answer, flags=_re.DOTALL).strip()
-                answer = _re.sub(r'\n[-•]\s+\*.*', '', answer, flags=_re.DOTALL).strip()
-            else:
-                product_recommendations = []
-        # ─────────────────────────────────────────────────────────────────────
-
     # Token accounting
     used_now = int((usage or {}).get("total_tokens", 0) or 0)
     record_token_usage(
@@ -929,6 +957,45 @@ def chat(req: ChatRequest):
 # ══════════════════════════════════════════════════════════════════════════════
 
 import os as _os
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# VISUAL PRODUCT MATCH — Pro plan only
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/visual-match")
+def visual_match(api_key: str = Form(...), file: UploadFile = File(...)):
+    """
+    Called by the WhatsApp gateway when a customer sends a photo. Resolves
+    whether the tenant is allowed to use this (Pro plan + opted in), then
+    runs CLIP similarity search against that tenant's product images.
+
+    Deliberately a sync `def`, not `async def` — matches /chat. Everything
+    inside (DB queries, the CLIP HTTP call) is blocking; ai-backend runs as
+    a single uvicorn worker, so an async route calling blocking code here
+    would stall every other tenant's /chat traffic on this process for the
+    duration of the CLIP call. FastAPI runs sync routes in a thread pool
+    automatically, which is what we want.
+
+    Independently re-checks the plan/opt-in gate rather than trusting the
+    caller — same defense-in-depth as every other endpoint here trusting
+    verify_api_key rather than a client-supplied tenant_id.
+    """
+    tenant, error = verify_api_key(api_key)
+    if error:
+        raise HTTPException(status_code=401, detail=error)
+
+    tenant_id = tenant["tenant_id"]
+
+    settings = image_search.get_visual_match_settings(int(tenant_id))
+    if not settings["enabled"]:
+        return {"allowed": False, "quality_ok": False, "confident": False, "suggested": False, "matches": [], "on_uncertain": "clarify"}
+
+    image_bytes = file.file.read()
+    result = image_search.find_matching_products(int(tenant_id), image_bytes)
+    result["allowed"] = True
+    result["on_uncertain"] = settings["on_uncertain"]
+    return result
 
 
 # ══════════════════════════════════════════════════════════════════════════════

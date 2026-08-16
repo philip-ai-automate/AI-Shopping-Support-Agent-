@@ -37,3 +37,21 @@ api-key-manager/static/estate_images/
 # ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+
+# ── Secrets (added 2026-08-16) ─────────────────────────────────────────────────
+.pg_password
+
+# ── DB dumps / server backups (added 2026-08-16) ──────────────────────────────
+ai-backend-backup-20260526/
+mysql_backup_20260526.sql
+phixtra-data-sync-backup-20260526/
+
+# ── More user-uploaded content (PII) ───────────────────────────────────────────
+api-key-manager/static/portal/datasource_uploads/
+api-key-manager/static/portal/product_images/
+
+# ── Local runtime DB, not source ───────────────────────────────────────────────
+rd-log/rdlog.db
+
+# ── Separate standalone project with its own git history — belongs in its own repo ──
+stocklist-tool/
