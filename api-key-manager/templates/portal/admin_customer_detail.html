@@ -40,6 +40,28 @@
           </td></tr>
       {% endif %}
     </table>
+
+    <!-- ── Sales Manager assignment ── -->
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
+      <div class="card-title" style="margin-bottom:8px">🧑‍💼 Assigned Sales Manager</div>
+      <p class="muted" style="margin:0 0 8px;font-size:12px">
+        For businesses that signed up on their own (not via an ambassador) but still
+        need someone to follow up on onboarding. Shows up in that manager's Team Pipeline.
+      </p>
+      <form method="POST" action="{{ url_for('portal_admin.customer_assign_manager', customer_id=customer.id) }}"
+            style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select name="sales_manager_id" class="modal-input" style="max-width:260px">
+          <option value="">— Unassigned —</option>
+          {% for m in sales_managers %}
+          <option value="{{ m.id }}" {% if customer.assigned_manager_id==m.id %}selected{% endif %}>
+            {{ m.first_name }} {{ m.last_name }}
+          </option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-sm btn-primary">Save</button>
+      </form>
+    </div>
+
     <div style="margin-top:12px">
       <form method="POST" action="{{ url_for('portal_admin.customer_toggle_active', customer_id=customer.id) }}"
             onsubmit="return confirm('Toggle account active status?')">

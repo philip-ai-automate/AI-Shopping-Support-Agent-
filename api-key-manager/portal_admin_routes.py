@@ -84,6 +84,49 @@ def logout():
 # CUSTOMER MANAGEMENT
 # ══════════════════════════════════════════════════════════════════════════════
 
+# ── Customer → Sales Manager assignment ──────────────────────────────────────
+# Lets Admin hand a signed-up business to a Sales Manager for onboarding
+# follow-up even when it didn't come through an ambassador referral (company
+# campaign/promo signups). Piggybacks on the existing ambassador_leads table
+# via its `sales_manager_id` column so the assignment shows up automatically
+# in that manager's Team Pipeline — see [[project_sales_manager_customer_assignment]].
+
+def _portal_sales_managers() -> list:
+    """Active Sales Managers who run the Portal product — the only ones
+    eligible to be assigned a Portal customer."""
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT id, first_name, last_name FROM ambassadors
+        WHERE role='sales_manager' AND status='active' AND managed_product='portal'
+        ORDER BY first_name, last_name
+    """)
+    rows = cur.fetchall() or []
+    cur.close(); conn.close()
+    return rows
+
+
+def _amb_manager_assignments(tenant_ids: list) -> dict:
+    """tenant_id -> {'manager_id', 'manager_name'} for every Portal tenant
+    that currently has a live (non-dropped) Sales Manager assignment."""
+    if not tenant_ids:
+        return {}
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT DISTINCT ON (al.tenant_id)
+               al.tenant_id, al.sales_manager_id AS manager_id,
+               a.first_name || ' ' || a.last_name AS manager_name
+        FROM ambassador_leads al
+        JOIN ambassadors a ON a.id = al.sales_manager_id
+        WHERE al.tenant_id = ANY(%s) AND al.product='portal' AND al.dropped_at IS NULL
+        ORDER BY al.tenant_id, al.created_at DESC
+    """, (tenant_ids,))
+    out = {row["tenant_id"]: row for row in (cur.fetchall() or [])}
+    cur.close(); conn.close()
+    return out
+
+
 @portal_admin_bp.route("/customers")
 def customers():
     r = _require_admin()
@@ -124,13 +167,18 @@ def customers():
     rows = cur.fetchall() or []
     cur.close(); conn.close()
 
+    assignments = _amb_manager_assignments([row["tenant_id"] for row in rows])
     for row in rows:
         row["balance_credits"] = tokens_to_credits(int(row.get("token_balance") or 0))
         fn = (row.get("first_name") or "").strip()
         ln = (row.get("last_name")  or "").strip()
         row["full_name"] = f"{fn} {ln}".strip() or "—"
+        assignment = assignments.get(row["tenant_id"])
+        row["assigned_manager_id"]   = assignment["manager_id"]   if assignment else None
+        row["assigned_manager_name"] = assignment["manager_name"] if assignment else None
 
-    return render_template("portal/admin_customers.html", customers=rows, q=q)
+    return render_template("portal/admin_customers.html", customers=rows, q=q,
+                           sales_managers=_portal_sales_managers())
 
 
 @portal_admin_bp.route("/customers/<int:customer_id>")
@@ -256,6 +304,10 @@ def customer_detail(customer_id: int):
     ln = (customer.get("last_name")  or "").strip()
     customer["full_name"] = f"{fn} {ln}".strip() or "—"
 
+    assignment = _amb_manager_assignments([tenant_id]).get(tenant_id)
+    customer["assigned_manager_id"]   = assignment["manager_id"]   if assignment else None
+    customer["assigned_manager_name"] = assignment["manager_name"] if assignment else None
+
     for inv in invs:
         inv["total_fmt"] = money_fmt(
             int(inv.get("amount_pence") or 0) + int(inv.get("vat_pence") or 0),
@@ -270,7 +322,104 @@ def customer_detail(customer_id: int):
                            msgs_used=msgs_used,
                            onboarding_other=onboarding_other,
                            tenant_system_prompt=tenant_system_prompt,
+                           sales_managers=_portal_sales_managers(),
                            admin_new_plain_key=session.pop("admin_new_plain_key", None))
+
+
+@portal_admin_bp.route("/customers/<int:customer_id>/assign-manager", methods=["POST"])
+def customer_assign_manager(customer_id: int):
+    r = _require_admin("customers", "modify")
+    if r: return r
+
+    fallback = request.referrer or url_for("portal_admin.customers")
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT c.id, c.tenant_id, c.first_name, c.last_name, c.email, c.phone_number,
+               t.name AS tenant_name
+        FROM customers c JOIN tenants t ON t.id=c.tenant_id
+        WHERE c.id=%s
+    """, (customer_id,))
+    customer = cur.fetchone()
+    if not customer:
+        cur.close(); conn.close()
+        flash("Customer not found.", "danger")
+        return redirect(fallback)
+
+    tenant_id  = customer["tenant_id"]
+    mgr_id_raw = (request.form.get("sales_manager_id") or "").strip()
+
+    new_manager = None
+    if mgr_id_raw:
+        if not mgr_id_raw.isdigit():
+            cur.close(); conn.close()
+            flash("Invalid Sales Manager.", "danger")
+            return redirect(fallback)
+        cur.execute("""
+            SELECT id, first_name, last_name FROM ambassadors
+            WHERE id=%s AND role='sales_manager' AND status='active' AND managed_product='portal'
+        """, (int(mgr_id_raw),))
+        new_manager = cur.fetchone()
+        if not new_manager:
+            cur.close(); conn.close()
+            flash("That Sales Manager is not available for Portal customers.", "danger")
+            return redirect(fallback)
+
+    # Reuse an existing (non-dropped) Portal lead row for this tenant if one
+    # already exists — e.g. this business actually did come in through an
+    # ambassador and already has a pipeline record — otherwise create a fresh
+    # "company campaign" one (ambassador_id left NULL on purpose).
+    cur.execute("""
+        SELECT id FROM ambassador_leads
+        WHERE tenant_id=%s AND product='portal' AND dropped_at IS NULL
+        ORDER BY created_at DESC LIMIT 1
+    """, (tenant_id,))
+    existing = cur.fetchone()
+
+    if new_manager:
+        if existing:
+            cur.execute("UPDATE ambassador_leads SET sales_manager_id=%s WHERE id=%s",
+                        (new_manager["id"], existing["id"]))
+            conn.commit()
+        else:
+            fn = (customer.get("first_name") or "").strip()
+            ln = (customer.get("last_name")  or "").strip()
+            contact_name  = f"{fn} {ln}".strip() or None
+            business_name = customer.get("tenant_name") or contact_name or "—"
+            cur.execute("""
+                INSERT INTO ambassador_leads
+                  (ambassador_id, sales_manager_id, business_name, contact_name, phone, email,
+                   notes, stage, product, tenant_id, onboarding_date, onboarding_notes)
+                VALUES (NULL, %s, %s, %s, %s, %s, %s, 'onboarding', 'portal', %s, CURRENT_DATE, %s)
+                RETURNING id
+            """, (new_manager["id"], business_name, contact_name, customer.get("phone_number"),
+                  customer.get("email"),
+                  "Signed up directly (not via ambassador referral).",
+                  tenant_id, "Assigned by admin for onboarding follow-up."))
+            new_id = cur.fetchone()["id"]
+            conn.commit()
+            record_stage_change(new_id, None, "onboarding", f"{_admin_user()} (Admin)",
+                                 "Directly assigned to Sales Manager — no ambassador referral.")
+
+        insert_audit_log(admin_username=_admin_user(), action="customer_assign_manager",
+            tenant_id=tenant_id, details={
+            "customer_id": customer_id, "tenant_id": tenant_id,
+            "sales_manager_id": new_manager["id"],
+            "sales_manager_name": f"{new_manager['first_name']} {new_manager['last_name']}"})
+        flash(f"{customer['tenant_name'] or 'Customer'} assigned to "
+              f"{new_manager['first_name']} {new_manager['last_name']} for follow-up.", "success")
+    else:
+        if existing:
+            cur.execute("UPDATE ambassador_leads SET sales_manager_id=NULL WHERE id=%s", (existing["id"],))
+            conn.commit()
+            insert_audit_log(admin_username=_admin_user(), action="customer_unassign_manager",
+                              tenant_id=tenant_id,
+                              details={"customer_id": customer_id, "tenant_id": tenant_id})
+        flash("Sales Manager assignment removed.", "success")
+
+    cur.close(); conn.close()
+    return redirect(fallback)
 
 
 @portal_admin_bp.route("/customers/<int:customer_id>/system-prompt", methods=["POST"])

@@ -51,6 +51,7 @@
           <th>Verified</th>
           <th>Active</th>
           <th>Signed up</th>
+          <th>Assigned To</th>
           <th>Actions</th>
         </tr>
       </thead>
@@ -74,6 +75,19 @@
             {% else %}<span class="pill pill-red">Disabled</span>{% endif %}
           </td>
           <td class="muted">{{ c.created_at.strftime('%Y-%m-%d') if c.created_at else '—' }}</td>
+          <td>
+            <form method="POST" action="{{ url_for('portal_admin.customer_assign_manager', customer_id=c.id) }}">
+              <select name="sales_manager_id" class="modal-input" style="padding:4px 8px;font-size:12px"
+                      onchange="this.form.submit()">
+                <option value="">— Unassigned —</option>
+                {% for m in sales_managers %}
+                <option value="{{ m.id }}" {% if c.assigned_manager_id==m.id %}selected{% endif %}>
+                  {{ m.first_name }} {{ m.last_name }}
+                </option>
+                {% endfor %}
+              </select>
+            </form>
+          </td>
           <td style="white-space:nowrap;display:flex;gap:5px;flex-wrap:wrap">
             <a href="{{ url_for('portal_admin.customer_detail', customer_id=c.id) }}"
                class="btn btn-sm">Detail</a>
@@ -83,7 +97,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="9" class="muted" style="text-align:center;padding:24px">
+        <tr><td colspan="10" class="muted" style="text-align:center;padding:24px">
           No customers found{% if q %} matching "{{ q }}"{% endif %}.
         </td></tr>
         {% endfor %}
