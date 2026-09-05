@@ -64,6 +64,17 @@
   .due-row:first-of-type{border-top:none}
   .due-date{font-weight:700;font-size:11.5px;padding:2px 9px;border-radius:20px;background:#eef2ff;color:#3730a3;white-space:nowrap}
   .due-date.overdue{background:#fee2e2;color:#991b1b}
+
+  .kpi-panel{background:#fff;border:1.5px solid var(--line);border-radius:16px;padding:16px 18px;margin-bottom:20px}
+  .kpi-panel .dp-title{font-size:13px;font-weight:800;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+  .kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  @media (max-width:640px){.kpi-grid{grid-template-columns:1fr}}
+  .kpi-stat .kpi-label{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  .kpi-stat .kpi-nums{font-size:19px;font-weight:900;letter-spacing:-.5px;color:#030C18;margin:4px 0 6px}
+  .kpi-stat .kpi-nums .of{font-size:13px;font-weight:700;color:var(--muted)}
+  .kpi-bar-track{height:7px;border-radius:20px;background:#f1f5f9;overflow:hidden}
+  .kpi-bar-fill{height:100%;border-radius:20px;background:var(--ink);transition:width .2s}
+  .kpi-bar-fill.met{background:#15803d}
 </style>
 {% endblock %}
 
@@ -82,6 +93,30 @@
   Every lead your recruited ambassadors are working. This is separate from
   <a href="{{ url_for('ambassador.leads') }}">your own pipeline</a>.
 </p>
+
+{% if kpi_target %}
+<div class="kpi-panel" data-tour="kpi-panel">
+  <div class="dp-title">🎯 {{ kpi_month.strftime('%B %Y') }} Targets</div>
+  <div class="kpi-grid">
+    {% set kpi_rows = [
+      ('New Leads', kpi_progress.new_leads, kpi_target.target_new_leads),
+      ('Demos Done', kpi_progress.demos_done, kpi_target.target_demos_done),
+      ('New Active Clients', kpi_progress.active_clients, kpi_target.target_active_clients),
+    ] %}
+    {% for label, actual, target in kpi_rows %}
+    <div class="kpi-stat">
+      <div class="kpi-label">{{ label }}</div>
+      <div class="kpi-nums">{{ actual }} <span class="of">of {{ target }}</span></div>
+      {% set pct = ((actual / target * 100) if target else 100) %}
+      <div class="kpi-bar-track">
+        <div class="kpi-bar-fill {% if target and actual >= target %}met{% endif %}"
+             style="width:{{ [pct, 100]|min }}%"></div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
 
 {% if recruits %}
 <div class="card" id="addLeadForm" style="display:none;margin-bottom:20px">

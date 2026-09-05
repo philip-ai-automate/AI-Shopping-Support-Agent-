@@ -46,7 +46,9 @@ from lead_pipeline import (STAGE_ORDER, STAGE_LABELS, STAGE_DESCRIPTIONS, SCHEDU
                             compute_due_items, lead_edit_payload,
                             build_requirements_progress_update,
                             build_onboarding_checklist_update,
-                            format_relative_activity, is_activity_stale)
+                            format_relative_activity, is_activity_stale,
+                            current_period_month, get_sales_manager_target,
+                            sales_manager_month_progress)
 from portal_utils import send_email, make_token, utc_now_naive
 
 ambassador_bp = Blueprint("ambassador", __name__)
@@ -1683,6 +1685,13 @@ def team_pipeline():
         WHERE recruited_by_id=%s AND status='active' ORDER BY first_name, last_name
     """, (amb["id"],))
     recruits = cur2.fetchall() or []
+
+    # This month's KPI target (if admin has set one) + live progress against
+    # it — see [[project_sales_manager_kpi_targets]]. Reuses cur2 since it's
+    # already a RealDictCursor on an open connection.
+    this_month = current_period_month()
+    kpi_target = get_sales_manager_target(cur2, amb["id"], this_month)
+    kpi_progress = sales_manager_month_progress(cur2, amb["id"], this_month)
     cur2.close(); conn2.close()
 
     return render_template("ambassador/team_pipeline.html", amb=amb, leads=displayed_leads,
@@ -1692,7 +1701,8 @@ def team_pipeline():
         due_items=due_items, schedule_field=SCHEDULE_FIELD, today=date.today(), stage_filter=stage_filter,
         lead_edit_payload=lead_edit_payload, search_q=search_q,
         is_activity_stale=is_activity_stale, format_relative_activity=format_relative_activity,
-        filtered_total=filtered_total, per_page=per_page_raw, page=page, total_pages=total_pages)
+        filtered_total=filtered_total, per_page=per_page_raw, page=page, total_pages=total_pages,
+        kpi_target=kpi_target, kpi_progress=kpi_progress, kpi_month=this_month)
 
 
 @ambassador_bp.route("/ambassador/team/pipeline/create", methods=["POST"])

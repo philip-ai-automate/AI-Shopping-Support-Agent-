@@ -18,7 +18,9 @@ from flask import (Blueprint, render_template, request, redirect,
 
 from db import get_db_connection, insert_audit_log
 from lead_pipeline import (STAGE_ORDER, STAGE_LABELS, STAGE_DESCRIPTIONS,
-                            next_stage, record_stage_change, get_stage_history)
+                            next_stage, record_stage_change, get_stage_history,
+                            current_period_month, get_sales_manager_target,
+                            sales_manager_month_progress, upsert_sales_manager_target)
 from portal_utils import (money_fmt, tokens_to_credits, credits_to_tokens,
                           send_email_with_attachment, TUTORIAL_VIDEOS)
 
@@ -53,6 +55,7 @@ ADMIN_MODULES = {
     "feature_releases":          {"label": "Feature Releases",      "actions": ["view", "create", "modify", "delete"]},
     "admin_leads":                {"label": "Leads",                 "actions": ["view", "create", "modify"]},
     "video_tutorials":           {"label": "Video Tutorials",       "actions": ["view"]},
+    "social_media":               {"label": "Social Media Posts",    "actions": ["view", "create", "modify", "delete"]},
 }
 
 # Multi-product ambassador program — mirrors ambassador_routes.PRODUCT_CONFIG labels.
@@ -69,6 +72,19 @@ AMB_DOC_ICONS = {
     "pdf": "📕", "doc": "📘", "docx": "📘",
     "xls": "📗", "xlsx": "📗", "ppt": "📙", "pptx": "📙",
     "jpg": "🖼️", "jpeg": "🖼️", "png": "🖼️",
+}
+
+# Social Media Posts — internal content queue (post images + captions ready
+# for the social media executive to publish manually on each platform).
+SM_UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "static", "uploads", "social_media")
+SM_ALLOWED_EXTS  = {"jpg", "jpeg", "png", "webp", "gif"}
+SM_MAX_BYTES     = 15 * 1024 * 1024  # 15 MB
+SM_PLATFORMS = {
+    "facebook":  {"label": "Facebook",  "icon": "📘"},
+    "instagram": {"label": "Instagram", "icon": "📸"},
+    "linkedin":  {"label": "LinkedIn",  "icon": "💼"},
+    "tiktok":    {"label": "TikTok",    "icon": "🎵"},
+    "x":         {"label": "X",         "icon": "✖️"},
 }
 
 
@@ -5330,6 +5346,53 @@ def ambassador_set_role(amb_id: int):
     return redirect(url_for("portal_admin.ambassadors"))
 
 
+@portal_admin_bp.route("/ambassadors/<int:amb_id>/targets", methods=["POST"])
+def ambassador_set_target(amb_id: int):
+    """Admin sets/updates one Sales Manager's monthly KPI targets. Progress
+    against them is never stored here — it's always computed live from the
+    manager's real Team Pipeline (see lead_pipeline.sales_manager_month_progress),
+    so it can't drift out of sync. AJAX endpoint, called from the side panel."""
+    r = _require_admin("ambassadors", "modify")
+    if r: return r
+    from flask import jsonify
+    from datetime import date as _date
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT id, first_name, last_name, role FROM ambassadors WHERE id=%s", (amb_id,))
+    amb = cur.fetchone()
+    cur.close(); conn.close()
+    if not amb or amb["role"] != "sales_manager":
+        return jsonify({"error": "This ambassador is not a Sales Manager."}), 400
+
+    month_raw = (request.form.get("period_month") or "").strip()
+    try:
+        period_month = _date.fromisoformat(f"{month_raw}-01") if month_raw else current_period_month()
+    except ValueError:
+        return jsonify({"error": "Invalid month."}), 400
+
+    def _nonneg_int(name):
+        try:
+            return max(0, int(request.form.get(name) or 0))
+        except ValueError:
+            return 0
+
+    target_new_leads      = _nonneg_int("target_new_leads")
+    target_demos_done     = _nonneg_int("target_demos_done")
+    target_active_clients = _nonneg_int("target_active_clients")
+    notes = (request.form.get("notes") or "").strip() or None
+
+    upsert_sales_manager_target(amb_id, period_month, target_new_leads, target_demos_done,
+                                 target_active_clients, notes, _admin_user())
+
+    insert_audit_log(admin_username=_admin_user(), action="ambassador_target_set", details={
+        "ambassador_id": amb_id, "ambassador_name": f"{amb['first_name']} {amb['last_name']}",
+        "period_month": period_month.isoformat(), "target_new_leads": target_new_leads,
+        "target_demos_done": target_demos_done, "target_active_clients": target_active_clients,
+    })
+    return jsonify({"ok": True, "period_month": period_month.isoformat()})
+
+
 @portal_admin_bp.route("/ambassadors/<int:amb_id>/detail")
 def ambassador_detail(amb_id: int):
     r = _require_admin("ambassadors", "view")
@@ -5471,6 +5534,23 @@ def ambassador_detail(amb_id: int):
             "active_clients": active_counts[p],
         }
     amb["products"] = products
+
+    if amb.get("role") == "sales_manager":
+        conn3 = get_db_connection()
+        cur3  = conn3.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        this_month = current_period_month()
+        target = get_sales_manager_target(cur3, amb_id, this_month)
+        progress = sales_manager_month_progress(cur3, amb_id, this_month)
+        cur3.close(); conn3.close()
+        amb["kpi_month"] = this_month.isoformat()
+        amb["kpi_target"] = {
+            "target_new_leads": target["target_new_leads"] if target else 0,
+            "target_demos_done": target["target_demos_done"] if target else 0,
+            "target_active_clients": target["target_active_clients"] if target else 0,
+            "notes": (target.get("notes") or "") if target else "",
+            "is_set": target is not None,
+        }
+        amb["kpi_progress"] = progress
 
     from flask import jsonify
     return jsonify(amb)
@@ -5784,6 +5864,242 @@ def ambassador_document_preview(doc_id: int):
     # images and PDFs render directly; other types fall back to a normal download.
     return send_from_directory(AMB_DOC_UPLOAD_FOLDER, doc["stored_filename"],
                                 as_attachment=False, download_name=doc["original_filename"])
+
+
+# ── Social Media Posts ───────────────────────────────────────────────────────
+# Internal content queue: owner (or a scoped support login) uploads an image +
+# caption tagged for one or more platforms; the social media executive's
+# login (view+modify only, no create/delete) marks each one posted once it's
+# actually been published by hand on Facebook/Instagram/LinkedIn/TikTok/X.
+
+def _sm_platforms_from_form() -> list:
+    submitted = request.form.getlist("platforms")
+    return [p for p in submitted if p in SM_PLATFORMS]
+
+
+@portal_admin_bp.route("/social-media", methods=["GET"])
+def social_media_posts():
+    r = _require_admin("social_media", "view")
+    if r: return r
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM social_media_posts ORDER BY status ASC, created_at DESC")
+    posts = cur.fetchall() or []
+    cur.close(); conn.close()
+    ready_count = sum(1 for p in posts if p["status"] == "ready")
+    return render_template("portal/admin_social_media.html", posts=posts,
+                            platforms=SM_PLATFORMS, ready_count=ready_count)
+
+
+@portal_admin_bp.route("/social-media/upload", methods=["POST"])
+def social_media_post_upload():
+    r = _require_admin("social_media", "create")
+    if r: return r
+
+    caption   = (request.form.get("caption") or "").strip()
+    platforms = _sm_platforms_from_form()
+    file      = request.files.get("image_file")
+
+    if not caption:
+        flash("Please add a caption for the post.", "warning")
+        return redirect(url_for("portal_admin.social_media_posts"))
+    if not platforms:
+        flash("Please select at least one platform.", "warning")
+        return redirect(url_for("portal_admin.social_media_posts"))
+    if not file or not file.filename:
+        flash("Please choose an image to upload.", "warning")
+        return redirect(url_for("portal_admin.social_media_posts"))
+
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    if ext not in SM_ALLOWED_EXTS:
+        flash("Only JPG, PNG, WEBP, and GIF images are allowed.", "warning")
+        return redirect(url_for("portal_admin.social_media_posts"))
+
+    file.seek(0, 2)
+    size_bytes = file.tell()
+    file.seek(0)
+    if size_bytes > SM_MAX_BYTES:
+        flash("Image is too large — 15 MB maximum.", "warning")
+        return redirect(url_for("portal_admin.social_media_posts"))
+
+    stored_filename = f"{uuid.uuid4().hex}.{ext}"
+    os.makedirs(SM_UPLOAD_FOLDER, exist_ok=True)
+    file.save(os.path.join(SM_UPLOAD_FOLDER, stored_filename))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("""
+        INSERT INTO social_media_posts
+            (caption, image_filename, original_filename, platforms, status, created_by)
+        VALUES (%s, %s, %s, %s, 'ready', %s)
+    """, (caption, stored_filename, file.filename, platforms, _admin_user()))
+    conn.commit()
+    cur.close(); conn.close()
+
+    insert_audit_log(admin_username=_admin_user(), action="social_media_post_upload",
+                      details={"platforms": platforms})
+    flash("Post added — ready to publish.", "success")
+    return redirect(url_for("portal_admin.social_media_posts"))
+
+
+@portal_admin_bp.route("/social-media/<int:post_id>/edit", methods=["POST"])
+def social_media_post_edit(post_id: int):
+    r = _require_admin("social_media", "modify")
+    if r: return r
+
+    caption   = (request.form.get("caption") or "").strip()
+    platforms = _sm_platforms_from_form()
+    file      = request.files.get("image_file")
+
+    if not caption:
+        flash("Please add a caption for the post.", "warning")
+        return redirect(url_for("portal_admin.social_media_posts"))
+    if not platforms:
+        flash("Please select at least one platform.", "warning")
+        return redirect(url_for("portal_admin.social_media_posts"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM social_media_posts WHERE id=%s", (post_id,))
+    post = cur.fetchone()
+    if not post:
+        cur.close(); conn.close()
+        flash("Post not found.", "warning")
+        return redirect(url_for("portal_admin.social_media_posts"))
+
+    new_stored_filename = post["image_filename"]
+    new_original_name   = post["original_filename"]
+    old_stored_filename = None
+
+    if file and file.filename:
+        ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+        if ext not in SM_ALLOWED_EXTS:
+            cur.close(); conn.close()
+            flash("Only JPG, PNG, WEBP, and GIF images are allowed.", "warning")
+            return redirect(url_for("portal_admin.social_media_posts"))
+        file.seek(0, 2)
+        size_bytes = file.tell()
+        file.seek(0)
+        if size_bytes > SM_MAX_BYTES:
+            cur.close(); conn.close()
+            flash("Image is too large — 15 MB maximum.", "warning")
+            return redirect(url_for("portal_admin.social_media_posts"))
+
+        new_stored_filename = f"{uuid.uuid4().hex}.{ext}"
+        os.makedirs(SM_UPLOAD_FOLDER, exist_ok=True)
+        file.save(os.path.join(SM_UPLOAD_FOLDER, new_stored_filename))
+        old_stored_filename = post["image_filename"]
+        new_original_name   = file.filename
+
+    cur.execute("""
+        UPDATE social_media_posts
+        SET caption=%s, platforms=%s, image_filename=%s, original_filename=%s
+        WHERE id=%s
+    """, (caption, platforms, new_stored_filename, new_original_name, post_id))
+    conn.commit()
+    cur.close(); conn.close()
+
+    if old_stored_filename:
+        try:
+            os.remove(os.path.join(SM_UPLOAD_FOLDER, old_stored_filename))
+        except OSError:
+            pass
+
+    insert_audit_log(admin_username=_admin_user(), action="social_media_post_edit",
+                      details={"post_id": post_id, "platforms": platforms})
+    flash("Post updated.", "success")
+    return redirect(url_for("portal_admin.social_media_posts"))
+
+
+@portal_admin_bp.route("/social-media/<int:post_id>/mark-posted", methods=["POST"])
+def social_media_post_mark_posted(post_id: int):
+    r = _require_admin("social_media", "modify")
+    if r: return r
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT status FROM social_media_posts WHERE id=%s", (post_id,))
+    post = cur.fetchone()
+    if not post:
+        cur.close(); conn.close()
+        flash("Post not found.", "warning")
+        return redirect(url_for("portal_admin.social_media_posts"))
+
+    new_status = "ready" if post["status"] == "posted" else "posted"
+    if new_status == "posted":
+        cur.execute("""UPDATE social_media_posts
+                        SET status='posted', posted_at=NOW(), posted_by=%s WHERE id=%s""",
+                    (_admin_user(), post_id))
+    else:
+        cur.execute("""UPDATE social_media_posts
+                        SET status='ready', posted_at=NULL, posted_by=NULL WHERE id=%s""",
+                    (post_id,))
+    conn.commit()
+    cur.close(); conn.close()
+
+    insert_audit_log(admin_username=_admin_user(), action="social_media_post_status",
+                      details={"post_id": post_id, "status": new_status})
+    flash("Marked as posted." if new_status == "posted" else "Moved back to Ready to Post.", "success")
+    return redirect(url_for("portal_admin.social_media_posts"))
+
+
+@portal_admin_bp.route("/social-media/<int:post_id>/delete", methods=["POST"])
+def social_media_post_delete(post_id: int):
+    r = _require_admin("social_media", "delete")
+    if r: return r
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM social_media_posts WHERE id=%s", (post_id,))
+    post = cur.fetchone()
+    if not post:
+        cur.close(); conn.close()
+        flash("Post not found.", "warning")
+        return redirect(url_for("portal_admin.social_media_posts"))
+
+    cur.execute("DELETE FROM social_media_posts WHERE id=%s", (post_id,))
+    conn.commit()
+    cur.close(); conn.close()
+
+    try:
+        os.remove(os.path.join(SM_UPLOAD_FOLDER, post["image_filename"]))
+    except OSError:
+        pass
+
+    insert_audit_log(admin_username=_admin_user(), action="social_media_post_delete",
+                      details={"post_id": post_id})
+    flash("Post deleted.", "success")
+    return redirect(url_for("portal_admin.social_media_posts"))
+
+
+@portal_admin_bp.route("/social-media/<int:post_id>/image", methods=["GET"])
+def social_media_post_image(post_id: int):
+    r = _require_admin("social_media", "view")
+    if r: return r
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT image_filename FROM social_media_posts WHERE id=%s", (post_id,))
+    post = cur.fetchone()
+    cur.close(); conn.close()
+    if not post:
+        return "Post not found", 404
+    return send_from_directory(SM_UPLOAD_FOLDER, post["image_filename"], as_attachment=False)
+
+
+@portal_admin_bp.route("/social-media/<int:post_id>/download", methods=["GET"])
+def social_media_post_download(post_id: int):
+    r = _require_admin("social_media", "view")
+    if r: return r
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT image_filename, original_filename FROM social_media_posts WHERE id=%s", (post_id,))
+    post = cur.fetchone()
+    cur.close(); conn.close()
+    if not post:
+        return "Post not found", 404
+    return send_from_directory(SM_UPLOAD_FOLDER, post["image_filename"],
+                                as_attachment=True,
+                                download_name=post["original_filename"] or post["image_filename"])
 
 
 # ── Ambassador WhatsApp Broadcast ────────────────────────────────────────────

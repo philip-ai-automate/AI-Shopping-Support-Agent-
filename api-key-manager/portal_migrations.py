@@ -147,6 +147,26 @@ def ensure_portal_tables():
                 resolved_at TIMESTAMPTZ
             )
         """)
+
+        # ── sales_manager_targets — admin-set monthly KPI targets per Sales
+        # Manager, measured automatically against their real Team Pipeline
+        # activity (see lead_pipeline.sales_manager_month_progress). One row
+        # per manager per calendar month (period_month always the 1st).
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS sales_manager_targets (
+                id                     SERIAL PRIMARY KEY,
+                ambassador_id          INTEGER NOT NULL REFERENCES ambassadors(id) ON DELETE CASCADE,
+                period_month           DATE NOT NULL,
+                target_new_leads       INTEGER NOT NULL DEFAULT 0,
+                target_demos_done      INTEGER NOT NULL DEFAULT 0,
+                target_active_clients  INTEGER NOT NULL DEFAULT 0,
+                notes                  TEXT,
+                created_by             TEXT,
+                created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (ambassador_id, period_month)
+            )
+        """)
         conn.commit()
 
         # ── merchant_pipeline_leads — merchant-facing Sales Pipeline CRM ──────
@@ -1062,6 +1082,30 @@ def ensure_portal_tables():
         cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_ambassador_documents_products
                 ON ambassador_documents USING GIN(products)
+        """)
+
+        # ── social_media_posts: internal content queue for the social media
+        # team. Admin (owner) creates a post with an image + caption tagged
+        # for one or more platforms; the social media executive's scoped
+        # login sees it on /admin/social-media and marks it posted once
+        # she's actually published it manually on each platform.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS social_media_posts (
+                id                 SERIAL PRIMARY KEY,
+                caption            TEXT NOT NULL,
+                image_filename     VARCHAR(255) NOT NULL,
+                original_filename  VARCHAR(255),
+                platforms          TEXT[] NOT NULL,
+                status             VARCHAR(20) NOT NULL DEFAULT 'ready',
+                created_by         VARCHAR(255),
+                posted_by          VARCHAR(255),
+                created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                posted_at          TIMESTAMPTZ
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_social_media_posts_status
+                ON social_media_posts(status)
         """)
 
         # ── ambassador_broadcasts: admin WhatsApp broadcasts to ambassadors ──

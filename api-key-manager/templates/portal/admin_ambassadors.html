@@ -658,6 +658,25 @@ function clearDateFilter() {
   openPanel(currentAmbId);
 }
 
+function saveTargets(id) {
+  const body = new URLSearchParams();
+  body.set('target_new_leads', document.getElementById('kpiInput_target_new_leads').value || 0);
+  body.set('target_demos_done', document.getElementById('kpiInput_target_demos_done').value || 0);
+  body.set('target_active_clients', document.getElementById('kpiInput_target_active_clients').value || 0);
+  body.set('notes', document.getElementById('kpiInput_notes').value || '');
+  fetch(`/admin/ambassadors/${id}/targets`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: body.toString(),
+  })
+    .then(r => r.json())
+    .then(res => {
+      if (res.error) { alert(res.error); return; }
+      openPanel(id);
+    })
+    .catch(() => alert('Failed to save targets.'));
+}
+
 function closePanel() {
   document.getElementById('spBackdrop').classList.remove('open');
   document.getElementById('sidePanel').classList.remove('open');
@@ -773,6 +792,40 @@ function renderPanel(d) {
         ${d.recruiter_name ? `<div class="sp-item full"><div class="sp-label">Recruited By</div><div class="sp-val">${d.recruiter_name}</div></div>` : ''}
       </div>
     </div>
+
+    ${d.role === 'sales_manager' ? `
+    <div class="sp-section">
+      <div class="sp-section-title">🎯 ${fmtMonth(d.kpi_month)} KPI Targets</div>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px">
+        ${[
+          ['target_new_leads', 'New Leads', d.kpi_progress ? d.kpi_progress.new_leads : 0],
+          ['target_demos_done', 'Demos Done', d.kpi_progress ? d.kpi_progress.demos_done : 0],
+          ['target_active_clients', 'New Active Clients', d.kpi_progress ? d.kpi_progress.active_clients : 0],
+        ].map(([field, label, actual]) => {
+          const target = d.kpi_target ? (d.kpi_target[field] || 0) : 0;
+          const pct = target ? Math.min(100, Math.round(actual / target * 100)) : 0;
+          return `
+          <div class="sp-item full">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+              <span style="font-size:12px;font-weight:700;color:var(--muted)">${label}</span>
+              <span style="font-size:12.5px;font-weight:800">${actual} <span style="font-weight:600;color:var(--muted)">of</span>
+                <input type="number" min="0" id="kpiInput_${field}" value="${target}"
+                       style="width:52px;padding:2px 5px;border:1.5px solid var(--line);border-radius:6px;font-size:12.5px;font-weight:800;text-align:center"/>
+              </span>
+            </div>
+            <div style="height:6px;border-radius:20px;background:#f1f5f9;overflow:hidden">
+              <div style="height:100%;border-radius:20px;width:${pct}%;background:${actual >= target && target ? '#15803d' : 'var(--ink)'}"></div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+      <textarea id="kpiInput_notes" placeholder="Notes (optional — e.g. why this target)"
+                class="modal-input" style="width:100%;min-height:50px;padding:6px 8px;font-size:12px;border:1.5px solid var(--line);border-radius:8px;resize:vertical">${(d.kpi_target && d.kpi_target.notes) || ''}</textarea>
+      <button class="sp-btn primary" style="margin-top:8px;width:100%" onclick="saveTargets(${d.id})">
+        ${d.kpi_target && d.kpi_target.is_set ? 'Update Targets' : 'Set Targets'}
+      </button>
+    </div>
+    ` : ''}
 
     ${d.role === 'sales_manager' && d.monthly_override && d.monthly_override.length ? `
     <div class="sp-section">

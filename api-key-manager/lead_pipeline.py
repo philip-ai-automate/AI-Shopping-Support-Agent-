@@ -285,3 +285,84 @@ def get_stage_history(lead_id: int) -> list[dict]:
     rows = cur.fetchall() or []
     cur.close(); conn.close()
     return rows
+
+
+# ── Sales Manager KPI targets ───────────────────────────────────────────────
+# A target is one row per manager per calendar month. Progress is never
+# stored — it's always computed live off the manager's real Team Pipeline
+# ownership rule (recruited_by_id OR sales_manager_id, same as team_pipeline()
+# in ambassador_routes.py) so it can never drift out of sync with the pipeline
+# itself.
+
+def current_period_month() -> "datetime.date":
+    today = datetime.date.today()
+    return today.replace(day=1)
+
+
+def get_sales_manager_target(cur, manager_id: int, period_month: "datetime.date") -> dict | None:
+    """Fetch a manager's KPI target row for one month (period_month = 1st of
+    that month), or None if admin hasn't set one yet. `cur` must be a
+    RealDictCursor on an already-open connection."""
+    cur.execute("""
+        SELECT * FROM sales_manager_targets WHERE ambassador_id=%s AND period_month=%s
+    """, (manager_id, period_month))
+    return cur.fetchone()
+
+
+def sales_manager_month_progress(cur, manager_id: int, period_month: "datetime.date") -> dict:
+    """Count a manager's real pipeline activity for one calendar month: new
+    leads added, demos completed, and new active clients reached — same
+    ownership rule as team_pipeline(). `cur` must be a RealDictCursor on an
+    already-open connection."""
+    cur.execute("""
+        SELECT COUNT(*) AS n
+        FROM ambassador_leads al
+        LEFT JOIN ambassadors a ON a.id = al.ambassador_id
+        WHERE (a.recruited_by_id=%s OR al.sales_manager_id=%s)
+          AND date_trunc('month', al.created_at) = %s
+    """, (manager_id, manager_id, period_month))
+    new_leads = cur.fetchone()["n"]
+
+    def _stage_reached_count(to_stage: str) -> int:
+        cur.execute("""
+            SELECT COUNT(DISTINCT h.lead_id) AS n
+            FROM lead_stage_history h
+            JOIN ambassador_leads al ON al.id = h.lead_id
+            LEFT JOIN ambassadors a ON a.id = al.ambassador_id
+            WHERE (a.recruited_by_id=%s OR al.sales_manager_id=%s)
+              AND h.to_stage=%s
+              AND date_trunc('month', h.created_at) = %s
+        """, (manager_id, manager_id, to_stage, period_month))
+        return cur.fetchone()["n"]
+
+    return {
+        "new_leads":      new_leads,
+        "demos_done":     _stage_reached_count("demo_done"),
+        "active_clients": _stage_reached_count("active_client"),
+    }
+
+
+def upsert_sales_manager_target(manager_id: int, period_month: "datetime.date",
+                                 target_new_leads: int, target_demos_done: int,
+                                 target_active_clients: int, notes: str | None,
+                                 created_by: str) -> None:
+    """Admin sets/updates a manager's target for one month. Opens its own
+    connection (mirrors record_stage_change's pattern) since it's called from
+    a plain POST handler, not somewhere that already has a cursor open."""
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("""
+        INSERT INTO sales_manager_targets
+            (ambassador_id, period_month, target_new_leads, target_demos_done,
+             target_active_clients, notes, created_by)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (ambassador_id, period_month) DO UPDATE SET
+            target_new_leads = EXCLUDED.target_new_leads,
+            target_demos_done = EXCLUDED.target_demos_done,
+            target_active_clients = EXCLUDED.target_active_clients,
+            notes = EXCLUDED.notes,
+            updated_at = NOW()
+    """, (manager_id, period_month, target_new_leads, target_demos_done,
+          target_active_clients, notes, created_by))
+    conn.commit()
+    cur.close(); conn.close()

@@ -260,6 +260,10 @@
        href="{{ url_for('portal_admin.video_tutorials') }}">
       <span class="asb-icon">🎬</span> Video Tutorials
     </a>
+    <a class="asb-link {% if request.endpoint and request.endpoint.startswith('portal_admin.social_media_post') %}active{% endif %}"
+       href="{{ url_for('portal_admin.social_media_posts') }}">
+      <span class="asb-icon">📣</span> Social Media Posts
+    </a>
     <a class="asb-link {% if request.endpoint=='portal_admin.admin_settings' %}active{% endif %}"
        href="{{ url_for('portal_admin.admin_settings') }}">
       <span class="asb-icon">⚙️</span> Settings
