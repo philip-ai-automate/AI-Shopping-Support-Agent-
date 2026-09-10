@@ -1,0 +1,93 @@
+{% extends "portal/base.html" %}
+{% block title %}Needs Review — WhatsApp Campaigns — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+.crumb{font-size:12px;color:var(--muted);margin-bottom:14px}
+.crumb a{color:var(--muted);text-decoration:none;font-weight:600}
+.crumb b{color:var(--ink)}
+
+.intro{background:#fff;border:1px solid rgba(3,12,24,.08);border-radius:14px;padding:18px 22px;margin-bottom:18px;
+       display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}
+.intro h1{font-size:17px;font-weight:800;color:var(--ink);margin:0 0 6px}
+.intro p{font-size:13px;color:var(--muted);margin:0;max-width:560px;line-height:1.5}
+
+.auto-toggle{display:flex;align-items:center;gap:10px;background:#f8fafc;border:1px solid rgba(3,12,24,.07);
+             border-radius:12px;padding:12px 16px;flex-shrink:0}
+.auto-toggle-label{font-size:12.5px;font-weight:700;color:var(--ink);white-space:nowrap}
+.auto-toggle-sub{font-size:11px;color:var(--muted)}
+.switch{position:relative;display:inline-block;width:40px;height:22px;flex-shrink:0}
+.switch input{opacity:0;width:0;height:0}
+.switch-slider{position:absolute;cursor:pointer;inset:0;background:#cbd5e1;border-radius:99px;transition:.15s}
+.switch-slider::before{content:"";position:absolute;height:16px;width:16px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.15s}
+.switch input:checked + .switch-slider{background:#16a34a}
+.switch input:checked + .switch-slider::before{transform:translateX(18px)}
+
+.review-row{display:flex;align-items:flex-start;gap:16px;background:#fff;border:1px solid rgba(3,12,24,.08);
+            border-radius:12px;padding:16px 18px;margin-bottom:10px;flex-wrap:wrap}
+.rv-info{flex:1;min-width:220px}
+.rv-tag{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#92400e;
+        background:#fef3c7;display:inline-block;padding:2px 8px;border-radius:20px;margin-bottom:6px}
+.rv-name{font-size:13.5px;font-weight:700;color:var(--ink)}
+.rv-phone{font-size:12px;font-family:'SF Mono','Fira Code',monospace;color:#64748b;margin-top:1px}
+.rv-meta{font-size:11px;color:var(--muted);margin-top:4px}
+.rv-reply{background:#f8fafc;border-radius:8px;padding:10px 12px;font-size:13px;color:var(--ink);
+          margin-top:8px;max-width:480px;font-style:italic}
+.rv-actions{display:flex;gap:8px;flex-shrink:0;align-self:center}
+.btn-confirm{padding:8px 14px;border-radius:8px;border:none;background:#15803d;color:#fff;font-size:12.5px;font-weight:700;cursor:pointer}
+.btn-reject{padding:8px 14px;border-radius:8px;border:1.5px solid #e2e8f0;background:#fff;color:#64748b;font-size:12.5px;font-weight:600;cursor:pointer}
+.empty-state { display:flex; flex-direction:column; align-items:center; padding:60px 20px; color:var(--muted); text-align:center; }
+.empty-state h3 { font-size:14px; font-weight:700; color:var(--ink); margin:0 0 5px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="crumb"><a href="{{ url_for('portal.whatsapp_campaigns') }}">WhatsApp Campaigns</a> / <b>Needs Review</b></div>
+
+<div class="intro">
+  <div>
+    <h1>Needs Review</h1>
+    <p>Every campaign reply is flagged automatically. When a reply looks Interested, it lands here for a team member to approve into a real Sales Pipeline opportunity, or reject to leave it as just an Interested reply.</p>
+  </div>
+  <form method="POST" action="{{ url_for('portal.whatsapp_campaign_automation_settings') }}" class="auto-toggle" onchange="this.submit()">
+    <div>
+      <div class="auto-toggle-label">Auto-create opportunities</div>
+      <div class="auto-toggle-sub">{{ "On — Interested replies create a deal instantly" if auto_actions else "Off — Interested replies wait here for approval" }}</div>
+    </div>
+    <label class="switch">
+      <input type="checkbox" name="auto_actions" {{ "checked" if auto_actions }}>
+      <span class="switch-slider"></span>
+    </label>
+  </form>
+</div>
+
+{% if not reviews %}
+<div class="empty-state">
+  <svg width="36" height="36" fill="none" stroke="#cbd5e1" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+  <h3>Nothing waiting</h3>
+  <p>{{ "Every flagged Interested reply has been reviewed." if auto_actions == false else "Auto-create is on, so Interested replies become opportunities right away — nothing queues here unless you switch it off." }}</p>
+</div>
+{% else %}
+{% for rv in reviews %}
+<div class="review-row">
+  <div class="rv-info">
+    <span class="rv-tag">Interested{% if rv.confidence %} · {{ (rv.confidence * 100)|round|int }}% confidence{% endif %}</span>
+    <div class="rv-name">{{ rv.contact_name or ('+' + (rv.phone or '')) }}</div>
+    <div class="rv-phone">+{{ rv.phone }}</div>
+    <div class="rv-meta">Replied to “{{ rv.campaign_name or 'a campaign' }}” · {{ rv.created_at.strftime('%d %b %Y %H:%M') if rv.created_at else '' }}</div>
+    {% if rv.reply_text %}
+    <div class="rv-reply">“{{ rv.reply_text }}”</div>
+    {% endif %}
+  </div>
+  <div class="rv-actions">
+    <form method="POST" action="{{ url_for('portal.whatsapp_campaign_review_approve', review_id=rv.id) }}">
+      <button type="submit" class="btn-confirm">Approve — Create Opportunity</button>
+    </form>
+    <form method="POST" action="{{ url_for('portal.whatsapp_campaign_review_reject', review_id=rv.id) }}">
+      <button type="submit" class="btn-reject">Reject</button>
+    </form>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

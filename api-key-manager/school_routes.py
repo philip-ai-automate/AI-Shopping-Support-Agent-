@@ -202,7 +202,7 @@ def _teacher_class() -> str | None:
 def index():
     if _logged_in():
         return redirect(url_for("school.dashboard"))
-    return redirect(url_for("school.login"))
+    return render_template("school/landing.html")
 
 
 @school_bp.route("/login", methods=["GET", "POST"])

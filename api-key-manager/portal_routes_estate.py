@@ -252,7 +252,6 @@ def inject_re_tenant():
 # ── Auth routes ────────────────────────────────────────────────────────────────
 
 @estate_bp.route("/estate/login", methods=["GET", "POST"])
-@estate_bp.route("/estate/", methods=["GET", "POST"])
 def login():
     if _re_logged_in():
         return redirect(url_for("estate.dashboard"))
@@ -303,6 +302,13 @@ def login():
                 else:
                     error = "Invalid email or password."
     return render_template("estate/login.html", error=error)
+
+
+@estate_bp.route("/estate/", methods=["GET"])
+def landing():
+    if _re_logged_in():
+        return redirect(url_for("estate.dashboard"))
+    return render_template("estate/landing.html")
 
 
 @estate_bp.route("/estate/logout")

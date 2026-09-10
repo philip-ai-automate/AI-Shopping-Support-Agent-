@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
-  <title>{% block title %}PhiXtra Portal{% endblock %}</title>
+  <title>{% block title %}{{ 'PhiXtra Connect' if is_connect_host else 'PhiXtra Portal' }}{% endblock %}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='portal/favicon.png') }}"/>
   <link rel="manifest" href="/static/portal/manifest.json"/>
@@ -147,6 +147,79 @@
     .sb-logout:hover{background:rgba(3,12,24,0.05); color:var(--ink); text-decoration:none}
     .sb-logout .sb-icon{font-size:16px; width:20px; text-align:center}
 
+    /* ═══════════════════════════════════════════════════════════
+       COLLAPSIBLE SIDEBAR (2026-09-10, repositioned 2026-09-10 after
+       live feedback — the original toggle floated on the sidebar's
+       outer edge via position:absolute+negative-right-offset, which
+       .sidebar's own overflow-x:hidden was silently clipping to a
+       sliver on every device, not just the Surface tablet where it
+       was noticed, and read as disconnected from the menu besides.
+       Now a real in-flow button, right-aligned directly above the
+       search box, dark icon (not the old faint muted-gray), using
+       the standard "collapse panel" glyph (a boxed sidebar with a
+       divider) instead of an ambiguous arrow — shrinks the sidebar to
+       an icon-only rail and back. Text labels are plain text nodes
+       throughout the nav (not wrapped in spans), so collapsing
+       zeroes the FONT-SIZE on the row instead of hiding an element —
+       .sb-icon keeps its own explicit font-size (16px) so only the
+       label text disappears, no markup changes needed on the ~15
+       existing nav rows. Persisted per-viewer in localStorage (same
+       convention as the Contacts page's column-visibility prefs),
+       never touches other viewers.
+       ═══════════════════════════════════════════════════════════ */
+    .sb-toggle-row{ padding:0 0 8px; display:flex; justify-content:flex-end; flex-shrink:0 }
+    .sb-toggle{
+      width:28px; height:28px; border-radius:8px; flex-shrink:0;
+      background:rgba(3,12,24,0.06); border:1px solid rgba(3,12,24,0.10);
+      display:flex; align-items:center; justify-content:center;
+      cursor:pointer; color:var(--ink); padding:0;
+      transition:.15s;
+    }
+    .sb-toggle:hover{background:rgba(3,12,24,0.12); border-color:rgba(3,12,24,0.22)}
+    .sb-toggle svg{width:16px; height:16px}
+    .sidebar.collapsed .sb-toggle{background:rgba(3,12,24,0.13); border-color:rgba(3,12,24,0.18)}
+
+    /* Desktop-only: below 861px the sidebar is already an off-canvas mobile
+       drawer (its own rules further down) — the collapse feature doesn't
+       apply there, so none of these rules should leak into that layout even
+       if a viewer collapsed on desktop and later opened the app narrower. */
+    @media(min-width:861px){
+      .sidebar.collapsed .sb-toggle-row{ justify-content:center; padding:0 0 8px }
+
+      .sidebar.collapsed{width:72px}
+      .sidebar.collapsed .sb-brand{padding:22px 10px 18px}
+      .sidebar.collapsed .sb-logo-full{display:none}
+      .sidebar.collapsed .sb-logo-icon{display:block; height:32px; width:32px}
+      .sb-logo-icon{display:none}
+      .sidebar.collapsed .sb-brand-label{display:none}
+
+      .sidebar.collapsed .sb-search-wrap{padding:10px 8px 6px}
+      .sidebar.collapsed .sb-search-box{justify-content:center; padding:9px 0}
+      .sidebar.collapsed .sb-search-input,
+      .sidebar.collapsed .sb-search-results{display:none}
+
+      .sidebar.collapsed .sb-link,
+      .sidebar.collapsed .sb-group-toggle{
+        font-size:0; justify-content:center!important; gap:0; position:relative;
+      }
+      .sidebar.collapsed .sb-link .sb-icon,
+      .sidebar.collapsed .sb-group-toggle .sb-icon{font-size:16px}
+      .sidebar.collapsed .sb-group-toggle .sb-arrow{display:none}
+      .sidebar.collapsed .sb-sub{display:none!important}
+      .sidebar.collapsed #sidebarInboxBadge{
+        display:block!important; position:absolute!important; top:6px; right:16px;
+        min-width:8px!important; width:8px; height:8px!important; padding:0!important;
+        font-size:0!important; border-radius:50%!important;
+      }
+
+      .sidebar.collapsed .sb-footer{padding:12px 8px 16px}
+      .sidebar.collapsed .sb-logout{font-size:0; justify-content:center; gap:0}
+      .sidebar.collapsed .sb-logout .sb-icon{font-size:16px}
+    }
+
+    body.sb-collapsed{--sidebar-w:72px}
+    @media(max-width:860px){ body.sb-collapsed{--sidebar-w:0px} .sb-toggle-row{display:none} }
+
     /* ─── IMPERSONATE BAR ─── */
     .impersonate-bar{
       position:fixed; top:0; left:var(--sidebar-w); right:0;
@@ -246,6 +319,10 @@
         transform:translateX(-260px); width:260px; transition:transform .25s;
         z-index:200;
       }
+      /* Collapse is desktop-only (.sb-toggle is hidden here, and the
+         .sidebar.collapsed rules above are gated to min-width:861px), so
+         a viewer who collapsed on desktop and later opens the app narrower
+         still gets the normal full-width off-canvas drawer, unaffected. */
       .sidebar.sb-open{transform:translateX(0)}
       .sb-mobile-topbar{display:flex}
       .sb-close{display:flex}
@@ -319,6 +396,13 @@
     .pill-red  {border-color:rgba(240,68,56,0.30);background:rgba(240,68,56,0.08);color:#b02020}
     .pill-warn {border-color:rgba(247,144,9,0.30);background:rgba(247,144,9,0.10);color:#7a4f00}
     .pill-grey {border-color:var(--line);background:rgba(3,12,24,0.04);color:var(--muted)}
+
+    /* CRM duplicate-company warning (shared by Add/Edit Contact forms + Add
+       Company modal — see static/portal/crm-dedupe.js) */
+    .dedupe-warn{display:none;margin-top:8px;padding:9px 11px;border-radius:9px;background:rgba(247,144,9,0.08);border:1px solid rgba(247,144,9,0.25)}
+    .dedupe-label{font-size:11.5px;font-weight:600;color:#7a4f00;margin-bottom:6px}
+    .dedupe-pill{display:inline-flex;align-items:center;gap:4px;background:#fff;border:1.5px solid rgba(247,144,9,0.35);color:#7a4f00;font-size:12px;font-weight:700;padding:4px 10px;border-radius:20px;cursor:pointer;margin:0 6px 6px 0;transition:.12s}
+    .dedupe-pill:hover{background:#fff7ed;border-color:#f79009}
 
     .progress{height:8px;width:100%;background:rgba(3,12,24,0.07);border-radius:999px;overflow:hidden}
     .progress>div{height:100%;border-radius:999px;
@@ -399,12 +483,20 @@
 
   <!-- Brand -->
   <a class="sb-brand" href="{{ url_for('portal.home') }}">
-    <img src="{{ url_for('static', filename='portal/phixtra-logo.png') }}" alt="PhiXtra"/>
+    <img src="{{ url_for('static', filename='portal/phixtra-logo.png') }}" alt="PhiXtra" class="sb-logo-full"/>
+    <img src="{{ url_for('static', filename='portal/phixtra-icon.png') }}" alt="PhiXtra" class="sb-logo-icon"/>
     <span class="sb-brand-label">Customer Portal</span>
   </a>
 
   <!-- Search bar -->
   <div class="sb-search-wrap">
+    <!-- Collapse/expand toggle (desktop only) — sits directly above the
+         search box now, not floating on the sidebar's outer edge. -->
+    <div class="sb-toggle-row">
+      <button class="sb-toggle" id="sbCollapseToggle" type="button" aria-label="Collapse menu" title="Collapse menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"></rect><line x1="9.5" y1="4" x2="9.5" y2="20"></line></svg>
+      </button>
+    </div>
     <div class="sb-search-box" onclick="document.getElementById('sbSearchInput').focus()">
       <span class="sb-search-icon">🔍</span>
       <input type="text" class="sb-search-input" id="sbSearchInput"
@@ -439,7 +531,8 @@
     </a>
 
     <!-- WhatsApp Campaigns -->
-    {% set _camp_group = request.endpoint in ('portal.whatsapp_campaigns','portal.whatsapp_campaign_report','portal.whatsapp_campaigns_reports') %}
+    {% set _crm_pipeline_on = not is_connect_host or connect_crm_enabled %}
+    {% set _camp_group = request.endpoint in ('portal.whatsapp_campaigns','portal.whatsapp_campaign_report','portal.whatsapp_campaigns_reports','portal.whatsapp_campaign_reviews') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _camp_group %}open{% endif %}"
            data-tour="nav-campaigns" onclick="sbToggle(this)">
@@ -461,55 +554,124 @@
            class="{% if request.endpoint in ('portal.whatsapp_campaigns_reports','portal.whatsapp_campaign_report') %}active{% endif %}">
           Reports
         </a>
+        {% if not is_connect_host %}
+        {# Needs Review is the Campaign Intelligence AI reply-classifier's queue —
+           2026-09-09: that classifier no longer runs at all for a PhiXtra Connect
+           business (tenants.ai_enabled gates it off in meta_webhook.py), so this
+           page would only ever be empty there. Hidden on Connect outright, not
+           just gated by _crm_pipeline_on (CRM being on doesn't matter — there's
+           nothing for AI classification to feed it). Stays fully available on
+           portal.phixtra.com Sales AI. #}
+        <a href="{{ url_for('portal.whatsapp_campaign_reviews') }}"
+           class="{% if request.endpoint == 'portal.whatsapp_campaign_reviews' %}active{% endif %}"
+           style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+          Needs Review
+          {% if _campaign_review_pending_count %}
+          <span style="background:#f59e0b;color:#fff;font-size:10.5px;font-weight:700;
+                       padding:1px 7px;border-radius:999px;line-height:1.5;flex-shrink:0">
+            {{ _campaign_review_pending_count if _campaign_review_pending_count < 100 else '99+' }}
+          </span>
+          {% endif %}
+        </a>
+        {% endif %}
       </div>
     </div>
 
-    <!-- ── Contacts group ── -->
-    {% set _contacts_group = request.endpoint in ('portal.whatsapp_contacts', 'portal.whatsapp_segments', 'portal.whatsapp_segment_detail') %}
+    <!-- ── CRM group (2026-09-09 merge) — one menu for the whole contact
+         record: people, companies, phone/WhatsApp numbers, notes, tags and
+         activity all live on the same profile now instead of being split
+         across a separate "Contacts" menu and "Sales Pipeline" menu. The
+         deal-tracking sub-items (Pipeline Board, Tags) keep the exact same
+         visibility rule the old "Sales Pipeline" group had — still hidden on
+         Connect unless a PhiXtra admin has opted this business in (see
+         customer_toggle_crm) — everything else in the group is always shown. ── -->
+    {% set _crm_pipeline_on = not is_connect_host or connect_crm_enabled %}
+    {% set _crm_group = request.endpoint in ('portal.whatsapp_contacts', 'portal.whatsapp_contact_detail',
+                                              'portal.crm_companies', 'portal.crm_company_detail',
+                                              'portal.crm_merge_review',
+                                              'portal.whatsapp_segments', 'portal.whatsapp_segment_detail',
+                                              'portal.sales_pipeline',
+                                              'portal.sales_pipeline_settings', 'portal.lead_labels_page',
+                                              'portal.lead_labels_import_bounces') %}
     <div class="sb-group">
-      <div class="sb-group-toggle {% if _contacts_group %}open{% endif %}"
+      <div class="sb-group-toggle {% if _crm_group %}open{% endif %}"
            data-tour="nav-contacts" onclick="sbToggle(this)">
         <span class="sb-gtitle">
-          <span class="sb-icon">👥</span> Contacts
+          <span class="sb-icon">👥</span> CRM
         </span>
         <span class="sb-arrow">▾</span>
       </div>
-      <div class="sb-sub {% if _contacts_group %}open{% endif %}">
+      <div class="sb-sub {% if _crm_group %}open{% endif %}">
         <a href="{{ url_for('portal.whatsapp_contacts') }}"
-           class="{% if request.endpoint == 'portal.whatsapp_contacts' %}active{% endif %}">
+           class="{% if request.endpoint in ('portal.whatsapp_contacts', 'portal.whatsapp_contact_detail') %}active{% endif %}">
           All Contacts
         </a>
+        <a href="{{ url_for('portal.crm_companies') }}"
+           class="{% if request.endpoint in ('portal.crm_companies', 'portal.crm_company_detail') %}active{% endif %}">
+          Companies
+        </a>
+        {% if _crm_pipeline_on %}
+        <a href="{{ url_for('portal.sales_pipeline') }}"
+           class="{% if request.endpoint == 'portal.sales_pipeline' %}active{% endif %}">
+          Pipeline Board
+        </a>
+        {% endif %}
         <a href="{{ url_for('portal.whatsapp_segments') }}"
            class="{% if request.endpoint in ('portal.whatsapp_segments','portal.whatsapp_segment_detail') %}active{% endif %}">
           Segments
         </a>
+        {% if _crm_pipeline_on %}
+        <a href="{{ url_for('portal.lead_labels_page') }}"
+           class="{% if request.endpoint in ('portal.lead_labels_page', 'portal.lead_labels_import_bounces') %}active{% endif %}">
+          🏷️ Tags
+        </a>
+        <a href="{{ url_for('portal.sales_pipeline_settings') }}"
+           class="{% if request.endpoint == 'portal.sales_pipeline_settings' %}active{% endif %}">
+          ⚙️ Pipeline Settings
+        </a>
+        {% endif %}
       </div>
     </div>
 
     <!-- Leads -->
-    <a class="sb-link {% if request.endpoint == 'portal.leads_page' %}active{% endif %}"
+    <a class="sb-link {% if request.endpoint in ('portal.leads_page', 'portal.lead_detail') %}active{% endif %}"
        href="{{ url_for('portal.leads_page') }}" data-tour="nav-leads">
       <span class="sb-icon">🔥</span> Leads
     </a>
 
-    <!-- ── Sales Pipeline group ── -->
-    {% set _sales_pipeline_group = request.endpoint in ('portal.sales_pipeline', 'portal.lead_labels_page', 'portal.lead_labels_import_bounces') %}
+    {# ── Sales Pipeline Reports — a real top-level menu, not nested inside
+         CRM (users didn't find it there — see 2026-09-10). Not tied to
+         _has_woocommerce like the AI/Usage/Cart/Billing Reports group below.
+         The group itself is always shown (same pattern as the CRM group
+         below it) — individual items inside are gated per-item, matching
+         what each one actually reports on: Pipeline Overview needs the CRM
+         gate (deal/stage data, same as Pipeline Board); Leads and Sources
+         reports on Lead volume/source, same ungated data the Leads page
+         itself already shows on Connect regardless of the CRM toggle. ── #}
+    {% set _crm_pipeline_on = not is_connect_host or connect_crm_enabled %}
+    {% set _reports_group = request.endpoint in ('portal.report_pipeline_overview', 'portal.report_leads_sources', 'portal.report_custom_picker', 'portal.report_custom_entity') %}
     <div class="sb-group">
-      <div class="sb-group-toggle {% if _sales_pipeline_group %}open{% endif %}"
+      <div class="sb-group-toggle {% if _reports_group %}open{% endif %}"
            onclick="sbToggle(this)">
         <span class="sb-gtitle">
-          <span class="sb-icon">🧭</span> Sales Pipeline
+          <span class="sb-icon">📈</span> Reports
         </span>
         <span class="sb-arrow">▾</span>
       </div>
-      <div class="sb-sub {% if _sales_pipeline_group %}open{% endif %}">
-        <a href="{{ url_for('portal.sales_pipeline') }}"
-           class="{% if request.endpoint == 'portal.sales_pipeline' %}active{% endif %}">
-          All Deals
+      <div class="sb-sub {% if _reports_group %}open{% endif %}">
+        {% if _crm_pipeline_on %}
+        <a href="{{ url_for('portal.report_pipeline_overview') }}"
+           class="{% if request.endpoint == 'portal.report_pipeline_overview' %}active{% endif %}">
+          Pipeline Overview
         </a>
-        <a href="{{ url_for('portal.lead_labels_page') }}"
-           class="{% if request.endpoint in ('portal.lead_labels_page', 'portal.lead_labels_import_bounces') %}active{% endif %}">
-          🏷️ Labels
+        {% endif %}
+        <a href="{{ url_for('portal.report_leads_sources') }}"
+           class="{% if request.endpoint == 'portal.report_leads_sources' %}active{% endif %}">
+          Leads &amp; Sources
+        </a>
+        <a href="{{ url_for('portal.report_custom_picker') }}"
+           class="{% if request.endpoint in ('portal.report_custom_picker', 'portal.report_custom_entity') %}active{% endif %}">
+          🧩 Custom Report
         </a>
       </div>
     </div>
@@ -542,7 +704,8 @@
     </div>
     {% endif %}
 
-    <!-- ── Email Campaigns group ── -->
+    {% if not is_connect_host %}
+    <!-- ── Email Campaigns group — a separate channel from WhatsApp Campaigns, not part of PhiXtra Connect ── -->
     {% set _email_camp_group = request.endpoint in ('portal.email_campaigns','portal.email_campaign_report','portal.email_campaigns_reports') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _email_camp_group %}open{% endif %}"
@@ -567,6 +730,7 @@
         </a>
       </div>
     </div>
+    {% endif %}
 
     <!-- ── WhatsApp group ── -->
     {% set _wa_group = request.endpoint in ('portal.whatsapp_connect', 'portal.whatsapp_reports', 'portal.billing_plans') or (request.endpoint == 'portal.whatsapp_templates' and _tenant_features.get('whatsapp_message_templates')) %}
@@ -583,10 +747,12 @@
            class="{% if request.endpoint == 'portal.whatsapp_connect' %}active{% endif %}">
           Connect
         </a>
+        {% if not is_connect_host %}
         <a href="{{ url_for('portal.whatsapp_reports') }}"
            class="{% if request.endpoint == 'portal.whatsapp_reports' %}active{% endif %}">
           Handoff Reports
         </a>
+        {% endif %}
         {% if _tenant_features.get('whatsapp_message_templates') %}
         <a href="{{ url_for('portal.whatsapp_templates') }}"
            class="{% if request.endpoint == 'portal.whatsapp_templates' %}active{% endif %}">
@@ -597,6 +763,7 @@
            class="{% if request.endpoint == 'portal.reports_page' %}active{% endif %}">
           WhatsApp Report
         </a>
+        {% if not is_connect_host %}
         <a href="{{ url_for('portal.billing_plans') }}"
            class="{% if request.endpoint == 'portal.billing_plans' %}active{% endif %}">
           WhatsApp Plan
@@ -606,10 +773,14 @@
                        padding:2px 6px;border-radius:999px;margin-left:auto;">!</span>
           {% endif %}
         </a>
+        {% endif %}
       </div>
     </div>
 
-    <!-- ── Ecommerce group ── -->
+    {% if not is_connect_host %}
+    <!-- ── Ecommerce group — My Products, My Catalogue, and Customers (order/
+         spend history) are a different thing from a plain WhatsApp contact
+         list; none of this is part of PhiXtra Connect ── -->
     {% set _commerce_group = request.endpoint in (
         'portal.products', 'portal.product_add', 'portal.product_edit',
         'portal.product_delete', 'portal.orders', 'portal.order_detail',
@@ -663,12 +834,15 @@
         </a>
       </div>
     </div>
+    {% endif %}
 
-    <!-- Store Information -->
+    {% if not is_connect_host %}
+    <!-- Store Information — not part of PhiXtra Connect -->
     <a class="sb-link {% if request.endpoint == 'portal.store_info' %}active{% endif %}"
        href="{{ url_for('portal.store_info') }}">
       <span class="sb-icon">🏪</span> Store Information
     </a>
+    {% endif %}
 
     {% if not session.get('team_member_id') %}
     <!-- Team (Shared Team Inbox) — owner-only, hidden for staff logins since
@@ -679,7 +853,8 @@
     </a>
     {% endif %}
 
-    <!-- ── AI Assistant group ── -->
+    {% if not is_connect_host %}
+    <!-- ── AI Assistant group — not part of PhiXtra Connect ── -->
     {% set _ai_group = request.endpoint in ('portal.api_keys', 'portal.ai_instruction', 'portal.handoff_rules', 'portal.ai_agents', 'portal.ai_agents_new', 'portal.ai_agents_edit') or (request.endpoint == 'portal.verified_specs_settings' and customer is defined and customer and customer.tenant_source_type != 'whatsapp') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _ai_group %}open{% endif %}"
@@ -714,6 +889,7 @@
         {% endif %}
       </div>
     </div>
+    {% endif %}
 
     {# ── WooCommerce-only items — hidden for WhatsApp-only tenants ── #}
     {% if _has_woocommerce %}
@@ -749,6 +925,7 @@
     </a>
 
     <!-- ── Reports group ── -->
+    {% set _crm_pipeline_on = not is_connect_host or connect_crm_enabled %}
     {% set _rep_group = request.endpoint in ('portal.reports', 'portal.report_usage', 'portal.report_cart', 'portal.report_billing', 'portal.report_ai_performance') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _rep_group %}open{% endif %}"
@@ -759,10 +936,12 @@
         <span class="sb-arrow">▾</span>
       </div>
       <div class="sb-sub {% if _rep_group %}open{% endif %}">
+        {% if not is_connect_host %}
         <a href="{{ url_for('portal.report_usage') }}"
            class="{% if request.endpoint == 'portal.report_usage' %}active{% endif %}">
           AI Usage Report
         </a>
+        {% endif %}
         <a href="{{ url_for('portal.report_cart') }}"
            class="{% if request.endpoint == 'portal.report_cart' %}active{% endif %}">
           Cart Recovery Report
@@ -784,7 +963,8 @@
 
     <div class="sb-divider"></div>
 
-    <!-- ── Billing group ── -->
+    {% if not is_connect_host %}
+    <!-- ── Billing group — Connect has no paid tier, so no billing screens at all ── -->
     {% set _bill_group = request.endpoint in ('portal.billing', 'portal.invoices', 'portal.billing_subscribe', 'portal.billing_subscribe_checkout', 'portal.payment_settings') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _bill_group %}open{% endif %}"
@@ -813,18 +993,23 @@
         </a>
       </div>
     </div>
+    {% endif %}
 
+    {% if not is_connect_host %}
     <!-- Help & Tutorials -->
     <a class="sb-link {% if request.endpoint == 'portal.tutorials' %}active{% endif %}"
        href="{{ url_for('portal.tutorials') }}">
       <span class="sb-icon">📚</span> Help & Tutorials
     </a>
+    {% endif %}
 
+    {% if not is_connect_host %}
     <!-- Video Tutorials -->
     <a class="sb-link {% if request.endpoint == 'portal.video_tutorials' %}active{% endif %}"
        href="{{ url_for('portal.video_tutorials') }}">
       <span class="sb-icon">🎬</span> Video Tutorials
     </a>
+    {% endif %}
 
     <!-- Account Settings -->
     <a class="sb-link {% if request.endpoint == 'portal.settings' %}active{% endif %}"
@@ -975,6 +1160,12 @@
 <script>
   // Toggle a sidebar group open/closed
   function sbToggle(toggleEl) {
+    // A collapsed sidebar has no room to show a submenu — expand first,
+    // then open the group the user actually clicked, rather than doing
+    // nothing (which would look broken, not intentional).
+    if (sidebar && sidebar.classList.contains('collapsed')) {
+      toggleSidebarCollapse();
+    }
     var sub = toggleEl.nextElementSibling;
     var isOpen = sub.classList.contains('open');
     // Close all other groups
@@ -1010,6 +1201,36 @@
   if (mobileBtn) mobileBtn.addEventListener('click', function(e) { e.stopPropagation(); openSidebar(); });
   if (closeBtn)  closeBtn.addEventListener('click', closeSidebar);
   if (overlay)   overlay.addEventListener('click', closeSidebar);
+
+  // Collapse/expand the main sidebar (desktop). State is per-viewer, kept in
+  // localStorage — same convention as the Contacts page's column-visibility
+  // prefs (COL_STORAGE_KEY) — so it never touches other viewers or the server.
+  var SB_COLLAPSE_KEY = 'phixtraSidebarCollapsed';
+  var collapseToggle = document.getElementById('sbCollapseToggle');
+
+  function applySidebarCollapse(collapsed) {
+    if (!sidebar) return;
+    sidebar.classList.toggle('collapsed', collapsed);
+    document.body.classList.toggle('sb-collapsed', collapsed);
+    if (collapseToggle) {
+      var label = collapsed ? 'Expand menu' : 'Collapse menu';
+      collapseToggle.setAttribute('aria-label', label);
+      collapseToggle.setAttribute('title', label);
+    }
+  }
+  function toggleSidebarCollapse() {
+    var next = !sidebar.classList.contains('collapsed');
+    applySidebarCollapse(next);
+    try { localStorage.setItem(SB_COLLAPSE_KEY, next ? '1' : '0'); } catch (e) {}
+  }
+  if (collapseToggle) collapseToggle.addEventListener('click', function(e) {
+    e.stopPropagation();
+    toggleSidebarCollapse();
+  });
+  // Restore on load, before first paint settles, so there's no visible flash.
+  try {
+    if (localStorage.getItem(SB_COLLAPSE_KEY) === '1') applySidebarCollapse(true);
+  } catch (e) {}
 </script>
 
 
@@ -1077,9 +1298,11 @@
     { sel: '[data-tour="nav-whatsapp"]', pos: 'right',
       title: '📱 WhatsApp',
       body:  'Connect your WhatsApp Business number, manage the agent inbox, set message templates, and view your usage report.' },
+    {% if not is_connect_host %}
     { sel: '[data-tour="nav-ai"]', pos: 'right',
       title: '🤖 AI Assistant',
       body:  'Customise your AI\'s personality and behaviour. Set handoff rules to decide when the AI steps aside for a human agent.' },
+    {% endif %}
     { sel: '[data-tour="nav-ecommerce"]', pos: 'right',
       title: '🏪 Ecommerce',
       body:  'Manage your products, view customer profiles, sync your WooCommerce store, and browse your catalogue — all feeding your AI\'s knowledge.' },
@@ -1256,39 +1479,63 @@
     { icon:'📣', title:'WhatsApp Campaigns',      desc:'Send WhatsApp broadcast messages',              url:'{{ url_for("portal.whatsapp_campaigns") }}',         tags:'broadcast blast promotions bulk send' },
     { icon:'📋', title:'WhatsApp Segment',        desc:'Saved groups of Sales Pipeline contacts for WhatsApp Campaign', url:'{{ url_for("portal.whatsapp_campaign_segments_page") }}', tags:'segment audience group whatsapp campaign' },
     { icon:'📊', title:'Campaign Reports',       desc:'See how your campaigns performed',              url:'{{ url_for("portal.whatsapp_campaigns_reports") }}', tags:'campaign analytics results' },
+    {% if not is_connect_host %}
+    { icon:'✅', title:'Needs Review',           desc:'Interested campaign replies awaiting approval', url:'{{ url_for("portal.whatsapp_campaign_reviews") }}', tags:'campaign intelligence interested opportunity approve reject automation' },
+    {% endif %}
     { icon:'👥', title:'Contacts',               desc:'View and manage all your customers',            url:'{{ url_for("portal.whatsapp_contacts") }}',          tags:'customers phone numbers contacts list' },
     { icon:'🔥', title:'Leads',                  desc:'Customers with strong buying intent',           url:'{{ url_for("portal.leads_page") }}',                 tags:'hot warm cold intent prospects' },
+    {% if not is_connect_host or connect_crm_enabled %}
     { icon:'🧭', title:'Sales Pipeline',         desc:'Track your own customers and deals by stage',  url:'{{ url_for("portal.sales_pipeline") }}',             tags:'crm pipeline deals stages sales customers negotiate' },
-    { icon:'🏷️', title:'Labels',                 desc:'Tag Sales Pipeline contacts (Bounced, VIP…)',  url:'{{ url_for("portal.lead_labels_page") }}',           tags:'tags status bounced vip labels' },
+    { icon:'🏷️', title:'Tags',                   desc:'Tag Contacts and deals (Bounced, VIP…)',  url:'{{ url_for("portal.lead_labels_page") }}',           tags:'tags status bounced vip labels' },
+    { icon:'⚙️', title:'Pipeline Settings',       desc:'Rename your pipeline stages and Lead Score labels', url:'{{ url_for("portal.sales_pipeline_settings") }}', tags:'settings stage names score hot warm cold rename' },
+    {% endif %}
     {% if _portal_customer and _portal_customer.tenant_id == 19 %}
     { icon:'📟', title:'Sent SMS',                desc:'History of every SMS batch sent',               url:'{{ url_for("portal.sms_campaigns") }}',              tags:'sms text message history resend delete extract numbers' },
     { icon:'✏️', title:'Compose and Send SMS',    desc:'Write and send a new bulk SMS',                 url:'{{ url_for("portal.sms_campaigns", view="compose") }}', tags:'sms text message compose send bulk campaign' },
     { icon:'📋', title:'SMS Segments',            desc:'Saved groups of Sales Pipeline contacts for SMS', url:'{{ url_for("portal.sms_campaigns", view="segments") }}', tags:'sms segment audience group campaign' },
     {% endif %}
+    {% if not is_connect_host %}
     { icon:'✉️', title:'Email Campaigns',        desc:'Compose and send bulk email to your contacts', url:'{{ url_for("portal.email_campaigns") }}',            tags:'email campaign newsletter bulk send marketing zeptomail' },
     { icon:'📊', title:'Email Campaign Reports', desc:'See how your email campaigns performed',       url:'{{ url_for("portal.email_campaigns_reports") }}',    tags:'email campaign analytics results delivery' },
     { icon:'🧾', title:'Orders',                 desc:'View all orders and purchase history',          url:'{{ url_for("portal.orders") }}',                     tags:'sales purchases transactions history' },
+    {% endif %}
     { icon:'📱', title:'WhatsApp Connect',       desc:'Connect or manage your WhatsApp number',       url:'{{ url_for("portal.whatsapp_connect") }}',           tags:'connect phone qr code number link setup' },
+    {% if not is_connect_host %}
     { icon:'📊', title:'Handoff Reports',        desc:'Response times, missed handoffs, performance',  url:'{{ url_for("portal.whatsapp_reports") }}',           tags:'handoff response time missed reports analytics' },
+    {% endif %}
     { icon:'📈', title:'WhatsApp Report',        desc:'Usage stats for your WhatsApp channel',        url:'{{ url_for("portal.reports_page") }}',               tags:'usage stats messages sent received analytics' },
+    {% if not is_connect_host %}
     { icon:'📋', title:'WhatsApp Plan',          desc:'View or upgrade your WhatsApp plan',           url:'{{ url_for("portal.billing_plans") }}',              tags:'plan upgrade subscription quota limit whatsapp' },
+    {% endif %}
+    {% if not is_connect_host %}
     { icon:'🏪', title:'My Products',            desc:'Add, edit and manage your products',           url:'{{ url_for("portal.products") }}',                   tags:'products inventory catalogue stock add edit' },
     { icon:'👤', title:'My Customers',           desc:'View your customer list and profiles',         url:'{{ url_for("portal.customers") }}',                  tags:'customers buyers profiles crm list' },
+    {% endif %}
+    {% if not is_connect_host %}
     { icon:'💰', title:'Discount Settings',      desc:'Set WhatsApp discount offers',                 url:'{{ url_for("portal.wa_discount_settings") }}',       tags:'discount promo offer coupon price sale' },
     { icon:'🗂️', title:'Product Import',          desc:'Import your product catalogue from Google Sheets or a spreadsheet file',    url:'{{ url_for("portal.data_sources") }}',               tags:'upload files csv excel spreadsheet google sheets product import catalogue' },
     { icon:'🏬', title:'Store Information',      desc:'Update your business name and details',        url:'{{ url_for("portal.store_info") }}',                 tags:'business name address details profile store info' },
     { icon:'💳', title:'Payment Gateways',       desc:'Connect Stripe or Paystack',                   url:'{{ url_for("portal.payment_settings") }}',           tags:'payment gateway stripe paystack checkout' },
+    {% endif %}
+    {% if not is_connect_host %}
     { icon:'🔑', title:'API Keys',               desc:'Manage your AI integration keys',              url:'{{ url_for("portal.api_keys") }}',                   tags:'api keys developer integration access token' },
     { icon:'🤖', title:'AI System Instruction',  desc:'Customise your AI assistant personality',      url:'{{ url_for("portal.ai_instruction") }}',             tags:'ai bot personality system prompt instruction custom behaviour' },
     { icon:'🔀', title:'Handoff Rules',          desc:'When the AI should pass to a human agent',    url:'{{ url_for("portal.handoff_rules") }}',              tags:'handoff rules human agent escalate transfer live' },
     {% if customer is defined and customer and customer.tenant_source_type != 'whatsapp' %}
     { icon:'✅', title:'Verified Specs',         desc:'Product specs the AI can confirm accurately',  url:'{{ url_for("portal.verified_specs_settings") }}',    tags:'verified specs product guarantee confirm accuracy' },
     {% endif %}
+    {% endif %}
+    {% if not is_connect_host %}
     { icon:'📋', title:'Subscription Plans',     desc:'View and manage your subscription',            url:'{{ url_for("portal.billing_subscribe") }}',          tags:'subscription plan monthly upgrade downgrade' },
     { icon:'💳', title:'Buy Credits',            desc:'Top up your AI credit balance',               url:'{{ url_for("portal.billing") }}',                    tags:'credits buy top up balance tokens recharge' },
     { icon:'🧾', title:'Invoices',               desc:'Download your billing receipts',               url:'{{ url_for("portal.invoices") }}',                   tags:'invoice receipt billing history download pdf payment' },
+    {% endif %}
+    {% if not is_connect_host %}
     { icon:'📚', title:'Help & Tutorials',       desc:'Guides to get the most from PhiXtra',         url:'{{ url_for("portal.tutorials") }}',                  tags:'help guide tutorial support how to faq learn' },
+    {% endif %}
+    {% if not is_connect_host %}
     { icon:'🎬', title:'Video Tutorials',        desc:'Watch short walkthroughs of key features',    url:'{{ url_for("portal.video_tutorials") }}',            tags:'video tutorial watch walkthrough demo guide' },
+    {% endif %}
     { icon:'⚙️', title:'Account Settings',       desc:'Update profile, password and preferences',    url:'{{ url_for("portal.settings") }}',                   tags:'settings account profile password email notification preferences' },
     {% if _has_woocommerce %}
     { icon:'📂', title:'My Catalogue',           desc:'Browse and select products from catalogue',    url:'{{ url_for("portal.catalogue_browse") }}',           tags:'catalogue browse products select' },
@@ -1296,7 +1543,9 @@
     { icon:'🛒', title:'Cart Recovery',          desc:'Recover abandoned shopping carts',             url:'{{ url_for("portal.cart_recovery_dashboard") }}',    tags:'abandoned cart recovery settings whatsapp' },
     { icon:'✉️', title:'Cart Email Templates',   desc:'Email messages sent for cart recovery',       url:'{{ url_for("portal.cart_recovery_email_template") }}',tags:'email template cart recovery message' },
     { icon:'📈', title:'Analytics',              desc:'Sales and performance analytics',              url:'{{ url_for("portal.analytics") }}',                  tags:'analytics performance charts graphs data sales' },
+    {% if not is_connect_host %}
     { icon:'📊', title:'AI Usage Report',        desc:'How many AI credits you have used',           url:'{{ url_for("portal.report_usage") }}',               tags:'usage report ai tokens credits consumption' },
+    {% endif %}
     { icon:'🛒', title:'Cart Recovery Report',   desc:'How many carts were recovered',               url:'{{ url_for("portal.report_cart") }}',                tags:'cart recovery report results conversions' },
     { icon:'💰', title:'Billing Summary',        desc:'Revenue and billing history report',           url:'{{ url_for("portal.report_billing") }}',             tags:'billing summary revenue report' },
     { icon:'💬', title:'Chat Archive',           desc:'Browse all past AI conversations',             url:'{{ url_for("portal.chat_archive") }}',               tags:'chat archive history past conversations log' },
@@ -1470,6 +1719,8 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 </script>
+
+<script src="{{ url_for('static', filename='portal/crm-dedupe.js') }}"></script>
 
 </body>
 </html>

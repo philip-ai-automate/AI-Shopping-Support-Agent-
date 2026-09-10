@@ -1,0 +1,33 @@
+{% extends "portal/base.html" %}
+{% block title %}Custom Report — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  .report-title{font-size:22px;font-weight:800;letter-spacing:-.3px}
+  .entity-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:22px}
+  @media(max-width:860px){ .entity-grid{grid-template-columns:1fr} }
+  .entity-card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:24px;box-shadow:var(--shadow);
+               text-decoration:none;color:var(--txt);display:flex;flex-direction:column;gap:10px;transition:.15s}
+  .entity-card:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(3,12,24,.10);text-decoration:none}
+  .entity-icon{width:44px;height:44px;border-radius:12px;background:rgba(3,12,24,0.05);display:flex;align-items:center;justify-content:center;font-size:21px}
+  .entity-label{font-size:16px;font-weight:750;color:var(--ink)}
+  .entity-desc{font-size:12.5px;color:var(--muted);line-height:1.5}
+  .entity-open{font-size:12.5px;font-weight:700;color:var(--ink);margin-top:auto}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="report-title">🧩 Custom Report</div>
+<div class="muted" style="margin-top:4px">Pick what you want to report on, then choose the columns and filters — build the table you actually need.</div>
+
+<div class="entity-grid">
+  {% for key, spec in entities.items() %}
+  <a class="entity-card" href="{{ url_for('portal.report_custom_entity', entity=key) }}">
+    <div class="entity-icon">{{ spec.icon }}</div>
+    <div class="entity-label">{{ spec.label }}</div>
+    <div class="entity-desc">{{ spec.desc }}</div>
+    <div class="entity-open">Build a report →</div>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}

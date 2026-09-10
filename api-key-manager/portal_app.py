@@ -300,6 +300,37 @@ def create_app():
             print("⚠️ inject_inbox_unread error:", e)
             return {'_inbox_unread_count': 0}
 
+    @flask_app.context_processor
+    def inject_campaign_review_pending():
+        """Count pending Interested-reply reviews for the WhatsApp Campaigns
+        sidebar badge (Campaign Intelligence — see
+        project_wa_campaign_intelligence_proposal memory)."""
+        if not _session.get('portal_logged_in'):
+            return {'_campaign_review_pending_count': 0}
+        cid = _session.get('impersonate_customer_id') or _session.get('customer_id')
+        if not cid:
+            return {'_campaign_review_pending_count': 0}
+        try:
+            from db import get_db_connection
+            conn = get_db_connection()
+            cur  = conn.cursor()
+            cur.execute("SELECT tenant_id FROM customers WHERE id=%s", (int(cid),))
+            row = cur.fetchone()
+            if not row:
+                cur.close(); conn.close()
+                return {'_campaign_review_pending_count': 0}
+            tenant_id = int(row[0])
+            cur.execute(
+                "SELECT COUNT(*) FROM wa_campaign_reply_reviews WHERE tenant_id=%s AND status='pending'",
+                (tenant_id,),
+            )
+            count = int((cur.fetchone() or [0])[0])
+            cur.close(); conn.close()
+            return {'_campaign_review_pending_count': count}
+        except Exception as e:
+            print("⚠️ inject_campaign_review_pending error:", e)
+            return {'_campaign_review_pending_count': 0}
+
     return flask_app
 
 

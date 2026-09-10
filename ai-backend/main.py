@@ -25,7 +25,7 @@ import psycopg2.extras
 
 from auth import verify_api_key
 from search import search_documents, search_documents_with_meta, search_related_products, upsert_verified_spec
-from llm import ask_llm, classify_relevant_products
+from llm import ask_llm, classify_relevant_products, classify_campaign_reply
 from db import get_db_connection, insert_audit_log
 from memory_store import (
     init_memory_tables,
@@ -957,6 +957,47 @@ def chat(req: ChatRequest):
 # ══════════════════════════════════════════════════════════════════════════════
 
 import os as _os
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WHATSAPP CAMPAIGN INTELLIGENCE — reply classification
+# ══════════════════════════════════════════════════════════════════════════════
+
+class ClassifyCampaignReplyRequest(BaseModel):
+    api_key: str
+    message: str
+
+
+@app.post("/classify-campaign-reply")
+def classify_campaign_reply_endpoint(req: ClassifyCampaignReplyRequest):
+    """
+    Called by the WhatsApp gateway (meta_webhook.py) whenever a reply comes in
+    from a past campaign recipient. Not a customer-facing chat turn, so it does
+    NOT go through the message-quota check /chat does — it just needs a valid
+    tenant to bill the (small) token cost of the classification call to.
+    """
+    tenant, error = verify_api_key(req.api_key)
+    if error:
+        raise HTTPException(status_code=401, detail=error)
+
+    sentiment, confidence, usage = classify_campaign_reply(req.message)
+
+    used_now = int((usage or {}).get("total_tokens", 0) or 0)
+    if used_now:
+        try:
+            record_token_usage(
+                api_key_id=int(tenant["api_key_id"]),
+                tenant_id=int(tenant["tenant_id"]),
+                website=tenant.get("website"),
+                key_type=tenant.get("key_type"),
+                used_now=used_now,
+                token_limit=tenant.get("token_limit"),
+                session_id=None,
+            )
+        except Exception:
+            pass
+
+    return {"sentiment": sentiment, "confidence": confidence}
 
 
 # ══════════════════════════════════════════════════════════════════════════════

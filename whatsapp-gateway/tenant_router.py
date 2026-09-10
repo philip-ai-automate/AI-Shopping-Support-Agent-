@@ -45,9 +45,13 @@ def get_tenant_by_phone_number_id(phone_number_id: str) -> dict | None:
     try:
         cur.execute(
             """
-            SELECT tenant_id, phixtra_api_key, access_token, verify_token, waba_id, app_secret, typing_ack_text, agent_id
-            FROM wa_tenants
-            WHERE phone_number_id = %s AND active = TRUE
+            SELECT wt.tenant_id, wt.phixtra_api_key, wt.access_token, wt.verify_token, wt.waba_id,
+                   wt.app_secret, wt.typing_ack_text, wt.agent_id,
+                   COALESCE(t.ai_enabled, TRUE) AS ai_enabled,
+                   COALESCE(t.campaign_reply_auto_actions, TRUE) AS campaign_reply_auto_actions
+            FROM wa_tenants wt
+            JOIN tenants t ON t.id = wt.tenant_id
+            WHERE wt.phone_number_id = %s AND wt.active = TRUE
             """,
             (phone_number_id,),
         )

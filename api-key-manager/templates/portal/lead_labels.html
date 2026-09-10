@@ -1,5 +1,5 @@
 {% extends "portal/base.html" %}
-{% block title %}Labels — PhiXtra Portal{% endblock %}
+{% block title %}Tags — PhiXtra Portal{% endblock %}
 {% block content %}
 
 <style>
@@ -44,14 +44,22 @@
   .modal-actions{display:flex;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
   .modal-cancel{flex:0 0 auto;padding:9px 16px;background:#fff;border:1.5px solid var(--line);
                 border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+
+  /* Deals / People split inside the members modal — tags unification 2026-09-09 */
+  .lm-tabs { display:flex; gap:4px; background:#f1f5f9; border-radius:10px; padding:3px; margin-bottom:14px }
+  .lm-tab { flex:1; text-align:center; padding:7px 10px; border-radius:8px; font-size:12.5px; font-weight:700;
+            color:var(--muted); cursor:pointer; user-select:none }
+  .lm-tab.active { background:#fff; color:var(--ink); box-shadow:0 1px 3px rgba(3,12,24,.1) }
+  .lm-section { display:none }
+  .lm-section.active { display:block }
 </style>
 
 <div class="lbl-hero">
   <div class="lbl-hero-left">
     <div class="lbl-hero-icon">🏷️</div>
     <div>
-      <h1>Labels</h1>
-      <p>Freeform status tags for Sales Pipeline contacts (e.g. "Bounced", "VIP") — separate from <a href="{{ url_for('portal.email_campaigns', view='segments') }}">Segments</a>, which are for choosing who to email.</p>
+      <h1>Tags</h1>
+      <p>One shared list of tags (e.g. "Bounced", "VIP", "High Lead") — put them on WhatsApp Contacts and/or Sales Pipeline deals. Separate from <a href="{{ url_for('portal.email_campaigns', view='segments') }}">Segments</a>, which are for choosing who to email.</p>
     </div>
   </div>
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -62,26 +70,30 @@
 
 <div class="card" style="padding:20px">
   <form method="POST" action="{{ url_for('portal.lead_labels_create') }}" class="lbl-create-row" onsubmit="return submitCreateLabel(event)">
-    <input type="text" name="name" id="newLabelName" class="finp" placeholder="New label name, e.g. VIP" required>
-    <button type="submit" class="btn btn-primary">+ Create Label</button>
+    <div style="flex:1;max-width:320px">
+      <input type="text" name="name" id="newLabelName" class="finp" placeholder="New tag name, e.g. VIP" required autocomplete="off">
+      <div class="dedupe-warn" id="newTagDedupe"></div>
+    </div>
+    <button type="submit" class="btn btn-primary">+ Create Tag</button>
   </form>
 
   {% if labels %}
   <div class="table-wrap">
     <table class="lbl-table">
       <thead>
-        <tr><th>Label</th><th>Contacts</th><th>Created</th><th></th></tr>
+        <tr><th>Tag</th><th>People</th><th>Deals</th><th>Created</th><th></th></tr>
       </thead>
       <tbody>
         {% for l in labels %}
         <tr>
           <td><span class="lbl-pill">{{ l.name }}</span></td>
-          <td class="muted">{{ l.member_count }} contact{{ 's' if l.member_count != 1 else '' }}</td>
+          <td class="muted">{{ l.contact_count }} {{ 'person' if l.contact_count == 1 else 'people' }}</td>
+          <td class="muted">{{ l.member_count }} deal{{ 's' if l.member_count != 1 else '' }}</td>
           <td class="muted">{{ l.created_at.strftime('%d %b %Y') if l.created_at else '—' }}</td>
           <td style="text-align:right">
             <button type="button" class="btn btn-sm" onclick="openMembersModal({{ l.id }}, {{ l.name|tojson }})">View / Edit</button>
             <form method="POST" action="{{ url_for('portal.lead_labels_delete', label_id=l.id) }}" style="display:inline"
-                  onsubmit="return confirm('Delete the {{ l.name }} label? This removes it from every contact it\'s on — contacts themselves are not affected.')">
+                  onsubmit="return confirm('Delete the {{ l.name }} tag? This removes it from every contact and deal it\'s on — nothing else about them is affected.')">
               <input type="hidden" name="redirect" value="1">
               <button type="submit" class="btn btn-sm btn-danger">Delete</button>
             </form>
@@ -94,8 +106,8 @@
   {% else %}
   <div class="lbl-empty">
     <div class="lbl-empty-icon">🏷️</div>
-    <h3 style="font-size:15px;font-weight:700;color:var(--ink);margin:0 0 6px">No labels yet</h3>
-    <p style="font-size:13px;margin:0;max-width:320px">Create one above, or select contacts in the Sales Pipeline and use "Add to Label" — either way works.</p>
+    <h3 style="font-size:15px;font-weight:700;color:var(--ink);margin:0 0 6px">No tags yet</h3>
+    <p style="font-size:13px;margin:0;max-width:320px">Create one above, or add a tag from a Contact's profile or the Sales Pipeline's "Add to Label" — either way works.</p>
   </div>
   {% endif %}
 </div>
@@ -103,23 +115,32 @@
 <!-- ── Members modal ── -->
 <div class="modal-over" id="labelMembersModal" onclick="if(event.target===this)closeMembersModal()">
   <div class="modal-card" style="max-width:560px">
-    <div class="modal-title" id="lmTitle">Label</div>
-    <p class="modal-sub">Search Sales Pipeline contacts to add, or remove one below.</p>
+    <div class="modal-title" id="lmTitle">Tag</div>
+    <p class="modal-sub">Search to add, or remove one below.</p>
 
-    <div style="position:relative;margin-bottom:16px">
-      <input type="text" class="finp" id="lmAddSearch" autocomplete="off" placeholder="Search contacts by name or email…"
-             oninput="onLmSearchInput()" onblur="setTimeout(function(){document.getElementById('lmAddResults').style.display='none'}, 200)">
-      <div id="lmAddResults" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:50;
-           background:#fff;border:1px solid rgba(3,12,24,.1);border-radius:11px;box-shadow:0 10px 30px rgba(0,0,0,.12);
-           max-height:220px;overflow-y:auto"></div>
+    <div class="lm-tabs">
+      <div class="lm-tab active" id="lmTabBtn-contact" onclick="switchLmTab('contact')">👥 People</div>
+      <div class="lm-tab" id="lmTabBtn-lead" onclick="switchLmTab('lead')">🧭 Deals</div>
     </div>
 
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;margin-bottom:8px">
-      Contacts in this label
+    {% for kind, placeholder in [('contact', 'Search contacts by name or email…'), ('lead', 'Search deals by name or email…')] %}
+    <div class="lm-section {{ 'active' if kind == 'contact' else '' }}" id="lmSection-{{ kind }}">
+      <div style="position:relative;margin-bottom:16px">
+        <input type="text" class="finp" id="lmAddSearch-{{ kind }}" autocomplete="off" placeholder="{{ placeholder }}"
+               oninput="onLmSearchInput('{{ kind }}')" onblur="setTimeout(function(){document.getElementById('lmAddResults-{{ kind }}').style.display='none'}, 200)">
+        <div id="lmAddResults-{{ kind }}" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:50;
+             background:#fff;border:1px solid rgba(3,12,24,.1);border-radius:11px;box-shadow:0 10px 30px rgba(0,0,0,.12);
+             max-height:220px;overflow-y:auto"></div>
+      </div>
+
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;margin-bottom:8px">
+        {{ 'Contacts with this tag' if kind == 'contact' else 'Deals with this tag' }}
+      </div>
+      <div id="lmMembersWrap-{{ kind }}" style="max-height:280px;overflow-y:auto">
+        <div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Loading…</div>
+      </div>
     </div>
-    <div id="lmMembersWrap" style="max-height:280px;overflow-y:auto">
-      <div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Loading…</div>
-    </div>
+    {% endfor %}
 
     <div class="modal-actions">
       <button type="button" class="modal-cancel" onclick="closeMembersModal()">Done</button>
@@ -141,33 +162,68 @@ function submitCreateLabel(ev) {
       if (data.error) { alert(data.error); return; }
       window.location.reload();
     })
-    .catch(function(){ alert('Could not create label — check your connection'); });
+    .catch(function(){ alert('Could not create tag — check your connection'); });
   return false;
 }
 
+/* People (Contacts) and Deals (Sales Pipeline leads) share this same modal,
+   each wired to its own pair of endpoints — tags unification, 2026-09-09. */
+var LM_CONFIG = {
+  contact: {
+    loadUrl:   function(id){ return '/labels/' + id + '/contacts'; },
+    removeUrl: function(id){ return '/labels/' + id + '/contacts/remove'; },
+    removeParam: 'contact_id',
+    searchUrl: function(q, id){ return '/labels/search-contacts?q=' + encodeURIComponent(q) + '&exclude_label_id=' + id; },
+    resultsKey: 'contacts',
+    addUrl:    function(id){ return '/labels/' + id + '/contacts/bulk-add'; },
+    addParam:  'contact_ids',
+    emptyText: 'No contacts tagged yet.',
+  },
+  lead: {
+    loadUrl:   function(id){ return '/labels/' + id + '/members'; },
+    removeUrl: function(id){ return '/labels/' + id + '/members/remove'; },
+    removeParam: 'lead_id',
+    searchUrl: function(q, id){ return '/labels/search-leads?q=' + encodeURIComponent(q) + '&exclude_label_id=' + id; },
+    resultsKey: 'leads',
+    addUrl:    function(id){ return '/labels/' + id + '/members/bulk-add'; },
+    addParam:  'lead_ids',
+    emptyText: 'No deals tagged yet.',
+  },
+};
+
 var currentLabelId = null;
+
+function switchLmTab(kind) {
+  ['contact', 'lead'].forEach(function(k) {
+    document.getElementById('lmTabBtn-' + k).classList.toggle('active', k === kind);
+    document.getElementById('lmSection-' + k).classList.toggle('active', k === kind);
+  });
+}
 
 function openMembersModal(labelId, labelName) {
   currentLabelId = labelId;
   document.getElementById('lmTitle').textContent = labelName;
-  document.getElementById('lmAddSearch').value = '';
+  switchLmTab('contact');
+  ['contact', 'lead'].forEach(function(k) { document.getElementById('lmAddSearch-' + k).value = ''; });
   document.getElementById('labelMembersModal').classList.add('open');
-  loadMembers();
+  loadMembers('contact');
+  loadMembers('lead');
 }
 function closeMembersModal() {
   document.getElementById('labelMembersModal').classList.remove('open');
   currentLabelId = null;
 }
 
-function loadMembers() {
-  var wrap = document.getElementById('lmMembersWrap');
+function loadMembers(kind) {
+  var cfg = LM_CONFIG[kind];
+  var wrap = document.getElementById('lmMembersWrap-' + kind);
   wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Loading…</div>';
-  fetch('/labels/' + currentLabelId + '/members')
+  fetch(cfg.loadUrl(currentLabelId))
     .then(function(r){ return r.json(); })
     .then(function(data){
       var members = data.members || [];
       if (members.length === 0) {
-        wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">No contacts labeled yet.</div>';
+        wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">' + cfg.emptyText + '</div>';
         return;
       }
       wrap.innerHTML = members.map(function(m){
@@ -175,41 +231,43 @@ function loadMembers() {
           + '<div style="min-width:0;flex:1">'
           + '<div style="font-weight:600;font-size:13px;overflow-wrap:break-word">' + escapeHtmlLm(m.name || '') + '</div>'
           + '<div style="font-size:11.5px;color:var(--muted);overflow-wrap:break-word">' + escapeHtmlLm(m.email || 'no email') + '</div></div>'
-          + '<button type="button" class="btn btn-sm btn-ghost" style="flex-shrink:0" onclick="removeMember(' + m.id + ')">Remove</button>'
+          + '<button type="button" class="btn btn-sm btn-ghost" style="flex-shrink:0" onclick="removeMember(\'' + kind + '\', ' + m.id + ')">Remove</button>'
           + '</div>';
       }).join('');
     })
-    .catch(function(){ wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--bad)">Could not load contacts.</div>'; });
+    .catch(function(){ wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--bad)">Could not load — check your connection.</div>'; });
 }
 
-function removeMember(leadId) {
+function removeMember(kind, memberId) {
+  var cfg = LM_CONFIG[kind];
   var fd = new FormData();
-  fd.append('lead_id', leadId);
-  fetch('/labels/' + currentLabelId + '/members/remove', { method: 'POST', body: fd })
+  fd.append(cfg.removeParam, memberId);
+  fetch(cfg.removeUrl(currentLabelId), { method: 'POST', body: fd })
     .then(function(r){ return r.json(); })
-    .then(function(){ loadMembers(); })
-    .catch(function(){ alert('Could not remove contact — check your connection'); });
+    .then(function(){ loadMembers(kind); })
+    .catch(function(){ alert('Could not remove — check your connection'); });
 }
 
 var lmSearchTimer = null;
-function onLmSearchInput() {
+function onLmSearchInput(kind) {
   clearTimeout(lmSearchTimer);
-  var q = document.getElementById('lmAddSearch').value.trim();
-  if (!q) { document.getElementById('lmAddResults').style.display = 'none'; return; }
+  var cfg = LM_CONFIG[kind];
+  var q = document.getElementById('lmAddSearch-' + kind).value.trim();
+  var results = document.getElementById('lmAddResults-' + kind);
+  if (!q) { results.style.display = 'none'; return; }
   lmSearchTimer = setTimeout(function() {
-    fetch('/labels/search-leads?q=' + encodeURIComponent(q) + '&exclude_label_id=' + currentLabelId)
+    fetch(cfg.searchUrl(q, currentLabelId))
       .then(function(r){ return r.json(); })
       .then(function(data){
-        var leads = data.leads || [];
-        var results = document.getElementById('lmAddResults');
-        if (leads.length === 0) {
+        var items = data[cfg.resultsKey] || [];
+        if (items.length === 0) {
           results.innerHTML = '<div style="padding:10px;font-size:12.5px;color:var(--muted)">No matches</div>';
         } else {
-          results.innerHTML = leads.map(function(l){
+          results.innerHTML = items.map(function(it){
             return '<div style="padding:9px 12px;cursor:pointer;font-size:13px" '
-              + 'onmousedown="addMember(' + l.id + ')" onmouseover="this.style.background=\'#f1f5f9\'" onmouseout="this.style.background=\'\'">'
-              + '<strong>' + escapeHtmlLm(l.name || '') + '</strong>'
-              + (l.email ? ' <span style="color:var(--muted)">— ' + escapeHtmlLm(l.email) + '</span>' : '')
+              + 'onmousedown="addMember(\'' + kind + '\', ' + it.id + ')" onmouseover="this.style.background=\'#f1f5f9\'" onmouseout="this.style.background=\'\'">'
+              + '<strong>' + escapeHtmlLm(it.name || '') + '</strong>'
+              + (it.email ? ' <span style="color:var(--muted)">— ' + escapeHtmlLm(it.email) + '</span>' : '')
               + '</div>';
           }).join('');
         }
@@ -218,22 +276,38 @@ function onLmSearchInput() {
   }, 250);
 }
 
-function addMember(leadId) {
+function addMember(kind, memberId) {
+  var cfg = LM_CONFIG[kind];
   var fd = new FormData();
-  fd.append('lead_ids', leadId);
-  fetch('/labels/' + currentLabelId + '/members/bulk-add', { method: 'POST', body: fd })
+  fd.append(cfg.addParam, memberId);
+  fetch(cfg.addUrl(currentLabelId), { method: 'POST', body: fd })
     .then(function(r){ return r.json(); })
     .then(function(){
-      document.getElementById('lmAddSearch').value = '';
-      document.getElementById('lmAddResults').style.display = 'none';
-      loadMembers();
+      document.getElementById('lmAddSearch-' + kind).value = '';
+      document.getElementById('lmAddResults-' + kind).style.display = 'none';
+      loadMembers(kind);
     })
-    .catch(function(){ alert('Could not add contact — check your connection'); });
+    .catch(function(){ alert('Could not add — check your connection'); });
 }
 
 function escapeHtmlLm(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
+/* Duplicate-name warning on the "+ Create Tag" box. */
+var DEDUPE_TAGS = {{ dedupe_tags|tojson }};
+document.addEventListener('DOMContentLoaded', function () {
+  crmDedupeWatch({
+    input: document.getElementById('newLabelName'),
+    warnBox: document.getElementById('newTagDedupe'),
+    label: 'Similar tag already exists — did you mean:',
+    getItems: function () { return DEDUPE_TAGS; },
+    onUse: function (tag) {
+      document.getElementById('newLabelName').value = '';
+      openMembersModal(tag.id, tag.name);
+    }
+  });
+});
 </script>
 
 {% endblock %}

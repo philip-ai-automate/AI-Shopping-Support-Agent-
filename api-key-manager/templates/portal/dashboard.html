@@ -94,11 +94,76 @@
 /* Handoff cards */
 .handoff-card{ transition:.15s }
 .handoff-card:hover{ border-color:rgba(3,12,24,.16) !important; box-shadow:0 4px 14px rgba(3,12,24,.05) }
+
+/* Pipeline snapshot + Lead sources (Dashboard redesign Phase 2) */
+.two-col{ display:grid; grid-template-columns:1.35fr 1fr; gap:16px }
+@media(max-width:900px){ .two-col{ grid-template-columns:1fr } }
+
+.frow{ display:flex; align-items:center; gap:14px; margin-bottom:10px; padding:6px 8px; border-radius:10px; transition:.1s }
+.frow:last-child{ margin-bottom:0 }
+a.frow{ text-decoration:none; color:inherit }
+a.frow:hover{ background:rgba(3,12,24,0.03); text-decoration:none }
+.flabel{ width:112px; flex-shrink:0; font-size:12.5px; font-weight:650; color:var(--ink) }
+.fbar-track{ flex:1; height:26px; border-radius:7px; background:rgba(3,12,24,0.045); overflow:hidden; display:flex; align-items:center }
+.fbar{ height:26px; border-radius:7px; display:flex; align-items:center; padding:0 10px; color:#fff; font-size:11.5px; font-weight:700; white-space:nowrap; min-width:32px }
+.fmeta{ width:130px; flex-shrink:0; font-size:12px; color:var(--muted); text-align:right }
+.fmeta b{ color:var(--ink); font-weight:700 }
+.frow-arrow{ width:14px; flex-shrink:0; color:var(--muted); font-size:13px; text-align:center }
+
+.src-row{ display:flex; align-items:center; gap:12px; margin-bottom:13px }
+.src-row:last-child{ margin-bottom:0 }
+.src-label{ width:112px; flex-shrink:0; font-size:12.5px; font-weight:650; color:var(--txt) }
+.src-track{ flex:1; height:15px; border-radius:6px; background:rgba(3,12,24,0.05); overflow:hidden }
+.src-fill{ height:100%; border-radius:6px }
+.src-count{ width:64px; flex-shrink:0; font-size:12.5px; font-weight:700; color:var(--ink); text-align:right }
+.src-rev{ width:112px; flex-shrink:0; font-size:12px; color:var(--muted); text-align:right }
+.src-rev b{ color:var(--ink); font-weight:700 }
+
+/* Channel Activity + Campaign Performance (Dashboard redesign Phase 3) */
+.channel-grid{ display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:16px }
+@media(max-width:860px){ .channel-grid{ grid-template-columns:1fr } }
+.channel-card{ background:#fff; border:1px solid var(--line); border-radius:18px; padding:18px 20px }
+.channel-icon{ width:38px; height:38px; border-radius:11px; display:flex; align-items:center; justify-content:center; flex-shrink:0 }
+.channel-stats{ display:flex; gap:22px; margin-top:14px; flex-wrap:wrap }
+.channel-stat-val{ font-size:22px; font-weight:800; letter-spacing:-.4px; color:var(--ink); line-height:1 }
+.channel-stat-label{ font-size:11.5px; color:var(--muted); margin-top:4px; font-weight:500 }
+
+.locked-card{ background:#f8f9fb; border:1px dashed rgba(3,12,24,0.16); border-radius:18px; padding:18px 20px; opacity:.75; display:flex; flex-direction:column; justify-content:space-between; height:100% }
+.locked-badge{ display:inline-flex; align-items:center; gap:5px; font-size:10.5px; font-weight:700; color:var(--muted); background:rgba(3,12,24,0.06); border-radius:999px; padding:3px 9px; align-self:flex-start; margin-bottom:12px }
+.locked-name{ font-weight:700; color:var(--txt); font-size:14px; margin-top:2px }
+.locked-meta{ font-size:12px; color:var(--muted); margin-top:2px }
+
+.camp-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0; border-top:1px solid var(--line) }
+.camp-row:first-child{ border-top:none; padding-top:0 }
+.camp-name{ font-size:13.5px; font-weight:700; color:var(--ink) }
+.camp-stats{ display:flex; gap:20px; flex-wrap:wrap }
+.camp-stat{ font-size:11.5px; color:var(--muted); text-align:right }
+.camp-stat b{ display:block; font-size:14px; color:var(--ink); font-weight:800 }
+
+/* Needs Attention + Recent Activity (Dashboard redesign Phase 4) */
+.attn-card{ background:#fff; border:1px solid var(--line); border-left:4px solid var(--warn); border-radius:18px; padding:18px 22px }
+.attn-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 0; border-top:1px solid var(--line) }
+.attn-row:first-child{ border-top:none; padding-top:2px }
+.attn-left{ display:flex; align-items:center; gap:12px }
+.attn-dot{ font-size:15px; flex-shrink:0 }
+.attn-text{ font-size:13.5px; font-weight:650; color:var(--ink) }
+.attn-sub{ font-size:11.5px; color:var(--muted); margin-top:1px }
+.attn-link{ font-size:12px; font-weight:650; color:var(--ink); white-space:nowrap }
+
+.act-row{ display:flex; align-items:center; gap:13px; padding:12px 0; border-top:1px solid var(--line); text-decoration:none; color:inherit }
+.act-row:first-child{ border-top:none; padding-top:2px }
+a.act-row:hover{ text-decoration:none }
+a.act-row:hover .act-text{ text-decoration:underline }
+.act-icon{ width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; color:#fff }
+.act-text{ font-size:13px; color:var(--txt) }
+.act-time{ font-size:11.5px; color:var(--muted); white-space:nowrap; margin-left:auto; flex-shrink:0; padding-left:10px }
 </style>
 
 {# ═══════════════════════════════════════════════════════════════
-   PLAN / QUOTA BANNER
+   PLAN / QUOTA BANNER — an AI-message allowance, meaningless on
+   PhiXtra Connect where every plan is free and unlimited.
 ═══════════════════════════════════════════════════════════════ #}
+{% if not is_connect_host %}
 {% set _pct = plan_info.usage_pct | default(0) %}
 {% set _used = plan_info.messages_used | default(0) %}
 {% set _limit = plan_info.ai_messages_limit | default(100) %}
@@ -149,6 +214,7 @@
   <a href="{{ url_for('portal.billing_plans') }}" style="font-size:12px;color:#6b7280;text-decoration:none">View Plans</a>
 </div>
 {% endif %}
+{% endif %}
 
 {% if true %}
 
@@ -161,17 +227,332 @@
     <p class="dash-sub">{{ customer.tenant_domain }}</p>
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
-    {% if customer.tenant_source_type == 'whatsapp' %}
+    {% if customer.tenant_source_type == 'whatsapp' and not is_connect_host %}
     <a href="{{ url_for('portal.onboarding_catalogue_start') }}" class="btn btn-primary btn-sm">⚙ Run Setup Wizard</a>
     {% endif %}
+    {% if not is_connect_host %}
     <a href="{{ url_for('portal.billing_plans') }}" class="btn btn-sm">↑ Upgrade Plan</a>
+    {% endif %}
   </div>
 </div>
 
 {# ═══════════════════════════════════════════════════════════════
+   SALES OVERVIEW — Sales / Pipeline Value / New Leads / Conversion Rate,
+   Dashboard redesign Phase 1 (2026-09-10, see
+   project_phixtra_connect_dashboard_redesign memory). Gated the same way
+   the Sales Pipeline nav group is — unconditional on portal.phixtra.com,
+   opt-in-per-business on PhiXtra Connect.
+═══════════════════════════════════════════════════════════════ #}
+{% if crm_pipeline_on and crm_kpis %}
+<div class="section-hd"><span class="section-hd-icon">💼</span><span class="section-hd-title">Sales Overview</span><span class="section-hd-line"></span></div>
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+  <div class="muted" style="font-size:13px">{{ dash_period.period_label }}</div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <form method="get" id="dashPeriodForm" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select name="period"
+              onchange="document.getElementById('dashCustomRange').style.display = this.value==='custom' ? 'inline-flex' : 'none'; if(this.value!=='custom'){ document.getElementById('dashPeriodForm').submit(); }"
+              style="padding:8px 12px;border-radius:12px;border:1px solid var(--line);background:#fff;font-size:13px;font-weight:650;color:var(--txt);cursor:pointer">
+        {% for key, label in dashboard_period_options.items() %}
+        <option value="{{ key }}" {% if dash_period.period_key == key %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+        <option value="custom" {% if dash_period.is_custom %}selected{% endif %}>Custom…</option>
+      </select>
+      <span id="dashCustomRange" style="display:{{ 'inline-flex' if dash_period.is_custom else 'none' }};gap:6px;align-items:center">
+        <input type="date" name="date_from" value="{{ dash_period.date_from if dash_period.is_custom else '' }}"
+               style="padding:6px 9px;font-size:12.5px;border-radius:10px;border:1px solid rgba(3,12,24,0.18)">
+        <span class="muted" style="font-size:12px">to</span>
+        <input type="date" name="date_to" value="{{ dash_period.date_to if dash_period.is_custom else '' }}"
+               style="padding:6px 9px;font-size:12.5px;border-radius:10px;border:1px solid rgba(3,12,24,0.18)">
+        <button type="submit" class="btn btn-sm">Apply</button>
+      </span>
+    </form>
+    <a href="{{ url_for('portal.leads_page', open_add=1) }}" class="btn btn-primary btn-sm">+ Add Lead</a>
+  </div>
+</div>
+
+<div class="kpi-grid-4">
+  {# Sales #}
+  <div class="kpi-card kpi-green">
+    <div class="kpi-card-icon" style="background:rgba(37,211,102,.10)">💰</div>
+    <div class="kpi-card-val">₦{{ "{:,.0f}".format(crm_kpis.sales) }}</div>
+    <div class="kpi-card-label">Sales — won {{ dash_period.period_label|lower }}</div>
+    <div class="kpi-card-sub">
+      {% if crm_kpis.sales_prev == 0 and crm_kpis.sales > 0 %}
+        <span style="color:var(--good);font-weight:700">New this period</span>
+      {% elif crm_kpis.sales_pct is not none %}
+        <span style="color:{{ 'var(--good)' if crm_kpis.sales_pct >= 0 else 'var(--bad)' }};font-weight:700">{{ '↑' if crm_kpis.sales_pct >= 0 else '↓' }} {{ crm_kpis.sales_pct|abs }}%</span>&nbsp;vs previous period
+      {% else %}
+        <span class="muted">No comparison data yet</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {# Pipeline Value — always a live snapshot, deliberately no % badge #}
+  <div class="kpi-card kpi-blue">
+    <div class="kpi-card-icon" style="background:rgba(2,136,209,.10)">📈</div>
+    <div class="kpi-card-val">₦{{ "{:,.0f}".format(crm_kpis.pipeline_value) }}</div>
+    <div class="kpi-card-label">Pipeline value — {{ crm_kpis.pipeline_count }} open deal{{ 's' if crm_kpis.pipeline_count != 1 }}</div>
+    <div class="kpi-card-sub"><span class="muted">Right now — not scoped to the period above</span></div>
+  </div>
+
+  {# New Leads #}
+  <div class="kpi-card kpi-amber">
+    <div class="kpi-card-icon" style="background:rgba(247,144,9,.10)">👤</div>
+    <div class="kpi-card-val">{{ crm_kpis.new_leads }}</div>
+    <div class="kpi-card-label">New leads {{ dash_period.period_label|lower }}</div>
+    <div class="kpi-card-sub">
+      {% if crm_kpis.new_leads_prev == 0 and crm_kpis.new_leads > 0 %}
+        <span style="color:var(--good);font-weight:700">New this period</span>
+      {% elif crm_kpis.new_leads_pct is not none %}
+        <span style="color:{{ 'var(--good)' if crm_kpis.new_leads_pct >= 0 else 'var(--bad)' }};font-weight:700">{{ '↑' if crm_kpis.new_leads_pct >= 0 else '↓' }} {{ crm_kpis.new_leads_pct|abs }}%</span>&nbsp;vs previous period
+      {% else %}
+        <span class="muted">No comparison data yet</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {# Conversion Rate #}
+  <div class="kpi-card kpi-ink">
+    <div class="kpi-card-icon" style="background:rgba(3,12,24,.06)">🎯</div>
+    <div class="kpi-card-val">{{ ("%.1f"|format(crm_kpis.conversion_rate)) ~ "%" if crm_kpis.conversion_rate is not none else "—" }}</div>
+    <div class="kpi-card-label">Conversion rate — leads → won</div>
+    <div class="kpi-card-sub">
+      {% if crm_kpis.conversion_rate_prev is none and crm_kpis.conversion_rate is not none %}
+        <span style="color:var(--good);font-weight:700">New this period</span>
+      {% elif crm_kpis.conversion_pct is not none %}
+        <span style="color:{{ 'var(--good)' if crm_kpis.conversion_pct >= 0 else 'var(--bad)' }};font-weight:700">{{ '↑' if crm_kpis.conversion_pct >= 0 else '↓' }} {{ crm_kpis.conversion_pct|abs }}pt</span>&nbsp;vs previous period
+      {% else %}
+        <span class="muted">No comparison data yet</span>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# ═══════════════════════════════════════════════════════════════
+   SALES PIPELINE SNAPSHOT + LEAD SOURCES — Dashboard redesign Phase 2
+   (2026-09-10, see project_phixtra_connect_dashboard_redesign memory).
+═══════════════════════════════════════════════════════════════ #}
+<div class="two-col">
+  <div>
+    <div class="section-hd"><span class="section-hd-icon">🔀</span><span class="section-hd-title">Sales Pipeline</span><span class="section-hd-line"></span><a href="{{ url_for('portal.sales_pipeline') }}" class="section-hd-action" style="font-size:12.5px;font-weight:650;color:var(--ink)">View Pipeline Board →</a></div>
+    <div class="card">
+      {% if dash_pipeline %}
+      <div class="muted" style="font-size:11.5px;margin-bottom:14px">Every open deal, by stage, right now — click a stage to see those leads</div>
+      {% for s in dash_pipeline %}
+      <a href="{{ url_for('portal.sales_pipeline', stage=s.stage) }}" class="frow">
+        <div class="flabel">{{ s.label }}</div>
+        <div class="fbar-track"><div class="fbar" style="width:{{ s.pct_of_max }}%;background:{{ s.color }};{% if s.stage == 'new_lead' %}color:#030C18{% endif %}">{{ s.count }}</div></div>
+        <div class="fmeta"><b>₦{{ "{:,.0f}".format(s.value) }}</b></div>
+        <div class="frow-arrow">›</div>
+      </a>
+      {% endfor %}
+      {% else %}
+      <p class="muted">No open pipeline yet.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div>
+    <div class="section-hd"><span class="section-hd-icon">📡</span><span class="section-hd-title">Lead Sources</span><span class="section-hd-line"></span></div>
+    <div class="card">
+      {% if dash_sources %}
+      <div class="muted" style="font-size:11.5px;margin-bottom:14px">Leads and revenue, {{ dash_period.period_label|lower }}</div>
+      {% for src in dash_sources %}
+      <div class="src-row">
+        <div class="src-label">{{ src.label }}</div>
+        <div class="src-track"><div class="src-fill" style="width:{{ src.pct_of_max }}%;background:{{ '#25D366' if src.key == 'whatsapp' else ('#0288D1' if src.key == 'manual' else 'rgba(3,12,24,0.25)') }}"></div></div>
+        <div class="src-count">{{ src.count }} lead{{ 's' if src.count != 1 }}</div>
+        <div class="src-rev"><b>₦{{ "{:,.0f}".format(src.revenue) }}</b></div>
+      </div>
+      {% endfor %}
+      <div class="muted" style="font-size:11px;font-style:italic;margin-top:14px">Only sources the system actually records today are shown — Instagram, Messenger and Website aren't connected yet.</div>
+      {% else %}
+      <p class="muted">No leads yet.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# ═══════════════════════════════════════════════════════════════
+   CHANNEL ACTIVITY — Dashboard redesign Phase 3. WhatsApp is real,
+   period-scoped data; Messenger/Instagram are honest "coming soon" locked
+   states, matching how the real Inbox channel rail already treats them
+   (see project_phixtra_omnichannel_inbox_design memory) — same icons/
+   copy, not invented fresh here.
+═══════════════════════════════════════════════════════════════ #}
+<div class="section-hd"><span class="section-hd-icon">💬</span><span class="section-hd-title">Channel Activity</span><span class="section-hd-line"></span></div>
+<div class="channel-grid">
+  <div class="channel-card" style="border-top:3px solid #25D366">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="channel-icon" style="background:#25D366">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M12 6.2a5.8 5.8 0 0 0-5 8.7L6 18l3.2-1a5.8 5.8 0 1 0 2.8-10.8Z" fill="none" stroke="#fff" stroke-width="1.5"/><path d="M9.8 9.9c.1-.3.3-.3.5-.3h.4c.1 0 .3 0 .4.3l.5 1.2c0 .1.1.2 0 .3l-.3.4c-.1.1-.1.2 0 .3.3.5.9 1.1 1.4 1.4.1.1.2.1.3 0l.4-.3c.1-.1.2-.1.3 0l1.2.5c.2.1.2.3.2.4v.4c0 .2-.2.5-.4.6-.6.4-1.4.4-2.4-.1-1-.5-1.9-1.4-2.4-2.4-.5-1-.5-1.8-.1-2.4.1-.2.4-.3.6-.3Z" fill="#fff"/></svg>
+      </div>
+      <div>
+        <div class="card-title">WhatsApp</div>
+        {% if wa_connection %}<div class="muted" style="font-size:11.5px;margin-top:1px">{{ dash_period.period_label }}</div>{% endif %}
+      </div>
+    </div>
+    {% if wa_connection and dash_wa_activity %}
+    <div class="channel-stats">
+      <div><div class="channel-stat-val">{{ dash_wa_activity.total_conversations }}</div><div class="channel-stat-label">Conversations</div></div>
+      <div><div class="channel-stat-val">{{ dash_wa_activity.new_conversations }}</div><div class="channel-stat-label">New</div></div>
+      <div><div class="channel-stat-val" style="{% if dash_wa_activity.unanswered %}color:var(--bad){% endif %}">{{ dash_wa_activity.unanswered }}</div><div class="channel-stat-label">Unanswered</div></div>
+    </div>
+    {% if dash_wa_activity.unanswered %}
+    <div style="margin-top:12px"><a href="{{ url_for('portal.my_inbox') }}" style="font-size:12px;font-weight:650;color:var(--bad)">Open inbox →</a></div>
+    {% endif %}
+    {% else %}
+    <p class="muted" style="font-size:12.5px;margin-top:14px">Connect WhatsApp to see conversation activity here. <a href="{{ url_for('portal.whatsapp_connect') }}">Connect →</a></p>
+    {% endif %}
+  </div>
+
+  <div class="locked-card">
+    <div>
+      <div class="locked-badge">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+        Coming soon
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="channel-icon" style="background:linear-gradient(135deg,#00B2FF,#006AFF)">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M12 6c-3.6 0-6.4 2.5-6.4 5.9 0 1.9 1 3.6 2.5 4.7V19l2.3-1.3c.5.1 1 .2 1.6.2 3.6 0 6.4-2.5 6.4-5.9S15.6 6 12 6Z" fill="#fff"/></svg>
+        </div>
+        <div class="locked-name">Messenger</div>
+      </div>
+    </div>
+    <div class="locked-meta">Not connected</div>
+  </div>
+
+  <div class="locked-card">
+    <div>
+      <div class="locked-badge">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+        Coming soon
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="channel-icon" style="background:linear-gradient(135deg,#FEDA75,#D62976 45%,#4F5BD5)">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="6.5" y="6.5" width="11" height="11" rx="3.2" fill="none" stroke="#fff" stroke-width="1.5"/><circle cx="12" cy="12" r="2.6" fill="none" stroke="#fff" stroke-width="1.5"/></svg>
+        </div>
+        <div class="locked-name">Instagram</div>
+      </div>
+    </div>
+    <div class="locked-meta">Not connected</div>
+  </div>
+</div>
+
+{# ═══════════════════════════════════════════════════════════════
+   CAMPAIGN PERFORMANCE — Dashboard redesign Phase 3
+═══════════════════════════════════════════════════════════════ #}
+<div class="section-hd"><span class="section-hd-icon">📣</span><span class="section-hd-title">Campaign Performance</span><span class="section-hd-line"></span><a href="{{ url_for('portal.whatsapp_campaigns_reports') }}" class="section-hd-action" style="font-size:12.5px;font-weight:650;color:var(--ink)">View All Campaigns →</a></div>
+<div class="card">
+  {% if dash_campaigns and dash_campaigns.sent %}
+  <div class="muted" style="font-size:11.5px;margin-bottom:14px">Every WhatsApp campaign message sent {{ dash_period.period_label|lower }}</div>
+  <div class="frow"><div class="flabel">Sent</div><div class="fbar-track"><div class="fbar" style="width:100%;background:#030C18">{{ dash_campaigns.sent }}</div></div></div>
+  <div class="frow"><div class="flabel">Delivered</div><div class="fbar-track"><div class="fbar" style="width:{{ (dash_campaigns.delivered / dash_campaigns.sent * 100)|round|int }}%;background:#334966">{{ dash_campaigns.delivered }}</div></div></div>
+  <div class="frow"><div class="flabel">Read</div><div class="fbar-track"><div class="fbar" style="width:{{ (dash_campaigns.read / dash_campaigns.sent * 100)|round|int }}%;background:#586D8A">{{ dash_campaigns.read }}</div></div></div>
+  <div class="frow"><div class="flabel">Replied</div><div class="fbar-track"><div class="fbar" style="width:{{ (dash_campaigns.replied / dash_campaigns.sent * 100)|round|int }}%;background:#0288D1">{{ dash_campaigns.replied }}</div></div></div>
+  <div class="frow"><div class="flabel">Opportunities</div><div class="fbar-track"><div class="fbar" style="width:{{ (dash_campaigns.opportunities / dash_campaigns.sent * 100)|round|int }}%;background:#F79009">{{ dash_campaigns.opportunities }}</div></div></div>
+  <div class="frow"><div class="flabel">Won</div><div class="fbar-track"><div class="fbar" style="width:{{ (dash_campaigns.converted / dash_campaigns.sent * 100)|round|int }}%;background:#12B76A">{{ dash_campaigns.converted }}</div></div></div>
+
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)">
+    <div style="font-size:13px;color:var(--muted)">Revenue generated by campaigns sent this period</div>
+    <div style="font-size:20px;font-weight:800;color:var(--good)">₦{{ "{:,.0f}".format(dash_campaigns.revenue) }}</div>
+  </div>
+
+  {% if dash_campaigns.campaigns %}
+  <div style="margin-top:16px">
+    {% for c in dash_campaigns.campaigns %}
+    <div class="camp-row">
+      <div class="camp-name">{{ c.name }}</div>
+      <div class="camp-stats">
+        <div class="camp-stat"><b>{{ c.sent }}</b>sent</div>
+        <div class="camp-stat"><b>{{ c.replied }}</b>replies</div>
+        <div class="camp-stat"><b style="color:var(--good)">{{ c.won }}</b>sales</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% else %}
+  <p class="muted">No campaigns sent {{ dash_period.period_label|lower }}. <a href="{{ url_for('portal.whatsapp_campaigns') }}">Start a campaign →</a></p>
+  {% endif %}
+</div>
+
+{# ═══════════════════════════════════════════════════════════════
+   NEEDS ATTENTION + RECENT ACTIVITY — Dashboard redesign Phase 4. Only the
+   3 rules that are computable from real data — no "overdue follow-ups"
+   (no reminder system exists), see project_phixtra_connect_dashboard_redesign
+   memory.
+═══════════════════════════════════════════════════════════════ #}
+<div class="section-hd"><span class="section-hd-icon">⭐</span><span class="section-hd-title">Needs Attention</span><span class="section-hd-line"></span></div>
+<div class="two-col">
+  <div class="attn-card">
+    {% if dash_attention and (dash_attention.stale_3d or dash_attention.proposal_waiting_5d or dash_attention.stuck_14d) %}
+    {% if dash_attention.stale_3d %}
+    <div class="attn-row">
+      <div class="attn-left">
+        <div class="attn-dot">🟠</div>
+        <div>
+          <div class="attn-text">{{ dash_attention.stale_3d }} lead{{ 's' if dash_attention.stale_3d != 1 }} with no activity for 3+ days</div>
+          <div class="attn-sub">No stage movement since they came in</div>
+        </div>
+      </div>
+      <a href="{{ url_for('portal.sales_pipeline') }}" class="attn-link">View →</a>
+    </div>
+    {% endif %}
+    {% if dash_attention.proposal_waiting_5d %}
+    <div class="attn-row">
+      <div class="attn-left">
+        <div class="attn-dot">🔴</div>
+        <div>
+          <div class="attn-text">{{ dash_attention.proposal_waiting_5d }} proposal{{ 's' if dash_attention.proposal_waiting_5d != 1 }} waiting 5+ days</div>
+          <div class="attn-sub">Sent, no response from the customer yet</div>
+        </div>
+      </div>
+      <a href="{{ url_for('portal.sales_pipeline', stage='proposal_sent') }}" class="attn-link">View →</a>
+    </div>
+    {% endif %}
+    {% if dash_attention.stuck_14d %}
+    <div class="attn-row">
+      <div class="attn-left">
+        <div class="attn-dot">🟡</div>
+        <div>
+          <div class="attn-text">{{ dash_attention.stuck_14d }} deal{{ 's' if dash_attention.stuck_14d != 1 }} stuck in a stage too long</div>
+          <div class="attn-sub">No stage movement in over 14 days</div>
+        </div>
+      </div>
+      <a href="{{ url_for('portal.sales_pipeline') }}" class="attn-link">View →</a>
+    </div>
+    {% endif %}
+    {% else %}
+    <p class="muted" style="margin:2px 0 0">Nothing needs attention right now — every open lead has had recent activity. ✅</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-title" style="margin-bottom:8px">Recent Activity</div>
+    {% if dash_activity %}
+    {% for ev in dash_activity %}
+    <a href="{{ ev.url }}" class="act-row">
+      <div class="act-icon" style="background:{{ ev.icon_bg }}">{{ ev.icon }}</div>
+      <div style="min-width:0;flex:1">
+        <div class="act-text">{{ ev.text }}</div>
+      </div>
+      <div class="act-time">{{ ev.at.strftime('%d %b, %H:%M') }}</div>
+    </a>
+    {% endfor %}
+    {% else %}
+    <p class="muted">Nothing yet — activity will show up here as leads come in.</p>
+    {% endif %}
+  </div>
+</div>
+{% endif %}{# crm_pipeline_on / Sales Overview + Pipeline snapshot + Lead Sources + Channel Activity + Campaigns + Needs Attention + Recent Activity #}
+
+{# ═══════════════════════════════════════════════════════════════
    WHATSAPP HANDOFF ALERT — customers waiting for a human, right now
 ═══════════════════════════════════════════════════════════════ #}
-{% if wa_open_handoffs %}
+{# AI-handoff alert — no AI on PhiXtra Connect ever escalates to a human,
+   so this list is naturally always empty there; skip the AI wording entirely. #}
+{% if wa_open_handoffs and not is_connect_host %}
 <div style="background:#fff;border:1px solid rgba(240,68,56,.35);border-left:4px solid #F04438;
             border-radius:18px;padding:18px 22px;margin-bottom:20px;
             box-shadow:0 4px 16px rgba(240,68,56,.08)">
@@ -239,7 +620,7 @@
     <div class="wa-status-dot live"></div>
     <div>
       <div class="wa-number">{{ (wa_connection.display_phone_number or wa_connection.phone_number_id)|with_plus }}</div>
-      <div class="wa-status-lbl">WhatsApp connected · AI assistant active</div>
+      <div class="wa-status-lbl">WhatsApp connected · Official Meta Business API{% if not is_connect_host %} · AI assistant active{% endif %}</div>
     </div>
     {% else %}
     <div class="wa-status-dot off"></div>
@@ -258,7 +639,9 @@
     {% else %}
     <a href="{{ url_for('portal.whatsapp_connect') }}" class="btn btn-primary btn-sm">Connect WhatsApp →</a>
     {% endif %}
+    {% if not is_connect_host %}
     <a href="{{ url_for('portal.billing') }}" class="btn btn-sm">+ Buy Credits</a>
+    {% endif %}
   </div>
 </div>
 
@@ -420,11 +803,29 @@
 {% endif %}
 
 {# ═══════════════════════════════════════════════════════════════
-   AI & BUSINESS ROW — 3 cards
+   BUSINESS ROW — 3 cards. On PhiXtra Connect this row is about the
+   Meta WhatsApp Business API itself, not AI usage — that's the whole
+   point of Connect, so it leads the dashboard rather than a credits/
+   AI-sessions card that would just read zero for every Connect tenant.
 ═══════════════════════════════════════════════════════════════ #}
+{% if is_connect_host %}
+<div class="section-hd"><span class="section-hd-icon">📡</span><span class="section-hd-title">Official Meta WhatsApp Business API</span><span class="section-hd-line"></span></div>
+{% else %}
 <div class="section-hd"><span class="section-hd-icon">💼</span><span class="section-hd-title">Business Overview</span><span class="section-hd-line"></span></div>
+{% endif %}
 <div class="kpi-grid-3">
 
+  {% if is_connect_host %}
+  {# Messages via the official API #}
+  <div class="kpi-card kpi-ink">
+    <div class="kpi-card-icon" style="background:rgba(37,211,102,.12)">📡</div>
+    <div class="kpi-card-val">{{ (wa_stats.month_in|default(0)) + (wa_stats.month_out|default(0)) }}</div>
+    <div class="kpi-card-label">Messages via Meta's API (30 days)</div>
+    <div class="kpi-card-sub">
+      Today: <b>{{ wa_stats.today_in|default(0) }} in</b> &nbsp;·&nbsp; <b>{{ wa_stats.today_out|default(0) }} out</b>
+    </div>
+  </div>
+  {% else %}
   {# AI sessions #}
   <div class="kpi-card kpi-ink">
     <div class="kpi-card-icon" style="background:rgba(3,12,24,.06)">🤖</div>
@@ -434,6 +835,7 @@
       Credits today: <b>{{ "%.2f"|format(today_credits) }}</b> &nbsp;·&nbsp; 30d: <b>{{ "%.1f"|format(month_credits) }}</b>
     </div>
   </div>
+  {% endif %}
 
   {# Leads #}
   <div class="kpi-card {% if lead_hot_count %}kpi-urgent{% elif lead_warm_count %}kpi-amber{% else %}kpi-ink{% endif %}">
@@ -454,6 +856,17 @@
     </div>
   </div>
 
+  {% if is_connect_host %}
+  {# Meta API status — no credits system on Connect, everything's free #}
+  <div class="kpi-card kpi-ink">
+    <div class="kpi-card-icon" style="background:rgba(37,211,102,.12)">✅</div>
+    <div class="kpi-card-val" style="font-size:20px">Verified &amp; Free</div>
+    <div class="kpi-card-label">Meta Business API status</div>
+    <div class="kpi-card-sub">
+      Connected via official Embedded Signup &nbsp;·&nbsp; no messaging markup, ever
+    </div>
+  </div>
+  {% else %}
   {# Credits balance #}
   <div class="kpi-card {% if balance_credits <= 20 %}kpi-urgent{% else %}kpi-ink{% endif %}">
     <div class="kpi-card-icon" style="background:rgba(3,12,24,.06)">💳</div>
@@ -464,6 +877,7 @@
       <a href="{{ url_for('portal.billing') }}" class="btn btn-primary btn-sm" style="font-size:12px;padding:5px 12px">Buy credits</a>
     </div>
   </div>
+  {% endif %}
 
 </div>
 
@@ -605,7 +1019,7 @@
 {% if customer.tenant_source_type == 'whatsapp' %}
 
 
-  {% if not onboarding.website_wizard_dismissed and not _is_demo_tenant %}
+  {% if not onboarding.website_wizard_dismissed and not _is_demo_tenant and not is_connect_host %}
   <details style="margin-bottom:20px">
     <summary style="list-style:none;cursor:pointer;outline:none">
       <div class="card" style="border-color:rgba(3,12,24,.10);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:16px 22px;margin-bottom:0">

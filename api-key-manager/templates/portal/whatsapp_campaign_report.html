@@ -70,6 +70,37 @@
 .badge-pending::before { background: #94a3b8; }
 .badge-opted_out { background: #f1f5f9; color: #64748b; }
 .badge-opted_out::before { background: #94a3b8; }
+.badge-replied { background: #e0e7ff; color: #3730a3; }
+.badge-replied::before { background: #6366f1; }
+.badge-interested { background: #dcfce7; color: #166534; }
+.badge-interested::before { background: #16a34a; }
+.badge-not_interested { background: #fee2e2; color: #991b1b; }
+.badge-not_interested::before { background: #ef4444; }
+.badge-opportunity { background: #fef3c7; color: #92400e; }
+.badge-opportunity::before { background: #f59e0b; }
+.badge-converted { background: #ede9fe; color: #5b21b6; }
+.badge-converted::before { background: #7c3aed; }
+
+.funnel-card { background:#fff; border:1px solid rgba(3,12,24,.08); border-radius:16px; padding:22px 26px; margin-bottom:24px; }
+.funnel-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:10px; }
+.funnel-header h2 { font-size:15px; font-weight:700; margin:0; color:var(--ink); }
+.review-link { font-size:12px; font-weight:700; color:#92400e; background:#fef3c7; padding:5px 12px; border-radius:20px; text-decoration:none; white-space:nowrap; }
+.funnel-row { display:flex; align-items:stretch; }
+.funnel-step { flex:1; min-width:0; text-align:center; padding:6px 4px; }
+.funnel-step .fs-value { font-size:22px; font-weight:800; color:var(--ink); }
+.funnel-step .fs-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin-top:2px; }
+.funnel-step .fs-pct { font-size:11px; color:#94a3b8; margin-top:2px; }
+.funnel-arrow { display:flex; align-items:center; color:#cbd5e1; flex-shrink:0; padding:0 2px; }
+.funnel-aside { display:flex; gap:22px; margin-top:16px; padding-top:14px; border-top:1px solid rgba(3,12,24,.06); font-size:12px; color:var(--muted); flex-wrap:wrap; }
+.funnel-aside strong { color:var(--ink); }
+.reply-quote { font-size:12px; color:var(--ink); font-style:italic; max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block; }
+.opp-link { font-size:11px; font-weight:700; color:#166534; text-decoration:none; }
+
+@media (max-width: 900px) {
+  .funnel-row { flex-wrap:wrap; }
+  .funnel-step { min-width: 30%; }
+  .funnel-arrow { display:none; }
+}
 
 .empty-state {
   display: flex; flex-direction: column; align-items: center;
@@ -174,6 +205,71 @@
   </div>
 </div>
 
+<!-- Campaign Funnel -->
+<div class="funnel-card">
+  <div class="funnel-header">
+    <h2>Campaign Funnel</h2>
+    {% if needs_review_count and not is_connect_host %}
+    <a href="{{ url_for('portal.whatsapp_campaign_reviews') }}" class="review-link">
+      {{ needs_review_count }} Interested repl{{ 'ies' if needs_review_count != 1 else 'y' }} awaiting review →
+    </a>
+    {% endif %}
+  </div>
+  <div class="funnel-row">
+    {# The Replied/Interested/Opportunities steps come from the AI reply
+       classifier, which never runs for a PhiXtra Connect business (see
+       CONNECT_HIDDEN_ENDPOINTS in portal_routes.py) — skipped here so
+       Connect's funnel only shows real, non-AI data: message delivery plus
+       the Sales Pipeline stages a lead can still reach manually. #}
+    {% set steps = [
+      ('Sent', sent, '#16a34a'),
+      ('Delivered', delivered, '#2563eb'),
+      ('Read', read, '#7c3aed'),
+      ('Qualified', qualified_count, '#4338ca'),
+      ('Proposals', proposal_count, '#92400e'),
+      ('Won', won_count, '#15803d'),
+    ] if is_connect_host else [
+      ('Sent', sent, '#16a34a'),
+      ('Delivered', delivered, '#2563eb'),
+      ('Read', read, '#7c3aed'),
+      ('Replied', replied, '#4f46e5'),
+      ('Interested', interested, '#16a34a'),
+      ('Opportunities', opportunities, '#d97706'),
+      ('Qualified', qualified_count, '#4338ca'),
+      ('Proposals', proposal_count, '#92400e'),
+      ('Won', won_count, '#15803d'),
+    ] %}
+    {% for label, value, color in steps %}
+    {% if not loop.first %}
+    <div class="funnel-arrow">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+    </div>
+    {% endif %}
+    <div class="funnel-step">
+      <div class="fs-value" style="color:{{ color }}">{{ value }}</div>
+      <div class="fs-label">{{ label }}</div>
+      <div class="fs-pct">{{ (value / total * 100)|round|int if total else 0 }}% of sent</div>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="funnel-aside">
+    {% if not is_connect_host %}
+    <span>Not interested: <strong>{{ not_interested }}</strong></span>
+    {% endif %}
+    <span>Opted out since: <strong>{{ opted_out }}</strong></span>
+    <span>Failed: <strong>{{ failed }}</strong></span>
+  </div>
+  {% if won_count %}
+  <div style="margin-top:16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+    <div>
+      <div style="font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Revenue this campaign generated</div>
+      <div style="font-size:11.5px;color:#166534">{{ won_count }} deal{{ 's' if won_count != 1 else '' }} won so far, tracked straight from Sales Pipeline.</div>
+    </div>
+    <div style="font-size:24px;font-weight:800;color:#15803d">₦{{ '{:,.0f}'.format(won_value) }}</div>
+  </div>
+  {% endif %}
+</div>
+
 <!-- Recipient detail -->
 <div class="section-card">
   <div class="section-card-header">
@@ -205,18 +301,37 @@
           <th>Phone Number</th>
           <th>Status</th>
           <th>Sent At</th>
+          {% if not is_connect_host %}<th>Reply</th>{% endif %}
           <th>Error</th>
         </tr>
       </thead>
       <tbody>
+        {# On Connect, the AI reply classifier never runs, so a status past
+           'read' (replied/interested/not_interested/opportunity/converted)
+           can only be leftover from before that was true — displayed here
+           capped at the real delivery status so the AI-derived outcome
+           never shows. #}
+        {% set _AI_STATUSES = ('replied','interested','not_interested','opportunity','converted') %}
         {% for r in recipients %}
-        <tr data-status="{{ r.status }}" data-phone="{{ r.phone }}">
+        {% set _display_status = 'read' if (is_connect_host and r.status in _AI_STATUSES) else r.status %}
+        <tr data-status="{{ _display_status }}" data-phone="{{ r.phone }}">
           <td style="color:var(--muted);font-size:12px">{{ loop.index }}</td>
           <td style="font-weight:600;font-family:monospace">+{{ r.phone }}</td>
-          <td><span class="badge badge-{{ r.status }}">{{ r.status|capitalize }}</span></td>
+          <td><span class="badge badge-{{ _display_status }}">{{ _display_status|replace('_',' ')|capitalize }}</span></td>
           <td style="font-size:12px;color:var(--muted);white-space:nowrap">
             {{ r.sent_at.strftime('%d %b %Y %H:%M:%S') if r.sent_at else '—' }}
           </td>
+          {% if not is_connect_host %}
+          <td>
+            {% if r.reply_text %}
+            <span class="reply-quote" title="{{ r.reply_text }}">“{{ r.reply_text }}”</span>
+            {% endif %}
+            {% if r.pipeline_lead_id %}
+            <a class="opp-link" href="{{ url_for('portal.sales_pipeline', q=r.phone) }}">View opportunity →</a>
+            {% endif %}
+            {% if not r.reply_text and not r.pipeline_lead_id %}—{% endif %}
+          </td>
+          {% endif %}
           <td style="font-size:12px;color:#dc2626;max-width:260px;
                      overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
               title="{{ r.error_msg or '' }}">

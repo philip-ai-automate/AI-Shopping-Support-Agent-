@@ -24,9 +24,16 @@ from invoice_pdf import generate_invoice_pdf
 from merchant_pipeline import (STAGE_ORDER as PIPELINE_STAGE_ORDER,
                                 STAGE_LABELS as PIPELINE_STAGE_LABELS,
                                 STAGE_DESCRIPTIONS as PIPELINE_STAGE_DESCRIPTIONS,
+                                OUTCOME_LABELS as PIPELINE_OUTCOME_LABELS,
+                                OUTCOME_DESCRIPTIONS as PIPELINE_OUTCOME_DESCRIPTIONS,
+                                LOST_REASONS as PIPELINE_LOST_REASONS,
+                                DROPPED_REASONS as PIPELINE_DROPPED_REASONS,
+                                SCORE_TIER_DEFAULTS as PIPELINE_SCORE_TIER_DEFAULTS,
                                 next_stage as pipeline_next_stage,
                                 record_stage_change as pipeline_record_stage_change,
-                                get_stage_history as pipeline_get_stage_history)
+                                get_stage_history as pipeline_get_stage_history,
+                                get_effective_stage_labels as pipeline_effective_stage_labels,
+                                get_effective_score_labels as pipeline_effective_score_labels)
 
 try:
     import stripe
@@ -58,6 +65,200 @@ def _restrict_team_members_to_inbox():
         return None
     flash("Your team account only has access to the Inbox.", "warning")
     return redirect(url_for("portal.my_inbox"))
+
+
+# ── PhiXtra Connect: the AI-free surface (connect.phixtra.com) ─────────────
+# Same app, same tenants — a business reaching the portal through this
+# domain must never land on an AI-only screen, whether from a nav link or by
+# typing the URL directly (Meta's App Review will try exactly that).
+CONNECT_HOST = os.environ.get("CONNECT_HOST", "connect.phixtra.com")
+
+def _is_connect_host():
+    host = (request.host or "").split(":")[0].lower()
+    return host in (CONNECT_HOST, "www." + CONNECT_HOST)
+
+
+CONNECT_HIDDEN_ENDPOINTS = {
+    # ── AI-only screens ──────────────────────────────────────────────────
+    "portal.ai_agents", "portal.ai_agents_new", "portal.ai_agents_edit",
+    "portal.ai_agents_activate", "portal.ai_agents_delete",
+    "portal.ai_instruction", "portal.api_keys", "portal.api_keys_revoke",
+    "portal.handoff_rules", "portal.handoff_rules_add",
+    "portal.handoff_rules_toggle", "portal.handoff_rules_delete",
+    "portal.verified_specs_settings", "portal.verified_specs_domain_add",
+    "portal.verified_specs_domain_delete", "portal.verified_specs_spec_add",
+    "portal.verified_specs_spec_delete", "portal.report_usage",
+    "portal.try_demo",  # the shared public demo logs into an AI-powered tenant
+
+    # ── Store Information ───────────────────────────────────────────────
+    "portal.store_info",
+
+    # ── Email Campaigns (a separate channel from WhatsApp Campaigns/Bulk
+    # Messaging, which stays) ───────────────────────────────────────────
+    "portal.email_campaigns", "portal.email_campaigns_create",
+    "portal.email_campaigns_edit_data", "portal.email_campaigns_update",
+    "portal.email_campaigns_preview", "portal.email_campaigns_send_test_draft",
+    "portal.email_campaigns_send_test", "portal.email_campaigns_duplicate_data",
+    "portal.email_campaigns_send", "portal.email_campaigns_delete",
+    "portal.email_campaigns_upload_image", "portal.email_campaigns_contacts_json",
+    "portal.email_campaigns_pipeline_leads_json", "portal.email_campaigns_reports",
+    "portal.email_campaign_report",
+
+    # ── Orders ───────────────────────────────────────────────────────────
+    "portal.orders", "portal.order_detail", "portal.order_verify_payment",
+    "portal.order_dispatch", "portal.order_deliver", "portal.order_cancel",
+
+    # ── Discount Settings ────────────────────────────────────────────────
+    "portal.wa_discount_settings", "portal.wa_discount_product_save",
+
+    # ── Product Import ───────────────────────────────────────────────────
+    "portal.data_sources", "portal.data_source_upload", "portal.data_source_map",
+    "portal.data_source_sync", "portal.data_source_delete",
+    "portal.data_source_google_connect", "portal.data_source_google_callback",
+    "portal.data_source_google_setup",
+
+    # ── Payment Gateways ─────────────────────────────────────────────────
+    "portal.payment_settings", "portal.payment_settings_paystack",
+    "portal.payment_settings_paystack_remove", "portal.payment_settings_flutterwave",
+    "portal.payment_settings_flutterwave_remove",
+    "portal.payment_settings_flutterwave_toggle_checkout",
+    "portal.payment_settings_bank", "portal.payment_settings_reveal",
+
+    # ── Ecommerce group (My Products, My Catalogue, Customers/orders-and-
+    # spend data) — a different thing from a plain WhatsApp contact list;
+    # not part of PhiXtra Connect ────────────────────────────────────────
+    "portal.products", "portal.product_add", "portal.product_edit",
+    "portal.product_delete", "portal.product_toggle_stock",
+    "portal.catalogue_browse", "portal.catalogue_category",
+    "portal.catalogue_toggle", "portal.catalogue_selections",
+    "portal.customers", "portal.customer_detail",
+
+    # ── Help & Tutorials / Video Tutorials ───────────────────────────────
+    "portal.tutorials", "portal.video_tutorials",
+
+    # ── Handoff Reports — an AI-handoff concept, meaningless without AI ──
+    "portal.whatsapp_reports",
+
+    # ── Billing / Subscription Plans / Buy Credits / Invoices — Connect has
+    # no paid tier at all, so the whole billing family is out of scope.
+    # (Payment-provider webhooks are deliberately NOT in this list — they're
+    # server-to-server callbacks, never a page a business navigates to.) ───
+    "portal.billing", "portal.billing_checkout", "portal.billing_add_card",
+    "portal.billing_save_card", "portal.billing_remove_card",
+    "portal.billing_set_default_card", "portal.billing_subscribe",
+    "portal.billing_subscribe_post", "portal.billing_subscribe_checkout",
+    "portal.billing_subscribe_complete", "portal.billing_switch_plan",
+    "portal.billing_plans", "portal.billing_plan_upgrade",
+    "portal.billing_plan_upgrade_callback", "portal.invoices",
+
+    # ── Campaign Intelligence Needs Review — an AI reply-classifier's queue.
+    # 2026-09-09: the classifier itself (meta_webhook.py, an LLM call) is now
+    # gated off entirely for a PhiXtra Connect business (tenants.ai_enabled),
+    # same switch as the shopping/chat AI — Connect never gets billed for or
+    # exposed to this AI feature. Previously this group only blocked
+    # Approve/Reject behind the CRM-enabled toggle while leaving the
+    # reply-flagging itself (Replied/Interested/Not interested) visible on
+    # the campaign report as "just messaging data" — that reasoning no
+    # longer applies now the classification never runs, so it's hidden
+    # outright here instead of the narrower CONNECT_CRM_ENDPOINTS gate below.
+    # Unaffected on portal.phixtra.com Sales AI, which keeps ai_enabled=True. ─
+    "portal.whatsapp_campaign_reviews", "portal.whatsapp_campaign_review_approve",
+    "portal.whatsapp_campaign_review_reject", "portal.whatsapp_campaign_automation_settings",
+}
+
+
+# ── Sales Pipeline (the standalone CRM page) — NOT the pipeline data that
+# WhatsApp Campaigns itself reads (portal.sales_pipeline_contacts_json and
+# everything under /whatsapp/pipeline-segments stay reachable; Campaigns
+# depends on them for its own audience picker) — and Labels (the standalone
+# page) — NOT portal.lead_labels_list_json, which the Campaigns compose
+# screen's "exclude label" picker calls. Plain CRM, no AI involved; hidden
+# on Connect by default and unlocked per-business only by PhiXtra admin
+# (tenants.crm_enabled) — see customer_toggle_crm in portal_admin_routes.py.
+# This constant, and everything that reads it below, is ONLY ever consulted
+# when _is_connect_host() is already True — portal.phixtra.com always has
+# full Sales Pipeline access for every tenant, unaffected by crm_enabled.
+CONNECT_CRM_ENDPOINTS = {
+    "portal.sales_pipeline", "portal.sales_pipeline_export",
+    "portal.sales_pipeline_edit", "portal.sales_pipeline_assign_ambassador",
+    "portal.sales_pipeline_advance", "portal.sales_pipeline_bulk_advance",
+    "portal.sales_pipeline_drop", "portal.sales_pipeline_history",
+    "portal.lead_labels_page", "portal.lead_labels_create",
+    "portal.lead_labels_delete", "portal.lead_labels_members",
+    "portal.lead_labels_remove_member", "portal.lead_labels_bulk_add_members",
+    # was "portal.lead_labels_search_leads" — didn't match the real endpoint
+    # name (Flask registers routes by function name, and this one has no
+    # explicit `endpoint=`), so this entry silently never gated anything.
+    # Fixed while adding the tags-unification entries below.
+    "portal.lead_labels_search_leads_json", "portal.lead_labels_import_bounces",
+    # CRM merge (2026-09-09): merge-review is deal-matching, same gate as the
+    # rest of Sales Pipeline. Companies stays OUT of this set on purpose — a
+    # company is core contact data (like a Contact itself), not deal data.
+    "portal.crm_merge_review", "portal.crm_merge_review_confirm", "portal.crm_merge_review_reject",
+    # Tags unification (2026-09-09): the "🏷️ Tags" page's People section —
+    # browsing/managing which Contacts carry a tag from the Tags management
+    # page itself. Actually tagging a Contact from the Contacts pages
+    # (whatsapp_contacts_add/edit/bulk_action) is NOT in this set on purpose
+    # and stays available on Connect regardless — only viewing/managing the
+    # full tag list from this dedicated page is gated, same as Sales Pipeline.
+    "portal.lead_labels_contact_members", "portal.lead_labels_remove_contact_member",
+    "portal.lead_labels_bulk_add_contacts", "portal.lead_labels_search_contacts_json",
+    # Pipeline Overview report (2026-09-10) — reports on Sales Pipeline data,
+    # same CRM gate as the rest of the pipeline.
+    "portal.report_pipeline_overview", "portal.report_pipeline_overview_export",
+}
+
+
+def _tenant_crm_enabled(tenant_id: int) -> bool:
+    """Whether this tenant's Sales Pipeline (CRM) pages are unlocked on
+    PhiXtra Connect — a PhiXtra-admin-only switch (Admin -> Customers ->
+    business -> Sales CRM), never shown to the business. Defaults TRUE for
+    every Connect business as of 2026-09-08 (user decision: CRM ships free
+    to everyone, not opt-in) — fails OPEN on a DB error to match, same
+    direction as _tenant_ai_enabled. Admin can still turn it off per
+    business if ever needed. Meaningless on portal.phixtra.com, where
+    Sales Pipeline is already unconditionally available — never call this
+    without an _is_connect_host() check alongside it."""
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("SELECT crm_enabled FROM tenants WHERE id=%s", (tenant_id,))
+        row = cur.fetchone()
+        cur.close(); conn.close()
+        return bool(row[0]) if row else True
+    except Exception as e:
+        print("⚠️ _tenant_crm_enabled error:", e)
+        return True
+
+
+@portal_bp.before_request
+def _block_ai_on_connect_host():
+    if _is_connect_host() and request.endpoint in CONNECT_HIDDEN_ENDPOINTS:
+        flash("That feature isn't part of PhiXtra Connect.", "info")
+        return redirect(url_for("portal.home"))
+
+    # Sales Pipeline / Labels — separate, narrower gate: only ever runs on
+    # connect.phixtra.com (the outer check below), and only blocks when this
+    # specific business hasn't been opted in by a PhiXtra admin. Portal.phixtra.com
+    # requests never reach past the first condition, so this can't touch them.
+    if _is_connect_host() and request.endpoint in CONNECT_CRM_ENDPOINTS:
+        cid = _customer_id()
+        customer = _get_customer(cid) if cid else None
+        if not customer or not _tenant_crm_enabled(int(customer["tenant_id"])):
+            flash("Sales CRM isn't turned on for this account yet.", "info")
+            return redirect(url_for("portal.home"))
+
+
+@portal_bp.context_processor
+def _inject_connect_flag():
+    connect_crm_enabled = False
+    if _is_connect_host():
+        cid = _customer_id()
+        if cid:
+            customer = _get_customer(cid)
+            if customer:
+                connect_crm_enabled = _tenant_crm_enabled(int(customer["tenant_id"]))
+    return {"is_connect_host": _is_connect_host(), "connect_crm_enabled": connect_crm_enabled}
 
 
 BRAND = "#030C18"
@@ -1143,6 +1344,8 @@ def _send_welcome_trial_email(
 def home():
     if _logged_in() and _customer_id():
         return redirect(url_for("portal.dashboard"))
+    if _is_connect_host():
+        return render_template("portal/home_connect.html")
     return render_template("portal/home.html")
 
 
@@ -1256,10 +1459,10 @@ def _register_whatsapp_merchant(
 
     cur2 = conn.cursor()
     cur2.execute(f"""
-        INSERT INTO tenants (name, domain, status, source_type, features, system_prompt, is_demo{founder_flags})
-        VALUES (%s, NULL, 'pending', 'whatsapp', %s, %s, %s{founder_vals})
+        INSERT INTO tenants (name, domain, status, source_type, features, system_prompt, is_demo, ai_enabled{founder_flags})
+        VALUES (%s, NULL, 'pending', 'whatsapp', %s, %s, %s, %s{founder_vals})
         RETURNING id
-    """, (business_name, free_features, system_prompt_text, is_demo_signup))
+    """, (business_name, free_features, system_prompt_text, is_demo_signup, not _is_connect_host()))
     row = cur2.fetchone()
     tenant_id      = int(row[0])
     trial_ends_at  = None
@@ -2313,6 +2516,40 @@ def dashboard():
     # ── Plan quota for the banner ──────────────────────────────────────────
     plan_info = _get_tenant_plan(tenant_id)
 
+    # ── Sales Overview KPI row (Dashboard redesign Phase 1, 2026-09-10) ────
+    # Same CRM gate as the Sales Pipeline nav group (_crm_pipeline_on in
+    # base.html): unconditionally on for portal.phixtra.com, opt-in-per-
+    # business on PhiXtra Connect.
+    _crm_on = (not _is_connect_host()) or _tenant_crm_enabled(tenant_id)
+    dash_period     = None
+    crm_kpis        = None
+    dash_pipeline   = None
+    dash_sources    = None
+    dash_wa_activity = None
+    dash_campaigns   = None
+    dash_attention   = None
+    dash_activity    = None
+    if _crm_on:
+        d_from, d_to, p_from, p_to, period_key, period_label, is_custom_period = _resolve_dashboard_period()
+        crm_kpis      = _get_dashboard_crm_kpis(tenant_id, d_from, d_to, p_from, p_to)
+        dash_pipeline = _get_dashboard_pipeline_snapshot(tenant_id)
+        dash_sources  = _get_dashboard_lead_sources(tenant_id, d_from, d_to)
+        dash_period = {
+            "date_from": d_from, "date_to": d_to,
+            "period_key": period_key, "period_label": period_label,
+            "is_custom": is_custom_period,
+        }
+
+        # ── Phase 3: Channel Activity + Campaign Performance ────────────────
+        if wa_connection:
+            dash_wa_activity = _get_dashboard_whatsapp_activity(tenant_id, d_from, d_to)
+            dash_wa_activity["unanswered"] = wa_stats.get("awaiting_reply", 0)
+        dash_campaigns = _get_dashboard_campaign_performance(tenant_id, d_from, d_to)
+
+        # ── Phase 4: Needs Attention + Recent Activity ──────────────────────
+        dash_attention = _get_dashboard_needs_attention(tenant_id)
+        dash_activity  = _get_dashboard_recent_activity(tenant_id)
+
     return render_template(
         "portal/dashboard.html",
         customer        = customer,
@@ -2331,6 +2568,16 @@ def dashboard():
         wa_stats         = wa_stats,
         handoff_stats    = handoff_stats,
         wa_open_handoffs = wa_open_handoffs,
+        crm_pipeline_on          = _crm_on,
+        dash_period              = dash_period,
+        crm_kpis                 = crm_kpis,
+        dash_pipeline            = dash_pipeline,
+        dash_sources             = dash_sources,
+        dash_wa_activity         = dash_wa_activity,
+        dash_campaigns           = dash_campaigns,
+        dash_attention           = dash_attention,
+        dash_activity            = dash_activity,
+        dashboard_period_options = DASHBOARD_PERIOD_LABELS,
     )
 
 
@@ -4504,6 +4751,1018 @@ def _get_billing_report_data(tenant_id: int, customer_id: int, days: int) -> dic
     return safe
 
 
+
+DASHBOARD_PERIOD_LABELS = {
+    "today":        "Today",
+    "yesterday":    "Yesterday",
+    "this_week":    "This week",
+    "last_week":    "Last week",
+    "this_month":   "This month",
+    "last_month":   "Last month",
+    "this_quarter": "This quarter",
+    "this_year":    "This year",
+}
+
+
+def _resolve_dashboard_period():
+    """Named-preset period picker for the main Dashboard's Sales Overview KPI
+    row (Today / Yesterday / This week / Last week / This month / Last month /
+    This quarter / This year / Custom), approved 2026-09-10 — see
+    project_phixtra_connect_dashboard_redesign memory. Separate from
+    _resolve_report_period() (the Reports pages' simpler 7/30/90-day picker):
+    this one also returns the matching PREVIOUS period (same length/type, one
+    step back) so the KPI cards can show a real '% vs previous period' badge
+    instead of a made-up one.
+    Returns (date_from, date_to, prev_from, prev_to, period_key, period_label, is_custom)."""
+    from datetime import date, timedelta
+    import re as _re_period
+
+    today = date.today()
+    raw_from = (request.args.get("date_from") or "").strip()
+    raw_to   = (request.args.get("date_to") or "").strip()
+    date_re  = r"^\d{4}-\d{2}-\d{2}$"
+
+    if _re_period.match(date_re, raw_from) and _re_period.match(date_re, raw_to):
+        try:
+            d_from = date.fromisoformat(raw_from)
+            d_to   = date.fromisoformat(raw_to)
+        except ValueError:
+            d_from = d_to = None
+        if d_from and d_to and d_from <= d_to:
+            span      = (d_to - d_from).days + 1
+            prev_to   = d_from - timedelta(days=1)
+            prev_from = prev_to - timedelta(days=span - 1)
+            label = d_from.strftime("%d %b %Y") + " – " + d_to.strftime("%d %b %Y")
+            return d_from, d_to, prev_from, prev_to, "custom", label, True
+
+    period = (request.args.get("period") or "this_month").strip()
+    if period not in DASHBOARD_PERIOD_LABELS:
+        period = "this_month"
+
+    if period == "today":
+        d_from = d_to = today
+        p_from = p_to = today - timedelta(days=1)
+    elif period == "yesterday":
+        d_from = d_to = today - timedelta(days=1)
+        p_from = p_to = today - timedelta(days=2)
+    elif period == "this_week":
+        d_from = today - timedelta(days=today.weekday())   # Monday
+        d_to   = today
+        p_from = d_from - timedelta(days=7)
+        p_to   = d_to - timedelta(days=7)
+    elif period == "last_week":
+        this_monday = today - timedelta(days=today.weekday())
+        d_from = this_monday - timedelta(days=7)
+        d_to   = this_monday - timedelta(days=1)
+        p_from = d_from - timedelta(days=7)
+        p_to   = d_to - timedelta(days=7)
+    elif period == "last_month":
+        first_this = today.replace(day=1)
+        d_to   = first_this - timedelta(days=1)
+        d_from = d_to.replace(day=1)
+        p_to   = d_from - timedelta(days=1)
+        p_from = p_to.replace(day=1)
+    elif period == "this_quarter":
+        q = (today.month - 1) // 3
+        d_from = date(today.year, q * 3 + 1, 1)
+        d_to   = today
+        prev_q_anchor = d_from - timedelta(days=1)          # last day of prior quarter
+        pq = (prev_q_anchor.month - 1) // 3
+        p_from = date(prev_q_anchor.year, pq * 3 + 1, 1)
+        p_to   = min(prev_q_anchor, p_from + timedelta(days=(d_to - d_from).days))
+    elif period == "this_year":
+        d_from = date(today.year, 1, 1)
+        d_to   = today
+        p_from = date(today.year - 1, 1, 1)
+        p_to   = min(date(today.year - 1, 12, 31), p_from + timedelta(days=(d_to - d_from).days))
+    else:  # "this_month", and the safe fallback above
+        period = "this_month"
+        d_from = today.replace(day=1)
+        d_to   = today
+        last_month_end   = d_from - timedelta(days=1)
+        last_month_start = last_month_end.replace(day=1)
+        p_from = last_month_start
+        p_to   = min(last_month_end, last_month_start + timedelta(days=(d_to - d_from).days))
+
+    return d_from, d_to, p_from, p_to, period, DASHBOARD_PERIOD_LABELS[period], False
+
+
+def _get_dashboard_crm_kpis(tenant_id: int, date_from, date_to, prev_from, prev_to) -> dict:
+    """Sales / Pipeline Value / New Leads / Conversion Rate for the main
+    Dashboard's Sales Overview KPI row (Phase 1 of the 2026-09-10 Dashboard
+    redesign). Sales, New Leads and Conversion Rate are scoped to the
+    selected period and compared against the equivalent previous period.
+    Pipeline Value is always the CURRENT open snapshot -- same convention as
+    Pipeline Overview's Open Value (_get_pipeline_overview_data) -- there is
+    no daily-history table to compare it to a past date against, so it
+    deliberately carries no '% vs previous period' badge rather than
+    inventing one. Conversion Rate reuses Pipeline Overview's exact
+    definition (Won / (Won + Lost), Dropped excluded from the denominator)
+    for consistency with the Reports pages, scoped by outcome date."""
+    safe = {
+        "sales": 0.0, "sales_prev": 0.0, "sales_pct": None,
+        "pipeline_value": 0.0, "pipeline_count": 0,
+        "new_leads": 0, "new_leads_prev": 0, "new_leads_pct": None,
+        "conversion_rate": None, "conversion_rate_prev": None, "conversion_pct": None,
+    }
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        def _won_sum(d_from, d_to):
+            cur.execute("""
+                SELECT COALESCE(SUM(deal_value),0) AS v FROM merchant_pipeline_leads
+                WHERE tenant_id=%s AND outcome='won' AND won_date BETWEEN %s AND %s
+            """, (tenant_id, d_from, d_to))
+            return float((cur.fetchone() or {}).get("v") or 0)
+
+        def _new_leads(d_from, d_to):
+            cur.execute("""
+                SELECT COUNT(*) AS n FROM merchant_pipeline_leads
+                WHERE tenant_id=%s AND created_at::date BETWEEN %s AND %s
+            """, (tenant_id, d_from, d_to))
+            return int((cur.fetchone() or {}).get("n") or 0)
+
+        def _win_rate(d_from, d_to):
+            cur.execute("""
+                SELECT outcome, COUNT(*) AS n FROM merchant_pipeline_leads
+                WHERE tenant_id=%s AND outcome IN ('won','lost')
+                  AND COALESCE(won_date, dropped_at::date) BETWEEN %s AND %s
+                GROUP BY outcome
+            """, (tenant_id, d_from, d_to))
+            rows = {r["outcome"]: int(r["n"]) for r in (cur.fetchall() or [])}
+            won, lost = rows.get("won", 0), rows.get("lost", 0)
+            return round(won / (won + lost) * 100, 1) if (won + lost) > 0 else None
+
+        sales      = _won_sum(date_from, date_to)
+        sales_prev = _won_sum(prev_from, prev_to)
+
+        new_leads      = _new_leads(date_from, date_to)
+        new_leads_prev = _new_leads(prev_from, prev_to)
+
+        conv      = _win_rate(date_from, date_to)
+        conv_prev = _win_rate(prev_from, prev_to)
+
+        cur.execute("""
+            SELECT COUNT(*) AS n, COALESCE(SUM(deal_value),0) AS v
+            FROM merchant_pipeline_leads WHERE tenant_id=%s AND outcome IS NULL
+        """, (tenant_id,))
+        pl = cur.fetchone() or {}
+
+        cur.close(); conn.close()
+
+        def _pct(curr, prev):
+            if prev and prev > 0:
+                return round((curr - prev) / prev * 100, 1)
+            return None
+
+        safe.update({
+            "sales": sales, "sales_prev": sales_prev, "sales_pct": _pct(sales, sales_prev),
+            "pipeline_value": float(pl.get("v") or 0), "pipeline_count": int(pl.get("n") or 0),
+            "new_leads": new_leads, "new_leads_prev": new_leads_prev,
+            "new_leads_pct": _pct(new_leads, new_leads_prev),
+            "conversion_rate": conv, "conversion_rate_prev": conv_prev,
+            "conversion_pct": (round(conv - conv_prev, 1) if (conv is not None and conv_prev is not None) else None),
+        })
+    except Exception as e:
+        print("⚠️ _get_dashboard_crm_kpis error:", e)
+    return safe
+
+
+# Same stage-color mapping as report_pipeline_overview.html's funnel (_stage_colors
+# in the template) — kept in one place here so the Dashboard's snapshot and the
+# Pipeline Overview report never drift into showing different colors for the same
+# stage. 'won' is included for completeness but never used by the open-stage loop.
+DASHBOARD_STAGE_COLORS = {
+    "new_lead": "#C7CDD6", "contacted": "#8C9AAE", "qualified": "#586D8A",
+    "proposal_sent": "#334966", "negotiating": "#0F2340", "won": "#12B76A",
+}
+
+
+def _get_dashboard_pipeline_snapshot(tenant_id: int) -> list:
+    """Open Sales Pipeline, by stage, for the Dashboard's snapshot (Phase 2,
+    2026-09-10) -- always the CURRENT open state, never period-scoped, same
+    convention as Pipeline Overview's own funnel (_get_pipeline_overview_data)
+    and as this Dashboard's own Pipeline Value KPI card. Uses each tenant's
+    real (possibly custom-worded) stage labels via get_effective_stage_labels
+    so a renamed stage shows correctly here too."""
+    stages = []
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT stage, COUNT(*) AS n, COALESCE(SUM(deal_value),0) AS total_value
+            FROM merchant_pipeline_leads
+            WHERE tenant_id = %s AND outcome IS NULL
+            GROUP BY stage
+        """, (tenant_id,))
+        by_stage = {r["stage"]: r for r in (cur.fetchall() or [])}
+        cur.close(); conn.close()
+
+        labels = pipeline_effective_stage_labels(tenant_id)
+        max_count = max([1] + [int(r["n"]) for r in by_stage.values()])
+        for stage in PIPELINE_STAGE_ORDER:
+            if stage == "won":
+                continue
+            r = by_stage.get(stage)
+            n     = int(r["n"]) if r else 0
+            value = float(r["total_value"]) if r else 0.0
+            stages.append({
+                "stage": stage, "label": labels.get(stage, PIPELINE_STAGE_LABELS.get(stage, stage)),
+                "count": n, "value": value,
+                "pct_of_max": round(n / max_count * 100) if max_count else 0,
+                "color": DASHBOARD_STAGE_COLORS.get(stage, "#8C9AAE"),
+            })
+    except Exception as e:
+        print("⚠️ _get_dashboard_pipeline_snapshot error:", e)
+    return stages
+
+
+DASHBOARD_SOURCE_LABELS = [("whatsapp", "WhatsApp"), ("manual", "Manual Entry"), ("none", "Not recorded")]
+
+
+def _get_dashboard_lead_sources(tenant_id: int, date_from, date_to) -> list:
+    """Leads AND revenue by source for the Dashboard (Phase 2, 2026-09-10).
+    Same real source buckets as the Leads & Sources report
+    (_get_leads_sources_data) -- 'whatsapp' / 'manual' / 'none' ('Not
+    recorded') are the ONLY values this app actually writes to
+    merchant_pipeline_leads.source today; no Instagram/Facebook/Website
+    bucket is invented. Lead counts are scoped by created_at (matches the
+    New Leads KPI card); revenue is scoped by won_date (matches the Sales
+    KPI card) -- each figure uses the date field that actually applies to
+    it, same pattern already used across this Dashboard and the Reports
+    pages, even though that means the two numbers on one row aren't from
+    literally the same query."""
+    sources = []
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        cur.execute("""
+            SELECT source, COUNT(*) AS n
+            FROM merchant_pipeline_leads
+            WHERE tenant_id = %s AND created_at::date BETWEEN %s AND %s
+            GROUP BY source
+        """, (tenant_id, date_from, date_to))
+        raw_counts = {(r["source"] or "none"): int(r["n"]) for r in (cur.fetchall() or [])}
+
+        cur.execute("""
+            SELECT source, COALESCE(SUM(deal_value),0) AS v
+            FROM merchant_pipeline_leads
+            WHERE tenant_id = %s AND outcome = 'won' AND won_date BETWEEN %s AND %s
+            GROUP BY source
+        """, (tenant_id, date_from, date_to))
+        raw_revenue = {(r["source"] or "none"): float(r["v"]) for r in (cur.fetchall() or [])}
+
+        cur.close(); conn.close()
+
+        known_keys = {k for k, _ in DASHBOARD_SOURCE_LABELS}
+        max_count  = max([1] + list(raw_counts.values()))
+        for key, label in DASHBOARD_SOURCE_LABELS:
+            n = raw_counts.pop(key, 0)
+            v = raw_revenue.pop(key, 0.0)
+            sources.append({
+                "key": key, "label": label, "count": n, "revenue": v,
+                "pct_of_max": round(n / max_count * 100) if max_count else 0,
+            })
+        # A source value outside the known set is a real, surprising data point --
+        # show it (same rule the Leads & Sources report follows) rather than
+        # silently folding it into "Not recorded".
+        for key in set(raw_counts) | set(raw_revenue):
+            if key in known_keys:
+                continue
+            n = raw_counts.pop(key, 0)
+            v = raw_revenue.pop(key, 0.0)
+            sources.append({
+                "key": key, "label": (key or "?").title(), "count": n, "revenue": v,
+                "pct_of_max": round(n / max_count * 100) if max_count else 0,
+            })
+    except Exception as e:
+        print("⚠️ _get_dashboard_lead_sources error:", e)
+    return sources
+
+
+def _get_dashboard_whatsapp_activity(tenant_id: int, date_from, date_to) -> dict:
+    """WhatsApp conversation counts for the Dashboard's Channel Activity card
+    (Phase 3, 2026-09-10) -- period-scoped, to stay consistent with every
+    other number on this page (distinct from _get_wa_stats' own fixed
+    48h/30-day windows, used lower on this same page by the pre-existing
+    "Today's Activity" cards). 'Unanswered' is NOT computed here -- the
+    dashboard route reuses wa_stats['awaiting_reply'] (already computed for
+    those other cards) instead of running the same query twice; like
+    Pipeline Value, "who's waiting right now" is a live count, not scoped to
+    the selected period."""
+    safe = {"total_conversations": 0, "new_conversations": 0}
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        cur.execute("""
+            SELECT COUNT(DISTINCT customer_phone) AS n
+            FROM wa_message_log
+            WHERE tenant_id=%s AND created_at::date BETWEEN %s AND %s AND is_historical IS NOT TRUE
+        """, (tenant_id, date_from, date_to))
+        total = int((cur.fetchone() or {}).get("n") or 0)
+
+        cur.execute("""
+            SELECT COUNT(*) AS n FROM (
+                SELECT customer_phone, MIN(created_at) AS first_msg
+                FROM wa_message_log
+                WHERE tenant_id=%s AND is_historical IS NOT TRUE
+                GROUP BY customer_phone
+            ) t WHERE first_msg::date BETWEEN %s AND %s
+        """, (tenant_id, date_from, date_to))
+        new_convos = int((cur.fetchone() or {}).get("n") or 0)
+
+        cur.close(); conn.close()
+        safe.update({"total_conversations": total, "new_conversations": new_convos})
+    except Exception as e:
+        print("⚠️ _get_dashboard_whatsapp_activity error:", e)
+    return safe
+
+
+# Same "reached at least this far" status sets whatsapp_campaign_report()
+# already uses per-campaign (portal_routes.py, the /whatsapp/campaigns/<id>/report
+# route) -- kept here as real tuples so the Dashboard's aggregate-across-every-
+# campaign version can never quietly drift from the per-campaign definition.
+_CAMPAIGN_AT_LEAST_SENT        = ("sent", "delivered", "read", "replied", "interested", "not_interested", "opportunity", "converted")
+_CAMPAIGN_AT_LEAST_DELIVERED   = ("delivered", "read", "replied", "interested", "not_interested", "opportunity", "converted")
+_CAMPAIGN_AT_LEAST_READ        = ("read", "replied", "interested", "not_interested", "opportunity", "converted")
+_CAMPAIGN_AT_LEAST_REPLIED     = ("replied", "interested", "not_interested", "opportunity", "converted")
+_CAMPAIGN_AT_LEAST_OPPORTUNITY = ("opportunity", "converted")
+
+
+def _get_dashboard_campaign_performance(tenant_id: int, date_from, date_to) -> dict:
+    """WhatsApp Campaign funnel + revenue for the Dashboard (Phase 3,
+    2026-09-10), aggregated across every campaign, scoped by when each
+    recipient was actually sent to (wcr.sent_at) -- the same period the KPI
+    row above uses. Revenue counts a recipient's linked deal as Won
+    regardless of WHEN it was won -- a campaign sent this period can convert
+    weeks later and should still count as revenue that campaign generated;
+    a deliberately different scope from the Sales KPI card (which scopes by
+    won_date), same way Pipeline Value is deliberately a different scope
+    from Sales. The two numbers answering different questions is intentional,
+    not a bug -- flagged plainly here in case it's ever questioned."""
+    safe = {
+        "sent": 0, "delivered": 0, "read": 0, "replied": 0,
+        "opportunities": 0, "converted": 0, "revenue": 0.0,
+        "campaigns": [],
+    }
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        cur.execute("""
+            SELECT
+                COUNT(*) FILTER (WHERE wcr.status = ANY(%(sent)s))      AS sent,
+                COUNT(*) FILTER (WHERE wcr.status = ANY(%(delivered)s)) AS delivered,
+                COUNT(*) FILTER (WHERE wcr.status = ANY(%(read)s))      AS read,
+                COUNT(*) FILTER (WHERE wcr.status = ANY(%(replied)s))   AS replied,
+                COUNT(*) FILTER (WHERE wcr.status = ANY(%(opp)s))       AS opportunities,
+                COUNT(*) FILTER (WHERE wcr.status = 'converted')        AS converted,
+                COALESCE(SUM(mpl.deal_value) FILTER (WHERE mpl.stage='won'), 0) AS revenue
+            FROM wa_campaign_recipients wcr
+            JOIN wa_campaigns wc ON wc.id = wcr.campaign_id
+            LEFT JOIN merchant_pipeline_leads mpl ON mpl.id = wcr.pipeline_lead_id
+            WHERE wc.tenant_id = %(tid)s AND wcr.sent_at::date BETWEEN %(df)s AND %(dt)s
+        """, {
+            "sent": list(_CAMPAIGN_AT_LEAST_SENT), "delivered": list(_CAMPAIGN_AT_LEAST_DELIVERED),
+            "read": list(_CAMPAIGN_AT_LEAST_READ), "replied": list(_CAMPAIGN_AT_LEAST_REPLIED),
+            "opp": list(_CAMPAIGN_AT_LEAST_OPPORTUNITY),
+            "tid": tenant_id, "df": date_from, "dt": date_to,
+        })
+        totals = cur.fetchone() or {}
+
+        cur.execute("""
+            SELECT wc.id, wc.name,
+                COUNT(*) FILTER (WHERE wcr.status = ANY(%(sent)s))    AS sent,
+                COUNT(*) FILTER (WHERE wcr.status = ANY(%(replied)s)) AS replied,
+                COUNT(*) FILTER (WHERE mpl.stage='won')               AS won
+            FROM wa_campaign_recipients wcr
+            JOIN wa_campaigns wc ON wc.id = wcr.campaign_id
+            LEFT JOIN merchant_pipeline_leads mpl ON mpl.id = wcr.pipeline_lead_id
+            WHERE wc.tenant_id = %(tid)s AND wcr.sent_at::date BETWEEN %(df)s AND %(dt)s
+            GROUP BY wc.id, wc.name
+            ORDER BY sent DESC
+            LIMIT 3
+        """, {
+            "sent": list(_CAMPAIGN_AT_LEAST_SENT), "replied": list(_CAMPAIGN_AT_LEAST_REPLIED),
+            "tid": tenant_id, "df": date_from, "dt": date_to,
+        })
+        campaigns = [dict(r) for r in (cur.fetchall() or [])]
+
+        cur.close(); conn.close()
+
+        safe.update({
+            "sent": int(totals.get("sent") or 0), "delivered": int(totals.get("delivered") or 0),
+            "read": int(totals.get("read") or 0), "replied": int(totals.get("replied") or 0),
+            "opportunities": int(totals.get("opportunities") or 0),
+            "converted": int(totals.get("converted") or 0),
+            "revenue": float(totals.get("revenue") or 0),
+            "campaigns": campaigns,
+        })
+    except Exception as e:
+        print("⚠️ _get_dashboard_campaign_performance error:", e)
+    return safe
+
+
+def _get_dashboard_needs_attention(tenant_id: int) -> dict:
+    """The 3 real, rule-based 'Needs Attention' signals for the Dashboard
+    (Phase 4, 2026-09-10) -- deliberately NOT 'overdue follow-ups': no
+    reminder/due-date system exists anywhere in this product (see
+    project_phixtra_connect_dashboard_redesign memory), so that rule from
+    the original brief was dropped rather than faked. All three instead
+    measure real time-since-last-stage-change (or since creation, for a
+    Lead that has never moved) -- the same underlying measure Pipeline
+    Overview's 'avg time in stage' panel already uses, just applied to
+    each OPEN Lead individually rather than averaged."""
+    safe = {"stale_3d": 0, "proposal_waiting_5d": 0, "stuck_14d": 0}
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            WITH last_activity AS (
+                SELECT lead_id, MAX(created_at) AS last_change
+                FROM merchant_pipeline_stage_history
+                GROUP BY lead_id
+            )
+            SELECT l.stage, COALESCE(la.last_change, l.created_at) AS last_activity_at
+            FROM merchant_pipeline_leads l
+            LEFT JOIN last_activity la ON la.lead_id = l.id
+            WHERE l.tenant_id = %s AND l.outcome IS NULL
+        """, (tenant_id,))
+        rows = cur.fetchall() or []
+        cur.close(); conn.close()
+
+        now = datetime.now(timezone.utc)
+        stale_3d = proposal_waiting_5d = stuck_14d = 0
+        for r in rows:
+            last_at = r["last_activity_at"]
+            if last_at is None:
+                continue
+            if last_at.tzinfo is None:
+                last_at = last_at.replace(tzinfo=timezone.utc)
+            days = (now - last_at).total_seconds() / 86400.0
+            if days >= 3:
+                stale_3d += 1
+            if r["stage"] == "proposal_sent" and days >= 5:
+                proposal_waiting_5d += 1
+            if days >= 14:
+                stuck_14d += 1
+
+        safe.update({"stale_3d": stale_3d, "proposal_waiting_5d": proposal_waiting_5d, "stuck_14d": stuck_14d})
+    except Exception as e:
+        print("⚠️ _get_dashboard_needs_attention error:", e)
+    return safe
+
+
+def _get_dashboard_recent_activity(tenant_id: int, limit: int = 8) -> list:
+    """Merged, most-recent-first feed of 4 real event types for the
+    Dashboard (Phase 4, 2026-09-10): new Lead created, a Lead's stage
+    moved, a deal Won, a WhatsApp reply received. Each event links straight
+    to the real record (the Lead Command Centre for Lead events, the Inbox
+    for a WhatsApp reply) so clicking one actually does something."""
+    events = []
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        cur.execute("""
+            SELECT id, customer_name, source, created_at
+            FROM merchant_pipeline_leads
+            WHERE tenant_id=%s ORDER BY created_at DESC LIMIT %s
+        """, (tenant_id, limit))
+        _src_labels = {"whatsapp": "WhatsApp", "manual": "Manual Entry"}
+        for r in cur.fetchall() or []:
+            events.append({
+                "at": r["created_at"], "icon": "👤", "icon_bg": "#0288D1",
+                "text": f"New lead from {_src_labels.get(r['source'], 'an unrecorded source')} — {r['customer_name']}",
+                "url": url_for("portal.lead_detail", lead_id=r["id"]),
+            })
+
+        labels = pipeline_effective_stage_labels(tenant_id)
+        cur.execute("""
+            SELECT h.to_stage, h.created_at, l.id AS lead_id, l.customer_name
+            FROM merchant_pipeline_stage_history h
+            JOIN merchant_pipeline_leads l ON l.id = h.lead_id
+            WHERE l.tenant_id=%s AND h.to_stage != 'won' AND h.from_stage IS NOT NULL
+            ORDER BY h.created_at DESC LIMIT %s
+        """, (tenant_id, limit))
+        for r in cur.fetchall() or []:
+            events.append({
+                "at": r["created_at"], "icon": "📈", "icon_bg": "#0F2340",
+                "text": f"{r['customer_name']} moved to {labels.get(r['to_stage'], r['to_stage'])}",
+                "url": url_for("portal.lead_detail", lead_id=r["lead_id"]),
+            })
+
+        cur.execute("""
+            SELECT id, customer_name, deal_value, won_date
+            FROM merchant_pipeline_leads
+            WHERE tenant_id=%s AND outcome='won' ORDER BY won_date DESC LIMIT %s
+        """, (tenant_id, limit))
+        for r in cur.fetchall() or []:
+            val = float(r["deal_value"] or 0)
+            events.append({
+                "at": (datetime.combine(r["won_date"], datetime.min.time(), tzinfo=timezone.utc)
+                       if r["won_date"] else None),
+                "icon": "💰", "icon_bg": "#12B76A",
+                "text": f"{r['customer_name']} — Won" + (f", ₦{val:,.0f}" if val else ""),
+                "url": url_for("portal.lead_detail", lead_id=r["id"]),
+            })
+
+        cur.execute("""
+            SELECT m.customer_phone, m.created_at, c.display_name
+            FROM wa_message_log m
+            LEFT JOIN wa_contacts c ON c.tenant_id = m.tenant_id AND c.phone = m.customer_phone
+            WHERE m.tenant_id=%s AND m.direction='inbound' AND m.is_historical IS NOT TRUE
+            ORDER BY m.created_at DESC LIMIT %s
+        """, (tenant_id, limit))
+        for r in cur.fetchall() or []:
+            phone = r["customer_phone"] or ""
+            # Prefix '+' only if not already present -- some stored numbers already
+            # carry it (Meta's display_phone_number format), same fix as the
+            # 'with_plus' template filter (portal_app.py) exists for.
+            phone_plus = phone if phone.startswith("+") else f"+{phone}"
+            who = r["display_name"] or (phone_plus if phone else "A customer")
+            events.append({
+                "at": r["created_at"], "icon": "💬", "icon_bg": "#25D366",
+                "text": f"{who} replied on WhatsApp",
+                "url": url_for("portal.my_inbox", phone=r["customer_phone"]),
+            })
+
+        cur.close(); conn.close()
+
+        events = [e for e in events if e["at"] is not None]
+        events.sort(key=lambda e: e["at"], reverse=True)
+        events = events[:limit]
+    except Exception as e:
+        print("⚠️ _get_dashboard_recent_activity error:", e)
+    return events
+
+
+def _resolve_report_period():
+    """Reads date_from/date_to/days off the query string for a Reports page
+    (Pipeline Overview, Leads and Sources, ...). A valid custom range (both dates present, YYYY-MM-DD,
+    date_from <= date_to) always wins; otherwise falls back to the days
+    preset (7/30/90, default 30). Same date-format validation convention as
+    the Contacts filter (regex-checked, silently dropped if malformed --
+    never errors on a bad date typed into the URL).
+    Returns (date_from, date_to, days-or-None, is_custom, period_label)."""
+    from datetime import date, timedelta
+    import re as _re_period
+
+    raw_from = (request.args.get("date_from") or "").strip()
+    raw_to   = (request.args.get("date_to") or "").strip()
+    date_re  = r"^\d{4}-\d{2}-\d{2}$"
+
+    if _re_period.match(date_re, raw_from) and _re_period.match(date_re, raw_to):
+        try:
+            d_from = date.fromisoformat(raw_from)
+            d_to   = date.fromisoformat(raw_to)
+        except ValueError:
+            d_from = d_to = None
+        if d_from and d_to and d_from <= d_to:
+            label = d_from.strftime("%d %b %Y") + " \u2013 " + d_to.strftime("%d %b %Y")
+            return d_from, d_to, None, True, label
+
+    try:
+        days = int(request.args.get("days") or 30)
+        if days not in (7, 30, 90):
+            days = 30
+    except Exception:
+        days = 30
+    d_to   = date.today()
+    d_from = d_to - timedelta(days=days)
+    return d_from, d_to, days, False, "Last " + str(days) + " days"
+
+
+def _get_pipeline_overview_data(tenant_id: int, date_from, date_to) -> dict:
+    """Fetch Pipeline Overview report data for a tenant. The open-pipeline
+    snapshot (deals currently sitting in each active stage) is always
+    right-now, not period-scoped — "what's open" isn't a sum over time.
+    Won/Lost/Dropped, win rate, avg deal size and avg time-to-close ARE
+    scoped to the selected period (last N days), same convention as the
+    other Reports pages. Win rate = Won / (Won + Lost) — Dropped is
+    excluded from the denominator since it means "never fully pursued,"
+    not "lost to a competitor."""
+    safe = {
+        "open_stages": [], "active_deals": 0, "open_value": 0.0,
+        "won_count": 0, "won_value": 0.0, "lost_count": 0, "dropped_count": 0,
+        "win_rate": None, "avg_deal_size": 0.0, "avg_days_to_close": None,
+        "stage_times": [],
+    }
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # ── Open pipeline snapshot (right now, not period-scoped) ───────────
+        cur.execute("""
+            SELECT stage, COUNT(*) AS n, COALESCE(SUM(deal_value),0) AS total_value,
+                   COALESCE(AVG(deal_value),0) AS avg_value
+            FROM merchant_pipeline_leads
+            WHERE tenant_id = %s AND outcome IS NULL
+            GROUP BY stage
+        """, (tenant_id,))
+        by_stage = {r["stage"]: r for r in (cur.fetchall() or [])}
+
+        open_stages  = []
+        active_deals = 0
+        open_value   = 0.0
+        for stage in PIPELINE_STAGE_ORDER:
+            if stage == "won":
+                continue
+            r = by_stage.get(stage)
+            n           = int(r["n"]) if r else 0
+            total_value = float(r["total_value"]) if r else 0.0
+            avg_value   = float(r["avg_value"]) if r else 0.0
+            open_stages.append({"stage": stage, "count": n, "total_value": total_value, "avg_value": avg_value})
+            active_deals += n
+            open_value   += total_value
+
+        # ── Won, this period ─────────────────────────────────────────────────
+        cur.execute("""
+            SELECT COUNT(*) AS n, COALESCE(SUM(deal_value),0) AS total_value
+            FROM merchant_pipeline_leads
+            WHERE tenant_id = %s AND outcome = 'won'
+              AND won_date BETWEEN %s AND %s
+        """, (tenant_id, date_from, date_to))
+        won_row    = cur.fetchone() or {}
+        won_count  = int(won_row.get("n") or 0)
+        won_value  = float(won_row.get("total_value") or 0)
+
+        # ── Lost / Dropped, this period ──────────────────────────────────────
+        cur.execute("""
+            SELECT outcome, COUNT(*) AS n
+            FROM merchant_pipeline_leads
+            WHERE tenant_id = %s AND outcome IN ('lost','dropped')
+              AND dropped_at::date BETWEEN %s AND %s
+            GROUP BY outcome
+        """, (tenant_id, date_from, date_to))
+        lost_dropped  = {r["outcome"]: int(r["n"]) for r in (cur.fetchall() or [])}
+        lost_count    = lost_dropped.get("lost", 0)
+        dropped_count = lost_dropped.get("dropped", 0)
+
+        closed_for_rate = won_count + lost_count
+        win_rate      = round(won_count / closed_for_rate * 100, 1) if closed_for_rate > 0 else None
+        avg_deal_size = round(won_value / won_count, 2) if won_count > 0 else 0.0
+
+        # ── Avg time to close (won deals, this period) ───────────────────────
+        cur.execute("""
+            SELECT AVG(won_date - created_at::date) AS avg_days
+            FROM merchant_pipeline_leads
+            WHERE tenant_id = %s AND outcome = 'won'
+              AND won_date BETWEEN %s AND %s
+        """, (tenant_id, date_from, date_to))
+        avg_days_row      = cur.fetchone() or {}
+        avg_days_to_close = float(avg_days_row["avg_days"]) if avg_days_row.get("avg_days") is not None else None
+        # Floor at 0 — a deal marked Won before its own created_at (a data-entry mistake
+        # or a backfilled/seeded row) should never surface as a negative day count to a
+        # business owner; that would read as the report being broken, not the data.
+        if avg_days_to_close is not None and avg_days_to_close < 0:
+            avg_days_to_close = 0.0
+
+        # ── Avg time in each stage (all-time, from real stage history) ──────
+        # For each lead, how long it sat at a stage before its NEXT recorded
+        # change (whether that's advancing forward or closing as Won/Lost/
+        # Dropped) — a real measurement, not a guess.
+        cur.execute("""
+            WITH ranked AS (
+                SELECT h.to_stage, h.created_at,
+                       LEAD(h.created_at) OVER (PARTITION BY h.lead_id ORDER BY h.created_at) AS next_at
+                FROM merchant_pipeline_stage_history h
+                JOIN merchant_pipeline_leads l ON l.id = h.lead_id
+                WHERE l.tenant_id = %s
+            )
+            SELECT to_stage, AVG(EXTRACT(EPOCH FROM (next_at - created_at)) / 86400.0) AS avg_days, COUNT(*) AS n
+            FROM ranked
+            WHERE next_at IS NOT NULL
+            GROUP BY to_stage
+        """, (tenant_id,))
+        stage_time_rows = {r["to_stage"]: r for r in (cur.fetchall() or [])}
+        stage_times = []
+        for stage in PIPELINE_STAGE_ORDER:
+            if stage == "won":
+                continue
+            r = stage_time_rows.get(stage)
+            if r and r["n"]:
+                stage_times.append({"stage": stage, "avg_days": round(float(r["avg_days"]), 1), "n": int(r["n"])})
+            else:
+                stage_times.append({"stage": stage, "avg_days": None, "n": 0})
+
+        cur.close(); conn.close()
+
+        safe.update({
+            "open_stages": open_stages, "active_deals": active_deals, "open_value": open_value,
+            "won_count": won_count, "won_value": won_value,
+            "lost_count": lost_count, "dropped_count": dropped_count,
+            "win_rate": win_rate, "avg_deal_size": avg_deal_size,
+            "avg_days_to_close": avg_days_to_close, "stage_times": stage_times,
+        })
+    except Exception as e:
+        print("⚠️ _get_pipeline_overview_data error:", e)
+    return safe
+
+
+def _get_leads_sources_data(tenant_id: int, date_from, date_to) -> dict:
+    """Fetch Leads and Sources report data for a tenant, scoped to
+    [date_from, date_to] (both inclusive) by each Lead's created_at date.
+    Source buckets are the REAL values this app actually writes today --
+    'whatsapp' (a Lead created from an existing WhatsApp Contact, including
+    an approved campaign reply -- both write the same literal value) and
+    'manual' (the Add Lead form) -- plus a 'Not recorded' bucket for NULL
+    (leads created before this column existed, or bulk-imported). No
+    'Campaign' bucket, deliberately -- campaign-approved leads are written
+    as 'whatsapp' today, not a separate value; showing one anyway would be
+    guessing at data that doesn't exist.
+    Chart bucket size (day vs week) is picked from the range length so a
+    long custom range doesn't render one point per day."""
+    safe = {"new_leads": 0, "sources": [], "trend": [], "trend_bucket": "day"}
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        cur.execute("""
+            SELECT COUNT(*) AS n
+            FROM merchant_pipeline_leads
+            WHERE tenant_id = %s AND created_at::date BETWEEN %s AND %s
+        """, (tenant_id, date_from, date_to))
+        new_leads = int((cur.fetchone() or {}).get("n") or 0)
+
+        cur.execute("""
+            SELECT source, COUNT(*) AS n
+            FROM merchant_pipeline_leads
+            WHERE tenant_id = %s AND created_at::date BETWEEN %s AND %s
+            GROUP BY source
+        """, (tenant_id, date_from, date_to))
+        raw_sources = {(r["source"] or "none"): int(r["n"]) for r in (cur.fetchall() or [])}
+        SOURCE_LABELS = [("whatsapp", "WhatsApp"), ("manual", "Manual Entry"), ("none", "Not recorded")]
+        sources = []
+        for key, label in SOURCE_LABELS:
+            n = raw_sources.pop(key, 0)
+            sources.append({"key": key, "label": label, "count": n})
+        # A value outside the known set would be a real, surprising data point --
+        # show it rather than silently folding it into "Not recorded".
+        for key, n in raw_sources.items():
+            sources.append({"key": key, "label": (key or "?").title(), "count": n})
+
+        span_days = (date_to - date_from).days + 1
+        bucket = "week" if span_days > 60 else "day"
+        cur.execute("""
+            SELECT DATE_TRUNC(%s, created_at)::date AS bucket, COUNT(*) AS n
+            FROM merchant_pipeline_leads
+            WHERE tenant_id = %s AND created_at::date BETWEEN %s AND %s
+            GROUP BY 1
+            ORDER BY 1
+        """, (bucket, tenant_id, date_from, date_to))
+        trend = [{"bucket": r["bucket"].isoformat(), "count": int(r["n"])} for r in (cur.fetchall() or [])]
+
+        cur.close(); conn.close()
+
+        safe.update({
+            "new_leads": new_leads, "sources": sources, "trend": trend, "trend_bucket": bucket,
+        })
+    except Exception as e:
+        print("\u26a0\ufe0f _get_leads_sources_data error:", e)
+    return safe
+
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CUSTOM REPORT BUILDER (Phase 1, 2026-09-10) — pick an entity, pick columns,
+# pick filters, get a real table. Deliberately NOT gated by CONNECT_CRM_ENDPOINTS:
+# 2 of its 3 entities (Contacts, Companies) already have their own pages fully
+# available on Connect regardless of the Sales CRM toggle, and the third (Leads)
+# matches the ungated Leads page / Leads & Sources report, not the gated Pipeline
+# Overview report -- gating the whole page would wrongly hide Contacts/Companies
+# reporting for a CRM-off Connect business.
+# ══════════════════════════════════════════════════════════════════════════════
+
+CUSTOM_REPORT_EXPORT_MAX_ROWS = 20000
+
+CUSTOM_REPORT_ENTITIES = {
+    "leads": {
+        "label": "Leads and Deals",
+        "icon": "🔥",
+        "desc": "Every lead and deal in your Sales Pipeline.",
+        "columns": [
+            {"key": "customer_name",  "label": "Customer Name",  "expr": "l.customer_name"},
+            {"key": "contact_person", "label": "Contact Person", "expr": "l.contact_person"},
+            {"key": "phone",          "label": "Phone",          "expr": "l.phone"},
+            {"key": "email",          "label": "Email",          "expr": "l.email"},
+            {"key": "deal_value",     "label": "Deal Value",     "expr": "l.deal_value",  "fmt": "money"},
+            {"key": "stage",          "label": "Stage",          "expr": "l.stage",       "fmt": "stage_label"},
+            {"key": "outcome",        "label": "Outcome",        "expr": "l.outcome"},
+            {"key": "source",         "label": "Source",         "expr": "l.source",      "fmt": "source_label"},
+            {"key": "assigned_to",    "label": "Assigned To",    "expr": "l.assigned_to"},
+            {"key": "company_name",   "label": "Company",        "expr": "co.name"},
+            {"key": "created_at",     "label": "Created Date",   "expr": "l.created_at",  "fmt": "date"},
+        ],
+        "default_columns": ["customer_name", "phone", "deal_value", "stage", "created_at"],
+    },
+    "contacts": {
+        "label": "Contacts",
+        "icon": "👥",
+        "desc": "Every WhatsApp contact you've saved.",
+        "columns": [
+            {"key": "display_name",   "label": "Name",           "expr": "c.display_name"},
+            {"key": "contact_person", "label": "Contact Person", "expr": "c.contact_person"},
+            {"key": "phone",          "label": "Phone",          "expr": "c.phone"},
+            {"key": "email",          "label": "Email",          "expr": "c.email"},
+            {"key": "status",         "label": "Status",         "expr": "c.status",      "fmt": "title"},
+            {"key": "company_name",   "label": "Company",        "expr": "co.name"},
+            {"key": "tags",           "label": "Tags",
+             "expr": "(SELECT string_agg(ll.name, ', ') FROM lead_label_contacts llc "
+                      "JOIN lead_labels ll ON ll.id = llc.label_id WHERE llc.contact_id = c.id)"},
+            {"key": "created_at",     "label": "Created Date",   "expr": "c.created_at",  "fmt": "date"},
+        ],
+        "default_columns": ["display_name", "phone", "status", "created_at"],
+    },
+    "companies": {
+        "label": "Companies",
+        "icon": "🏢",
+        "desc": "Every business linked to your contacts and deals.",
+        "columns": [
+            {"key": "name",            "label": "Company Name", "expr": "co.name"},
+            {"key": "website",         "label": "Website",      "expr": "co.website"},
+            {"key": "people_count",    "label": "People",
+             "expr": "(SELECT COUNT(*) FROM wa_contacts c2 WHERE c2.company_id = co.id)"},
+            {"key": "open_deal_count", "label": "Open Deals",
+             "expr": "(SELECT COUNT(*) FROM merchant_pipeline_leads l2 WHERE l2.company_id = co.id AND l2.outcome IS NULL)"},
+            {"key": "open_deal_value", "label": "Open Deal Value",
+             "expr": "(SELECT COALESCE(SUM(deal_value),0) FROM merchant_pipeline_leads l2 WHERE l2.company_id = co.id AND l2.outcome IS NULL)",
+             "fmt": "money"},
+            {"key": "created_at",      "label": "Created Date", "expr": "co.created_at", "fmt": "date"},
+        ],
+        "default_columns": ["name", "website", "people_count", "open_deal_count", "open_deal_value"],
+    },
+    "campaigns": {
+        "label": "Campaigns",
+        "icon": "📣",
+        "desc": "Every WhatsApp campaign message sent, and what happened after — including revenue, via the Sales Pipeline deal it turned into.",
+        "columns": [
+            {"key": "campaign_name", "label": "Campaign",     "expr": "wc.name"},
+            {"key": "phone",         "label": "Phone",        "expr": "r.phone"},
+            {"key": "status",        "label": "Status",       "expr": "r.status",      "fmt": "campaign_status_label"},
+            {"key": "reply_text",    "label": "Reply",        "expr": "r.reply_text"},
+            {"key": "sent_at",       "label": "Sent At",      "expr": "r.sent_at",      "fmt": "date"},
+            {"key": "replied_at",    "label": "Replied At",   "expr": "r.replied_at",   "fmt": "date"},
+            {"key": "lead_name",     "label": "Linked Lead",  "expr": "l.customer_name"},
+            {"key": "deal_value",    "label": "Deal Value",   "expr": "l.deal_value",   "fmt": "money"},
+        ],
+        "default_columns": ["campaign_name", "phone", "status", "sent_at"],
+    },
+}
+
+# Real recipient-status values wa_campaign_recipients actually writes (see
+# meta_webhook.py delivery tracking + Campaign Intelligence classifier) --
+# "Not interested" capitalization matches the existing campaign report page
+# (whatsapp_campaign_report.html) exactly, not a generic .title() guess.
+CAMPAIGN_STATUS_LABELS = {
+    "sent": "Sent", "delivered": "Delivered", "read": "Read", "replied": "Replied",
+    "interested": "Interested", "not_interested": "Not interested",
+    "opportunity": "Opportunity", "converted": "Converted", "failed": "Failed",
+}
+
+
+def _custom_report_query_parts(tenant_id: int, entity: str, columns: list, filters: dict):
+    """Builds (select_exprs, from_clause, where, params, order, col_specs) for one
+    entity. Companies' aggregate columns are correlated SCALAR SUBQUERIES (not a
+    flat multi-table JOIN) on purpose -- a JOIN across wa_contacts AND
+    merchant_pipeline_leads at once fans out (N contacts x M deals rows per
+    company) and would double/triple-count SUM(deal_value); scalar subqueries
+    can't fan out, so the numbers are correct by construction. (Noticed this same
+    fan-out shape already exists on the live Companies page's own query while
+    designing this -- no real company has enough contacts+deals yet to have
+    actually shown a wrong number, so left alone rather than changed unasked;
+    flagged to the user separately.)"""
+    spec = CUSTOM_REPORT_ENTITIES[entity]
+    all_keys = {c["key"] for c in spec["columns"]}
+    col_specs = [c for c in spec["columns"] if c["key"] in columns] or \
+                [c for c in spec["columns"] if c["key"] in spec["default_columns"]]
+    select_exprs = ", ".join(f'{c["expr"]} AS {c["key"]}' for c in col_specs)
+
+    if entity == "leads":
+        from_clause = "merchant_pipeline_leads l LEFT JOIN crm_companies co ON co.id = l.company_id"
+        clauses = ["l.tenant_id = %s"]
+        params  = [tenant_id]
+        stages  = filters.get("stage") or []
+        if stages:
+            clauses.append("l.stage = ANY(%s)")
+            params.append(stages)
+        sources = filters.get("source") or []
+        if sources:
+            src_parts = []
+            named = [s for s in sources if s != "none"]
+            if named:
+                src_parts.append("l.source = ANY(%s)")
+                params.append(named)
+            if "none" in sources:
+                src_parts.append("l.source IS NULL")
+            clauses.append("(" + " OR ".join(src_parts) + ")")
+        if filters.get("date_from") and filters.get("date_to"):
+            clauses.append("l.created_at::date BETWEEN %s AND %s")
+            params.extend([filters["date_from"], filters["date_to"]])
+        order = "l.created_at DESC"
+
+    elif entity == "contacts":
+        from_clause = "wa_contacts c LEFT JOIN crm_companies co ON co.id = c.company_id"
+        clauses = ["c.tenant_id = %s"]
+        params  = [tenant_id]
+        statuses = filters.get("status") or []
+        if statuses:
+            clauses.append("c.status = ANY(%s)")
+            params.append(statuses)
+        if filters.get("date_from") and filters.get("date_to"):
+            clauses.append("c.created_at::date BETWEEN %s AND %s")
+            params.extend([filters["date_from"], filters["date_to"]])
+        order = "c.created_at DESC"
+
+    elif entity == "companies":
+        from_clause = "crm_companies co"
+        clauses = ["co.tenant_id = %s"]
+        params  = [tenant_id]
+        if filters.get("search"):
+            clauses.append("co.name ILIKE %s")
+            params.append(f"%{filters['search']}%")
+        if filters.get("date_from") and filters.get("date_to"):
+            clauses.append("co.created_at::date BETWEEN %s AND %s")
+            params.extend([filters["date_from"], filters["date_to"]])
+        order = "co.name ASC"
+
+    else:  # campaigns
+        from_clause = ("wa_campaign_recipients r "
+                        "LEFT JOIN wa_campaigns wc ON wc.id = r.campaign_id "
+                        "LEFT JOIN merchant_pipeline_leads l ON l.id = r.pipeline_lead_id")
+        clauses = ["r.tenant_id = %s"]
+        params  = [tenant_id]
+        campaign_ids = [int(x) for x in (filters.get("campaign_id") or []) if str(x).isdigit()]
+        if campaign_ids:
+            clauses.append("r.campaign_id = ANY(%s)")
+            params.append(campaign_ids)
+        statuses = filters.get("status") or []
+        if statuses:
+            clauses.append("r.status = ANY(%s)")
+            params.append(statuses)
+        if filters.get("date_from") and filters.get("date_to"):
+            clauses.append("r.sent_at::date BETWEEN %s AND %s")
+            params.extend([filters["date_from"], filters["date_to"]])
+        order = "r.sent_at DESC NULLS LAST"
+
+    where = " AND ".join(clauses)
+    return select_exprs, from_clause, where, params, order, col_specs
+
+
+def _run_custom_report(tenant_id: int, entity: str, columns: list, filters: dict,
+                        page: int = 1, per_page: int = 50, limit_only: int = None):
+    """Returns (rows, total_count, col_specs). Pass limit_only for an export
+    (no pagination, capped at CUSTOM_REPORT_EXPORT_MAX_ROWS); pass page/per_page
+    for the on-screen paginated view."""
+    select_exprs, from_clause, where, params, order, col_specs = \
+        _custom_report_query_parts(tenant_id, entity, columns, filters)
+    rows, total = [], 0
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(f"SELECT COUNT(*) AS n FROM {from_clause} WHERE {where}", params)
+        total = int((cur.fetchone() or {}).get("n") or 0)
+
+        if limit_only:
+            cur.execute(
+                f"SELECT {select_exprs} FROM {from_clause} WHERE {where} ORDER BY {order} LIMIT %s",
+                params + [limit_only],
+            )
+        else:
+            offset = max(0, (page - 1)) * per_page
+            cur.execute(
+                f"SELECT {select_exprs} FROM {from_clause} WHERE {where} ORDER BY {order} LIMIT %s OFFSET %s",
+                params + [per_page, offset],
+            )
+        rows = cur.fetchall() or []
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ _run_custom_report error:", e)
+    return rows, total, col_specs
+
+
+def _format_custom_report_value(val, fmt: str, stage_labels: dict = None):
+    if val is None or val == "":
+        return "—"
+    if fmt == "money":
+        return "₦{:,.0f}".format(val)
+    if fmt == "date":
+        return val.strftime("%d %b %Y") if hasattr(val, "strftime") else str(val)
+    if fmt == "stage_label":
+        return (stage_labels or {}).get(val, val)
+    if fmt == "source_label":
+        return {"whatsapp": "WhatsApp", "manual": "Manual Entry"}.get(val, "Not recorded")
+    if fmt == "campaign_status_label":
+        return CAMPAIGN_STATUS_LABELS.get(val, val)
+    if fmt == "title":
+        return str(val).replace("_", " ").title()
+    return str(val)
+
+
 # ── Report pages ───────────────────────────────────────────────────────────────
 
 @portal_bp.route("/reports/usage")
@@ -4596,6 +5855,578 @@ def report_billing():
         balance_credits        = data["balance_credits"],
         period_label           = data["period_label"],
     )
+
+
+
+@portal_bp.route("/reports/pipeline-overview")
+def report_pipeline_overview():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    date_from, date_to, days, is_custom, period_label = _resolve_report_period()
+
+    data         = _get_pipeline_overview_data(tenant_id, date_from, date_to)
+    stage_labels = pipeline_effective_stage_labels(tenant_id)
+
+    return render_template(
+        "portal/report_pipeline_overview.html",
+        customer          = customer,
+        days              = days,
+        date_from         = date_from.isoformat(),
+        date_to           = date_to.isoformat(),
+        is_custom         = is_custom,
+        period_label      = period_label,
+        stage_labels      = stage_labels,
+        open_stages       = data["open_stages"],
+        active_deals      = data["active_deals"],
+        open_value        = data["open_value"],
+        won_count         = data["won_count"],
+        won_value         = data["won_value"],
+        lost_count        = data["lost_count"],
+        dropped_count     = data["dropped_count"],
+        win_rate          = data["win_rate"],
+        avg_deal_size     = data["avg_deal_size"],
+        avg_days_to_close = data["avg_days_to_close"],
+        stage_times       = data["stage_times"],
+    )
+
+
+@portal_bp.route("/reports/pipeline-overview/export/<fmt>")
+def report_pipeline_overview_export(fmt: str):
+    """Same (title, subtitle, summary_pairs, headers, rows) shape as the
+    generic /reports/export/<report>/<fmt> dispatcher, but its own dedicated
+    route rather than folded into that one — this report is Sales Pipeline
+    data, so it needs the CRM gate (CONNECT_CRM_ENDPOINTS) the other reports
+    (Usage/Cart/Billing) don't."""
+    r = _require_login()
+    if r: return r
+    if fmt not in ("csv", "xlsx", "pdf"):
+        flash("Invalid export request.", "danger")
+        return redirect(url_for("portal.report_pipeline_overview"))
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    date_from, date_to, days, is_custom, period_label = _resolve_report_period()
+
+    data         = _get_pipeline_overview_data(tenant_id, date_from, date_to)
+    stage_labels = pipeline_effective_stage_labels(tenant_id)
+    store        = customer.get("tenant_domain") or customer.get("tenant_name") or "Your Store"
+    from datetime import date
+    generated = date.today().strftime("%d %b %Y")
+
+    title    = "Pipeline Overview Report"
+    subtitle = f"{store} · {period_label} · Generated {generated}"
+    headers  = ["Stage", "Deals", "Total Value", "Avg Deal Size"]
+    rows_out = [
+        [
+            stage_labels.get(s["stage"], s["stage"]), s["count"],
+            "₦{:,.0f}".format(s["total_value"]) if s["total_value"] else "—",
+            "₦{:,.0f}".format(s["avg_value"]) if s["total_value"] else "—",
+        ]
+        for s in data["open_stages"]
+    ]
+    rows_out.append([
+        stage_labels.get("won", "Won"), data["won_count"],
+        "₦{:,.0f}".format(data["won_value"]) if data["won_value"] else "—",
+        "₦{:,.0f}".format(data["avg_deal_size"]) if data["won_value"] else "—",
+    ])
+
+    summary_pairs = [
+        ("Active Deals",         str(data["active_deals"])),
+        ("Open Pipeline Value",  "₦{:,.0f}".format(data["open_value"])),
+        ("Won (period)",         "{} deals · ₦{:,.0f}".format(data["won_count"], data["won_value"])),
+        ("Lost (period)",        str(data["lost_count"])),
+        ("Dropped (period)",     str(data["dropped_count"])),
+        ("Win Rate",             "{}%".format(data["win_rate"]) if data["win_rate"] is not None else "—"),
+        ("Avg. Deal Size (Won)", "₦{:,.0f}".format(data["avg_deal_size"]) if data["won_value"] else "—"),
+        ("Avg. Time to Close",   "{:.1f} days".format(data["avg_days_to_close"]) if data["avg_days_to_close"] is not None else "—"),
+    ]
+
+    if fmt == "xlsx":
+        return _export_xlsx(title, subtitle, summary_pairs, headers, rows_out)
+    elif fmt == "csv":
+        return _export_csv(title, subtitle, summary_pairs, headers, rows_out)
+    else:
+        return _export_pdf(title, subtitle, summary_pairs, headers, rows_out)
+
+
+@portal_bp.route("/reports/leads-sources")
+def report_leads_sources():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    date_from, date_to, days, is_custom, period_label = _resolve_report_period()
+    data = _get_leads_sources_data(tenant_id, date_from, date_to)
+
+    return render_template(
+        "portal/report_leads_sources.html",
+        customer     = customer,
+        days         = days,
+        date_from    = date_from.isoformat(),
+        date_to      = date_to.isoformat(),
+        is_custom    = is_custom,
+        period_label = period_label,
+        new_leads    = data["new_leads"],
+        sources      = data["sources"],
+        trend        = data["trend"],
+        trend_bucket = data["trend_bucket"],
+    )
+
+
+@portal_bp.route("/reports/leads-sources/export/<fmt>")
+def report_leads_sources_export(fmt: str):
+    """Same (title, subtitle, summary_pairs, headers, rows) export shape as
+    Pipeline Overview -- NOT in CONNECT_CRM_ENDPOINTS on purpose, this
+    reports on Lead volume/source, the same ungated data the Leads page
+    itself already shows on Connect regardless of the CRM toggle."""
+    r = _require_login()
+    if r: return r
+    if fmt not in ("csv", "xlsx", "pdf"):
+        flash("Invalid export request.", "danger")
+        return redirect(url_for("portal.report_leads_sources"))
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    date_from, date_to, days, is_custom, period_label = _resolve_report_period()
+    data  = _get_leads_sources_data(tenant_id, date_from, date_to)
+    store = customer.get("tenant_domain") or customer.get("tenant_name") or "Your Store"
+    from datetime import date
+    generated = date.today().strftime("%d %b %Y")
+
+    title    = "Leads and Sources Report"
+    subtitle = store + " \u00b7 " + period_label + " \u00b7 Generated " + generated
+    headers  = ["Source", "Leads"]
+    rows_out = [[s["label"], s["count"]] for s in data["sources"]]
+
+    summary_pairs = [
+        ("New Leads", str(data["new_leads"])),
+    ]
+
+    if fmt == "xlsx":
+        return _export_xlsx(title, subtitle, summary_pairs, headers, rows_out)
+    elif fmt == "csv":
+        return _export_csv(title, subtitle, summary_pairs, headers, rows_out)
+    else:
+        return _export_pdf(title, subtitle, summary_pairs, headers, rows_out)
+
+
+
+
+@portal_bp.route("/reports/custom")
+def report_custom_picker():
+    r = _require_login()
+    if r: return r
+    return render_template("portal/report_custom_picker.html", entities=CUSTOM_REPORT_ENTITIES)
+
+
+
+# ── Phase 2 (2026-09-10): optional grouping/totals on top of the Phase 1 builder.
+# "Assigned To" deliberately left OUT of Leads' group-by options -- checked live,
+# 0 rows across every tenant have it set (same situation as product_interest),
+# so a group-by that would always show one giant "Unassigned" bucket for every
+# real account isn't a real reporting option yet.
+CUSTOM_REPORT_GROUP_BY = {
+    "leads":     [{"key": "stage",  "label": "Stage"},  {"key": "source", "label": "Source"}],
+    "contacts":  [{"key": "status", "label": "Status"}, {"key": "tag",    "label": "Tag"}],
+    "companies": [],
+    "campaigns": [{"key": "campaign", "label": "Campaign"}, {"key": "status", "label": "Status"}],
+}
+
+
+def _run_custom_report_grouped(tenant_id: int, entity: str, group_by: str, filters: dict):
+    """Returns (group_rows, has_value_sum). Each group row is
+    {"label": str, "count": int, "value": float|None}. Reuses the exact same
+    WHERE/FROM the list view builds (via _custom_report_query_parts, ignoring its
+    column-selection output) so a grouped report always matches what the ungrouped
+    list would show for the same filters -- no separate filter logic to drift."""
+    _, from_clause, where, params, _, _ = _custom_report_query_parts(tenant_id, entity, [], filters)
+    rows, has_value = [], False
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        if entity == "leads" and group_by == "stage":
+            cur.execute(f"""
+                SELECT l.stage AS grp, COUNT(*) AS n, COALESCE(SUM(l.deal_value),0) AS total_value
+                FROM {from_clause} WHERE {where} GROUP BY l.stage
+            """, params)
+            by_key = {r["grp"]: r for r in (cur.fetchall() or [])}
+            stage_labels = pipeline_effective_stage_labels(tenant_id)
+            for st in PIPELINE_STAGE_ORDER:
+                r = by_key.get(st)
+                rows.append({"label": stage_labels.get(st, st), "count": int(r["n"]) if r else 0,
+                              "value": float(r["total_value"]) if r else 0.0})
+            has_value = True
+
+        elif entity == "leads" and group_by == "source":
+            cur.execute(f"""
+                SELECT COALESCE(l.source, 'none') AS grp, COUNT(*) AS n, COALESCE(SUM(l.deal_value),0) AS total_value
+                FROM {from_clause} WHERE {where} GROUP BY COALESCE(l.source, 'none')
+                ORDER BY n DESC
+            """, params)
+            src_names = {"whatsapp": "WhatsApp", "manual": "Manual Entry", "none": "Not recorded"}
+            for r in (cur.fetchall() or []):
+                rows.append({"label": src_names.get(r["grp"], r["grp"]), "count": int(r["n"]),
+                              "value": float(r["total_value"])})
+            has_value = True
+
+        elif entity == "contacts" and group_by == "status":
+            cur.execute(f"""
+                SELECT COALESCE(c.status, 'unknown') AS grp, COUNT(*) AS n
+                FROM {from_clause} WHERE {where} GROUP BY COALESCE(c.status, 'unknown')
+                ORDER BY n DESC
+            """, params)
+            for r in (cur.fetchall() or []):
+                rows.append({"label": str(r["grp"]).replace("_", " ").title(), "count": int(r["n"]), "value": None})
+
+        elif entity == "contacts" and group_by == "tag":
+            cur.execute(f"""
+                SELECT COALESCE(ll.name, 'No tag') AS grp, COUNT(DISTINCT c.id) AS n
+                FROM {from_clause}
+                LEFT JOIN lead_label_contacts llc ON llc.contact_id = c.id
+                LEFT JOIN lead_labels ll ON ll.id = llc.label_id
+                WHERE {where}
+                GROUP BY COALESCE(ll.name, 'No tag')
+                ORDER BY n DESC
+            """, params)
+            for r in (cur.fetchall() or []):
+                rows.append({"label": r["grp"], "count": int(r["n"]), "value": None})
+
+        elif entity == "campaigns" and group_by == "campaign":
+            cur.execute(f"""
+                SELECT COALESCE(wc.name, 'Unknown campaign') AS grp, COUNT(*) AS n
+                FROM {from_clause} WHERE {where}
+                GROUP BY COALESCE(wc.name, 'Unknown campaign')
+                ORDER BY n DESC
+            """, params)
+            counts = [(r["grp"], int(r["n"])) for r in (cur.fetchall() or [])]
+            # Revenue summed off DISTINCT leads only -- a lead touched by 2+
+            # recipient rows in the same campaign (checked live: none exist
+            # today, but not guaranteed forever) must not be double-counted.
+            cur.execute(f"""
+                SELECT grp, COALESCE(SUM(deal_value), 0) AS total_value FROM (
+                    SELECT DISTINCT ON (l.id) COALESCE(wc.name, 'Unknown campaign') AS grp, l.id, l.deal_value
+                    FROM {from_clause} WHERE {where} AND l.id IS NOT NULL
+                    ORDER BY l.id
+                ) per_lead GROUP BY grp
+            """, params)
+            value_by_campaign = {r["grp"]: float(r["total_value"]) for r in (cur.fetchall() or [])}
+            for grp, n in counts:
+                rows.append({"label": grp, "count": n, "value": value_by_campaign.get(grp, 0.0)})
+            has_value = True
+
+        elif entity == "campaigns" and group_by == "status":
+            cur.execute(f"""
+                SELECT r.status AS grp, COUNT(*) AS n
+                FROM {from_clause} WHERE {where} GROUP BY r.status
+            """, params)
+            by_key = {r["grp"]: int(r["n"]) for r in (cur.fetchall() or [])}
+            for st in ("sent", "delivered", "read", "replied", "interested",
+                       "not_interested", "opportunity", "converted", "failed"):
+                rows.append({"label": CAMPAIGN_STATUS_LABELS.get(st, st), "count": by_key.get(st, 0), "value": None})
+
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ _run_custom_report_grouped error:", e)
+    return rows, has_value
+
+def _read_custom_report_request(entity: str):
+    """Shared arg-parsing for the page and export routes -- keeps the two in
+    lockstep so an export always matches exactly what's on screen."""
+    spec = CUSTOM_REPORT_ENTITIES[entity]
+    all_keys = {c["key"] for c in spec["columns"]}
+    selected_cols = [c for c in request.args.getlist("col") if c in all_keys]
+    if not selected_cols:
+        selected_cols = list(spec["default_columns"])
+
+    date_from, date_to, days, is_custom, period_label = _resolve_report_period()
+    filters = {"date_from": date_from, "date_to": date_to}
+    if entity == "leads":
+        filters["stage"]  = [s for s in request.args.getlist("stage") if s in PIPELINE_STAGE_ORDER]
+        filters["source"] = [s for s in request.args.getlist("source") if s in ("whatsapp", "manual", "none")]
+    elif entity == "contacts":
+        filters["status"] = [s for s in request.args.getlist("status") if s in ("lead", "prospect", "customer", "inactive")]
+    elif entity == "companies":
+        filters["search"] = (request.args.get("q") or "").strip()
+    elif entity == "campaigns":
+        filters["campaign_id"] = [c for c in request.args.getlist("campaign_id") if c.isdigit()]
+        filters["status"] = [s for s in request.args.getlist("status") if s in CAMPAIGN_STATUS_LABELS]
+
+    valid_group_by = {g["key"] for g in CUSTOM_REPORT_GROUP_BY.get(entity, [])}
+    group_by = request.args.get("group_by") or ""
+    if group_by not in valid_group_by:
+        group_by = ""
+
+    return selected_cols, filters, days, date_from, date_to, is_custom, period_label, group_by
+
+
+@portal_bp.route("/reports/custom/<entity>")
+def report_custom_entity(entity: str):
+    r = _require_login()
+    if r: return r
+    if entity not in CUSTOM_REPORT_ENTITIES:
+        flash("Unknown report entity.", "danger")
+        return redirect(url_for("portal.report_custom_picker"))
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    spec = CUSTOM_REPORT_ENTITIES[entity]
+
+    selected_cols, filters, days, date_from, date_to, is_custom, period_label, group_by = \
+        _read_custom_report_request(entity)
+
+    try:
+        page = int(request.args.get("page") or 1)
+        if page < 1:
+            page = 1
+    except Exception:
+        page = 1
+    per_page = 50
+
+    stage_labels = pipeline_effective_stage_labels(tenant_id) if entity == "leads" else {}
+
+    campaign_options = []
+    if entity == "campaigns":
+        try:
+            conn = get_db_connection()
+            cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("SELECT id, name FROM wa_campaigns WHERE tenant_id=%s ORDER BY created_at DESC", (tenant_id,))
+            campaign_options = cur.fetchall() or []
+            cur.close(); conn.close()
+        except Exception as e:
+            print("⚠️ report_custom_entity campaign_options error:", e)
+
+    group_rows, has_value_sum = [], False
+    if group_by:
+        group_rows, has_value_sum = _run_custom_report_grouped(tenant_id, entity, group_by, filters)
+
+    rows, total, col_specs = _run_custom_report(tenant_id, entity, selected_cols, filters,
+                                                 page=page, per_page=per_page)
+    display_rows = [
+        [_format_custom_report_value(row[c["key"]], c.get("fmt"), stage_labels) for c in col_specs]
+        for row in rows
+    ]
+    total_pages = max(1, (total + per_page - 1) // per_page)
+
+    from urllib.parse import urlencode as _urlencode
+    _base_args = request.args.to_dict(flat=False)
+    def _page_url(p):
+        a = dict(_base_args)
+        a["page"] = [str(p)]
+        return url_for("portal.report_custom_entity", entity=entity) + "?" + _urlencode(a, doseq=True)
+    prev_url = _page_url(page - 1) if page > 1 else None
+    next_url = _page_url(page + 1) if page < total_pages else None
+
+    # Saved reports (Phase 3) -- tenant-wide, same pattern as contact_filter_views.
+    saved_views = []
+    try:
+        current_norm = _custom_report_config_normalized(
+            _custom_report_config_from_form(entity, request.args)
+        )
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT id, name, config FROM custom_report_views WHERE tenant_id=%s AND entity=%s ORDER BY created_at DESC",
+            (tenant_id, entity),
+        )
+        for row in cur.fetchall():
+            cfg = row["config"] or {}
+            saved_views.append({
+                "id": row["id"], "name": row["name"],
+                "apply_url": url_for("portal.report_custom_entity", entity=entity, **cfg),
+                "active": _custom_report_config_normalized(cfg) == current_norm,
+            })
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ report_custom_entity saved_views error:", e)
+
+    return render_template(
+        "portal/report_custom_entity.html",
+        customer=customer, entity=entity, spec=spec, entities=CUSTOM_REPORT_ENTITIES,
+        selected_cols=selected_cols, args=request.args,
+        days=days, date_from=date_from.isoformat(), date_to=date_to.isoformat(),
+        is_custom=is_custom, period_label=period_label,
+        col_specs=col_specs, rows=display_rows, total=total,
+        page=page, per_page=per_page, total_pages=total_pages,
+        prev_url=prev_url, next_url=next_url,
+        stage_labels=stage_labels, pipeline_stage_order=PIPELINE_STAGE_ORDER,
+        group_by_options=CUSTOM_REPORT_GROUP_BY.get(entity, []), group_by=group_by,
+        group_rows=group_rows, has_value_sum=has_value_sum,
+        saved_views=saved_views, campaign_options=campaign_options,
+        campaign_status_labels=CAMPAIGN_STATUS_LABELS,
+    )
+
+
+@portal_bp.route("/reports/custom/<entity>/export/<fmt>")
+def report_custom_entity_export(entity: str, fmt: str):
+    r = _require_login()
+    if r: return r
+    if entity not in CUSTOM_REPORT_ENTITIES or fmt not in ("csv", "xlsx", "pdf"):
+        flash("Invalid export request.", "danger")
+        return redirect(url_for("portal.report_custom_picker"))
+
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    spec = CUSTOM_REPORT_ENTITIES[entity]
+
+    selected_cols, filters, days, date_from, date_to, is_custom, period_label, group_by = \
+        _read_custom_report_request(entity)
+
+    store = customer.get("tenant_domain") or customer.get("tenant_name") or "Your Store"
+    from datetime import date
+    generated = date.today().strftime("%d %b %Y")
+    title    = spec["label"] + " Report"
+    subtitle = store + " · " + period_label + " · Generated " + generated
+
+    if group_by:
+        group_rows, has_value_sum = _run_custom_report_grouped(tenant_id, entity, group_by, filters)
+        group_label = next((g["label"] for g in CUSTOM_REPORT_GROUP_BY.get(entity, []) if g["key"] == group_by), "Group")
+        headers  = [group_label, "Count"] + (["Total Value"] if has_value_sum else [])
+        rows_out = [
+            [g["label"], g["count"]] + (["₦{:,.0f}".format(g["value"])] if has_value_sum else [])
+            for g in group_rows
+        ]
+        total_count = sum(g["count"] for g in group_rows)
+        summary_pairs = [("Grouped by", group_label), ("Total " + spec["label"], str(total_count))]
+        if has_value_sum:
+            summary_pairs.append(("Total Value", "₦{:,.0f}".format(sum(g["value"] for g in group_rows))))
+        if fmt == "xlsx":
+            return _export_xlsx(title, subtitle, summary_pairs, headers, rows_out)
+        elif fmt == "csv":
+            return _export_csv(title, subtitle, summary_pairs, headers, rows_out)
+        else:
+            return _export_pdf(title, subtitle, summary_pairs, headers, rows_out)
+
+    stage_labels = pipeline_effective_stage_labels(tenant_id) if entity == "leads" else {}
+    rows, total, col_specs = _run_custom_report(tenant_id, entity, selected_cols, filters,
+                                                 limit_only=CUSTOM_REPORT_EXPORT_MAX_ROWS)
+
+    headers  = [c["label"] for c in col_specs]
+    rows_out = [
+        [_format_custom_report_value(row[c["key"]], c.get("fmt"), stage_labels) for c in col_specs]
+        for row in rows
+    ]
+
+    summary_pairs = [("Total " + spec["label"], str(total))]
+    if total > CUSTOM_REPORT_EXPORT_MAX_ROWS:
+        summary_pairs.append(("Note", f"Showing the first {CUSTOM_REPORT_EXPORT_MAX_ROWS:,} of {total:,} matching rows"))
+
+    if fmt == "xlsx":
+        return _export_xlsx(title, subtitle, summary_pairs, headers, rows_out)
+    elif fmt == "csv":
+        return _export_csv(title, subtitle, summary_pairs, headers, rows_out)
+    else:
+        return _export_pdf(title, subtitle, summary_pairs, headers, rows_out)
+
+
+
+def _custom_report_config_from_form(entity: str, source) -> dict:
+    """Builds the JSON config dict for a Custom Report save, from either
+    request.form (the save endpoint) or request.args (comparing the current
+    page's state against saved views). `source` is whichever MultiDict is
+    passed in -- same shape either way (getlist/get)."""
+    spec = CUSTOM_REPORT_ENTITIES[entity]
+    all_keys = {c["key"] for c in spec["columns"]}
+    cfg = {"col": [c for c in source.getlist("col") if c in all_keys]}
+    if entity == "leads":
+        cfg["stage"]  = [s for s in source.getlist("stage") if s in PIPELINE_STAGE_ORDER]
+        cfg["source"] = [s for s in source.getlist("source") if s in ("whatsapp", "manual", "none")]
+    elif entity == "contacts":
+        cfg["status"] = [s for s in source.getlist("status") if s in ("lead", "prospect", "customer", "inactive")]
+    elif entity == "companies":
+        cfg["q"] = (source.get("q") or "").strip()
+    elif entity == "campaigns":
+        cfg["campaign_id"] = [c for c in source.getlist("campaign_id") if c.isdigit()]
+        cfg["status"] = [s for s in source.getlist("status") if s in CAMPAIGN_STATUS_LABELS]
+
+    valid_group_by = {g["key"] for g in CUSTOM_REPORT_GROUP_BY.get(entity, [])}
+    group_by = source.get("group_by") or ""
+    cfg["group_by"] = group_by if group_by in valid_group_by else ""
+
+    import re as _re_cfg_date
+    date_from = (source.get("date_from") or "").strip()
+    date_to   = (source.get("date_to") or "").strip()
+    if _re_cfg_date.match(r"^\d{4}-\d{2}-\d{2}$", date_from) and _re_cfg_date.match(r"^\d{4}-\d{2}-\d{2}$", date_to):
+        cfg["date_from"] = date_from
+        cfg["date_to"]   = date_to
+    else:
+        days = source.get("days") or ""
+        cfg["days"] = days if days in ("7", "30", "90") else "30"
+
+    return {k: v for k, v in cfg.items() if v not in (None, "", [])}
+
+
+def _custom_report_config_normalized(cfg: dict) -> dict:
+    """Sorted/defaulted form of a config dict, for the saved-view "is this the
+    one currently applied" comparison -- same idea as contact_filter_views'
+    own normalize-then-compare."""
+    return {
+        "col": sorted(cfg.get("col", [])), "stage": sorted(cfg.get("stage", [])),
+        "source": sorted(cfg.get("source", [])), "status": sorted(cfg.get("status", [])),
+        "campaign_id": sorted(cfg.get("campaign_id", [])),
+        "q": cfg.get("q", ""), "group_by": cfg.get("group_by", ""),
+        "days": cfg.get("days", ""), "date_from": cfg.get("date_from", ""), "date_to": cfg.get("date_to", ""),
+    }
+
+
+@portal_bp.route("/reports/custom/<entity>/views/save", methods=["POST"])
+def report_custom_save_view(entity: str):
+    r = _require_login()
+    if r: return jsonify({"error": "Please log in again."}), 401
+    if entity not in CUSTOM_REPORT_ENTITIES:
+        return jsonify({"error": "Unknown report entity."}), 400
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    name = (request.form.get("name") or "").strip()[:100]
+    if not name:
+        return jsonify({"error": "Please name this report."}), 400
+
+    config = _custom_report_config_from_form(entity, request.form)
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute(
+            "INSERT INTO custom_report_views (tenant_id, entity, name, config, created_by) "
+            "VALUES (%s, %s, %s, %s, %s) RETURNING id",
+            (tenant_id, entity, name, _json.dumps(config), int(_customer_id())),
+        )
+        view_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close(); conn.close()
+        apply_url = url_for("portal.report_custom_entity", entity=entity, **config)
+        return jsonify({"ok": True, "id": view_id, "name": name, "apply_url": apply_url})
+    except Exception as e:
+        print("⚠️ report_custom_save_view error:", e)
+        return jsonify({"error": "Could not save this report."}), 500
+
+
+@portal_bp.route("/reports/custom/<entity>/views/<int:view_id>/delete", methods=["POST"])
+def report_custom_delete_view(entity: str, view_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("DELETE FROM custom_report_views WHERE id=%s AND tenant_id=%s AND entity=%s",
+                     (view_id, tenant_id, entity))
+        deleted = cur.rowcount > 0
+        conn.commit()
+        cur.close(); conn.close()
+        flash("Saved report deleted." if deleted else "Saved report not found.", "success" if deleted else "danger")
+    except Exception as e:
+        print("⚠️ report_custom_delete_view error:", e)
+        flash("Could not delete this saved report.", "danger")
+    return redirect(url_for("portal.report_custom_entity", entity=entity))
 
 
 # ── Report export (PDF / Excel / Word) ────────────────────────────────────────
@@ -4824,10 +6655,16 @@ def _export_xlsx(title: str, subtitle: str, summary_pairs: list, headers: list, 
     """Generate an Excel workbook and return as a Flask response."""
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = title[:31]
+    # Excel sheet titles reject / \ ? * [ ] : outright (ValueError) -- strip them rather
+    # than let a report whose title happens to contain one (e.g. "Leads / Deals") crash
+    # the export. Cosmetic-only: the real title still prints inside the sheet body above.
+    import re as _re_sheet_title
+    safe_sheet_title = _re_sheet_title.sub(r'[\\/*?\[\]:]', '', title)[:31] or 'Report'
+    ws.title = safe_sheet_title
 
     INK = "030C18"
     GOOD = "12B76A"
@@ -4889,9 +6726,14 @@ def _export_xlsx(title: str, subtitle: str, summary_pairs: list, headers: list, 
             row_idx += 1
 
     # Auto-column widths
+    # NOTE: col[0] can be a MergedCell (title/subtitle rows are merged across
+    # every column) — MergedCell has no .column_letter, only .column (int),
+    # so this must go through get_column_letter() instead. Fixed 2026-09-10 —
+    # this crashed EVERY xlsx export using this helper (Usage/Cart/Billing
+    # reports too), not just the new one that surfaced it.
     for col in ws.columns:
         max_len = 0
-        col_letter = col[0].column_letter
+        col_letter = get_column_letter(col[0].column)
         for cell in col:
             try:
                 max_len = max(max_len, len(str(cell.value or "")))
@@ -5020,6 +6862,33 @@ def _export_docx(title: str, subtitle: str, summary_pairs: list, headers: list, 
         download_name=fname,
     )
 
+
+
+def _export_csv(title: str, subtitle: str, summary_pairs: list, headers: list, rows: list):
+    """Generate a CSV and return as a Flask response. Same (title, subtitle,
+    summary_pairs, headers, rows) shape as _export_pdf/_export_xlsx, so any
+    report already built on that shape gets a CSV export for free."""
+    import csv as _csv
+    buf = io.StringIO()
+    writer = _csv.writer(buf)
+    writer.writerow([title])
+    writer.writerow([subtitle])
+    writer.writerow([])
+    writer.writerow(["Summary"])
+    for k, v in summary_pairs:
+        writer.writerow([k, v])
+    writer.writerow([])
+    if headers:
+        writer.writerow(headers)
+        for row in rows:
+            writer.writerow(row)
+
+    fname = title.lower().replace(" ", "_") + ".csv"
+    return Response(
+        buf.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={fname}"},
+    )
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CHAT ARCHIVE
@@ -8637,6 +10506,10 @@ def inbox_resolve(session_id: str):
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
+    if _is_connect_host():
+        flash("That feature isn't part of PhiXtra Connect.", "info")
+        return redirect(url_for("portal.my_inbox"))
+
     phone_redirect = None
     try:
         conn = get_db_connection()
@@ -8671,6 +10544,10 @@ def inbox_takeover():
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+
+    if _is_connect_host():
+        flash("That feature isn't part of PhiXtra Connect.", "info")
+        return redirect(url_for("portal.my_inbox"))
 
     customer_phone = (request.form.get("customer_phone") or "").strip().lstrip("+")
     if not customer_phone:
@@ -8850,14 +10727,100 @@ def _normalise_phone(raw: str) -> str:
     return re.sub(r"[^\d]", "", raw)
 
 
-def _find_matching_pipeline_lead(cur, tenant_id: int, phone: str):
-    """Find a Sales Pipeline lead (non-dropped) whose phone/whatsapp_number matches
-    the given phone by digits-only comparison — same matching rule used to fold
-    tenant 19's WhatsApp Contacts into Sales Pipeline. Returns the row or None."""
+def _resolve_company_from_form(cur, tenant_id: int):
+    """Reads the Company field every Add/Edit Contact form now carries
+    (a <select> of existing companies, pre-selected to the contact's current
+    one on an edit form, plus a "+ New Company…" option that reveals a text
+    box) and returns the company_id to save — creating the company row first
+    if a brand-new name was typed. Returns None for "— No Company —"."""
+    company_id_raw   = (request.form.get("company_id") or "").strip()
+    new_company_name = (request.form.get("new_company_name") or "").strip()[:200]
+    if company_id_raw == "__new__" and new_company_name:
+        cur.execute("SELECT id FROM crm_companies WHERE tenant_id=%s AND lower(name)=lower(%s)",
+                    (tenant_id, new_company_name))
+        existing = cur.fetchone()
+        if existing:
+            return existing[0] if not isinstance(existing, dict) else existing["id"]
+        cur.execute("INSERT INTO crm_companies (tenant_id, name) VALUES (%s,%s) RETURNING id",
+                    (tenant_id, new_company_name))
+        row = cur.fetchone()
+        return row[0] if not isinstance(row, dict) else row["id"]
+    if company_id_raw.isdigit():
+        return int(company_id_raw)
+    return None
+
+
+def _sync_contact_tags(cur, tenant_id: int, contact_id: int, tags_csv: str):
+    """Replaces this Contact's tags from a typed comma-separated string (the
+    "Tags" field on Add/Edit Contact and the Contact detail Edit Profile
+    panel) — against the SAME tag vocabulary used on Sales Pipeline deals
+    (lead_labels), creating any brand-new tag name first. Tags unification,
+    2026-09-09: this is now the only place wa_contacts get tagged from —
+    wa_contacts.tags (the old free-text array column) is no longer written."""
+    names = [t.strip()[:50] for t in (tags_csv or "").split(",") if t.strip()]
+    label_ids = []
+    for name in names:
+        cur.execute("SELECT id FROM lead_labels WHERE tenant_id=%s AND lower(name)=lower(%s)",
+                    (tenant_id, name))
+        row = cur.fetchone()
+        if row:
+            label_ids.append(row[0] if not isinstance(row, dict) else row["id"])
+        else:
+            cur.execute("INSERT INTO lead_labels (tenant_id, name) VALUES (%s,%s) RETURNING id",
+                        (tenant_id, name))
+            row = cur.fetchone()
+            label_ids.append(row[0] if not isinstance(row, dict) else row["id"])
+    cur.execute("DELETE FROM lead_label_contacts WHERE contact_id=%s", (contact_id,))
+    for lid in label_ids:
+        cur.execute(
+            "INSERT INTO lead_label_contacts (label_id, contact_id) VALUES (%s,%s) "
+            "ON CONFLICT DO NOTHING",
+            (lid, contact_id),
+        )
+
+
+def _stamp_campaign_converted(lead_id: int) -> None:
+    """When a deal is marked Won, stamp 'Converted' back onto whichever
+    WhatsApp campaign originally turned it into an opportunity (Campaign
+    Intelligence — see project_wa_campaign_intelligence_proposal). Only
+    recipient rows still at 'opportunity' are touched, so re-saving an
+    already-won deal, or a deal with no campaign origin at all
+    (pipeline_lead_id never set), is always a safe no-op. Best-effort: never
+    raises, since a reporting stamp should never block the actual Won save."""
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute(
+            """UPDATE wa_campaign_recipients
+               SET status='converted', updated_at=NOW()
+               WHERE pipeline_lead_id=%s AND status='opportunity'""",
+            (lead_id,),
+        )
+        conn.commit()
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ _stamp_campaign_converted error:", e)
+
+
+def _find_matching_pipeline_lead(cur, tenant_id: int, phone: str, contact_id: int | None = None):
+    """Find a Sales Pipeline lead (non-dropped) linked to this Contact. Checks the
+    real CRM link (merchant_pipeline_leads.wa_contact_id) first — set by the CRM
+    merge backfill and by every new link going forward — and falls back to the
+    older digits-only phone match for any pair the backfill hasn't linked yet.
+    Returns the row or None."""
+    if contact_id:
+        cur.execute("""
+            SELECT id, customer_name, stage, deal_value, phone, whatsapp_number, contact_channel FROM merchant_pipeline_leads
+            WHERE tenant_id=%s AND dropped_at IS NULL AND wa_contact_id=%s
+            LIMIT 1
+        """, (tenant_id, contact_id))
+        row = cur.fetchone()
+        if row:
+            return row
     if not phone:
         return None
     cur.execute("""
-        SELECT id, customer_name FROM merchant_pipeline_leads
+        SELECT id, customer_name, stage, deal_value, phone, whatsapp_number, contact_channel FROM merchant_pipeline_leads
         WHERE tenant_id=%s AND dropped_at IS NULL
           AND regexp_replace(COALESCE(whatsapp_number, phone), '[^0-9]', '', 'g')
               = regexp_replace(%s, '[^0-9]', '', 'g')
@@ -8866,13 +10829,25 @@ def _find_matching_pipeline_lead(cur, tenant_id: int, phone: str):
     return cur.fetchone()
 
 
-def _move_contact_to_pipeline(tenant_id: int, contact_id: int):
-    """Copy a Contact into Sales Pipeline as a new lead. This is a COPY/LINK, not a
-    move that deletes anything — the contact stays in Contacts too, since opt-out
-    and personalization data live there and must keep working for campaigns
+def _move_contact_to_pipeline(tenant_id: int, contact_id: int, always_create: bool = False):
+    """Turns a Contact into a Sales Lead. This is a COPY/LINK, not a move that
+    deletes anything — the contact stays in Contacts too, since opt-out and
+    personalization data live there and must keep working for campaigns
     regardless of where the recipient list came from (see
-    project_wa_campaign_pipeline_integration memory). Skips if a matching lead
-    (by phone) already exists rather than creating a duplicate.
+    project_wa_campaign_pipeline_integration memory).
+
+    always_create=False (the default) is the ORIGINAL, still-used-internally
+    behavior: dedupe by phone, link to an existing open Lead rather than
+    creating a duplicate. Campaign Intelligence's auto-opportunity creation
+    relies on exactly this — a customer replying twice to the same campaign
+    shouldn't spawn two Leads.
+
+    always_create=True is "Create Sales Lead" (the renamed user-facing
+    button, see project_sales_pipeline_leads_redesign memory): a Contact can
+    genuinely hold several live Leads at once (e.g. three separate deals with
+    the same person), so the button never links to an existing one — it
+    always makes a new Lead.
+
     Returns (created, status, label) where status is one of:
     'not_found' / 'no_phone' / 'exists' / 'created'."""
     conn = get_db_connection()
@@ -8886,8 +10861,16 @@ def _move_contact_to_pipeline(tenant_id: int, contact_id: int):
     if not contact.get("phone"):
         cur.close(); conn.close()
         return None, "no_phone", label
-    existing = _find_matching_pipeline_lead(cur, tenant_id, contact["phone"])
+    existing = None if always_create else _find_matching_pipeline_lead(cur, tenant_id, contact["phone"], contact_id)
     if existing:
+        # Backfill the CRM link if this pair predates it (matched by phone only
+        # so far) so it shows up joined from here on instead of re-matching by
+        # phone on every page load.
+        cur.execute(
+            "UPDATE merchant_pipeline_leads SET wa_contact_id=%s WHERE id=%s AND wa_contact_id IS NULL",
+            (contact_id, existing["id"]),
+        )
+        conn.commit()
         cur.close(); conn.close()
         return False, "exists", label
     # Sales Pipeline stores phone digits-only (no leading '+'), unlike wa_contacts —
@@ -8902,10 +10885,12 @@ def _move_contact_to_pipeline(tenant_id: int, contact_id: int):
     pipeline_phone = _re_pipeline_phone.sub(r"[^\d]", "", contact["phone"])
     cur.execute("""
         INSERT INTO merchant_pipeline_leads
-          (tenant_id, customer_name, phone, whatsapp_number, email, notes, stage, contact_channel)
-        VALUES (%s, %s, %s, %s, %s, %s, 'new_lead', 'whatsapp')
+          (tenant_id, customer_name, phone, whatsapp_number, email, notes, stage, contact_channel,
+           wa_contact_id, company_id, source)
+        VALUES (%s, %s, %s, %s, %s, %s, 'new_lead', 'whatsapp', %s, %s, 'whatsapp')
         RETURNING id
-    """, (tenant_id, label, pipeline_phone, pipeline_phone, contact.get("email"), contact.get("notes")))
+    """, (tenant_id, label, pipeline_phone, pipeline_phone, contact.get("email"), contact.get("notes"),
+          contact_id, contact.get("company_id")))
     lead_id = cur.fetchone()["id"]
     conn.commit()
     cur.close(); conn.close()
@@ -8914,25 +10899,25 @@ def _move_contact_to_pipeline(tenant_id: int, contact_id: int):
 
 @portal_bp.route("/whatsapp/contacts/<int:contact_id>/move-to-pipeline", methods=["POST"])
 def whatsapp_contact_move_to_pipeline(contact_id: int):
-    """Single-contact 'Add to Sales Pipeline' action — Contacts page and contact
-    detail page both post here."""
+    """'Create Sales Lead' action — Contacts page and contact detail page both
+    post here. Always creates a new Lead (see _move_contact_to_pipeline's
+    always_create docstring) — a Contact can hold several live Sales Leads
+    at once, this is how a second or third one gets started."""
     r = _require_login()
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     try:
-        created, status, label = _move_contact_to_pipeline(tenant_id, contact_id)
+        created, status, label = _move_contact_to_pipeline(tenant_id, contact_id, always_create=True)
         if status == "not_found":
             flash("Contact not found.", "warning")
         elif status == "no_phone":
-            flash(f"{label} has no phone number, so it can't be added to Sales Pipeline.", "warning")
-        elif status == "exists":
-            flash(f"{label} is already in Sales Pipeline.", "warning")
+            flash(f"{label} has no phone number, so a Sales Lead can't be created for them.", "warning")
         else:
-            flash(f"{label} added to Sales Pipeline.", "success")
+            flash(f"Sales Lead created for {label}.", "success")
     except Exception as e:
         print("⚠️ move_to_pipeline error:", e)
-        flash("Could not add to Sales Pipeline. Please try again.", "danger")
+        flash("Could not create a Sales Lead. Please try again.", "danger")
     return redirect(request.referrer or url_for("portal.whatsapp_contact_detail", contact_id=contact_id))
 
 
@@ -8944,12 +10929,20 @@ def whatsapp_contacts():
     tenant_id = int(customer["tenant_id"])
 
     search         = (request.args.get("q") or "").strip()
-    status_filter  = (request.args.get("status_filter") or "").strip()
-    tag_filter     = (request.args.get("tag_filter") or "").strip()
-    segment_filter = (request.args.get("segment_filter") or "").strip()
+    # Status and Segment — dropdown multi-select (2026-09-09), same pattern
+    # already used for Tags: repeats in the query string, matched with
+    # ANY()/EXISTS below (has at least one of the selected values).
+    status_filter  = [s for s in request.args.getlist("status_filter") if s in ("lead", "prospect", "customer", "inactive")]
+    tag_filter     = [t for t in request.args.getlist("tag_filter") if t.isdigit()]
+    segment_filter = [s for s in request.args.getlist("segment_filter") if s.isdigit()]
     has_phone      = request.args.get("has_phone") == "1"
     has_email      = request.args.get("has_email") == "1"
     has_pers       = request.args.get("has_pers") == "1"
+    date_from      = (request.args.get("date_from") or "").strip()
+    date_to        = (request.args.get("date_to") or "").strip()
+    import re as _re_date
+    if not _re_date.match(r"^\d{4}-\d{2}-\d{2}$", date_from): date_from = ""
+    if not _re_date.match(r"^\d{4}-\d{2}-\d{2}$", date_to): date_to = ""
 
     PER_PAGE_OPTIONS = ["25", "50", "100", "300", "500", "all"]
     per_page_raw = (request.args.get("per_page") or "100").strip().lower()
@@ -8962,36 +10955,38 @@ def whatsapp_contacts():
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-        # Build dynamic query
-        join_clause = ""
-        join_params = []
-        if segment_filter and segment_filter.isdigit():
-            join_clause = "JOIN wa_segment_members sm ON sm.contact_id = c.id AND sm.segment_id = %s"
-            join_params = [int(segment_filter)]
-
         clauses = ["c.tenant_id = %s"]
         where_params = [tenant_id]
         if search:
             clauses.append("(c.phone ILIKE %s OR c.display_name ILIKE %s OR c.email ILIKE %s)")
             where_params += [f"%{search}%", f"%{search}%", f"%{search}%"]
         if status_filter:
-            clauses.append("c.status = %s")
+            clauses.append("c.status = ANY(%s)")
             where_params.append(status_filter)
         if tag_filter:
-            clauses.append("%s = ANY(c.tags)")
-            where_params.append(tag_filter)
+            clauses.append("EXISTS (SELECT 1 FROM lead_label_contacts lc WHERE lc.contact_id=c.id AND lc.label_id = ANY(%s))")
+            where_params.append([int(t) for t in tag_filter])
+        if segment_filter:
+            clauses.append("EXISTS (SELECT 1 FROM wa_segment_members sm WHERE sm.contact_id=c.id AND sm.segment_id = ANY(%s))")
+            where_params.append([int(s) for s in segment_filter])
         if has_phone:
             clauses.append("(c.phone IS NOT NULL AND c.phone <> '')")
         if has_email:
             clauses.append("(c.email IS NOT NULL AND c.email <> '')")
         if has_pers:
             clauses.append("(c.personalization_note IS NOT NULL AND c.personalization_note <> '')")
+        if date_from:
+            clauses.append("c.created_at >= %s::date")
+            where_params.append(date_from)
+        if date_to:
+            clauses.append("c.created_at < (%s::date + INTERVAL '1 day')")
+            where_params.append(date_to)
 
         where = " AND ".join(clauses)
 
         cur.execute(
-            f"SELECT COUNT(*) AS c FROM wa_contacts c {join_clause} WHERE {where}",
-            join_params + where_params,
+            f"SELECT COUNT(*) AS c FROM wa_contacts c WHERE {where}",
+            where_params,
         )
         filtered_total = cur.fetchone()["c"]
 
@@ -9007,24 +11002,60 @@ def whatsapp_contacts():
             limit_clause = "LIMIT %s OFFSET %s"
             limit_params = [per_page, (page - 1) * per_page]
 
-        # in_pipeline: does this contact already have a matching Sales Pipeline lead
-        # (by phone)? Only computed for the current page's rows (cheap), so the list
-        # can show "✓ In Sales Pipeline" instead of an always-actionable button.
+        # CRM merge: pull in the linked deal (if any) and company (if any) for
+        # each contact directly via the link columns set by crm_merge_backfill.py
+        # / the "Add to CRM Pipeline" action, instead of re-matching by phone
+        # on every page load like the old in_pipeline EXISTS check did.
+        #
+        # 2026-09-09 fix: a contact can have MORE THAN ONE open deal (191 of
+        # them do, on real data) — the plain LEFT JOIN this used to be fanned
+        # out into one row per deal, so the same contact appeared 2-3 times
+        # on the Contacts page (reported as "duplicates"; verified none are
+        # real — wa_contacts already has a UNIQUE(tenant_id, phone) and no
+        # exact-name dupes were found either). Switched to a LATERAL join
+        # that picks exactly one deal per contact (their most recently
+        # updated open one), plus a real count so the UI can show "+N more".
         query = f"""
-            SELECT c.*, EXISTS (
-                SELECT 1 FROM merchant_pipeline_leads pl
-                WHERE pl.tenant_id = c.tenant_id AND pl.dropped_at IS NULL
-                  AND regexp_replace(COALESCE(pl.whatsapp_number, pl.phone), '[^0-9]', '', 'g')
-                      = regexp_replace(c.phone, '[^0-9]', '', 'g')
-            ) AS in_pipeline
+            SELECT c.*,
+                   co.id   AS company_id_join,
+                   co.name AS company_name,
+                   pl.id         AS pipeline_lead_id,
+                   pl.stage      AS pipeline_stage,
+                   pl.deal_value AS pipeline_deal_value,
+                   (pl.id IS NOT NULL) AS in_pipeline,
+                   COALESCE(pl_count.deal_count, 0) AS active_deal_count,
+                   (SELECT array_agg(lb.name ORDER BY lb.name) FROM lead_label_contacts lc
+                    JOIN lead_labels lb ON lb.id = lc.label_id WHERE lc.contact_id = c.id) AS tags_list
             FROM wa_contacts c
-            {join_clause}
+            LEFT JOIN LATERAL (
+                SELECT id, stage, deal_value FROM merchant_pipeline_leads
+                WHERE wa_contact_id = c.id AND dropped_at IS NULL
+                ORDER BY updated_at DESC NULLS LAST, created_at DESC
+                LIMIT 1
+            ) pl ON true
+            LEFT JOIN (
+                SELECT wa_contact_id, COUNT(*) AS deal_count FROM merchant_pipeline_leads
+                WHERE wa_contact_id IS NOT NULL AND dropped_at IS NULL
+                GROUP BY wa_contact_id
+            ) pl_count ON pl_count.wa_contact_id = c.id
+            LEFT JOIN crm_companies co ON co.id = c.company_id
             WHERE {where}
             ORDER BY c.display_name ASC NULLS LAST, c.created_at DESC
             {limit_clause}
         """
-        cur.execute(query, join_params + where_params + limit_params)
+        cur.execute(query, where_params + limit_params)
         contacts = cur.fetchall()
+
+        # Pending CRM merge-review count, for the "N contacts need a quick
+        # check" banner (see crm_match_review()).
+        cur.execute(
+            "SELECT COUNT(*) AS c FROM crm_match_candidates WHERE tenant_id=%s AND status='pending'",
+            (tenant_id,),
+        )
+        pending_review_count = cur.fetchone()["c"]
+
+        cur.execute("SELECT COUNT(*) AS c FROM crm_companies WHERE tenant_id=%s", (tenant_id,))
+        company_count = cur.fetchone()["c"]
 
         cur.execute("SELECT COUNT(*) AS total FROM wa_contacts WHERE tenant_id=%s", (tenant_id,))
         total = cur.fetchone()["total"]
@@ -9035,13 +11066,54 @@ def whatsapp_contacts():
         """, (tenant_id,))
         new_week = cur.fetchone()["new_week"]
 
-        # All distinct tags used by this tenant's contacts
+        # Tags used on this tenant's contacts — same shared vocabulary as
+        # Sales Pipeline deal tags (lead_labels), see _sync_contact_tags().
         cur.execute("""
-            SELECT DISTINCT unnest(tags) AS tag FROM wa_contacts
-            WHERE tenant_id=%s AND array_length(tags,1) > 0
-            ORDER BY tag
+            SELECT lb.id, lb.name, COUNT(lc.contact_id) AS use_count
+            FROM lead_labels lb
+            JOIN lead_label_contacts lc ON lc.label_id = lb.id
+            WHERE lb.tenant_id=%s
+            GROUP BY lb.id, lb.name
+            ORDER BY lb.name
         """, (tenant_id,))
-        all_tags = [row["tag"] for row in cur.fetchall()]
+        all_tags = cur.fetchall()
+        selected_tags = [t for t in all_tags if str(t["id"]) in tag_filter]
+
+        # Per-status counts, for the Status pills in the filter panel.
+        cur.execute("""
+            SELECT status, COUNT(*) AS c FROM wa_contacts
+            WHERE tenant_id=%s GROUP BY status
+        """, (tenant_id,))
+        status_counts = {row["status"] or "lead": row["c"] for row in cur.fetchall()}
+
+        # Saved filter views — the filter panel's "Save this filter as a
+        # view" feature. Tenant-wide (any staff login sees/uses them, like
+        # Segments/Tags). "active" marks the one matching the CURRENT filter
+        # state so it can be highlighted.
+        cur.execute("""
+            SELECT id, name, filters FROM contact_filter_views
+            WHERE tenant_id=%s ORDER BY created_at DESC
+        """, (tenant_id,))
+        current_filters_norm = {
+            "status_filter": sorted(status_filter), "tag_filter": sorted(tag_filter),
+            "segment_filter": sorted(segment_filter), "date_from": date_from, "date_to": date_to,
+            "has_phone": has_phone, "has_email": has_email, "has_pers": has_pers,
+        }
+        saved_views = []
+        for row in cur.fetchall():
+            vf = row["filters"] or {}
+            view_norm = {
+                "status_filter": sorted(vf.get("status_filter", [])), "tag_filter": sorted(vf.get("tag_filter", [])),
+                "segment_filter": sorted(vf.get("segment_filter", [])), "date_from": vf.get("date_from", ""),
+                "date_to": vf.get("date_to", ""), "has_phone": bool(vf.get("has_phone")),
+                "has_email": bool(vf.get("has_email")), "has_pers": bool(vf.get("has_pers")),
+            }
+            saved_views.append({
+                "id": row["id"],
+                "name": row["name"],
+                "apply_url": url_for("portal.whatsapp_contacts", **vf),
+                "active": view_norm == current_filters_norm,
+            })
 
         # Segments for filter sidebar
         cur.execute("""
@@ -9052,12 +11124,38 @@ def whatsapp_contacts():
             GROUP BY s.id ORDER BY s.name
         """, (tenant_id,))
         segments = cur.fetchall()
+        selected_segments = [s for s in segments if str(s["id"]) in segment_filter]
+        selected_statuses = [{"value": v, "label": v.title()} for v in status_filter]
+
+        # All companies, for the Company field on the Add/Edit Contact forms
+        cur.execute("SELECT id, name FROM crm_companies WHERE tenant_id=%s ORDER BY name", (tenant_id,))
+        all_companies = cur.fetchall()
+
+        # Every tag this tenant has (not just ones already on a contact, unlike
+        # all_tags above) — for the Tags field's client-side duplicate-name
+        # check on Add/Edit Contact and the bulk "Add Tag" modal.
+        cur.execute("SELECT id, name FROM lead_labels WHERE tenant_id=%s ORDER BY name", (tenant_id,))
+        dedupe_tags = cur.fetchall()
+
+        # Every contact's id/name/phone, for the Add Contact drawer's
+        # duplicate-check (exact phone match + fuzzy name match) — never
+        # blocks saving, just warns before creating a possible duplicate.
+        cur.execute("SELECT id, display_name, phone FROM wa_contacts WHERE tenant_id=%s", (tenant_id,))
+        dedupe_contacts = [
+            {"id": r["id"], "name": r["display_name"] or r["phone"], "phone": r["phone"],
+             "url": url_for("portal.whatsapp_contact_detail", contact_id=r["id"])}
+            for r in cur.fetchall()
+        ]
 
         cur.close(); conn.close()
     except Exception as e:
         print("⚠️ whatsapp_contacts error:", e)
-        contacts, total, new_week, all_tags, segments = [], 0, 0, [], []
+        contacts, total, new_week, all_tags, segments, all_companies, dedupe_tags = [], 0, 0, [], [], [], []
         filtered_total, total_pages = 0, 1
+        pending_review_count, company_count = 0, 0
+        selected_tags, status_counts, saved_views = [], {}, []
+        selected_segments, selected_statuses = [], []
+        dedupe_contacts = []
 
     return render_template(
         "portal/whatsapp_contacts.html",
@@ -9071,12 +11169,25 @@ def whatsapp_contacts():
         has_phone=has_phone,
         has_email=has_email,
         has_pers=has_pers,
+        date_from=date_from,
+        date_to=date_to,
         all_tags=all_tags,
+        selected_tags=selected_tags,
+        selected_statuses=selected_statuses,
+        selected_segments=selected_segments,
+        status_counts=status_counts,
+        saved_views=saved_views,
         segments=segments,
+        all_companies=all_companies,
+        dedupe_tags=dedupe_tags,
+        dedupe_contacts=dedupe_contacts,
         filtered_total=filtered_total,
         per_page=per_page_raw,
         page=page,
         total_pages=total_pages,
+        pending_review_count=pending_review_count,
+        company_count=company_count,
+        stage_labels=pipeline_effective_stage_labels(tenant_id),
     )
 
 
@@ -9090,13 +11201,13 @@ def whatsapp_contacts_add():
     phone           = _normalise_phone(request.form.get("phone") or "")
     email           = (request.form.get("email") or "").strip()[:200] or None
     display_name    = (request.form.get("display_name") or "").strip()[:200]
+    contact_person  = (request.form.get("contact_person") or "").strip()[:200] or None
     notes           = (request.form.get("notes") or "").strip()
     personalization_note = (request.form.get("personalization_note") or "").strip()[:500] or None
     status          = (request.form.get("status") or "lead").strip()
     if status not in ("lead", "prospect", "customer", "inactive"):
         status = "lead"
     tags_csv = (request.form.get("tags_csv") or "").strip()
-    tags = [t.strip()[:50] for t in tags_csv.split(",") if t.strip()]
 
     if not phone or len(phone) < 7:
         flash("A valid phone number with country code is required.", "danger")
@@ -9104,19 +11215,27 @@ def whatsapp_contacts_add():
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        company_id = _resolve_company_from_form(cur, tenant_id)
         cur.execute("""
-            INSERT INTO wa_contacts (tenant_id, phone, email, display_name, notes, personalization_note, status, tags, source)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'manual')
+            INSERT INTO wa_contacts (tenant_id, phone, email, display_name, contact_person, notes, personalization_note, status, source, company_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'manual', %s)
             ON CONFLICT (tenant_id, phone)
             DO UPDATE SET email=EXCLUDED.email,
                           display_name=EXCLUDED.display_name,
+                          contact_person=EXCLUDED.contact_person,
                           notes=EXCLUDED.notes,
                           personalization_note=EXCLUDED.personalization_note,
                           status=EXCLUDED.status,
-                          tags=EXCLUDED.tags,
+                          company_id=COALESCE(EXCLUDED.company_id, wa_contacts.company_id),
                           updated_at=NOW()
-        """, (tenant_id, phone, email, display_name or None, notes or None, personalization_note, status, tags))
+            RETURNING id
+        """, (tenant_id, phone, email, display_name or None, contact_person, notes or None, personalization_note, status, company_id))
+        new_contact_id = cur.fetchone()["id"]
+        _sync_contact_tags(cur, tenant_id, new_contact_id, tags_csv)
+        if company_id:
+            cur.execute("UPDATE merchant_pipeline_leads SET company_id=%s WHERE wa_contact_id=%s AND company_id IS NULL",
+                        (company_id, new_contact_id))
         conn.commit()
         cur.close(); conn.close()
         flash(f"Contact {display_name or phone} saved.", "success")
@@ -9136,22 +11255,30 @@ def whatsapp_contacts_edit(contact_id: int):
 
     email           = (request.form.get("email") or "").strip()[:200] or None
     display_name    = (request.form.get("display_name") or "").strip()[:200]
+    contact_person  = (request.form.get("contact_person") or "").strip()[:200] or None
     notes           = (request.form.get("notes") or "").strip()
     personalization_note = (request.form.get("personalization_note") or "").strip()[:500] or None
     status          = (request.form.get("status") or "lead").strip()
     if status not in ("lead", "prospect", "customer", "inactive"):
         status = "lead"
     tags_csv = (request.form.get("tags_csv") or "").strip()
-    tags = [t.strip()[:50] for t in tags_csv.split(",") if t.strip()]
 
     try:
         conn = get_db_connection()
-        cur  = conn.cursor()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        company_id = _resolve_company_from_form(cur, tenant_id)
         cur.execute("""
             UPDATE wa_contacts
-            SET display_name=%s, email=%s, notes=%s, personalization_note=%s, status=%s, tags=%s, updated_at=NOW()
+            SET display_name=%s, contact_person=%s, email=%s, notes=%s, personalization_note=%s, status=%s,
+                company_id=%s, updated_at=NOW()
             WHERE id=%s AND tenant_id=%s
-        """, (display_name or None, email, notes or None, personalization_note, status, tags, contact_id, tenant_id))
+        """, (display_name or None, contact_person, email, notes or None, personalization_note, status,
+              company_id, contact_id, tenant_id))
+        _sync_contact_tags(cur, tenant_id, contact_id, tags_csv)
+        # Keep a linked deal's company in step with the contact's — same rule
+        # the standalone set-company action used to apply.
+        cur.execute("UPDATE merchant_pipeline_leads SET company_id=%s WHERE wa_contact_id=%s",
+                    (company_id, contact_id))
         conn.commit()
         cur.close(); conn.close()
         flash("Contact updated.", "success")
@@ -9279,12 +11406,17 @@ def whatsapp_contacts_export():
     tenant_id = int(customer["tenant_id"])
 
     search         = (request.args.get("q") or "").strip()
-    status_filter  = (request.args.get("status_filter") or "").strip()
-    tag_filter     = (request.args.get("tag_filter") or "").strip()
-    segment_filter = (request.args.get("segment_filter") or "").strip()
+    status_filter  = [s for s in request.args.getlist("status_filter") if s in ("lead", "prospect", "customer", "inactive")]
+    tag_filter     = [t for t in request.args.getlist("tag_filter") if t.isdigit()]
+    segment_filter = [s for s in request.args.getlist("segment_filter") if s.isdigit()]
     has_phone      = request.args.get("has_phone") == "1"
     has_email      = request.args.get("has_email") == "1"
     has_pers       = request.args.get("has_pers") == "1"
+    date_from      = (request.args.get("date_from") or "").strip()
+    date_to        = (request.args.get("date_to") or "").strip()
+    import re as _re_date
+    if not _re_date.match(r"^\d{4}-\d{2}-\d{2}$", date_from): date_from = ""
+    if not _re_date.match(r"^\d{4}-\d{2}-\d{2}$", date_to): date_to = ""
 
     import csv, io
     from flask import Response
@@ -9292,38 +11424,41 @@ def whatsapp_contacts_export():
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-        join_clause = ""
-        join_params = []
-        if segment_filter and segment_filter.isdigit():
-            join_clause = "JOIN wa_segment_members sm ON sm.contact_id = c.id AND sm.segment_id = %s"
-            join_params = [int(segment_filter)]
-
         clauses = ["c.tenant_id = %s"]
         where_params = [tenant_id]
         if search:
             clauses.append("(c.phone ILIKE %s OR c.display_name ILIKE %s OR c.email ILIKE %s)")
             where_params += [f"%{search}%", f"%{search}%", f"%{search}%"]
         if status_filter:
-            clauses.append("c.status = %s")
+            clauses.append("c.status = ANY(%s)")
             where_params.append(status_filter)
         if tag_filter:
-            clauses.append("%s = ANY(c.tags)")
-            where_params.append(tag_filter)
+            clauses.append("EXISTS (SELECT 1 FROM lead_label_contacts lc WHERE lc.contact_id=c.id AND lc.label_id = ANY(%s))")
+            where_params.append([int(t) for t in tag_filter])
+        if segment_filter:
+            clauses.append("EXISTS (SELECT 1 FROM wa_segment_members sm WHERE sm.contact_id=c.id AND sm.segment_id = ANY(%s))")
+            where_params.append([int(s) for s in segment_filter])
         if has_phone:
             clauses.append("(c.phone IS NOT NULL AND c.phone <> '')")
         if has_email:
             clauses.append("(c.email IS NOT NULL AND c.email <> '')")
         if has_pers:
             clauses.append("(c.personalization_note IS NOT NULL AND c.personalization_note <> '')")
+        if date_from:
+            clauses.append("c.created_at >= %s::date")
+            where_params.append(date_from)
+        if date_to:
+            clauses.append("c.created_at < (%s::date + INTERVAL '1 day')")
+            where_params.append(date_to)
 
         where = " AND ".join(clauses)
 
         cur.execute(f"""
-            SELECT c.phone, c.email, c.display_name, c.notes, c.created_at
-            FROM wa_contacts c {join_clause}
+            SELECT c.phone, c.email, c.display_name, c.contact_person, c.notes, c.created_at
+            FROM wa_contacts c
             WHERE {where}
             ORDER BY c.display_name ASC NULLS LAST
-        """, join_params + where_params)
+        """, where_params)
         rows = cur.fetchall()
         cur.close(); conn.close()
     except Exception as e:
@@ -9332,12 +11467,13 @@ def whatsapp_contacts_export():
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["phone", "email", "name", "notes", "added"])
+    writer.writerow(["phone", "email", "name", "contact_person", "notes", "added"])
     for row in rows:
         writer.writerow([
             row["phone"],
             row["email"] or "",
             row["display_name"] or "",
+            row["contact_person"] or "",
             row["notes"] or "",
             row["created_at"].strftime("%Y-%m-%d") if row["created_at"] else "",
         ])
@@ -9347,6 +11483,87 @@ def whatsapp_contacts_export():
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=contacts.csv"},
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WHATSAPP CONTACTS — SAVED FILTER VIEWS (2026-09-09)
+# The Contacts filter panel's "Save this filter as a view" feature. Tenant-
+# wide, not per-user — anyone logged into this account sees and can apply or
+# delete any saved view, matching how Segments/Tags already work here.
+# ══════════════════════════════════════════════════════════════════════════════
+
+@portal_bp.route("/whatsapp/contacts/views/save", methods=["POST"])
+def whatsapp_contacts_save_view():
+    r = _require_login()
+    if r: return jsonify({"error": "Please log in again."}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    name = (request.form.get("name") or "").strip()[:100]
+    if not name:
+        return jsonify({"error": "Please name this view."}), 400
+
+    date_from = (request.form.get("date_from") or "").strip()
+    date_to   = (request.form.get("date_to") or "").strip()
+    import re as _re_view_date
+    if not _re_view_date.match(r"^\d{4}-\d{2}-\d{2}$", date_from): date_from = ""
+    if not _re_view_date.match(r"^\d{4}-\d{2}-\d{2}$", date_to): date_to = ""
+
+    # "1" strings, not Python bools — matches how has_phone/has_email/has_pers
+    # are represented everywhere else (query string, hidden form fields), so
+    # a saved view's filters plug straight into url_for(**filters) later.
+    filters = {
+        "status_filter":  [s for s in request.form.getlist("status_filter") if s in ("lead", "prospect", "customer", "inactive")],
+        "tag_filter":     [t for t in request.form.getlist("tag_filter") if t.isdigit()],
+        "segment_filter": [s for s in request.form.getlist("segment_filter") if s.isdigit()],
+        "date_from":      date_from,
+        "date_to":        date_to,
+        "has_phone":      "1" if request.form.get("has_phone") == "1" else "",
+        "has_email":      "1" if request.form.get("has_email") == "1" else "",
+        "has_pers":       "1" if request.form.get("has_pers") == "1" else "",
+    }
+    filters = {k: v for k, v in filters.items() if v}  # drop anything empty/unset
+
+    if not filters:
+        return jsonify({"error": "Pick at least one filter before saving a view."}), 400
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute(
+            "INSERT INTO contact_filter_views (tenant_id, name, filters, created_by) "
+            "VALUES (%s, %s, %s, %s) RETURNING id",
+            (tenant_id, name, _json.dumps(filters), int(_customer_id())),
+        )
+        view_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close(); conn.close()
+        # Hand back the URL for exactly what got saved, so the page can
+        # navigate there — "saved" should also mean "now applied".
+        apply_url = url_for("portal.whatsapp_contacts", **filters)
+        return jsonify({"ok": True, "id": view_id, "name": name, "apply_url": apply_url})
+    except Exception as e:
+        print("⚠️ whatsapp_contacts_save_view error:", e)
+        return jsonify({"error": "Could not save this view."}), 500
+
+
+@portal_bp.route("/whatsapp/contacts/views/<int:view_id>/delete", methods=["POST"])
+def whatsapp_contacts_delete_view(view_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("DELETE FROM contact_filter_views WHERE id=%s AND tenant_id=%s", (view_id, tenant_id))
+        deleted = cur.rowcount > 0
+        conn.commit()
+        cur.close(); conn.close()
+        flash("View deleted." if deleted else "View not found.", "success" if deleted else "danger")
+    except Exception as e:
+        print("⚠️ whatsapp_contacts_delete_view error:", e)
+        flash("Could not delete this view.", "danger")
+    return redirect(url_for("portal.whatsapp_contacts"))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -9364,8 +11581,14 @@ def whatsapp_contact_detail(contact_id: int):
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-        cur.execute("SELECT * FROM wa_contacts WHERE id=%s AND tenant_id=%s",
-                    (contact_id, tenant_id))
+        cur.execute("""
+            SELECT c.*, co.name AS company_name, co.website AS company_website,
+                   (SELECT array_agg(lb.name ORDER BY lb.name) FROM lead_label_contacts lc
+                    JOIN lead_labels lb ON lb.id = lc.label_id WHERE lc.contact_id = c.id) AS tags_list
+            FROM wa_contacts c
+            LEFT JOIN crm_companies co ON co.id = c.company_id
+            WHERE c.id=%s AND c.tenant_id=%s
+        """, (contact_id, tenant_id))
         contact = cur.fetchone()
         if not contact:
             flash("Contact not found.", "warning")
@@ -9423,8 +11646,68 @@ def whatsapp_contact_detail(contact_id: int):
         """, (tenant_id, contact["phone"]))
         msg_count = cur.fetchone()["msg_count"]
 
-        # Does this contact already have a matching Sales Pipeline lead?
-        pipeline_lead = _find_matching_pipeline_lead(cur, tenant_id, contact["phone"])
+        # CRM: a Contact can now hold several live Sales Leads at once (see
+        # project_sales_pipeline_leads_redesign memory) — show the most
+        # recently-touched one here as a summary, plus how many others exist.
+        # The full picture for any one Lead lives on its own Lead Command
+        # Centre page (/sales-pipeline/<id>), not here.
+        pipeline_lead = None
+        pipeline_lead_count = 0
+        if contact.get("phone"):
+            cur.execute("""
+                SELECT * FROM merchant_pipeline_leads
+                WHERE tenant_id=%s AND dropped_at IS NULL
+                  AND (wa_contact_id=%s OR regexp_replace(COALESCE(whatsapp_number, phone), '[^0-9]', '', 'g')
+                                          = regexp_replace(%s, '[^0-9]', '', 'g'))
+                ORDER BY updated_at DESC LIMIT 1
+            """, (tenant_id, contact_id, contact["phone"]))
+            pipeline_lead = cur.fetchone()
+            cur.execute("""
+                SELECT COUNT(*) AS c FROM merchant_pipeline_leads
+                WHERE tenant_id=%s AND dropped_at IS NULL
+                  AND (wa_contact_id=%s OR regexp_replace(COALESCE(whatsapp_number, phone), '[^0-9]', '', 'g')
+                                          = regexp_replace(%s, '[^0-9]', '', 'g'))
+            """, (tenant_id, contact_id, contact["phone"]))
+            pipeline_lead_count = cur.fetchone()["c"]
+        stage_history = pipeline_get_stage_history(pipeline_lead["id"]) if pipeline_lead else []
+
+        # ── Unified Activity & Notes timeline: notes + deal-stage moves +
+        # WhatsApp messages + a synthesized "contact created" event, merged
+        # into one list sorted newest-first (this is what the CRM screen
+        # design calls "Activity & Notes" — everything in one place instead
+        # of three separate tabs). ──
+        timeline = []
+        for n in notes:
+            timeline.append({"kind": "note", "created_at": n["created_at"],
+                              "author": n["author_name"], "body": n["body"]})
+        for h in stage_history:
+            timeline.append({"kind": "stage", "created_at": h["created_at"],
+                              "to_stage": h["to_stage"], "from_stage": h["from_stage"],
+                              "body": h["notes"]})
+        for m in recent_messages:
+            timeline.append({"kind": "message", "created_at": m["created_at"],
+                              "direction": m["direction"], "body": m["content"]})
+        timeline.append({"kind": "created", "created_at": contact["created_at"]})
+        timeline.sort(key=lambda t: t["created_at"], reverse=True)
+
+        # Consent history — most recent first, for the Consent panel
+        cur.execute("""
+            SELECT channel, action, reason, source, created_at
+            FROM contact_consent_log
+            WHERE contact_id=%s
+            ORDER BY created_at DESC
+            LIMIT 10
+        """, (contact_id,))
+        consent_log = cur.fetchall()
+
+        # All companies, for the Company field on the Edit Profile panel
+        cur.execute("SELECT id, name FROM crm_companies WHERE tenant_id=%s ORDER BY name", (tenant_id,))
+        all_companies = cur.fetchall()
+
+        # Every tag this tenant has, for the Tags field's client-side
+        # duplicate-name check on the Edit Profile panel.
+        cur.execute("SELECT id, name FROM lead_labels WHERE tenant_id=%s ORDER BY name", (tenant_id,))
+        dedupe_tags = cur.fetchall()
 
         cur.close(); conn.close()
     except Exception as e:
@@ -9439,9 +11722,88 @@ def whatsapp_contact_detail(contact_id: int):
         recent_messages=recent_messages,
         contact_segments=contact_segments,
         available_segments=available_segments,
+        all_companies=all_companies,
+        dedupe_tags=dedupe_tags,
         msg_count=msg_count,
         pipeline_lead=pipeline_lead,
+        pipeline_lead_count=pipeline_lead_count,
+        timeline=timeline,
+        stage_labels=pipeline_effective_stage_labels(tenant_id),
+        consent_log=consent_log,
     )
+
+
+@portal_bp.route("/whatsapp/contacts/<int:contact_id>/consent", methods=["POST"])
+def whatsapp_contact_set_consent(contact_id: int):
+    """Manual per-channel opt-out/opt-in from the Consent panel on a contact's
+    profile — the toggle a staff member uses when a contact asks directly, or
+    to correct one set automatically. Mirrors an email toggle into
+    email_suppressions too, since that's the table _send_email_campaign_now
+    actually checks — wa_contacts.email_opted_out alone wouldn't stop a send."""
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    channel = (request.form.get("channel") or "").strip()
+    action  = (request.form.get("action") or "").strip()
+    if channel not in ("whatsapp", "email", "sms", "all") or action not in ("opt_out", "opt_in"):
+        flash("Invalid consent action.", "danger")
+        return redirect(url_for("portal.whatsapp_contact_detail", contact_id=contact_id))
+
+    opted_out = (action == "opt_out")
+    channels  = ("whatsapp", "email", "sms") if channel == "all" else (channel,)
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT id, email FROM wa_contacts WHERE id=%s AND tenant_id=%s", (contact_id, tenant_id))
+        contact = cur.fetchone()
+        if not contact:
+            cur.close(); conn.close()
+            flash("Contact not found.", "warning")
+            return redirect(url_for("portal.whatsapp_contacts"))
+
+        col_map = {
+            "whatsapp": ("opted_out", "opted_out_at"),
+            "email":    ("email_opted_out", "email_opted_out_at"),
+            "sms":      ("sms_opted_out", "sms_opted_out_at"),
+        }
+        for ch in channels:
+            flag_col, at_col = col_map[ch]
+            cur.execute(
+                f"UPDATE wa_contacts SET {flag_col}=%s, {at_col}={'NOW()' if opted_out else 'NULL'} "
+                f"WHERE id=%s AND tenant_id=%s",
+                (opted_out, contact_id, tenant_id),
+            )
+            if ch == "email" and contact["email"]:
+                if opted_out:
+                    cur.execute(
+                        """INSERT INTO email_suppressions (tenant_id, email, reason)
+                               VALUES (%s, %s, 'unsubscribe') ON CONFLICT (tenant_id, email) DO NOTHING""",
+                        (tenant_id, contact["email"].lower()),
+                    )
+                else:
+                    cur.execute(
+                        "DELETE FROM email_suppressions WHERE tenant_id=%s AND email=%s",
+                        (tenant_id, contact["email"].lower()),
+                    )
+            cur.execute(
+                """INSERT INTO contact_consent_log
+                       (tenant_id, contact_id, channel, action, reason, source)
+                   VALUES (%s, %s, %s, %s, %s, 'manual_staff')""",
+                (tenant_id, contact_id, ch, action,
+                 f"Set {action.replace('_', ' ')} manually from the contact profile"),
+            )
+
+        conn.commit()
+        cur.close(); conn.close()
+        flash("Consent updated.", "success")
+    except Exception as e:
+        print(f"⚠️ whatsapp_contact_set_consent error: {e}")
+        flash("Could not update consent.", "danger")
+
+    return redirect(url_for("portal.whatsapp_contact_detail", contact_id=contact_id))
 
 
 @portal_bp.route("/whatsapp/contacts/<int:contact_id>/notes", methods=["POST"])
@@ -9566,6 +11928,312 @@ def whatsapp_contact_remove_from_segment(contact_id: int, seg_id: int):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# CRM — COMPANIES (2026-09-09 CRM merge: the "company" a Contact/Deal belongs to)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@portal_bp.route("/crm/companies")
+def crm_companies():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    search = (request.args.get("q") or "").strip()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        clauses = ["co.tenant_id=%s"]
+        params  = [tenant_id]
+        if search:
+            clauses.append("co.name ILIKE %s")
+            params.append(f"%{search}%")
+        cur.execute(f"""
+            SELECT co.*,
+                   COUNT(DISTINCT c.id)  AS people_count,
+                   COUNT(DISTINCT pl.id) FILTER (WHERE pl.dropped_at IS NULL) AS open_deal_count,
+                   COALESCE(SUM(pl.deal_value) FILTER (WHERE pl.dropped_at IS NULL), 0) AS open_deal_value
+            FROM crm_companies co
+            LEFT JOIN wa_contacts c ON c.company_id = co.id
+            LEFT JOIN merchant_pipeline_leads pl ON pl.company_id = co.id
+            WHERE {" AND ".join(clauses)}
+            GROUP BY co.id
+            ORDER BY co.name ASC
+        """, params)
+        companies = cur.fetchall()
+
+        # Full unfiltered id/name list for the "Add Company" modal's client-side
+        # duplicate-name check — independent of the search box above, so a
+        # near-duplicate is caught even if it's not in the currently filtered view.
+        cur.execute("SELECT id, name FROM crm_companies WHERE tenant_id=%s ORDER BY name ASC", (tenant_id,))
+        dedupe_companies = [
+            {"id": row["id"], "name": row["name"],
+             "url": url_for("portal.crm_company_detail", company_id=row["id"])}
+            for row in cur.fetchall()
+        ]
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ crm_companies error:", e)
+        companies = []
+        dedupe_companies = []
+        flash("Could not load companies.", "danger")
+
+    return render_template("portal/crm_companies.html", companies=companies, search=search,
+                            dedupe_companies=dedupe_companies)
+
+
+@portal_bp.route("/crm/companies/add", methods=["POST"])
+def crm_companies_add():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    name    = (request.form.get("name") or "").strip()[:200]
+    website = (request.form.get("website") or "").strip()[:200] or None
+    if not name:
+        flash("A company name is required.", "danger")
+        return redirect(url_for("portal.crm_companies"))
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT id FROM crm_companies WHERE tenant_id=%s AND lower(name)=lower(%s)",
+                    (tenant_id, name))
+        existing = cur.fetchone()
+        if existing:
+            flash(f"{name} already exists.", "warning")
+            company_id = existing["id"]
+        else:
+            cur.execute(
+                "INSERT INTO crm_companies (tenant_id, name, website) VALUES (%s,%s,%s) RETURNING id",
+                (tenant_id, name, website),
+            )
+            company_id = cur.fetchone()["id"]
+            conn.commit()
+            flash(f"{name} added.", "success")
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ crm_companies_add error:", e)
+        flash("Could not save company.", "danger")
+        return redirect(url_for("portal.crm_companies"))
+    return redirect(url_for("portal.crm_company_detail", company_id=company_id))
+
+
+@portal_bp.route("/crm/companies/<int:company_id>")
+def crm_company_detail(company_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT * FROM crm_companies WHERE id=%s AND tenant_id=%s", (company_id, tenant_id))
+        company = cur.fetchone()
+        if not company:
+            flash("Company not found.", "warning")
+            return redirect(url_for("portal.crm_companies"))
+
+        # People at this company, with whichever deal (if any) each is linked to.
+        # Same LATERAL fix as the Contacts list (2026-09-09) — a person with more
+        # than one open deal was appearing once per deal here too.
+        cur.execute("""
+            SELECT c.*, pl.id AS pipeline_lead_id, pl.stage AS pipeline_stage,
+                   pl.deal_value AS pipeline_deal_value, pl.contact_person,
+                   COALESCE(pl_count.deal_count, 0) AS active_deal_count
+            FROM wa_contacts c
+            LEFT JOIN LATERAL (
+                SELECT id, stage, deal_value, contact_person FROM merchant_pipeline_leads
+                WHERE wa_contact_id = c.id AND dropped_at IS NULL
+                ORDER BY updated_at DESC NULLS LAST, created_at DESC
+                LIMIT 1
+            ) pl ON true
+            LEFT JOIN (
+                SELECT wa_contact_id, COUNT(*) AS deal_count FROM merchant_pipeline_leads
+                WHERE wa_contact_id IS NOT NULL AND dropped_at IS NULL
+                GROUP BY wa_contact_id
+            ) pl_count ON pl_count.wa_contact_id = c.id
+            WHERE c.company_id = %s
+            ORDER BY c.display_name ASC NULLS LAST
+        """, (company_id,))
+        people = cur.fetchall()
+
+        # Company-level notes (stored the same way as contact notes, just
+        # attached to the company instead of a person — see crm_companies.html /
+        # crm_company_add_note below)
+        cur.execute("""
+            SELECT n.*,
+                   COALESCE(NULLIF(TRIM(c.first_name || ' ' || COALESCE(c.last_name,'')), ''), c.email) AS author_name
+            FROM crm_company_notes n
+            LEFT JOIN customers c ON c.id = n.author_id
+            WHERE n.company_id = %s
+            ORDER BY n.created_at DESC
+        """, (company_id,))
+        notes = cur.fetchall()
+
+        cur.execute("""
+            SELECT COUNT(*) FILTER (WHERE pl.dropped_at IS NULL) AS open_deal_count,
+                   COALESCE(SUM(pl.deal_value) FILTER (WHERE pl.dropped_at IS NULL), 0) AS open_deal_value
+            FROM merchant_pipeline_leads pl WHERE pl.company_id=%s
+        """, (company_id,))
+        deal_summary = cur.fetchone()
+
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ crm_company_detail error:", e)
+        flash("Could not load company.", "danger")
+        return redirect(url_for("portal.crm_companies"))
+
+    return render_template(
+        "portal/crm_company_detail.html",
+        company=company, people=people, notes=notes, deal_summary=deal_summary,
+        stage_labels=pipeline_effective_stage_labels(tenant_id),
+    )
+
+
+@portal_bp.route("/crm/companies/<int:company_id>/edit", methods=["POST"])
+def crm_company_edit(company_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    name    = (request.form.get("name") or "").strip()[:200]
+    website = (request.form.get("website") or "").strip()[:200] or None
+    if not name:
+        flash("A company name is required.", "danger")
+        return redirect(url_for("portal.crm_company_detail", company_id=company_id))
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute(
+            "UPDATE crm_companies SET name=%s, website=%s, updated_at=NOW() WHERE id=%s AND tenant_id=%s",
+            (name, website, company_id, tenant_id),
+        )
+        conn.commit(); cur.close(); conn.close()
+        flash("Company updated.", "success")
+    except Exception as e:
+        print("⚠️ crm_company_edit error:", e)
+        flash("Could not update company.", "danger")
+    return redirect(url_for("portal.crm_company_detail", company_id=company_id))
+
+
+@portal_bp.route("/crm/companies/<int:company_id>/notes", methods=["POST"])
+def crm_company_add_note(company_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    author_id = int(_customer_id())
+    body = (request.form.get("body") or "").strip()
+    if not body:
+        flash("Note cannot be empty.", "warning")
+        return redirect(url_for("portal.crm_company_detail", company_id=company_id))
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("SELECT id FROM crm_companies WHERE id=%s AND tenant_id=%s", (company_id, tenant_id))
+        if not cur.fetchone():
+            flash("Company not found.", "danger")
+            cur.close(); conn.close()
+            return redirect(url_for("portal.crm_companies"))
+        cur.execute(
+            "INSERT INTO crm_company_notes (company_id, tenant_id, author_id, body) VALUES (%s,%s,%s,%s)",
+            (company_id, tenant_id, author_id, body),
+        )
+        conn.commit(); cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ crm_company_add_note error:", e)
+        flash("Could not save note.", "danger")
+    return redirect(url_for("portal.crm_company_detail", company_id=company_id))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CRM — MERGE REVIEW (the handful of near-matches crm_merge_backfill.py wasn't
+# confident enough to link automatically — a human confirms or rejects each one)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@portal_bp.route("/crm/merge-review")
+def crm_merge_review():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT m.*,
+                   c.display_name AS contact_name, c.phone AS contact_phone,
+                   pl.customer_name, pl.contact_person, pl.phone AS lead_phone,
+                   pl.whatsapp_number AS lead_whatsapp
+            FROM crm_match_candidates m
+            LEFT JOIN wa_contacts c ON c.id = m.wa_contact_id
+            LEFT JOIN merchant_pipeline_leads pl ON pl.id = m.pipeline_lead_id
+            WHERE m.tenant_id=%s AND m.status='pending'
+            ORDER BY m.created_at ASC
+        """, (tenant_id,))
+        candidates = cur.fetchall()
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ crm_merge_review error:", e)
+        candidates = []
+        flash("Could not load merge review.", "danger")
+    return render_template("portal/crm_merge_review.html", candidates=candidates)
+
+
+@portal_bp.route("/crm/merge-review/<int:candidate_id>/confirm", methods=["POST"])
+def crm_merge_review_confirm(candidate_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT * FROM crm_match_candidates WHERE id=%s AND tenant_id=%s AND status='pending'",
+                    (candidate_id, tenant_id))
+        cand = cur.fetchone()
+        if not cand:
+            flash("Nothing to confirm — it may already be resolved.", "warning")
+        else:
+            cur.execute(
+                "UPDATE merchant_pipeline_leads SET wa_contact_id=%s WHERE id=%s AND wa_contact_id IS NULL",
+                (cand["wa_contact_id"], cand["pipeline_lead_id"]),
+            )
+            cur.execute(
+                "UPDATE crm_match_candidates SET status='confirmed', resolved_at=NOW() WHERE id=%s",
+                (candidate_id,),
+            )
+            conn.commit()
+            flash("Linked — that deal and contact are now the same profile.", "success")
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ crm_merge_review_confirm error:", e)
+        flash("Could not confirm this match.", "danger")
+    return redirect(url_for("portal.crm_merge_review"))
+
+
+@portal_bp.route("/crm/merge-review/<int:candidate_id>/reject", methods=["POST"])
+def crm_merge_review_reject(candidate_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute(
+            "UPDATE crm_match_candidates SET status='rejected', resolved_at=NOW() WHERE id=%s AND tenant_id=%s",
+            (candidate_id, tenant_id),
+        )
+        conn.commit(); cur.close(); conn.close()
+        flash("Kept as two separate records.", "success")
+    except Exception as e:
+        print("⚠️ crm_merge_review_reject error:", e)
+        flash("Could not update this match.", "danger")
+    return redirect(url_for("portal.crm_merge_review"))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # WHATSAPP CONTACTS — BULK ACTIONS & FIELD UPDATES
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -9608,26 +12276,46 @@ def whatsapp_contacts_bulk_action():
                 flash(f"{cur.rowcount} contact(s) updated to {new_status.title()}.", "success")
 
         elif action == "add_tag":
+            # Tags unification (2026-09-09): tags live in lead_labels/
+            # lead_label_contacts now, the same shared vocabulary as Sales
+            # Pipeline deal tags — see _sync_contact_tags().
             new_tag = (request.form.get("new_tag") or "").strip()[:50]
             if not new_tag:
                 flash("Please enter a tag name.", "warning")
             else:
+                cur.execute("SELECT id FROM lead_labels WHERE tenant_id=%s AND lower(name)=lower(%s)",
+                            (tenant_id, new_tag))
+                row = cur.fetchone()
+                if row:
+                    label_id = row[0]
+                else:
+                    cur.execute("INSERT INTO lead_labels (tenant_id, name) VALUES (%s,%s) RETURNING id",
+                                (tenant_id, new_tag))
+                    label_id = cur.fetchone()[0]
                 cur.execute(
-                    "UPDATE wa_contacts SET tags = array_append(tags, %s), updated_at=NOW() "
-                    "WHERE id = ANY(%s) AND tenant_id=%s AND NOT (%s = ANY(tags))",
-                    (new_tag, contact_ids, tenant_id, new_tag)
+                    "INSERT INTO lead_label_contacts (label_id, contact_id) "
+                    "SELECT %s, id FROM wa_contacts WHERE id = ANY(%s) AND tenant_id=%s "
+                    "ON CONFLICT DO NOTHING",
+                    (label_id, contact_ids, tenant_id)
                 )
                 flash(f"Tag '{new_tag}' added to {cur.rowcount} contact(s).", "success")
 
         elif action == "remove_tag":
+            # Not currently exposed in the UI (no "remove tag" button wired up
+            # yet), kept correct against the shared tag table for when it is.
             rem_tag = (request.form.get("rem_tag") or "").strip()
             if rem_tag:
-                cur.execute(
-                    "UPDATE wa_contacts SET tags = array_remove(tags, %s), updated_at=NOW() "
-                    "WHERE id = ANY(%s) AND tenant_id=%s",
-                    (rem_tag, contact_ids, tenant_id)
-                )
-                flash(f"Tag '{rem_tag}' removed.", "success")
+                cur.execute("SELECT id FROM lead_labels WHERE tenant_id=%s AND lower(name)=lower(%s)",
+                            (tenant_id, rem_tag))
+                row = cur.fetchone()
+                if row:
+                    cur.execute(
+                        "DELETE FROM lead_label_contacts WHERE label_id=%s AND contact_id = ANY(%s)",
+                        (row[0], contact_ids)
+                    )
+                    flash(f"Tag '{rem_tag}' removed.", "success")
+                else:
+                    flash(f"Tag '{rem_tag}' not found.", "warning")
 
         elif action == "add_to_segment":
             seg_id = request.form.get("segment_id", "").strip()
@@ -9652,19 +12340,17 @@ def whatsapp_contacts_bulk_action():
 
         elif action == "move_to_pipeline":
             # Uses its own helper/connection per contact (see _move_contact_to_pipeline)
-            # rather than the outer cur, since it needs its own dedupe-then-insert logic.
-            created_count = exists_count = skip_count = 0
+            # rather than the outer cur. always_create=True: "Create Sales Lead" always
+            # makes a new Lead, even for a contact that already has one — see that
+            # function's docstring and project_sales_pipeline_leads_redesign memory.
+            created_count = skip_count = 0
             for cid in contact_ids:
-                _created, status, _label = _move_contact_to_pipeline(tenant_id, cid)
+                _created, status, _label = _move_contact_to_pipeline(tenant_id, cid, always_create=True)
                 if status == "created":
                     created_count += 1
-                elif status == "exists":
-                    exists_count += 1
                 else:
                     skip_count += 1
-            msg = f"{created_count} contact(s) added to Sales Pipeline."
-            if exists_count:
-                msg += f" {exists_count} already there."
+            msg = f"{created_count} Sales Lead(s) created."
             if skip_count:
                 msg += f" {skip_count} skipped (no phone number)."
             flash(msg, "success")
@@ -9675,9 +12361,17 @@ def whatsapp_contacts_bulk_action():
         print("⚠️ bulk_action error:", e)
         flash("Bulk action failed. Please try again.", "danger")
 
-    # Preserve any active filters in the redirect
+    # Preserve any active filters in the redirect. status_filter/tag_filter/
+    # segment_filter are all multi-select (repeat in the form), so they need
+    # getlist() — a plain .items() would silently keep only the last one.
     args = {k: v for k, v in request.form.items()
-            if k in ("q", "status_filter", "tag_filter", "segment_filter") and v}
+            if k in ("q", "date_from", "date_to") and v}
+    statuses = [s for s in request.form.getlist("status_filter") if s in ("lead", "prospect", "customer", "inactive")]
+    tags     = [t for t in request.form.getlist("tag_filter") if t.isdigit()]
+    segs     = [s for s in request.form.getlist("segment_filter") if s.isdigit()]
+    if statuses: args["status_filter"] = statuses
+    if tags:     args["tag_filter"] = tags
+    if segs:     args["segment_filter"] = segs
     return redirect(url_for("portal.whatsapp_contacts", **args))
 
 
@@ -9706,19 +12400,18 @@ def whatsapp_contact_set_status(contact_id: int):
 
 @portal_bp.route("/whatsapp/contacts/<int:contact_id>/tags", methods=["POST"])
 def whatsapp_contact_tags(contact_id: int):
+    # Not currently linked from any template — kept correct against the
+    # shared tag table (see _sync_contact_tags()) in case something calls it.
     r = _require_login()
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     tags_raw  = (request.form.get("tags") or "").strip()
-    tags = [t.strip()[:50] for t in tags_raw.split(",") if t.strip()]
     try:
         conn = get_db_connection()
-        cur  = conn.cursor()
-        cur.execute(
-            "UPDATE wa_contacts SET tags=%s, updated_at=NOW() WHERE id=%s AND tenant_id=%s",
-            (tags, contact_id, tenant_id)
-        )
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        _sync_contact_tags(cur, tenant_id, contact_id, tags_raw)
+        cur.execute("UPDATE wa_contacts SET updated_at=NOW() WHERE id=%s AND tenant_id=%s", (contact_id, tenant_id))
         conn.commit(); cur.close(); conn.close()
         flash("Tags updated.", "success")
     except Exception as e:
@@ -11065,7 +13758,7 @@ def whatsapp_campaign_report(campaign_id: int):
             return redirect(url_for("portal.whatsapp_campaigns"))
 
         cur.execute(
-            """SELECT phone, status, error_msg, sent_at
+            """SELECT phone, status, error_msg, sent_at, reply_text, replied_at, pipeline_lead_id
                FROM wa_campaign_recipients
                WHERE campaign_id=%s
                ORDER BY sent_at ASC NULLS LAST""",
@@ -11075,14 +13768,68 @@ def whatsapp_campaign_report(campaign_id: int):
         cur.close(); conn.close()
 
         # Real per-recipient outcome, not just "accepted by Meta at send time":
-        # a row starts 'sent' and is advanced to 'delivered'/'read'/'failed' by
-        # the async Meta status webhook as it comes in.
-        total     = campaign["total_count"] or len(recipients) or 0
-        sent      = sum(1 for r in recipients if r["status"] in ("sent", "delivered", "read"))
-        delivered = sum(1 for r in recipients if r["status"] in ("delivered", "read"))
-        read      = sum(1 for r in recipients if r["status"] == "read")
-        failed    = sum(1 for r in recipients if r["status"] == "failed")
-        rate      = round(delivered / total * 100) if total else 0
+        # a row starts 'sent' and is advanced by the async Meta status webhook
+        # (delivered/read/failed), then by an inbound reply (replied/interested/
+        # not_interested), then by Campaign Intelligence turning an Interested
+        # reply into a real deal (opportunity), then by that deal being marked
+        # Won back in Sales Pipeline (converted). Each stage below is "reached
+        # at least this far" — e.g. someone who replied obviously also read it —
+        # so the funnel numbers are naturally non-increasing, top to bottom.
+        _AT_LEAST_SENT      = {"sent", "delivered", "read", "replied", "interested", "not_interested", "opportunity", "converted"}
+        _AT_LEAST_DELIVERED = _AT_LEAST_SENT - {"sent"}
+        _AT_LEAST_READ      = _AT_LEAST_DELIVERED - {"delivered"}
+        _AT_LEAST_REPLIED   = {"replied", "interested", "not_interested", "opportunity", "converted"}
+        _AT_LEAST_INTERESTED = {"interested", "opportunity", "converted"}
+        _AT_LEAST_OPPORTUNITY = {"opportunity", "converted"}
+
+        total         = campaign["total_count"] or len(recipients) or 0
+        sent          = sum(1 for r in recipients if r["status"] in _AT_LEAST_SENT)
+        delivered     = sum(1 for r in recipients if r["status"] in _AT_LEAST_DELIVERED)
+        read          = sum(1 for r in recipients if r["status"] in _AT_LEAST_READ)
+        replied       = sum(1 for r in recipients if r["status"] in _AT_LEAST_REPLIED)
+        interested    = sum(1 for r in recipients if r["status"] in _AT_LEAST_INTERESTED)
+        not_interested = sum(1 for r in recipients if r["status"] == "not_interested")
+        opportunities = sum(1 for r in recipients if r["status"] in _AT_LEAST_OPPORTUNITY)
+        converted     = sum(1 for r in recipients if r["status"] == "converted")
+        failed        = sum(1 for r in recipients if r["status"] == "failed")
+        rate          = round(delivered / total * 100) if total else 0
+
+        # Reopen a connection for two small side-queries — the main one above
+        # is already closed by this point.
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            """SELECT COUNT(*) AS c FROM wa_campaign_recipients wcr
+               JOIN wa_contacts wc ON wc.tenant_id = wcr.tenant_id AND wc.phone = wcr.phone
+               WHERE wcr.campaign_id=%s AND wc.opted_out = TRUE""",
+            (campaign_id,),
+        )
+        opted_out = cur.fetchone()["c"]
+        cur.execute(
+            "SELECT COUNT(*) AS c FROM wa_campaign_reply_reviews WHERE campaign_id=%s AND status='pending'",
+            (campaign_id,),
+        )
+        needs_review_count = cur.fetchone()["c"]
+
+        # Carry the funnel on THROUGH the Pipeline's own stages — how many of
+        # this campaign's Leads actually became Qualified, got a Proposal, or
+        # were Won. Uses the current `stage` column as "how far it got" (a
+        # Lead's stage only ever moves forward, even one later Lost/Dropped
+        # keeps the stage it reached) — no separate history join needed. This
+        # is what answers "how much revenue did this campaign generate,"
+        # per project_sales_pipeline_leads_redesign memory.
+        cur.execute("""
+            SELECT
+                COUNT(*) FILTER (WHERE mpl.stage IN ('qualified','proposal_sent','negotiating','won')) AS qualified_count,
+                COUNT(*) FILTER (WHERE mpl.stage IN ('proposal_sent','negotiating','won')) AS proposal_count,
+                COUNT(*) FILTER (WHERE mpl.stage='won') AS won_count,
+                COALESCE(SUM(mpl.deal_value) FILTER (WHERE mpl.stage='won'), 0) AS won_value
+            FROM wa_campaign_recipients wcr
+            JOIN merchant_pipeline_leads mpl ON mpl.id = wcr.pipeline_lead_id
+            WHERE wcr.campaign_id=%s
+        """, (campaign_id,))
+        pipeline_funnel = cur.fetchone()
+        cur.close(); conn.close()
 
         return render_template(
             "portal/whatsapp_campaign_report.html",
@@ -11090,15 +13837,209 @@ def whatsapp_campaign_report(campaign_id: int):
             recipients=recipients,
             total=total,
             sent=sent,
+            replied=replied,
+            interested=interested,
+            not_interested=not_interested,
+            opportunities=opportunities,
+            converted=converted,
             delivered=delivered,
             read=read,
             failed=failed,
             rate=rate,
+            opted_out=opted_out,
+            needs_review_count=needs_review_count,
+            qualified_count=pipeline_funnel["qualified_count"],
+            proposal_count=pipeline_funnel["proposal_count"],
+            won_count=pipeline_funnel["won_count"],
+            won_value=float(pipeline_funnel["won_value"] or 0),
         )
     except Exception as e:
         print("⚠️ whatsapp_campaign_report error:", e)
         flash("Could not load report.", "danger")
         return redirect(url_for("portal.whatsapp_campaigns"))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WHATSAPP CAMPAIGN INTELLIGENCE — Needs Review queue + automation on/off
+# ══════════════════════════════════════════════════════════════════════════════
+# When a business switches campaign_reply_auto_actions OFF, an "Interested"
+# campaign reply doesn't create a Sales Pipeline opportunity by itself — it's
+# queued here for a staff member to approve (create it) or reject (leave it as
+# just an Interested reply, no deal). The reply is ALWAYS flagged automatically
+# regardless of this switch (see meta_webhook.py's _handle_campaign_reply_flag)
+# — this switch only gates the follow-on action. See
+# project_wa_campaign_intelligence_proposal memory.
+
+@portal_bp.route("/whatsapp/campaigns/reviews")
+def whatsapp_campaign_reviews():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    gate = _require_plan_feature(customer, "feat_broadcasts", "Starter")
+    if gate:
+        return gate
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT campaign_reply_auto_actions FROM tenants WHERE id=%s", (tenant_id,))
+        auto_actions = bool(cur.fetchone()["campaign_reply_auto_actions"])
+        cur.execute("""
+            SELECT rv.*, wc.display_name AS contact_name, wcam.name AS campaign_name
+            FROM wa_campaign_reply_reviews rv
+            LEFT JOIN wa_contacts wc ON wc.tenant_id = rv.tenant_id AND wc.phone = rv.phone
+            LEFT JOIN wa_campaigns wcam ON wcam.id = rv.campaign_id
+            WHERE rv.tenant_id=%s AND rv.status='pending'
+            ORDER BY rv.created_at ASC
+        """, (tenant_id,))
+        reviews = cur.fetchall()
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ whatsapp_campaign_reviews error:", e)
+        reviews = []
+        auto_actions = True
+        flash("Could not load the review queue.", "danger")
+    return render_template("portal/whatsapp_campaign_reviews.html", reviews=reviews, auto_actions=auto_actions)
+
+
+@portal_bp.route("/whatsapp/campaigns/automation-settings", methods=["POST"])
+def whatsapp_campaign_automation_settings():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    auto_actions = request.form.get("auto_actions") == "on"
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("UPDATE tenants SET campaign_reply_auto_actions=%s WHERE id=%s", (auto_actions, tenant_id))
+        conn.commit(); cur.close(); conn.close()
+        if auto_actions:
+            flash("Automatic mode on — an Interested reply creates a Sales Pipeline opportunity right away.", "success")
+        else:
+            flash("Needs Review mode on — an Interested reply now waits in the Review queue until a team member approves it.", "success")
+    except Exception as e:
+        print("⚠️ whatsapp_campaign_automation_settings error:", e)
+        flash("Could not update this setting.", "danger")
+    return redirect(request.referrer or url_for("portal.whatsapp_campaign_reviews"))
+
+
+def _approve_campaign_reply_review(review_id: int, tenant_id: int, staff_name: str):
+    """Turns a pending Interested reply into a real Sales Pipeline opportunity —
+    same dedupe-by-phone rule as the rest of the CRM (_find_matching_pipeline_lead):
+    links to an existing open deal for that phone rather than creating a
+    duplicate. Returns (lead_id, status) where status is 'not_found' or
+    'approved'."""
+    import re as _re_review
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            "SELECT * FROM wa_campaign_reply_reviews WHERE id=%s AND tenant_id=%s AND status='pending'",
+            (review_id, tenant_id),
+        )
+        review = cur.fetchone()
+        if not review:
+            cur.close(); conn.close()
+            return None, "not_found"
+
+        phone = review["phone"]
+        cur.execute("SELECT * FROM wa_contacts WHERE tenant_id=%s AND phone=%s", (tenant_id, phone))
+        contact = cur.fetchone()
+        contact_id = contact["id"] if contact else None
+
+        existing = _find_matching_pipeline_lead(cur, tenant_id, phone, contact_id)
+        if existing:
+            lead_id = existing["id"]
+            if contact_id:
+                cur.execute(
+                    "UPDATE merchant_pipeline_leads SET wa_contact_id=%s WHERE id=%s AND wa_contact_id IS NULL",
+                    (contact_id, lead_id),
+                )
+        else:
+            cur.execute("SELECT name FROM wa_campaigns WHERE id=%s", (review["campaign_id"],))
+            camp = cur.fetchone()
+            campaign_name = (camp["name"] if camp else None) or "a WhatsApp campaign"
+            digits_phone = _re_review.sub(r"[^\d]", "", phone or "")
+            label = (contact.get("display_name") if contact else None) or \
+                    (contact.get("contact_person") if contact else None) or phone
+            notes = f'Approved from a WhatsApp campaign reply ("{campaign_name}"): "{(review["reply_text"] or "")[:300]}"'
+            cur.execute("""
+                INSERT INTO merchant_pipeline_leads
+                  (tenant_id, customer_name, phone, whatsapp_number, email, notes, stage,
+                   contact_channel, contact_date, wa_contact_id, company_id, source)
+                VALUES (%s, %s, %s, %s, %s, %s, 'new_lead', 'whatsapp', CURRENT_DATE, %s, %s, 'whatsapp')
+                RETURNING id
+            """, (tenant_id, label, digits_phone, digits_phone,
+                  contact.get("email") if contact else None, notes,
+                  contact_id, contact.get("company_id") if contact else None))
+            lead_id = cur.fetchone()["id"]
+            cur.execute(
+                """INSERT INTO merchant_pipeline_stage_history (lead_id, from_stage, to_stage, changed_by, notes)
+                   VALUES (%s, NULL, 'new_lead', %s, %s)""",
+                (lead_id, staff_name or "Staff (review queue)", notes),
+            )
+
+        cur.execute(
+            "UPDATE wa_campaign_recipients SET status='opportunity', pipeline_lead_id=%s, updated_at=NOW() WHERE id=%s",
+            (lead_id, review["recipient_id"]),
+        )
+        cur.execute(
+            """UPDATE wa_campaign_reply_reviews
+               SET status='approved', resolved_at=NOW(), resolved_by=%s, pipeline_lead_id=%s
+               WHERE id=%s""",
+            (staff_name, lead_id, review_id),
+        )
+        conn.commit()
+        return lead_id, "approved"
+    except Exception as e:
+        print("⚠️ _approve_campaign_reply_review error:", e)
+        conn.rollback()
+        return None, "error"
+    finally:
+        cur.close()
+        conn.close()
+
+
+@portal_bp.route("/whatsapp/campaigns/reviews/<int:review_id>/approve", methods=["POST"])
+def whatsapp_campaign_review_approve(review_id: int):
+    r = _require_login()
+    if r: return r
+    customer   = _get_customer(_customer_id())
+    tenant_id  = int(customer["tenant_id"])
+    staff_name = f"{customer.get('first_name','')} {customer.get('last_name','')}".strip() or "Staff"
+    lead_id, status = _approve_campaign_reply_review(review_id, tenant_id, staff_name)
+    if status == "not_found":
+        flash("Nothing to approve — it may already be resolved.", "warning")
+    elif status == "error":
+        flash("Could not approve this reply. Please try again.", "danger")
+    else:
+        flash("Opportunity created in Sales Pipeline.", "success")
+    return redirect(url_for("portal.whatsapp_campaign_reviews"))
+
+
+@portal_bp.route("/whatsapp/campaigns/reviews/<int:review_id>/reject", methods=["POST"])
+def whatsapp_campaign_review_reject(review_id: int):
+    r = _require_login()
+    if r: return r
+    customer   = _get_customer(_customer_id())
+    tenant_id  = int(customer["tenant_id"])
+    staff_name = f"{customer.get('first_name','')} {customer.get('last_name','')}".strip() or "Staff"
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute(
+            """UPDATE wa_campaign_reply_reviews
+               SET status='rejected', resolved_at=NOW(), resolved_by=%s
+               WHERE id=%s AND tenant_id=%s AND status='pending'""",
+            (staff_name, review_id, tenant_id),
+        )
+        conn.commit(); cur.close(); conn.close()
+        flash("Dismissed — kept as an Interested reply, no opportunity created.", "success")
+    except Exception as e:
+        print("⚠️ whatsapp_campaign_review_reject error:", e)
+        flash("Could not update this reply.", "danger")
+    return redirect(url_for("portal.whatsapp_campaign_reviews"))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -12216,11 +15157,17 @@ def lead_labels_page():
     tenant_id = int(customer["tenant_id"])
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    # Tags unification (2026-09-09): a tag can now be on a Deal (lead_label_leads)
+    # and/or a Contact (lead_label_contacts) — counted separately (two LEFT
+    # JOINs would fan out and double-count if combined in one COUNT).
     cur.execute(
         """
-        SELECT lb.id, lb.name, lb.created_at, count(ll.lead_id) AS member_count
+        SELECT lb.id, lb.name, lb.created_at,
+               count(DISTINCT ll.lead_id)    AS member_count,
+               count(DISTINCT lc.contact_id) AS contact_count
         FROM lead_labels lb
-        LEFT JOIN lead_label_leads ll ON ll.label_id = lb.id
+        LEFT JOIN lead_label_leads    ll ON ll.label_id = lb.id
+        LEFT JOIN lead_label_contacts lc ON lc.label_id = lb.id
         WHERE lb.tenant_id=%s
         GROUP BY lb.id, lb.name, lb.created_at
         ORDER BY lb.name
@@ -12228,8 +15175,11 @@ def lead_labels_page():
         (tenant_id,),
     )
     labels = cur.fetchall()
+    # Lean id/name-only list for the "+ Create Tag" box's client-side
+    # duplicate-name check (see static/portal/crm-dedupe.js).
+    dedupe_tags = [{"id": l["id"], "name": l["name"]} for l in labels]
     cur.close(); conn.close()
-    return render_template("portal/lead_labels.html", customer=customer, labels=labels)
+    return render_template("portal/lead_labels.html", customer=customer, labels=labels, dedupe_tags=dedupe_tags)
 
 
 @portal_bp.route("/labels/list")
@@ -12440,6 +15390,144 @@ def lead_labels_search_leads_json():
         ]
         cur.close(); conn.close()
         return jsonify({"leads": leads})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAGS UNIFICATION (2026-09-09) — the same four People-side endpoints as the
+# Deals block just above, so the Tags page's "People" section can browse/add/
+# remove WhatsApp Contacts for a tag exactly the way it already does for
+# Sales Pipeline leads. See _sync_contact_tags() for how a Contact's own Tags
+# field (Add/Edit Contact, Edit Profile) writes to the same lead_labels /
+# lead_label_contacts tables — that path is NOT gated by CONNECT_CRM_ENDPOINTS,
+# only this management page is (see the comment on that set).
+# ══════════════════════════════════════════════════════════════════════════════
+
+@portal_bp.route("/labels/<int:label_id>/contacts")
+def lead_labels_contact_members(label_id: int):
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT id, name FROM lead_labels WHERE id=%s AND tenant_id=%s", (label_id, tenant_id))
+        label = cur.fetchone()
+        if not label:
+            cur.close(); conn.close()
+            return jsonify({"error": "Tag not found."}), 404
+        cur.execute(
+            "SELECT c.id, c.display_name, c.phone, c.email "
+            "FROM lead_label_contacts lc JOIN wa_contacts c ON c.id = lc.contact_id "
+            "WHERE lc.label_id=%s ORDER BY c.display_name NULLS LAST, c.phone",
+            (label_id,),
+        )
+        members = [
+            {"id": row["id"], "name": row["display_name"] or row["phone"], "email": row["email"]}
+            for row in cur.fetchall()
+        ]
+        cur.close(); conn.close()
+        return jsonify({"id": label["id"], "name": label["name"], "members": members})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@portal_bp.route("/labels/<int:label_id>/contacts/remove", methods=["POST"])
+def lead_labels_remove_contact_member(label_id: int):
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    contact_id_raw = (request.form.get("contact_id") or "").strip()
+    if not contact_id_raw.isdigit():
+        return jsonify({"error": "Invalid contact."}), 400
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("SELECT id FROM lead_labels WHERE id=%s AND tenant_id=%s", (label_id, tenant_id))
+        if not cur.fetchone():
+            cur.close(); conn.close()
+            return jsonify({"error": "Tag not found."}), 404
+        cur.execute("DELETE FROM lead_label_contacts WHERE label_id=%s AND contact_id=%s",
+                    (label_id, int(contact_id_raw)))
+        conn.commit()
+        cur.close(); conn.close()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@portal_bp.route("/labels/<int:label_id>/contacts/bulk-add", methods=["POST"])
+def lead_labels_bulk_add_contacts(label_id: int):
+    """Add many WhatsApp Contacts to a tag in one call — mirrors
+    lead_labels_bulk_add_members() for Sales Pipeline leads."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    contact_ids = list({int(v) for v in request.form.getlist("contact_ids") if v.isdigit()})
+    if not contact_ids:
+        return jsonify({"error": "No contacts selected."}), 400
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("SELECT id FROM lead_labels WHERE id=%s AND tenant_id=%s", (label_id, tenant_id))
+        if not cur.fetchone():
+            cur.close(); conn.close()
+            return jsonify({"error": "Tag not found."}), 404
+        cur.execute(
+            "INSERT INTO lead_label_contacts (label_id, contact_id) "
+            "SELECT %s, c.id FROM wa_contacts c "
+            "WHERE c.id = ANY(%s) AND c.tenant_id=%s "
+            "ON CONFLICT (label_id, contact_id) DO NOTHING",
+            (label_id, contact_ids, tenant_id),
+        )
+        added = cur.rowcount
+        conn.commit()
+        cur.close(); conn.close()
+        return jsonify({"ok": True, "added": added, "requested": len(contact_ids)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@portal_bp.route("/labels/search-contacts")
+def lead_labels_search_contacts_json():
+    """Search WhatsApp Contacts for the Tags page's People add typeahead."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    q = (request.args.get("q") or "").strip()
+    exclude_label_id = (request.args.get("exclude_label_id") or "").strip()
+
+    where  = ["c.tenant_id=%s"]
+    params = [tenant_id]
+    if q:
+        where.append("(c.display_name ILIKE %s OR c.phone ILIKE %s OR c.email ILIKE %s)")
+        like = f"%{q}%"
+        params += [like, like, like]
+    if exclude_label_id.isdigit():
+        where.append("c.id NOT IN (SELECT contact_id FROM lead_label_contacts WHERE label_id=%s)")
+        params.append(int(exclude_label_id))
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT id, display_name, phone, email FROM wa_contacts c "
+            "WHERE " + " AND ".join(where) + " ORDER BY display_name NULLS LAST, phone LIMIT 20",
+            params,
+        )
+        contacts = [
+            {"id": row["id"], "name": row["display_name"] or row["phone"], "email": row["email"]}
+            for row in cur.fetchall()
+        ]
+        cur.close(); conn.close()
+        return jsonify({"contacts": contacts})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -12674,6 +15762,27 @@ def email_unsubscribe():
                     "VALUES (%s, %s, 'unsubscribe') ON CONFLICT (tenant_id, email) DO NOTHING",
                     (int(tenant_id_str), email.lower()),
                 )
+                # Unifying consent: an email unsubscribe means stop everywhere for
+                # this person, not just email — same idea as a WhatsApp "STOP" reply
+                # (see record_cross_channel_optout in the WhatsApp gateway). Matches
+                # by email since that's all this link carries.
+                cur.execute(
+                    """UPDATE wa_contacts
+                       SET opted_out=TRUE, opted_out_at=NOW(),
+                           sms_opted_out=TRUE, sms_opted_out_at=NOW(),
+                           email_opted_out=TRUE, email_opted_out_at=NOW()
+                       WHERE tenant_id=%s AND LOWER(email)=%s
+                       RETURNING id""",
+                    (int(tenant_id_str), email.lower()),
+                )
+                for (contact_id,) in cur.fetchall():
+                    cur.execute(
+                        """INSERT INTO contact_consent_log
+                               (tenant_id, contact_id, channel, action, reason, source)
+                           VALUES (%s, %s, 'all', 'opted_out',
+                                   'Clicked unsubscribe link in an email campaign', 'email_unsubscribe')""",
+                        (int(tenant_id_str), contact_id),
+                    )
                 conn.commit()
                 cur.close(); conn.close()
         except Exception as e:
@@ -17167,6 +20276,7 @@ def my_inbox():
     if r: return r
     customer   = _get_customer(_customer_id())
     tenant_id  = int(customer["tenant_id"])
+    ai_enabled = not _is_connect_host()
     connection = _get_wa_connection(tenant_id)
     # Only worth showing per-number filter tabs / color dots when 2+ numbers
     # are connected — single-number tenants (the common case) see no change.
@@ -17225,6 +20335,7 @@ def my_inbox():
         current_actor_key=actor["key"],
         is_team_member=session.get("team_member_id") is not None,
         no_agents_assigned=(actor["is_team"] and allowed_agent_ids is not None and len(allowed_agent_ids) == 0),
+        ai_enabled=ai_enabled,
     )
 
 
@@ -18196,32 +21307,190 @@ def reports_page():
 # LEADS — conversations flagged as hot / warm leads
 # ══════════════════════════════════════════════════════════════════════════════
 
-@portal_bp.route("/leads")
+@portal_bp.route("/leads", methods=["GET", "POST"])
 def leads_page():
+    """The real home for Leads (see project_leads_page_redesign memory): a
+    Lead is its own record — business, contact, deal value, source, product
+    interest, assigned salesperson — separate from Sales Pipeline, which now
+    only tracks which STAGE a Lead is at. Two sections: the pre-existing
+    "Hot Conversations" feed (WhatsApp messages that sound like buying
+    signals, unchanged logic) with a Create Lead button, and the real Leads
+    list with the Hot/Warm/Cold score that used to live on Sales Pipeline."""
     r = _require_login()
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
-    connection    = _get_wa_connection(tenant_id)
-    conversations = _get_inbox_conversations(tenant_id) if connection else []
+    if request.method == "POST":
+        f = request.form
+        customer_name    = (f.get("customer_name") or "").strip()
+        contact_person   = (f.get("contact_person") or "").strip()
+        phone            = (f.get("phone") or "").strip()
+        whatsapp_number  = (f.get("whatsapp_number") or "").strip()
+        email            = (f.get("email") or "").strip()
+        deal_value_raw   = (f.get("deal_value") or "").strip()
+        product_interest = (f.get("product_interest") or "").strip()
+        assigned_to      = (f.get("assigned_to") or "").strip()
+        notes            = (f.get("notes") or "").strip()
+        source           = (f.get("source") or "manual").strip()
+        if source not in ("whatsapp", "facebook", "instagram", "manual"):
+            source = "manual"
+        if not customer_name:
+            flash("Business name is required.", "danger")
+            return redirect(url_for("portal.leads_page"))
+        deal_value = None
+        if deal_value_raw:
+            try:
+                deal_value = float(deal_value_raw.replace(",", ""))
+            except ValueError:
+                deal_value = None
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("""
+            INSERT INTO merchant_pipeline_leads
+                (tenant_id, customer_name, contact_person, phone, whatsapp_number, email, notes,
+                 deal_value, product_interest, assigned_to, source)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """, (tenant_id, customer_name, contact_person or None, phone or None,
+              whatsapp_number or None, email or None, notes or None, deal_value,
+              product_interest or None, assigned_to or None, source))
+        new_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close(); conn.close()
+        pipeline_record_stage_change(new_id, None, "new_lead",
+                                      f"{customer.get('first_name','')} {customer.get('last_name','')}".strip())
+        flash(f"{customer_name} added as a new Lead.", "success")
+        return redirect(url_for("portal.leads_page"))
 
-    # Only keep scored conversations; sort hot first, then warm, then by recency
-    tier_order = {"hot": 0, "warm": 1, "": 2}
-    leads = [c for c in conversations if c.get("lead_tier") in ("hot", "warm")]
-    leads.sort(key=lambda c: (tier_order[c["lead_tier"]], -(c["lead_score"] or 0)))
+    # ── Hot Conversations — unchanged scoring logic, skipped entirely (not
+    # just hidden) on PhiXtra Connect: it ties a buying-signal read to the AI
+    # Sales Agent experience, which Connect deliberately doesn't have. ─────
+    connection = _get_wa_connection(tenant_id)
+    hot_leads, hot_count, warm_count = [], 0, 0
+    if connection and not _is_connect_host():
+        conversations = _get_inbox_conversations(tenant_id)
+        tier_order = {"hot": 0, "warm": 1, "": 2}
+        hot_leads = [c for c in conversations if c.get("lead_tier") in ("hot", "warm")]
+        hot_leads.sort(key=lambda c: (tier_order[c["lead_tier"]], -(c["lead_score"] or 0)))
+        hot_count  = sum(1 for c in hot_leads if c["lead_tier"] == "hot")
+        warm_count = sum(1 for c in hot_leads if c["lead_tier"] == "warm")
 
-    hot_count  = sum(1 for c in leads if c["lead_tier"] == "hot")
-    warm_count = sum(1 for c in leads if c["lead_tier"] == "warm")
+        # Flag conversations that already became a real Lead, by phone, so
+        # the feed never offers to create a duplicate.
+        if hot_leads:
+            import re as _re_leads
+            conn = get_db_connection(); cur = conn.cursor()
+            cur.execute("""
+                SELECT regexp_replace(COALESCE(whatsapp_number, phone), '[^0-9]', '', 'g')
+                FROM merchant_pipeline_leads WHERE tenant_id=%s AND dropped_at IS NULL
+            """, (tenant_id,))
+            already_lead_phones = {row[0] for row in cur.fetchall()}
+            cur.close(); conn.close()
+            for c in hot_leads:
+                c["already_lead"] = _re_leads.sub(r"[^\d]", "", c["customer_phone"] or "") in already_lead_phones
+
+    # ── Real Leads list — same scoring/filtering engine Sales Pipeline used
+    # to show, now living here instead. ─────────────────────────────────────
+    search      = (request.args.get("q") or "").strip()
+    tier_filter = (request.args.get("tier") or "all").strip().lower()
+    if tier_filter not in ("all", "hot", "warm", "cold"):
+        tier_filter = "all"
+    sort_by = (request.args.get("sort") or "").strip().lower()
+    if sort_by not in ("score",):
+        sort_by = ""
+    per_page_raw = (request.args.get("per_page") or "50").strip().lower()
+    if per_page_raw not in PIPELINE_PER_PAGE_OPTIONS:
+        per_page_raw = "50"
+    page = request.args.get("page", "1")
+    page = int(page) if page.isdigit() and int(page) > 0 else 1
+
+    clauses, params = _pipeline_filter_clauses(
+        tenant_id, search, "all", False, False, False,
+        tier_filter=tier_filter if tier_filter != "all" else None,
+    )
+    where = " AND ".join(clauses)
+    scored_from = _pipeline_scored_from_sql()
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(f"SELECT count(*) AS c FROM {scored_from} mpl WHERE {where}", [tenant_id] + params)
+    filtered_total = cur.fetchone()["c"]
+
+    if per_page_raw == "all":
+        total_pages, page, limit_clause, limit_params = 1, 1, "", []
+    else:
+        per_page     = int(per_page_raw)
+        total_pages  = max(1, -(-filtered_total // per_page))
+        page         = min(page, total_pages)
+        limit_clause = "LIMIT %s OFFSET %s"
+        limit_params = [per_page, (page - 1) * per_page]
+
+    order_sql = "mpl.lead_score DESC, mpl.created_at DESC, mpl.id DESC" if sort_by == "score" \
+                else "mpl.created_at DESC, mpl.id DESC"
+    cur.execute(
+        f"SELECT mpl.* FROM {scored_from} mpl WHERE {where} ORDER BY {order_sql} {limit_clause}",
+        [tenant_id] + params + limit_params,
+    )
+    real_leads = [dict(r) for r in cur.fetchall()]
+
+    cur.execute(f"SELECT lead_tier, count(*) AS c FROM {scored_from} mpl GROUP BY lead_tier", [tenant_id])
+    tier_counts = {row["lead_tier"]: row["c"] for row in cur.fetchall()}
+    cur.close(); conn.close()
 
     return render_template(
         "portal/leads.html",
-        customer   = customer,
-        connection = connection,
-        leads      = leads,
-        hot_count  = hot_count,
-        warm_count = warm_count,
+        customer=customer, connection=connection,
+        hot_leads=hot_leads, hot_count=hot_count, warm_count=warm_count,
+        real_leads=real_leads, search=search,
+        tier_filter=tier_filter, tier_counts=tier_counts, sort_by=sort_by,
+        per_page=per_page_raw, page=page, total_pages=total_pages, filtered_total=filtered_total,
+        per_page_options=PIPELINE_PER_PAGE_OPTIONS,
+        stage_labels=pipeline_effective_stage_labels(tenant_id),
+        score_labels=pipeline_effective_score_labels(tenant_id),
     )
+
+
+@portal_bp.route("/leads/create-from-conversation", methods=["POST"])
+def leads_create_from_conversation():
+    """The 'Create Lead' button on a Hot Conversations card. Always creates a
+    new Lead (same always-create rule as the Contacts page's 'Create Sales
+    Lead' button) — source is 'whatsapp' since that's the only way a
+    conversation-based Lead can be created today."""
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    phone = (request.form.get("phone") or "").strip()
+    display_name = (request.form.get("display_name") or "").strip()
+    if not phone:
+        flash("No phone number to create a Lead from.", "danger")
+        return redirect(url_for("portal.leads_page"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM wa_contacts WHERE tenant_id=%s AND phone=%s", (tenant_id, phone))
+    contact = cur.fetchone()
+    label = display_name or (contact.get("display_name") if contact else None) or phone
+    import re as _re_leads2
+    digits_phone = _re_leads2.sub(r"[^\d]", "", phone)
+    cur.execute("""
+        INSERT INTO merchant_pipeline_leads
+            (tenant_id, customer_name, phone, whatsapp_number, email, notes, stage,
+             contact_channel, wa_contact_id, company_id, source)
+        VALUES (%s, %s, %s, %s, %s, %s, 'new_lead', 'whatsapp', %s, %s, 'whatsapp')
+        RETURNING id
+    """, (tenant_id, label, digits_phone, digits_phone,
+          contact.get("email") if contact else None, contact.get("notes") if contact else None,
+          contact["id"] if contact else None, contact.get("company_id") if contact else None))
+    lead_id = cur.fetchone()["id"]
+    conn.commit()
+    cur.close(); conn.close()
+    pipeline_record_stage_change(lead_id, None, "new_lead",
+                                  f"{customer.get('first_name','')} {customer.get('last_name','')}".strip(),
+                                  "Created from a Hot Conversation")
+    flash(f"Lead created for {label}.", "success")
+    return redirect(url_for("portal.leads_page"))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -18250,14 +21519,97 @@ PIPELINE_EXPORT_MAX_ROWS = 20000
 PHIXTRA_SUPPORT_TENANT_ID = 19
 
 
+def _normalize_website_url(raw: str) -> str:
+    """Make sure a website saved on a lead is a real absolute link (defaults
+    to https://) so it can be rendered as a plain <a href> — never a bare
+    domain string the browser would try to resolve relative to the current
+    page."""
+    raw = (raw or "").strip()
+    if not raw:
+        return ""
+    if not _re.match(r"^https?://", raw, _re.IGNORECASE):
+        raw = "https://" + raw
+    return raw
+
+
+# ── Lead Scoring (2026-09-09) ────────────────────────────────────────────────
+# Score out of 100: up to 50 points for how big this deal is relative to the
+# tenant's OWN other deals (a percentile, not a fixed Naira amount — so it's
+# fair whether a business's typical deal is ₦20k or ₦20m), plus up to 50 for
+# how active the lead currently is (recently touched, how far along the
+# pipeline it's gotten, and real WhatsApp conversation activity on its
+# number). Hot/Warm/Cold reuses the same words the Inbox's own lead-scoring
+# (_score_lead) already uses, so the team isn't learning a second vocabulary
+# for "this lead matters." Deliberately Sales-Pipeline-only — a WhatsApp
+# conversation that never became a Lead is never scored, per the user's call.
+_PIPELINE_STAGE_POINTS_SQL = """
+    CASE mpl.stage
+        WHEN 'new_lead' THEN 0 WHEN 'contacted' THEN 3 WHEN 'qualified' THEN 6
+        WHEN 'proposal_sent' THEN 9 WHEN 'negotiating' THEN 12 WHEN 'won' THEN 15
+        ELSE 0
+    END
+"""
+
+def _pipeline_scored_from_sql() -> str:
+    """FROM-clause replacement for the bare 'merchant_pipeline_leads mpl' —
+    adds lead_score (0-100) and lead_tier ('hot'/'warm'/'cold') columns to
+    every row, scoped to one tenant's non-dropped leads. Has exactly one %s
+    placeholder (tenant_id); every caller must supply it as the FIRST param,
+    before whatever _pipeline_filter_clauses params come after it. The
+    'mpl.tenant_id=%s AND mpl.dropped_at IS NULL' clause those callers still
+    apply on top is redundant here (already true) but harmless."""
+    return f"""
+        (
+            SELECT scored.*,
+                   CASE WHEN scored.lead_score >= 70 THEN 'hot'
+                        WHEN scored.lead_score >= 40 THEN 'warm'
+                        ELSE 'cold' END AS lead_tier
+            FROM (
+                SELECT mpl.*,
+                       LEAST(100, GREATEST(0, (
+                           ROUND(COALESCE(PERCENT_RANK() OVER (ORDER BY mpl.deal_value ASC NULLS FIRST), 0) * 50)
+                           + CASE
+                               WHEN mpl.updated_at >= NOW() - INTERVAL '3 days'  THEN 20
+                               WHEN mpl.updated_at >= NOW() - INTERVAL '7 days'  THEN 14
+                               WHEN mpl.updated_at >= NOW() - INTERVAL '14 days' THEN 8
+                               WHEN mpl.updated_at >= NOW() - INTERVAL '30 days' THEN 3
+                               ELSE 0
+                             END
+                           + {_PIPELINE_STAGE_POINTS_SQL}
+                           + CASE
+                               WHEN COALESCE(wa_activity.msg_count, 0) = 0 THEN 0
+                               WHEN wa_activity.msg_count <= 3 THEN 5
+                               WHEN wa_activity.msg_count <= 9 THEN 10
+                               ELSE 15
+                             END
+                       ))::int) AS lead_score
+                FROM merchant_pipeline_leads mpl
+                LEFT JOIN LATERAL (
+                    SELECT COUNT(*) AS msg_count
+                    FROM wa_message_log wml
+                    WHERE wml.tenant_id = mpl.tenant_id
+                      AND wml.created_at >= NOW() - INTERVAL '30 days'
+                      AND COALESCE(mpl.whatsapp_number, mpl.phone) IS NOT NULL
+                      AND regexp_replace(wml.customer_phone, '[^0-9]', '', 'g')
+                          = regexp_replace(COALESCE(mpl.whatsapp_number, mpl.phone), '[^0-9]', '', 'g')
+                ) wa_activity ON TRUE
+                WHERE mpl.tenant_id = %s AND mpl.dropped_at IS NULL
+            ) scored
+        )
+    """
+
+
 def _pipeline_filter_clauses(tenant_id, search, stage_filter, has_phone, has_whatsapp, has_email,
                               hide_segment_ids=None, hide_label_ids=None, show_label_ids=None,
-                              hide_sms_segment_ids=None, hide_wa_segment_ids=None):
+                              hide_sms_segment_ids=None, hide_wa_segment_ids=None, tier_filter=None):
     """Build the shared WHERE clauses/params for the Sales Pipeline list and its CSV
     export — kept in one place so the two can never drift apart on what "matches the
     current filters" means."""
     clauses = ["mpl.tenant_id=%s", "mpl.dropped_at IS NULL"]
     params  = [tenant_id]
+    if tier_filter in ("hot", "warm", "cold"):
+        clauses.append("mpl.lead_tier=%s")
+        params.append(tier_filter)
     if search:
         clauses.append("(mpl.customer_name ILIKE %s OR mpl.contact_person ILIKE %s)")
         like = f"%{search}%"
@@ -18289,53 +21641,25 @@ def _pipeline_filter_clauses(tenant_id, search, stage_filter, has_phone, has_wha
     return clauses, params
 
 
-@portal_bp.route("/sales-pipeline", methods=["GET", "POST"])
+@portal_bp.route("/sales-pipeline")
 def sales_pipeline():
+    """Purely the STAGE tracker now (see project_leads_page_redesign memory)
+    — creating a Lead, its commercial info, and its Hot/Warm/Cold score all
+    moved to the Leads page. This page only answers "which stage is each
+    Lead at," and moves them between stages."""
     r = _require_login()
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-
-    if request.method == "POST":
-        f = request.form
-        customer_name   = (f.get("customer_name") or "").strip()
-        contact_person  = (f.get("contact_person") or "").strip()
-        phone           = (f.get("phone") or "").strip()
-        whatsapp_number = (f.get("whatsapp_number") or "").strip()
-        email           = (f.get("email") or "").strip()
-        deal_value_raw  = (f.get("deal_value") or "").strip()
-        notes           = (f.get("notes") or "").strip()
-        if not customer_name:
-            flash("Customer/business name is required.", "danger")
-            return redirect(url_for("portal.sales_pipeline"))
-        deal_value = None
-        if deal_value_raw:
-            try:
-                deal_value = float(deal_value_raw.replace(",", ""))
-            except ValueError:
-                deal_value = None
-        conn = get_db_connection()
-        cur  = conn.cursor()
-        cur.execute("""
-            INSERT INTO merchant_pipeline_leads
-                (tenant_id, customer_name, contact_person, phone, whatsapp_number, email, notes, deal_value)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING id
-        """, (tenant_id, customer_name, contact_person or None, phone or None,
-              whatsapp_number or None, email or None, notes or None, deal_value))
-        new_id = cur.fetchone()[0]
-        conn.commit()
-        cur.close(); conn.close()
-        pipeline_record_stage_change(new_id, None, "new_lead",
-                                      f"{customer.get('first_name','')} {customer.get('last_name','')}".strip())
-        flash(f"{customer_name} added to your Sales Pipeline.", "success")
-        return redirect(url_for("portal.sales_pipeline"))
 
     search        = (request.args.get("q") or "").strip()
     stage_filter  = (request.args.get("stage") or "all").strip()
     has_phone     = request.args.get("has_phone") == "1"
     has_whatsapp  = request.args.get("has_whatsapp") == "1"
     has_email     = request.args.get("has_email") == "1"
+    view_mode     = (request.args.get("view") or "list").strip().lower()
+    if view_mode not in ("list", "board"):
+        view_mode = "list"
     if stage_filter != "all" and stage_filter not in PIPELINE_STAGE_ORDER:
         stage_filter = "all"
 
@@ -18354,7 +21678,7 @@ def sales_pipeline():
     clauses, params = _pipeline_filter_clauses(
         tenant_id, search, stage_filter, has_phone, has_whatsapp, has_email,
         hide_segment_ids, hide_label_ids, show_label_ids, hide_sms_segment_ids,
-        hide_wa_segment_ids
+        hide_wa_segment_ids,
     )
     where = " AND ".join(clauses)
 
@@ -18509,6 +21833,98 @@ def sales_pipeline():
         ORDER BY dropped_at DESC
     """, (tenant_id,))
     dropped_leads = [dict(r) for r in cur.fetchall()]
+
+    # Board (Kanban) view — grouped by stage, ignoring the stage filter (a column
+    # per stage) but honouring every other filter (search, channel, segments,
+    # labels). Capped per column via a window function so one wide-open pipeline
+    # can't dump thousands of cards into the page; "more" links back to the List
+    # view pre-filtered to that stage. Only queried when actually viewing the
+    # board — the List view above already paid for its own query either way.
+    board_columns = []
+    if view_mode == "board":
+        board_clauses, board_params = _pipeline_filter_clauses(
+            tenant_id, search, "all", has_phone, has_whatsapp, has_email,
+            hide_segment_ids, hide_label_ids, show_label_ids, hide_sms_segment_ids,
+            hide_wa_segment_ids,
+        )
+        board_where = " AND ".join(board_clauses)
+        BOARD_CARDS_PER_COLUMN = 8
+        cur.execute(
+            f"""
+            SELECT * FROM (
+                SELECT mpl.*, a.first_name AS assigned_ambassador_first_name,
+                       a.last_name AS assigned_ambassador_last_name,
+                       count(*) OVER (PARTITION BY mpl.stage) AS stage_match_count,
+                       COALESCE(sum(mpl.deal_value) OVER (PARTITION BY mpl.stage), 0) AS stage_match_value,
+                       row_number() OVER (PARTITION BY mpl.stage ORDER BY mpl.created_at DESC, mpl.id DESC) AS rn
+                  FROM merchant_pipeline_leads mpl
+                  LEFT JOIN ambassadors a ON a.id = mpl.assigned_ambassador_id
+                 WHERE {board_where}
+            ) sub
+            WHERE rn <= %s
+            ORDER BY stage, rn
+            """,
+            board_params + [BOARD_CARDS_PER_COLUMN],
+        )
+        board_rows = [dict(r) for r in cur.fetchall()]
+        board_lead_ids = [r["id"] for r in board_rows]
+
+        board_seg_map, board_wa_map, board_label_map = {}, {}, {}
+        if board_lead_ids:
+            cur.execute(
+                "SELECT sl.lead_id, s.name FROM email_segment_leads sl "
+                "JOIN email_segments s ON s.id = sl.segment_id "
+                "WHERE sl.lead_id = ANY(%s) AND s.tenant_id=%s",
+                (board_lead_ids, tenant_id),
+            )
+            for row in cur.fetchall():
+                board_seg_map.setdefault(row["lead_id"], []).append(row["name"])
+
+            cur.execute(
+                "SELECT sl.lead_id, s.name FROM wa_pipeline_segment_leads sl "
+                "JOIN wa_pipeline_segments s ON s.id = sl.segment_id "
+                "WHERE sl.lead_id = ANY(%s) AND s.tenant_id=%s",
+                (board_lead_ids, tenant_id),
+            )
+            for row in cur.fetchall():
+                board_wa_map.setdefault(row["lead_id"], []).append(row["name"])
+
+            cur.execute(
+                "SELECT ll.lead_id, lb.name FROM lead_label_leads ll "
+                "JOIN lead_labels lb ON lb.id = ll.label_id "
+                "WHERE ll.lead_id = ANY(%s) AND lb.tenant_id=%s",
+                (board_lead_ids, tenant_id),
+            )
+            for row in cur.fetchall():
+                board_label_map.setdefault(row["lead_id"], []).append(row["name"])
+
+        for r in board_rows:
+            r["segment_names"]    = board_seg_map.get(r["id"], [])
+            r["wa_segment_names"] = board_wa_map.get(r["id"], [])
+            r["label_names"]      = board_label_map.get(r["id"], [])
+            if r.get("assigned_ambassador_first_name"):
+                r["assigned_ambassador_name"] = f"{r['assigned_ambassador_first_name']} {r['assigned_ambassador_last_name'] or ''}".strip()
+            else:
+                r["assigned_ambassador_name"] = None
+
+        board_by_stage = {}
+        for r in board_rows:
+            board_by_stage.setdefault(r["stage"], []).append(r)
+
+        _board_labels = pipeline_effective_stage_labels(tenant_id)
+        for s in PIPELINE_STAGE_ORDER:
+            cards = board_by_stage.get(s, [])
+            match_count = int(cards[0]["stage_match_count"]) if cards else 0
+            match_value = float(cards[0]["stage_match_value"]) if cards else 0.0
+            board_columns.append({
+                "key":         s,
+                "label":       _board_labels[s],
+                "cards":       cards,
+                "count":       match_count,
+                "total_value": match_value,
+                "more":        max(0, match_count - len(cards)),
+            })
+
     cur.close(); conn.close()
 
     return render_template(
@@ -18516,9 +21932,13 @@ def sales_pipeline():
         customer              = customer,
         leads                 = leads,
         dropped_leads         = dropped_leads,
+        view_mode              = view_mode,
+        board_columns          = board_columns,
         stage_order           = PIPELINE_STAGE_ORDER,
-        stage_labels          = PIPELINE_STAGE_LABELS,
+        stage_labels          = pipeline_effective_stage_labels(tenant_id),
         stage_descriptions    = PIPELINE_STAGE_DESCRIPTIONS,
+        lost_reasons          = PIPELINE_LOST_REASONS,
+        dropped_reasons       = PIPELINE_DROPPED_REASONS,
         stage_counts          = stage_counts,
         next_stage            = pipeline_next_stage,
         total_pipeline_value  = total_pipeline_value,
@@ -18573,7 +21993,7 @@ def sales_pipeline_export():
     clauses, params = _pipeline_filter_clauses(
         tenant_id, search, stage_filter, has_phone, has_whatsapp, has_email,
         hide_segment_ids, hide_label_ids, show_label_ids, hide_sms_segment_ids,
-        hide_wa_segment_ids
+        hide_wa_segment_ids,
     )
     where = " AND ".join(clauses)
 
@@ -18591,6 +22011,7 @@ def sales_pipeline_export():
     from datetime import date as _date
     from flask import Response
     buf = _io.StringIO()
+    _export_stage_labels = pipeline_effective_stage_labels(tenant_id)
     writer = _csv.writer(buf)
     writer.writerow(['Customer', 'Contact Person', 'Phone', 'WhatsApp Number', 'Email', 'Deal Value', 'Stage', 'Added'])
     for l in leads:
@@ -18598,7 +22019,7 @@ def sales_pipeline_export():
             l["customer_name"] or "", l["contact_person"] or "", l["phone"] or "",
             l["whatsapp_number"] or "", l["email"] or "",
             l["deal_value"] if l["deal_value"] is not None else "",
-            PIPELINE_STAGE_LABELS.get(l["stage"], l["stage"]),
+            _export_stage_labels.get(l["stage"], l["stage"]),
             l["created_at"].strftime("%Y-%m-%d") if l["created_at"] else "",
         ])
 
@@ -18639,8 +22060,8 @@ def sales_pipeline_edit(lead_id: int):
     cur  = conn.cursor()
     cur.execute("""
         UPDATE merchant_pipeline_leads
-           SET customer_name=%s, contact_person=%s, phone=%s, whatsapp_number=%s, email=%s, deal_value=%s, notes=%s,
-               updated_at=NOW()
+           SET customer_name=%s, contact_person=%s, phone=%s, whatsapp_number=%s, email=%s, website=%s, deal_value=%s, notes=%s,
+               product_interest=%s, assigned_to=%s, updated_at=NOW()
          WHERE id=%s AND tenant_id=%s
     """, (
         customer_name,
@@ -18648,15 +22069,20 @@ def sales_pipeline_edit(lead_id: int):
         (f.get("phone") or "").strip() or None,
         (f.get("whatsapp_number") or "").strip() or None,
         (f.get("email") or "").strip() or None,
+        _normalize_website_url(f.get("website") or "") or None,
         deal_value,
         (f.get("notes") or "").strip() or None,
+        (f.get("product_interest") or "").strip() or None,
+        (f.get("assigned_to") or "").strip() or None,
         lead_id, tenant_id,
     ))
     conn.commit()
     cur.close(); conn.close()
 
     flash(f"{customer_name} updated.", "success")
-    return redirect(url_for("portal.sales_pipeline"))
+    # Editing can happen from the Lead's own page or from Sales Pipeline —
+    # go back to wherever the edit was submitted from, not always Pipeline.
+    return redirect(request.referrer or url_for("portal.sales_pipeline"))
 
 
 @portal_bp.route("/sales-pipeline/<int:lead_id>/assign-ambassador", methods=["POST"])
@@ -18779,6 +22205,7 @@ def sales_pipeline_advance(lead_id: int):
             except ValueError:
                 pass
         updates["won_date"] = won_date
+        updates["outcome"] = "won"
 
     set_clause = ", ".join(f"{k}=%s" for k in updates) + ", updated_at=NOW()"
     cur.execute(f"UPDATE merchant_pipeline_leads SET {set_clause} WHERE id=%s",
@@ -18788,7 +22215,9 @@ def sales_pipeline_advance(lead_id: int):
 
     changed_by = f"{customer.get('first_name','')} {customer.get('last_name','')}".strip()
     pipeline_record_stage_change(lead_id, lead["stage"], target, changed_by)
-    flash(f"{lead['customer_name']} moved to {PIPELINE_STAGE_LABELS[target]}.", "success")
+    if target == "won":
+        _stamp_campaign_converted(lead_id)
+    flash(f"{lead['customer_name']} moved to {pipeline_effective_stage_labels(tenant_id)[target]}.", "success")
     return redirect(url_for("portal.sales_pipeline"))
 
 
@@ -18855,6 +22284,7 @@ def sales_pipeline_bulk_advance():
             except ValueError:
                 pass
         updates["won_date"] = won_date
+        updates["outcome"] = "won"
 
     try:
         conn = get_db_connection()
@@ -18879,18 +22309,25 @@ def sales_pipeline_bulk_advance():
         changed_by = f"{customer.get('first_name','')} {customer.get('last_name','')}".strip()
         for lead in leads:
             pipeline_record_stage_change(lead["id"], lead["stage"], target, changed_by)
+            if target == "won":
+                _stamp_campaign_converted(lead["id"])
         cur.close(); conn.close()
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
     return jsonify({
         "ok": True, "updated": len(leads), "requested": len(lead_ids),
-        "stage_label": PIPELINE_STAGE_LABELS[target],
+        "stage_label": pipeline_effective_stage_labels(tenant_id)[target],
     })
 
 
 @portal_bp.route("/sales-pipeline/<int:lead_id>/drop", methods=["POST"])
 def sales_pipeline_drop(lead_id: int):
+    """Closes a deal as either Lost (pursued it, customer chose someone else)
+    or Dropped (decided not to pursue at all) — two distinct outcomes with
+    their own reason lists, per project_sales_pipeline_leads_redesign memory.
+    A reason is REQUIRED for both; the route name/URL stayed as 'drop' so no
+    existing link/bookmark breaks, but 'outcome' now says which one."""
     r = _require_login()
     if r: return r
     customer  = _get_customer(_customer_id())
@@ -18900,18 +22337,31 @@ def sales_pipeline_drop(lead_id: int):
         flash("Deal not found.", "danger")
         return redirect(url_for("portal.sales_pipeline"))
 
+    outcome = (request.form.get("outcome") or "dropped").strip().lower()
+    if outcome not in ("lost", "dropped"):
+        outcome = "dropped"
+    valid_reasons = PIPELINE_LOST_REASONS if outcome == "lost" else PIPELINE_DROPPED_REASONS
     reason = (request.form.get("reason") or "").strip()
+    if reason == "Other":
+        other_text = (request.form.get("reason_other") or "").strip()
+        if other_text:
+            reason = f"Other: {other_text}"
+    if not reason or (reason not in valid_reasons and not reason.startswith("Other:")):
+        flash(f"Please choose a reason before marking this deal {PIPELINE_OUTCOME_LABELS[outcome]}.", "danger")
+        return redirect(url_for("portal.sales_pipeline"))
+
     conn = get_db_connection()
     cur  = conn.cursor()
     cur.execute("""
-        UPDATE merchant_pipeline_leads SET dropped_at=NOW(), dropped_reason=%s WHERE id=%s
-    """, (reason or None, lead_id))
+        UPDATE merchant_pipeline_leads SET dropped_at=NOW(), dropped_reason=%s, outcome=%s WHERE id=%s
+    """, (reason, outcome, lead_id))
     conn.commit()
     cur.close(); conn.close()
 
     changed_by = f"{customer.get('first_name','')} {customer.get('last_name','')}".strip()
-    pipeline_record_stage_change(lead_id, lead["stage"], "dropped", changed_by, reason or None)
-    flash(f"{lead['customer_name']} dropped from the pipeline.", "success")
+    pipeline_record_stage_change(lead_id, lead["stage"], outcome, changed_by, reason)
+    labels = pipeline_effective_stage_labels(tenant_id)
+    flash(f"{lead['customer_name']} marked {labels.get(outcome, PIPELINE_OUTCOME_LABELS[outcome])}.", "success")
     return redirect(url_for("portal.sales_pipeline"))
 
 
@@ -18930,6 +22380,157 @@ def sales_pipeline_history(lead_id: int):
          "notes": h["notes"], "created_at": h["created_at"].isoformat() if h["created_at"] else ""}
         for h in history
     ])
+
+
+@portal_bp.route("/sales-pipeline/settings", methods=["GET", "POST"])
+def sales_pipeline_settings():
+    """One Pipeline Stage names + Lead Score labels — both editable per
+    business, everything else (order, meaning, colors, thresholds, the
+    scoring math) fixed. See project_sales_pipeline_leads_redesign memory."""
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    if request.method == "POST":
+        form_type = request.form.get("form_type")
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        if form_type == "stage_labels":
+            overrides = {}
+            for key in list(PIPELINE_STAGE_LABELS.keys()) + list(PIPELINE_OUTCOME_LABELS.keys()):
+                val = (request.form.get(f"stage_{key}") or "").strip()
+                if val:
+                    overrides[key] = val[:60]
+            cur.execute("UPDATE tenants SET pipeline_stage_labels=%s WHERE id=%s",
+                        (psycopg2.extras.Json(overrides), tenant_id))
+            conn.commit()
+            flash("Stage names saved.", "success")
+        elif form_type == "score_labels":
+            overrides = {}
+            for key in PIPELINE_SCORE_TIER_DEFAULTS.keys():
+                val = (request.form.get(f"score_{key}") or "").strip()
+                if val:
+                    overrides[key] = val[:40]
+            cur.execute("UPDATE tenants SET lead_score_labels=%s WHERE id=%s",
+                        (psycopg2.extras.Json(overrides), tenant_id))
+            conn.commit()
+            flash("Lead Score labels saved.", "success")
+        cur.close(); conn.close()
+        return redirect(url_for("portal.sales_pipeline_settings"))
+
+    return render_template(
+        "portal/sales_pipeline_settings.html",
+        stage_order=PIPELINE_STAGE_ORDER,
+        stage_defaults=PIPELINE_STAGE_LABELS,
+        stage_descriptions=PIPELINE_STAGE_DESCRIPTIONS,
+        outcome_defaults=PIPELINE_OUTCOME_LABELS,
+        outcome_descriptions=PIPELINE_OUTCOME_DESCRIPTIONS,
+        current_stage_labels=pipeline_effective_stage_labels(tenant_id),
+        score_defaults=PIPELINE_SCORE_TIER_DEFAULTS,
+        current_score_labels=pipeline_effective_score_labels(tenant_id),
+    )
+
+
+@portal_bp.route("/leads/<int:lead_id>")
+def lead_detail(lead_id: int):
+    """The Lead Command Centre — everything a salesperson needs to close this
+    one deal, on one page. Lives under Leads, not Sales Pipeline (see
+    project_leads_page_redesign memory): the Lead record (business, contact,
+    deal, source, score) is the whole point of this page; the Pipeline
+    (which stage it's at) is one section on it, not the other way round. The
+    WhatsApp conversation is a preview with a link out, not a page-dominating
+    chat log."""
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    lead = _pipeline_lead_owned_by_tenant(lead_id, tenant_id)
+    if not lead:
+        flash("Lead not found.", "danger")
+        return redirect(url_for("portal.leads_page"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # Score — same math as the Leads list, just for this one lead.
+    scored_from = _pipeline_scored_from_sql()
+    cur.execute(f"SELECT lead_score, lead_tier FROM {scored_from} mpl WHERE mpl.id=%s", [tenant_id, lead_id])
+    score_row = cur.fetchone() or {"lead_score": 0, "lead_tier": "cold"}
+
+    # Campaign, if a WhatsApp campaign reply is what created this Lead
+    # (Campaign Intelligence link) — checked by the link itself, not by
+    # `source`, since source now records the CHANNEL (whatsapp/facebook/
+    # instagram/manual), not how the row was created.
+    cur.execute("""
+        SELECT wc.name, wcr.reply_text, wcr.replied_at
+        FROM wa_campaign_recipients wcr JOIN wa_campaigns wc ON wc.id = wcr.campaign_id
+        WHERE wcr.pipeline_lead_id = %s
+        ORDER BY wcr.replied_at DESC NULLS LAST LIMIT 1
+    """, (lead_id,))
+    campaign = cur.fetchone()
+
+    # Company (CRM merge link).
+    company = None
+    if lead.get("company_id"):
+        cur.execute("SELECT id, name FROM crm_companies WHERE id=%s", (lead["company_id"],))
+        company = cur.fetchone()
+
+    # Ambassador — PhiXtra's own account only, never shown as if it applies elsewhere.
+    ambassador = None
+    if tenant_id == PHIXTRA_SUPPORT_TENANT_ID and lead.get("assigned_ambassador_id"):
+        cur.execute("SELECT first_name, last_name FROM ambassadors WHERE id=%s", (lead["assigned_ambassador_id"],))
+        a = cur.fetchone()
+        if a:
+            ambassador = f"{a['first_name']} {a['last_name'] or ''}".strip()
+
+    # Conversation preview — last WhatsApp message on this lead's number, and
+    # a link to the real Contact page for the full history. Never rebuilt here.
+    last_message = None
+    contact_id = lead.get("wa_contact_id")
+    lookup_phone = lead.get("whatsapp_number") or lead.get("phone")
+    if lookup_phone:
+        cur.execute("""
+            SELECT content, direction, created_at FROM wa_message_log
+            WHERE tenant_id=%s AND regexp_replace(customer_phone, '[^0-9]', '', 'g')
+                                  = regexp_replace(%s, '[^0-9]', '', 'g')
+            ORDER BY created_at DESC LIMIT 1
+        """, (tenant_id, lookup_phone))
+        last_message = cur.fetchone()
+        if not contact_id:
+            cur.execute("""
+                SELECT id FROM wa_contacts
+                WHERE tenant_id=%s AND regexp_replace(phone, '[^0-9]', '', 'g')
+                                       = regexp_replace(%s, '[^0-9]', '', 'g')
+                LIMIT 1
+            """, (tenant_id, lookup_phone))
+            _c = cur.fetchone()
+            contact_id = _c["id"] if _c else None
+
+    # Activity — Stage History (real) is its own tab; Notes shown here is the
+    # Lead's own notes field, editable via the existing Edit Deal modal.
+    stage_history = pipeline_get_stage_history(lead_id)
+    last_worked_by = stage_history[0]["changed_by"] if stage_history else None
+
+    cur.close(); conn.close()
+
+    return render_template(
+        "portal/lead_detail.html",
+        lead=lead,
+        lead_score=score_row["lead_score"],
+        lead_tier=score_row["lead_tier"],
+        score_labels=pipeline_effective_score_labels(tenant_id),
+        stage_labels=pipeline_effective_stage_labels(tenant_id),
+        stage_order=PIPELINE_STAGE_ORDER,
+        campaign=campaign,
+        company=company,
+        ambassador=ambassador,
+        is_phixtra_support_account=(tenant_id == PHIXTRA_SUPPORT_TENANT_ID),
+        last_message=last_message,
+        contact_id=contact_id,
+        stage_history=stage_history,
+        last_worked_by=last_worked_by,
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -19230,8 +22831,42 @@ def _send_sms_campaign_now(campaign_id: int):
     if not row:
         return
 
-    numbers = [n for n in (row["recipients"] or "").splitlines() if n.strip()]
-    sent, failed, error = bulksmsng_api.send_bulk_sms(numbers, row["message"])
+    numbers   = [n for n in (row["recipients"] or "").splitlines() if n.strip()]
+    tenant_id = row["tenant_id"]
+
+    # SMS had no opt-out check at all until now — someone who said STOP on
+    # WhatsApp, or was switched off for SMS specifically on their Consent
+    # panel, must be skipped here too. Same phone-normalisation pattern as
+    # the WhatsApp campaign send (_send_campaign_now).
+    contacts_by_phone = {}
+    try:
+        sc  = get_db_connection()
+        scc = sc.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        scc.execute(
+            "SELECT phone, opted_out, sms_opted_out FROM wa_contacts WHERE tenant_id=%s",
+            (tenant_id,),
+        )
+        contacts_by_phone = {c["phone"]: c for c in scc.fetchall()}
+        scc.close(); sc.close()
+    except Exception as _se:
+        print(f"⚠️ [SMS CAMPAIGN {campaign_id}] suppression fetch error:", _se)
+
+    to_send = []
+    suppressed = 0
+    for n in numbers:
+        norm_phone = n.strip().lstrip("+").strip()
+        if norm_phone.startswith("0") and len(norm_phone) == 11:
+            norm_phone = "234" + norm_phone[1:]
+        contact = contacts_by_phone.get("+" + norm_phone)
+        if contact and (contact.get("opted_out") or contact.get("sms_opted_out")):
+            suppressed += 1
+            continue
+        to_send.append(n)
+
+    sent, failed, error = bulksmsng_api.send_bulk_sms(to_send, row["message"])
+    failed += suppressed
+    if suppressed and not error:
+        error = f"{suppressed} recipient(s) skipped — opted out"
 
     conn2 = get_db_connection()
     cur2  = conn2.cursor()

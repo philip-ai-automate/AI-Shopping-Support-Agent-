@@ -1,0 +1,74 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Buffer Channels — PhiXtra Admin{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="section-title">⚙️ Buffer Channels</h1>
+  <a href="{{ url_for('portal_admin.social_media_posts') }}" class="btn btn-sm">← Back to Social Media Posts</a>
+</div>
+
+<p class="muted" style="margin-bottom:20px">
+  One-time setup: tell PhiXtra which Buffer channel each platform should publish through.
+  This uses the <code>BUFFER_API_KEY</code> configured on the server — it's the same
+  PhiXtra Buffer account for every platform, just a different channel per row.
+</p>
+
+{% if buffer_error %}
+<div class="card" style="border-color:rgba(240,68,56,0.35);background:rgba(240,68,56,0.06);margin-bottom:20px">
+  <p style="font-size:13px;margin:0">
+    ⚠️ Couldn't reach Buffer to list your connected channels: <strong>{{ buffer_error }}</strong>.
+    You can still save channel IDs manually below if you already have them.
+  </p>
+</div>
+{% elif live_channels %}
+<div class="card" style="margin-bottom:20px">
+  <p class="card-title">Channels on this Buffer account</p>
+  <p class="muted" style="font-size:12.5px;margin-bottom:12px">Copy the id you need into the matching row below.</p>
+  <div class="table-wrap" style="border:none">
+    <table>
+      <thead><tr><th>Service</th><th>Name</th><th>Channel ID</th></tr></thead>
+      <tbody>
+        {% for ch in live_channels %}
+        <tr>
+          <td>{{ ch.service }}</td>
+          <td>{{ ch.name or '—' }}</td>
+          <td><code>{{ ch.id }}</code></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card" style="margin-bottom:20px">
+  <p style="font-size:13px;margin:0" class="muted">No channels found on this Buffer account yet — connect them in Buffer first.</p>
+</div>
+{% endif %}
+
+<form method="POST">
+  <div class="card" style="padding:0">
+    <div class="table-wrap" style="border:none;border-radius:16px">
+      <table>
+        <thead>
+          <tr><th>Platform</th><th>Buffer Channel ID</th><th>Label (optional)</th></tr>
+        </thead>
+        <tbody>
+          {% for key, plat in platforms.items() %}
+          {% set row = current.get(key) %}
+          <tr>
+            <td><strong>{{ plat.icon }} {{ plat.label }}</strong></td>
+            <td><input type="text" name="channel__{{ key }}" value="{{ row.buffer_channel_id if row else '' }}"
+                       placeholder="paste channel id" style="width:100%;padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px"></td>
+            <td><input type="text" name="label__{{ key }}" value="{{ row.channel_label if row else '' }}"
+                       placeholder="e.g. PhiXtra Page" style="width:100%;padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px"></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <p class="muted" style="font-size:12px;margin:10px 0">Clear a Channel ID field and save to remove that mapping.</p>
+  <button type="submit" class="btn btn-primary">Save Mapping</button>
+</form>
+
+{% endblock %}

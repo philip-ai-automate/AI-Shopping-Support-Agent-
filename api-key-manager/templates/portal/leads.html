@@ -58,15 +58,16 @@
 .filter-bar { display:flex; gap:8px; flex-wrap:wrap }
 .filter-btn {
   padding:7px 16px; border-radius:999px; font-size:13px; font-weight:600;
-  border:1px solid var(--line); background:#fff; cursor:pointer; transition:.12s;
+  border:1px solid var(--line); background:#fff; cursor:pointer; transition:.12s; text-decoration:none; color:inherit;
+  display:inline-block;
 }
-.filter-btn:hover { background:rgba(3,12,24,.05) }
+.filter-btn:hover { background:rgba(3,12,24,.05); text-decoration:none; color:inherit }
 .filter-btn.active { background:var(--ink); color:#fff; border-color:var(--ink) }
 
 .sort-select {
   padding:8px 14px; border-radius:999px; border:1.5px solid var(--line);
   font-size:13px; font-weight:600; font-family:inherit; background:#fff; cursor:pointer;
-  color:var(--ink); margin-left:auto;
+  color:var(--ink);
 }
 
 .lead-card {
@@ -74,9 +75,9 @@
   background:#fff; border:1px solid var(--line); border-radius:18px;
   padding:18px 20px; margin-bottom:12px;
   display:flex; align-items:center; gap:16px;
-  transition:.15s; cursor:pointer; text-decoration:none; color:inherit;
+  transition:.15s; text-decoration:none; color:inherit;
 }
-.lead-card:hover { border-color:rgba(3,12,24,.2); box-shadow:0 8px 22px rgba(3,12,24,.08); text-decoration:none; color:inherit; transform:translateY(-1px) }
+.lead-card:hover { border-color:rgba(3,12,24,.2); box-shadow:0 8px 22px rgba(3,12,24,.08) }
 .lead-card.hot  { border-left:4px solid #F04438 }
 .lead-card.warm { border-left:4px solid #F79009 }
 
@@ -132,14 +133,46 @@
   position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
   font-size:13px; font-weight:800;
 }
-.lead-open-btn {
-  display:none; align-items:center; gap:4px; font-size:12.5px; font-weight:700;
-  padding:8px 14px; border-radius:999px; background:var(--ink); color:#fff; white-space:nowrap;
+.lead-card-actions { display:flex; flex-direction:column; gap:6px; align-items:stretch; flex-shrink:0 }
+.lead-open-btn, .lead-create-btn {
+  display:inline-flex; align-items:center; justify-content:center; gap:4px; font-size:12px; font-weight:700;
+  padding:7px 13px; border-radius:999px; white-space:nowrap; border:none; cursor:pointer; font-family:inherit;
+  text-decoration:none;
 }
-@media(min-width:860px){ .lead-open-btn { display:inline-flex } }
+.lead-open-btn { background:#f1f5f9; color:var(--ink); }
+.lead-create-btn { background:var(--ink); color:#fff; }
+.lead-already { display:inline-flex; align-items:center; gap:4px; font-size:11.5px; font-weight:700; color:#15803d; }
 
 .empty-leads { text-align:center; padding:60px 20px; color:var(--muted) }
 .empty-leads-icon { font-size:48px; margin-bottom:14px }
+
+.section-title-row { display:flex; align-items:center; justify-content:space-between; margin:30px 0 14px; flex-wrap:wrap; gap:10px }
+.section-title-row h2 { font-size:16px; font-weight:800; color:var(--ink); margin:0; display:flex; align-items:center; gap:8px }
+
+.stage-pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
+.st-new_lead{background:#f1f5f9;color:#475569}
+.st-contacted{background:#dbeafe;color:#1d4ed8}
+.st-qualified{background:#e0e7ff;color:#4338ca}
+.st-proposal_sent{background:#fef9c3;color:#92400e}
+.st-negotiating{background:#fed7aa;color:#9a3412}
+.st-won{background:#dcfce7;color:#15803d}
+
+.card{background:#fff;border:1px solid var(--line);border-radius:18px}
+.table-wrap{overflow-x:auto}
+.rpt-table { width:100%; border-collapse:collapse }
+.rpt-table th { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.05em;
+  padding:11px 16px; text-align:left; background:#f8fafc; border-bottom:1px solid var(--line); white-space:nowrap }
+.rpt-table td { padding:11px 16px; font-size:12.5px; border-bottom:1px solid rgba(3,12,24,.05); vertical-align:middle }
+.rpt-table tr:last-child td { border-bottom:none }
+.rpt-table tbody tr:hover td { background:#fafbfc }
+
+.lead-form{background:#fff;border:1.5px solid var(--line);border-radius:16px;padding:24px;margin-bottom:20px;display:none}
+.lead-form.open{display:block}
+.lf-title{font-size:15px;font-weight:800;color:var(--ink);margin-bottom:16px}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.frow.single{grid-template-columns:1fr}
+.flbl{display:block;font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:5px}
+.finp{width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:inherit}
 
 @media(max-width:640px){
   .lead-body { padding-right:0 }
@@ -153,182 +186,238 @@
     <div class="leads-hero-icon">🔥</div>
     <div>
       <h1>Leads</h1>
-      <p>Conversations with buying signals — prioritise these chats</p>
+      <p>Every Lead's commercial info in one place — where it stands in your Pipeline is just one field on it.</p>
     </div>
   </div>
-  <a href="{{ url_for('portal.my_inbox') }}" class="btn btn-sm">← Back to Inbox</a>
+  <div style="display:flex;gap:10px">
+    <a href="{{ url_for('portal.sales_pipeline_settings') }}" class="btn btn-sm" style="text-decoration:none">⚙️ Settings</a>
+    <button type="button" class="btn btn-primary btn-sm" onclick="document.getElementById('addLeadForm').classList.add('open'); document.getElementById('addLeadForm').scrollIntoView({behavior:'smooth'})">➕ Add Lead</button>
+  </div>
 </div>
 
+{% if not is_connect_host %}
+{# ══════════════ HOT CONVERSATIONS ══════════════ #}
+<div class="section-title-row"><h2>🔥 Hot Conversations</h2></div>
 {% if not connection %}
-<div class="card" style="text-align:center;padding:48px 24px">
-  <div style="font-size:40px;margin-bottom:12px">📵</div>
-  <div style="font-size:16px;font-weight:700;margin-bottom:6px">No WhatsApp connection</div>
-  <p class="muted">Connect your WhatsApp number to start receiving and scoring leads.</p>
-  <a href="{{ url_for('portal.whatsapp_connect') }}" class="btn btn-primary" style="margin-top:14px">Connect WhatsApp →</a>
+<div class="card" style="text-align:center;padding:36px 24px;margin-bottom:30px">
+  <div style="font-size:32px;margin-bottom:10px">📵</div>
+  <div style="font-size:15px;font-weight:700;margin-bottom:4px">No WhatsApp connection</div>
+  <p class="muted" style="margin:0 0 12px">Connect your WhatsApp number to start spotting buying signals in your conversations.</p>
+  <a href="{{ url_for('portal.whatsapp_connect') }}" class="btn btn-primary btn-sm">Connect WhatsApp →</a>
 </div>
-
 {% else %}
 
-{# KPI strip #}
 <div class="leads-kpi-row">
   <div class="leads-kpi hot">
     <div class="leads-kpi-icon">🔥</div>
-    <div>
-      <div class="leads-kpi-val" style="color:#b91c1c">{{ hot_count }}</div>
-      <div class="leads-kpi-label">Hot leads — reply now</div>
-    </div>
+    <div><div class="leads-kpi-val" style="color:#b91c1c">{{ hot_count }}</div><div class="leads-kpi-label">Hot — reply now</div></div>
   </div>
   <div class="leads-kpi warm">
     <div class="leads-kpi-icon">⭐</div>
-    <div>
-      <div class="leads-kpi-val" style="color:#92400e">{{ warm_count }}</div>
-      <div class="leads-kpi-label">Warm leads — worth reading</div>
-    </div>
+    <div><div class="leads-kpi-val" style="color:#92400e">{{ warm_count }}</div><div class="leads-kpi-label">Warm — worth reading</div></div>
   </div>
   <div class="leads-kpi total">
     <div class="leads-kpi-icon">📊</div>
-    <div>
-      <div class="leads-kpi-val">{{ leads|length }}</div>
-      <div class="leads-kpi-label">Total leads identified</div>
-    </div>
+    <div><div class="leads-kpi-val">{{ hot_leads|length }}</div><div class="leads-kpi-label">Conversations flagged</div></div>
   </div>
 </div>
 
-{# Toolbar: search + filter + sort #}
-<div class="leads-toolbar">
-  <div class="leads-search">
-    <span class="leads-search-icon">🔍</span>
-    <input type="text" id="leadsSearch" placeholder="Search by name or phone…" oninput="applyLeadFilters()"/>
-  </div>
-  <div class="filter-bar">
-    <button class="filter-btn active" data-tier="all" onclick="filterTier(this,'all')">All ({{ leads|length }})</button>
-    <button class="filter-btn" data-tier="hot"  onclick="filterTier(this,'hot')">🔥 Hot ({{ hot_count }})</button>
-    <button class="filter-btn" data-tier="warm" onclick="filterTier(this,'warm')">⭐ Warm ({{ warm_count }})</button>
-  </div>
-  <select class="sort-select" id="leadsSort" onchange="applyLeadFilters()">
-    <option value="score">Sort: Highest score</option>
-    <option value="recent">Sort: Most recent</option>
-  </select>
-</div>
-
-{% if not leads %}
-<div class="empty-leads">
+{% if not hot_leads %}
+<div class="empty-leads" style="margin-bottom:20px">
   <div class="empty-leads-icon">🔍</div>
-  <div style="font-size:17px;font-weight:700;margin-bottom:8px">No leads yet</div>
-  <p style="max-width:380px;margin:0 auto">When customers send messages with buying signals — price enquiries, stock checks, purchase intent — they'll appear here.</p>
+  <div style="font-size:15px;font-weight:700;margin-bottom:6px">No hot conversations right now</div>
+  <p style="max-width:380px;margin:0 auto;font-size:13px">When customers send messages with buying signals — price enquiries, stock checks, purchase intent — they'll appear here, ready to become a Lead.</p>
 </div>
-
 {% else %}
 
 {% macro avatar_color(phone) %}{% set _p=['#5C6BC0','#26A69A','#0288D1','#388E3C','#F57C00','#8E24AA','#E53935','#00838F'] %}{{ _p[(phone[-1:]|int(default=0))%8] }}{% endmacro %}
 {% macro avatar_initials(name, phone) %}{% if name %}{% set _w=name.split() %}{% if _w|length>=2 %}{{ _w[0][0]|upper }}{{ _w[1][0]|upper }}{% else %}{{ _w[0][:2]|upper }}{% endif %}{% else %}{{ phone[-4:] }}{% endif %}{% endmacro %}
 
-<div id="leadsList">
-{% for c in leads %}
+<div style="margin-bottom:30px">
+{% for c in hot_leads %}
 {% set _col = avatar_color(c.customer_phone) %}
 {% set _ini = avatar_initials(c.display_name, c.customer_phone) %}
 {% set _name = c.display_name if c.display_name else '+' + c.customer_phone %}
 {% set _ring = '#F04438' if c.lead_tier == 'hot' else '#F79009' %}
 {% set _circ = 2 * 3.14159 * 20 %}
 {% set _offset = _circ - (_circ * (c.lead_score / 100)) %}
-<a class="lead-card {{ c.lead_tier }}" data-tier="{{ c.lead_tier }}"
-   data-name="{{ (_name ~ ' ' ~ c.customer_phone)|lower }}"
-   data-score="{{ c.lead_score }}"
-   data-time="{{ c.last_message_at.isoformat() if c.last_message_at else '' }}"
-   href="{{ url_for('portal.my_inbox') }}?phone={{ c.customer_phone }}">
-
-  <span class="lead-ribbon {{ c.lead_tier }}">
-    {% if c.lead_tier == 'hot' %}🔥 Hot{% else %}⭐ Warm{% endif %}
-  </span>
-
+<div class="lead-card {{ c.lead_tier }}">
+  <span class="lead-ribbon {{ c.lead_tier }}">{% if c.lead_tier == 'hot' %}🔥 Hot{% else %}⭐ Warm{% endif %}</span>
   <div class="lead-avatar-wrap">
     <div class="lead-avatar" style="background:{{ _col }};--ring-color:{{ _ring }}55">{{ _ini }}</div>
-    {% if c.handoff_status == 'needs_agent' %}
-    <div class="lead-needs-agent-dot" title="Customer asked for a human agent"></div>
-    {% endif %}
+    {% if c.handoff_status == 'needs_agent' %}<div class="lead-needs-agent-dot" title="Customer asked for a human agent"></div>{% endif %}
   </div>
-
   <div class="lead-body">
     <div class="lead-top">
       <span class="lead-name">{{ _name }}</span>
       {% if c.display_name %}<span class="lead-phone">+{{ c.customer_phone }}</span>{% endif %}
     </div>
-
     {% if c.last_content %}
-    <div class="lead-preview">
-      {% if c.last_direction == 'outbound' %}↗ {% else %}↙ {% endif %}{{ c.last_content }}
-    </div>
+    <div class="lead-preview">{% if c.last_direction == 'outbound' %}↗ {% else %}↙ {% endif %}{{ c.last_content }}</div>
     {% endif %}
-
     {% if c.lead_signals %}
-    <div class="lead-signals">
-      {% for sig in c.lead_signals[:5] %}
-      <span class="lead-signal-tag {{ c.lead_tier }}">{{ sig }}</span>
-      {% endfor %}
-    </div>
+    <div class="lead-signals">{% for sig in c.lead_signals[:5] %}<span class="lead-signal-tag {{ c.lead_tier }}">{{ sig }}</span>{% endfor %}</div>
     {% endif %}
-
     <div class="lead-meta">
       {{ c.inbound_count }} inbound message{{ 's' if c.inbound_count != 1 else '' }}
       {% if c.last_message_at %}· {{ c.last_message_at.strftime('%d %b %H:%M') }}{% endif %}
-      {% if c.last_direction == 'inbound' %}
-        · <span class="awaiting">Awaiting your reply</span>
-      {% endif %}
+      {% if c.last_direction == 'inbound' %}· <span class="awaiting">Awaiting your reply</span>{% endif %}
     </div>
   </div>
-
   <div class="lead-right">
     <div class="lead-score-ring">
       <svg width="48" height="48" viewBox="0 0 48 48">
         <circle class="lead-score-ring-bg" cx="24" cy="24" r="20"/>
-        <circle class="lead-score-ring-fg" cx="24" cy="24" r="20"
-                stroke="{{ _ring }}"
-                stroke-dasharray="{{ _circ }}"
-                stroke-dashoffset="{{ _offset }}"/>
+        <circle class="lead-score-ring-fg" cx="24" cy="24" r="20" stroke="{{ _ring }}" stroke-dasharray="{{ _circ }}" stroke-dashoffset="{{ _offset }}"/>
       </svg>
       <div class="lead-score-num" style="color:{{ _ring }}">{{ c.lead_score }}</div>
     </div>
-    <span class="lead-open-btn">Open chat →</span>
+    <div class="lead-card-actions">
+      <a class="lead-open-btn" href="{{ url_for('portal.my_inbox') }}?phone={{ c.customer_phone }}">Open chat →</a>
+      {% if c.already_lead %}
+      <span class="lead-already">✓ Already a Lead</span>
+      {% else %}
+      <form method="POST" action="{{ url_for('portal.leads_create_from_conversation') }}" style="margin:0">
+        <input type="hidden" name="phone" value="{{ c.customer_phone }}">
+        <input type="hidden" name="display_name" value="{{ c.display_name or '' }}">
+        <button type="submit" class="lead-create-btn">+ Create Lead</button>
+      </form>
+      {% endif %}
+    </div>
   </div>
-
-</a>
+</div>
 {% endfor %}
 </div>
-
-{% endif %}{# leads #}
+{% endif %}{# hot_leads #}
 {% endif %}{# connection #}
+{% endif %}{# not is_connect_host #}
 
+{# ══════════════ YOUR LEADS (the real record list) ══════════════ #}
+<div class="section-title-row"><h2>📇 Your Leads</h2></div>
+
+<div class="lead-form{% if request.args.get('open_add') %} open{% endif %}" id="addLeadForm">
+  <div class="lf-title">➕ Add Lead</div>
+  <form method="POST" action="{{ url_for('portal.leads_page') }}">
+    <div class="frow">
+      <div><label class="flbl">Business Name</label><input type="text" name="customer_name" class="finp" required></div>
+      <div><label class="flbl">Contact Person</label><input type="text" name="contact_person" class="finp"></div>
+    </div>
+    <div class="frow">
+      <div><label class="flbl">Phone</label><input type="tel" name="phone" class="finp"></div>
+      <div><label class="flbl">WhatsApp Number <span style="font-weight:400;color:#9ca3af">(if different)</span></label><input type="tel" name="whatsapp_number" class="finp"></div>
+    </div>
+    <div class="frow">
+      <div><label class="flbl">Email</label><input type="email" name="email" class="finp"></div>
+      <div><label class="flbl">Deal Value</label><input type="number" step="0.01" name="deal_value" class="finp" placeholder="e.g. 450000"></div>
+    </div>
+    <div class="frow">
+      <div><label class="flbl">Source</label>
+        <select name="source" class="finp">
+          <option value="manual">Manual Entry</option>
+          <option value="whatsapp">WhatsApp</option>
+          <option value="facebook">Facebook</option>
+          <option value="instagram">Instagram</option>
+        </select>
+      </div>
+      <div><label class="flbl">Assigned Salesperson</label><input type="text" name="assigned_to" class="finp"></div>
+    </div>
+    <div class="frow single">
+      <div><label class="flbl">Product / Service Interested In</label><input type="text" name="product_interest" class="finp"></div>
+    </div>
+    <div class="frow single">
+      <div><label class="flbl">Notes</label><textarea name="notes" class="finp"></textarea></div>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button type="submit" class="btn btn-primary">Create Lead</button>
+      <button type="button" class="btn btn-sm" onclick="document.getElementById('addLeadForm').classList.remove('open')">Cancel</button>
+    </div>
+  </form>
+</div>
+
+<div class="leads-toolbar">
+  <form class="leads-search" method="GET">
+    <span class="leads-search-icon">🔍</span>
+    <input type="text" name="q" value="{{ search }}" placeholder="Search by business or contact…">
+  </form>
+  <div class="filter-bar">
+    <a href="{{ url_for('portal.leads_page', q=search) }}" class="filter-btn {{ 'active' if tier_filter == 'all' }}">All ({{ tier_counts.values()|sum }})</a>
+    <a href="{{ url_for('portal.leads_page', q=search, tier='hot') }}" class="filter-btn {{ 'active' if tier_filter == 'hot' }}">🔥 Hot ({{ tier_counts.get('hot', 0) }})</a>
+    <a href="{{ url_for('portal.leads_page', q=search, tier='warm') }}" class="filter-btn {{ 'active' if tier_filter == 'warm' }}">🌤️ Warm ({{ tier_counts.get('warm', 0) }})</a>
+    <a href="{{ url_for('portal.leads_page', q=search, tier='cold') }}" class="filter-btn {{ 'active' if tier_filter == 'cold' }}">❄️ Cold ({{ tier_counts.get('cold', 0) }})</a>
+  </div>
+  <a href="{{ url_for('portal.leads_page', q=search, tier=(tier_filter if tier_filter != 'all' else none), sort=(none if sort_by == 'score' else 'score')) }}"
+     class="filter-btn {{ 'active' if sort_by == 'score' }}">📊 {{ 'Sorted by Score' if sort_by == 'score' else 'Sort by Score' }}</a>
+</div>
+
+{% if not real_leads %}
+<div class="empty-leads">
+  <div class="empty-leads-icon">📇</div>
+  <div style="font-size:17px;font-weight:700;margin-bottom:8px">No Leads yet</div>
+  <p style="max-width:380px;margin:0 auto">Add one by hand above, or create one from a Hot Conversation.</p>
+</div>
+{% else %}
+<div class="card" style="padding:0">
+  <div class="table-wrap">
+    <table class="rpt-table">
+      <thead>
+        <tr>
+          <th>Business</th><th>Contact</th><th>Phone / WhatsApp</th><th>Source</th>
+          <th>Product / Service</th><th>Deal Value</th><th>Assigned To</th><th>Stage</th><th>Score</th><th>Added</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set src_meta = {'whatsapp': ('#dcfce7','#15803d','WhatsApp'), 'facebook': ('#dbeafe','#1d4ed8','Facebook'),
+                            'instagram': ('#fce7f3','#be185d','Instagram'), 'manual': ('#f1f5f9','#64748b','Manual')} %}
+        {% set _sb = {'hot': ('🔥','#fef2f2','#b91c1c'), 'warm': ('🌤️','#fffbeb','#b45309'), 'cold': ('❄️','#eff6ff','#1d4ed8')} %}
+        {% for l in real_leads %}
+        <tr>
+          <td><a href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" style="color:var(--ink);font-weight:700;text-decoration:none">{{ l.customer_name }}</a></td>
+          <td class="muted">{{ l.contact_person or '—' }}</td>
+          <td class="muted" style="font-family:'SF Mono','Fira Code',monospace">{{ l.whatsapp_number or l.phone or '—' }}</td>
+          <td>
+            {% if l.source and l.source in src_meta %}
+            {% set s_bg, s_fg, s_label = src_meta[l.source] %}
+            <span class="stage-pill" style="background:{{ s_bg }};color:{{ s_fg }}">{{ s_label }}</span>
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+          <td class="muted">{{ l.product_interest or '—' }}</td>
+          <td class="muted">{{ '₦{:,.0f}'.format(l.deal_value) if l.deal_value else '—' }}</td>
+          <td class="muted">{{ l.assigned_to or '—' }}</td>
+          <td>
+            {% if l.outcome %}
+            <span class="stage-pill" style="background:{{ '#f0fdf4' if l.outcome=='won' else '#f8fafc' }};color:{{ '#15803d' if l.outcome=='won' else '#64748b' }}">{{ stage_labels.get(l.outcome, l.outcome.capitalize()) }}</span>
+            {% else %}
+            <span class="stage-pill st-{{ l.stage }}">{{ stage_labels.get(l.stage, l.stage) }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% set icon, bg, fg = _sb.get(l.lead_tier, _sb['cold']) %}
+            <span class="stage-pill" style="background:{{ bg }};color:{{ fg }}" title="{{ score_labels.get(l.lead_tier, l.lead_tier.capitalize()) }}">{{ icon }} {{ l.lead_score }}</span>
+          </td>
+          <td class="muted" style="white-space:nowrap">{{ l.created_at.strftime('%d %b %Y') if l.created_at else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if total_pages > 1 %}
+  <div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:14px;border-top:1px solid var(--line)">
+    {% for p in range(1, total_pages + 1) %}
+    <a href="{{ url_for('portal.leads_page', q=search, tier=(tier_filter if tier_filter != 'all' else none), sort=(sort_by or none), page=p) }}"
+       class="btn btn-sm {{ 'btn-primary' if p == page else '' }}" style="text-decoration:none;min-width:30px;text-align:center">{{ p }}</a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if request.args.get('open_add') %}
 <script>
-function filterTier(btn, tier) {
-  document.querySelectorAll('.filter-btn').forEach(function(b){ b.classList.remove('active'); });
-  btn.classList.add('active');
-  applyLeadFilters();
-}
-
-function applyLeadFilters() {
-  var activeBtn = document.querySelector('.filter-btn.active');
-  var tier = activeBtn ? activeBtn.getAttribute('data-tier') : 'all';
-  var query = (document.getElementById('leadsSearch').value || '').toLowerCase().trim();
-  var sortBy = document.getElementById('leadsSort').value;
-  var list = document.getElementById('leadsList');
-  if (!list) return;
-
-  var cards = Array.prototype.slice.call(list.querySelectorAll('.lead-card'));
-
-  cards.forEach(function(el){
-    var matchesTier  = (tier === 'all' || el.getAttribute('data-tier') === tier);
-    var matchesQuery = (!query || el.getAttribute('data-name').indexOf(query) !== -1);
-    el.style.display = (matchesTier && matchesQuery) ? '' : 'none';
-  });
-
-  cards.sort(function(a, b){
-    if (sortBy === 'recent') {
-      return (b.getAttribute('data-time') || '').localeCompare(a.getAttribute('data-time') || '');
-    }
-    return parseInt(b.getAttribute('data-score')) - parseInt(a.getAttribute('data-score'));
-  });
-  cards.forEach(function(el){ list.appendChild(el); });
-}
+(function(){
+  var f = document.getElementById('addLeadForm');
+  if (f) f.scrollIntoView({behavior:'smooth'});
+})();
 </script>
+{% endif %}
 
 {% endblock %}

@@ -3,27 +3,132 @@
 
 {% block head %}
 <style>
-/* ── Layout ──────────────────────────────────────────────────────────────── */
-.crm-layout { display: grid; grid-template-columns: 230px 1fr; gap: 20px; align-items: start; }
-
-/* ── Sidebar ─────────────────────────────────────────────────────────────── */
-.crm-sidebar { background:#fff; border:1px solid rgba(3,12,24,.08); border-radius:14px; overflow:hidden; position:sticky; top:20px; }
-.sidebar-section { padding:14px 16px; }
-.sidebar-section + .sidebar-section { border-top:1px solid rgba(3,12,24,.06); }
-.sidebar-title { font-size:10px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin:0 0 10px; }
-
-.filter-item {
-  display:flex; align-items:center; justify-content:space-between;
-  padding:7px 10px; border-radius:8px; font-size:13px; cursor:pointer;
-  text-decoration:none; color:var(--ink); transition:.12s; gap:6px;
+/* ── Unified filter bar + panel ─────────────────────────────────────────────
+   Replaces the old split sidebar (Status/Tags/Segments) + toolbar checkboxes
+   with one control — enterprise filter redesign, 2026-09-09. ── */
+.filters-btn {
+  display:inline-flex; align-items:center; gap:7px;
+  background:#eff6ff; border:1.5px solid #bfdbfe; color:#1d4ed8;
+  font-size:13px; font-weight:700; padding:8px 14px; border-radius:9px;
+  cursor:pointer; transition:.12s; white-space:nowrap;
 }
-.filter-item:hover { background:#f1f5f9; }
-.filter-item.active { background:#eff6ff; color:#2563eb; font-weight:700; }
-.filter-item .fi-label { flex:1; }
-.filter-item .fi-count { font-size:11px; background:#f1f5f9; color:var(--muted); padding:1px 7px; border-radius:20px; font-weight:600; }
-.filter-item.active .fi-count { background:#dbeafe; color:#2563eb; }
+.filters-btn:hover { background:#dbeafe; }
+.filters-btn.has-active { background:#1e293b; border-color:#1e293b; color:#fff; }
+.filters-badge { background:#2563eb; color:#fff; font-size:10.5px; font-weight:800; padding:1px 6px; border-radius:20px; }
+.filters-btn.has-active .filters-badge { background:rgba(255,255,255,.2); }
+.filters-chevron { transition:transform .15s; }
+.filters-chevron.rotated { transform:rotate(180deg); }
 
-.seg-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.filter-panel { display:none; background:#fafbfc; border:1px solid rgba(3,12,24,.08); border-top:none; border-radius:0 0 14px 14px; padding:20px 22px; margin:-14px 0 14px; }
+.filter-panel.open { display:block; }
+.filter-grid { display:grid; grid-template-columns:1fr 1fr; gap:28px; }
+@media (max-width:820px) { .filter-grid { grid-template-columns:1fr; } }
+.filter-group { margin-bottom:20px; }
+.filter-group:last-child { margin-bottom:0; }
+.filter-group-title { font-size:10.5px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:.06em; margin-bottom:9px; }
+
+.pill-row { display:flex; flex-wrap:wrap; gap:7px; }
+.pill-toggle {
+  display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:20px;
+  font-size:12.5px; font-weight:700; background:#fff; border:1.5px solid #e5e7eb; color:#475569;
+  cursor:pointer; user-select:none; transition:.12s;
+}
+.pill-toggle:hover { border-color:#cbd5e1; }
+.pill-toggle input { display:none; }
+
+/* Saved filter views */
+.saved-view-pill {
+  display:inline-flex; align-items:center; gap:4px; padding:2px 3px 2px 12px; border-radius:20px;
+  font-size:12.5px; font-weight:700; background:#fff; border:1.5px solid #e5e7eb; color:#475569;
+}
+.saved-view-pill.active { background:#eff6ff; border-color:#bfdbfe; color:#1d4ed8; }
+.saved-view-pill a { color:inherit; text-decoration:none; padding:4px 0; }
+.saved-view-pill a:hover { text-decoration:underline; }
+.saved-view-pill form { display:inline-flex; margin:0; }
+.saved-view-pill button {
+  width:18px; height:18px; border-radius:50%; border:none; background:transparent; color:#94a3b8;
+  font-size:11px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center;
+}
+.saved-view-pill button:hover { background:rgba(3,12,24,.08); color:#dc2626; }
+.save-view-trigger { font-size:12.5px; color:#2563eb; font-weight:700; cursor:pointer; background:none; border:none; padding:0; font-family:inherit; }
+.save-view-row { display:none; align-items:center; gap:8px; }
+.save-view-row.open { display:flex; }
+.save-view-name-input { padding:7px 10px; border:1.5px solid #e5e7eb; border-radius:8px; font-size:12.5px; font-family:inherit; width:180px; }
+.pill-toggle:has(input:checked) { background:#1e293b; border-color:#1e293b; color:#fff; }
+.pill-toggle .pill-count { color:#94a3b8; font-weight:600; }
+.pill-toggle:has(input:checked) .pill-count { color:rgba(255,255,255,.6); }
+.pill-toggle .pill-check-icon { display:none; width:11px; height:11px; }
+.pill-toggle:has(input:checked) .pill-check-icon { display:inline-block; }
+
+.filter-select {
+  width:100%; max-width:280px; padding:9px 12px; border:1.5px solid #e5e7eb; border-radius:9px;
+  font-size:13px; color:var(--ink); background:#fff; font-family:inherit; outline:none;
+}
+.filter-select:focus { border-color:#25D366; }
+
+/* ── Multi-select dropdown (Status / Segment / Tags) ────────────────────────
+   Enterprise filter redesign follow-up, 2026-09-09 — replaces the pill-row/
+   native-<select> versions of these three with one reusable dropdown. ── */
+.msdd-row { display:flex; gap:10px; flex-wrap:wrap; }
+.msdd { position:relative; }
+.msdd-trigger {
+  display:inline-flex; align-items:center; gap:7px; padding:8px 14px; border-radius:9px;
+  font-size:13px; font-weight:600; background:#fff; border:1.5px solid #e5e7eb; color:var(--ink);
+  cursor:pointer; white-space:nowrap; font-family:inherit;
+}
+.msdd-trigger:hover { border-color:#cbd5e1; }
+.msdd.has-selection .msdd-trigger { background:#1e293b; border-color:#1e293b; color:#fff; }
+.msdd-chevron { transition:transform .15s; flex-shrink:0; }
+.msdd.open .msdd-chevron { transform:rotate(180deg); }
+.msdd-panel {
+  display:none; position:absolute; top:calc(100% + 6px); left:0; z-index:40;
+  width:240px; background:#fff; border:1px solid rgba(3,12,24,.1); border-radius:11px;
+  box-shadow:0 10px 30px rgba(0,0,0,.12); padding:10px;
+}
+.msdd.open .msdd-panel { display:block; }
+.msdd-search {
+  width:100%; padding:7px 10px; border:1.5px solid #e5e7eb; border-radius:8px; font-size:12.5px;
+  font-family:inherit; margin-bottom:8px; box-sizing:border-box; outline:none;
+}
+.msdd-search:focus { border-color:#25D366; }
+.msdd-options { max-height:230px; overflow-y:auto; display:flex; flex-direction:column; gap:1px; }
+.msdd-option { display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:7px; font-size:12.5px; color:var(--ink); cursor:pointer; user-select:none; }
+.msdd-option:hover { background:#f1f5f9; }
+.msdd-option input { width:14px; height:14px; accent-color:#25D366; cursor:pointer; flex-shrink:0; }
+.msdd-option-count { margin-left:auto; font-size:11px; color:#94a3b8; font-weight:600; }
+.msdd-empty { font-size:12px; color:var(--muted); margin:4px 2px; }
+.msdd-empty a { color:#2563eb; font-weight:600; }
+
+.date-range-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.date-range-row input[type=date] {
+  padding:7px 10px; border:1.5px solid #e5e7eb; border-radius:8px;
+  font-size:12.5px; color:var(--ink); font-family:inherit; background:#fff; outline:none;
+}
+.date-range-row input[type=date]:focus { border-color:#25D366; }
+
+.tag-search-input {
+  width:100%; max-width:280px; padding:7px 10px 7px 30px; border:1.5px solid #e5e7eb; border-radius:8px;
+  font-size:12.5px; font-family:inherit; background:#fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" stroke="%2394a3b8" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>') no-repeat 10px center;
+  outline:none; margin-bottom:9px; box-sizing:border-box;
+}
+.tag-search-input:focus { border-color:#25D366; }
+
+.pers-info-wrap { position:relative; display:inline-block; }
+.pers-info-dot {
+  display:inline-flex; align-items:center; justify-content:center; width:13px; height:13px;
+  border-radius:50%; background:#94a3b8; color:#fff; font-size:9px; font-weight:800; font-style:italic; flex-shrink:0;
+}
+.pill-toggle.pers { border-color:#f79009; color:#7a4f00; }
+.pill-toggle.pers:has(input:checked) { background:#7a4f00; border-color:#7a4f00; color:#fff; }
+.pill-toggle.pers .pers-info-dot { background:#f79009; }
+.pers-tooltip {
+  display:none; position:absolute; top:calc(100% + 8px); left:0; z-index:10; width:260px;
+  padding:9px 11px; border-radius:9px; background:rgba(247,144,9,.08); border:1px solid rgba(247,144,9,.25);
+  font-size:12px; color:#7a4f00; line-height:1.5; font-weight:400;
+}
+.pers-info-wrap:hover .pers-tooltip { display:block; }
+
+.filter-panel-foot { display:flex; align-items:center; justify-content:space-between; margin-top:22px; padding-top:16px; border-top:1px solid rgba(3,12,24,.07); }
 
 /* Status colours */
 .badge-lead     { background:#fef9c3; color:#854d0e; }
@@ -36,6 +141,17 @@
   text-transform:capitalize; white-space:nowrap;
 }
 .status-dot { width:6px; height:6px; border-radius:50%; background:currentColor; opacity:.7; }
+
+/* Stage pill — same colors as the Pipeline Board so a deal looks the same
+   wherever it shows up */
+.stage-pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
+.st-new_lead{background:#f1f5f9;color:#475569}
+.st-contacted{background:#dbeafe;color:#1d4ed8}
+.st-qualified{background:#e0e7ff;color:#4338ca}
+.st-proposal_sent{background:#fef9c3;color:#92400e}
+.st-negotiating{background:#fed7aa;color:#9a3412}
+.st-won{background:#dcfce7;color:#15803d}
+.st-dropped{background:#fee2e2;color:#991b1b}
 
 /* Tag pill */
 .tag-pill {
@@ -239,8 +355,6 @@
 .mini-foot { padding:12px 20px; border-top:1px solid rgba(3,12,24,.07); display:flex; justify-content:flex-end; gap:10px; background:#f8fafc; }
 
 @media (max-width:820px) {
-  .crm-layout { grid-template-columns:1fr; }
-  .crm-sidebar { position:static; }
   .stats-row { grid-template-columns:1fr 1fr; }
 }
 @media (max-width:540px) {
@@ -259,7 +373,7 @@
     <p>Manage your CRM — segment, tag, and track every lead through to customer.</p>
   </div>
   <div class="hero-actions">
-    <a href="{{ url_for('portal.whatsapp_contacts_export', q=search, status_filter=status_filter, tag_filter=tag_filter, segment_filter=segment_filter, has_phone='1' if has_phone else '', has_email='1' if has_email else '') }}" class="btn-outline-white" title="Exports contacts matching your current search/filters">
+    <a href="{{ url_for('portal.whatsapp_contacts_export', q=search, status_filter=status_filter, tag_filter=tag_filter, segment_filter=segment_filter, date_from=date_from, date_to=date_to, has_phone='1' if has_phone else '', has_email='1' if has_email else '', has_pers='1' if has_pers else '') }}" class="btn-outline-white" title="Exports contacts matching your current search/filters">
       <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
       Export CSV
     </a>
@@ -267,12 +381,23 @@
       <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
       Import CSV
     </button>
+    <a href="{{ url_for('portal.crm_companies') }}" class="btn-outline-white">
+      <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1m-6 4h1m4 0h1m-6 4h1m4 0h1"/></svg>
+      Add Company
+    </a>
     <button class="btn-primary-green" onclick="openAddDrawer()">
       <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
       Add Contact
     </button>
   </div>
 </div>
+
+{% if pending_review_count %}
+<div class="flash warning" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+  <span>{{ pending_review_count }} contact{{ 's' if pending_review_count != 1 else '' }} need{{ '' if pending_review_count != 1 else 's' }} a quick check — phone numbers that look close but don't match exactly between a WhatsApp Contact and a Sales Pipeline deal.</span>
+  <a href="{{ url_for('portal.crm_merge_review') }}" class="btn btn-sm">Review now</a>
+</div>
+{% endif %}
 
 <!-- ── Stats row ──────────────────────────────────────────────────────────── -->
 <div class="stats-row">
@@ -287,9 +412,9 @@
     <div class="stat-sub">Last 7 days</div>
   </div>
   <div class="stat-card">
-    <div class="stat-label">Segments</div>
-    <div class="stat-value" style="color:#6366f1">{{ segments|length }}</div>
-    <div class="stat-sub">Contact groups</div>
+    <div class="stat-label">Companies</div>
+    <div class="stat-value" style="color:#6366f1">{{ company_count }}</div>
+    <div class="stat-sub"><a href="{{ url_for('portal.crm_companies') }}">View all →</a></div>
   </div>
   <div class="stat-card">
     <div class="stat-label">Tags Used</div>
@@ -298,139 +423,239 @@
   </div>
 </div>
 
-<!-- ── CRM layout: sidebar + main ─────────────────────────────────────────── -->
-<div class="crm-layout">
+<!-- ── Unified filter bar ────────────────────────────────────────────────────
+     One "Filters" control (Status/Segment/Tags/Date added/Data completeness)
+     replaces the old split sidebar + toolbar checkboxes — enterprise filter
+     redesign, 2026-09-09. ── -->
+{% set active_filter_count = status_filter|length + segment_filter|length + tag_filter|length + (1 if date_from or date_to else 0) + (1 if has_phone else 0) + (1 if has_email else 0) + (1 if has_pers else 0) %}
+<form method="GET" action="{{ url_for('portal.whatsapp_contacts') }}" id="filterForm">
+  <div class="toolbar">
+    <div class="search-wrap">
+      <svg class="search-icon" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      <input type="text" name="q" value="{{ search }}" placeholder="Search by name or phone…" autocomplete="off">
+    </div>
+    <button type="submit" class="btn-save" style="padding:9px 16px">Search</button>
 
-  <!-- Sidebar filters -->
-  <aside class="crm-sidebar">
-    <div class="sidebar-section">
-      <div class="sidebar-title">View</div>
-      <a href="{{ url_for('portal.whatsapp_contacts') }}"
-         class="filter-item {% if not status_filter and not tag_filter and not segment_filter %}active{% endif %}">
-        <span class="fi-label">All Contacts</span>
-        <span class="fi-count">{{ total }}</span>
-      </a>
-    </div>
+    <button type="button" class="filters-btn {{ 'has-active' if active_filter_count else '' }}" onclick="toggleFilterPanel()">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+      Filters
+      {% if active_filter_count %}<span class="filters-badge">{{ active_filter_count }}</span>{% endif %}
+      <svg class="filters-chevron {{ 'rotated' if active_filter_count else '' }}" id="filtersChevron" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
 
-    <div class="sidebar-section">
-      <div class="sidebar-title">By Status</div>
-      {% set statuses = [('lead','Lead','#854d0e'),('prospect','Prospect','#1e40af'),('customer','Customer','#14532d'),('inactive','Inactive','#64748b')] %}
-      {% for val, label, clr in statuses %}
-      <a href="{{ url_for('portal.whatsapp_contacts', status_filter=val) }}"
-         class="filter-item {% if status_filter == val %}active{% endif %}">
-        <span style="width:8px;height:8px;border-radius:50%;background:{{ clr }};flex-shrink:0"></span>
-        <span class="fi-label">{{ label }}</span>
-      </a>
-      {% endfor %}
-    </div>
-
-    {% if segments %}
-    <div class="sidebar-section">
-      <div class="sidebar-title">Segments</div>
-      {% for seg in segments %}
-      <a href="{{ url_for('portal.whatsapp_contacts', segment_filter=seg.id) }}"
-         class="filter-item {% if segment_filter == seg.id|string %}active{% endif %}">
-        <span class="seg-dot" style="background:{{ seg.color }}"></span>
-        <span class="fi-label">{{ seg.name }}</span>
-        <span class="fi-count">{{ seg.member_count }}</span>
-      </a>
-      {% endfor %}
-      <a href="{{ url_for('portal.whatsapp_segments') }}" style="display:block;font-size:11px;color:#6366f1;padding:8px 10px 4px;text-decoration:none;font-weight:600">
-        + Manage Segments
-      </a>
-    </div>
-    {% else %}
-    <div class="sidebar-section">
-      <div class="sidebar-title">Segments</div>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 8px;line-height:1.5">No segments yet. Create groups to organise your leads.</p>
-      <a href="{{ url_for('portal.whatsapp_segments') }}" style="font-size:12px;color:#6366f1;font-weight:700;text-decoration:none">+ Create Segment</a>
-    </div>
+    {% if search or active_filter_count %}
+    <a href="{{ url_for('portal.whatsapp_contacts') }}" class="btn-ghost" style="text-decoration:none">Clear all</a>
     {% endif %}
 
-    {% if all_tags %}
-    <div class="sidebar-section">
-      <div class="sidebar-title">Tags</div>
-      {% for tag in all_tags[:20] %}
-      <a href="{{ url_for('portal.whatsapp_contacts', tag_filter=tag) }}"
-         class="filter-item {% if tag_filter == tag %}active{% endif %}">
-        <span class="fi-label"># {{ tag }}</span>
-      </a>
-      {% endfor %}
-    </div>
-    {% endif %}
-  </aside>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-left:auto">
+      Per page
+      <select name="per_page" onchange="this.form.submit()"
+              style="padding:7px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:12px;font-family:inherit">
+        {% for opt in ['25','50','100','300','500','all'] %}
+        <option value="{{ opt }}" {% if per_page == opt %}selected{% endif %}>{{ 'All' if opt == 'all' else opt }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
 
-  <!-- Main content -->
-  <div>
-    <!-- Toolbar -->
-    <form method="GET" action="{{ url_for('portal.whatsapp_contacts') }}" class="toolbar">
-      {% if status_filter %}<input type="hidden" name="status_filter" value="{{ status_filter }}">{% endif %}
-      {% if tag_filter %}<input type="hidden" name="tag_filter" value="{{ tag_filter }}">{% endif %}
-      {% if segment_filter %}<input type="hidden" name="segment_filter" value="{{ segment_filter }}">{% endif %}
-      <div class="search-wrap">
-        <svg class="search-icon" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-        <input type="text" name="q" value="{{ search }}" placeholder="Search by name or phone…" autocomplete="off">
+  <div class="filter-panel {{ 'open' if active_filter_count else '' }}" id="filterPanel">
+    {% if saved_views %}
+    <div class="filter-group" style="padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid rgba(3,12,24,.07)">
+      <div class="filter-group-title">Saved Views</div>
+      <div class="pill-row">
+        {% for view in saved_views %}
+        <span class="saved-view-pill {{ 'active' if view.active else '' }}">
+          <a href="{{ view.apply_url }}">{{ view.name }}</a>
+          <form method="POST" action="{{ url_for('portal.whatsapp_contacts_delete_view', view_id=view.id) }}"
+                onsubmit="return confirm('Delete the saved view &quot;{{ view.name }}&quot;? This only removes the shortcut — no contacts are affected.')">
+            <button type="submit" title="Delete this view">✕</button>
+          </form>
+        </span>
+        {% endfor %}
       </div>
-      <button type="submit" class="btn-save" style="padding:9px 16px">Search</button>
-      <div style="display:flex;align-items:center;gap:12px;font-size:12px;color:var(--muted)">
-        <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
-          <input type="checkbox" name="has_phone" value="1" {% if has_phone %}checked{% endif %} onchange="this.form.submit()">
-          Has Phone
-        </label>
-        <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
-          <input type="checkbox" name="has_email" value="1" {% if has_email %}checked{% endif %} onchange="this.form.submit()">
-          Has Email
-        </label>
-        <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
-          <input type="checkbox" name="has_pers" value="1" {% if has_pers %}checked{% endif %} onchange="this.form.submit()">
-          Has Personalization
-        </label>
-      </div>
-      {% if search or status_filter or tag_filter or segment_filter or has_phone or has_email or has_pers %}
-      <a href="{{ url_for('portal.whatsapp_contacts') }}" class="btn-ghost" style="text-decoration:none">Clear all</a>
-      {% endif %}
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-left:auto">
-        Per page
-        <select name="per_page" onchange="this.form.submit()"
-                style="padding:7px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:12px;font-family:inherit">
-          {% for opt in ['25','50','100','300','500','all'] %}
-          <option value="{{ opt }}" {% if per_page == opt %}selected{% endif %}>{{ 'All' if opt == 'all' else opt }}</option>
-          {% endfor %}
-        </select>
-      </label>
-    </form>
-
-    <!-- Active filter chips -->
-    {% if status_filter or tag_filter or segment_filter %}
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-      {% if status_filter %}
-      <span style="display:inline-flex;align-items:center;gap:5px;background:#dbeafe;color:#1e40af;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;">
-        Status: {{ status_filter|title }}
-        <a href="{{ url_for('portal.whatsapp_contacts', q=search, tag_filter=tag_filter, segment_filter=segment_filter) }}" style="color:inherit;text-decoration:none;margin-left:3px">✕</a>
-      </span>
-      {% endif %}
-      {% if tag_filter %}
-      <span style="display:inline-flex;align-items:center;gap:5px;background:#f0fdf4;color:#15803d;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;">
-        Tag: # {{ tag_filter }}
-        <a href="{{ url_for('portal.whatsapp_contacts', q=search, status_filter=status_filter, segment_filter=segment_filter) }}" style="color:inherit;text-decoration:none;margin-left:3px">✕</a>
-      </span>
-      {% endif %}
-      {% if segment_filter %}
-      {% set active_seg = segments|selectattr('id','equalto', segment_filter|int)|first %}
-      <span style="display:inline-flex;align-items:center;gap:5px;background:#ede9fe;color:#5b21b6;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;">
-        Segment: {{ active_seg.name if active_seg else segment_filter }}
-        <a href="{{ url_for('portal.whatsapp_contacts', q=search, status_filter=status_filter, tag_filter=tag_filter) }}" style="color:inherit;text-decoration:none;margin-left:3px">✕</a>
-      </span>
-      {% endif %}
     </div>
     {% endif %}
+    <div class="filter-group">
+      <div class="filter-group-title">Filter by</div>
+      <div class="msdd-row">
+        <div class="msdd {{ 'has-selection' if status_filter else '' }}">
+          <button type="button" class="msdd-trigger" onclick="toggleMsdd(this)">
+            <span>{{ 'Status (' ~ status_filter|length ~ ')' if status_filter else 'Status' }}</span>
+            <svg class="msdd-chevron" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="msdd-panel">
+            <div class="msdd-options">
+              {% set statuses = [('lead','Lead'),('prospect','Prospect'),('customer','Customer'),('inactive','Inactive')] %}
+              {% for val, label in statuses %}
+              <label class="msdd-option">
+                <input type="checkbox" name="status_filter" value="{{ val }}" {{ 'checked' if val in status_filter else '' }} onchange="updateMsddLabel(this,'Status')">
+                <span>{{ label }}</span>
+                <span class="msdd-option-count">{{ status_counts.get(val, 0) }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        <div class="msdd {{ 'has-selection' if segment_filter else '' }}">
+          <button type="button" class="msdd-trigger" onclick="toggleMsdd(this)">
+            <span>{{ 'Segment (' ~ segment_filter|length ~ ')' if segment_filter else 'Segment' }}</span>
+            <svg class="msdd-chevron" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="msdd-panel">
+            {% if segments %}
+            <div class="msdd-options">
+              {% for seg in segments %}
+              <label class="msdd-option">
+                <input type="checkbox" name="segment_filter" value="{{ seg.id }}" {{ 'checked' if seg.id|string in segment_filter else '' }} onchange="updateMsddLabel(this,'Segment')">
+                <span>{{ seg.name }}</span>
+                <span class="msdd-option-count">{{ seg.member_count }}</span>
+              </label>
+              {% endfor %}
+            </div>
+            {% else %}
+            <p class="msdd-empty">No segments yet. <a href="{{ url_for('portal.whatsapp_segments') }}">Create one →</a></p>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="msdd {{ 'has-selection' if tag_filter else '' }}">
+          <button type="button" class="msdd-trigger" onclick="toggleMsdd(this)">
+            <span>{{ 'Tags (' ~ tag_filter|length ~ ')' if tag_filter else 'Tags' }}</span>
+            <svg class="msdd-chevron" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="msdd-panel">
+            {% if all_tags %}
+            <input type="text" class="msdd-search" placeholder="Search tags…" oninput="filterMsddOptions(this)" autocomplete="off">
+            <div class="msdd-options" id="tagChipList">
+              {% for tag in all_tags %}
+              <label class="msdd-option" data-name="{{ tag.name|lower }}">
+                <input type="checkbox" name="tag_filter" value="{{ tag.id }}" {{ 'checked' if tag.id|string in tag_filter else '' }} onchange="updateMsddLabel(this,'Tags')">
+                <span>{{ tag.name }}</span>
+                <span class="msdd-option-count">{{ tag.use_count }}</span>
+              </label>
+              {% endfor %}
+            </div>
+            {% else %}
+            <p class="msdd-empty">No tags yet.</p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="filter-grid">
+      <div>
+        <div class="filter-group">
+          <div class="filter-group-title">Date added</div>
+          <div class="date-range-row">
+            <input type="date" name="date_from" value="{{ date_from }}">
+            <span style="color:#cbd5e1;font-size:12px">–</span>
+            <input type="date" name="date_to" value="{{ date_to }}">
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="filter-group">
+          <div class="filter-group-title">Data completeness</div>
+          <div class="pill-row">
+            <label class="pill-toggle">
+              <input type="checkbox" name="has_phone" value="1" {{ 'checked' if has_phone else '' }}>
+              <svg class="pill-check-icon" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+              Has Phone
+            </label>
+            <label class="pill-toggle">
+              <input type="checkbox" name="has_email" value="1" {{ 'checked' if has_email else '' }}>
+              <svg class="pill-check-icon" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+              Has Email
+            </label>
+            <span class="pers-info-wrap">
+              <label class="pill-toggle pers">
+                <input type="checkbox" name="has_pers" value="1" {{ 'checked' if has_pers else '' }}>
+                <svg class="pill-check-icon" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+                Has Personalization <span class="pers-info-dot">i</span>
+              </label>
+              <div class="pers-tooltip">Has a business note added, e.g. "a bakery in Lagos" — used to personalize WhatsApp campaign messages.</div>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="filter-panel-foot">
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <a href="{{ url_for('portal.whatsapp_contacts', q=search) }}" style="font-size:12.5px;color:#64748b;font-weight:600;text-decoration:none">Reset filters</a>
+        <button type="button" class="save-view-trigger" id="saveViewTrigger" onclick="toggleSaveViewRow()">☆ Save this filter as a view</button>
+        <div class="save-view-row" id="saveViewRow">
+          <input type="text" class="save-view-name-input" id="saveViewName" placeholder="Name this view…" autocomplete="off" maxlength="100">
+          <button type="button" class="btn-save" style="padding:6px 14px;font-size:12px" onclick="saveCurrentView()">Save</button>
+          <span id="saveViewMsg" style="font-size:11.5px"></span>
+        </div>
+      </div>
+      <button type="submit" class="btn-save">Apply Filters</button>
+    </div>
+  </div>
+</form>
+
+<!-- Active filter chips -->
+{% if active_filter_count %}
+<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+  <span style="font-size:12.5px;color:var(--ink);font-weight:700">{{ filtered_total }} <span style="color:#94a3b8;font-weight:500">of {{ total }} contacts</span></span>
+  <div style="width:1px;height:16px;background:rgba(3,12,24,.1)"></div>
+  {% for s in selected_statuses %}
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#dbeafe;color:#1e40af;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;">
+    Status: {{ s.label }}
+    <a href="{{ url_for('portal.whatsapp_contacts', q=search, status_filter=status_filter|reject('equalto', s.value)|list, tag_filter=tag_filter, segment_filter=segment_filter, date_from=date_from, date_to=date_to, has_phone='1' if has_phone else '', has_email='1' if has_email else '', has_pers='1' if has_pers else '') }}" style="color:inherit;text-decoration:none;margin-left:3px">✕</a>
+  </span>
+  {% endfor %}
+  {% for seg in selected_segments %}
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#ede9fe;color:#5b21b6;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;">
+    Segment: {{ seg.name }}
+    <a href="{{ url_for('portal.whatsapp_contacts', q=search, status_filter=status_filter, tag_filter=tag_filter, segment_filter=segment_filter|reject('equalto', seg.id|string)|list, date_from=date_from, date_to=date_to, has_phone='1' if has_phone else '', has_email='1' if has_email else '', has_pers='1' if has_pers else '') }}" style="color:inherit;text-decoration:none;margin-left:3px">✕</a>
+  </span>
+  {% endfor %}
+  {% for t in selected_tags %}
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#f0fdf4;color:#15803d;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;">
+    Tag: {{ t.name }}
+    <a href="{{ url_for('portal.whatsapp_contacts', q=search, status_filter=status_filter, tag_filter=tag_filter|reject('equalto', t.id|string)|list, segment_filter=segment_filter, date_from=date_from, date_to=date_to, has_phone='1' if has_phone else '', has_email='1' if has_email else '', has_pers='1' if has_pers else '') }}" style="color:inherit;text-decoration:none;margin-left:3px">✕</a>
+  </span>
+  {% endfor %}
+  {% if date_from or date_to %}
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#eff6ff;color:#1d4ed8;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;">
+    Added: {{ date_from or '…' }} – {{ date_to or '…' }}
+    <a href="{{ url_for('portal.whatsapp_contacts', q=search, status_filter=status_filter, tag_filter=tag_filter, segment_filter=segment_filter, has_phone='1' if has_phone else '', has_email='1' if has_email else '', has_pers='1' if has_pers else '') }}" style="color:inherit;text-decoration:none;margin-left:3px">✕</a>
+  </span>
+  {% endif %}
+  {% if has_phone %}
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#fff7ed;color:#9a3412;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;">
+    Has Phone
+    <a href="{{ url_for('portal.whatsapp_contacts', q=search, status_filter=status_filter, tag_filter=tag_filter, segment_filter=segment_filter, date_from=date_from, date_to=date_to, has_email='1' if has_email else '', has_pers='1' if has_pers else '') }}" style="color:inherit;text-decoration:none;margin-left:3px">✕</a>
+  </span>
+  {% endif %}
+  {% if has_email %}
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#fff7ed;color:#9a3412;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;">
+    Has Email
+    <a href="{{ url_for('portal.whatsapp_contacts', q=search, status_filter=status_filter, tag_filter=tag_filter, segment_filter=segment_filter, date_from=date_from, date_to=date_to, has_phone='1' if has_phone else '', has_pers='1' if has_pers else '') }}" style="color:inherit;text-decoration:none;margin-left:3px">✕</a>
+  </span>
+  {% endif %}
+  {% if has_pers %}
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#fff7ed;color:#9a3412;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;">
+    Has Personalization
+    <a href="{{ url_for('portal.whatsapp_contacts', q=search, status_filter=status_filter, tag_filter=tag_filter, segment_filter=segment_filter, date_from=date_from, date_to=date_to, has_phone='1' if has_phone else '', has_email='1' if has_email else '') }}" style="color:inherit;text-decoration:none;margin-left:3px">✕</a>
+  </span>
+  {% endif %}
+</div>
+{% endif %}
 
     <!-- Contacts table wrapped in bulk-form -->
     <form id="bulkForm" method="POST" action="{{ url_for('portal.whatsapp_contacts_bulk_action') }}">
       <input type="hidden" name="q" value="{{ search }}">
-      <input type="hidden" name="status_filter" value="{{ status_filter }}">
-      <input type="hidden" name="tag_filter" value="{{ tag_filter }}">
-      <input type="hidden" name="segment_filter" value="{{ segment_filter }}">
+      {% for sv in status_filter %}<input type="hidden" name="status_filter" value="{{ sv }}">{% endfor %}
+      {% for tid in tag_filter %}<input type="hidden" name="tag_filter" value="{{ tid }}">{% endfor %}
+      {% for sid in segment_filter %}<input type="hidden" name="segment_filter" value="{{ sid }}">{% endfor %}
+      <input type="hidden" name="date_from" value="{{ date_from }}">
+      <input type="hidden" name="date_to" value="{{ date_to }}">
       <input type="hidden" name="action" id="bulk-action-input" value="">
       <input type="hidden" name="new_status" id="bulk-new-status" value="">
       <input type="hidden" name="new_tag" id="bulk-new-tag" value="">
@@ -441,9 +666,9 @@
         <div class="section-card-header">
           <h2>
             {% if search %}Results for "{{ search }}"
-            {% elif status_filter %}{{ status_filter|title }}s
-            {% elif tag_filter %}Tag: #{{ tag_filter }}
-            {% elif segment_filter %}{% set as2 = segments|selectattr('id','equalto',segment_filter|int)|first %}{{ as2.name if as2 else 'Segment' }}
+            {% elif status_filter %}{{ selected_statuses|map(attribute='label')|join(', ') }}{{ 's' if selected_statuses|length == 1 else '' }}
+            {% elif tag_filter %}Tag{{ 's' if selected_tags|length != 1 else '' }}: {{ selected_tags|map(attribute='name')|join(', ') }}
+            {% elif segment_filter %}Segment{{ 's' if selected_segments|length != 1 else '' }}: {{ selected_segments|map(attribute='name')|join(', ') }}
             {% else %}All Contacts{% endif %}
           </h2>
           <div style="display:flex;align-items:center;gap:14px">
@@ -454,10 +679,13 @@
                 Columns
               </button>
               <div class="col-picker-menu" id="colPickerMenu">
+                <label class="col-picker-item"><input type="checkbox" data-col-toggle="company" checked>Company</label>
+                <label class="col-picker-item"><input type="checkbox" data-col-toggle="contact_person" checked>Contact Person</label>
                 <label class="col-picker-item"><input type="checkbox" data-col-toggle="phone" checked>Phone</label>
                 <label class="col-picker-item"><input type="checkbox" data-col-toggle="email">Email</label>
                 <label class="col-picker-item"><input type="checkbox" data-col-toggle="status" checked>Status</label>
                 <label class="col-picker-item"><input type="checkbox" data-col-toggle="tags" checked>Tags</label>
+                <label class="col-picker-item"><input type="checkbox" data-col-toggle="stage" checked>Stage</label>
                 <label class="col-picker-item"><input type="checkbox" data-col-toggle="personalization">Personalization</label>
                 <label class="col-picker-item"><input type="checkbox" data-col-toggle="added" checked>Added</label>
               </div>
@@ -488,10 +716,13 @@
                 <th style="width:36px"><input type="checkbox" class="select-all-check" id="selectAll" title="Select all"></th>
                 <th style="width:40px"></th>
                 <th>Name</th>
+                <th data-col="company">Company</th>
+                <th data-col="contact_person">Contact Person</th>
                 <th data-col="phone">Phone</th>
                 <th data-col="email" class="col-hidden">Email</th>
                 <th data-col="status">Status</th>
                 <th data-col="tags">Tags</th>
+                <th data-col="stage">Stage</th>
                 <th data-col="personalization" class="col-hidden">Personalization</th>
                 <th data-col="added">Added</th>
                 <th></th>
@@ -516,6 +747,21 @@
                   <div style="font-size:11px;color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px" title="{{ c.notes }}">{{ c.notes }}</div>
                   {% endif %}
                 </td>
+                <td data-col="company">
+                  {% if c.company_name %}
+                  <a href="{{ url_for('portal.crm_company_detail', company_id=c.company_id_join) }}"
+                     style="font-size:12px;font-weight:600;color:#334155;text-decoration:none">🏢 {{ c.company_name }}</a>
+                  {% else %}
+                  <span style="font-size:11px;color:var(--muted)">—</span>
+                  {% endif %}
+                </td>
+                <td data-col="contact_person">
+                  {% if c.contact_person %}
+                  <span style="font-size:12px;color:var(--ink)">{{ c.contact_person }}</span>
+                  {% else %}
+                  <span style="font-size:11px;color:var(--muted)">—</span>
+                  {% endif %}
+                </td>
                 <td data-col="phone">
                   <span class="phone-pill">
                     <svg width="9" height="9" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
@@ -536,17 +782,27 @@
                 </td>
                 <td data-col="tags">
                   <div style="display:flex;gap:4px;flex-wrap:wrap;max-width:160px">
-                    {% if c.tags %}
-                      {% for tag in c.tags[:3] %}
+                    {% if c.tags_list %}
+                      {% for tag in c.tags_list[:3] %}
                       <span class="tag-pill">#{{ tag }}</span>
                       {% endfor %}
-                      {% if c.tags|length > 3 %}
-                      <span class="tag-pill">+{{ c.tags|length - 3 }}</span>
+                      {% if c.tags_list|length > 3 %}
+                      <span class="tag-pill">+{{ c.tags_list|length - 3 }}</span>
                       {% endif %}
                     {% else %}
                     <span style="font-size:11px;color:var(--muted)">—</span>
                     {% endif %}
                   </div>
+                </td>
+                <td data-col="stage">
+                  {% if c.pipeline_stage %}
+                  <span class="stage-pill st-{{ c.pipeline_stage }}">{{ stage_labels.get(c.pipeline_stage, c.pipeline_stage) }}</span>
+                  {% if c.active_deal_count and c.active_deal_count > 1 %}
+                  <span style="font-size:10.5px;color:var(--muted);font-weight:600;margin-left:3px" title="{{ c.active_deal_count }} open deals on this contact">+{{ c.active_deal_count - 1 }} more</span>
+                  {% endif %}
+                  {% else %}
+                  <span style="font-size:11px;color:var(--muted)">—</span>
+                  {% endif %}
                 </td>
                 <td data-col="personalization" class="col-hidden">
                   {% if c.personalization_note %}
@@ -560,20 +816,19 @@
                 </td>
                 <td style="white-space:nowrap">
                   {% if c.in_pipeline %}
-                  <span class="icon-btn" title="Already in Sales Pipeline" style="color:#16a34a;cursor:default">
+                  <span class="icon-btn" title="Already has a Sales Lead" style="color:#16a34a;cursor:default;margin-right:0">
                     <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
                   </span>
-                  {% else %}
+                  {% endif %}
                   <form method="POST"
                         action="{{ url_for('portal.whatsapp_contact_move_to_pipeline', contact_id=c.id) }}"
                         style="display:inline;margin-right:4px">
-                    <button type="submit" class="icon-btn" title="Add to Sales Pipeline">
+                    <button type="submit" class="icon-btn" title="Create Sales Lead — works even if they already have one">
                       <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
                     </button>
                   </form>
-                  {% endif %}
                   <button type="button" class="icon-btn" title="Edit contact"
-                          onclick="openEdit({{ c.id }}, '{{ (c.display_name or '')|replace("'","\\'")|replace('"','\\"') }}', '{{ (c.notes or '')|replace("'","\\'")|replace('"','\\"')|replace('\n',' ') }}', '{{ c.status or 'lead' }}', '{{ (c.tags or [])|join(',') }}', '{{ (c.email or '')|replace("'","\\'") }}', '{{ (c.personalization_note or '')|replace("'","\\'")|replace('"','\\"')|replace('\n',' ') }}')">
+                          onclick="openEdit({{ c.id }}, '{{ (c.display_name or '')|replace("'","\\'")|replace('"','\\"') }}', '{{ (c.notes or '')|replace("'","\\'")|replace('"','\\"')|replace('\n',' ') }}', '{{ c.status or 'lead' }}', '{{ (c.tags_list or [])|join(',') }}', '{{ (c.email or '')|replace("'","\\'") }}', '{{ (c.personalization_note or '')|replace("'","\\'")|replace('"','\\"')|replace('\n',' ') }}', {{ c.company_id or 'null' }}, '{{ (c.contact_person or '')|replace("'","\\'")|replace('"','\\"') }}')">
                     <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                   </button>
                   <form method="POST"
@@ -595,7 +850,9 @@
                     padding:14px 18px;border-top:1px solid rgba(3,12,24,.06);flex-wrap:wrap">
           {% set base_args = {'q': search, 'status_filter': status_filter, 'tag_filter': tag_filter,
                                'segment_filter': segment_filter, 'per_page': per_page,
-                               'has_phone': '1' if has_phone else '', 'has_email': '1' if has_email else ''} %}
+                               'date_from': date_from, 'date_to': date_to,
+                               'has_phone': '1' if has_phone else '', 'has_email': '1' if has_email else '',
+                               'has_pers': '1' if has_pers else ''} %}
           <a href="{{ url_for('portal.whatsapp_contacts', page=page-1, **base_args) if page > 1 else '#' }}"
              class="btn-ghost" style="text-decoration:none;padding:6px 12px;font-size:12px;
              {% if page <= 1 %}pointer-events:none;opacity:.4{% endif %}">← Prev</a>
@@ -637,7 +894,7 @@
         {% endif %}
         <button type="button" class="bulk-btn" onclick="bulkMoveToPipeline()">
           <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-          Add to Sales Pipeline
+          Create Sales Lead
         </button>
         <button type="button" class="bulk-btn danger" onclick="bulkDelete()">
           <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M3 6h18M19 6l-1 14H6L5 6"/></svg>
@@ -646,8 +903,6 @@
         <button type="button" class="bulk-btn-cancel" onclick="clearSelection()">Cancel</button>
       </div>
     </form>
-  </div>
-</div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════
      ADD CONTACT DRAWER
@@ -668,10 +923,29 @@
           Examples: <code style="background:#f1f5f9;padding:1px 5px;border-radius:4px">2348012345678</code>
           &nbsp;<code style="background:#f1f5f9;padding:1px 5px;border-radius:4px">447911123456</code>
         </div>
+        <div class="dedupe-warn" id="af-phone-dedupe"></div>
       </div>
       <div class="field">
         <label class="field-label">Display Name <span class="field-hint">optional</span></label>
-        <input class="field-input" type="text" name="display_name" placeholder="e.g. Amira Johnson" autocomplete="off">
+        <input class="field-input" type="text" name="display_name" id="af-name" placeholder="e.g. Amira Johnson" autocomplete="off">
+        <div class="dedupe-warn" id="af-name-dedupe"></div>
+      </div>
+      <div class="field">
+        <label class="field-label">Contact Person <span class="field-hint">optional — if Display Name is a business, who's your actual contact there?</span></label>
+        <input class="field-input" type="text" name="contact_person" placeholder="e.g. Amira Johnson" autocomplete="off">
+      </div>
+      <div class="field">
+        <label class="field-label">Company <span class="field-hint">optional</span></label>
+        <select class="field-select" name="company_id" id="af-company-select" onchange="toggleNewCompanyBox(this,'af-new-company')">
+          <option value="">— No Company —</option>
+          {% for co in all_companies %}
+          <option value="{{ co.id }}">{{ co.name }}</option>
+          {% endfor %}
+          <option value="__new__">+ New Company…</option>
+        </select>
+        <input class="field-input" type="text" name="new_company_name" id="af-new-company"
+               placeholder="New company name" style="display:none;margin-top:8px" autocomplete="off">
+        <div class="dedupe-warn" id="af-dedupe"></div>
       </div>
       <div class="field">
         <label class="field-label">Email <span class="field-hint">optional</span></label>
@@ -688,7 +962,8 @@
       </div>
       <div class="field">
         <label class="field-label">Tags <span class="field-hint">optional — comma separated</span></label>
-        <input class="field-input" type="text" name="tags_csv" placeholder="e.g. Lagos, VIP, Hot Lead" autocomplete="off">
+        <input class="field-input" type="text" name="tags_csv" id="af-tags" placeholder="e.g. Lagos, VIP, Hot Lead" autocomplete="off">
+        <div class="dedupe-warn" id="af-tags-dedupe"></div>
       </div>
       <div class="field">
         <label class="field-label">Notes <span class="field-hint">optional</span></label>
@@ -750,6 +1025,23 @@
           <input class="field-input" type="text" name="display_name" id="ef-name" placeholder="Full name">
         </div>
         <div class="field">
+          <label class="field-label">Contact Person <span class="field-hint">optional — if Display Name is a business, who's your actual contact there?</span></label>
+          <input class="field-input" type="text" name="contact_person" id="ef-contact-person" placeholder="e.g. Amira Johnson">
+        </div>
+        <div class="field">
+          <label class="field-label">Company <span class="field-hint">optional</span></label>
+          <select class="field-select" name="company_id" id="ef-company-select" onchange="toggleNewCompanyBox(this,'ef-new-company')">
+            <option value="">— No Company —</option>
+            {% for co in all_companies %}
+            <option value="{{ co.id }}">{{ co.name }}</option>
+            {% endfor %}
+            <option value="__new__">+ New Company…</option>
+          </select>
+          <input class="field-input" type="text" name="new_company_name" id="ef-new-company"
+                 placeholder="New company name" style="display:none;margin-top:8px" autocomplete="off">
+          <div class="dedupe-warn" id="ef-dedupe"></div>
+        </div>
+        <div class="field">
           <label class="field-label">Email <span class="field-hint">optional</span></label>
           <input class="field-input" type="email" name="email" id="ef-email" placeholder="e.g. amira@business.com">
         </div>
@@ -764,7 +1056,8 @@
         </div>
         <div class="field">
           <label class="field-label">Tags <span class="field-hint">comma separated</span></label>
-          <input class="field-input" type="text" name="tags_csv" id="ef-tags" placeholder="e.g. Lagos, VIP">
+          <input class="field-input" type="text" name="tags_csv" id="ef-tags" placeholder="e.g. Lagos, VIP" autocomplete="off">
+          <div class="dedupe-warn" id="ef-tags-dedupe"></div>
         </div>
         <div class="field">
           <label class="field-label">Notes</label>
@@ -809,7 +1102,8 @@
     <div class="mini-head"><h2>Add Tag</h2></div>
     <div class="mini-body">
       <label class="field-label">Tag to add to selected contacts</label>
-      <input class="field-input" type="text" id="bulkTagInput" placeholder="e.g. VIP, Lagos, Hot Lead">
+      <input class="field-input" type="text" id="bulkTagInput" placeholder="e.g. VIP" autocomplete="off">
+      <div class="dedupe-warn" id="bulkTagDedupe"></div>
     </div>
     <div class="mini-foot">
       <button type="button" class="btn-ghost" onclick="document.getElementById('bulkTagModal').classList.remove('open')">Cancel</button>
@@ -838,6 +1132,75 @@
 </div>
 
 <script>
+/* ── Unified filter panel ───────────────────────────────────────────────
+   Toggle open/closed, and a client-side filter for the Tags chip search
+   box — enterprise filter redesign, 2026-09-09. ── */
+function toggleFilterPanel() {
+  var panel = document.getElementById('filterPanel')
+  var chevron = document.getElementById('filtersChevron')
+  var open = panel.classList.toggle('open')
+  chevron.classList.toggle('rotated', open)
+}
+
+/* ── Status / Segment / Tags multi-select dropdowns ─────────────────────
+   Filter redesign follow-up, 2026-09-09: these three moved from pill-rows/
+   a native <select> to one reusable dropdown-with-checkboxes. ── */
+function toggleMsdd(btn) {
+  var dd = btn.closest('.msdd')
+  var wasOpen = dd.classList.contains('open')
+  document.querySelectorAll('.msdd.open').forEach(function (el) { el.classList.remove('open') })
+  if (!wasOpen) dd.classList.add('open')
+}
+
+document.addEventListener('click', function (e) {
+  if (e.target.closest('.msdd')) return
+  document.querySelectorAll('.msdd.open').forEach(function (el) { el.classList.remove('open') })
+})
+
+function updateMsddLabel(checkbox, baseLabel) {
+  var dd = checkbox.closest('.msdd')
+  var labelEl = dd.querySelector('.msdd-trigger span')
+  var count = dd.querySelectorAll('.msdd-options input:checked').length
+  labelEl.textContent = count ? (baseLabel + ' (' + count + ')') : baseLabel
+  dd.classList.toggle('has-selection', count > 0)
+}
+
+function filterMsddOptions(input) {
+  var q = input.value.trim().toLowerCase()
+  input.closest('.msdd-panel').querySelectorAll('.msdd-option').forEach(function (el) {
+    el.style.display = (!q || (el.dataset.name || '').indexOf(q) !== -1) ? '' : 'none'
+  })
+}
+
+/* ── Saved filter views ─────────────────────────────────────────────────
+   Saves whatever is currently selected in the filter panel — including
+   selections not yet Applied — as a named, reusable view. ── */
+function toggleSaveViewRow() {
+  var row = document.getElementById('saveViewRow')
+  var open = row.classList.toggle('open')
+  document.getElementById('saveViewTrigger').style.display = open ? 'none' : ''
+  if (open) document.getElementById('saveViewName').focus()
+}
+
+function saveCurrentView() {
+  var nameInput = document.getElementById('saveViewName')
+  var msg = document.getElementById('saveViewMsg')
+  var name = nameInput.value.trim()
+  if (!name) { msg.style.color = '#dc2626'; msg.textContent = 'Please name this view.'; return }
+
+  var fd = new FormData(document.getElementById('filterForm'))
+  fd.set('name', name)
+  msg.style.color = '#64748b'; msg.textContent = 'Saving…'
+
+  fetch('{{ url_for("portal.whatsapp_contacts_save_view") }}', { method: 'POST', body: fd })
+    .then(function (r) { return r.json() })
+    .then(function (data) {
+      if (data.error) { msg.style.color = '#dc2626'; msg.textContent = data.error; return }
+      window.location.href = data.apply_url
+    })
+    .catch(function () { msg.style.color = '#dc2626'; msg.textContent = 'Could not save — check your connection.' })
+}
+
 /* ── Column picker ───────────────────────────────────────────────────── */
 const COL_STORAGE_KEY = 'phixtra_contacts_visible_cols'
 const colCheckboxes = [...document.querySelectorAll('[data-col-toggle]')]
@@ -1002,20 +1365,82 @@ if (dz) {
 }
 
 /* ── Edit modal ──────────────────────────────────────────────────────── */
-function openEdit(id, name, notes, status, tagsStr, email, personalizationNote) {
+function openEdit(id, name, notes, status, tagsStr, email, personalizationNote, companyId, contactPerson) {
   document.getElementById('editForm').action   = '/whatsapp/contacts/' + id + '/edit'
   document.getElementById('ef-name').value     = name
+  document.getElementById('ef-contact-person').value = contactPerson || ''
   document.getElementById('ef-notes').value    = notes
   document.getElementById('ef-status').value   = status || 'lead'
   document.getElementById('ef-tags').value     = tagsStr
   document.getElementById('ef-email').value    = email || ''
   document.getElementById('ef-personalization').value = personalizationNote || ''
+  document.getElementById('ef-company-select').value = companyId ? String(companyId) : ''
+  toggleNewCompanyBox(document.getElementById('ef-company-select'), 'ef-new-company')
   document.getElementById('editModal').classList.add('open')
   document.body.style.overflow = 'hidden'
   setTimeout(() => document.getElementById('ef-name').focus(), 100)
 }
+
+/* ── Company field: existing companies + "+ New Company…" reveal box —
+   shared by the Add Contact drawer and Edit Contact modal ── */
+function toggleNewCompanyBox(select, inputId) {
+  var isNew = select.value === '__new__'
+  document.getElementById(inputId).style.display = isNew ? 'block' : 'none'
+  if (!isNew) {
+    var dedupeBox = document.getElementById(inputId.replace('new-company', 'dedupe'))
+    if (dedupeBox) { dedupeBox.style.display = 'none'; dedupeBox.innerHTML = '' }
+  }
+}
 function closeEdit() { document.getElementById('editModal').classList.remove('open'); document.body.style.overflow='' }
 function closeEditOutside(e) { if(e.target===document.getElementById('editModal')) closeEdit() }
 function submitEdit() { document.getElementById('editForm').submit() }
+
+/* Duplicate-name warning for both "+ New Company…" boxes on this page. */
+document.addEventListener('DOMContentLoaded', function () {
+  [['af-new-company', 'af-dedupe', 'af-company-select'],
+   ['ef-new-company', 'ef-dedupe', 'ef-company-select']].forEach(function (ids) {
+    var input = document.getElementById(ids[0]), warnBox = document.getElementById(ids[1]), select = document.getElementById(ids[2])
+    crmDedupeWatch({
+      input: input,
+      warnBox: warnBox,
+      getCompanies: function () { return crmCompaniesFromSelect(select) },
+      onUse: function (co) {
+        select.value = co.id
+        toggleNewCompanyBox(select, ids[0])
+        input.value = ''
+      }
+    })
+  })
+
+  /* Duplicate-name warning for the Tags fields (comma separated) and the
+     bulk "Add Tag" box (single tag) — tags unification, 2026-09-09. */
+  var DEDUPE_TAGS = {{ dedupe_tags|tojson }};
+  crmDedupeWatch({
+    input: document.getElementById('bulkTagInput'),
+    warnBox: document.getElementById('bulkTagDedupe'),
+    label: 'Similar tag already exists — did you mean:',
+    getItems: function () { return DEDUPE_TAGS },
+    onUse: function (tag) { document.getElementById('bulkTagInput').value = tag.name }
+  })
+  ;['af-tags', 'ef-tags'].forEach(function (id) {
+    crmDedupeWatchCsv({
+      input: document.getElementById(id),
+      warnBox: document.getElementById(id + '-dedupe'),
+      label: 'Similar tag already exists — did you mean:',
+      getItems: function () { return DEDUPE_TAGS },
+    })
+  })
+
+  /* Duplicate-CONTACT warning on Add Contact — phone (exact) + name
+     (fuzzy) — All Contacts duplicate-prevention, 2026-09-09. */
+  var DEDUPE_CONTACTS = {{ dedupe_contacts|tojson }};
+  crmDedupeWatchContact({
+    phoneInput: document.getElementById('af-phone'),
+    nameInput: document.getElementById('af-name'),
+    phoneWarnBox: document.getElementById('af-phone-dedupe'),
+    nameWarnBox: document.getElementById('af-name-dedupe'),
+    getContacts: function () { return DEDUPE_CONTACTS }
+  })
+})
 </script>
 {% endblock %}

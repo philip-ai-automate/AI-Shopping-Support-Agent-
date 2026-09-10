@@ -64,6 +64,15 @@
   padding: 3px 9px; border-radius: 20px;
 }
 
+/* Deal stage pill — same colors as the Pipeline Board */
+.st-new_lead{background:#f1f5f9;color:#475569}
+.st-contacted{background:#dbeafe;color:#1d4ed8}
+.st-qualified{background:#e0e7ff;color:#4338ca}
+.st-proposal_sent{background:#fef9c3;color:#92400e}
+.st-negotiating{background:#fed7aa;color:#9a3412}
+.st-won{background:#dcfce7;color:#15803d}
+.st-dropped{background:#fee2e2;color:#991b1b}
+
 /* Segment chip */
 .seg-chip {
   display: inline-flex; align-items: center; gap: 5px;
@@ -96,6 +105,23 @@
 .sc-head h2 { font-size: 13px; font-weight: 800; color: var(--ink); margin: 0; text-transform: uppercase; letter-spacing: .04em; }
 .sc-head-count { font-size: 11px; background: #f1f5f9; color: var(--muted); padding: 2px 8px; border-radius: 20px; font-weight: 700; }
 .sc-body { padding: 18px 20px; }
+
+/* ── Consent panel ───────────────────────────────────────────────────────── */
+.consent-master { display:flex; align-items:center; justify-content:space-between; padding:11px 14px; border-radius:10px; margin-bottom:14px; }
+.consent-master.out { background:#fee2e2; }
+.consent-master.in  { background:#dcfce7; }
+.consent-master-text { font-size:12px; font-weight:700; }
+.consent-master.out .consent-master-text { color:#991b1b; }
+.consent-master.in  .consent-master-text { color:#166534; }
+.consent-row { display:flex; align-items:center; justify-content:space-between; padding:9px 0; border-top:1px solid rgba(3,12,24,.06); }
+.consent-row:first-of-type { border-top:none; padding-top:0; }
+.consent-row-label { font-size:12.5px; font-weight:600; color:var(--ink); }
+.consent-btn { font-size:11px; font-weight:700; padding:4px 11px; border-radius:20px; border:1.5px solid; cursor:pointer; background:#fff; }
+.consent-btn.is-in  { color:#166534; border-color:#bbf7d0; background:#f0fdf4; }
+.consent-btn.is-out { color:#991b1b; border-color:#fecaca; background:#fef2f2; }
+.consent-log-item { font-size:11.5px; color:var(--muted); padding:7px 0; border-top:1px solid rgba(3,12,24,.06); line-height:1.5; }
+.consent-log-item:first-of-type { border-top:none; padding-top:0; }
+.consent-log-item b { color:var(--ink); }
 
 /* ── Notes timeline ──────────────────────────────────────────────────────── */
 .notes-form { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px; }
@@ -254,6 +280,14 @@
         </div>
         {% endif %}
 
+        <!-- Contact Person (who to deal with, when Display Name is a business) -->
+        {% if contact.contact_person %}
+        <div class="profile-field">
+          <div class="profile-field-label">Contact Person</div>
+          <div class="profile-field-value" style="font-size:13px">{{ contact.contact_person }}</div>
+        </div>
+        {% endif %}
+
         <!-- Source -->
         <div class="profile-field">
           <div class="profile-field-label">Source</div>
@@ -266,8 +300,8 @@
         <div class="profile-field">
           <div class="profile-field-label">Tags</div>
           <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:2px">
-            {% if contact.tags %}
-              {% for tag in contact.tags %}
+            {% if contact.tags_list %}
+              {% for tag in contact.tags_list %}
               <span class="tag-pill">#{{ tag }}</span>
               {% endfor %}
             {% else %}
@@ -275,6 +309,29 @@
             {% endif %}
           </div>
         </div>
+
+        <!-- Company -->
+        <div class="profile-field">
+          <div class="profile-field-label">Company</div>
+          {% if contact.company_name %}
+          <a href="{{ url_for('portal.crm_company_detail', company_id=contact.company_id) }}"
+             class="seg-chip" style="text-decoration:none;background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe">
+            🏢 {{ contact.company_name }}
+          </a>
+          {% else %}
+          <span style="font-size:12px;color:var(--muted)">No company — set one via Edit Profile</span>
+          {% endif %}
+        </div>
+
+        <!-- WhatsApp Number (only shown when it differs from Phone above —
+             a linked deal can carry its own WhatsApp field separate from the
+             phone number it was reached on) -->
+        {% if pipeline_lead and pipeline_lead.whatsapp_number and pipeline_lead.whatsapp_number != contact.phone %}
+        <div class="profile-field">
+          <div class="profile-field-label">WhatsApp Number</div>
+          <div class="profile-field-value" style="font-family:'SF Mono','Fira Code',monospace">{{ pipeline_lead.whatsapp_number }}</div>
+        </div>
+        {% endif %}
 
         <!-- Segments -->
         <div class="profile-field">
@@ -293,16 +350,22 @@
           </div>
         </div>
 
-        <!-- Sales Pipeline -->
+        <!-- Deal -->
         <div class="profile-field">
-          <div class="profile-field-label">Sales Pipeline</div>
+          <div class="profile-field-label">Deal</div>
           {% if pipeline_lead %}
-          <a href="{{ url_for('portal.sales_pipeline', q=contact.phone) }}" class="seg-chip" style="text-decoration:none">
-            <span class="seg-dot" style="background:#16a34a"></span>
-            ✓ In Sales Pipeline — {{ pipeline_lead.customer_name }}
-          </a>
+          <span class="stage-pill st-{{ pipeline_lead.stage }}" style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700">
+            {{ stage_labels.get(pipeline_lead.stage, pipeline_lead.stage) }}
+          </span>
+          {% if pipeline_lead.deal_value %}
+          <div class="profile-field-value" style="margin-top:6px;font-size:18px">₦{{ '{:,.0f}'.format(pipeline_lead.deal_value) }}</div>
+          {% endif %}
+          <a href="{{ url_for('portal.lead_detail', lead_id=pipeline_lead.id) }}" style="font-size:11px;color:#2563eb;font-weight:700;text-decoration:none;display:inline-block;margin-top:4px">Open this Sales Lead →</a>
+          {% if pipeline_lead_count and pipeline_lead_count > 1 %}
+          <a href="{{ url_for('portal.sales_pipeline', q=contact.phone) }}" style="font-size:11px;color:var(--muted);font-weight:600;text-decoration:none;display:block;margin-top:2px">+{{ pipeline_lead_count - 1 }} more Sales Lead{{ 's' if pipeline_lead_count > 2 else '' }} →</a>
+          {% endif %}
           {% else %}
-          <span style="font-size:12px;color:var(--muted)">Not in Sales Pipeline yet</span>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:6px">No Sales Lead yet</div>
           {% endif %}
         </div>
 
@@ -351,14 +414,12 @@
           <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           Edit Profile
         </button>
-        {% if not pipeline_lead %}
         <form method="POST" action="{{ url_for('portal.whatsapp_contact_move_to_pipeline', contact_id=contact.id) }}" style="margin:0">
-          <button type="submit" class="btn-edit-profile" title="Adds this contact to Sales Pipeline — it stays in Contacts too">
+          <button type="submit" class="btn-edit-profile" title="Creates a new Sales Lead for this contact — the Contact itself is untouched, and this works even if they already have one or more Sales Leads">
             <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-            Add to Sales Pipeline
+            Create Sales Lead
           </button>
         </form>
-        {% endif %}
         {% if available_segments %}
         <div style="position:relative">
           <select id="quickSegSelect" class="field-select" style="font-size:12px;padding:8px 12px"
@@ -372,6 +433,64 @@
         {% endif %}
       </div>
     </div><!-- /profile-card -->
+
+    <!-- Consent — one record, every channel. WhatsApp/Email/SMS opt-outs used
+         to live in three separate places (or nowhere, for SMS); this is the
+         one place a staff member sees and changes all three. -->
+    {% set is_out = contact.opted_out or contact.email_opted_out or contact.sms_opted_out %}
+    <div class="section-card" style="margin-top:16px">
+      <div class="sc-head">
+        <h2>Consent</h2>
+      </div>
+      <div class="sc-body">
+        <div class="consent-master {{ 'out' if is_out else 'in' }}">
+          <span class="consent-master-text">{{ 'Opted out of marketing' if is_out else 'Subscribed to marketing' }}</span>
+          {% if not is_out %}
+          <form method="POST" action="{{ url_for('portal.whatsapp_contact_set_consent', contact_id=contact.id) }}" style="margin:0">
+            <input type="hidden" name="channel" value="all">
+            <input type="hidden" name="action" value="opt_out">
+            <button type="submit" class="consent-btn is-out" onclick="return confirm('Opt this contact out of WhatsApp, Email and SMS campaigns?')">Opt out of all</button>
+          </form>
+          {% endif %}
+        </div>
+
+        <div class="consent-row">
+          <span class="consent-row-label">WhatsApp</span>
+          <form method="POST" action="{{ url_for('portal.whatsapp_contact_set_consent', contact_id=contact.id) }}" style="margin:0">
+            <input type="hidden" name="channel" value="whatsapp">
+            <input type="hidden" name="action" value="{{ 'opt_in' if contact.opted_out else 'opt_out' }}">
+            <button type="submit" class="consent-btn {{ 'is-out' if contact.opted_out else 'is-in' }}">{{ 'Opted out' if contact.opted_out else 'Subscribed' }}</button>
+          </form>
+        </div>
+        <div class="consent-row">
+          <span class="consent-row-label">Email</span>
+          <form method="POST" action="{{ url_for('portal.whatsapp_contact_set_consent', contact_id=contact.id) }}" style="margin:0">
+            <input type="hidden" name="channel" value="email">
+            <input type="hidden" name="action" value="{{ 'opt_in' if contact.email_opted_out else 'opt_out' }}">
+            <button type="submit" class="consent-btn {{ 'is-out' if contact.email_opted_out else 'is-in' }}">{{ 'Opted out' if contact.email_opted_out else 'Subscribed' }}</button>
+          </form>
+        </div>
+        <div class="consent-row">
+          <span class="consent-row-label">SMS</span>
+          <form method="POST" action="{{ url_for('portal.whatsapp_contact_set_consent', contact_id=contact.id) }}" style="margin:0">
+            <input type="hidden" name="channel" value="sms">
+            <input type="hidden" name="action" value="{{ 'opt_in' if contact.sms_opted_out else 'opt_out' }}">
+            <button type="submit" class="consent-btn {{ 'is-out' if contact.sms_opted_out else 'is-in' }}">{{ 'Opted out' if contact.sms_opted_out else 'Subscribed' }}</button>
+          </form>
+        </div>
+
+        {% if consent_log %}
+        <div style="margin-top:12px">
+          {% for c in consent_log %}
+          <div class="consent-log-item">
+            <b>{{ c.channel|title }}</b> {{ 'opted out' if c.action == 'opted_out' else 'opted back in' }} — {{ c.reason or (c.source|replace('_',' ')|title) }}
+            <div style="margin-top:1px">{{ c.created_at.strftime('%d %b %Y, %H:%M') if c.created_at else '' }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
 
     <!-- Segments membership -->
     {% if contact_segments %}
@@ -403,11 +522,13 @@
   <!-- ── Right: Timeline + Messages ─────────────────────────────────── -->
   <div>
 
-    <!-- Notes / Activity Timeline -->
+    <!-- Activity & Notes — one timeline: notes, deal-stage moves, and
+         WhatsApp messages, merged and sorted newest-first (see the
+         `timeline` list built in whatsapp_contact_detail()) -->
     <div class="section-card">
       <div class="sc-head">
         <h2>Activity & Notes</h2>
-        <span class="sc-head-count">{{ notes|length }}</span>
+        <span class="sc-head-count">{{ timeline|length }}</span>
       </div>
       <div class="sc-body">
         <!-- Add note form -->
@@ -417,26 +538,30 @@
         </form>
 
         <!-- Timeline -->
-        {% if not notes %}
-        <div class="empty-timeline">No notes yet. Add the first one above.</div>
+        {% if not timeline %}
+        <div class="empty-timeline">Nothing here yet. Add the first note above.</div>
         {% else %}
         <div class="timeline">
-          {% for note in notes %}
+          {% for item in timeline %}
           <div class="tl-item">
-            <div class="tl-dot"></div>
+            <div class="tl-dot {% if item.kind != 'note' %}system{% endif %}"></div>
             <div class="tl-body">
-              <div class="tl-body-text">{{ note.body }}</div>
+              {% if item.kind == 'note' %}
+                <div class="tl-body-text">📝 {{ item.body }}</div>
+              {% elif item.kind == 'stage' %}
+                <div class="tl-body-text">🔁 Moved to <strong>{{ stage_labels.get(item.to_stage, item.to_stage) }}</strong>{% if item.body %} — {{ item.body }}{% endif %}</div>
+              {% elif item.kind == 'message' %}
+                <div class="tl-body-text">💬 {{ 'Sent' if item.direction == 'outbound' else 'Received' }}: "{{ item.body }}"</div>
+              {% elif item.kind == 'created' %}
+                <div class="tl-body-text">✨ Contact created</div>
+              {% endif %}
               <div class="tl-meta">
                 <div>
-                  <span class="tl-author">{{ note.author_name or 'You' }}</span>
-                  &nbsp;·&nbsp;
-                  <span>{{ note.created_at.strftime('%d %b %Y, %H:%M') if note.created_at else '' }}</span>
+                  {% if item.kind == 'note' %}
+                  <span class="tl-author">{{ item.author or 'You' }}</span>&nbsp;·&nbsp;
+                  {% endif %}
+                  <span>{{ item.created_at.strftime('%d %b %Y, %H:%M') if item.created_at else '' }}</span>
                 </div>
-                <form method="POST"
-                      action="{{ url_for('portal.whatsapp_contact_delete_note', contact_id=contact.id, note_id=note.id) }}"
-                      onsubmit="return confirm('Delete this note?')">
-                  <button type="submit" class="tl-del">Delete</button>
-                </form>
               </div>
             </div>
           </div>
@@ -445,6 +570,33 @@
         {% endif %}
       </div>
     </div>
+
+    <!-- Individual notes still list here too, so "delete a note" stays
+         available without cluttering the merged timeline above with a
+         delete button on every row. -->
+    {% if notes %}
+    <div class="section-card">
+      <div class="sc-head">
+        <h2>Your Notes</h2>
+        <span class="sc-head-count">{{ notes|length }}</span>
+      </div>
+      <div class="sc-body">
+        {% for note in notes %}
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid rgba(3,12,24,.05)">
+          <div style="font-size:12.5px;color:var(--ink)">
+            {{ note.body }}
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">{{ note.author_name or 'You' }} · {{ note.created_at.strftime('%d %b %Y, %H:%M') if note.created_at else '' }}</div>
+          </div>
+          <form method="POST"
+                action="{{ url_for('portal.whatsapp_contact_delete_note', contact_id=contact.id, note_id=note.id) }}"
+                onsubmit="return confirm('Delete this note?')" style="flex-shrink:0">
+            <button type="submit" class="tl-del">Delete</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
 
     <!-- Recent Messages Preview -->
     <div class="section-card">
@@ -519,6 +671,26 @@
       </div>
 
       <div class="field">
+        <label class="field-label">Contact Person <span class="field-hint">optional — if Display Name is a business, who's your actual contact there?</span></label>
+        <input class="field-input" type="text" name="contact_person"
+               value="{{ contact.contact_person or '' }}" placeholder="e.g. Amira Johnson">
+      </div>
+
+      <div class="field">
+        <label class="field-label">Company <span class="field-hint">optional</span></label>
+        <select class="field-select" name="company_id" id="ep-company-select" onchange="toggleNewCompanyBox(this,'ep-new-company')">
+          <option value="" {% if not contact.company_id %}selected{% endif %}>— No Company —</option>
+          {% for co in all_companies %}
+          <option value="{{ co.id }}" {% if contact.company_id == co.id %}selected{% endif %}>{{ co.name }}</option>
+          {% endfor %}
+          <option value="__new__">+ New Company…</option>
+        </select>
+        <input class="field-input" type="text" name="new_company_name" id="ep-new-company"
+               placeholder="New company name" style="display:none;margin-top:8px" autocomplete="off">
+        <div class="dedupe-warn" id="ep-dedupe"></div>
+      </div>
+
+      <div class="field">
         <label class="field-label">Email <span class="field-hint">optional</span></label>
         <input class="field-input" type="email" name="email"
                value="{{ contact.email or '' }}" placeholder="e.g. amira@business.com">
@@ -535,9 +707,10 @@
 
       <div class="field">
         <label class="field-label">Tags <span class="field-hint">comma separated</span></label>
-        <input class="field-input" type="text" name="tags_csv"
-               value="{{ (contact.tags or [])|join(', ') }}"
-               placeholder="e.g. Lagos, VIP, Hot Lead">
+        <input class="field-input" type="text" name="tags_csv" id="ep-tags"
+               value="{{ (contact.tags_list or [])|join(', ') }}"
+               placeholder="e.g. Lagos, VIP, Hot Lead" autocomplete="off">
+        <div class="dedupe-warn" id="ep-tags-dedupe"></div>
       </div>
 
       <div class="field">
@@ -576,5 +749,38 @@ function quickAddSegment(segId) {
   document.getElementById('quickSegId').value = segId
   document.getElementById('quickSegForm').submit()
 }
+
+function toggleNewCompanyBox(select, inputId) {
+  var isNew = select.value === '__new__'
+  document.getElementById(inputId).style.display = isNew ? 'block' : 'none'
+  if (!isNew) {
+    var dedupeBox = document.getElementById(inputId.replace('new-company', 'dedupe'))
+    if (dedupeBox) { dedupeBox.style.display = 'none'; dedupeBox.innerHTML = '' }
+  }
+}
+
+/* Duplicate-name warning for the "+ New Company…" box on this page. */
+document.addEventListener('DOMContentLoaded', function () {
+  var input = document.getElementById('ep-new-company'), warnBox = document.getElementById('ep-dedupe'), select = document.getElementById('ep-company-select')
+  crmDedupeWatch({
+    input: input,
+    warnBox: warnBox,
+    getCompanies: function () { return crmCompaniesFromSelect(select) },
+    onUse: function (co) {
+      select.value = co.id
+      toggleNewCompanyBox(select, 'ep-new-company')
+      input.value = ''
+    }
+  })
+
+  /* Duplicate-name warning for the Tags field (comma separated) —
+     tags unification, 2026-09-09. */
+  crmDedupeWatchCsv({
+    input: document.getElementById('ep-tags'),
+    warnBox: document.getElementById('ep-tags-dedupe'),
+    label: 'Similar tag already exists — did you mean:',
+    getItems: function () { return {{ dedupe_tags|tojson }} },
+  })
+})
 </script>
 {% endblock %}

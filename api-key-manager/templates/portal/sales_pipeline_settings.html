@@ -1,0 +1,90 @@
+{% extends "portal/base.html" %}
+{% block title %}Pipeline Settings — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+.crumb{font-size:12px;color:var(--muted);margin-bottom:14px}
+.crumb a{color:var(--muted);text-decoration:none;font-weight:600}
+.crumb b{color:var(--ink)}
+.settings-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:22px 24px;margin-bottom:22px}
+.settings-card h2{font-size:15px;font-weight:800;color:var(--ink);margin:0 0 4px}
+.settings-card p.sub{font-size:12.5px;color:var(--muted);margin:0 0 18px;line-height:1.6;max-width:640px}
+.grp-label{font-size:10.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:20px 0 10px}
+.grp-label:first-of-type{margin-top:0}
+.stg-row{display:flex;gap:14px;padding:12px 0;border-bottom:1px solid var(--line)}
+.stg-row:last-child{border-bottom:none}
+.stg-num{width:24px;height:24px;border-radius:50%;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px}
+.stg-input{width:100%;max-width:320px;padding:8px 12px;border:1.5px solid #e5e7eb;border-radius:9px;font-size:13px;font-weight:600;color:var(--ink);font-family:inherit;margin-bottom:5px}
+.stg-desc{font-size:11.5px;color:var(--muted);line-height:1.4}
+.btn-save{background:var(--ink);color:#fff;border:none;border-radius:10px;padding:10px 20px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer}
+.score-row{display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid var(--line)}
+.score-row:last-child{border-bottom:none}
+.score-icon{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="crumb"><a href="{{ url_for('portal.sales_pipeline') }}">Sales Pipeline</a> / <b>Pipeline Settings</b></div>
+
+<div class="settings-card">
+  <h2>Pipeline Stage Names</h2>
+  <p class="sub">One Sales Pipeline, your own wording. Every deal still moves through these steps in this order — only the names are yours to set. Leave a field blank to keep the default.</p>
+  <form method="POST">
+    <input type="hidden" name="form_type" value="stage_labels">
+
+    <div class="grp-label">Active — the deal is still open</div>
+    {% for s in stage_order %}
+    <div class="stg-row">
+      <div class="stg-num" style="background:#f1f5f9;color:#475569">{{ loop.index }}</div>
+      <div style="flex:1">
+        <input class="stg-input" type="text" name="stage_{{ s }}" value="{{ current_stage_labels.get(s, '') if current_stage_labels.get(s) != stage_defaults[s] else '' }}" placeholder="{{ stage_defaults[s] }}">
+        <div class="stg-desc">{{ stage_descriptions[s] }}</div>
+      </div>
+    </div>
+    {% endfor %}
+
+    <div class="grp-label">Outcome — the deal is closed, one way or another</div>
+    {% for o in ['won', 'lost', 'dropped'] %}
+    <div class="stg-row">
+      <div class="stg-num" style="background:{{ '#f0fdf4' if o == 'won' else ('#fef2f2' if o == 'lost' else '#f8fafc') }};color:{{ '#15803d' if o == 'won' else ('#b91c1c' if o == 'lost' else '#64748b') }}">{{ '✓' if o == 'won' else ('✕' if o == 'lost' else '–') }}</div>
+      <div style="flex:1">
+        <input class="stg-input" type="text" name="stage_{{ o }}" value="{{ current_stage_labels.get(o, '') if current_stage_labels.get(o) != outcome_defaults[o] else '' }}" placeholder="{{ outcome_defaults[o] }}">
+        <div class="stg-desc">{{ outcome_descriptions[o] }}{% if o != 'won' %} <strong style="color:var(--ink)">Requires a reason.</strong>{% endif %}</div>
+      </div>
+    </div>
+    {% endfor %}
+
+    <div style="display:flex;justify-content:flex-end;margin-top:18px">
+      <button type="submit" class="btn-save">💾 Save Stage Names</button>
+    </div>
+  </form>
+</div>
+
+<div class="settings-card">
+  <h2>Lead Score Labels</h2>
+  <p class="sub">Same scoring underneath — the colors and the 0–100 thresholds don't change. Only these three words are yours to set. Leave blank to keep the default.</p>
+  <form method="POST">
+    <input type="hidden" name="form_type" value="score_labels">
+
+    {% set score_meta = {'hot': ('🔥', '#fef2f2', 'Score 70–100'), 'warm': ('🌤️', '#fffbeb', 'Score 40–69'), 'cold': ('❄️', '#eff6ff', 'Score 0–39')} %}
+    {% for tier in ['hot', 'warm', 'cold'] %}
+    {% set icon, bg, range_label = score_meta[tier] %}
+    <div class="score-row">
+      <div class="score-icon" style="background:{{ bg }}">{{ icon }}</div>
+      <div style="flex:1">
+        <div class="stg-desc" style="margin-bottom:5px">{{ range_label }}</div>
+        <input class="stg-input" type="text" name="score_{{ tier }}" value="{{ current_score_labels.get(tier, '') if current_score_labels.get(tier) != score_defaults[tier] else '' }}" placeholder="{{ score_defaults[tier] }}">
+      </div>
+    </div>
+    {% endfor %}
+
+    <div style="background:#f1f5f9;border-radius:12px;padding:14px 16px;margin-top:12px;font-size:12px;color:var(--muted);line-height:1.6">
+      Renaming a tier only changes the word your team sees on the badge — never the math behind it.
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;margin-top:18px">
+      <button type="submit" class="btn-save">💾 Save Score Labels</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

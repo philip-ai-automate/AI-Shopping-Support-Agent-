@@ -416,6 +416,22 @@ def ensure_portal_tables():
             cur.execute("ALTER TABLE tenants ADD COLUMN founder_year SMALLINT NOT NULL DEFAULT 0")
         if not _column_exists(cur, "tenants", "trial_granted_at"):
             cur.execute("ALTER TABLE tenants ADD COLUMN trial_granted_at TIMESTAMPTZ DEFAULT NULL")
+        if not _column_exists(cur, "tenants", "ai_enabled"):
+            # PhiXtra-admin-controlled switch: whether this tenant's WhatsApp
+            # number is allowed to receive AI-generated replies at all.
+            # Defaults TRUE so every existing AI-product tenant is unaffected;
+            # PhiXtra Connect signups explicitly set this FALSE at registration.
+            cur.execute("ALTER TABLE tenants ADD COLUMN ai_enabled BOOLEAN NOT NULL DEFAULT TRUE")
+        if not _column_exists(cur, "tenants", "crm_enabled"):
+            # PhiXtra-admin-controlled switch: whether this tenant's Sales
+            # Pipeline (CRM) pages are unlocked on PhiXtra Connect. Defaults
+            # TRUE as of 2026-09-08 — CRM ships free to every Connect
+            # business by default; admin can still turn it off per business
+            # if ever needed. This flag is ONLY ever checked when the
+            # request is on connect.phixtra.com — it has zero effect on
+            # portal.phixtra.com, where Sales Pipeline is already available
+            # to every tenant regardless of plan.
+            cur.execute("ALTER TABLE tenants ADD COLUMN crm_enabled BOOLEAN NOT NULL DEFAULT TRUE")
 
         # ── wa_campaign_recipients ─────────────────────────────────────────────
         cur.execute("""
@@ -1108,6 +1124,37 @@ def ensure_portal_tables():
                 ON social_media_posts(status)
         """)
 
+        # ── Buffer publishing fields on social_media_posts — added when the
+        # Canva → PhiXtra → Buffer flow was wired up. scheduled_for/buffer_*
+        # track a post sent to Buffer; public_token lets the unauthenticated
+        # image route (Buffer must fetch the image itself, no API upload
+        # exists) serve the file without exposing the admin-gated route.
+        if not _column_exists(cur, "social_media_posts", "scheduled_for"):
+            cur.execute("ALTER TABLE social_media_posts ADD COLUMN scheduled_for TIMESTAMPTZ")
+        if not _column_exists(cur, "social_media_posts", "buffer_status"):
+            cur.execute("ALTER TABLE social_media_posts ADD COLUMN buffer_status VARCHAR(20)")
+        if not _column_exists(cur, "social_media_posts", "buffer_post_ids"):
+            cur.execute("ALTER TABLE social_media_posts ADD COLUMN buffer_post_ids JSONB")
+        if not _column_exists(cur, "social_media_posts", "buffer_error"):
+            cur.execute("ALTER TABLE social_media_posts ADD COLUMN buffer_error TEXT")
+        if not _column_exists(cur, "social_media_posts", "is_urgent"):
+            cur.execute("ALTER TABLE social_media_posts ADD COLUMN is_urgent BOOLEAN NOT NULL DEFAULT FALSE")
+        if not _column_exists(cur, "social_media_posts", "public_token"):
+            cur.execute("ALTER TABLE social_media_posts ADD COLUMN public_token VARCHAR(64) UNIQUE")
+
+        # ── buffer_channel_map: one-time admin mapping of each Social Media
+        # Posts platform key (facebook/instagram/linkedin/tiktok/x) to the
+        # PhiXtra Buffer account's channel id for that platform.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS buffer_channel_map (
+                platform          VARCHAR(20) PRIMARY KEY,
+                buffer_channel_id VARCHAR(64) NOT NULL,
+                channel_label     VARCHAR(255),
+                updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_by        VARCHAR(255)
+            )
+        """)
+
         # ── ambassador_broadcasts: admin WhatsApp broadcasts to ambassadors ──
         # Log of each admin-sent WhatsApp update (via one reusable Meta
         # template) — who it targeted, recipient ids, and delivery counts.
@@ -1314,6 +1361,12 @@ def ensure_portal_tables():
             if not _column_exists(cur, "merchant_pipeline_leads", "zoho_synced_at"):
                 cur.execute(
                     "ALTER TABLE merchant_pipeline_leads ADD COLUMN zoho_synced_at TIMESTAMPTZ"
+                )
+            # website — a proper field of its own (rendered as a clickable link
+            # in the pipeline table) rather than a URL buried in free-text notes.
+            if not _column_exists(cur, "merchant_pipeline_leads", "website"):
+                cur.execute(
+                    "ALTER TABLE merchant_pipeline_leads ADD COLUMN website TEXT"
                 )
 
         # ── wa_contacts: personalization phrase for outbound sales campaigns ──
@@ -1560,6 +1613,308 @@ def ensure_portal_tables():
                 "ALTER TABLE wa_campaigns ADD COLUMN pipeline_segment_id "
                 "INTEGER REFERENCES wa_pipeline_segments(id) ON DELETE SET NULL"
             )
+
+        # ══════════════════════════════════════════════════════════════════
+        # CRM merge (2026-09-09) — one "CRM" contact record instead of two
+        # disconnected ones (WhatsApp Contacts vs Sales Pipeline leads).
+        # Purely additive: no existing table/column is touched or dropped.
+        #   - crm_companies: new, optional "company" a contact can belong to.
+        #   - wa_contacts.company_id / merchant_pipeline_leads.company_id:
+        #     link each side to the same company.
+        #   - merchant_pipeline_leads.wa_contact_id: the canonical link from a
+        #     deal to the WhatsApp Contact it belongs to (wa_contacts stays
+        #     the "person" record — it already has the note log, tags,
+        #     segments, message history the merged profile is built on).
+        #   - crm_match_candidates: near-matches the automatic phone-number
+        #     matching wasn't sure about, held here for a human to confirm —
+        #     see crm_merge_backfill.py, run once by hand after this deploys.
+        # ══════════════════════════════════════════════════════════════════
+        if not _table_exists(cur, "crm_companies"):
+            cur.execute("""
+                CREATE TABLE crm_companies (
+                    id         SERIAL PRIMARY KEY,
+                    tenant_id  INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    name       TEXT NOT NULL,
+                    website    TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            cur.execute("CREATE INDEX idx_crm_companies_tenant ON crm_companies(tenant_id)")
+
+        if not _column_exists(cur, "wa_contacts", "company_id"):
+            cur.execute(
+                "ALTER TABLE wa_contacts ADD COLUMN company_id "
+                "INTEGER REFERENCES crm_companies(id) ON DELETE SET NULL"
+            )
+            cur.execute("CREATE INDEX idx_wa_contacts_company ON wa_contacts(company_id)")
+
+        if not _column_exists(cur, "merchant_pipeline_leads", "company_id"):
+            cur.execute(
+                "ALTER TABLE merchant_pipeline_leads ADD COLUMN company_id "
+                "INTEGER REFERENCES crm_companies(id) ON DELETE SET NULL"
+            )
+            cur.execute("CREATE INDEX idx_mpl_company ON merchant_pipeline_leads(company_id)")
+
+        if not _column_exists(cur, "merchant_pipeline_leads", "wa_contact_id"):
+            cur.execute(
+                "ALTER TABLE merchant_pipeline_leads ADD COLUMN wa_contact_id "
+                "INTEGER REFERENCES wa_contacts(id) ON DELETE SET NULL"
+            )
+            cur.execute("CREATE INDEX idx_mpl_wa_contact ON merchant_pipeline_leads(wa_contact_id)")
+
+        if not _table_exists(cur, "crm_company_notes"):
+            cur.execute("""
+                CREATE TABLE crm_company_notes (
+                    id         SERIAL PRIMARY KEY,
+                    company_id INTEGER NOT NULL REFERENCES crm_companies(id) ON DELETE CASCADE,
+                    tenant_id  INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    author_id  INTEGER,
+                    body       TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            cur.execute("CREATE INDEX idx_crm_company_notes_company ON crm_company_notes(company_id)")
+
+        if not _table_exists(cur, "crm_match_candidates"):
+            cur.execute("""
+                CREATE TABLE crm_match_candidates (
+                    id               SERIAL PRIMARY KEY,
+                    tenant_id        INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    wa_contact_id    INTEGER REFERENCES wa_contacts(id) ON DELETE CASCADE,
+                    pipeline_lead_id INTEGER REFERENCES merchant_pipeline_leads(id) ON DELETE CASCADE,
+                    reason           TEXT,
+                    status           VARCHAR(20) NOT NULL DEFAULT 'pending',
+                    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    resolved_at      TIMESTAMPTZ
+                )
+            """)
+            cur.execute("""
+                CREATE INDEX idx_crm_match_candidates_tenant
+                    ON crm_match_candidates(tenant_id) WHERE status = 'pending'
+            """)
+
+        # ══════════════════════════════════════════════════════════════════
+        # Tags unification (2026-09-09) — one shared tag vocabulary for both
+        # WhatsApp Contacts and Sales Pipeline deals, instead of two separate
+        # systems (wa_contacts.tags free-text array vs lead_labels/
+        # lead_label_leads). lead_labels stays the tag-definition table (it
+        # already has real, actively-used data — Bounced/High Lead/HOT
+        # LEADS — and campaigns' bounce-suppression exclude-picker reads it;
+        # untouched, no rename, to avoid re-testing that path). This just
+        # adds the missing other half: a Contact-to-label link table,
+        # mirroring lead_label_leads. wa_contacts.tags is left in place,
+        # frozen/unread going forward — no data dropped, see
+        # lead_tags_unify_backfill.py for the one-time carry-over.
+        # ══════════════════════════════════════════════════════════════════
+        if not _table_exists(cur, "lead_label_contacts"):
+            cur.execute("""
+                CREATE TABLE lead_label_contacts (
+                    label_id   INTEGER NOT NULL REFERENCES lead_labels(id) ON DELETE CASCADE,
+                    contact_id INTEGER NOT NULL REFERENCES wa_contacts(id) ON DELETE CASCADE,
+                    added_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    PRIMARY KEY (label_id, contact_id)
+                )
+            """)
+            cur.execute("CREATE INDEX idx_lead_label_contacts_contact ON lead_label_contacts(contact_id)")
+
+        # ══════════════════════════════════════════════════════════════════
+        # Saved filter views (2026-09-09) — the Contacts filter panel's
+        # "Save this filter as a view" action. Tenant-wide (any staff login
+        # sees and can use every saved view), not per-user — matches how
+        # Segments/Tags/Labels already work here. `filters` stores just the
+        # filter fields (status_filter/tag_filter/segment_filter/date_from/
+        # date_to/has_phone/has_email/has_pers) — never the free-text search
+        # box, so a view is a reusable filter combo, not a one-off search.
+        # ══════════════════════════════════════════════════════════════════
+        if not _table_exists(cur, "contact_filter_views"):
+            cur.execute("""
+                CREATE TABLE contact_filter_views (
+                    id         SERIAL PRIMARY KEY,
+                    tenant_id  INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    name       TEXT NOT NULL,
+                    filters    JSONB NOT NULL DEFAULT '{}',
+                    created_by INTEGER,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            cur.execute("CREATE INDEX idx_contact_filter_views_tenant ON contact_filter_views(tenant_id)")
+
+        # ══════════════════════════════════════════════════════════════════
+        # Custom Report Builder saved reports (2026-09-10, Phase 3) — same
+        # pattern as contact_filter_views above, extended to cover a whole
+        # report definition (entity + columns + filters + grouping), not
+        # just a filter set. Tenant-wide, same reasoning as Segments/Tags/
+        # contact_filter_views.
+        # ══════════════════════════════════════════════════════════════════
+        if not _table_exists(cur, "custom_report_views"):
+            cur.execute("""
+                CREATE TABLE custom_report_views (
+                    id         SERIAL PRIMARY KEY,
+                    tenant_id  INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    entity     TEXT NOT NULL,
+                    name       TEXT NOT NULL,
+                    config     JSONB NOT NULL DEFAULT '{}',
+                    created_by INTEGER,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            cur.execute("CREATE INDEX idx_custom_report_views_tenant ON custom_report_views(tenant_id, entity)")
+
+        # ══════════════════════════════════════════════════════════════════
+        # Contact Person on All Contacts (2026-09-09) — mirrors the field
+        # Sales Pipeline deals already have. Needed because a Contact's
+        # "Display Name" is often the BUSINESS name in practice (real data
+        # confirmed this — e.g. "Ojasweb Digital Academy"), same as a deal's
+        # "Customer Name" — so there was nowhere to record the actual human
+        # you deal with there, same gap Sales Pipeline already solved.
+        # ══════════════════════════════════════════════════════════════════
+        if not _column_exists(cur, "wa_contacts", "contact_person"):
+            cur.execute("ALTER TABLE wa_contacts ADD COLUMN contact_person TEXT")
+
+        # ══════════════════════════════════════════════════════════════════
+        # Unified consent (2026-09-09) — today "opted out" only ever meant
+        # WhatsApp (wa_contacts.opted_out); Email had its own, separate
+        # suppression list (email_suppressions, keyed by email) and SMS had
+        # NO opt-out at all. wa_contacts is the one real contact identity
+        # here (see the crm_companies/company_id block above), so it also
+        # becomes the one place a channel-specific opt-out is recorded —
+        # email_opted_out / sms_opted_out sit next to the existing
+        # opted_out (left untouched: the WhatsApp gateway service and the
+        # campaign-send opted_out check both already depend on its exact
+        # name and meaning). email_suppressions stays the source of truth
+        # the email send path checks — a cross-channel opt-out writes INTO
+        # it rather than replacing it, so that already-live check needs no
+        # change. contact_consent_log is the audit trail: every opt-out/
+        # opt-in, on any channel, from any source (a WhatsApp STOP reply,
+        # an email unsubscribe click, or a staff member toggling it by
+        # hand), gets one row.
+        # ══════════════════════════════════════════════════════════════════
+        if not _column_exists(cur, "wa_contacts", "email_opted_out"):
+            cur.execute("ALTER TABLE wa_contacts ADD COLUMN email_opted_out BOOLEAN NOT NULL DEFAULT FALSE")
+        if not _column_exists(cur, "wa_contacts", "email_opted_out_at"):
+            cur.execute("ALTER TABLE wa_contacts ADD COLUMN email_opted_out_at TIMESTAMPTZ")
+        if not _column_exists(cur, "wa_contacts", "sms_opted_out"):
+            cur.execute("ALTER TABLE wa_contacts ADD COLUMN sms_opted_out BOOLEAN NOT NULL DEFAULT FALSE")
+        if not _column_exists(cur, "wa_contacts", "sms_opted_out_at"):
+            cur.execute("ALTER TABLE wa_contacts ADD COLUMN sms_opted_out_at TIMESTAMPTZ")
+
+        if not _table_exists(cur, "contact_consent_log"):
+            cur.execute("""
+                CREATE TABLE contact_consent_log (
+                    id         SERIAL PRIMARY KEY,
+                    tenant_id  INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    contact_id INTEGER NOT NULL REFERENCES wa_contacts(id) ON DELETE CASCADE,
+                    channel    VARCHAR(20) NOT NULL,  -- 'whatsapp' | 'email' | 'sms' | 'all'
+                    action     VARCHAR(20) NOT NULL,  -- 'opted_out' | 'opted_in'
+                    reason     TEXT,
+                    source     VARCHAR(30) NOT NULL,  -- 'whatsapp_reply' | 'email_unsubscribe' | 'manual_staff' | 'bounce'
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            cur.execute("CREATE INDEX idx_consent_log_contact ON contact_consent_log(contact_id, created_at DESC)")
+
+        # ══════════════════════════════════════════════════════════════════
+        # WhatsApp Campaign Intelligence (2026-09-09) — extends the existing
+        # Sent/Delivered/Read/Failed campaign tracking with what happens
+        # AFTER delivery: Replied, Interested, Not interested, Opportunity,
+        # Converted. A reply is always classified and flagged automatically
+        # (wa_campaign_recipients.reply_text/replied_at, status moved to
+        # 'replied'/'interested'/'not_interested') — that part is never
+        # gated. Only the follow-on ACTION (auto-creating a Sales Pipeline
+        # opportunity from an "interested" reply) is gated by
+        # tenants.campaign_reply_auto_actions: TRUE (default) creates the
+        # opportunity immediately; FALSE queues it in
+        # wa_campaign_reply_reviews for a staff member to approve/reject
+        # first. See project_wa_campaign_intelligence_proposal memory.
+        # ══════════════════════════════════════════════════════════════════
+        if not _column_exists(cur, "tenants", "campaign_reply_auto_actions"):
+            cur.execute("ALTER TABLE tenants ADD COLUMN campaign_reply_auto_actions BOOLEAN NOT NULL DEFAULT TRUE")
+
+        if not _column_exists(cur, "wa_campaign_recipients", "reply_text"):
+            cur.execute("ALTER TABLE wa_campaign_recipients ADD COLUMN reply_text TEXT")
+        if not _column_exists(cur, "wa_campaign_recipients", "replied_at"):
+            cur.execute("ALTER TABLE wa_campaign_recipients ADD COLUMN replied_at TIMESTAMPTZ")
+        if not _column_exists(cur, "wa_campaign_recipients", "pipeline_lead_id"):
+            cur.execute(
+                "ALTER TABLE wa_campaign_recipients ADD COLUMN pipeline_lead_id "
+                "INTEGER REFERENCES merchant_pipeline_leads(id) ON DELETE SET NULL"
+            )
+
+        if not _table_exists(cur, "wa_campaign_reply_reviews"):
+            cur.execute("""
+                CREATE TABLE wa_campaign_reply_reviews (
+                    id            SERIAL PRIMARY KEY,
+                    tenant_id     INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    campaign_id   BIGINT REFERENCES wa_campaigns(id) ON DELETE CASCADE,
+                    recipient_id  BIGINT NOT NULL REFERENCES wa_campaign_recipients(id) ON DELETE CASCADE,
+                    phone         VARCHAR(30) NOT NULL,
+                    reply_text    TEXT,
+                    sentiment     VARCHAR(20) NOT NULL,   -- currently only 'interested'
+                    confidence    NUMERIC,
+                    status        VARCHAR(20) NOT NULL DEFAULT 'pending',  -- 'pending' | 'approved' | 'rejected'
+                    pipeline_lead_id INTEGER REFERENCES merchant_pipeline_leads(id) ON DELETE SET NULL,
+                    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    resolved_at   TIMESTAMPTZ,
+                    resolved_by   TEXT
+                )
+            """)
+            cur.execute("CREATE INDEX idx_reply_reviews_tenant_pending ON wa_campaign_reply_reviews(tenant_id, status)")
+            cur.execute("CREATE UNIQUE INDEX idx_reply_reviews_recipient_pending ON wa_campaign_reply_reviews(recipient_id) WHERE status = 'pending'")
+
+        # ══════════════════════════════════════════════════════════════════
+        # Sales Pipeline / Leads redesign (2026-09-09) — approved via design
+        # canvas after user feedback on the Lead Scoring build. See
+        # project_sales_pipeline_leads_redesign memory for the full design.
+        # Three additions:
+        #   - merchant_pipeline_leads.outcome distinguishes WHY a deal is
+        #     closed-without-winning: 'lost' (pursued it, customer chose
+        #     someone else) vs 'dropped' (decided not to pursue at all).
+        #     dropped_at/dropped_reason (existing columns) stay the generic
+        #     "closed unsuccessfully" timestamp+reason for BOTH — every
+        #     existing "dropped_at IS NULL" = active-pipeline check across
+        #     the app keeps working unchanged for either outcome.
+        #   - tenants.pipeline_stage_labels / lead_score_labels let a
+        #     business rename the 6 stage names / 3 score tiers to their own
+        #     words — defaults (New Lead/Contacted/.../Won, Hot/Warm/Cold)
+        #     apply whenever a key is missing, so an empty '{}' means
+        #     "using every default."
+        # ══════════════════════════════════════════════════════════════════
+        if not _column_exists(cur, "merchant_pipeline_leads", "outcome"):
+            cur.execute("ALTER TABLE merchant_pipeline_leads ADD COLUMN outcome VARCHAR(10)")
+        if not _column_exists(cur, "tenants", "pipeline_stage_labels"):
+            cur.execute("ALTER TABLE tenants ADD COLUMN pipeline_stage_labels JSONB NOT NULL DEFAULT '{}'")
+        if not _column_exists(cur, "tenants", "lead_score_labels"):
+            cur.execute("ALTER TABLE tenants ADD COLUMN lead_score_labels JSONB NOT NULL DEFAULT '{}'")
+        if not _column_exists(cur, "merchant_pipeline_leads", "product_interest"):
+            # From the Lead record field list the user specified — what
+            # product/service this Lead is actually interested in, distinct
+            # from free-text notes.
+            cur.execute("ALTER TABLE merchant_pipeline_leads ADD COLUMN product_interest TEXT")
+        if not _column_exists(cur, "merchant_pipeline_leads", "source"):
+            # The CHANNEL this Lead came from — 'whatsapp', 'facebook',
+            # 'instagram', or 'manual' (typed in directly). Facebook/Instagram
+            # aren't wired to any creation path yet (those channels don't
+            # exist in the product) but the field accepts them for when they
+            # are. NULL for every pre-existing row — real, not guessed, going
+            # forward. Which specific WhatsApp CAMPAIGN, if any, is a separate
+            # thing ("Campaign source") derived via wa_campaign_recipients,
+            # not stored redundantly here.
+            cur.execute("ALTER TABLE merchant_pipeline_leads ADD COLUMN source VARCHAR(20)")
+        else:
+            # 2026-09-09 correction: source used to record HOW the row was
+            # created (manual/contact/campaign) — redefined to record the
+            # CHANNEL instead (whatsapp/facebook/instagram/manual), per
+            # project_leads_page_redesign memory. Both old non-manual values
+            # meant a WhatsApp contact/reply either way, so this is a safe,
+            # lossless one-time relabel, not a guess.
+            cur.execute("UPDATE merchant_pipeline_leads SET source='whatsapp' WHERE source IN ('contact', 'campaign')")
+        if not _column_exists(cur, "merchant_pipeline_leads", "assigned_to"):
+            # Real "Assigned salesperson" field on the Lead record itself —
+            # free text (no team-member table linkage yet, so no permissions
+            # model to half-build) rather than the earlier ambassador-only
+            # or derived-from-history stand-ins.
+            cur.execute("ALTER TABLE merchant_pipeline_leads ADD COLUMN assigned_to TEXT")
 
         conn.commit()
     except Exception as e:

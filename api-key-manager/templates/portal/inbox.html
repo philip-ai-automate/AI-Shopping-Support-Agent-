@@ -1,5 +1,5 @@
 {% extends "portal/base.html" %}
-{% block title %}Conversations — PhiXtra Portal{% endblock %}
+{% block title %}Conversations — {{ 'PhiXtra Connect' if is_connect_host else 'PhiXtra Portal' }}{% endblock %}
 {% block wrap_class %}inbox-fullpage{% endblock %}
 {% block footer %}{% endblock %}
 
@@ -49,11 +49,37 @@ html, body { overflow: hidden; height: 100%; }
   display: grid; grid-template-columns: 340px 1fr;
   flex: 1; min-height: 0; overflow: hidden;
 }
-@media(max-width:860px) {
+/* Phone only (≤640px) — one pane at a time (list, or a full-screen chat with
+   a back arrow), the classic mobile-messaging pattern. Tablet (641-860px)
+   gets its own, roomier rule below instead of falling into this one — see
+   "TABLET" further down for why. */
+@media(max-width:640px) {
   .inbox-grid { grid-template-columns: 1fr }
-  .inbox-chat { display: none }
+  /* Pre-existing bug found while verifying the new rail on mobile: a bare
+     ".inbox-chat{display:flex}" further down (the real chat panel's own
+     base rule) sits later in the file, so at equal specificity it was
+     winning over this default-hidden rule regardless of media query —
+     the empty "Select a conversation" chat pane was always showing,
+     stacked under the full list, even with no conversation open. Scoping
+     this selector to ".inbox-grid .inbox-chat" (2 selectors) beats that
+     1-selector base rule while staying weaker than the 3-selector
+     ".mobile-chat .inbox-chat" rule below, which still needs to win. */
+  .inbox-grid .inbox-chat { display: none }
   .inbox-grid.mobile-chat .inbox-list { display: none }
   .inbox-grid.mobile-chat .inbox-chat { display: flex }
+}
+
+/* Narrow (641-1100px — tablets AND small/narrow desktop windows). Upper
+   bound found live, 2026-09-10 desktop check: the app's own main sidebar
+   (230px, its own breakpoint in base.html, untouched here) + this page's
+   full-desktop rail (208px) + full-desktop list (340px) = 778px, so
+   anything up to ~1100px window width left the chat panel crushed to
+   under 100px — text wrapping one character per line, unreadable. Below
+   641px this range doesn't apply — see the phone tier above, which forces
+   the single-pane pattern instead (there just isn't room for even the
+   narrow list+chat side by side). */
+@media(min-width:641px) and (max-width:1100px) {
+  .inbox-grid { grid-template-columns: 240px 1fr }
 }
 
 /* ── Left panel ───────────────────────────────────────────────────────────── */
@@ -202,7 +228,7 @@ html, body { overflow: hidden; height: 100%; }
   display: none; background: none; border: none; cursor: pointer;
   font-size: 22px; padding: 0 8px 0 0; color: var(--ink); line-height: 1;
 }
-@media(max-width:860px) { .chat-back-btn { display: inline } }
+@media(max-width:640px) { .chat-back-btn { display: inline } }
 
 /* Messages scroll area */
 .chat-messages {
@@ -411,6 +437,133 @@ html, body { overflow: hidden; height: 100%; }
 }
 .empty-icon { font-size: 52px; opacity: .2; margin-bottom: 4px }
 
+/* ══════════════ CHANNEL RAIL (omnichannel prep — 2026-09-10) ══════════════
+   Real navigation, not a filter: WhatsApp shows real, live data; Messenger/
+   Instagram are honest "coming soon" locked states — front-end only, no
+   Meta backend behind them yet. Same active-state grammar (dark tint +
+   inset left bar) the app's own sidebar already uses, so it reads as "this
+   is where you are," not a filter pill. Switching channels is pure
+   client-side show/hide of pre-rendered panels — no query param, no reload,
+   no fake data. See project_phixtra_omnichannel_inbox_design memory. */
+.inbox-body { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+.channel-rail {
+  width: 208px; flex-shrink: 0; border-right: 1px solid var(--line);
+  background: #fff; display: flex; flex-direction: column; overflow-y: auto;
+}
+.rail-label {
+  padding: 16px 16px 8px; font-size: 11px; font-weight: 800; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .07em;
+}
+.rail-items { padding: 0 10px; display: flex; flex-direction: column; gap: 2px }
+.rail-item {
+  display: flex; align-items: center; gap: 11px; padding: 11px 12px; border-radius: 10px;
+  position: relative; cursor: pointer; border: none; background: none; width: 100%;
+  text-align: left; font-family: inherit; color: inherit;
+}
+.rail-item:hover { background: rgba(3,12,24,.06) }
+.rail-item.active { background: rgba(3,12,24,.12); box-shadow: inset 3px 0 0 var(--ink) }
+.rail-icon {
+  width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.rail-icon svg { width: 100%; height: 100%; display: block }
+.rail-body { flex: 1; min-width: 0 }
+.rail-name { font-size: 13.5px; font-weight: 700; color: var(--ink); line-height: 1.3 }
+.rail-meta {
+  font-size: 11px; color: var(--muted); margin-top: 1px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rail-count {
+  flex-shrink: 0; min-width: 22px; height: 22px; border-radius: 999px;
+  background: rgba(3,12,24,.08); color: var(--ink); font-size: 11.5px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center; padding: 0 6px;
+}
+.rail-item.locked { opacity: .55 }
+.rail-item.locked.active { opacity: 1; background: rgba(3,12,24,.07); box-shadow: inset 3px 0 0 var(--muted) }
+.rail-lock { width: 13px; height: 13px; flex-shrink: 0; color: var(--muted) }
+.rail-divider { height: 1px; background: var(--line); margin: 10px 16px }
+.rail-foot { padding: 12px 16px; font-size: 11px; color: var(--muted); line-height: 1.5; margin-top: auto }
+
+/* The real view + each locked view share this sizing so the flex layout
+   stays identical whichever one is showing. */
+.channel-view { flex: 1; min-width: 0; overflow: hidden; display: flex }
+.channel-view[hidden] { display: none }
+.inbox-grid { flex: 1; min-width: 0 }
+
+/* The real view's .inbox-list-header is a flex ROW (label + count badge);
+   the rail's locked panes reuse the same class but need title-then-
+   subtitle stacked underneath, so scope the reset to headers that actually
+   contain the stacked layout rather than touching the real view's header. */
+.inbox-list-header:has(.list-header-title) { display: block }
+.list-header-title {
+  display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 800;
+  color: var(--ink); text-transform: none; letter-spacing: normal;
+}
+.list-header-icon { width: 20px; height: 20px; flex-shrink: 0; border-radius: 6px }
+.list-header-sub {
+  font-size: 11.5px; color: var(--muted); margin-top: 2px;
+  text-transform: none; letter-spacing: normal;
+}
+
+/* .inbox-list/.inbox-chat normally get their width from the real view's
+   CSS Grid (.inbox-grid: 340px 1fr) — the locked panes use the same two
+   classes but sit in a plain flex row instead, so they need their own
+   sizing here or they'd collapse to their content's min-width. */
+.channel-view .inbox-list { width: 340px; flex-shrink: 0 }
+.channel-view .inbox-chat { flex: 1; min-width: 0 }
+.list-locked-msg {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; padding: 32px 24px; text-align: center; color: var(--muted);
+}
+.list-locked-icon { width: 42px; height: 42px; opacity: .3 }
+.list-locked-title { font-size: 13px; font-weight: 700; color: var(--txt) }
+.list-locked-text { font-size: 11.5px; line-height: 1.5; max-width: 210px }
+
+.empty-icon-wrap {
+  width: 76px; height: 76px; border-radius: 20px; display: flex; align-items: center;
+  justify-content: center; background: rgba(3,12,24,.04);
+}
+.empty-icon-wrap svg { width: 40px; height: 40px }
+.empty-badge {
+  font-size: 11px; font-weight: 700; color: #7a4f00; background: rgba(247,144,9,.12);
+  border: 1px solid rgba(247,144,9,.3); border-radius: 999px; padding: 3px 12px; margin-bottom: 2px;
+}
+.btn-disabled {
+  margin-top: 6px; padding: 11px 22px; border-radius: 11px; background: rgba(3,12,24,.08);
+  color: rgba(3,12,24,.4); font-size: 13.5px; font-weight: 700; border: 1px solid var(--line);
+  cursor: not-allowed;
+}
+.empty-note { font-size: 11.5px; color: rgba(3,12,24,.4); margin-top: 2px }
+
+/* Icon-only rail styling — shared by phone, tablet, AND narrow desktop
+   windows (all too narrow for the rail's text labels to fit; see the
+   1100px note above). */
+@media(max-width:1100px) {
+  .channel-rail { width: 64px }
+  .rail-label, .rail-body, .rail-count, .rail-foot { display: none }
+  .rail-item { justify-content: center; padding: 11px 6px }
+}
+
+/* Phone only (≤640px): the rail hides while a chat is open full-screen —
+   there's nothing to switch to without tapping "back" first, same as the
+   conversation list. Locked panes collapse to just the chat-shaped "Coming
+   soon" panel, full width — no room for its list-shaped sibling too. */
+@media(max-width:640px) {
+  .inbox-body:has(#inboxGrid.mobile-chat) .channel-rail { display: none }
+  .channel-view .inbox-list { width: 100%; }
+  .locked-view .inbox-list { display: none }
+  .locked-view .inbox-chat { flex: 1; }
+}
+
+/* Tablet + narrow desktop (641-1100px): list + chat already show side by
+   side (see the .inbox-grid rule above), so the rail stays visible at all
+   times — no "back" step ever hides it — and the locked panes show their
+   list-shaped AND chat-shaped halves together too, at the same 240px list
+   width as the real view, instead of collapsing to one pane like on phone. */
+@media(min-width:641px) and (max-width:1100px) {
+  .channel-view .inbox-list { width: 240px; }
+}
+
 /* ── Animations ───────────────────────────────────────────────────────────── */
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 </style>
@@ -454,6 +607,60 @@ html, body { overflow: hidden; height: 100%; }
     </div>
   </div>
 
+  {# ══════════════ CHANNEL RAIL + panels (omnichannel prep, 2026-09-10) ═══
+     WhatsApp is real, live data. Messenger/Instagram are honest "coming
+     soon" locked states — front-end only, no Meta backend behind them yet
+     (see project_phixtra_omnichannel_inbox_design memory). Switching
+     channels is pure client-side show/hide — no query param, no reload. #}
+  <div class="inbox-body" id="inboxBody">
+
+    <div class="channel-rail">
+      <div class="rail-label">Channels</div>
+      <div class="rail-items">
+
+        <button type="button" class="rail-item active" id="railAll" onclick="selectChannel('all')">
+          <div class="rail-icon" style="background:var(--ink)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div class="rail-body"><div class="rail-name">All Conversations</div><div class="rail-meta">Every channel, one inbox</div></div>
+          {% if connection %}<div class="rail-count">{{ conversations|length }}</div>{% endif %}
+        </button>
+
+        <button type="button" class="rail-item" id="railWhatsapp" onclick="selectChannel('whatsapp')">
+          <div class="rail-icon" style="background:#25D366">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M12 6.2a5.8 5.8 0 0 0-5 8.7L6 18l3.2-1a5.8 5.8 0 1 0 2.8-10.8Z" fill="none" stroke="#fff" stroke-width="1.5"/><path d="M9.8 9.9c.1-.3.3-.3.5-.3h.4c.1 0 .3 0 .4.3l.5 1.2c0 .1.1.2 0 .3l-.3.4c-.1.1-.1.2 0 .3.3.5.9 1.1 1.4 1.4.1.1.2.1.3 0l.4-.3c.1-.1.2-.1.3 0l1.2.5c.2.1.2.3.2.4v.4c0 .2-.2.5-.4.6-.6.4-1.4.4-2.4-.1-1-.5-1.9-1.4-2.4-2.4-.5-1-.5-1.8-.1-2.4.1-.2.4-.3.6-.3Z" fill="#fff"/></svg>
+          </div>
+          <div class="rail-body">
+            <div class="rail-name">WhatsApp</div>
+            <div class="rail-meta">{% if connection %}{{ (connection.display_phone_number or connection.phone_number_id)|with_plus }}{% else %}Not connected{% endif %}</div>
+          </div>
+          {% if connection %}<div class="rail-count">{{ conversations|length }}</div>{% endif %}
+        </button>
+
+        <div class="rail-divider"></div>
+
+        <button type="button" class="rail-item locked" id="railMessenger" onclick="selectChannel('messenger')">
+          <div class="rail-icon" style="background:linear-gradient(135deg,#00B2FF,#006AFF)">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M12 6c-3.6 0-6.4 2.5-6.4 5.9 0 1.9 1 3.6 2.5 4.7V19l2.3-1.3c.5.1 1 .2 1.6.2 3.6 0 6.4-2.5 6.4-5.9S15.6 6 12 6Z" fill="#fff"/><path d="M9 12.4l2-2.1 1.6 1.6 2.4-2.1-2.2 2.9-1.6-1.6-2.2 2.3Z" fill="#006AFF"/></svg>
+          </div>
+          <div class="rail-body"><div class="rail-name">Messenger</div><div class="rail-meta">Not connected</div></div>
+          <svg class="rail-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+        </button>
+
+        <button type="button" class="rail-item locked" id="railInstagram" onclick="selectChannel('instagram')">
+          <div class="rail-icon" style="background:linear-gradient(135deg,#FEDA75,#D62976 45%,#4F5BD5)">
+            <svg viewBox="0 0 24 24" fill="none"><rect x="6.5" y="6.5" width="11" height="11" rx="3.2" fill="none" stroke="#fff" stroke-width="1.5"/><circle cx="12" cy="12" r="2.6" fill="none" stroke="#fff" stroke-width="1.5"/><circle cx="15.6" cy="8.4" r=".85" fill="#fff"/></svg>
+          </div>
+          <div class="rail-body"><div class="rail-name">Instagram</div><div class="rail-meta">Not connected</div></div>
+          <svg class="rail-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+        </button>
+
+      </div>
+      <div class="rail-foot">Messenger and Instagram unlock here once each is approved on your Meta Business account — same setup flow as WhatsApp.</div>
+    </div>
+
+    {# ── "All"/"WhatsApp" view — the real page, unchanged ─────────────── #}
+    <div class="channel-view" id="realChannelView">
   {% if not connection %}
   {# ── No connection ──────────────────────────────────────────────────── #}
   <div class="empty-pane">
@@ -479,7 +686,7 @@ html, body { overflow: hidden; height: 100%; }
         <div class="ctrl-row">
           <select id="filterSel" onchange="applyAll()">
             <option value="all">All conversations</option>
-            <option value="needs_agent">🔴 Needs agent</option>
+            {% if ai_enabled %}<option value="needs_agent">🔴 Needs agent</option>{% endif %}
             <option value="unread">Unread (awaiting reply)</option>
             <option value="replied">Replied</option>
             <option value="leads">🔥 Leads only</option>
@@ -511,7 +718,11 @@ html, body { overflow: hidden; height: 100%; }
         <div class="conv-empty-msg">
           {% if no_agents_assigned %}
           <div style="font-size:36px;opacity:.25;margin-bottom:10px">🔒</div>
+          {% if ai_enabled %}
           No AI Agent has been assigned to you yet. Ask the business owner to assign one on the Team page before you can see any conversations.
+          {% else %}
+          No WhatsApp number has been assigned to you yet. Ask the business owner to assign one on the Team page before you can see any conversations.
+          {% endif %}
           {% else %}
           <div style="font-size:36px;opacity:.25;margin-bottom:10px">💬</div>
           Send a WhatsApp message to {{ (connection.display_phone_number or connection.phone_number_id)|with_plus }} to get started.
@@ -621,6 +832,7 @@ html, body { overflow: hidden; height: 100%; }
           </form>
           {% endif %}
         {% endif %}
+        {% if ai_enabled %}
         {% if active_handoff_session %}
         <form method="POST"
               action="{{ url_for('portal.inbox_resolve', session_id=active_handoff_session) }}"
@@ -640,6 +852,7 @@ html, body { overflow: hidden; height: 100%; }
             ✋ Take Over
           </button>
         </form>
+        {% endif %}
         {% endif %}
         </div>
       </div>
@@ -770,6 +983,75 @@ html, body { overflow: hidden; height: 100%; }
 
   </div>{# end .inbox-grid #}
   {% endif %}
+    </div>{# end #realChannelView #}
+
+    {# ── Messenger locked view (hidden by default) ────────────────────── #}
+    <div class="channel-view locked-view" id="lockedView-messenger" hidden>
+      <div class="inbox-list">
+        <div class="inbox-list-header">
+          <div class="list-header-title">
+            <svg class="list-header-icon" viewBox="0 0 24 24"><defs><linearGradient id="msg-g1" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#00B2FF"/><stop offset="1" stop-color="#006AFF"/></linearGradient></defs><rect width="24" height="24" rx="6" fill="url(#msg-g1)"/><path d="M12 6.4c-3.5 0-6.2 2.4-6.2 5.7 0 1.8 1 3.5 2.5 4.5v2.3l2.2-1.2c.5.1 1 .2 1.5.2 3.5 0 6.2-2.4 6.2-5.7S15.5 6.4 12 6.4Z" fill="#fff"/></svg>
+            Messenger
+          </div>
+          <div class="list-header-sub">Not connected yet</div>
+        </div>
+        <div class="inbox-controls">
+          <input type="text" disabled placeholder="🔍  Search by name or number…"/>
+        </div>
+        <div class="list-locked-msg">
+          <svg class="list-locked-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+          <div class="list-locked-title">Messenger not connected yet</div>
+          <div class="list-locked-text">Messenger DMs will appear here once it's turned on for your account.</div>
+        </div>
+      </div>
+      <div class="inbox-chat">
+        <div class="empty-pane">
+          <span class="empty-badge">Coming soon</span>
+          <div class="empty-icon-wrap">
+            <svg viewBox="0 0 24 24"><defs><linearGradient id="msg-g2" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#00B2FF"/><stop offset="1" stop-color="#006AFF"/></linearGradient></defs><rect x="2" y="2" width="20" height="20" rx="6" fill="url(#msg-g2)"/><path d="M12 7.3c-3.1 0-5.5 2.2-5.5 5.1 0 1.6.9 3.1 2.2 4v2.1l2-1.1c.4.1.9.2 1.3.2 3.1 0 5.5-2.2 5.5-5.1S15.1 7.3 12 7.3Z" fill="#fff"/></svg>
+          </div>
+          <div class="empty-title">Messenger — Coming soon</div>
+          <p class="empty-text">Reply to Messenger messages right here, in the same inbox as WhatsApp — one assigned agent, one customer history, no separate app. This unlocks once Messenger is approved on your Meta Business account.</p>
+          <span class="btn-disabled">Connect Messenger</span>
+          <span class="empty-note">Available once approval is complete — same process as WhatsApp</span>
+        </div>
+      </div>
+    </div>
+
+    {# ── Instagram locked view (hidden by default) ────────────────────── #}
+    <div class="channel-view locked-view" id="lockedView-instagram" hidden>
+      <div class="inbox-list">
+        <div class="inbox-list-header">
+          <div class="list-header-title">
+            <svg class="list-header-icon" viewBox="0 0 24 24"><defs><linearGradient id="ig-g5" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#FEDA75"/><stop offset=".35" stop-color="#D62976"/><stop offset=".7" stop-color="#962FBF"/><stop offset="1" stop-color="#4F5BD5"/></linearGradient></defs><rect width="24" height="24" rx="6" fill="url(#ig-g5)"/><rect x="6.5" y="6.5" width="11" height="11" rx="3" fill="none" stroke="#fff" stroke-width="1.4"/><circle cx="12" cy="12" r="2.4" fill="none" stroke="#fff" stroke-width="1.4"/></svg>
+            Instagram
+          </div>
+          <div class="list-header-sub">Not connected yet</div>
+        </div>
+        <div class="inbox-controls">
+          <input type="text" disabled placeholder="🔍  Search by name or number…"/>
+        </div>
+        <div class="list-locked-msg">
+          <svg class="list-locked-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+          <div class="list-locked-title">Instagram not connected yet</div>
+          <div class="list-locked-text">Instagram DMs will appear here once it's turned on for your account.</div>
+        </div>
+      </div>
+      <div class="inbox-chat">
+        <div class="empty-pane">
+          <span class="empty-badge">Coming soon</span>
+          <div class="empty-icon-wrap">
+            <svg viewBox="0 0 24 24"><defs><linearGradient id="ig-g4" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#FEDA75"/><stop offset=".35" stop-color="#D62976"/><stop offset=".7" stop-color="#962FBF"/><stop offset="1" stop-color="#4F5BD5"/></linearGradient></defs><rect x="2" y="2" width="20" height="20" rx="6" fill="url(#ig-g4)"/><rect x="7" y="7" width="10" height="10" rx="3" fill="none" stroke="#fff" stroke-width="1.6"/><circle cx="12" cy="12" r="2.6" fill="none" stroke="#fff" stroke-width="1.6"/><circle cx="15.3" cy="8.7" r=".8" fill="#fff"/></svg>
+          </div>
+          <div class="empty-title">Instagram DMs — Coming soon</div>
+          <p class="empty-text">Reply to Instagram messages right here, in the same inbox as WhatsApp — one assigned agent, one customer history, no separate app. This unlocks once Instagram messaging is approved on your Meta Business account.</p>
+          <span class="btn-disabled">Connect Instagram</span>
+          <span class="empty-note">Available once approval is complete — same process as WhatsApp</span>
+        </div>
+      </div>
+    </div>
+
+  </div>{# end .inbox-body #}
 
 </div>{# end .inbox-app #}
 
@@ -1011,6 +1293,29 @@ function mobileOpenChat(e,el){
 function mobileBack(){
   document.getElementById('inboxGrid').classList.remove('mobile-chat');
   window.history.pushState({},'','?');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CHANNEL RAIL — front-end only. "all"/"whatsapp" show the real page above
+// (unchanged); "messenger"/"instagram" swap in a pre-rendered locked panel.
+// Pure show/hide, no query param, no server round-trip — there's no backend
+// behind Messenger/Instagram yet.
+// ═══════════════════════════════════════════════════════════════════════════════
+function selectChannel(name) {
+  // "all" and "whatsapp" are two rail rows pointing at the same real view
+  // (there's honestly only one channel live right now) but stay visually
+  // distinct — only the row actually clicked lights up.
+  var realView = (name === 'all' || name === 'whatsapp');
+  var views = { messenger: 'lockedView-messenger', instagram: 'lockedView-instagram' };
+  document.getElementById('realChannelView').hidden = !realView;
+  Object.keys(views).forEach(function(key) {
+    document.getElementById(views[key]).hidden = (key !== name);
+  });
+
+  var railIds = { all: 'railAll', whatsapp: 'railWhatsapp', messenger: 'railMessenger', instagram: 'railInstagram' };
+  document.querySelectorAll('.rail-item').forEach(function(btn) { btn.classList.remove('active'); });
+  var activeBtn = document.getElementById(railIds[name]);
+  if (activeBtn) activeBtn.classList.add('active');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

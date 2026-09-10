@@ -28,6 +28,7 @@ api-key-manager/static/plugin_zips/
 
 # ── Tutorial video build artifacts (large, regenerable from tutorial_studio scripts) ──
 api-key-manager/tutorial_studio/_workspace/
+api-key-manager/tutorial_studio/app_review/_workspace/
 api-key-manager/static/portal/tutorial/videos/
 
 # ── User-uploaded content (PII — ID docs, qualification proofs, listing photos) ──

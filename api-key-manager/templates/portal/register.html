@@ -120,6 +120,17 @@
 
   <!-- ═══════════ Brand / value-proposition panel ═══════════ -->
   <aside class="reg-aside">
+    {% if is_connect_host %}
+    <div class="reg-kicker">Free WhatsApp Business API</div>
+    <h2 class="reg-aside-title">The free way to run your business on WhatsApp Business API.</h2>
+    <p class="reg-aside-sub">Get official WhatsApp Business API access, a shared team inbox, and bulk messaging — all free, powered by PhiXtra.</p>
+    <ul class="reg-benefits">
+      <li><span class="reg-check">&#10003;</span> Official WhatsApp Business API — verified, compliant, no workarounds</li>
+      <li><span class="reg-check">&#10003;</span> Your whole team replies from one shared inbox</li>
+      <li><span class="reg-check">&#10003;</span> Reach hundreds of customers with bulk broadcasts</li>
+      <li><span class="reg-check">&#10003;</span> No setup fees, no hidden charges — 100% free</li>
+    </ul>
+    {% else %}
     <div class="reg-kicker">WhatsApp Business AI</div>
     <h2 class="reg-aside-title">Turn every WhatsApp message into a sale.</h2>
     <p class="reg-aside-sub">Your AI assistant answers customers, recommends products, and keeps selling around the clock — even while you sleep.</p>
@@ -129,6 +140,7 @@
       <li><span class="reg-check">&#10003;</span> Answers customers at 2am while you sleep — no sale lost overnight</li>
       <li><span class="reg-check">&#10003;</span> Free to start — no credit card required</li>
     </ul>
+    {% endif %}
     <div class="reg-aside-trust">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0">
         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
@@ -143,7 +155,11 @@
 
     <div class="reg-form-header">
       <h1 class="reg-form-title">Create your account</h1>
+      {% if is_connect_host %}
+      <p class="muted">Free official WhatsApp Business API access, ready in minutes.</p>
+      {% else %}
       <p class="muted">Your free WhatsApp AI assistant, ready in under a minute.</p>
+      {% endif %}
     </div>
 
     <form method="POST" action="{{ url_for('portal.register') }}" novalidate id="regForm">

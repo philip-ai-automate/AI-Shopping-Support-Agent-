@@ -14,6 +14,9 @@
   .sp-hero h1 { font-size:22px; font-weight:800; letter-spacing:-.4px; margin:0 }
   .sp-hero p { margin:3px 0 0; font-size:13.5px; color:var(--muted) }
   .sp-hero p a { color:var(--ink); font-weight:600 }
+  .sp-eyebrow { font-size:11px; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+                color:rgba(3,12,24,.42); margin-bottom:6px }
+  .sp-hero-titlerow { display:flex; align-items:center; gap:12px }
 
   .sp-kpi-row { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:22px }
   @media(max-width:640px){ .sp-kpi-row { grid-template-columns:1fr } }
@@ -33,19 +36,24 @@
   .sp-kpi-val { font-size:26px; font-weight:800; letter-spacing:-.5px; line-height:1 }
   .sp-kpi-label { font-size:12.5px; color:var(--muted); margin-top:4px; font-weight:500 }
 
-  .stage-funnel{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}
-  .stage-chip{
-    flex:1;min-width:118px;border-radius:14px;padding:12px 14px;text-align:center;
-    border:1.5px solid var(--chip-border, var(--line));
-    background:var(--chip-bg, #fff);
-    transition:.15s; display:block; text-decoration:none; color:inherit; cursor:pointer;
+  .stage-funnel { background:#fff; border:1px solid var(--line); border-radius:14px; padding:6px;
+                  display:flex; gap:0; margin-bottom:20px; overflow:hidden; flex-wrap:nowrap }
+  /* Business name links to the new Lead Command Centre page — a plain
+     color:inherit link is invisible as a link, so this makes clicking it
+     discoverable without changing the resting look of the table/board. */
+  .lead-name-link { color:inherit; text-decoration:none; cursor:pointer; }
+  .lead-name-link:hover { color:#2563eb; text-decoration:underline; }
+  .stage-chip {
+    flex:1; min-width:100px; border-radius:10px; padding:10px 14px; text-align:left;
+    border:none; background:transparent; display:flex; align-items:center; gap:10px;
+    text-decoration:none; color:inherit; cursor:pointer; transition:.15s;
   }
-  .stage-chip:hover{ transform:translateY(-1px); box-shadow:0 4px 14px rgba(3,12,24,.06) }
-  .stage-chip.active{ border-width:2px; box-shadow:0 0 0 1px var(--chip-fg, var(--ink)) inset }
-  .stage-chip .ic{font-size:16px;margin-bottom:4px}
-  .stage-chip .n{font-size:22px;font-weight:900;letter-spacing:-.5px;color:var(--chip-fg, var(--ink))}
-  .stage-chip .lbl{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;
-                    letter-spacing:.04em;margin-top:2px}
+  .stage-chip:hover { text-decoration:none; background:rgba(3,12,24,.03) }
+  .stage-chip.active { background:var(--chip-bg, rgba(3,12,24,.05)) }
+  .stage-chip .dot { width:8px; height:8px; border-radius:50%; background:var(--chip-fg, var(--ink)); flex-shrink:0 }
+  .stage-chip .n { font-size:15px; font-weight:800; letter-spacing:-.3px; color:var(--ink); line-height:1.1 }
+  .stage-chip .lbl { font-size:10.5px; font-weight:700; color:var(--muted); text-transform:uppercase;
+                      letter-spacing:.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
 
   .stage-pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
   .st-new_lead{background:#f1f5f9;color:#475569}
@@ -153,41 +161,142 @@
   .label-mode-pill.hide.active { background:#fee2e2; color:#991b1b; border-color:#fecaca }
   .channel-picker-wrap .col-picker-menu { right:auto; left:0 }
 
+  /* ── View switch (List ⇄ Board) ─────────────────────────────────────── */
+  .view-switch { display:flex; align-items:center; background:rgba(3,12,24,.05); border-radius:10px; padding:3px }
+  .view-switch a {
+    display:flex; align-items:center; gap:6px; padding:7px 13px; border-radius:8px;
+    font-size:12.5px; font-weight:650; color:var(--muted); text-decoration:none; cursor:pointer;
+  }
+  .view-switch a:hover { text-decoration:none; color:var(--ink) }
+  .view-switch a.active { background:#fff; box-shadow:0 2px 6px rgba(3,12,24,.10); color:var(--ink); font-weight:700 }
+
+  @media(max-width:900px){ .stage-funnel{flex-wrap:wrap} .stage-chip{min-width:31%} }
+
+  /* ── Row action kebab menu (replaces the loose button row) ──────────── */
+  table td[data-col="deal_value"], table th[data-col="deal_value"] { text-align:right }
+  .row-actions-wrap { position:relative; flex-shrink:0 }
+  .kebab-btn {
+    width:28px; height:28px; border-radius:7px; border:1px solid transparent; background:transparent;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; color:rgba(3,12,24,.55);
+  }
+  .kebab-btn:hover, .kebab-btn.open { background:rgba(3,12,24,.06); color:var(--ink) }
+  .row-action-menu {
+    display:none; position:absolute; top:32px; right:0; z-index:70;
+    background:#fff; border:1px solid rgba(3,12,24,.10); border-radius:10px;
+    box-shadow:0 14px 34px rgba(3,12,24,.16); padding:6px; min-width:180px;
+  }
+  .row-action-menu.open { display:block }
+  .row-action-item {
+    display:flex; align-items:center; gap:9px; padding:8px 10px; border-radius:7px;
+    font-size:12.5px; color:rgba(3,12,24,.8); cursor:pointer; border:none; background:none;
+    width:100%; text-align:left; font-family:inherit;
+  }
+  .row-action-item:hover { background:rgba(3,12,24,.05) }
+  .row-action-item.primary { font-weight:650; color:var(--ink) }
+  .row-action-item.danger { color:#b02020 }
+  .row-action-divider { height:1px; background:rgba(3,12,24,.08); margin:5px 2px }
+
+  /* ── Board (Kanban) view ──────────────────────────────────────────────
+     Columns are equal flex fractions with NO min-width floor by default, so
+     all 6 shrink together to fill whatever width the page actually has —
+     this is what makes it "adjust to screen size" instead of just always
+     overflowing. overflow-x:auto stays as a safety net for the narrow band
+     right above the mobile breakpoint below. */
+  .board-wrap { display:flex; gap:12px; align-items:flex-start; overflow-x:auto; padding-bottom:8px }
+  .board-col {
+    flex:1 1 0; min-width:150px; background:rgba(3,12,24,.025);
+    border:1px solid rgba(3,12,24,.08); border-radius:14px; padding:10px;
+    display:flex; flex-direction:column; gap:10px;
+  }
+  @media(max-width:760px){
+    /* Too narrow for 6 shrunk columns to stay readable — switch to a
+       swipeable, snap-scrolling row (one column + a peek of the next),
+       the same pattern Trello/Salesforce use on small screens. */
+    .board-wrap { scroll-snap-type:x proximity }
+    .board-col { flex:0 0 82%; min-width:230px; max-width:320px; scroll-snap-align:start }
+  }
+  .board-col-head { padding:4px 4px 8px; border-bottom:2px solid var(--stage-fg, var(--ink)) }
+  .board-col-head-row { display:flex; align-items:center; gap:6px; min-width:0 }
+  .board-col-head .dot { width:8px; height:8px; border-radius:50%; background:var(--stage-fg, var(--ink)); flex-shrink:0 }
+  .board-col-head .name { font-size:12.5px; font-weight:800; color:var(--ink);
+                           overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0 }
+  .board-col-head .count {
+    margin-left:auto; flex-shrink:0; background:var(--stage-bg, rgba(3,12,24,.06)); color:var(--stage-fg, var(--ink));
+    border-radius:999px; padding:1px 8px; font-size:11px; font-weight:700;
+  }
+  .board-col-head .total { font-size:11px; color:var(--muted); margin-top:4px; font-weight:600 }
+  .board-cards { display:flex; flex-direction:column; gap:8px }
+  .board-card {
+    background:#fff; border:1px solid var(--line); border-radius:11px; padding:11px;
+    box-shadow:0 3px 10px rgba(3,12,24,.05); position:relative;
+  }
+  .board-card-top { display:flex; align-items:flex-start; justify-content:space-between; gap:6px; margin-bottom:8px }
+  .board-card-name { display:flex; align-items:center; gap:8px; min-width:0 }
+  .board-card-name span.nm { font-size:12.5px; font-weight:700; color:var(--ink); overflow:hidden;
+                              text-overflow:ellipsis; white-space:nowrap }
+  .board-card-value { font-size:14px; font-weight:800; color:var(--ink); margin-bottom:6px }
+  .board-card-contact { font-size:11px; color:var(--muted); margin-bottom:8px }
+  .board-card-foot { display:flex; align-items:center; justify-content:space-between; gap:6px; flex-wrap:wrap }
+  .board-more { font-size:11.5px; color:var(--muted); font-weight:600; padding:3px 4px; text-decoration:none; display:block }
+  .board-more:hover { text-decoration:underline }
+  .board-add-btn {
+    display:flex; align-items:center; justify-content:center; gap:6px; padding:8px; border-radius:9px;
+    border:1.5px dashed rgba(3,12,24,.18); background:transparent; color:var(--muted); font-size:11.5px;
+    font-weight:650; font-family:inherit; cursor:pointer; width:100%;
+  }
+  .board-add-btn:hover { border-color:rgba(3,12,24,.35); color:var(--ink) }
+  .board-empty { font-size:12px; color:rgba(3,12,24,.35); padding:10px 4px; text-align:center }
+
   @media(max-width:600px){ .frow{grid-template-columns:1fr} }
 </style>
 
 <div class="sp-hero">
   <div class="sp-hero-left">
-    <div class="sp-hero-icon">🧭</div>
+    <div class="sp-hero-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+    </div>
     <div>
+      <div class="sp-eyebrow">Sales</div>
       <h1>Sales Pipeline</h1>
       <p>Track your own customers and deals — separate from <a href="{{ url_for('portal.leads_page') }}">Leads</a>. Best for high-value items that take time to close.</p>
     </div>
   </div>
   <div style="display:flex;align-items:center;gap:8px">
-    <button class="btn" onclick="spTourStart()">🎓 Take a Tour</button>
-    <button class="btn btn-primary" data-sptour="add-deal-btn" onclick="document.getElementById('addLeadForm').classList.toggle('open')">+ Add Deal</button>
+    <button class="btn" onclick="spTourStart()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      Take a Tour
+    </button>
+    <a class="btn btn-primary" data-sptour="add-deal-btn" href="{{ url_for('portal.leads_page') }}" style="text-decoration:none">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+      Add Lead
+    </a>
   </div>
 </div>
 
 {# KPI strip #}
 <div class="sp-kpi-row">
   <div class="sp-kpi active">
-    <div class="sp-kpi-icon">🧭</div>
+    <div class="sp-kpi-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+    </div>
     <div>
       <div class="sp-kpi-val">{{ stage_counts.values()|sum }}</div>
       <div class="sp-kpi-label">Active deals</div>
     </div>
   </div>
   <div class="sp-kpi value">
-    <div class="sp-kpi-icon">💰</div>
+    <div class="sp-kpi-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+    </div>
     <div>
       <div class="sp-kpi-val">₦{{ '{:,.0f}'.format(total_pipeline_value) }}</div>
       <div class="sp-kpi-label">Open pipeline value</div>
     </div>
   </div>
   <div class="sp-kpi won">
-    <div class="sp-kpi-icon">🏆</div>
+    <div class="sp-kpi-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0a7a3c" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 01-10 0V4zM7 6H4a3 3 0 003 3M17 6h3a3 3 0 01-3 3"/></svg>
+    </div>
     <div>
       <div class="sp-kpi-val" style="color:#15803d">₦{{ '{:,.0f}'.format(won_value) }}</div>
       <div class="sp-kpi-label">Won ({{ stage_counts.get('won', 0) }} deal{{ 's' if stage_counts.get('won', 0) != 1 else '' }})</div>
@@ -212,28 +321,38 @@
 
 <!-- Stage funnel summary — click a stage to filter -->
 <div class="stage-funnel" data-sptour="stage-funnel">
-  <a href="{{ url_for('portal.sales_pipeline', stage='all', q=search, **filter_args) }}"
-     class="stage-chip {{ 'active' if stage_filter == 'all' }}"
-     style="--chip-bg:#f8fafc;--chip-border:#e2e8f0;--chip-fg:#334155">
-    <div class="ic">🧭</div>
-    <div class="n">{{ stage_counts.values()|sum }}</div>
-    <div class="lbl">All</div>
+  <a href="{{ url_for('portal.sales_pipeline', view='list', stage='all', q=search, **filter_args) }}"
+     class="stage-chip {{ 'active' if stage_filter == 'all' and view_mode == 'list' }}"
+     style="--chip-bg:rgba(3,12,24,.05);--chip-fg:#334155">
+    <span class="dot"></span>
+    <div>
+      <div class="n">{{ stage_counts.values()|sum }}</div>
+      <div class="lbl">All</div>
+    </div>
   </a>
   {% for s in stage_order %}
   {% set sc = stage_colors[s] %}
-  <a href="{{ url_for('portal.sales_pipeline', stage=s, q=search, **filter_args) }}"
-     class="stage-chip {{ 'active' if stage_filter == s }}"
-     style="--chip-bg:{{ sc.bg }};--chip-border:{{ sc.border }};--chip-fg:{{ sc.fg }}">
-    <div class="ic">{{ stage_icons[s] }}</div>
-    <div class="n">{{ stage_counts.get(s, 0) }}</div>
-    <div class="lbl">{{ stage_labels[s] }}</div>
+  <a href="{{ url_for('portal.sales_pipeline', view='list', stage=s, q=search, **filter_args) }}"
+     class="stage-chip {{ 'active' if stage_filter == s and view_mode == 'list' }}"
+     style="--chip-bg:{{ sc.bg }};--chip-fg:{{ sc.fg }}">
+    <span class="dot"></span>
+    <div>
+      <div class="n">{{ stage_counts.get(s, 0) }}</div>
+      <div class="lbl">{{ stage_labels[s] }}</div>
+    </div>
   </a>
   {% endfor %}
 </div>
 
+<!-- Lead Score summary — click Hot/Warm/Cold to filter. Score = up to 50 points
+     for this deal's value relative to your own other deals, plus up to 50 for
+     how actively it's being worked (recently touched, how far along the
+     pipeline, real WhatsApp activity) — now shown on the Leads page instead,
+     since that's where the Lead record (and its score) lives. -->
+
 <!-- Add deal form (toggled) -->
 <div class="lead-form" id="addLeadForm" style="display:none">
-  <div class="lf-title">➕ Add a New Deal</div>
+  <div class="lf-title">➕ Create Sales Lead</div>
   <form method="POST">
     <div class="frow">
       <div>
@@ -265,13 +384,26 @@
         <input type="number" step="0.01" name="deal_value" class="finp" placeholder="e.g. 450000"/>
       </div>
     </div>
+    <div class="frow">
+      <div>
+        <label class="flbl">Website</label>
+        <input type="text" name="website" class="finp" placeholder="e.g. example.com"/>
+      </div>
+      <div></div>
+    </div>
+    <div class="frow single">
+      <div>
+        <label class="flbl">Product / Service Interested In</label>
+        <input type="text" name="product_interest" class="finp" placeholder="e.g. Samsung Galaxy S25, 3-Bedroom Apartment"/>
+      </div>
+    </div>
     <div class="frow single">
       <div>
         <label class="flbl">Notes</label>
-        <textarea name="notes" class="finp" placeholder="What are they looking for?"></textarea>
+        <textarea name="notes" class="finp"></textarea>
       </div>
     </div>
-    <button type="submit" class="btn btn-primary">Add to Pipeline</button>
+    <button type="submit" class="btn btn-primary">Create Sales Lead</button>
   </form>
 </div>
 
@@ -281,7 +413,6 @@
 
 {% macro cust_color(name) %}{% set _p=['#5C6BC0','#26A69A','#0288D1','#388E3C','#F57C00','#8E24AA','#E53935','#00838F'] %}{{ _p[(name|length)%8] }}{% endmacro %}
 {% macro cust_initials(name) %}{% set _w=name.split() %}{% if _w|length>=2 %}{{ _w[0][0]|upper }}{{ _w[1][0]|upper }}{% else %}{{ name[:2]|upper }}{% endif %}{% endmacro %}
-
 {% set pipeline_has_any_leads = stage_counts.values()|sum > 0 %}
 {% if pipeline_has_any_leads %}
 {# Search + stage filter toolbar — GET form, filtering/pagination happen server-side #}
@@ -293,13 +424,25 @@
     </div>
     <button type="submit" class="btn btn-sm">Search</button>
     {% if search %}
-    <a href="{{ url_for('portal.sales_pipeline', stage=stage_filter, **filter_args) }}"
+    <a href="{{ url_for('portal.sales_pipeline', stage=stage_filter, view=view_mode, **filter_args) }}"
        class="btn btn-sm btn-ghost" style="text-decoration:none">Clear search</a>
     {% endif %}
     <span class="sp-result-badge">{{ filtered_total }} result{{ 's' if filtered_total != 1 else '' }}</span>
   </div>
   <div class="sp-toolbar-row sp-toolbar-row-controls">
     <div class="sp-toolbar-group">
+      <div class="view-switch" data-sptour="view-switch">
+        <a href="{{ url_for('portal.sales_pipeline', view='list', stage=stage_filter, q=search, **filter_args) }}"
+           class="{{ 'active' if view_mode == 'list' }}">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="4" height="4" rx="1"/><path d="M10 7h11"/><rect x="3" y="15" width="4" height="4" rx="1"/><path d="M10 17h11"/></svg>
+          List
+        </a>
+        <a href="{{ url_for('portal.sales_pipeline', view='board', q=search, **filter_args) }}"
+           class="{{ 'active' if view_mode == 'board' }}">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="5" height="16" rx="1"/><rect x="9.5" y="4" width="5" height="9" rx="1"/><rect x="16" y="4" width="5" height="13" rx="1"/></svg>
+          Board
+        </a>
+      </div>
       <div class="channel-picker-wrap">
         <button type="button" class="col-picker-btn" onclick="toggleChannelPicker()">
           <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
@@ -411,6 +554,9 @@
         <div class="col-picker-menu" id="colPickerMenu">
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="segment" checked>Email Segment</label>
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="wa_segment" checked>WhatsApp Segment</label>
+          {% if customer.tenant_id == 19 %}
+          <label class="col-picker-item"><input type="checkbox" data-col-toggle="sms_segment" checked>SMS Segment</label>
+          {% endif %}
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="label" checked>Label</label>
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="contact_person" checked>Contact Person</label>
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="phone" checked>Phone</label>
@@ -421,6 +567,7 @@
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="added" checked>Added</label>
         </div>
       </div>
+      {% if view_mode == 'list' %}
       <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
         Per page
         <select name="per_page" onchange="this.form.submit()"
@@ -430,6 +577,7 @@
           {% endfor %}
         </select>
       </label>
+      {% endif %}
     </div>
     <a href="{{ url_for('portal.sales_pipeline_export', stage=stage_filter, q=search, **filter_args) }}"
        class="btn" style="text-decoration:none">⬇️ Export CSV</a>
@@ -437,13 +585,15 @@
     <a href="{{ url_for('portal.sms_campaigns') }}" class="btn btn-primary" style="text-decoration:none">📟 SMS</a>
     {% endif %}
   </div>
-  {% if stage_filter != 'all' %}<input type="hidden" name="stage" value="{{ stage_filter }}">{% endif %}
+  {% if stage_filter != 'all' and view_mode == 'list' %}<input type="hidden" name="stage" value="{{ stage_filter }}">{% endif %}
+  {% if view_mode == 'board' %}<input type="hidden" name="view" value="board">{% endif %}
 </form>
 {% endif %}
 
 {% set is_phixtra_support_account = (customer.tenant_id == 19) %}
 {% set empty_colspan = 15 if is_phixtra_support_account else 13 %}
 
+{% if view_mode == 'list' %}
 <div class="bulk-action-bar" id="bulkActionBar" style="display:none">
   <span><strong id="bulkSelectedCount">0</strong> selected</span>
   <button type="button" class="btn btn-sm btn-primary" onclick="openBulkAdvanceModal()">➡️ Move Stage</button>
@@ -499,7 +649,7 @@
           <td>
             <div class="cust-cell">
               <span class="cust-avatar" style="background:{{ cust_color(l.customer_name) }}">{{ cust_initials(l.customer_name) }}</span>
-              <strong class="biz-name-cell">{{ l.customer_name }}</strong>
+              <a href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" class="biz-name-cell lead-name-link" title="Open this Sales Lead">{{ l.customer_name }}</a>
             </div>
           </td>
           <td data-col="segment" style="font-size:11px">
@@ -556,21 +706,52 @@
             {% endif %}
           </td>
           {% endif %}
-          <td class="lead-actions">
+          <td>
             {% set target = next_stage(l.stage) %}
-            {% if target %}
-            <button class="btn btn-sm btn-primary"
-                    onclick='openAdvanceModal({{ l.id }}, "{{ l.customer_name|e }}", "{{ target }}", {{ (l.deal_value or "null") }})'>
-              → {{ stage_labels[target] }}
-            </button>
-            {% endif %}
-            <button class="btn btn-sm" {% if loop.first %}data-sptour="edit-btn"{% endif %}
-                    onclick='openEditModal({{ l.id }}, {{ (l.customer_name or "")|tojson }}, {{ (l.contact_person or "")|tojson }}, {{ (l.phone or "")|tojson }}, {{ (l.email or "")|tojson }}, {{ (l.deal_value if l.deal_value is not none else "")|tojson }}, {{ (l.notes or "")|tojson }}, {{ (l.whatsapp_number or "")|tojson }})'>✏️ Edit</button>
-            {% if is_phixtra_support_account %}
-            <button class="btn btn-sm" onclick='openAssignAmbassadorModal({{ l.id }}, {{ (l.customer_name or "")|tojson }}, {{ l.assigned_ambassador_id or "null" }})'>🎯 Assign</button>
-            {% endif %}
-            <button class="btn btn-sm" {% if loop.first %}data-sptour="history-btn"{% endif %} onclick="openHistoryModal({{ l.id }})">History</button>
-            <button class="btn btn-sm btn-danger" {% if loop.first %}data-sptour="drop-btn"{% endif %} onclick="openDropModal({{ l.id }}, '{{ l.customer_name|e }}')">Drop</button>
+            <div class="row-actions-wrap" {% if loop.first %}data-sptour="row-actions"{% endif %}>
+              <button type="button" class="kebab-btn" onclick="toggleRowMenu(event, 'row-{{ l.id }}')" aria-label="Actions">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
+              </button>
+              <div class="row-action-menu" id="row-menu-row-{{ l.id }}">
+                <a class="row-action-item" href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" style="text-decoration:none">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg>
+                  Open Lead Page
+                </a>
+                <div class="row-action-divider"></div>
+                {% if target %}
+                <button type="button" class="row-action-item primary"
+                        onclick='closeAllRowMenus(); openAdvanceModal({{ l.id }}, "{{ l.customer_name|e }}", "{{ target }}", {{ (l.deal_value or "null") }})'>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+                  Move to {{ stage_labels[target] }}
+                </button>
+                {% endif %}
+                <button type="button" class="row-action-item" {% if loop.first %}data-sptour="edit-btn"{% endif %}
+                        onclick='closeAllRowMenus(); openEditModal({{ l.id }}, {{ (l.customer_name or "")|tojson }}, {{ (l.contact_person or "")|tojson }}, {{ (l.phone or "")|tojson }}, {{ (l.email or "")|tojson }}, {{ (l.deal_value if l.deal_value is not none else "")|tojson }}, {{ (l.notes or "")|tojson }}, {{ (l.whatsapp_number or "")|tojson }}, {{ (l.product_interest or "")|tojson }})'>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                  Edit Deal
+                </button>
+                {% if is_phixtra_support_account %}
+                <button type="button" class="row-action-item"
+                        onclick='closeAllRowMenus(); openAssignAmbassadorModal({{ l.id }}, {{ (l.customer_name or "")|tojson }}, {{ l.assigned_ambassador_id or "null" }})'>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.5-6 8-6s8 2 8 6"/></svg>
+                  Assign Ambassador
+                </button>
+                {% endif %}
+                <button type="button" class="row-action-item" {% if loop.first %}data-sptour="history-btn"{% endif %} onclick="closeAllRowMenus(); openHistoryModal({{ l.id }})">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                  View History
+                </button>
+                <div class="row-action-divider"></div>
+                <button type="button" class="row-action-item danger" {% if loop.first %}data-sptour="drop-btn"{% endif %} onclick="closeAllRowMenus(); openDropModal({{ l.id }}, '{{ l.customer_name|e }}', 'lost')">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                  Mark as Lost
+                </button>
+                <button type="button" class="row-action-item danger" onclick="closeAllRowMenus(); openDropModal({{ l.id }}, '{{ l.customer_name|e }}', 'dropped')">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                  Mark as Dropped
+                </button>
+              </div>
+            </div>
           </td>
         </tr>
         {% endfor %}
@@ -613,16 +794,117 @@
   {% endif %}
 </div>
 
+{% elif view_mode == 'board' %}
+
+<!-- Board (Kanban) view -->
+<div class="board-wrap" data-sptour="board-wrap">
+  {% for col in board_columns %}
+  {% set sc = stage_colors[col.key] %}
+  <div class="board-col">
+    <div class="board-col-head" style="--stage-fg:{{ sc.fg }}">
+      <div class="board-col-head-row">
+        <span class="dot"></span>
+        <span class="name">{{ col.label }}</span>
+        <span class="count" style="--stage-bg:{{ sc.bg }}">{{ col.count }}</span>
+      </div>
+      <div class="total">Total ₦{{ '{:,.0f}'.format(col.total_value) }}</div>
+    </div>
+    <div class="board-cards">
+      {% if not col.cards %}
+      <div class="board-empty">No deals</div>
+      {% endif %}
+      {% for l in col.cards %}
+      <div class="board-card">
+        <div class="board-card-top">
+          <div class="board-card-name">
+            <span class="cust-avatar" style="width:22px;height:22px;font-size:9.5px;margin-right:0;background:{{ cust_color(l.customer_name) }}">{{ cust_initials(l.customer_name) }}</span>
+            <a href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" class="nm lead-name-link" title="Open this Sales Lead">{{ l.customer_name }}</a>
+          </div>
+          <div class="row-actions-wrap">
+            <button type="button" class="kebab-btn" onclick="toggleRowMenu(event, 'board-{{ l.id }}')" aria-label="Actions">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
+            </button>
+            <div class="row-action-menu" id="row-menu-board-{{ l.id }}">
+              <a class="row-action-item" href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" style="text-decoration:none">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg>
+                Open Lead Page
+              </a>
+              <div class="row-action-divider"></div>
+              {% set target = next_stage(l.stage) %}
+              {% if target %}
+              <button type="button" class="row-action-item primary"
+                      onclick='closeAllRowMenus(); openAdvanceModal({{ l.id }}, "{{ l.customer_name|e }}", "{{ target }}", {{ (l.deal_value or "null") }})'>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+                Move to {{ stage_labels[target] }}
+              </button>
+              {% endif %}
+              <button type="button" class="row-action-item"
+                      onclick='closeAllRowMenus(); openEditModal({{ l.id }}, {{ (l.customer_name or "")|tojson }}, {{ (l.contact_person or "")|tojson }}, {{ (l.phone or "")|tojson }}, {{ (l.email or "")|tojson }}, {{ (l.deal_value if l.deal_value is not none else "")|tojson }}, {{ (l.notes or "")|tojson }}, {{ (l.whatsapp_number or "")|tojson }}, {{ (l.product_interest or "")|tojson }})'>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                Edit Deal
+              </button>
+              {% if is_phixtra_support_account %}
+              <button type="button" class="row-action-item"
+                      onclick='closeAllRowMenus(); openAssignAmbassadorModal({{ l.id }}, {{ (l.customer_name or "")|tojson }}, {{ l.assigned_ambassador_id or "null" }})'>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.5-6 8-6s8 2 8 6"/></svg>
+                Assign Ambassador
+              </button>
+              {% endif %}
+              <button type="button" class="row-action-item" onclick="closeAllRowMenus(); openHistoryModal({{ l.id }})">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                View History
+              </button>
+              <div class="row-action-divider"></div>
+              <button type="button" class="row-action-item danger" onclick="closeAllRowMenus(); openDropModal({{ l.id }}, '{{ l.customer_name|e }}', 'lost')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                Mark as Lost
+              </button>
+              <button type="button" class="row-action-item danger" onclick="closeAllRowMenus(); openDropModal({{ l.id }}, '{{ l.customer_name|e }}', 'dropped')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                Mark as Dropped
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="board-card-value">{{ '₦{:,.0f}'.format(l.deal_value) if l.deal_value else '—' }}</div>
+        <div class="board-card-contact">{{ l.contact_person or l.phone or '—' }}</div>
+        <div class="board-card-foot">
+          {% set chip = (l.segment_names[0] if l.segment_names else (l.wa_segment_names[0] if l.wa_segment_names else (l.label_names[0] if l.label_names else none))) %}
+          {% if chip %}
+          <span class="stage-pill" style="background:#e0e7ff;color:#4338ca">{{ chip }}</span>
+          {% endif %}
+          <span style="font-size:10.5px;color:var(--muted);margin-left:auto">{{ l.created_at.strftime('%d %b') if l.created_at else '—' }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% if col.more > 0 %}
+    <a class="board-more" href="{{ url_for('portal.sales_pipeline', view='list', stage=col.key, q=search, **filter_args) }}">+{{ col.more }} more</a>
+    {% endif %}
+    <button type="button" class="board-add-btn" onclick="document.getElementById('addLeadForm').classList.add('open'); document.getElementById('addLeadForm').scrollIntoView({behavior:'smooth'})">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+      Add deal
+    </button>
+  </div>
+  {% endfor %}
+</div>
+
+{% endif %}
+
 {% if dropped_leads %}
 <div class="card" style="margin-top:20px" data-sptour="dropped-section">
-  <div class="section-title" style="margin-bottom:10px">Dropped ({{ dropped_leads|length }})</div>
+  <div class="section-title" style="margin-bottom:10px">Closed — Lost &amp; Dropped ({{ dropped_leads|length }})</div>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Customer</th><th>Last Stage</th><th>Reason</th><th>Dropped</th></tr></thead>
+      <thead><tr><th>Customer</th><th>Outcome</th><th>Last Active Stage</th><th>Reason</th><th>Closed</th></tr></thead>
       <tbody>
         {% for l in dropped_leads %}
         <tr>
           <td><span class="biz-name-cell">{{ l.customer_name }}</span></td>
+          <td>
+            {% set outc = l.outcome or 'dropped' %}
+            <span class="stage-pill" style="background:{{ '#fef2f2' if outc == 'lost' else '#f8fafc' }};color:{{ '#b91c1c' if outc == 'lost' else '#64748b' }}">{{ stage_labels.get(outc, outc.capitalize()) }}</span>
+          </td>
           <td><span class="stage-pill st-{{ l.stage }}">{{ stage_labels[l.stage] }}</span></td>
           <td class="muted">{{ l.dropped_reason or '—' }}</td>
           <td class="muted">{{ l.dropped_at.strftime('%d %b %Y') if l.dropped_at else '—' }}</td>
@@ -738,13 +1020,18 @@
 <div class="modal-over" id="dropModal" onclick="if(event.target===this)closeDropModal()">
   <div class="modal-card">
     <div class="modal-title" id="dropTitle"></div>
-    <p class="modal-sub">This removes the deal from your active pipeline (kept in the Dropped list below).</p>
+    <p class="modal-sub" id="dropSub"></p>
     <form method="POST" id="dropForm">
-      <label class="flbl">Reason <span style="font-weight:400;color:#9ca3af">(optional)</span></label>
-      <textarea name="reason" class="finp"></textarea>
+      <input type="hidden" name="outcome" id="dropOutcome">
+      <label class="flbl">Reason <span style="font-weight:400;color:#9ca3af">(required)</span></label>
+      <select name="reason" id="dropReasonSelect" class="finp" required onchange="document.getElementById('dropOtherWrap').style.display = this.value==='Other' ? 'block' : 'none'">
+      </select>
+      <div id="dropOtherWrap" style="display:none;margin-top:8px">
+        <input type="text" name="reason_other" class="finp" placeholder="Tell us more…">
+      </div>
       <div class="modal-actions">
         <button type="button" class="modal-cancel" onclick="closeDropModal()">Cancel</button>
-        <button type="submit" class="modal-confirm" style="background:var(--bad)">Drop Deal</button>
+        <button type="submit" class="modal-confirm" style="background:var(--bad)" id="dropConfirmBtn">Confirm</button>
       </div>
     </form>
   </div>
@@ -775,6 +1062,8 @@
       </div>
       <label class="flbl">Deal Value <span style="font-weight:400;color:#9ca3af">(optional)</span></label>
       <input type="number" step="0.01" name="deal_value" id="editDealValue" class="finp" style="margin-bottom:14px"/>
+      <label class="flbl">Product / Service Interested In</label>
+      <input type="text" name="product_interest" id="editProductInterest" class="finp" style="margin-bottom:14px"/>
       <label class="flbl">Notes</label>
       <textarea name="notes" id="editNotes" class="finp"></textarea>
       <div class="modal-actions">
@@ -1145,7 +1434,7 @@ function createLabelAndBulkAdd() {
     .catch(function(){ alert('Could not create label — check your connection'); });
 }
 
-function openEditModal(id, customerName, contactPerson, phone, email, dealValue, notes, whatsappNumber) {
+function openEditModal(id, customerName, contactPerson, phone, email, dealValue, notes, whatsappNumber, productInterest) {
   document.getElementById('editForm').action = `/sales-pipeline/${id}/edit`;
   document.getElementById('editTitle').textContent = `Edit — ${customerName}`;
   document.getElementById('editCustomerName').value  = customerName || '';
@@ -1155,6 +1444,7 @@ function openEditModal(id, customerName, contactPerson, phone, email, dealValue,
   document.getElementById('editWhatsapp').value       = whatsappNumber || '';
   document.getElementById('editDealValue').value      = dealValue !== '' ? dealValue : '';
   document.getElementById('editNotes').value          = notes || '';
+  document.getElementById('editProductInterest').value = productInterest || '';
   document.getElementById('editModal').classList.add('open');
 }
 
@@ -1178,15 +1468,29 @@ function applyColumnVisibility() {
   });
 }
 function saveColumnPrefs() {
-  var visible = colCheckboxes.filter(function(cb){ return cb.checked }).map(function(cb){ return cb.dataset.colToggle });
-  localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(visible));
+  // Stores which columns are HIDDEN, not which are visible — so a column
+  // added later (like "score") that a returning visitor's browser never
+  // saved a preference for defaults to VISIBLE, not silently hidden. The
+  // old key stored the opposite (visible-list) and would hide every new
+  // column forever for anyone who'd touched this picker before; migrated
+  // below in loadColumnPrefs.
+  var hidden = colCheckboxes.filter(function(cb){ return !cb.checked }).map(function(cb){ return cb.dataset.colToggle });
+  localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(hidden));
 }
 function loadColumnPrefs() {
   var raw = localStorage.getItem(COL_STORAGE_KEY);
   if (!raw) return;
   try {
-    var visible = JSON.parse(raw);
-    colCheckboxes.forEach(function(cb){ cb.checked = visible.indexOf(cb.dataset.colToggle) !== -1 });
+    var stored = JSON.parse(raw);
+    if (localStorage.getItem(COL_STORAGE_KEY + '_v2') !== '1') {
+      // One-time migration from the old visible-list format: anything NOT
+      // in the old list was "hidden" under the old scheme.
+      var allKeys = colCheckboxes.map(function(cb){ return cb.dataset.colToggle });
+      stored = allKeys.filter(function(k){ return stored.indexOf(k) === -1 });
+      localStorage.setItem(COL_STORAGE_KEY + '_v2', '1');
+      localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(stored));
+    }
+    colCheckboxes.forEach(function(cb){ cb.checked = stored.indexOf(cb.dataset.colToggle) === -1 });
   } catch (e) {}
 }
 colCheckboxes.forEach(function(cb) {
@@ -1213,6 +1517,23 @@ function toggleLabelPicker() {
 function toggleChannelPicker() {
   document.getElementById('channelPickerMenu').classList.toggle('open');
 }
+
+/* ── Row / card action menus (kebab ⋮) — list rows and Board cards share
+   the same markup pattern (.row-actions-wrap > .kebab-btn + .row-action-menu),
+   only one open at a time. ─────────────────────────────────────────────── */
+function closeAllRowMenus() {
+  document.querySelectorAll('.row-action-menu.open').forEach(function(m){ m.classList.remove('open'); });
+  document.querySelectorAll('.kebab-btn.open').forEach(function(b){ b.classList.remove('open'); });
+}
+function toggleRowMenu(ev, key) {
+  ev.stopPropagation();
+  var menu = document.getElementById('row-menu-' + key);
+  var btn  = ev.currentTarget;
+  var wasOpen = menu.classList.contains('open');
+  closeAllRowMenus();
+  if (!wasOpen) { menu.classList.add('open'); btn.classList.add('open'); }
+}
+
 function onLabelModeChange(cb) {
   if (cb.checked) {
     var otherName = cb.name === 'label' ? 'hide_label' : 'label';
@@ -1234,6 +1555,7 @@ document.addEventListener('click', function(e) {
   if (labelWrap && !labelWrap.contains(e.target)) document.getElementById('labelPickerMenu').classList.remove('open');
   var channelWrap = document.querySelector('.channel-picker-wrap');
   if (channelWrap && !channelWrap.contains(e.target)) document.getElementById('channelPickerMenu').classList.remove('open');
+  if (!e.target.closest('.row-actions-wrap')) closeAllRowMenus();
 });
 
 const STAGE_LABELS = {{ stage_labels|tojson }};
@@ -1332,9 +1654,27 @@ function submitBulkAdvance(ev) {
   return false;
 }
 
-function openDropModal(id, name) {
+const LOST_REASONS    = {{ lost_reasons|tojson }};
+const DROPPED_REASONS = {{ dropped_reasons|tojson }};
+
+function openDropModal(id, name, outcome) {
+  outcome = outcome === 'lost' ? 'lost' : 'dropped';
+  const reasons = outcome === 'lost' ? LOST_REASONS : DROPPED_REASONS;
   document.getElementById('dropForm').action = `/sales-pipeline/${id}/drop`;
-  document.getElementById('dropTitle').textContent = `Drop ${name}?`;
+  document.getElementById('dropOutcome').value = outcome;
+  document.getElementById('dropOtherWrap').style.display = 'none';
+  if (outcome === 'lost') {
+    document.getElementById('dropTitle').textContent = `Mark ${name} as Lost?`;
+    document.getElementById('dropSub').textContent = "We pursued this — the customer chose someone else. This closes the deal.";
+    document.getElementById('dropConfirmBtn').textContent = 'Confirm — Mark as Lost';
+  } else {
+    document.getElementById('dropTitle').textContent = `Mark ${name} as Dropped?`;
+    document.getElementById('dropSub').textContent = "We're deciding not to pursue this one. This closes the deal.";
+    document.getElementById('dropConfirmBtn').textContent = 'Confirm — Mark as Dropped';
+  }
+  const sel = document.getElementById('dropReasonSelect');
+  sel.innerHTML = '<option value="" disabled selected>Choose a reason…</option>' +
+    reasons.map(r => `<option value="${r}">${r}</option>`).join('');
   document.getElementById('dropModal').classList.add('open');
 }
 
@@ -1363,6 +1703,11 @@ function openHistoryModal(id) {
 
 function spTourCloseModals() {
   closeAdvanceModal(); closeDropModal(); closeHistoryModal(); closeEditModal(); closeAssignAmbassadorModal();
+  closeAllRowMenus();
+}
+function spTourOpenFirstRowMenu() {
+  var wrap = document.querySelector('[data-sptour="pipeline-table"] .row-actions-wrap');
+  if (wrap) { var menu = wrap.querySelector('.row-action-menu'); if (menu) menu.classList.add('open'); }
 }
 
 // Search/stage/channel filters and pagination are now plain GET navigations
@@ -1417,9 +1762,9 @@ function spTourCloseModals() {
             'Next, let\'s open the real form for each stage.' },
 
     { sel: '[data-sptour="add-deal-btn"]', pos: 'bottom',
-      title: '+ Add a New Deal',
+      title: '+ Create Sales Lead',
       body: 'Click here the moment a prospective customer shows interest — before you\'ve even contacted them.<br><br>' +
-            '<i>Example: a customer calls asking about a dining set. Add "Adaeze Interiors Ltd", contact person, phone, an estimated deal value, and a note like "Wants a custom sofa set, budget confirmed".</i>' },
+            '<i>Example: a customer calls asking about a dining set. Add "Adaeze Interiors Ltd", contact person, phone, what they\'re interested in, an estimated deal value, and a note like "Budget confirmed".</i>' },
 
     { sel: '[data-sptour="pipeline-table"]', pos: 'top',
       title: '📋 Your Deals Table',
@@ -1462,10 +1807,12 @@ function spTourCloseModals() {
             '<b>Final Deal Value</b> — optionally update to the actual closed amount.' },
 
     { sel: '[data-sptour="history-btn"]', pos: 'left',
+      before: function(){ spTourOpenFirstRowMenu(); },
       title: '🕘 History',
-      body: 'Opens a full timeline of every stage change for that deal — who changed it, when, and any notes. Handy if you forget exactly where you left off with a customer.' },
+      body: 'Each row\'s ⋮ menu opens actions for that deal — this opens a full timeline of every stage change: who changed it, when, and any notes. Handy if you forget exactly where you left off with a customer.' },
 
     { sel: '[data-sptour="drop-btn"]', pos: 'left',
+      before: function(){ spTourOpenFirstRowMenu(); },
       title: '🗑️ Drop a Deal',
       body: 'If a customer decides not to proceed, click Drop and optionally note why.<br><br>' +
             '<i>Example: "Chose a cheaper competitor" or "Postponed, revisit in 6 months".</i><br><br>' +

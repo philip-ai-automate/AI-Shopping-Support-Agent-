@@ -19,7 +19,7 @@ from message_normalizer import normalize, extract_statuses
 from meta_sender import send_text, send_template, mark_as_read
 from response_formatter import dispatch_response
 from interactive_handler import handle_addcart, handle_details, handle_list_select
-from wa_db import log_message, is_handoff_active, is_campaign_recipient, create_handoff, cache_products, get_wa_shop_session, delete_wa_shop_session, get_viewed_products, get_active_template, update_campaign_recipient_status, get_session_products, mark_product_viewed
+from wa_db import log_message, is_handoff_active, is_campaign_recipient, create_handoff, cache_products, get_wa_shop_session, delete_wa_shop_session, get_viewed_products, get_active_template, update_campaign_recipient_status, get_session_products, mark_product_viewed, record_cross_channel_optout, get_latest_campaign_recipient_for_reply, record_campaign_reply_flag, queue_campaign_reply_for_review, create_pipeline_opportunity_from_reply
 from wa_onboarding import handle_onboarding_message
 from wa_shopping import handle_shopping_message
 from visual_match import evaluate_visual_match
@@ -74,8 +74,11 @@ def _wants_opt_out(text: str) -> bool:
 
 async def _handle_opt_out(tenant_id: int, customer_phone: str, phone_number_id: str, access_token: str) -> None:
     """Records the opt-out (upsert — the customer may not have an existing
-    wa_contacts row yet) and confirms it back to the customer. Called instead
-    of all normal AI/shopping/handoff processing for this message."""
+    wa_contacts row yet), then extends it to Email and SMS too — a "STOP"
+    on WhatsApp means stop everywhere, not just here — before confirming it
+    back to the customer. Called instead of all normal AI/shopping/handoff
+    processing for this message."""
+    phone = "+" + customer_phone.lstrip("+")
     try:
         conn = _get_db()
         if conn:
@@ -85,18 +88,68 @@ async def _handle_opt_out(tenant_id: int, customer_phone: str, phone_number_id: 
                        VALUES (%s, %s, TRUE, NOW(), 'whatsapp')
                    ON CONFLICT (tenant_id, phone) DO UPDATE
                        SET opted_out=TRUE, opted_out_at=NOW()""",
-                (tenant_id, "+" + customer_phone.lstrip("+")),
+                (tenant_id, phone),
             )
             conn.commit()
             cur.close(); conn.close()
     except Exception as e:
         print(f"⚠️ [META] opt-out DB write error tenant={tenant_id} phone={customer_phone}: {e}")
 
+    record_cross_channel_optout(tenant_id, phone, reason='Replied "STOP" to a WhatsApp campaign')
+
+
+async def _handle_campaign_reply_flag(tenant: dict, tenant_id: int, customer_phone: str, text: str) -> None:
+    """Campaign Intelligence: classifies a reply from a past campaign
+    recipient (Interested / Not interested / neutral) and always records that
+    flag on the campaign report — this "flagging" step is never gated. Only
+    the follow-on action for an Interested reply (creating a Sales Pipeline
+    opportunity) is gated by the business's own campaign_reply_auto_actions
+    switch: on (default) creates it immediately, off queues it for a staff
+    member to approve/reject on the new Needs Review screen instead.
+    Fire-and-forget from the webhook — never blocks or affects the AI reply
+    the customer actually receives."""
+    if not text or not text.strip():
+        return
+    recipient = get_latest_campaign_recipient_for_reply(tenant_id, customer_phone)
+    if not recipient:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                f"{_AI_BACKEND_URL}/classify-campaign-reply",
+                json={"api_key": tenant["phixtra_api_key"], "message": text},
+            )
+            resp.raise_for_status()
+            result = resp.json()
+        sentiment  = result.get("sentiment", "neutral")
+        confidence = float(result.get("confidence", 0.0) or 0.0)
+    except Exception as e:
+        print(f"⚠️ [CAMPAIGN_INTEL] classify-campaign-reply failed, treating as neutral: {e}")
+        sentiment, confidence = "neutral", 0.0
+
+    new_status = record_campaign_reply_flag(
+        recipient["id"], recipient["status"], sentiment, confidence, text,
+    )
+    print(f"   [CAMPAIGN_INTEL] recipient_id={recipient['id']} tenant={tenant_id} "
+          f"phone={customer_phone} sentiment={sentiment} confidence={confidence} -> status={new_status}")
+
+    if new_status != "interested":
+        return
+
+    if tenant.get("campaign_reply_auto_actions", True):
+        create_pipeline_opportunity_from_reply(
+            tenant_id, recipient["campaign_id"], recipient["id"], customer_phone, text,
+        )
+    else:
+        queue_campaign_reply_for_review(
+            tenant_id, recipient["campaign_id"], recipient["id"], customer_phone, text, confidence,
+        )
+
     try:
         await send_text(
             phone_number_id, access_token, customer_phone,
-            "You've been unsubscribed from marketing messages and won't receive further campaign texts. "
-            "This won't affect your ability to message us directly.",
+            "You've been unsubscribed from marketing messages on WhatsApp, email and SMS, and won't "
+            "receive further campaign texts. This won't affect your ability to message us directly.",
         )
     except Exception as e:
         print(f"⚠️ [META] opt-out confirmation send error: {e}")
@@ -508,6 +561,32 @@ async def receive_webhook(
         await _handle_opt_out(tenant_id, customer_phone, phone_number_id, access_token)
         return {"status": "ok", "reason": "opted_out"}
 
+    # ── PhiXtra Connect / AI-off gate — a PhiXtra-admin-only switch per
+    # business (tenants.ai_enabled). Off means this business's WhatsApp
+    # number is staff-only: the message is already logged above so it shows
+    # in the Inbox, but nothing past this point (AI, shopping journey,
+    # handoff, Campaign Intelligence classification) may fire. Staff replies
+    # go out via the portal's own inbox_reply() send path, which never
+    # touches this file. Moved ABOVE Campaign Intelligence on 2026-09-09 —
+    # the reply classifier below is itself an AI (LLM) call and billed as
+    # AI usage, so a Connect business with AI off must never trigger it
+    # either, not just the shopping/chat AI. This stays TRUE (unaffected)
+    # for portal.phixtra.com Sales AI tenants, which default ai_enabled=True
+    # at signup. ─────────────────────────────────────────────────────────
+    if not tenant.get("ai_enabled", True):
+        print(f"   [META] AI off for tenant={tenant_id} — staff-only, no AI reply")
+        return {"status": "ok", "reason": "ai_disabled"}
+
+    # ── Campaign Intelligence — classify + flag a reply on the campaign
+    # funnel (Replied/Interested/Not interested). Runs for every campaign
+    # recipient's reply on an AI-enabled tenant, including one currently in
+    # a human handoff (handoff only pauses the AI's own chat reply, not this
+    # classification). Fire-and-forget so it never delays the customer's
+    # actual reply or the staff Inbox. ───────────────────────────────────
+    _is_campaign_reply = is_campaign_recipient(tenant_id, customer_phone)
+    if _is_campaign_reply and msg.get("message_type") == "text":
+        asyncio.create_task(_handle_campaign_reply_flag(tenant, tenant_id, customer_phone, text))
+
     # ── Handoff gate ──────────────────────────────────────────────────────────
     if is_handoff_active(session_id):
         # Allow HANDOFF_DISCOUNT sessions through so the customer can proceed or cancel
@@ -524,7 +603,7 @@ async def receive_webhook(
     # Escalation is handled by the merchant's configured handoff rules (portal →
     # Handoff Settings), which the AI enforces via its system prompt. No separate
     # notification needed here.
-    if not is_handoff_active(session_id) and is_campaign_recipient(tenant_id, customer_phone):
+    if not is_handoff_active(session_id) and _is_campaign_reply:
         print(f"   [META] Campaign recipient reply — AI handling session={session_id}")
 
     # ── Numbered product selection — replaces WhatsApp's old interactive list,

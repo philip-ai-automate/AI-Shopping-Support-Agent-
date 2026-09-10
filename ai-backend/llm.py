@@ -187,6 +187,86 @@ def classify_relevant_products(user_message: str, raw_docs: list) -> tuple:
         return True, set(), {}
 
 
+_CAMPAIGN_REPLY_SCHEMA = {
+    "name": "campaign_reply_sentiment",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "sentiment": {
+                "type": "string",
+                "enum": ["interested", "not_interested", "neutral"],
+                "description": (
+                    "'interested' if the customer's reply shows genuine buying interest "
+                    "or asks to move forward (e.g. wants a quote, confirms quantity, asks "
+                    "how to pay, says yes/okay to the offer). 'not_interested' if they "
+                    "decline, say no, or ask not to be contacted about this. 'neutral' for "
+                    "anything else — a plain question, small talk, an ambiguous or unclear "
+                    "reply, or one that doesn't signal either way."
+                ),
+            },
+            "confidence": {
+                "type": "number",
+                "description": "How confident this classification is, from 0.0 to 1.0.",
+            },
+        },
+        "required": ["sentiment", "confidence"],
+        "additionalProperties": False,
+    },
+}
+
+
+def classify_campaign_reply(reply_text: str) -> tuple:
+    """
+    Classifies a customer's reply to a WhatsApp bulk campaign as showing buying
+    interest, disinterest, or neither — this is the "flag" step of Campaign
+    Intelligence (see project_wa_campaign_intelligence_proposal): it always runs
+    on every reply to a campaign, regardless of whether the business has turned
+    on automatic actions. What happens with an 'interested' result (auto-create
+    a Sales Pipeline opportunity, or queue it for a staff member to approve) is
+    decided by the caller, not here.
+
+    Fails safe: any error returns ('neutral', 0.0, {}) — a reply that can't be
+    classified is just recorded as a plain reply, never wrongly treated as a
+    lead or silently dropped.
+
+    Returns (sentiment: str, confidence: float, usage: dict) — usage matches
+    ask_llm's shape so the caller can bill the tenant for this call the same
+    way as any other AI usage.
+    """
+    try:
+        prompt = (
+            "A customer was sent a WhatsApp sales/marketing campaign message and just replied. "
+            "Classify their reply.\n\n"
+            f"Customer's reply: {reply_text!r}"
+        )
+        response = _get_client().chat.completions.create(
+            model=os.getenv("RELEVANCE_CHECK_MODEL", "gpt-4o-mini"),
+            messages=[{"role": "user", "content": prompt}],
+            max_completion_tokens=150,
+            response_format={"type": "json_schema", "json_schema": _CAMPAIGN_REPLY_SCHEMA},
+        )
+        parsed = json.loads(response.choices[0].message.content)
+        sentiment = parsed.get("sentiment") or "neutral"
+        if sentiment not in ("interested", "not_interested", "neutral"):
+            sentiment = "neutral"
+        try:
+            confidence = float(parsed.get("confidence", 0.0))
+        except (TypeError, ValueError):
+            confidence = 0.0
+        usage = {}
+        if getattr(response, "usage", None):
+            usage = {
+                "prompt_tokens": int(getattr(response.usage, "prompt_tokens", 0) or 0),
+                "completion_tokens": int(getattr(response.usage, "completion_tokens", 0) or 0),
+                "total_tokens": int(getattr(response.usage, "total_tokens", 0) or 0),
+            }
+        return sentiment, confidence, usage
+    except Exception as e:
+        print(f"⚠️ classify_campaign_reply failed, failing safe (treating as neutral): {e}")
+        return "neutral", 0.0, {}
+
+
 _HANDOFF_RESPONSE_SCHEMA = {
     "name": "chat_reply",
     "strict": True,

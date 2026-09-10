@@ -1,0 +1,270 @@
+{% extends "portal/base.html" %}
+{% block title %}{{ lead.customer_name }} — Lead — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+.crumb{font-size:12px;color:var(--muted);margin-bottom:14px}
+.crumb a{color:var(--muted);text-decoration:none;font-weight:600}
+.crumb b{color:var(--ink)}
+.lc-card{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.lc-header{padding:22px 24px;display:flex;align-items:flex-start;justify-content:space-between;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:12px}
+.lc-avatar{width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-size:19px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.lc-name{font-size:18px;font-weight:800;color:var(--ink)}
+.lc-sub{font-size:12.5px;color:var(--muted);font-weight:600}
+.stage-pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
+.st-new_lead{background:#f1f5f9;color:#475569}
+.st-contacted{background:#dbeafe;color:#1d4ed8}
+.st-qualified{background:#e0e7ff;color:#4338ca}
+.st-proposal_sent{background:#fef9c3;color:#92400e}
+.st-negotiating{background:#fed7aa;color:#9a3412}
+.st-won{background:#dcfce7;color:#15803d}
+.lc-fields{padding:20px 24px;display:grid;grid-template-columns:repeat(4,1fr);gap:18px;border-bottom:1px solid var(--line)}
+.lc-field-label{font-size:9.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px}
+.lc-field-value{font-size:12.5px;font-weight:600;color:var(--ink)}
+.lc-sec-head{font-size:10.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;padding:14px 24px;border-bottom:1px solid var(--line);background:#fafbfc;display:flex;align-items:center;justify-content:space-between}
+.step-node{display:flex;flex-direction:column;align-items:center;gap:6px;flex-shrink:0}
+.step-dot{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800}
+.step-line{flex:1;height:2px;background:#e2e8f0;margin-top:13px;min-width:16px}
+.step-line.done{background:#15803d}
+.lc-tab{padding:8px 14px;border-radius:9px;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px;cursor:pointer;border:none;font-family:inherit}
+.lc-tab.active{background:var(--ink);color:#fff}
+.lc-tab.disabled{background:#f1f5f9;color:#94a3b8;cursor:default}
+.lc-soon{font-size:9px;font-weight:800;background:#e2e8f0;padding:1px 6px;border-radius:8px}
+.lc-edit-btn{background:#fff;border:1.5px solid var(--line);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;color:var(--ink);cursor:pointer;font-family:inherit}
+.modal-over{display:none;position:fixed;inset:0;background:rgba(3,12,24,.5);z-index:900;align-items:center;justify-content:center}
+.modal-over.open{display:flex}
+.modal-card{background:#fff;border-radius:18px;padding:26px;width:100%;max-width:520px;max-height:88vh;overflow-y:auto}
+.modal-title{font-size:16px;font-weight:800;color:var(--ink);margin-bottom:16px}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.frow.single{grid-template-columns:1fr}
+.flbl{display:block;font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:5px}
+.finp{width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:inherit}
+.modal-actions{display:flex;gap:10px;margin-top:6px}
+.modal-cancel{flex:1;padding:10px;border:1.5px solid var(--line);background:#fff;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+.modal-confirm{flex:1;padding:10px;border:none;background:var(--ink);color:#fff;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="crumb"><a href="{{ url_for('portal.leads_page') }}">Leads</a> / <b>{{ lead.customer_name }}</b></div>
+
+<div class="lc-card">
+
+  <!-- Header -->
+  <div class="lc-header">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div class="lc-avatar">{{ (lead.customer_name or '?')[:2]|upper }}</div>
+      <div>
+        <div class="lc-name">{{ lead.customer_name }}</div>
+        <div class="lc-sub">{{ lead.product_interest or 'Sales Lead' }}</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      {% set outc = lead.outcome %}
+      {% if outc %}
+      <span class="stage-pill" style="background:{{ '#f0fdf4' if outc=='won' else ('#fef2f2' if outc=='lost' else '#f8fafc') }};color:{{ '#15803d' if outc=='won' else ('#b91c1c' if outc=='lost' else '#64748b') }};font-size:13px;padding:7px 16px">{{ stage_labels.get(outc, outc.capitalize())|upper }}</span>
+      {% else %}
+      <span class="stage-pill st-{{ lead.stage }}" style="font-size:13px;padding:7px 16px">{{ stage_labels.get(lead.stage, lead.stage)|upper }}</span>
+      {% endif %}
+      <button type="button" class="lc-edit-btn" onclick="document.getElementById('editLeadModal').classList.add('open')">✏️ Edit Lead</button>
+    </div>
+  </div>
+
+  <!-- Lead record fields -->
+  <div class="lc-fields">
+    <div><div class="lc-field-label">Contact Person</div><div class="lc-field-value">{{ lead.contact_person or '—' }}</div></div>
+    <div><div class="lc-field-label">Phone</div><div class="lc-field-value" style="font-family:'SF Mono','Fira Code',monospace">{{ lead.phone or '—' }}</div></div>
+    <div><div class="lc-field-label">WhatsApp</div><div class="lc-field-value" style="font-family:'SF Mono','Fira Code',monospace;color:#15803d">{{ lead.whatsapp_number or '—' }}</div></div>
+    <div><div class="lc-field-label">Email</div><div class="lc-field-value">{{ lead.email or '—' }}</div></div>
+
+    <div>
+      <div class="lc-field-label">Source</div>
+      {% set src_meta = {'whatsapp': ('#dcfce7','#15803d','WhatsApp'), 'facebook': ('#dbeafe','#1d4ed8','Facebook'),
+                          'instagram': ('#fce7f3','#be185d','Instagram'), 'manual': ('#f1f5f9','#64748b','Manual')} %}
+      {% if lead.source and lead.source in src_meta %}
+      {% set s_bg, s_fg, s_label = src_meta[lead.source] %}
+      <span class="stage-pill" style="background:{{ s_bg }};color:{{ s_fg }}">{{ s_label }}</span>
+      {% else %}
+      <div class="lc-field-value" style="color:var(--muted)">Not recorded</div>
+      {% endif %}
+    </div>
+    <div>
+      <div class="lc-field-label">Campaign Source</div>
+      {% if campaign %}
+      <div class="lc-field-value">{{ campaign.name }}</div>
+      {% else %}
+      <div class="lc-field-value" style="color:var(--muted)">—</div>
+      {% endif %}
+    </div>
+    <div><div class="lc-field-label">Company</div>
+      {% if company %}
+      <a href="{{ url_for('portal.crm_company_detail', company_id=company.id) }}" class="lc-field-value" style="color:#2563eb;text-decoration:none">{{ company.name }}</a>
+      {% else %}
+      <div class="lc-field-value" style="color:var(--muted)">—</div>
+      {% endif %}
+    </div>
+    <div><div class="lc-field-label">Created</div><div class="lc-field-value">{{ lead.created_at.strftime('%d %b %Y') if lead.created_at else '—' }}</div></div>
+
+    <div><div class="lc-field-label">Product / Service</div><div class="lc-field-value">{{ lead.product_interest or '—' }}</div></div>
+    <div><div class="lc-field-label">Assigned Salesperson</div><div class="lc-field-value">{{ lead.assigned_to or '—' }}</div></div>
+    <div style="opacity:.55">
+      <div class="lc-field-label">Ambassador</div>
+      {% if is_phixtra_support_account and ambassador %}
+      <div class="lc-field-value">{{ ambassador }}</div>
+      {% else %}
+      <div style="font-size:12px;font-weight:600;color:var(--muted);border:1px dashed #cbd5e1;border-radius:6px;padding:2px 8px;display:inline-block">Not applicable</div>
+      {% endif %}
+    </div>
+    <div><div class="lc-field-label">Lead Score</div>
+      {% set _sb = {'hot': ('🔥','#fef2f2','#b91c1c'), 'warm': ('🌤️','#fffbeb','#b45309'), 'cold': ('❄️','#eff6ff','#1d4ed8')} %}
+      {% set icon, bg, fg = _sb.get(lead_tier, _sb['cold']) %}
+      <span class="stage-pill" style="background:{{ bg }};color:{{ fg }}" title="{{ score_labels.get(lead_tier, lead_tier.capitalize()) }}">{{ icon }} {{ lead_score }}</span>
+    </div>
+
+    <div style="grid-column: span 4">
+      <div class="lc-field-label">Deal Value</div>
+      <div style="font-size:22px;font-weight:800;color:var(--ink);letter-spacing:-.5px">{{ '₦{:,.0f}'.format(lead.deal_value) if lead.deal_value else '—' }}</div>
+    </div>
+  </div>
+
+  <!-- Pipeline -->
+  <div class="lc-sec-head">
+    <span>Pipeline</span>
+    <a href="{{ url_for('portal.sales_pipeline', q=lead.phone or lead.whatsapp_number or '') }}" style="font-size:11px;color:var(--ink);font-weight:700;text-decoration:none">Open on Pipeline Board →</a>
+  </div>
+  <div style="padding:22px 24px;border-bottom:1px solid var(--line);overflow-x:auto">
+    <div style="display:flex;align-items:flex-start;min-width:640px">
+      {% for s in stage_order %}
+      {% set s_idx = stage_order.index(s) %}
+      {% set cur_idx = stage_order.index(lead.stage) if lead.stage in stage_order else -1 %}
+      {% if not loop.first %}<div class="step-line {{ 'done' if s_idx <= cur_idx }}"></div>{% endif %}
+      <div class="step-node">
+        {% if outc and s_idx <= cur_idx %}
+        <div class="step-dot" style="background:#15803d;color:#fff">✓</div>
+        {% elif not outc and s_idx < cur_idx %}
+        <div class="step-dot" style="background:#15803d;color:#fff">✓</div>
+        {% elif not outc and s_idx == cur_idx %}
+        <div class="step-dot" style="background:#9a3412;color:#fff;box-shadow:0 0 0 4px #fff7ed">●</div>
+        {% else %}
+        <div class="step-dot" style="background:#f8fafc;color:#cbd5e1;border:1.5px solid #e2e8f0">{{ loop.index }}</div>
+        {% endif %}
+        <div style="font-size:9.5px;font-weight:700;color:var(--muted);white-space:nowrap">{{ stage_labels.get(s, s) }}</div>
+      </div>
+      {% endfor %}
+      <div class="step-line"></div>
+      <div style="display:flex;gap:8px;margin-left:4px">
+        <div class="step-node">
+          <div class="step-dot" style="{{ 'background:#15803d;color:#fff' if outc=='won' else 'background:#f0fdf4;color:#86efac;border:1.5px solid #bbf7d0' }}">{{ '✓' if outc=='won' else 'W' }}</div>
+          <div style="font-size:9px;font-weight:700;color:var(--muted)">{{ stage_labels.get('won','Won') }}</div>
+        </div>
+        <div class="step-node">
+          <div class="step-dot" style="{{ 'background:#b91c1c;color:#fff' if outc=='lost' else 'background:#fef2f2;color:#fca5a5;border:1.5px solid #fecaca' }}">{{ '✓' if outc=='lost' else 'L' }}</div>
+          <div style="font-size:9px;font-weight:700;color:var(--muted)">{{ stage_labels.get('lost','Lost') }}</div>
+        </div>
+        <div class="step-node">
+          <div class="step-dot" style="{{ 'background:#475569;color:#fff' if outc=='dropped' else 'background:#f8fafc;color:#cbd5e1;border:1.5px solid #e2e8f0' }}">{{ '✓' if outc=='dropped' else 'D' }}</div>
+          <div style="font-size:9px;font-weight:700;color:var(--muted)">{{ stage_labels.get('dropped','Dropped') }}</div>
+        </div>
+      </div>
+    </div>
+    {% if outc and lead.dropped_reason %}
+    <div style="margin-top:14px;font-size:12px;color:var(--muted)">Reason: <strong style="color:var(--ink)">{{ lead.dropped_reason }}</strong></div>
+    {% endif %}
+  </div>
+
+  <!-- Conversations -->
+  <div class="lc-sec-head">Conversations</div>
+  <div style="padding:16px 24px;border-bottom:1px solid var(--line)">
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button type="button" class="lc-tab active">💬 WhatsApp</button>
+      <button type="button" class="lc-tab disabled">📷 Instagram <span class="lc-soon">SOON</span></button>
+      <button type="button" class="lc-tab disabled">📘 Facebook <span class="lc-soon">SOON</span></button>
+    </div>
+    {% if last_message %}
+    <div style="display:flex;align-items:center;justify-content:space-between;background:#f8fafc;border-radius:10px;padding:10px 14px;flex-wrap:wrap;gap:8px">
+      <span style="font-size:12px;color:var(--muted)">Last message: "{{ (last_message.content or '')[:80] }}" · {{ last_message.created_at.strftime('%d %b %Y, %H:%M') if last_message.created_at else '' }}</span>
+      {% if contact_id %}
+      <a href="{{ url_for('portal.whatsapp_contact_detail', contact_id=contact_id) }}" style="font-size:12px;color:var(--ink);font-weight:700;text-decoration:none">View full conversation →</a>
+      {% endif %}
+    </div>
+    {% else %}
+    <div style="font-size:12.5px;color:var(--muted)">No WhatsApp messages with this number yet.</div>
+    {% endif %}
+  </div>
+
+  <!-- Activity -->
+  <div class="lc-sec-head">Activity</div>
+  <div style="padding:16px 24px 22px">
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+      <button type="button" class="lc-tab active" id="lcNotesTab" onclick="lcShowTab('notes')">📝 Notes</button>
+      <button type="button" class="lc-tab disabled">✅ Tasks <span class="lc-soon">NEW</span></button>
+      <button type="button" class="lc-tab disabled">📞 Calls <span class="lc-soon">NEW</span></button>
+      <button type="button" class="lc-tab" onclick="lcShowTab('history')" id="lcHistoryTab">🕒 Stage History</button>
+    </div>
+    <div id="lcNotesPane">
+      {% if lead.notes %}
+      <div style="font-size:12.5px;color:var(--ink);background:#f8fafc;border-radius:10px;padding:10px 14px;white-space:pre-line">{{ lead.notes }}</div>
+      {% else %}
+      <div style="font-size:12.5px;color:var(--muted)">No notes yet — click "✏️ Edit Lead" above to add some.</div>
+      {% endif %}
+    </div>
+    <div id="lcHistoryPane" style="display:none">
+      {% if stage_history %}
+      {% for h in stage_history %}
+      <div style="font-size:12.5px;color:var(--ink);background:#f8fafc;border-radius:10px;padding:10px 14px;margin-bottom:8px">
+        <strong>{{ stage_labels.get(h.to_stage, h.to_stage) }}</strong>
+        {% if h.from_stage %}<span style="color:var(--muted)"> (from {{ stage_labels.get(h.from_stage, h.from_stage) }})</span>{% endif %}
+        <span style="color:var(--muted)"> — {{ h.changed_by or 'Unknown' }}, {{ h.created_at.strftime('%d %b %Y') if h.created_at else '' }}</span>
+        {% if h.notes %}<div style="color:var(--muted);margin-top:3px">{{ h.notes }}</div>{% endif %}
+      </div>
+      {% endfor %}
+      {% else %}
+      <div style="font-size:12.5px;color:var(--muted)">No stage moves recorded yet.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<p style="font-size:11.5px;color:var(--muted);margin:14px 4px 0;line-height:1.6;max-width:900px">Instagram/Facebook conversations and Tasks/Calls aren't built yet — shown here so you know where they'll slot in. Ambassador only applies to PhiXtra's own account.</p>
+
+<!-- Edit Lead modal -->
+<div class="modal-over" id="editLeadModal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal-card">
+    <div class="modal-title">Edit Lead — {{ lead.customer_name }}</div>
+    <form method="POST" action="{{ url_for('portal.sales_pipeline_edit', lead_id=lead.id) }}">
+      <div class="frow">
+        <div><label class="flbl">Business Name</label><input type="text" name="customer_name" class="finp" value="{{ lead.customer_name or '' }}" required></div>
+        <div><label class="flbl">Contact Person</label><input type="text" name="contact_person" class="finp" value="{{ lead.contact_person or '' }}"></div>
+      </div>
+      <div class="frow">
+        <div><label class="flbl">Phone</label><input type="tel" name="phone" class="finp" value="{{ lead.phone or '' }}"></div>
+        <div><label class="flbl">WhatsApp</label><input type="tel" name="whatsapp_number" class="finp" value="{{ lead.whatsapp_number or '' }}"></div>
+      </div>
+      <div class="frow">
+        <div><label class="flbl">Email</label><input type="email" name="email" class="finp" value="{{ lead.email or '' }}"></div>
+        <div><label class="flbl">Deal Value</label><input type="number" step="0.01" name="deal_value" class="finp" value="{{ lead.deal_value if lead.deal_value is not none else '' }}"></div>
+      </div>
+      <div class="frow">
+        <div><label class="flbl">Product / Service Interested In</label><input type="text" name="product_interest" class="finp" value="{{ lead.product_interest or '' }}"></div>
+        <div><label class="flbl">Assigned Salesperson</label><input type="text" name="assigned_to" class="finp" value="{{ lead.assigned_to or '' }}"></div>
+      </div>
+      <div class="frow single">
+        <div><label class="flbl">Notes</label><textarea name="notes" class="finp">{{ lead.notes or '' }}</textarea></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="modal-cancel" onclick="document.getElementById('editLeadModal').classList.remove('open')">Cancel</button>
+        <button type="submit" class="modal-confirm">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function lcShowTab(which) {
+  document.getElementById('lcNotesPane').style.display = which === 'notes' ? 'block' : 'none';
+  document.getElementById('lcHistoryPane').style.display = which === 'history' ? 'block' : 'none';
+  document.getElementById('lcNotesTab').classList.toggle('active', which === 'notes');
+  document.getElementById('lcHistoryTab').classList.toggle('active', which === 'history');
+}
+</script>
+{% endblock %}

@@ -525,6 +525,59 @@ def update_campaign_recipient_status(
         conn.close()
 
 
+def record_cross_channel_optout(tenant_id: int, phone: str, reason: str) -> None:
+    """A WhatsApp STOP reply means stop everywhere, not just WhatsApp — this
+    marks the contact opted out on Email and SMS too (their own send paths
+    check these), mirrors it into email_suppressions (the table the email
+    send path actually queries — see _send_email_campaign_now — so that
+    already-live check needs no change), and writes one row to
+    contact_consent_log so the opt-out has a visible source and reason.
+    Best-effort: called after wa_contacts.opted_out is already set, so a
+    failure here never blocks the WhatsApp-side opt-out itself."""
+    conn = get_db_connection()
+    if not conn:
+        return
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            UPDATE wa_contacts
+            SET email_opted_out=TRUE, email_opted_out_at=NOW(),
+                sms_opted_out=TRUE, sms_opted_out_at=NOW()
+            WHERE tenant_id=%s AND phone=%s
+            RETURNING id, email
+            """,
+            (tenant_id, phone),
+        )
+        row = cur.fetchone()
+        if not row:
+            conn.commit()
+            return
+        contact_id, email = row
+
+        if email:
+            cur.execute(
+                """INSERT INTO email_suppressions (tenant_id, email, reason)
+                       VALUES (%s, %s, 'whatsapp_optout')
+                   ON CONFLICT (tenant_id, email) DO NOTHING""",
+                (tenant_id, email),
+            )
+
+        cur.execute(
+            """INSERT INTO contact_consent_log
+                   (tenant_id, contact_id, channel, action, reason, source)
+               VALUES (%s, %s, 'all', 'opted_out', %s, 'whatsapp_reply')""",
+            (tenant_id, contact_id, reason),
+        )
+        conn.commit()
+    except Exception as e:
+        print(f"⚠️ record_cross_channel_optout error tenant={tenant_id} phone={phone}: {e}")
+        conn.rollback()
+    finally:
+        cur.close()
+        conn.close()
+
+
 def get_visitor_handoff_keywords(tenant_id: int) -> list:
     """
     Return visitor_initiated handoff trigger texts for this tenant from the portal's
@@ -1117,6 +1170,228 @@ def get_visual_match_settings(tenant_id: int) -> dict:
     except Exception as e:
         print("⚠️ get_visual_match_settings error:", e)
         return {"enabled": False, "on_uncertain": "clarify"}
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WHATSAPP CAMPAIGN INTELLIGENCE (2026-09-09) — reply → funnel stage, and an
+# "interested" reply optionally auto-creating a Sales Pipeline opportunity.
+# See project_wa_campaign_intelligence_proposal memory for the full design.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Rank of each funnel status a reply can put a recipient into. A neutral reply
+# never downgrades a recipient that's already been flagged Interested/Not
+# interested back to a bare "Replied" — but Interested and Not interested CAN
+# replace each other (a customer can change their mind either way in a later
+# message). Rows already at 'opportunity'/'converted' are never fetched by
+# get_latest_campaign_recipient_for_reply below, so they're never touched here.
+_REPLY_RANK = {"sent": 0, "delivered": 0, "read": 0, "replied": 1,
+               "interested": 2, "not_interested": 2}
+
+
+def get_latest_campaign_recipient_for_reply(tenant_id: int, phone: str) -> dict | None:
+    """Return the most recent campaign-recipient row for this phone that a
+    reply can still update — i.e. it hasn't already become a real Sales
+    Pipeline opportunity or been marked Converted. Returns None if this phone
+    was never sent a campaign, or its only campaign(s) already progressed
+    past that point."""
+    conn = get_db_connection()
+    if not conn:
+        return None
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            """
+            SELECT id, campaign_id, tenant_id, phone, status
+            FROM wa_campaign_recipients
+            WHERE tenant_id = %s AND phone = %s
+              AND status IN ('sent', 'delivered', 'read', 'replied', 'interested', 'not_interested')
+            ORDER BY COALESCE(sent_at, updated_at) DESC
+            LIMIT 1
+            """,
+            (tenant_id, phone),
+        )
+        return cur.fetchone()
+    except Exception as e:
+        print("⚠️ get_latest_campaign_recipient_for_reply error:", e)
+        return None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def record_campaign_reply_flag(recipient_id: int, current_status: str, sentiment: str,
+                                confidence: float, reply_text: str) -> str:
+    """Records the reply text on the campaign recipient row and moves its
+    status forward per _REPLY_RANK. Returns the status actually written
+    (which may just be current_status unchanged, for a neutral reply on an
+    already-flagged recipient)."""
+    if sentiment in ("interested", "not_interested"):
+        new_status = sentiment
+    else:
+        new_status = "replied" if _REPLY_RANK.get(current_status, 0) < 1 else current_status
+
+    conn = get_db_connection()
+    if not conn:
+        return current_status
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            UPDATE wa_campaign_recipients
+            SET status = %s, reply_text = %s, replied_at = NOW(), updated_at = NOW()
+            WHERE id = %s
+            """,
+            (new_status, (reply_text or "")[:2000], recipient_id),
+        )
+        conn.commit()
+        return new_status
+    except Exception as e:
+        print("⚠️ record_campaign_reply_flag error:", e)
+        conn.rollback()
+        return current_status
+    finally:
+        cur.close()
+        conn.close()
+
+
+def queue_campaign_reply_for_review(tenant_id: int, campaign_id: int, recipient_id: int,
+                                     phone: str, reply_text: str, confidence: float) -> None:
+    """Business has 'needs review' switched on (tenants.campaign_reply_auto_actions =
+    FALSE) — queue this Interested reply for a staff member to approve/reject
+    instead of creating the opportunity automatically. A second Interested reply
+    from the same recipient while one is still pending just refreshes the
+    existing pending row rather than creating a duplicate (partial unique index
+    on recipient_id WHERE status='pending' is the arbiter)."""
+    conn = get_db_connection()
+    if not conn:
+        return
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            INSERT INTO wa_campaign_reply_reviews
+                (tenant_id, campaign_id, recipient_id, phone, reply_text, sentiment, confidence, status)
+            VALUES (%s, %s, %s, %s, %s, 'interested', %s, 'pending')
+            ON CONFLICT (recipient_id) WHERE status = 'pending'
+            DO UPDATE SET reply_text = EXCLUDED.reply_text, confidence = EXCLUDED.confidence, created_at = NOW()
+            """,
+            (tenant_id, campaign_id, recipient_id, phone, (reply_text or "")[:2000], confidence),
+        )
+        conn.commit()
+    except Exception as e:
+        print("⚠️ queue_campaign_reply_for_review error:", e)
+        conn.rollback()
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _find_matching_pipeline_lead_gw(cur, tenant_id: int, phone: str, contact_id: int | None):
+    """Mirror of portal_routes.py's _find_matching_pipeline_lead — duplicated
+    here because the gateway and portal are separate services/processes with
+    no shared import path. Keep both in sync if the matching rule changes."""
+    if contact_id:
+        cur.execute(
+            """
+            SELECT id FROM merchant_pipeline_leads
+            WHERE tenant_id=%s AND dropped_at IS NULL AND wa_contact_id=%s
+            LIMIT 1
+            """,
+            (tenant_id, contact_id),
+        )
+        row = cur.fetchone()
+        if row:
+            return row["id"]
+    if not phone:
+        return None
+    cur.execute(
+        """
+        SELECT id FROM merchant_pipeline_leads
+        WHERE tenant_id=%s AND dropped_at IS NULL
+          AND regexp_replace(COALESCE(whatsapp_number, phone), '[^0-9]', '', 'g')
+              = regexp_replace(%s, '[^0-9]', '', 'g')
+        LIMIT 1
+        """,
+        (tenant_id, phone),
+    )
+    row = cur.fetchone()
+    return row["id"] if row else None
+
+
+def create_pipeline_opportunity_from_reply(tenant_id: int, campaign_id: int, recipient_id: int,
+                                            phone: str, reply_text: str) -> int | None:
+    """Turns an Interested campaign reply into a real Sales Pipeline opportunity
+    (or links to an existing open deal for this phone, rather than creating a
+    duplicate — same dedupe rule as the portal's own 'Add to Sales Pipeline'
+    button). Stamps wa_campaign_recipients with the resulting lead id and moves
+    it to the 'opportunity' funnel stage. Returns the lead id, or None on error."""
+    import re as _re
+    conn = get_db_connection()
+    if not conn:
+        return None
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("SELECT * FROM wa_contacts WHERE tenant_id=%s AND phone=%s", (tenant_id, phone))
+        contact = cur.fetchone()
+        contact_id = contact["id"] if contact else None
+
+        lead_id = _find_matching_pipeline_lead_gw(cur, tenant_id, phone, contact_id)
+        created = False
+        if not lead_id:
+            cur.execute("SELECT name FROM wa_campaigns WHERE id=%s", (campaign_id,))
+            _camp = cur.fetchone()
+            campaign_name = (_camp["name"] if _camp else None) or "a WhatsApp campaign"
+            digits_phone = _re.sub(r"[^\d]", "", phone or "")
+            label = (contact.get("display_name") if contact else None) or \
+                    (contact.get("contact_person") if contact else None) or phone
+            notes = f'Auto-created from a WhatsApp campaign reply ("{campaign_name}"): "{(reply_text or "")[:300]}"'
+            cur.execute(
+                """
+                INSERT INTO merchant_pipeline_leads
+                  (tenant_id, customer_name, phone, whatsapp_number, email, notes, stage,
+                   contact_channel, contact_date, wa_contact_id, company_id, source)
+                VALUES (%s, %s, %s, %s, %s, %s, 'new_lead', 'whatsapp', CURRENT_DATE, %s, %s, 'whatsapp')
+                RETURNING id
+                """,
+                (tenant_id, label, digits_phone, digits_phone,
+                 contact.get("email") if contact else None, notes,
+                 contact_id, contact.get("company_id") if contact else None),
+            )
+            lead_id = cur.fetchone()["id"]
+            created = True
+            cur.execute(
+                """
+                INSERT INTO merchant_pipeline_stage_history (lead_id, from_stage, to_stage, changed_by, notes)
+                VALUES (%s, NULL, 'new_lead', 'WhatsApp Campaign (auto)', %s)
+                """,
+                (lead_id, notes),
+            )
+        elif contact_id:
+            # Backfill the CRM link if this pair predates it, same as the portal's own helper.
+            cur.execute(
+                "UPDATE merchant_pipeline_leads SET wa_contact_id=%s WHERE id=%s AND wa_contact_id IS NULL",
+                (contact_id, lead_id),
+            )
+
+        cur.execute(
+            """
+            UPDATE wa_campaign_recipients
+            SET status = 'opportunity', pipeline_lead_id = %s, updated_at = NOW()
+            WHERE id = %s
+            """,
+            (lead_id, recipient_id),
+        )
+        conn.commit()
+        print(f"   [CAMPAIGN_INTEL] {'created' if created else 'linked existing'} opportunity lead_id={lead_id} "
+              f"tenant={tenant_id} phone={phone} campaign_id={campaign_id}")
+        return lead_id
+    except Exception as e:
+        print("⚠️ create_pipeline_opportunity_from_reply error:", e)
+        conn.rollback()
+        return None
     finally:
         cur.close()
         conn.close()

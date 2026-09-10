@@ -74,6 +74,49 @@
       </form>
     </div>
 
+    <!-- ── AI Replies switch — PhiXtra-admin-only, business never sees this ── -->
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
+      <div class="card-title" style="margin-bottom:6px">🤖 AI Replies</div>
+      <p class="muted" style="margin:0 0 8px;font-size:12px">
+        PhiXtra-controlled only — the business never sees this switch. Off means
+        their WhatsApp number is 100% staff-only (this is the automatic default
+        for every PhiXtra Connect signup). Turn on to move this business onto
+        PhiXtra Sales AI — their Inbox will show AI handoff/takeover automatically,
+        no rebuild needed.
+      </p>
+      <p style="margin:0 0 8px">
+        {% if customer.ai_enabled %}<span class="pill pill-green">AI Replies: On</span>
+        {% else %}<span class="pill pill-grey">AI Replies: Off</span>{% endif %}
+      </p>
+      <form method="POST" action="{{ url_for('portal_admin.customer_toggle_ai', customer_id=customer.id) }}"
+            onsubmit="return confirm('{% if customer.ai_enabled %}Turn AI replies OFF for this business? Their WhatsApp becomes staff-only.{% else %}Turn AI replies ON for this business? Their Inbox will start showing AI handoff/takeover.{% endif %}')">
+        <button type="submit" class="btn btn-sm">
+          {% if customer.ai_enabled %}Turn AI off{% else %}Turn AI on{% endif %}
+        </button>
+      </form>
+    </div>
+
+    <!-- ── Sales CRM switch — PhiXtra-admin-only, Connect-only, business never sees this ── -->
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
+      <div class="card-title" style="margin-bottom:6px">🧭 Sales CRM (PhiXtra Connect only)</div>
+      <p class="muted" style="margin:0 0 8px;font-size:12px">
+        On by default for every PhiXtra Connect business since 2026-09-08 — this
+        switch is only for turning it OFF for a specific business if ever needed.
+        Only matters on PhiXtra Connect; has zero effect on portal.phixtra.com,
+        where every business already has Sales Pipeline regardless of this switch.
+      </p>
+      <p style="margin:0 0 8px">
+        {% if customer.crm_enabled %}<span class="pill pill-green">Sales CRM: On</span>
+        {% else %}<span class="pill pill-grey">Sales CRM: Off</span>{% endif %}
+      </p>
+      <form method="POST" action="{{ url_for('portal_admin.customer_toggle_crm', customer_id=customer.id) }}"
+            onsubmit="return confirm('{% if customer.crm_enabled %}Turn Sales CRM OFF for this business on PhiXtra Connect?{% else %}Turn Sales CRM ON for this business on PhiXtra Connect? Their Sales Pipeline + Labels pages unlock immediately.{% endif %}')">
+        <button type="submit" class="btn btn-sm">
+          {% if customer.crm_enabled %}Turn CRM off{% else %}Turn CRM on{% endif %}
+        </button>
+      </form>
+    </div>
+
     <!-- ── Change Customer Email ── -->
     <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
       <div class="card-title" style="margin-bottom:8px">✏️ Change Customer Email</div>

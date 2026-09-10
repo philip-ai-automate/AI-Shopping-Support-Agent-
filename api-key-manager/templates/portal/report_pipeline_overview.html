@@ -1,0 +1,228 @@
+{% extends "portal/base.html" %}
+{% block title %}Pipeline Overview — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  .report-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:24px}
+  .report-title{font-size:22px;font-weight:800;letter-spacing:-.3px}
+  .export-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .export-bar span{font-size:13px;color:var(--muted);font-weight:600}
+  .period-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:6px}
+  .period-tabs{display:flex;gap:6px;flex-wrap:wrap}
+  .period-tab{padding:7px 16px;border-radius:20px;border:1px solid var(--line);font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;color:var(--muted);background:#fff;transition:.15s}
+  .period-tab:hover{border-color:var(--ink);color:var(--ink);text-decoration:none}
+  .period-tab.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .custom-range-form{display:flex;align-items:center;gap:6px}
+  .custom-range-form input[type="date"]{padding:6px 9px;font-size:12.5px;border-radius:10px;border:1px solid rgba(3,12,24,0.18);width:auto}
+  .custom-range-form span{font-size:12px;color:var(--muted)}
+  .custom-range-form .btn-sm{padding:6px 12px}
+  .period-note{font-size:12px;color:var(--muted);margin-bottom:20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .period-reset{font-size:12px;font-weight:600;color:var(--ink);text-decoration:underline}
+  .grid.g4{grid-template-columns:repeat(4,1fr)}
+  @media(max-width:860px){ .grid.g4{grid-template-columns:1fr 1fr} }
+  @media(max-width:520px){ .grid.g4{grid-template-columns:1fr} }
+
+  .funnel-card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:26px 26px 22px;box-shadow:var(--shadow);margin-bottom:20px}
+  .funnel-card h3{font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
+  .funnel-hint{font-size:11.5px;color:var(--muted);margin-bottom:16px}
+  .frow{display:flex;align-items:center;gap:16px;margin-bottom:10px}
+  .frow:last-child{margin-bottom:0}
+  .fbar-wrap{flex:1;display:flex;justify-content:center;min-width:0}
+  .fbar{height:34px;border-radius:8px;display:flex;align-items:center;padding:0 14px;color:#fff;font-size:12.5px;font-weight:700;white-space:nowrap;min-width:56px}
+  .flabel{width:130px;flex-shrink:0;font-size:12.5px;font-weight:650;color:var(--ink);text-align:right}
+  .fmeta{width:170px;flex-shrink:0;font-size:12px;color:var(--muted);text-align:left}
+  .fmeta b{color:var(--ink);font-weight:700}
+
+  .two-col{display:grid;grid-template-columns:1.3fr 1fr;gap:16px}
+  @media(max-width:860px){ .two-col{grid-template-columns:1fr} }
+  .bench-card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:var(--shadow)}
+  .bench-card h3{font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:16px}
+  .bench-row{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .bench-row:last-child{margin-bottom:0}
+  .bench-label{width:120px;flex-shrink:0;font-size:12px;color:var(--muted);font-weight:600}
+  .bench-track{flex:1;height:9px;border-radius:5px;background:rgba(3,12,24,0.06);overflow:hidden}
+  .bench-fill{height:100%;border-radius:5px;background:var(--ink)}
+  .bench-days{width:60px;flex-shrink:0;font-size:12.5px;font-weight:700;color:var(--ink);text-align:right}
+  .stage-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:7px}
+</style>
+{% endblock %}
+
+{% block content %}
+
+{% set _stage_colors = {
+  'new_lead':'#C7CDD6', 'contacted':'#8C9AAE', 'qualified':'#586D8A',
+  'proposal_sent':'#334966', 'negotiating':'#0F2340', 'won':'#12B76A'
+} %}
+{% set _open_order = ['new_lead','contacted','qualified','proposal_sent','negotiating'] %}
+{% set _max_count = ([1] + open_stages|map(attribute='count')|list)|max %}
+
+<div class="report-header">
+  <div>
+    <div class="report-title">📈 Pipeline Overview</div>
+    <div class="muted" style="margin-top:4px">Every open deal, by stage — how many, what they're worth, and how long they sit before moving.</div>
+  </div>
+  <div class="export-bar">
+    <span>Export:</span>
+    {% if is_custom %}
+    <a class="btn btn-sm" href="{{ url_for('portal.report_pipeline_overview_export', fmt='csv', date_from=date_from, date_to=date_to) }}">🧾 CSV</a>
+    <a class="btn btn-sm" href="{{ url_for('portal.report_pipeline_overview_export', fmt='xlsx', date_from=date_from, date_to=date_to) }}">📊 Excel</a>
+    <a class="btn btn-sm" href="{{ url_for('portal.report_pipeline_overview_export', fmt='pdf', date_from=date_from, date_to=date_to) }}">📄 PDF</a>
+    {% else %}
+    <a class="btn btn-sm" href="{{ url_for('portal.report_pipeline_overview_export', fmt='csv', days=days) }}">🧾 CSV</a>
+    <a class="btn btn-sm" href="{{ url_for('portal.report_pipeline_overview_export', fmt='xlsx', days=days) }}">📊 Excel</a>
+    <a class="btn btn-sm" href="{{ url_for('portal.report_pipeline_overview_export', fmt='pdf', days=days) }}">📄 PDF</a>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Period selector -->
+<div class="period-row">
+  <div class="period-tabs">
+    <a href="?days=7"  class="period-tab {% if days==7  and not is_custom %}active{% endif %}">Last 7 days</a>
+    <a href="?days=30" class="period-tab {% if days==30 and not is_custom %}active{% endif %}">Last 30 days</a>
+    <a href="?days=90" class="period-tab {% if days==90 and not is_custom %}active{% endif %}">Last 90 days</a>
+  </div>
+  <form method="get" action="{{ url_for('portal.report_pipeline_overview') }}" class="custom-range-form">
+    <input type="date" name="date_from" value="{{ date_from }}">
+    <span>to</span>
+    <input type="date" name="date_to" value="{{ date_to }}">
+    <button type="submit" class="btn btn-sm {% if is_custom %}period-tab active{% endif %}">Apply custom range</button>
+  </form>
+</div>
+<div class="period-note">
+  <span>Applies to Won / Lost / Dropped, Win Rate and Avg. Time to Close below — {{ period_label }}. Active Deals and Open Value are always right now, not a period sum.</span>
+  {% if is_custom %}<a href="?days=30" class="period-reset">Reset to last 30 days</a>{% endif %}
+</div>
+
+<!-- KPI Cards -->
+<div class="grid g4" style="margin-bottom:20px">
+  <div class="card card-sm">
+    <div class="card-title">Active Deals</div>
+    <div class="kpi">{{ active_deals }}</div>
+  </div>
+  <div class="card card-sm">
+    <div class="card-title">Open Pipeline Value</div>
+    <div class="kpi">₦{{ "{:,.0f}".format(open_value) }}</div>
+  </div>
+  <div class="card card-sm">
+    <div class="card-title">Won</div>
+    <div class="kpi">₦{{ "{:,.0f}".format(won_value) }}</div>
+    <div class="muted" style="margin-top:4px">{{ won_count }} deal{{ 's' if won_count != 1 }}</div>
+  </div>
+  <div class="card card-sm">
+    <div class="card-title">Win Rate</div>
+    <div class="kpi">{{ "%.1f"|format(win_rate) ~ '%' if win_rate is not none else '—' }}</div>
+    <div class="muted" style="margin-top:4px">Won ÷ (Won + Lost)</div>
+  </div>
+</div>
+<div class="grid g3" style="margin-bottom:20px">
+  <div class="card card-sm">
+    <div class="card-title">Lost</div>
+    <div class="kpi-sm">{{ lost_count }}</div>
+  </div>
+  <div class="card card-sm">
+    <div class="card-title">Dropped</div>
+    <div class="kpi-sm">{{ dropped_count }}</div>
+  </div>
+  <div class="card card-sm">
+    <div class="card-title">Avg. Time to Close</div>
+    <div class="kpi-sm">{{ "%.1f"|format(avg_days_to_close) ~ ' days' if avg_days_to_close is not none else '—' }}</div>
+  </div>
+</div>
+
+<!-- Funnel -->
+<div class="funnel-card">
+  <h3>Funnel — deals by stage</h3>
+  <div class="funnel-hint">Bar width = number of deals right now</div>
+
+  {% for stage in _open_order %}
+    {% set s = (open_stages|selectattr('stage','equalto',stage)|first) %}
+    {% set count = s.count if s else 0 %}
+    {% set pct = ((count / _max_count) * 100)|round(0, 'floor') %}
+    <div class="frow">
+      <div class="flabel">{{ stage_labels.get(stage, stage) }}</div>
+      <div class="fbar-wrap">
+        <div class="fbar" style="width:{{ [pct, 8]|max }}%;background:{{ _stage_colors[stage] }};{% if stage=='new_lead' %}color:#030C18{% endif %}">
+          {{ count }} deal{{ 's' if count != 1 }}
+        </div>
+      </div>
+      <div class="fmeta">
+        {% if s and s.total_value %}<b>₦{{ "{:,.0f}".format(s.total_value) }}</b> open{% else %}—{% endif %}
+      </div>
+    </div>
+  {% endfor %}
+
+  <div class="frow">
+    <div class="flabel">{{ stage_labels.get('won', 'Won') }}</div>
+    <div class="fbar-wrap">
+      {% set won_pct = ((won_count / _max_count) * 100)|round(0, 'floor') %}
+      <div class="fbar" style="width:{{ [won_pct, 8]|max }}%;background:{{ _stage_colors['won'] }}">
+        {{ won_count }} deal{{ 's' if won_count != 1 }}
+      </div>
+    </div>
+    <div class="fmeta">
+      {% if won_value %}<b>₦{{ "{:,.0f}".format(won_value) }}</b> closed{% else %}—{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="two-col">
+  <div>
+    <div class="card" style="margin-bottom:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <h3 style="font-size:15px;font-weight:700">Deals by stage</h3>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Stage</th><th>Deals</th><th>Total Value</th><th>Avg. Deal Size</th></tr>
+          </thead>
+          <tbody>
+            {% for stage in _open_order %}
+              {% set s = (open_stages|selectattr('stage','equalto',stage)|first) %}
+              <tr>
+                <td><span class="stage-dot" style="background:{{ _stage_colors[stage] }}"></span>{{ stage_labels.get(stage, stage) }}</td>
+                <td>{{ s.count if s else 0 }}</td>
+                <td>{% if s and s.total_value %}₦{{ "{:,.0f}".format(s.total_value) }}{% else %}—{% endif %}</td>
+                <td>{% if s and s.total_value %}₦{{ "{:,.0f}".format(s.avg_value) }}{% else %}—{% endif %}</td>
+              </tr>
+            {% endfor %}
+            <tr>
+              <td><span class="stage-dot" style="background:{{ _stage_colors['won'] }}"></span>{{ stage_labels.get('won', 'Won') }}</td>
+              <td>{{ won_count }}</td>
+              <td>{% if won_value %}₦{{ "{:,.0f}".format(won_value) }}{% else %}—{% endif %}</td>
+              <td>{% if won_value %}₦{{ "{:,.0f}".format(avg_deal_size) }}{% else %}—{% endif %}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="bench-card">
+      <h3>Avg. time in each stage</h3>
+      {% set _stage_next_label = {
+        'new_lead':'New → Contacted', 'contacted':'→ Qualified', 'qualified':'→ Proposal',
+        'proposal_sent':'→ Negotiating', 'negotiating':'→ Won'
+      } %}
+      {% set _max_bench = ([1] + stage_times|selectattr('avg_days','ne',none)|map(attribute='avg_days')|list)|max %}
+      {% for st in stage_times %}
+        <div class="bench-row">
+          <div class="bench-label">{{ _stage_next_label.get(st.stage, st.stage) }}</div>
+          <div class="bench-track">
+            {% if st.avg_days is not none %}
+            <div class="bench-fill" style="width:{{ ((st.avg_days / _max_bench) * 100)|round(0,'floor') }}%;{% if st.stage=='negotiating' %}background:#12B76A{% endif %}"></div>
+            {% endif %}
+          </div>
+          <div class="bench-days">{{ (st.avg_days ~ 'd') if st.avg_days is not none else '—' }}</div>
+        </div>
+      {% endfor %}
+      <div class="muted" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
+        Measured from real stage changes, all-time — not limited to the period above.
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

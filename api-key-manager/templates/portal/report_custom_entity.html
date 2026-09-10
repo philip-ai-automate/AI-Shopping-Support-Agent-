@@ -1,0 +1,403 @@
+{% extends "portal/base.html" %}
+{% block title %}{{ spec.label }} Report — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  .crumb{font-size:12px;color:var(--muted);margin-bottom:10px}
+  .crumb a{color:var(--muted)}
+  .crumb b{color:var(--ink);font-weight:650}
+  .report-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:6px}
+  .report-title{font-size:22px;font-weight:800;letter-spacing:-.3px}
+  .export-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .export-bar span{font-size:13px;color:var(--muted);font-weight:600}
+
+  .builder-card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:var(--shadow);margin:20px 0}
+  .builder-section{margin-bottom:18px}
+  .builder-section:last-of-type{margin-bottom:0}
+  .builder-label{font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px}
+
+  /* ── Multi-select dropdown — same reusable component as the Contacts page
+       filter panel (templates/portal/whatsapp_contacts.html), copied exactly
+       rather than re-invented, per explicit instruction 2026-09-10: every
+       report selection must be a dropdown with a multi-select box. ── */
+  .msdd-row{display:flex;gap:10px;flex-wrap:wrap}
+  .msdd{position:relative}
+  .msdd-trigger{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border-radius:9px;
+    font-size:13px;font-weight:600;background:#fff;border:1.5px solid #e5e7eb;color:var(--ink);
+    cursor:pointer;white-space:nowrap;font-family:inherit}
+  .msdd-trigger:hover{border-color:#cbd5e1}
+  .msdd.has-selection .msdd-trigger{background:#1e293b;border-color:#1e293b;color:#fff}
+  .msdd-chevron{transition:transform .15s;flex-shrink:0}
+  .msdd.open .msdd-chevron{transform:rotate(180deg)}
+  .msdd-panel{display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:40;
+    width:240px;background:#fff;border:1px solid rgba(3,12,24,.1);border-radius:11px;
+    box-shadow:0 10px 30px rgba(0,0,0,.12);padding:10px}
+  .msdd.open .msdd-panel{display:block}
+  .msdd-options{max-height:230px;overflow-y:auto;display:flex;flex-direction:column;gap:1px}
+  .msdd-option{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:7px;font-size:12.5px;color:var(--ink);cursor:pointer;user-select:none}
+  .msdd-option:hover{background:#f1f5f9}
+  .msdd-option input{width:14px;height:14px;accent-color:#25D366;cursor:pointer;flex-shrink:0}
+
+  .period-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .period-tab{padding:7px 16px;border-radius:20px;border:1px solid var(--line);font-size:13px;font-weight:600;cursor:pointer;color:var(--muted);background:#fff;font-family:inherit}
+  .period-tab.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .custom-range{display:flex;align-items:center;gap:6px}
+  .custom-range input[type="date"]{padding:6px 9px;font-size:12.5px;border-radius:10px;border:1px solid rgba(3,12,24,0.18)}
+  .custom-range span{font-size:12px;color:var(--muted)}
+
+  .generate-row{display:flex;align-items:center;gap:12px;margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
+
+  .results-count{font-size:13px;color:var(--muted);margin-bottom:12px}
+  .pager{display:flex;align-items:center;gap:10px;margin-top:16px;justify-content:center}
+  .pager span{font-size:12.5px;color:var(--muted)}
+
+  .group-select{padding:8px 12px;border-radius:9px;border:1.5px solid #e5e7eb;font-size:13px;font-weight:600;
+    color:var(--ink);background:#fff;font-family:inherit;cursor:pointer;max-width:220px}
+
+  .group-card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:var(--shadow);margin-bottom:20px}
+  .grp-row{display:flex;align-items:center;gap:10px;margin-bottom:13px}
+  .grp-row:last-child{margin-bottom:0}
+  .grp-label{width:220px;flex-shrink:0;font-size:12.5px;font-weight:600;color:var(--txt);white-space:normal;line-height:1.3}
+  .grp-track{flex:1;height:16px;border-radius:6px;background:rgba(3,12,24,0.05);overflow:hidden}
+  .grp-fill{height:100%;border-radius:6px;background:#2a78d6}
+  .grp-val{width:150px;flex-shrink:0;font-size:12.5px;font-weight:700;color:var(--ink);text-align:right}
+  .grp-totals{display:flex;justify-content:space-between;font-size:13px;font-weight:700;color:var(--ink);
+    margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+
+  /* ── Saved reports — same component as the Contacts page's "Saved Views"
+       (templates/portal/whatsapp_contacts.html), reused verbatim. ── */
+  .pill-row{display:flex;flex-wrap:wrap;gap:7px}
+  .saved-view-pill{display:inline-flex;align-items:center;gap:4px;padding:2px 3px 2px 12px;border-radius:20px;
+    font-size:12.5px;font-weight:700;background:#fff;border:1.5px solid #e5e7eb;color:#475569}
+  .saved-view-pill.active{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8}
+  .saved-view-pill a{color:inherit;text-decoration:none;padding:4px 0}
+  .saved-view-pill a:hover{text-decoration:underline}
+  .saved-view-pill form{display:inline-flex;margin:0}
+  .saved-view-pill button{width:18px;height:18px;border-radius:50%;border:none;background:transparent;color:#94a3b8;
+    font-size:11px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+  .saved-view-pill button:hover{background:rgba(3,12,24,.08);color:#dc2626}
+  .save-view-trigger{font-size:12.5px;color:#2563eb;font-weight:700;cursor:pointer;background:none;border:none;padding:0;font-family:inherit}
+  .save-view-row{display:none;align-items:center;gap:8px}
+  .save-view-row.open{display:flex}
+  .save-view-name-input{padding:7px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:12.5px;font-family:inherit;width:180px}
+  .btn-save{padding:9px 20px;border-radius:9px;border:none;background:#0f172a;color:#fff;font-size:13px;font-weight:700;cursor:pointer;transition:.15s}
+  .btn-save:hover{background:#1e293b}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="crumb"><a href="{{ url_for('portal.report_custom_picker') }}">Custom Report</a> / <b>{{ spec.label }}</b></div>
+
+<div class="report-header">
+  <div>
+    <div class="report-title">{{ spec.icon }} {{ spec.label }} Report</div>
+    <div class="muted" style="margin-top:4px">{{ spec.desc }}</div>
+  </div>
+  <div class="export-bar">
+    <span>Export:</span>
+    <a class="btn btn-sm" href="{{ url_for('portal.report_custom_entity_export', entity=entity, fmt='csv') }}?{{ request.query_string.decode() }}">🧾 CSV</a>
+    <a class="btn btn-sm" href="{{ url_for('portal.report_custom_entity_export', entity=entity, fmt='xlsx') }}?{{ request.query_string.decode() }}">📊 Excel</a>
+    <a class="btn btn-sm" href="{{ url_for('portal.report_custom_entity_export', entity=entity, fmt='pdf') }}?{{ request.query_string.decode() }}">📄 PDF</a>
+  </div>
+</div>
+
+{% if saved_views %}
+<div class="builder-section" style="margin-bottom:14px">
+  <div class="builder-label">Saved Reports</div>
+  <div class="pill-row">
+    {% for view in saved_views %}
+    <span class="saved-view-pill {{ 'active' if view.active else '' }}">
+      <a href="{{ view.apply_url }}">{{ view.name }}</a>
+      <form method="POST" action="{{ url_for('portal.report_custom_delete_view', entity=entity, view_id=view.id) }}"
+            onsubmit="return confirm('Delete the saved report &quot;{{ view.name }}&quot;? This only removes the shortcut — no data is affected.')">
+        <button type="submit" title="Delete this saved report">✕</button>
+      </form>
+    </span>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<form method="get" action="{{ url_for('portal.report_custom_entity', entity=entity) }}" id="reportForm">
+
+  <div class="builder-card">
+
+    {% if group_by_options %}
+    <div class="builder-section">
+      <div class="builder-label">Group by</div>
+      <select name="group_by" class="group-select" onchange="this.form.submit()">
+        <option value="">— No grouping (list every record) —</option>
+        {% for g in group_by_options %}
+        <option value="{{ g.key }}" {% if group_by == g.key %}selected{% endif %}>{{ g.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+
+    {% if not group_by %}
+    <div class="builder-section">
+      <div class="builder-label">Columns</div>
+      <div class="msdd-row">
+        <div class="msdd {{ 'has-selection' if selected_cols else '' }}">
+          <button type="button" class="msdd-trigger" onclick="toggleMsdd(this)">
+            <span>{{ 'Columns (' ~ selected_cols|length ~ ')' if selected_cols else 'Columns' }}</span>
+            <svg class="msdd-chevron" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="msdd-panel">
+            <div class="msdd-options">
+              {% for c in spec.columns %}
+              <label class="msdd-option">
+                <input type="checkbox" name="col" value="{{ c.key }}" {% if c.key in selected_cols %}checked{% endif %} onchange="updateMsddLabel(this,'Columns')">
+                <span>{{ c.label }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if entity == 'leads' %}
+    <div class="builder-section">
+      <div class="builder-label">Filter by</div>
+      <div class="msdd-row">
+        {% set sel_stage = args.getlist('stage') %}
+        <div class="msdd {{ 'has-selection' if sel_stage else '' }}">
+          <button type="button" class="msdd-trigger" onclick="toggleMsdd(this)">
+            <span>{{ 'Stage (' ~ sel_stage|length ~ ')' if sel_stage else 'Stage' }}</span>
+            <svg class="msdd-chevron" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="msdd-panel">
+            <div class="msdd-options">
+              {% for st in pipeline_stage_order %}
+              <label class="msdd-option">
+                <input type="checkbox" name="stage" value="{{ st }}" {% if st in sel_stage %}checked{% endif %} onchange="updateMsddLabel(this,'Stage')">
+                <span>{{ stage_labels.get(st, st) }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+        {% set sel_source = args.getlist('source') %}
+        <div class="msdd {{ 'has-selection' if sel_source else '' }}">
+          <button type="button" class="msdd-trigger" onclick="toggleMsdd(this)">
+            <span>{{ 'Source (' ~ sel_source|length ~ ')' if sel_source else 'Source' }}</span>
+            <svg class="msdd-chevron" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="msdd-panel">
+            <div class="msdd-options">
+              <label class="msdd-option"><input type="checkbox" name="source" value="whatsapp" {% if 'whatsapp' in sel_source %}checked{% endif %} onchange="updateMsddLabel(this,'Source')"><span>WhatsApp</span></label>
+              <label class="msdd-option"><input type="checkbox" name="source" value="manual" {% if 'manual' in sel_source %}checked{% endif %} onchange="updateMsddLabel(this,'Source')"><span>Manual Entry</span></label>
+              <label class="msdd-option"><input type="checkbox" name="source" value="none" {% if 'none' in sel_source %}checked{% endif %} onchange="updateMsddLabel(this,'Source')"><span>Not recorded</span></label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% elif entity == 'contacts' %}
+    <div class="builder-section">
+      <div class="builder-label">Filter by</div>
+      <div class="msdd-row">
+        {% set sel_status = args.getlist('status') %}
+        <div class="msdd {{ 'has-selection' if sel_status else '' }}">
+          <button type="button" class="msdd-trigger" onclick="toggleMsdd(this)">
+            <span>{{ 'Status (' ~ sel_status|length ~ ')' if sel_status else 'Status' }}</span>
+            <svg class="msdd-chevron" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="msdd-panel">
+            <div class="msdd-options">
+              {% for st in ['lead','prospect','customer','inactive'] %}
+              <label class="msdd-option">
+                <input type="checkbox" name="status" value="{{ st }}" {% if st in sel_status %}checked{% endif %} onchange="updateMsddLabel(this,'Status')">
+                <span>{{ st.title() }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% elif entity == 'companies' %}
+    <div class="builder-section">
+      <div class="builder-label">Search by name</div>
+      <input type="text" name="q" value="{{ args.get('q','') }}" placeholder="e.g. TechMart" style="max-width:280px">
+    </div>
+    {% elif entity == 'campaigns' %}
+    <div class="builder-section">
+      <div class="builder-label">Filter by</div>
+      <div class="msdd-row">
+        {% set sel_campaign = args.getlist('campaign_id') %}
+        <div class="msdd {{ 'has-selection' if sel_campaign else '' }}">
+          <button type="button" class="msdd-trigger" onclick="toggleMsdd(this)">
+            <span>{{ 'Campaign (' ~ sel_campaign|length ~ ')' if sel_campaign else 'Campaign' }}</span>
+            <svg class="msdd-chevron" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="msdd-panel">
+            <div class="msdd-options">
+              {% for camp in campaign_options %}
+              <label class="msdd-option">
+                <input type="checkbox" name="campaign_id" value="{{ camp.id }}" {% if camp.id|string in sel_campaign %}checked{% endif %} onchange="updateMsddLabel(this,'Campaign')">
+                <span>{{ camp.name }}</span>
+              </label>
+              {% endfor %}
+              {% if not campaign_options %}
+              <p class="muted" style="margin:4px 2px">No campaigns sent yet.</p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        {% set sel_cstatus = args.getlist('status') %}
+        <div class="msdd {{ 'has-selection' if sel_cstatus else '' }}">
+          <button type="button" class="msdd-trigger" onclick="toggleMsdd(this)">
+            <span>{{ 'Status (' ~ sel_cstatus|length ~ ')' if sel_cstatus else 'Status' }}</span>
+            <svg class="msdd-chevron" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="msdd-panel">
+            <div class="msdd-options">
+              {% for st_key, st_label in campaign_status_labels.items() %}
+              <label class="msdd-option">
+                <input type="checkbox" name="status" value="{{ st_key }}" {% if st_key in sel_cstatus %}checked{% endif %} onchange="updateMsddLabel(this,'Status')">
+                <span>{{ st_label }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="builder-section">
+      <div class="builder-label">Date range ({{ 'sent' if entity == 'campaigns' else 'created' }})</div>
+      <div class="period-row">
+        <button type="submit" name="days" value="7"  class="period-tab {% if days==7  and not is_custom %}active{% endif %}">Last 7 days</button>
+        <button type="submit" name="days" value="30" class="period-tab {% if days==30 and not is_custom %}active{% endif %}">Last 30 days</button>
+        <button type="submit" name="days" value="90" class="period-tab {% if days==90 and not is_custom %}active{% endif %}">Last 90 days</button>
+        <div class="custom-range">
+          <input type="date" name="date_from" value="{{ date_from }}">
+          <span>to</span>
+          <input type="date" name="date_to" value="{{ date_to }}">
+        </div>
+      </div>
+    </div>
+
+    <div class="generate-row">
+      <button type="submit" class="btn btn-primary">Generate report</button>
+      <span class="muted">{{ period_label }}</span>
+      <span style="flex:1"></span>
+      <button type="button" class="save-view-trigger" id="saveViewTrigger" onclick="toggleSaveViewRow()">☆ Save this report</button>
+      <div class="save-view-row" id="saveViewRow">
+        <input type="text" class="save-view-name-input" id="saveViewName" placeholder="Name this report…" autocomplete="off" maxlength="100">
+        <button type="button" class="btn-save" style="padding:6px 14px;font-size:12px" onclick="saveCurrentReport()">Save</button>
+        <span id="saveViewMsg" style="font-size:11.5px"></span>
+      </div>
+    </div>
+
+  </div>
+</form>
+
+{% if group_by %}
+  {% set group_label = (group_by_options|selectattr('key','equalto',group_by)|first).label %}
+  {% set total_count = group_rows|sum(attribute='count') %}
+  {% set max_count = ([1] + group_rows|map(attribute='count')|list)|max %}
+  <div class="results-count">Grouped by {{ group_label }} — {{ total_count }} result{{ 's' if total_count != 1 }}</div>
+  <div class="group-card">
+    {% for g in group_rows %}
+    <div class="grp-row">
+      <div class="grp-label">{{ g.label }}</div>
+      <div class="grp-track"><div class="grp-fill" style="width:{{ ((g.count / max_count) * 100)|round(0,'floor') }}%"></div></div>
+      <div class="grp-val">{{ g.count }}{% if has_value_sum %} &middot; ₦{{ "{:,.0f}".format(g.value) }}{% endif %}</div>
+    </div>
+    {% endfor %}
+    {% if not group_rows %}
+    <div class="muted" style="text-align:center;padding:20px">No results match these filters.</div>
+    {% endif %}
+    <div class="grp-totals">
+      <span>Total</span>
+      <span>{{ total_count }}{% if has_value_sum %} &middot; ₦{{ "{:,.0f}".format(group_rows|sum(attribute='value')) }}{% endif %}</span>
+    </div>
+  </div>
+{% else %}
+<div class="results-count">{{ total }} result{{ 's' if total != 1 }}{% if total > per_page %} · showing {{ ((page-1)*per_page)+1 }}–{{ [page*per_page, total]|min }}{% endif %}</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        {% for c in col_specs %}<th>{{ c.label }}</th>{% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% if rows %}
+        {% for row in rows %}
+        <tr>
+          {% for cell in row %}<td>{{ cell }}</td>{% endfor %}
+        </tr>
+        {% endfor %}
+      {% else %}
+        <tr><td colspan="{{ col_specs|length }}" style="text-align:center;color:var(--muted);padding:28px">No results match these filters.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+{% if total_pages > 1 %}
+<div class="pager">
+  {% if prev_url %}<a class="btn btn-sm" href="{{ prev_url }}">← Prev</a>{% endif %}
+  <span>Page {{ page }} of {{ total_pages }}</span>
+  {% if next_url %}<a class="btn btn-sm" href="{{ next_url }}">Next →</a>{% endif %}
+</div>
+{% endif %}
+{% endif %}
+
+<script>
+  // Multi-select dropdown — same behavior as the Contacts page filter panel,
+  // reused verbatim (templates/portal/whatsapp_contacts.html).
+  function toggleMsdd(btn) {
+    var dd = btn.closest('.msdd')
+    var wasOpen = dd.classList.contains('open')
+    document.querySelectorAll('.msdd.open').forEach(function (el) { el.classList.remove('open') })
+    if (!wasOpen) dd.classList.add('open')
+  }
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('.msdd')) return
+    document.querySelectorAll('.msdd.open').forEach(function (el) { el.classList.remove('open') })
+  })
+  function updateMsddLabel(checkbox, baseLabel) {
+    var dd = checkbox.closest('.msdd')
+    var labelEl = dd.querySelector('.msdd-trigger span')
+    var count = dd.querySelectorAll('.msdd-options input:checked').length
+    labelEl.textContent = count ? (baseLabel + ' (' + count + ')') : baseLabel
+    dd.classList.toggle('has-selection', count > 0)
+  }
+
+  // Saved reports — same behavior as the Contacts page's "Save this filter
+  // as a view" (templates/portal/whatsapp_contacts.html), reused verbatim.
+  function toggleSaveViewRow() {
+    var row = document.getElementById('saveViewRow')
+    var open = row.classList.toggle('open')
+    document.getElementById('saveViewTrigger').style.display = open ? 'none' : ''
+    if (open) document.getElementById('saveViewName').focus()
+  }
+  function saveCurrentReport() {
+    var nameInput = document.getElementById('saveViewName')
+    var msg = document.getElementById('saveViewMsg')
+    var name = nameInput.value.trim()
+    if (!name) { msg.style.color = '#dc2626'; msg.textContent = 'Please name this report.'; return }
+
+    var fd = new FormData(document.getElementById('reportForm'))
+    fd.set('name', name)
+    msg.style.color = '#64748b'; msg.textContent = 'Saving…'
+
+    fetch('{{ url_for("portal.report_custom_save_view", entity=entity) }}', { method: 'POST', body: fd })
+      .then(function (r) { return r.json() })
+      .then(function (data) {
+        if (data.error) { msg.style.color = '#dc2626'; msg.textContent = data.error; return }
+        window.location.href = data.apply_url
+      })
+      .catch(function () { msg.style.color = '#dc2626'; msg.textContent = 'Could not save — check your connection.' })
+  }
+</script>
+
+{% endblock %}

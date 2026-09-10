@@ -1,0 +1,140 @@
+{% extends "portal/base.html" %}
+{% block title %}Leads & Sources — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  .report-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:24px}
+  .report-title{font-size:22px;font-weight:800;letter-spacing:-.3px}
+  .export-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .export-bar span{font-size:13px;color:var(--muted);font-weight:600}
+  .period-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:6px}
+  .period-tabs{display:flex;gap:6px;flex-wrap:wrap}
+  .period-tab{padding:7px 16px;border-radius:20px;border:1px solid var(--line);font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;color:var(--muted);background:#fff;transition:.15s}
+  .period-tab:hover{border-color:var(--ink);color:var(--ink);text-decoration:none}
+  .period-tab.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .custom-range-form{display:flex;align-items:center;gap:6px}
+  .custom-range-form input[type="date"]{padding:6px 9px;font-size:12.5px;border-radius:10px;border:1px solid rgba(3,12,24,0.18);width:auto}
+  .custom-range-form span{font-size:12px;color:var(--muted)}
+  .custom-range-form .btn-sm{padding:6px 12px}
+  .period-note{font-size:12px;color:var(--muted);margin-bottom:20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .period-reset{font-size:12px;font-weight:600;color:var(--ink);text-decoration:underline}
+
+  .two-col{display:grid;grid-template-columns:1.35fr 1fr;gap:16px}
+  @media(max-width:860px){ .two-col{grid-template-columns:1fr} }
+  .chart-card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:var(--shadow)}
+  .chart-card h3{font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:16px}
+
+  .src-row{display:flex;align-items:center;gap:10px;margin-bottom:13px}
+  .src-row:last-child{margin-bottom:0}
+  .src-label{width:130px;flex-shrink:0;font-size:12.5px;font-weight:600;color:var(--txt)}
+  .src-track{flex:1;height:16px;border-radius:6px;background:rgba(3,12,24,0.05);overflow:hidden}
+  .src-fill{height:100%;border-radius:6px}
+  .src-val{width:96px;flex-shrink:0;font-size:12.5px;font-weight:700;color:var(--ink);text-align:right}
+
+  .kpi-row{display:grid;grid-template-columns:repeat(1,1fr);gap:14px;margin-bottom:20px;max-width:260px}
+</style>
+{% endblock %}
+
+{% block content %}
+
+{% set _src_colors = {'whatsapp':'#2a78d6', 'manual':'#eb6834', 'none':'rgba(3,12,24,0.25)'} %}
+{% set _max_src = ([1] + sources|map(attribute='count')|list)|max %}
+{% set _max_trend = ([1] + trend|map(attribute='count')|list)|max %}
+
+<div class="report-header">
+  <div>
+    <div class="report-title">🔥 Leads &amp; Sources</div>
+    <div class="muted" style="margin-top:4px">How many new leads are coming in, and where they're actually coming from.</div>
+  </div>
+  <div class="export-bar">
+    <span>Export:</span>
+    {% if is_custom %}
+    <a class="btn btn-sm" href="{{ url_for('portal.report_leads_sources_export', fmt='csv', date_from=date_from, date_to=date_to) }}">🧾 CSV</a>
+    <a class="btn btn-sm" href="{{ url_for('portal.report_leads_sources_export', fmt='xlsx', date_from=date_from, date_to=date_to) }}">📊 Excel</a>
+    <a class="btn btn-sm" href="{{ url_for('portal.report_leads_sources_export', fmt='pdf', date_from=date_from, date_to=date_to) }}">📄 PDF</a>
+    {% else %}
+    <a class="btn btn-sm" href="{{ url_for('portal.report_leads_sources_export', fmt='csv', days=days) }}">🧾 CSV</a>
+    <a class="btn btn-sm" href="{{ url_for('portal.report_leads_sources_export', fmt='xlsx', days=days) }}">📊 Excel</a>
+    <a class="btn btn-sm" href="{{ url_for('portal.report_leads_sources_export', fmt='pdf', days=days) }}">📄 PDF</a>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Period selector -->
+<div class="period-row">
+  <div class="period-tabs">
+    <a href="?days=7"  class="period-tab {% if days==7  and not is_custom %}active{% endif %}">Last 7 days</a>
+    <a href="?days=30" class="period-tab {% if days==30 and not is_custom %}active{% endif %}">Last 30 days</a>
+    <a href="?days=90" class="period-tab {% if days==90 and not is_custom %}active{% endif %}">Last 90 days</a>
+  </div>
+  <form method="get" action="{{ url_for('portal.report_leads_sources') }}" class="custom-range-form">
+    <input type="date" name="date_from" value="{{ date_from }}">
+    <span>to</span>
+    <input type="date" name="date_to" value="{{ date_to }}">
+    <button type="submit" class="btn btn-sm {% if is_custom %}period-tab active{% endif %}">Apply custom range</button>
+  </form>
+</div>
+<div class="period-note">
+  <span>{{ period_label }}</span>
+  {% if is_custom %}<a href="?days=30" class="period-reset">Reset to last 30 days</a>{% endif %}
+</div>
+
+<div class="kpi-row">
+  <div class="card card-sm">
+    <div class="card-title">New Leads</div>
+    <div class="kpi">{{ new_leads }}</div>
+  </div>
+</div>
+
+<div class="two-col">
+  <div>
+    <div class="chart-card">
+      <h3>New leads over time {% if trend_bucket == 'week' %}(weekly){% endif %}</h3>
+      {% if trend %}
+      <svg viewBox="0 0 1000 200" width="100%" height="200" preserveAspectRatio="none">
+        <line x1="0" y1="40" x2="1000" y2="40" stroke="rgba(3,12,24,0.06)"/>
+        <line x1="0" y1="100" x2="1000" y2="100" stroke="rgba(3,12,24,0.06)"/>
+        <line x1="0" y1="160" x2="1000" y2="160" stroke="rgba(3,12,24,0.06)"/>
+        {% set n = trend|length %}
+        {% set step = (960 / [(n - 1), 1]|max) %}
+        {% set pts = [] %}
+        {% for pt in trend %}
+          {% set x = (20 + loop.index0 * step)|round(1) %}
+          {% set y = (180 - ((pt.count / _max_trend) * 150))|round(1) %}
+          {% if pts.append(x ~ "," ~ y) %}{% endif %}
+        {% endfor %}
+        <polyline points="{{ pts|join(' ') }}" fill="none" stroke="#030C18" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+        {% for pt in trend %}
+          {% set x = (20 + loop.index0 * step)|round(1) %}
+          {% set y = (180 - ((pt.count / _max_trend) * 150))|round(1) %}
+          <circle cx="{{ x }}" cy="{{ y }}" r="3.5" fill="#030C18"/>
+        {% endfor %}
+      </svg>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px">
+        <span>{{ trend[0].bucket }}</span>
+        {% if trend|length > 1 %}<span>{{ trend[-1].bucket }}</span>{% endif %}
+      </div>
+      {% else %}
+      <div class="muted" style="padding:40px 0;text-align:center">No leads in this period.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div>
+    <div class="chart-card">
+      <h3>Lead source</h3>
+      {% for s in sources %}
+      <div class="src-row">
+        <div class="src-label">{{ s.label }}</div>
+        <div class="src-track"><div class="src-fill" style="width:{{ ((s.count / _max_src) * 100)|round(0,'floor') }}%;background:{{ _src_colors.get(s.key, '#4a3aa7') }}"></div></div>
+        <div class="src-val">{{ s.count }}{% if new_leads %} · {{ ((s.count / new_leads) * 100)|round(0,'floor')|int }}%{% endif %}</div>
+      </div>
+      {% endfor %}
+      <div class="muted" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);line-height:1.5">
+        "Not recorded" is leads created before source tracking existed, or bulk-imported. WhatsApp covers leads created from a Contact, including approved campaign replies.
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

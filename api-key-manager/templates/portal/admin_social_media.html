@@ -1,8 +1,11 @@
 {% extends "portal/admin_base.html" %}
 {% block title %}Social Media Posts — PhiXtra Admin{% endblock %}
 {% block content %}
-{% set can_manage = session.get('portal_admin_role','owner') == 'owner'
+{% set is_owner = session.get('portal_admin_role','owner') == 'owner' %}
+{% set can_manage = is_owner
                      or session.get('portal_admin_permissions', {}).get('social_media', {}).get('create') %}
+{% set can_delete = is_owner
+                     or session.get('portal_admin_permissions', {}).get('social_media', {}).get('delete') %}
 <style>
   .smp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
   .smp-card{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden;display:flex;flex-direction:column}
@@ -45,14 +48,32 @@
                  cursor:pointer;font-size:20px;padding:6px 12px;border-radius:8px;line-height:1}
   .preview-close:hover{background:rgba(255,255,255,0.22)}
   .preview-caption{color:rgba(255,255,255,0.85);font-size:13px;text-align:center;max-width:640px}
+  .smp-buffer-error{font-size:11px;color:var(--bad);margin-top:-2px}
 </style>
 
 <div class="page-header">
   <h1 class="section-title">📣 Social Media Posts</h1>
-  {% if can_manage %}
-  <button class="btn btn-primary" onclick="openUploadModal()">＋ New Post</button>
-  {% endif %}
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    {% if is_owner %}
+    <a class="btn btn-sm" href="{{ url_for('portal_admin.buffer_channels_settings') }}">⚙️ Buffer Channels</a>
+    {% endif %}
+    {% if can_manage %}
+    <button class="btn btn-sm btn-danger" onclick="openUrgentModal()">🚨 Urgent Post</button>
+    <button class="btn btn-primary" onclick="openUploadModal()">＋ New Post</button>
+    {% endif %}
+  </div>
 </div>
+
+{% if is_owner and unmapped_platforms %}
+<div class="card" style="border-color:rgba(247,144,9,0.35);background:rgba(247,144,9,0.06);margin-bottom:16px">
+  <p style="font-size:13px;margin:0">
+    ⚠️ No Buffer channel mapped yet for:
+    <strong>{{ unmapped_platforms|map('title')|join(', ') }}</strong> — posts tagged for
+    {{ 'it' if unmapped_platforms|length == 1 else 'them' }} can't be sent to Buffer until you
+    <a href="{{ url_for('portal_admin.buffer_channels_settings') }}">set that up</a>.
+  </p>
+</div>
+{% endif %}
 
 <p style="font-size:13px;color:var(--muted);margin-bottom:16px">
   {% if ready_count %}
@@ -60,7 +81,8 @@
   {% else %}
     Nothing waiting to be posted right now.
   {% endif %}
-  Download the image, copy the caption, and post it on each tagged platform — then mark it Posted.
+  Send it to Buffer to publish or schedule it automatically, or download the image and post it by
+  hand — then mark it Posted.
 </p>
 
 {% if posts %}
@@ -74,11 +96,17 @@
     <div class="smp-body">
       <div>
         {% if p.status == 'posted' %}
-          <span class="pill pill-green">✓ Posted</span>
+          <span class="pill pill-green">✓ Posted{{ ' via Buffer' if p.posted_by == 'Buffer' else '' }}</span>
+        {% elif p.buffer_status == 'scheduled' %}
+          <span class="pill pill-grey">⏰ Scheduled via Buffer{% if p.scheduled_for %} — {{ p.scheduled_for.strftime('%d %b %Y %H:%M UTC') }}{% endif %}</span>
         {% else %}
           <span class="pill pill-warn">Ready to Post</span>
         {% endif %}
+        {% if p.is_urgent %}<span class="pill pill-red" style="margin-left:4px">🚨 Urgent</span>{% endif %}
       </div>
+      {% if p.buffer_status == 'failed' and p.buffer_error %}
+      <div class="smp-buffer-error">⚠️ Buffer: {{ p.buffer_error }}</div>
+      {% endif %}
       <div class="smp-caption">{{ p.caption }}</div>
       <div class="smp-platforms">
         {% for plat in p.platforms %}
@@ -93,11 +121,21 @@
         <button type="button" class="btn btn-sm"
                 onclick='openPreview("{{ url_for('portal_admin.social_media_post_image', post_id=p.id) }}", {{ p.caption|tojson }})'>🔍 Preview</button>
         <a class="btn btn-sm" href="{{ url_for('portal_admin.social_media_post_download', post_id=p.id) }}" title="Download image">⬇ Download</a>
+        {% if p.status == 'ready' %}
+        <button type="button" class="btn btn-sm btn-primary" onclick="openBufferModal({{ p.id }})">📤 Send to Buffer</button>
+        {% endif %}
+        {% if p.buffer_status == 'scheduled' %}
+        <form method="POST" action="{{ url_for('portal_admin.social_media_post_check_buffer_status', post_id=p.id) }}" style="display:inline">
+          <button type="submit" class="btn btn-sm">🔄 Check Status</button>
+        </form>
+        {% endif %}
         <form method="POST" action="{{ url_for('portal_admin.social_media_post_mark_posted', post_id=p.id) }}" style="display:inline">
           <button type="submit" class="btn btn-sm">{{ 'Move back to Ready' if p.status == 'posted' else '✓ Mark Posted' }}</button>
         </form>
         {% if can_manage %}
         <button class="btn btn-sm" onclick='openEditModal({{ p.id }}, {{ p.caption|tojson }}, {{ p.platforms|tojson }})'>Edit</button>
+        {% endif %}
+        {% if can_delete %}
         <button class="btn btn-sm btn-danger" onclick="openDeleteModal({{ p.id }})">Delete</button>
         {% endif %}
       </div>
@@ -134,6 +172,34 @@ document.addEventListener('keydown', function(e){
 });
 </script>
 
+<!-- Send to Buffer Modal (view+modify logins can send too, not just create) -->
+<div class="modal-over" id="bufferModal">
+  <div class="modal-card" style="max-width:400px">
+    <div class="modal-title">
+      📤 Send to Buffer
+      <button class="modal-close" onclick="closeBufferModal()">✕</button>
+    </div>
+    <form method="POST" id="bufferForm">
+      <label class="modal-label">Schedule for (UTC) <span style="font-weight:400;text-transform:none">— leave blank to publish immediately</span></label>
+      <input type="datetime-local" name="scheduled_for" class="modal-input">
+      <div class="modal-actions">
+        <button type="button" class="btn" onclick="closeBufferModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary" style="flex:1">Send to Buffer</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+function openBufferModal(id){
+  document.getElementById('bufferForm').action = '/admin/social-media/' + id + '/send-to-buffer';
+  document.getElementById('bufferModal').classList.add('open');
+}
+function closeBufferModal(){ document.getElementById('bufferModal').classList.remove('open'); }
+document.getElementById('bufferModal').addEventListener('click', function(e){
+  if (e.target === this) closeBufferModal();
+});
+</script>
+
 {% if can_manage %}
 <!-- Upload Modal -->
 <div class="modal-over" id="uploadModal">
@@ -159,6 +225,39 @@ document.addEventListener('keydown', function(e){
       <div class="modal-actions">
         <button type="button" class="btn" onclick="closeUploadModal()">Cancel</button>
         <button type="submit" class="btn btn-primary" style="flex:1">Add Post</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Urgent Post Modal -->
+<div class="modal-over" id="urgentModal">
+  <div class="modal-card">
+    <div class="modal-title">
+      🚨 Urgent Post
+      <button class="modal-close" onclick="closeUrgentModal()">✕</button>
+    </div>
+    <p style="font-size:12.5px;color:var(--muted);margin:-8px 0 14px">
+      Skips the Ready to Post queue — this publishes via Buffer to every platform you tick the
+      moment you submit it.
+    </p>
+    <form method="POST" action="{{ url_for('portal_admin.social_media_post_urgent') }}" enctype="multipart/form-data">
+      <label class="modal-label">Caption</label>
+      <textarea name="caption" class="modal-input" rows="4" required></textarea>
+
+      <label class="modal-label">Platforms</label>
+      <div class="platform-check-row">
+        {% for key, plat in platforms.items() %}
+        <label class="platform-check"><input type="checkbox" name="platforms" value="{{ key }}"> {{ plat.icon }} {{ plat.label }}</label>
+        {% endfor %}
+      </div>
+
+      <label class="modal-label">Image <span style="font-weight:400;text-transform:none">(JPG, PNG, WEBP, GIF — 15 MB max)</span></label>
+      <input type="file" name="image_file" class="modal-input" accept=".jpg,.jpeg,.png,.webp,.gif" required>
+
+      <div class="modal-actions">
+        <button type="button" class="btn" onclick="closeUrgentModal()">Cancel</button>
+        <button type="submit" class="btn btn-danger" style="flex:1">🚨 Post Now via Buffer</button>
       </div>
     </form>
   </div>
@@ -215,6 +314,9 @@ document.addEventListener('keydown', function(e){
 <script>
 function openUploadModal(){ document.getElementById('uploadModal').classList.add('open'); }
 function closeUploadModal(){ document.getElementById('uploadModal').classList.remove('open'); }
+
+function openUrgentModal(){ document.getElementById('urgentModal').classList.add('open'); }
+function closeUrgentModal(){ document.getElementById('urgentModal').classList.remove('open'); }
 
 function openEditModal(id, caption, platforms){
   document.getElementById('editForm').action = '/admin/social-media/' + id + '/edit';

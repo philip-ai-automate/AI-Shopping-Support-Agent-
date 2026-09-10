@@ -1,0 +1,213 @@
+{% extends "portal/base.html" %}
+{% block title %}Companies — CRM — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+.contacts-hero {
+  background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);
+  border-radius:16px; padding:24px 28px; margin-bottom:20px;
+  display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+}
+.contacts-hero h1 { font-size:21px; font-weight:800; color:#fff; margin:0 0 4px; }
+.contacts-hero p  { font-size:13px; color:rgba(255,255,255,.5); margin:0; }
+.btn-primary-green {
+  display:inline-flex; align-items:center; gap:7px;
+  background:#25D366; color:#fff; font-size:13px; font-weight:700;
+  padding:9px 16px; border-radius:10px; border:none; cursor:pointer; white-space:nowrap;
+}
+
+/* ── Toolbar (search + view toggle) ─────────────────────────────────────── */
+.toolbar { display:flex; align-items:center; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
+.search-wrap{position:relative;flex:1;min-width:200px;max-width:360px}
+.search-wrap input{width:100%;padding:9px 12px 9px 36px;border:1.5px solid #e2e8f0;border-radius:9px;font-size:13px;box-sizing:border-box}
+.search-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#94a3b8}
+
+.view-toggle { display:inline-flex; border:1.5px solid #e2e8f0; border-radius:9px; padding:2px; background:#fff; flex-shrink:0; }
+.view-btn {
+  display:inline-flex; align-items:center; gap:6px; border:none; background:transparent;
+  color:#64748b; font-size:12.5px; font-weight:700; padding:6px 12px; border-radius:7px; cursor:pointer; transition:.12s;
+}
+.view-btn:hover { color:var(--ink); }
+.view-btn.active { background:#0f172a; color:#fff; }
+.view-btn svg { flex-shrink:0; }
+
+/* ── Grid view ───────────────────────────────────────────────────────────── */
+.company-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.company-card{background:#fff;border:1px solid rgba(3,12,24,.08);border-radius:14px;padding:18px 20px;text-decoration:none;color:inherit;display:block;transition:.15s}
+.company-card:hover{border-color:#cbd5e1;box-shadow:0 8px 20px rgba(3,12,24,.08);text-decoration:none}
+.co-avatar{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#c7d2fe,#818cf8);color:#312e81;font-size:16px;font-weight:800;display:flex;align-items:center;justify-content:center;margin-bottom:12px}
+.co-name{font-size:14.5px;font-weight:800;color:var(--ink);margin-bottom:2px}
+.co-site{font-size:12px;color:#2563eb;margin-bottom:12px}
+.co-stats{display:flex;gap:16px;font-size:12px;color:var(--muted)}
+.co-stats b{color:var(--ink);font-weight:700}
+
+/* ── List view ───────────────────────────────────────────────────────────── */
+.section-card { background:#fff; border:1px solid rgba(3,12,24,.08); border-radius:14px; overflow:hidden; }
+.contacts-table { width:100%; border-collapse:collapse; }
+.contacts-table th {
+  font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.06em;
+  padding:10px 16px; text-align:left; background:#f8fafc; border-bottom:1px solid rgba(3,12,24,.07);
+}
+.contacts-table td { padding:11px 16px; font-size:13px; border-bottom:1px solid rgba(3,12,24,.05); vertical-align:middle; }
+.contacts-table tr:last-child td { border-bottom:none; }
+.contacts-table tbody tr { cursor:pointer; }
+.contacts-table tbody tr:hover td { background:#fafbfc; }
+.co-row-name { display:flex; align-items:center; gap:10px; font-weight:700; color:var(--ink); }
+.co-row-avatar{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#c7d2fe,#818cf8);color:#312e81;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.co-row-site { color:#2563eb; }
+.co-row-muted { color:var(--muted); }
+
+.empty-state { display:flex; flex-direction:column; align-items:center; padding:60px 20px; color:var(--muted); text-align:center; }
+.empty-state h3 { font-size:14px; font-weight:700; color:var(--ink); margin:0 0 5px; }
+
+.modal-backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:900; align-items:center; justify-content:center; }
+.modal-backdrop.open { display:flex; }
+.modal-box { background:#fff; border-radius:14px; width:100%; max-width:400px; overflow:hidden; }
+.modal-head { padding:16px 20px; background:#0f172a; }
+.modal-head h2 { font-size:15px; font-weight:700; margin:0; color:#fff; }
+.modal-body { padding:20px; }
+.modal-foot { padding:12px 20px; border-top:1px solid rgba(3,12,24,.07); display:flex; justify-content:flex-end; gap:10px; background:#f8fafc; }
+.field-input{width:100%;padding:10px 13px;border:1.5px solid #e2e8f0;border-radius:9px;font-size:13px;font-family:inherit;box-sizing:border-box;margin-bottom:14px}
+.btn-ghost { padding:9px 16px; border-radius:9px; border:1.5px solid #e2e8f0; background:#fff; font-size:13px; font-weight:600; color:#64748b; cursor:pointer; }
+.btn-save { padding:9px 20px; border-radius:9px; border:none; background:#0f172a; color:#fff; font-size:13px; font-weight:700; cursor:pointer; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="contacts-hero">
+  <div>
+    <h1>Companies</h1>
+    <p>The businesses behind your contacts and deals.</p>
+  </div>
+  <button class="btn-primary-green" onclick="document.getElementById('addModal').classList.add('open')">+ Add Company</button>
+</div>
+
+<div class="toolbar">
+  <form method="GET" class="search-wrap">
+    <span class="search-icon">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </span>
+    <input type="text" name="q" value="{{ search }}" placeholder="Search companies...">
+  </form>
+
+  <div class="view-toggle" role="group" aria-label="Company view">
+    <button type="button" class="view-btn" id="gridViewBtn" onclick="setCompanyView('grid')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      Grid
+    </button>
+    <button type="button" class="view-btn" id="listViewBtn" onclick="setCompanyView('list')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+      List
+    </button>
+  </div>
+</div>
+
+{% if not companies %}
+<div class="empty-state">
+  <h3>No companies yet</h3>
+  <p>Companies are created automatically when a Sales Pipeline deal has a business name, or add one by hand.</p>
+</div>
+{% else %}
+<div class="company-grid" id="companyGrid">
+  {% for co in companies %}
+  <a class="company-card" href="{{ url_for('portal.crm_company_detail', company_id=co.id) }}">
+    <div class="co-avatar">{{ co.name[:2]|upper }}</div>
+    <div class="co-name">{{ co.name }}</div>
+    {% if co.website %}<div class="co-site">{{ co.website }}</div>{% endif %}
+    <div class="co-stats">
+      <span><b>{{ co.people_count }}</b> people</span>
+      <span><b>{{ co.open_deal_count }}</b> open deal{{ 's' if co.open_deal_count != 1 else '' }}</span>
+      {% if co.open_deal_value %}<span><b>₦{{ '{:,.0f}'.format(co.open_deal_value) }}</b></span>{% endif %}
+    </div>
+  </a>
+  {% endfor %}
+</div>
+
+<div class="section-card" id="companyList" style="display:none">
+  <table class="contacts-table">
+    <thead>
+      <tr>
+        <th>Company</th>
+        <th>Website</th>
+        <th>People</th>
+        <th>Open Deals</th>
+        <th>Open Deal Value</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for co in companies %}
+      <tr onclick="window.location='{{ url_for('portal.crm_company_detail', company_id=co.id) }}'">
+        <td>
+          <div class="co-row-name">
+            <div class="co-row-avatar">{{ co.name[:2]|upper }}</div>
+            {{ co.name }}
+          </div>
+        </td>
+        <td class="{{ 'co-row-site' if co.website else 'co-row-muted' }}">{{ co.website or '—' }}</td>
+        <td>{{ co.people_count }}</td>
+        <td>{{ co.open_deal_count }}</td>
+        <td>{% if co.open_deal_value %}₦{{ '{:,.0f}'.format(co.open_deal_value) }}{% else %}<span class="co-row-muted">—</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="modal-backdrop" id="addModal">
+  <div class="modal-box">
+    <div class="modal-head"><h2>Add Company</h2></div>
+    <form method="POST" action="{{ url_for('portal.crm_companies_add') }}">
+      <div class="modal-body">
+        <input class="field-input" type="text" name="name" id="addCoName" placeholder="Company name" required autocomplete="off">
+        <div class="dedupe-warn" id="addCoDedupe"></div>
+        <input class="field-input" type="text" name="website" placeholder="Website (optional)" style="margin-bottom:0">
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn-ghost" onclick="document.getElementById('addModal').classList.remove('open')">Cancel</button>
+        <button type="submit" class="btn-save">Add Company</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function setCompanyView(view) {
+  var grid = document.getElementById('companyGrid');
+  var list = document.getElementById('companyList');
+  var gridBtn = document.getElementById('gridViewBtn');
+  var listBtn = document.getElementById('listViewBtn');
+  if (!grid || !list) return; // no companies to show
+  if (view === 'list') {
+    grid.style.display = 'none';
+    list.style.display = 'block';
+    listBtn.classList.add('active');
+    gridBtn.classList.remove('active');
+  } else {
+    view = 'grid';
+    list.style.display = 'none';
+    grid.style.display = 'grid';
+    gridBtn.classList.add('active');
+    listBtn.classList.remove('active');
+  }
+  try { localStorage.setItem('crm_companies_view', view); } catch (e) {}
+}
+(function () {
+  var saved = 'grid';
+  try { saved = localStorage.getItem('crm_companies_view') || 'grid'; } catch (e) {}
+  setCompanyView(saved);
+})();
+
+/* Duplicate-name warning on the Add Company modal, checked against every
+   company on this tenant (not just the search-filtered list above). */
+var CRM_DEDUPE_COMPANIES = {{ dedupe_companies|tojson }};
+document.addEventListener('DOMContentLoaded', function () {
+  crmDedupeWatch({
+    input: document.getElementById('addCoName'),
+    warnBox: document.getElementById('addCoDedupe'),
+    getCompanies: function () { return CRM_DEDUPE_COMPANIES; },
+    onUse: function (co) { window.location = co.url; }
+  });
+});
+</script>
+{% endblock %}
