@@ -5102,7 +5102,20 @@ def _get_dashboard_campaign_performance(tenant_id: int, date_from, date_to) -> d
     a deliberately different scope from the Sales KPI card (which scopes by
     won_date), same way Pipeline Value is deliberately a different scope
     from Sales. The two numbers answering different questions is intentional,
-    not a bug -- flagged plainly here in case it's ever questioned."""
+    not a bug -- flagged plainly here in case it's ever questioned.
+
+    Revenue de-duplicates by Lead (2026-09-10 fix): nothing stops the SAME
+    pipeline_lead_id being linked from more than one campaign recipient row
+    (e.g. a customer targeted by two different campaigns in the same
+    period) -- a plain SUM over the joined recipient rows would then count
+    that one deal's value once per recipient, not once per deal. Checked
+    live before fixing: zero real duplicates existed in this data, so this
+    was a latent risk, not yet a wrong number -- fixed anyway rather than
+    left to surface later. Same safe correlated-subquery pattern the Custom
+    Report Builder's Companies columns already use for the identical class
+    of problem (see project_phixtra_reports_system memory, 'Real bugs found'
+    #4) -- reused, not invented fresh. The per-campaign 'won' count below
+    gets the equivalent fix (COUNT(DISTINCT ...) instead of COUNT(*))."""
     safe = {
         "sent": 0, "delivered": 0, "read": 0, "replied": 0,
         "opportunities": 0, "converted": 0, "revenue": 0.0,
@@ -5113,18 +5126,26 @@ def _get_dashboard_campaign_performance(tenant_id: int, date_from, date_to) -> d
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         cur.execute("""
+            WITH scoped AS (
+                SELECT wcr.status, wcr.pipeline_lead_id
+                FROM wa_campaign_recipients wcr
+                JOIN wa_campaigns wc ON wc.id = wcr.campaign_id
+                WHERE wc.tenant_id = %(tid)s AND wcr.sent_at::date BETWEEN %(df)s AND %(dt)s
+            )
             SELECT
-                COUNT(*) FILTER (WHERE wcr.status = ANY(%(sent)s))      AS sent,
-                COUNT(*) FILTER (WHERE wcr.status = ANY(%(delivered)s)) AS delivered,
-                COUNT(*) FILTER (WHERE wcr.status = ANY(%(read)s))      AS read,
-                COUNT(*) FILTER (WHERE wcr.status = ANY(%(replied)s))   AS replied,
-                COUNT(*) FILTER (WHERE wcr.status = ANY(%(opp)s))       AS opportunities,
-                COUNT(*) FILTER (WHERE wcr.status = 'converted')        AS converted,
-                COALESCE(SUM(mpl.deal_value) FILTER (WHERE mpl.stage='won'), 0) AS revenue
-            FROM wa_campaign_recipients wcr
-            JOIN wa_campaigns wc ON wc.id = wcr.campaign_id
-            LEFT JOIN merchant_pipeline_leads mpl ON mpl.id = wcr.pipeline_lead_id
-            WHERE wc.tenant_id = %(tid)s AND wcr.sent_at::date BETWEEN %(df)s AND %(dt)s
+                COUNT(*) FILTER (WHERE status = ANY(%(sent)s))      AS sent,
+                COUNT(*) FILTER (WHERE status = ANY(%(delivered)s)) AS delivered,
+                COUNT(*) FILTER (WHERE status = ANY(%(read)s))      AS read,
+                COUNT(*) FILTER (WHERE status = ANY(%(replied)s))   AS replied,
+                COUNT(*) FILTER (WHERE status = ANY(%(opp)s))       AS opportunities,
+                COUNT(*) FILTER (WHERE status = 'converted')        AS converted,
+                (
+                    SELECT COALESCE(SUM(mpl.deal_value), 0)
+                    FROM (SELECT DISTINCT pipeline_lead_id FROM scoped WHERE pipeline_lead_id IS NOT NULL) d
+                    JOIN merchant_pipeline_leads mpl ON mpl.id = d.pipeline_lead_id
+                    WHERE mpl.stage = 'won'
+                ) AS revenue
+            FROM scoped
         """, {
             "sent": list(_CAMPAIGN_AT_LEAST_SENT), "delivered": list(_CAMPAIGN_AT_LEAST_DELIVERED),
             "read": list(_CAMPAIGN_AT_LEAST_READ), "replied": list(_CAMPAIGN_AT_LEAST_REPLIED),
@@ -5137,7 +5158,7 @@ def _get_dashboard_campaign_performance(tenant_id: int, date_from, date_to) -> d
             SELECT wc.id, wc.name,
                 COUNT(*) FILTER (WHERE wcr.status = ANY(%(sent)s))    AS sent,
                 COUNT(*) FILTER (WHERE wcr.status = ANY(%(replied)s)) AS replied,
-                COUNT(*) FILTER (WHERE mpl.stage='won')               AS won
+                COUNT(DISTINCT mpl.id) FILTER (WHERE mpl.stage='won') AS won
             FROM wa_campaign_recipients wcr
             JOIN wa_campaigns wc ON wc.id = wcr.campaign_id
             LEFT JOIN merchant_pipeline_leads mpl ON mpl.id = wcr.pipeline_lead_id
