@@ -197,6 +197,16 @@
         </form>
       </div>
       {% endif %}
+      <div class="tm-card-agents">
+        {% if m.webchat_access %}
+          <span class="tm-agent-tag">💬 Can access Web Chat</span>
+        {% else %}
+          <span class="tm-agent-tag none">⚠️ No Web Chat access</span>
+        {% endif %}
+        <form method="POST" action="{{ url_for('portal.team_update_webchat', member_id=m.id) }}" class="tm-agents-edit">
+          <label class="agent-check"><input type="checkbox" name="webchat_access" {% if m.webchat_access %}checked{% endif %} onchange="this.form.submit()"/> Can access Web Chat (website AI chat handoffs)</label>
+        </form>
+      </div>
     </div>
     {% endfor %}
   </div>

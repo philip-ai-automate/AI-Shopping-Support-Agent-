@@ -519,7 +519,7 @@ def _get_team_members(tenant_id: int, active_only: bool = False) -> list:
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        q = "SELECT id, name, email, role, is_active, invite_token, invite_expires_at, last_login_at, created_at, messenger_access FROM team_members WHERE tenant_id=%s"
+        q = "SELECT id, name, email, role, is_active, invite_token, invite_expires_at, last_login_at, created_at, messenger_access, webchat_access FROM team_members WHERE tenant_id=%s"
         if active_only:
             q += " AND is_active=TRUE"
         q += " ORDER BY created_at ASC"
@@ -675,6 +675,19 @@ def _team_member_has_messenger_access(team_member_id: int) -> bool:
         return False
 
 
+def _team_member_has_webchat_access(team_member_id: int) -> bool:
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT webchat_access FROM team_members WHERE id=%s", (team_member_id,))
+        row = cur.fetchone()
+        cur.close(); conn.close()
+        return bool(row and row[0])
+    except Exception as e:
+        print("⚠️ _team_member_has_webchat_access error:", e)
+        return False
+
+
 def _team_can_access_phone(tenant_id: int, actor: dict, phone: str) -> bool:
     """Owners always pass. A team member only passes if the conversation's
     agent is in their assigned set — zero assignments means zero access,
@@ -682,11 +695,15 @@ def _team_can_access_phone(tenant_id: int, actor: dict, phone: str) -> bool:
     Facebook Messenger has no per-agent concept (a Page isn't tied to any
     one AI Agent persona the way a WhatsApp number is), so it gets its own
     explicit team_members.messenger_access switch instead — flagged urgent
-    2026-09-11, same day Phase 2 shipped without it."""
+    2026-09-11, same day Phase 2 shipped without it. Web Chat (2026-09-18)
+    is the same story — a website-chat session isn't tied to an AI Agent
+    either — so it gets its own team_members.webchat_access switch too."""
     if not actor["is_team"]:
         return True
     if phone.startswith("fb:"):
         return _team_member_has_messenger_access(actor["team_member_id"])
+    if phone.startswith("web:"):
+        return _team_member_has_webchat_access(actor["team_member_id"])
     allowed = _get_team_member_agent_ids(actor["team_member_id"])
     if not allowed:
         return False
@@ -2899,6 +2916,36 @@ def team_update_messenger(member_id: int):
         flash("Messenger access granted. ✅", "success")
     else:
         flash("Messenger access removed.", "warning")
+    return redirect(url_for("portal.team_page"))
+
+
+@portal_bp.route("/team/<int:member_id>/webchat", methods=["POST"])
+def team_update_webchat(member_id: int):
+    """Grant or remove one team member's access to Web Chat (the AI website
+    chat widget's human-handoff conversations) in the shared Inbox. Own
+    switch, same reasoning as Messenger's above — a website-chat session
+    isn't tied to any one AI Agent persona the way a WhatsApp number is."""
+    r = _require_login()
+    if r: return r
+    tenant_id = int(_get_customer(_customer_id())["tenant_id"])
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("SELECT 1 FROM team_members WHERE id=%s AND tenant_id=%s", (member_id, tenant_id))
+    if not cur.fetchone():
+        cur.close(); conn.close()
+        flash("Team member not found.", "danger")
+        return redirect(url_for("portal.team_page"))
+
+    grant = request.form.get("webchat_access") == "on"
+    cur.execute("UPDATE team_members SET webchat_access=%s WHERE id=%s", (grant, member_id))
+    conn.commit()
+    cur.close(); conn.close()
+
+    if grant:
+        flash("Web Chat access granted. ✅", "success")
+    else:
+        flash("Web Chat access removed.", "warning")
     return redirect(url_for("portal.team_page"))
 
 
@@ -21624,12 +21671,12 @@ def my_inbox():
     # brought into the Inbox 2026-09-18 (previously only a Dashboard card,
     # invisible here — see handoff_requests). Always real data for any
     # tenant using the website AI widget, no "connect" step like Messenger.
-    # Same deny-by-default team access as everything else: a scoped team
-    # member only sees this once _team_can_access_phone grants a 'web:' key,
-    # which nothing does yet, so only the owner sees it for now.
+    # Same team gate as Messenger's own explicit switch (2026-09-18 follow-
+    # up), via team_members.webchat_access — owners are always allowed.
     webchat_conversations = []
     webchat_messages = []
-    if not actor["is_team"]:
+    webchat_team_access = (not actor["is_team"]) or _team_member_has_webchat_access(actor["team_member_id"])
+    if webchat_team_access:
         webchat_conversations = _get_webchat_conversations(tenant_id)
         if is_webchat_active:
             if not any(c["key"] == active_phone for c in webchat_conversations):

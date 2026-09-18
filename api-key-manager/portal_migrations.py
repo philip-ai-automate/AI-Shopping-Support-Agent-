@@ -2064,6 +2064,17 @@ def ensure_portal_tables():
             cur.execute("ALTER TABLE team_members ADD COLUMN messenger_access BOOLEAN NOT NULL DEFAULT FALSE")
 
         # ══════════════════════════════════════════════════════════════════
+        # Web Chat team access (2026-09-18, follow-up requested right after
+        # the Web Chat channel shipped). Same reasoning as Messenger's
+        # switch above — a website-chat session isn't tied to any one AI
+        # Agent persona the way a WhatsApp number is, so it gets its own
+        # explicit switch instead of being folded into team_member_agents.
+        # Deny-by-default: FALSE until the owner turns it on for that person.
+        # ══════════════════════════════════════════════════════════════════
+        if not _column_exists(cur, "team_members", "webchat_access"):
+            cur.execute("ALTER TABLE team_members ADD COLUMN webchat_access BOOLEAN NOT NULL DEFAULT FALSE")
+
+        # ══════════════════════════════════════════════════════════════════
         # Web Chat in the shared Inbox (2026-09-18). The AI website chat
         # widget's human-handoff requests (handoff_requests table) used to
         # only ever show as a "pending" card on the Dashboard — invisible
