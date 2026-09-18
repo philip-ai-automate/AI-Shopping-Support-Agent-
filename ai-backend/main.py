@@ -14,7 +14,7 @@ def _validate_products(products):
     return safe
 # ===== End Guard =====
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uuid
@@ -24,7 +24,7 @@ import re as _re
 import psycopg2.extras
 
 from auth import verify_api_key
-from search import search_documents, search_documents_with_meta, search_related_products, upsert_verified_spec
+from search import search_documents, search_documents_with_meta, search_related_products, upsert_verified_spec, _fmt_currency_val
 from llm import ask_llm, classify_relevant_products, classify_campaign_reply
 from db import get_db_connection, insert_audit_log
 from memory_store import (
@@ -420,7 +420,6 @@ def chat(req: ChatRequest):
         system_prompt = req.override_system_prompt
     else:
         system_prompt = tenant["system_prompt"] or ""
-    semantic_config = tenant.get("azure_semantic_config") or ""
 
     # Pending-order context from WA gateway — appended to whichever prompt is active
     if req.system_addon:
@@ -1708,6 +1707,107 @@ def cart_recovery_reply(req: CartRecoveryReplyRequest):
         "reply":      answer,
         "session_id": session_id,
     }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# META BUSINESS AI CONNECTOR (2026-09-12)
+#
+# Lets Meta's own Business Agent search a tenant's real product catalogue
+# mid-conversation, using the exact same search engine PhiXtra's own AI
+# already uses (search_documents_with_meta below) — so a business that
+# switches its WhatsApp number over to Meta's AI doesn't lose real product
+# answers and fall back to a human handoff for every product question.
+#
+# Auth: the same per-tenant phixtra_api_key already used to identify a
+# tenant on the WhatsApp gateway (wa_tenants.phixtra_api_key) — this is a
+# different, separate key system from the bcrypt-hashed api_keys table
+# verify_api_key() above checks; that one is the public developer API,
+# this one is the plain per-tenant key already handed out for exactly this
+# "which tenant is calling" purpose. Duplicated locally rather than
+# imported, since the AI backend and WhatsApp gateway are separate
+# deployable services with no shared import path — same convention already
+# used for _find_matching_pipeline_lead_gw in wa_db.py.
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _lookup_tenant_by_phixtra_key(api_key: str):
+    if not api_key:
+        return None
+    conn = get_db_connection()
+    if not conn:
+        return None
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            "SELECT tenant_id FROM wa_tenants WHERE phixtra_api_key=%s AND active=TRUE LIMIT 1",
+            (api_key,),
+        )
+        row = cur.fetchone()
+        return int(row["tenant_id"]) if row else None
+    finally:
+        cur.close()
+        conn.close()
+
+
+class MetaConnectorSearchRequest(BaseModel):
+    query: str
+
+
+@app.post("/meta-connector/search-products")
+def meta_connector_search_products(
+    req: MetaConnectorSearchRequest,
+    x_phixtra_api_key: str = Header(None, alias="X-PhiXtra-Key"),
+):
+    """The one Tool Meta's Business Agent Connector calls. Takes a plain
+    search phrase (a product name, category, or a budget like "iPhone below
+    800k") and returns real matching products from that business's own
+    catalogue — reusing the identical search PhiXtra's own AI already runs,
+    not a separate or simplified version of it."""
+    tenant_id = _lookup_tenant_by_phixtra_key(x_phixtra_api_key)
+    if not tenant_id:
+        raise HTTPException(status_code=401, detail="Invalid or missing PhiXtra key.")
+
+    if not req.query or not req.query.strip():
+        return {"products": []}
+
+    try:
+        _, raw_docs = search_documents_with_meta(req.query, tenant_id)
+    except Exception as e:
+        print(f"⚠️ meta-connector search-products error (tenant {tenant_id}):", e)
+        raise HTTPException(status_code=500, detail="Search failed.")
+
+    products = []
+    for d in raw_docs:
+        if d.get("type") != "product":
+            continue  # store_info/page/post docs can also match — only real products are useful here
+        price_min = d.get("price_min")
+        price_max = d.get("price_max")
+        currency = (d.get("currency") or "").upper()
+        try:
+            pmin = float(price_min) if price_min is not None and float(price_min) > 0 else None
+        except (TypeError, ValueError):
+            pmin = None
+        try:
+            pmax = float(price_max) if price_max is not None and float(price_max) > 0 else None
+        except (TypeError, ValueError):
+            pmax = None
+        ref_price = pmin if pmin is not None else pmax
+        price_str = _fmt_currency_val(ref_price, currency) if ref_price is not None else ""
+
+        products.append({
+            "product_id": d.get("id"),
+            "name": d.get("title"),
+            "brand": d.get("brand") or "",
+            "price": price_str,
+            "url": d.get("url") or "",
+            "image_url": d.get("image_url") or "",
+            "in_stock": bool(d.get("in_stock")) if d.get("in_stock") is not None else True,
+        })
+
+    # Same real-catalogue-only safety guard PhiXtra's own AI recommendations
+    # already go through — never lets a half-populated/placeholder entry
+    # reach a customer as a recommendation.
+    products = _validate_products(products)
+    return {"products": products[:5]}
 
 
 

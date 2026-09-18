@@ -1,16 +1,31 @@
 """
-Beats + Playwright actions for the Campaigns "New Campaign" wizard tutorial
-video, on portal.phixtra.com's demo merchant account. Ported from the
-heygen_poc scratchpad (v2, beat-paced) — see tutorial_studio/lib.py for the
-shared machinery this module plugs into.
+Beats + Playwright actions for the Campaigns tutorial video, on
+portal.phixtra.com's demo merchant account — see tutorial_studio/lib.py for
+the shared machinery this module plugs into.
+
+Refreshed 2026-09-10 to add a second half covering Campaign Intelligence
+(the funnel/auto-opportunity system built 2026-09-09, after this video
+originally shipped) — the original "New Campaign" wizard walkthrough (Part 1)
+is unchanged and still accurate, so it was kept rather than rebuilt.
 
 Never clicks "Launch Campaign" — mirrors screenshot_tutorial.py's safety
-rule of not firing a real send against fake Meta credentials; the final
-beat hovers the button instead of clicking it.
+rule of not firing a real send against fake Meta credentials; that beat
+hovers the button instead of clicking it. Part 2 has its own version of the
+same caution: it never clicks Approve/Reject on the demo account's 2 real
+pending Needs Review items, and never submits the auto-create toggle —
+both are real, persistent tenant state (an approval creates a real Sales
+Pipeline lead) and this standing demo account's "2 awaiting review" queue
+is itself useful content for a live presale demo, not just this recording.
+Part 2 uses a real, already-completed campaign ("September Flash Sale — 20%
+Off Electronics", id 27) that predates this recording — its funnel numbers
+(18 sent, 6 interested, 2 converted, ₦290,000 revenue) are genuine, checked
+live via curl before writing narration around them.
 """
 import json
 
 from playwright.sync_api import TimeoutError as PWTimeoutError
+
+from tutorial_studio.lib import click_visibly
 
 BASE_URL = "https://portal.phixtra.com"
 DEMO_EMAIL = "demo@phixtra.com"
@@ -51,9 +66,18 @@ BEATS = {
     ),
     "b2_next": "Once everything looks good, click Continue.",
     "b3_recipients": (
-        "Paste one phone number per line, including the country code, with "
-        "no plus sign or spaces. The counter in the corner confirms how "
-        "many numbers you've entered."
+        "Recipients now default to your Sales Pipeline itself — every "
+        "contact with a phone number, sourced automatically. No copying "
+        "numbers out of a spreadsheet."
+    ),
+    "b3_recipients_options": (
+        "Or send to a saved WhatsApp Segment instead — a specific group "
+        "you've already built. And if you ever need to, you can still "
+        "paste phone numbers in by hand."
+    ),
+    "b3_recipients_manual": (
+        "One phone number per line, country code, no plus sign or spaces "
+        "— the counter in the corner confirms how many you've entered."
     ),
     "b3_compliance": (
         "Only message customers who've opted in to hear from your business "
@@ -73,6 +97,63 @@ BEATS = {
     "b4_launch": (
         "Click Launch Campaign once it looks right. There's no further "
         "confirmation after that, so this is the step to slow down on."
+    ),
+
+    # ── Part 2: Campaign Intelligence — a real, already-run campaign ──────
+    "c1_report_open": (
+        "Now open the Report on a campaign that's already run. Delivery "
+        "stats are only half the story — the real depth is what happened "
+        "after the message landed."
+    ),
+    "c1_stats": (
+        "Sent, Delivered, Read, and Failed, straight from Meta's own "
+        "delivery status, plus a real Delivery Rate calculated from them."
+    ),
+    "c2_funnel": (
+        "This is the Campaign Funnel. Sent through Read is delivery. "
+        "Replied through Won is Fixtra actually reading every reply and "
+        "following it all the way to a closed deal."
+    ),
+    "c2_revenue": (
+        "And real revenue — not an estimate. This is the actual value of "
+        "the deals this one campaign has already won, tracked straight "
+        "from Sales Pipeline."
+    ),
+    "c3_interested": (
+        "Every single reply is read and classified the moment it arrives — "
+        "Interested, Not interested, or just a plain reply — automatically, "
+        "with a confidence score. No one has to tag it by hand."
+    ),
+    "c3_opportunity": (
+        "An Interested reply that becomes a real deal shows it right here "
+        "— a direct link straight through to the opportunity it created in "
+        "Sales Pipeline."
+    ),
+    "c3_converted": (
+        "And once that deal is actually Won, it comes all the way back "
+        "around to Converted, on the exact reply that started it. One "
+        "connected loop, start to finish."
+    ),
+    "c4_needsreview_link": (
+        "Not every Interested reply has to become a deal automatically, "
+        "though — that's your call. This link goes straight to Needs "
+        "Review."
+    ),
+    "c4_reviews": (
+        "Real replies, waiting for a real person to decide — Approve turns "
+        "it into a Sales Pipeline opportunity, Reject leaves it as just an "
+        "Interested reply. Nothing happens without someone choosing."
+    ),
+    "c4_toggle": (
+        "Or skip the review step entirely. Switch this on, and every "
+        "Interested reply creates the opportunity instantly — no approval "
+        "needed. One setting for the whole business, your call either way."
+    ),
+    "c5_close": (
+        "From typing the message to tracking the revenue it actually "
+        "made — Campaigns isn't a send-and-hope broadcast tool anymore. "
+        "It's one connected loop, and Fixtra is watching every step of it "
+        "for you."
     ),
 }
 
@@ -143,12 +224,22 @@ def record(page, hold, mark, beat_ms):
     page.click("#btnNext")
     hold("b2_next")
 
-    # --- b3_recipients: paste recipient numbers ---
+    # --- b3_recipients: Sales Pipeline contacts is the default, pre-selected
+    # source (real product change since this video was first recorded --
+    # Recipients used to be a plain paste box; it's now a 3-way picker) ---
+    hold("b3_recipients", motion=["#optPipeline"])
+
+    # --- b3_recipients_options: point out the other 2 sources without
+    # switching to them, then land on Manual for the next beat ---
+    hold("b3_recipients_options", motion=["#optSegment", "#optManual"])
+
+    # --- b3_recipients_manual: switch to Paste phone numbers and fill it ---
+    click_visibly(page, "#optManual")
     page.fill(
         "#f-recipients",
         "2348012345678\n2347098765432\n2348123456789\n2348198765432",
     )
-    hold("b3_recipients")
+    hold("b3_recipients_manual")
 
     # --- b3_compliance: no new action, camera holds on the opt-in warning ---
     page.locator(".warn-box").last.scroll_into_view_if_needed()
@@ -173,3 +264,39 @@ def record(page, hold, mark, beat_ms):
     # --- b4_launch: hover the Launch button, never click it (fake Meta creds) ---
     page.hover("#btnLaunch")
     hold("b4_launch")
+
+    # ── Part 2: Campaign Intelligence — a real, already-run campaign ──────
+    page.goto(f"{BASE_URL}/whatsapp/campaigns", wait_until="networkidle", timeout=20000)
+    click_visibly(page, "a.act-btn:has-text('Report')")
+    page.wait_for_load_state("networkidle")
+    hold("c1_report_open")
+
+    hold("c1_stats", motion=[".rpt-stats"])
+
+    page.locator(".funnel-card").scroll_into_view_if_needed()
+    hold("c2_funnel", motion=[".funnel-row"])
+
+    hold("c2_revenue", motion=[".funnel-card > div:last-child"])
+
+    page.locator("tr[data-status='interested']").first.scroll_into_view_if_needed()
+    hold("c3_interested", motion=["tr[data-status='interested']"])
+
+    page.locator("tr[data-status='opportunity']").first.scroll_into_view_if_needed()
+    hold("c3_opportunity", motion=["tr[data-status='opportunity'] .opp-link"])
+
+    page.locator("tr[data-status='converted']").first.scroll_into_view_if_needed()
+    hold("c3_converted", motion=["tr[data-status='converted']"])
+
+    # Never click Approve/Reject on the demo account's real pending reviews,
+    # and never submit the auto-create toggle -- both are real, persistent
+    # tenant state (see module docstring).
+    click_visibly(page, "a.review-link")
+    page.wait_for_load_state("networkidle")
+    hold("c4_needsreview_link")
+
+    hold("c4_reviews", motion=[".review-row"])
+
+    hold("c4_toggle", motion=["input[name=auto_actions]"])
+
+    page.evaluate("window.scrollTo(0, 0)")
+    hold("c5_close")

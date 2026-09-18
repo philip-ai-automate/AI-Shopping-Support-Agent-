@@ -22,6 +22,7 @@ def create_app():
     from portal_routes import portal_bp
     from portal_admin_routes import portal_admin_bp
     from portal_facebook_routes import facebook_bp
+    from pressone_routes import pressone_bp
     from ambassador_routes import ambassador_bp
     from school_routes import school_bp
     from school_migrations import ensure_school_tables
@@ -34,6 +35,7 @@ def create_app():
     flask_app.register_blueprint(portal_bp)
     flask_app.register_blueprint(portal_admin_bp, url_prefix="/admin")
     flask_app.register_blueprint(facebook_bp)
+    flask_app.register_blueprint(pressone_bp)
     flask_app.register_blueprint(ambassador_bp)
     flask_app.register_blueprint(school_bp, url_prefix="/school")
     flask_app.register_blueprint(estate_bp)

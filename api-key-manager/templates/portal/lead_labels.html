@@ -91,7 +91,7 @@
           <td class="muted">{{ l.member_count }} deal{{ 's' if l.member_count != 1 else '' }}</td>
           <td class="muted">{{ l.created_at.strftime('%d %b %Y') if l.created_at else '—' }}</td>
           <td style="text-align:right">
-            <button type="button" class="btn btn-sm" onclick="openMembersModal({{ l.id }}, {{ l.name|tojson }})">View / Edit</button>
+            <button type="button" class="btn btn-sm" onclick='openMembersModal({{ l.id }}, {{ l.name|tojson }})'>View / Edit</button>
             <form method="POST" action="{{ url_for('portal.lead_labels_delete', label_id=l.id) }}" style="display:inline"
                   onsubmit="return confirm('Delete the {{ l.name }} tag? This removes it from every contact and deal it\'s on — nothing else about them is affected.')">
               <input type="hidden" name="redirect" value="1">

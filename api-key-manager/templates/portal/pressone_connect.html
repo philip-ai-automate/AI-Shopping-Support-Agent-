@@ -1,0 +1,103 @@
+{% extends "portal/base.html" %}
+{% block title %}Connect PressOne — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  .po-field { margin-bottom: 16px }
+  .po-field label { display:block; font-size:13px; font-weight:700; margin-bottom:6px; color:var(--ink) }
+  .po-field input {
+    width:100%; padding:12px 14px; border:1.5px solid var(--line); border-radius:10px;
+    font-size:14px; font-family:inherit;
+  }
+  .po-field .hint { font-size:12px; color:var(--muted); margin-top:5px }
+  .po-status-row { display:flex; align-items:center; gap:10px; padding:12px 0; border-bottom:1px solid var(--line); margin-bottom:16px }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="wizard-header">
+  <div>
+    <div class="wizard-title">Connect PressOne</div>
+    <div class="wizard-sub">Bring your own PressOne business phone number — every call shows up on the matching customer's record here, right alongside WhatsApp and Messenger.</div>
+  </div>
+</div>
+
+{% if account and account.active %}
+<div class="card" style="margin-bottom:20px">
+  <div class="po-status-row">
+    <span class="dot dot-green"></span>
+    <div>
+      <div style="font-weight:700">Connected — Account {{ account.account_id }}</div>
+      <div class="muted" style="font-size:12px">Since {{ account.connected_at.strftime('%d %b %Y') if account.connected_at else '' }}</div>
+    </div>
+  </div>
+  <p style="font-size:13px;color:var(--muted);margin-bottom:16px">
+    Calls will appear on a contact's page automatically. If nothing shows up after a real call, send a test event below to check the connection itself.
+  </p>
+  <div style="display:flex;gap:10px;flex-wrap:wrap">
+    <a href="{{ url_for('pressone.call_log') }}" class="btn btn-primary">📞 View Call Log</a>
+    <form method="POST" action="{{ url_for('pressone.test_event') }}">
+      <button type="submit" class="btn">Send test event</button>
+    </form>
+    <form method="POST" action="{{ url_for('pressone.disconnect') }}" onsubmit="return confirm('Disconnect PressOne? Calls will stop appearing on contacts until reconnected.');">
+      <button type="submit" class="btn btn-danger">Disconnect</button>
+    </form>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:20px">
+  <div style="font-weight:700;margin-bottom:4px">Missed-call WhatsApp reply</div>
+  <p style="font-size:13px;color:var(--muted);margin-bottom:14px">
+    When someone calls and nobody answers, automatically send them a WhatsApp message so they hear back from you right away.
+  </p>
+
+  {% if not wa_connection or not wa_connection.active %}
+  <div class="flash warning" style="margin-bottom:14px">
+    WhatsApp isn't connected yet — <a href="{{ url_for('portal.whatsapp_connect') }}">connect it</a> for this to actually send anything.
+  </div>
+  {% endif %}
+
+  <div class="flash warning" style="margin-bottom:14px">
+    This also needs a WhatsApp message template named <code>phixtra_missed_call</code> approved in your Meta Business Manager first — WhatsApp doesn't allow a business to message someone out of the blue without one. Suggested wording to submit:
+    <br><em>"Hi! We're sorry we missed your call to {{ '{{1}}' }}. Reply to this message and we'll get right back to you."</em>
+    <br>({{ '{{1}}' }} is filled in automatically with your business name.) Submit it yourself in Meta Business Manager the same way you've done other templates — once Meta approves it, this starts working with no further setup here.
+  </div>
+
+  <form method="POST" action="{{ url_for('pressone.toggle_auto_reply') }}">
+    <input type="hidden" name="enabled" value="{{ '0' if (account.auto_reply_missed_calls) else '1' }}">
+    <button type="submit" class="btn {{ 'btn-danger' if account.auto_reply_missed_calls else 'btn-primary' }}">
+      {{ 'Turn off' if account.auto_reply_missed_calls else 'Turn on' }}
+    </button>
+    <span class="muted" style="font-size:13px;margin-left:8px">
+      Currently {{ 'ON' if account.auto_reply_missed_calls else 'OFF' }}
+    </span>
+  </form>
+</div>
+{% else %}
+<div class="card" style="margin-bottom:20px">
+  <p style="font-size:14px;margin-bottom:20px;line-height:1.6">
+    You'll need your <strong>Account ID</strong> and an <strong>API Key</strong> from your own PressOne dashboard
+    (developers section) — PhiXtra doesn't create or bill for the PressOne number itself, it only reads the
+    calls from an account you already have.
+  </p>
+  <form method="POST" action="{{ url_for('pressone.connect_submit') }}">
+    <div class="po-field">
+      <label for="account_id">PressOne Account ID</label>
+      <input type="text" id="account_id" name="account_id" placeholder="acc_..." required>
+    </div>
+    <div class="po-field">
+      <label for="api_key">PressOne API Key</label>
+      <input type="text" id="api_key" name="api_key" placeholder="cak_..." required>
+      <div class="hint">Stored securely, used only to read your call activity.</div>
+    </div>
+    <button type="submit" class="btn btn-primary">Connect PressOne</button>
+  </form>
+</div>
+{% endif %}
+
+<div style="margin-top:8px">
+  <a href="{{ url_for('portal.channels_page') }}" class="muted" style="font-size:13px">← Back to Channels</a>
+</div>
+
+{% endblock %}

@@ -552,6 +552,13 @@
                 <div class="tl-body-text">🔁 Moved to <strong>{{ stage_labels.get(item.to_stage, item.to_stage) }}</strong>{% if item.body %} — {{ item.body }}{% endif %}</div>
               {% elif item.kind == 'message' %}
                 <div class="tl-body-text">💬 {{ 'Sent' if item.direction == 'outbound' else 'Received' }}: "{{ item.body }}"</div>
+              {% elif item.kind == 'call' %}
+                <div class="tl-body-text">
+                  {% if item.status == 'failed' %}📵 Missed call
+                  {% else %}📞 {{ 'Outgoing' if item.direction == 'outbound' else 'Incoming' }} call{% if item.duration_seconds %} — {{ (item.duration_seconds // 60) }}m {{ (item.duration_seconds % 60) }}s{% endif %}
+                  {% endif %}
+                  {% if item.recording_url %} · <a href="{{ item.recording_url }}" target="_blank" rel="noopener">Recording</a>{% endif %}
+                </div>
               {% elif item.kind == 'created' %}
                 <div class="tl-body-text">✨ Contact created</div>
               {% endif %}

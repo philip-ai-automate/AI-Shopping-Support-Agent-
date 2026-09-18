@@ -185,6 +185,18 @@
         </form>
       </div>
       {% endif %}
+      {% if messenger_connected %}
+      <div class="tm-card-agents">
+        {% if m.messenger_access %}
+          <span class="tm-agent-tag">💬 Can access Messenger</span>
+        {% else %}
+          <span class="tm-agent-tag none">⚠️ No Messenger access</span>
+        {% endif %}
+        <form method="POST" action="{{ url_for('portal.team_update_messenger', member_id=m.id) }}" class="tm-agents-edit">
+          <label class="agent-check"><input type="checkbox" name="messenger_access" {% if m.messenger_access %}checked{% endif %} onchange="this.form.submit()"/> Can access Facebook Messenger</label>
+        </form>
+      </div>
+      {% endif %}
     </div>
     {% endfor %}
   </div>

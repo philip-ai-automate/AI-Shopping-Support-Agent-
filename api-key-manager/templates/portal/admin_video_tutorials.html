@@ -37,6 +37,24 @@
   text-transform:uppercase; padding:2px 7px; border-radius:999px; margin-top:6px;
   background:rgba(3,12,24,.06); color:var(--muted);
 }
+.vt-tags {
+  margin-top:10px; padding-top:10px; border-top:1px solid var(--line);
+  cursor:default;
+}
+.vt-tags-label {
+  font-size:10px; font-weight:800; color:var(--muted); text-transform:uppercase;
+  letter-spacing:.03em; margin-bottom:6px;
+}
+.vt-tags label {
+  display:inline-flex; align-items:center; gap:5px; font-size:12px;
+  margin-right:14px; cursor:pointer;
+}
+.vt-tags-save {
+  margin-top:8px; font-size:11px; font-weight:700; padding:4px 10px;
+  border-radius:8px; border:1px solid var(--line); background:#fff; cursor:pointer;
+}
+.vt-tags-save:hover { background:#f4f6f8; }
+.vt-badge-off { opacity:.45; }
 
 .vt-modal {
   display:none; position:fixed; inset:0; background:rgba(3,12,24,.75); z-index:9999;
@@ -72,6 +90,27 @@
       <div class="vt-title">{{ v.title }}</div>
       <div class="vt-sub">{{ v.sub }}</div>
       <div class="vt-audience">{{ v.audience }}</div>
+
+      <div class="vt-tags">
+        <div class="vt-tags-label">Show on</div>
+        {% if can_modify %}
+        <form class="vt-tags-form" data-slug="{{ v.slug }}"
+              action="{{ url_for('portal_admin.video_tutorials_products', slug=v.slug) }}" method="post">
+          {% for code, label in product_options.items() %}
+          <label>
+            <input type="checkbox" name="products" value="{{ code }}" {% if code in v.products %}checked{% endif %}>
+            {{ label }}
+          </label>
+          {% endfor %}
+          <br>
+          <button type="submit" class="vt-tags-save">Save</button>
+        </form>
+        {% else %}
+          {% for code, label in product_options.items() %}
+          <span class="vt-audience {% if code not in v.products %}vt-badge-off{% endif %}">{{ label }}</span>
+          {% endfor %}
+        {% endif %}
+      </div>
     </div>
   </div>
   {% endfor %}
@@ -108,7 +147,8 @@
   }
 
   document.querySelectorAll('.vt-card').forEach(function(card) {
-    card.addEventListener('click', function() {
+    card.addEventListener('click', function(e) {
+      if (e.target.closest('.vt-tags')) return; // don't open the player from the product-tag form
       open(card.dataset.slug, card.dataset.title);
     });
   });

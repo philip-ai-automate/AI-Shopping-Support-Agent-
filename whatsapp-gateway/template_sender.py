@@ -7,6 +7,7 @@ _GRAPH_BASE = "https://graph.facebook.com/v19.0"
 DEFAULT_TEMPLATES = {
     "cart_recovery": "phixtra_cart_recovery",
     "order_update":  "phixtra_order_update",
+    "missed_call":   "phixtra_missed_call",
 }
 
 # Expected template parameter conventions (document for tenants):
@@ -18,6 +19,15 @@ DEFAULT_TEMPLATES = {
 # phixtra_order_update body params:
 #   {{1}} order ID          (e.g. "ORDER-1234")
 #   {{2}} order status      (e.g. "shipped", "delivered")
+#
+# phixtra_missed_call body params (2026-09-12, PressOne integration):
+#   {{1}} business name     (e.g. "Ade's Electronics")
+# Suggested body text for the tenant to submit in Meta Business Manager:
+#   "Hi! We're sorry we missed your call to {{1}}. Reply to this message
+#    and we'll get right back to you."
+# Category: Utility (a direct response to the customer's own call attempt,
+# not marketing) — more likely to be approved quickly, but Meta's own
+# review decides the final category.
 
 
 async def send_template(

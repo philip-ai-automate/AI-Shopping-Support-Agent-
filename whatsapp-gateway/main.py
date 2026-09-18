@@ -17,6 +17,7 @@ from wa_daily_report import (
     poll_and_activate_templates,
 )
 from wa_plan_reset import router as plan_reset_router, run_plan_resets
+from pressone_calls import router as pressone_router
 
 # ── Scheduler ─────────────────────────────────────────────────────────────────
 _scheduler = AsyncIOScheduler()
@@ -91,6 +92,7 @@ app.include_router(meta_router)
 app.include_router(proactive_router)
 app.include_router(daily_report_router)
 app.include_router(plan_reset_router)
+app.include_router(pressone_router)
 
 
 @app.get("/health")

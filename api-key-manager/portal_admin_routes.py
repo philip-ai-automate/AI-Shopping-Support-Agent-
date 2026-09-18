@@ -13,16 +13,19 @@ import json as _json
 import csv
 import io
 import bcrypt
+from urllib.parse import urlencode
 from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, send_file, send_from_directory, Response)
 
 from db import get_db_connection, insert_audit_log
+from meta_business_agent import sync_all_to_meta, check_eligibility, go_live_with_meta, revert_to_phixtra_ai
 from lead_pipeline import (STAGE_ORDER, STAGE_LABELS, STAGE_DESCRIPTIONS,
                             next_stage, record_stage_change, get_stage_history,
                             current_period_month, get_sales_manager_target,
                             sales_manager_month_progress, upsert_sales_manager_target)
 from portal_utils import (money_fmt, tokens_to_credits, credits_to_tokens,
                           send_email_with_attachment, TUTORIAL_VIDEOS)
+from portal_routes import _COMEBACK_VARIANTS, _render_comeback_email_html
 from buffer_client import (buffer_create_post, buffer_get_post_status,
                             buffer_list_channels, BufferAPIError)
 
@@ -56,8 +59,9 @@ ADMIN_MODULES = {
     "ambassador_broadcast":      {"label": "Ambassador Broadcast",  "actions": ["view", "create", "modify"]},
     "feature_releases":          {"label": "Feature Releases",      "actions": ["view", "create", "modify", "delete"]},
     "admin_leads":                {"label": "Leads",                 "actions": ["view", "create", "modify"]},
-    "video_tutorials":           {"label": "Video Tutorials",       "actions": ["view"]},
+    "video_tutorials":           {"label": "Video Tutorials",       "actions": ["view", "modify"]},
     "social_media":               {"label": "Social Media Posts",    "actions": ["view", "create", "modify", "delete"]},
+    "comeback_sequence":          {"label": "Onboarding Drip Campaign", "actions": ["view", "modify"]},
 }
 
 # Multi-product ambassador program — mirrors ambassador_routes.PRODUCT_CONFIG labels.
@@ -366,37 +370,229 @@ def admin_team_reset_password(admin_id: int):
 def _portal_sales_managers() -> list:
     """Active Sales Managers who run the Portal product — the only ones
     eligible to be assigned a Portal customer."""
+    return _sales_managers_for("portal")
+
+
+def _amb_manager_assignments(ref_ids: list, product: str = "portal") -> dict:
+    """ref_id -> {'manager_id', 'manager_name'} for every account of the given
+    product that currently has a live (non-dropped) Sales Manager assignment.
+    `ref_id` is the tenants.id / school_profiles.id / re_tenants.id for that
+    product — ambassador_leads links to a different column per product
+    (LEAD_LINK_COL), because Portal, School and Estate accounts each live in
+    their own table."""
+    if not ref_ids:
+        return {}
+    link_col = LEAD_LINK_COL.get(product, "tenant_id")
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(f"""
+        SELECT DISTINCT ON (al.{link_col})
+               al.{link_col} AS ref_id, al.sales_manager_id AS manager_id,
+               a.first_name || ' ' || a.last_name AS manager_name
+        FROM ambassador_leads al
+        JOIN ambassadors a ON a.id = al.sales_manager_id
+        WHERE al.{link_col} = ANY(%s) AND al.product=%s AND al.dropped_at IS NULL
+        ORDER BY al.{link_col}, al.created_at DESC
+    """, (ref_ids, product))
+    out = {row["ref_id"]: row for row in (cur.fetchall() or [])}
+    cur.close(); conn.close()
+    return out
+
+
+def _sales_managers_for(product: str) -> list:
+    """Active Sales Managers who run the given product — the only ones
+    eligible to be assigned an account of that product."""
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
         SELECT id, first_name, last_name FROM ambassadors
-        WHERE role='sales_manager' AND status='active' AND managed_product='portal'
+        WHERE role='sales_manager' AND status='active' AND managed_product=%s
         ORDER BY first_name, last_name
-    """)
+    """, (product,))
     rows = cur.fetchall() or []
     cur.close(); conn.close()
     return rows
 
 
-def _amb_manager_assignments(tenant_ids: list) -> dict:
-    """tenant_id -> {'manager_id', 'manager_name'} for every Portal tenant
-    that currently has a live (non-dropped) Sales Manager assignment."""
-    if not tenant_ids:
-        return {}
+@portal_admin_bp.route("/comeback-sequence")
+def comeback_sequence():
+    r = _require_admin("comeback_sequence", "view")
+    if r: return r
+
     conn = get_db_connection()
-    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cur.execute("SELECT enabled FROM onboarding_nudge_settings WHERE id=1")
+    settings_row = cur.fetchone()
+    enabled = bool(settings_row["enabled"]) if settings_row else True
+
+    cur.execute("SELECT email_key, COUNT(*) AS c FROM onboarding_nudge_log GROUP BY email_key")
+    counts = {row["email_key"]: row["c"] for row in cur.fetchall()}
+
     cur.execute("""
-        SELECT DISTINCT ON (al.tenant_id)
-               al.tenant_id, al.sales_manager_id AS manager_id,
-               a.first_name || ' ' || a.last_name AS manager_name
-        FROM ambassador_leads al
-        JOIN ambassadors a ON a.id = al.sales_manager_id
-        WHERE al.tenant_id = ANY(%s) AND al.product='portal' AND al.dropped_at IS NULL
-        ORDER BY al.tenant_id, al.created_at DESC
-    """, (tenant_ids,))
-    out = {row["tenant_id"]: row for row in (cur.fetchall() or [])}
+        SELECT l.sent_at, l.email_key, c.first_name, c.last_name, c.email, t.name AS tenant_name
+        FROM onboarding_nudge_log l
+        JOIN customers c ON c.id = l.customer_id
+        JOIN tenants t   ON t.id = l.tenant_id
+        ORDER BY l.sent_at DESC LIMIT 100
+    """)
+    recent = cur.fetchall()
+    for row in recent:
+        fn = (row.get("first_name") or "").strip()
+        ln = (row.get("last_name") or "").strip()
+        row["full_name"] = f"{fn} {ln}".strip() or "—"
+
+    cur.execute("SELECT COUNT(*) AS c FROM onboarding_nudge_unsubscribes")
+    unsub_count = cur.fetchone()["c"]
+
+    cur.execute("""
+        SELECT COUNT(*) AS c FROM onboarding_nudge_log
+        WHERE sent_at::date = CURRENT_DATE
+    """)
+    sent_today = cur.fetchone()["c"]
+
+    # Live funnel — every real, non-cancelled, active account (not just the
+    # "eligible" subset the scheduler emails), bucketed the same way
+    # _comeback_stage() classifies them, so "activated" also shows up as a
+    # real destination rather than just silently disappearing from the count.
+    cur.execute("""
+        SELECT
+          CASE
+            WHEN t.trial_granted_at IS NOT NULL THEN 'activated'
+            WHEN os.customer_id IS NULL THEN 'never_started'
+            WHEN os.catalogue_setup_done OR os.products_step_skipped THEN 'near_done'
+            ELSE 'stuck_products'
+          END AS stage,
+          COUNT(*) AS c
+        FROM customers c
+        JOIN tenants t ON t.id = c.tenant_id
+        LEFT JOIN onboarding_state os ON os.customer_id = c.id
+        WHERE t.is_demo = FALSE AND t.status NOT IN ('cancelled', 'suspended') AND c.is_active = TRUE
+        GROUP BY 1
+    """)
+    funnel = {"never_started": 0, "stuck_products": 0, "near_done": 0, "activated": 0}
+    funnel.update({row["stage"]: row["c"] for row in cur.fetchall()})
+    total_real = sum(funnel.values())
+    eligible_count = total_real - funnel["activated"]
+
     cur.close(); conn.close()
-    return out
+    total_sent = sum(counts.values())
+
+    timeline = [
+        {"day": 1,  "situations": [("never", "Never started", counts.get("day1_never_started", 0))]},
+        {"day": 3,  "situations": [("never", "Never started", counts.get("day3_never_started", 0)),
+                                    ("stuck", "Stuck", counts.get("day3_stuck_products", 0))]},
+        {"day": 5,  "situations": [("near",  "Near done", counts.get("day5_near_done_web", 0) + counts.get("day5_near_done_whatsapp", 0))]},
+        {"day": 7,  "situations": [("never", "Never started", counts.get("day7_never_started", 0)),
+                                    ("stuck", "Stuck", counts.get("day7_stuck_products", 0))]},
+        {"day": 10, "situations": [("near",  "Near done", counts.get("day10_near_done", 0))]},
+        {"day": 21, "situations": [("final", "Catch-all", counts.get("day21_final", 0))]},
+    ]
+    for step in timeline:
+        step["has_sends"] = any(c for _tag, _label, c in step["situations"])
+
+    return render_template("portal/admin_comeback_sequence.html",
+                           enabled=enabled, counts=counts, recent=recent,
+                           unsub_count=unsub_count, eligible_count=eligible_count,
+                           total_sent=total_sent, sent_today=sent_today,
+                           funnel=funnel, total_real=total_real, timeline=timeline)
+
+
+@portal_admin_bp.route("/comeback-sequence/toggle", methods=["POST"])
+def comeback_sequence_toggle():
+    r = _require_admin("comeback_sequence", "modify")
+    if r: return r
+
+    enabled = request.form.get("enabled") == "1"
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE onboarding_nudge_settings SET enabled=%s WHERE id=1", (enabled,))
+    conn.commit()
+    cur.close(); conn.close()
+    flash(f"The Onboarding Drip Campaign is now {'ON' if enabled else 'OFF'}.", "success")
+    return redirect(url_for("portal_admin.comeback_sequence"))
+
+
+_COMEBACK_SCHEDULE_META = [
+    ("day1_never_started",      "Day 1",  "Never started onboarding"),
+    ("day3_never_started",      "Day 3",  "Still never started"),
+    ("day3_stuck_products",     "Day 3",  "Started, stuck on products"),
+    ("day5_near_done_web",      "Day 5",  "Catalogue done · Web merchant"),
+    ("day5_near_done_whatsapp", "Day 5",  "Catalogue done · WhatsApp merchant"),
+    ("day7_never_started",      "Day 7",  "Still never started"),
+    ("day7_stuck_products",     "Day 7",  "Started, stuck on products"),
+    ("day10_near_done",         "Day 10", "Catalogue done, not connected"),
+    ("day21_final",             "Day 21", "Catch-all — still not live"),
+]
+_COMEBACK_PREVIEW_CTX = {
+    "first_name": "Ngozi", "business_name": "Ngozi's Kitchen",
+    "channel": "your website", "store_domain": "ngozis-kitchen.com",
+    "final_step_label": "Sync My Store",
+}
+_COMEBACK_PREVIEW_CTX_WA = {**_COMEBACK_PREVIEW_CTX, "channel": "WhatsApp",
+                            "final_step_label": "Connect WhatsApp"}
+
+
+@portal_admin_bp.route("/comeback-sequence/templates")
+def comeback_sequence_templates():
+    """Renders each fixed email through the exact same function that sends
+    the real thing, with sample placeholder data — so this preview can
+    never drift from what a customer actually receives."""
+    r = _require_admin("comeback_sequence", "view")
+    if r: return r
+
+    previews = []
+    for key, day_label, situation in _COMEBACK_SCHEDULE_META:
+        variant = _COMEBACK_VARIANTS[key]
+        ctx = _COMEBACK_PREVIEW_CTX_WA if "whatsapp" in key else _COMEBACK_PREVIEW_CTX
+        subject = variant["subject"].format(**ctx)
+        heading = variant["heading"].format(**ctx)
+        paragraphs = [p.format(**ctx) for p in variant["paragraphs"]]
+        checklist = [i.format(**ctx) for i in variant["checklist"]] if variant.get("checklist") else None
+        html = _render_comeback_email_html(
+            heading=heading, paragraphs=paragraphs, cta_text=variant["cta"], cta_url="#",
+            unsubscribe_url="#", checklist=checklist, final_note=variant.get("final_note"),
+        )
+        previews.append(dict(key=key, day=day_label, situation=situation, subject=subject, html=html))
+
+    return render_template("portal/admin_comeback_templates.html", previews=previews)
+
+
+# Every filter group on the Customers page that's a plain checkbox list
+# (Plan is built separately below, from whatever plan names are actually in
+# use — Portal/Connect, School and Estate each keep their own plan catalog).
+CUSTOMER_FILTER_GROUPS = [
+    {"key": "source",   "label": "Signup Source",  "options": [("whatsapp", "WhatsApp-only"), ("web", "Web signup")]},
+    {"key": "verified", "label": "Email Verified",  "options": [("yes", "Verified"), ("no", "Unverified")]},
+    {"key": "active",   "label": "Account Status",  "options": [("yes", "Active"), ("no", "Disabled")]},
+    {"key": "assigned", "label": "Assigned To",     "options": [("yes", "Assigned"), ("no", "Unassigned")]},
+    {"key": "product",  "label": "Product",         "options": [("portal", "Portal / CRM"), ("connect", "Connect"),
+                                                                  ("school", "SchoolCompass"), ("estate", "KeyLand")]},
+]
+
+CUSTOMER_PRODUCT_LABELS = {"portal": "Portal / CRM", "connect": "Connect", "school": "SchoolCompass", "estate": "KeyLand"}
+
+# Industry has no real data behind it yet — no product's account record
+# captures a business's industry today. It stays visible (so the gap isn't
+# hidden) but disabled, rather than pretending to filter on nothing.
+CUSTOMER_INDUSTRY_OPTIONS = [
+    "Retail & Fashion", "Electronics", "Food & Beverage", "Beauty & Health",
+    "Real Estate", "Education", "Professional Services", "Other",
+]
+
+
+def _remove_filter_url(remove_key: str, remove_value: str) -> str:
+    """Current /admin/customers URL with one value taken out of one filter
+    (or the key dropped entirely if that was its only value) — powers each
+    active-filter chip's × ."""
+    args = request.args.to_dict(flat=False)
+    if remove_key in args:
+        args[remove_key] = [v for v in args[remove_key] if v != remove_value]
+        if not args[remove_key]:
+            del args[remove_key]
+    qs = urlencode(args, doseq=True)
+    base = url_for("portal_admin.customers")
+    return f"{base}?{qs}" if qs else base
 
 
 @portal_admin_bp.route("/customers")
@@ -404,53 +600,257 @@ def customers():
     r = _require_admin("customers", "view")
     if r: return r
 
-    q = (request.args.get("q") or "").strip().lower()
+    q          = (request.args.get("q") or "").strip().lower()
+    date_from  = (request.args.get("date_from") or "").strip()
+    date_to    = (request.args.get("date_to") or "").strip()
+    f_source   = request.args.getlist("source")
+    f_verified = request.args.getlist("verified")
+    f_active   = request.args.getlist("active")
+    f_assigned = request.args.getlist("assigned")
+    f_plan     = request.args.getlist("plan")
+    f_product  = request.args.getlist("product")
+
+    want_portal  = (not f_product) or ("portal"  in f_product)
+    want_connect = (not f_product) or ("connect" in f_product)
+    want_school  = (not f_product) or ("school"  in f_product)
+    want_estate  = (not f_product) or ("estate"  in f_product)
+
     conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    if q:
-        cur.execute("""
+    rows = []
+
+    # ── Portal + Connect (share the tenants/customers tables) ──────────────
+    if want_portal or want_connect:
+        where  = ["t.is_demo = FALSE"]
+        params = []
+        if want_portal and not want_connect:
+            where.append("t.signup_product = 'portal'")
+        elif want_connect and not want_portal:
+            where.append("t.signup_product = 'connect'")
+
+        if q:
+            where.append("""(LOWER(c.email) LIKE %s OR LOWER(t.domain) LIKE %s
+                              OR LOWER(t.name) LIKE %s
+                              OR LOWER(CONCAT(COALESCE(c.first_name,''),' ',COALESCE(c.last_name,''))) LIKE %s)""")
+            params += [f"%{q}%"] * 4
+        if date_from:
+            where.append("c.created_at >= %s"); params.append(date_from)
+        if date_to:
+            where.append("c.created_at < (%s::date + INTERVAL '1 day')"); params.append(date_to)
+        if f_source:
+            where.append(f"t.source_type IN ({','.join(['%s'] * len(f_source))})")
+            params += f_source
+        if f_verified and len(f_verified) == 1:
+            where.append("c.email_verified = %s"); params.append(f_verified[0] == "yes")
+        if f_active and len(f_active) == 1:
+            where.append("c.is_active = %s"); params.append(f_active[0] == "yes")
+        if f_plan:
+            where.append(f"COALESCE(p.name,'Free') IN ({','.join(['%s'] * len(f_plan))})")
+            params += f_plan
+
+        cur.execute(f"""
             SELECT c.id, c.first_name, c.last_name, c.email, c.phone_number,
                    c.email_verified, c.is_active, c.created_at,
-                   t.id AS tenant_id, t.name AS tenant_name, t.domain,
+                   t.id AS tenant_id, t.name AS tenant_name, t.domain, t.signup_product,
+                   COALESCE(p.name,'Free') AS plan_name,
                    COALESCE(tb.token_balance,0) AS token_balance
             FROM customers c
             JOIN tenants t ON t.id=c.tenant_id
             LEFT JOIN tenant_balances tb ON tb.tenant_id=t.id
-            WHERE t.is_demo = FALSE
-              AND (LOWER(c.email) LIKE %s
-               OR LOWER(t.domain) LIKE %s
-               OR LOWER(t.name) LIKE %s
-               OR LOWER(CONCAT(COALESCE(c.first_name,''),' ',COALESCE(c.last_name,''))) LIKE %s)
-            ORDER BY c.created_at DESC LIMIT 300""",
-            (f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%"))
-    else:
-        cur.execute("""
-            SELECT c.id, c.first_name, c.last_name, c.email, c.phone_number,
-                   c.email_verified, c.is_active, c.created_at,
-                   t.id AS tenant_id, t.name AS tenant_name, t.domain,
-                   COALESCE(tb.token_balance,0) AS token_balance
-            FROM customers c
-            JOIN tenants t ON t.id=c.tenant_id
-            LEFT JOIN tenant_balances tb ON tb.tenant_id=t.id
-            WHERE t.is_demo = FALSE
-            ORDER BY c.created_at DESC LIMIT 300""")
+            LEFT JOIN plans p ON p.id=t.plan_id
+            WHERE {' AND '.join(where)}
+            ORDER BY c.created_at DESC LIMIT 300
+        """, params)
+        pc_rows = cur.fetchall() or []
 
-    rows = cur.fetchall() or []
+        assignments = _amb_manager_assignments([row["tenant_id"] for row in pc_rows], "portal")
+        for row in pc_rows:
+            fn = (row.get("first_name") or "").strip()
+            ln = (row.get("last_name")  or "").strip()
+            assignment = assignments.get(row["tenant_id"])
+            rows.append({
+                "product": row["signup_product"], "ref_id": row["tenant_id"], "customer_id": row["id"],
+                "full_name": f"{fn} {ln}".strip() or "—", "business_name": row["tenant_name"] or "—",
+                "email": row["email"], "phone": row["phone_number"] or "—", "domain": row["domain"],
+                "verified": row["email_verified"], "active": row["is_active"],
+                "created_at": row["created_at"], "plan_name": row["plan_name"],
+                "balance_credits": tokens_to_credits(int(row.get("token_balance") or 0)),
+                "assigned_manager_id":   assignment["manager_id"]   if assignment else None,
+                "assigned_manager_name": assignment["manager_name"] if assignment else None,
+            })
+
+    # ── School (school_profiles — its own table, no "customers" split) ─────
+    if want_school:
+        where  = [
+            "LOWER(s.contact_email) NOT LIKE '%%@phixtra.com'",
+            "LOWER(s.contact_email) NOT LIKE '%%demo%%'",
+        ]
+        params = []
+        if q:
+            where.append("(LOWER(s.contact_email) LIKE %s OR LOWER(s.school_name) LIKE %s OR LOWER(COALESCE(s.principal_name,'')) LIKE %s)")
+            params += [f"%{q}%"] * 3
+        if date_from:
+            where.append("s.created_at >= %s"); params.append(date_from)
+        if date_to:
+            where.append("s.created_at < (%s::date + INTERVAL '1 day')"); params.append(date_to)
+        if f_active and len(f_active) == 1:
+            where.append("s.is_active = %s"); params.append(f_active[0] == "yes")
+        if f_verified == ["no"]:
+            # Schools have no email-verification step of their own — none
+            # of them can ever match "Unverified only".
+            where.append("FALSE")
+        if f_source and "web" not in f_source:
+            # Not a WhatsApp self-serve signup product — never matches
+            # "WhatsApp-only".
+            where.append("FALSE")
+        if f_plan:
+            where.append(f"COALESCE(sp.name,'Free') IN ({','.join(['%s'] * len(f_plan))})")
+            params += f_plan
+
+        cur.execute(f"""
+            SELECT s.id, s.school_name, s.principal_name, s.contact_email,
+                   s.is_active, s.created_at, COALESCE(sp.name,'Free') AS plan_name
+            FROM school_profiles s
+            LEFT JOIN school_plans sp ON sp.id = s.plan_id
+            WHERE {' AND '.join(where)}
+            ORDER BY s.created_at DESC LIMIT 300
+        """, params)
+        school_rows = cur.fetchall() or []
+
+        assignments = _amb_manager_assignments([row["id"] for row in school_rows], "school")
+        for row in school_rows:
+            assignment = assignments.get(row["id"])
+            rows.append({
+                "product": "school", "ref_id": row["id"], "customer_id": None,
+                "full_name": row["principal_name"] or "—", "business_name": row["school_name"] or "—",
+                "email": row["contact_email"], "phone": "—", "domain": None,
+                "verified": True, "active": row["is_active"],
+                "created_at": row["created_at"], "plan_name": row["plan_name"],
+                "balance_credits": None,
+                "assigned_manager_id":   assignment["manager_id"]   if assignment else None,
+                "assigned_manager_name": assignment["manager_name"] if assignment else None,
+            })
+
+    # ── Estate (re_tenants — its own table, tenant + owner in one row) ──────
+    if want_estate:
+        where  = [
+            "LOWER(r.email) NOT LIKE '%%@phixtra.com'",
+            "LOWER(r.email) NOT LIKE '%%demo%%'",
+            "LOWER(COALESCE(r.business_name,'')) NOT LIKE '%%test%%'",
+        ]
+        params = []
+        if q:
+            where.append("(LOWER(r.email) LIKE %s OR LOWER(COALESCE(r.business_name,'')) LIKE %s OR LOWER(CONCAT(COALESCE(r.first_name,''),' ',COALESCE(r.last_name,''))) LIKE %s)")
+            params += [f"%{q}%"] * 3
+        if date_from:
+            where.append("r.created_at >= %s"); params.append(date_from)
+        if date_to:
+            where.append("r.created_at < (%s::date + INTERVAL '1 day')"); params.append(date_to)
+        if f_active and len(f_active) == 1:
+            where.append("(r.status = 'active') = %s"); params.append(f_active[0] == "yes")
+        if f_verified == ["no"]:
+            where.append("FALSE")
+        if f_source and "web" not in f_source:
+            where.append("FALSE")
+        if f_plan:
+            where.append(f"COALESCE(rp.name,'Free') IN ({','.join(['%s'] * len(f_plan))})")
+            params += f_plan
+
+        cur.execute(f"""
+            SELECT r.id, r.business_name, r.first_name, r.last_name, r.email, r.phone,
+                   r.status, r.created_at, COALESCE(rp.name,'Free') AS plan_name
+            FROM re_tenants r
+            LEFT JOIN re_plans rp ON rp.id = r.plan_id
+            WHERE {' AND '.join(where)}
+            ORDER BY r.created_at DESC LIMIT 300
+        """, params)
+        estate_rows = cur.fetchall() or []
+
+        assignments = _amb_manager_assignments([row["id"] for row in estate_rows], "estate")
+        for row in estate_rows:
+            fn = (row.get("first_name") or "").strip()
+            ln = (row.get("last_name")  or "").strip()
+            assignment = assignments.get(row["id"])
+            rows.append({
+                "product": "estate", "ref_id": row["id"], "customer_id": None,
+                "full_name": f"{fn} {ln}".strip() or "—", "business_name": row["business_name"] or "—",
+                "email": row["email"], "phone": row["phone"] or "—", "domain": None,
+                "verified": True, "active": (row["status"] == "active"),
+                "created_at": row["created_at"], "plan_name": row["plan_name"],
+                "balance_credits": None,
+                "assigned_manager_id":   assignment["manager_id"]   if assignment else None,
+                "assigned_manager_name": assignment["manager_name"] if assignment else None,
+            })
+
+    # "Assigned To" spans all three sources at once, so it's simplest to
+    # apply as one pass over the merged list rather than duplicating the
+    # yes/no logic three times above.
+    if f_assigned and len(f_assigned) == 1:
+        want_assigned = f_assigned[0] == "yes"
+        rows = [x for x in rows if (x["assigned_manager_id"] is not None) == want_assigned]
+
+    rows.sort(key=lambda x: x["created_at"], reverse=True)
+
+    # Plan checkboxes: only names actually in use right now, pooled across
+    # all three plan catalogs (Portal/Connect, School and Estate each keep
+    # their own).
+    plan_cur = conn.cursor()
+    plan_cur.execute("""
+        SELECT DISTINCT name FROM plans
+        UNION SELECT DISTINCT name FROM school_plans
+        UNION SELECT DISTINCT name FROM re_plans
+        ORDER BY name
+    """)
+    plan_names = [row[0] for row in plan_cur.fetchall()]
+    plan_cur.close()
     cur.close(); conn.close()
 
-    assignments = _amb_manager_assignments([row["tenant_id"] for row in rows])
-    for row in rows:
-        row["balance_credits"] = tokens_to_credits(int(row.get("token_balance") or 0))
-        fn = (row.get("first_name") or "").strip()
-        ln = (row.get("last_name")  or "").strip()
-        row["full_name"] = f"{fn} {ln}".strip() or "—"
-        assignment = assignments.get(row["tenant_id"])
-        row["assigned_manager_id"]   = assignment["manager_id"]   if assignment else None
-        row["assigned_manager_name"] = assignment["manager_name"] if assignment else None
+    filter_groups = []
+    for g in CUSTOMER_FILTER_GROUPS:
+        selected = request.args.getlist(g["key"])
+        filter_groups.append({
+            "key": g["key"], "label": g["label"],
+            "options": [{"value": v, "label": lbl, "checked": v in selected} for v, lbl in g["options"]],
+            "count": len(selected),
+        })
+    plan_selected = f_plan
+    plan_group = {
+        "key": "plan", "label": "Plan",
+        "options": [{"value": n, "label": n, "checked": n in plan_selected} for n in plan_names],
+        "count": len(plan_selected),
+    }
 
-    return render_template("portal/admin_customers.html", customers=rows, q=q,
-                           sales_managers=_portal_sales_managers())
+    chips = []
+    for g in CUSTOMER_FILTER_GROUPS:
+        label_map = dict(g["options"])
+        for val in request.args.getlist(g["key"]):
+            if val in label_map:
+                chips.append({"label": f"{g['label']}: {label_map[val]}", "href": _remove_filter_url(g["key"], val)})
+    for val in f_plan:
+        chips.append({"label": f"Plan: {val}", "href": _remove_filter_url("plan", val)})
+    if date_from:
+        chips.append({"label": f"From {date_from}", "href": _remove_filter_url("date_from", date_from)})
+    if date_to:
+        chips.append({"label": f"To {date_to}", "href": _remove_filter_url("date_to", date_to)})
+
+    clear_all_url = url_for("portal_admin.customers", q=q) if q else url_for("portal_admin.customers")
+
+    sales_managers_by_product = {
+        "portal": _sales_managers_for("portal"),
+        "school": _sales_managers_for("school"),
+        "estate": _sales_managers_for("estate"),
+    }
+
+    return render_template(
+        "portal/admin_customers.html", customers=rows, q=q,
+        sales_managers=sales_managers_by_product["portal"],
+        sales_managers_by_product=sales_managers_by_product,
+        filter_groups=filter_groups, plan_group=plan_group,
+        industry_options=CUSTOMER_INDUSTRY_OPTIONS, PRODUCT_LABELS=CUSTOMER_PRODUCT_LABELS,
+        date_from=date_from, date_to=date_to,
+        chips=chips, active_count=len(chips), clear_all_url=clear_all_url,
+    )
 
 
 @portal_admin_bp.route("/customers/<int:customer_id>")
@@ -473,7 +873,10 @@ def customer_detail(customer_id: int):
                COALESCE(p.name,'Free') AS plan_name,
                COALESCE(p.ai_messages_limit,100) AS ai_messages_limit,
                COALESCE(t.ai_enabled, TRUE) AS ai_enabled,
-               COALESCE(t.crm_enabled, FALSE) AS crm_enabled
+               COALESCE(t.crm_enabled, FALSE) AS crm_enabled,
+               COALESCE(t.meta_ai_enabled, FALSE) AS meta_ai_enabled,
+               t.meta_ai_last_synced_at, t.meta_ai_sync_status,
+               t.meta_ai_eligible, t.meta_ai_eligibility_checked_at
         FROM customers c
         JOIN tenants t ON t.id=c.tenant_id
         LEFT JOIN tenant_balances tb ON tb.tenant_id=t.id
@@ -600,6 +1003,26 @@ def customer_detail(customer_id: int):
     email_sender = cur3.fetchone()
     cur3.close(); conn3.close()
 
+    conn4 = get_db_connection()
+    cur4 = conn4.cursor()
+    cur4.execute("SELECT 1 FROM wa_tenants WHERE tenant_id=%s AND active=TRUE LIMIT 1", (tenant_id,))
+    wa_connected = cur4.fetchone() is not None
+    cur4.close(); conn4.close()
+
+    # Meta Business AI migration wizard step — one number so the admin page
+    # can show a single "what's next" instead of scattered independent
+    # buttons. See project_phixtra_meta_business_agent_connector memory.
+    if not wa_connected:
+        meta_wizard_step = 0        # nothing possible until WhatsApp is connected
+    elif not customer["meta_ai_enabled"]:
+        meta_wizard_step = 1        # turn on knowledge sync
+    elif customer["meta_ai_eligible"] is None:
+        meta_wizard_step = 2        # check eligibility
+    elif not customer["ai_enabled"]:
+        meta_wizard_step = 4        # already live on Meta
+    else:
+        meta_wizard_step = 3        # ready to go live
+
     return render_template("portal/admin_customer_detail.html",
                            customer=customer, keys=keys,
                            invoices=invs, audit=audit,
@@ -611,6 +1034,8 @@ def customer_detail(customer_id: int):
                            tenant_system_prompt=tenant_system_prompt,
                            email_sender=email_sender,
                            sales_managers=_portal_sales_managers(),
+                           wa_connected=wa_connected,
+                           meta_wizard_step=meta_wizard_step,
                            admin_new_plain_key=session.pop("admin_new_plain_key", None))
 
 
@@ -704,6 +1129,96 @@ def customer_assign_manager(customer_id: int):
             insert_audit_log(admin_username=_admin_user(), action="customer_unassign_manager",
                               tenant_id=tenant_id,
                               details={"customer_id": customer_id, "tenant_id": tenant_id})
+        flash("Sales Manager assignment removed.", "success")
+
+    cur.close(); conn.close()
+    return redirect(fallback)
+
+
+@portal_admin_bp.route("/customers/<product>/<int:ref_id>/assign-manager", methods=["POST"])
+def customer_assign_manager_x(product: str, ref_id: int):
+    """Same job as customer_assign_manager() above, for School and Estate
+    accounts — they don't have a `customers` row to key off, so this is
+    keyed by (product, ref_id) straight into their own tenant table."""
+    r = _require_admin("customers", "modify")
+    if r: return r
+
+    fallback = request.referrer or url_for("portal_admin.customers")
+
+    if product not in ("school", "estate"):
+        flash("Unknown product.", "danger")
+        return redirect(fallback)
+
+    ref_table = LEAD_REF_TABLE[product]
+    link_col  = LEAD_LINK_COL[product]
+    name_col  = "school_name"    if product == "school" else "business_name"
+    email_col = "contact_email"  if product == "school" else "email"
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(f"SELECT id, {name_col} AS account_name, {email_col} AS email FROM {ref_table} WHERE id=%s",
+                (ref_id,))
+    account = cur.fetchone()
+    if not account:
+        cur.close(); conn.close()
+        flash("Account not found.", "danger")
+        return redirect(fallback)
+
+    mgr_id_raw = (request.form.get("sales_manager_id") or "").strip()
+    new_manager = None
+    if mgr_id_raw:
+        if not mgr_id_raw.isdigit():
+            cur.close(); conn.close()
+            flash("Invalid Sales Manager.", "danger")
+            return redirect(fallback)
+        cur.execute("""
+            SELECT id, first_name, last_name FROM ambassadors
+            WHERE id=%s AND role='sales_manager' AND status='active' AND managed_product=%s
+        """, (int(mgr_id_raw), product))
+        new_manager = cur.fetchone()
+        if not new_manager:
+            cur.close(); conn.close()
+            flash(f"That Sales Manager is not available for {product.title()} customers.", "danger")
+            return redirect(fallback)
+
+    cur.execute(f"""
+        SELECT id FROM ambassador_leads
+        WHERE {link_col}=%s AND product=%s AND dropped_at IS NULL
+        ORDER BY created_at DESC LIMIT 1
+    """, (ref_id, product))
+    existing = cur.fetchone()
+
+    if new_manager:
+        if existing:
+            cur.execute("UPDATE ambassador_leads SET sales_manager_id=%s WHERE id=%s",
+                        (new_manager["id"], existing["id"]))
+            conn.commit()
+        else:
+            cur.execute(f"""
+                INSERT INTO ambassador_leads
+                  (ambassador_id, sales_manager_id, business_name, contact_name, email,
+                   notes, stage, product, {link_col}, onboarding_date, onboarding_notes)
+                VALUES (NULL, %s, %s, %s, %s, %s, 'onboarding', %s, %s, CURRENT_DATE, %s)
+                RETURNING id
+            """, (new_manager["id"], account["account_name"], account["account_name"], account.get("email"),
+                  "Signed up directly (not via ambassador referral).",
+                  product, ref_id, "Assigned by admin for onboarding follow-up."))
+            new_id = cur.fetchone()["id"]
+            conn.commit()
+            record_stage_change(new_id, None, "onboarding", f"{_admin_user()} (Admin)",
+                                 "Directly assigned to Sales Manager — no ambassador referral.")
+
+        insert_audit_log(admin_username=_admin_user(), action="customer_assign_manager", details={
+            "product": product, "ref_id": ref_id, "sales_manager_id": new_manager["id"],
+            "sales_manager_name": f"{new_manager['first_name']} {new_manager['last_name']}"})
+        flash(f"{account['account_name'] or 'Customer'} assigned to "
+              f"{new_manager['first_name']} {new_manager['last_name']} for follow-up.", "success")
+    else:
+        if existing:
+            cur.execute("UPDATE ambassador_leads SET sales_manager_id=NULL WHERE id=%s", (existing["id"],))
+            conn.commit()
+            insert_audit_log(admin_username=_admin_user(), action="customer_unassign_manager",
+                              details={"product": product, "ref_id": ref_id})
         flash("Sales Manager assignment removed.", "success")
 
     cur.close(); conn.close()
@@ -855,6 +1370,200 @@ def customer_toggle_ai(customer_id: int):
                      tenant_id=tenant_id,
                      details={"customer_id": customer_id, "new_ai_enabled": new_val})
     flash(f"AI replies {'turned on' if new_val else 'turned off'} for this business.", "success")
+    return redirect(url_for("portal_admin.customer_detail", customer_id=customer_id))
+
+
+@portal_admin_bp.route("/customers/<int:customer_id>/toggle-meta-ai", methods=["POST"])
+def customer_toggle_meta_ai(customer_id: int):
+    """PhiXtra-admin-only switch: start mirroring this business's Store
+    Information/System Instruction to Meta's own Business AI (Business Info/
+    FAQ/Skills APIs). Never exposed to the business itself. NOTE: this only
+    syncs knowledge — it does NOT make Meta's AI the one replying to
+    customers, and does NOT turn off PhiXtra's own AI Replies switch above.
+    Turning both this on and "AI Replies" off for the same business is a
+    separate, deliberate decision an admin makes once Meta is confirmed
+    live for that number — this switch alone does not cause that."""
+    r = _require_admin("customers", "modify")
+    if r: return r
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT tenant_id FROM customers WHERE id=%s", (customer_id,))
+    row = cur.fetchone()
+    if not row:
+        cur.close(); conn.close()
+        flash("Customer not found.", "danger")
+        return redirect(url_for("portal_admin.customers"))
+    tenant_id = int(row["tenant_id"])
+
+    cur.execute("SELECT meta_ai_enabled FROM tenants WHERE id=%s", (tenant_id,))
+    trow = cur.fetchone() or {}
+    new_val = not bool(trow.get("meta_ai_enabled", False))
+
+    cur2 = conn.cursor()
+    cur2.execute("UPDATE tenants SET meta_ai_enabled=%s WHERE id=%s", (new_val, tenant_id))
+    conn.commit()
+    cur2.close(); cur.close(); conn.close()
+
+    insert_audit_log(admin_username=_admin_user(),
+                     action="admin_toggle_meta_ai",
+                     tenant_id=tenant_id,
+                     details={"customer_id": customer_id, "new_meta_ai_enabled": new_val})
+
+    if new_val:
+        sync_all_to_meta(tenant_id)  # push current content immediately rather than waiting for their next save
+        flash("Meta Business AI sync turned on — pushing current content to Meta now.", "success")
+    else:
+        flash("Meta Business AI sync turned off for this business.", "success")
+    return redirect(url_for("portal_admin.customer_detail", customer_id=customer_id))
+
+
+@portal_admin_bp.route("/customers/<int:customer_id>/sync-meta-ai", methods=["POST"])
+def customer_sync_meta_ai_now(customer_id: int):
+    """Re-push this business's current content to Meta on demand, without
+    waiting for their next Store Information/System Instruction save."""
+    r = _require_admin("customers", "modify")
+    if r: return r
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT tenant_id FROM customers WHERE id=%s", (customer_id,))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    if not row:
+        flash("Customer not found.", "danger")
+        return redirect(url_for("portal_admin.customers"))
+
+    sync_all_to_meta(int(row["tenant_id"]))
+    flash("Sync attempted — check the status below for the result.", "success")
+    return redirect(url_for("portal_admin.customer_detail", customer_id=customer_id))
+
+
+@portal_admin_bp.route("/customers/toggle-meta-ai-all", methods=["POST"])
+def customers_toggle_meta_ai_all():
+    """Bulk version of the per-business switch above: turn Meta Business AI
+    sync on (or off) for every active tenant at once, then attempt an
+    immediate sync for each. Each tenant's sync is independent and
+    best-effort — one tenant failing (e.g. no WhatsApp connected, or Meta
+    rejects the call) does not stop or roll back the others; check each
+    business's own status afterward for who actually succeeded."""
+    r = _require_admin("customers", "modify")
+    if r: return r
+
+    turn_on = request.form.get("enable", "1") == "1"
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("UPDATE tenants SET meta_ai_enabled=%s WHERE status != 'suspended' RETURNING id", (turn_on,))
+    tenant_ids = [r["id"] for r in cur.fetchall()]
+    conn.commit()
+    cur.close(); conn.close()
+
+    insert_audit_log(admin_username=_admin_user(),
+                     action="admin_toggle_meta_ai_bulk",
+                     details={"enable": turn_on, "tenant_count": len(tenant_ids)})
+
+    if turn_on:
+        failures = 0
+        for tid in tenant_ids:
+            sync_all_to_meta(tid)
+        conn2 = get_db_connection()
+        cur2 = conn2.cursor()
+        cur2.execute("SELECT COUNT(*) FROM tenants WHERE id = ANY(%s) AND meta_ai_last_sync_error IS NOT NULL", (tenant_ids,))
+        failures = cur2.fetchone()[0]
+        cur2.close(); conn2.close()
+        flash(f"Meta AI sync turned on for {len(tenant_ids)} businesses. "
+              f"{failures} did not sync cleanly — check each business's status.", "warning" if failures else "success")
+    else:
+        flash(f"Meta AI sync turned off for {len(tenant_ids)} businesses.", "success")
+    return redirect(url_for("portal_admin.customers"))
+
+
+@portal_admin_bp.route("/customers/<int:customer_id>/check-meta-eligibility", methods=["POST"])
+def customer_check_meta_eligibility(customer_id: int):
+    """Read-only: asks Meta whether this business's WhatsApp number is
+    allowed to use Business Agent. Changes nothing either side."""
+    r = _require_admin("customers", "view")
+    if r: return r
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT tenant_id FROM customers WHERE id=%s", (customer_id,))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    if not row:
+        flash("Customer not found.", "danger")
+        return redirect(url_for("portal_admin.customers"))
+
+    result = check_eligibility(int(row["tenant_id"]))
+    if result["error"]:
+        flash(f"Could not check eligibility: {result['error']}", "danger")
+    elif result["eligible"]:
+        flash("✅ Meta confirms this number IS eligible for Business Agent.", "success")
+    else:
+        flash("❌ Meta says this number is NOT currently eligible for Business Agent.", "warning")
+    return redirect(url_for("portal_admin.customer_detail", customer_id=customer_id))
+
+
+@portal_admin_bp.route("/customers/<int:customer_id>/go-live-meta", methods=["POST"])
+def customer_go_live_meta(customer_id: int):
+    """The real switch-over: Meta starts answering this business's real
+    customers, and PhiXtra's own AI turns off for the same tenant in the
+    same action — never both, never neither."""
+    r = _require_admin("customers", "modify")
+    if r: return r
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT tenant_id FROM customers WHERE id=%s", (customer_id,))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    if not row:
+        flash("Customer not found.", "danger")
+        return redirect(url_for("portal_admin.customers"))
+    tenant_id = int(row["tenant_id"])
+
+    ai_audience = "ALLOWLISTED_ONLY" if request.form.get("test_only") == "1" else "EVERYONE"
+    result = go_live_with_meta(tenant_id, ai_audience=ai_audience)
+
+    insert_audit_log(admin_username=_admin_user(), action="admin_go_live_meta",
+                     tenant_id=tenant_id, details={"customer_id": customer_id,
+                     "ai_audience": ai_audience, "ok": result["ok"], "error": result["error"]})
+
+    if result["ok"]:
+        flash(f"Meta is now live for this business ({ai_audience}). PhiXtra's own AI has been turned off for them.",
+              "success")
+    else:
+        flash(f"Could not go live with Meta — PhiXtra's own AI was left ON. Error: {result['error']}", "danger")
+    return redirect(url_for("portal_admin.customer_detail", customer_id=customer_id))
+
+
+@portal_admin_bp.route("/customers/<int:customer_id>/revert-phixtra-ai", methods=["POST"])
+def customer_revert_phixtra_ai(customer_id: int):
+    """Undo button: tells Meta to stop responding and turns PhiXtra's own AI
+    back on for this tenant, regardless of whether the Meta call succeeds."""
+    r = _require_admin("customers", "modify")
+    if r: return r
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT tenant_id FROM customers WHERE id=%s", (customer_id,))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    if not row:
+        flash("Customer not found.", "danger")
+        return redirect(url_for("portal_admin.customers"))
+    tenant_id = int(row["tenant_id"])
+
+    result = revert_to_phixtra_ai(tenant_id)
+    insert_audit_log(admin_username=_admin_user(), action="admin_revert_phixtra_ai",
+                     tenant_id=tenant_id, details={"customer_id": customer_id,
+                     "ok": result["ok"], "meta_error": result["error"]})
+
+    if result["error"]:
+        flash(f"PhiXtra's own AI is back on. Meta may not have confirmed the switch-off: {result['error']}", "warning")
+    else:
+        flash("Reverted — PhiXtra's own AI is answering again, Meta has been told to stop.", "success")
     return redirect(url_for("portal_admin.customer_detail", customer_id=customer_id))
 
 
@@ -1133,7 +1842,15 @@ def impersonate(customer_id: int):
 def stop_impersonate():
     r = _require_admin()
     if r: return r
+    # impersonate() sets both portal_logged_in and impersonate_customer_id
+    # (portal.py:_require_login gates on both) — clear both here too, or the
+    # session is left half-logged-in-as-nobody: portal_logged_in stays True
+    # with no customer_id and no impersonate_customer_id behind it, which
+    # makes any login-required portal page redirect to /login and /login
+    # think it's already signed in, bouncing straight back — an infinite
+    # redirect loop the next time this same browser opens a customer link.
     session.pop("impersonate_customer_id", None)
+    session.pop("portal_logged_in", None)
     flash("Impersonation stopped.", "success")
     return redirect(url_for("portal_admin.customers"))
 
@@ -7043,11 +7760,59 @@ def lead_drop_admin(lead_id: int):
     return redirect(url_for("portal_admin.admin_leads"))
 
 
+
+# Which product(s) a tutorial video is published to (Portal, Connect, or
+# both) — set by an admin on this page, read by portal_routes.video_tutorials()
+# to filter each product's own gallery. A video with no row here defaults to
+# ["portal"] only, matching reality for every video built before this
+# feature (2026-09-11): none were ever shown on Connect until an admin
+# explicitly adds it here.
+VIDEO_TUTORIAL_PRODUCTS = {"portal": "Portal", "connect": "Connect"}
+
+def _video_products_map():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT slug, products FROM tutorial_video_products")
+    rows = dict(cur.fetchall())
+    cur.close(); conn.close()
+    return rows
+
+
 @portal_admin_bp.route("/video-tutorials")
 def video_tutorials():
     r = _require_admin("video_tutorials", "view")
     if r: return r
-    return render_template("portal/admin_video_tutorials.html", videos=TUTORIAL_VIDEOS)
+    products_by_slug = _video_products_map()
+    videos = [dict(v, products=products_by_slug.get(v["slug"], ["portal"])) for v in TUTORIAL_VIDEOS]
+    can_modify = _is_owner() or session.get("portal_admin_permissions", {}).get("video_tutorials", {}).get("modify")
+    return render_template("portal/admin_video_tutorials.html", videos=videos,
+                            product_options=VIDEO_TUTORIAL_PRODUCTS, can_modify=can_modify)
+
+
+@portal_admin_bp.route("/video-tutorials/<slug>/products", methods=["POST"])
+def video_tutorials_products(slug):
+    r = _require_admin("video_tutorials", "modify")
+    if r: return r
+    if slug not in {v["slug"] for v in TUTORIAL_VIDEOS}:
+        flash("That video doesn't exist.", "danger")
+        return redirect(url_for("portal_admin.video_tutorials"))
+
+    products = [p for p in request.form.getlist("products") if p in VIDEO_TUTORIAL_PRODUCTS]
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO tutorial_video_products (slug, products, updated_at)
+        VALUES (%s, %s, NOW())
+        ON CONFLICT (slug) DO UPDATE SET products = EXCLUDED.products, updated_at = NOW()
+    """, (slug, products))
+    conn.commit()
+    cur.close(); conn.close()
+
+    if products:
+        flash(f"Saved — now showing on: {', '.join(VIDEO_TUTORIAL_PRODUCTS[p] for p in products)}.", "success")
+    else:
+        flash("Saved — this video is hidden from every product's gallery until you tag it again.", "warning")
+    return redirect(url_for("portal_admin.video_tutorials"))
 
 
 @portal_admin_bp.route("/admin/leads/<int:lead_id>/history")

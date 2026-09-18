@@ -96,6 +96,112 @@
       </form>
     </div>
 
+    <!-- ── Meta Business AI migration wizard — PhiXtra-admin-only, business never sees this ── -->
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
+      <div class="card-title" style="margin-bottom:2px">🔗 Move to Meta Business AI</div>
+      <p class="muted" style="margin:0 0 12px;font-size:12px">
+        One step at a time — each step below only appears once the one before it is done.
+      </p>
+
+      {% set step = meta_wizard_step %}
+      {% macro step_badge(n) -%}
+        {% if step > n %}<span class="pill pill-green">✓ Done</span>
+        {% elif step == n %}<span class="pill" style="background:#eef4ff;border-color:#b8d0ff;color:#1a4fb4">▶ Next</span>
+        {% else %}<span class="pill pill-grey">Not yet</span>{% endif %}
+      {%- endmacro %}
+
+      <!-- Step 0 — must have WhatsApp connected first -->
+      {% if not wa_connected %}
+        <p style="margin:0;font-size:13px">⚠️ No WhatsApp number connected yet for this business — nothing below is possible until then.</p>
+      {% else %}
+
+      <!-- Step 1 — turn on knowledge sync -->
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:700;margin-bottom:2px">1. Sync content to Meta {{ step_badge(1) }}</div>
+          <p class="muted" style="margin:0;font-size:12px">Copies Store Information/System Instruction to Meta so their AI has the same knowledge. Safe — doesn't change who answers customers.</p>
+          {% if step == 1 %}
+            <form method="POST" action="{{ url_for('portal_admin.customer_toggle_meta_ai', customer_id=customer.id) }}" style="margin-top:8px">
+              <button type="submit" class="btn btn-sm btn-primary">Turn on &amp; sync now</button>
+            </form>
+          {% elif step > 1 %}
+            {% set sync_status = customer.meta_ai_sync_status or {} %}
+            <div style="margin:6px 0 0">
+              {% for item_key, item_label in [('business_info','Business Info'), ('faq','FAQ'), ('skills','Skills'), ('files','Files')] %}
+                {% set item = sync_status.get(item_key) %}
+                <div style="font-size:12px;margin-bottom:2px">
+                  {% if item is none %}
+                    <span class="pill pill-grey">{{ item_label }}: not checked yet</span>
+                  {% elif item.state == 'synced' %}
+                    <span class="pill pill-green">✓ {{ item_label }} synced</span>
+                  {% elif item.state == 'skipped' %}
+                    <span class="pill pill-grey">{{ item_label }}: nothing entered yet, so nothing was sent</span>
+                  {% else %}
+                    <span class="pill pill-red" title="{{ item.error }}">✗ {{ item_label }} failed</span>
+                    <span class="muted">— {{ item.error }}</span>
+                  {% endif %}
+                </div>
+              {% endfor %}
+              {% if customer.meta_ai_last_synced_at %}
+                <p class="muted" style="margin:4px 0 0;font-size:11px">Last attempted {{ customer.meta_ai_last_synced_at.strftime('%Y-%m-%d %H:%M') }} UTC</p>
+              {% endif %}
+              <form method="POST" style="display:inline" action="{{ url_for('portal_admin.customer_sync_meta_ai_now', customer_id=customer.id) }}"><button type="submit" class="btn btn-sm" style="padding:2px 8px;margin-top:4px">sync again</button></form>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Step 2 — eligibility -->
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);{% if step < 1 %}opacity:.4{% endif %}">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:700;margin-bottom:2px">2. Check Meta eligibility {{ step_badge(2) }}</div>
+          <p class="muted" style="margin:0;font-size:12px">Confirms with Meta that this business's number is allowed to use Business Agent. Changes nothing.</p>
+          {% if step == 2 %}
+            <form method="POST" action="{{ url_for('portal_admin.customer_check_meta_eligibility', customer_id=customer.id) }}" style="margin-top:8px">
+              <button type="submit" class="btn btn-sm btn-primary">Check now</button>
+            </form>
+          {% elif step > 2 %}
+            <p class="muted" style="margin:6px 0 0;font-size:12px">
+              {% if customer.meta_ai_eligible %}<span style="color:#0a7a3c">✓ Eligible</span>
+              {% else %}<span style="color:#b42318">✗ Not eligible</span>{% endif %}
+              (checked {{ customer.meta_ai_eligibility_checked_at.strftime('%Y-%m-%d %H:%M') }} UTC)
+              — <form method="POST" style="display:inline" action="{{ url_for('portal_admin.customer_check_meta_eligibility', customer_id=customer.id) }}"><button type="submit" class="btn btn-sm" style="padding:2px 8px">re-check</button></form>
+            </p>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Step 3 — go live -->
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;{% if step < 3 %}opacity:.4{% endif %}">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:700;margin-bottom:2px">3. Go live {{ step_badge(3) }}</div>
+          <p class="muted" style="margin:0;font-size:12px">Meta starts answering real customers; PhiXtra's own AI turns off for this business, both at once.</p>
+          {% if step == 3 %}
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+              <form method="POST" action="{{ url_for('portal_admin.customer_go_live_meta', customer_id=customer.id) }}"
+                    onsubmit="return confirm('Make Meta answer this business\'s real customers now, and turn PhiXtra\'s own AI off for them? Meta requires a payment method on their own account for this — if they haven\'t added one, real customers will get no reply.')">
+                <button type="submit" class="btn btn-sm btn-primary">🚀 Go live — real customers</button>
+              </form>
+              <form method="POST" action="{{ url_for('portal_admin.customer_go_live_meta', customer_id=customer.id) }}">
+                <input type="hidden" name="test_only" value="1">
+                <button type="submit" class="btn btn-sm" title="Only phone numbers on Meta's allowlist get replies — safe to test without a payment method.">
+                  Go live — test numbers only
+                </button>
+              </form>
+            </div>
+          {% elif step == 4 %}
+            <p style="margin:6px 0 0;font-size:12px"><strong style="color:#0a7a3c">✓ Live</strong> — Meta is answering this business's customers.</p>
+            <form method="POST" action="{{ url_for('portal_admin.customer_revert_phixtra_ai', customer_id=customer.id) }}" style="margin-top:6px"
+                  onsubmit="return confirm('Switch this business back to PhiXtra\'s own AI and tell Meta to stop responding?')">
+              <button type="submit" class="btn btn-sm">↩ Revert to PhiXtra AI</button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+
+      {% endif %}
+    </div>
+
     <!-- ── Sales CRM switch — PhiXtra-admin-only, Connect-only, business never sees this ── -->
     <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
       <div class="card-title" style="margin-bottom:6px">🧭 Sales CRM (PhiXtra Connect only)</div>

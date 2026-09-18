@@ -7,11 +7,88 @@
   .modal-box{background:#fff;border-radius:20px;padding:28px;max-width:480px;width:100%;margin:20px;box-shadow:0 24px 60px rgba(3,12,24,.22)}
   .modal-title{font-size:18px;font-weight:800;margin-bottom:6px}
   .modal-sub{font-size:13px;color:var(--muted);margin-bottom:20px}
+
+  .page{max-width:1800px}
+
+  /* Grid view (same auto-fill pattern as the CRM Companies page's
+     .company-grid): the browser works out how many cards fit per row on
+     its own, from a phone up to an ultrawide monitor — no fixed breakpoints
+     to keep in sync with device sizes, it just always fits what it can. */
+  .customer-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}
+  .customer-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+  .cc-head{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+  .cc-avatar{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#c7d2fe,#818cf8);
+             color:#312e81;font-size:15px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .cc-name{font-size:14.5px;font-weight:800;color:var(--ink)}
+  .cc-business{font-size:12px;color:var(--muted)}
+  .cc-fields{display:flex;flex-direction:column;gap:7px;margin-bottom:12px}
+  .cc-field{display:flex;justify-content:space-between;gap:10px;font-size:12.5px}
+  .cc-field span:first-child{color:var(--muted);flex-shrink:0}
+  .cc-field span:last-child{text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cc-badges{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+  .cc-assign{margin-bottom:14px}
+  .cc-actions{display:flex;gap:6px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:12px}
+
+  /* View toggle — same look as the CRM Companies page's Grid/List switch */
+  .toolbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+  .toolbar .search-bar{margin-bottom:0;flex:1;min-width:200px}
+  .view-toggle{display:inline-flex;border:1.5px solid var(--line);border-radius:9px;padding:2px;background:#fff;flex-shrink:0}
+  .view-btn{display:inline-flex;align-items:center;gap:6px;border:none;background:transparent;
+            color:var(--muted);font-size:12.5px;font-weight:700;padding:6px 12px;border-radius:7px;cursor:pointer;transition:.12s}
+  .view-btn:hover{color:var(--ink)}
+  .view-btn.active{background:var(--ink);color:#fff}
+  .view-btn svg{flex-shrink:0}
+
+  /* List view: the traditional wide table, same convention every other
+     admin page uses — Grid (above) is the one that auto-adjusts, List is
+     the deliberate "show me everything in rows" option for a big screen. */
+  #customerList .truncate{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom}
+
+  /* Filter bar — every filter is a native <details> dropdown holding
+     checkboxes, so ticking one just reloads the page with an extra
+     querystring value. No custom JS state to keep in sync. */
+  .filter-bar{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-bottom:14px}
+  .filter-row{display:flex;flex-wrap:wrap;align-items:flex-start;gap:10px}
+  .filter-date{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:11px;padding:6px 10px;background:#fff}
+  .filter-date span.lbl{font-size:11.5px;font-weight:700;color:var(--muted);white-space:nowrap}
+  .filter-date input[type=date]{border:none;padding:2px;font-size:12px;width:128px}
+  .filter-dd{position:relative}
+  .filter-dd summary{list-style:none;display:inline-flex;align-items:center;gap:6px;padding:8px 12px;
+                      border-radius:11px;font-size:12.5px;font-weight:650;cursor:pointer;
+                      border:1px solid var(--line);background:#fff;color:var(--txt);white-space:nowrap}
+  .filter-dd summary::-webkit-details-marker{display:none}
+  .filter-dd[data-active="1"] summary{border-color:var(--ink);background:var(--ink);color:#fff}
+  .filter-dd[open] summary{border-color:var(--ink)}
+  .filter-dd summary .chev{transition:transform .12s}
+  .filter-dd[open] summary .chev{transform:rotate(180deg)}
+  .filter-panel{position:absolute;top:calc(100% + 6px);left:0;min-width:230px;background:#fff;
+                 border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 34px rgba(3,12,24,.16);
+                 padding:8px;z-index:50;max-height:280px;overflow-y:auto}
+  .filter-opt{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:8px;font-size:13px;cursor:pointer}
+  .filter-opt:hover{background:rgba(3,12,24,.04)}
+  .filter-opt input[type=checkbox]{width:15px;height:15px;accent-color:var(--ink);cursor:pointer;flex-shrink:0}
+  .filter-opt.disabled{cursor:not-allowed;color:var(--muted)}
+  .filter-opt.disabled input{cursor:not-allowed}
+  .filter-caption{font-size:11px;color:var(--warn);font-style:italic;padding:4px 8px 8px;border-bottom:1px solid var(--line);margin-bottom:6px}
+  .chips-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+  .chip{display:inline-flex;align-items:center;gap:6px;background:rgba(3,12,24,.05);border:1px solid var(--line);
+        border-radius:999px;padding:5px 6px 5px 12px;font-size:12px;font-weight:650;color:var(--txt)}
+  .chip a{border:none;background:transparent;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;
+          padding:2px 4px;display:inline-flex}
+  .chip a:hover{color:var(--bad)}
+  .clear-all-link{color:var(--bad);font-size:12.5px;font-weight:650;padding:9px 6px;align-self:center}
 </style>
 
 <div class="page-header">
   <h1 class="section-title">Customers</h1>
-  <button onclick="document.getElementById('signupQrModal').classList.add('open')" class="btn btn-sm">Merchant Signup QR</button>
+  <div style="display:flex;gap:8px">
+    <button onclick="document.getElementById('signupQrModal').classList.add('open')" class="btn btn-sm">Merchant Signup QR</button>
+    <form method="POST" action="{{ url_for('portal_admin.customers_toggle_meta_ai_all') }}"
+          onsubmit="return confirm('Turn Meta Business AI sync ON for every active business and push their current Store Information/System Instruction to Meta right now? This does not change who replies to customers, only what Meta has a copy of.')">
+      <input type="hidden" name="enable" value="1">
+      <button type="submit" class="btn btn-sm">🔗 Enable Meta AI Sync — All Businesses</button>
+    </form>
+  </div>
 </div>
 
 <!-- ── Merchant Signup QR Modal ───────────────────────────────────────────── -->
@@ -32,23 +109,179 @@
   </div>
 </div>
 
-<form method="GET" class="search-bar">
-  <input name="q" value="{{ q }}" placeholder="Search by name, email or domain…"/>
-  <button type="submit" class="btn btn-sm">Search</button>
-  {% if q %}<a href="{{ url_for('portal_admin.customers') }}" class="btn btn-sm">Clear</a>{% endif %}
+<form method="GET" id="filtersForm">
+  <div class="toolbar">
+    <div class="search-bar" style="display:flex;gap:8px;flex:1;min-width:200px">
+      <input name="q" value="{{ q }}" placeholder="Search by name, email or domain…"/>
+      <button type="submit" class="btn btn-sm">Search</button>
+      {% if q or active_count %}<a href="{{ clear_all_url }}" class="btn btn-sm">Clear</a>{% endif %}
+    </div>
+
+    {% if customers or active_count %}
+    <div class="view-toggle" role="group" aria-label="Customers view">
+      <button type="button" class="view-btn" id="gridViewBtn" onclick="setCustomerView('grid')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Grid
+      </button>
+      <button type="button" class="view-btn" id="listViewBtn" onclick="setCustomerView('list')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+        List
+      </button>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="filter-bar">
+    <div class="filter-row">
+
+      <div class="filter-date">
+        <span class="lbl">Created</span>
+        <input type="date" name="date_from" value="{{ date_from }}" onchange="document.getElementById('filtersForm').submit()"/>
+        <span style="color:var(--muted);font-size:12px">–</span>
+        <input type="date" name="date_to" value="{{ date_to }}" onchange="document.getElementById('filtersForm').submit()"/>
+      </div>
+
+      {% for g in filter_groups %}
+      <details class="filter-dd" {% if g.count %}data-active="1"{% endif %}>
+        <summary>
+          {{ g.label }}{% if g.count %} ({{ g.count }}){% endif %}
+          <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </summary>
+        <div class="filter-panel">
+          {% for opt in g.options %}
+          <label class="filter-opt">
+            <input type="checkbox" name="{{ g.key }}" value="{{ opt.value }}" {% if opt.checked %}checked{% endif %}
+                   onchange="document.getElementById('filtersForm').submit()"/>
+            {{ opt.label }}
+          </label>
+          {% endfor %}
+        </div>
+      </details>
+      {% endfor %}
+
+      <details class="filter-dd" {% if plan_group.count %}data-active="1"{% endif %}>
+        <summary>
+          {{ plan_group.label }}{% if plan_group.count %} ({{ plan_group.count }}){% endif %}
+          <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </summary>
+        <div class="filter-panel">
+          {% for opt in plan_group.options %}
+          <label class="filter-opt">
+            <input type="checkbox" name="plan" value="{{ opt.value }}" {% if opt.checked %}checked{% endif %}
+                   onchange="document.getElementById('filtersForm').submit()"/>
+            {{ opt.label }}
+          </label>
+          {% endfor %}
+        </div>
+      </details>
+
+      <details class="filter-dd">
+        <summary>
+          Industry
+          <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </summary>
+        <div class="filter-panel">
+          <div class="filter-caption">No account records an industry yet — these can't filter anything until that's captured somewhere.</div>
+          {% for label in industry_options %}
+          <label class="filter-opt disabled">
+            <input type="checkbox" disabled/>
+            {{ label }}
+          </label>
+          {% endfor %}
+        </div>
+      </details>
+
+      {% if active_count %}<a href="{{ clear_all_url }}" class="clear-all-link">Clear all</a>{% endif %}
+    </div>
+  </div>
 </form>
 
-<div class="card" style="padding:0">
+{% if chips %}
+<div class="chips-row">
+  {% for chip in chips %}
+  <span class="chip">
+    {{ chip.label }}
+    <a href="{{ chip.href }}" aria-label="Remove filter">×</a>
+  </span>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if customers %}
+<div class="customer-grid" id="customerGrid">
+  {% for c in customers %}
+  <div class="customer-card">
+    <div class="cc-head">
+      <div class="cc-avatar">{{ c.full_name[:2]|upper }}</div>
+      <div>
+        <div class="cc-name">{{ c.full_name }}</div>
+        <div class="cc-business">{{ c.business_name }}</div>
+      </div>
+    </div>
+    <div class="cc-fields">
+      <div class="cc-field"><span>Email</span><span title="{{ c.email }}">{{ c.email }}</span></div>
+      <div class="cc-field"><span>Phone</span><span>{{ c.phone }}</span></div>
+      {% if c.domain %}<div class="cc-field"><span>Domain</span><span title="{{ c.domain }}">{{ c.domain }}</span></div>{% endif %}
+      {% if c.balance_credits is not none %}<div class="cc-field"><span>Balance</span><span><strong>{{ "%.1f"|format(c.balance_credits) }}</strong> cr</span></div>{% endif %}
+      <div class="cc-field"><span>Plan</span><span>{{ c.plan_name }}</span></div>
+      <div class="cc-field"><span>Signed up</span><span>{{ c.created_at.strftime('%Y-%m-%d') if c.created_at else '—' }}</span></div>
+    </div>
+    <div class="cc-badges">
+      <span class="pill pill-grey">{{ PRODUCT_LABELS[c.product] }}</span>
+      {% if c.verified %}<span class="pill pill-green">✓ Verified</span>
+      {% else %}<span class="pill pill-red">✗ Unverified</span>{% endif %}
+      {% if c.active %}<span class="pill pill-green">Active</span>
+      {% else %}<span class="pill pill-red">Disabled</span>{% endif %}
+    </div>
+    <div class="cc-assign">
+      {% if c.customer_id %}
+      <form method="POST" action="{{ url_for('portal_admin.customer_assign_manager', customer_id=c.customer_id) }}">
+        <select name="sales_manager_id" onchange="this.form.submit()">
+          <option value="">— Unassigned —</option>
+          {% for m in sales_managers %}
+          <option value="{{ m.id }}" {% if c.assigned_manager_id==m.id %}selected{% endif %}>{{ m.first_name }} {{ m.last_name }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      {% else %}
+      <form method="POST" action="{{ url_for('portal_admin.customer_assign_manager_x', product=c.product, ref_id=c.ref_id) }}">
+        <select name="sales_manager_id" onchange="this.form.submit()">
+          <option value="">— Unassigned —</option>
+          {% for m in sales_managers_by_product[c.product] %}
+          <option value="{{ m.id }}" {% if c.assigned_manager_id==m.id %}selected{% endif %}>{{ m.first_name }} {{ m.last_name }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      {% endif %}
+    </div>
+    <div class="cc-actions">
+      {% if c.customer_id %}
+      <a href="{{ url_for('portal_admin.customer_detail', customer_id=c.customer_id) }}" class="btn btn-sm">Detail</a>
+      <a href="{{ url_for('portal_admin.impersonate', customer_id=c.customer_id) }}"
+         class="btn btn-sm" style="color:var(--warn);border-color:rgba(247,144,9,0.30)"
+         onclick="return confirm('View portal as this customer?')">Impersonate</a>
+      {% elif c.product == 'school' %}
+      <a href="{{ url_for('portal_admin.admin_school_plans') }}" class="btn btn-sm">School Plans</a>
+      <span class="muted">No impersonate for School yet</span>
+      {% else %}
+      <span class="muted">No detail page for Estate accounts yet</span>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card" id="customerList" style="display:none;padding:0">
   <div class="table-wrap" style="border:none;border-radius:16px">
     <table>
       <thead>
         <tr>
           <th>Name</th>
           <th>Business Name</th>
+          <th>Product</th>
           <th>Email</th>
           <th>Phone</th>
-          <th>Domain</th>
-          <th>Balance</th>
+          <th>Plan</th>
           <th>Verified</th>
           <th>Active</th>
           <th>Signed up</th>
@@ -60,52 +293,98 @@
         {% for c in customers %}
         <tr>
           <td><strong>{{ c.full_name }}</strong></td>
-          <td>{{ c.tenant_name or '—' }}</td>
-          <td>{{ c.email }}</td>
-          <td class="muted">{{ c.phone_number or '—' }}</td>
-          <td class="muted">{{ c.domain }}</td>
+          <td><span class="truncate" title="{{ c.business_name }}">{{ c.business_name }}</span></td>
+          <td><span class="pill pill-grey">{{ PRODUCT_LABELS[c.product] }}</span></td>
+          <td><span class="truncate" title="{{ c.email }}">{{ c.email }}</span></td>
+          <td class="muted">{{ c.phone }}</td>
+          <td class="muted">{{ c.plan_name }}</td>
           <td>
-            <strong>{{ "%.1f"|format(c.balance_credits) }}</strong>
-            <span class="muted">cr</span>
-          </td>
-          <td>
-            {% if c.email_verified %}<span class="pill pill-green">✓</span>
+            {% if c.verified %}<span class="pill pill-green">✓</span>
             {% else %}<span class="pill pill-red">✗</span>{% endif %}
           </td>
           <td>
-            {% if c.is_active %}<span class="pill pill-green">Active</span>
+            {% if c.active %}<span class="pill pill-green">Active</span>
             {% else %}<span class="pill pill-red">Disabled</span>{% endif %}
           </td>
           <td class="muted">{{ c.created_at.strftime('%Y-%m-%d') if c.created_at else '—' }}</td>
           <td>
-            <form method="POST" action="{{ url_for('portal_admin.customer_assign_manager', customer_id=c.id) }}">
-              <select name="sales_manager_id" class="modal-input" style="padding:4px 8px;font-size:12px"
-                      onchange="this.form.submit()">
+            {% if c.customer_id %}
+            <form method="POST" action="{{ url_for('portal_admin.customer_assign_manager', customer_id=c.customer_id) }}">
+              <select name="sales_manager_id" class="modal-input" style="padding:4px 8px;font-size:12px" onchange="this.form.submit()">
                 <option value="">— Unassigned —</option>
                 {% for m in sales_managers %}
-                <option value="{{ m.id }}" {% if c.assigned_manager_id==m.id %}selected{% endif %}>
-                  {{ m.first_name }} {{ m.last_name }}
-                </option>
+                <option value="{{ m.id }}" {% if c.assigned_manager_id==m.id %}selected{% endif %}>{{ m.first_name }} {{ m.last_name }}</option>
                 {% endfor %}
               </select>
             </form>
+            {% else %}
+            <form method="POST" action="{{ url_for('portal_admin.customer_assign_manager_x', product=c.product, ref_id=c.ref_id) }}">
+              <select name="sales_manager_id" class="modal-input" style="padding:4px 8px;font-size:12px" onchange="this.form.submit()">
+                <option value="">— Unassigned —</option>
+                {% for m in sales_managers_by_product[c.product] %}
+                <option value="{{ m.id }}" {% if c.assigned_manager_id==m.id %}selected{% endif %}>{{ m.first_name }} {{ m.last_name }}</option>
+                {% endfor %}
+              </select>
+            </form>
+            {% endif %}
           </td>
           <td style="white-space:nowrap;display:flex;gap:5px;flex-wrap:wrap">
-            <a href="{{ url_for('portal_admin.customer_detail', customer_id=c.id) }}"
-               class="btn btn-sm">Detail</a>
-            <a href="{{ url_for('portal_admin.impersonate', customer_id=c.id) }}"
+            {% if c.customer_id %}
+            <a href="{{ url_for('portal_admin.customer_detail', customer_id=c.customer_id) }}" class="btn btn-sm">Detail</a>
+            <a href="{{ url_for('portal_admin.impersonate', customer_id=c.customer_id) }}"
                class="btn btn-sm" style="color:var(--warn);border-color:rgba(247,144,9,0.30)"
                onclick="return confirm('View portal as this customer?')">Impersonate</a>
+            {% elif c.product == 'school' %}
+            <a href="{{ url_for('portal_admin.admin_school_plans') }}" class="btn btn-sm">School Plans</a>
+            {% else %}
+            <span class="muted">—</span>
+            {% endif %}
           </td>
         </tr>
-        {% else %}
-        <tr><td colspan="11" class="muted" style="text-align:center;padding:24px">
-          No customers found{% if q %} matching "{{ q }}"{% endif %}.
-        </td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
+{% else %}
+<div class="card muted" style="text-align:center;padding:24px">
+  No customers found{% if q %} matching "{{ q }}"{% endif %}{% if active_count %} with these filters{% endif %}.
+</div>
+{% endif %}
+
+<script>
+function setCustomerView(view) {
+  var grid = document.getElementById('customerGrid');
+  var list = document.getElementById('customerList');
+  var gridBtn = document.getElementById('gridViewBtn');
+  var listBtn = document.getElementById('listViewBtn');
+  if (!grid || !list) return; // no customers to show
+  if (view === 'list') {
+    grid.style.display = 'none';
+    list.style.display = 'block';
+    listBtn.classList.add('active');
+    gridBtn.classList.remove('active');
+  } else {
+    view = 'grid';
+    list.style.display = 'none';
+    grid.style.display = 'grid';
+    gridBtn.classList.add('active');
+    listBtn.classList.remove('active');
+  }
+  try { localStorage.setItem('admin_customers_view', view); } catch (e) {}
+}
+(function () {
+  var saved = 'grid';
+  try { saved = localStorage.getItem('admin_customers_view') || 'grid'; } catch (e) {}
+  setCustomerView(saved);
+})();
+
+// Clicking outside an open filter dropdown closes it.
+document.addEventListener('click', function (e) {
+  document.querySelectorAll('.filter-dd[open]').forEach(function (d) {
+    if (!d.contains(e.target)) d.removeAttribute('open');
+  });
+});
+</script>
 
 {% endblock %}

@@ -1,0 +1,209 @@
+{% extends "portal/base.html" %}
+{% block title %}Connect Messenger — PhiXtra Portal{% endblock %}
+
+{% block head %}
+{% if embedded_enabled %}
+<script>
+  window.fbAsyncInit = function() {
+    FB.init({ appId: '{{ meta_app_id }}', autoLogAppEvents: true, xfbml: true, version: 'v19.0' });
+  };
+</script>
+<script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js"></script>
+{% endif %}
+<style>
+  .wizard-header {
+    background: linear-gradient(135deg,#030C18 0%,#1a2744 100%);
+    border-radius: 16px; padding: 28px 32px; color: #fff;
+    margin-bottom: 28px; display: flex; align-items: center;
+    justify-content: space-between; flex-wrap: wrap; gap: 16px;
+  }
+  .wizard-title { font-size: 22px; font-weight: 800; letter-spacing: -.3px; margin-bottom: 4px }
+  .wizard-sub   { font-size: 13px; opacity: .7 }
+
+  .fb-signup-btn {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 14px 26px; border-radius: 12px; border: none; cursor: pointer;
+    background: #0866FF; color: #fff; font-size: 15px; font-weight: 700;
+    font-family: inherit; transition: .15s; box-shadow: 0 4px 14px rgba(8,102,255,.35);
+  }
+  .fb-signup-btn:hover { background: #0553d6; transform: translateY(-1px); }
+  .fb-signup-btn:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+  .fb-signup-btn svg { width: 22px; height: 22px; flex-shrink: 0 }
+
+  .page-option {
+    display: block; padding: 14px 16px; border: 2px solid var(--line);
+    border-radius: 14px; cursor: pointer; margin-bottom: 10px; transition: .15s;
+    text-decoration: none; color: var(--txt);
+  }
+  .page-option:hover    { border-color: #0866FF; background: rgba(8,102,255,.04); }
+  .page-option.selected { border-color: #0866FF; background: rgba(8,102,255,.06); }
+  .page-option-name { font-weight: 700; font-size: 15px }
+  .page-option-meta { font-size: 12px; color: var(--muted); margin-top: 3px }
+
+  .connected-page-row {
+    display: flex; align-items: center; gap: 12px; padding: 12px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .connected-page-row:last-child { border-bottom: none; }
+
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(3,12,24,.55); z-index: 1000; align-items: center; justify-content: center }
+  .modal-overlay.open { display: flex }
+  .modal-box { background: #fff; border-radius: 20px; padding: 28px; max-width: 480px; width: 100%; margin: 20px; box-shadow: 0 24px 60px rgba(3,12,24,.22) }
+  .modal-title { font-size: 18px; font-weight: 800; margin-bottom: 6px }
+  .modal-sub   { font-size: 13px; color: var(--muted); margin-bottom: 20px }
+
+  #signupStatus { display: none; align-items: center; gap: 10px; margin-top: 14px; font-size: 14px; color: var(--muted) }
+  #signupError  { display: none; margin-top: 12px }
+  @keyframes spin { to { transform: rotate(360deg) } }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="wizard-header">
+  <div>
+    <div class="wizard-title">Connect Facebook Messenger</div>
+    <div class="wizard-sub">Reply to Messenger messages from the same Inbox as WhatsApp — one agent, one customer history, no separate app.</div>
+  </div>
+</div>
+
+{% if pages %}
+<div class="card" style="margin-bottom:20px">
+  <div style="font-weight:700;margin-bottom:4px">Connected Pages</div>
+  <div class="muted" style="font-size:13px;margin-bottom:12px">Messages will start appearing in your Inbox once receiving is switched on for your account.</div>
+  {% for p in pages %}
+  <div class="connected-page-row">
+    <span class="dot dot-green"></span>
+    <div>
+      <div style="font-weight:700">{{ p.page_name or p.page_id }}</div>
+      <div class="muted" style="font-size:12px">Connected {{ p.connected_at.strftime('%d %b %Y') if p.connected_at else '' }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if embedded_enabled %}
+<div class="card" style="margin-bottom:20px">
+  <p style="font-size:14px;margin-bottom:20px;line-height:1.6">
+    Click the button below. A Facebook popup will open and ask you to log in and choose the Page you manage — no technical setup required.
+  </p>
+
+  <button class="fb-signup-btn" onclick="launchMessengerSignup()" id="signupBtn">
+    <svg viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 0C5.24 0 0 4.952 0 11.64c0 3.499 1.434 6.521 3.769 8.61a.96.96 0 0 1 .323.683l.065 2.135a.96.96 0 0 0 1.347.85l2.381-1.053a.96.96 0 0 1 .641-.046A13 13 0 0 0 12 23.28c6.76 0 12-4.952 12-11.64S18.76 0 12 0m6.806 7.44c.522-.03.971.567.63 1.094l-4.178 6.457a.707.707 0 0 1-.977.208l-3.87-2.504a.44.44 0 0 0-.49.007l-4.363 3.01c-.637.438-1.415-.317-.995-.966l4.179-6.457a.706.706 0 0 1 .977-.21l3.87 2.505c.15.097.344.094.491-.007l4.362-3.008a.7.7 0 0 1 .364-.13"/>
+    </svg>
+    {{ 'Connect another Page' if pages else 'Connect Messenger' }}
+  </button>
+
+  <div id="signupStatus">
+    <div style="width:18px;height:18px;border:2px solid var(--muted);border-top-color:var(--ink);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0"></div>
+    <span id="signupStatusText">Completing setup...</span>
+  </div>
+  <div id="signupError" class="flash danger"></div>
+
+  <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--line)">
+    <a href="{{ url_for('portal.my_inbox') }}" class="muted" style="font-size:13px">
+      Not ready yet — back to Inbox →
+    </a>
+  </div>
+</div>
+{% else %}
+<div class="card" style="margin-bottom:20px">
+  <p style="font-size:14px">Messenger connection isn't configured on this server yet. Contact support.</p>
+</div>
+{% endif %}
+
+<!-- Page selection modal -->
+<div class="modal-overlay" id="pageModal">
+  <div class="modal-box">
+    <div class="modal-title">Select your Facebook Page</div>
+    <div class="modal-sub">Your Facebook account manages more than one Page. Choose which one PhiXtra should connect.</div>
+    <div id="pageOptions"></div>
+    <form id="pageSelectForm" method="POST" action="{{ url_for('facebook.messenger_complete') }}">
+      <input type="hidden" name="page_id" id="selectedPageId">
+      <div style="display:flex;gap:10px;margin-top:18px">
+        <button type="submit" class="btn btn-primary" id="confirmPageBtn" disabled>Confirm Selection</button>
+        <button type="button" class="btn" onclick="document.getElementById('pageModal').classList.remove('open')">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if embedded_enabled %}
+<script>
+  function launchMessengerSignup() {
+    setStatus('connecting', 'Opening Facebook login...');
+    clearError();
+
+    FB.login(function(response) {
+      if (response.authResponse && response.authResponse.code) {
+        setStatus('connecting', 'Completing setup...');
+        sendCodeToBackend(response.authResponse.code);
+      } else {
+        setStatus('idle');
+      }
+    }, {
+      scope: 'pages_show_list,pages_messaging,pages_manage_metadata',
+      response_type: 'code',
+      override_default_response_type: true,
+    });
+  }
+
+  function sendCodeToBackend(code) {
+    fetch('{{ url_for("facebook.messenger_callback") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: code })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.error) { setStatus('idle'); showError(data.error); return; }
+      if (data.status === 'connected') {
+        setStatus('connecting', 'Connected! Reloading...');
+        window.location.reload();
+      } else if (data.status === 'select_page') {
+        setStatus('idle');
+        showPageModal(data.page_options);
+      }
+    })
+    .catch(function() {
+      setStatus('idle');
+      showError('Network error. Please try again.');
+    });
+  }
+
+  function setStatus(state, text) {
+    var btn  = document.getElementById('signupBtn');
+    var stat = document.getElementById('signupStatus');
+    var stxt = document.getElementById('signupStatusText');
+    if (state === 'idle') { btn.disabled = false; stat.style.display = 'none'; }
+    else { btn.disabled = true; if (text) stxt.textContent = text; stat.style.display = 'flex'; }
+  }
+
+  function clearError() { var el = document.getElementById('signupError'); el.style.display = 'none'; el.textContent = ''; }
+  function showError(msg) { var el = document.getElementById('signupError'); el.textContent = msg; el.style.display = 'block'; }
+
+  function showPageModal(pages) {
+    var container = document.getElementById('pageOptions');
+    container.innerHTML = '';
+    pages.forEach(function(pg) {
+      var el = document.createElement('div');
+      el.className = 'page-option';
+      el.innerHTML =
+        '<div class="page-option-name">' + pg.page_name + '</div>' +
+        '<div class="page-option-meta">Page ID: ' + pg.page_id + '</div>';
+      el.addEventListener('click', function() {
+        document.querySelectorAll('.page-option').forEach(function(o) { o.classList.remove('selected'); });
+        el.classList.add('selected');
+        document.getElementById('selectedPageId').value = pg.page_id;
+        document.getElementById('confirmPageBtn').disabled = false;
+      });
+      container.appendChild(el);
+    });
+    document.getElementById('pageModal').classList.add('open');
+  }
+</script>
+{% endif %}
+
+{% endblock %}

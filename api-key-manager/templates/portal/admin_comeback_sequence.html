@@ -1,0 +1,139 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Onboarding Drip Campaign — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+  :root{ --stuck-c:#F79009; --never-c:#F04438; --near-c:#EAB308; --active-c:#12B76A; }
+
+  .explainer{margin-bottom:20px}
+  .explainer ol{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+  .explainer li{display:flex;gap:11px;font-size:13.5px;line-height:1.55}
+  .explainer .n{flex-shrink:0;width:22px;height:22px;border-radius:50%;background:var(--ink);color:#fff;
+                font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center}
+  .explainer .exit{color:var(--good);font-weight:700}
+
+  .funnel-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:6px}
+  .funnel-bar{display:flex;height:34px;border-radius:10px;overflow:hidden;margin-bottom:14px;border:1px solid var(--line)}
+  .funnel-seg{display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:800;min-width:0}
+  .funnel-legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+  .legend-item{display:flex;align-items:center;gap:9px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:rgba(3,12,24,0.015)}
+  .legend-dot{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+  .legend-txt .num{font-size:16px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
+  .legend-txt .lbl{font-size:11px;color:var(--muted);font-weight:600}
+
+  .tl-strip{position:relative;display:flex;justify-content:space-between;margin:0 4px 8px}
+  .tl-strip::before{content:"";position:absolute;left:4%;right:4%;top:15px;height:2px;background:var(--line);z-index:0}
+  .tl-stop{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:8px;flex:1}
+  .tl-node{width:32px;height:32px;border-radius:50%;background:#fff;border:2px solid var(--ink);
+           display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:800;font-variant-numeric:tabular-nums}
+  .tl-node.empty{border-color:var(--line);color:var(--muted)}
+  .tl-day{font-size:11px;color:var(--muted);font-weight:700}
+  .tl-situations{margin-top:26px;display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+  .tl-sit-col{display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center}
+  .tl-tag{font-size:9.5px;font-weight:700;padding:3px 7px;border-radius:999px;line-height:1.3}
+  .tl-tag.never{background:rgba(240,68,56,0.10);color:var(--never-c)}
+  .tl-tag.stuck{background:rgba(247,144,9,0.10);color:var(--stuck-c)}
+  .tl-tag.near{background:rgba(234,179,8,0.14);color:#92660b}
+  .tl-tag.final{background:rgba(3,12,24,0.08);color:var(--muted)}
+  .tl-count{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+  @media(max-width:760px){
+    .tl-situations{grid-template-columns:repeat(3,1fr)}
+    .tl-strip{display:none}
+  }
+</style>
+
+<div class="page-header">
+  <h1 class="section-title">Onboarding Drip Campaign</h1>
+  <div style="display:flex;align-items:center;gap:10px">
+    <span class="pill {{ 'pill-green' if enabled else 'pill-red' }}">
+      {{ 'Running · checked hourly' if enabled else 'Paused' }}
+    </span>
+    <form method="POST" action="{{ url_for('portal_admin.comeback_sequence_toggle') }}">
+      <input type="hidden" name="enabled" value="{{ '0' if enabled else '1' }}">
+      <button type="submit" class="btn {{ 'btn-danger' if enabled else 'btn-primary' }}"
+              onclick="return confirm('{{ 'Turn OFF the Onboarding Drip Campaign? No more win-back emails will be sent until you turn it back on.' if enabled else 'Turn ON the Onboarding Drip Campaign? Eligible accounts will start receiving win-back emails automatically, checked hourly.' }}')">
+        {% if enabled %}⏸ Turn Off{% else %}▶ Turn On{% endif %}
+      </button>
+    </form>
+  </div>
+</div>
+
+<div class="card explainer">
+  <div class="card-title" style="margin-bottom:14px">What this is doing, in plain terms</div>
+  <ol>
+    <li><span class="n">1</span><div>Every hour, it looks at each account's <b>signup date</b> and <b>how far they got</b> in setup.</div></li>
+    <li><span class="n">2</span><div>On day 1, 3, 5, 7, 10 and 21 after signup, it sends <b>one</b> fixed email matching whatever situation that account is still stuck in.</div></li>
+    <li><span class="n">3</span><div class="exit">It stops for good the moment an account actually connects WhatsApp or their store — no further emails, ever.</div></li>
+  </ol>
+</div>
+
+<div class="card" style="margin-bottom:20px">
+  <div class="funnel-head">
+    <div class="card-title" style="margin-bottom:0">Where your real accounts stand right now</div>
+    <span class="muted">{{ total_real }} real accounts, excluding demos</span>
+  </div>
+  <div class="funnel-bar">
+    {% if funnel.never_started %}<div class="funnel-seg" style="width:{{ (funnel.never_started / total_real * 100) if total_real else 0 }}%;background:var(--never-c)">{{ funnel.never_started }}</div>{% endif %}
+    {% if funnel.stuck_products %}<div class="funnel-seg" style="width:{{ (funnel.stuck_products / total_real * 100) if total_real else 0 }}%;background:var(--stuck-c)">{{ funnel.stuck_products }}</div>{% endif %}
+    {% if funnel.near_done %}<div class="funnel-seg" style="width:{{ (funnel.near_done / total_real * 100) if total_real else 0 }}%;background:var(--near-c)">{{ funnel.near_done }}</div>{% endif %}
+    {% if funnel.activated %}<div class="funnel-seg" style="width:{{ (funnel.activated / total_real * 100) if total_real else 0 }}%;background:var(--active-c)">{{ funnel.activated }}</div>{% endif %}
+  </div>
+  <div class="funnel-legend">
+    <div class="legend-item"><span class="legend-dot" style="background:var(--never-c)"></span><div class="legend-txt"><div class="num">{{ funnel.never_started }}</div><div class="lbl">Never started</div></div></div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--stuck-c)"></span><div class="legend-txt"><div class="num">{{ funnel.stuck_products }}</div><div class="lbl">Stuck on products</div></div></div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--near-c)"></span><div class="legend-txt"><div class="num">{{ funnel.near_done }}</div><div class="lbl">Near done</div></div></div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--active-c)"></span><div class="legend-txt"><div class="num">{{ funnel.activated }}</div><div class="lbl">Fully activated</div></div></div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:20px">
+  <div class="card-title">The schedule</div>
+  <p class="muted" style="margin:4px 0 20px">
+    Sends today: <strong style="color:var(--txt)">{{ sent_today }}</strong> ·
+    {{ total_sent }} sent all time ·
+    <a href="{{ url_for('portal_admin.comeback_sequence_templates') }}">See the actual email designs →</a>
+  </p>
+  <div class="tl-strip">
+    {% for step in timeline %}
+    <div class="tl-stop">
+      <div class="tl-node {{ '' if step.has_sends else 'empty' }}">{{ step.day }}</div>
+      <div class="tl-day">Day {{ step.day }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="tl-situations">
+    {% for step in timeline %}
+    <div class="tl-sit-col">
+      {% for tag_class, label, count in step.situations %}
+      <span class="tl-tag {{ tag_class }}">{{ label }}</span>
+      <span class="tl-count">{{ count }} sent</span>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card" style="padding:0">
+  <div class="card-title" style="padding:20px 20px 0">Recent activity</div>
+  <div class="table-wrap" style="border:none;border-radius:16px;margin-top:10px">
+    <table>
+      <thead>
+        <tr><th>Sent</th><th>Business</th><th>Contact</th><th>Email</th><th>Which email</th></tr>
+      </thead>
+      <tbody>
+        {% for row in recent %}
+        <tr>
+          <td class="muted">{{ row.sent_at.strftime('%Y-%m-%d %H:%M') if row.sent_at else '—' }}</td>
+          <td>{{ row.tenant_name or '—' }}</td>
+          <td>{{ row.full_name }}</td>
+          <td class="muted">{{ row.email }}</td>
+          <td><span class="pill pill-grey">{{ row.email_key }}</span></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="muted" style="text-align:center;padding:24px">No emails sent yet — none of your real accounts have hit a checkpoint day since this went live.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

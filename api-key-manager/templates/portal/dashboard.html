@@ -96,7 +96,7 @@
 .handoff-card:hover{ border-color:rgba(3,12,24,.16) !important; box-shadow:0 4px 14px rgba(3,12,24,.05) }
 
 /* Pipeline snapshot + Lead sources (Dashboard redesign Phase 2) */
-.two-col{ display:grid; grid-template-columns:1.35fr 1fr; gap:16px }
+.two-col{ display:grid; grid-template-columns:1.35fr 1fr; gap:16px; align-items:start }
 @media(max-width:900px){ .two-col{ grid-template-columns:1fr } }
 
 .frow{ display:flex; align-items:center; gap:14px; margin-bottom:10px; padding:6px 8px; border-radius:10px; transition:.1s }
@@ -270,7 +270,7 @@ a.act-row:hover .act-text{ text-decoration:underline }
   </div>
 </div>
 
-<div class="kpi-grid-4">
+<div class="kpi-grid-4" id="dashSalesOverview">
   {# Sales #}
   <div class="kpi-card kpi-green">
     <div class="kpi-card-icon" style="background:rgba(37,211,102,.10)">💰</div>
@@ -335,7 +335,7 @@ a.act-row:hover .act-text{ text-decoration:underline }
 <div class="two-col">
   <div>
     <div class="section-hd"><span class="section-hd-icon">🔀</span><span class="section-hd-title">Sales Pipeline</span><span class="section-hd-line"></span><a href="{{ url_for('portal.sales_pipeline') }}" class="section-hd-action" style="font-size:12.5px;font-weight:650;color:var(--ink)">View Pipeline Board →</a></div>
-    <div class="card">
+    <div class="card" id="dashPipelineCard">
       {% if dash_pipeline %}
       <div class="muted" style="font-size:11.5px;margin-bottom:14px">Every open deal, by stage, right now — click a stage to see those leads</div>
       {% for s in dash_pipeline %}
@@ -354,7 +354,7 @@ a.act-row:hover .act-text{ text-decoration:underline }
 
   <div>
     <div class="section-hd"><span class="section-hd-icon">📡</span><span class="section-hd-title">Lead Sources</span><span class="section-hd-line"></span></div>
-    <div class="card">
+    <div class="card" id="dashSourcesCard">
       {% if dash_sources %}
       <div class="muted" style="font-size:11.5px;margin-bottom:14px">Leads and revenue, {{ dash_period.period_label|lower }}</div>
       {% for src in dash_sources %}
@@ -381,7 +381,7 @@ a.act-row:hover .act-text{ text-decoration:underline }
    copy, not invented fresh here.
 ═══════════════════════════════════════════════════════════════ #}
 <div class="section-hd"><span class="section-hd-icon">💬</span><span class="section-hd-title">Channel Activity</span><span class="section-hd-line"></span></div>
-<div class="channel-grid">
+<div class="channel-grid" id="dashChannelActivity">
   <div class="channel-card" style="border-top:3px solid #25D366">
     <div style="display:flex;align-items:center;gap:12px">
       <div class="channel-icon" style="background:#25D366">
@@ -443,7 +443,7 @@ a.act-row:hover .act-text{ text-decoration:underline }
    CAMPAIGN PERFORMANCE — Dashboard redesign Phase 3
 ═══════════════════════════════════════════════════════════════ #}
 <div class="section-hd"><span class="section-hd-icon">📣</span><span class="section-hd-title">Campaign Performance</span><span class="section-hd-line"></span><a href="{{ url_for('portal.whatsapp_campaigns_reports') }}" class="section-hd-action" style="font-size:12.5px;font-weight:650;color:var(--ink)">View All Campaigns →</a></div>
-<div class="card">
+<div class="card" id="dashCampaignCard">
   {% if dash_campaigns and dash_campaigns.sent %}
   <div class="muted" style="font-size:11.5px;margin-bottom:14px">Every WhatsApp campaign message sent {{ dash_period.period_label|lower }}</div>
   <div class="frow"><div class="flabel">Sent</div><div class="fbar-track"><div class="fbar" style="width:100%;background:#030C18">{{ dash_campaigns.sent }}</div></div></div>
@@ -485,7 +485,7 @@ a.act-row:hover .act-text{ text-decoration:underline }
 ═══════════════════════════════════════════════════════════════ #}
 <div class="section-hd"><span class="section-hd-icon">⭐</span><span class="section-hd-title">Needs Attention</span><span class="section-hd-line"></span></div>
 <div class="two-col">
-  <div class="attn-card">
+  <div class="attn-card" id="dashAttentionCard">
     {% if dash_attention and (dash_attention.stale_3d or dash_attention.proposal_waiting_5d or dash_attention.stuck_14d) %}
     {% if dash_attention.stale_3d %}
     <div class="attn-row">
@@ -528,7 +528,7 @@ a.act-row:hover .act-text{ text-decoration:underline }
     {% endif %}
   </div>
 
-  <div class="card">
+  <div class="card" id="dashActivityCard">
     <div class="card-title" style="margin-bottom:8px">Recent Activity</div>
     {% if dash_activity %}
     {% for ev in dash_activity %}

@@ -530,6 +530,12 @@
       </span>
     </a>
 
+    <!-- Channels — every social account in one place, added 2026-09-11 -->
+    <a class="sb-link {% if request.endpoint == 'portal.channels_page' %}active{% endif %}"
+       href="{{ url_for('portal.channels_page') }}">
+      <span class="sb-icon">📡</span> Channels
+    </a>
+
     <!-- WhatsApp Campaigns -->
     {% set _crm_pipeline_on = not is_connect_host or connect_crm_enabled %}
     {% set _camp_group = request.endpoint in ('portal.whatsapp_campaigns','portal.whatsapp_campaign_report','portal.whatsapp_campaigns_reports','portal.whatsapp_campaign_reviews') %}
@@ -632,6 +638,14 @@
         {% endif %}
       </div>
     </div>
+
+    <!-- Voice Calls (PressOne, 2026-09-12) — its own top-level item, not
+         buried in the CRM submenu — the user specifically asked for this
+         to be its own dedicated, visible page rather than nested. -->
+    <a class="sb-link {% if request.endpoint == 'pressone.call_log' %}active{% endif %}"
+       href="{{ url_for('pressone.call_log') }}">
+      <span class="sb-icon">📞</span> Voice Calls
+    </a>
 
     <!-- Leads -->
     <a class="sb-link {% if request.endpoint in ('portal.leads_page', 'portal.lead_detail') %}active{% endif %}"
@@ -1003,13 +1017,11 @@
     </a>
     {% endif %}
 
-    {% if not is_connect_host %}
-    <!-- Video Tutorials -->
+    <!-- Video Tutorials (available on both portal.phixtra.com and connect.phixtra.com) -->
     <a class="sb-link {% if request.endpoint == 'portal.video_tutorials' %}active{% endif %}"
        href="{{ url_for('portal.video_tutorials') }}">
       <span class="sb-icon">🎬</span> Video Tutorials
     </a>
-    {% endif %}
 
     <!-- Account Settings -->
     <a class="sb-link {% if request.endpoint == 'portal.settings' %}active{% endif %}"
@@ -1533,9 +1545,7 @@
     {% if not is_connect_host %}
     { icon:'📚', title:'Help & Tutorials',       desc:'Guides to get the most from PhiXtra',         url:'{{ url_for("portal.tutorials") }}',                  tags:'help guide tutorial support how to faq learn' },
     {% endif %}
-    {% if not is_connect_host %}
     { icon:'🎬', title:'Video Tutorials',        desc:'Watch short walkthroughs of key features',    url:'{{ url_for("portal.video_tutorials") }}',            tags:'video tutorial watch walkthrough demo guide' },
-    {% endif %}
     { icon:'⚙️', title:'Account Settings',       desc:'Update profile, password and preferences',    url:'{{ url_for("portal.settings") }}',                   tags:'settings account profile password email notification preferences' },
     {% if _has_woocommerce %}
     { icon:'📂', title:'My Catalogue',           desc:'Browse and select products from catalogue',    url:'{{ url_for("portal.catalogue_browse") }}',           tags:'catalogue browse products select' },

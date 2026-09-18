@@ -15,6 +15,7 @@ from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, send_file, jsonify, send_from_directory, Response)
 
 from db import get_db_connection, insert_audit_log
+from meta_business_agent import sync_all_to_meta
 from portal_utils import (
     hash_password, verify_password, make_token, utc_now_naive,
     next_invoice_number, credits_to_tokens, tokens_to_credits,
@@ -133,8 +134,13 @@ CONNECT_HIDDEN_ENDPOINTS = {
     "portal.catalogue_toggle", "portal.catalogue_selections",
     "portal.customers", "portal.customer_detail",
 
-    # ── Help & Tutorials / Video Tutorials ───────────────────────────────
-    "portal.tutorials", "portal.video_tutorials",
+    # ── Help & Tutorials ─────────────────────────────────────────────────
+    # portal.video_tutorials deliberately NOT in this set (as of 2026-09-11)
+    # — PhiXtra Connect now gets Video Tutorials too, filtered to whichever
+    # videos an admin has tagged "connect" for (see tutorial_video_products
+    # table / video_tutorials() below). portal.tutorials (the written guide)
+    # stays hidden — it wasn't asked for and still has AI-worded content.
+    "portal.tutorials",
 
     # ── Handoff Reports — an AI-handoff concept, meaningless without AI ──
     "portal.whatsapp_reports",
@@ -341,9 +347,28 @@ def _customer_id():
     cid = session.get("customer_id")
     return int(cid) if cid else None
 
+def _safe_next(value):
+    """Only ever follow an internal path (e.g. '/onboarding?focus=step-5') —
+    never a full URL, and never '//host/...' (protocol-relative), which
+    would silently send a logging-in customer off-site."""
+    if not value:
+        return None
+    if not value.startswith("/") or value.startswith("//"):
+        return None
+    return value
+
 def _require_login():
     if not _logged_in() or not _customer_id():
-        return redirect(url_for("portal.login"))
+        # A session can have portal_logged_in=True with no resolvable
+        # customer (e.g. an admin stopped impersonating a customer, which
+        # only used to clear impersonate_customer_id — see stop_impersonate
+        # — leaving this exact half-state behind). Left alone, that state
+        # makes login() think "already logged in" and bounce straight back
+        # to whatever page sent it here, which sends it right back here:
+        # an infinite redirect loop. Clearing it forces a real fresh login.
+        session.pop("portal_logged_in", None)
+        nxt = _safe_next(request.full_path.rstrip("?"))
+        return redirect(url_for("portal.login", next=nxt) if nxt else url_for("portal.login"))
     return None
 
 
@@ -494,7 +519,7 @@ def _get_team_members(tenant_id: int, active_only: bool = False) -> list:
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        q = "SELECT id, name, email, role, is_active, invite_token, invite_expires_at, last_login_at, created_at FROM team_members WHERE tenant_id=%s"
+        q = "SELECT id, name, email, role, is_active, invite_token, invite_expires_at, last_login_at, created_at, messenger_access FROM team_members WHERE tenant_id=%s"
         if active_only:
             q += " AND is_active=TRUE"
         q += " ORDER BY created_at ASC"
@@ -637,12 +662,31 @@ def _resolve_phone_agent_id(tenant_id: int, phone: str):
         return None
 
 
+def _team_member_has_messenger_access(team_member_id: int) -> bool:
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT messenger_access FROM team_members WHERE id=%s", (team_member_id,))
+        row = cur.fetchone()
+        cur.close(); conn.close()
+        return bool(row and row[0])
+    except Exception as e:
+        print("⚠️ _team_member_has_messenger_access error:", e)
+        return False
+
+
 def _team_can_access_phone(tenant_id: int, actor: dict, phone: str) -> bool:
     """Owners always pass. A team member only passes if the conversation's
     agent is in their assigned set — zero assignments means zero access,
-    by design (deny-by-default, per explicit requirement)."""
+    by design (deny-by-default, per explicit requirement).
+    Facebook Messenger has no per-agent concept (a Page isn't tied to any
+    one AI Agent persona the way a WhatsApp number is), so it gets its own
+    explicit team_members.messenger_access switch instead — flagged urgent
+    2026-09-11, same day Phase 2 shipped without it."""
     if not actor["is_team"]:
         return True
+    if phone.startswith("fb:"):
+        return _team_member_has_messenger_access(actor["team_member_id"])
     allowed = _get_team_member_agent_ids(actor["team_member_id"])
     if not allowed:
         return False
@@ -1276,64 +1320,93 @@ def _send_founder_welcome_email_wa(
     )
 
 
-def _send_welcome_trial_email(
+def _send_verified_welcome_email_web(
     email: str,
     first_name: str,
     website: str,
-    trial_expires_at=None,  # kept for backwards compat — no longer used
 ) -> None:
-    """Send the Day-0 welcome email when an account is created."""
+    """
+    Sent to web/WooCommerce merchants right after they verify their email
+    (called from verify_email()) — replaces the old Day-0 "account is now
+    live" email, which used to fire at signup, before verification, and
+    never mentioned the free trial or the full feature set.
+    """
     greeting = first_name.strip() if first_name and first_name.strip() else "there"
     portal_link  = _PORTAL_BASE_URL
     upgrade_link = "https://phixtra.com/subscription-plans/"
+    logo_url = f"{_PORTAL_BASE_URL}/static/portal/phixtra-logo.png"
     html = f"""
     <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto">
-      <h2 style="color:#030C18">Your PhiXtra account is now live 🎉</h2>
+      <img src="{logo_url}" alt="PhiXtra" style="height:34px;margin-bottom:26px;display:block">
+      <h2 style="color:#030C18">Your email is verified ✅</h2>
       <p>Hi {greeting},</p>
-      <p>Your AI assistant for <b>{website}</b> has been created and is ready to go.</p>
-      <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+      <p>Your email is verified and your PhiXtra account for <b>{website}</b> is ready to use.</p>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:18px">
         <tr>
-          <td style="padding:8px 12px;background:#f3f4f6;border:1px solid #e5e7eb;font-weight:700;width:130px">Store</td>
-          <td style="padding:8px 12px;border:1px solid #e5e7eb">{website}</td>
+          <td style="padding:10px 14px;background:#f6f7f9;border:1px solid #e3e6ea;font-weight:700;width:130px">Store</td>
+          <td style="padding:10px 14px;border:1px solid #e3e6ea">{website}</td>
         </tr>
         <tr>
-          <td style="padding:8px 12px;background:#f3f4f6;border:1px solid #e5e7eb;font-weight:700">Plan</td>
-          <td style="padding:8px 12px;border:1px solid #e5e7eb">Free — 100 AI messages per month</td>
+          <td style="padding:10px 14px;background:#f6f7f9;border:1px solid #e3e6ea;font-weight:700">Current Plan</td>
+          <td style="padding:10px 14px;border:1px solid #e3e6ea">Free — 100 AI messages / month, 1 AI agent, up to 50 products</td>
         </tr>
       </table>
-      <p style="margin:0 0 6px"><b>What to do next:</b></p>
-      <ol style="margin:0 0 20px;padding-left:20px;line-height:1.9">
-        <li>Verify your email (click the link in the separate verification email)</li>
-        <li>Log in to your portal and follow the setup guide</li>
-        <li>Install the PhiXtra plugins on your store</li>
-        <li>Watch your AI assistant go live</li>
-      </ol>
+      <p>This plan doesn't expire — it's yours for as long as you want it.</p>
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 18px;margin:0 0 20px">
+        <p style="margin:0;font-size:14px;color:#15803d">
+          <b>🎉 One more step unlocks a free 30-day trial of everything in the Pro plan.</b><br>
+          Connect your store (install the WordPress plugin) or connect WhatsApp, and the full trial switches on automatically — no card required.
+        </p>
+      </div>
+      <p style="margin:0 0 6px"><b>Everything you get access to:</b></p>
+      <ul style="margin:0 0 22px;padding-left:20px;line-height:1.9">
+        <li><b>AI Shopping Assistant</b> — answers customer questions and recommends products on your store, 24/7</li>
+        <li><b>Built-in CRM</b> — every customer and conversation tracked automatically, with a full sales pipeline</li>
+        <li><b>Cart Recovery</b> — automatically follows up on abandoned carts</li>
+        <li><b>WhatsApp, Facebook &amp; Instagram Inbox</b> — all your customer chats in one place</li>
+        <li><b>Bulk Campaigns</b> — send promotions and updates to your customers</li>
+        <li><b>Reports &amp; Dashboards</b> — see how your store and sales are performing</li>
+      </ul>
+      <div style="background:#f6f7f9;border:1px solid #e3e6ea;border-radius:10px;padding:16px 18px;margin:0 0 20px">
+        <p style="margin:0 0 8px"><b>One last step to switch on your chat widget:</b></p>
+        <ol style="margin:0;padding-left:20px;line-height:1.9;font-size:14px">
+          <li>Log in to your portal below</li>
+          <li>Open <b>API Keys</b> and copy your key</li>
+          <li>Paste it into the <b>PhiXtra AI Shopping Assistant</b> settings page on your WordPress site, then save</li>
+        </ol>
+      </div>
       <p style="margin-bottom:20px">
-        <a href="{portal_link}"
+        <a href="{portal_link}/login"
            style="display:inline-block;background:#030C18;color:#fff;padding:12px 22px;
                   border-radius:12px;text-decoration:none;font-weight:700;font-size:15px;margin-right:10px">
-          Go to Portal
+          Log In &amp; Get My API Key
         </a>
         <a href="{upgrade_link}"
            style="display:inline-block;background:#fff;color:#030C18;padding:12px 22px;
                   border-radius:12px;text-decoration:none;font-weight:700;font-size:15px;
                   border:2px solid #030C18">
-          View Plans
+          View Plans &amp; Upgrade
         </a>
       </p>
       <p style="color:#6b7280;font-size:13px">
-        Questions? Contact <a href="mailto:support@phixtra.com" style="color:#030C18">support@phixtra.com</a>
+        Questions? Just reply to this email or contact <a href="mailto:support@phixtra.com" style="color:#030C18">support@phixtra.com</a>
       </p>
     </div>"""
     send_email(
         email,
-        "Your PhiXtra account is now live 🎉",
+        "You're verified! Here's what's included in your PhiXtra account",
         html,
         text_body=(
             f"Hi {greeting},\n\n"
-            f"Your PhiXtra AI assistant for {website} is now active.\n"
-            f"Plan: Free — 100 AI messages/month\n\n"
-            f"Log in: {portal_link}\nView plans: {upgrade_link}"
+            f"Your email is verified and your PhiXtra account for {website} is ready to use.\n\n"
+            f"Current plan: Free — 100 AI messages/month, 1 AI agent, up to 50 products (doesn't expire).\n\n"
+            f"Connect your store or WhatsApp to unlock a free 30-day trial of the full Pro plan — "
+            f"AI Shopping Assistant, built-in CRM, Cart Recovery, WhatsApp/Facebook/Instagram Inbox, "
+            f"Bulk Campaigns, and Reports & Dashboards.\n\n"
+            f"One last step to switch on your chat widget: log in to the portal, open API Keys and copy "
+            f"your key, then paste it into the PhiXtra AI Shopping Assistant settings page on your "
+            f"WordPress site and save.\n\n"
+            f"Log in: {portal_link}/login\nView plans: {upgrade_link}"
         ),
     )
 
@@ -1385,6 +1458,22 @@ def _reg_rate_ok(ip):
     _reg_attempts[ip].append(now)
     return True
 
+# Rate limit for the WordPress plugins' background "is this account verified
+# yet" check (see /connect/status) — much higher than _reg_rate_ok since this
+# is a low-value read-only poll, not an account-creation attempt.
+_connect_status_attempts = _defaultdict(list)
+_CONNECT_STATUS_MAX = 60
+_CONNECT_STATUS_WINDOW = 3600
+
+def _connect_status_rate_ok(ip):
+    now = _time.time()
+    attempts = [t for t in _connect_status_attempts[ip] if now - t < _CONNECT_STATUS_WINDOW]
+    _connect_status_attempts[ip] = attempts
+    if len(attempts) >= _CONNECT_STATUS_MAX:
+        return False
+    _connect_status_attempts[ip].append(now)
+    return True
+
 
 # Presale/QA test signups — self-registered via the normal public flow using
 # a plus-addressed alias of a known base email (e.g. d.ogbudu+onboarding-test@
@@ -1402,6 +1491,23 @@ def _is_presale_test_signup(email: str) -> bool:
     local, domain = email.split("@", 1)
     base_local = local.split("+", 1)[0]
     return f"{base_local}@{domain}" in _PRESALE_TEST_BASE_EMAILS
+
+
+# Registration phone verification (bot-check) — reuses the same OTP table/
+# helpers (_generate_otp/_store_otp/_verify_otp/_otp_rate_ok) already built
+# for WhatsApp-merchant OTP login further down this file; only the delivery
+# channel differs (SMS via BulkSMSNigeria instead of a WhatsApp message).
+
+# Temporary kill switch — set back to True to re-enable the SMS phone-check
+# on registration/login. Turned off 2026-09-16 at the user's request.
+PHONE_VERIFICATION_ENABLED = False
+def _send_registration_otp_sms(phone: str, otp: str) -> bool:
+    message = f"Your PhiXtra verification code is {otp}. It expires in 10 minutes. Do not share it with anyone."
+    sent, _failed, error = bulksmsng_api.send_bulk_sms([phone], message)
+    if sent < 1:
+        print("⚠️ [Phone Verify] SMS send failed:", error)
+        return False
+    return True
 
 
 def _register_whatsapp_merchant(
@@ -1457,12 +1563,14 @@ def _register_whatsapp_merchant(
 
     is_demo_signup = _is_presale_test_signup(email)
 
+    signup_product = "connect" if _is_connect_host() else "portal"
+
     cur2 = conn.cursor()
     cur2.execute(f"""
-        INSERT INTO tenants (name, domain, status, source_type, features, system_prompt, is_demo, ai_enabled{founder_flags})
-        VALUES (%s, NULL, 'pending', 'whatsapp', %s, %s, %s, %s{founder_vals})
+        INSERT INTO tenants (name, domain, status, source_type, features, system_prompt, is_demo, ai_enabled, signup_product{founder_flags})
+        VALUES (%s, NULL, 'pending', 'whatsapp', %s, %s, %s, %s, %s{founder_vals})
         RETURNING id
-    """, (business_name, free_features, system_prompt_text, is_demo_signup, not _is_connect_host()))
+    """, (business_name, free_features, system_prompt_text, is_demo_signup, not _is_connect_host(), signup_product))
     row = cur2.fetchone()
     tenant_id      = int(row[0])
     trial_ends_at  = None
@@ -1523,6 +1631,15 @@ def _register_whatsapp_merchant(
 
     email_sent = _send_verify_email(email, verify_token, first_name)
 
+    if PHONE_VERIFICATION_ENABLED and phone_number:
+        otp = _generate_otp()
+        _store_otp(phone_number, otp)
+        _send_registration_otp_sms(phone_number, otp)
+        session["reg_verify_email"] = email
+        session["reg_verify_phone"] = phone_number
+        session["reg_email_sent"]   = email_sent
+        return redirect(url_for("portal.register_verify_phone"))
+
     resend_url = url_for('portal.resend_verify')
     if email_sent:
         flash(
@@ -1539,6 +1656,120 @@ def _register_whatsapp_merchant(
             "warning"
         )
     return redirect(url_for("portal.login"))
+
+
+def _register_web_merchant(first_name, last_name, email, password, phone_number,
+                            tenant_domain, hear_about_us="", ref_code=""):
+    """
+    Self-service registration path for web (WooCommerce/Shopify/custom site)
+    merchants. Creates tenant (if needed) + customer + trial api_key, and
+    sends the verification email. Shared by the general /register form's
+    "I have a website" path and the dedicated WordPress-plugin signup flow.
+
+    Returns a dict: {"ok": True, "email_sent": bool, "tenant_id": int} on
+    success, or {"ok": False, "reason": "duplicate_email"} on failure — the
+    caller decides what flash/redirect to show for each case.
+    """
+    tenant_domain = tenant_domain.replace("https://", "").replace("http://", "").rstrip("/").lower()
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cur.execute("SELECT id, name FROM tenants WHERE domain=%s", (tenant_domain,))
+    tenant = cur.fetchone()
+    if not tenant:
+        tenant_name = tenant_domain
+        free_features = _build_free_features("web")
+        system_prompt_text = DEFAULT_SYSTEM_PROMPT.replace("{{business_name}}", tenant_name)
+        cur2 = conn.cursor()
+        cur2.execute(
+            "INSERT INTO tenants (name, domain, status, features, system_prompt, ref_code, is_demo) VALUES (%s, %s, 'pending', %s, %s, %s, %s) RETURNING id",
+            (tenant_name, tenant_domain, _json.dumps(free_features), system_prompt_text, ref_code or None,
+             _is_presale_test_signup(email))
+        )
+        new_tenant_id = cur2.fetchone()[0]
+        conn.commit()
+        cur2.close()
+        tenant = {"id": new_tenant_id, "name": tenant_name}
+        insert_audit_log(action="tenant_auto_created",
+                         tenant_id=new_tenant_id,
+                         website=tenant_domain,
+                         details={"created_by": email, "name": tenant_name,
+                                  "features": free_features})
+        _send_admin_new_signup_email(
+            customer_name=f"{first_name} {last_name}".strip(),
+            customer_email=email,
+            domain=tenant_domain,
+            hear_about_us=hear_about_us,
+        )
+
+    verify_token = make_token(24)
+    pw_hash      = hash_password(password)
+
+    try:
+        cur2 = conn.cursor()
+        cur2.execute("""
+            INSERT INTO customers
+                (tenant_id, first_name, last_name, email, password_hash,
+                 phone_number, email_verified, verify_token, hear_about_us)
+            VALUES (%s, %s, %s, %s, %s, %s, FALSE, %s, %s)""",
+            (int(tenant["id"]), first_name, last_name, email,
+             pw_hash, phone_number or None, verify_token, hear_about_us or None))
+        conn.commit()
+        cur2.close()
+    except Exception:
+        conn.rollback()
+        cur.close(); conn.close()
+        return {"ok": False, "reason": "duplicate_email"}
+
+    plain_key, hashed_key = _generate_api_key_and_hash()
+    last4 = plain_key[-4:]
+
+    cur3 = conn.cursor()
+    cur3.execute("""
+        INSERT INTO api_keys
+            (tenant_id, api_key_hash, api_key_plain, is_active, website, key_type,
+             tokens_used)
+        VALUES (%s, %s, %s, TRUE, %s, 'trial', 0)
+        RETURNING id""",
+        (int(tenant["id"]), hashed_key, plain_key, tenant_domain))
+    api_key_id = cur3.fetchone()[0]
+    conn.commit()
+    cur3.close()
+
+    cur.close(); conn.close()
+
+    _ensure_tenant_balance_row(int(tenant["id"]))
+
+    session["pending_plain_key"] = plain_key
+
+    insert_audit_log(
+        admin_username=f"self-register:{email}",
+        action="create_key",
+        tenant_id=int(tenant["id"]),
+        website=tenant_domain,
+        key_type="trial",
+        api_key_id=api_key_id,
+        api_key_last4=last4,
+        api_key_plain=plain_key,
+        details={"created_from": "self-register"},
+    )
+    insert_audit_log(action="customer_registered", tenant_id=int(tenant["id"]),
+                     website=tenant_domain, details={"email": email, "first_name": first_name})
+
+    email_sent = _send_verify_email(email, verify_token, first_name)
+
+    if PHONE_VERIFICATION_ENABLED and phone_number:
+        otp = _generate_otp()
+        _store_otp(phone_number, otp)
+        _send_registration_otp_sms(phone_number, otp)
+        session["reg_verify_email"] = email
+        session["reg_verify_phone"] = phone_number
+        session["reg_email_sent"]   = email_sent
+
+    return {"ok": True, "email_sent": email_sent, "tenant_id": int(tenant["id"]),
+            "needs_phone_verify": bool(PHONE_VERIFICATION_ENABLED and phone_number)}
+
 
 @portal_bp.route("/register/whatsapp-setup-qr")
 def register_whatsapp_setup_qr():
@@ -1569,6 +1800,146 @@ def register_whatsapp_setup_qr():
     img.save(buf, format="PNG")
     buf.seek(0)
     return send_file(buf, mimetype="image/png", as_attachment=False)
+
+
+@portal_bp.route("/connect", methods=["GET", "POST"])
+def wp_connect():
+    """
+    Dedicated, simplified signup page for merchants arriving from the
+    "Connect to PhiXtra" button inside the WordPress plugins (PhiXtra AI
+    Shopping Assistant / PhiXtra Export). Deliberately separate from
+    /register — that page serves the general public (mostly WhatsApp-only
+    merchants) and is left untouched. This page already knows the visitor's
+    store domain and admin email, so it skips fields that don't apply here
+    (channel picker, "how did you hear about us").
+    """
+    if request.method == "GET":
+        site_url = (request.args.get("site_url") or "").strip()
+        admin_email = (request.args.get("admin_email") or "").strip()
+        domain = ""
+        if site_url:
+            domain = site_url.replace("https://", "").replace("http://", "").rstrip("/").split("/")[0]
+        return render_template(
+            "portal/wp_connect.html",
+            domain=domain[:255],
+            email=admin_email[:255],
+        )
+
+    # Honeypot
+    if request.form.get("website"):
+        return redirect(url_for("portal.wp_connect"))
+
+    client_ip = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
+    if not _reg_rate_ok(client_ip):
+        flash("Too many attempts. Try later.", "danger")
+        return redirect(url_for("portal.wp_connect"))
+
+    import requests as _req
+    recaptcha_response = request.form.get("g-recaptcha-response", "")
+    if not recaptcha_response:
+        flash("Please complete the reCAPTCHA check.", "danger")
+        return redirect(url_for("portal.wp_connect"))
+    try:
+        rv = _req.post("https://www.google.com/recaptcha/api/siteverify",
+                       data={"secret": os.getenv("RECAPTCHA_SECRET_KEY", ""), "response": recaptcha_response},
+                       timeout=5)
+        if not rv.json().get("success"):
+            flash("reCAPTCHA failed. Please try again.", "danger")
+            return redirect(url_for("portal.wp_connect"))
+    except Exception:
+        pass
+
+    first_name   = (request.form.get("first_name")   or "").strip()
+    last_name    = (request.form.get("last_name")    or "").strip()
+    email        = (request.form.get("email")        or "").strip().lower()
+    password     = (request.form.get("password")     or "").strip()
+    phone_number = (request.form.get("phone_number") or "").strip()
+    tenant_domain = (request.form.get("tenant_domain") or "").strip().lower()
+
+    if not first_name or not last_name or not email or not password:
+        flash("First name, last name, email, and password are all required.", "danger")
+        return render_template("portal/wp_connect.html", domain=tenant_domain, email=email,
+                               form_data=request.form)
+
+    if len(password) < 8:
+        flash("Password must be at least 8 characters.", "danger")
+        return render_template("portal/wp_connect.html", domain=tenant_domain, email=email,
+                               form_data=request.form)
+
+    if not phone_number:
+        flash("Mobile phone is required.", "danger")
+        return render_template("portal/wp_connect.html", domain=tenant_domain, email=email,
+                               form_data=request.form)
+
+    if not tenant_domain:
+        flash("Store domain is required.", "danger")
+        return render_template("portal/wp_connect.html", domain=tenant_domain, email=email,
+                               form_data=request.form)
+
+    result = _register_web_merchant(
+        first_name=first_name, last_name=last_name, email=email, password=password,
+        phone_number=phone_number, tenant_domain=tenant_domain,
+        hear_about_us="wordpress_plugin",
+    )
+
+    if not result["ok"]:
+        flash("An account with that email already exists. Please log in.", "warning")
+        return redirect(url_for("portal.login"))
+
+    if result["needs_phone_verify"]:
+        return redirect(url_for("portal.register_verify_phone"))
+
+    if result["email_sent"]:
+        return redirect(url_for("portal.register_check_email", email=email))
+
+    resend_url = url_for("portal.resend_verify")
+    flash(
+        f"Account created! However we could not send the verification email to <strong>{email}</strong>. "
+        f"<a href='{resend_url}' style='text-decoration:underline'>Click here to resend</a>.",
+        "warning"
+    )
+    return redirect(url_for("portal.login"))
+
+
+@portal_bp.route("/connect/status")
+def wp_connect_status():
+    """
+    Public, read-only status check the WordPress plugins (PhiXtra AI Shopping
+    Assistant / PhiXtra Export) poll in the background so a merchant who
+    verified their email sees the plugin's screen update on its own instead
+    of it sitting frozen on "Get My API Key" forever.
+
+    Deliberately returns only a yes/no {"verified": true/false} — never the
+    API key itself. Copying the key into WordPress stays a manual, logged-in
+    step on the portal, so this endpoint has no secret to leak even if
+    someone guessed a store's domain + admin email. Rate-limited per IP.
+    """
+    client_ip = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
+    if not _connect_status_rate_ok(client_ip):
+        return jsonify({"verified": False}), 429
+
+    site_url = (request.args.get("site_url") or "").strip()
+    admin_email = (request.args.get("admin_email") or "").strip().lower()
+    if not site_url or not admin_email:
+        return jsonify({"verified": False}), 400
+
+    domain = site_url.replace("https://", "").replace("http://", "").rstrip("/").split("/")[0].lower()
+    if not domain:
+        return jsonify({"verified": False}), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT c.email_verified
+        FROM tenants t
+        JOIN customers c ON c.tenant_id = t.id
+        WHERE t.domain = %s AND lower(c.email) = %s
+        LIMIT 1
+    """, (domain, admin_email))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+
+    return jsonify({"verified": bool(row and row["email_verified"])})
 
 
 HEAR_ABOUT_US_OPTIONS = [
@@ -1776,18 +2147,14 @@ def register():
 
     email_sent = _send_verify_email(email, verify_token, first_name)
 
-    # Send Day-0 welcome email (separate from verification email).
-    # No trial has started yet at this point — that happens once
-    # _grant_trial_upgrade() fires on real catalogue-sync completion.
-    try:
-        _send_welcome_trial_email(
-            email=email,
-            first_name=first_name,
-            website=tenant_domain,
-            trial_expires_at=None,
-        )
-    except Exception as _we:
-        print("⚠️ welcome trial email failed:", _we)
+    if PHONE_VERIFICATION_ENABLED and phone_number:
+        otp = _generate_otp()
+        _store_otp(phone_number, otp)
+        _send_registration_otp_sms(phone_number, otp)
+        session["reg_verify_email"] = email
+        session["reg_verify_phone"] = phone_number
+        session["reg_email_sent"]   = email_sent
+        return redirect(url_for("portal.register_verify_phone"))
 
     resend_url = url_for("portal.resend_verify")
     if email_sent:
@@ -1805,6 +2172,79 @@ def register():
             "warning"
         )
     return redirect(url_for("portal.login"))
+
+
+@portal_bp.route("/register/check-email")
+def register_check_email():
+    """Standalone 'check your email' confirmation for the WordPress-plugin
+    signup flow — styled to match the rest of that flow instead of the
+    generic login-page flash message every other signup path uses."""
+    email = (request.args.get("email") or "").strip()
+    return render_template("portal/register_check_email.html", email=email)
+
+
+@portal_bp.route("/register/verify-phone", methods=["GET", "POST"])
+def register_verify_phone():
+    """Bot-check step inserted right after registration: the account isn't
+    usable until the phone number typed in at signup receives and echoes
+    back a real SMS code. Session-based (email/phone stashed by whichever
+    registration path just ran, or by login() for pre-existing accounts
+    that haven't verified yet) rather than a URL token, so it can't be
+    replayed against a different signup."""
+    email = session.get("reg_verify_email", "")
+    phone = session.get("reg_verify_phone", "")
+    if not email or not phone:
+        flash("Nothing to verify right now. Please register or log in first.", "warning")
+        return redirect(url_for("portal.register"))
+
+    if request.method == "GET":
+        return render_template("portal/verify_phone.html", email=email, phone=phone)
+
+    code = (request.form.get("code") or "").strip()
+    if not code or not _verify_otp(phone, code):
+        flash("That code is incorrect or has expired. Request a new one below.", "danger")
+        return render_template("portal/verify_phone.html", email=email, phone=phone)
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE customers SET phone_verified=TRUE WHERE email=%s AND phone_number=%s", (email, phone))
+    conn.commit()
+    cur.close(); conn.close()
+
+    session.pop("reg_verify_email", None)
+    session.pop("reg_verify_phone", None)
+    email_sent = session.pop("reg_email_sent", True)
+
+    if email_sent:
+        flash("Phone verified! Now check your email to finish activating your account.", "success")
+        return redirect(url_for("portal.register_check_email", email=email))
+
+    resend_url = url_for("portal.resend_verify")
+    flash(
+        f"Phone verified! However we could not send the verification email to <strong>{email}</strong>. "
+        f"<a href='{resend_url}' style='text-decoration:underline'>Click here to resend</a>.",
+        "warning"
+    )
+    return redirect(url_for("portal.login"))
+
+
+@portal_bp.route("/register/resend-phone-otp", methods=["POST"])
+def register_resend_phone_otp():
+    email = session.get("reg_verify_email", "")
+    phone = session.get("reg_verify_phone", "")
+    if not email or not phone:
+        flash("Nothing to resend. Please register or log in first.", "warning")
+        return redirect(url_for("portal.register"))
+
+    if not _otp_rate_ok(phone):
+        flash("Please wait a minute before requesting another code.", "warning")
+        return redirect(url_for("portal.register_verify_phone"))
+
+    otp = _generate_otp()
+    _store_otp(phone, otp)
+    _send_registration_otp_sms(phone, otp)
+    flash("A new code has been sent.", "success")
+    return redirect(url_for("portal.register_verify_phone"))
 
 
 @portal_bp.route("/verify", methods=["GET"])
@@ -1848,13 +2288,15 @@ def verify_email():
         flash("An error occurred during verification. Please try again or contact support.", "danger")
         return redirect(url_for("portal.login"))
 
-    # Send WA welcome email now that email is confirmed — only for whatsapp merchants
+    # Send the post-verification welcome email now that email is confirmed —
+    # WhatsApp merchants get the WA-specific version, everyone else (web/
+    # WooCommerce) gets the plan+feature breakdown version.
     try:
         conn2 = get_db_connection()
         cur_wa = conn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur_wa.execute("""
             SELECT c.first_name, c.email, c.phone_number,
-                   t.name AS business_name, t.source_type,
+                   t.name AS business_name, t.domain, t.source_type,
                    k.trial_expires_at
             FROM customers c
             JOIN tenants t ON t.id = c.tenant_id
@@ -1872,8 +2314,14 @@ def verify_email():
                 business_name=wa_row["business_name"] or "",
                 trial_expires_at=wa_row["trial_expires_at"],
             )
+        elif wa_row:
+            _send_verified_welcome_email_web(
+                email=wa_row["email"],
+                first_name=wa_row["first_name"] or "",
+                website=wa_row.get("domain") or wa_row["business_name"] or "",
+            )
     except Exception as _we:
-        print("⚠️ [VERIFY] WA welcome email failed:", _we)
+        print("⚠️ [VERIFY] welcome email failed:", _we)
 
     # If the plain key was stored during registration (same browser session),
     # keep it alive so it can be shown once after the customer logs in.
@@ -1935,8 +2383,12 @@ def resend_verify():
 
 @portal_bp.route("/login", methods=["GET", "POST"])
 def login():
+    nxt = _safe_next(request.values.get("next"))
+
     if request.method == "GET":
-        return render_template("portal/login.html")
+        if _logged_in() and _customer_id():
+            return redirect(nxt or url_for("portal.home"))
+        return render_template("portal/login.html", next=nxt)
 
     email    = (request.form.get("email")    or "").strip().lower()
     password = (request.form.get("password") or "").strip()
@@ -1984,7 +2436,7 @@ def login():
         session["team_member_id"]    = int(tm["id"])
         session["team_member_name"]  = tm["name"]
         session["team_member_email"] = tm["email"]
-        return redirect(url_for("portal.my_inbox"))
+        return redirect(nxt or url_for("portal.my_inbox"))
 
     if not verify_password(password, c.get("password_hash") or ""):
         flash("Incorrect email or password.", "danger")
@@ -2003,6 +2455,17 @@ def login():
         )
         return redirect(url_for("portal.login"))
 
+    if PHONE_VERIFICATION_ENABLED and not int(c.get("phone_verified") or 0) and (c.get("phone_number") or "").strip():
+        phone = c["phone_number"].strip()
+        session["reg_verify_email"] = email
+        session["reg_verify_phone"] = phone
+        if _otp_rate_ok(phone):
+            otp = _generate_otp()
+            _store_otp(phone, otp)
+            _send_registration_otp_sms(phone, otp)
+        flash("Please verify your phone number to continue. We've sent a code by SMS.", "warning")
+        return redirect(url_for("portal.register_verify_phone"))
+
     # Rescue any plain key saved during the registration/verify flow
     # BEFORE session.clear() wipes it.
     pending_key = session.pop("new_plain_key", None)
@@ -2014,7 +2477,7 @@ def login():
     if pending_key:
         session["new_plain_key"] = pending_key
 
-    return redirect(url_for("portal.dashboard"))
+    return redirect(nxt or url_for("portal.dashboard"))
 
 
 @portal_bp.route("/logout")
@@ -2174,6 +2637,19 @@ def team_page():
         m["assigned_agent_ids"] = assigned_ids
         m["assigned_agent_names"] = [agent_name_by_id.get(aid, "Unknown agent") for aid in assigned_ids]
 
+    # Messenger access toggle — only worth showing once Facebook is actually
+    # connected, same "don't show a choice that doesn't exist yet" logic as
+    # show_agent_picker above. Added urgently 2026-09-11 alongside Phase 2.
+    messenger_connected = False
+    try:
+        _fb_conn = get_db_connection()
+        _fb_cur  = _fb_conn.cursor()
+        _fb_cur.execute("SELECT 1 FROM fb_pages WHERE tenant_id=%s AND active=TRUE LIMIT 1", (tenant_id,))
+        messenger_connected = _fb_cur.fetchone() is not None
+        _fb_cur.close(); _fb_conn.close()
+    except Exception as e:
+        print("⚠️ team_page messenger_connected lookup error:", e)
+
     return render_template(
         "portal/team.html",
         customer=customer,
@@ -2183,6 +2659,7 @@ def team_page():
         seats_left=max(0, limit - active_count),
         assignable_agents=assignable_agents,
         show_agent_picker=show_agent_picker,
+        messenger_connected=messenger_connected,
     )
 
 
@@ -2392,6 +2869,36 @@ def team_update_agents(member_id: int):
         flash("Agent access updated. ✅", "success")
     else:
         flash("Agent access updated — this person now sees nothing until an agent is assigned.", "warning")
+    return redirect(url_for("portal.team_page"))
+
+
+@portal_bp.route("/team/<int:member_id>/messenger", methods=["POST"])
+def team_update_messenger(member_id: int):
+    """Grant or remove one team member's access to Facebook Messenger
+    conversations in the shared Inbox. Own switch, not folded into the
+    agent picker above — a Facebook Page isn't tied to any one AI Agent
+    persona the way a WhatsApp number is. Added urgently 2026-09-11."""
+    r = _require_login()
+    if r: return r
+    tenant_id = int(_get_customer(_customer_id())["tenant_id"])
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("SELECT 1 FROM team_members WHERE id=%s AND tenant_id=%s", (member_id, tenant_id))
+    if not cur.fetchone():
+        cur.close(); conn.close()
+        flash("Team member not found.", "danger")
+        return redirect(url_for("portal.team_page"))
+
+    grant = request.form.get("messenger_access") == "on"
+    cur.execute("UPDATE team_members SET messenger_access=%s WHERE id=%s", (grant, member_id))
+    conn.commit()
+    cur.close(); conn.close()
+
+    if grant:
+        flash("Messenger access granted. ✅", "success")
+    else:
+        flash("Messenger access removed.", "warning")
     return redirect(url_for("portal.team_page"))
 
 
@@ -2758,7 +3265,8 @@ def api_keys():
     cur.close(); conn.close()
 
     return render_template("portal/api_keys.html",
-                           customer=customer, keys=keys)
+                           customer=customer, keys=keys,
+                           new_plain_key=session.pop("new_plain_key", None))
 
 
 
@@ -4065,6 +4573,13 @@ def ai_instruction():
             flash("An error occurred while saving. Please try again.", "danger")
             return redirect(url_for("portal.ai_instruction", agent_id=selected_agent_id))
 
+        # Mirror to Meta Business AI if this tenant has opted in. Only the
+        # tenant-level (single-agent) prompt is synced for now — multi-agent
+        # tenants each have their own per-agent prompt/number and aren't
+        # covered by this v1. Best-effort: never blocks or fails the save above.
+        if selected_agent_id is None:
+            sync_all_to_meta(tenant_id, system_prompt=raw_prompt, wizard_marker=_WIZARD_MARKER)
+
         insert_audit_log(
             admin_username=f"customer:{customer['email']}",
             action="update_system_prompt_raw",
@@ -4118,6 +4633,11 @@ def ai_instruction():
         print("⚠️ ai_instruction POST error:", e)
         flash("An error occurred while saving. Please try again.", "danger")
         return redirect(url_for("portal.ai_instruction"))
+
+    # Mirror to Meta Business AI if this tenant has opted in — see the raw-save
+    # branch above for the same note on multi-agent tenants not being covered yet.
+    if selected_agent_id is None:
+        sync_all_to_meta(tenant_id, system_prompt=system_prompt_text, wizard_marker=_WIZARD_MARKER)
 
     insert_audit_log(
         admin_username=f"customer:{customer['email']}",
@@ -7511,7 +8031,20 @@ def video_tutorials():
     r = _require_login()
     if r: return r
     customer = _get_customer(_customer_id())
-    videos = [v for v in TUTORIAL_VIDEOS if v["audience"] == "merchant"]
+    # Which product this gallery is being viewed as — controls which videos
+    # show, per the "products" tag an admin sets at /admin/video-tutorials
+    # (tutorial_video_products table). A video with no row yet defaults to
+    # ["portal"] — that's the truth for every video that existed before this
+    # tagging feature (2026-09-11), none of them were ever shown on Connect.
+    this_product = "connect" if _is_connect_host() else "portal"
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT slug, products FROM tutorial_video_products")
+    products_by_slug = dict(cur.fetchall())
+    cur.close(); conn.close()
+    videos = [v for v in TUTORIAL_VIDEOS
+              if v["audience"] == "merchant"
+              and this_product in products_by_slug.get(v["slug"], ["portal"])]
     return render_template("portal/video_tutorials.html", customer=customer, videos=videos)
 
 
@@ -11708,6 +12241,15 @@ def whatsapp_contact_detail(contact_id: int):
         for m in recent_messages:
             timeline.append({"kind": "message", "created_at": m["created_at"],
                               "direction": m["direction"], "body": m["content"]})
+        # PressOne calls (2026-09-12) — lazy import to avoid a circular
+        # import, since pressone_routes.py itself imports helpers from this
+        # module. See project_phixtra_pressone_integration memory.
+        from pressone_routes import get_contact_calls as _pressone_get_calls
+        for c in _pressone_get_calls(tenant_id, contact_id):
+            timeline.append({"kind": "call", "created_at": c["started_at"],
+                              "direction": c["direction"], "status": c["status"],
+                              "duration_seconds": c["duration_seconds"],
+                              "recording_url": c["recording_url"]})
         timeline.append({"kind": "created", "created_at": contact["created_at"]})
         timeline.sort(key=lambda t: t["created_at"], reverse=True)
 
@@ -11968,16 +12510,34 @@ def crm_companies():
         if search:
             clauses.append("co.name ILIKE %s")
             params.append(f"%{search}%")
+        # Pre-aggregate contacts and deals in their own subqueries before
+        # joining onto companies — joining both raw tables directly (each on
+        # co.id) fans out one row per contact-times-deal combination, which
+        # made SUM(pl.deal_value) count the same deal once per contact at
+        # the company (found + fixed 2026-09-10, same fan-out class as the
+        # campaign revenue double-counting bug: a company with 3 contacts
+        # and 1 real ₦1,750,000 deal was showing ₦5,250,000 on this page).
         cur.execute(f"""
             SELECT co.*,
-                   COUNT(DISTINCT c.id)  AS people_count,
-                   COUNT(DISTINCT pl.id) FILTER (WHERE pl.dropped_at IS NULL) AS open_deal_count,
-                   COALESCE(SUM(pl.deal_value) FILTER (WHERE pl.dropped_at IS NULL), 0) AS open_deal_value
+                   COALESCE(pc.people_count, 0)     AS people_count,
+                   COALESCE(pl.open_deal_count, 0)  AS open_deal_count,
+                   COALESCE(pl.open_deal_value, 0)  AS open_deal_value
             FROM crm_companies co
-            LEFT JOIN wa_contacts c ON c.company_id = co.id
-            LEFT JOIN merchant_pipeline_leads pl ON pl.company_id = co.id
+            LEFT JOIN (
+                SELECT company_id, COUNT(*) AS people_count
+                FROM wa_contacts
+                WHERE company_id IS NOT NULL
+                GROUP BY company_id
+            ) pc ON pc.company_id = co.id
+            LEFT JOIN (
+                SELECT company_id,
+                       COUNT(*) FILTER (WHERE dropped_at IS NULL) AS open_deal_count,
+                       COALESCE(SUM(deal_value) FILTER (WHERE dropped_at IS NULL), 0) AS open_deal_value
+                FROM merchant_pipeline_leads
+                WHERE company_id IS NOT NULL
+                GROUP BY company_id
+            ) pl ON pl.company_id = co.id
             WHERE {" AND ".join(clauses)}
-            GROUP BY co.id
             ORDER BY co.name ASC
         """, params)
         companies = cur.fetchall()
@@ -14340,6 +14900,342 @@ if not _email_sched_started:
     _threading._phixtra_email_campaign_sched_started = True  # type: ignore[attr-defined]
     _email_sched_thread = _threading.Thread(target=_email_campaign_scheduler_loop, daemon=True)
     _email_sched_thread.start()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ONBOARDING DRIP CAMPAIGN — automatic onboarding win-back emails, approved
+# design 2026-09-15. Fully automatic (no human click), fixed templates per
+# situation. Checked hourly; UNIQUE(customer_id, email_key) on
+# onboarding_nudge_log is what actually makes "once per situation" safe
+# under 2 gunicorn workers, not the hourly cadence itself.
+# ═══════════════════════════════════════════════════════════════════════════
+
+_COMEBACK_CHECKPOINT_DAYS = (1, 3, 5, 7, 10, 21)
+
+_COMEBACK_VARIANTS = {
+    "day1_never_started": dict(
+        subject="Let's get your AI assistant live, {first_name}",
+        heading="You're about 5 minutes from a working AI assistant",
+        paragraphs=[
+            "You created your PhiXtra account for <b>{business_name}</b> yesterday — nice choice. "
+            "You haven't started setup yet, so your AI assistant isn't answering customers on "
+            "{channel} just yet.",
+            "It only takes a few minutes: connect {channel}, add a few products, and you're live.",
+        ],
+        cta="Continue setup →",
+    ),
+    "day3_never_started": dict(
+        subject="Still there? Your customers are waiting",
+        heading="Every hour without an AI assistant is a customer message going unanswered",
+        paragraphs=[
+            "Your {business_name} account is set up and waiting — nothing's been lost. "
+            "Most businesses finish this in one sitting:",
+        ],
+        checklist=["Connect {channel}", "Add your first few products", "Your AI assistant starts replying"],
+        cta="Finish in 5 minutes →",
+    ),
+    "day3_stuck_products": dict(
+        subject="You're halfway there — just add your products",
+        heading="One step left: your product catalogue",
+        paragraphs=[
+            "You've already started setting up {business_name} — good progress. The last thing "
+            "standing between you and a live AI assistant is adding your products, so it has "
+            "something to recommend.",
+        ],
+        cta="Add my products →",
+    ),
+    "day5_near_done_web": dict(
+        subject="One click away — connect your store",
+        heading="You're one step away from going live",
+        paragraphs=[
+            "Your products are in — the only thing left is connecting the PhiXtra plugin to "
+            "{store_domain} so your AI assistant can see your live stock and prices.",
+        ],
+        cta="Connect my store →",
+    ),
+    "day5_near_done_whatsapp": dict(
+        subject="One click away — connect your WhatsApp",
+        heading="You're one step away from going live",
+        paragraphs=[
+            "Your products are in — the only thing left is linking your real WhatsApp number to "
+            "{business_name}'s PhiXtra account so your AI assistant can start replying there.",
+        ],
+        cta="Connect WhatsApp →",
+    ),
+    "day7_never_started": dict(
+        subject="Last check-in from PhiXtra",
+        heading="We noticed you haven't started yet — can we help?",
+        paragraphs=[
+            "It's been a week since {business_name} signed up. Your account and free plan are still "
+            "saved and waiting. If something's unclear or you got stuck, just reply to this email and "
+            "a real person will help — no bot.",
+        ],
+        cta="Continue setup →",
+    ),
+    "day7_stuck_products": dict(
+        subject="Reminder: your catalogue isn't live yet",
+        heading="Your customers are still waiting",
+        paragraphs=[
+            "{business_name}'s account has been sitting one step from live for a few days now. Add "
+            "your products and your AI assistant switches on the same day — happy to help if "
+            "anything's blocking you, just reply here.",
+        ],
+        cta="Finish my catalogue →",
+    ),
+    "day10_near_done": dict(
+        subject="So close — here's exactly what's left",
+        heading="Just one step to go for {business_name}",
+        paragraphs=[
+            "Everything is ready except the final connection. Here's exactly what's left — should "
+            "take under two minutes:",
+        ],
+        checklist=["Open your PhiXtra dashboard", "Click “{final_step_label}”", "Follow the on-screen steps"],
+        cta="Complete setup →",
+    ),
+    "day21_final": dict(
+        subject="We'd love to have you back",
+        heading="Still interested in an AI assistant for {business_name}?",
+        paragraphs=[
+            "It's been three weeks and your account is still sitting unfinished. No pressure — if "
+            "now isn't the right time, that's fine. If you'd like a real person to just set it up with "
+            "you on a short call, we're happy to do that.",
+        ],
+        cta="Book a 10-minute call →",
+        final_note="This is the last reminder you'll get from this sequence.",
+    ),
+}
+
+
+def _comeback_stage(catalogue_setup_done, products_step_skipped) -> str:
+    """None/None means no onboarding_state row exists at all (LEFT JOIN
+    miss) — that's the only way both come back as None, since the columns
+    are NOT NULL DEFAULT FALSE whenever a row does exist."""
+    if catalogue_setup_done is None and products_step_skipped is None:
+        return "never_started"
+    if catalogue_setup_done or products_step_skipped:
+        return "near_done"
+    return "stuck_products"
+
+
+def _comeback_email_for_day(day: int, stage: str, source_type: str) -> str | None:
+    if day == 1:
+        return "day1_never_started" if stage == "never_started" else None
+    if day == 3:
+        return {"never_started": "day3_never_started", "stuck_products": "day3_stuck_products"}.get(stage)
+    if day == 5:
+        if stage != "near_done":
+            return None
+        return "day5_near_done_whatsapp" if source_type == "whatsapp" else "day5_near_done_web"
+    if day == 7:
+        return {"never_started": "day7_never_started", "stuck_products": "day7_stuck_products"}.get(stage)
+    if day == 10:
+        return "day10_near_done" if stage == "near_done" else None
+    if day == 21:
+        return "day21_final"
+    return None
+
+
+def _comeback_is_enabled() -> bool:
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT enabled FROM onboarding_nudge_settings WHERE id=1")
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    return bool(row["enabled"]) if row else True
+
+
+def _comeback_is_unsubscribed(email: str) -> bool:
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT 1 FROM onboarding_nudge_unsubscribes WHERE email=%s", ((email or "").lower(),))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    return bool(row)
+
+
+def _comeback_claim(customer_id: int, tenant_id: int, email_key: str) -> bool:
+    """Atomically claims the right to send this exact email to this exact
+    customer. Under 2 gunicorn workers scanning at the same moment, only one
+    INSERT wins — the other hits the UNIQUE constraint and does nothing."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO onboarding_nudge_log (customer_id, tenant_id, email_key) "
+        "VALUES (%s, %s, %s) ON CONFLICT (customer_id, email_key) DO NOTHING",
+        (customer_id, tenant_id, email_key),
+    )
+    claimed = cur.rowcount == 1
+    conn.commit()
+    cur.close(); conn.close()
+    return claimed
+
+
+def _render_comeback_email_html(heading, paragraphs, cta_text, cta_url, unsubscribe_url,
+                                 checklist=None, final_note=None) -> str:
+    import html as _html_mod
+    body_html = "".join(
+        f'<p style="font-size:13.5px;line-height:1.65;color:#334155;margin:0 0 12px">{p}</p>'
+        for p in paragraphs
+    )
+    checklist_html = ""
+    if checklist:
+        items = "".join(f"<li>{i}</li>" for i in checklist)
+        checklist_html = (
+            f'<ol style="margin:0 0 14px;padding-left:18px;font-size:13px;color:#334155;'
+            f'line-height:1.9">{items}</ol>'
+        )
+    note_html = ""
+    if final_note:
+        note_html = (
+            f'<p style="font-size:12px;color:#94a3b8;margin-top:-4px">'
+            f'{_html_mod.escape(final_note)}</p>'
+        )
+    return f'''<!doctype html>
+<html><body style="margin:0;padding:0;background:#EEF1F5;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#EEF1F5;padding:32px 16px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" style="max-width:480px;background:#fff;border-radius:14px;overflow:hidden;">
+        <tr><td style="padding:20px 26px 0;">
+          <img src="https://phixtra.com/wp-content/uploads/2026/03/PhiXtra-Logo-Website.png-1000x1000-1.png"
+               alt="PhiXtra" style="height:26px;">
+        </td></tr>
+        <tr><td style="padding:18px 26px 6px;">
+          <h1 style="font-size:19px;line-height:1.32;font-weight:800;color:#0f172a;margin:0 0 14px;
+                     letter-spacing:-0.01em">{_html_mod.escape(heading)}</h1>
+          {body_html}
+          {checklist_html}
+          <a href="{_html_mod.escape(cta_url)}"
+             style="display:inline-block;background:#0f172a;color:#fff;font-size:13px;font-weight:700;
+                    padding:11px 22px;border-radius:9px;margin:10px 0 18px;text-decoration:none">
+            {_html_mod.escape(cta_text)}
+          </a>
+          {note_html}
+        </td></tr>
+        <tr><td style="padding:16px 26px 24px;border-top:1px solid #e2e8f0;">
+          <p style="margin:0;font-size:10.5px;color:#94a3b8;line-height:1.6">
+            You're getting this because you registered on portal.phixtra.com.
+            <a href="{_html_mod.escape(unsubscribe_url)}" style="color:#94a3b8;text-decoration:underline;">Unsubscribe</a>
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>'''
+
+
+def _comeback_send(row: dict, email_key: str):
+    variant = _COMEBACK_VARIANTS[email_key]
+    source_type = row.get("source_type") or "web"
+    ctx = {
+        "first_name": (row.get("first_name") or "").strip() or "there",
+        "business_name": row.get("tenant_name") or row.get("domain") or "your business",
+        "channel": "WhatsApp" if source_type == "whatsapp" else "your website",
+        "store_domain": row.get("domain") or "your store",
+        "final_step_label": "Connect WhatsApp" if source_type == "whatsapp" else "Sync My Store",
+    }
+    subject = variant["subject"].format(**ctx)
+    heading = variant["heading"].format(**ctx)
+    paragraphs = [p.format(**ctx) for p in variant["paragraphs"]]
+    checklist = [i.format(**ctx) for i in variant["checklist"]] if variant.get("checklist") else None
+
+    unsub_token = _encrypt_key(f"comeback:{row['customer_id']}")
+    unsubscribe_url = f"{_PORTAL_BASE_URL}/comeback/unsubscribe?t={unsub_token}"
+
+    html = _render_comeback_email_html(
+        heading=heading, paragraphs=paragraphs, cta_text=variant["cta"], cta_url=_PORTAL_BASE_URL,
+        unsubscribe_url=unsubscribe_url, checklist=checklist, final_note=variant.get("final_note"),
+    )
+    send_email(row["email"], subject, html)
+
+
+def _comeback_scan_and_send():
+    if not _comeback_is_enabled():
+        return
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT c.id AS customer_id, c.first_name, c.email, c.created_at,
+               t.id AS tenant_id, t.name AS tenant_name, t.domain, t.source_type,
+               os.catalogue_setup_done, os.products_step_skipped
+        FROM customers c
+        JOIN tenants t ON t.id = c.tenant_id
+        LEFT JOIN onboarding_state os ON os.customer_id = c.id
+        WHERE t.is_demo = FALSE
+          AND t.status NOT IN ('cancelled', 'suspended')
+          AND c.is_active = TRUE
+          AND t.trial_granted_at IS NULL
+          AND c.created_at <= NOW() - INTERVAL '1 day'
+    """)
+    rows = cur.fetchall()
+    cur.close(); conn.close()
+
+    for row in rows:
+        days = (datetime.now(timezone.utc) - row["created_at"]).days
+        if days not in _COMEBACK_CHECKPOINT_DAYS:
+            continue
+        stage = _comeback_stage(row.get("catalogue_setup_done"), row.get("products_step_skipped"))
+        email_key = _comeback_email_for_day(days, stage, row.get("source_type") or "web")
+        if not email_key:
+            continue
+        if _comeback_is_unsubscribed(row["email"]):
+            continue
+        if not _comeback_claim(row["customer_id"], row["tenant_id"], email_key):
+            continue
+        try:
+            _comeback_send(row, email_key)
+        except Exception as e:
+            print(f"⚠️ [Comeback] send failed customer={row['customer_id']} key={email_key}:", e)
+
+
+def _comeback_scheduler_loop():
+    while True:
+        try:
+            _comeback_scan_and_send()
+        except Exception as e:
+            print("⚠️ Onboarding Drip Campaign scheduler error:", e)
+        _time.sleep(3600)
+
+
+_comeback_sched_started = getattr(_threading, "_phixtra_comeback_sched_started", False)
+if not _comeback_sched_started:
+    _threading._phixtra_comeback_sched_started = True  # type: ignore[attr-defined]
+    _comeback_sched_thread = _threading.Thread(target=_comeback_scheduler_loop, daemon=True)
+    _comeback_sched_thread.start()
+
+
+@portal_bp.route("/comeback/unsubscribe")
+def comeback_unsubscribe():
+    token = (request.args.get("t") or "").strip()
+    payload = _decrypt_key(token) if token else ""
+    ok = False
+    if payload.startswith("comeback:"):
+        try:
+            customer_id = int(payload.split(":", 1)[1])
+        except ValueError:
+            customer_id = None
+        if customer_id:
+            conn = get_db_connection()
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("SELECT email FROM customers WHERE id=%s", (customer_id,))
+            crow = cur.fetchone()
+            if crow:
+                cur2 = conn.cursor()
+                cur2.execute(
+                    "INSERT INTO onboarding_nudge_unsubscribes (customer_id, email) VALUES (%s, %s) "
+                    "ON CONFLICT (customer_id) DO NOTHING",
+                    (customer_id, crow["email"].lower()),
+                )
+                conn.commit()
+                cur2.close()
+                ok = True
+            cur.close(); conn.close()
+    heading = "You're unsubscribed" if ok else "Link expired"
+    sub = ("You won't get any more setup reminder emails from PhiXtra."
+           if ok else "This unsubscribe link is no longer valid.")
+    return f"""<!doctype html><html><body style="font-family:Arial,sans-serif;max-width:480px;
+      margin:80px auto;text-align:center;color:#030C18">
+      <h2>{heading}</h2><p style="color:#64748b">{sub}</p>
+    </body></html>"""
 
 
 @portal_bp.route("/email/campaigns")
@@ -18668,16 +19564,27 @@ def store_info():
                 flash("Please give the document a title.", "warning")
             else:
                 try:
-                    text = _extract_file_text(uploaded)
+                    import io as _io
+                    # Read the raw bytes once, up front — keeping them
+                    # (alongside the extracted text) is what lets Meta sync
+                    # send the real original file instead of rebuilding one.
+                    raw_bytes = uploaded.read()
+
+                    class _Reread(_io.BytesIO):
+                        pass
+                    shim = _Reread(raw_bytes)
+                    shim.filename = uploaded.filename
+
+                    text = _extract_file_text(shim)
                     if not text:
                         flash("Could not extract text from that file. Make sure it's not a scanned image.", "warning")
                     else:
                         import uuid
                         doc_id = f"store_info-{tenant_id}-upload-{uuid.uuid4().hex[:8]}"
                         cur.execute("""
-                            INSERT INTO documents (id, tenant_id, type, title, content, updated_at)
-                            VALUES (%s, %s, 'store_info', %s, %s, NOW())
-                        """, (doc_id, tenant_id, doc_title, text))
+                            INSERT INTO documents (id, tenant_id, type, title, content, file_bytes, file_name, updated_at)
+                            VALUES (%s, %s, 'store_info', %s, %s, %s, %s, NOW())
+                        """, (doc_id, tenant_id, doc_title, text, psycopg2.Binary(raw_bytes), uploaded.filename))
                         conn.commit()
                         flash(f"'{doc_title}' uploaded. The AI will index it within 5 minutes.", "success")
                 except Exception as e:
@@ -18714,6 +19621,9 @@ def store_info():
                 cur.execute("DELETE FROM documents WHERE id=%s", (doc_id,))
         conn.commit()
         cur.close(); conn.close()
+        # wizard_marker passed explicitly — omitting it defaults to "" which
+        # crashes the Skills sync (see meta_business_agent._extract_skill_fragments).
+        sync_all_to_meta(tenant_id, wizard_marker=_WIZARD_MARKER)  # mirrors to Meta Business AI if opted in; no-op otherwise
         flash("Store information saved. The AI will use it to answer customer questions.", "success")
         return redirect(url_for("portal.store_info"))
 
@@ -20291,6 +21201,334 @@ def _get_inbox_messages(tenant_id: int, phone: str, limit: int = 100) -> list:
         return []
 
 
+@portal_bp.route("/channels")
+def channels_page():
+    """Unified hub — every connected (or connectable) social channel in
+    one place, each with its real brand logo, not scattered across separate
+    settings pages. Added 2026-09-11 — the Messenger connect link used to
+    live only inside the Inbox's locked panel, which wasn't good enough."""
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    wa_connection = _get_wa_connection(tenant_id)
+
+    fb_pages = []
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT page_id, page_name, connected_at FROM fb_pages "
+            "WHERE tenant_id=%s AND active=TRUE ORDER BY connected_at DESC",
+            (tenant_id,),
+        )
+        fb_pages = cur.fetchall() or []
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ channels_page fb_pages lookup error:", e)
+
+    from pressone_routes import get_account as _pressone_get_account
+    pressone_account = None
+    try:
+        pressone_account = _pressone_get_account(tenant_id)
+    except Exception as e:
+        print("⚠️ channels_page pressone_account lookup error:", e)
+
+    return render_template(
+        "portal/channels.html",
+        customer=customer,
+        wa_connection=wa_connection,
+        fb_pages=fb_pages,
+        pressone_account=pressone_account,
+    )
+
+
+def _get_messenger_conversations(tenant_id: int) -> list:
+    """One row per Facebook conversation (page_id+psid pair), most recent
+    first. Facebook only ever gives us an anonymous per-Page id (the PSID)
+    — no name, phone or email — so conversations are labeled generically
+    until a later phase adds a manual "this is the same person" link to
+    an existing CRM contact. Reuses wa_conversation_assignments for the
+    claim system (key = "fb:<page_id>:<psid>") — see the fb_message_log
+    migration comment in portal_migrations.py for why that's a real reuse,
+    not a hack."""
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT
+                'fb:' || sub.page_id || ':' || sub.psid AS key,
+                sub.page_id, sub.psid, p.page_name,
+                sub.last_at, sub.last_content, sub.last_dir,
+                (sub.last_dir = 'inbound') AS needs_reply,
+                a.assigned_to_key, a.assigned_to_label
+            FROM (
+                SELECT DISTINCT ON (page_id, psid)
+                    page_id, psid, created_at AS last_at,
+                    content AS last_content, direction AS last_dir
+                FROM fb_message_log
+                WHERE tenant_id = %s
+                ORDER BY page_id, psid, created_at DESC
+            ) sub
+            JOIN fb_pages p ON p.page_id = sub.page_id AND p.tenant_id = %s
+            LEFT JOIN wa_conversation_assignments a
+                   ON a.tenant_id = %s
+                  AND a.customer_phone = 'fb:' || sub.page_id || ':' || sub.psid
+            ORDER BY sub.last_at DESC
+        """, (tenant_id, tenant_id, tenant_id))
+        rows = cur.fetchall() or []
+        cur.close(); conn.close()
+        for r in rows:
+            r["psid_short"] = (r["psid"] or "")[-4:]
+        return rows
+    except Exception as e:
+        print("⚠️ _get_messenger_conversations error:", e)
+        return []
+
+
+def _get_messenger_messages(tenant_id: int, key: str, limit: int = 100) -> list:
+    """Messages for one Facebook conversation, oldest→newest. 'key' is
+    'fb:<page_id>:<psid>'."""
+    try:
+        _, page_id, psid = key.split(":", 2)
+    except ValueError:
+        return []
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT direction, content, message_type, created_at, sent_by_label
+            FROM (
+                SELECT direction, content, message_type, created_at, sent_by_label
+                FROM fb_message_log
+                WHERE tenant_id=%s AND page_id=%s AND psid=%s
+                ORDER BY created_at DESC LIMIT %s
+            ) recent
+            ORDER BY created_at ASC
+        """, (tenant_id, page_id, psid, limit))
+        rows = cur.fetchall() or []
+        cur.close(); conn.close()
+        return rows
+    except Exception as e:
+        print("⚠️ _get_messenger_messages error:", e)
+        return []
+
+
+def _send_messenger_reply(tenant_id: int, key: str, text: str, actor: dict):
+    """Handle an Inbox reply for a Facebook Messenger conversation."""
+    try:
+        _, page_id, psid = key.split(":", 2)
+    except ValueError:
+        flash("Invalid Messenger conversation.", "danger")
+        return redirect(url_for("portal.my_inbox"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT access_token FROM fb_pages WHERE tenant_id=%s AND page_id=%s AND active=TRUE",
+                (tenant_id, page_id))
+    pg = cur.fetchone()
+    cur.close(); conn.close()
+    if not pg:
+        flash("Facebook Page connection not found.", "danger")
+        return redirect(url_for("portal.my_inbox", phone=key))
+
+    import requests as _req
+    ok, err_msg = False, ""
+    try:
+        r = _req.post(
+            "https://graph.facebook.com/v19.0/me/messages",
+            params={"access_token": pg["access_token"]},
+            json={"recipient": {"id": psid}, "message": {"text": text}, "messaging_type": "RESPONSE"},
+            timeout=10,
+        )
+        ok = r.status_code == 200
+        if not ok:
+            err_msg = (r.json().get("error", {}) or {}).get("message", "Send failed")
+    except Exception as e:
+        err_msg = str(e)
+
+    if ok:
+        try:
+            conn = get_db_connection()
+            cur  = conn.cursor()
+            cur.execute("""
+                INSERT INTO fb_message_log
+                  (tenant_id, page_id, psid, direction, content, message_type, sent_by_label)
+                VALUES (%s, %s, %s, 'outbound', %s, 'text', %s)
+            """, (tenant_id, page_id, psid, text, actor["label"]))
+            conn.commit()
+            cur.close(); conn.close()
+        except Exception as e:
+            print("⚠️ _send_messenger_reply log error:", e)
+        flash("Message sent. ✅", "success")
+    else:
+        # Most likely cause: Facebook's 24-hour messaging window has
+        # closed since this contact last messaged — Meta enforces that
+        # itself and this is its own error text, not a guess on our part.
+        flash(f"Failed to send — {err_msg or 'check your Facebook connection'}.", "danger")
+
+    return redirect(url_for("portal.my_inbox", phone=key))
+
+
+def _get_webchat_conversations(tenant_id: int) -> list:
+    """One row per website-chat handoff session, most recent first. The AI
+    website chat widget logs a handoff_requests row every time a visitor
+    needs a human while their handoff is still pending — grouped here into
+    one conversation per session_id, matching the Messenger/WhatsApp shape.
+    Reuses wa_conversation_assignments for claim (key = 'web:<session_id>'),
+    same pattern as Messenger's 'fb:<page_id>:<psid>'."""
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT
+                'web:' || sub.session_id AS key,
+                sub.session_id, sub.visitor_name, sub.visitor_email,
+                sub.whatsapp_number, sub.status,
+                GREATEST(sub.last_handoff_at, COALESCE(cm.last_msg_at, sub.last_handoff_at)) AS last_at,
+                COALESCE(cm.last_content, sub.last_visitor_message) AS last_content,
+                COALESCE(cm.last_role, 'user') AS last_role,
+                a.assigned_to_key, a.assigned_to_label
+            FROM (
+                SELECT
+                    session_id,
+                    MAX(created_at) AS last_handoff_at,
+                    (ARRAY_AGG(visitor_name  ORDER BY created_at DESC) FILTER (WHERE visitor_name  IS NOT NULL))[1] AS visitor_name,
+                    (ARRAY_AGG(visitor_email ORDER BY created_at DESC) FILTER (WHERE visitor_email IS NOT NULL))[1] AS visitor_email,
+                    (ARRAY_AGG(whatsapp_number ORDER BY created_at DESC) FILTER (WHERE whatsapp_number IS NOT NULL))[1] AS whatsapp_number,
+                    (ARRAY_AGG(visitor_message ORDER BY created_at DESC))[1] AS last_visitor_message,
+                    CASE WHEN BOOL_OR(status = 'pending') THEN 'pending' ELSE 'handled' END AS status
+                FROM handoff_requests
+                -- 'wa-meta-<phone_number_id>-<customer_phone>' session_ids are
+                -- WhatsApp-originated handoffs (same underlying AI handoff
+                -- pipeline, reused by the gateway — see message_normalizer.py)
+                -- and already show in the WhatsApp tab via wa_handoff_state;
+                -- excluded here so a WhatsApp conversation never gets listed
+                -- twice under two different channels.
+                WHERE tenant_id = %s AND session_id NOT LIKE 'wa-meta-%%'
+                GROUP BY session_id
+            ) sub
+            LEFT JOIN LATERAL (
+                SELECT content AS last_content, role AS last_role, created_at AS last_msg_at
+                FROM chat_messages
+                WHERE tenant_id = %s AND session_id = sub.session_id
+                ORDER BY created_at DESC LIMIT 1
+            ) cm ON true
+            LEFT JOIN wa_conversation_assignments a
+                   ON a.tenant_id = %s AND a.customer_phone = 'web:' || sub.session_id
+            ORDER BY last_at DESC
+        """, (tenant_id, tenant_id, tenant_id))
+        rows = cur.fetchall() or []
+        cur.close(); conn.close()
+        for r in rows:
+            r["needs_reply"] = (r["status"] == "pending")
+        return rows
+    except Exception as e:
+        print("⚠️ _get_webchat_conversations error:", e)
+        return []
+
+
+def _get_webchat_messages(tenant_id: int, key: str, limit: int = 200) -> list:
+    """Full transcript for one website-chat session: the AI conversation
+    (chat_messages — role 'user'/'assistant') merged with any real staff
+    replies sent afterwards (web_chat_replies), oldest→newest. 'key' is
+    'web:<session_id>'."""
+    try:
+        _, session_id = key.split(":", 1)
+    except ValueError:
+        return []
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT direction, content, created_at, sent_by_label FROM (
+                SELECT
+                    CASE WHEN role = 'user' THEN 'inbound' ELSE 'outbound' END AS direction,
+                    content, created_at,
+                    CASE WHEN role = 'assistant' THEN 'AI Assistant' ELSE NULL END AS sent_by_label
+                FROM chat_messages
+                WHERE tenant_id = %s AND session_id = %s
+                UNION ALL
+                SELECT 'outbound' AS direction, content, created_at, sent_by_label
+                FROM web_chat_replies
+                WHERE tenant_id = %s AND session_id = %s
+            ) merged
+            ORDER BY created_at ASC
+            LIMIT %s
+        """, (tenant_id, session_id, tenant_id, session_id, limit))
+        rows = cur.fetchall() or []
+        cur.close(); conn.close()
+        return rows
+    except Exception as e:
+        print("⚠️ _get_webchat_messages error:", e)
+        return []
+
+
+def _send_webchat_reply(tenant_id: int, key: str, text: str, actor: dict):
+    """Handle an Inbox reply to a website-chat handoff. Unlike WhatsApp/
+    Messenger there's no live session to push a message back into — the
+    visitor has left the site — so the reply goes out by email to whatever
+    address they left on the handoff contact form. Marks any pending
+    handoff_requests rows for this session as handled, same as the
+    Dashboard's existing 'Mark as handled' action, so the Dashboard card
+    and the Inbox never disagree about whether this is done."""
+    try:
+        _, session_id = key.split(":", 1)
+    except ValueError:
+        flash("Invalid Web Chat conversation.", "danger")
+        return redirect(url_for("portal.my_inbox"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT visitor_email, visitor_name FROM handoff_requests
+        WHERE tenant_id=%s AND session_id=%s AND visitor_email IS NOT NULL
+        ORDER BY created_at DESC LIMIT 1
+    """, (tenant_id, session_id))
+    contact = cur.fetchone()
+    cur.execute("SELECT name FROM tenants WHERE id=%s", (tenant_id,))
+    tenant_row = cur.fetchone()
+    cur.close(); conn.close()
+
+    if not contact or not contact.get("visitor_email"):
+        flash("No email address on file for this visitor — can't send a reply.", "danger")
+        return redirect(url_for("portal.my_inbox", phone=key))
+
+    tenant_name = (tenant_row or {}).get("name") or "us"
+    greeting = f"Hi {contact['visitor_name']}," if contact.get("visitor_name") else "Hi,"
+    html_body = f"""
+      <p>{greeting}</p>
+      <p>{text.replace(chr(10), '<br>')}</p>
+      <p style="color:#888;font-size:12px;margin-top:24px">
+        This is a reply to the question you asked our AI chat assistant on the {tenant_name} website.
+      </p>
+    """
+    ok = send_email(contact["visitor_email"], f"Re: your question to {tenant_name}", html_body, text_body=text)
+
+    if ok:
+        try:
+            conn = get_db_connection()
+            cur  = conn.cursor()
+            cur.execute("""
+                INSERT INTO web_chat_replies (tenant_id, session_id, content, sent_by_label)
+                VALUES (%s, %s, %s, %s)
+            """, (tenant_id, session_id, text, actor["label"]))
+            cur.execute("""
+                UPDATE handoff_requests SET status='handled', handled_at=NOW()
+                WHERE tenant_id=%s AND session_id=%s AND status='pending'
+            """, (tenant_id, session_id))
+            conn.commit()
+            cur.close(); conn.close()
+        except Exception as e:
+            print("⚠️ _send_webchat_reply log error:", e)
+        flash(f"Reply emailed to {contact['visitor_email']}. ✅", "success")
+    else:
+        flash("Failed to send — check the email settings.", "danger")
+
+    return redirect(url_for("portal.my_inbox", phone=key))
+
+
 @portal_bp.route("/inbox")
 def my_inbox():
     r = _require_login()
@@ -20320,27 +21558,84 @@ def my_inbox():
 
     conversations = []
     messages      = []
-    active_phone  = None
+    active_phone  = request.args.get("phone")
+    is_messenger_active = bool(active_phone and active_phone.startswith("fb:"))
+    is_webchat_active   = bool(active_phone and active_phone.startswith("web:"))
 
     if connection:
         conversations = _get_inbox_conversations(tenant_id, allowed_agent_ids=allowed_agent_ids)
         for c in conversations:
             c["agent_color"] = agent_color_by_number.get(c.get("last_phone_number_id"))
-        active_phone  = request.args.get("phone")
         # A directly-typed ?phone= must also respect the agent scope — don't
         # trust the query string just because it matches SOME conversation.
-        if active_phone and not any(c["customer_phone"] == active_phone for c in conversations):
-            active_phone = None
-        if not active_phone and conversations:
-            active_phone = conversations[0]["customer_phone"]
-        if active_phone:
-            messages = _get_inbox_messages(tenant_id, active_phone)
+        # (A Messenger/Web Chat key is validated separately below, against
+        # messenger_conversations/webchat_conversations, never against this
+        # WhatsApp list.)
+        if not is_messenger_active and not is_webchat_active:
+            if active_phone and not any(c["customer_phone"] == active_phone for c in conversations):
+                active_phone = None
+            if not active_phone and conversations:
+                active_phone = conversations[0]["customer_phone"]
+            if active_phone:
+                messages = _get_inbox_messages(tenant_id, active_phone)
 
     active_handoff_session = None
-    if active_phone and conversations:
+    if active_phone and not is_messenger_active and not is_webchat_active and conversations:
         _ac = next((c for c in conversations if c["customer_phone"] == active_phone), None)
         if _ac and _ac.get("handoff_status") == "needs_agent":
             active_handoff_session = _ac.get("handoff_session_id")
+
+    # Messenger — omnichannel Phase 1+2 (2026-09-11): real conversations now,
+    # not just a connected/not-connected flag. Queried directly here rather
+    # than imported from portal_facebook_routes, which itself imports from
+    # this module — avoids a circular import.
+    messenger_pages = []
+    messenger_conversations = []
+    messenger_messages = []
+    try:
+        _fb_conn = get_db_connection()
+        _fb_cur  = _fb_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        _fb_cur.execute(
+            "SELECT page_id, page_name, connected_at FROM fb_pages "
+            "WHERE tenant_id=%s AND active=TRUE ORDER BY connected_at DESC",
+            (tenant_id,),
+        )
+        messenger_pages = _fb_cur.fetchall() or []
+        _fb_cur.close(); _fb_conn.close()
+    except Exception as e:
+        print("⚠️ messenger_pages lookup error:", e)
+
+    # Same team gate as WhatsApp's allowed_agent_ids, via Messenger's own
+    # explicit switch (team_members.messenger_access) — owners are always
+    # allowed. Read side, matching the write-side check already in
+    # _team_can_access_phone for reply/claim/release. Urgent fix, 2026-09-11.
+    messenger_team_access = (not actor["is_team"]) or _team_member_has_messenger_access(actor["team_member_id"])
+    if messenger_pages and messenger_team_access:
+        messenger_conversations = _get_messenger_conversations(tenant_id)
+        if is_messenger_active:
+            if not any(c["key"] == active_phone for c in messenger_conversations):
+                # Stale/foreign key — same not-trusting-the-query-string
+                # principle as the WhatsApp check above.
+                active_phone = messenger_conversations[0]["key"] if messenger_conversations else None
+            if active_phone:
+                messenger_messages = _get_messenger_messages(tenant_id, active_phone)
+
+    # Web Chat — the AI website chat widget's human-handoff requests,
+    # brought into the Inbox 2026-09-18 (previously only a Dashboard card,
+    # invisible here — see handoff_requests). Always real data for any
+    # tenant using the website AI widget, no "connect" step like Messenger.
+    # Same deny-by-default team access as everything else: a scoped team
+    # member only sees this once _team_can_access_phone grants a 'web:' key,
+    # which nothing does yet, so only the owner sees it for now.
+    webchat_conversations = []
+    webchat_messages = []
+    if not actor["is_team"]:
+        webchat_conversations = _get_webchat_conversations(tenant_id)
+        if is_webchat_active:
+            if not any(c["key"] == active_phone for c in webchat_conversations):
+                active_phone = webchat_conversations[0]["key"] if webchat_conversations else None
+            if active_phone:
+                webchat_messages = _get_webchat_messages(tenant_id, active_phone)
 
     return render_template(
         "portal/inbox.html",
@@ -20357,6 +21652,13 @@ def my_inbox():
         is_team_member=session.get("team_member_id") is not None,
         no_agents_assigned=(actor["is_team"] and allowed_agent_ids is not None and len(allowed_agent_ids) == 0),
         ai_enabled=ai_enabled,
+        messenger_pages=messenger_pages,
+        messenger_conversations=messenger_conversations,
+        messenger_messages=messenger_messages,
+        is_messenger_active=is_messenger_active,
+        webchat_conversations=webchat_conversations,
+        webchat_messages=webchat_messages,
+        is_webchat_active=is_webchat_active,
     )
 
 
@@ -20390,6 +21692,15 @@ def inbox_reply(phone: str):
         if assignment["assigned_to_key"] != actor["key"]:
             flash(f"This conversation is claimed by {assignment['assigned_to_label']}. Release it first if you need to take over.", "danger")
             return redirect(url_for("portal.my_inbox", phone=phone))
+
+    # Facebook Messenger conversations use a 'fb:<page_id>:<psid>' key, Web
+    # Chat a 'web:<session_id>' key — everything above (empty-reply check,
+    # access check, claim check) is channel-agnostic already, only how the
+    # message actually gets sent differs from here down.
+    if phone.startswith("fb:"):
+        return _send_messenger_reply(tenant_id, phone, reply_text, actor)
+    if phone.startswith("web:"):
+        return _send_webchat_reply(tenant_id, phone, reply_text, actor)
 
     # Reply from the SAME number this conversation is actually on — a tenant
     # with 2+ connected numbers must not have a reply silently go out from an

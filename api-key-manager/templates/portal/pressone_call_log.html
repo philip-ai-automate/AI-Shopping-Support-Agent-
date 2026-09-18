@@ -1,0 +1,126 @@
+{% extends "portal/base.html" %}
+{% block title %}Voice Calls — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  .cl-stats { display:flex; gap:16px; flex-wrap:wrap; margin-bottom:22px }
+  .cl-stat {
+    flex:1; min-width:160px; background:#fff; border:1px solid var(--line);
+    border-radius:14px; padding:16px 18px;
+  }
+  .cl-stat-num { font-size:24px; font-weight:800; letter-spacing:-.3px }
+  .cl-stat-label { font-size:12.5px; color:var(--muted); margin-top:2px }
+  .cl-filters { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap }
+  .cl-filter {
+    padding:8px 16px; border-radius:999px; border:1px solid var(--line);
+    font-size:13px; font-weight:650; color:var(--txt); text-decoration:none;
+  }
+  .cl-filter.active { background:var(--ink); color:#fff; border-color:var(--ink) }
+  .cl-pagination { display:flex; gap:8px; align-items:center; margin-top:18px; font-size:13px; color:var(--muted) }
+  .empty-cl { padding:40px 20px; text-align:center; color:var(--muted); font-size:14px }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="wizard-header">
+  <div>
+    <div class="wizard-title">Voice Calls</div>
+    <div class="wizard-sub">Every PressOne call, across all your customers, in one place.</div>
+  </div>
+  <a href="{{ url_for('pressone.connect') }}" class="btn" style="white-space:nowrap">⚙️ Manage connection</a>
+</div>
+
+{% if not connected %}
+<div class="flash warning" style="margin-bottom:20px">
+  PressOne isn't connected yet — <a href="{{ url_for('pressone.connect') }}">connect it</a> to start seeing calls here.
+</div>
+{% endif %}
+
+<div class="cl-stats">
+  <div class="cl-stat">
+    <div class="cl-stat-num">{{ stats.completed or 0 }}</div>
+    <div class="cl-stat-label">Answered calls</div>
+  </div>
+  <div class="cl-stat">
+    <div class="cl-stat-num">{{ stats.missed or 0 }}</div>
+    <div class="cl-stat-label">Missed calls</div>
+  </div>
+  <div class="cl-stat">
+    <div class="cl-stat-num">{{ (stats.total_seconds or 0) // 60 }}m</div>
+    <div class="cl-stat-label">Total talk time</div>
+  </div>
+</div>
+
+<div class="cl-filters">
+  <a href="{{ url_for('pressone.call_log') }}" class="cl-filter {% if not status_filter %}active{% endif %}">All</a>
+  <a href="{{ url_for('pressone.call_log', status_filter='completed') }}" class="cl-filter {% if status_filter == 'completed' %}active{% endif %}">Answered</a>
+  <a href="{{ url_for('pressone.call_log', status_filter='missed') }}" class="cl-filter {% if status_filter == 'missed' %}active{% endif %}">Missed</a>
+</div>
+
+{% if not calls %}
+<div class="card">
+  <div class="empty-cl">No calls yet{% if status_filter %} matching this filter{% endif %}.</div>
+</div>
+{% else %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>When</th>
+        <th>Customer</th>
+        <th>Direction</th>
+        <th>Status</th>
+        <th>Duration</th>
+        <th>Recording</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in calls %}
+      <tr>
+        <td>{{ c.started_at.strftime('%d %b %Y, %H:%M') if c.started_at else '—' }}</td>
+        <td>
+          {% if c.contact_id %}
+          <a href="{{ url_for('portal.whatsapp_contact_detail', contact_id=c.contact_id) }}">
+            {{ c.display_name or c.contact_phone or c.caller_number }}
+          </a>
+          {% else %}
+          {{ c.caller_number or c.callee_number or '—' }}
+          {% endif %}
+        </td>
+        <td>{{ 'Outgoing' if c.direction == 'outbound' else 'Incoming' }}</td>
+        <td>
+          {% if c.event == 'call.missed' %}
+          <span class="pill pill-red">📵 Missed</span>
+          {% else %}
+          <span class="pill pill-green">✅ Answered</span>
+          {% endif %}
+        </td>
+        <td>{% if c.duration_seconds %}{{ c.duration_seconds // 60 }}m {{ c.duration_seconds % 60 }}s{% else %}—{% endif %}</td>
+        <td>
+          {% if c.recording_url %}
+          <a href="{{ c.recording_url }}" target="_blank" rel="noopener">Listen ▶</a>
+          {% else %}
+          <span class="muted">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if total_pages > 1 %}
+<div class="cl-pagination">
+  {% if page > 1 %}
+  <a class="btn btn-sm" href="{{ url_for('pressone.call_log', page=page-1, status_filter=status_filter) }}">← Prev</a>
+  {% endif %}
+  <span>Page {{ page }} of {{ total_pages }} ({{ total }} call{{ 's' if total != 1 }})</span>
+  {% if page < total_pages %}
+  <a class="btn btn-sm" href="{{ url_for('pressone.call_log', page=page+1, status_filter=status_filter) }}">Next →</a>
+  {% endif %}
+</div>
+{% endif %}
+{% endif %}
+
+{% endblock %}

@@ -11,7 +11,7 @@
 </div>
 
 {% macro step(num, label, done) %}
-<div style="display:flex;gap:16px;padding:20px 0;border-bottom:1px solid var(--line)">
+<div id="step-{{ num }}" style="display:flex;gap:16px;padding:20px 0;border-bottom:1px solid var(--line)">
   <div style="flex-shrink:0;width:36px;height:36px;border-radius:50%;
               display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;
               {% if done %}background:var(--good);color:#fff{% else %}background:rgba(3,12,24,0.07);color:var(--muted){% endif %}">
@@ -245,5 +245,24 @@
   ⚠ Complete all steps above before dismissing this guide. The wizard will disappear automatically once everything is done.
 </div>
 {% endif %}
+
+<script>
+  /* Deep-link support: links into this page use ?focus=step-N (a query
+     param, not a #fragment) specifically because a fragment never reaches
+     the server — it would get silently dropped if the visitor had to log
+     in first, which is exactly the case for someone clicking the PhiXtra
+     Export banner from their own WordPress admin. */
+  (function () {
+    var params = new URLSearchParams(window.location.search);
+    var focus = params.get('focus');
+    if (!focus) return;
+    var el = document.getElementById(focus);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    el.style.transition = 'box-shadow .3s';
+    el.style.boxShadow = '0 0 0 3px rgba(37,99,235,0.35)';
+    el.style.borderRadius = '12px';
+  })();
+</script>
 
 {% endblock %}

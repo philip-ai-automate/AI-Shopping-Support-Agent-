@@ -49,6 +49,19 @@ def ensure_portal_tables():
             cur.execute("ALTER TABLE admin_users ADD COLUMN active BOOLEAN NOT NULL DEFAULT TRUE")
         conn.commit()
 
+        # ── tenants.signup_product: which storefront (portal.phixtra.com vs
+        # connect.phixtra.com) a merchant actually signed up through, captured
+        # once at registration so the admin Customers filter can tell Portal
+        # and Connect accounts apart later — ai_enabled alone isn't reliable
+        # for this since staff can flip it any time after signup.
+        if not _column_exists(cur, "tenants", "signup_product"):
+            cur.execute("ALTER TABLE tenants ADD COLUMN signup_product VARCHAR(20) NOT NULL DEFAULT 'portal'")
+            # One-off backfill for accounts that existed before this column:
+            # ai_enabled was set to `not is_connect_host()` at signup time, so
+            # it's the best available guess for rows we didn't tag directly.
+            cur.execute("UPDATE tenants SET signup_product='connect' WHERE ai_enabled=FALSE")
+            conn.commit()
+
         # ── ambassador_leads ──────────────────────────────────────────────
         cur.execute("""
             CREATE TABLE IF NOT EXISTS ambassador_leads (
@@ -590,6 +603,46 @@ def ensure_portal_tables():
                 added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 PRIMARY KEY (label_id, lead_id)
             )
+        """)
+
+        # ── The Comeback Sequence: automatic onboarding win-back emails ───────────
+        # onboarding_nudge_log's UNIQUE(customer_id, email_key) is the concurrency
+        # guard — two gunicorn workers scanning at the same moment both try the
+        # INSERT, only one wins, so a customer can never receive the same fixed
+        # email twice regardless of how many workers/scans overlap.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS onboarding_nudge_log (
+                id          BIGSERIAL PRIMARY KEY,
+                customer_id INTEGER      NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+                tenant_id   INTEGER      NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                email_key   VARCHAR(40)  NOT NULL,
+                sent_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                UNIQUE(customer_id, email_key)
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_onboarding_nudge_log_sent_at
+                ON onboarding_nudge_log(sent_at DESC)
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS onboarding_nudge_unsubscribes (
+                id          SERIAL PRIMARY KEY,
+                customer_id INTEGER      NOT NULL UNIQUE REFERENCES customers(id) ON DELETE CASCADE,
+                email       VARCHAR(255) NOT NULL,
+                created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS onboarding_nudge_settings (
+                id      SMALLINT PRIMARY KEY DEFAULT 1,
+                enabled BOOLEAN  NOT NULL DEFAULT TRUE,
+                CHECK (id = 1)
+            )
+        """)
+        cur.execute("""
+            INSERT INTO onboarding_nudge_settings (id, enabled)
+            VALUES (1, TRUE)
+            ON CONFLICT (id) DO NOTHING
         """)
 
         # ── login_attempts: rate-limit failed ambassador logins ───────────────────
@@ -1915,6 +1968,237 @@ def ensure_portal_tables():
             # model to half-build) rather than the earlier ambassador-only
             # or derived-from-history stand-ins.
             cur.execute("ALTER TABLE merchant_pipeline_leads ADD COLUMN assigned_to TEXT")
+
+        # ══════════════════════════════════════════════════════════════════
+        # Facebook Messenger — Phase 1 of the omnichannel plan (2026-09-11):
+        # connecting a Page and remembering it. Mirrors wa_tenants' shape
+        # (one row per connected channel identity, its own access token,
+        # an `active` flag) rather than inventing a new pattern. Multiple
+        # active Pages per tenant are allowed on purpose, same as wa_tenants
+        # allows multiple numbers — no reason a business runs only one Page.
+        # `subscribed` starts FALSE: Phase 1 only stores the connection, it
+        # does not turn on live message delivery yet (that's Phase 2 — the
+        # Inbox handling has to exist first, or messages would arrive and be
+        # silently dropped). `fb_user_id` is the Facebook account that did
+        # the login/authorization, kept so the Facebook Data Deletion
+        # callback (portal_facebook_routes.py) can actually find and remove
+        # a business owner's connected Pages on request, instead of always
+        # reporting "no data" — see that file's own long-standing comment
+        # about this being the moment to wire it up.
+        # ══════════════════════════════════════════════════════════════════
+        if not _table_exists(cur, "fb_pages"):
+            cur.execute("""
+                CREATE TABLE fb_pages (
+                    id               SERIAL PRIMARY KEY,
+                    tenant_id        INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    page_id          TEXT NOT NULL UNIQUE,
+                    page_name        TEXT,
+                    access_token     TEXT NOT NULL,
+                    fb_user_id       TEXT,
+                    active           BOOLEAN NOT NULL DEFAULT TRUE,
+                    subscribed       BOOLEAN NOT NULL DEFAULT FALSE,
+                    connected_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            cur.execute("CREATE INDEX idx_fb_pages_tenant ON fb_pages(tenant_id) WHERE active")
+            cur.execute("CREATE INDEX idx_fb_pages_fb_user ON fb_pages(fb_user_id)")
+
+        # ══════════════════════════════════════════════════════════════════
+        # Facebook Messenger — Phase 2 (2026-09-11): messages actually flow
+        # into the shared Inbox now. fb_message_log mirrors wa_message_log's
+        # shape (same dedup pattern: a partial unique index on
+        # meta_message_id, exactly like log_message() in wa_db.py already
+        # does for WhatsApp). Conversations are identified by (page_id,
+        # psid) — Facebook never gives us a phone number or name, only this
+        # anonymous per-Page id, so there is no "customer_phone" here.
+        #
+        # Reuses wa_conversation_assignments — the WhatsApp claim-before-
+        # reply table — for Messenger's claim system too, rather than
+        # building a second one: a Messenger conversation's claim key is
+        # the text "fb:<page_id>:<psid>" stored in that same
+        # customer_phone column. The column is genuinely just an opaque
+        # per-conversation string key already (nothing in that table reads
+        # it as a phone number), so this is a real reuse, not a hack — it's
+        # widened from VARCHAR(40) to VARCHAR(80) purely for headroom, since
+        # a Page id + a PSID together run longer than a phone number.
+        # ══════════════════════════════════════════════════════════════════
+        if not _table_exists(cur, "fb_message_log"):
+            cur.execute("""
+                CREATE TABLE fb_message_log (
+                    id              SERIAL PRIMARY KEY,
+                    tenant_id       INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    page_id         TEXT NOT NULL,
+                    psid            TEXT NOT NULL,
+                    direction       TEXT NOT NULL,
+                    content         TEXT,
+                    message_type    TEXT NOT NULL DEFAULT 'text',
+                    meta_message_id TEXT,
+                    sent_by_label   TEXT,
+                    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            cur.execute("CREATE INDEX idx_fb_message_log_conv ON fb_message_log(tenant_id, page_id, psid, created_at)")
+            cur.execute("""
+                CREATE UNIQUE INDEX idx_fb_message_log_dedup ON fb_message_log(meta_message_id)
+                WHERE meta_message_id IS NOT NULL
+            """)
+
+        cur.execute("""
+            SELECT character_maximum_length FROM information_schema.columns
+            WHERE table_name='wa_conversation_assignments' AND column_name='customer_phone'
+        """)
+        _cp_len = (cur.fetchone() or [40])[0]
+        if _cp_len and _cp_len < 80:
+            cur.execute("ALTER TABLE wa_conversation_assignments ALTER COLUMN customer_phone TYPE VARCHAR(80)")
+
+        # ══════════════════════════════════════════════════════════════════
+        # Messenger team access (2026-09-11, urgent — flagged same day
+        # Phase 2 shipped). Facebook Pages have no per-agent concept the way
+        # WhatsApp numbers do (team_member_agents scopes WHICH AI Agent a
+        # team member sees), so Messenger gets its own explicit switch
+        # instead of being folded into that table. Deny-by-default, same
+        # philosophy as team_member_agents: FALSE until the owner turns it
+        # on for that person.
+        # ══════════════════════════════════════════════════════════════════
+        if not _column_exists(cur, "team_members", "messenger_access"):
+            cur.execute("ALTER TABLE team_members ADD COLUMN messenger_access BOOLEAN NOT NULL DEFAULT FALSE")
+
+        # ══════════════════════════════════════════════════════════════════
+        # Web Chat in the shared Inbox (2026-09-18). The AI website chat
+        # widget's human-handoff requests (handoff_requests table) used to
+        # only ever show as a "pending" card on the Dashboard — invisible
+        # from the Inbox where every other channel lives, which is how a
+        # real visitor's handoff sat unanswered without anyone noticing.
+        # web_chat_replies stores a staff member's real replies. Unlike
+        # WhatsApp/Messenger there's no live API session to push a message
+        # back into once the visitor has left the site, so a reply here
+        # goes out by email to whatever address they left on the handoff
+        # contact form — this table is purely a log of what was sent, for
+        # the Inbox thread to display. Claim system reuses
+        # wa_conversation_assignments again, same pattern as Messenger's
+        # "fb:<page_id>:<psid>" key: key = "web:<session_id>".
+        # ══════════════════════════════════════════════════════════════════
+        if not _table_exists(cur, "web_chat_replies"):
+            cur.execute("""
+                CREATE TABLE web_chat_replies (
+                    id              SERIAL PRIMARY KEY,
+                    tenant_id       INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    session_id      VARCHAR(64) NOT NULL,
+                    content         TEXT NOT NULL,
+                    sent_by_label   TEXT,
+                    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            cur.execute("CREATE INDEX idx_web_chat_replies_session ON web_chat_replies(tenant_id, session_id, created_at)")
+
+        # ══════════════════════════════════════════════════════════════════
+        # Meta Business AI connector (2026-09-12). Lets a tenant hand their
+        # WhatsApp number's replies over to Meta's own built-in AI instead of
+        # PhiXtra's, while PhiXtra stays the CRM underneath: Store Information/
+        # System Instruction saves are mirrored to Meta's Business Info/FAQ/
+        # Skills APIs, and a new connector lets Meta's AI push leads back into
+        # the Sales Pipeline. Deny-by-default — FALSE changes nothing for any
+        # existing tenant until they opt in. See project_phixtra_meta_business_
+        # agent_connector memory.
+        # ══════════════════════════════════════════════════════════════════
+        if not _column_exists(cur, "tenants", "meta_ai_enabled"):
+            cur.execute("ALTER TABLE tenants ADD COLUMN meta_ai_enabled BOOLEAN NOT NULL DEFAULT FALSE")
+        if not _column_exists(cur, "tenants", "meta_ai_last_synced_at"):
+            cur.execute("ALTER TABLE tenants ADD COLUMN meta_ai_last_synced_at TIMESTAMPTZ")
+        if not _column_exists(cur, "tenants", "meta_ai_last_sync_error"):
+            cur.execute("ALTER TABLE tenants ADD COLUMN meta_ai_last_sync_error TEXT")
+        # Maps a local FAQ/skill fragment to the id Meta gave it back, so a
+        # re-save updates the same Meta-side entry (PUT) instead of creating
+        # a duplicate every time. key identifies which local fragment this is
+        # (e.g. "faq" for the single Store Info FAQ block, or a wizard
+        # behaviour id) since Meta has no id of its own to match back to.
+        # Replaces the single bundled meta_ai_last_sync_error: one failure
+        # (e.g. Business Info) used to abort Skills/FAQ too and overwrite any
+        # earlier per-item detail with one vague message, leaving the admin
+        # unable to tell which of the three actually went through. Each of
+        # business_info/faq/skills now runs independently and writes its own
+        # {ok, error, synced_at} into this JSON instead of sharing one field.
+        if not _column_exists(cur, "tenants", "meta_ai_sync_status"):
+            cur.execute("ALTER TABLE tenants ADD COLUMN meta_ai_sync_status JSONB NOT NULL DEFAULT '{}'")
+        if not _column_exists(cur, "tenants", "meta_ai_eligible"):
+            cur.execute("ALTER TABLE tenants ADD COLUMN meta_ai_eligible BOOLEAN")
+        if not _column_exists(cur, "tenants", "meta_ai_eligibility_checked_at"):
+            cur.execute("ALTER TABLE tenants ADD COLUMN meta_ai_eligibility_checked_at TIMESTAMPTZ")
+        # The original file a merchant uploads on Store Information used to
+        # be discarded after text extraction — only the extracted text was
+        # kept. That meant Files sync to Meta had to rebuild a lossy
+        # synthetic .docx from the text instead of sending the real file.
+        # Now the original bytes + filename are kept too, so Meta gets the
+        # actual PDF/image/etc. unchanged. NULL for anything uploaded before
+        # this change (falls back to the old text-rebuild in that case).
+        if not _column_exists(cur, "documents", "file_bytes"):
+            cur.execute("ALTER TABLE documents ADD COLUMN file_bytes BYTEA")
+        if not _column_exists(cur, "documents", "file_name"):
+            cur.execute("ALTER TABLE documents ADD COLUMN file_name TEXT")
+        if not _table_exists(cur, "meta_ai_synced_items"):
+            cur.execute("""
+                CREATE TABLE meta_ai_synced_items (
+                    id          SERIAL PRIMARY KEY,
+                    tenant_id   INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    kind        VARCHAR(20) NOT NULL,   -- 'faq' | 'skill'
+                    key         VARCHAR(100) NOT NULL,  -- local fragment identifier
+                    meta_id     TEXT NOT NULL,           -- id Meta returned
+                    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    UNIQUE (tenant_id, kind, key)
+                )
+            """)
+
+        # ══════════════════════════════════════════════════════════════════
+        # PressOne integration (2026-09-12) — CRM angle only, bring-your-own-
+        # account: a business that already has a PressOne (Nigerian business
+        # phone system) account links it here so their calls show up on the
+        # matching Contact's timeline. PhiXtra never resells PressOne
+        # numbers or bills for them. See project_phixtra_pressone_integration
+        # memory for the full design and the confirmed real webhook payload
+        # samples this schema is built from.
+        # ══════════════════════════════════════════════════════════════════
+        if not _table_exists(cur, "pressone_accounts"):
+            cur.execute("""
+                CREATE TABLE pressone_accounts (
+                    id                       SERIAL PRIMARY KEY,
+                    tenant_id                INTEGER NOT NULL UNIQUE REFERENCES tenants(id) ON DELETE CASCADE,
+                    account_id               TEXT NOT NULL UNIQUE,
+                    api_key                  TEXT NOT NULL,
+                    webhook_id               TEXT,
+                    webhook_secret           TEXT,
+                    active                   BOOLEAN NOT NULL DEFAULT TRUE,
+                    auto_reply_missed_calls  BOOLEAN NOT NULL DEFAULT TRUE,
+                    connected_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+        # Added after the table already existed on this server (2026-09-12,
+        # missed-call auto-reply follow-up) — the column above only helps a
+        # brand-new install; this covers the live one.
+        if not _column_exists(cur, "pressone_accounts", "auto_reply_missed_calls"):
+            cur.execute("ALTER TABLE pressone_accounts ADD COLUMN auto_reply_missed_calls BOOLEAN NOT NULL DEFAULT TRUE")
+        if not _table_exists(cur, "pressone_calls"):
+            cur.execute("""
+                CREATE TABLE pressone_calls (
+                    id               SERIAL PRIMARY KEY,
+                    tenant_id        INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    contact_id       INTEGER REFERENCES wa_contacts(id) ON DELETE SET NULL,
+                    call_id          TEXT NOT NULL UNIQUE,
+                    call_session_id  TEXT,
+                    event            TEXT NOT NULL,
+                    direction        TEXT,
+                    caller_number    TEXT,
+                    callee_number    TEXT,
+                    status           TEXT,
+                    duration_seconds INTEGER NOT NULL DEFAULT 0,
+                    end_reason       TEXT,
+                    recording_url    TEXT,
+                    raw_payload      JSONB,
+                    started_at       TIMESTAMPTZ,
+                    ended_at         TIMESTAMPTZ,
+                    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            cur.execute("CREATE INDEX idx_pressone_calls_contact ON pressone_calls(tenant_id, contact_id, started_at)")
 
         conn.commit()
     except Exception as e:

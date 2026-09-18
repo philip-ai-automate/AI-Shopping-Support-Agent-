@@ -33,6 +33,36 @@ def get_tenant_by_api_key(api_key: str) -> dict | None:
         conn.close()
 
 
+def get_wa_tenant_by_tenant_id(tenant_id: int) -> dict | None:
+    """
+    Look up the active WhatsApp connection for a tenant we already know the
+    id of — used by pressone_calls.py's missed-call auto-reply, which
+    starts from a PressOne account (keyed by tenant_id), not a Meta
+    phone_number_id or PhiXtra api_key like the other two lookups here.
+    """
+    conn = get_db_connection()
+    if not conn:
+        return None
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(
+            """
+            SELECT phone_number_id, access_token
+            FROM wa_tenants
+            WHERE tenant_id = %s AND active = TRUE
+            ORDER BY id DESC LIMIT 1
+            """,
+            (tenant_id,),
+        )
+        return cur.fetchone()
+    except Exception as e:
+        print("⚠️ get_wa_tenant_by_tenant_id error:", e)
+        return None
+    finally:
+        cur.close()
+        conn.close()
+
+
 def get_tenant_by_phone_number_id(phone_number_id: str) -> dict | None:
     """
     Look up the tenant record for an incoming Meta webhook by phone_number_id.

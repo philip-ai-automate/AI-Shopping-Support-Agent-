@@ -552,8 +552,8 @@
           Columns
         </button>
         <div class="col-picker-menu" id="colPickerMenu">
-          <label class="col-picker-item"><input type="checkbox" data-col-toggle="segment" checked>Email Segment</label>
-          <label class="col-picker-item"><input type="checkbox" data-col-toggle="wa_segment" checked>WhatsApp Segment</label>
+          <label class="col-picker-item"><input type="checkbox" data-col-toggle="segment">Email Segment</label>
+          <label class="col-picker-item"><input type="checkbox" data-col-toggle="wa_segment">WhatsApp Segment</label>
           {% if customer.tenant_id == 19 %}
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="sms_segment" checked>SMS Segment</label>
           {% endif %}
@@ -614,8 +614,8 @@
         <tr>
           <th style="width:34px"><input type="checkbox" id="selectAllLeadsCb" onchange="toggleSelectAllLeads(this)"></th>
           <th>Customer</th>
-          <th data-col="segment">Email Segment</th>
-          <th data-col="wa_segment">WhatsApp Segment</th>
+          <th data-col="segment" class="col-hidden">Email Segment</th>
+          <th data-col="wa_segment" class="col-hidden">WhatsApp Segment</th>
           {% if is_phixtra_support_account %}
           <th data-col="sms_segment">SMS Segment</th>
           {% endif %}
@@ -652,7 +652,7 @@
               <a href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" class="biz-name-cell lead-name-link" title="Open this Sales Lead">{{ l.customer_name }}</a>
             </div>
           </td>
-          <td data-col="segment" style="font-size:11px">
+          <td data-col="segment" class="col-hidden" style="font-size:11px">
             {% if l.segment_names %}
               {% for sname in l.segment_names %}
               <span class="stage-pill" style="background:#e0e7ff;color:#4338ca;margin:1px 3px 1px 0">{{ sname }}</span>
@@ -661,7 +661,7 @@
               <span class="muted">—</span>
             {% endif %}
           </td>
-          <td data-col="wa_segment" style="font-size:11px">
+          <td data-col="wa_segment" class="col-hidden" style="font-size:11px">
             {% if l.wa_segment_names %}
               {% for sname in l.wa_segment_names %}
               <span class="stage-pill" style="background:#d1fae5;color:#065f46;margin:1px 3px 1px 0">{{ sname }}</span>

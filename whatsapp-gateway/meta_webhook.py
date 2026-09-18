@@ -446,6 +446,15 @@ async def receive_webhook(
     except Exception:
         return {"status": "ok"}
 
+    # Facebook Messenger events use a completely different payload shape
+    # ("object": "page", entry[].messaging[]) from WhatsApp's — dispatch
+    # them to their own handler and stop here. Omnichannel Phase 2,
+    # 2026-09-11 — see meta_messenger.py.
+    if payload.get("object") == "page":
+        from meta_messenger import handle_messenger_webhook
+        await handle_messenger_webhook(payload, body, x_hub_signature_256 or "")
+        return {"status": "ok"}
+
     # Delivery-status callbacks (sent/delivered/read/failed) are a distinct
     # payload shape from inbound messages — handle and return early so they
     # never fall through to message-handling logic below.

@@ -441,7 +441,15 @@ def build_video(feature: str):
         seg_duration = _ffprobe_duration(seg_raw)
 
         target = audio_duration + 0.4
-        hold = max(0.0, target - seg_duration)
+        # round(), not just max(0.0, ...) -- real bug hit on a real build:
+        # when seg_duration lands almost exactly on target, float subtraction
+        # can yield a tiny non-zero remainder like 1.7763568394002505e-15
+        # instead of clean 0.0. f-string-ing that straight into the ffmpeg
+        # filter graph produces scientific notation ("stop_duration=1.77e-15"),
+        # which ffmpeg's tpad option parser rejects outright, killing the
+        # whole build. Rounding to milliseconds is well below any perceptible
+        # threshold and always produces a plain decimal.
+        hold = round(max(0.0, target - seg_duration), 3)
         _run([
             "ffmpeg", "-y", "-v", "error",
             "-i", str(seg_raw),

@@ -1,0 +1,42 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Email Templates — Onboarding Drip Campaign{% endblock %}
+{% block content %}
+<style>
+  .tpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:20px}
+  .tpl-card{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:var(--shadow)}
+  .tpl-head{padding:14px 16px;border-bottom:1px solid var(--line)}
+  .tpl-tags{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+  .tpl-subject{font-size:13.5px;font-weight:700}
+  .tpl-subject .k{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-right:6px}
+  .tpl-frame-wrap{background:#EEF1F5;padding:16px}
+  .tpl-frame-wrap iframe{width:100%;height:480px;border:0;border-radius:10px;background:#EEF1F5;display:block}
+</style>
+
+<div class="page-header">
+  <h1 class="section-title">Email Templates</h1>
+  <a href="{{ url_for('portal_admin.comeback_sequence') }}" class="btn btn-sm">← Back to Overview</a>
+</div>
+<p class="muted" style="margin-bottom:22px;max-width:70ch">
+  Exactly what each Onboarding Drip Campaign email looks like, rendered from the same code that sends the real
+  thing — with sample placeholder data (name, business) filled in so you can see the layout. Wording
+  changes go through code, not this page — tell me what to change and I'll update it here.
+</p>
+
+<div class="tpl-grid">
+  {% for p in previews %}
+  <div class="tpl-card">
+    <div class="tpl-head">
+      <div class="tpl-tags">
+        <span class="pill pill-grey">{{ p.day }}</span>
+        <span class="pill pill-warn">{{ p.situation }}</span>
+      </div>
+      <div class="tpl-subject"><span class="k">Subject</span>{{ p.subject }}</div>
+    </div>
+    <div class="tpl-frame-wrap">
+      <iframe srcdoc="{{ p.html | e }}" title="{{ p.key }}"></iframe>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% endblock %}

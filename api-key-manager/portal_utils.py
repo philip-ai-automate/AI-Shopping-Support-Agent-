@@ -156,8 +156,17 @@ def money_fmt(pence: int, currency: str = "gbp") -> str:
 # (filters to audience="merchant" only) — single source of truth so a new
 # tutorial_studio video only needs one registry entry, not two.
 TUTORIAL_VIDEOS = [
+    {"slug": "dashboard", "title": "Your Dashboard",
+     "sub": "Sales, pipeline, lead sources, channel activity, campaigns, and what needs attention — all in one place",
+     "audience": "merchant"},
+    {"slug": "crm-pipeline", "title": "Your CRM & Sales Pipeline",
+     "sub": "Leads, the Lead Command Centre, the Pipeline Board, Contacts, Companies, Segments, Tags, and Pipeline Settings — the full tour",
+     "audience": "merchant"},
+    {"slug": "reports", "title": "Your Reports",
+     "sub": "Pipeline Overview, Leads & Sources, and the Custom Report Builder — Leads, Contacts, Companies and Campaigns, grouped, saved, and exportable",
+     "audience": "merchant"},
     {"slug": "campaigns", "title": "Campaigns Walkthrough",
-     "sub": "AI-narrated preview — how to create and send a campaign",
+     "sub": "Build and launch a campaign, then the Campaign Funnel, auto-created opportunities, and Needs Review — Campaign Intelligence end to end",
      "audience": "merchant"},
     {"slug": "whatsapp-merchant-onboarding", "title": "Getting Started with WhatsApp",
      "sub": "Logging in for the first time and connecting your WhatsApp number",

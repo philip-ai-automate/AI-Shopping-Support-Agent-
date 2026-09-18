@@ -9,6 +9,33 @@
   </div>
 </div>
 
+{# ── NEW KEY REVEAL (shown once, right after signup) ─────────────────────── #}
+{% if new_plain_key %}
+<div class="card" style="border-color:rgba(18,183,106,0.40);background:rgba(18,183,106,0.06);margin-bottom:22px">
+  <div style="font-size:15px;font-weight:700;margin-bottom:8px;color:#0a7a3c">
+    ✅ Account connected — here's your API key
+  </div>
+  <p class="muted" style="margin-bottom:12px;font-size:13px">
+    Copy this now and paste it into WordPress. You can always find it again further down this page.
+  </p>
+  <div class="code-box" id="plain-key-box">{{ new_plain_key }}</div>
+  <button type="button" onclick="copyKey()" class="btn btn-sm" style="margin-top:10px">📋 Copy to clipboard</button>
+  <p class="muted" style="margin-top:10px;font-size:12px">
+    Paste this key into: <strong>WooCommerce → PhiXtra AI → API Key</strong> field
+    AND into <strong>WooCommerce → PhiXtra Export → PhiXtra Sync → Bearer Token</strong>
+  </p>
+</div>
+<script>
+function copyKey(){
+  const txt = document.getElementById("plain-key-box").textContent.trim();
+  navigator.clipboard.writeText(txt).then(()=>{
+    const btn = event.target; btn.textContent="✅ Copied!";
+    setTimeout(()=>btn.textContent="📋 Copy to clipboard", 2500);
+  });
+}
+</script>
+{% endif %}
+
 {# ── KEY LIST ─────────────────────────────────────────────────────────── #}
 <div class="card">
   <div class="card-title" style="margin-bottom:14px">Your API keys</div>
