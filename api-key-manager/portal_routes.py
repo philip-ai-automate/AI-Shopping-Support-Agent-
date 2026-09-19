@@ -991,6 +991,186 @@ PLAN_FEATURE_CATALOG = {
 }
 
 
+# ── Role form table layout ──────────────────────────────────────────────────
+# Purely a DISPLAY grouping for team_role_form.html's table — reshapes
+# PLAN_FEATURE_CATALOG's flat per-module feature list into one row per real
+# resource (e.g. "Contact") with its View/Create/Edit/Delete keys as columns,
+# instead of each key being its own list row. Only holds key PLACEMENT; every
+# label, destructive-pill flag, and per-actor visibility rule still comes
+# from PLAN_FEATURE_CATALOG / _feature_catalog_for_actor, so this can never
+# grant or hide anything on its own — see _build_role_form_grid. A handful of
+# abilities genuinely don't map onto those 4 verbs (e.g. Inbox's "Resolve" /
+# "Take over from AI", CRM's merge confirm/reject) — those sit in each row's
+# "other" list instead of being forced into a column that would misdescribe
+# them (this exact tradeoff was raised with the user in the original design
+# and now revisited — see project_team_access_control memory).
+ROLE_FORM_GRID = {
+    "Dashboard": [
+        {"label": "Dashboard", "view": "dashboard.page"},
+    ],
+    "Billing": [
+        {"label": "Subscription Plan", "view": "billing.subscription_view", "edit": "billing.subscription_manage"},
+        {"label": "Credits",           "view": "billing.credits_view",      "edit": "billing.credits_manage"},
+        {"label": "Invoices",          "view": "billing.invoices_view"},
+        {"label": "Payment Gateway",   "view": "billing.payment_gateways_view", "edit": "billing.payment_gateways_manage",
+         "delete": "billing.payment_gateways_remove", "other": ["billing.payment_gateways_reveal_secret"]},
+    ],
+    "Settings": [
+        {"label": "Account Settings", "view": "settings.account"},
+        {"label": "Profile",          "edit": "settings.profile_edit"},
+        {"label": "Business Info",    "edit": "settings.business_edit"},
+        {"label": "Password",         "edit": "settings.password"},
+        {"label": "Cancel Plan",      "delete": "settings.cancel_plan"},
+    ],
+    "Help & Tutorials": [
+        {"label": "Help & Tutorials", "view": "help.tutorials"},
+        {"label": "Video Tutorials",  "view": "help.videos"},
+    ],
+    "Leads": [
+        {"label": "Leads", "view": "leads.page", "create": "leads.create"},
+    ],
+    "Team": [
+        {"label": "Team", "view": "team.manage"},
+        {"label": "Team Member", "create": "team.members_create", "delete": "team.members_remove",
+         "other": ["team.members_assign_role", "team.members_deactivate", "team.members_agent_access",
+                   "team.members_messenger_access", "team.members_webchat_access"]},
+        {"label": "Role",       "create": "team.roles_create",       "edit": "team.roles_edit",       "delete": "team.roles_delete"},
+        {"label": "Department", "create": "team.departments_create", "edit": "team.departments_edit", "delete": "team.departments_delete"},
+        {"label": "Position",   "create": "team.positions_create",   "edit": "team.positions_edit",   "delete": "team.positions_delete"},
+    ],
+    "Store Information": [
+        {"label": "Store Information",  "view": "store.info", "edit": "store.info_edit"},
+        {"label": "Knowledge Document", "create": "store.info_documents_upload", "delete": "store.info_documents_delete"},
+    ],
+    "Analytics": [
+        {"label": "Analytics", "view": "analytics.page"},
+    ],
+    "Inbox": [
+        {"label": "Inbox", "view": "inbox.page", "edit": "inbox.manage_contact",
+         "other": ["inbox.reply", "inbox.claim_release", "inbox.resolve", "inbox.takeover"]},
+    ],
+    "Channels": [
+        {"label": "Channels",  "view": "channels.page"},
+        {"label": "Messenger", "create": "channels.connect_messenger"},
+        {"label": "PressOne",  "view": "channels.connect_pressone_view", "edit": "channels.connect_pressone_manage",
+         "delete": "channels.connect_pressone_remove"},
+    ],
+    "Voice Calls": [
+        {"label": "Voice Calls (PressOne)", "view": "voice.calls"},
+    ],
+    "WhatsApp": [
+        {"label": "Checkout (Flutterwave)", "other": ["legacy:feat_fw_checkout"]},
+        {"label": "WhatsApp Connection", "view": "wa.connect_view", "edit": "wa.connect_manage", "delete": "wa.connect_delete"},
+        {"label": "Handoff Reports",     "view": "wa.handoff_reports_view"},
+        {"label": "WhatsApp Report",     "view": "wa.report"},
+    ],
+    "CRM": [
+        {"label": "Contact",        "view": "crm.contacts_view",        "create": "crm.contacts_create",  "edit": "crm.contacts_edit",  "delete": "crm.contacts_delete"},
+        {"label": "Company",        "view": "crm.companies_view",       "create": "crm.companies_create", "edit": "crm.companies_edit"},
+        {"label": "Pipeline Board", "view": "crm.pipeline_board_view",  "edit": "crm.pipeline_board_edit"},
+        {"label": "Segment",        "view": "crm.segments_view",        "create": "crm.segments_create",  "edit": "crm.segments_edit",  "delete": "crm.segments_delete"},
+        {"label": "Tag",            "view": "crm.tags_view",            "create": "crm.tags_create",      "edit": "crm.tags_edit",      "delete": "crm.tags_delete"},
+        {"label": "Duplicate Merge Review", "view": "crm.merge_review_view", "other": ["crm.merge_review_confirm", "crm.merge_review_reject"]},
+        {"label": "Pipeline Settings", "view": "crm.pipeline_settings_view", "edit": "crm.pipeline_settings_edit"},
+    ],
+    "AI Assistant": [
+        {"label": "Custom AI Instructions (plan unlock)", "other": ["legacy:feat_advanced_ai"]},
+        {"label": "Custom AI Instructions", "view": "ai.instructions_view",   "edit": "ai.instructions_edit"},
+        {"label": "Handoff Rule",           "view": "ai.handoff_rules_view",  "create": "ai.handoff_rules_create", "edit": "ai.handoff_rules_edit", "delete": "ai.handoff_rules_delete"},
+        {"label": "API Key",                "view": "ai.api_keys_view",      "delete": "ai.api_keys_revoke"},
+        {"label": "AI Agent Profile",       "view": "ai.agent_profiles_view", "create": "ai.agent_profiles_create", "edit": "ai.agent_profiles_edit", "delete": "ai.agent_profiles_delete"},
+    ],
+    "WooCommerce Plugin": [
+        {"label": "Product Recommendation", "other": ["woo.product_recommendation"]},
+        {"label": "Automated Cross-Selling", "other": ["woo.cross_selling"]},
+        {"label": "Shop by Sending a Photo (plan unlock)", "other": ["legacy:feat_visual_match"]},
+        {"label": "Cart Recovery (plan unlock)", "other": ["woo.cart_recovery"]},
+        {"label": "Cart Recovery Settings",        "view": "woo.cart_recovery_view",           "edit": "woo.cart_recovery_edit"},
+        {"label": "Cart Recovery Email Templates", "view": "woo.cart_recovery_templates_view", "edit": "woo.cart_recovery_templates_edit"},
+        {"label": "Verified Specs Lookup", "view": "woo.verified_specs_view", "create": "woo.verified_specs_create", "delete": "woo.verified_specs_delete"},
+        {"label": "Chat Archive",          "view": "woo.chat_archive_view"},
+        {"label": "WhatsApp Message Templates", "view": "woo.message_templates_view", "edit": "woo.message_templates_edit"},
+    ],
+    "WhatsApp Campaigns": [
+        {"label": "Broadcast Messaging & Reports (plan unlock)", "other": ["legacy:feat_broadcasts"]},
+        {"label": "Campaign", "view": "campaigns_wa.all_view", "create": "campaigns_wa.all_create", "delete": "campaigns_wa.all_delete",
+         "other": ["campaigns_wa.all_send"]},
+        {"label": "Segment",      "view": "campaigns_wa.segments_view"},
+        {"label": "Reports",      "view": "campaigns_wa.reports_view"},
+        {"label": "Needs Review", "view": "campaigns_wa.needs_review_view", "edit": "campaigns_wa.needs_review_manage"},
+    ],
+    "Email Campaigns": [
+        {"label": "Email Campaigns (plan unlock)", "other": ["legacy:feat_email_campaigns"]},
+        {"label": "Campaign", "view": "campaigns_email.all_view", "create": "campaigns_email.all_create",
+         "edit": "campaigns_email.all_edit", "delete": "campaigns_email.all_delete", "other": ["campaigns_email.all_send"]},
+        {"label": "Segment", "view": "campaigns_email.segments_view", "create": "campaigns_email.segments_create",
+         "edit": "campaigns_email.segments_edit", "delete": "campaigns_email.segments_delete"},
+        {"label": "Reports", "view": "campaigns_email.reports_view"},
+    ],
+    "Reports": [
+        {"label": "Pipeline Overview",    "view": "reports.pipeline_overview"},
+        {"label": "Leads Sources",        "view": "reports.leads_sources"},
+        {"label": "Custom Report Builder","view": "reports.custom"},
+        {"label": "AI Usage Reports",     "view": "reports.usage"},
+        {"label": "Cart Recovery Reports","view": "reports.cart"},
+        {"label": "Billing Reports",      "view": "reports.billing"},
+    ],
+    "Ecommerce & Integrations": [
+        {"label": "Product",  "view": "ecom.products_view", "create": "ecom.products_create", "edit": "ecom.products_edit", "delete": "ecom.products_delete"},
+        {"label": "Order",    "view": "ecom.orders_view",   "edit": "ecom.orders_manage", "other": ["ecom.orders_cancel"]},
+        {"label": "Customer", "view": "ecom.customers_view"},
+        {"label": "WooCommerce Sync",  "view": "ecom.woo_sync_view", "delete": "ecom.woo_sync_delete"},
+        {"label": "Product Import",    "view": "ecom.data_sources_view", "create": "ecom.data_sources_create",
+         "edit": "ecom.data_sources_edit", "delete": "ecom.data_sources_delete"},
+        {"label": "Discount Settings", "view": "ecom.discount_settings_view", "edit": "ecom.discount_settings_edit"},
+        {"label": "My Catalogue",      "view": "ecom.catalogue_view", "edit": "ecom.catalogue_edit"},
+    ],
+}
+
+
+def _build_role_form_grid(feature_catalog: dict) -> dict:
+    """Reshape a (possibly actor-filtered) feature_catalog into table rows
+    for team_role_form.html, using ROLE_FORM_GRID for column placement.
+    Labels and which keys even exist still come entirely from
+    feature_catalog, so a key ROLE_FORM_GRID hasn't been told about yet (a
+    future new catalog entry) still shows up — as its own standalone row —
+    instead of silently disappearing from the Roles UI."""
+    grid = {}
+    for module_name, feats in feature_catalog.items():
+        labels = dict(feats)
+        visible_keys = set(labels.keys())
+        placed = set()
+        rows = []
+        for row_def in ROLE_FORM_GRID.get(module_name, []):
+            cols = {}
+            search_parts = [row_def["label"]]
+            for col in ("view", "create", "edit", "delete"):
+                key = row_def.get(col)
+                if key and key in visible_keys:
+                    cols[col] = (key, labels[key])
+                    placed.add(key)
+                    search_parts.append(labels[key])
+            other = []
+            for key in row_def.get("other", []):
+                if key in visible_keys:
+                    other.append((key, labels[key]))
+                    placed.add(key)
+                    search_parts.append(labels[key])
+            if cols or other:
+                rows.append({
+                    "label": row_def["label"], "cols": cols, "other": other,
+                    "search": " ".join(search_parts).lower(),
+                })
+        for key, label in feats:
+            if key not in placed:
+                rows.append({
+                    "label": label, "cols": {}, "other": [(key, label)],
+                    "search": f"{label} {key}".lower(),
+                })
+        grid[module_name] = rows
+    return grid
+
+
 def _plan_grants_feature(plan: dict, feature_key: str) -> bool:
     """True if the tenant's plan grants this feature_key. Legacy keys read
     the existing feat_* boolean column on the plan row; new keys are looked
@@ -3948,8 +4128,9 @@ def team_role_new():
     acting_is_owner = not session.get("team_member_id")
 
     if request.method == "GET":
+        fc = _feature_catalog_for_actor(acting_is_owner)
         return render_template("portal/team_role_form.html", customer=customer,
-                                role=None, feature_catalog=_feature_catalog_for_actor(acting_is_owner),
+                                role=None, feature_catalog=fc, grid=_build_role_form_grid(fc),
                                 destructive_keys=DESTRUCTIVE_FEATURE_KEYS)
 
     name = (request.form.get("name") or "").strip()[:100]
@@ -3997,8 +4178,9 @@ def team_role_edit(role_id: int):
         return redirect(url_for("portal.team_roles_page"))
 
     if request.method == "GET":
+        fc = _feature_catalog_for_actor(acting_is_owner)
         return render_template("portal/team_role_form.html", customer=customer,
-                                role=role, feature_catalog=_feature_catalog_for_actor(acting_is_owner),
+                                role=role, feature_catalog=fc, grid=_build_role_form_grid(fc),
                                 destructive_keys=DESTRUCTIVE_FEATURE_KEYS)
 
     name = (request.form.get("name") or "").strip()[:100]

@@ -47,17 +47,22 @@
                background:#fff;border:1px solid var(--line);border-radius:8px;
                padding:5px 10px;transition:.12s;flex-shrink:0}
 .rf-select-all:hover{background:rgba(3,12,24,0.04)}
-.rf-features{padding:6px 8px}
-.rf-feature{display:flex;align-items:flex-start;gap:10px;padding:9px 10px;border-radius:10px;
-            transition:.1s;cursor:pointer}
-.rf-feature:hover{background:rgba(3,12,24,0.025)}
-.rf-feature.rf-hidden{display:none}
-.rf-feature input[type=checkbox]{width:16px !important;height:16px;flex-shrink:0;margin-top:2px;
-                                  accent-color:var(--ink);cursor:pointer}
-.rf-feature-body{flex:1;min-width:0;cursor:pointer}
-.rf-feature-label{font-size:13.5px;line-height:1.4;display:flex;align-items:center;flex-wrap:wrap;gap:6px}
-.rf-key{font-size:11px;color:var(--muted);font-family:ui-monospace,'SF Mono',Consolas,monospace;
-        display:block;margin-top:1px}
+.rf-features{padding:4px 8px 10px;overflow-x:auto}
+.rf-grid{width:100%;border-collapse:collapse;font-size:13px}
+.rf-grid th{text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;
+            color:var(--muted);padding:8px 6px;border-bottom:1px solid var(--line)}
+.rf-grid th.rf-grid-feature-h{text-align:left;padding-left:10px}
+.rf-grid td{padding:9px 6px;text-align:center;vertical-align:middle;border-bottom:1px solid rgba(3,12,24,0.05)}
+.rf-grid tr:last-child td{border-bottom:none}
+.rf-grid tr.rf-hidden{display:none}
+.rf-grid tr:hover td{background:rgba(3,12,24,0.02)}
+.rf-grid td.rf-grid-feature{text-align:left;padding-left:10px;font-weight:600;font-size:13.5px;white-space:nowrap}
+.rf-grid input[type=checkbox]{width:16px;height:16px;accent-color:var(--ink);cursor:pointer;margin:0}
+.rf-grid input[type=checkbox].rf-danger{accent-color:#d92d20}
+.rf-grid-other{text-align:left !important;min-width:220px}
+.rf-other-item{display:flex;align-items:flex-start;gap:6px;font-size:12.5px;line-height:1.4;
+               padding:2px 0;cursor:pointer;color:var(--muted)}
+.rf-other-item input[type=checkbox]{flex-shrink:0;margin-top:2px}
 
 .rf-actionbar{position:sticky;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--line);
               margin:24px -24px 0;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;
@@ -138,22 +143,44 @@
           <button type="button" class="rf-select-all" onclick="rfToggleModule(event, this)">Select all</button>
         </summary>
         <div class="rf-features">
-          {% for key, label in feats %}
-          {% set current = (role.permissions.get(key) if role else False) %}
-          <label class="rf-feature" data-feature data-search="{{ (label ~ ' ' ~ key)|lower }}">
-            <input type="checkbox" id="perm__{{ key }}" name="perm__{{ key }}"
-                   {% if current %}checked{% endif %} onchange="rfUpdateCounts()"/>
-            <span class="rf-feature-body">
-              <span class="rf-feature-label">
-                {{ label }}
-                {% if destructive_keys and key in destructive_keys %}
-                <span class="pill pill-red">⚠ delete</span>
-                {% endif %}
-              </span>
-              <span class="rf-key">{{ key }}</span>
-            </span>
-          </label>
-          {% endfor %}
+          <table class="rf-grid">
+            <thead>
+              <tr>
+                <th class="rf-grid-feature-h">Feature</th>
+                <th>View</th><th>Create</th><th>Edit</th><th>Delete</th><th>Other</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in grid[mod_name] %}
+              <tr data-feature-row data-search="{{ row.search }}">
+                <td class="rf-grid-feature">{{ row.label }}</td>
+                {% for col in ['view', 'create', 'edit', 'delete'] %}
+                <td>
+                  {% if row.cols[col] %}
+                  {% set key, label = row.cols[col] %}
+                  {% set current = (role.permissions.get(key) if role else False) %}
+                  <input type="checkbox" id="perm__{{ key }}" name="perm__{{ key }}"
+                         title="{{ label }}"
+                         class="{{ 'rf-danger' if destructive_keys and key in destructive_keys else '' }}"
+                         {% if current %}checked{% endif %} onchange="rfUpdateCounts()"/>
+                  {% endif %}
+                </td>
+                {% endfor %}
+                <td class="rf-grid-other">
+                  {% for key, label in row.other %}
+                  {% set current = (role.permissions.get(key) if role else False) %}
+                  <label class="rf-other-item">
+                    <input type="checkbox" id="perm__{{ key }}" name="perm__{{ key }}"
+                           class="{{ 'rf-danger' if destructive_keys and key in destructive_keys else '' }}"
+                           {% if current %}checked{% endif %} onchange="rfUpdateCounts()"/>
+                    {{ label }}
+                  </label>
+                  {% endfor %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
         </div>
       </details>
       {% endfor %}
@@ -202,7 +229,7 @@ function rfToggleModule(evt, btn) {
 
 function rfSetAll(state) {
   document.querySelectorAll('#rfModules input[type=checkbox]').forEach(function(c){
-    if (!c.closest('[data-feature]').classList.contains('rf-hidden')) c.checked = state;
+    if (!c.closest('[data-feature-row]').classList.contains('rf-hidden')) c.checked = state;
   });
   rfUpdateCounts();
 }
@@ -212,7 +239,7 @@ document.getElementById('rfSearch').addEventListener('input', function(e) {
   var anyVisibleAtAll = false;
   document.querySelectorAll('[data-module]').forEach(function(mod) {
     var anyVisible = false;
-    mod.querySelectorAll('[data-feature]').forEach(function(feat) {
+    mod.querySelectorAll('[data-feature-row]').forEach(function(feat) {
       var match = !q || feat.getAttribute('data-search').indexOf(q) !== -1;
       feat.classList.toggle('rf-hidden', !match);
       if (match) anyVisible = true;
