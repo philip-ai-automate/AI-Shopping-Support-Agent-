@@ -299,6 +299,21 @@ HELP_DELEGATED_ENDPOINTS = {
     "portal.tutorials", "portal.video_tutorials",
 }
 
+# WhatsApp Connect/Handoff Reports — a real gap found during an end-to-end
+# verification pass: this whole module (distinct from WhatsApp Campaigns)
+# had catalog keys and real routes but had NEVER been wired to any
+# permission check, discovered only because these routes weren't in any
+# earlier *_DELEGATED_ENDPOINTS set either — team members were still
+# fully blocked by the blanket rule, so there was no live security gap,
+# but the Roles UI's "WhatsApp Connect" checkboxes did nothing at all.
+WHATSAPP_DELEGATED_ENDPOINTS = {
+    "portal.whatsapp_connect", "portal.whatsapp_qr_code",
+    "portal.whatsapp_save_notify_phone", "portal.whatsapp_save_ack_text",
+    "portal.whatsapp_save_connection", "portal.whatsapp_disconnect",
+    "portal.whatsapp_embedded_complete", "portal.whatsapp_delete",
+    "portal.whatsapp_reports",
+}
+
 
 @portal_bp.before_request
 def _restrict_team_members_to_inbox():
@@ -335,6 +350,8 @@ def _restrict_team_members_to_inbox():
     if request.endpoint in BILLING_DELEGATED_ENDPOINTS:
         return None
     if request.endpoint in HELP_DELEGATED_ENDPOINTS:
+        return None
+    if request.endpoint in WHATSAPP_DELEGATED_ENDPOINTS:
         return None
     flash("Your team account only has access to the Inbox.", "warning")
     return redirect(url_for("portal.my_inbox"))
@@ -857,9 +874,11 @@ PLAN_FEATURE_CATALOG = {
         ("voice.calls", "Voice Calls (PressOne)"),
     ],
     "WhatsApp": [
-        ("legacy:feat_fw_checkout", "Checkout (In-Chat Payments via Flutterwave)"),
-        ("wa.connect",              "WhatsApp Connect (connect/manage your number)"),
-        ("wa.handoff_reports",      "WhatsApp Handoff Reports"),
+        ("legacy:feat_fw_checkout",  "Checkout (In-Chat Payments via Flutterwave)"),
+        ("wa.connect_view",         "WhatsApp Connect — view"),
+        ("wa.connect_manage",       "Connect / configure your WhatsApp number"),
+        ("wa.connect_delete",       "Delete your WhatsApp connection"),
+        ("wa.handoff_reports_view", "WhatsApp Handoff Reports — view"),
         ("wa.report",               "WhatsApp Report"),
     ],
     "CRM": [
@@ -1321,6 +1340,7 @@ DESTRUCTIVE_FEATURE_KEYS = {
     "ai.handoff_rules_delete",
     "ai.agent_profiles_delete",
     "store.info_documents_delete",
+    "wa.connect_delete",
 }
 
 # Any permission that lets someone manage other team members' access at all.
@@ -11644,6 +11664,8 @@ def _send_wa_text_from_portal(phone_number_id: str, access_token: str,
 def whatsapp_connect():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("wa.connect_view")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     r2 = _require_plan_sub_feature(customer, "wa.connect", "WhatsApp Connect")
@@ -11730,6 +11752,8 @@ def whatsapp_save_notify_phone():
     """Save the merchant's personal WhatsApp number for handoff + daily report alerts."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("wa.connect_manage")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     r2 = _require_plan_sub_feature(customer, "wa.connect", "WhatsApp Connect")
@@ -11770,6 +11794,8 @@ def whatsapp_save_ack_text():
     """Save the instant acknowledgement message sent before the AI replies."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("wa.connect_manage")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     r2 = _require_plan_sub_feature(customer, "wa.connect", "WhatsApp Connect")
@@ -11806,6 +11832,8 @@ def whatsapp_qr_code():
     """Return a QR code PNG for the tenant's WhatsApp click-to-chat onboarding link."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("wa.connect_view")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     r2 = _require_plan_sub_feature(customer, "wa.connect", "WhatsApp Connect")
@@ -11842,6 +11870,8 @@ def whatsapp_qr_code():
 def whatsapp_save_connection():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("wa.connect_manage")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     r2 = _require_plan_sub_feature(customer, "wa.connect", "WhatsApp Connect")
@@ -11993,6 +12023,8 @@ def whatsapp_save_connection():
 def whatsapp_disconnect():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("wa.connect_manage")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     r2 = _require_plan_sub_feature(customer, "wa.connect", "WhatsApp Connect")
@@ -12021,6 +12053,8 @@ def whatsapp_disconnect():
 def whatsapp_delete():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("wa.connect_delete")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     r2 = _require_plan_sub_feature(customer, "wa.connect", "WhatsApp Connect")
@@ -12632,6 +12666,8 @@ def whatsapp_embedded_complete():
     """
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("wa.connect_manage")
+    if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -12913,6 +12949,8 @@ def inbox_takeover():
 def whatsapp_reports():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("wa.handoff_reports_view")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     r2 = _require_plan_sub_feature(customer, "wa.handoff_reports", "WhatsApp Handoff Reports")

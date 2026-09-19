@@ -3070,6 +3070,52 @@ def ensure_portal_tables():
         except Exception as e:
             print("⚠️  Team/Store-Info final granularity migration error:", e)
 
+        # ── WhatsApp module enforcement (2026-09-19) — a real gap found
+        # during an end-to-end verification pass: `wa.connect`/
+        # `wa.handoff_reports` had real routes (connect/disconnect/delete
+        # your WhatsApp number, view handoff reports) but had NEVER been
+        # wired to any `_require_team_permission()` check at all, and
+        # weren't in any `*_DELEGATED_ENDPOINTS` bypass set either — so
+        # team members were still fully blocked by the blanket
+        # before_request rule (no live security gap), but the Roles UI's
+        # checkboxes for this module did nothing. Split into
+        # view/manage/delete — deleting a WhatsApp connection is genuinely
+        # destructive (a real `DELETE FROM wa_tenants`, distinct from
+        # disconnect's reversible `active=FALSE`).
+        _WHATSAPP_SPLIT_KEYS = (
+            "wa.connect_view", "wa.connect_manage", "wa.connect_delete",
+            "wa.handoff_reports_view",
+        )
+        for _pid in _all_plan_ids_tagging:
+            for _key in _WHATSAPP_SPLIT_KEYS:
+                cur.execute(
+                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    (_pid, _key),
+                )
+
+        _WHATSAPP_OLD_TO_NEW = {
+            "wa.connect":         ["wa.connect_view", "wa.connect_manage", "wa.connect_delete"],
+            "wa.handoff_reports": ["wa.handoff_reports_view"],
+        }
+        try:
+            cur.execute("SELECT id, permissions FROM tenant_roles")
+            for _role_id, _perms_raw in cur.fetchall():
+                _perms = _perms_raw if isinstance(_perms_raw, dict) else (_json.loads(_perms_raw) if _perms_raw else {})
+                _changed = False
+                for _old_key, _new_keys in _WHATSAPP_OLD_TO_NEW.items():
+                    if _perms.get(_old_key):
+                        for _nk in _new_keys:
+                            if not _perms.get(_nk):
+                                _perms[_nk] = True
+                                _changed = True
+                if _changed:
+                    cur.execute(
+                        "UPDATE tenant_roles SET permissions=%s WHERE id=%s",
+                        (_json.dumps(_perms), _role_id),
+                    )
+        except Exception as e:
+            print("⚠️  WhatsApp module permissions migration error:", e)
+
         conn.commit()
     except Exception as e:
         conn.rollback()

@@ -24,12 +24,23 @@
           margin-bottom:22px;font-size:13px;line-height:1.5;color:#7a4f00}
 .rf-alert-icon{font-size:16px;flex-shrink:0;line-height:1.4}
 
-.rf-modules{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:16px}
+/* Vertical stack — one module per row, not a side-by-side grid. */
+.rf-modules{display:flex;flex-direction:column;gap:12px}
+
+/* Each module is a native <details> — collapsed by default, opens on
+   click, same disclosure convention as team.html's "Manage channel
+   access" row (see .tm-manage there) rather than a new pattern. */
 .rf-module{background:#fff;border:1px solid var(--line);border-radius:16px;
-           overflow:hidden;display:flex;flex-direction:column;transition:.15s}
+           overflow:hidden;transition:.15s}
 .rf-module.rf-hidden{display:none}
 .rf-module-head{display:flex;align-items:center;justify-content:space-between;gap:10px;
-                 padding:14px 18px;border-bottom:1px solid var(--line);background:rgba(3,12,24,0.015)}
+                 padding:14px 18px;background:rgba(3,12,24,0.015);cursor:pointer;
+                 list-style:none}
+.rf-module-head::-webkit-details-marker{display:none}
+.rf-module[open]>.rf-module-head{border-bottom:1px solid var(--line)}
+.rf-module-title{display:flex;align-items:center;gap:8px;min-width:0}
+.rf-module-chevron{font-size:11px;color:var(--muted);flex-shrink:0;transition:transform .15s}
+.rf-module[open] .rf-module-chevron{transform:rotate(180deg)}
 .rf-module-name{font-weight:700;font-size:14px}
 .rf-module-count{font-size:11.5px;color:var(--muted);font-weight:600;margin-left:8px}
 .rf-select-all{font-size:12px;font-weight:650;color:var(--txt);cursor:pointer;
@@ -53,12 +64,12 @@
               gap:12px;box-shadow:0 -8px 20px rgba(3,12,24,0.05);flex-wrap:wrap}
 .rf-actionbar-count{font-size:13px;color:var(--muted)}
 .rf-actionbar-count strong{color:var(--txt)}
-.rf-empty{padding:32px;text-align:center;color:var(--muted);font-size:13px;grid-column:1/-1}
+.rf-empty{padding:32px;text-align:center;color:var(--muted);font-size:13px}
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="page" style="max-width:1180px">
+<div class="page" style="max-width:900px">
 
   <div class="page-header">
     <h1 class="section-title">{{ 'Edit Role — ' + role.name if role else 'New Role' }}</h1>
@@ -92,7 +103,7 @@
 
     <p class="muted" style="margin-bottom:16px;font-size:13px">
       Tick every feature this role should be able to use. Nothing is granted by default —
-      a role with nothing ticked can log in but sees nothing.
+      a role with nothing ticked can log in but sees nothing. Click a module to open it.
     </p>
 
     <div class="rf-alert">
@@ -116,14 +127,16 @@
 
     <div class="rf-modules" id="rfModules">
       {% for mod_name, feats in feature_catalog.items() %}
-      <div class="rf-module" data-module>
-        <div class="rf-module-head">
-          <span>
+      {% set mod_has_current = role and feats|selectattr('0', 'in', role.permissions)|list|length > 0 %}
+      <details class="rf-module" data-module {% if mod_has_current %}open{% endif %}>
+        <summary class="rf-module-head">
+          <span class="rf-module-title">
+            <span class="rf-module-chevron">▾</span>
             <span class="rf-module-name">{{ mod_name }}</span>
             <span class="rf-module-count" data-count>0/{{ feats|length }}</span>
           </span>
-          <button type="button" class="rf-select-all" onclick="rfToggleModule(this)">Select all</button>
-        </div>
+          <button type="button" class="rf-select-all" onclick="rfToggleModule(event, this)">Select all</button>
+        </summary>
         <div class="rf-features">
           {% for key, label in feats %}
           {% set current = (role.permissions.get(key) if role else False) %}
@@ -142,7 +155,7 @@
           </label>
           {% endfor %}
         </div>
-      </div>
+      </details>
       {% endfor %}
       <div class="rf-empty" id="rfEmpty" style="display:none">No permissions match your search.</div>
     </div>
@@ -175,7 +188,11 @@ function rfUpdateCounts() {
   document.getElementById('rfActionbarCount').textContent = total;
 }
 
-function rfToggleModule(btn) {
+function rfToggleModule(evt, btn) {
+  // The button lives inside <summary> — stop the click from also firing
+  // the native details open/close toggle.
+  evt.preventDefault();
+  evt.stopPropagation();
   var box = btn.closest('[data-module]');
   var checks = box.querySelectorAll('input[type=checkbox]');
   var allChecked = Array.prototype.every.call(checks, function(c){ return c.checked; });
@@ -201,6 +218,10 @@ document.getElementById('rfSearch').addEventListener('input', function(e) {
       if (match) anyVisible = true;
     });
     mod.classList.toggle('rf-hidden', !anyVisible);
+    // Auto-open a module that has a match, so results are visible without
+    // an extra click — but don't force-close modules when the search box
+    // is cleared, in case the user had one open on purpose.
+    if (q && anyVisible) mod.open = true;
     if (anyVisible) anyVisibleAtAll = true;
   });
   document.getElementById('rfEmpty').style.display = anyVisibleAtAll ? 'none' : 'block';
