@@ -34,7 +34,10 @@ import requests as _req
 from flask import (Blueprint, request, jsonify, render_template,
                     render_template_string, session, redirect, url_for, flash)
 from db import get_db_connection, insert_audit_log
-from portal_routes import _require_login, _customer_id, _get_customer, _exchange_code_for_tokens, _GRAPH
+from portal_routes import (
+    _require_login, _customer_id, _get_customer, _exchange_code_for_tokens, _GRAPH,
+    _require_team_permission, _team_member_has_permission,
+)
 
 facebook_bp = Blueprint("facebook", __name__, url_prefix="/facebook")
 
@@ -310,6 +313,8 @@ def _get_fb_pages(tenant_id: int) -> list:
 def messenger_connect():
     r = _require_login()
     if r: return r
+    r2 = _require_team_permission("channels.connect_messenger")
+    if r2: return r2
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     meta_app_id = os.getenv("META_APP_ID", "")
@@ -332,6 +337,8 @@ def messenger_callback():
     r = _require_login()
     if r:
         return jsonify({"error": "not_logged_in"}), 401
+    if not _team_member_has_permission("channels.connect_messenger"):
+        return jsonify({"error": "forbidden"}), 403
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -390,6 +397,8 @@ def messenger_complete():
     """Second step when the account manages 2+ Pages — saves the chosen one."""
     r = _require_login()
     if r: return r
+    r2 = _require_team_permission("channels.connect_messenger")
+    if r2: return r2
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])

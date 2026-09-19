@@ -45,7 +45,10 @@ import requests as _req
 from flask import Blueprint, request, render_template, redirect, url_for, flash
 
 from db import get_db_connection, insert_audit_log
-from portal_routes import _require_login, _customer_id, _get_customer, _get_wa_connection
+from portal_routes import (
+    _require_login, _customer_id, _get_customer, _get_wa_connection, _require_plan_sub_feature,
+    _require_team_permission,
+)
 
 pressone_bp = Blueprint("pressone", __name__, url_prefix="/pressone")
 
@@ -125,8 +128,14 @@ def connect():
     r = _require_login()
     if r:
         return r
+    r3 = _require_team_permission("channels.connect_pressone")
+    if r3:
+        return r3
     customer = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "voice.calls", "Voice Calls")
+    if r2:
+        return r2
     return render_template(
         "portal/pressone_connect.html",
         customer=customer,
@@ -140,8 +149,14 @@ def connect_submit():
     r = _require_login()
     if r:
         return r
+    r3 = _require_team_permission("channels.connect_pressone")
+    if r3:
+        return r3
     customer = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "voice.calls", "Voice Calls")
+    if r2:
+        return r2
 
     account_id = (request.form.get("account_id") or "").strip()
     api_key = (request.form.get("api_key") or "").strip()
@@ -181,8 +196,14 @@ def test_event():
     r = _require_login()
     if r:
         return r
+    r3 = _require_team_permission("channels.connect_pressone")
+    if r3:
+        return r3
     customer = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "voice.calls", "Voice Calls")
+    if r2:
+        return r2
     acct = get_account(tenant_id)
     if not acct or not acct.get("webhook_id"):
         flash("Connect PressOne first.", "danger")
@@ -207,8 +228,14 @@ def disconnect():
     r = _require_login()
     if r:
         return r
+    r3 = _require_team_permission("channels.connect_pressone")
+    if r3:
+        return r3
     customer = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "voice.calls", "Voice Calls")
+    if r2:
+        return r2
     conn = get_db_connection()
     cur = conn.cursor()
     try:
@@ -230,8 +257,14 @@ def toggle_auto_reply():
     r = _require_login()
     if r:
         return r
+    r3 = _require_team_permission("channels.connect_pressone")
+    if r3:
+        return r3
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "voice.calls", "Voice Calls")
+    if r2:
+        return r2
     turn_on = request.form.get("enabled") == "1"
     conn = get_db_connection()
     cur = conn.cursor()
@@ -259,8 +292,14 @@ def call_log():
     r = _require_login()
     if r:
         return r
+    r3 = _require_team_permission("voice.calls")
+    if r3:
+        return r3
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "voice.calls", "Voice Calls")
+    if r2:
+        return r2
 
     status_filter = request.args.get("status_filter") or ""  # '', 'missed', 'completed'
     page = request.args.get("page", "1")

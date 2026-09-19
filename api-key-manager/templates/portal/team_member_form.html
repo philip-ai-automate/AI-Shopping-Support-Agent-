@@ -1,0 +1,118 @@
+{% extends "portal/base.html" %}
+{% block title %}New Team Member — PhiXtra Portal{% endblock %}
+
+{% block content %}
+<div class="page" style="max-width:640px">
+
+  <div class="page-header">
+    <h1 class="section-title">➕ New Team Member</h1>
+    <a href="{{ url_for('portal.team_page') }}" class="btn btn-sm">← Back to Team</a>
+  </div>
+
+  <form method="POST" enctype="multipart/form-data" action="{{ url_for('portal.team_create') }}">
+
+    <div class="card" style="margin-bottom:16px">
+      <p class="card-title">Profile</p>
+      <div class="grid g2">
+        <div class="form-group">
+          <label>First name *</label>
+          <input type="text" name="first_name" required maxlength="100"/>
+        </div>
+        <div class="form-group">
+          <label>Last name</label>
+          <input type="text" name="last_name" maxlength="100"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Email address *</label>
+        <input type="email" name="email" required/>
+      </div>
+      <div class="grid g2">
+        <div class="form-group">
+          <label>Department</label>
+          <select name="department_id">
+            <option value="">— None —</option>
+            {% for d in departments %}
+            <option value="{{ d.id }}">{{ d.name }}</option>
+            {% endfor %}
+          </select>
+          <p class="muted" style="font-size:11.5px;margin-top:4px">
+            <a href="{{ url_for('portal.team_departments_page') }}">Manage departments →</a>
+          </p>
+        </div>
+        <div class="form-group">
+          <label>Position / Title</label>
+          <select name="position_id">
+            <option value="">— None —</option>
+            {% for p in positions %}
+            <option value="{{ p.id }}">{{ p.name }}</option>
+            {% endfor %}
+          </select>
+          <p class="muted" style="font-size:11.5px;margin-top:4px">
+            <a href="{{ url_for('portal.team_positions_page') }}">Manage positions →</a>
+          </p>
+        </div>
+      </div>
+      <div class="grid g2">
+        <div class="form-group">
+          <label>City</label>
+          <input type="text" name="location_city" maxlength="100" placeholder="e.g. Lagos, London"/>
+        </div>
+        <div class="form-group">
+          <label>Country</label>
+          <select name="location_country">
+            <option value="">— None —</option>
+            {% for code, cname in countries %}
+            <option value="{{ code }}">{{ cname }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Line manager</label>
+        <select name="line_manager_id">
+          <option value="">— None —</option>
+          {% for m in managers %}
+          <option value="{{ m.id }}">{{ m.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Photo</label>
+        <input type="file" name="avatar" accept="image/jpeg,image/png,image/gif,image/webp"/>
+        <p class="muted" style="font-size:12px;margin-top:4px">JPEG, PNG, GIF or WebP, under 2 MB. Optional.</p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <p class="card-title">Access</p>
+      <div class="form-group">
+        <label>Role *</label>
+        <select name="role_id" required>
+          {% for role in roles %}
+          <option value="{{ role.id }}">{{ role.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% if show_agent_picker %}
+      <div class="agent-picker" style="margin-top:0;padding-top:0;border-top:none">
+        <div class="agent-picker-label">Which AI Agent(s) can they see? (leave blank and they'll see nothing until you assign one)</div>
+        <div class="agent-picker-list">
+          {% for a in assignable_agents %}
+          <label class="agent-check"><input type="checkbox" name="agent_ids" value="{{ a.id }}"/> {{ a.name }}</label>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <p class="muted" style="font-size:13px;margin-bottom:16px">
+      A password is generated automatically and shown once after creation — share it with them yourself.
+    </p>
+
+    <button type="submit" class="btn btn-primary">Create Team Member</button>
+    <a href="{{ url_for('portal.team_page') }}" class="btn">Cancel</a>
+  </form>
+
+</div>
+{% endblock %}

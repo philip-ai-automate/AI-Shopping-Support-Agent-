@@ -1,0 +1,68 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Modules — PhiXtra Admin{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="section-title">🧩 Modules</h1>
+</div>
+
+<p class="muted" style="margin-bottom:20px">
+  Every module and feature the app knows about, read straight from the code
+  ({{ module_count }} modules, {{ feature_count }} features — this can never
+  drift out of date). This is the same catalog the Plans screen uses to
+  decide what a subscription plan unlocks, and it will become the module
+  list for merchant Team Roles. It's read-only here on purpose — adding a
+  feature key needs a matching code change, not a form on this page.
+</p>
+
+<div class="card" style="margin-bottom:20px;display:flex;gap:24px;flex-wrap:wrap">
+  <div>
+    <div style="font-size:22px;font-weight:800">{{ module_count }}</div>
+    <div class="muted" style="font-size:12.5px">Modules</div>
+  </div>
+  <div>
+    <div style="font-size:22px;font-weight:800">{{ feature_count }}</div>
+    <div class="muted" style="font-size:12.5px">Features</div>
+  </div>
+  <div>
+    <div style="font-size:22px;font-weight:800">{{ legacy_count }}</div>
+    <div class="muted" style="font-size:12.5px">Legacy plan-flag keys</div>
+  </div>
+</div>
+
+{% for mod_name, feats in feature_catalog.items() %}
+<div class="card" style="padding:0;margin-bottom:16px">
+  <div style="padding:14px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between">
+    <strong>{{ mod_name }}</strong>
+    <span class="muted" style="font-size:12px">{{ feats|length }} feature{{ 's' if feats|length != 1 }}</span>
+  </div>
+  <div class="table-wrap" style="border:none;border-radius:0">
+    <table>
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th>Key</th>
+          <th>Type</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for key, label in feats %}
+        <tr>
+          <td>{{ label }}</td>
+          <td style="font-family:ui-monospace,'SF Mono',Consolas,monospace;font-size:12px;color:var(--muted)">{{ key }}</td>
+          <td>
+            {% if key.startswith('legacy:') %}
+              <span class="pill pill-grey">Legacy plan flag</span>
+            {% else %}
+              <span class="pill pill-green">plan_feature_grants</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endfor %}
+
+{% endblock %}

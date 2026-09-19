@@ -275,6 +275,10 @@
        href="{{ url_for('portal_admin.plugins') }}">
       <span class="asb-icon">🔌</span> Plugins
     </a>
+    <a class="asb-link {% if request.endpoint=='portal_admin.admin_modules_catalog' %}active{% endif %}"
+       href="{{ url_for('portal_admin.admin_modules_catalog') }}">
+      <span class="asb-icon">🧩</span> Modules
+    </a>
     <a class="asb-link {% if request.endpoint in ('portal_admin.admin_plans','portal_admin.admin_plans_assign') %}active{% endif %}"
        href="{{ url_for('portal_admin.admin_plans') }}">
       <span class="asb-icon">📋</span> Plans
@@ -410,6 +414,7 @@
     { icon:'🧾', title:'Invoices',           desc:'All merchant invoices and receipts',        url:'{{ url_for("portal_admin.invoices") }}',            tags:'invoices receipts billing history' },
     { icon:'📦', title:'Credit Packages',    desc:'Manage top-up credit packages and pricing', url:'{{ url_for("portal_admin.credit_packages") }}',    tags:'packages credits pricing billing top up' },
     { icon:'🔌', title:'Plugins',            desc:'Manage downloadable WooCommerce plugins',   url:'{{ url_for("portal_admin.plugins") }}',             tags:'plugins woocommerce download wordpress' },
+    { icon:'🧩', title:'Modules',            desc:'Every module/feature the app knows about — read-only', url:'{{ url_for("portal_admin.admin_modules_catalog") }}', tags:'modules features catalog permissions roles plans reference' },
     { icon:'📋', title:'Plans',              desc:'Manage WhatsApp subscription plans',        url:'{{ url_for("portal_admin.admin_plans") }}',         tags:'plans subscription whatsapp quota limits assign' },
     { icon:'🏫', title:'School Plans',       desc:'Manage school.phixtra.com subscription plans', url:'{{ url_for("portal_admin.admin_school_plans") }}', tags:'school plans subscription quota limits assign termly' },
     { icon:'📡', title:'WA Diagnostics',     desc:'Debug WhatsApp connection issues',          url:'{{ url_for("portal_admin.wa_diagnostics") }}',      tags:'whatsapp diagnostics debug connection status check' },

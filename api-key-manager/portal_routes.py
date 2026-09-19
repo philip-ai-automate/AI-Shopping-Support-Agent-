@@ -57,12 +57,284 @@ TEAM_MEMBER_ALLOWED_ENDPOINTS = {
     "portal.inbox_claim", "portal.inbox_release", "portal.logout", "static",
 }
 
+# Team/Roles/Departments/Positions endpoints — let a team member through the
+# blanket before_request block IF their role grants the specific permission
+# for that endpoint (checked inside each route via _require_team_permission).
+# This is the one section of the portal where a team member can be granted
+# more than Inbox access, e.g. a capped "Super User" role — every other
+# module stays fully blocked, unaffected by this set.
+TEAM_DELEGATED_ENDPOINTS = {
+    "portal.team_page", "portal.team_create", "portal.team_update_role",
+    "portal.team_roles_page", "portal.team_role_new", "portal.team_role_edit",
+    "portal.team_role_delete",
+    "portal.team_departments_page", "portal.team_department_new",
+    "portal.team_department_edit", "portal.team_department_delete",
+    "portal.team_positions_page", "portal.team_position_new",
+    "portal.team_position_edit", "portal.team_position_delete",
+    "portal.team_deactivate", "portal.team_activate", "portal.team_remove",
+    "portal.team_update_agents", "portal.team_update_messenger", "portal.team_update_webchat",
+}
+
+# CRM endpoints (Contacts/Companies/Merge Review/Segments/Tags/Pipeline) — same
+# idea as TEAM_DELEGATED_ENDPOINTS above: let a team member through IF their
+# role grants the relevant crm.* permission (checked inside each route via
+# _require_team_permission / _team_member_has_permission). Every sub-action
+# under a CRM area (add/edit/delete/notes/bulk actions/etc.) shares that
+# area's single catalog key — the catalog itself is only granular to the
+# page level for CRM, not per-action like Team/Inbox.
+CRM_DELEGATED_ENDPOINTS = {
+    # crm.contacts
+    "portal.whatsapp_contact_move_to_pipeline", "portal.whatsapp_contacts",
+    "portal.whatsapp_contacts_add", "portal.whatsapp_contacts_edit",
+    "portal.whatsapp_contacts_delete", "portal.whatsapp_contacts_import",
+    "portal.whatsapp_contacts_export", "portal.whatsapp_contacts_save_view",
+    "portal.whatsapp_contacts_delete_view", "portal.whatsapp_contact_detail",
+    "portal.whatsapp_contact_set_consent", "portal.whatsapp_contact_add_note",
+    "portal.whatsapp_contact_delete_note", "portal.whatsapp_contact_add_to_segment",
+    "portal.whatsapp_contact_remove_from_segment", "portal.whatsapp_contacts_bulk_action",
+    "portal.whatsapp_contact_set_status", "portal.whatsapp_contact_tags",
+    # crm.companies
+    "portal.crm_companies", "portal.crm_companies_add", "portal.crm_company_detail",
+    "portal.crm_company_edit", "portal.crm_company_add_note",
+    # crm.merge_review
+    "portal.crm_merge_review", "portal.crm_merge_review_confirm", "portal.crm_merge_review_reject",
+    # crm.segments
+    "portal.whatsapp_segments", "portal.whatsapp_segments_create",
+    "portal.whatsapp_segments_edit", "portal.whatsapp_segments_delete",
+    "portal.whatsapp_segment_detail", "portal.whatsapp_segment_add_member",
+    "portal.whatsapp_segment_remove_member", "portal.whatsapp_segment_contacts_json",
+    # crm.tags (the "Labels" routes)
+    "portal.lead_labels_page", "portal.lead_labels_list_json", "portal.lead_labels_create",
+    "portal.lead_labels_delete", "portal.lead_labels_members", "portal.lead_labels_remove_member",
+    "portal.lead_labels_bulk_add_members", "portal.lead_labels_search_leads_json",
+    "portal.lead_labels_contact_members", "portal.lead_labels_remove_contact_member",
+    "portal.lead_labels_bulk_add_contacts", "portal.lead_labels_search_contacts_json",
+    "portal.lead_labels_import_bounces",
+    # crm.pipeline_board
+    "portal.sales_pipeline_contacts_json", "portal.sales_pipeline", "portal.sales_pipeline_export",
+    "portal.sales_pipeline_edit", "portal.sales_pipeline_assign_ambassador",
+    "portal.sales_pipeline_advance", "portal.sales_pipeline_bulk_advance",
+    "portal.sales_pipeline_drop", "portal.sales_pipeline_history",
+    # crm.pipeline_settings
+    "portal.sales_pipeline_settings",
+}
+
+# WhatsApp + Email Campaigns endpoints — same idea again. `/email/unsubscribe`
+# is a public, no-login route and deliberately NOT included here — it never
+# reaches this hook via a team-member session at all.
+CAMPAIGNS_DELEGATED_ENDPOINTS = {
+    # campaigns_wa.all
+    "portal.whatsapp_campaigns", "portal.whatsapp_campaigns_create",
+    "portal.whatsapp_campaigns_send", "portal.whatsapp_campaigns_delete",
+    "portal.whatsapp_campaigns_templates", "portal.whatsapp_campaigns_upload_image",
+    # campaigns_wa.segments
+    "portal.whatsapp_campaign_segments_page", "portal.whatsapp_campaigns_pipeline_leads_json",
+    # campaigns_wa.reports
+    "portal.whatsapp_campaigns_reports", "portal.whatsapp_campaign_report",
+    # campaigns_wa.needs_review
+    "portal.whatsapp_campaign_reviews", "portal.whatsapp_campaign_automation_settings",
+    "portal.whatsapp_campaign_review_approve", "portal.whatsapp_campaign_review_reject",
+    # campaigns_email.all
+    "portal.email_campaigns", "portal.email_campaigns_create", "portal.email_campaigns_edit_data",
+    "portal.email_campaigns_update", "portal.email_campaigns_preview",
+    "portal.email_campaigns_send_test_draft", "portal.email_campaigns_send_test",
+    "portal.email_campaigns_duplicate_data", "portal.email_campaigns_send",
+    "portal.email_campaigns_delete", "portal.email_campaigns_upload_image",
+    "portal.email_campaigns_contacts_json",
+    # campaigns_email.segments
+    "portal.email_campaigns_pipeline_leads_json", "portal.email_segments_list",
+    "portal.email_segments_create", "portal.email_segments_delete",
+    "portal.email_segments_members", "portal.email_segments_add_member",
+    "portal.email_segments_remove_member", "portal.email_segments_bulk_add_members",
+    # campaigns_email.reports
+    "portal.email_campaigns_reports", "portal.email_campaign_report",
+}
+
+# Reports endpoints — same idea again. `reports_page` (the hub) uses
+# _require_any_team_permission instead of one fixed key (see its route),
+# and `report_export` checks a dynamic reports.<report> key built from its
+# own URL param — both still just need to be in this bypass set so the
+# before_request hook lets them reach their own in-route check at all.
+REPORTS_DELEGATED_ENDPOINTS = {
+    "portal.reports_page",
+    "portal.report_usage", "portal.report_export",
+    "portal.report_cart", "portal.report_billing",
+    "portal.report_pipeline_overview", "portal.report_pipeline_overview_export",
+    "portal.report_leads_sources", "portal.report_leads_sources_export",
+    "portal.report_custom_picker", "portal.report_custom_entity",
+    "portal.report_custom_entity_export", "portal.report_custom_save_view",
+    "portal.report_custom_delete_view",
+}
+
+# Channels hub page (channels.page). Messenger connect/manage
+# (channels.connect_messenger) and PressOne connect/manage
+# (channels.connect_pressone) live in separate blueprints (facebook_bp,
+# pressone_bp) that have NO before_request restriction of their own at
+# all — found while wiring this up: today, ANY logged-in team member,
+# regardless of role, can already reach those routes directly (e.g. POST
+# /messenger/complete or /pressone/disconnect) without ever passing through
+# this hook, since it's registered only on portal_bp. Those routes are
+# fixed with their own inline `_require_team_permission("channels.connect_*")`
+# checks instead of a set here — see portal_facebook_routes.py /
+# pressone_routes.py.
+CHANNELS_DELEGATED_ENDPOINTS = {
+    "portal.channels_page",
+}
+
+# Ecommerce & Integrations endpoints — same idea again.
+ECOM_DELEGATED_ENDPOINTS = {
+    # ecom.orders
+    "portal.orders", "portal.order_detail", "portal.order_verify_payment",
+    "portal.order_dispatch", "portal.order_deliver", "portal.order_cancel",
+    # ecom.products
+    "portal.products", "portal.product_add", "portal.product_edit",
+    "portal.product_delete", "portal.product_toggle_stock",
+    # ecom.customers
+    "portal.customers", "portal.customer_detail",
+    # ecom.data_sources
+    "portal.data_sources", "portal.data_source_upload", "portal.data_source_map",
+    "portal.data_source_sync", "portal.data_source_delete",
+    "portal.data_source_google_connect", "portal.data_source_google_callback",
+    "portal.data_source_google_setup",
+    # ecom.woo_sync
+    "portal.woo_sync", "portal.woo_sync_delete", "portal.woo_sync_bulk_delete",
+    # ecom.discount_settings
+    "portal.wa_discount_settings", "portal.wa_discount_product_save",
+    # ecom.catalogue
+    "portal.catalogue_browse", "portal.catalogue_category",
+    "portal.catalogue_toggle", "portal.catalogue_selections",
+}
+
+# WooCommerce Plugin endpoints — same idea again.
+WOO_DELEGATED_ENDPOINTS = {
+    # woo.cart_recovery_settings
+    "portal.cart_recovery_dashboard", "portal.cart_recovery_save_settings",
+    # woo.cart_recovery_templates
+    "portal.cart_recovery_email_template",
+    # woo.verified_specs
+    "portal.verified_specs_settings", "portal.verified_specs_domain_add",
+    "portal.verified_specs_domain_delete", "portal.verified_specs_spec_add",
+    "portal.verified_specs_spec_delete",
+    # woo.chat_archive
+    "portal.chat_archive", "portal.chat_archive_export", "portal.chat_archive_session_export",
+    # woo.message_templates
+    "portal.whatsapp_templates", "portal.whatsapp_save_templates",
+}
+
+# AI Assistant endpoints — same idea again.
+AI_DELEGATED_ENDPOINTS = {
+    # legacy:feat_advanced_ai
+    "portal.ai_instruction",
+    # ai.handoff_rules
+    "portal.handoff_rules", "portal.handoff_rules_add",
+    "portal.handoff_rules_toggle", "portal.handoff_rules_delete",
+    # ai.api_keys
+    "portal.api_keys", "portal.api_keys_revoke",
+    # ai.agent_profiles
+    "portal.ai_agents", "portal.ai_agents_new", "portal.ai_agents_edit",
+    "portal.ai_agents_activate", "portal.ai_agents_delete",
+}
+
+# Store Information — a single route dispatches all 3 catalog features via
+# a hidden `action` form field (see store_info()'s own dynamic key logic).
+STORE_INFO_DELEGATED_ENDPOINTS = {
+    "portal.store_info",
+}
+
+# Leads endpoints — leads_page() dispatches leads.page (GET) vs leads.create
+# (POST) dynamically, same shape as store_info() above.
+LEADS_DELEGATED_ENDPOINTS = {
+    "portal.leads_page", "portal.leads_create_from_conversation", "portal.lead_detail",
+}
+
+ANALYTICS_DELEGATED_ENDPOINTS = {
+    "portal.analytics",
+}
+
+DASHBOARD_DELEGATED_ENDPOINTS = {
+    "portal.dashboard",
+}
+
+# Settings endpoints — same idea again. `/settings/plan` is a trivial,
+# no-login redirect straight to `/settings#plan` (no DB access, nothing to
+# protect on its own) and `/settings/payments*` is the Billing module's
+# billing.payment_gateways key, not touched here — both deliberately left
+# out of this set.
+SETTINGS_DELEGATED_ENDPOINTS = {
+    "portal.settings", "portal.settings_profile", "portal.settings_password",
+    "portal.settings_avatar", "portal.settings_notifications",
+    "portal.settings_business", "portal.settings_cancel_plan",
+}
+
+# Billing endpoints. `/billing/flutterwave-order-webhook` and
+# `/billing/flutterwave-webhook` are external payment-gateway webhooks with
+# no session/login involved — deliberately excluded. So is
+# `/billing/plan-upgrade/callback` (Flutterwave's browser redirect back
+# after checkout) — it verifies the transaction directly with Flutterwave
+# rather than trusting the session, by design, so it has no
+# `_require_login()` call to hook a permission check onto; adding one would
+# fight that design, not follow it. Card management (add/save/remove/
+# set-default) is shared by both the Buy Credits and Subscription Plans
+# pages in the UI — mapped to billing.credits as its single primary owner.
+BILLING_DELEGATED_ENDPOINTS = {
+    # billing.credits
+    "portal.billing", "portal.billing_checkout", "portal.billing_add_card",
+    "portal.billing_save_card", "portal.billing_remove_card", "portal.billing_set_default_card",
+    # billing.invoices
+    "portal.invoices",
+    # billing.subscription
+    "portal.billing_subscribe", "portal.billing_subscribe_post",
+    "portal.billing_subscribe_checkout", "portal.billing_subscribe_complete",
+    "portal.billing_switch_plan", "portal.billing_plans", "portal.billing_plan_upgrade",
+    # billing.payment_gateways
+    "portal.payment_settings", "portal.payment_settings_paystack",
+    "portal.payment_settings_paystack_remove", "portal.payment_settings_flutterwave",
+    "portal.payment_settings_flutterwave_remove", "portal.payment_settings_flutterwave_toggle_checkout",
+    "portal.payment_settings_bank", "portal.payment_settings_reveal",
+}
+
+# Help & Tutorials endpoints — the last catalog module. Both keys already
+# match one route each 1:1, no dispatcher/hub shape to design around.
+HELP_DELEGATED_ENDPOINTS = {
+    "portal.tutorials", "portal.video_tutorials",
+}
+
 
 @portal_bp.before_request
 def _restrict_team_members_to_inbox():
     if not session.get("team_member_id"):
         return None
     if request.endpoint in TEAM_MEMBER_ALLOWED_ENDPOINTS:
+        return None
+    if request.endpoint in TEAM_DELEGATED_ENDPOINTS:
+        return None
+    if request.endpoint in CRM_DELEGATED_ENDPOINTS:
+        return None
+    if request.endpoint in CAMPAIGNS_DELEGATED_ENDPOINTS:
+        return None
+    if request.endpoint in REPORTS_DELEGATED_ENDPOINTS:
+        return None
+    if request.endpoint in CHANNELS_DELEGATED_ENDPOINTS:
+        return None
+    if request.endpoint in ECOM_DELEGATED_ENDPOINTS:
+        return None
+    if request.endpoint in WOO_DELEGATED_ENDPOINTS:
+        return None
+    if request.endpoint in AI_DELEGATED_ENDPOINTS:
+        return None
+    if request.endpoint in STORE_INFO_DELEGATED_ENDPOINTS:
+        return None
+    if request.endpoint in LEADS_DELEGATED_ENDPOINTS:
+        return None
+    if request.endpoint in ANALYTICS_DELEGATED_ENDPOINTS:
+        return None
+    if request.endpoint in DASHBOARD_DELEGATED_ENDPOINTS:
+        return None
+    if request.endpoint in SETTINGS_DELEGATED_ENDPOINTS:
+        return None
+    if request.endpoint in BILLING_DELEGATED_ENDPOINTS:
+        return None
+    if request.endpoint in HELP_DELEGATED_ENDPOINTS:
         return None
     flash("Your team account only has access to the Inbox.", "warning")
     return redirect(url_for("portal.my_inbox"))
@@ -253,6 +525,56 @@ def _block_ai_on_connect_host():
         if not customer or not _tenant_crm_enabled(int(customer["tenant_id"])):
             flash("Sales CRM isn't turned on for this account yet.", "info")
             return redirect(url_for("portal.home"))
+
+
+@portal_bp.context_processor
+def _inject_granted_features():
+    """Sidebar nav lock badges — every business sees every menu item (per
+    the user's explicit call: showing a locked feature is a sales nudge),
+    but items their plan doesn't grant get a small lock icon in base.html.
+    Computed fresh per request from the exact same plan_feature_grants table
+    (+ legacy feat_* columns) that _require_plan_sub_feature enforces against,
+    so the lock badge and the actual click-through block can never disagree.
+    Never raises — an empty set just means every item shows locked, which is
+    safe (worst case: over-cautious padlocks, never a false "unlocked").
+    """
+    cid = _customer_id()
+    if not cid:
+        return {"granted_features": set()}
+    customer = _get_customer(cid)
+    if not customer:
+        return {"granted_features": set()}
+    tenant_id = int(customer["tenant_id"])
+
+    granted = set()
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT p.id AS plan_id,
+                   COALESCE(p.feat_advanced_ai, FALSE)     AS feat_advanced_ai,
+                   COALESCE(p.feat_visual_match, FALSE)    AS feat_visual_match,
+                   COALESCE(p.feat_broadcasts, FALSE)      AS feat_broadcasts,
+                   COALESCE(p.feat_email_campaigns, FALSE) AS feat_email_campaigns,
+                   COALESCE(p.feat_fw_checkout, FALSE)     AS feat_fw_checkout
+            FROM tenants t
+            LEFT JOIN plans p ON p.id = t.plan_id
+            WHERE t.id = %s
+        """, (tenant_id,))
+        row = cur.fetchone() or {}
+        plan_id = row.get("plan_id")
+        if plan_id:
+            cur.execute("SELECT feature_key FROM plan_feature_grants WHERE plan_id=%s", (plan_id,))
+            granted = {r["feature_key"] for r in (cur.fetchall() or [])}
+        for col in ("feat_advanced_ai", "feat_visual_match", "feat_broadcasts",
+                    "feat_email_campaigns", "feat_fw_checkout"):
+            if row.get(col):
+                granted.add(f"legacy:{col}")
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ _inject_granted_features error:", e)
+
+    return {"granted_features": granted}
 
 
 @portal_bp.context_processor
@@ -450,6 +772,207 @@ def _require_plan_feature(customer: dict, plan_flag: str, min_plan_name: str):
     )
 
 
+# Main feature → [(feature_key, sub-feature label), ...]. Single source of
+# truth for the admin Plan Editor's checkboxes AND for what each route
+# actually enforces via _require_plan_sub_feature. Groups whose items are
+# tagged "legacy:" reuse the existing feat_* boolean columns (already real,
+# already enforced elsewhere) instead of the new plan_feature_grants table —
+# they're one flag today, so splitting them into fake independent checkboxes
+# would just recreate the same "looks granular, isn't" problem this was
+# built to fix.
+PLAN_FEATURE_CATALOG = {
+    "Dashboard": [
+        ("dashboard.page", "Dashboard"),
+    ],
+    "Billing": [
+        ("billing.subscription",     "Subscription Plans"),
+        ("billing.credits",          "Buy Credits"),
+        ("billing.invoices",         "Invoices"),
+        ("billing.payment_gateways", "Payment Gateways"),
+    ],
+    "Settings": [
+        ("settings.account",      "Account Settings — view"),
+        ("settings.profile_edit", "Edit profile, avatar & notification preferences"),
+        ("settings.business_edit","Edit business/billing legal information"),
+        ("settings.password",     "Change password"),
+        ("settings.cancel_plan",  "Cancel subscription plan"),
+    ],
+    "Help & Tutorials": [
+        ("help.tutorials", "Help & Tutorials"),
+        ("help.videos",    "Video Tutorials"),
+    ],
+    "Leads": [
+        ("leads.page",   "Leads — view"),
+        ("leads.create", "Create a Lead (manually or from a Hot Conversation)"),
+    ],
+    "Team": [
+        ("team.manage",                 "Team — view"),
+        ("team.members_create",         "Create a team member"),
+        ("team.members_assign_role",    "Change a team member's role"),
+        ("team.members_deactivate",     "Deactivate / reactivate a team member"),
+        ("team.members_remove",         "Permanently remove a team member"),
+        ("team.members_channel_access", "Manage a team member's AI Agent / Messenger / Web Chat access"),
+        ("team.roles_manage",           "Create / edit Roles and their permissions"),
+        ("team.roles_delete",           "Delete a Role"),
+        ("team.departments_manage",     "Create / edit Departments"),
+        ("team.departments_delete",     "Delete a Department"),
+        ("team.positions_manage",       "Create / edit Positions"),
+        ("team.positions_delete",       "Delete a Position"),
+    ],
+    "Store Information": [
+        ("store.info",           "Store Information — view"),
+        ("store.info_edit",      "Edit business details / AI knowledge text"),
+        ("store.info_documents", "Upload / delete AI knowledge documents"),
+    ],
+    "Analytics": [
+        ("analytics.page", "Analytics"),
+    ],
+    "Inbox": [
+        ("inbox.page",           "Inbox (Conversations) — view"),
+        ("inbox.reply",          "Reply to conversations"),
+        ("inbox.claim_release",  "Claim / Release conversations"),
+        ("inbox.resolve",        "Resolve conversations (hand back to AI)"),
+        ("inbox.takeover",       "Take over from AI"),
+        ("inbox.manage_contact", "Edit contact details from Inbox"),
+    ],
+    "Channels": [
+        ("channels.page",               "Channels — view"),
+        ("channels.connect_messenger",  "Connect / manage Messenger"),
+        ("channels.connect_pressone",   "Connect / manage PressOne (phone)"),
+    ],
+    "Voice Calls": [
+        ("voice.calls", "Voice Calls (PressOne)"),
+    ],
+    "WhatsApp": [
+        ("legacy:feat_fw_checkout", "Checkout (In-Chat Payments via Flutterwave)"),
+        ("wa.connect",              "WhatsApp Connect (connect/manage your number)"),
+        ("wa.handoff_reports",      "WhatsApp Handoff Reports"),
+        ("wa.report",               "WhatsApp Report"),
+    ],
+    "CRM": [
+        ("crm.contacts",          "All Contacts"),
+        ("crm.companies",         "Companies"),
+        ("crm.pipeline_board",    "Pipeline Board"),
+        ("crm.segments",          "Segments"),
+        ("crm.tags",              "Tags"),
+        ("crm.merge_review",      "Duplicate Merge Review"),
+        ("crm.pipeline_settings", "Pipeline Settings"),
+    ],
+    "AI Assistant": [
+        ("legacy:feat_advanced_ai",  "Custom AI Instructions"),
+        ("ai.handoff_rules",         "Handoff Rules"),
+        ("ai.api_keys",              "API Keys"),
+        ("ai.agent_profiles",        "AI Agent Profiles"),
+    ],
+    "WooCommerce Plugin": [
+        ("woo.product_recommendation", "Product Recommendation"),
+        ("woo.cross_selling",          "Automated Cross-Selling"),
+        ("legacy:feat_visual_match",   "Shop by Sending a Photo"),
+        ("woo.cart_recovery",          "Intelligent Cart Revenue Recovery (plan unlock)"),
+        ("woo.cart_recovery_settings", "Cart Recovery — Overview & Settings"),
+        ("woo.cart_recovery_templates","Cart Recovery — Email Templates"),
+        ("woo.verified_specs",         "Verified Specs Lookup"),
+        ("woo.chat_archive",           "Chat Archive"),
+        ("woo.message_templates",      "WhatsApp Message Templates"),
+    ],
+    "WhatsApp Campaigns": [
+        ("legacy:feat_broadcasts",    "Broadcast Messaging & Reports (plan unlock)"),
+        ("campaigns_wa.all",          "All Campaigns"),
+        ("campaigns_wa.segments",     "WhatsApp Segment"),
+        ("campaigns_wa.reports",      "Reports"),
+        ("campaigns_wa.needs_review", "Needs Review"),
+    ],
+    "Email Campaigns": [
+        ("legacy:feat_email_campaigns", "Email Campaigns (plan unlock)"),
+        ("campaigns_email.all",         "All Campaigns"),
+        ("campaigns_email.segments",    "Email Segment"),
+        ("campaigns_email.reports",     "Reports"),
+    ],
+    "Reports": [
+        ("reports.pipeline_overview", "Pipeline Overview"),
+        ("reports.leads_sources",     "Leads Sources"),
+        ("reports.custom",            "Custom Report Builder"),
+        ("reports.usage",             "AI Usage Reports"),
+        ("reports.cart",              "Cart Recovery Reports"),
+        ("reports.billing",           "Billing Reports"),
+    ],
+    "Ecommerce & Integrations": [
+        ("ecom.products",           "My Products"),
+        ("ecom.orders",             "Orders"),
+        ("ecom.customers",          "Customers"),
+        ("ecom.woo_sync",           "WooCommerce Sync"),
+        ("ecom.data_sources",       "Product Import"),
+        ("ecom.discount_settings",  "Discount Settings"),
+        ("ecom.catalogue",          "My Catalogue"),
+    ],
+}
+
+
+def _plan_grants_feature(plan: dict, feature_key: str) -> bool:
+    """True if the tenant's plan grants this feature_key. Legacy keys read
+    the existing feat_* boolean column on the plan row; new keys are looked
+    up in plan_feature_grants."""
+    if feature_key.startswith("legacy:"):
+        return bool(plan.get(feature_key.split(":", 1)[1]))
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT 1 FROM plan_feature_grants WHERE plan_id=%s AND feature_key=%s LIMIT 1",
+        (plan.get("plan_id"), feature_key),
+    )
+    granted = bool(cur.fetchone())
+    cur.close(); conn.close()
+    return granted
+
+
+def _min_plan_for_feature(feature_key: str) -> str:
+    """Cheapest active single-channel plan that grants feature_key, for the
+    upgrade-required message. Falls back to 'a higher' if none do (Custom-only)."""
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    if feature_key.startswith("legacy:"):
+        col = feature_key.split(":", 1)[1]
+        cur.execute(f"""
+            SELECT name FROM plans
+            WHERE channel_mode='single' AND is_active=TRUE AND {col}=TRUE
+            ORDER BY sort_order LIMIT 1
+        """)
+    else:
+        cur.execute("""
+            SELECT p.name FROM plans p
+            JOIN plan_feature_grants g ON g.plan_id = p.id AND g.feature_key=%s
+            WHERE p.channel_mode='single' AND p.is_active=TRUE
+            ORDER BY p.sort_order LIMIT 1
+        """, (feature_key,))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    return row["name"] if row else "a higher"
+
+
+def _require_plan_sub_feature(customer: dict, feature_key: str, feature_label: str):
+    """Generic granular gate — the CRM/Reports/Ecommerce/Handoff-Rules
+    equivalent of _require_plan_feature, but keyed against
+    plan_feature_grants (or a legacy feat_* column) instead of one flat flag.
+    Applies to every tenant (no web-only bypass) since these are core
+    product pages, not WhatsApp-specific broadcast/checkout features.
+    Returns None if allowed, or a Response (upgrade page) if blocked.
+    """
+    tenant_id = int(customer["tenant_id"])
+    plan = _get_tenant_plan(tenant_id)
+
+    if _plan_grants_feature(plan, feature_key):
+        return None
+
+    return render_template(
+        "portal/upgrade_required.html",
+        customer=customer,
+        feature_label=feature_label,
+        min_plan_name=_min_plan_for_feature(feature_key),
+        current_plan=plan.get("plan_name", "Free"),
+        is_trial=plan.get("is_trial", False),
+    )
+
+
 def _require_email_campaigns_plan(customer: dict):
     """
     Gate Email Campaigns routes. Unlike _require_plan_feature, this always
@@ -519,7 +1042,11 @@ def _get_team_members(tenant_id: int, active_only: bool = False) -> list:
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        q = "SELECT id, name, email, role, is_active, invite_token, invite_expires_at, last_login_at, created_at, messenger_access, webchat_access FROM team_members WHERE tenant_id=%s"
+        q = ("SELECT id, name, first_name, last_name, email, role, role_id, is_active, "
+             "last_login_at, created_at, messenger_access, "
+             "webchat_access, department_id, position_id, avatar_data, line_manager_id, "
+             "location_city, location_country "
+             "FROM team_members WHERE tenant_id=%s")
         if active_only:
             q += " AND is_active=TRUE"
         q += " ORDER BY created_at ASC"
@@ -530,6 +1057,376 @@ def _get_team_members(tenant_id: int, active_only: bool = False) -> list:
     except Exception as e:
         print("⚠️ _get_team_members error:", e)
         return []
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TENANT ROLES — real, named, reusable custom roles a business defines for its
+# own team. Permissions are keyed by the SAME feature_key strings as
+# PLAN_FEATURE_CATALOG (also the source for /admin/modules) — one on/off
+# toggle per real named feature (75 total as of 2026-09-19), not a generic
+# View/Create/Modify/Delete per module. See project_team_access_control
+# memory for why (several features like Inbox's "Resolve"/"Take over from
+# AI" don't map cleanly onto those 4 generic verbs — user chose accuracy
+# over the simpler grid after being shown the tradeoff).
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _parse_json_maybe_role(val) -> dict:
+    """psycopg2 sometimes returns JSONB already decoded, sometimes as a raw
+    string depending on connection setup — normalise to a dict either way.
+    Mirrors portal_admin_routes._parse_json_maybe."""
+    if isinstance(val, str):
+        try:
+            return _json.loads(val) or {}
+        except (ValueError, TypeError):
+            return {}
+    return val or {}
+
+
+_DEFAULT_ROLE_NAME = "Support Agent"
+_DEFAULT_ROLE_PERMS = {
+    "inbox.page": True, "inbox.reply": True, "inbox.claim_release": True,
+    "inbox.resolve": True, "inbox.takeover": True, "inbox.manage_contact": True,
+}
+
+
+def _all_catalog_feature_keys() -> set:
+    """Every real feature_key that exists in PLAN_FEATURE_CATALOG right
+    now — used to whitelist which permission checkboxes a role-save form is
+    allowed to set, so a malformed/unexpected form field can never write an
+    arbitrary permission string into a role."""
+    return {key for feats in PLAN_FEATURE_CATALOG.values() for key, _ in feats}
+
+
+def _ensure_default_role(tenant_id: int) -> int:
+    """Every tenant needs at least one role to assign before creating their
+    first team member. Lazily creates a 'Support Agent' role (today's real
+    inbox-only behavior) the first time a tenant with zero roles visits
+    Team/Roles. Returns the id of the tenant's first role if one already
+    exists (does not assume it's still named 'Support Agent' — the owner
+    may have renamed or added others)."""
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT id FROM tenant_roles WHERE tenant_id=%s ORDER BY id LIMIT 1", (tenant_id,))
+    row = cur.fetchone()
+    if row:
+        cur.close(); conn.close()
+        return int(row["id"])
+    cur.execute(
+        "INSERT INTO tenant_roles (tenant_id, name, permissions) VALUES (%s, %s, %s) RETURNING id",
+        (tenant_id, _DEFAULT_ROLE_NAME, _json.dumps(_DEFAULT_ROLE_PERMS))
+    )
+    new_id = cur.fetchone()["id"]
+    conn.commit()
+    cur.close(); conn.close()
+    return int(new_id)
+
+
+def _get_tenant_roles(tenant_id: int) -> list:
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT id, name, permissions, created_at FROM tenant_roles WHERE tenant_id=%s ORDER BY name",
+            (tenant_id,)
+        )
+        rows = list(cur.fetchall() or [])
+        cur.close(); conn.close()
+        for r in rows:
+            r["permissions"] = _parse_json_maybe_role(r.get("permissions"))
+        return rows
+    except Exception as e:
+        print("⚠️ _get_tenant_roles error:", e)
+        return []
+
+
+def _get_role(role_id: int, tenant_id: int):
+    """Always scoped to tenant_id too — never let one business look up or
+    edit another business's role by guessing an id."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT id, name, permissions, created_at FROM tenant_roles WHERE id=%s AND tenant_id=%s",
+            (role_id, tenant_id)
+        )
+        row = cur.fetchone()
+        cur.close(); conn.close()
+        if row:
+            row["permissions"] = _parse_json_maybe_role(row.get("permissions"))
+        return row
+    except Exception as e:
+        print("⚠️ _get_role error:", e)
+        return None
+
+
+def _role_member_count(role_id: int) -> int:
+    """Active team members currently assigned to this role — used to block
+    deleting a role that's still in use, rather than silently leaving them
+    with role_id=NULL (which _team_member_has_permission treats as zero
+    access, not a soft fallback)."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM team_members WHERE role_id=%s AND is_active=TRUE", (role_id,))
+        n = cur.fetchone()[0]
+        cur.close(); conn.close()
+        return int(n)
+    except Exception as e:
+        print("⚠️ _role_member_count error:", e)
+        return 0
+
+
+def _parse_role_permissions_form(form) -> dict:
+    """Read the flat feature-key checkbox list (name='perm__<feature_key>').
+    Only keys that actually exist in PLAN_FEATURE_CATALOG right now are ever
+    stored — a stray or forged form field can't inject an arbitrary
+    permission string that no code will ever check anyway."""
+    valid_keys = _all_catalog_feature_keys()
+    granted = {}
+    for key in valid_keys:
+        if form.get(f"perm__{key}") == "on":
+            granted[key] = True
+    return granted
+
+
+def _team_member_has_permission(feature_key: str) -> bool:
+    """True if the CURRENTLY LOGGED IN actor may use this feature. The
+    account owner (no team_member_id in session) always has full access —
+    only a team-member session is actually restricted, by their role's
+    permissions loaded into session at login. NOT YET CALLED from any real
+    route — building it now so the Roles UI has something real to test
+    against; wiring it into each route/before_request check is a separate,
+    deliberately incremental follow-up (see project_team_access_control
+    memory, task 'wire real enforcement') so nothing here silently changes
+    what an existing team member can do today."""
+    if not session.get("team_member_id"):
+        return True
+    perms = session.get("team_member_permissions") or {}
+    return bool(perms.get(feature_key))
+
+
+def _require_team_permission(feature_key: str):
+    """Route-level gate for the delegated Team/Roles/Departments/Positions
+    endpoints. The account owner always passes. A team-member session must
+    hold this exact permission — this is what lets a 'Super User'-style
+    role actually reach these pages, without opening any other section of
+    the portal (every other module is still fully blocked for team members
+    by TEAM_MEMBER_ALLOWED_ENDPOINTS / _restrict_team_members_to_inbox).
+    Returns a redirect if denied, else None."""
+    if _team_member_has_permission(feature_key):
+        return None
+    flash("You don't have permission to do that.", "warning")
+    return redirect(url_for("portal.my_inbox"))
+
+
+def _require_any_team_permission(feature_keys):
+    """Same as _require_team_permission, but passes if the actor holds ANY
+    one of several keys — for a hub/landing page (like the Reports overview)
+    that isn't itself one specific catalog feature but sits in front of
+    several. The owner always passes; a team member needs at least one of
+    the listed permissions to see the hub at all."""
+    if any(_team_member_has_permission(k) for k in feature_keys):
+        return None
+    flash("You don't have permission to do that.", "warning")
+    return redirect(url_for("portal.my_inbox"))
+
+
+# Destructive / delete-style actions. A role that can manage OTHER people's
+# access (see TEAM_MANAGEMENT_FEATURE_KEYS below) can never itself hold, or
+# hand out, any of these — see _cap_delegated_role_permissions. Kept as a
+# separate set rather than a third tuple element on PLAN_FEATURE_CATALOG so
+# every existing place that unpacks (key, label) — /admin/modules, the
+# backfill script, team_role_form.html — keeps working unchanged.
+DESTRUCTIVE_FEATURE_KEYS = {
+    "team.members_remove",
+    "team.roles_delete",
+    "team.departments_delete",
+    "team.positions_delete",
+    "settings.cancel_plan",
+}
+
+# Any permission that lets someone manage other team members' access at all.
+# A role holding ANY of these is treated as a delegated "manager" role (a
+# "Super User" is just a role shaped like this) and is capped by
+# _cap_delegated_role_permissions regardless of who created it.
+TEAM_MANAGEMENT_FEATURE_KEYS = {
+    "team.members_create", "team.members_assign_role", "team.members_deactivate",
+    "team.members_remove", "team.members_channel_access",
+    "team.roles_manage", "team.roles_delete",
+    "team.departments_manage", "team.departments_delete",
+    "team.positions_manage", "team.positions_delete",
+}
+
+
+def _billing_feature_keys() -> set:
+    return {key for key, _ in PLAN_FEATURE_CATALOG.get("Billing", [])}
+
+
+def _cap_delegated_role_permissions(permissions: dict, acting_is_owner: bool) -> dict:
+    """Enforces the 'Super User' design: a role that can manage other team
+    members' access can never itself include Payment/Billing or any
+    destructive (delete / cancel-plan) permission — and neither can any role
+    saved by a non-owner (delegated) actor, regardless of that role's own
+    shape, since only a delegated manager could reach this route at all.
+    Strips silently-forbidden keys rather than rejecting the whole save, and
+    flashes exactly what was removed so it's never a silent surprise."""
+    is_delegated_shape = any(permissions.get(k) for k in TEAM_MANAGEMENT_FEATURE_KEYS)
+    if acting_is_owner and not is_delegated_shape:
+        return permissions
+    billing_keys = _billing_feature_keys()
+    capped, stripped = {}, []
+    for key, val in permissions.items():
+        if val and (key in billing_keys or key in DESTRUCTIVE_FEATURE_KEYS):
+            stripped.append(key)
+            continue
+        capped[key] = val
+    if stripped:
+        flash(
+            "A role that can manage Team/Roles access can never include Payment/Billing "
+            "or delete permissions — removed automatically: " + ", ".join(sorted(stripped)),
+            "warning"
+        )
+    return capped
+
+
+def _feature_catalog_for_actor(acting_is_owner: bool) -> dict:
+    """What a Roles-editor screen should even show as tickable. The owner
+    sees everything (the cap above still applies server-side if the shape
+    ends up delegated). A delegated (non-owner) actor never sees Billing or
+    any destructive key as an option at all — real access control, not just
+    a hint, since _parse_role_permissions_form only reads keys that were
+    actually rendered as checkboxes."""
+    if acting_is_owner:
+        return PLAN_FEATURE_CATALOG
+    billing_keys = _billing_feature_keys()
+    filtered = {}
+    for module, feats in PLAN_FEATURE_CATALOG.items():
+        if module == "Billing":
+            continue
+        kept = [(k, l) for k, l in feats if k not in DESTRUCTIVE_FEATURE_KEYS and k not in billing_keys]
+        if kept:
+            filtered[module] = kept
+    return filtered
+
+
+def _assignable_roles_for_actor(roles: list, acting_is_owner: bool) -> list:
+    """Which existing roles an actor may hand to a team member. The owner
+    may assign any role. A delegated (non-owner) manager may only assign
+    roles that don't carry Payment/Billing or destructive permissions —
+    otherwise a Super User could hand someone a powerful role the owner
+    created earlier even though the Super User could never create one
+    itself, which would be a privilege-escalation hole in the cap above."""
+    if acting_is_owner:
+        return roles
+    billing_keys = _billing_feature_keys()
+    safe = []
+    for r in roles:
+        perms = r.get("permissions") or {}
+        if any(perms.get(k) for k in billing_keys) or any(perms.get(k) for k in DESTRUCTIVE_FEATURE_KEYS):
+            continue
+        safe.append(r)
+    return safe
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DEPARTMENTS & POSITIONS — real, named, reusable lists an owner manages
+# themselves (same idea as tenant_roles), replacing what used to be free-text
+# fields with nothing behind them to actually create an option from.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Same code/name list as the existing billing_country dropdown in
+# settings.html — copied exactly (read that template first, not guessed) so
+# staff location uses the same countries as the rest of the app, not a
+# second, different list.
+STAFF_COUNTRY_LIST = [
+    ('GB','United Kingdom'),('US','United States'),
+    ('DE','Germany'),('FR','France'),('IE','Ireland'),
+    ('NL','Netherlands'),('BE','Belgium'),('SE','Sweden'),
+    ('NO','Norway'),('DK','Denmark'),('FI','Finland'),
+    ('IT','Italy'),('ES','Spain'),('PT','Portugal'),
+    ('PL','Poland'),('AU','Australia'),('CA','Canada'),
+    ('NZ','New Zealand'),('ZA','South Africa'),('NG','Nigeria'),
+    ('GH','Ghana'),('IN','India'),('SG','Singapore'),
+    ('AE','United Arab Emirates'),('OTHER','Other'),
+]
+
+
+def _get_tenant_departments(tenant_id: int) -> list:
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT id, name, created_at FROM tenant_departments WHERE tenant_id=%s ORDER BY name", (tenant_id,))
+        rows = list(cur.fetchall() or [])
+        cur.close(); conn.close()
+        return rows
+    except Exception as e:
+        print("⚠️ _get_tenant_departments error:", e)
+        return []
+
+
+def _get_department(dept_id: int, tenant_id: int):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT id, name FROM tenant_departments WHERE id=%s AND tenant_id=%s", (dept_id, tenant_id))
+        row = cur.fetchone()
+        cur.close(); conn.close()
+        return row
+    except Exception as e:
+        print("⚠️ _get_department error:", e)
+        return None
+
+
+def _department_member_count(dept_id: int) -> int:
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM team_members WHERE department_id=%s AND is_active=TRUE", (dept_id,))
+        n = cur.fetchone()[0]
+        cur.close(); conn.close()
+        return int(n)
+    except Exception as e:
+        print("⚠️ _department_member_count error:", e)
+        return 0
+
+
+def _get_tenant_positions(tenant_id: int) -> list:
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT id, name, created_at FROM tenant_positions WHERE tenant_id=%s ORDER BY name", (tenant_id,))
+        rows = list(cur.fetchall() or [])
+        cur.close(); conn.close()
+        return rows
+    except Exception as e:
+        print("⚠️ _get_tenant_positions error:", e)
+        return []
+
+
+def _get_position(pos_id: int, tenant_id: int):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT id, name FROM tenant_positions WHERE id=%s AND tenant_id=%s", (pos_id, tenant_id))
+        row = cur.fetchone()
+        cur.close(); conn.close()
+        return row
+    except Exception as e:
+        print("⚠️ _get_position error:", e)
+        return None
+
+
+def _position_member_count(pos_id: int) -> int:
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM team_members WHERE position_id=%s AND is_active=TRUE", (pos_id,))
+        n = cur.fetchone()[0]
+        cur.close(); conn.close()
+        return int(n)
+    except Exception as e:
+        print("⚠️ _position_member_count error:", e)
+        return 0
 
 
 def _tenant_has_team(tenant_id: int) -> bool:
@@ -548,24 +1445,6 @@ def _tenant_has_team(tenant_id: int) -> bool:
         return found
     except Exception:
         return False
-
-
-def _send_team_invite_email(email: str, token: str, greeting: str, business_name: str, invited_by_name: str) -> bool:
-    try:
-        from flask import request as _req
-        base = _req.host_url.rstrip("/")
-    except Exception:
-        base = _PORTAL_BASE_URL
-    link = f"{base}/team/accept?token={token}"
-    html = f"""
-    <div style="font-family:Arial,sans-serif;max-width:520px">
-      <h2 style="color:{BRAND}">You've been invited to {business_name}'s team inbox</h2>
-      <p>Hi {greeting},</p>
-      <p>{invited_by_name} has invited you to help answer customer messages on PhiXtra for <b>{business_name}</b>. Click below to set your password and get started. This link expires in 2 hours.</p>
-      <p><a href="{link}" style="background:{BRAND};color:#fff;padding:10px 18px;border-radius:12px;text-decoration:none;display:inline-block">Set your password</a></p>
-      <p style="color:#888;font-size:12px">If you weren't expecting this, you can ignore this email.</p>
-    </div>"""
-    return send_email(email, f"You're invited to {business_name}'s team inbox", html, text_body=f"Set your password: {link}")
 
 
 def _get_conversation_assignment(tenant_id: int, phone: str):
@@ -2453,6 +3332,17 @@ def login():
         session["team_member_id"]    = int(tm["id"])
         session["team_member_name"]  = tm["name"]
         session["team_member_email"] = tm["email"]
+        # Role permissions loaded into session at login, same pattern as
+        # portal_admin_routes.login()'s session["portal_admin_permissions"].
+        # A team member with no role_id (shouldn't normally happen — every
+        # create/invite path assigns one — but a role can be deleted out
+        # from under someone) gets zero permissions, not a silent default,
+        # matching the "zero rows = zero access" rule already used for
+        # team_member_agents elsewhere in this file.
+        tm_role_id = tm.get("role_id")
+        session["team_member_role_id"] = tm_role_id
+        role_row = _get_role(int(tm_role_id), int(tm["tenant_id"])) if tm_role_id else None
+        session["team_member_permissions"] = role_row["permissions"] if role_row else {}
         return redirect(nxt or url_for("portal.my_inbox"))
 
     if not verify_password(password, c.get("password_hash") or ""):
@@ -2638,15 +3528,39 @@ def team_page():
     r = _require_login()
     if r: return r
     customer  = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
+    if r2: return r2
+    r3 = _require_team_permission("team.manage")
+    if r3: return r3
     tenant_id = int(customer["tenant_id"])
     members   = _get_team_members(tenant_id)
     limit     = _get_staff_limit(tenant_id)
     active_count = sum(1 for m in members if m["is_active"])
 
+    roles = _get_tenant_roles(tenant_id)
+    if not roles:
+        # First time this tenant has ever opened Team — give them a real,
+        # usable default role instead of an empty dropdown with nothing to
+        # pick (matches _ensure_default_role's own "today's real inbox-only
+        # behavior" default).
+        _ensure_default_role(tenant_id)
+        roles = _get_tenant_roles(tenant_id)
+    role_name_by_id = {r["id"]: r["name"] for r in roles}
+    member_name_by_id = {m["id"]: m["name"] for m in members}
+    dept_name_by_id = {d["id"]: d["name"] for d in _get_tenant_departments(tenant_id)}
+    pos_name_by_id = {p["id"]: p["name"] for p in _get_tenant_positions(tenant_id)}
+    country_name_by_code = dict(STAFF_COUNTRY_LIST)
+    for m in members:
+        m["role_name"] = role_name_by_id.get(m.get("role_id"), "No role — no access")
+        m["line_manager_name"] = member_name_by_id.get(m.get("line_manager_id"))
+        m["department_name"] = dept_name_by_id.get(m.get("department_id"))
+        m["position_name"] = pos_name_by_id.get(m.get("position_id"))
+        m["location_country_name"] = country_name_by_code.get(m.get("location_country"))
+
     assignable_agents = _get_assignable_agents(tenant_id)
     # Only worth showing the "which agents can they see" checklist once
     # there's an actual choice to make — one-agent businesses don't need it
-    # (that agent is auto-assigned to every invite, see team_invite()).
+    # (that agent is auto-assigned automatically, see team_create()).
     show_agent_picker = len(assignable_agents) > 1
     agent_name_by_id = {a["id"]: a["name"] for a in assignable_agents}
     for m in members:
@@ -2667,6 +3581,10 @@ def team_page():
     except Exception as e:
         print("⚠️ team_page messenger_connected lookup error:", e)
 
+    acting_is_owner = not session.get("team_member_id")
+    assignable_roles = _assignable_roles_for_actor(roles, acting_is_owner)
+    assignable_role_ids = None if acting_is_owner else {r["id"] for r in assignable_roles}
+
     return render_template(
         "portal/team.html",
         customer=customer,
@@ -2677,21 +3595,113 @@ def team_page():
         assignable_agents=assignable_agents,
         show_agent_picker=show_agent_picker,
         messenger_connected=messenger_connected,
+        roles=roles,
+        assignable_role_ids=assignable_role_ids,
     )
 
 
-@portal_bp.route("/team/invite", methods=["POST"])
-def team_invite():
+def _get_team_members_for_manager_picker(tenant_id: int, exclude_id: int = None) -> list:
+    """Active team members who could be someone's line manager — excludes
+    the member being edited (so nobody can be set as their own manager)."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        q = "SELECT id, name FROM team_members WHERE tenant_id=%s AND is_active=TRUE"
+        params = [tenant_id]
+        if exclude_id:
+            q += " AND id != %s"
+            params.append(exclude_id)
+        q += " ORDER BY name"
+        cur.execute(q, params)
+        rows = list(cur.fetchall() or [])
+        cur.close(); conn.close()
+        return rows
+    except Exception as e:
+        print("⚠️ _get_team_members_for_manager_picker error:", e)
+        return []
+
+
+@portal_bp.route("/team/new", methods=["GET", "POST"])
+def team_create():
+    """Direct-create a team member — the PRIMARY way to add someone, per
+    the user's explicit correction ("admin should create a user... I don't
+    want the invite [as the] only [path]"). A real profile form (name split,
+    department, position, avatar, line manager), not just name+email — the
+    user flagged the original quick-add card was too thin. Mirrors
+    portal_admin_routes.admin_team_new()'s password-generation pattern, with
+    one deliberate difference: admin_users stores its password in plain text
+    (by that system's own existing design — see the comment on its login()),
+    but team_members has always stored password_hash (bcrypt, via
+    hash_password()), so the generated password is hashed before it's stored
+    here too. The plain password is shown back to the owner exactly once, in
+    the flash message, and never stored anywhere. (The email-invite path
+    that used to also create team_members rows — team_invite()/team_accept()/
+    team_resend_invite() — was removed 2026-09-19 at the user's request;
+    direct-create is now the ONLY way to add a team member.)"""
     r = _require_login()
     if r: return r
     customer  = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
+    if r2: return r2
+    r3 = _require_team_permission("team.members_create")
+    if r3: return r3
     tenant_id = int(customer["tenant_id"])
 
-    name  = (request.form.get("name")  or "").strip()[:200]
-    email = (request.form.get("email") or "").strip().lower()
-    if not name or not email:
-        flash("Enter a name and email address.", "danger")
-        return redirect(url_for("portal.team_page"))
+    acting_is_owner = not session.get("team_member_id")
+
+    if request.method == "GET":
+        roles = _get_tenant_roles(tenant_id)
+        if not roles:
+            _ensure_default_role(tenant_id)
+            roles = _get_tenant_roles(tenant_id)
+        roles = _assignable_roles_for_actor(roles, acting_is_owner)
+        return render_template(
+            "portal/team_member_form.html",
+            customer=customer,
+            member=None,
+            roles=roles,
+            departments=_get_tenant_departments(tenant_id),
+            positions=_get_tenant_positions(tenant_id),
+            countries=STAFF_COUNTRY_LIST,
+            managers=_get_team_members_for_manager_picker(tenant_id),
+            assignable_agents=_get_assignable_agents(tenant_id),
+            show_agent_picker=len(_get_assignable_agents(tenant_id)) > 1,
+        )
+
+    first_name = (request.form.get("first_name") or "").strip()[:100]
+    last_name  = (request.form.get("last_name")  or "").strip()[:100]
+    email      = (request.form.get("email") or "").strip().lower()
+    location_city = (request.form.get("location_city") or "").strip()[:100] or None
+    location_country = (request.form.get("location_country") or "").strip()[:10] or None
+    name = f"{first_name} {last_name}".strip()
+
+    if not first_name or not email:
+        flash("First name and email address are required.", "danger")
+        return redirect(url_for("portal.team_create"))
+
+    role_id_raw = (request.form.get("role_id") or "").strip()
+    role = _get_role(int(role_id_raw), tenant_id) if role_id_raw.isdigit() else None
+    if role and not acting_is_owner:
+        safe_ids = {r["id"] for r in _assignable_roles_for_actor(_get_tenant_roles(tenant_id), False)}
+        if role["id"] not in safe_ids:
+            flash("You can't assign a role that includes Payment/Billing or delete permissions.", "danger")
+            return redirect(url_for("portal.team_create"))
+    role_id = role["id"] if role else _ensure_default_role(tenant_id)
+
+    dept_raw = (request.form.get("department_id") or "").strip()
+    department = _get_department(int(dept_raw), tenant_id) if dept_raw.isdigit() else None
+    department_id = department["id"] if department else None
+
+    pos_raw = (request.form.get("position_id") or "").strip()
+    position = _get_position(int(pos_raw), tenant_id) if pos_raw.isdigit() else None
+    position_id = position["id"] if position else None
+
+    line_manager_raw = (request.form.get("line_manager_id") or "").strip()
+    line_manager_id = None
+    if line_manager_raw.isdigit():
+        valid_managers = {m["id"] for m in _get_team_members_for_manager_picker(tenant_id)}
+        if int(line_manager_raw) in valid_managers:
+            line_manager_id = int(line_manager_raw)
 
     limit        = _get_staff_limit(tenant_id)
     active_count = sum(1 for m in _get_team_members(tenant_id) if m["is_active"])
@@ -2709,26 +3719,44 @@ def team_invite():
     if taken:
         cur.close(); conn.close()
         flash("That email is already registered on PhiXtra.", "danger")
-        return redirect(url_for("portal.team_page"))
+        return redirect(url_for("portal.team_create"))
 
-    token   = make_token(24)
-    # See the identical fix + comment in forgot_password() — invite_expires_at
-    # is TIMESTAMPTZ, must be written as aware UTC, not naive.
-    expires = datetime.now(timezone.utc) + timedelta(hours=2)
+    # Avatar upload — same validation (type allowlist, 2MB cap) and same
+    # base64-data-URI-in-a-TEXT-column storage as settings_avatar() above,
+    # reused deliberately rather than inventing a second avatar mechanism.
+    avatar_data = None
+    f = request.files.get("avatar")
+    if f and f.filename:
+        allowed_types = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+        if f.content_type not in allowed_types:
+            flash("Avatar must be a JPEG, PNG, GIF, or WebP image.", "danger")
+            return redirect(url_for("portal.team_create"))
+        data = f.read()
+        if len(data) > 2 * 1024 * 1024:
+            flash("Avatar image must be under 2 MB.", "danger")
+            return redirect(url_for("portal.team_create"))
+        b64 = _base64.b64encode(data).decode("utf-8")
+        avatar_data = f"data:{f.content_type};base64,{b64}"
+
+    alphabet = string.ascii_letters + string.digits
+    generated_password = ''.join(secrets.choice(alphabet) for _ in range(12))
+
     cur.execute("""
-        INSERT INTO team_members (tenant_id, name, email, invite_token, invite_expires_at, invited_by)
-        VALUES (%s, %s, %s, %s, %s, %s)
+        INSERT INTO team_members
+            (tenant_id, name, first_name, last_name, email, password_hash, is_active,
+             invited_by, role_id, department_id, position_id, line_manager_id, avatar_data,
+             location_city, location_country)
+        VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id
-    """, (tenant_id, name, email, token, expires, int(customer["id"])))
+    """, (tenant_id, name, first_name, last_name, email, hash_password(generated_password),
+          int(customer["id"]), role_id, department_id, position_id, line_manager_id, avatar_data,
+          location_city, location_country))
     new_id = cur.fetchone()["id"]
     conn.commit()
     cur.close(); conn.close()
 
-    # Agent assignment happens NOW, at invite time, so it's already active
-    # the moment they set their password and log in — never an extra step
-    # after the fact. Zero agents assigned means they see nothing until the
-    # owner assigns one (deny-by-default), except the one-agent case below
-    # where there's no real choice to make.
+    # Same agent-assignment logic as team_invite() — active from the moment
+    # the account is created, not a separate step to remember.
     assignable = _get_assignable_agents(tenant_id)
     if len(assignable) == 1:
         agent_ids = [assignable[0]["id"]]
@@ -2737,57 +3765,475 @@ def team_invite():
         agent_ids = [int(x) for x in request.form.getlist("agent_ids") if x.isdigit() and int(x) in valid_ids]
     _set_team_member_agent_ids(tenant_id, new_id, agent_ids)
 
-    owner_name = (customer.get("first_name") or "").strip() or "Your teammate"
-    _send_team_invite_email(email, token, name, customer.get("tenant_name") or "your business", owner_name)
-
-    flash(f"Invite sent to {email}. ✅", "success")
+    flash(f"'{name}' created. Password: {generated_password} (shown once — share it securely, e.g. by WhatsApp or in person).", "success")
     return redirect(url_for("portal.team_page"))
 
 
-@portal_bp.route("/team/accept", methods=["GET", "POST"])
-def team_accept():
-    token = (request.args.get("token") or request.form.get("token") or "").strip()
-    if request.method == "GET":
-        return render_template("portal/team_accept.html", token=token)
+@portal_bp.route("/team/<int:member_id>/role", methods=["POST"])
+def team_update_role(member_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
+    if r2: return r2
+    r3 = _require_team_permission("team.members_assign_role")
+    if r3: return r3
+    tenant_id = int(customer["tenant_id"])
 
-    password = (request.form.get("password") or "").strip()
-    if len(password) < 8:
-        flash("Password must be at least 8 characters.", "danger")
-        return redirect(url_for("portal.team_accept", token=token))
+    role_id_raw = (request.form.get("role_id") or "").strip()
+    role = _get_role(int(role_id_raw), tenant_id) if role_id_raw.isdigit() else None
+    if not role:
+        flash("Choose a valid role.", "danger")
+        return redirect(url_for("portal.team_page"))
+
+    if session.get("team_member_id"):
+        safe_ids = {r["id"] for r in _assignable_roles_for_actor(_get_tenant_roles(tenant_id), False)}
+        if role["id"] not in safe_ids:
+            flash("You can't assign a role that includes Payment/Billing or delete permissions.", "danger")
+            return redirect(url_for("portal.team_page"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("UPDATE team_members SET role_id=%s WHERE id=%s AND tenant_id=%s", (role["id"], member_id, tenant_id))
+    conn.commit()
+    cur.close(); conn.close()
+
+    flash("Role updated.", "success")
+    return redirect(url_for("portal.team_page"))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ROLES — owner-only (same as every other /team/* route: not in
+# TEAM_MEMBER_ALLOWED_ENDPOINTS, so a team-member session is redirected to
+# the Inbox before it ever reaches these, same deny-by-default mechanism
+# already protecting the rest of /team).
+# ══════════════════════════════════════════════════════════════════════════════
+
+@portal_bp.route("/team/roles")
+def team_roles_page():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
+    if r2: return r2
+    r3 = _require_team_permission("team.roles_manage")
+    if r3: return r3
+    tenant_id = int(customer["tenant_id"])
+
+    roles = _get_tenant_roles(tenant_id)
+    if not roles:
+        _ensure_default_role(tenant_id)
+        roles = _get_tenant_roles(tenant_id)
+    for r_ in roles:
+        r_["member_count"] = _role_member_count(r_["id"])
+        r_["permission_count"] = len(r_["permissions"])
+
+    return render_template(
+        "portal/team_roles.html",
+        customer=customer,
+        roles=roles,
+        total_features=len(_all_catalog_feature_keys()),
+    )
+
+
+@portal_bp.route("/team/roles/new", methods=["GET", "POST"])
+def team_role_new():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
+    if r2: return r2
+    r3 = _require_team_permission("team.roles_manage")
+    if r3: return r3
+    tenant_id = int(customer["tenant_id"])
+    acting_is_owner = not session.get("team_member_id")
+
+    if request.method == "GET":
+        return render_template("portal/team_role_form.html", customer=customer,
+                                role=None, feature_catalog=_feature_catalog_for_actor(acting_is_owner),
+                                destructive_keys=DESTRUCTIVE_FEATURE_KEYS)
+
+    name = (request.form.get("name") or "").strip()[:100]
+    if not name:
+        flash("Enter a name for this role.", "danger")
+        return redirect(url_for("portal.team_role_new"))
+
+    permissions = _parse_role_permissions_form(request.form)
+    permissions = _cap_delegated_role_permissions(permissions, acting_is_owner)
 
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT id, invite_expires_at, is_active FROM team_members WHERE invite_token=%s", (token,))
-    tm = cur.fetchone()
-    if not tm:
+    try:
+        cur.execute(
+            "INSERT INTO tenant_roles (tenant_id, name, permissions) VALUES (%s, %s, %s)",
+            (tenant_id, name, _json.dumps(permissions))
+        )
+        conn.commit()
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
         cur.close(); conn.close()
-        flash("This invite link is invalid or has already been used.", "danger")
-        return redirect(url_for("portal.login"))
+        flash(f"You already have a role named '{name}'. Choose a different name.", "danger")
+        return redirect(url_for("portal.team_role_new"))
+    cur.close(); conn.close()
 
-    exp = tm.get("invite_expires_at")
-    # Same TIMESTAMPTZ-vs-naive fix as reset_password() above — see comment there.
-    if not tm.get("is_active") or not exp or datetime.now(timezone.utc) > exp:
+    flash(f"Role '{name}' created with {len(permissions)} feature{'s' if len(permissions) != 1 else ''} granted.", "success")
+    return redirect(url_for("portal.team_roles_page"))
+
+
+@portal_bp.route("/team/roles/<int:role_id>/edit", methods=["GET", "POST"])
+def team_role_edit(role_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
+    if r2: return r2
+    r3 = _require_team_permission("team.roles_manage")
+    if r3: return r3
+    tenant_id = int(customer["tenant_id"])
+    acting_is_owner = not session.get("team_member_id")
+
+    role = _get_role(role_id, tenant_id)
+    if not role:
+        flash("Role not found.", "danger")
+        return redirect(url_for("portal.team_roles_page"))
+
+    if request.method == "GET":
+        return render_template("portal/team_role_form.html", customer=customer,
+                                role=role, feature_catalog=_feature_catalog_for_actor(acting_is_owner),
+                                destructive_keys=DESTRUCTIVE_FEATURE_KEYS)
+
+    name = (request.form.get("name") or "").strip()[:100]
+    if not name:
+        flash("Enter a name for this role.", "danger")
+        return redirect(url_for("portal.team_role_edit", role_id=role_id))
+
+    permissions = _parse_role_permissions_form(request.form)
+    permissions = _cap_delegated_role_permissions(permissions, acting_is_owner)
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    try:
+        cur.execute(
+            "UPDATE tenant_roles SET name=%s, permissions=%s WHERE id=%s AND tenant_id=%s",
+            (name, _json.dumps(permissions), role_id, tenant_id)
+        )
+        conn.commit()
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
         cur.close(); conn.close()
-        flash("This invite link has expired. Ask the business owner to resend it.", "warning")
-        return redirect(url_for("portal.login"))
+        flash(f"You already have a role named '{name}'. Choose a different name.", "danger")
+        return redirect(url_for("portal.team_role_edit", role_id=role_id))
+    cur.close(); conn.close()
 
-    cur2 = conn.cursor()
-    cur2.execute(
-        "UPDATE team_members SET password_hash=%s, invite_token=NULL, invite_expires_at=NULL WHERE id=%s",
-        (hash_password(password), int(tm["id"]))
-    )
+    # Team members already logged in under this role are carrying the OLD
+    # permissions in their session (loaded at login, same as admin support
+    # logins) until they next log in — same known/accepted lag as
+    # portal_admin_routes' permission edits, not a bug specific to this page.
+    flash(f"Role '{name}' updated with {len(permissions)} feature{'s' if len(permissions) != 1 else ''} granted.", "success")
+    return redirect(url_for("portal.team_roles_page"))
+
+
+@portal_bp.route("/team/roles/<int:role_id>/delete", methods=["POST"])
+def team_role_delete(role_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
+    if r2: return r2
+    r3 = _require_team_permission("team.roles_delete")
+    if r3: return r3
+    tenant_id = int(customer["tenant_id"])
+
+    role = _get_role(role_id, tenant_id)
+    if not role:
+        flash("Role not found.", "danger")
+        return redirect(url_for("portal.team_roles_page"))
+
+    in_use = _role_member_count(role_id)
+    if in_use > 0:
+        flash(f"'{role['name']}' is assigned to {in_use} active team member{'s' if in_use != 1 else ''} — "
+              f"reassign them to a different role first, then delete this one.", "danger")
+        return redirect(url_for("portal.team_roles_page"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("DELETE FROM tenant_roles WHERE id=%s AND tenant_id=%s", (role_id, tenant_id))
     conn.commit()
-    cur2.close(); cur.close(); conn.close()
+    cur.close(); conn.close()
 
-    flash("Your password is set ✅  Please log in.", "success")
-    return redirect(url_for("portal.login"))
+    flash(f"Role '{role['name']}' deleted.", "success")
+    return redirect(url_for("portal.team_roles_page"))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DEPARTMENTS — owner-only, same deny-by-default reasoning as Roles above
+# (not in TEAM_MEMBER_ALLOWED_ENDPOINTS).
+# ══════════════════════════════════════════════════════════════════════════════
+
+@portal_bp.route("/team/departments")
+def team_departments_page():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
+    if r2: return r2
+    r3 = _require_team_permission("team.departments_manage")
+    if r3: return r3
+    tenant_id = int(customer["tenant_id"])
+
+    departments = _get_tenant_departments(tenant_id)
+    for d in departments:
+        d["member_count"] = _department_member_count(d["id"])
+
+    return render_template("portal/team_departments.html", customer=customer, departments=departments)
+
+
+@portal_bp.route("/team/departments/new", methods=["GET", "POST"])
+def team_department_new():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
+    if r2: return r2
+    r3 = _require_team_permission("team.departments_manage")
+    if r3: return r3
+    tenant_id = int(customer["tenant_id"])
+
+    if request.method == "GET":
+        return render_template("portal/team_department_form.html", customer=customer, department=None)
+
+    name = (request.form.get("name") or "").strip()[:100]
+    if not name:
+        flash("Enter a department name.", "danger")
+        return redirect(url_for("portal.team_department_new"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    try:
+        cur.execute("INSERT INTO tenant_departments (tenant_id, name) VALUES (%s, %s)", (tenant_id, name))
+        conn.commit()
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
+        cur.close(); conn.close()
+        flash(f"You already have a department named '{name}'.", "danger")
+        return redirect(url_for("portal.team_department_new"))
+    cur.close(); conn.close()
+
+    flash(f"Department '{name}' created.", "success")
+    return redirect(url_for("portal.team_departments_page"))
+
+
+@portal_bp.route("/team/departments/<int:dept_id>/edit", methods=["GET", "POST"])
+def team_department_edit(dept_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
+    if r2: return r2
+    r3 = _require_team_permission("team.departments_manage")
+    if r3: return r3
+    tenant_id = int(customer["tenant_id"])
+
+    department = _get_department(dept_id, tenant_id)
+    if not department:
+        flash("Department not found.", "danger")
+        return redirect(url_for("portal.team_departments_page"))
+
+    if request.method == "GET":
+        return render_template("portal/team_department_form.html", customer=customer, department=department)
+
+    name = (request.form.get("name") or "").strip()[:100]
+    if not name:
+        flash("Enter a department name.", "danger")
+        return redirect(url_for("portal.team_department_edit", dept_id=dept_id))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    try:
+        cur.execute("UPDATE tenant_departments SET name=%s WHERE id=%s AND tenant_id=%s", (name, dept_id, tenant_id))
+        conn.commit()
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
+        cur.close(); conn.close()
+        flash(f"You already have a department named '{name}'.", "danger")
+        return redirect(url_for("portal.team_department_edit", dept_id=dept_id))
+    cur.close(); conn.close()
+
+    flash(f"Department renamed to '{name}'.", "success")
+    return redirect(url_for("portal.team_departments_page"))
+
+
+@portal_bp.route("/team/departments/<int:dept_id>/delete", methods=["POST"])
+def team_department_delete(dept_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
+    if r2: return r2
+    r3 = _require_team_permission("team.departments_delete")
+    if r3: return r3
+    tenant_id = int(customer["tenant_id"])
+
+    department = _get_department(dept_id, tenant_id)
+    if not department:
+        flash("Department not found.", "danger")
+        return redirect(url_for("portal.team_departments_page"))
+
+    in_use = _department_member_count(dept_id)
+    if in_use > 0:
+        flash(f"'{department['name']}' has {in_use} active team member{'s' if in_use != 1 else ''} in it — "
+              f"move them to a different department first, then delete this one.", "danger")
+        return redirect(url_for("portal.team_departments_page"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("DELETE FROM tenant_departments WHERE id=%s AND tenant_id=%s", (dept_id, tenant_id))
+    conn.commit()
+    cur.close(); conn.close()
+
+    flash(f"Department '{department['name']}' deleted.", "success")
+    return redirect(url_for("portal.team_departments_page"))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# POSITIONS — same pattern as Departments above.
+# ══════════════════════════════════════════════════════════════════════════════
+
+@portal_bp.route("/team/positions")
+def team_positions_page():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
+    if r2: return r2
+    r3 = _require_team_permission("team.positions_manage")
+    if r3: return r3
+    tenant_id = int(customer["tenant_id"])
+
+    positions = _get_tenant_positions(tenant_id)
+    for p in positions:
+        p["member_count"] = _position_member_count(p["id"])
+
+    return render_template("portal/team_positions.html", customer=customer, positions=positions)
+
+
+@portal_bp.route("/team/positions/new", methods=["GET", "POST"])
+def team_position_new():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
+    if r2: return r2
+    r3 = _require_team_permission("team.positions_manage")
+    if r3: return r3
+    tenant_id = int(customer["tenant_id"])
+
+    if request.method == "GET":
+        return render_template("portal/team_position_form.html", customer=customer, position=None)
+
+    name = (request.form.get("name") or "").strip()[:100]
+    if not name:
+        flash("Enter a position name.", "danger")
+        return redirect(url_for("portal.team_position_new"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    try:
+        cur.execute("INSERT INTO tenant_positions (tenant_id, name) VALUES (%s, %s)", (tenant_id, name))
+        conn.commit()
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
+        cur.close(); conn.close()
+        flash(f"You already have a position named '{name}'.", "danger")
+        return redirect(url_for("portal.team_position_new"))
+    cur.close(); conn.close()
+
+    flash(f"Position '{name}' created.", "success")
+    return redirect(url_for("portal.team_positions_page"))
+
+
+@portal_bp.route("/team/positions/<int:pos_id>/edit", methods=["GET", "POST"])
+def team_position_edit(pos_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
+    if r2: return r2
+    r3 = _require_team_permission("team.positions_manage")
+    if r3: return r3
+    tenant_id = int(customer["tenant_id"])
+
+    position = _get_position(pos_id, tenant_id)
+    if not position:
+        flash("Position not found.", "danger")
+        return redirect(url_for("portal.team_positions_page"))
+
+    if request.method == "GET":
+        return render_template("portal/team_position_form.html", customer=customer, position=position)
+
+    name = (request.form.get("name") or "").strip()[:100]
+    if not name:
+        flash("Enter a position name.", "danger")
+        return redirect(url_for("portal.team_position_edit", pos_id=pos_id))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    try:
+        cur.execute("UPDATE tenant_positions SET name=%s WHERE id=%s AND tenant_id=%s", (name, pos_id, tenant_id))
+        conn.commit()
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
+        cur.close(); conn.close()
+        flash(f"You already have a position named '{name}'.", "danger")
+        return redirect(url_for("portal.team_position_edit", pos_id=pos_id))
+    cur.close(); conn.close()
+
+    flash(f"Position renamed to '{name}'.", "success")
+    return redirect(url_for("portal.team_positions_page"))
+
+
+@portal_bp.route("/team/positions/<int:pos_id>/delete", methods=["POST"])
+def team_position_delete(pos_id: int):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
+    if r2: return r2
+    r3 = _require_team_permission("team.positions_delete")
+    if r3: return r3
+    tenant_id = int(customer["tenant_id"])
+
+    position = _get_position(pos_id, tenant_id)
+    if not position:
+        flash("Position not found.", "danger")
+        return redirect(url_for("portal.team_positions_page"))
+
+    in_use = _position_member_count(pos_id)
+    if in_use > 0:
+        flash(f"'{position['name']}' has {in_use} active team member{'s' if in_use != 1 else ''} in it — "
+              f"move them to a different position first, then delete this one.", "danger")
+        return redirect(url_for("portal.team_positions_page"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("DELETE FROM tenant_positions WHERE id=%s AND tenant_id=%s", (pos_id, tenant_id))
+    conn.commit()
+    cur.close(); conn.close()
+
+    flash(f"Position '{position['name']}' deleted.", "success")
+    return redirect(url_for("portal.team_positions_page"))
 
 
 @portal_bp.route("/team/<int:member_id>/deactivate", methods=["POST"])
 def team_deactivate(member_id: int):
     r = _require_login()
     if r: return r
-    tenant_id = int(_get_customer(_customer_id())["tenant_id"])
+    customer  = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
+    if r2: return r2
+    r3 = _require_team_permission("team.members_deactivate")
+    if r3: return r3
+    tenant_id = int(customer["tenant_id"])
     conn = get_db_connection()
     cur  = conn.cursor()
     cur.execute("UPDATE team_members SET is_active=FALSE WHERE id=%s AND tenant_id=%s", (member_id, tenant_id))
@@ -2801,7 +4247,12 @@ def team_deactivate(member_id: int):
 def team_activate(member_id: int):
     r = _require_login()
     if r: return r
-    tenant_id = int(_get_customer(_customer_id())["tenant_id"])
+    customer  = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
+    if r2: return r2
+    r3 = _require_team_permission("team.members_deactivate")
+    if r3: return r3
+    tenant_id = int(customer["tenant_id"])
     limit        = _get_staff_limit(tenant_id)
     active_count = sum(1 for m in _get_team_members(tenant_id) if m["is_active"])
     if active_count >= limit:
@@ -2820,7 +4271,12 @@ def team_activate(member_id: int):
 def team_remove(member_id: int):
     r = _require_login()
     if r: return r
-    tenant_id = int(_get_customer(_customer_id())["tenant_id"])
+    customer  = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
+    if r2: return r2
+    r3 = _require_team_permission("team.members_remove")
+    if r3: return r3
+    tenant_id = int(customer["tenant_id"])
     conn = get_db_connection()
     cur  = conn.cursor()
     cur.execute("DELETE FROM team_members WHERE id=%s AND tenant_id=%s", (member_id, tenant_id))
@@ -2830,44 +4286,16 @@ def team_remove(member_id: int):
     return redirect(url_for("portal.team_page"))
 
 
-@portal_bp.route("/team/<int:member_id>/resend-invite", methods=["POST"])
-def team_resend_invite(member_id: int):
-    r = _require_login()
-    if r: return r
-    customer  = _get_customer(_customer_id())
-    tenant_id = int(customer["tenant_id"])
-
-    conn = get_db_connection()
-    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT id, name, email, password_hash FROM team_members WHERE id=%s AND tenant_id=%s", (member_id, tenant_id))
-    tm = cur.fetchone()
-    if not tm:
-        cur.close(); conn.close()
-        flash("Team member not found.", "danger")
-        return redirect(url_for("portal.team_page"))
-    if tm.get("password_hash"):
-        cur.close(); conn.close()
-        flash(f"{tm['name']} has already set a password.", "info")
-        return redirect(url_for("portal.team_page"))
-
-    token   = make_token(24)
-    expires = datetime.now(timezone.utc) + timedelta(hours=2)  # see forgot_password() comment
-    cur2 = conn.cursor()
-    cur2.execute("UPDATE team_members SET invite_token=%s, invite_expires_at=%s WHERE id=%s", (token, expires, int(tm["id"])))
-    conn.commit()
-    cur2.close(); cur.close(); conn.close()
-
-    owner_name = (customer.get("first_name") or "").strip() or "Your teammate"
-    _send_team_invite_email(tm["email"], token, tm["name"], customer.get("tenant_name") or "your business", owner_name)
-    flash(f"Invite re-sent to {tm['email']}. ✅", "success")
-    return redirect(url_for("portal.team_page"))
-
-
 @portal_bp.route("/team/<int:member_id>/agents", methods=["POST"])
 def team_update_agents(member_id: int):
     r = _require_login()
     if r: return r
-    tenant_id = int(_get_customer(_customer_id())["tenant_id"])
+    customer  = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
+    if r2: return r2
+    r3 = _require_team_permission("team.members_channel_access")
+    if r3: return r3
+    tenant_id = int(customer["tenant_id"])
 
     conn = get_db_connection()
     cur  = conn.cursor()
@@ -2897,7 +4325,12 @@ def team_update_messenger(member_id: int):
     persona the way a WhatsApp number is. Added urgently 2026-09-11."""
     r = _require_login()
     if r: return r
-    tenant_id = int(_get_customer(_customer_id())["tenant_id"])
+    customer  = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
+    if r2: return r2
+    r3 = _require_team_permission("team.members_channel_access")
+    if r3: return r3
+    tenant_id = int(customer["tenant_id"])
 
     conn = get_db_connection()
     cur  = conn.cursor()
@@ -2927,7 +4360,12 @@ def team_update_webchat(member_id: int):
     isn't tied to any one AI Agent persona the way a WhatsApp number is."""
     r = _require_login()
     if r: return r
-    tenant_id = int(_get_customer(_customer_id())["tenant_id"])
+    customer  = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
+    if r2: return r2
+    r3 = _require_team_permission("team.members_channel_access")
+    if r3: return r3
+    tenant_id = int(customer["tenant_id"])
 
     conn = get_db_connection()
     cur  = conn.cursor()
@@ -3024,6 +4462,8 @@ def handoff_mark_handled(handoff_id: int):
 def dashboard():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("dashboard.page")
+    if _rperm: return _rperm
 
     customer = _get_customer(_customer_id())
     if not customer:
@@ -3277,6 +4717,8 @@ def onboarding():
 def api_keys():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ai.api_keys")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     keys      = _get_api_keys(tenant_id)
@@ -3321,6 +4763,8 @@ def api_keys():
 def api_keys_revoke(key_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ai.api_keys")
+    if _rperm: return _rperm
 
     flash("API keys can only be revoked by an administrator. Please contact support.", "danger")
     return redirect(url_for("portal.api_keys"))
@@ -3366,6 +4810,8 @@ def api_keys_revoke(key_id: int):
 def billing():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("billing.credits")
+    if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -3434,6 +4880,8 @@ def billing():
 def billing_checkout():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("billing.credits")
+    if _rperm: return _rperm
 
     if not _stripe_ok():
         flash("Online payments are not configured yet. Contact support to top up.", "warning")
@@ -3849,6 +5297,8 @@ def stripe_webhook():
 def invoices():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("billing.invoices")
+    if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
     customer_id = int(customer["id"])
@@ -4108,11 +5558,15 @@ def cart_recovery_save_settings():
     """
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("woo.cart_recovery_settings")
+    if _rperm: return _rperm
 
     customer = _get_customer(_customer_id())
     if not customer:
         flash("Your account could not be loaded.", "danger")
         return redirect(url_for("portal.login"))
+    r2 = _require_plan_sub_feature(customer, "woo.cart_recovery", "Intelligent Cart Revenue Recovery")
+    if r2: return r2
 
     tenant_id = int(customer["tenant_id"])
 
@@ -4186,12 +5640,16 @@ def cart_recovery_save_settings():
 def cart_recovery_dashboard():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("woo.cart_recovery_settings")
+    if _rperm: return _rperm
 
     customer = _get_customer(_customer_id())
     if not customer:
         session.clear()
         flash("Your account could not be loaded. Please log in again.", "danger")
         return redirect(url_for("portal.login"))
+    r2 = _require_plan_sub_feature(customer, "woo.cart_recovery", "Intelligent Cart Revenue Recovery")
+    if r2: return r2
 
     tenant_id = int(customer["tenant_id"])
 
@@ -4304,6 +5762,8 @@ def _get_agents_for_tenant(tenant_id: int) -> list:
 def ai_agents():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ai.agent_profiles")
+    if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     if not customer:
         session.clear()
@@ -4324,6 +5784,8 @@ def ai_agents():
 def ai_agents_new():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ai.agent_profiles")
+    if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     if not customer:
         session.clear()
@@ -4379,6 +5841,8 @@ def ai_agents_new():
 def ai_agents_edit(agent_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ai.agent_profiles")
+    if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     if not customer:
         session.clear()
@@ -4441,6 +5905,8 @@ def ai_agents_edit(agent_id: int):
 def ai_agents_activate(agent_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ai.agent_profiles")
+    if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     if not customer:
         session.clear()
@@ -4479,6 +5945,8 @@ def ai_agents_activate(agent_id: int):
 def ai_agents_delete(agent_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ai.agent_profiles")
+    if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     if not customer:
         session.clear()
@@ -4521,6 +5989,8 @@ def ai_agents_delete(agent_id: int):
 def ai_instruction():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("legacy:feat_advanced_ai")
+    if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     gate = _require_plan_feature(customer, "feat_advanced_ai", "Growth")
     if gate: return gate
@@ -4753,11 +6223,15 @@ def verified_specs_settings():
     """Render the Verified Specs settings page."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("woo.verified_specs")
+    if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     if not customer:
         session.clear()
         flash("Your account could not be loaded. Please log in again.", "danger")
         return redirect(url_for("portal.login"))
+    r2 = _require_plan_sub_feature(customer, "woo.verified_specs", "Verified Specs Lookup")
+    if r2: return r2
     tenant_id = int(customer["tenant_id"])
 
     # Only available when the feature is enabled for this tenant
@@ -4788,9 +6262,13 @@ def verified_specs_domain_add():
     """Add a custom trusted domain for this tenant."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("woo.verified_specs")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     if not customer:
         return redirect(url_for("portal.login"))
+    r2 = _require_plan_sub_feature(customer, "woo.verified_specs", "Verified Specs Lookup")
+    if r2: return r2
     tenant_id = int(customer["tenant_id"])
 
     raw = (request.form.get("domain") or "").strip().lower()
@@ -4825,9 +6303,13 @@ def verified_specs_domain_delete():
     """Remove a custom trusted domain for this tenant."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("woo.verified_specs")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     if not customer:
         return redirect(url_for("portal.login"))
+    r2 = _require_plan_sub_feature(customer, "woo.verified_specs", "Verified Specs Lookup")
+    if r2: return r2
     tenant_id = int(customer["tenant_id"])
 
     raw = (request.form.get("domain") or "").strip().lower()
@@ -4855,9 +6337,13 @@ def verified_specs_spec_add():
     """Add a custom spec type for this tenant."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("woo.verified_specs")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     if not customer:
         return redirect(url_for("portal.login"))
+    r2 = _require_plan_sub_feature(customer, "woo.verified_specs", "Verified Specs Lookup")
+    if r2: return r2
     tenant_id = int(customer["tenant_id"])
 
     name      = (request.form.get("spec_name")      or "").strip()
@@ -4901,9 +6387,13 @@ def verified_specs_spec_delete():
     """Remove a custom spec type for this tenant."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("woo.verified_specs")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     if not customer:
         return redirect(url_for("portal.login"))
+    r2 = _require_plan_sub_feature(customer, "woo.verified_specs", "Verified Specs Lookup")
+    if r2: return r2
     tenant_id = int(customer["tenant_id"])
 
     spec_id   = (request.form.get("spec_id") or "").strip()
@@ -5074,12 +6564,16 @@ def _build_trial_features(source_type: str) -> dict:
 def cart_recovery_email_template():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("woo.cart_recovery_templates")
+    if _rperm: return _rperm
 
     customer = _get_customer(_customer_id())
     if not customer:
         session.clear()
         flash("Your account could not be loaded. Please log in again.", "danger")
         return redirect(url_for("portal.login"))
+    r2 = _require_plan_sub_feature(customer, "woo.cart_recovery", "Intelligent Cart Revenue Recovery")
+    if r2: return r2
 
     tenant_id = int(customer["tenant_id"])
 
@@ -6357,8 +7851,12 @@ def _format_custom_report_value(val, fmt: str, stage_labels: dict = None):
 def report_usage():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("reports.usage")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "reports.usage", "AI Usage Reports")
+    if r2: return r2
 
     try:
         days = int(request.args.get("days") or 30)
@@ -6387,8 +7885,12 @@ def report_usage():
 def report_cart():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("reports.cart")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "reports.cart", "Cart Recovery Reports")
+    if r2: return r2
 
     try:
         days = int(request.args.get("days") or 30)
@@ -6418,9 +7920,13 @@ def report_cart():
 def report_billing():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("reports.billing")
+    if _rperm: return _rperm
     customer    = _get_customer(_customer_id())
     tenant_id   = int(customer["tenant_id"])
     customer_id = int(customer["id"])
+    r2 = _require_plan_sub_feature(customer, "reports.billing", "Billing Reports")
+    if r2: return r2
 
     try:
         days = int(request.args.get("days") or 90)
@@ -6450,8 +7956,12 @@ def report_billing():
 def report_pipeline_overview():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("reports.pipeline_overview")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "reports.pipeline_overview", "Pipeline Overview")
+    if r2: return r2
 
     date_from, date_to, days, is_custom, period_label = _resolve_report_period()
 
@@ -6490,6 +8000,8 @@ def report_pipeline_overview_export(fmt: str):
     (Usage/Cart/Billing) don't."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("reports.pipeline_overview")
+    if _rperm: return _rperm
     if fmt not in ("csv", "xlsx", "pdf"):
         flash("Invalid export request.", "danger")
         return redirect(url_for("portal.report_pipeline_overview"))
@@ -6545,8 +8057,12 @@ def report_pipeline_overview_export(fmt: str):
 def report_leads_sources():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("reports.leads_sources")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "reports.leads_sources", "Leads Sources")
+    if r2: return r2
 
     date_from, date_to, days, is_custom, period_label = _resolve_report_period()
     data = _get_leads_sources_data(tenant_id, date_from, date_to)
@@ -6574,6 +8090,8 @@ def report_leads_sources_export(fmt: str):
     itself already shows on Connect regardless of the CRM toggle."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("reports.leads_sources")
+    if _rperm: return _rperm
     if fmt not in ("csv", "xlsx", "pdf"):
         flash("Invalid export request.", "danger")
         return redirect(url_for("portal.report_leads_sources"))
@@ -6610,6 +8128,11 @@ def report_leads_sources_export(fmt: str):
 def report_custom_picker():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("reports.custom")
+    if _rperm: return _rperm
+    customer = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "reports.custom", "Custom Report Builder")
+    if r2: return r2
     return render_template("portal/report_custom_picker.html", entities=CUSTOM_REPORT_ENTITIES)
 
 
@@ -6758,12 +8281,16 @@ def _read_custom_report_request(entity: str):
 def report_custom_entity(entity: str):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("reports.custom")
+    if _rperm: return _rperm
     if entity not in CUSTOM_REPORT_ENTITIES:
         flash("Unknown report entity.", "danger")
         return redirect(url_for("portal.report_custom_picker"))
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "reports.custom", "Custom Report Builder")
+    if r2: return r2
     spec = CUSTOM_REPORT_ENTITIES[entity]
 
     selected_cols, filters, days, date_from, date_to, is_custom, period_label, group_by = \
@@ -6855,6 +8382,8 @@ def report_custom_entity(entity: str):
 def report_custom_entity_export(entity: str, fmt: str):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("reports.custom")
+    if _rperm: return _rperm
     if entity not in CUSTOM_REPORT_ENTITIES or fmt not in ("csv", "xlsx", "pdf"):
         flash("Invalid export request.", "danger")
         return redirect(url_for("portal.report_custom_picker"))
@@ -6967,6 +8496,8 @@ def _custom_report_config_normalized(cfg: dict) -> dict:
 def report_custom_save_view(entity: str):
     r = _require_login()
     if r: return jsonify({"error": "Please log in again."}), 401
+    if not _team_member_has_permission("reports.custom"):
+        return jsonify({"error": "forbidden"}), 403
     if entity not in CUSTOM_REPORT_ENTITIES:
         return jsonify({"error": "Unknown report entity."}), 400
     customer  = _get_customer(_customer_id())
@@ -7000,6 +8531,8 @@ def report_custom_save_view(entity: str):
 def report_custom_delete_view(entity: str, view_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("reports.custom")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     try:
@@ -7027,6 +8560,13 @@ def report_export(report: str, fmt: str):
     if report not in ("usage", "cart", "billing") or fmt not in ("pdf", "xlsx", "docx"):
         flash("Invalid export request.", "danger")
         return redirect(url_for("portal.report_usage"))
+
+    # Dynamic key — this dispatcher covers 3 of the 6 Reports catalog
+    # entries (reports.usage/cart/billing) behind one route, so the
+    # permission check has to be built from the validated `report` value
+    # rather than a single hard-coded key like every other Reports route.
+    _rperm = _require_team_permission(f"reports.{report}")
+    if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
     tenant_id   = int(customer["tenant_id"])
@@ -7616,9 +9156,13 @@ def _get_session_summary(tenant_id: int, session_id: str):
 def chat_archive():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("woo.chat_archive")
+    if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "woo.chat_archive", "Chat Archive")
+    if r2: return r2
 
     # ── Tier detection ────────────────────────────────────────────────────────
     # Three tiers, checked in priority order (unlimited wins over 30days):
@@ -7728,6 +9272,8 @@ def chat_archive_export(fmt: str):
     """Export filtered chat archive as PDF / Excel / Word. Requires paid tier."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("woo.chat_archive")
+    if _rperm: return _rperm
 
     if fmt not in ("pdf", "xlsx", "docx"):
         flash("Invalid export format.", "danger")
@@ -7735,6 +9281,8 @@ def chat_archive_export(fmt: str):
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "woo.chat_archive", "Chat Archive")
+    if r2: return r2
 
     # ── Tier gate ─────────────────────────────────────────────────────────────
     # Determine what this tenant is allowed to export.
@@ -7808,6 +9356,8 @@ def chat_archive_session_export(session_id: str, fmt: str):
     """Export a single chat session as PDF / Excel / Word. Requires paid tier."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("woo.chat_archive")
+    if _rperm: return _rperm
 
     if fmt not in ("pdf", "xlsx", "docx"):
         flash("Invalid export format.", "danger")
@@ -7815,6 +9365,8 @@ def chat_archive_session_export(session_id: str, fmt: str):
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "woo.chat_archive", "Chat Archive")
+    if r2: return r2
 
     # ── Tier gate ─────────────────────────────────────────────────────────────
     if _has_feature(tenant_id, "chat_archive_unlimited"):
@@ -7925,12 +9477,16 @@ def _seed_default_rules(tenant_id: int) -> None:
 def handoff_rules():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ai.handoff_rules")
+    if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
     if not customer:
         session.clear()
         flash("Your account could not be loaded. Please log in again.", "danger")
         return redirect(url_for("portal.login"))
+    r2 = _require_plan_sub_feature(customer, "ai.handoff_rules", "Handoff Rules")
+    if r2: return r2
 
     tenant_id = int(customer["tenant_id"])
 
@@ -7956,6 +9512,8 @@ def handoff_rules():
 def handoff_rules_add():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ai.handoff_rules")
+    if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -8000,6 +9558,8 @@ def handoff_rules_add():
 def handoff_rules_toggle(rule_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ai.handoff_rules")
+    if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -8026,6 +9586,8 @@ def handoff_rules_toggle(rule_id: int):
 def handoff_rules_delete(rule_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ai.handoff_rules")
+    if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -8069,6 +9631,8 @@ ALLOWED_TIMEZONES = [
 def tutorials():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("help.tutorials")
+    if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     return render_template("portal/tutorials.html", customer=customer)
 
@@ -8077,6 +9641,8 @@ def tutorials():
 def video_tutorials():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("help.videos")
+    if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     # Which product this gallery is being viewed as — controls which videos
     # show, per the "products" tag an admin sets at /admin/video-tutorials
@@ -8099,6 +9665,8 @@ def video_tutorials():
 def settings():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("settings.account")
+    if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     if not customer:
         session.clear()
@@ -8170,6 +9738,8 @@ def settings_profile():
     """Update first name, last name, phone number."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("settings.profile_edit")
+    if _rperm: return _rperm
 
     cid        = _customer_id()
     first_name = (request.form.get("first_name") or "").strip()
@@ -8214,6 +9784,8 @@ def settings_password():
     """Change customer password (requires current password verification)."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("settings.password")
+    if _rperm: return _rperm
 
     cid          = _customer_id()
     current_pw   = (request.form.get("current_password") or "").strip()
@@ -8260,6 +9832,8 @@ def settings_avatar():
     """Upload or remove profile avatar (stored as base64 in DB)."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("settings.profile_edit")
+    if _rperm: return _rperm
 
     cid    = _customer_id()
     action = (request.form.get("action") or "upload").strip()
@@ -8317,6 +9891,8 @@ def settings_notifications():
     """Update notification preferences."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("settings.profile_edit")
+    if _rperm: return _rperm
 
     cid             = _customer_id()
     notif_billing   = bool(request.form.get("notif_billing"))
@@ -8400,6 +9976,8 @@ def settings_cancel_plan():
     """
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("settings.cancel_plan")
+    if _rperm: return _rperm
 
     cid      = _customer_id()
     customer = _get_customer(cid)
@@ -8600,6 +10178,8 @@ def billing_add_card():
     """
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("billing.credits")
+    if _rperm: return _rperm
 
     if not _stripe_ok():
         flash("Card saving is not available right now. Contact support.", "warning")
@@ -8650,6 +10230,8 @@ def billing_save_card():
     """
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("billing.credits")
+    if _rperm: return _rperm
 
     if not _stripe_ok():
         return jsonify({"ok": False, "error": "Not configured"}), 400
@@ -8722,6 +10304,8 @@ def billing_remove_card(method_id: int):
     """
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("billing.credits")
+    if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
     customer_id = int(customer["id"])
@@ -8786,6 +10370,8 @@ def billing_set_default_card(method_id: int):
     """
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("billing.credits")
+    if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
     customer_id = int(customer["id"])
@@ -8879,6 +10465,8 @@ def billing_subscribe():
     """
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("billing.subscription")
+    if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
     if not customer:
@@ -8935,6 +10523,8 @@ def billing_subscribe_post():
     """
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("billing.subscription")
+    if _rperm: return _rperm
 
     if not _stripe_ok():
         flash("Payments are not configured. Contact support.", "warning")
@@ -9221,6 +10811,8 @@ def billing_subscribe_checkout():
     """
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("billing.subscription")
+    if _rperm: return _rperm
 
     if not _stripe_ok():
         flash("Payments are not configured. Contact support.", "warning")
@@ -9318,6 +10910,8 @@ def billing_subscribe_complete():
     """
     r = _require_login()
     if r: return jsonify({"ok": False, "error": "Not logged in"}), 401
+    if not _team_member_has_permission("billing.subscription"):
+        return jsonify({"error": "forbidden"}), 403
 
     if not _stripe_ok():
         return jsonify({"ok": False, "error": "Payments not configured"}), 400
@@ -9546,6 +11140,8 @@ def billing_switch_plan():
     """
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("billing.subscription")
+    if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
     if not customer:
@@ -9711,6 +11307,8 @@ def settings_business():
     """
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("settings.business_edit")
+    if _rperm: return _rperm
 
     cid          = _customer_id()
     company_name = (request.form.get("company_name")          or "").strip()[:255]
@@ -9965,6 +11563,8 @@ def whatsapp_connect():
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "wa.connect", "WhatsApp Connect")
+    if r2: return r2
     connections = _get_wa_connections_all(tenant_id)
     connection  = connections[0] if connections else None  # primary (for backward-compat)
     templates   = _get_wa_templates(tenant_id)
@@ -10049,6 +11649,8 @@ def whatsapp_save_notify_phone():
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "wa.connect", "WhatsApp Connect")
+    if r2: return r2
 
     raw = (request.form.get("report_phone") or "").strip()
     # Normalise: strip spaces, dashes, ensure it starts with country code
@@ -10087,6 +11689,8 @@ def whatsapp_save_ack_text():
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "wa.connect", "WhatsApp Connect")
+    if r2: return r2
 
     ack_text = (request.form.get("typing_ack_text") or "").strip()[:200]
     wa_id    = request.form.get("wa_id")
@@ -10121,6 +11725,8 @@ def whatsapp_qr_code():
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "wa.connect", "WhatsApp Connect")
+    if r2: return r2
     connection = _get_wa_connection_any(tenant_id)
 
     if not connection or not connection.get("active") or not connection.get("display_phone_number"):
@@ -10155,6 +11761,8 @@ def whatsapp_save_connection():
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "wa.connect", "WhatsApp Connect")
+    if r2: return r2
 
     action          = (request.form.get("action") or "connect").strip()
     wa_id_field     = request.form.get("wa_id", type=int)  # set only when editing a SPECIFIC existing connection
@@ -10304,6 +11912,8 @@ def whatsapp_disconnect():
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "wa.connect", "WhatsApp Connect")
+    if r2: return r2
     wa_id     = request.form.get("wa_id", type=int)
 
     try:
@@ -10330,6 +11940,8 @@ def whatsapp_delete():
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "wa.connect", "WhatsApp Connect")
+    if r2: return r2
     wa_id     = request.form.get("wa_id", type=int)
 
     try:
@@ -10940,6 +12552,8 @@ def whatsapp_embedded_complete():
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "wa.connect", "WhatsApp Connect")
+    if r2: return r2
 
     phone_number_id = (request.form.get("phone_number_id") or "").strip()
     waba_id         = (request.form.get("waba_id")         or "").strip()
@@ -11024,8 +12638,12 @@ def whatsapp_check_token():
 def whatsapp_templates():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("woo.message_templates")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "woo.message_templates", "WhatsApp Message Templates")
+    if r2: return r2
 
     import json as _json
     try:
@@ -11056,8 +12674,12 @@ def whatsapp_templates():
 def whatsapp_save_templates():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("woo.message_templates")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "woo.message_templates", "WhatsApp Message Templates")
+    if r2: return r2
 
     import json as _j2
     try:
@@ -11104,6 +12726,8 @@ def whatsapp_save_templates():
 def inbox_resolve(session_id: str):
     r = _require_login()
     if r: return r
+    r2 = _require_team_permission("inbox.resolve")
+    if r2: return r2
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -11143,6 +12767,8 @@ def inbox_takeover():
     """Merchant manually takes over an AI-handled conversation."""
     r = _require_login()
     if r: return r
+    r2 = _require_team_permission("inbox.takeover")
+    if r2: return r2
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -11206,6 +12832,8 @@ def whatsapp_reports():
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "wa.handoff_reports", "WhatsApp Handoff Reports")
+    if r2: return r2
 
     days = int(request.args.get("days", 30))
     if days not in (7, 14, 30, 90):
@@ -11506,6 +13134,8 @@ def whatsapp_contact_move_to_pipeline(contact_id: int):
     at once, this is how a second or third one gets started."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.contacts")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     try:
@@ -11526,8 +13156,12 @@ def whatsapp_contact_move_to_pipeline(contact_id: int):
 def whatsapp_contacts():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.contacts")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "crm.contacts", "All Contacts")
+    if r2: return r2
 
     search         = (request.args.get("q") or "").strip()
     # Status and Segment — dropdown multi-select (2026-09-09), same pattern
@@ -11796,6 +13430,8 @@ def whatsapp_contacts():
 def whatsapp_contacts_add():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.contacts")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -11851,6 +13487,8 @@ def whatsapp_contacts_add():
 def whatsapp_contacts_edit(contact_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.contacts")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -11898,6 +13536,8 @@ def whatsapp_contacts_edit(contact_id: int):
 def whatsapp_contacts_delete(contact_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.contacts")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -11923,6 +13563,8 @@ def whatsapp_contacts_delete(contact_id: int):
 def whatsapp_contacts_import():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.contacts")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -12003,6 +13645,8 @@ def whatsapp_contacts_import():
 def whatsapp_contacts_export():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.contacts")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -12097,6 +13741,8 @@ def whatsapp_contacts_export():
 def whatsapp_contacts_save_view():
     r = _require_login()
     if r: return jsonify({"error": "Please log in again."}), 401
+    if not _team_member_has_permission("crm.contacts"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     name = (request.form.get("name") or "").strip()[:100]
@@ -12151,6 +13797,8 @@ def whatsapp_contacts_save_view():
 def whatsapp_contacts_delete_view(view_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.contacts")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     try:
@@ -12175,8 +13823,12 @@ def whatsapp_contacts_delete_view(view_id: int):
 def whatsapp_contact_detail(contact_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.contacts")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "crm.contacts", "All Contacts")
+    if r2: return r2
 
     try:
         conn = get_db_connection()
@@ -12352,6 +14004,8 @@ def whatsapp_contact_set_consent(contact_id: int):
     actually checks — wa_contacts.email_opted_out alone wouldn't stop a send."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.contacts")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -12420,6 +14074,8 @@ def whatsapp_contact_set_consent(contact_id: int):
 def whatsapp_contact_add_note(contact_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.contacts")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     author_id = int(_customer_id())
@@ -12455,6 +14111,8 @@ def whatsapp_contact_add_note(contact_id: int):
 def whatsapp_contact_delete_note(contact_id: int, note_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.contacts")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -12478,6 +14136,8 @@ def whatsapp_contact_delete_note(contact_id: int, note_id: int):
 def whatsapp_contact_add_to_segment(contact_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.contacts")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     seg_id_raw = (request.form.get("segment_id") or "").strip()
@@ -12516,6 +14176,8 @@ def whatsapp_contact_add_to_segment(contact_id: int):
 def whatsapp_contact_remove_from_segment(contact_id: int, seg_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.contacts")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -12545,8 +14207,12 @@ def whatsapp_contact_remove_from_segment(contact_id: int, seg_id: int):
 def crm_companies():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.companies")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "crm.companies", "Companies")
+    if r2: return r2
     search = (request.args.get("q") or "").strip()
 
     try:
@@ -12613,6 +14279,8 @@ def crm_companies():
 def crm_companies_add():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.companies")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     name    = (request.form.get("name") or "").strip()[:200]
@@ -12649,8 +14317,12 @@ def crm_companies_add():
 def crm_company_detail(company_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.companies")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "crm.companies", "Companies")
+    if r2: return r2
 
     try:
         conn = get_db_connection()
@@ -12722,6 +14394,8 @@ def crm_company_detail(company_id: int):
 def crm_company_edit(company_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.companies")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     name    = (request.form.get("name") or "").strip()[:200]
@@ -12748,6 +14422,8 @@ def crm_company_edit(company_id: int):
 def crm_company_add_note(company_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.companies")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     author_id = int(_customer_id())
@@ -12783,8 +14459,12 @@ def crm_company_add_note(company_id: int):
 def crm_merge_review():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.merge_review")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "crm.merge_review", "Duplicate Merge Review")
+    if r2: return r2
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -12812,6 +14492,8 @@ def crm_merge_review():
 def crm_merge_review_confirm(candidate_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.merge_review")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     try:
@@ -12844,6 +14526,8 @@ def crm_merge_review_confirm(candidate_id: int):
 def crm_merge_review_reject(candidate_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.merge_review")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     try:
@@ -12869,6 +14553,8 @@ def crm_merge_review_reject(candidate_id: int):
 def whatsapp_contacts_bulk_action():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.contacts")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -13007,6 +14693,8 @@ def whatsapp_contacts_bulk_action():
 def whatsapp_contact_set_status(contact_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.contacts")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     new_status = request.form.get("status", "").strip()
@@ -13032,6 +14720,8 @@ def whatsapp_contact_tags(contact_id: int):
     # shared tag table (see _sync_contact_tags()) in case something calls it.
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.contacts")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     tags_raw  = (request.form.get("tags") or "").strip()
@@ -13056,8 +14746,12 @@ def whatsapp_contact_tags(contact_id: int):
 def whatsapp_segments():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.segments")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "crm.segments", "Segments")
+    if r2: return r2
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -13085,6 +14779,8 @@ def whatsapp_segments():
 def whatsapp_segments_create():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.segments")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     name  = (request.form.get("name") or "").strip()[:100]
@@ -13117,6 +14813,8 @@ def whatsapp_segments_create():
 def whatsapp_segments_edit(seg_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.segments")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     name  = (request.form.get("name") or "").strip()[:100]
@@ -13145,6 +14843,8 @@ def whatsapp_segments_edit(seg_id: int):
 def whatsapp_segments_delete(seg_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.segments")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     try:
@@ -13163,8 +14863,12 @@ def whatsapp_segments_delete(seg_id: int):
 def whatsapp_segment_detail(seg_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.segments")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "crm.segments", "Segments")
+    if r2: return r2
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -13210,6 +14914,8 @@ def whatsapp_segment_detail(seg_id: int):
 def whatsapp_segment_add_member(seg_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.segments")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     contact_id = request.form.get("contact_id", "").strip()
@@ -13247,6 +14953,8 @@ def whatsapp_segment_add_member(seg_id: int):
 def whatsapp_segment_remove_member(seg_id: int, contact_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.segments")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     try:
@@ -13273,6 +14981,8 @@ def whatsapp_segment_contacts_json(seg_id: int):
     """Return segment member phones for campaign pre-fill."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("crm.segments"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     try:
@@ -13299,6 +15009,8 @@ def sales_pipeline_contacts_json():
     """Return Sales Pipeline lead phones for campaign pre-fill (bridges the CRM to WhatsApp campaigns)."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("crm.pipeline_board"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     try:
@@ -13642,6 +15354,8 @@ if not _sched_started:
 def whatsapp_campaigns():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("campaigns_wa.all")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     gate = _require_plan_feature(customer, "feat_broadcasts", "Starter")
     if gate: return gate
@@ -13695,6 +15409,8 @@ def whatsapp_campaigns():
 def whatsapp_campaigns_create():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("campaigns_wa.all")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -13843,6 +15559,8 @@ def whatsapp_campaigns_create():
 def whatsapp_campaigns_send(campaign_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("campaigns_wa.all")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -13858,6 +15576,8 @@ def whatsapp_campaigns_send(campaign_id: int):
 def whatsapp_campaigns_delete(campaign_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("campaigns_wa.all")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -13887,6 +15607,8 @@ def whatsapp_campaigns_templates():
     r = _require_login()
     if r:
         return jsonify([])
+    if not _team_member_has_permission("campaigns_wa.all"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     wa_id     = request.args.get("wa_id", type=int)
@@ -13962,6 +15684,8 @@ def whatsapp_campaigns_upload_image():
     r = _require_login()
     if r:
         return jsonify({"error": "Unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_wa.all"):
+        return jsonify({"error": "forbidden"}), 403
 
     f = request.files.get("image")
     if not f or not f.filename:
@@ -14018,6 +15742,8 @@ def whatsapp_campaign_segments_page():
     tables and add/remove/create/delete JSON endpoints below."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("campaigns_wa.segments")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -14297,6 +16023,8 @@ def whatsapp_campaigns_pipeline_leads_json():
     mirrors /email/campaigns/pipeline-leads-json."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_wa.segments"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     q = (request.args.get("q") or "").strip()
@@ -14339,6 +16067,8 @@ def whatsapp_campaigns_pipeline_leads_json():
 def whatsapp_campaigns_reports():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("campaigns_wa.reports")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     gate = _require_plan_feature(customer, "feat_broadcasts", "Starter")
@@ -14368,6 +16098,8 @@ def whatsapp_campaigns_reports():
 def whatsapp_campaign_report(campaign_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("campaigns_wa.reports")
+    if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     tenant_id = customer["tenant_id"]
 
@@ -14502,6 +16234,8 @@ def whatsapp_campaign_report(campaign_id: int):
 def whatsapp_campaign_reviews():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("campaigns_wa.needs_review")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     gate = _require_plan_feature(customer, "feat_broadcasts", "Starter")
@@ -14534,6 +16268,8 @@ def whatsapp_campaign_reviews():
 def whatsapp_campaign_automation_settings():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("campaigns_wa.needs_review")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     auto_actions = request.form.get("auto_actions") == "on"
@@ -14633,6 +16369,8 @@ def _approve_campaign_reply_review(review_id: int, tenant_id: int, staff_name: s
 def whatsapp_campaign_review_approve(review_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("campaigns_wa.needs_review")
+    if _rperm: return _rperm
     customer   = _get_customer(_customer_id())
     tenant_id  = int(customer["tenant_id"])
     staff_name = f"{customer.get('first_name','')} {customer.get('last_name','')}".strip() or "Staff"
@@ -14650,6 +16388,8 @@ def whatsapp_campaign_review_approve(review_id: int):
 def whatsapp_campaign_review_reject(review_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("campaigns_wa.needs_review")
+    if _rperm: return _rperm
     customer   = _get_customer(_customer_id())
     tenant_id  = int(customer["tenant_id"])
     staff_name = f"{customer.get('first_name','')} {customer.get('last_name','')}".strip() or "Staff"
@@ -15289,6 +17029,8 @@ def comeback_unsubscribe():
 def email_campaigns():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("campaigns_email.all")
+    if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     gate = _require_email_campaigns_plan(customer)
     if gate: return gate
@@ -15438,6 +17180,8 @@ def _parse_campaign_form(tenant_id: int, customer: dict, form):
 def email_campaigns_create():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("campaigns_email.all")
+    if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     gate = _require_email_campaigns_plan(customer)
     if gate: return gate
@@ -15495,6 +17239,8 @@ def email_campaigns_edit_data(campaign_id: int):
     so its completed send's counts and recipient history are never overwritten."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.all"):
+        return jsonify({"error": "forbidden"}), 403
     customer = _get_customer(_customer_id())
     gate = _require_email_campaigns_plan(customer)
     if gate: return jsonify({"error": "upgrade required"}), 403
@@ -15529,6 +17275,8 @@ def email_campaigns_edit_data(campaign_id: int):
 def email_campaigns_update(campaign_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("campaigns_email.all")
+    if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     gate = _require_email_campaigns_plan(customer)
     if gate: return gate
@@ -15628,6 +17376,8 @@ def email_campaigns_preview():
     as email_campaigns_create so the preview can never drift from the real send."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.all"):
+        return jsonify({"error": "forbidden"}), 403
     customer = _get_customer(_customer_id())
     gate = _require_email_campaigns_plan(customer)
     if gate: return jsonify({"error": "upgrade required"}), 403
@@ -15664,6 +17414,8 @@ def email_campaigns_send_test_draft():
     saved campaign row, reusing the same render path as email_campaigns_preview."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.all"):
+        return jsonify({"error": "forbidden"}), 403
     customer = _get_customer(_customer_id())
     gate = _require_email_campaigns_plan(customer)
     if gate: return jsonify({"error": "upgrade required"}), 403
@@ -15709,6 +17461,8 @@ def email_campaigns_send_test_draft():
 def email_campaigns_send_test(campaign_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.all"):
+        return jsonify({"error": "forbidden"}), 403
     customer = _get_customer(_customer_id())
     gate = _require_email_campaigns_plan(customer)
     if gate: return jsonify({"error": "upgrade required"}), 403
@@ -15755,6 +17509,8 @@ def email_campaigns_duplicate_data(campaign_id: int):
     campaign row seeded from this one's content, not editing it in place."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.all"):
+        return jsonify({"error": "forbidden"}), 403
     customer = _get_customer(_customer_id())
     gate = _require_email_campaigns_plan(customer)
     if gate: return jsonify({"error": "upgrade required"}), 403
@@ -15788,6 +17544,8 @@ def email_campaigns_duplicate_data(campaign_id: int):
 def email_campaigns_send(campaign_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("campaigns_email.all")
+    if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     gate = _require_email_campaigns_plan(customer)
     if gate: return gate
@@ -15807,6 +17565,8 @@ def email_campaigns_send(campaign_id: int):
 def email_campaigns_delete(campaign_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("campaigns_email.all")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -15836,6 +17596,8 @@ def email_campaigns_upload_image():
     r = _require_login()
     if r:
         return jsonify({"error": "Unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.all"):
+        return jsonify({"error": "forbidden"}), 403
 
     f = request.files.get("image")
     if not f or not f.filename:
@@ -15865,6 +17627,8 @@ def email_campaigns_contacts_json():
     """Return Sales Pipeline lead emails for campaign recipient pre-fill."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.all"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     try:
@@ -15894,6 +17658,8 @@ def email_segments_list():
     recipient dropdown and the segment manager modal."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.segments"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     try:
@@ -15925,6 +17691,8 @@ def email_segments_list():
 def email_segments_create():
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.segments"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     name = (request.form.get("name") or "").strip()
@@ -15949,6 +17717,8 @@ def email_segments_create():
 def email_segments_delete(segment_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.segments"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     try:
@@ -15969,6 +17739,8 @@ def email_segments_members(segment_id: int):
     manage-segment modal shows only these, not every Sales Pipeline contact."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.segments"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     try:
@@ -16002,6 +17774,8 @@ def email_segments_add_member(segment_id: int):
     bulk checkbox-everyone save."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.segments"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     lead_id_raw = (request.form.get("lead_id") or "").strip()
@@ -16044,6 +17818,8 @@ def email_segments_add_member(segment_id: int):
 def email_segments_remove_member(segment_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.segments"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     lead_id_raw = (request.form.get("lead_id") or "").strip()
@@ -16075,6 +17851,8 @@ def email_segments_bulk_add_members(segment_id: int):
     resolved."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.segments"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -16117,8 +17895,12 @@ def email_segments_bulk_add_members(segment_id: int):
 def lead_labels_page():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.tags")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "crm.tags", "Tags")
+    if r2: return r2
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     # Tags unification (2026-09-09): a tag can now be on a Deal (lead_label_leads)
@@ -16152,6 +17934,8 @@ def lead_labels_list_json():
     Label' modal and the campaign compose page's 'Exclude label' picker."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("crm.tags"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     try:
@@ -16179,6 +17963,8 @@ def lead_labels_list_json():
 def lead_labels_create():
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("crm.tags"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     name = (request.form.get("name") or "").strip()
@@ -16205,6 +17991,8 @@ def lead_labels_create():
 def lead_labels_delete(label_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("crm.tags"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     try:
@@ -16226,6 +18014,8 @@ def lead_labels_delete(label_id: int):
 def lead_labels_members(label_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("crm.tags"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     try:
@@ -16256,6 +18046,8 @@ def lead_labels_members(label_id: int):
 def lead_labels_remove_member(label_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("crm.tags"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     lead_id_raw = (request.form.get("lead_id") or "").strip()
@@ -16285,6 +18077,8 @@ def lead_labels_bulk_add_members(label_id: int):
     not an email-campaign audience)."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("crm.tags"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -16321,6 +18115,8 @@ def lead_labels_search_leads_json():
     to any lead."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("crm.tags"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     q = (request.args.get("q") or "").strip()
@@ -16372,6 +18168,8 @@ def lead_labels_search_leads_json():
 def lead_labels_contact_members(label_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("crm.tags"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     try:
@@ -16402,6 +18200,8 @@ def lead_labels_contact_members(label_id: int):
 def lead_labels_remove_contact_member(label_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("crm.tags"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     contact_id_raw = (request.form.get("contact_id") or "").strip()
@@ -16429,6 +18229,8 @@ def lead_labels_bulk_add_contacts(label_id: int):
     lead_labels_bulk_add_members() for Sales Pipeline leads."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("crm.tags"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -16463,6 +18265,8 @@ def lead_labels_search_contacts_json():
     """Search WhatsApp Contacts for the Tags page's People add typeahead."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("crm.tags"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     q = (request.args.get("q") or "").strip()
@@ -16508,8 +18312,12 @@ def lead_labels_import_bounces():
     the pipeline without opening a campaign report."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.tags")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "crm.tags", "Tags")
+    if r2: return r2
 
     if request.method == "GET":
         return render_template("portal/lead_labels_import_bounces.html", customer=customer, result=None)
@@ -16596,6 +18404,8 @@ def email_campaigns_pipeline_leads_json():
     small — this tenant alone has 2600+ leads, so no "browse everyone" mode."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.segments"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     q = (request.args.get("q") or "").strip()
@@ -16637,6 +18447,8 @@ def email_campaigns_pipeline_leads_json():
 def email_campaigns_reports():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("campaigns_email.reports")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     gate = _require_email_campaigns_plan(customer)
@@ -16662,6 +18474,8 @@ def email_campaigns_reports():
 def email_campaign_report(campaign_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("campaigns_email.reports")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = customer["tenant_id"]
 
@@ -16893,9 +18707,13 @@ def _annotate_order(order: dict) -> dict:
 def orders():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.orders")
+    if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "ecom.orders", "Orders")
+    if r2: return r2
 
     status_filter = (request.args.get("status") or "all").strip()
     try:
@@ -16928,9 +18746,13 @@ def orders():
 def order_detail(order_id: str):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.orders")
+    if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "ecom.orders", "Orders")
+    if r2: return r2
 
     order, items = _get_single_order(tenant_id, order_id)
     if not order:
@@ -16996,6 +18818,8 @@ def _notify_customer_wa(tenant_id: int, customer_phone: str, message: str):
 def order_verify_payment(order_id: str):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.orders")
+    if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -17043,6 +18867,8 @@ def order_verify_payment(order_id: str):
 def order_dispatch(order_id: str):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.orders")
+    if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -17099,6 +18925,8 @@ def order_dispatch(order_id: str):
 def order_deliver(order_id: str):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.orders")
+    if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -17143,6 +18971,8 @@ def order_deliver(order_id: str):
 def order_cancel(order_id: str):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.orders")
+    if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -17318,9 +19148,13 @@ def _get_wa_product_stats(tenant_id):
 def products():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.products")
+    if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "ecom.products", "My Products")
+    if r2: return r2
 
     has_azure_index = bool(_get_tenant_azure_index(tenant_id))
 
@@ -17356,9 +19190,13 @@ def products():
 def product_add():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.products")
+    if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "ecom.products", "My Products")
+    if r2: return r2
 
     if request.method == "POST":
         name        = (request.form.get("name") or "").strip()
@@ -17419,9 +19257,13 @@ def product_add():
 def product_edit(product_id: str):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.products")
+    if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "ecom.products", "My Products")
+    if r2: return r2
 
     product = _get_product(tenant_id, product_id)
     if not product:
@@ -17487,9 +19329,13 @@ def product_edit(product_id: str):
 def product_delete(product_id: str):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.products")
+    if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "ecom.products", "My Products")
+    if r2: return r2
 
     try:
         conn = get_db_connection()
@@ -17514,6 +19360,8 @@ def product_toggle_stock(product_id: str):
     """Quick action: mark in-stock (999) or out-of-stock (0) from list view."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.products")
+    if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -18233,6 +20081,8 @@ def _merchant_selection_ids(cur, merchant_id: int) -> set:
 def catalogue_browse():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.catalogue")
+    if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
     merchant_id = int(customer["id"])
@@ -18301,6 +20151,8 @@ def catalogue_browse():
 def catalogue_category(category_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.catalogue")
+    if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
     merchant_id = int(customer["id"])
@@ -18429,6 +20281,8 @@ def catalogue_toggle(category_id: int, product_id: int):
     """Add or remove a product from the merchant's store catalogue."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.catalogue")
+    if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
     merchant_id = int(customer["id"])
@@ -18487,6 +20341,8 @@ def catalogue_toggle(category_id: int, product_id: int):
 def catalogue_selections():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.catalogue")
+    if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
     merchant_id = int(customer["id"])
@@ -18701,9 +20557,13 @@ def _get_customer_detail(tenant_id: int, phone: str):
 def customers():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.customers")
+    if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "ecom.customers", "Customers")
+    if r2: return r2
 
     q = (request.args.get("q") or "").strip()
     try:
@@ -18729,9 +20589,13 @@ def customers():
 def customer_detail(phone: str):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.customers")
+    if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "ecom.customers", "Customers")
+    if r2: return r2
 
     # Normalise: strip leading + so URL and DB value match
     phone_clean = phone.lstrip("+")
@@ -18840,6 +20704,8 @@ def _webhook_health(last_webhook_at) -> str:
 def payment_settings():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("billing.payment_gateways")
+    if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -18882,6 +20748,8 @@ def payment_settings():
 def payment_settings_paystack():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("billing.payment_gateways")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -18919,6 +20787,8 @@ def payment_settings_paystack():
 def payment_settings_paystack_remove():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("billing.payment_gateways")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -18943,6 +20813,8 @@ def payment_settings_paystack_remove():
 def payment_settings_flutterwave():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("billing.payment_gateways")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -19002,6 +20874,8 @@ def payment_settings_flutterwave():
 def payment_settings_flutterwave_remove():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("billing.payment_gateways")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -19031,6 +20905,8 @@ def payment_settings_flutterwave_toggle_checkout():
     """
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("billing.payment_gateways")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -19078,6 +20954,8 @@ def payment_settings_flutterwave_toggle_checkout():
 def payment_settings_bank():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("billing.payment_gateways")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -19136,6 +21014,8 @@ def payment_settings_reveal(gateway: str):
     """AJAX endpoint — returns decrypted secret key for 10-second reveal."""
     r = _require_login()
     if r: return jsonify({"error": "not logged in"}), 401
+    if not _team_member_has_permission("billing.payment_gateways"):
+        return jsonify({"error": "forbidden"}), 403
 
     if gateway not in ("paystack", "flutterwave"):
         return jsonify({"error": "invalid gateway"}), 400
@@ -19291,6 +21171,10 @@ def analytics():
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "analytics.page", "Analytics")
+    if r2: return r2
+    _rperm = _require_team_permission("analytics.page")
+    if _rperm: return _rperm
 
     try:
         days = int(request.args.get("days") or 30)
@@ -19589,6 +21473,20 @@ def store_info():
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "store.info", "Store Information")
+    if r2: return r2
+
+    # This one route dispatches 3 different catalog features via a hidden
+    # `action` form field — upload/delete a knowledge document is a bigger
+    # action than editing the text sections, so it gets its own key rather
+    # than being folded into store.info_edit. GET (view) uses the base key.
+    if request.method == "POST":
+        _dispatch_action = request.form.get("action", "save_text")
+        _perm_key = "store.info_documents" if _dispatch_action in ("upload_doc", "delete_doc") else "store.info_edit"
+    else:
+        _perm_key = "store.info"
+    _rperm = _require_team_permission(_perm_key)
+    if _rperm: return _rperm
 
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -19704,8 +21602,12 @@ def store_info():
 def data_sources():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.data_sources")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "ecom.data_sources", "Data Sources / Product Import")
+    if r2: return r2
     sources   = _get_data_sources(tenant_id)
     return render_template(
         "portal/data_sources.html",
@@ -19721,8 +21623,12 @@ def data_sources():
 def data_source_upload():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.data_sources")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "ecom.data_sources", "Data Sources / Product Import")
+    if r2: return r2
 
     f = request.files.get("file")
     if not f or not f.filename:
@@ -19776,8 +21682,12 @@ def data_source_upload():
 def data_source_map(source_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.data_sources")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "ecom.data_sources", "Data Sources / Product Import")
+    if r2: return r2
     source    = _get_data_source(tenant_id, source_id)
     if not source:
         flash("Source not found.", "danger")
@@ -19832,8 +21742,12 @@ def data_source_map(source_id: int):
 def data_source_sync(source_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.data_sources")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "ecom.data_sources", "Data Sources / Product Import")
+    if r2: return r2
     source    = _get_data_source(tenant_id, source_id)
     if not source:
         flash("Source not found.", "danger")
@@ -19879,6 +21793,8 @@ def data_source_sync(source_id: int):
 def data_source_delete(source_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.data_sources")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     conn = get_db_connection()
@@ -19899,6 +21815,8 @@ def data_source_delete(source_id: int):
 def data_source_google_connect():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.data_sources")
+    if _rperm: return _rperm
     if not _google_oauth_configured():
         flash("Google Sheets integration is not configured yet.", "warning")
         return redirect(url_for("portal.data_sources"))
@@ -19916,6 +21834,8 @@ def data_source_google_connect():
 def data_source_google_callback():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.data_sources")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -19958,6 +21878,8 @@ def data_source_google_callback():
 def data_source_google_setup(source_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.data_sources")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     source    = _get_data_source(tenant_id, source_id)
@@ -20035,9 +21957,13 @@ def data_source_google_setup(source_id: int):
 def woo_sync():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.woo_sync")
+    if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "ecom.woo_sync", "WooCommerce Sync")
+    if r2: return r2
 
     type_f  = (request.args.get("type") or "").strip().lower()
     stock_f = (request.args.get("stock") or "").strip().lower()
@@ -20119,6 +22045,8 @@ def woo_sync_delete():
     back on the next Full Sync and should be removed from WooCommerce instead."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.woo_sync")
+    if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -20153,6 +22081,8 @@ def woo_sync_bulk_delete():
     still live on the store."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.woo_sync")
+    if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -21258,6 +23188,10 @@ def channels_page():
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "channels.page", "Channels")
+    if r2: return r2
+    r3 = _require_team_permission("channels.page")
+    if r3: return r3
 
     wa_connection = _get_wa_connection(tenant_id)
 
@@ -21582,6 +23516,10 @@ def my_inbox():
     if r: return r
     customer   = _get_customer(_customer_id())
     tenant_id  = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "inbox.page", "Inbox (Conversations)")
+    if r2: return r2
+    r3 = _require_team_permission("inbox.page")
+    if r3: return r3
     ai_enabled = not _is_connect_host()
     connection = _get_wa_connection(tenant_id)
     # Only worth showing per-number filter tabs / color dots when 2+ numbers
@@ -21713,6 +23651,8 @@ def my_inbox():
 def inbox_reply(phone: str):
     r = _require_login()
     if r: return r
+    r2 = _require_team_permission("inbox.reply")
+    if r2: return r2
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -21819,6 +23759,8 @@ def inbox_reply(phone: str):
 def inbox_claim(phone: str):
     r = _require_login()
     if r: return r
+    r2 = _require_team_permission("inbox.claim_release")
+    if r2: return r2
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     actor     = _current_actor(customer)
@@ -21856,6 +23798,8 @@ def inbox_claim(phone: str):
 def inbox_release(phone: str):
     r = _require_login()
     if r: return r
+    r2 = _require_team_permission("inbox.claim_release")
+    if r2: return r2
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     actor     = _current_actor(customer)
@@ -21886,6 +23830,8 @@ def inbox_api_poll():
     from flask import jsonify
     r = _require_login()
     if r: return jsonify({"error": "login_required"}), 401
+    if not _team_member_has_permission("inbox.page"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     phone     = request.args.get("phone", "")
@@ -21920,6 +23866,8 @@ def inbox_save_contact(phone: str):
     """Save or update a display name for a WhatsApp contact."""
     r = _require_login()
     if r: return r
+    if not _team_member_has_permission("inbox.manage_contact"):
+        return "forbidden", 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     actor     = _current_actor(customer)
@@ -21982,7 +23930,8 @@ def _get_tenant_plan(tenant_id: int) -> dict:
                    COALESCE(p.feat_fw_checkout, FALSE)    AS feat_fw_checkout,
                    COALESCE(p.feat_email_campaigns,FALSE) AS feat_email_campaigns,
                    COALESCE(p.overage_per_msg_ngn, 10)    AS overage_per_msg_ngn,
-                   COALESCE(p.overage_per_msg_usd, 0.006) AS overage_per_msg_usd
+                   COALESCE(p.overage_per_msg_usd, 0.006) AS overage_per_msg_usd,
+                   COALESCE(p.channel_mode,   'single')   AS channel_mode
             FROM tenants t
             LEFT JOIN plans p ON p.id = t.plan_id
             WHERE t.id = %s
@@ -22028,6 +23977,8 @@ def _get_tenant_plan(tenant_id: int) -> dict:
 def billing_plans():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("billing.subscription")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -22036,14 +23987,28 @@ def billing_plans():
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT * FROM plans WHERE is_active=TRUE ORDER BY sort_order")
-    all_plans = cur.fetchall() or []
+    plans = cur.fetchall() or []
     cur.close(); conn.close()
+
+    # Dual Agent Plan pricing (2026-09-18) — see project_dual_agent_pricing
+    # memory. Merchants toggle between the single-channel tiers and the
+    # dual-channel (WhatsApp + Website) tiers; the Custom tier always shows.
+    single_plans = [p for p in plans if p["channel_mode"] == "single"]
+    dual_plans   = [p for p in plans if p["channel_mode"] == "dual"]
+    custom_plans = [p for p in plans if p["channel_mode"] == "both"]
+
+    # Default the toggle to whichever mode the merchant is currently on.
+    default_channel_mode = "dual" if current.get("channel_mode") == "dual" else "single"
 
     return render_template(
         "portal/billing_plans.html",
         customer=customer,
         current=current,
-        all_plans=all_plans,
+        all_plans=plans,
+        single_plans=single_plans,
+        dual_plans=dual_plans,
+        custom_plans=custom_plans,
+        default_channel_mode=default_channel_mode,
     )
 
 
@@ -22220,6 +24185,8 @@ def _activate_plan_subscription(tenant_id: int, plan_id: int, cycle: str,
 def billing_plan_upgrade():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("billing.subscription")
+    if _rperm: return _rperm
 
     plan_slug = (request.form.get("plan_slug") or "").strip()
     cycle     = request.form.get("cycle", "monthly")
@@ -22580,6 +24547,11 @@ def billing_flutterwave_webhook():
 def reports_page():
     r = _require_login()
     if r: return r
+    _rperm = _require_any_team_permission([
+        "reports.pipeline_overview", "reports.leads_sources", "reports.custom",
+        "reports.usage", "reports.cart", "reports.billing",
+    ])
+    if _rperm: return _rperm
     from datetime import date as _date, timedelta as _td
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -22699,6 +24671,10 @@ def leads_page():
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "leads.page", "Leads")
+    if r2: return r2
+    _rperm = _require_team_permission("leads.create" if request.method == "POST" else "leads.page")
+    if _rperm: return _rperm
 
     if request.method == "POST":
         f = request.form
@@ -22838,8 +24814,12 @@ def leads_create_from_conversation():
     conversation-based Lead can be created today."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("leads.create")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "leads.page", "Leads")
+    if r2: return r2
     phone = (request.form.get("phone") or "").strip()
     display_name = (request.form.get("display_name") or "").strip()
     if not phone:
@@ -23028,8 +25008,12 @@ def sales_pipeline():
     Lead at," and moves them between stages."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.pipeline_board")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "crm.pipeline_board", "Pipeline Board")
+    if r2: return r2
 
     search        = (request.args.get("q") or "").strip()
     stage_filter  = (request.args.get("stage") or "all").strip()
@@ -23352,6 +25336,8 @@ def sales_pipeline_export():
     view is meant to lighten what's rendered on screen, not cap what you can export."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.pipeline_board")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -23414,6 +25400,8 @@ def sales_pipeline_edit(lead_id: int):
     """Correct a deal's core details — doesn't move its stage, same as the ambassador Leads Edit button."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.pipeline_board")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     lead = _pipeline_lead_owned_by_tenant(lead_id, tenant_id)
@@ -23474,6 +25462,8 @@ def sales_pipeline_assign_ambassador(lead_id: int):
     ambassador_routes.py for how this assignment is matched at payment time."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.pipeline_board")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
@@ -23515,6 +25505,8 @@ def sales_pipeline_assign_ambassador(lead_id: int):
 def sales_pipeline_advance(lead_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.pipeline_board")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     lead = _pipeline_lead_owned_by_tenant(lead_id, tenant_id)
@@ -23610,6 +25602,8 @@ def sales_pipeline_bulk_advance():
     stage-history row."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("crm.pipeline_board"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -23709,6 +25703,8 @@ def sales_pipeline_drop(lead_id: int):
     existing link/bookmark breaks, but 'outcome' now says which one."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.pipeline_board")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     lead = _pipeline_lead_owned_by_tenant(lead_id, tenant_id)
@@ -23748,6 +25744,8 @@ def sales_pipeline_drop(lead_id: int):
 def sales_pipeline_history(lead_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.pipeline_board")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     lead = _pipeline_lead_owned_by_tenant(lead_id, tenant_id)
@@ -23768,8 +25766,12 @@ def sales_pipeline_settings():
     scoring math) fixed. See project_sales_pipeline_leads_redesign memory."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("crm.pipeline_settings")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "crm.pipeline_settings", "Pipeline Settings")
+    if r2: return r2
 
     if request.method == "POST":
         form_type = request.form.get("form_type")
@@ -23822,8 +25824,12 @@ def lead_detail(lead_id: int):
     chat log."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "leads.page", "Leads")
+    if r2: return r2
     lead = _pipeline_lead_owned_by_tenant(lead_id, tenant_id)
     if not lead:
         flash("Lead not found.", "danger")
@@ -24603,8 +26609,12 @@ def _get_products_with_discount(tenant_id: int) -> list:
 def wa_discount_settings():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.discount_settings")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "ecom.discount_settings", "Discount Settings")
+    if r2: return r2
 
     flash_msg  = None
     flash_type = "success"
@@ -24678,6 +26688,8 @@ def wa_discount_settings():
 def wa_discount_product_save(product_id: str):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("ecom.discount_settings")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 

@@ -25,7 +25,7 @@ from lead_pipeline import (STAGE_ORDER, STAGE_LABELS, STAGE_DESCRIPTIONS,
                             sales_manager_month_progress, upsert_sales_manager_target)
 from portal_utils import (money_fmt, tokens_to_credits, credits_to_tokens,
                           send_email_with_attachment, TUTORIAL_VIDEOS)
-from portal_routes import _COMEBACK_VARIANTS, _render_comeback_email_html
+from portal_routes import _COMEBACK_VARIANTS, _render_comeback_email_html, PLAN_FEATURE_CATALOG
 from buffer_client import (buffer_create_post, buffer_get_post_status,
                             buffer_list_channels, BufferAPIError)
 
@@ -62,6 +62,7 @@ ADMIN_MODULES = {
     "video_tutorials":           {"label": "Video Tutorials",       "actions": ["view", "modify"]},
     "social_media":               {"label": "Social Media Posts",    "actions": ["view", "create", "modify", "delete"]},
     "comeback_sequence":          {"label": "Onboarding Drip Campaign", "actions": ["view", "modify"]},
+    "modules":                    {"label": "Modules",                "actions": ["view"]},
 }
 
 # Multi-product ambassador program — mirrors ambassador_routes.PRODUCT_CONFIG labels.
@@ -4991,6 +4992,37 @@ def catalogue_category_upload(category_id: int):
     msg = f"Import complete — {inserted} added, {updated} updated, {errors} skipped."
     flash(msg, "success" if errors == 0 else "warning")
     return redirect(url_for("portal_admin.catalogue_category_products", category_id=category_id))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MODULES — read-only reference of every module/feature in PLAN_FEATURE_CATALOG.
+# Not editable here on purpose: each key is a literal string a route or
+# template checks for elsewhere in the codebase (plan gating today; the
+# future Team Role permission system next) — adding/renaming one here with no
+# matching code change would either do nothing or silently break a real page.
+# This page always reads live from the same dict the app itself enforces
+# against, so it can never drift the way a hand-maintained reference could.
+# ══════════════════════════════════════════════════════════════════════════════
+
+@portal_admin_bp.route("/modules")
+def admin_modules_catalog():
+    r = _require_admin("modules", "view")
+    if r: return r
+
+    module_count = len(PLAN_FEATURE_CATALOG)
+    feature_count = sum(len(feats) for feats in PLAN_FEATURE_CATALOG.values())
+    legacy_count = sum(
+        1 for feats in PLAN_FEATURE_CATALOG.values()
+        for key, _ in feats if key.startswith("legacy:")
+    )
+
+    return render_template(
+        "portal/admin_modules.html",
+        feature_catalog=PLAN_FEATURE_CATALOG,
+        module_count=module_count,
+        feature_count=feature_count,
+        legacy_count=legacy_count,
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════

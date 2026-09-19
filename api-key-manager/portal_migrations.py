@@ -2211,6 +2211,470 @@ def ensure_portal_tables():
             """)
             cur.execute("CREATE INDEX idx_pressone_calls_contact ON pressone_calls(tenant_id, contact_id, started_at)")
 
+        # ══════════════════════════════════════════════════════════════════
+        # Dual Agent Plan pricing (2026-09-18) — see project_dual_agent_pricing
+        # memory. The WhatsApp AI Sales Agent and Website (WooCommerce) AI
+        # Sales Agent share one account/API key/quota, which made running
+        # both cost the same as running just one. Fix: a parallel "dual"
+        # tier per plan level, priced at single-channel price x1.8 (the
+        # x1.5 then x1.2 formula agreed with the user), applied on top of
+        # TODAY's live single-channel prices (not the older figures an
+        # earlier design mockup assumed). Existing single-channel plans keep
+        # their slugs (only their display name changes) so nothing that
+        # already references slug='pro' etc. breaks.
+        # ══════════════════════════════════════════════════════════════════
+        if not _column_exists(cur, "plans", "channel_mode"):
+            cur.execute("ALTER TABLE plans ADD COLUMN channel_mode VARCHAR(10) NOT NULL DEFAULT 'single'")
+        if not _column_exists(cur, "plans", "parent_plan_id"):
+            cur.execute("ALTER TABLE plans ADD COLUMN parent_plan_id INTEGER REFERENCES plans(id)")
+        if not _column_exists(cur, "plans", "is_custom"):
+            cur.execute("ALTER TABLE plans ADD COLUMN is_custom BOOLEAN NOT NULL DEFAULT FALSE")
+        if not _column_exists(cur, "tenants", "dual_agent_grandfathered"):
+            # Manually set by an admin for a merchant who was already running
+            # both channels before the dual pricing launched, so they keep
+            # their existing single-channel price instead of being pushed
+            # onto the new dual price. Checked live on 2026-09-18: no real
+            # merchant qualifies today (only 2 internal PhiXtra accounts run
+            # both channels) — this exists for future admin use.
+            cur.execute("ALTER TABLE tenants ADD COLUMN dual_agent_grandfathered BOOLEAN NOT NULL DEFAULT FALSE")
+
+        # Rename display names only (slugs unchanged) — guarded so a later
+        # admin rename via the new plan editor is never overwritten by a re-run.
+        cur.execute("UPDATE plans SET name='Startup'    WHERE slug='starter' AND name='Starter'")
+        cur.execute("UPDATE plans SET name='Business'   WHERE slug='growth'  AND name='Growth'")
+        cur.execute("UPDATE plans SET name='Enterprise' WHERE slug='pro'     AND name='Pro'")
+
+        # Seed the 3 Dual Agent tiers (idempotent — slug is UNIQUE). Limits and
+        # feature flags mirror the parent single-channel tier exactly — this
+        # fixes the unfair PRICE, it does not change what a tier includes.
+        cur.execute("""
+            INSERT INTO plans
+                (slug, name, price_ngn, price_usd,
+                 ai_messages_limit, ai_agents_limit, broadcasts_limit,
+                 products_limit, data_sources_limit,
+                 feat_crm, feat_advanced_ai, feat_integrations,
+                 feat_broadcasts, feat_full_reports, feat_multi_agents,
+                 feat_visual_match, feat_fw_checkout, feat_email_campaigns,
+                 overage_per_msg_ngn, overage_per_msg_usd,
+                 annual_discount_pct, staff_limit, sort_order,
+                 channel_mode, parent_plan_id)
+            SELECT 'startup_dual', 'Startup — Dual Agent', 45000, 27.00,
+                   ai_messages_limit, ai_agents_limit, broadcasts_limit,
+                   products_limit, data_sources_limit,
+                   feat_crm, feat_advanced_ai, feat_integrations,
+                   feat_broadcasts, feat_full_reports, feat_multi_agents,
+                   feat_visual_match, feat_fw_checkout, feat_email_campaigns,
+                   overage_per_msg_ngn, overage_per_msg_usd,
+                   annual_discount_pct, staff_limit, 11,
+                   'dual', id
+            FROM plans WHERE slug='starter'
+            ON CONFLICT (slug) DO NOTHING
+        """)
+        cur.execute("""
+            INSERT INTO plans
+                (slug, name, price_ngn, price_usd,
+                 ai_messages_limit, ai_agents_limit, broadcasts_limit,
+                 products_limit, data_sources_limit,
+                 feat_crm, feat_advanced_ai, feat_integrations,
+                 feat_broadcasts, feat_full_reports, feat_multi_agents,
+                 feat_visual_match, feat_fw_checkout, feat_email_campaigns,
+                 overage_per_msg_ngn, overage_per_msg_usd,
+                 annual_discount_pct, staff_limit, sort_order,
+                 channel_mode, parent_plan_id)
+            SELECT 'business_dual', 'Business — Dual Agent', 135000, 81.00,
+                   ai_messages_limit, ai_agents_limit, broadcasts_limit,
+                   products_limit, data_sources_limit,
+                   feat_crm, feat_advanced_ai, feat_integrations,
+                   feat_broadcasts, feat_full_reports, feat_multi_agents,
+                   feat_visual_match, feat_fw_checkout, feat_email_campaigns,
+                   overage_per_msg_ngn, overage_per_msg_usd,
+                   annual_discount_pct, staff_limit, 12,
+                   'dual', id
+            FROM plans WHERE slug='growth'
+            ON CONFLICT (slug) DO NOTHING
+        """)
+        cur.execute("""
+            INSERT INTO plans
+                (slug, name, price_ngn, price_usd,
+                 ai_messages_limit, ai_agents_limit, broadcasts_limit,
+                 products_limit, data_sources_limit,
+                 feat_crm, feat_advanced_ai, feat_integrations,
+                 feat_broadcasts, feat_full_reports, feat_multi_agents,
+                 feat_visual_match, feat_fw_checkout, feat_email_campaigns,
+                 overage_per_msg_ngn, overage_per_msg_usd,
+                 annual_discount_pct, staff_limit, sort_order,
+                 channel_mode, parent_plan_id)
+            SELECT 'enterprise_dual', 'Enterprise — Dual Agent', 360000, 178.20,
+                   ai_messages_limit, ai_agents_limit, broadcasts_limit,
+                   products_limit, data_sources_limit,
+                   feat_crm, feat_advanced_ai, feat_integrations,
+                   feat_broadcasts, feat_full_reports, feat_multi_agents,
+                   feat_visual_match, feat_fw_checkout, feat_email_campaigns,
+                   overage_per_msg_ngn, overage_per_msg_usd,
+                   annual_discount_pct, staff_limit, 13,
+                   'dual', id
+            FROM plans WHERE slug='pro'
+            ON CONFLICT (slug) DO NOTHING
+        """)
+        # Custom tier — no fixed price, "Talk to Sales". Shown regardless of
+        # which channel-mode toggle the merchant has selected on the billing
+        # page (channel_mode='both').
+        cur.execute("""
+            INSERT INTO plans
+                (slug, name, price_ngn, price_usd, is_custom, channel_mode,
+                 sort_order, is_active,
+                 feat_crm, feat_advanced_ai, feat_integrations,
+                 feat_broadcasts, feat_full_reports, feat_multi_agents,
+                 feat_visual_match, feat_fw_checkout, feat_email_campaigns)
+            VALUES ('custom', 'Custom', 0, 0, TRUE, 'both', 99, TRUE,
+                    TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE)
+            ON CONFLICT (slug) DO NOTHING
+        """)
+
+        # ══════════════════════════════════════════════════════════════════
+        # Granular plan feature grants (2026-09-18) — the admin Plan Editor
+        # previously only had 9 flat feature checkboxes (feat_crm etc.), and
+        # most of them (feat_crm, feat_integrations, feat_visual_match) were
+        # decorative: shown as ✓/✗ on the billing page but never actually
+        # checked by any route, per the audit done before this migration was
+        # written. This table lets admin gate real sub-pages individually
+        # (e.g. CRM → Companies, Segments, Pipeline Board, Tags, Contacts)
+        # instead of one all-or-nothing "CRM" switch.
+        #
+        # IMPORTANT — every one of these sub-pages is LIVE and fully open to
+        # every tenant today (no gate existed before this migration). So this
+        # seed grants every existing plan every key below, preserving exactly
+        # today's behaviour. Nobody loses access at migration time — the new
+        # checkboxes only start doing something the next time an admin
+        # unchecks one for a specific plan. Plans created AFTER this
+        # migration via the new editor start with nothing granted (an
+        # explicit admin choice), which is normal/expected for a brand new
+        # plan and is not a live-tenant regression.
+        # ══════════════════════════════════════════════════════════════════
+        if not _table_exists(cur, "plan_feature_grants"):
+            cur.execute("""
+                CREATE TABLE plan_feature_grants (
+                    plan_id     INTEGER NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+                    feature_key VARCHAR(60) NOT NULL,
+                    PRIMARY KEY (plan_id, feature_key)
+                )
+            """)
+            _new_gate_keys = [
+                "leads.page", "team.manage",
+                "crm.contacts", "crm.companies", "crm.pipeline_board",
+                "crm.segments", "crm.tags", "crm.merge_review", "crm.pipeline_settings",
+                "ai.handoff_rules",
+                "reports.pipeline_overview", "reports.leads_sources", "reports.custom",
+                "reports.usage", "reports.cart", "reports.billing",
+                "ecom.woo_sync", "ecom.data_sources",
+                "ecom.products", "ecom.orders", "ecom.customers", "ecom.discount_settings",
+                "woo.product_recommendation", "woo.cross_selling", "woo.cart_recovery",
+                "woo.verified_specs", "woo.chat_archive", "woo.message_templates",
+                "store.info", "analytics.page",
+                "inbox.page", "channels.page", "voice.calls",
+                "wa.connect", "wa.handoff_reports",
+            ]
+            cur.execute("SELECT id FROM plans")
+            _all_plan_ids = [r[0] for r in cur.fetchall()]
+            for _pid in _all_plan_ids:
+                for _key in _new_gate_keys:
+                    cur.execute(
+                        "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                        (_pid, _key),
+                    )
+        else:
+            # Table already existed (created before ecom.products/orders/
+            # customers/discount_settings/leads.page/team.manage were added
+            # to the catalog) — backfill just these newer keys for every
+            # existing plan so nobody loses access to pages that were fully
+            # open before this change either.
+            cur.execute("SELECT id FROM plans")
+            _all_plan_ids = [r[0] for r in cur.fetchall()]
+            for _pid in _all_plan_ids:
+                for _key in ("ecom.products", "ecom.orders", "ecom.customers", "ecom.discount_settings",
+                             "leads.page", "team.manage",
+                             "woo.product_recommendation", "woo.cross_selling", "woo.cart_recovery",
+                             "woo.verified_specs", "woo.chat_archive", "woo.message_templates",
+                             "store.info", "analytics.page",
+                             "inbox.page", "channels.page", "voice.calls",
+                             "wa.connect", "wa.handoff_reports"):
+                    cur.execute(
+                        "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                        (_pid, _key),
+                    )
+
+        # ══════════════════════════════════════════════════════════════════
+        # Module/feature tagging pass (2026-09-19) — closing the gap where
+        # several real sidebar screens (Dashboard, Billing, Settings, API
+        # Keys, AI Agent Profiles, My Catalogue, Help/Video Tutorials,
+        # WhatsApp Report) had NO feature_key at all, so PLAN_FEATURE_CATALOG
+        # couldn't be reused as the module list for team-member role
+        # permissions (found while scoping real access control). This backfill
+        # grants every one of these new keys to every EXISTING plan, same
+        # "don't take away something that was already open" rule as every
+        # earlier key-catalog expansion above — purely additive, no visible
+        # change to any customer from this pass alone.
+        # ══════════════════════════════════════════════════════════════════
+        cur.execute("SELECT id FROM plans")
+        _all_plan_ids_tagging = [r[0] for r in cur.fetchall()]
+        for _pid in _all_plan_ids_tagging:
+            for _key in ("dashboard.page", "billing.subscription", "billing.credits",
+                         "billing.invoices", "billing.payment_gateways", "settings.account",
+                         "help.tutorials", "help.videos", "wa.report",
+                         "ai.api_keys", "ai.agent_profiles", "ecom.catalogue"):
+                cur.execute(
+                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    (_pid, _key),
+                )
+
+        # ── Follow-up same day: three groups (WhatsApp Campaigns, Email
+        # Campaigns, Cart Recovery) only had ONE key covering the whole
+        # group — every sub-item inside shared it, same coarse-grain problem
+        # as team.manage. Flagged by the user after reviewing the first
+        # module map. Splitting each sub-item its own key, same non-breaking
+        # universal backfill as above (the existing group-level legacy/woo
+        # key is untouched and still controls the group header's own lock).
+        for _pid in _all_plan_ids_tagging:
+            for _key in ("campaigns_wa.all", "campaigns_wa.segments", "campaigns_wa.reports",
+                         "campaigns_wa.needs_review",
+                         "campaigns_email.all", "campaigns_email.segments", "campaigns_email.reports",
+                         "woo.cart_recovery_settings", "woo.cart_recovery_templates"):
+                cur.execute(
+                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    (_pid, _key),
+                )
+
+        # ── Second follow-up same day: Inbox and Channels each had exactly
+        # ONE key covering everything inside them — a restricted team member
+        # role couldn't separate "can view the Inbox" from "can reply/resolve/
+        # takeover/edit contacts", or "can view Channels" from "can connect a
+        # new Messenger Page / PressOne number" (a real admin-level action).
+        # Flagged by the user. inbox.page/channels.page keep their existing
+        # meaning (the page itself); these are additive siblings.
+        for _pid in _all_plan_ids_tagging:
+            for _key in ("inbox.reply", "inbox.claim_release", "inbox.resolve",
+                         "inbox.takeover", "inbox.manage_contact",
+                         "channels.connect_messenger", "channels.connect_pressone"):
+                cur.execute(
+                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    (_pid, _key),
+                )
+
+        # ── Third follow-up same day: Store Information was also one flat
+        # key. Its route (store_info()) actually handles 3 distinct actions
+        # via a hidden `action` form field — confirmed by reading the route
+        # body, not guessed: default save (edit business details/AI knowledge
+        # text), `upload_doc` and `delete_doc` (add/remove a document the AI
+        # indexes for its own knowledge). Uploading/deleting what the AI
+        # learns from is a meaningfully bigger action than editing a text
+        # blurb, so it gets its own key rather than folding into "edit".
+        # store.info keeps its existing meaning (view); these are additive.
+        for _pid in _all_plan_ids_tagging:
+            for _key in ("store.info_edit", "store.info_documents"):
+                cur.execute(
+                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    (_pid, _key),
+                )
+
+        # ── Fourth follow-up same day: Settings and Leads.
+        # Settings' real page (`settings()`, /settings) fans out into 6 real
+        # POST routes (settings_profile/_password/_avatar/_notifications/
+        # _business/_cancel_plan) confirmed by reading each — grouped into 4
+        # keys: password and cancel-plan kept apart from the rest since
+        # they're the two genuinely higher-stakes ones (account security,
+        # and cancelling a paid plan) — everything else (profile/avatar/
+        # notifications) is low-stakes personal preference, grouped together.
+        # settings.account keeps its existing meaning (view).
+        # (`/settings/payments` is a DIFFERENT route — already tagged
+        # billing.payment_gateways in the Billing module, not touched here.)
+        # Leads: `leads_page()` handles both view and create (POST) on the
+        # same URL; `/leads/create-from-conversation` is the same create
+        # action from a different entry point, folded into one key.
+        # `/leads/<id>` (Lead Command Centre) is view-only — no new key
+        # needed, covered by the existing leads.page. Actually editing a
+        # lead's pipeline stage happens via /sales-pipeline/<id>/... routes,
+        # already covered by the CRM module — out of scope here.
+        for _pid in _all_plan_ids_tagging:
+            for _key in ("settings.profile_edit", "settings.business_edit",
+                         "settings.password", "settings.cancel_plan",
+                         "leads.create"):
+                cur.execute(
+                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    (_pid, _key),
+                )
+
+        # ══════════════════════════════════════════════════════════════════
+        # tenant_roles (2026-09-19) — real, named, reusable custom roles a
+        # business defines for its own team. permissions is keyed by the
+        # SAME feature_key strings as PLAN_FEATURE_CATALOG (the catalog
+        # above, also the /admin/modules source of truth) — user explicitly
+        # chose to keep the 75 real named features as individual on/off
+        # toggles rather than a generic View/Create/Modify/Delete per module,
+        # after being shown that several features (Inbox's "Resolve"/"Take
+        # over", Settings' "Cancel plan") don't map cleanly onto those 4
+        # generic verbs. See project_team_access_control memory for the full
+        # design history.
+        # ══════════════════════════════════════════════════════════════════
+        if not _table_exists(cur, "tenant_roles"):
+            cur.execute("""
+                CREATE TABLE tenant_roles (
+                    id          SERIAL PRIMARY KEY,
+                    tenant_id   INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    name        VARCHAR(100) NOT NULL,
+                    permissions JSONB NOT NULL DEFAULT '{}',
+                    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    UNIQUE (tenant_id, name)
+                )
+            """)
+
+        if not _column_exists(cur, "team_members", "role_id"):
+            cur.execute(
+                "ALTER TABLE team_members ADD COLUMN role_id INTEGER "
+                "REFERENCES tenant_roles(id) ON DELETE SET NULL"
+            )
+            # Backfill EXISTING team members only (tenants that already use
+            # this feature today) with a "Support Agent" role that grants
+            # EXACTLY today's real behavior — full Inbox access, nothing
+            # else — so when enforcement actually gets wired later, nobody's
+            # access silently changes on the day this ships. New tenants
+            # get their default role lazily created on first visit to the
+            # Team/Roles page (_ensure_default_role() in portal_routes.py),
+            # not here — no reason to pre-create an unused role for every
+            # tenant in the system that has never touched Team.
+            _default_support_agent_perms = (
+                '{"inbox.page": true, "inbox.reply": true, '
+                '"inbox.claim_release": true, "inbox.resolve": true, '
+                '"inbox.takeover": true, "inbox.manage_contact": true}'
+            )
+            cur.execute("SELECT DISTINCT tenant_id FROM team_members")
+            _tenant_ids_with_team = [r[0] for r in cur.fetchall()]
+            for _tid in _tenant_ids_with_team:
+                cur.execute(
+                    "INSERT INTO tenant_roles (tenant_id, name, permissions) "
+                    "VALUES (%s, %s, %s::jsonb) RETURNING id",
+                    (_tid, "Support Agent", _default_support_agent_perms),
+                )
+                _role_id = cur.fetchone()[0]
+                cur.execute(
+                    "UPDATE team_members SET role_id=%s WHERE tenant_id=%s AND role_id IS NULL",
+                    (_role_id, _tid),
+                )
+
+        # ══════════════════════════════════════════════════════════════════
+        # team_members profile fields (2026-09-19, follow-up right after the
+        # Roles system shipped — user tried creating a user and found the
+        # form too thin). first_name/last_name mirror customers' exact
+        # types (VARCHAR(100) each, confirmed by reading that table before
+        # adding these, not guessed). The existing `name` column is kept
+        # as-is and NOT removed — it's read in many places already (chat
+        # attribution "Sent by X", avatar initials, invite emails) and is
+        # set to "first_name last_name" at creation time in portal_routes.py,
+        # so none of those existing call sites need to change.
+        # line_manager_id is self-referential (another team_members row),
+        # not free text — nullable, SET NULL on delete so removing a manager
+        # never blocks or cascades into deleting their reports.
+        # ══════════════════════════════════════════════════════════════════
+        if not _column_exists(cur, "team_members", "first_name"):
+            cur.execute("ALTER TABLE team_members ADD COLUMN first_name VARCHAR(100)")
+        if not _column_exists(cur, "team_members", "last_name"):
+            cur.execute("ALTER TABLE team_members ADD COLUMN last_name VARCHAR(100)")
+        if not _column_exists(cur, "team_members", "department"):
+            cur.execute("ALTER TABLE team_members ADD COLUMN department VARCHAR(100)")
+        if not _column_exists(cur, "team_members", "position_title"):
+            cur.execute("ALTER TABLE team_members ADD COLUMN position_title VARCHAR(100)")
+        if not _column_exists(cur, "team_members", "avatar_data"):
+            cur.execute("ALTER TABLE team_members ADD COLUMN avatar_data TEXT")
+        if not _column_exists(cur, "team_members", "line_manager_id"):
+            cur.execute(
+                "ALTER TABLE team_members ADD COLUMN line_manager_id INTEGER "
+                "REFERENCES team_members(id) ON DELETE SET NULL"
+            )
+
+        # ══════════════════════════════════════════════════════════════════
+        # Departments & Positions (2026-09-19, same-day follow-up) — user
+        # correctly pointed out department/position_title were free-text
+        # fields with no way to ever CREATE a department or position, so the
+        # dropdown had nothing real to offer. Replaced with real, named,
+        # reusable, owner-managed lists — same pattern as tenant_roles, not
+        # a new pattern invented for this. Confirmed both free-text columns
+        # were still empty for every real row (only 1 real team member
+        # existed, department/position_title both blank) before dropping
+        # them, so this is a clean replace, not a lossy migration.
+        # ══════════════════════════════════════════════════════════════════
+        if not _table_exists(cur, "tenant_departments"):
+            cur.execute("""
+                CREATE TABLE tenant_departments (
+                    id         SERIAL PRIMARY KEY,
+                    tenant_id  INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    name       VARCHAR(100) NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    UNIQUE (tenant_id, name)
+                )
+            """)
+        if not _table_exists(cur, "tenant_positions"):
+            cur.execute("""
+                CREATE TABLE tenant_positions (
+                    id         SERIAL PRIMARY KEY,
+                    tenant_id  INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    name       VARCHAR(100) NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    UNIQUE (tenant_id, name)
+                )
+            """)
+        if not _column_exists(cur, "team_members", "department_id"):
+            cur.execute(
+                "ALTER TABLE team_members ADD COLUMN department_id INTEGER "
+                "REFERENCES tenant_departments(id) ON DELETE SET NULL"
+            )
+        if not _column_exists(cur, "team_members", "position_id"):
+            cur.execute(
+                "ALTER TABLE team_members ADD COLUMN position_id INTEGER "
+                "REFERENCES tenant_positions(id) ON DELETE SET NULL"
+            )
+        # Free-text columns from the previous pass — replaced by the FK
+        # columns above, confirmed empty everywhere first (see comment
+        # above), safe to drop rather than leave two parallel/confusing
+        # systems sitting side by side.
+        if _column_exists(cur, "team_members", "department"):
+            cur.execute("ALTER TABLE team_members DROP COLUMN department")
+        if _column_exists(cur, "team_members", "position_title"):
+            cur.execute("ALTER TABLE team_members DROP COLUMN position_title")
+
+        # Location — staff can be in a different city/country from the
+        # business itself. Country reuses the EXACT same code/name list
+        # already used for billing_country in settings.html (read that
+        # template first, not guessed), for a consistent dropdown across the
+        # app rather than a second, different country list.
+        if not _column_exists(cur, "team_members", "location_city"):
+            cur.execute("ALTER TABLE team_members ADD COLUMN location_city VARCHAR(100)")
+        if not _column_exists(cur, "team_members", "location_country"):
+            cur.execute("ALTER TABLE team_members ADD COLUMN location_country VARCHAR(10)")
+
+        # ── "Super User" design (2026-09-19): Team's single "team.manage" key
+        # had the same flat-key problem already fixed for Inbox/Channels/
+        # Store Information/Settings — split into granular keys so a
+        # delegated, capped role (e.g. a "Super User" that can create team
+        # members and assign roles, but can never touch Payment/Billing or
+        # hold/hand out delete permissions — enforced in portal_routes.py's
+        # _cap_delegated_role_permissions / _feature_catalog_for_actor /
+        # _assignable_roles_for_actor) has something real to be granted.
+        # team.manage itself is kept (still the plan-tier gate + base "can
+        # see the Team page" grant, same pattern as inbox.page) — these are
+        # additive, non-breaking, same backfill method as every prior split.
+        cur.execute("SELECT id FROM plans")
+        _all_plan_ids_tagging = [r[0] for r in cur.fetchall()]
+        for _pid in _all_plan_ids_tagging:
+            for _key in ("team.members_create", "team.members_assign_role",
+                         "team.members_deactivate", "team.members_remove",
+                         "team.members_channel_access", "team.roles_manage",
+                         "team.roles_delete", "team.departments_manage",
+                         "team.departments_delete", "team.positions_manage",
+                         "team.positions_delete"):
+                cur.execute(
+                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    (_pid, _key),
+                )
+
         conn.commit()
     except Exception as e:
         conn.rollback()
