@@ -5039,9 +5039,22 @@ def admin_plans():
     cur.execute("SELECT * FROM plans ORDER BY sort_order")
     plans = cur.fetchall() or []
 
+    # Features-enabled summary for the plan list (replaces the old flat
+    # CRM/Custom AI/Integrations/Visual Match columns, which only ever showed
+    # 4 of the now-21 real catalog items). Counts new-style grants from
+    # plan_feature_grants plus however many legacy feat_* flags are TRUE.
+    _total_catalog_items = len(_ALL_CATALOG_ITEMS)
+    _legacy_cols = [key.split(":", 1)[1] for key, _label in _ALL_CATALOG_ITEMS if key.startswith("legacy:")]
+    cur.execute("SELECT plan_id, COUNT(*) AS n FROM plan_feature_grants GROUP BY plan_id")
+    _grant_counts = {row["plan_id"]: row["n"] for row in (cur.fetchall() or [])}
+    for p in plans:
+        legacy_on = sum(1 for col in _legacy_cols if p.get(col))
+        p["features_enabled_count"] = _grant_counts.get(p["id"], 0) + legacy_on
+        p["features_total_count"] = _total_catalog_items
+
     cur.execute("""
         SELECT t.id AS tenant_id, t.name AS business_name,
-               t.billing_cycle, t.plan_period_start,
+               t.billing_cycle, t.plan_period_start, t.dual_agent_grandfathered,
                COALESCE(p.slug, 'free') AS plan_slug,
                COALESCE(p.name, 'Free') AS plan_name,
                (SELECT COUNT(*) FROM usage_events ue
@@ -5058,6 +5071,224 @@ def admin_plans():
 
     return render_template("portal/admin_plans.html",
                            plans=plans, tenants=tenants)
+
+
+# Flattened (feature_key, label) pairs across every group in the catalog —
+# used to walk form fields without caring which group a key belongs to.
+_ALL_CATALOG_ITEMS = [item for _group, items in PLAN_FEATURE_CATALOG.items() for item in items]
+
+
+def _plan_form_to_dict(form) -> dict:
+    def _int(name, default=0):
+        raw = (form.get(name) or "").strip()
+        if raw == "":
+            return default
+        return int(raw)
+
+    def _num(name, default=0):
+        raw = (form.get(name) or "").strip()
+        if raw == "":
+            return default
+        return float(raw)
+
+    data = {
+        "slug":                (form.get("slug") or "").strip().lower().replace(" ", "_"),
+        "name":                (form.get("name") or "").strip(),
+        "price_ngn":           _int("price_ngn", 0),
+        "price_usd":           _num("price_usd", 0),
+        "ai_messages_limit":   _int("ai_messages_limit", 100),
+        "ai_agents_limit":     _int("ai_agents_limit", 1),
+        "broadcasts_limit":    _int("broadcasts_limit", 0),
+        "products_limit":      _int("products_limit", 50),
+        "data_sources_limit":  _int("data_sources_limit", 1),
+        "staff_limit":         _int("staff_limit", 0),
+        "overage_per_msg_ngn": _num("overage_per_msg_ngn", 10),
+        "overage_per_msg_usd": _num("overage_per_msg_usd", 0.006),
+        "annual_discount_pct": _int("annual_discount_pct", 5),
+        "sort_order":          _int("sort_order", 0),
+        "is_active":           form.get("is_active") == "on",
+        "is_custom":           form.get("is_custom") == "on",
+        "channel_mode":        form.get("channel_mode") if form.get("channel_mode") in ("single", "dual", "both") else "single",
+        "parent_plan_id":      int(form["parent_plan_id"]) if (form.get("parent_plan_id") or "").strip() else None,
+    }
+    # Legacy feat_* columns are still the real gate for WhatsApp Campaigns /
+    # Email Campaigns / Checkout / Custom AI / Visual Match — see
+    # PLAN_FEATURE_CATALOG's docstring in portal_routes.py.
+    for feature_key, _label in _ALL_CATALOG_ITEMS:
+        if feature_key.startswith("legacy:"):
+            col = feature_key.split(":", 1)[1]
+            data[col] = form.get(feature_key) == "on"
+    return data
+
+
+def _granted_feature_keys(form) -> list:
+    """New-style (non-legacy) catalog keys checked on the submitted form —
+    what gets written into plan_feature_grants for this plan."""
+    return [key for key, _label in _ALL_CATALOG_ITEMS
+            if not key.startswith("legacy:") and form.get(key) == "on"]
+
+
+def _save_plan_feature_grants(conn, plan_id: int, granted_keys: list) -> None:
+    cur = conn.cursor()
+    cur.execute("DELETE FROM plan_feature_grants WHERE plan_id=%s", (plan_id,))
+    for key in granted_keys:
+        cur.execute(
+            "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+            (plan_id, key),
+        )
+    conn.commit()
+    cur.close()
+
+
+@portal_admin_bp.route("/plans/new", methods=["GET", "POST"])
+def admin_plans_new():
+    r = _require_admin("plans", "modify")
+    if r: return r
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT id, name, slug FROM plans WHERE channel_mode != 'dual' ORDER BY sort_order")
+    parent_candidates = cur.fetchall() or []
+
+    if request.method == "POST":
+        data = _plan_form_to_dict(request.form)
+        if not data["slug"] or not data["name"]:
+            flash("Plan name and slug are required.", "danger")
+            cur.close(); conn.close()
+            return render_template("portal/admin_plan_form.html", plan=data,
+                                    parent_candidates=parent_candidates,
+                                    feature_catalog=PLAN_FEATURE_CATALOG,
+                                    granted_keys=_granted_feature_keys(request.form), is_new=True)
+        try:
+            cols = list(data.keys())
+            cur2 = conn.cursor()
+            cur2.execute(
+                f"INSERT INTO plans ({', '.join(cols)}) VALUES ({', '.join(['%s'] * len(cols))}) RETURNING id",
+                [data[c] for c in cols],
+            )
+            new_id = cur2.fetchone()[0]
+            conn.commit()
+            cur2.close()
+            _save_plan_feature_grants(conn, new_id, _granted_feature_keys(request.form))
+            cur.close(); conn.close()
+            insert_audit_log(action="plan_create", admin_username=_admin_user(),
+                             details={"plan_id": new_id, "slug": data["slug"]})
+            flash(f"Plan \"{data['name']}\" created.", "success")
+            return redirect(url_for("portal_admin.admin_plans"))
+        except psycopg2.errors.UniqueViolation:
+            conn.rollback()
+            cur.close(); conn.close()
+            flash(f"A plan with slug \"{data['slug']}\" already exists — choose a different slug.", "danger")
+            return render_template("portal/admin_plan_form.html", plan=data,
+                                    parent_candidates=parent_candidates,
+                                    feature_catalog=PLAN_FEATURE_CATALOG,
+                                    granted_keys=_granted_feature_keys(request.form), is_new=True)
+
+    cur.close(); conn.close()
+    blank = {"slug": "", "name": "", "price_ngn": 0, "price_usd": 0,
+             "ai_messages_limit": 100, "ai_agents_limit": 1, "broadcasts_limit": 0,
+             "products_limit": 50, "data_sources_limit": 1, "staff_limit": 0,
+             "overage_per_msg_ngn": 10, "overage_per_msg_usd": 0.006,
+             "annual_discount_pct": 5, "sort_order": 0, "is_active": True,
+             "is_custom": False, "channel_mode": "single", "parent_plan_id": None}
+    for feature_key, _label in _ALL_CATALOG_ITEMS:
+        if feature_key.startswith("legacy:"):
+            blank[feature_key.split(":", 1)[1]] = False
+    return render_template("portal/admin_plan_form.html", plan=blank,
+                            parent_candidates=parent_candidates,
+                            feature_catalog=PLAN_FEATURE_CATALOG,
+                            granted_keys=set(), is_new=True)
+
+
+@portal_admin_bp.route("/plans/<int:plan_id>/edit", methods=["GET", "POST"])
+def admin_plans_edit(plan_id: int):
+    r = _require_admin("plans", "modify")
+    if r: return r
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT id, name, slug FROM plans WHERE channel_mode != 'dual' AND id != %s ORDER BY sort_order", (plan_id,))
+    parent_candidates = cur.fetchall() or []
+
+    if request.method == "POST":
+        data = _plan_form_to_dict(request.form)
+        if not data["slug"] or not data["name"]:
+            flash("Plan name and slug are required.", "danger")
+            cur.close(); conn.close()
+            return render_template("portal/admin_plan_form.html", plan=dict(data, id=plan_id),
+                                    parent_candidates=parent_candidates,
+                                    feature_catalog=PLAN_FEATURE_CATALOG,
+                                    granted_keys=_granted_feature_keys(request.form), is_new=False)
+        try:
+            cur2 = conn.cursor()
+            set_clause = ", ".join(f"{c}=%s" for c in data.keys())
+            cur2.execute(
+                f"UPDATE plans SET {set_clause} WHERE id=%s",
+                [*data.values(), plan_id],
+            )
+            conn.commit()
+            cur2.close()
+            _save_plan_feature_grants(conn, plan_id, _granted_feature_keys(request.form))
+            cur.close(); conn.close()
+            insert_audit_log(action="plan_update", admin_username=_admin_user(),
+                             details={"plan_id": plan_id, "slug": data["slug"]})
+            flash(f"Plan \"{data['name']}\" updated.", "success")
+            return redirect(url_for("portal_admin.admin_plans"))
+        except psycopg2.errors.UniqueViolation:
+            conn.rollback()
+            cur.close(); conn.close()
+            flash(f"A plan with slug \"{data['slug']}\" already exists — choose a different slug.", "danger")
+            return render_template("portal/admin_plan_form.html", plan=dict(data, id=plan_id),
+                                    parent_candidates=parent_candidates,
+                                    feature_catalog=PLAN_FEATURE_CATALOG,
+                                    granted_keys=_granted_feature_keys(request.form), is_new=False)
+
+    cur.execute("SELECT * FROM plans WHERE id=%s", (plan_id,))
+    plan = cur.fetchone()
+    cur.execute("SELECT feature_key FROM plan_feature_grants WHERE plan_id=%s", (plan_id,))
+    granted_keys = {row["feature_key"] for row in (cur.fetchall() or [])}
+    cur.close(); conn.close()
+    if not plan:
+        flash("Plan not found.", "danger")
+        return redirect(url_for("portal_admin.admin_plans"))
+    return render_template("portal/admin_plan_form.html", plan=plan,
+                            parent_candidates=parent_candidates,
+                            feature_catalog=PLAN_FEATURE_CATALOG,
+                            granted_keys=granted_keys, is_new=False)
+
+
+@portal_admin_bp.route("/plans/<int:plan_id>/preview")
+def admin_plan_preview(plan_id: int):
+    """Standalone 'what will a business on this plan actually see' page —
+    deliberately does NOT extend admin_base.html (no admin sidebar around
+    it) so it reads as a clean mock of the real merchant experience, not an
+    admin screen. Shows the pricing card plus the full sidebar menu with the
+    same 🔒 lock logic the real portal sidebar uses, driven only by this
+    plan's own grants — not tied to any specific real business/tenant."""
+    r = _require_admin("plans", "view")
+    if r: return r
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM plans WHERE id=%s", (plan_id,))
+    plan = cur.fetchone()
+    if not plan:
+        cur.close(); conn.close()
+        flash("Plan not found.", "danger")
+        return redirect(url_for("portal_admin.admin_plans"))
+
+    cur.execute("SELECT feature_key FROM plan_feature_grants WHERE plan_id=%s", (plan_id,))
+    granted = {row["feature_key"] for row in (cur.fetchall() or [])}
+    cur.close(); conn.close()
+
+    for col in ("feat_advanced_ai", "feat_visual_match", "feat_broadcasts",
+                "feat_email_campaigns", "feat_fw_checkout"):
+        if plan.get(col):
+            granted.add(f"legacy:{col}")
+
+    return render_template("portal/admin_plan_preview.html",
+                            plan=plan, granted_features=granted,
+                            feature_catalog=PLAN_FEATURE_CATALOG)
 
 
 @portal_admin_bp.route("/plans/assign/<int:tenant_id>", methods=["POST"])
@@ -5093,6 +5324,27 @@ def admin_plans_assign(tenant_id: int):
                 return redirect(url_for("portal_admin.customer_detail", customer_id=row[0]))
         except Exception:
             pass
+    return redirect(url_for("portal_admin.admin_plans"))
+
+
+@portal_admin_bp.route("/plans/grandfather/<int:tenant_id>", methods=["POST"])
+def admin_plans_grandfather(tenant_id: int):
+    """Toggle whether a merchant keeps their single-channel price even if
+    they run both WhatsApp + Website AI agents. See project_dual_agent_pricing
+    memory — as of launch (2026-09-18) no real merchant needed this, it's a
+    manual admin override for future use since there's no reliable automatic
+    way to detect a tenant is actively using both channels."""
+    r = _require_admin("plans", "modify")
+    if r: return r
+    grandfathered = request.form.get("dual_agent_grandfathered") == "on"
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("UPDATE tenants SET dual_agent_grandfathered=%s WHERE id=%s", (grandfathered, tenant_id))
+    conn.commit()
+    cur.close(); conn.close()
+    insert_audit_log(action="plan_dual_grandfather_toggle", admin_username=_admin_user(),
+                     details={"tenant_id": tenant_id, "grandfathered": grandfathered})
+    flash("Dual Agent grandfather status updated.", "success")
     return redirect(url_for("portal_admin.admin_plans"))
 
 

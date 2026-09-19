@@ -317,6 +317,33 @@ _SCOPE_INSTRUCTION = (
     "provided to you."
 )
 
+def _plan_feature_enabled(tenant_id: int, feature_key: str) -> bool:
+    """Plan-level gate for a granular WooCommerce Plugin feature — mirrors
+    portal_routes.py's _plan_grants_feature/plan_feature_grants table (same
+    Postgres DB, ai_support). Used alongside the tenant's own opt-in
+    (tenants.features JSON) — both must be true, matching the pattern
+    image_search.get_visual_match_settings() already uses for
+    feat_visual_match. Fails OPEN (True) on any DB error so a portal-side
+    outage never silently breaks a merchant's live AI chat."""
+    conn = get_db_connection()
+    if not conn:
+        return True
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT 1 FROM plan_feature_grants g "
+            "JOIN tenants t ON t.plan_id = g.plan_id "
+            "WHERE t.id = %s AND g.feature_key = %s LIMIT 1",
+            (tenant_id, feature_key),
+        )
+        return bool(cur.fetchone())
+    except Exception as exc:
+        print(f"⚠️ _plan_feature_enabled error: {exc}")
+        return True
+    finally:
+        conn.close()
+
+
 def _check_quota(tenant_id: int) -> dict:
     """
     Returns quota state for a tenant.
@@ -442,8 +469,10 @@ def chat(req: ChatRequest):
     elif isinstance(_raw_features, dict):
         _features = _raw_features
 
-    rec_enabled = bool(_features.get("product_recommendation", True))
-    related_enabled = bool(_features.get("related_products", False))
+    rec_enabled = bool(_features.get("product_recommendation", True)) and \
+        _plan_feature_enabled(int(tenant_id), "woo.product_recommendation")
+    related_enabled = bool(_features.get("related_products", False)) and \
+        _plan_feature_enabled(int(tenant_id), "woo.cross_selling")
 
     # Product recommendation instruction goes FIRST — before handoff rules —
     # so it carries maximum weight with the model.

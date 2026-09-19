@@ -3,82 +3,190 @@
 
 {% block content %}
 <style>
-.plans-table { width:100%; border-collapse:collapse; background:#fff;
-               border:1px solid var(--line); border-radius:14px; overflow:hidden }
-.plans-table th { padding:10px 14px; text-align:left; font-size:11px; font-weight:700;
-                  color:var(--muted); text-transform:uppercase; letter-spacing:.05em;
-                  background:#fafafa; border-bottom:1px solid var(--line) }
-.plans-table td { padding:11px 14px; border-bottom:1px solid rgba(3,12,24,.05);
-                  font-size:13px; vertical-align:middle }
-.plans-table tr:last-child td { border-bottom:none }
-.feat-y { color:#12B76A; font-weight:700 }
-.feat-n { color:#d1d5db }
+/* ── Summary strip ─────────────────────────────────────────────────────── */
+.plan-summary-strip { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:26px }
+.plan-summary-chip {
+  display:flex; align-items:center; gap:8px; background:#fff; border:1px solid var(--line);
+  border-radius:12px; padding:10px 16px; font-size:12px; color:var(--muted);
+}
+.plan-summary-chip strong { color:var(--ink); font-size:15px; font-weight:800 }
 
-.tenant-table { width:100%; border-collapse:collapse; background:#fff;
-                border:1px solid var(--line); border-radius:14px; overflow:hidden; margin-top:28px }
-.tenant-table th { padding:10px 14px; text-align:left; font-size:11px; font-weight:700;
-                   color:var(--muted); text-transform:uppercase; letter-spacing:.05em;
-                   background:#fafafa; border-bottom:1px solid var(--line) }
-.tenant-table td { padding:10px 14px; border-bottom:1px solid rgba(3,12,24,.05);
-                   font-size:13px; vertical-align:middle }
-.tenant-table tr:last-child td { border-bottom:none }
+/* ── Colour key: each meaning gets its OWN colour, never reused for
+   something else — mode = purple/blue/grey, status = green/amber/red. ── */
+.color-legend { display:flex; gap:16px; flex-wrap:wrap; margin:-10px 0 22px; font-size:11.5px; color:var(--muted) }
+.color-legend span { display:inline-flex; align-items:center; gap:6px }
+.color-legend .dot { width:9px; height:9px; border-radius:50% }
 
-.meter-sm { height:6px; background:#f0f0f2; border-radius:999px; width:80px; display:inline-block; vertical-align:middle; margin-right:6px }
-.meter-sm-fill { height:100%; border-radius:999px; background:#12B76A }
-.meter-sm-fill.warn   { background:#F79009 }
-.meter-sm-fill.danger { background:#F04438 }
+.pill-purple { border-color:rgba(124,58,237,0.30); background:rgba(124,58,237,0.10); color:#6D28D9 }
+.pill-blue   { border-color:rgba(46,144,250,0.30); background:rgba(46,144,250,0.10); color:#175CD3 }
+
+/* ── Plan cards ────────────────────────────────────────────────────────── */
+.plans-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(268px, 1fr)); gap:16px; margin-bottom:36px }
+
+.plan-card {
+  background:#fff; border:1px solid var(--line); border-radius:16px; padding:20px;
+  display:flex; flex-direction:column; gap:14px; transition:.15s;
+  position:relative; overflow:hidden;
+}
+.plan-card:hover { border-color:rgba(3,12,24,0.22); box-shadow:0 4px 18px rgba(3,12,24,0.06) }
+.plan-card.inactive { opacity:.55 }
+.plan-card.mode-dual::before {
+  content:""; position:absolute; top:0; left:0; right:0; height:3px;
+  background:#7C3AED;
+}
+.plan-card.mode-custom::before {
+  content:""; position:absolute; top:0; left:0; right:0; height:3px;
+  background:#2E90FA;
+}
+.plan-card.mode-single::before {
+  content:""; position:absolute; top:0; left:0; right:0; height:3px;
+  background:var(--line);
+}
+
+.pc-head { display:flex; justify-content:space-between; align-items:flex-start; gap:8px }
+.pc-name { font-size:16px; font-weight:800; letter-spacing:-.2px; line-height:1.25 }
+.pc-slug { font-size:11px; color:var(--muted); font-family:"SF Mono","Fira Code",monospace }
+
+.pc-price { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap }
+.pc-price-ngn { font-size:24px; font-weight:800; letter-spacing:-.5px; color:var(--ink) }
+.pc-price-usd { font-size:12px; color:var(--muted); font-weight:600 }
+.pc-price-period { font-size:11px; color:var(--muted) }
+
+.pc-divider { height:1px; background:var(--line) }
+
+.pc-stats { display:grid; grid-template-columns:1fr 1fr; gap:10px 14px }
+.pc-stat-label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; font-weight:700 }
+.pc-stat-value { font-size:13px; font-weight:700; color:var(--ink); margin-top:2px }
+
+.pc-feat-row { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:11px; color:var(--muted) }
+.pc-feat-bar { height:6px; background:rgba(3,12,24,0.06); border-radius:999px; overflow:hidden; margin-top:6px }
+.pc-feat-bar-fill { height:100%; border-radius:999px; background:linear-gradient(90deg,#12B76A,#027A48) }
+.pc-feat-bar-fill.partial { background:linear-gradient(90deg,#F79009,#DC6803) }
+.pc-feat-bar-fill.empty { background:var(--line) }
+
+.pc-footer { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:2px }
+.pc-edit-btn {
+  flex:1; text-align:center; padding:9px; border-radius:10px; font-size:13px; font-weight:700;
+  background:var(--ink); color:#fff; text-decoration:none; transition:.15s;
+}
+.pc-edit-btn:hover { background:#000; color:#fff; text-decoration:none }
+
+/* ── Tenant table ──────────────────────────────────────────────────────── */
+.tenant-usage { display:flex; align-items:center; gap:8px }
+.tenant-meter { height:6px; background:#f0f0f2; border-radius:999px; width:70px; flex-shrink:0; overflow:hidden }
+.tenant-meter-fill { height:100%; border-radius:999px; background:#12B76A }
+.tenant-meter-fill.warn   { background:#F79009 }
+.tenant-meter-fill.danger { background:#F04438 }
+
+.tenant-plan-form { display:flex; gap:6px; align-items:center; flex-wrap:wrap }
+.tenant-plan-form select {
+  padding:6px 8px; border-radius:8px; border:1px solid var(--line); font-size:12px; color:var(--txt);
+}
+
+.grandfather-toggle { display:inline-flex; align-items:center; gap:7px; cursor:pointer; font-size:11px; color:var(--muted) }
+.grandfather-toggle input { width:15px; height:15px; accent-color: var(--ink); cursor:pointer }
 </style>
 
-<div class="page-header" style="margin-bottom:24px">
+<div class="page-header" style="margin-bottom:18px">
   <div><div class="section-title">Plans Management</div>
-  <p class="muted">View plan definitions and assign plans to tenants</p></div>
+  <p class="muted">Create/edit plan definitions and assign plans to tenants</p></div>
+  <a href="{{ url_for('portal_admin.admin_plans_new') }}" class="btn btn-primary">+ New Plan</a>
+</div>
+
+{# ── Summary strip ────────────────────────────────────────────────────────── #}
+<div class="plan-summary-strip">
+  <div class="plan-summary-chip">📋 <strong>{{ plans|length }}</strong>&nbsp;plans</div>
+  <div class="plan-summary-chip">✅ <strong>{{ plans|selectattr('is_active')|list|length }}</strong>&nbsp;active</div>
+  <div class="plan-summary-chip">🏢 <strong>{{ tenants|length }}</strong>&nbsp;businesses</div>
+</div>
+
+<div class="color-legend">
+  <span><span class="dot" style="background:#98A2B3"></span> Single channel</span>
+  <span><span class="dot" style="background:#7C3AED"></span> Dual Agent</span>
+  <span><span class="dot" style="background:#2E90FA"></span> Custom</span>
+  <span style="margin-left:8px"><span class="dot" style="background:#12B76A"></span> Good / complete</span>
+  <span><span class="dot" style="background:#F79009"></span> Partial / needs a look</span>
+  <span><span class="dot" style="background:#F04438"></span> Over limit</span>
 </div>
 
 {# ── Plan definitions ──────────────────────────────────────────────────────── #}
 <div class="section-title" style="font-size:13px;margin-bottom:12px">Plan Definitions</div>
-<div style="overflow-x:auto">
-<table class="plans-table">
-  <thead>
-    <tr>
-      <th>Plan</th>
-      <th>Price NGN</th>
-      <th>Price USD</th>
-      <th>Annual Disc</th>
-      <th>AI Msgs</th>
-      <th>Agents</th>
-      <th>Broadcasts</th>
-      <th>CRM</th>
-      <th>Custom AI</th>
-      <th>Integrations</th>
-      <th>Visual Match</th>
-      <th>Overage NGN</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for p in plans %}
-    <tr>
-      <td><strong>{{ p.name }}</strong> <span style="font-size:11px;color:var(--muted)">({{ p.slug }})</span></td>
-      <td>₦{{ "{:,}".format(p.price_ngn) }}</td>
-      <td>${{ p.price_usd }}</td>
-      <td>{{ p.annual_discount_pct }}%</td>
-      <td>{{ p.ai_messages_limit if p.ai_messages_limit != -1 else '∞' }}</td>
-      <td>{{ p.agents_limit if p.agents_limit != -1 else '∞' }}</td>
-      <td>{{ p.broadcasts_limit if p.broadcasts_limit != -1 else '∞' }}</td>
-      <td><span class="{% if p.feat_crm %}feat-y{% else %}feat-n{% endif %}">{{ '✓' if p.feat_crm else '✗' }}</span></td>
-      <td><span class="{% if p.feat_advanced_ai %}feat-y{% else %}feat-n{% endif %}">{{ '✓' if p.feat_advanced_ai else '✗' }}</span></td>
-      <td><span class="{% if p.feat_integrations %}feat-y{% else %}feat-n{% endif %}">{{ '✓' if p.feat_integrations else '✗' }}</span></td>
-      <td><span class="{% if p.feat_visual_match %}feat-y{% else %}feat-n{% endif %}">{{ '✓' if p.feat_visual_match else '✗' }}</span></td>
-      <td>₦{{ p.overage_per_msg_ngn|int }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<div class="plans-grid">
+  {% for p in plans %}
+  {% set mode = 'custom' if p.is_custom else ('dual' if p.channel_mode == 'dual' else 'single') %}
+  {% set feat_pct = (p.features_enabled_count / p.features_total_count * 100) if p.features_total_count else 0 %}
+  <div class="plan-card mode-{{ mode }} {% if not p.is_active %}inactive{% endif %}">
+    <div class="pc-head">
+      <div>
+        <div class="pc-name">{{ p.name }}</div>
+        <div class="pc-slug">{{ p.slug }}</div>
+      </div>
+      <span class="pill {% if mode == 'dual' %}pill-purple{% elif mode == 'custom' %}pill-blue{% else %}pill-grey{% endif %}">
+        {% if mode == 'custom' %}Custom{% elif mode == 'dual' %}Dual Agent{% else %}Single channel{% endif %}
+      </span>
+    </div>
+
+    {% if p.is_custom %}
+    <div class="pc-price">
+      <span class="pc-price-ngn" style="font-size:20px">Talk to Sales</span>
+    </div>
+    {% elif p.price_ngn == 0 %}
+    <div class="pc-price">
+      <span class="pc-price-ngn">Free</span>
+    </div>
+    {% else %}
+    <div class="pc-price">
+      <span class="pc-price-ngn">₦{{ "{:,}".format(p.price_ngn) }}</span>
+      <span class="pc-price-usd">${{ p.price_usd }}</span>
+      <span class="pc-price-period">/mo · {{ p.annual_discount_pct }}% off annual</span>
+    </div>
+    {% endif %}
+
+    <div class="pc-divider"></div>
+
+    <div class="pc-stats">
+      <div>
+        <div class="pc-stat-label">AI Messages</div>
+        <div class="pc-stat-value">{{ "{:,}".format(p.ai_messages_limit) if p.ai_messages_limit != -1 else 'Unlimited' }}</div>
+      </div>
+      <div>
+        <div class="pc-stat-label">AI Agents</div>
+        <div class="pc-stat-value">{{ p.ai_agents_limit if p.ai_agents_limit != -1 else 'Unlimited' }}</div>
+      </div>
+      <div>
+        <div class="pc-stat-label">Broadcasts</div>
+        <div class="pc-stat-value">{{ "{:,}".format(p.broadcasts_limit) if p.broadcasts_limit != -1 else 'Unlimited' }}</div>
+      </div>
+      <div>
+        <div class="pc-stat-label">Overage</div>
+        <div class="pc-stat-value">₦{{ p.overage_per_msg_ngn|int }}/msg</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="pc-feat-row">
+        <span>Features</span>
+        <span><strong style="color:var(--ink)">{{ p.features_enabled_count }}</strong> / {{ p.features_total_count }} enabled</span>
+      </div>
+      <div class="pc-feat-bar">
+        <div class="pc-feat-bar-fill {% if p.features_enabled_count == 0 %}empty{% elif p.features_enabled_count < p.features_total_count %}partial{% endif %}"
+             style="width:{{ feat_pct }}%"></div>
+      </div>
+    </div>
+
+    <div class="pc-footer">
+      <a href="{{ url_for('portal_admin.admin_plans_edit', plan_id=p.id) }}" class="pc-edit-btn">Edit plan</a>
+      <a href="{{ url_for('portal_admin.admin_plan_preview', plan_id=p.id) }}" class="pc-edit-btn" style="background:#fff;color:var(--ink);border:1px solid var(--line);flex:0" target="_blank" rel="noopener">👁️ Preview</a>
+      <span class="pill {% if p.is_active %}pill-green{% else %}pill-grey{% endif %}">{{ 'Active' if p.is_active else 'Inactive' }}</span>
+    </div>
+  </div>
+  {% endfor %}
 </div>
 
 {# ── Tenant plan assignment ─────────────────────────────────────────────────── #}
 <div class="section-title" style="font-size:13px;margin:28px 0 12px">Tenant Plans</div>
-<div style="overflow-x:auto">
-<table class="tenant-table">
+<div class="table-wrap">
+<table>
   <thead>
     <tr>
       <th>Business</th>
@@ -86,37 +194,50 @@
       <th>Usage this period</th>
       <th>Cycle</th>
       <th>Change plan</th>
+      <th>Dual grandfather</th>
     </tr>
   </thead>
   <tbody>
     {% for t in tenants %}
     {% set pct = [((t.msgs_used / t.msgs_limit * 100)|int if t.msgs_limit > 0 else 0), 100]|min %}
+    {% set tp = plans|selectattr('slug', 'equalto', t.plan_slug)|first %}
+    {% set t_mode = 'custom' if (tp and tp.is_custom) else ('dual' if (tp and tp.channel_mode == 'dual') else 'single') %}
     <tr>
-      <td><strong>{{ t.business_name }}</strong> <span style="font-size:11px;color:var(--muted)">#{{ t.tenant_id }}</span></td>
-      <td><span class="pill {% if t.plan_slug == 'pro' %}pill-green{% elif t.plan_slug == 'growth' %}pill-green{% elif t.plan_slug == 'starter' %}pill-warn{% else %}pill-grey{% endif %}">
+      <td><strong>{{ t.business_name }}</strong> <span class="muted">#{{ t.tenant_id }}</span></td>
+      <td><span class="pill {% if t_mode == 'dual' %}pill-purple{% elif t_mode == 'custom' %}pill-blue{% else %}pill-grey{% endif %}">
         {{ t.plan_name }}
       </span></td>
       <td>
-        <div class="meter-sm">
-          <div class="meter-sm-fill {% if pct >= 100 %}danger{% elif pct >= 80 %}warn{% endif %}"
-               style="width:{{ pct }}%"></div>
+        <div class="tenant-usage">
+          <div class="tenant-meter">
+            <div class="tenant-meter-fill {% if pct >= 100 %}danger{% elif pct >= 80 %}warn{% endif %}"
+                 style="width:{{ pct }}%"></div>
+          </div>
+          <span class="muted">{{ t.msgs_used }} / {{ t.msgs_limit if t.msgs_limit != -1 else '∞' }}</span>
         </div>
-        {{ t.msgs_used }} / {{ t.msgs_limit if t.msgs_limit != -1 else '∞' }}
       </td>
       <td>{{ t.billing_cycle | capitalize }}</td>
       <td>
-        <form method="POST" action="{{ url_for('portal_admin.admin_plans_assign', tenant_id=t.tenant_id) }}"
-              style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <select name="plan_id" style="padding:5px 8px;border-radius:8px;border:1px solid var(--line);font-size:12px">
+        <form method="POST" action="{{ url_for('portal_admin.admin_plans_assign', tenant_id=t.tenant_id) }}" class="tenant-plan-form">
+          <select name="plan_id">
             {% for p in plans %}
             <option value="{{ p.id }}" {% if p.slug == t.plan_slug %}selected{% endif %}>{{ p.name }}</option>
             {% endfor %}
           </select>
-          <select name="billing_cycle" style="padding:5px 8px;border-radius:8px;border:1px solid var(--line);font-size:12px">
+          <select name="billing_cycle">
             <option value="monthly" {% if t.billing_cycle == 'monthly' %}selected{% endif %}>Monthly</option>
             <option value="annual"  {% if t.billing_cycle == 'annual'  %}selected{% endif %}>Annual</option>
           </select>
           <button type="submit" class="btn btn-sm btn-primary">Save</button>
+        </form>
+      </td>
+      <td>
+        <form method="POST" action="{{ url_for('portal_admin.admin_plans_grandfather', tenant_id=t.tenant_id) }}">
+          <label class="grandfather-toggle">
+            <input type="checkbox" name="dual_agent_grandfathered" {% if t.dual_agent_grandfathered %}checked{% endif %}
+                   onchange="this.form.submit()">
+            Keep single-channel price
+          </label>
         </form>
       </td>
     </tr>

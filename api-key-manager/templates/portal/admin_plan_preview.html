@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>Preview — {{ plan.name }} — PhiXtra Admin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <style>
+    :root{
+      --ink:#030C18; --line:rgba(3,12,24,0.10); --txt:rgba(3,12,24,0.92);
+      --muted:rgba(3,12,24,0.55); --good:#12B76A; --warn:#F79009; --bad:#F04438;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{
+      font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+      color:var(--txt); background:#f8f9fb; min-height:100vh; font-size:14px;
+    }
+    a{color:var(--ink)}
+
+    .preview-topbar{
+      background:#030C18; color:#fff; padding:12px 24px;
+      display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
+    }
+    .preview-topbar-left{display:flex; align-items:center; gap:14px}
+    .preview-back{color:#fff; opacity:.8; text-decoration:none; font-size:13px; font-weight:600}
+    .preview-back:hover{opacity:1}
+    .preview-badge{
+      background:#F79009; color:#1a1000; font-size:11px; font-weight:800;
+      padding:4px 10px; border-radius:999px; letter-spacing:.03em; text-transform:uppercase;
+    }
+    .preview-title{font-size:14px; font-weight:700; opacity:.9}
+
+    .preview-note{
+      background:#FFFAEB; border-bottom:1px solid rgba(247,144,9,0.3); color:#7a4f00;
+      font-size:12.5px; padding:9px 24px; text-align:center;
+    }
+
+    .preview-body{
+      max-width:1080px; margin:0 auto; padding:28px 24px 60px;
+      display:grid; grid-template-columns:260px 1fr; gap:24px; align-items:start;
+    }
+    @media(max-width:760px){ .preview-body{ grid-template-columns:1fr } }
+
+    /* ── Mock sidebar ─────────────────────────────────────────────────── */
+    .mock-sidebar{
+      background:#fff; border:1px solid var(--line); border-radius:16px;
+      padding:14px; box-shadow:0 4px 18px rgba(3,12,24,0.05);
+    }
+    .mock-sidebar-label{
+      font-size:10px; font-weight:800; color:var(--muted); text-transform:uppercase;
+      letter-spacing:.06em; padding:6px 10px 10px;
+    }
+    .mock-item{
+      display:flex; align-items:center; gap:9px; padding:9px 10px; border-radius:9px;
+      font-size:13px; font-weight:500; color:rgba(3,12,24,0.72); margin-bottom:1px;
+    }
+    .mock-item .mi-icon{font-size:15px; width:18px; text-align:center; flex-shrink:0}
+    .mock-item .mi-lock{margin-left:auto; font-size:11px; opacity:.55}
+    .mock-item.locked{color:rgba(3,12,24,0.38)}
+    .mock-group-title{
+      display:flex; align-items:center; gap:9px; padding:9px 10px; font-size:12.5px;
+      font-weight:700; color:rgba(3,12,24,0.55); margin-top:4px;
+    }
+    .mock-group-title .mi-icon{font-size:15px; width:18px; text-align:center; flex-shrink:0}
+    .mock-sub{padding-left:12px; margin-left:19px; border-left:2px solid rgba(3,12,24,0.08)}
+    .mock-sub .mock-item{font-size:12.5px; padding:7px 10px}
+
+    /* ── Plan summary column ─────────────────────────────────────────── */
+    .preview-card{
+      background:#fff; border:1px solid var(--line); border-radius:16px; padding:26px;
+      margin-bottom:20px;
+    }
+    .pv-name{font-size:22px; font-weight:800; letter-spacing:-.3px}
+    .pv-slug{font-size:12px; color:var(--muted); font-family:"SF Mono","Fira Code",monospace; margin-top:2px}
+    .pv-price{margin-top:18px; display:flex; align-items:baseline; gap:10px; flex-wrap:wrap}
+    .pv-price-ngn{font-size:32px; font-weight:800; letter-spacing:-.6px}
+    .pv-price-usd{font-size:14px; color:var(--muted); font-weight:600}
+    .pv-price-period{font-size:12px; color:var(--muted)}
+    .pv-divider{height:1px; background:var(--line); margin:18px 0}
+    .pv-stats{display:grid; grid-template-columns:repeat(4,1fr); gap:16px}
+    @media(max-width:600px){ .pv-stats{ grid-template-columns:1fr 1fr } }
+    .pv-stat-label{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; font-weight:700}
+    .pv-stat-value{font-size:15px; font-weight:700; margin-top:3px}
+
+    .pv-features-title{font-size:13px; font-weight:800; margin-bottom:10px}
+    .pv-features-grid{display:flex; flex-wrap:wrap; gap:8px}
+    .pv-chip{
+      display:inline-flex; align-items:center; gap:6px; padding:5px 11px; border-radius:999px;
+      font-size:12px; font-weight:600; border:1px solid var(--line);
+    }
+    .pv-chip.on{background:rgba(18,183,106,0.08); border-color:rgba(18,183,106,0.3); color:#0a7a3c}
+    .pv-chip.off{background:rgba(3,12,24,0.03); color:var(--muted)}
+  </style>
+</head>
+<body>
+
+  <div class="preview-topbar">
+    <div class="preview-topbar-left">
+      <a href="{{ url_for('portal_admin.admin_plans_edit', plan_id=plan.id) }}" class="preview-back">← Back to Plan Editor</a>
+      <span class="preview-title">Previewing "{{ plan.name }}"</span>
+    </div>
+    <span class="preview-badge">Preview only — not live</span>
+  </div>
+  <div class="preview-note">
+    This is a mock of what a business on the <strong>{{ plan.name }}</strong> plan would see in their portal menu and billing page — nothing here is clickable or real.
+  </div>
+
+  <div class="preview-body">
+
+    {# ── Mock sidebar ─────────────────────────────────────────────────── #}
+    <div class="mock-sidebar">
+      <div class="mock-sidebar-label">Business menu preview</div>
+
+      <div class="mock-item"><span class="mi-icon">📊</span> Dashboard</div>
+      <div class="mock-item {% if 'inbox.page' not in granted_features %}locked{% endif %}">
+        <span class="mi-icon">💬</span> Conversations
+        {% if 'inbox.page' not in granted_features %}<span class="mi-lock">🔒</span>{% endif %}
+      </div>
+      <div class="mock-item {% if 'channels.page' not in granted_features %}locked{% endif %}">
+        <span class="mi-icon">📡</span> Channels
+        {% if 'channels.page' not in granted_features %}<span class="mi-lock">🔒</span>{% endif %}
+      </div>
+
+      {% set group_icons = {
+        'Leads': '🔥', 'Team': '👥', 'Store Information': '🏬', 'Analytics': '📈',
+        'Inbox': '💬', 'Channels': '📡', 'Voice Calls': '📞', 'WhatsApp': '📱',
+        'CRM': '🗂️', 'AI Assistant': '🤖', 'WooCommerce Plugin': '🛍️',
+        'WhatsApp Campaigns': '📣', 'Email Campaigns': '✉️', 'Reports': '📊',
+        'Ecommerce & Integrations': '🏪'
+      } %}
+      {% set single_item_groups = ['Leads', 'Team', 'Store Information', 'Analytics', 'Inbox', 'Channels', 'Voice Calls'] %}
+
+      {% for group_name, items in feature_catalog.items() %}
+        {% if group_name not in single_item_groups %}
+          {% set group_locked = items|selectattr('0', 'in', granted_features)|list|length == 0 %}
+          <div class="mock-group-title">
+            <span class="mi-icon">{{ group_icons.get(group_name, '⚙️') }}</span> {{ group_name }}
+            {% if group_locked %}<span class="mi-lock" style="margin-left:auto">🔒</span>{% endif %}
+          </div>
+          <div class="mock-sub">
+            {% for feature_key, label in items %}
+            <div class="mock-item {% if feature_key not in granted_features %}locked{% endif %}">
+              {{ label }}
+              {% if feature_key not in granted_features %}<span class="mi-lock">🔒</span>{% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endfor %}
+
+      <div class="mock-item"><span class="mi-icon">💳</span> Credits &amp; Billing</div>
+    </div>
+
+    {# ── Plan summary + pricing ──────────────────────────────────────── #}
+    <div>
+      <div class="preview-card">
+        <div class="pv-name">{{ plan.name }}</div>
+        <div class="pv-slug">{{ plan.slug }}</div>
+
+        {% if plan.is_custom %}
+        <div class="pv-price"><span class="pv-price-ngn" style="font-size:24px">Talk to Sales</span></div>
+        {% elif plan.price_ngn == 0 %}
+        <div class="pv-price"><span class="pv-price-ngn">Free</span></div>
+        {% else %}
+        <div class="pv-price">
+          <span class="pv-price-ngn">₦{{ "{:,}".format(plan.price_ngn) }}</span>
+          <span class="pv-price-usd">${{ plan.price_usd }}</span>
+          <span class="pv-price-period">/month · {{ plan.annual_discount_pct }}% off annual</span>
+        </div>
+        {% endif %}
+
+        <div class="pv-divider"></div>
+
+        <div class="pv-stats">
+          <div>
+            <div class="pv-stat-label">AI Messages</div>
+            <div class="pv-stat-value">{{ "{:,}".format(plan.ai_messages_limit) if plan.ai_messages_limit != -1 else 'Unlimited' }}</div>
+          </div>
+          <div>
+            <div class="pv-stat-label">AI Agents</div>
+            <div class="pv-stat-value">{{ plan.ai_agents_limit if plan.ai_agents_limit != -1 else 'Unlimited' }}</div>
+          </div>
+          <div>
+            <div class="pv-stat-label">Broadcasts</div>
+            <div class="pv-stat-value">{{ "{:,}".format(plan.broadcasts_limit) if plan.broadcasts_limit != -1 else 'Unlimited' }}</div>
+          </div>
+          <div>
+            <div class="pv-stat-label">Overage</div>
+            <div class="pv-stat-value">₦{{ plan.overage_per_msg_ngn|int }}/msg</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="preview-card">
+        <div class="pv-features-title">Everything unlocked on this plan</div>
+        <div class="pv-features-grid">
+          {% for group_name, items in feature_catalog.items() %}
+            {% for feature_key, label in items %}
+            <span class="pv-chip {% if feature_key in granted_features %}on{% else %}off{% endif %}">
+              {% if feature_key in granted_features %}✓{% else %}🔒{% endif %} {{ label }}
+            </span>
+            {% endfor %}
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

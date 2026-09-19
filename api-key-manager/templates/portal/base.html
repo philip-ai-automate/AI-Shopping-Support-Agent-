@@ -130,6 +130,13 @@
     .sb-sub a.active{background:rgba(3,12,24,0.12); color:var(--ink); font-weight:650}
     .sb-sub a.active:before{background:var(--good); box-shadow:0 0 5px rgba(18,183,106,0.4)}
 
+    /* Locked-feature badge — shown on any menu item the merchant's current
+       plan doesn't grant. Never hides the item (a locked item is still a
+       sales nudge); clicking it lands on the real page's own upgrade
+       prompt, since the route itself is gated the same way. */
+    .sb-lock{ margin-left:auto; font-size:11px; opacity:.5; flex-shrink:0; line-height:1 }
+    .sb-link:hover .sb-lock, .sb-sub a:hover .sb-lock{ opacity:.85 }
+
     /* Sidebar divider */
     .sb-divider{height:1px; background:var(--line); margin:8px 12px}
 
@@ -512,6 +519,7 @@
     <a class="sb-link {% if request.endpoint == 'portal.dashboard' %}active{% endif %}"
        href="{{ url_for('portal.dashboard') }}" data-tour="nav-dashboard">
       <span class="sb-icon">📊</span> Dashboard
+      {% if 'dashboard.page' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
     </a>
 
     <!-- Conversations -->
@@ -528,12 +536,14 @@
                    {% if not _inbox_unread_count %}display:none{% endif %}">
         {{ _inbox_unread_count if _inbox_unread_count and _inbox_unread_count < 100 else ('99+' if _inbox_unread_count else '0') }}
       </span>
+      {% if 'inbox.page' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
     </a>
 
     <!-- Channels — every social account in one place, added 2026-09-11 -->
     <a class="sb-link {% if request.endpoint == 'portal.channels_page' %}active{% endif %}"
        href="{{ url_for('portal.channels_page') }}">
       <span class="sb-icon">📡</span> Channels
+      {% if 'channels.page' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
     </a>
 
     <!-- WhatsApp Campaigns -->
@@ -544,6 +554,7 @@
            data-tour="nav-campaigns" onclick="sbToggle(this)">
         <span class="sb-gtitle">
           <span class="sb-icon">📣</span> WhatsApp Campaigns
+          {% if 'legacy:feat_broadcasts' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </span>
         <span class="sb-arrow">▾</span>
       </div>
@@ -551,14 +562,17 @@
         <a href="{{ url_for('portal.whatsapp_campaigns') }}"
            class="{% if request.endpoint == 'portal.whatsapp_campaigns' and request.args.get('view') != 'segments' %}active{% endif %}">
           All Campaigns
+          {% if 'campaigns_wa.all' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         <a href="{{ url_for('portal.whatsapp_campaign_segments_page') }}"
            class="{% if request.endpoint == 'portal.whatsapp_campaign_segments_page' %}active{% endif %}">
           WhatsApp Segment
+          {% if 'campaigns_wa.segments' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         <a href="{{ url_for('portal.whatsapp_campaigns_reports') }}"
            class="{% if request.endpoint in ('portal.whatsapp_campaigns_reports','portal.whatsapp_campaign_report') %}active{% endif %}">
           Reports
+          {% if 'campaigns_wa.reports' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% if not is_connect_host %}
         {# Needs Review is the Campaign Intelligence AI reply-classifier's queue —
@@ -572,6 +586,7 @@
            class="{% if request.endpoint == 'portal.whatsapp_campaign_reviews' %}active{% endif %}"
            style="display:flex;align-items:center;justify-content:space-between;gap:8px">
           Needs Review
+          {% if 'campaigns_wa.needs_review' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
           {% if _campaign_review_pending_count %}
           <span style="background:#f59e0b;color:#fff;font-size:10.5px;font-weight:700;
                        padding:1px 7px;border-radius:999px;line-height:1.5;flex-shrink:0">
@@ -611,29 +626,35 @@
         <a href="{{ url_for('portal.whatsapp_contacts') }}"
            class="{% if request.endpoint in ('portal.whatsapp_contacts', 'portal.whatsapp_contact_detail') %}active{% endif %}">
           All Contacts
+          {% if 'crm.contacts' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         <a href="{{ url_for('portal.crm_companies') }}"
            class="{% if request.endpoint in ('portal.crm_companies', 'portal.crm_company_detail') %}active{% endif %}">
           Companies
+          {% if 'crm.companies' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% if _crm_pipeline_on %}
         <a href="{{ url_for('portal.sales_pipeline') }}"
            class="{% if request.endpoint == 'portal.sales_pipeline' %}active{% endif %}">
           Pipeline Board
+          {% if 'crm.pipeline_board' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
         <a href="{{ url_for('portal.whatsapp_segments') }}"
            class="{% if request.endpoint in ('portal.whatsapp_segments','portal.whatsapp_segment_detail') %}active{% endif %}">
           Segments
+          {% if 'crm.segments' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% if _crm_pipeline_on %}
         <a href="{{ url_for('portal.lead_labels_page') }}"
            class="{% if request.endpoint in ('portal.lead_labels_page', 'portal.lead_labels_import_bounces') %}active{% endif %}">
           🏷️ Tags
+          {% if 'crm.tags' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         <a href="{{ url_for('portal.sales_pipeline_settings') }}"
            class="{% if request.endpoint == 'portal.sales_pipeline_settings' %}active{% endif %}">
           ⚙️ Pipeline Settings
+          {% if 'crm.pipeline_settings' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
       </div>
@@ -645,12 +666,14 @@
     <a class="sb-link {% if request.endpoint == 'pressone.call_log' %}active{% endif %}"
        href="{{ url_for('pressone.call_log') }}">
       <span class="sb-icon">📞</span> Voice Calls
+      {% if 'voice.calls' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
     </a>
 
     <!-- Leads -->
     <a class="sb-link {% if request.endpoint in ('portal.leads_page', 'portal.lead_detail') %}active{% endif %}"
        href="{{ url_for('portal.leads_page') }}" data-tour="nav-leads">
       <span class="sb-icon">🔥</span> Leads
+      {% if 'leads.page' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
     </a>
 
     {# ── Sales Pipeline Reports — a real top-level menu, not nested inside
@@ -677,15 +700,18 @@
         <a href="{{ url_for('portal.report_pipeline_overview') }}"
            class="{% if request.endpoint == 'portal.report_pipeline_overview' %}active{% endif %}">
           Pipeline Overview
+          {% if 'reports.pipeline_overview' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
         <a href="{{ url_for('portal.report_leads_sources') }}"
            class="{% if request.endpoint == 'portal.report_leads_sources' %}active{% endif %}">
           Leads &amp; Sources
+          {% if 'reports.leads_sources' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         <a href="{{ url_for('portal.report_custom_picker') }}"
            class="{% if request.endpoint in ('portal.report_custom_picker', 'portal.report_custom_entity') %}active{% endif %}">
           🧩 Custom Report
+          {% if 'reports.custom' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
       </div>
     </div>
@@ -726,6 +752,7 @@
            onclick="sbToggle(this)">
         <span class="sb-gtitle">
           <span class="sb-icon">✉️</span> Email Campaigns
+          {% if 'legacy:feat_email_campaigns' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </span>
         <span class="sb-arrow">▾</span>
       </div>
@@ -733,14 +760,17 @@
         <a href="{{ url_for('portal.email_campaigns') }}"
            class="{% if request.endpoint == 'portal.email_campaigns' and request.args.get('view') != 'segments' %}active{% endif %}">
           All Campaigns
+          {% if 'campaigns_email.all' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         <a href="{{ url_for('portal.email_campaigns', view='segments') }}"
            class="{% if request.endpoint == 'portal.email_campaigns' and request.args.get('view') == 'segments' %}active{% endif %}">
           Email Segment
+          {% if 'campaigns_email.segments' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         <a href="{{ url_for('portal.email_campaigns_reports') }}"
            class="{% if request.endpoint in ('portal.email_campaigns_reports','portal.email_campaign_report') %}active{% endif %}">
           Reports
+          {% if 'campaigns_email.reports' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
       </div>
     </div>
@@ -760,27 +790,32 @@
         <a href="{{ url_for('portal.whatsapp_connect') }}"
            class="{% if request.endpoint == 'portal.whatsapp_connect' %}active{% endif %}">
           Connect
+          {% if 'wa.connect' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% if not is_connect_host %}
         <a href="{{ url_for('portal.whatsapp_reports') }}"
            class="{% if request.endpoint == 'portal.whatsapp_reports' %}active{% endif %}">
           Handoff Reports
+          {% if 'wa.handoff_reports' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
         {% if _tenant_features.get('whatsapp_message_templates') %}
         <a href="{{ url_for('portal.whatsapp_templates') }}"
            class="{% if request.endpoint == 'portal.whatsapp_templates' %}active{% endif %}">
           Message Templates
+          {% if 'woo.message_templates' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
         <a href="{{ url_for('portal.reports_page') }}"
            class="{% if request.endpoint == 'portal.reports_page' %}active{% endif %}">
           WhatsApp Report
+          {% if 'wa.report' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% if not is_connect_host %}
         <a href="{{ url_for('portal.billing_plans') }}"
            class="{% if request.endpoint == 'portal.billing_plans' %}active{% endif %}">
           WhatsApp Plan
+          {% if 'billing.subscription' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
           {% set _tp = _tenant_plan if _tenant_plan is defined else none %}
           {% if _tp and _tp.is_over_quota %}
           <span style="background:#F04438;color:#fff;font-size:10px;font-weight:700;
@@ -817,34 +852,41 @@
         <a href="{{ url_for('portal.products') }}"
            class="{% if request.endpoint in ('portal.products','portal.product_add','portal.product_edit') %}active{% endif %}">
           My Products
+          {% if 'ecom.products' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         <a href="{{ url_for('portal.orders') }}"
            class="{% if request.endpoint in ('portal.orders', 'portal.order_detail') %}active{% endif %}">
           🧾 Orders
+          {% if 'ecom.orders' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% if not _has_woocommerce %}
         <a href="{{ url_for('portal.catalogue_browse') }}"
            class="{% if request.endpoint in ('portal.catalogue_browse','portal.catalogue_category','portal.catalogue_selections') %}active{% endif %}">
           My Catalogue
+          {% if 'ecom.catalogue' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
         <a href="{{ url_for('portal.customers') }}"
            class="{% if request.endpoint in ('portal.customers','portal.customer_detail') %}active{% endif %}">
           Customers
+          {% if 'ecom.customers' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% if _has_woocommerce %}
         <a href="{{ url_for('portal.woo_sync') }}"
            class="{% if request.endpoint == 'portal.woo_sync' %}active{% endif %}">
           WooCommerce Sync
+          {% if 'ecom.woo_sync' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
         <a href="{{ url_for('portal.data_sources') }}"
            class="{% if request.endpoint in ('portal.data_sources','portal.data_source_upload','portal.data_source_map','portal.data_source_sync','portal.data_source_delete','portal.data_source_google_connect','portal.data_source_google_callback','portal.data_source_google_setup') %}active{% endif %}">
           🗂️ Product Import
+          {% if 'ecom.data_sources' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         <a href="{{ url_for('portal.wa_discount_settings') }}"
            class="{% if request.endpoint == 'portal.wa_discount_settings' %}active{% endif %}">
           💰 Discount Settings
+          {% if 'ecom.discount_settings' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
       </div>
     </div>
@@ -855,16 +897,32 @@
     <a class="sb-link {% if request.endpoint == 'portal.store_info' %}active{% endif %}"
        href="{{ url_for('portal.store_info') }}">
       <span class="sb-icon">🏪</span> Store Information
+      {% if 'store.info' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
     </a>
     {% endif %}
 
     {% if not session.get('team_member_id') %}
-    <!-- Team (Shared Team Inbox) — owner-only, hidden for staff logins since
-         they're restricted to the Inbox by the before_request allowlist -->
-    <a class="sb-link {% if request.endpoint == 'portal.team_page' %}active{% endif %}"
-       href="{{ url_for('portal.team_page') }}">
-      <span class="sb-icon">👥</span> Team
-    </a>
+    <!-- Team group — owner-only, hidden for staff logins since they're
+         restricted to the Inbox by the before_request allowlist. Restructured
+         into a submenu 2026-09-19 (was a single link) so Departments/
+         Positions/Roles/Create each have their own real destination. -->
+    {% set _team_group = request.endpoint and (request.endpoint == 'portal.team_page' or request.endpoint.startswith('portal.team_create') or request.endpoint.startswith('portal.team_role') or request.endpoint.startswith('portal.team_department') or request.endpoint.startswith('portal.team_position')) %}
+    <div class="sb-group">
+      <div class="sb-group-toggle {% if _team_group %}open{% endif %}" onclick="sbToggle(this)">
+        <span class="sb-gtitle">
+          <span class="sb-icon">👥</span> Team
+          {% if 'team.manage' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
+        </span>
+        <span class="sb-arrow">▾</span>
+      </div>
+      <div class="sb-sub {% if _team_group %}open{% endif %}">
+        <a href="{{ url_for('portal.team_page') }}" class="{% if request.endpoint == 'portal.team_page' %}active{% endif %}">Team Members</a>
+        <a href="{{ url_for('portal.team_create') }}" class="{% if request.endpoint == 'portal.team_create' %}active{% endif %}">Create New Team Member</a>
+        <a href="{{ url_for('portal.team_roles_page') }}" class="{% if request.endpoint and request.endpoint.startswith('portal.team_role') %}active{% endif %}">Roles</a>
+        <a href="{{ url_for('portal.team_departments_page') }}" class="{% if request.endpoint and request.endpoint.startswith('portal.team_department') %}active{% endif %}">Departments</a>
+        <a href="{{ url_for('portal.team_positions_page') }}" class="{% if request.endpoint and request.endpoint.startswith('portal.team_position') %}active{% endif %}">Positions</a>
+      </div>
+    </div>
     {% endif %}
 
     {% if not is_connect_host %}
@@ -882,23 +940,28 @@
         <a href="{{ url_for('portal.api_keys') }}"
            class="{% if request.endpoint == 'portal.api_keys' %}active{% endif %}">
           API Keys
+          {% if 'ai.api_keys' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         <a href="{{ url_for('portal.ai_agents') }}"
            class="{% if request.endpoint in ('portal.ai_agents','portal.ai_agents_new','portal.ai_agents_edit') %}active{% endif %}">
           AI Agent Profiles
+          {% if 'ai.agent_profiles' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         <a href="{{ url_for('portal.ai_instruction') }}"
            class="{% if request.endpoint == 'portal.ai_instruction' %}active{% endif %}">
           System Instruction
+          {% if 'legacy:feat_advanced_ai' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         <a href="{{ url_for('portal.handoff_rules') }}"
            class="{% if request.endpoint == 'portal.handoff_rules' %}active{% endif %}">
           Handoff Rules
+          {% if 'ai.handoff_rules' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% if customer is defined and customer and customer.tenant_source_type != 'whatsapp' %}
         <a href="{{ url_for('portal.verified_specs_settings') }}"
            class="{% if request.endpoint == 'portal.verified_specs_settings' %}active{% endif %}">
           Verified Specs
+          {% if 'woo.verified_specs' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
       </div>
@@ -917,6 +980,7 @@
            onclick="sbToggle(this)">
         <span class="sb-gtitle">
           <span class="sb-icon">🛒</span> Cart Recovery
+          {% if 'woo.cart_recovery' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </span>
         <span class="sb-arrow">▾</span>
       </div>
@@ -924,10 +988,12 @@
         <a href="{{ url_for('portal.cart_recovery_dashboard') }}"
            class="{% if request.endpoint == 'portal.cart_recovery_dashboard' %}active{% endif %}">
           Overview &amp; Settings
+          {% if 'woo.cart_recovery_settings' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         <a href="{{ url_for('portal.cart_recovery_email_template') }}"
            class="{% if request.endpoint == 'portal.cart_recovery_email_template' %}active{% endif %}">
           Email Templates
+          {% if 'woo.cart_recovery_templates' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
       </div>
     </div>
@@ -936,6 +1002,7 @@
     <a class="sb-link {% if request.endpoint == 'portal.analytics' %}active{% endif %}"
        href="{{ url_for('portal.analytics') }}">
       <span class="sb-icon">📈</span> Analytics
+      {% if 'analytics.page' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
     </a>
 
     <!-- ── Reports group ── -->
@@ -954,15 +1021,18 @@
         <a href="{{ url_for('portal.report_usage') }}"
            class="{% if request.endpoint == 'portal.report_usage' %}active{% endif %}">
           AI Usage Report
+          {% if 'reports.usage' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
         <a href="{{ url_for('portal.report_cart') }}"
            class="{% if request.endpoint == 'portal.report_cart' %}active{% endif %}">
           Cart Recovery Report
+          {% if 'reports.cart' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         <a href="{{ url_for('portal.report_billing') }}"
            class="{% if request.endpoint == 'portal.report_billing' %}active{% endif %}">
           Billing Summary
+          {% if 'reports.billing' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
       </div>
     </div>
@@ -971,6 +1041,7 @@
     <a class="sb-link {% if request.endpoint in ('portal.chat_archive', 'portal.chat_archive_session') %}active{% endif %}"
        href="{{ url_for('portal.chat_archive') }}">
       <span class="sb-icon">💬</span> Chat Archive
+      {% if 'woo.chat_archive' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
     </a>
 
     {% endif %}{# end _has_woocommerce #}
@@ -992,18 +1063,22 @@
         <a href="{{ url_for('portal.billing_subscribe') }}"
            class="{% if request.endpoint in ('portal.billing_subscribe', 'portal.billing_subscribe_checkout') %}active{% endif %}">
           Subscription Plans
+          {% if 'billing.subscription' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         <a href="{{ url_for('portal.billing') }}"
            class="{% if request.endpoint == 'portal.billing' %}active{% endif %}">
           Buy Credits
+          {% if 'billing.credits' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         <a href="{{ url_for('portal.invoices') }}"
            class="{% if request.endpoint == 'portal.invoices' %}active{% endif %}">
           Invoices
+          {% if 'billing.invoices' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         <a href="{{ url_for('portal.payment_settings') }}"
            class="{% if request.endpoint == 'portal.payment_settings' %}active{% endif %}">
           💳 Payment Gateways
+          {% if 'billing.payment_gateways' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
       </div>
     </div>
@@ -1014,6 +1089,7 @@
     <a class="sb-link {% if request.endpoint == 'portal.tutorials' %}active{% endif %}"
        href="{{ url_for('portal.tutorials') }}">
       <span class="sb-icon">📚</span> Help & Tutorials
+      {% if 'help.tutorials' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
     </a>
     {% endif %}
 
@@ -1021,12 +1097,14 @@
     <a class="sb-link {% if request.endpoint == 'portal.video_tutorials' %}active{% endif %}"
        href="{{ url_for('portal.video_tutorials') }}">
       <span class="sb-icon">🎬</span> Video Tutorials
+      {% if 'help.videos' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
     </a>
 
     <!-- Account Settings -->
     <a class="sb-link {% if request.endpoint == 'portal.settings' %}active{% endif %}"
        href="{{ url_for('portal.settings') }}" data-tour="nav-settings">
       <span class="sb-icon">⚙️</span> Account Settings
+      {% if 'settings.account' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
     </a>
 
     <!-- PhiXtra Home -->

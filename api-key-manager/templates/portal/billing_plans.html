@@ -75,6 +75,18 @@
 .btn-current { background:#f4f4f5; color:var(--muted); cursor:default }
 
 .overage-note { font-size:11px; color:var(--muted); text-align:center; margin-top:10px }
+
+/* Channel toggle */
+.channel-toggle-wrap { display:flex; justify-content:center; margin-bottom:24px }
+.channel-toggle { display:inline-flex; background:#f4f4f5; border-radius:999px; padding:4px; gap:2px }
+.channel-toggle button {
+  border:none; background:none; padding:9px 20px; border-radius:999px; font-size:13px;
+  font-weight:700; cursor:pointer; color:var(--muted); transition:.15s;
+}
+.channel-toggle button.active { background:#fff; color:var(--ink); box-shadow:0 1px 4px rgba(0,0,0,.1) }
+.channel-note { text-align:center; font-size:12px; color:var(--muted); margin:-14px 0 24px }
+
+.plan-card.custom { border-style:dashed }
 </style>
 {% endblock %}
 
@@ -159,19 +171,37 @@
   {% endif %}
 </div>
 
-{# ── Plans grid ────────────────────────────────────────────────────────────── #}
-<div class="plans-grid">
-{% for plan in all_plans %}
+{# ── Channel toggle ────────────────────────────────────────────────────────── #}
+{% if dual_plans %}
+<div class="channel-toggle-wrap">
+  <div class="channel-toggle">
+    <button type="button" id="toggleSingleBtn" onclick="setChannelMode('single')">Single Channel</button>
+    <button type="button" id="toggleDualBtn" onclick="setChannelMode('dual')">Dual Agent Plan (WhatsApp + Website)</button>
+  </div>
+</div>
+<p class="channel-note">Running both the WhatsApp AI Sales Agent and the Website AI Sales Agent on one account? Switch to Dual Agent Plan pricing.</p>
+{% endif %}
+
+{% set support_map = {'free': 'Help Center support', 'starter': 'Email support', 'growth': 'Priority email support', 'pro': 'Priority support + onboarding call',
+                       'startup_dual': 'Email support', 'business_dual': 'Priority email support', 'enterprise_dual': 'Priority support + onboarding call'} %}
+
+{% macro plan_card(plan, current) %}
 {% set is_current = plan.slug == current.plan_slug %}
 {% set disc = plan.annual_discount_pct / 100 %}
 {% set annual_ngn = (plan.price_ngn * (1 - disc))|int %}
 {% set annual_usd = (plan.price_usd|float * (1 - disc))|round(2) %}
+{% set is_popular = plan.slug in ('pro', 'enterprise_dual') %}
 
-<div class="plan-card {% if is_current %}current{% elif plan.slug == 'pro' %}popular{% endif %}">
+<div class="plan-card {% if is_current %}current{% elif is_popular %}popular{% elif plan.is_custom %}custom{% endif %}">
   {% if is_current %}<span class="current-badge">Current plan</span>
-  {% elif plan.slug == 'pro' %}<span class="plan-badge">Recommended</span>{% endif %}
+  {% elif is_popular %}<span class="plan-badge">Recommended</span>{% endif %}
 
   <div class="plan-name">{{ plan.name }}</div>
+
+  {% if plan.is_custom %}
+  <div class="plan-price" style="font-size:22px">Custom</div>
+  <div class="plan-period">Talk to us for volume pricing</div>
+  {% else %}
   <div class="plan-price">
     {% if plan.price_ngn == 0 %}Free
     {% else %}₦{{ "{:,}".format(plan.price_ngn) }}{% endif %}
@@ -185,10 +215,12 @@
   {% else %}
   <div class="plan-period">forever free</div>
   {% endif %}
+  {% endif %}
 
   <div class="plan-divider"></div>
 
   <ul class="plan-features">
+    {% if not plan.is_custom %}
     <li>
       <span class="feat-yes">✓</span>
       <span class="feat-lbl">
@@ -199,15 +231,23 @@
     <li>
       <span class="feat-yes">✓</span>
       <span class="feat-lbl">
-        <strong>{{ plan.agents_limit if plan.agents_limit != -1 else 'Unlimited' }}</strong>
-        agent{{ 's' if plan.agents_limit != 1 }}
+        <strong>{{ plan.ai_agents_limit if plan.ai_agents_limit != -1 else 'Unlimited' }}</strong>
+        agent{{ 's' if plan.ai_agents_limit != 1 }}
       </span>
     </li>
+    {% endif %}
 
     <li>
       <span class="feat-yes">✓</span>
       <span class="feat-lbl">Automated discount negotiation</span>
     </li>
+
+    {% if plan.channel_mode == 'dual' %}
+    <li>
+      <span class="feat-yes">✓</span>
+      <span class="feat-lbl"><strong>WhatsApp + Website</strong> AI Sales Agent, both included</span>
+    </li>
+    {% endif %}
 
     {% if plan.feat_broadcasts %}
     <li>
@@ -236,24 +276,27 @@
     </li>
     {% endfor %}
 
-    {% set support_map = {'free': 'Help Center support', 'starter': 'Email support', 'growth': 'Priority email support', 'pro': 'Priority support + onboarding call'} %}
     <li>
       <span class="feat-yes">✓</span>
       <span class="feat-lbl">{{ support_map.get(plan.slug, 'Help Center support') }}</span>
     </li>
 
+    {% if not plan.is_custom %}
     <li>
       <span class="feat-yes">✓</span>
       <span class="feat-lbl">Overage: ₦{{ plan.overage_per_msg_ngn|int }}/msg</span>
     </li>
+    {% endif %}
   </ul>
 
   <div class="plan-cta">
     {% if is_current %}
     <span class="btn-upgrade btn-current">Current plan</span>
+    {% elif plan.is_custom %}
+    <a href="mailto:sales@phixtra.com?subject=Custom%20plan%20enquiry" class="btn-upgrade btn-upgrade-outline">Talk to Sales</a>
     {% elif plan.slug == 'free' %}
     <span class="btn-upgrade btn-upgrade-outline" style="cursor:default">Downgrade</span>
-    {% elif plan.slug == 'pro' %}
+    {% elif is_popular %}
     <button type="button" onclick="openUpgradeModal('{{ plan.slug }}','{{ plan.name }}',{{ plan.price_ngn }},{{ plan.price_usd }},{{ plan.annual_discount_pct }})"
             class="btn-upgrade btn-upgrade-purple">
       Upgrade to {{ plan.name }}
@@ -264,12 +307,22 @@
       Upgrade to {{ plan.name }}
     </button>
     {% endif %}
-    {% if plan.price_ngn > 0 %}
+    {% if plan.price_ngn > 0 and not plan.is_custom %}
     <div class="overage-note">Overage charged at ₦{{ plan.overage_per_msg_ngn|int }}/msg</div>
     {% endif %}
   </div>
 </div>
-{% endfor %}
+{% endmacro %}
+
+{# ── Plans grid ────────────────────────────────────────────────────────────── #}
+<div class="plans-grid" id="singlePlansGrid">
+{% for plan in single_plans %}{{ plan_card(plan, current) }}{% endfor %}
+{% for plan in custom_plans %}{{ plan_card(plan, current) }}{% endfor %}
+</div>
+
+<div class="plans-grid" id="dualPlansGrid" style="display:none">
+{% for plan in dual_plans %}{{ plan_card(plan, current) }}{% endfor %}
+{% for plan in custom_plans %}{{ plan_card(plan, current) }}{% endfor %}
 </div>
 
 <p style="font-size:12px;color:var(--muted);margin-top:20px;text-align:center">
@@ -436,6 +489,23 @@ function updatePrices() {
 document.getElementById('upgradeModal').addEventListener('click', function(e) {
   if (e.target === this) closeUpgradeModal();
 });
+
+// Single Channel / Dual Agent Plan toggle
+function setChannelMode(mode) {
+  var single = document.getElementById('singlePlansGrid');
+  var dual   = document.getElementById('dualPlansGrid');
+  var btnS   = document.getElementById('toggleSingleBtn');
+  var btnD   = document.getElementById('toggleDualBtn');
+  if (!single || !dual) return;
+  if (mode === 'dual') {
+    single.style.display = 'none'; dual.style.display = '';
+    if (btnS) btnS.classList.remove('active'); if (btnD) btnD.classList.add('active');
+  } else {
+    single.style.display = ''; dual.style.display = 'none';
+    if (btnD) btnD.classList.remove('active'); if (btnS) btnS.classList.add('active');
+  }
+}
+setChannelMode('{{ default_channel_mode }}');
 </script>
 
 {% endblock %}

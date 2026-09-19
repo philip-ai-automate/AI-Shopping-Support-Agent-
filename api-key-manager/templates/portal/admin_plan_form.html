@@ -1,0 +1,277 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}{{ 'New Plan' if is_new else 'Edit Plan' }} — PhiXtra Admin{% endblock %}
+
+{% block content %}
+<style>
+.pf-wrap { max-width:820px }
+
+/* Sticky summary bar */
+.pf-stickybar {
+  position:sticky; top:0; z-index:20; padding:12px 16px 14px; margin:0 -16px 20px;
+  background:linear-gradient(135deg, rgba(124,58,237,0.05), rgba(46,144,250,0.05)), #f8f9fb;
+  display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
+  border-bottom:1px solid var(--line);
+}
+.pf-stickybar-title { font-size:18px; font-weight:800; letter-spacing:-.3px }
+.pf-stickybar-sub { font-size:12px; color:var(--muted); margin-top:2px }
+.pf-counter {
+  display:flex; align-items:center; gap:8px; background:#fff; border:1px solid var(--line);
+  border-radius:999px; padding:6px 14px 6px 6px; font-size:12px; color:var(--muted);
+}
+.pf-counter-ring {
+  width:26px; height:26px; border-radius:50%; flex-shrink:0;
+  background:conic-gradient(var(--ring-color,#12B76A) calc(var(--pct,0) * 1%), var(--line) 0);
+  display:flex; align-items:center; justify-content:center; transition:background .2s;
+}
+.pf-counter-ring::after { content:""; width:18px; height:18px; border-radius:50%; background:#fff }
+.pf-counter strong { color:var(--ink); font-weight:800 }
+.pf-stickybar-actions { display:flex; gap:8px }
+
+/* Section cards — each gets its own colour-coded icon badge */
+.pf-card { background:#fff; border:1px solid var(--line); border-radius:14px; padding:22px; margin-bottom:16px }
+.pf-card-title { font-size:13.5px; font-weight:800; color:var(--ink); margin-bottom:14px; display:flex; align-items:center; gap:10px }
+.pf-badge {
+  width:28px; height:28px; border-radius:9px; display:flex; align-items:center; justify-content:center;
+  font-size:14px; flex-shrink:0;
+}
+.pf-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px }
+@media(max-width:700px){ .pf-grid { grid-template-columns:1fr 1fr } }
+.pf-field label { display:block; font-size:12px; font-weight:600; color:var(--txt); margin-bottom:4px }
+.pf-field input[type=text], .pf-field input[type=number], .pf-field select {
+  width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:13px;
+  transition:border-color .15s, box-shadow .15s;
+}
+.pf-field input:focus, .pf-field select:focus {
+  outline:none; border-color:#7C3AED; box-shadow:0 0 0 3px rgba(124,58,237,0.12);
+}
+.pf-hint { font-size:11px; color:var(--muted); margin-top:3px }
+.pf-check { display:flex; align-items:center; gap:8px; font-size:13px; padding:6px 0; cursor:pointer }
+.pf-check input { width:15px; height:15px; accent-color:var(--ink); cursor:pointer; flex-shrink:0 }
+
+/* Feature groups — each gets a distinct accent colour (border, header tint,
+   icon badge, "All" link, and its own checkboxes) so 15 groups of plain
+   checkboxes don't blur into one grey wall. */
+.pf-feature-group {
+  border:1px solid var(--line); border-left:4px solid var(--grp-color,#667085);
+  border-radius:12px; margin-bottom:12px; overflow:hidden;
+}
+.pf-feature-group-head {
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  padding:11px 14px; background:var(--grp-tint,rgba(3,12,24,0.025)); border-bottom:1px solid var(--line);
+}
+.pf-feature-group-title { font-size:12.5px; font-weight:800; color:var(--ink); display:flex; align-items:center; gap:9px }
+.pf-group-icon {
+  width:24px; height:24px; border-radius:7px; background:var(--grp-color,#667085);
+  display:flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0;
+  box-shadow:0 1px 2px rgba(0,0,0,.15);
+}
+.pf-group-count { font-size:11px; color:var(--muted); font-weight:600 }
+.pf-group-links { display:flex; gap:10px; font-size:11px }
+.pf-group-links a { color:var(--grp-color,var(--muted)); font-weight:700; cursor:pointer; text-decoration:none }
+.pf-group-links a:hover { text-decoration:underline }
+.pf-group-links a.none-link { color:var(--muted) }
+.pf-flags-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:2px 16px; padding:10px 14px }
+@media(max-width:600px){ .pf-flags-grid { grid-template-columns:1fr } }
+.pf-flags-grid .pf-check input { accent-color:var(--grp-color,var(--ink)) }
+.pf-flags-grid .pf-check:hover { color:var(--grp-color,var(--ink)) }
+
+.pf-actions-spacer { height:8px }
+</style>
+
+<div class="pf-wrap">
+
+  <div class="pf-stickybar">
+    <div>
+      <div class="pf-stickybar-title">{{ 'New Plan' if is_new else 'Edit Plan — ' + plan.name }}</div>
+      <div class="pf-stickybar-sub">Set price, limits and which features this tier unlocks</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="pf-counter">
+        <div class="pf-counter-ring" id="pfCounterRing" style="--pct:0"></div>
+        <span><strong id="pfCounterNum">0</strong> / <span id="pfCounterTotal">0</span> features enabled</span>
+      </div>
+      <div class="pf-stickybar-actions">
+        {% if not is_new %}
+        <a href="{{ url_for('portal_admin.admin_plan_preview', plan_id=plan.id) }}" target="_blank" rel="noopener"
+           class="btn btn-sm" style="background:#f4f4f5;color:var(--txt)">👁️ Preview</a>
+        {% endif %}
+        <button type="submit" form="planForm" class="btn btn-primary">{{ 'Create plan' if is_new else 'Save changes' }}</button>
+        <a href="{{ url_for('portal_admin.admin_plans') }}" class="btn btn-sm" style="background:#f4f4f5;color:var(--txt)">Cancel</a>
+      </div>
+    </div>
+  </div>
+
+<form method="POST" id="planForm">
+
+  <div class="pf-card">
+    <div class="pf-card-title"><span class="pf-badge" style="background:rgba(46,144,250,0.14)">🧩</span> Basics</div>
+    <div class="pf-grid">
+      <div class="pf-field">
+        <label>Display name</label>
+        <input type="text" name="name" value="{{ plan.name }}" required>
+      </div>
+      <div class="pf-field">
+        <label>Slug (internal id)</label>
+        <input type="text" name="slug" value="{{ plan.slug }}" required>
+        <div class="pf-hint">Lowercase, no spaces. Used by payment + code — change carefully.</div>
+      </div>
+      <div class="pf-field">
+        <label>Sort order</label>
+        <input type="number" name="sort_order" value="{{ plan.sort_order }}">
+      </div>
+      <div class="pf-field">
+        <label>Channel mode</label>
+        <select name="channel_mode" id="channelModeSelect" onchange="toggleParentField()">
+          <option value="single" {% if plan.channel_mode == 'single' %}selected{% endif %}>Single channel</option>
+          <option value="dual" {% if plan.channel_mode == 'dual' %}selected{% endif %}>Dual Agent (WhatsApp + Website)</option>
+          <option value="both" {% if plan.channel_mode == 'both' %}selected{% endif %}>Always shown (e.g. Custom)</option>
+        </select>
+      </div>
+      <div class="pf-field" id="parentPlanField" style="{% if plan.channel_mode != 'dual' %}display:none{% endif %}">
+        <label>Mirrors limits/features of</label>
+        <select name="parent_plan_id">
+          <option value="">— none —</option>
+          {% for p in parent_candidates %}
+          <option value="{{ p.id }}" {% if plan.parent_plan_id == p.id %}selected{% endif %}>{{ p.name }} ({{ p.slug }})</option>
+          {% endfor %}
+        </select>
+        <div class="pf-hint">Reference only — limits below are still whatever you set here.</div>
+      </div>
+      <div class="pf-field">
+        <label>&nbsp;</label>
+        <label class="pf-check"><input type="checkbox" name="is_active" {% if plan.is_active %}checked{% endif %}> Active (visible to merchants)</label>
+        <label class="pf-check"><input type="checkbox" name="is_custom" {% if plan.is_custom %}checked{% endif %}> Custom / "Talk to Sales" (no self-serve checkout)</label>
+      </div>
+    </div>
+  </div>
+
+  <div class="pf-card">
+    <div class="pf-card-title"><span class="pf-badge" style="background:rgba(18,183,106,0.14)">💰</span> Pricing</div>
+    <div class="pf-grid">
+      <div class="pf-field">
+        <label>Price (₦ / month)</label>
+        <input type="number" name="price_ngn" value="{{ plan.price_ngn }}" min="0">
+      </div>
+      <div class="pf-field">
+        <label>Price ($ / month)</label>
+        <input type="number" step="0.01" name="price_usd" value="{{ plan.price_usd }}" min="0">
+      </div>
+      <div class="pf-field">
+        <label>Annual discount %</label>
+        <input type="number" name="annual_discount_pct" value="{{ plan.annual_discount_pct }}">
+      </div>
+      <div class="pf-field">
+        <label>Overage ₦/msg</label>
+        <input type="number" step="0.01" name="overage_per_msg_ngn" value="{{ plan.overage_per_msg_ngn }}">
+      </div>
+      <div class="pf-field">
+        <label>Overage $/msg</label>
+        <input type="number" step="0.0001" name="overage_per_msg_usd" value="{{ plan.overage_per_msg_usd }}">
+      </div>
+    </div>
+  </div>
+
+  <div class="pf-card">
+    <div class="pf-card-title"><span class="pf-badge" style="background:rgba(124,58,237,0.14)">📐</span> Limits <span style="font-weight:400;color:var(--muted);font-size:11px">(-1 = unlimited)</span></div>
+    <div class="pf-grid">
+      <div class="pf-field">
+        <label>AI messages / month</label>
+        <input type="number" name="ai_messages_limit" value="{{ plan.ai_messages_limit }}">
+      </div>
+      <div class="pf-field">
+        <label>AI agents</label>
+        <input type="number" name="ai_agents_limit" value="{{ plan.ai_agents_limit }}">
+      </div>
+      <div class="pf-field">
+        <label>WhatsApp broadcasts / month</label>
+        <input type="number" name="broadcasts_limit" value="{{ plan.broadcasts_limit }}">
+      </div>
+      <div class="pf-field">
+        <label>Products</label>
+        <input type="number" name="products_limit" value="{{ plan.products_limit }}">
+      </div>
+      <div class="pf-field">
+        <label>Data sources</label>
+        <input type="number" name="data_sources_limit" value="{{ plan.data_sources_limit }}">
+      </div>
+      <div class="pf-field">
+        <label>Staff seats</label>
+        <input type="number" name="staff_limit" value="{{ plan.staff_limit }}">
+      </div>
+    </div>
+  </div>
+
+  <div class="pf-card">
+    <div class="pf-card-title"><span class="pf-badge" style="background:rgba(240,68,56,0.14)">🔓</span> Features unlocked on this plan</div>
+    <p class="pf-hint" style="margin:-8px 0 14px">Tick every page/action this plan's merchants can use. Unchecked ones show an upgrade prompt instead.</p>
+
+    {% set group_icons = {
+      'Leads': '🔥', 'Team': '👥', 'Store Information': '🏬', 'Analytics': '📈',
+      'Inbox': '💬', 'Channels': '📡', 'Voice Calls': '📞', 'WhatsApp': '📱',
+      'CRM': '🗂️', 'AI Assistant': '🤖', 'WooCommerce Plugin': '🛍️',
+      'WhatsApp Campaigns': '📣', 'Email Campaigns': '✉️', 'Reports': '📊',
+      'Ecommerce & Integrations': '🔌'
+    } %}
+    {% set group_colors = ['#F04438','#F79009','#EAAA08','#12B76A','#15B79E','#0BA5EC',
+                            '#2E90FA','#6172F3','#7A5AF8','#7C3AED','#9E77ED','#EE46BC',
+                            '#F63D68','#DC6803','#667085'] %}
+
+    {% for group_name, items in feature_catalog.items() %}
+    {% set grp_color = group_colors[loop.index0 % group_colors|length] %}
+    <div class="pf-feature-group" data-group="{{ loop.index }}" style="--grp-color:{{ grp_color }};--grp-tint:{{ grp_color }}14">
+      <div class="pf-feature-group-head">
+        <div class="pf-feature-group-title">
+          <span class="pf-group-icon">{{ group_icons.get(group_name, '⚙️') }}</span> {{ group_name }}
+          <span class="pf-group-count">({{ items|length }})</span>
+        </div>
+        <div class="pf-group-links">
+          <a onclick="setGroup({{ loop.index }}, true)">All</a>
+          <a class="none-link" onclick="setGroup({{ loop.index }}, false)">None</a>
+        </div>
+      </div>
+      <div class="pf-flags-grid">
+        {% for feature_key, label in items %}
+          {% if feature_key.startswith('legacy:') %}
+            {% set col = feature_key.split(':')[1] %}
+            <label class="pf-check"><input type="checkbox" class="pf-feat-cb" name="{{ feature_key }}" {% if plan[col] %}checked{% endif %} onchange="updateCounter()"> {{ label }}</label>
+          {% else %}
+            <label class="pf-check"><input type="checkbox" class="pf-feat-cb" name="{{ feature_key }}" {% if feature_key in granted_keys %}checked{% endif %} onchange="updateCounter()"> {{ label }}</label>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="pf-actions-spacer"></div>
+</form>
+</div>
+
+<script>
+function toggleParentField() {
+  var mode = document.getElementById('channelModeSelect').value;
+  document.getElementById('parentPlanField').style.display = (mode === 'dual') ? '' : 'none';
+}
+
+function setGroup(idx, checked) {
+  var group = document.querySelector('.pf-feature-group[data-group="' + idx + '"]');
+  group.querySelectorAll('.pf-feat-cb').forEach(function(cb) { cb.checked = checked; });
+  updateCounter();
+}
+
+function updateCounter() {
+  var all = document.querySelectorAll('.pf-feat-cb');
+  var checked = document.querySelectorAll('.pf-feat-cb:checked').length;
+  var total = all.length;
+  var pct = total ? Math.round(checked / total * 100) : 0;
+  document.getElementById('pfCounterNum').textContent = checked;
+  document.getElementById('pfCounterTotal').textContent = total;
+  var ring = document.getElementById('pfCounterRing');
+  ring.style.setProperty('--pct', pct);
+  var ringColor = pct >= 80 ? '#12B76A' : (pct >= 40 ? '#F79009' : '#F04438');
+  ring.style.setProperty('--ring-color', ringColor);
+}
+
+document.addEventListener('DOMContentLoaded', updateCounter);
+</script>
+{% endblock %}
