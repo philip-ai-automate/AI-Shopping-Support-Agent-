@@ -917,7 +917,7 @@
       </div>
       <div class="sb-sub {% if _team_group %}open{% endif %}">
         <a href="{{ url_for('portal.team_page') }}" class="{% if request.endpoint == 'portal.team_page' %}active{% endif %}">Team Members</a>
-        <a href="{{ url_for('portal.team_create') }}" class="{% if request.endpoint == 'portal.team_create' %}active{% endif %}">Create New Team Member</a>
+        <a href="{{ url_for('portal.team_create') }}" class="{% if request.endpoint == 'portal.team_create' %}active{% endif %}">New Team Member</a>
         <a href="{{ url_for('portal.team_roles_page') }}" class="{% if request.endpoint and request.endpoint.startswith('portal.team_role') %}active{% endif %}">Roles</a>
         <a href="{{ url_for('portal.team_departments_page') }}" class="{% if request.endpoint and request.endpoint.startswith('portal.team_department') %}active{% endif %}">Departments</a>
         <a href="{{ url_for('portal.team_positions_page') }}" class="{% if request.endpoint and request.endpoint.startswith('portal.team_position') %}active{% endif %}">Positions</a>
