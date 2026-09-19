@@ -785,10 +785,15 @@ PLAN_FEATURE_CATALOG = {
         ("dashboard.page", "Dashboard"),
     ],
     "Billing": [
-        ("billing.subscription",     "Subscription Plans"),
-        ("billing.credits",          "Buy Credits"),
-        ("billing.invoices",         "Invoices"),
-        ("billing.payment_gateways", "Payment Gateways"),
+        ("billing.subscription_view",             "Subscription Plans — view"),
+        ("billing.subscription_manage",           "Subscribe / switch / upgrade a Subscription Plan"),
+        ("billing.credits_view",                  "Buy Credits — view"),
+        ("billing.credits_manage",                "Buy credits / manage saved cards"),
+        ("billing.invoices_view",                 "Invoices — view"),
+        ("billing.payment_gateways_view",         "Payment Gateways — view"),
+        ("billing.payment_gateways_manage",       "Connect / configure a Payment Gateway"),
+        ("billing.payment_gateways_remove",       "Disconnect a Payment Gateway"),
+        ("billing.payment_gateways_reveal_secret","Reveal a Payment Gateway's secret key"),
     ],
     "Settings": [
         ("settings.account",      "Account Settings — view"),
@@ -806,23 +811,29 @@ PLAN_FEATURE_CATALOG = {
         ("leads.create", "Create a Lead (manually or from a Hot Conversation)"),
     ],
     "Team": [
-        ("team.manage",                 "Team — view"),
-        ("team.members_create",         "Create a team member"),
-        ("team.members_assign_role",    "Change a team member's role"),
-        ("team.members_deactivate",     "Deactivate / reactivate a team member"),
-        ("team.members_remove",         "Permanently remove a team member"),
-        ("team.members_channel_access", "Manage a team member's AI Agent / Messenger / Web Chat access"),
-        ("team.roles_manage",           "Create / edit Roles and their permissions"),
-        ("team.roles_delete",           "Delete a Role"),
-        ("team.departments_manage",     "Create / edit Departments"),
-        ("team.departments_delete",     "Delete a Department"),
-        ("team.positions_manage",       "Create / edit Positions"),
-        ("team.positions_delete",       "Delete a Position"),
+        ("team.manage",                    "Team — view"),
+        ("team.members_create",            "Create a team member"),
+        ("team.members_assign_role",       "Change a team member's role"),
+        ("team.members_deactivate",        "Deactivate / reactivate a team member"),
+        ("team.members_remove",            "Permanently remove a team member"),
+        ("team.members_agent_access",      "Manage a team member's AI Agent assignment"),
+        ("team.members_messenger_access",  "Manage a team member's Messenger access"),
+        ("team.members_webchat_access",    "Manage a team member's Web Chat access"),
+        ("team.roles_create",              "Create a Role"),
+        ("team.roles_edit",                "Edit a Role's permissions"),
+        ("team.roles_delete",              "Delete a Role"),
+        ("team.departments_create",        "Create a Department"),
+        ("team.departments_edit",          "Edit a Department"),
+        ("team.departments_delete",        "Delete a Department"),
+        ("team.positions_create",          "Create a Position"),
+        ("team.positions_edit",            "Edit a Position"),
+        ("team.positions_delete",          "Delete a Position"),
     ],
     "Store Information": [
-        ("store.info",           "Store Information — view"),
-        ("store.info_edit",      "Edit business details / AI knowledge text"),
-        ("store.info_documents", "Upload / delete AI knowledge documents"),
+        ("store.info",                   "Store Information — view"),
+        ("store.info_edit",              "Edit business details / AI knowledge text"),
+        ("store.info_documents_upload",  "Upload an AI knowledge document"),
+        ("store.info_documents_delete",  "Delete an AI knowledge document"),
     ],
     "Analytics": [
         ("analytics.page", "Analytics"),
@@ -836,9 +847,11 @@ PLAN_FEATURE_CATALOG = {
         ("inbox.manage_contact", "Edit contact details from Inbox"),
     ],
     "Channels": [
-        ("channels.page",               "Channels — view"),
-        ("channels.connect_messenger",  "Connect / manage Messenger"),
-        ("channels.connect_pressone",   "Connect / manage PressOne (phone)"),
+        ("channels.page",                     "Channels — view"),
+        ("channels.connect_messenger",        "Connect Messenger (no separate disconnect exists)"),
+        ("channels.connect_pressone_view",    "PressOne — view connect page"),
+        ("channels.connect_pressone_manage",  "Connect / test / configure PressOne"),
+        ("channels.connect_pressone_remove",  "Disconnect PressOne"),
     ],
     "Voice Calls": [
         ("voice.calls", "Voice Calls (PressOne)"),
@@ -850,43 +863,83 @@ PLAN_FEATURE_CATALOG = {
         ("wa.report",               "WhatsApp Report"),
     ],
     "CRM": [
-        ("crm.contacts",          "All Contacts"),
-        ("crm.companies",         "Companies"),
-        ("crm.pipeline_board",    "Pipeline Board"),
-        ("crm.segments",          "Segments"),
-        ("crm.tags",              "Tags"),
-        ("crm.merge_review",      "Duplicate Merge Review"),
-        ("crm.pipeline_settings", "Pipeline Settings"),
+        ("crm.contacts_view",          "Contacts — view"),
+        ("crm.contacts_create",        "Create / import a Contact"),
+        ("crm.contacts_edit",          "Edit a Contact (notes, consent, tags, status, segment, move to pipeline)"),
+        ("crm.contacts_delete",        "Delete a Contact"),
+        ("crm.companies_view",         "Companies — view"),
+        ("crm.companies_create",       "Create a Company"),
+        ("crm.companies_edit",         "Edit a Company (incl. notes)"),
+        ("crm.pipeline_board_view",    "Pipeline Board — view"),
+        ("crm.pipeline_board_edit",    "Edit a lead / advance or drop a pipeline stage"),
+        ("crm.segments_view",          "Segments — view"),
+        ("crm.segments_create",        "Create a Segment"),
+        ("crm.segments_edit",          "Edit a Segment (incl. members)"),
+        ("crm.segments_delete",        "Delete a Segment"),
+        ("crm.tags_view",              "Tags — view"),
+        ("crm.tags_create",            "Create a Tag / import bounces"),
+        ("crm.tags_edit",              "Edit Tag membership"),
+        ("crm.tags_delete",            "Delete a Tag"),
+        ("crm.merge_review_view",      "Duplicate Merge Review — view"),
+        ("crm.merge_review_confirm",   "Confirm a merge (permanently merges the duplicate)"),
+        ("crm.merge_review_reject",    "Reject a merge suggestion"),
+        ("crm.pipeline_settings_view", "Pipeline Settings — view"),
+        ("crm.pipeline_settings_edit", "Edit Pipeline Settings"),
     ],
     "AI Assistant": [
-        ("legacy:feat_advanced_ai",  "Custom AI Instructions"),
-        ("ai.handoff_rules",         "Handoff Rules"),
-        ("ai.api_keys",              "API Keys"),
-        ("ai.agent_profiles",        "AI Agent Profiles"),
+        ("legacy:feat_advanced_ai",  "Custom AI Instructions (plan unlock)"),
+        ("ai.instructions_view",     "Custom AI Instructions — view"),
+        ("ai.instructions_edit",     "Edit Custom AI Instructions"),
+        ("ai.handoff_rules_view",    "Handoff Rules — view"),
+        ("ai.handoff_rules_create",  "Create a Handoff Rule"),
+        ("ai.handoff_rules_edit",    "Enable / disable a Handoff Rule"),
+        ("ai.handoff_rules_delete",  "Delete a Handoff Rule"),
+        ("ai.api_keys_view",         "API Keys — view"),
+        ("ai.api_keys_revoke",       "Revoke an API Key"),
+        ("ai.agent_profiles_view",   "AI Agent Profiles — view"),
+        ("ai.agent_profiles_create", "Create an AI Agent Profile"),
+        ("ai.agent_profiles_edit",   "Edit / activate an AI Agent Profile"),
+        ("ai.agent_profiles_delete", "Delete an AI Agent Profile"),
     ],
     "WooCommerce Plugin": [
         ("woo.product_recommendation", "Product Recommendation"),
         ("woo.cross_selling",          "Automated Cross-Selling"),
         ("legacy:feat_visual_match",   "Shop by Sending a Photo"),
         ("woo.cart_recovery",          "Intelligent Cart Revenue Recovery (plan unlock)"),
-        ("woo.cart_recovery_settings", "Cart Recovery — Overview & Settings"),
-        ("woo.cart_recovery_templates","Cart Recovery — Email Templates"),
-        ("woo.verified_specs",         "Verified Specs Lookup"),
-        ("woo.chat_archive",           "Chat Archive"),
-        ("woo.message_templates",      "WhatsApp Message Templates"),
+        ("woo.cart_recovery_view",     "Cart Recovery — view"),
+        ("woo.cart_recovery_edit",     "Edit Cart Recovery Settings"),
+        ("woo.cart_recovery_templates_view", "Cart Recovery Email Templates — view"),
+        ("woo.cart_recovery_templates_edit", "Edit Cart Recovery Email Templates"),
+        ("woo.verified_specs_view",    "Verified Specs Lookup — view"),
+        ("woo.verified_specs_create",  "Add a Verified Specs domain / spec"),
+        ("woo.verified_specs_delete",  "Delete a Verified Specs domain / spec"),
+        ("woo.chat_archive_view",      "Chat Archive — view"),
+        ("woo.message_templates_view", "WhatsApp Message Templates — view"),
+        ("woo.message_templates_edit", "Edit WhatsApp Message Templates"),
     ],
     "WhatsApp Campaigns": [
-        ("legacy:feat_broadcasts",    "Broadcast Messaging & Reports (plan unlock)"),
-        ("campaigns_wa.all",          "All Campaigns"),
-        ("campaigns_wa.segments",     "WhatsApp Segment"),
-        ("campaigns_wa.reports",      "Reports"),
-        ("campaigns_wa.needs_review", "Needs Review"),
+        ("legacy:feat_broadcasts",           "Broadcast Messaging & Reports (plan unlock)"),
+        ("campaigns_wa.all_view",            "All Campaigns — view"),
+        ("campaigns_wa.all_create",          "Create a WhatsApp Campaign"),
+        ("campaigns_wa.all_send",            "Send a WhatsApp Campaign"),
+        ("campaigns_wa.all_delete",          "Delete a WhatsApp Campaign"),
+        ("campaigns_wa.segments_view",       "WhatsApp Segment — view"),
+        ("campaigns_wa.reports_view",        "Reports — view"),
+        ("campaigns_wa.needs_review_view",   "Needs Review — view"),
+        ("campaigns_wa.needs_review_manage", "Approve / reject / configure Needs Review"),
     ],
     "Email Campaigns": [
-        ("legacy:feat_email_campaigns", "Email Campaigns (plan unlock)"),
-        ("campaigns_email.all",         "All Campaigns"),
-        ("campaigns_email.segments",    "Email Segment"),
-        ("campaigns_email.reports",     "Reports"),
+        ("legacy:feat_email_campaigns",  "Email Campaigns (plan unlock)"),
+        ("campaigns_email.all_view",     "All Campaigns — view"),
+        ("campaigns_email.all_create",   "Create an Email Campaign"),
+        ("campaigns_email.all_edit",     "Edit a draft/scheduled Email Campaign"),
+        ("campaigns_email.all_send",     "Send an Email Campaign (incl. test sends)"),
+        ("campaigns_email.all_delete",   "Delete an Email Campaign"),
+        ("campaigns_email.segments_view",   "Email Segment — view"),
+        ("campaigns_email.segments_create", "Create an Email Segment"),
+        ("campaigns_email.segments_edit",   "Edit Email Segment membership"),
+        ("campaigns_email.segments_delete", "Delete an Email Segment"),
+        ("campaigns_email.reports_view", "Reports — view"),
     ],
     "Reports": [
         ("reports.pipeline_overview", "Pipeline Overview"),
@@ -897,13 +950,24 @@ PLAN_FEATURE_CATALOG = {
         ("reports.billing",           "Billing Reports"),
     ],
     "Ecommerce & Integrations": [
-        ("ecom.products",           "My Products"),
-        ("ecom.orders",             "Orders"),
-        ("ecom.customers",          "Customers"),
-        ("ecom.woo_sync",           "WooCommerce Sync"),
-        ("ecom.data_sources",       "Product Import"),
-        ("ecom.discount_settings",  "Discount Settings"),
-        ("ecom.catalogue",          "My Catalogue"),
+        ("ecom.products_view",           "My Products — view"),
+        ("ecom.products_create",         "Add a Product"),
+        ("ecom.products_edit",           "Edit a Product / toggle stock"),
+        ("ecom.products_delete",         "Delete a Product"),
+        ("ecom.orders_view",             "Orders — view"),
+        ("ecom.orders_manage",           "Verify payment / mark dispatched / mark delivered"),
+        ("ecom.orders_cancel",           "Cancel an Order"),
+        ("ecom.customers_view",          "Customers — view"),
+        ("ecom.woo_sync_view",           "WooCommerce Sync — view"),
+        ("ecom.woo_sync_delete",         "Remove a WooCommerce Sync record"),
+        ("ecom.data_sources_view",       "Product Import — view"),
+        ("ecom.data_sources_create",     "Add a Product Import source (incl. Google Sheets)"),
+        ("ecom.data_sources_edit",       "Edit a Product Import source's mapping / re-sync"),
+        ("ecom.data_sources_delete",     "Delete a Product Import source"),
+        ("ecom.discount_settings_view",  "Discount Settings — view"),
+        ("ecom.discount_settings_edit",  "Edit Discount Settings"),
+        ("ecom.catalogue_view",          "My Catalogue — view"),
+        ("ecom.catalogue_edit",          "Add / remove a product from My Catalogue"),
     ],
 }
 
@@ -1243,6 +1307,20 @@ DESTRUCTIVE_FEATURE_KEYS = {
     "team.departments_delete",
     "team.positions_delete",
     "settings.cancel_plan",
+    "crm.contacts_delete",
+    "crm.segments_delete",
+    "crm.tags_delete",
+    "crm.merge_review_confirm",
+    "ecom.products_delete",
+    "ecom.woo_sync_delete",
+    "ecom.data_sources_delete",
+    "campaigns_wa.all_delete",
+    "campaigns_email.all_delete",
+    "campaigns_email.segments_delete",
+    "woo.verified_specs_delete",
+    "ai.handoff_rules_delete",
+    "ai.agent_profiles_delete",
+    "store.info_documents_delete",
 }
 
 # Any permission that lets someone manage other team members' access at all.
@@ -1251,10 +1329,11 @@ DESTRUCTIVE_FEATURE_KEYS = {
 # _cap_delegated_role_permissions regardless of who created it.
 TEAM_MANAGEMENT_FEATURE_KEYS = {
     "team.members_create", "team.members_assign_role", "team.members_deactivate",
-    "team.members_remove", "team.members_channel_access",
-    "team.roles_manage", "team.roles_delete",
-    "team.departments_manage", "team.departments_delete",
-    "team.positions_manage", "team.positions_delete",
+    "team.members_remove", "team.members_agent_access",
+    "team.members_messenger_access", "team.members_webchat_access",
+    "team.roles_create", "team.roles_edit", "team.roles_delete",
+    "team.departments_create", "team.departments_edit", "team.departments_delete",
+    "team.positions_create", "team.positions_edit", "team.positions_delete",
 }
 
 
@@ -3816,7 +3895,7 @@ def team_roles_page():
     customer  = _get_customer(_customer_id())
     r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
     if r2: return r2
-    r3 = _require_team_permission("team.roles_manage")
+    r3 = _require_any_team_permission(["team.roles_create", "team.roles_edit"])
     if r3: return r3
     tenant_id = int(customer["tenant_id"])
 
@@ -3843,7 +3922,7 @@ def team_role_new():
     customer  = _get_customer(_customer_id())
     r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
     if r2: return r2
-    r3 = _require_team_permission("team.roles_manage")
+    r3 = _require_team_permission("team.roles_create")
     if r3: return r3
     tenant_id = int(customer["tenant_id"])
     acting_is_owner = not session.get("team_member_id")
@@ -3887,7 +3966,7 @@ def team_role_edit(role_id: int):
     customer  = _get_customer(_customer_id())
     r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
     if r2: return r2
-    r3 = _require_team_permission("team.roles_manage")
+    r3 = _require_team_permission("team.roles_edit")
     if r3: return r3
     tenant_id = int(customer["tenant_id"])
     acting_is_owner = not session.get("team_member_id")
@@ -3977,7 +4056,7 @@ def team_departments_page():
     customer  = _get_customer(_customer_id())
     r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
     if r2: return r2
-    r3 = _require_team_permission("team.departments_manage")
+    r3 = _require_any_team_permission(["team.departments_create", "team.departments_edit"])
     if r3: return r3
     tenant_id = int(customer["tenant_id"])
 
@@ -3995,7 +4074,7 @@ def team_department_new():
     customer  = _get_customer(_customer_id())
     r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
     if r2: return r2
-    r3 = _require_team_permission("team.departments_manage")
+    r3 = _require_team_permission("team.departments_create")
     if r3: return r3
     tenant_id = int(customer["tenant_id"])
 
@@ -4030,7 +4109,7 @@ def team_department_edit(dept_id: int):
     customer  = _get_customer(_customer_id())
     r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
     if r2: return r2
-    r3 = _require_team_permission("team.departments_manage")
+    r3 = _require_team_permission("team.departments_edit")
     if r3: return r3
     tenant_id = int(customer["tenant_id"])
 
@@ -4106,7 +4185,7 @@ def team_positions_page():
     customer  = _get_customer(_customer_id())
     r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
     if r2: return r2
-    r3 = _require_team_permission("team.positions_manage")
+    r3 = _require_any_team_permission(["team.positions_create", "team.positions_edit"])
     if r3: return r3
     tenant_id = int(customer["tenant_id"])
 
@@ -4124,7 +4203,7 @@ def team_position_new():
     customer  = _get_customer(_customer_id())
     r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
     if r2: return r2
-    r3 = _require_team_permission("team.positions_manage")
+    r3 = _require_team_permission("team.positions_create")
     if r3: return r3
     tenant_id = int(customer["tenant_id"])
 
@@ -4159,7 +4238,7 @@ def team_position_edit(pos_id: int):
     customer  = _get_customer(_customer_id())
     r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
     if r2: return r2
-    r3 = _require_team_permission("team.positions_manage")
+    r3 = _require_team_permission("team.positions_edit")
     if r3: return r3
     tenant_id = int(customer["tenant_id"])
 
@@ -4293,7 +4372,7 @@ def team_update_agents(member_id: int):
     customer  = _get_customer(_customer_id())
     r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
     if r2: return r2
-    r3 = _require_team_permission("team.members_channel_access")
+    r3 = _require_team_permission("team.members_agent_access")
     if r3: return r3
     tenant_id = int(customer["tenant_id"])
 
@@ -4328,7 +4407,7 @@ def team_update_messenger(member_id: int):
     customer  = _get_customer(_customer_id())
     r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
     if r2: return r2
-    r3 = _require_team_permission("team.members_channel_access")
+    r3 = _require_team_permission("team.members_messenger_access")
     if r3: return r3
     tenant_id = int(customer["tenant_id"])
 
@@ -4363,7 +4442,7 @@ def team_update_webchat(member_id: int):
     customer  = _get_customer(_customer_id())
     r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
     if r2: return r2
-    r3 = _require_team_permission("team.members_channel_access")
+    r3 = _require_team_permission("team.members_webchat_access")
     if r3: return r3
     tenant_id = int(customer["tenant_id"])
 
@@ -4717,7 +4796,7 @@ def onboarding():
 def api_keys():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ai.api_keys")
+    _rperm = _require_team_permission("ai.api_keys_view")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -4763,7 +4842,7 @@ def api_keys():
 def api_keys_revoke(key_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ai.api_keys")
+    _rperm = _require_team_permission("ai.api_keys_revoke")
     if _rperm: return _rperm
 
     flash("API keys can only be revoked by an administrator. Please contact support.", "danger")
@@ -4810,7 +4889,7 @@ def api_keys_revoke(key_id: int):
 def billing():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("billing.credits")
+    _rperm = _require_team_permission("billing.credits_view")
     if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
@@ -4880,7 +4959,7 @@ def billing():
 def billing_checkout():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("billing.credits")
+    _rperm = _require_team_permission("billing.credits_manage")
     if _rperm: return _rperm
 
     if not _stripe_ok():
@@ -5297,7 +5376,7 @@ def stripe_webhook():
 def invoices():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("billing.invoices")
+    _rperm = _require_team_permission("billing.invoices_view")
     if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
@@ -5558,7 +5637,7 @@ def cart_recovery_save_settings():
     """
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("woo.cart_recovery_settings")
+    _rperm = _require_team_permission("woo.cart_recovery_edit")
     if _rperm: return _rperm
 
     customer = _get_customer(_customer_id())
@@ -5640,7 +5719,7 @@ def cart_recovery_save_settings():
 def cart_recovery_dashboard():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("woo.cart_recovery_settings")
+    _rperm = _require_team_permission("woo.cart_recovery_view")
     if _rperm: return _rperm
 
     customer = _get_customer(_customer_id())
@@ -5762,7 +5841,7 @@ def _get_agents_for_tenant(tenant_id: int) -> list:
 def ai_agents():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ai.agent_profiles")
+    _rperm = _require_team_permission("ai.agent_profiles_view")
     if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     if not customer:
@@ -5784,7 +5863,7 @@ def ai_agents():
 def ai_agents_new():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ai.agent_profiles")
+    _rperm = _require_team_permission("ai.agent_profiles_create")
     if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     if not customer:
@@ -5841,7 +5920,7 @@ def ai_agents_new():
 def ai_agents_edit(agent_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ai.agent_profiles")
+    _rperm = _require_team_permission("ai.agent_profiles_edit")
     if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     if not customer:
@@ -5905,7 +5984,7 @@ def ai_agents_edit(agent_id: int):
 def ai_agents_activate(agent_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ai.agent_profiles")
+    _rperm = _require_team_permission("ai.agent_profiles_edit")
     if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     if not customer:
@@ -5945,7 +6024,7 @@ def ai_agents_activate(agent_id: int):
 def ai_agents_delete(agent_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ai.agent_profiles")
+    _rperm = _require_team_permission("ai.agent_profiles_delete")
     if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     if not customer:
@@ -5989,7 +6068,9 @@ def ai_agents_delete(agent_id: int):
 def ai_instruction():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("legacy:feat_advanced_ai")
+    _rperm = _require_team_permission(
+        "ai.instructions_edit" if request.method == "POST" else "ai.instructions_view"
+    )
     if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     gate = _require_plan_feature(customer, "feat_advanced_ai", "Growth")
@@ -6223,7 +6304,7 @@ def verified_specs_settings():
     """Render the Verified Specs settings page."""
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("woo.verified_specs")
+    _rperm = _require_team_permission("woo.verified_specs_view")
     if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     if not customer:
@@ -6262,7 +6343,7 @@ def verified_specs_domain_add():
     """Add a custom trusted domain for this tenant."""
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("woo.verified_specs")
+    _rperm = _require_team_permission("woo.verified_specs_create")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     if not customer:
@@ -6303,7 +6384,7 @@ def verified_specs_domain_delete():
     """Remove a custom trusted domain for this tenant."""
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("woo.verified_specs")
+    _rperm = _require_team_permission("woo.verified_specs_delete")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     if not customer:
@@ -6337,7 +6418,7 @@ def verified_specs_spec_add():
     """Add a custom spec type for this tenant."""
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("woo.verified_specs")
+    _rperm = _require_team_permission("woo.verified_specs_create")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     if not customer:
@@ -6387,7 +6468,7 @@ def verified_specs_spec_delete():
     """Remove a custom spec type for this tenant."""
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("woo.verified_specs")
+    _rperm = _require_team_permission("woo.verified_specs_delete")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     if not customer:
@@ -6564,7 +6645,9 @@ def _build_trial_features(source_type: str) -> dict:
 def cart_recovery_email_template():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("woo.cart_recovery_templates")
+    _rperm = _require_team_permission(
+        "woo.cart_recovery_templates_edit" if request.method == "POST" else "woo.cart_recovery_templates_view"
+    )
     if _rperm: return _rperm
 
     customer = _get_customer(_customer_id())
@@ -9156,7 +9239,7 @@ def _get_session_summary(tenant_id: int, session_id: str):
 def chat_archive():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("woo.chat_archive")
+    _rperm = _require_team_permission("woo.chat_archive_view")
     if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
@@ -9272,7 +9355,7 @@ def chat_archive_export(fmt: str):
     """Export filtered chat archive as PDF / Excel / Word. Requires paid tier."""
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("woo.chat_archive")
+    _rperm = _require_team_permission("woo.chat_archive_view")
     if _rperm: return _rperm
 
     if fmt not in ("pdf", "xlsx", "docx"):
@@ -9356,7 +9439,7 @@ def chat_archive_session_export(session_id: str, fmt: str):
     """Export a single chat session as PDF / Excel / Word. Requires paid tier."""
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("woo.chat_archive")
+    _rperm = _require_team_permission("woo.chat_archive_view")
     if _rperm: return _rperm
 
     if fmt not in ("pdf", "xlsx", "docx"):
@@ -9477,7 +9560,7 @@ def _seed_default_rules(tenant_id: int) -> None:
 def handoff_rules():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ai.handoff_rules")
+    _rperm = _require_team_permission("ai.handoff_rules_view")
     if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
@@ -9512,7 +9595,7 @@ def handoff_rules():
 def handoff_rules_add():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ai.handoff_rules")
+    _rperm = _require_team_permission("ai.handoff_rules_create")
     if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
@@ -9558,7 +9641,7 @@ def handoff_rules_add():
 def handoff_rules_toggle(rule_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ai.handoff_rules")
+    _rperm = _require_team_permission("ai.handoff_rules_edit")
     if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
@@ -9586,7 +9669,7 @@ def handoff_rules_toggle(rule_id: int):
 def handoff_rules_delete(rule_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ai.handoff_rules")
+    _rperm = _require_team_permission("ai.handoff_rules_delete")
     if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
@@ -10178,7 +10261,7 @@ def billing_add_card():
     """
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("billing.credits")
+    _rperm = _require_team_permission("billing.credits_view")
     if _rperm: return _rperm
 
     if not _stripe_ok():
@@ -10230,7 +10313,7 @@ def billing_save_card():
     """
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("billing.credits")
+    _rperm = _require_team_permission("billing.credits_manage")
     if _rperm: return _rperm
 
     if not _stripe_ok():
@@ -10304,7 +10387,7 @@ def billing_remove_card(method_id: int):
     """
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("billing.credits")
+    _rperm = _require_team_permission("billing.credits_manage")
     if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
@@ -10370,7 +10453,7 @@ def billing_set_default_card(method_id: int):
     """
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("billing.credits")
+    _rperm = _require_team_permission("billing.credits_manage")
     if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
@@ -10465,7 +10548,7 @@ def billing_subscribe():
     """
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("billing.subscription")
+    _rperm = _require_team_permission("billing.subscription_view")
     if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
@@ -10523,7 +10606,7 @@ def billing_subscribe_post():
     """
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("billing.subscription")
+    _rperm = _require_team_permission("billing.subscription_manage")
     if _rperm: return _rperm
 
     if not _stripe_ok():
@@ -10811,7 +10894,7 @@ def billing_subscribe_checkout():
     """
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("billing.subscription")
+    _rperm = _require_team_permission("billing.subscription_view")
     if _rperm: return _rperm
 
     if not _stripe_ok():
@@ -10910,7 +10993,7 @@ def billing_subscribe_complete():
     """
     r = _require_login()
     if r: return jsonify({"ok": False, "error": "Not logged in"}), 401
-    if not _team_member_has_permission("billing.subscription"):
+    if not _team_member_has_permission("billing.subscription_manage"):
         return jsonify({"error": "forbidden"}), 403
 
     if not _stripe_ok():
@@ -11140,7 +11223,7 @@ def billing_switch_plan():
     """
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("billing.subscription")
+    _rperm = _require_team_permission("billing.subscription_manage")
     if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
@@ -12638,7 +12721,7 @@ def whatsapp_check_token():
 def whatsapp_templates():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("woo.message_templates")
+    _rperm = _require_team_permission("woo.message_templates_view")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -12674,7 +12757,7 @@ def whatsapp_templates():
 def whatsapp_save_templates():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("woo.message_templates")
+    _rperm = _require_team_permission("woo.message_templates_edit")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -13134,7 +13217,7 @@ def whatsapp_contact_move_to_pipeline(contact_id: int):
     at once, this is how a second or third one gets started."""
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.contacts")
+    _rperm = _require_team_permission("crm.contacts_edit")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -13156,7 +13239,7 @@ def whatsapp_contact_move_to_pipeline(contact_id: int):
 def whatsapp_contacts():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.contacts")
+    _rperm = _require_team_permission("crm.contacts_view")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -13430,7 +13513,7 @@ def whatsapp_contacts():
 def whatsapp_contacts_add():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.contacts")
+    _rperm = _require_team_permission("crm.contacts_create")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -13487,7 +13570,7 @@ def whatsapp_contacts_add():
 def whatsapp_contacts_edit(contact_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.contacts")
+    _rperm = _require_team_permission("crm.contacts_edit")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -13536,7 +13619,7 @@ def whatsapp_contacts_edit(contact_id: int):
 def whatsapp_contacts_delete(contact_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.contacts")
+    _rperm = _require_team_permission("crm.contacts_delete")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -13563,7 +13646,7 @@ def whatsapp_contacts_delete(contact_id: int):
 def whatsapp_contacts_import():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.contacts")
+    _rperm = _require_team_permission("crm.contacts_create")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -13645,7 +13728,7 @@ def whatsapp_contacts_import():
 def whatsapp_contacts_export():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.contacts")
+    _rperm = _require_team_permission("crm.contacts_view")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -13741,7 +13824,7 @@ def whatsapp_contacts_export():
 def whatsapp_contacts_save_view():
     r = _require_login()
     if r: return jsonify({"error": "Please log in again."}), 401
-    if not _team_member_has_permission("crm.contacts"):
+    if not _team_member_has_permission("crm.contacts_view"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -13797,7 +13880,7 @@ def whatsapp_contacts_save_view():
 def whatsapp_contacts_delete_view(view_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.contacts")
+    _rperm = _require_team_permission("crm.contacts_view")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -13823,7 +13906,7 @@ def whatsapp_contacts_delete_view(view_id: int):
 def whatsapp_contact_detail(contact_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.contacts")
+    _rperm = _require_team_permission("crm.contacts_view")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -14004,7 +14087,7 @@ def whatsapp_contact_set_consent(contact_id: int):
     actually checks — wa_contacts.email_opted_out alone wouldn't stop a send."""
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.contacts")
+    _rperm = _require_team_permission("crm.contacts_edit")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -14074,7 +14157,7 @@ def whatsapp_contact_set_consent(contact_id: int):
 def whatsapp_contact_add_note(contact_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.contacts")
+    _rperm = _require_team_permission("crm.contacts_edit")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -14111,7 +14194,7 @@ def whatsapp_contact_add_note(contact_id: int):
 def whatsapp_contact_delete_note(contact_id: int, note_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.contacts")
+    _rperm = _require_team_permission("crm.contacts_edit")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -14136,7 +14219,7 @@ def whatsapp_contact_delete_note(contact_id: int, note_id: int):
 def whatsapp_contact_add_to_segment(contact_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.contacts")
+    _rperm = _require_team_permission("crm.contacts_edit")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -14176,7 +14259,7 @@ def whatsapp_contact_add_to_segment(contact_id: int):
 def whatsapp_contact_remove_from_segment(contact_id: int, seg_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.contacts")
+    _rperm = _require_team_permission("crm.contacts_edit")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -14207,7 +14290,7 @@ def whatsapp_contact_remove_from_segment(contact_id: int, seg_id: int):
 def crm_companies():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.companies")
+    _rperm = _require_team_permission("crm.companies_view")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -14279,7 +14362,7 @@ def crm_companies():
 def crm_companies_add():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.companies")
+    _rperm = _require_team_permission("crm.companies_create")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -14317,7 +14400,7 @@ def crm_companies_add():
 def crm_company_detail(company_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.companies")
+    _rperm = _require_team_permission("crm.companies_view")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -14394,7 +14477,7 @@ def crm_company_detail(company_id: int):
 def crm_company_edit(company_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.companies")
+    _rperm = _require_team_permission("crm.companies_edit")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -14422,7 +14505,7 @@ def crm_company_edit(company_id: int):
 def crm_company_add_note(company_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.companies")
+    _rperm = _require_team_permission("crm.companies_edit")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -14459,7 +14542,7 @@ def crm_company_add_note(company_id: int):
 def crm_merge_review():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.merge_review")
+    _rperm = _require_team_permission("crm.merge_review_view")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -14492,7 +14575,7 @@ def crm_merge_review():
 def crm_merge_review_confirm(candidate_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.merge_review")
+    _rperm = _require_team_permission("crm.merge_review_confirm")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -14526,7 +14609,7 @@ def crm_merge_review_confirm(candidate_id: int):
 def crm_merge_review_reject(candidate_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.merge_review")
+    _rperm = _require_team_permission("crm.merge_review_reject")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -14553,14 +14636,17 @@ def crm_merge_review_reject(candidate_id: int):
 def whatsapp_contacts_bulk_action():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.contacts")
-    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
     action     = request.form.get("action", "").strip()
     ids_raw    = request.form.getlist("contact_ids")
     contact_ids = [int(i) for i in ids_raw if i.isdigit()]
+
+    # Dynamic key — bulk-delete needs the delete permission, every other
+    # bulk action (status change, tagging, etc.) needs edit.
+    _rperm = _require_team_permission("crm.contacts_delete" if action == "delete" else "crm.contacts_edit")
+    if _rperm: return _rperm
 
     if not contact_ids:
         flash("No contacts selected.", "warning")
@@ -14693,7 +14779,7 @@ def whatsapp_contacts_bulk_action():
 def whatsapp_contact_set_status(contact_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.contacts")
+    _rperm = _require_team_permission("crm.contacts_edit")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -14720,7 +14806,7 @@ def whatsapp_contact_tags(contact_id: int):
     # shared tag table (see _sync_contact_tags()) in case something calls it.
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.contacts")
+    _rperm = _require_team_permission("crm.contacts_edit")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -14746,7 +14832,7 @@ def whatsapp_contact_tags(contact_id: int):
 def whatsapp_segments():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.segments")
+    _rperm = _require_team_permission("crm.segments_view")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -14779,7 +14865,7 @@ def whatsapp_segments():
 def whatsapp_segments_create():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.segments")
+    _rperm = _require_team_permission("crm.segments_create")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -14813,7 +14899,7 @@ def whatsapp_segments_create():
 def whatsapp_segments_edit(seg_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.segments")
+    _rperm = _require_team_permission("crm.segments_edit")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -14843,7 +14929,7 @@ def whatsapp_segments_edit(seg_id: int):
 def whatsapp_segments_delete(seg_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.segments")
+    _rperm = _require_team_permission("crm.segments_delete")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -14863,7 +14949,7 @@ def whatsapp_segments_delete(seg_id: int):
 def whatsapp_segment_detail(seg_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.segments")
+    _rperm = _require_team_permission("crm.segments_view")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -14914,7 +15000,7 @@ def whatsapp_segment_detail(seg_id: int):
 def whatsapp_segment_add_member(seg_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.segments")
+    _rperm = _require_team_permission("crm.segments_edit")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -14953,7 +15039,7 @@ def whatsapp_segment_add_member(seg_id: int):
 def whatsapp_segment_remove_member(seg_id: int, contact_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.segments")
+    _rperm = _require_team_permission("crm.segments_edit")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -14981,7 +15067,7 @@ def whatsapp_segment_contacts_json(seg_id: int):
     """Return segment member phones for campaign pre-fill."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("crm.segments"):
+    if not _team_member_has_permission("crm.segments_view"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -15009,7 +15095,7 @@ def sales_pipeline_contacts_json():
     """Return Sales Pipeline lead phones for campaign pre-fill (bridges the CRM to WhatsApp campaigns)."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("crm.pipeline_board"):
+    if not _team_member_has_permission("crm.pipeline_board_view"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -15354,7 +15440,7 @@ if not _sched_started:
 def whatsapp_campaigns():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("campaigns_wa.all")
+    _rperm = _require_team_permission("campaigns_wa.all_view")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     gate = _require_plan_feature(customer, "feat_broadcasts", "Starter")
@@ -15409,7 +15495,7 @@ def whatsapp_campaigns():
 def whatsapp_campaigns_create():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("campaigns_wa.all")
+    _rperm = _require_team_permission("campaigns_wa.all_create")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -15559,7 +15645,7 @@ def whatsapp_campaigns_create():
 def whatsapp_campaigns_send(campaign_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("campaigns_wa.all")
+    _rperm = _require_team_permission("campaigns_wa.all_send")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -15576,7 +15662,7 @@ def whatsapp_campaigns_send(campaign_id: int):
 def whatsapp_campaigns_delete(campaign_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("campaigns_wa.all")
+    _rperm = _require_team_permission("campaigns_wa.all_delete")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -15607,7 +15693,7 @@ def whatsapp_campaigns_templates():
     r = _require_login()
     if r:
         return jsonify([])
-    if not _team_member_has_permission("campaigns_wa.all"):
+    if not _team_member_has_permission("campaigns_wa.all_view"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -15684,7 +15770,7 @@ def whatsapp_campaigns_upload_image():
     r = _require_login()
     if r:
         return jsonify({"error": "Unauthorised"}), 401
-    if not _team_member_has_permission("campaigns_wa.all"):
+    if not _team_member_has_permission("campaigns_wa.all_create"):
         return jsonify({"error": "forbidden"}), 403
 
     f = request.files.get("image")
@@ -15742,7 +15828,7 @@ def whatsapp_campaign_segments_page():
     tables and add/remove/create/delete JSON endpoints below."""
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("campaigns_wa.segments")
+    _rperm = _require_team_permission("campaigns_wa.segments_view")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -16023,7 +16109,7 @@ def whatsapp_campaigns_pipeline_leads_json():
     mirrors /email/campaigns/pipeline-leads-json."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("campaigns_wa.segments"):
+    if not _team_member_has_permission("campaigns_wa.segments_view"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -16067,7 +16153,7 @@ def whatsapp_campaigns_pipeline_leads_json():
 def whatsapp_campaigns_reports():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("campaigns_wa.reports")
+    _rperm = _require_team_permission("campaigns_wa.reports_view")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -16098,7 +16184,7 @@ def whatsapp_campaigns_reports():
 def whatsapp_campaign_report(campaign_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("campaigns_wa.reports")
+    _rperm = _require_team_permission("campaigns_wa.reports_view")
     if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     tenant_id = customer["tenant_id"]
@@ -16234,7 +16320,7 @@ def whatsapp_campaign_report(campaign_id: int):
 def whatsapp_campaign_reviews():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("campaigns_wa.needs_review")
+    _rperm = _require_team_permission("campaigns_wa.needs_review_view")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -16268,7 +16354,7 @@ def whatsapp_campaign_reviews():
 def whatsapp_campaign_automation_settings():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("campaigns_wa.needs_review")
+    _rperm = _require_team_permission("campaigns_wa.needs_review_manage")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -16369,7 +16455,7 @@ def _approve_campaign_reply_review(review_id: int, tenant_id: int, staff_name: s
 def whatsapp_campaign_review_approve(review_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("campaigns_wa.needs_review")
+    _rperm = _require_team_permission("campaigns_wa.needs_review_manage")
     if _rperm: return _rperm
     customer   = _get_customer(_customer_id())
     tenant_id  = int(customer["tenant_id"])
@@ -16388,7 +16474,7 @@ def whatsapp_campaign_review_approve(review_id: int):
 def whatsapp_campaign_review_reject(review_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("campaigns_wa.needs_review")
+    _rperm = _require_team_permission("campaigns_wa.needs_review_manage")
     if _rperm: return _rperm
     customer   = _get_customer(_customer_id())
     tenant_id  = int(customer["tenant_id"])
@@ -17029,7 +17115,7 @@ def comeback_unsubscribe():
 def email_campaigns():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("campaigns_email.all")
+    _rperm = _require_team_permission("campaigns_email.all_view")
     if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     gate = _require_email_campaigns_plan(customer)
@@ -17180,7 +17266,7 @@ def _parse_campaign_form(tenant_id: int, customer: dict, form):
 def email_campaigns_create():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("campaigns_email.all")
+    _rperm = _require_team_permission("campaigns_email.all_create")
     if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     gate = _require_email_campaigns_plan(customer)
@@ -17239,7 +17325,7 @@ def email_campaigns_edit_data(campaign_id: int):
     so its completed send's counts and recipient history are never overwritten."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("campaigns_email.all"):
+    if not _team_member_has_permission("campaigns_email.all_view"):
         return jsonify({"error": "forbidden"}), 403
     customer = _get_customer(_customer_id())
     gate = _require_email_campaigns_plan(customer)
@@ -17275,7 +17361,7 @@ def email_campaigns_edit_data(campaign_id: int):
 def email_campaigns_update(campaign_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("campaigns_email.all")
+    _rperm = _require_team_permission("campaigns_email.all_edit")
     if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     gate = _require_email_campaigns_plan(customer)
@@ -17376,7 +17462,7 @@ def email_campaigns_preview():
     as email_campaigns_create so the preview can never drift from the real send."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("campaigns_email.all"):
+    if not _team_member_has_permission("campaigns_email.all_view"):
         return jsonify({"error": "forbidden"}), 403
     customer = _get_customer(_customer_id())
     gate = _require_email_campaigns_plan(customer)
@@ -17414,7 +17500,7 @@ def email_campaigns_send_test_draft():
     saved campaign row, reusing the same render path as email_campaigns_preview."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("campaigns_email.all"):
+    if not _team_member_has_permission("campaigns_email.all_send"):
         return jsonify({"error": "forbidden"}), 403
     customer = _get_customer(_customer_id())
     gate = _require_email_campaigns_plan(customer)
@@ -17461,7 +17547,7 @@ def email_campaigns_send_test_draft():
 def email_campaigns_send_test(campaign_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("campaigns_email.all"):
+    if not _team_member_has_permission("campaigns_email.all_send"):
         return jsonify({"error": "forbidden"}), 403
     customer = _get_customer(_customer_id())
     gate = _require_email_campaigns_plan(customer)
@@ -17509,7 +17595,7 @@ def email_campaigns_duplicate_data(campaign_id: int):
     campaign row seeded from this one's content, not editing it in place."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("campaigns_email.all"):
+    if not _team_member_has_permission("campaigns_email.all_view"):
         return jsonify({"error": "forbidden"}), 403
     customer = _get_customer(_customer_id())
     gate = _require_email_campaigns_plan(customer)
@@ -17544,7 +17630,7 @@ def email_campaigns_duplicate_data(campaign_id: int):
 def email_campaigns_send(campaign_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("campaigns_email.all")
+    _rperm = _require_team_permission("campaigns_email.all_send")
     if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     gate = _require_email_campaigns_plan(customer)
@@ -17565,7 +17651,7 @@ def email_campaigns_send(campaign_id: int):
 def email_campaigns_delete(campaign_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("campaigns_email.all")
+    _rperm = _require_team_permission("campaigns_email.all_delete")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -17596,7 +17682,7 @@ def email_campaigns_upload_image():
     r = _require_login()
     if r:
         return jsonify({"error": "Unauthorised"}), 401
-    if not _team_member_has_permission("campaigns_email.all"):
+    if not _team_member_has_permission("campaigns_email.all_create"):
         return jsonify({"error": "forbidden"}), 403
 
     f = request.files.get("image")
@@ -17627,7 +17713,7 @@ def email_campaigns_contacts_json():
     """Return Sales Pipeline lead emails for campaign recipient pre-fill."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("campaigns_email.all"):
+    if not _team_member_has_permission("campaigns_email.all_view"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -17658,7 +17744,7 @@ def email_segments_list():
     recipient dropdown and the segment manager modal."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("campaigns_email.segments"):
+    if not _team_member_has_permission("campaigns_email.segments_view"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -17691,7 +17777,7 @@ def email_segments_list():
 def email_segments_create():
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("campaigns_email.segments"):
+    if not _team_member_has_permission("campaigns_email.segments_create"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -17717,7 +17803,7 @@ def email_segments_create():
 def email_segments_delete(segment_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("campaigns_email.segments"):
+    if not _team_member_has_permission("campaigns_email.segments_delete"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -17739,7 +17825,7 @@ def email_segments_members(segment_id: int):
     manage-segment modal shows only these, not every Sales Pipeline contact."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("campaigns_email.segments"):
+    if not _team_member_has_permission("campaigns_email.segments_view"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -17774,7 +17860,7 @@ def email_segments_add_member(segment_id: int):
     bulk checkbox-everyone save."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("campaigns_email.segments"):
+    if not _team_member_has_permission("campaigns_email.segments_edit"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -17818,7 +17904,7 @@ def email_segments_add_member(segment_id: int):
 def email_segments_remove_member(segment_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("campaigns_email.segments"):
+    if not _team_member_has_permission("campaigns_email.segments_edit"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -17851,7 +17937,7 @@ def email_segments_bulk_add_members(segment_id: int):
     resolved."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("campaigns_email.segments"):
+    if not _team_member_has_permission("campaigns_email.segments_edit"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -17895,7 +17981,7 @@ def email_segments_bulk_add_members(segment_id: int):
 def lead_labels_page():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.tags")
+    _rperm = _require_team_permission("crm.tags_view")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -17934,7 +18020,7 @@ def lead_labels_list_json():
     Label' modal and the campaign compose page's 'Exclude label' picker."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("crm.tags"):
+    if not _team_member_has_permission("crm.tags_view"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -17963,7 +18049,7 @@ def lead_labels_list_json():
 def lead_labels_create():
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("crm.tags"):
+    if not _team_member_has_permission("crm.tags_create"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -17991,7 +18077,7 @@ def lead_labels_create():
 def lead_labels_delete(label_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("crm.tags"):
+    if not _team_member_has_permission("crm.tags_delete"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -18014,7 +18100,7 @@ def lead_labels_delete(label_id: int):
 def lead_labels_members(label_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("crm.tags"):
+    if not _team_member_has_permission("crm.tags_view"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -18046,7 +18132,7 @@ def lead_labels_members(label_id: int):
 def lead_labels_remove_member(label_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("crm.tags"):
+    if not _team_member_has_permission("crm.tags_edit"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -18077,7 +18163,7 @@ def lead_labels_bulk_add_members(label_id: int):
     not an email-campaign audience)."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("crm.tags"):
+    if not _team_member_has_permission("crm.tags_edit"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -18115,7 +18201,7 @@ def lead_labels_search_leads_json():
     to any lead."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("crm.tags"):
+    if not _team_member_has_permission("crm.tags_view"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -18168,7 +18254,7 @@ def lead_labels_search_leads_json():
 def lead_labels_contact_members(label_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("crm.tags"):
+    if not _team_member_has_permission("crm.tags_view"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -18200,7 +18286,7 @@ def lead_labels_contact_members(label_id: int):
 def lead_labels_remove_contact_member(label_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("crm.tags"):
+    if not _team_member_has_permission("crm.tags_edit"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -18229,7 +18315,7 @@ def lead_labels_bulk_add_contacts(label_id: int):
     lead_labels_bulk_add_members() for Sales Pipeline leads."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("crm.tags"):
+    if not _team_member_has_permission("crm.tags_edit"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -18265,7 +18351,7 @@ def lead_labels_search_contacts_json():
     """Search WhatsApp Contacts for the Tags page's People add typeahead."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("crm.tags"):
+    if not _team_member_has_permission("crm.tags_view"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -18312,7 +18398,7 @@ def lead_labels_import_bounces():
     the pipeline without opening a campaign report."""
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.tags")
+    _rperm = _require_team_permission("crm.tags_create")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -18404,7 +18490,7 @@ def email_campaigns_pipeline_leads_json():
     small — this tenant alone has 2600+ leads, so no "browse everyone" mode."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("campaigns_email.segments"):
+    if not _team_member_has_permission("campaigns_email.segments_view"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -18447,7 +18533,7 @@ def email_campaigns_pipeline_leads_json():
 def email_campaigns_reports():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("campaigns_email.reports")
+    _rperm = _require_team_permission("campaigns_email.reports_view")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -18474,7 +18560,7 @@ def email_campaigns_reports():
 def email_campaign_report(campaign_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("campaigns_email.reports")
+    _rperm = _require_team_permission("campaigns_email.reports_view")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = customer["tenant_id"]
@@ -18707,7 +18793,7 @@ def _annotate_order(order: dict) -> dict:
 def orders():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.orders")
+    _rperm = _require_team_permission("ecom.orders_view")
     if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
@@ -18746,7 +18832,7 @@ def orders():
 def order_detail(order_id: str):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.orders")
+    _rperm = _require_team_permission("ecom.orders_view")
     if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
@@ -18818,7 +18904,7 @@ def _notify_customer_wa(tenant_id: int, customer_phone: str, message: str):
 def order_verify_payment(order_id: str):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.orders")
+    _rperm = _require_team_permission("ecom.orders_manage")
     if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
@@ -18867,7 +18953,7 @@ def order_verify_payment(order_id: str):
 def order_dispatch(order_id: str):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.orders")
+    _rperm = _require_team_permission("ecom.orders_manage")
     if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
@@ -18925,7 +19011,7 @@ def order_dispatch(order_id: str):
 def order_deliver(order_id: str):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.orders")
+    _rperm = _require_team_permission("ecom.orders_manage")
     if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
@@ -18971,7 +19057,7 @@ def order_deliver(order_id: str):
 def order_cancel(order_id: str):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.orders")
+    _rperm = _require_team_permission("ecom.orders_cancel")
     if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
@@ -19148,7 +19234,7 @@ def _get_wa_product_stats(tenant_id):
 def products():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.products")
+    _rperm = _require_team_permission("ecom.products_view")
     if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
@@ -19190,7 +19276,7 @@ def products():
 def product_add():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.products")
+    _rperm = _require_team_permission("ecom.products_create")
     if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
@@ -19257,7 +19343,7 @@ def product_add():
 def product_edit(product_id: str):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.products")
+    _rperm = _require_team_permission("ecom.products_edit")
     if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
@@ -19329,7 +19415,7 @@ def product_edit(product_id: str):
 def product_delete(product_id: str):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.products")
+    _rperm = _require_team_permission("ecom.products_delete")
     if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
@@ -19360,7 +19446,7 @@ def product_toggle_stock(product_id: str):
     """Quick action: mark in-stock (999) or out-of-stock (0) from list view."""
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.products")
+    _rperm = _require_team_permission("ecom.products_edit")
     if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
@@ -20081,7 +20167,7 @@ def _merchant_selection_ids(cur, merchant_id: int) -> set:
 def catalogue_browse():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.catalogue")
+    _rperm = _require_team_permission("ecom.catalogue_view")
     if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
@@ -20151,7 +20237,7 @@ def catalogue_browse():
 def catalogue_category(category_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.catalogue")
+    _rperm = _require_team_permission("ecom.catalogue_view")
     if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
@@ -20281,7 +20367,7 @@ def catalogue_toggle(category_id: int, product_id: int):
     """Add or remove a product from the merchant's store catalogue."""
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.catalogue")
+    _rperm = _require_team_permission("ecom.catalogue_edit")
     if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
@@ -20341,7 +20427,7 @@ def catalogue_toggle(category_id: int, product_id: int):
 def catalogue_selections():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.catalogue")
+    _rperm = _require_team_permission("ecom.catalogue_view")
     if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
@@ -20557,7 +20643,7 @@ def _get_customer_detail(tenant_id: int, phone: str):
 def customers():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.customers")
+    _rperm = _require_team_permission("ecom.customers_view")
     if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
@@ -20589,7 +20675,7 @@ def customers():
 def customer_detail(phone: str):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.customers")
+    _rperm = _require_team_permission("ecom.customers_view")
     if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
@@ -20704,7 +20790,7 @@ def _webhook_health(last_webhook_at) -> str:
 def payment_settings():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("billing.payment_gateways")
+    _rperm = _require_team_permission("billing.payment_gateways_view")
     if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
@@ -20748,7 +20834,7 @@ def payment_settings():
 def payment_settings_paystack():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("billing.payment_gateways")
+    _rperm = _require_team_permission("billing.payment_gateways_manage")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -20787,7 +20873,7 @@ def payment_settings_paystack():
 def payment_settings_paystack_remove():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("billing.payment_gateways")
+    _rperm = _require_team_permission("billing.payment_gateways_remove")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -20813,7 +20899,7 @@ def payment_settings_paystack_remove():
 def payment_settings_flutterwave():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("billing.payment_gateways")
+    _rperm = _require_team_permission("billing.payment_gateways_manage")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -20874,7 +20960,7 @@ def payment_settings_flutterwave():
 def payment_settings_flutterwave_remove():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("billing.payment_gateways")
+    _rperm = _require_team_permission("billing.payment_gateways_remove")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -20905,7 +20991,7 @@ def payment_settings_flutterwave_toggle_checkout():
     """
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("billing.payment_gateways")
+    _rperm = _require_team_permission("billing.payment_gateways_manage")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -20954,7 +21040,7 @@ def payment_settings_flutterwave_toggle_checkout():
 def payment_settings_bank():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("billing.payment_gateways")
+    _rperm = _require_team_permission("billing.payment_gateways_manage")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -21014,7 +21100,7 @@ def payment_settings_reveal(gateway: str):
     """AJAX endpoint — returns decrypted secret key for 10-second reveal."""
     r = _require_login()
     if r: return jsonify({"error": "not logged in"}), 401
-    if not _team_member_has_permission("billing.payment_gateways"):
+    if not _team_member_has_permission("billing.payment_gateways_reveal_secret"):
         return jsonify({"error": "forbidden"}), 403
 
     if gateway not in ("paystack", "flutterwave"):
@@ -21482,7 +21568,12 @@ def store_info():
     # than being folded into store.info_edit. GET (view) uses the base key.
     if request.method == "POST":
         _dispatch_action = request.form.get("action", "save_text")
-        _perm_key = "store.info_documents" if _dispatch_action in ("upload_doc", "delete_doc") else "store.info_edit"
+        if _dispatch_action == "upload_doc":
+            _perm_key = "store.info_documents_upload"
+        elif _dispatch_action == "delete_doc":
+            _perm_key = "store.info_documents_delete"
+        else:
+            _perm_key = "store.info_edit"
     else:
         _perm_key = "store.info"
     _rperm = _require_team_permission(_perm_key)
@@ -21602,7 +21693,7 @@ def store_info():
 def data_sources():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.data_sources")
+    _rperm = _require_team_permission("ecom.data_sources_view")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -21623,7 +21714,7 @@ def data_sources():
 def data_source_upload():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.data_sources")
+    _rperm = _require_team_permission("ecom.data_sources_create")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -21682,7 +21773,7 @@ def data_source_upload():
 def data_source_map(source_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.data_sources")
+    _rperm = _require_team_permission("ecom.data_sources_edit")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -21742,7 +21833,7 @@ def data_source_map(source_id: int):
 def data_source_sync(source_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.data_sources")
+    _rperm = _require_team_permission("ecom.data_sources_edit")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -21793,7 +21884,7 @@ def data_source_sync(source_id: int):
 def data_source_delete(source_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.data_sources")
+    _rperm = _require_team_permission("ecom.data_sources_delete")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -21815,7 +21906,7 @@ def data_source_delete(source_id: int):
 def data_source_google_connect():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.data_sources")
+    _rperm = _require_team_permission("ecom.data_sources_create")
     if _rperm: return _rperm
     if not _google_oauth_configured():
         flash("Google Sheets integration is not configured yet.", "warning")
@@ -21834,7 +21925,7 @@ def data_source_google_connect():
 def data_source_google_callback():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.data_sources")
+    _rperm = _require_team_permission("ecom.data_sources_create")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -21878,7 +21969,7 @@ def data_source_google_callback():
 def data_source_google_setup(source_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.data_sources")
+    _rperm = _require_team_permission("ecom.data_sources_create")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -21957,7 +22048,7 @@ def data_source_google_setup(source_id: int):
 def woo_sync():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.woo_sync")
+    _rperm = _require_team_permission("ecom.woo_sync_view")
     if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
@@ -22045,7 +22136,7 @@ def woo_sync_delete():
     back on the next Full Sync and should be removed from WooCommerce instead."""
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.woo_sync")
+    _rperm = _require_team_permission("ecom.woo_sync_delete")
     if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
@@ -22081,7 +22172,7 @@ def woo_sync_bulk_delete():
     still live on the store."""
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.woo_sync")
+    _rperm = _require_team_permission("ecom.woo_sync_delete")
     if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
@@ -23977,7 +24068,7 @@ def _get_tenant_plan(tenant_id: int) -> dict:
 def billing_plans():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("billing.subscription")
+    _rperm = _require_team_permission("billing.subscription_view")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -24185,7 +24276,7 @@ def _activate_plan_subscription(tenant_id: int, plan_id: int, cycle: str,
 def billing_plan_upgrade():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("billing.subscription")
+    _rperm = _require_team_permission("billing.subscription_manage")
     if _rperm: return _rperm
 
     plan_slug = (request.form.get("plan_slug") or "").strip()
@@ -25008,7 +25099,7 @@ def sales_pipeline():
     Lead at," and moves them between stages."""
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.pipeline_board")
+    _rperm = _require_team_permission("crm.pipeline_board_view")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -25336,7 +25427,7 @@ def sales_pipeline_export():
     view is meant to lighten what's rendered on screen, not cap what you can export."""
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.pipeline_board")
+    _rperm = _require_team_permission("crm.pipeline_board_view")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -25400,7 +25491,7 @@ def sales_pipeline_edit(lead_id: int):
     """Correct a deal's core details — doesn't move its stage, same as the ambassador Leads Edit button."""
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.pipeline_board")
+    _rperm = _require_team_permission("crm.pipeline_board_edit")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -25462,7 +25553,7 @@ def sales_pipeline_assign_ambassador(lead_id: int):
     ambassador_routes.py for how this assignment is matched at payment time."""
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.pipeline_board")
+    _rperm = _require_team_permission("crm.pipeline_board_edit")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -25505,7 +25596,7 @@ def sales_pipeline_assign_ambassador(lead_id: int):
 def sales_pipeline_advance(lead_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.pipeline_board")
+    _rperm = _require_team_permission("crm.pipeline_board_edit")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -25602,7 +25693,7 @@ def sales_pipeline_bulk_advance():
     stage-history row."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("crm.pipeline_board"):
+    if not _team_member_has_permission("crm.pipeline_board_edit"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -25703,7 +25794,7 @@ def sales_pipeline_drop(lead_id: int):
     existing link/bookmark breaks, but 'outcome' now says which one."""
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.pipeline_board")
+    _rperm = _require_team_permission("crm.pipeline_board_edit")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -25744,7 +25835,7 @@ def sales_pipeline_drop(lead_id: int):
 def sales_pipeline_history(lead_id: int):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.pipeline_board")
+    _rperm = _require_team_permission("crm.pipeline_board_view")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -25766,7 +25857,9 @@ def sales_pipeline_settings():
     scoring math) fixed. See project_sales_pipeline_leads_redesign memory."""
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.pipeline_settings")
+    _rperm = _require_team_permission(
+        "crm.pipeline_settings_edit" if request.method == "POST" else "crm.pipeline_settings_view"
+    )
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -26609,7 +26702,9 @@ def _get_products_with_discount(tenant_id: int) -> list:
 def wa_discount_settings():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.discount_settings")
+    _rperm = _require_team_permission(
+        "ecom.discount_settings_edit" if request.method == "POST" else "ecom.discount_settings_view"
+    )
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -26688,7 +26783,7 @@ def wa_discount_settings():
 def wa_discount_product_save(product_id: str):
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("ecom.discount_settings")
+    _rperm = _require_team_permission("ecom.discount_settings_edit")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])

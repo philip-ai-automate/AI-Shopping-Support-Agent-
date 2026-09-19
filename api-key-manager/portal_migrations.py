@@ -2675,6 +2675,401 @@ def ensure_portal_tables():
                     (_pid, _key),
                 )
 
+        # ── CRM granularity split (2026-09-19): the user pointed out there
+        # was no way to give a staff member "view only" — CRM's 7 keys each
+        # covered an entire area (view+create+edit+delete all bundled into
+        # one switch). Split into 22 real keys (view/create/edit/delete
+        # where those actions genuinely exist; named actions — confirm/
+        # reject a merge — where they don't, same principle already used
+        # for Inbox/Team). Backfill the new keys into plan_feature_grants
+        # for every plan (same non-breaking pattern as every prior split),
+        # THEN — the part that matters for not silently taking access away
+        # — expand every EXISTING role that has an old flat key ticked so
+        # it also gets every corresponding new split key ticked. The old
+        # key strings are left sitting harmlessly in the permissions JSONB
+        # (same as every other superseded key in this app) — nothing reads
+        # them anymore, but they're not stripped out.
+        cur.execute("SELECT id FROM plans")
+        _all_plan_ids_tagging = [r[0] for r in cur.fetchall()]
+        _CRM_SPLIT_KEYS = (
+            "crm.contacts_view", "crm.contacts_create", "crm.contacts_edit", "crm.contacts_delete",
+            "crm.companies_view", "crm.companies_create", "crm.companies_edit",
+            "crm.pipeline_board_view", "crm.pipeline_board_edit",
+            "crm.segments_view", "crm.segments_create", "crm.segments_edit", "crm.segments_delete",
+            "crm.tags_view", "crm.tags_create", "crm.tags_edit", "crm.tags_delete",
+            "crm.merge_review_view", "crm.merge_review_confirm", "crm.merge_review_reject",
+            "crm.pipeline_settings_view", "crm.pipeline_settings_edit",
+        )
+        for _pid in _all_plan_ids_tagging:
+            for _key in _CRM_SPLIT_KEYS:
+                cur.execute(
+                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    (_pid, _key),
+                )
+
+        _CRM_OLD_TO_NEW = {
+            "crm.contacts":          ["crm.contacts_view", "crm.contacts_create", "crm.contacts_edit", "crm.contacts_delete"],
+            "crm.companies":         ["crm.companies_view", "crm.companies_create", "crm.companies_edit"],
+            "crm.pipeline_board":    ["crm.pipeline_board_view", "crm.pipeline_board_edit"],
+            "crm.segments":          ["crm.segments_view", "crm.segments_create", "crm.segments_edit", "crm.segments_delete"],
+            "crm.tags":              ["crm.tags_view", "crm.tags_create", "crm.tags_edit", "crm.tags_delete"],
+            "crm.merge_review":      ["crm.merge_review_view", "crm.merge_review_confirm", "crm.merge_review_reject"],
+            "crm.pipeline_settings": ["crm.pipeline_settings_view", "crm.pipeline_settings_edit"],
+        }
+        try:
+            cur.execute("SELECT id, permissions FROM tenant_roles")
+            for _role_id, _perms_raw in cur.fetchall():
+                _perms = _perms_raw if isinstance(_perms_raw, dict) else (_json.loads(_perms_raw) if _perms_raw else {})
+                _changed = False
+                for _old_key, _new_keys in _CRM_OLD_TO_NEW.items():
+                    if _perms.get(_old_key):
+                        for _nk in _new_keys:
+                            if not _perms.get(_nk):
+                                _perms[_nk] = True
+                                _changed = True
+                if _changed:
+                    cur.execute(
+                        "UPDATE tenant_roles SET permissions=%s WHERE id=%s",
+                        (_json.dumps(_perms), _role_id),
+                    )
+        except Exception as e:
+            print("⚠️  CRM permissions granularity migration error:", e)
+
+        # ── Ecommerce & Integrations granularity split (2026-09-19, same
+        # ask as CRM above) — 7 flat keys -> 18 real ones. Companies had no
+        # delete route so none was invented there; same principle applies
+        # here: Orders/Customers/Woo Sync only get the split their real
+        # routes support (no "create an order" or "delete a customer"
+        # action exists, so no such key exists either).
+        _ECOM_SPLIT_KEYS = (
+            "ecom.products_view", "ecom.products_create", "ecom.products_edit", "ecom.products_delete",
+            "ecom.orders_view", "ecom.orders_manage", "ecom.orders_cancel",
+            "ecom.customers_view",
+            "ecom.woo_sync_view", "ecom.woo_sync_delete",
+            "ecom.data_sources_view", "ecom.data_sources_create", "ecom.data_sources_edit", "ecom.data_sources_delete",
+            "ecom.discount_settings_view", "ecom.discount_settings_edit",
+            "ecom.catalogue_view", "ecom.catalogue_edit",
+        )
+        for _pid in _all_plan_ids_tagging:
+            for _key in _ECOM_SPLIT_KEYS:
+                cur.execute(
+                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    (_pid, _key),
+                )
+
+        _ECOM_OLD_TO_NEW = {
+            "ecom.products":          ["ecom.products_view", "ecom.products_create", "ecom.products_edit", "ecom.products_delete"],
+            "ecom.orders":            ["ecom.orders_view", "ecom.orders_manage", "ecom.orders_cancel"],
+            "ecom.customers":         ["ecom.customers_view"],
+            "ecom.woo_sync":          ["ecom.woo_sync_view", "ecom.woo_sync_delete"],
+            "ecom.data_sources":      ["ecom.data_sources_view", "ecom.data_sources_create", "ecom.data_sources_edit", "ecom.data_sources_delete"],
+            "ecom.discount_settings": ["ecom.discount_settings_view", "ecom.discount_settings_edit"],
+            "ecom.catalogue":         ["ecom.catalogue_view", "ecom.catalogue_edit"],
+        }
+        try:
+            cur.execute("SELECT id, permissions FROM tenant_roles")
+            for _role_id, _perms_raw in cur.fetchall():
+                _perms = _perms_raw if isinstance(_perms_raw, dict) else (_json.loads(_perms_raw) if _perms_raw else {})
+                _changed = False
+                for _old_key, _new_keys in _ECOM_OLD_TO_NEW.items():
+                    if _perms.get(_old_key):
+                        for _nk in _new_keys:
+                            if not _perms.get(_nk):
+                                _perms[_nk] = True
+                                _changed = True
+                if _changed:
+                    cur.execute(
+                        "UPDATE tenant_roles SET permissions=%s WHERE id=%s",
+                        (_json.dumps(_perms), _role_id),
+                    )
+        except Exception as e:
+            print("⚠️  Ecommerce permissions granularity migration error:", e)
+
+        # ── Campaigns granularity split (2026-09-19, same ask) — WhatsApp
+        # Campaigns' 4 real keys -> 8, Email Campaigns' 3 real keys -> 10.
+        # "Send" (incl. test-sends) kept separate from create/edit for both
+        # channels — sending has a real external effect (uses send quota,
+        # reaches real customers) distinct from composing.
+        _CAMPAIGNS_SPLIT_KEYS = (
+            "campaigns_wa.all_view", "campaigns_wa.all_create", "campaigns_wa.all_send", "campaigns_wa.all_delete",
+            "campaigns_wa.segments_view", "campaigns_wa.reports_view",
+            "campaigns_wa.needs_review_view", "campaigns_wa.needs_review_manage",
+            "campaigns_email.all_view", "campaigns_email.all_create", "campaigns_email.all_edit",
+            "campaigns_email.all_send", "campaigns_email.all_delete",
+            "campaigns_email.segments_view", "campaigns_email.segments_create",
+            "campaigns_email.segments_edit", "campaigns_email.segments_delete",
+            "campaigns_email.reports_view",
+        )
+        for _pid in _all_plan_ids_tagging:
+            for _key in _CAMPAIGNS_SPLIT_KEYS:
+                cur.execute(
+                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    (_pid, _key),
+                )
+
+        _CAMPAIGNS_OLD_TO_NEW = {
+            "campaigns_wa.all":          ["campaigns_wa.all_view", "campaigns_wa.all_create", "campaigns_wa.all_send", "campaigns_wa.all_delete"],
+            "campaigns_wa.segments":     ["campaigns_wa.segments_view"],
+            "campaigns_wa.reports":      ["campaigns_wa.reports_view"],
+            "campaigns_wa.needs_review": ["campaigns_wa.needs_review_view", "campaigns_wa.needs_review_manage"],
+            "campaigns_email.all":       ["campaigns_email.all_view", "campaigns_email.all_create", "campaigns_email.all_edit", "campaigns_email.all_send", "campaigns_email.all_delete"],
+            "campaigns_email.segments":  ["campaigns_email.segments_view", "campaigns_email.segments_create", "campaigns_email.segments_edit", "campaigns_email.segments_delete"],
+            "campaigns_email.reports":   ["campaigns_email.reports_view"],
+        }
+        try:
+            cur.execute("SELECT id, permissions FROM tenant_roles")
+            for _role_id, _perms_raw in cur.fetchall():
+                _perms = _perms_raw if isinstance(_perms_raw, dict) else (_json.loads(_perms_raw) if _perms_raw else {})
+                _changed = False
+                for _old_key, _new_keys in _CAMPAIGNS_OLD_TO_NEW.items():
+                    if _perms.get(_old_key):
+                        for _nk in _new_keys:
+                            if not _perms.get(_nk):
+                                _perms[_nk] = True
+                                _changed = True
+                if _changed:
+                    cur.execute(
+                        "UPDATE tenant_roles SET permissions=%s WHERE id=%s",
+                        (_json.dumps(_perms), _role_id),
+                    )
+        except Exception as e:
+            print("⚠️  Campaigns permissions granularity migration error:", e)
+
+        # ── WooCommerce Plugin granularity split (2026-09-19, same ask).
+        # `woo.cart_recovery` itself (the plan-tier gate) is untouched —
+        # only the two role-permission keys built alongside it
+        # (`woo.cart_recovery_settings`, `woo.cart_recovery_templates`) get
+        # split, same as every module so far.
+        _WOO_SPLIT_KEYS = (
+            "woo.cart_recovery_view", "woo.cart_recovery_edit",
+            "woo.cart_recovery_templates_view", "woo.cart_recovery_templates_edit",
+            "woo.verified_specs_view", "woo.verified_specs_create", "woo.verified_specs_delete",
+            "woo.chat_archive_view",
+            "woo.message_templates_view", "woo.message_templates_edit",
+        )
+        for _pid in _all_plan_ids_tagging:
+            for _key in _WOO_SPLIT_KEYS:
+                cur.execute(
+                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    (_pid, _key),
+                )
+
+        _WOO_OLD_TO_NEW = {
+            "woo.cart_recovery_settings":  ["woo.cart_recovery_view", "woo.cart_recovery_edit"],
+            "woo.cart_recovery_templates": ["woo.cart_recovery_templates_view", "woo.cart_recovery_templates_edit"],
+            "woo.verified_specs":          ["woo.verified_specs_view", "woo.verified_specs_create", "woo.verified_specs_delete"],
+            "woo.chat_archive":            ["woo.chat_archive_view"],
+            "woo.message_templates":       ["woo.message_templates_view", "woo.message_templates_edit"],
+        }
+        try:
+            cur.execute("SELECT id, permissions FROM tenant_roles")
+            for _role_id, _perms_raw in cur.fetchall():
+                _perms = _perms_raw if isinstance(_perms_raw, dict) else (_json.loads(_perms_raw) if _perms_raw else {})
+                _changed = False
+                for _old_key, _new_keys in _WOO_OLD_TO_NEW.items():
+                    if _perms.get(_old_key):
+                        for _nk in _new_keys:
+                            if not _perms.get(_nk):
+                                _perms[_nk] = True
+                                _changed = True
+                if _changed:
+                    cur.execute(
+                        "UPDATE tenant_roles SET permissions=%s WHERE id=%s",
+                        (_json.dumps(_perms), _role_id),
+                    )
+        except Exception as e:
+            print("⚠️  WooCommerce permissions granularity migration error:", e)
+
+        # ── Billing granularity split (2026-09-19, same ask) — 4 keys ->
+        # 9. Payment Gateways got a 4-way split on purpose: revealing a
+        # live secret key is meaningfully more sensitive than just seeing
+        # a gateway is connected, so it's its own permission
+        # (`_reveal_secret`), separate from viewing connection status
+        # (`_view`), connecting/configuring one (`_manage`), and
+        # disconnecting one (`_remove`). Nothing here was marked
+        # destructive — disconnecting a gateway or removing a saved card
+        # doesn't delete a business record, it's reversible.
+        _BILLING_SPLIT_KEYS = (
+            "billing.subscription_view", "billing.subscription_manage",
+            "billing.credits_view", "billing.credits_manage",
+            "billing.invoices_view",
+            "billing.payment_gateways_view", "billing.payment_gateways_manage",
+            "billing.payment_gateways_remove", "billing.payment_gateways_reveal_secret",
+        )
+        for _pid in _all_plan_ids_tagging:
+            for _key in _BILLING_SPLIT_KEYS:
+                cur.execute(
+                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    (_pid, _key),
+                )
+
+        _BILLING_OLD_TO_NEW = {
+            "billing.subscription":     ["billing.subscription_view", "billing.subscription_manage"],
+            "billing.credits":          ["billing.credits_view", "billing.credits_manage"],
+            "billing.invoices":         ["billing.invoices_view"],
+            "billing.payment_gateways": ["billing.payment_gateways_view", "billing.payment_gateways_manage",
+                                          "billing.payment_gateways_remove", "billing.payment_gateways_reveal_secret"],
+        }
+        try:
+            cur.execute("SELECT id, permissions FROM tenant_roles")
+            for _role_id, _perms_raw in cur.fetchall():
+                _perms = _perms_raw if isinstance(_perms_raw, dict) else (_json.loads(_perms_raw) if _perms_raw else {})
+                _changed = False
+                for _old_key, _new_keys in _BILLING_OLD_TO_NEW.items():
+                    if _perms.get(_old_key):
+                        for _nk in _new_keys:
+                            if not _perms.get(_nk):
+                                _perms[_nk] = True
+                                _changed = True
+                if _changed:
+                    cur.execute(
+                        "UPDATE tenant_roles SET permissions=%s WHERE id=%s",
+                        (_json.dumps(_perms), _role_id),
+                    )
+        except Exception as e:
+            print("⚠️  Billing permissions granularity migration error:", e)
+
+        # ── AI Assistant granularity split (2026-09-19, same ask). The
+        # role-permission use of `legacy:feat_advanced_ai` is replaced by
+        # two brand-new keys (`ai.instructions_view`/`_edit`) — the legacy
+        # key ITSELF is left untouched in the catalog, since it's also the
+        # Admin Plan editor's toggle for whether a plan includes Custom AI
+        # Instructions at all (a completely separate mechanism, reading a
+        # real boolean column via `_plan_grants_feature`) — removing it
+        # would have broken that, not just today's ask.
+        _AI_SPLIT_KEYS = (
+            "ai.instructions_view", "ai.instructions_edit",
+            "ai.handoff_rules_view", "ai.handoff_rules_create", "ai.handoff_rules_edit", "ai.handoff_rules_delete",
+            "ai.api_keys_view", "ai.api_keys_revoke",
+            "ai.agent_profiles_view", "ai.agent_profiles_create", "ai.agent_profiles_edit", "ai.agent_profiles_delete",
+        )
+        for _pid in _all_plan_ids_tagging:
+            for _key in _AI_SPLIT_KEYS:
+                cur.execute(
+                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    (_pid, _key),
+                )
+
+        _AI_OLD_TO_NEW = {
+            "legacy:feat_advanced_ai": ["ai.instructions_view", "ai.instructions_edit"],
+            "ai.handoff_rules":        ["ai.handoff_rules_view", "ai.handoff_rules_create", "ai.handoff_rules_edit", "ai.handoff_rules_delete"],
+            "ai.api_keys":             ["ai.api_keys_view", "ai.api_keys_revoke"],
+            "ai.agent_profiles":       ["ai.agent_profiles_view", "ai.agent_profiles_create", "ai.agent_profiles_edit", "ai.agent_profiles_delete"],
+        }
+        try:
+            cur.execute("SELECT id, permissions FROM tenant_roles")
+            for _role_id, _perms_raw in cur.fetchall():
+                _perms = _perms_raw if isinstance(_perms_raw, dict) else (_json.loads(_perms_raw) if _perms_raw else {})
+                _changed = False
+                for _old_key, _new_keys in _AI_OLD_TO_NEW.items():
+                    if _perms.get(_old_key):
+                        for _nk in _new_keys:
+                            if not _perms.get(_nk):
+                                _perms[_nk] = True
+                                _changed = True
+                if _changed:
+                    cur.execute(
+                        "UPDATE tenant_roles SET permissions=%s WHERE id=%s",
+                        (_json.dumps(_perms), _role_id),
+                    )
+        except Exception as e:
+            print("⚠️  AI Assistant permissions granularity migration error:", e)
+
+        # ── Channels granularity split (2026-09-19, same ask) — only
+        # PressOne had anything to split (Messenger has no disconnect
+        # route at all, confirmed by grep, so `channels.connect_messenger`
+        # stays a single key — nothing invented for an action that
+        # doesn't exist). `channels.connect_pressone` -> view/manage/remove,
+        # same 3-way shape as Billing's Payment Gateways.
+        _CHANNELS_SPLIT_KEYS = (
+            "channels.connect_pressone_view", "channels.connect_pressone_manage", "channels.connect_pressone_remove",
+        )
+        for _pid in _all_plan_ids_tagging:
+            for _key in _CHANNELS_SPLIT_KEYS:
+                cur.execute(
+                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    (_pid, _key),
+                )
+
+        try:
+            cur.execute("SELECT id, permissions FROM tenant_roles")
+            for _role_id, _perms_raw in cur.fetchall():
+                _perms = _perms_raw if isinstance(_perms_raw, dict) else (_json.loads(_perms_raw) if _perms_raw else {})
+                if _perms.get("channels.connect_pressone"):
+                    _changed = False
+                    for _nk in _CHANNELS_SPLIT_KEYS:
+                        if not _perms.get(_nk):
+                            _perms[_nk] = True
+                            _changed = True
+                    if _changed:
+                        cur.execute(
+                            "UPDATE tenant_roles SET permissions=%s WHERE id=%s",
+                            (_json.dumps(_perms), _role_id),
+                        )
+        except Exception as e:
+            print("⚠️  Channels permissions granularity migration error:", e)
+
+        # ── Final granularity pass, 2026-09-19 — Team's remaining bundled
+        # sub-actions (channel access was 3 channel types in 1 switch;
+        # roles/departments/positions bundled create+edit) and Store
+        # Information's `store.info_documents` (upload+delete bundled).
+        # Settings' `settings.profile_edit` was checked and deliberately
+        # left bundled — profile/avatar/notifications are all "edit my own
+        # low-stakes account stuff" with no real view/create/delete
+        # distinction to make, not an oversight.
+        #
+        # IMPORTANT: `TEAM_MANAGEMENT_FEATURE_KEYS` in portal_routes.py
+        # (which decides what makes a role "Super User"-shaped for the
+        # delegation cap) was updated to the new key names in the same
+        # commit as this migration — if that set is ever out of sync with
+        # a Team catalog rename, a delegated role could hold Payment/
+        # delete permissions the cap was supposed to block. Checked.
+        _TEAM2_SPLIT_KEYS = (
+            "team.members_agent_access", "team.members_messenger_access", "team.members_webchat_access",
+            "team.roles_create", "team.roles_edit",
+            "team.departments_create", "team.departments_edit",
+            "team.positions_create", "team.positions_edit",
+        )
+        for _pid in _all_plan_ids_tagging:
+            for _key in _TEAM2_SPLIT_KEYS:
+                cur.execute(
+                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    (_pid, _key),
+                )
+        _STORE_INFO_SPLIT_KEYS = ("store.info_documents_upload", "store.info_documents_delete")
+        for _pid in _all_plan_ids_tagging:
+            for _key in _STORE_INFO_SPLIT_KEYS:
+                cur.execute(
+                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    (_pid, _key),
+                )
+
+        _TEAM2_OLD_TO_NEW = {
+            "team.members_channel_access": ["team.members_agent_access", "team.members_messenger_access", "team.members_webchat_access"],
+            "team.roles_manage":           ["team.roles_create", "team.roles_edit"],
+            "team.departments_manage":     ["team.departments_create", "team.departments_edit"],
+            "team.positions_manage":       ["team.positions_create", "team.positions_edit"],
+            "store.info_documents":        ["store.info_documents_upload", "store.info_documents_delete"],
+        }
+        try:
+            cur.execute("SELECT id, permissions FROM tenant_roles")
+            for _role_id, _perms_raw in cur.fetchall():
+                _perms = _perms_raw if isinstance(_perms_raw, dict) else (_json.loads(_perms_raw) if _perms_raw else {})
+                _changed = False
+                for _old_key, _new_keys in _TEAM2_OLD_TO_NEW.items():
+                    if _perms.get(_old_key):
+                        for _nk in _new_keys:
+                            if not _perms.get(_nk):
+                                _perms[_nk] = True
+                                _changed = True
+                if _changed:
+                    cur.execute(
+                        "UPDATE tenant_roles SET permissions=%s WHERE id=%s",
+                        (_json.dumps(_perms), _role_id),
+                    )
+        except Exception as e:
+            print("⚠️  Team/Store-Info final granularity migration error:", e)
+
         conn.commit()
     except Exception as e:
         conn.rollback()

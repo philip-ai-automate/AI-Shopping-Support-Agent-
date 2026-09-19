@@ -128,7 +128,7 @@ def connect():
     r = _require_login()
     if r:
         return r
-    r3 = _require_team_permission("channels.connect_pressone")
+    r3 = _require_team_permission("channels.connect_pressone_view")
     if r3:
         return r3
     customer = _get_customer(_customer_id())
@@ -149,7 +149,7 @@ def connect_submit():
     r = _require_login()
     if r:
         return r
-    r3 = _require_team_permission("channels.connect_pressone")
+    r3 = _require_team_permission("channels.connect_pressone_manage")
     if r3:
         return r3
     customer = _get_customer(_customer_id())
@@ -196,7 +196,7 @@ def test_event():
     r = _require_login()
     if r:
         return r
-    r3 = _require_team_permission("channels.connect_pressone")
+    r3 = _require_team_permission("channels.connect_pressone_manage")
     if r3:
         return r3
     customer = _get_customer(_customer_id())
@@ -228,7 +228,7 @@ def disconnect():
     r = _require_login()
     if r:
         return r
-    r3 = _require_team_permission("channels.connect_pressone")
+    r3 = _require_team_permission("channels.connect_pressone_remove")
     if r3:
         return r3
     customer = _get_customer(_customer_id())
@@ -257,7 +257,7 @@ def toggle_auto_reply():
     r = _require_login()
     if r:
         return r
-    r3 = _require_team_permission("channels.connect_pressone")
+    r3 = _require_team_permission("channels.connect_pressone_manage")
     if r3:
         return r3
     customer  = _get_customer(_customer_id())
