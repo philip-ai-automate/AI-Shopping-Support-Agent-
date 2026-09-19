@@ -3116,6 +3116,19 @@ def ensure_portal_tables():
         except Exception as e:
             print("⚠️  WhatsApp module permissions migration error:", e)
 
+        # New "Reset Password" ability for team members — added 2026-09-19
+        # after the account owner found there was no way to recover a team
+        # member's login if the one-time password shown at creation was
+        # missed (no self-service reset exists for team members at all).
+        # Brand new permission (not a split of an existing one), so only
+        # needs the plan-grants backfill — no existing tenant_roles row
+        # should silently gain it, unlike a genuine key split.
+        for _pid in _all_plan_ids_tagging:
+            cur.execute(
+                "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                (_pid, "team.members_reset_password"),
+            )
+
         conn.commit()
     except Exception as e:
         conn.rollback()

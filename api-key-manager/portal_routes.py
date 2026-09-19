@@ -72,6 +72,7 @@ TEAM_DELEGATED_ENDPOINTS = {
     "portal.team_positions_page", "portal.team_position_new",
     "portal.team_position_edit", "portal.team_position_delete",
     "portal.team_deactivate", "portal.team_activate", "portal.team_remove",
+    "portal.team_reset_password",
     "portal.team_update_agents", "portal.team_update_messenger", "portal.team_update_webchat",
 }
 
@@ -833,6 +834,7 @@ PLAN_FEATURE_CATALOG = {
         ("team.members_assign_role",       "Change a team member's role"),
         ("team.members_deactivate",        "Deactivate / reactivate a team member"),
         ("team.members_remove",            "Permanently remove a team member"),
+        ("team.members_reset_password",    "Reset a team member's password"),
         ("team.members_agent_access",      "Manage a team member's AI Agent assignment"),
         ("team.members_messenger_access",  "Manage a team member's Messenger access"),
         ("team.members_webchat_access",    "Manage a team member's Web Chat access"),
@@ -1032,8 +1034,8 @@ ROLE_FORM_GRID = {
     "Team": [
         {"label": "Team", "view": "team.manage"},
         {"label": "Team Member", "create": "team.members_create", "delete": "team.members_remove",
-         "other": ["team.members_assign_role", "team.members_deactivate", "team.members_agent_access",
-                   "team.members_messenger_access", "team.members_webchat_access"]},
+         "other": ["team.members_assign_role", "team.members_deactivate", "team.members_reset_password",
+                   "team.members_agent_access", "team.members_messenger_access", "team.members_webchat_access"]},
         {"label": "Role",       "create": "team.roles_create",       "edit": "team.roles_edit",       "delete": "team.roles_delete"},
         {"label": "Department", "create": "team.departments_create", "edit": "team.departments_edit", "delete": "team.departments_delete"},
         {"label": "Position",   "create": "team.positions_create",   "edit": "team.positions_edit",   "delete": "team.positions_delete"},
@@ -1529,7 +1531,7 @@ DESTRUCTIVE_FEATURE_KEYS = {
 # _cap_delegated_role_permissions regardless of who created it.
 TEAM_MANAGEMENT_FEATURE_KEYS = {
     "team.members_create", "team.members_assign_role", "team.members_deactivate",
-    "team.members_remove", "team.members_agent_access",
+    "team.members_remove", "team.members_reset_password", "team.members_agent_access",
     "team.members_messenger_access", "team.members_webchat_access",
     "team.roles_create", "team.roles_edit", "team.roles_delete",
     "team.departments_create", "team.departments_edit", "team.departments_delete",
@@ -4564,6 +4566,46 @@ def team_remove(member_id: int):
     conn.commit()
     cur.close(); conn.close()
     flash("Team member removed.", "success")
+    return redirect(url_for("portal.team_page"))
+
+
+@portal_bp.route("/team/<int:member_id>/reset-password", methods=["POST"])
+def team_reset_password(member_id: int):
+    """The only recovery path for a team member who never got (or lost) the
+    one-time password shown at creation — there is no self-service 'forgot
+    password' for team members (the /forgot flow only ever looks up the
+    customers table), so this is the sole way back in. Mirrors team_new()'s
+    own password-generation pattern exactly: a random password, hashed
+    before storage, shown back to the actor exactly once in the flash
+    message and never stored anywhere in plain text."""
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
+    if r2: return r2
+    r3 = _require_team_permission("team.members_reset_password")
+    if r3: return r3
+    tenant_id = int(customer["tenant_id"])
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT name FROM team_members WHERE id=%s AND tenant_id=%s", (member_id, tenant_id))
+    member = cur.fetchone()
+    if not member:
+        cur.close(); conn.close()
+        flash("Team member not found.", "danger")
+        return redirect(url_for("portal.team_page"))
+
+    alphabet = string.ascii_letters + string.digits
+    new_password = ''.join(secrets.choice(alphabet) for _ in range(12))
+    cur2 = conn.cursor()
+    cur2.execute("UPDATE team_members SET password_hash=%s WHERE id=%s AND tenant_id=%s",
+                 (hash_password(new_password), member_id, tenant_id))
+    conn.commit()
+    cur2.close(); cur.close(); conn.close()
+
+    flash(f"Password reset for '{member['name']}'. New password: {new_password} "
+          f"(shown once — share it securely, e.g. by WhatsApp or in person).", "success")
     return redirect(url_for("portal.team_page"))
 
 

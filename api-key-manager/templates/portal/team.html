@@ -279,6 +279,10 @@
                 <button type="submit" class="btn-edit" {% if seats_left <= 0 %}disabled style="opacity:.5;cursor:not-allowed"{% endif %}>Re-activate</button>
               </form>
               {% endif %}
+              <form method="POST" action="{{ url_for('portal.team_reset_password', member_id=m.id) }}"
+                    onsubmit="return confirm('Reset the password for {{ m.name }}? Their old password will stop working immediately, and the new one is only shown once.')">
+                <button type="submit" class="btn-edit">Reset Password</button>
+              </form>
               <form method="POST" action="{{ url_for('portal.team_remove', member_id=m.id) }}"
                     onsubmit="return confirm('Remove {{ m.name }} completely? This can\'t be undone.')">
                 <button type="submit" class="btn-del">Remove</button>
