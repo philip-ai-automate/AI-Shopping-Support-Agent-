@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 from tenant_router import get_tenant_by_phone_number_id, get_tenant_by_api_key
 from template_sender import send_template, DEFAULT_TEMPLATES
-from wa_db import get_wa_template, log_proactive
+from wa_db import get_wa_template, log_proactive, wa_locked_for_tenant
 
 router = APIRouter()
 
@@ -96,6 +96,9 @@ async def wa_cart_recovery(req: CartRecoveryRequest):
     tenant_id    = int(tenant["tenant_id"])
     access_token = tenant["access_token"]
 
+    if wa_locked_for_tenant(tenant_id)[0]:
+        return {"status": "skipped", "reason": "wa_needs_dual_plan"}
+
     # Resolve template: tenant-configured or default
     tpl = get_wa_template(tenant_id, "cart_recovery")
     template_name = tpl["template_name"] if tpl else DEFAULT_TEMPLATES["cart_recovery"]
@@ -156,6 +159,9 @@ async def wa_order_update(req: OrderUpdateRequest):
     tenant_id       = int(tenant["tenant_id"])
     phone_number_id = tenant["phone_number_id"]
     access_token    = tenant["access_token"]
+
+    if wa_locked_for_tenant(tenant_id)[0]:
+        return {"status": "skipped", "reason": "wa_needs_dual_plan"}
 
     # Normalise customer phone — strip leading + for Meta (E.164 without +)
     customer_phone = req.customer_phone.strip().lstrip("+")

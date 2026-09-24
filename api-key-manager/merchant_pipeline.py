@@ -21,7 +21,7 @@ STAGE_ORDER = [
 ]
 
 STAGE_LABELS = {
-    "new_lead":      "New Lead",
+    "new_lead":      "New Opportunity",
     "contacted":     "Contacted",
     "qualified":     "Qualified",
     "proposal_sent": "Proposal Sent",
@@ -33,7 +33,7 @@ STAGE_LABELS = {
 # "Qualified" in particular used to read as "seems interested," now it's
 # explicit that a genuine opportunity has been established.
 STAGE_DESCRIPTIONS = {
-    "new_lead":      "Prospect has entered the system.",
+    "new_lead":      "A Lead has been qualified and is now a real sales opportunity.",
     "contacted":     "Someone has actually communicated with the prospect.",
     "qualified":     "The business has established there is a genuine sales opportunity.",
     "proposal_sent": "A quotation or proposal has actually been sent.",
@@ -51,14 +51,26 @@ OUTCOME_LABELS = {
     "won":     "Won",
     "lost":    "Lost",
     "dropped": "Dropped",
+    # 2026-09-21 Lead → Opportunity redesign: a Lead-level outcome, recorded
+    # BEFORE a Lead ever becomes an Opportunity/enters the Sales Pipeline —
+    # distinct from 'lost' above, which is a Pipeline-level outcome recorded
+    # AFTER qualification. Same dropped_at/dropped_reason/outcome columns,
+    # just a different value, so Leads and Sales Pipeline can filter on the
+    # same field without colliding.
+    "not_a_fit": "Not a Fit",
+    # Not a real outcome (doesn't set dropped_at) — only used as the to_stage
+    # value logged to merchant_pipeline_stage_history when a Lead is
+    # qualified, so the History tab has a real word for that entry.
+    "opportunity": "Became an Opportunity",
 }
 OUTCOME_DESCRIPTIONS = {
     "won":     "Deal completed.",
     "lost":    "We pursued the opportunity, but the customer chose another supplier.",
     "dropped": "We decided not to pursue this lead.",
+    "not_a_fit": "Reviewed and decided this Lead isn't a genuine sales opportunity — it never entered the Sales Pipeline.",
 }
 
-# Default reason choices for the two outcomes that require one. Not yet
+# Default reason choices for the outcomes that require one. Not yet
 # business-editable (flagged as a later idea, same as multiple pipelines) —
 # "Other" always included so nothing is ever a forced mismatch.
 LOST_REASONS = [
@@ -67,6 +79,10 @@ LOST_REASONS = [
 ]
 DROPPED_REASONS = [
     "No response", "Invalid lead", "Wrong contact", "Duplicate", "Other",
+]
+NOT_A_FIT_REASONS = [
+    "Not our target customer", "No budget", "Wrong product or service fit",
+    "Unresponsive", "Duplicate", "Other",
 ]
 
 # ── Lead Score tier wording (scoring itself — colors, thresholds, the 0-100

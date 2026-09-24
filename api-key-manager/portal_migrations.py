@@ -35,11 +35,32 @@ def _table_exists(cur, table: str) -> bool:
     return int((cur.fetchone() or [0])[0]) > 0
 
 
+# Every feature-grant backfill below runs on EVERY portal start. Until
+# 2026-09-23 each one re-ticked its keys on every plan each time, silently
+# undoing anything an admin had unticked in the Plan editor. Now a key is only
+# ever granted the first time it is seen (feature_catalog_seen, also used by
+# feature_access.sync_new_feature_keys_to_plans); after that the Plan editor
+# is the only thing that decides it.
+_GRANT_ONCE_SQL = (
+    "INSERT INTO plan_feature_grants (plan_id, feature_key) "
+    "SELECT v.p, v.k FROM (VALUES (%s, %s)) AS v(p, k) "
+    "WHERE NOT EXISTS (SELECT 1 FROM feature_catalog_seen s WHERE s.feature_key = v.k) "
+    "ON CONFLICT DO NOTHING"
+)
+
+
 def ensure_portal_tables():
     """Idempotent: create multi-category catalogue tables if they don't exist."""
     conn = get_db_connection()
     cur  = conn.cursor()
     try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS feature_catalog_seen (
+                feature_key TEXT PRIMARY KEY,
+                first_seen_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )""")
+        conn.commit()
+
         # ── admin_users: role/permissions for scoped support-team logins ──
         if not _column_exists(cur, "admin_users", "role"):
             cur.execute("ALTER TABLE admin_users ADD COLUMN role VARCHAR NOT NULL DEFAULT 'owner'")
@@ -2146,6 +2167,13 @@ def ensure_portal_tables():
             cur.execute("ALTER TABLE documents ADD COLUMN file_bytes BYTEA")
         if not _column_exists(cur, "documents", "file_name"):
             cur.execute("ALTER TABLE documents ADD COLUMN file_name TEXT")
+        # Store Information rebuild (2026-09-21) — a real Create/Modify/Delete
+        # flow needed a "who changed this" answer on the record itself (the
+        # audit_logs table has the permanent trail, but the List/Modify pages
+        # need a fast "last changed by" without joining audit_logs). NULL for
+        # every row saved before this column existed.
+        if not _column_exists(cur, "documents", "updated_by"):
+            cur.execute("ALTER TABLE documents ADD COLUMN updated_by TEXT")
         if not _table_exists(cur, "meta_ai_synced_items"):
             cur.execute("""
                 CREATE TABLE meta_ai_synced_items (
@@ -2224,7 +2252,16 @@ def ensure_portal_tables():
         # already references slug='pro' etc. breaks.
         # ══════════════════════════════════════════════════════════════════
         if not _column_exists(cur, "plans", "channel_mode"):
-            cur.execute("ALTER TABLE plans ADD COLUMN channel_mode VARCHAR(10) NOT NULL DEFAULT 'single'")
+            cur.execute("ALTER TABLE plans ADD COLUMN channel_mode VARCHAR(20) NOT NULL DEFAULT 'whatsapp'")
+        # 2026-09-23: "single" split into whatsapp / woocommerce ("Who sees
+        # this plan"). Every existing single-channel plan was a WhatsApp plan.
+        cur.execute("""
+            SELECT character_maximum_length FROM information_schema.columns
+             WHERE table_name='plans' AND column_name='channel_mode'""")
+        if (cur.fetchone() or [20])[0] < 20:
+            cur.execute("ALTER TABLE plans ALTER COLUMN channel_mode TYPE VARCHAR(20)")
+        cur.execute("ALTER TABLE plans ALTER COLUMN channel_mode SET DEFAULT 'whatsapp'")
+        cur.execute("UPDATE plans SET channel_mode='whatsapp' WHERE channel_mode='single'")
         if not _column_exists(cur, "plans", "parent_plan_id"):
             cur.execute("ALTER TABLE plans ADD COLUMN parent_plan_id INTEGER REFERENCES plans(id)")
         if not _column_exists(cur, "plans", "is_custom"):
@@ -2379,7 +2416,7 @@ def ensure_portal_tables():
             for _pid in _all_plan_ids:
                 for _key in _new_gate_keys:
                     cur.execute(
-                        "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                        _GRANT_ONCE_SQL,
                         (_pid, _key),
                     )
         else:
@@ -2399,7 +2436,7 @@ def ensure_portal_tables():
                              "inbox.page", "channels.page", "voice.calls",
                              "wa.connect", "wa.handoff_reports"):
                     cur.execute(
-                        "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                        _GRANT_ONCE_SQL,
                         (_pid, _key),
                     )
 
@@ -2423,7 +2460,7 @@ def ensure_portal_tables():
                          "help.tutorials", "help.videos", "wa.report",
                          "ai.api_keys", "ai.agent_profiles", "ecom.catalogue"):
                 cur.execute(
-                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    _GRANT_ONCE_SQL,
                     (_pid, _key),
                 )
 
@@ -2440,7 +2477,7 @@ def ensure_portal_tables():
                          "campaigns_email.all", "campaigns_email.segments", "campaigns_email.reports",
                          "woo.cart_recovery_settings", "woo.cart_recovery_templates"):
                 cur.execute(
-                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    _GRANT_ONCE_SQL,
                     (_pid, _key),
                 )
 
@@ -2456,7 +2493,7 @@ def ensure_portal_tables():
                          "inbox.takeover", "inbox.manage_contact",
                          "channels.connect_messenger", "channels.connect_pressone"):
                 cur.execute(
-                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    _GRANT_ONCE_SQL,
                     (_pid, _key),
                 )
 
@@ -2472,7 +2509,7 @@ def ensure_portal_tables():
         for _pid in _all_plan_ids_tagging:
             for _key in ("store.info_edit", "store.info_documents"):
                 cur.execute(
-                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    _GRANT_ONCE_SQL,
                     (_pid, _key),
                 )
 
@@ -2499,7 +2536,7 @@ def ensure_portal_tables():
                          "settings.password", "settings.cancel_plan",
                          "leads.create"):
                 cur.execute(
-                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    _GRANT_ONCE_SQL,
                     (_pid, _key),
                 )
 
@@ -2671,7 +2708,7 @@ def ensure_portal_tables():
                          "team.departments_delete", "team.positions_manage",
                          "team.positions_delete"):
                 cur.execute(
-                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    _GRANT_ONCE_SQL,
                     (_pid, _key),
                 )
 
@@ -2703,7 +2740,7 @@ def ensure_portal_tables():
         for _pid in _all_plan_ids_tagging:
             for _key in _CRM_SPLIT_KEYS:
                 cur.execute(
-                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    _GRANT_ONCE_SQL,
                     (_pid, _key),
                 )
 
@@ -2753,7 +2790,7 @@ def ensure_portal_tables():
         for _pid in _all_plan_ids_tagging:
             for _key in _ECOM_SPLIT_KEYS:
                 cur.execute(
-                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    _GRANT_ONCE_SQL,
                     (_pid, _key),
                 )
 
@@ -2803,7 +2840,7 @@ def ensure_portal_tables():
         for _pid in _all_plan_ids_tagging:
             for _key in _CAMPAIGNS_SPLIT_KEYS:
                 cur.execute(
-                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    _GRANT_ONCE_SQL,
                     (_pid, _key),
                 )
 
@@ -2850,7 +2887,7 @@ def ensure_portal_tables():
         for _pid in _all_plan_ids_tagging:
             for _key in _WOO_SPLIT_KEYS:
                 cur.execute(
-                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    _GRANT_ONCE_SQL,
                     (_pid, _key),
                 )
 
@@ -2899,7 +2936,7 @@ def ensure_portal_tables():
         for _pid in _all_plan_ids_tagging:
             for _key in _BILLING_SPLIT_KEYS:
                 cur.execute(
-                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    _GRANT_ONCE_SQL,
                     (_pid, _key),
                 )
 
@@ -2946,7 +2983,7 @@ def ensure_portal_tables():
         for _pid in _all_plan_ids_tagging:
             for _key in _AI_SPLIT_KEYS:
                 cur.execute(
-                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    _GRANT_ONCE_SQL,
                     (_pid, _key),
                 )
 
@@ -2987,7 +3024,7 @@ def ensure_portal_tables():
         for _pid in _all_plan_ids_tagging:
             for _key in _CHANNELS_SPLIT_KEYS:
                 cur.execute(
-                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    _GRANT_ONCE_SQL,
                     (_pid, _key),
                 )
 
@@ -3033,14 +3070,14 @@ def ensure_portal_tables():
         for _pid in _all_plan_ids_tagging:
             for _key in _TEAM2_SPLIT_KEYS:
                 cur.execute(
-                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    _GRANT_ONCE_SQL,
                     (_pid, _key),
                 )
         _STORE_INFO_SPLIT_KEYS = ("store.info_documents_upload", "store.info_documents_delete")
         for _pid in _all_plan_ids_tagging:
             for _key in _STORE_INFO_SPLIT_KEYS:
                 cur.execute(
-                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    _GRANT_ONCE_SQL,
                     (_pid, _key),
                 )
 
@@ -3070,6 +3107,43 @@ def ensure_portal_tables():
         except Exception as e:
             print("⚠️  Team/Store-Info final granularity migration error:", e)
 
+        # ── Store Information rebuild (2026-09-21) — added a real Create and
+        # Delete flow for custom Store Information entries. Before this,
+        # store.info_edit only covered the 7 fixed text sections; there was
+        # no "create a new entry" or "delete an entry" concept at all
+        # (deletion only ever existed for uploaded documents). Anyone who
+        # could already edit Store Information should be able to create/
+        # delete their own custom entries too, so backfill the two new keys
+        # onto every plan, then expand every existing role that already has
+        # store.info_edit ticked to also get them ticked — same non-breaking
+        # pattern as every prior split above.
+        cur.execute("SELECT id FROM plans")
+        _all_plan_ids_tagging = [r[0] for r in cur.fetchall()]
+        _STORE_INFO2_SPLIT_KEYS = ("store.info_create", "store.info_delete")
+        for _pid in _all_plan_ids_tagging:
+            for _key in _STORE_INFO2_SPLIT_KEYS:
+                cur.execute(
+                    _GRANT_ONCE_SQL,
+                    (_pid, _key),
+                )
+        try:
+            cur.execute("SELECT id, permissions FROM tenant_roles")
+            for _role_id, _perms_raw in cur.fetchall():
+                _perms = _perms_raw if isinstance(_perms_raw, dict) else (_json.loads(_perms_raw) if _perms_raw else {})
+                if _perms.get("store.info_edit"):
+                    _changed = False
+                    for _nk in _STORE_INFO2_SPLIT_KEYS:
+                        if not _perms.get(_nk):
+                            _perms[_nk] = True
+                            _changed = True
+                    if _changed:
+                        cur.execute(
+                            "UPDATE tenant_roles SET permissions=%s WHERE id=%s",
+                            (_json.dumps(_perms), _role_id),
+                        )
+        except Exception as e:
+            print("⚠️  Store Information create/delete granularity migration error:", e)
+
         # ── WhatsApp module enforcement (2026-09-19) — a real gap found
         # during an end-to-end verification pass: `wa.connect`/
         # `wa.handoff_reports` had real routes (connect/disconnect/delete
@@ -3089,7 +3163,7 @@ def ensure_portal_tables():
         for _pid in _all_plan_ids_tagging:
             for _key in _WHATSAPP_SPLIT_KEYS:
                 cur.execute(
-                    "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    _GRANT_ONCE_SQL,
                     (_pid, _key),
                 )
 
@@ -3125,9 +3199,65 @@ def ensure_portal_tables():
         # should silently gain it, unlike a genuine key split.
         for _pid in _all_plan_ids_tagging:
             cur.execute(
-                "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                _GRANT_ONCE_SQL,
                 (_pid, "team.members_reset_password"),
             )
+
+        # Sales Pipeline lead scoring rebuild (2026-09-20) — the old formula
+        # scored 50 of its 100 points on Deal Value, a field the Add/Edit
+        # Lead form has always labelled "(optional)" — so a lead could never
+        # reach Hot without it, and almost nobody was filling it in. Replaced
+        # with a scoring model built from real sales-activity signals instead
+        # (see _pipeline_scored_from_sql() in portal_routes.py). Three of
+        # those signals — Budget Confirmed, Decision-Maker Engaged, and a
+        # stated Deadline — don't exist as data anywhere yet, so they need
+        # a real place to live on the lead record.
+        if _table_exists(cur, "merchant_pipeline_leads"):
+            if not _column_exists(cur, "merchant_pipeline_leads", "budget_confirmed"):
+                cur.execute(
+                    "ALTER TABLE merchant_pipeline_leads ADD COLUMN budget_confirmed BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+            if not _column_exists(cur, "merchant_pipeline_leads", "decision_maker_engaged"):
+                cur.execute(
+                    "ALTER TABLE merchant_pipeline_leads ADD COLUMN decision_maker_engaged BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+            if not _column_exists(cur, "merchant_pipeline_leads", "deadline_date"):
+                cur.execute(
+                    "ALTER TABLE merchant_pipeline_leads ADD COLUMN deadline_date DATE"
+                )
+
+        # Lead → Opportunity redesign (2026-09-21, every business, not just
+        # one tenant) — a Lead only enters the Sales Pipeline once a
+        # salesperson actively decides it's a real opportunity ("Qualify" on
+        # the Leads page). is_opportunity is that decision; it's deliberately
+        # separate from qualified_date (already on this table) — checked live
+        # first and found qualified_date is blank on every real lead already
+        # sitting at Qualified-or-later, so reusing it would have wrongly
+        # hidden them the moment this shipped. Backfilled true for every such
+        # lead, on every tenant, so nothing already in progress disappears.
+        if _table_exists(cur, "merchant_pipeline_leads"):
+            if not _column_exists(cur, "merchant_pipeline_leads", "is_opportunity"):
+                cur.execute(
+                    "ALTER TABLE merchant_pipeline_leads ADD COLUMN is_opportunity BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+            if not _column_exists(cur, "merchant_pipeline_leads", "opportunity_at"):
+                cur.execute(
+                    "ALTER TABLE merchant_pipeline_leads ADD COLUMN opportunity_at TIMESTAMPTZ"
+                )
+            cur.execute("""
+                UPDATE merchant_pipeline_leads
+                   SET is_opportunity = TRUE,
+                       opportunity_at = COALESCE(opportunity_at, updated_at, created_at)
+                 WHERE is_opportunity = FALSE
+                   AND stage IN ('qualified','proposal_sent','negotiating','won')
+            """)
+
+        # Anything a backfill above granted this run is now "seen" — never
+        # re-granted on a later start (see _GRANT_ONCE_SQL).
+        cur.execute("""
+            INSERT INTO feature_catalog_seen (feature_key)
+            SELECT DISTINCT feature_key FROM plan_feature_grants
+            ON CONFLICT DO NOTHING""")
 
         conn.commit()
     except Exception as e:

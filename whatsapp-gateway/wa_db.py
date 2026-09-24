@@ -1395,3 +1395,31 @@ def create_pipeline_opportunity_from_reply(tenant_id: int, campaign_id: int, rec
     finally:
         cur.close()
         conn.close()
+
+
+# ── WhatsApp for WooCommerce merchants needs a Dual Agent plan (2026-09-24) ──
+# Same rule as the portal's _wa_locked_for_tenant: a merchant who signed up
+# through the WooCommerce plugin (tenants.source_type 'web') only gets
+# WhatsApp while their plan is Dual Agent ('dual'); a Custom plan ('both') is
+# allowed. Goes by plan type only — no tenant is named. On a DB error it
+# returns (False, None) so a WhatsApp merchant is never cut off by a hiccup.
+def wa_locked_for_tenant(tenant_id: int) -> tuple[bool, int | None]:
+    conn = get_db_connection()
+    if not conn:
+        return False, None
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT t.source_type, COALESCE(p.channel_mode, 'whatsapp'), t.plan_id
+            FROM tenants t LEFT JOIN plans p ON p.id = t.plan_id
+            WHERE t.id = %s""", (tenant_id,))
+        row = cur.fetchone()
+        if not row:
+            return False, None
+        return (row[0] == "web" and row[1] not in ("dual", "both")), row[2]
+    except Exception as e:
+        print(f"⚠️ wa_locked_for_tenant error: {e}")
+        return False, None
+    finally:
+        cur.close()
+        conn.close()

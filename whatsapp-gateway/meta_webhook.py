@@ -307,6 +307,75 @@ async def notify_merchant_handoff(
         conn.close()
 
 
+# ── WhatsApp for WooCommerce merchants needs a Dual Agent plan (2026-09-24) ──
+# The rule itself lives in wa_db.wa_locked_for_tenant (shared with the
+# cart-recovery, order-update and payment-reminder senders).
+from wa_db import wa_locked_for_tenant as _wa_locked_for_tenant
+
+
+def _notify_merchant_wa_dual_lock(tenant_id: int, plan_id, phone_number_id: str,
+                                  access_token: str) -> None:
+    """One WhatsApp alert to the merchant per plan they're on while locked.
+    tenants.features['_wa_dual_lock_notified_plan'] remembers the plan_id we
+    last alerted for, so moving plans (e.g. Dual → Free again) alerts again."""
+    import json as _json
+    import threading
+    from wa_db import get_db_connection as _gdb
+
+    conn = _gdb()
+    if not conn:
+        return
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT t.features, c.phone_number
+            FROM tenants t
+            LEFT JOIN customers c ON c.tenant_id = t.id AND c.is_active = TRUE
+            WHERE t.id = %s
+            ORDER BY c.id ASC LIMIT 1
+        """, (tenant_id,))
+        row = cur.fetchone()
+        if not row:
+            return
+        raw, merchant_phone = row
+        try:
+            feats = raw if isinstance(raw, dict) else (_json.loads(raw) if raw else {})
+        except Exception:
+            feats = {}
+        if feats.get("_wa_dual_lock_notified_plan") == plan_id:
+            return
+        cur.execute("""
+            UPDATE tenants
+            SET features = (COALESCE(NULLIF(features, '')::jsonb, '{}'::jsonb)
+                            || jsonb_build_object('_wa_dual_lock_notified_plan', %s::int))::text
+            WHERE id = %s""", (plan_id, tenant_id))
+        conn.commit()
+        if not merchant_phone:
+            return
+
+        msg = (
+            "⚠️ *PhiXtra Alert — WhatsApp paused*\n\n"
+            "WhatsApp is part of the Dual Agent plan. Your current plan runs the "
+            "AI Sales Agent on your website only, so your AI has stopped answering "
+            "customers on WhatsApp.\n\n"
+            "Upgrade to a Dual Agent plan and it starts answering again straight "
+            "away. You don't need to reconnect your number.\n\n"
+            "👉 portal.phixtra.com/billing/plans?view=dual"
+        )
+        to = merchant_phone.lstrip("+")
+
+        def _send():
+            import asyncio as _aio2
+            from meta_sender import send_text as _st
+            _aio2.run(_st(phone_number_id, access_token, to, msg))
+        threading.Thread(target=_send, daemon=True).start()
+    except Exception as e:
+        print(f"⚠️ _notify_merchant_wa_dual_lock error: {e}")
+    finally:
+        cur.close()
+        conn.close()
+
+
 def _notify_merchant_quota(tenant_id: int, phone_number_id: str, access_token: str,
                             msgs_used: int, msgs_limit: int, plan_slug: str) -> None:
     """Send a one-time WhatsApp alert to the merchant when quota is exceeded."""
@@ -569,6 +638,25 @@ async def receive_webhook(
         print(f"🛑 [META] opt-out from={customer_phone} tenant={tenant_id}")
         await _handle_opt_out(tenant_id, customer_phone, phone_number_id, access_token)
         return {"status": "ok", "reason": "opted_out"}
+
+    # ── WooCommerce merchant without a Dual Agent plan — WhatsApp is locked.
+    # The message is already logged above; the AI stays silent. The customer
+    # gets the same polite fallback as the out-of-messages case and the
+    # merchant one alert. Upgrading re-enables it at once, no reconnect. ──
+    _wa_locked, _wa_plan_id = _wa_locked_for_tenant(tenant_id)
+    if _wa_locked:
+        print(f"🔒 [META] tenant={tenant_id} WooCommerce merchant without Dual Agent — AI skipped")
+        fallback = (
+            "Our assistant is temporarily unavailable. "
+            "Please contact us directly for assistance."
+        )
+        await send_text(phone_number_id, access_token, customer_phone, fallback)
+        log_message(tenant_id, phone_number_id, customer_phone, "outbound", fallback)
+        try:
+            _notify_merchant_wa_dual_lock(tenant_id, _wa_plan_id, phone_number_id, access_token)
+        except Exception as _le:
+            print(f"⚠️ [META] dual-lock merchant notify error: {_le}")
+        return {"status": "ok", "reason": "wa_needs_dual_plan"}
 
     # ── PhiXtra Connect / AI-off gate — a PhiXtra-admin-only switch per
     # business (tenants.ai_enabled). Off means this business's WhatsApp

@@ -1,0 +1,177 @@
+{% extends "portal/base.html" %}
+{% block title %}How Lead Scoring Works — PhiXtra Portal{% endblock %}
+{% block content %}
+
+<style>
+  :root {
+    --lsx-good: var(--good, #15803d);
+    --lsx-bad:  var(--bad, #b91c1c);
+  }
+  .lsx-hero { display:flex; align-items:center; gap:14px; margin-bottom:22px }
+  .lsx-hero-icon {
+    width:48px; height:48px; border-radius:14px; flex-shrink:0;
+    background:linear-gradient(135deg, #6366f1, #8b5cf6);
+    display:flex; align-items:center; justify-content:center; font-size:22px;
+    box-shadow:0 6px 16px rgba(99,102,241,.25);
+  }
+  .lsx-hero h1 { font-size:22px; font-weight:800; letter-spacing:-.4px; margin:0 }
+  .lsx-hero p { margin:3px 0 0; font-size:13.5px; color:var(--muted); max-width:640px }
+
+  .lsx-card { background:#fff; border:1px solid var(--line); border-radius:16px; padding:22px 24px; margin-bottom:18px }
+  .lsx-card h2 { font-size:15px; font-weight:800; margin:0 0 4px }
+  .lsx-card .lsx-sub { font-size:12.5px; color:var(--muted); margin:0 0 18px; line-height:1.6; max-width:680px }
+
+  /* Diverging bar chart — one bar per signal, zero-line in the middle,
+     positive signals grow right (green), the one negative signal grows
+     left (red). Scale is symmetric (±25) since that's the largest single
+     swing either direction, so the chart reads as one honest ruler. */
+  .lsx-chart-row { display:grid; grid-template-columns: 190px 1fr 56px; align-items:center; gap:12px; margin-bottom:10px }
+  .lsx-chart-label { font-size:12.5px; font-weight:700; color:var(--ink); text-align:right }
+  .lsx-chart-track { position:relative; height:22px; background:#f1f5f9; border-radius:6px; overflow:hidden }
+  .lsx-chart-zero { position:absolute; top:0; bottom:0; left:50%; width:1px; background:rgba(3,12,24,.18) }
+  .lsx-chart-bar { position:absolute; top:2px; bottom:2px; border-radius:4px }
+  .lsx-chart-value { font-size:12.5px; font-weight:800; font-variant-numeric:tabular-nums }
+
+  /* Hot/Warm/Cold threshold ruler */
+  .lsx-ruler { display:flex; height:34px; border-radius:8px; overflow:hidden; margin-bottom:10px }
+  .lsx-ruler > div { display:flex; align-items:center; justify-content:center; font-size:11.5px; font-weight:800; color:#fff }
+  .lsx-ruler-cold { flex:30; background:#64748b }
+  .lsx-ruler-warm { flex:30; background:#d97706 }
+  .lsx-ruler-hot  { flex:36; background:var(--lsx-bad) }
+  .lsx-ruler-labels { display:flex; font-size:11px; color:var(--muted); margin-bottom:20px }
+  .lsx-ruler-labels > div { text-align:center }
+  .lsx-ruler-labels > div:nth-child(1) { flex:30 }
+  .lsx-ruler-labels > div:nth-child(2) { flex:30 }
+  .lsx-ruler-labels > div:nth-child(3) { flex:36 }
+
+  .lsx-table { width:100% }
+  .lsx-table th { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase;
+                  letter-spacing:.06em; padding:10px 14px; text-align:left; background:#f8fafc;
+                  border-bottom:1px solid rgba(3,12,24,.07) }
+  .lsx-table td { padding:12px 14px; font-size:13px; border-bottom:1px solid rgba(3,12,24,.05); vertical-align:top; line-height:1.5 }
+  .lsx-table tr:last-child td { border-bottom:none }
+  .lsx-pts { font-weight:800; font-variant-numeric:tabular-nums; white-space:nowrap }
+
+  .lsx-example { background:#f8fafc; border-radius:12px; padding:16px 18px }
+  .lsx-example-row { display:flex; justify-content:space-between; font-size:13px; padding:5px 0; border-bottom:1px dashed rgba(3,12,24,.08) }
+  .lsx-example-row:last-child { border-bottom:none; font-weight:800; padding-top:10px }
+</style>
+
+<div class="lsx-hero">
+  <div class="lsx-hero-icon">🎯</div>
+  <div>
+    <h1>How Lead Scoring Works</h1>
+    <p>Every Lead in Sales Pipeline gets a score out of 100, built from six real signals on that Lead's record — not a guess, not from reading chat messages. The score decides whether a Lead shows as 🔴 Hot, 🟡 Warm, or ⚪ Cold, on both Sales Pipeline and the Leads page.</p>
+  </div>
+</div>
+
+<div class="lsx-card">
+  <h2>The 6 signals</h2>
+  <p class="lsx-sub">Each signal adds (or subtracts) points. Add them up and you get the Lead's score. Green bars help the score, the red bar hurts it — the grey line down the middle is zero.</p>
+
+  {% set signals = [
+    ('Touched in the last 48 hours', 15, 'good'),
+    ('Reached Proposal Sent or later', 25, 'good'),
+    ('Budget confirmed', 20, 'good'),
+    ('Decision-maker engaged', 20, 'good'),
+    ('Deadline / timeline stated', 15, 'good'),
+    ('No activity in 7+ days', -25, 'bad'),
+  ] %}
+  {% for label, pts, kind in signals %}
+  <div class="lsx-chart-row">
+    <div class="lsx-chart-label">{{ label }}</div>
+    <div class="lsx-chart-track">
+      <div class="lsx-chart-zero"></div>
+      {% set pct = (pts|abs / 25 * 50) %}
+      {% if pts >= 0 %}
+      <div class="lsx-chart-bar" style="left:50%; width:{{ pct }}%; background:var(--lsx-good)"></div>
+      {% else %}
+      <div class="lsx-chart-bar" style="right:50%; width:{{ pct }}%; background:var(--lsx-bad)"></div>
+      {% endif %}
+    </div>
+    <div class="lsx-chart-value" style="color:{{ 'var(--lsx-good)' if pts >= 0 else 'var(--lsx-bad)' }}">{{ '%+d'|format(pts) }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="lsx-card">
+  <h2>The thresholds</h2>
+  <p class="lsx-sub">Add up whichever signals apply to a Lead. Wherever the total lands on this ruler sets its tier.</p>
+  <div class="lsx-ruler">
+    <div class="lsx-ruler-cold">COLD</div>
+    <div class="lsx-ruler-warm">WARM</div>
+    <div class="lsx-ruler-hot">HOT</div>
+  </div>
+  <div class="lsx-ruler-labels">
+    <div>Under 30</div>
+    <div>30 – 59</div>
+    <div>60 and up</div>
+  </div>
+</div>
+
+<div class="lsx-card">
+  <h2>What each signal means, and how to log it</h2>
+  <p class="lsx-sub">The first two read themselves automatically from the Lead's activity and Pipeline stage. The other four are things your team ticks or fills in on the Lead — there's no way to guess these from a WhatsApp message reliably, so they're logged by hand instead.</p>
+  <div class="table-wrap">
+    <table class="lsx-table">
+      <thead><tr><th>Signal</th><th>Points</th><th>What it means</th><th>How it's set</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Touched in the last 48 hours</strong></td>
+          <td class="lsx-pts" style="color:var(--lsx-good)">+15</td>
+          <td>Someone updated this Lead — any edit — in the last 2 days.</td>
+          <td>Automatic — based on when the Lead was last saved.</td>
+        </tr>
+        <tr>
+          <td><strong>Reached Proposal Sent or later</strong></td>
+          <td class="lsx-pts" style="color:var(--lsx-good)">+25</td>
+          <td>The deal has made real progress — sitting at Proposal Sent, Negotiating, or Won.</td>
+          <td>Automatic — based on the Lead's current Pipeline stage.</td>
+        </tr>
+        <tr>
+          <td><strong>Budget confirmed</strong></td>
+          <td class="lsx-pts" style="color:var(--lsx-good)">+20</td>
+          <td>The customer has told you what they're able/willing to spend.</td>
+          <td>Tick the "Budget confirmed" box on the Lead once you know this.</td>
+        </tr>
+        <tr>
+          <td><strong>Decision-maker engaged</strong></td>
+          <td class="lsx-pts" style="color:var(--lsx-good)">+20</td>
+          <td>You're talking to the person who can actually say yes — not just a gatekeeper.</td>
+          <td>Tick the "Decision-maker engaged" box on the Lead once you know this.</td>
+        </tr>
+        <tr>
+          <td><strong>Deadline / timeline stated</strong></td>
+          <td class="lsx-pts" style="color:var(--lsx-good)">+15</td>
+          <td>The customer has given you a real date — "needs to decide by end of month."</td>
+          <td>Enter that date in the Lead's "Deadline" field.</td>
+        </tr>
+        <tr>
+          <td><strong>No activity in 7+ days</strong></td>
+          <td class="lsx-pts" style="color:var(--lsx-bad)">−25</td>
+          <td>Nobody has touched this Lead in over a week — it's going cold.</td>
+          <td>Automatic — this is a penalty, not something to tick.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="lsx-card">
+  <h2>Worked example</h2>
+  <p class="lsx-sub">"Adaeze Interiors Ltd" — updated yesterday, still at the "Contacted" stage, but the rep has confirmed budget and knows the decision-maker.</p>
+  <div class="lsx-example">
+    <div class="lsx-example-row"><span>Touched in the last 48 hours</span><span style="color:var(--lsx-good)">+15</span></div>
+    <div class="lsx-example-row"><span>Reached Proposal Sent or later <span style="color:var(--muted)">(still "Contacted")</span></span><span style="color:var(--muted)">+0</span></div>
+    <div class="lsx-example-row"><span>Budget confirmed</span><span style="color:var(--lsx-good)">+20</span></div>
+    <div class="lsx-example-row"><span>Decision-maker engaged</span><span style="color:var(--lsx-good)">+20</span></div>
+    <div class="lsx-example-row"><span>Deadline / timeline stated <span style="color:var(--muted)">(not given yet)</span></span><span style="color:var(--muted)">+0</span></div>
+    <div class="lsx-example-row"><span>No activity in 7+ days <span style="color:var(--muted)">(touched yesterday)</span></span><span style="color:var(--muted)">+0</span></div>
+    <div class="lsx-example-row"><span>Total</span><span>55 → 🟡 Warm</span></div>
+  </div>
+  <p class="lsx-sub" style="margin-top:14px;margin-bottom:0">One more thing — confirming a deadline, or moving to Proposal Sent — would push this Lead over 60 and into 🔴 Hot.</p>
+</div>
+
+<a href="{{ url_for('portal.sales_pipeline') }}" class="btn btn-primary">🧭 Back to Sales Pipeline</a>
+
+{% endblock %}

@@ -45,6 +45,7 @@ import requests as _req
 from flask import Blueprint, request, render_template, redirect, url_for, flash
 
 from db import get_db_connection, insert_audit_log
+from feature_access import team_feature, public_route
 from portal_routes import (
     _require_login, _customer_id, _get_customer, _get_wa_connection, _require_plan_sub_feature,
     _require_team_permission,
@@ -124,6 +125,7 @@ def get_contact_calls(tenant_id: int, contact_id: int, limit: int = 50):
 
 
 @pressone_bp.route("/connect", methods=["GET"])
+@team_feature("channels.connect_pressone_view")
 def connect():
     r = _require_login()
     if r:
@@ -145,6 +147,7 @@ def connect():
 
 
 @pressone_bp.route("/connect", methods=["POST"])
+@team_feature("channels.connect_pressone_manage")
 def connect_submit():
     r = _require_login()
     if r:
@@ -192,6 +195,7 @@ def connect_submit():
 
 
 @pressone_bp.route("/test", methods=["POST"])
+@team_feature("channels.connect_pressone_manage")
 def test_event():
     r = _require_login()
     if r:
@@ -224,6 +228,7 @@ def test_event():
 
 
 @pressone_bp.route("/disconnect", methods=["POST"])
+@team_feature("channels.connect_pressone_remove")
 def disconnect():
     r = _require_login()
     if r:
@@ -250,6 +255,7 @@ def disconnect():
 
 
 @pressone_bp.route("/auto-reply", methods=["POST"])
+@team_feature("channels.connect_pressone_manage")
 def toggle_auto_reply():
     """Flip the missed-call WhatsApp auto-reply on/off (default on). The
     actual sending lives in pressone_calls.py on the whatsapp-gateway
@@ -285,6 +291,7 @@ def toggle_auto_reply():
 
 
 @pressone_bp.route("/calls", methods=["GET"])
+@team_feature("voice.calls")
 def call_log():
     """Every PressOne call across all contacts, most recent first — the
     contact-detail timeline only ever shows one customer's calls, this is

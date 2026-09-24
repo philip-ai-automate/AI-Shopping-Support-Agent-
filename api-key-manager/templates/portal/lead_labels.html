@@ -1,5 +1,5 @@
 {% extends "portal/base.html" %}
-{% block title %}Tags — PhiXtra Portal{% endblock %}
+{% block title %}Labels — PhiXtra Portal{% endblock %}
 {% block content %}
 
 <style>
@@ -58,8 +58,8 @@
   <div class="lbl-hero-left">
     <div class="lbl-hero-icon">🏷️</div>
     <div>
-      <h1>Tags</h1>
-      <p>One shared list of tags (e.g. "Bounced", "VIP", "High Lead") — put them on WhatsApp Contacts and/or Sales Pipeline deals. Separate from <a href="{{ url_for('portal.email_campaigns', view='segments') }}">Segments</a>, which are for choosing who to email.</p>
+      <h1>Labels</h1>
+      <p>One shared list of labels (e.g. "Bounced", "VIP", "High Lead") — put them on WhatsApp Contacts and/or Sales Pipeline deals. Separate from <a href="{{ url_for('portal.email_campaigns', view='segments') }}">Segments</a>, which are for choosing who to email.</p>
     </div>
   </div>
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -71,29 +71,30 @@
 <div class="card" style="padding:20px">
   <form method="POST" action="{{ url_for('portal.lead_labels_create') }}" class="lbl-create-row" onsubmit="return submitCreateLabel(event)">
     <div style="flex:1;max-width:320px">
-      <input type="text" name="name" id="newLabelName" class="finp" placeholder="New tag name, e.g. VIP" required autocomplete="off">
+      <input type="text" name="name" id="newLabelName" class="finp" placeholder="New label name, e.g. VIP" required autocomplete="off">
       <div class="dedupe-warn" id="newTagDedupe"></div>
     </div>
-    <button type="submit" class="btn btn-primary">+ Create Tag</button>
+    <button type="submit" class="btn btn-primary">+ Create Label</button>
   </form>
 
   {% if labels %}
   <div class="table-wrap">
     <table class="lbl-table">
       <thead>
-        <tr><th>Tag</th><th>People</th><th>Deals</th><th>Created</th><th></th></tr>
+        <tr><th>Label</th><th>People</th><th>Deals</th><th>Created</th><th></th></tr>
       </thead>
       <tbody>
         {% for l in labels %}
-        <tr>
-          <td><span class="lbl-pill">{{ l.name }}</span></td>
+        <tr id="lblRow-{{ l.id }}">
+          <td><span class="lbl-pill" id="lblPill-{{ l.id }}">{{ l.name }}</span></td>
           <td class="muted">{{ l.contact_count }} {{ 'person' if l.contact_count == 1 else 'people' }}</td>
           <td class="muted">{{ l.member_count }} deal{{ 's' if l.member_count != 1 else '' }}</td>
           <td class="muted">{{ l.created_at.strftime('%d %b %Y') if l.created_at else '—' }}</td>
           <td style="text-align:right">
             <button type="button" class="btn btn-sm" onclick='openMembersModal({{ l.id }}, {{ l.name|tojson }})'>View / Edit</button>
+            <button type="button" class="btn btn-sm" onclick='openRenameModal({{ l.id }}, {{ l.name|tojson }})'>Rename</button>
             <form method="POST" action="{{ url_for('portal.lead_labels_delete', label_id=l.id) }}" style="display:inline"
-                  onsubmit="return confirm('Delete the {{ l.name }} tag? This removes it from every contact and deal it\'s on — nothing else about them is affected.')">
+                  onsubmit="return confirm('Delete the {{ l.name }} label? This removes it from every contact and deal it\'s on — nothing else about them is affected.')">
               <input type="hidden" name="redirect" value="1">
               <button type="submit" class="btn btn-sm btn-danger">Delete</button>
             </form>
@@ -106,8 +107,8 @@
   {% else %}
   <div class="lbl-empty">
     <div class="lbl-empty-icon">🏷️</div>
-    <h3 style="font-size:15px;font-weight:700;color:var(--ink);margin:0 0 6px">No tags yet</h3>
-    <p style="font-size:13px;margin:0;max-width:320px">Create one above, or add a tag from a Contact's profile or the Sales Pipeline's "Add to Label" — either way works.</p>
+    <h3 style="font-size:15px;font-weight:700;color:var(--ink);margin:0 0 6px">No labels yet</h3>
+    <p style="font-size:13px;margin:0;max-width:320px">Create one above, or add a label from a Contact's profile or the Sales Pipeline's "Add to Label" — either way works.</p>
   </div>
   {% endif %}
 </div>
@@ -115,8 +116,8 @@
 <!-- ── Members modal ── -->
 <div class="modal-over" id="labelMembersModal" onclick="if(event.target===this)closeMembersModal()">
   <div class="modal-card" style="max-width:560px">
-    <div class="modal-title" id="lmTitle">Tag</div>
-    <p class="modal-sub">Search to add, or remove one below.</p>
+    <div class="modal-title" id="lmTitle">Label</div>
+    <p class="modal-sub">Search to add, or remove/move one below.</p>
 
     <div class="lm-tabs">
       <div class="lm-tab active" id="lmTabBtn-contact" onclick="switchLmTab('contact')">👥 People</div>
@@ -134,7 +135,7 @@
       </div>
 
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;margin-bottom:8px">
-        {{ 'Contacts with this tag' if kind == 'contact' else 'Deals with this tag' }}
+        {{ 'Contacts with this label' if kind == 'contact' else 'Deals with this label' }}
       </div>
       <div id="lmMembersWrap-{{ kind }}" style="max-height:280px;overflow-y:auto">
         <div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Loading…</div>
@@ -144,6 +145,21 @@
 
     <div class="modal-actions">
       <button type="button" class="modal-cancel" onclick="closeMembersModal()">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Rename modal ── -->
+<div class="modal-over" id="renameLabelModal" onclick="if(event.target===this)closeRenameModal()">
+  <div class="modal-card" style="max-width:420px">
+    <div class="modal-title">Rename Label</div>
+    <p class="modal-sub">Updates everywhere this label shows — Sales Pipeline, Contacts, campaign pickers — every contact and deal on it keeps it.</p>
+    <input type="text" class="finp" id="renameLabelInput" autocomplete="off" maxlength="60"
+           onkeydown="if(event.key==='Enter'){event.preventDefault();submitRenameLabel();}">
+    <div class="dedupe-warn" id="renameLabelError" style="color:var(--bad);margin-top:8px"></div>
+    <div class="modal-actions">
+      <button type="button" class="modal-cancel" onclick="closeRenameModal()">Cancel</button>
+      <button type="button" class="btn btn-primary" onclick="submitRenameLabel()">Save</button>
     </div>
   </div>
 </div>
@@ -162,8 +178,35 @@ function submitCreateLabel(ev) {
       if (data.error) { alert(data.error); return; }
       window.location.reload();
     })
-    .catch(function(){ alert('Could not create tag — check your connection'); });
+    .catch(function(){ alert('Could not create label — check your connection'); });
   return false;
+}
+
+function openRenameModal(labelId, labelName) {
+  renameLabelId = labelId;
+  document.getElementById('renameLabelInput').value = labelName;
+  document.getElementById('renameLabelError').textContent = '';
+  document.getElementById('renameLabelModal').classList.add('open');
+  setTimeout(function(){ document.getElementById('renameLabelInput').focus(); }, 0);
+}
+function closeRenameModal() {
+  document.getElementById('renameLabelModal').classList.remove('open');
+  renameLabelId = null;
+}
+function submitRenameLabel() {
+  var input = document.getElementById('renameLabelInput');
+  var errBox = document.getElementById('renameLabelError');
+  var name = input.value.trim();
+  if (!name) { errBox.textContent = 'Label name is required.'; return; }
+  var fd = new FormData();
+  fd.append('name', name);
+  fetch('/labels/' + renameLabelId + '/rename', { method: 'POST', body: fd })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (data.error) { errBox.textContent = data.error; return; }
+      window.location.reload();
+    })
+    .catch(function(){ errBox.textContent = 'Could not rename — check your connection'; });
 }
 
 /* People (Contacts) and Deals (Sales Pipeline leads) share this same modal,
@@ -173,23 +216,29 @@ var LM_CONFIG = {
     loadUrl:   function(id){ return '/labels/' + id + '/contacts'; },
     removeUrl: function(id){ return '/labels/' + id + '/contacts/remove'; },
     removeParam: 'contact_id',
+    moveUrl:   function(id){ return '/labels/' + id + '/contacts/move'; },
+    moveParam: 'contact_id',
     searchUrl: function(q, id){ return '/labels/search-contacts?q=' + encodeURIComponent(q) + '&exclude_label_id=' + id; },
     resultsKey: 'contacts',
     addUrl:    function(id){ return '/labels/' + id + '/contacts/bulk-add'; },
     addParam:  'contact_ids',
-    emptyText: 'No contacts tagged yet.',
+    emptyText: 'No contacts on this label yet.',
   },
   lead: {
     loadUrl:   function(id){ return '/labels/' + id + '/members'; },
     removeUrl: function(id){ return '/labels/' + id + '/members/remove'; },
     removeParam: 'lead_id',
+    moveUrl:   function(id){ return '/labels/' + id + '/members/move'; },
+    moveParam: 'lead_id',
     searchUrl: function(q, id){ return '/labels/search-leads?q=' + encodeURIComponent(q) + '&exclude_label_id=' + id; },
     resultsKey: 'leads',
     addUrl:    function(id){ return '/labels/' + id + '/members/bulk-add'; },
     addParam:  'lead_ids',
-    emptyText: 'No deals tagged yet.',
+    emptyText: 'No deals on this label yet.',
   },
 };
+
+var renameLabelId = null;
 
 var currentLabelId = null;
 
@@ -226,11 +275,18 @@ function loadMembers(kind) {
         wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">' + cfg.emptyText + '</div>';
         return;
       }
+      var otherLabels = DEDUPE_TAGS.filter(function(t){ return t.id !== currentLabelId; });
+      var moveOptions = otherLabels.map(function(t){
+        return '<option value="' + t.id + '">' + escapeHtmlLm(t.name) + '</option>';
+      }).join('');
       wrap.innerHTML = members.map(function(m){
-        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 4px;border-bottom:1px solid rgba(3,12,24,.05)">'
+        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 4px;border-bottom:1px solid rgba(3,12,24,.05)">'
           + '<div style="min-width:0;flex:1">'
           + '<div style="font-weight:600;font-size:13px;overflow-wrap:break-word">' + escapeHtmlLm(m.name || '') + '</div>'
           + '<div style="font-size:11.5px;color:var(--muted);overflow-wrap:break-word">' + escapeHtmlLm(m.email || 'no email') + '</div></div>'
+          + (otherLabels.length ? '<select class="finp" style="width:auto;flex-shrink:0;padding:6px 8px;font-size:12px" '
+              + 'onchange="if(this.value){moveMember(\'' + kind + '\', ' + m.id + ', this.value);} this.selectedIndex=0;">'
+              + '<option value="">Move to…</option>' + moveOptions + '</select>' : '')
           + '<button type="button" class="btn btn-sm btn-ghost" style="flex-shrink:0" onclick="removeMember(\'' + kind + '\', ' + m.id + ')">Remove</button>'
           + '</div>';
       }).join('');
@@ -246,6 +302,20 @@ function removeMember(kind, memberId) {
     .then(function(r){ return r.json(); })
     .then(function(){ loadMembers(kind); })
     .catch(function(){ alert('Could not remove — check your connection'); });
+}
+
+function moveMember(kind, memberId, targetLabelId) {
+  var cfg = LM_CONFIG[kind];
+  var fd = new FormData();
+  fd.append(cfg.moveParam, memberId);
+  fd.append('target_label_id', targetLabelId);
+  fetch(cfg.moveUrl(currentLabelId), { method: 'POST', body: fd })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (data.error) { alert(data.error); return; }
+      loadMembers(kind);
+    })
+    .catch(function(){ alert('Could not move — check your connection'); });
 }
 
 var lmSearchTimer = null;
@@ -294,13 +364,14 @@ function escapeHtmlLm(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-/* Duplicate-name warning on the "+ Create Tag" box. */
+/* Duplicate-name warning on the "+ Create Label" box, and the full label
+   list used to build each member row's "Move to" dropdown above. */
 var DEDUPE_TAGS = {{ dedupe_tags|tojson }};
 document.addEventListener('DOMContentLoaded', function () {
   crmDedupeWatch({
     input: document.getElementById('newLabelName'),
     warnBox: document.getElementById('newTagDedupe'),
-    label: 'Similar tag already exists — did you mean:',
+    label: 'Similar label already exists — did you mean:',
     getItems: function () { return DEDUPE_TAGS; },
     onUse: function (tag) {
       document.getElementById('newLabelName').value = '';

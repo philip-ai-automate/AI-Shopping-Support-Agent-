@@ -1,0 +1,35 @@
+{% extends "portal/base.html" %}
+{% block title %}Create Store Information — PhiXtra Portal{% endblock %}
+{% block content %}
+<style>
+  .si-header{background:linear-gradient(135deg,#030C18 0%,#1a2744 100%);
+    border-radius:16px;padding:24px 28px;color:#fff;margin-bottom:24px}
+  .si-title{font-size:18px;font-weight:800;margin-bottom:4px}
+  .si-sub{font-size:13px;opacity:.7}
+  .si-form{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px 24px}
+  .si-form label{display:block;font-size:13px;font-weight:800;margin-bottom:6px}
+  .si-form input[type="text"]{width:100%;padding:10px 12px;border-radius:9px;
+    border:1px solid rgba(3,12,24,.18);font-size:13px;font-family:inherit;box-sizing:border-box;margin-bottom:16px}
+  .si-form textarea{width:100%;padding:10px 12px;border-radius:9px;
+    border:1px solid rgba(3,12,24,.18);font-size:13px;font-family:inherit;
+    line-height:1.6;resize:vertical;box-sizing:border-box;outline:none}
+</style>
+
+<div class="si-header">
+  <div class="si-title">➕ Create Store Information</div>
+  <div class="si-sub">Add your own custom entry to your AI's knowledge base — give it a title and the information.</div>
+</div>
+
+<form method="POST" class="si-form">
+  <label for="title">Title</label>
+  <input type="text" id="title" name="title" value="{{ title }}" placeholder="e.g. Bulk Order Discounts" required/>
+
+  <label for="content">Information</label>
+  <textarea id="content" name="content" rows="8" placeholder="Type the information customers or the AI should know…" required>{{ content }}</textarea>
+
+  <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px">
+    <a href="{{ url_for('portal.store_info') }}" class="btn btn-sm">Cancel</a>
+    <button type="submit" class="btn btn-primary" style="padding:10px 28px;font-size:14px">Create</button>
+  </div>
+</form>
+{% endblock %}

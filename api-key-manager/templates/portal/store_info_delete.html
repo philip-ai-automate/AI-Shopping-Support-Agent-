@@ -1,0 +1,41 @@
+{% extends "portal/base.html" %}
+{% block title %}Delete Store Information — PhiXtra Portal{% endblock %}
+{% block content %}
+<style>
+  .si-header{background:linear-gradient(135deg,#030C18 0%,#1a2744 100%);
+    border-radius:16px;padding:24px 28px;color:#fff;margin-bottom:24px}
+  .si-title{font-size:18px;font-weight:800;margin-bottom:4px}
+  .si-sub{font-size:13px;opacity:.7}
+  .si-section{background:#fff;border:1px solid var(--line);border-radius:14px;
+    padding:16px 20px;margin-bottom:10px;display:flex;justify-content:space-between;
+    align-items:center;gap:12px;flex-wrap:wrap}
+  .si-label{font-size:14px;font-weight:800}
+  .si-hint{font-size:12px;color:var(--muted);margin-top:2px}
+  .si-meta{font-size:11px;color:var(--muted);margin-top:4px}
+  .si-note{background:#fff7ed;border:1px solid rgba(251,146,60,.3);border-radius:12px;
+    padding:14px 18px;margin-bottom:20px;font-size:13px;color:#7c2d12}
+</style>
+
+<div class="si-header">
+  <div class="si-title">🗑️ Delete Store Information</div>
+  <div class="si-sub">Only entries you created yourself can be deleted — the built-in sections can't be removed.</div>
+</div>
+
+{% if not custom_entries %}
+<div class="si-note">You don't have any custom entries yet. Use <strong>Create</strong> to add one — after that, it'll show up here to delete if needed.</div>
+{% else %}
+{% for e in custom_entries %}
+<div class="si-section">
+  <div>
+    <div class="si-label">{{ e.title }}</div>
+    <div class="si-hint">{{ (e.content or '')[:150] }}{% if (e.content or '')|length > 150 %}…{% endif %}</div>
+    {% if e.updated_at %}<div class="si-meta">Last updated {{ e.updated_at.strftime('%d %b %Y, %H:%M') }}{% if e.updated_by %} by {{ e.updated_by.split(':')[-1] }}{% endif %}</div>{% endif %}
+  </div>
+  <form method="POST" action="{{ url_for('portal.store_info_delete_entry', entry_id=e.id) }}" style="margin:0"
+        onsubmit="return confirm('Delete &quot;{{ e.title|e }}&quot;? This cannot be undone.')">
+    <button type="submit" class="btn btn-sm" style="color:var(--bad,#b02020);border-color:rgba(240,68,56,.3)">Delete</button>
+  </form>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

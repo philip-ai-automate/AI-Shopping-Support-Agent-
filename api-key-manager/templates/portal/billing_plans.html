@@ -175,7 +175,7 @@
 {% if dual_plans %}
 <div class="channel-toggle-wrap">
   <div class="channel-toggle">
-    <button type="button" id="toggleSingleBtn" onclick="setChannelMode('single')">Single Channel</button>
+    <button type="button" id="toggleSingleBtn" onclick="setChannelMode('single')">{% if merchant_mode == 'woocommerce' %}Website (WooCommerce) AI Sales Agent{% else %}WhatsApp AI Sales Agent{% endif %}</button>
     <button type="button" id="toggleDualBtn" onclick="setChannelMode('dual')">Dual Agent Plan (WhatsApp + Website)</button>
   </div>
 </div>
@@ -316,6 +316,11 @@
 
 {# ── Plans grid ────────────────────────────────────────────────────────────── #}
 <div class="plans-grid" id="singlePlansGrid">
+{% if not has_own_plans %}
+<div style="grid-column:1/-1;text-align:center;color:var(--muted);font-size:14px;padding:12px 0">
+  No {{ 'WooCommerce' if merchant_mode == 'woocommerce' else 'WhatsApp' }} plans are available yet{% if dual_plans %} — see the Dual Agent Plan option above{% endif %}, or talk to us about a Custom plan.
+</div>
+{% endif %}
 {% for plan in single_plans %}{{ plan_card(plan, current) }}{% endfor %}
 {% for plan in custom_plans %}{{ plan_card(plan, current) }}{% endfor %}
 </div>

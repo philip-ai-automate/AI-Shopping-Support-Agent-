@@ -34,6 +34,7 @@ import requests as _req
 from flask import (Blueprint, request, jsonify, render_template,
                     render_template_string, session, redirect, url_for, flash)
 from db import get_db_connection, insert_audit_log
+from feature_access import team_feature, public_route
 from portal_routes import (
     _require_login, _customer_id, _get_customer, _exchange_code_for_tokens, _GRAPH,
     _require_team_permission, _team_member_has_permission,
@@ -100,6 +101,7 @@ def _ensure_deletion_table():
 # ── routes ───────────────────────────────────────────────────────────────────
 
 @facebook_bp.route("/deletion", methods=["POST"])
+@public_route
 def deletion_callback():
     """
     Facebook Data Deletion Request Callback.
@@ -201,6 +203,7 @@ _STATUS_PAGE = """<!DOCTYPE html>
 
 
 @facebook_bp.route("/deletion/status", methods=["GET"])
+@public_route
 def deletion_status():
     """Status page that users land on after a data deletion request."""
     code = request.args.get("code", "").strip()
@@ -310,6 +313,7 @@ def _get_fb_pages(tenant_id: int) -> list:
 
 
 @facebook_bp.route("/messenger/connect", methods=["GET"])
+@team_feature("channels.connect_messenger")
 def messenger_connect():
     r = _require_login()
     if r: return r
@@ -328,6 +332,7 @@ def messenger_connect():
 
 
 @facebook_bp.route("/messenger/callback", methods=["POST"])
+@team_feature("channels.connect_messenger")
 def messenger_callback():
     """
     Receives the Facebook Login auth code from the connect page's JS.
@@ -393,6 +398,7 @@ def messenger_callback():
 
 
 @facebook_bp.route("/messenger/complete", methods=["POST"])
+@team_feature("channels.connect_messenger")
 def messenger_complete():
     """Second step when the account manages 2+ Pages — saves the chosen one."""
     r = _require_login()

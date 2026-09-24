@@ -1,0 +1,384 @@
+{% extends "portal/base.html" %}
+{% block title %}Leads Overview — PhiXtra Portal{% endblock %}
+{% block wrap_class %}page-wide{% endblock %}
+{% block content %}
+
+<style>
+.lo-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:4px}
+.lo-eyebrow{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.lo-sub{font-size:13.5px;color:var(--muted);max-width:62ch;line-height:1.55;margin:4px 0 0}
+.lo-period-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:18px 0 26px;flex-wrap:wrap}
+.lo-period-label{font-size:13px;color:var(--muted)}
+.lo-section{margin-bottom:32px}
+.lo-section-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:12px}
+.lo-section-title{font-size:14px;font-weight:800;color:var(--ink)}
+.lo-section-note{font-size:12px;color:var(--muted)}
+
+.lo-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.lo-tile{background:var(--card);padding:18px 18px 16px;min-width:0}
+.lo-tile-label{font-size:12px;color:var(--muted);font-weight:600;margin-bottom:9px}
+.lo-tile-value{font-size:25px;font-weight:800;line-height:1;letter-spacing:-.01em;color:var(--ink)}
+.lo-tile-value .unit{font-size:13px;font-weight:600;color:var(--muted);margin-left:2px}
+.lo-tile-empty{font-size:14px;font-weight:600;color:var(--muted);padding-top:2px}
+.lo-tile-delta{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;margin-top:9px}
+.lo-tile-delta.up{color:var(--good)}
+.lo-tile-delta.down{color:var(--bad)}
+.lo-tile-delta .vs{color:var(--muted);font-weight:500}
+@media (max-width:900px){.lo-tiles{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:520px){.lo-tiles{grid-template-columns:1fr}}
+
+.lo-grid-2{display:grid;grid-template-columns:1.3fr 1fr;gap:16px;align-items:stretch}
+@media (max-width:860px){.lo-grid-2{grid-template-columns:1fr}}
+.lo-panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px}
+.lo-card-title{font-size:13px;font-weight:800;margin:0 0 2px;color:var(--ink)}
+.lo-card-desc{font-size:11.5px;color:var(--muted);margin:0 0 16px}
+.lo-empty-note{font-size:12.5px;color:var(--muted);padding:14px 0}
+
+.lo-funnel-row{display:flex;align-items:center;gap:14px;margin-bottom:12px}
+.lo-funnel-row:last-child{margin-bottom:0}
+.lo-funnel-label{width:132px;flex-shrink:0;font-size:12.5px;font-weight:600;color:var(--txt)}
+.lo-funnel-track{flex:1;height:22px;background:rgba(3,12,24,0.04);border-radius:5px;overflow:hidden}
+.lo-funnel-fill{height:100%;border-radius:5px 3px 3px 5px}
+.lo-funnel-val{width:112px;flex-shrink:0;text-align:right;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink)}
+.lo-funnel-val .pct{color:var(--muted);font-weight:500;font-size:11.5px}
+
+.lo-donut-wrap{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.lo-legend{display:flex;flex-direction:column;gap:9px}
+.lo-legend-row{display:flex;align-items:center;gap:9px;font-size:12.5px}
+.lo-legend-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.lo-legend-name{font-weight:700;color:var(--ink);min-width:48px}
+.lo-legend-val{color:var(--muted);font-variant-numeric:tabular-nums}
+
+.lo-bar-row{display:flex;align-items:center;gap:12px;margin-bottom:13px}
+.lo-bar-row:last-child{margin-bottom:0}
+.lo-bar-label{width:150px;flex-shrink:0;font-size:12.5px;font-weight:600;color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lo-bar-track{flex:1;height:16px;background:rgba(3,12,24,0.04);border-radius:4px}
+.lo-bar-fill{height:100%;border-radius:4px 3px 3px 4px}
+.lo-bar-val{width:56px;flex-shrink:0;text-align:right;font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink)}
+
+[data-tip]{position:relative;cursor:default}
+[data-tip]::after{
+  content:attr(data-tip);position:absolute;left:0;bottom:calc(100% + 8px);
+  background:var(--ink);color:#fff;font-size:11.5px;font-weight:500;line-height:1.4;
+  width:220px;white-space:normal;padding:8px 10px;border-radius:8px;pointer-events:none;
+  opacity:0;transform:translateY(4px);transition:opacity .12s ease,transform .12s ease;z-index:5;
+  box-shadow:0 6px 18px rgba(3,12,24,.18);
+}
+[data-tip]:hover::after{opacity:1;transform:translateY(0)}
+
+.lo-table{width:100%;border-collapse:collapse;font-size:12.5px}
+.lo-table th{text-align:left;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:0 10px 10px;border-bottom:1px solid var(--line)}
+.lo-table th.num,.lo-table td.num{text-align:right;font-variant-numeric:tabular-nums}
+.lo-table td{padding:11px 10px;border-bottom:1px solid var(--line);color:var(--txt)}
+.lo-table tr:last-child td{border-bottom:none}
+.lo-table td.name{color:var(--ink);font-weight:700}
+.lo-rank{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:6px;background:rgba(3,12,24,0.04);color:var(--muted);font-size:11px;font-weight:800;margin-right:9px}
+.lo-winpill{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:700}
+.lo-winpill.good{background:rgba(18,183,106,0.12);color:#0d7a4d}
+.lo-winpill.warn{background:rgba(247,144,9,0.14);color:#93540a}
+
+.lo-footnote{margin-top:6px;padding-top:18px;border-top:1px solid var(--line);font-size:11.5px;color:var(--muted);line-height:1.7}
+.lo-kpi-def{font-size:11px;color:var(--muted);line-height:1.6;margin-top:8px}
+.lo-kpi-def b{color:var(--txt);font-weight:700}
+</style>
+
+<div class="lo-head">
+  <div>
+    <div class="lo-eyebrow">Leads · Management overview</div>
+    <h1>Leads Overview</h1>
+    <p class="lo-sub">A quick snapshot of how leads are moving through your business — from first enquiry to a closed sale — so you can see how your sales team is doing at a glance.</p>
+  </div>
+</div>
+
+<div class="lo-period-row">
+  <div class="lo-period-label">Showing: {{ period_label }}</div>
+  <form method="GET" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap" id="loPeriodForm">
+    <select name="period"
+            onchange="document.getElementById('loCustomRange').style.display = this.value==='custom' ? 'inline-flex' : 'none'; if(this.value!=='custom'){ document.getElementById('loPeriodForm').submit(); }"
+            style="padding:8px 12px;border-radius:10px;border:1px solid var(--line);background:#fff;font-size:13px;font-weight:600;color:var(--txt);cursor:pointer">
+      {% for key, label in period_options.items() %}
+      <option value="{{ key }}" {% if period_key == key %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+      <option value="custom" {% if is_custom_period %}selected{% endif %}>Custom…</option>
+    </select>
+    <span id="loCustomRange" style="display:{{ 'inline-flex' if is_custom_period else 'none' }};gap:6px;align-items:center">
+      <input type="date" name="date_from" value="{{ date_from.isoformat() if is_custom_period else '' }}"
+             style="padding:6px 9px;font-size:12.5px;border-radius:8px;border:1px solid var(--line)">
+      <span class="lo-period-label">to</span>
+      <input type="date" name="date_to" value="{{ date_to.isoformat() if is_custom_period else '' }}"
+             style="padding:6px 9px;font-size:12.5px;border-radius:8px;border:1px solid var(--line)">
+      <button type="submit" class="btn btn-sm">Apply</button>
+    </span>
+  </form>
+</div>
+
+<!-- ═══════════════ 1. LEADS AT A GLANCE ═══════════════ -->
+<div class="lo-section">
+  <div class="lo-section-head">
+    <div class="lo-section-title">1 · Leads at a glance</div>
+    <div class="lo-section-note">How many leads you have, and what shape they're in</div>
+  </div>
+
+  <div class="lo-tiles" style="margin-bottom:16px">
+    <div class="lo-tile">
+      <div class="lo-tile-label">Total leads</div>
+      <div class="lo-tile-value">{{ '{:,}'.format(data.total_leads) }}</div>
+    </div>
+    <div class="lo-tile" data-tip="How many new leads came in during this period, compared to the period before it">
+      <div class="lo-tile-label">New leads</div>
+      <div class="lo-tile-value">{{ '{:,}'.format(data.new_leads) }}</div>
+      {% if data.new_leads_pct is not none %}
+      <div class="lo-tile-delta {{ 'up' if data.new_leads_pct >= 0 else 'down' }}">{{ '▲' if data.new_leads_pct >= 0 else '▼' }} {{ data.new_leads_pct|abs }}% <span class="vs">vs last period</span></div>
+      {% endif %}
+    </div>
+    <div class="lo-tile" data-tip="Leads nobody has Qualified or marked Not a Fit yet">
+      <div class="lo-tile-label">Not yet decided</div>
+      <div class="lo-tile-value">{{ '{:,}'.format(data.not_yet_decided) }} {% if data.not_yet_decided_pct is not none %}<span class="unit">/ {{ data.not_yet_decided_pct }}%</span>{% endif %}</div>
+    </div>
+    <div class="lo-tile" data-tip="On average, how many days a not-yet-decided lead has been waiting">
+      <div class="lo-tile-label">Average days waiting</div>
+      {% if data.avg_wait_days is not none %}
+      <div class="lo-tile-value">{{ data.avg_wait_days }} <span class="unit">days</span></div>
+      {% else %}
+      <div class="lo-tile-empty">Not enough data yet</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="lo-grid-2">
+    <div class="lo-panel">
+      <div class="lo-card-title">Where your leads stand</div>
+      <p class="lo-card-desc">Every lead your business has ever received, all-time</p>
+
+      <div class="lo-funnel-row">
+        <div class="lo-funnel-label">Became an opportunity</div>
+        <div class="lo-funnel-track"><div class="lo-funnel-fill" style="width:{{ data.became_opportunity_pct or 0 }}%;background:var(--good)"></div></div>
+        <div class="lo-funnel-val">{{ '{:,}'.format(data.became_opportunity) }} {% if data.became_opportunity_pct is not none %}<span class="pct">{{ data.became_opportunity_pct }}%</span>{% endif %}</div>
+      </div>
+      <div class="lo-funnel-row">
+        <div class="lo-funnel-label">Not yet decided</div>
+        <div class="lo-funnel-track"><div class="lo-funnel-fill" style="width:{{ data.not_yet_decided_pct or 0 }}%;background:var(--warn)"></div></div>
+        <div class="lo-funnel-val">{{ '{:,}'.format(data.not_yet_decided) }} {% if data.not_yet_decided_pct is not none %}<span class="pct">{{ data.not_yet_decided_pct }}%</span>{% endif %}</div>
+      </div>
+      <div class="lo-funnel-row">
+        <div class="lo-funnel-label">Marked not a fit</div>
+        <div class="lo-funnel-track"><div class="lo-funnel-fill" style="width:{{ data.not_a_fit_pct or 0 }}%;background:var(--bad)"></div></div>
+        <div class="lo-funnel-val">{{ '{:,}'.format(data.not_a_fit) }} {% if data.not_a_fit_pct is not none %}<span class="pct">{{ data.not_a_fit_pct }}%</span>{% endif %}</div>
+      </div>
+    </div>
+
+    <div class="lo-panel">
+      <div class="lo-card-title">Hot, warm &amp; cold leads</div>
+      <p class="lo-card-desc">{{ score_labels.get('hot','Hot') }} / {{ score_labels.get('warm','Warm') }} / {{ score_labels.get('cold','Cold') }} score, right now</p>
+      {% set tier_total = data.tier_counts.hot + data.tier_counts.warm + data.tier_counts.cold %}
+      {% if tier_total > 0 %}
+      {% set hot_pct = (data.tier_counts.hot / tier_total * 100) %}
+      {% set warm_pct = (data.tier_counts.warm / tier_total * 100) %}
+      {% set cold_pct = (data.tier_counts.cold / tier_total * 100) %}
+      <div class="lo-donut-wrap">
+        <svg width="120" height="120" viewBox="0 0 120 120">
+          <circle cx="60" cy="60" r="46" fill="none" stroke="var(--line)" stroke-width="15"/>
+          <circle cx="60" cy="60" r="46" fill="none" stroke="var(--bad)" stroke-width="15"
+                  stroke-dasharray="{{ (hot_pct/100*289.0)|round(1) }} 289" stroke-dashoffset="0" transform="rotate(-90 60 60)" stroke-linecap="round"/>
+          <circle cx="60" cy="60" r="46" fill="none" stroke="var(--warn)" stroke-width="15"
+                  stroke-dasharray="{{ (warm_pct/100*289.0)|round(1) }} 289" stroke-dashoffset="-{{ (hot_pct/100*289.0)|round(1) }}" transform="rotate(-90 60 60)"/>
+          <text x="60" y="56" text-anchor="middle" font-size="19" font-weight="800" fill="var(--ink)">{{ '{:,}'.format(tier_total) }}</text>
+          <text x="60" y="72" text-anchor="middle" font-size="10" fill="var(--muted)">active leads</text>
+        </svg>
+        <div class="lo-legend">
+          <div class="lo-legend-row"><span class="lo-legend-dot" style="background:var(--bad)"></span><span class="lo-legend-name">{{ score_labels.get('hot','Hot') }}</span><span class="lo-legend-val">{{ '{:,}'.format(data.tier_counts.hot) }} · {{ hot_pct|round(1) }}%</span></div>
+          <div class="lo-legend-row"><span class="lo-legend-dot" style="background:var(--warn)"></span><span class="lo-legend-name">{{ score_labels.get('warm','Warm') }}</span><span class="lo-legend-val">{{ '{:,}'.format(data.tier_counts.warm) }} · {{ warm_pct|round(1) }}%</span></div>
+          <div class="lo-legend-row"><span class="lo-legend-dot" style="background:rgba(3,12,24,0.30)"></span><span class="lo-legend-name">{{ score_labels.get('cold','Cold') }}</span><span class="lo-legend-val">{{ '{:,}'.format(data.tier_counts.cold) }} · {{ cold_pct|round(1) }}%</span></div>
+        </div>
+      </div>
+      {% else %}
+      <div class="lo-empty-note">Not enough data yet</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ 2. HOW FAST LEADS MOVE ═══════════════ -->
+<div class="lo-section">
+  <div class="lo-section-head">
+    <div class="lo-section-title">2 · How fast leads move</div>
+    <div class="lo-section-note">{{ period_label }}</div>
+  </div>
+  <div class="lo-tiles">
+    <div class="lo-tile" data-tip="Of the leads that came in this period, how many have become a real Opportunity so far">
+      <div class="lo-tile-label">Became opportunities</div>
+      {% if data.became_opportunity_rate is not none %}
+      <div class="lo-tile-value">{{ data.became_opportunity_rate }}<span class="unit">%</span></div>
+      {% if data.became_opportunity_rate_prev is not none %}
+      {% set diff = (data.became_opportunity_rate - data.became_opportunity_rate_prev)|round(1) %}
+      <div class="lo-tile-delta {{ 'up' if diff >= 0 else 'down' }}">{{ '▲' if diff >= 0 else '▼' }} {{ diff|abs }}pt <span class="vs">vs last period</span></div>
+      {% endif %}
+      {% else %}
+      <div class="lo-tile-empty">Not enough data yet</div>
+      {% endif %}
+    </div>
+    <div class="lo-tile" data-tip="Of the leads that came in this period, how many were screened out as Not a Fit">
+      <div class="lo-tile-label">Marked not a fit</div>
+      {% if data.not_a_fit_rate is not none %}
+      <div class="lo-tile-value">{{ data.not_a_fit_rate }}<span class="unit">%</span></div>
+      {% else %}
+      <div class="lo-tile-empty">Not enough data yet</div>
+      {% endif %}
+    </div>
+    <div class="lo-tile" data-tip="On average, how many days between a lead coming in and someone contacting them">
+      <div class="lo-tile-label">Time to first contact</div>
+      {% if data.time_to_first_contact is not none %}
+      <div class="lo-tile-value">{{ data.time_to_first_contact }} <span class="unit">days</span></div>
+      {% else %}
+      <div class="lo-tile-empty">Not enough data yet</div>
+      {% endif %}
+    </div>
+    <div class="lo-tile" data-tip="On average, how many days between a lead coming in and it becoming an Opportunity">
+      <div class="lo-tile-label">Time to become an opportunity</div>
+      {% if data.time_to_become_opportunity is not none %}
+      <div class="lo-tile-value">{{ data.time_to_become_opportunity }} <span class="unit">days</span></div>
+      {% else %}
+      <div class="lo-tile-empty">Not enough data yet</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ 3. WHERE LEADS COME FROM ═══════════════ -->
+<div class="lo-section">
+  <div class="lo-section-head">
+    <div class="lo-section-title">3 · Where leads come from</div>
+    <div class="lo-section-note">{{ period_label }}</div>
+  </div>
+  {% set src_meta = {'whatsapp': ('#15803d','WhatsApp'), 'facebook': ('#1d4ed8','Facebook'), 'instagram': ('#be185d','Instagram'), 'manual': ('#64748b','Manual Entry')} %}
+  <div class="lo-grid-2">
+    <div class="lo-panel">
+      <div class="lo-card-title">Leads by source</div>
+      <p class="lo-card-desc">How many leads each channel brought in</p>
+      {% if data.by_source_enough_data %}
+      {% set max_count = data.by_source[0].count %}
+      {% for row in data.by_source %}
+      {% set fg = src_meta.get(row.source, ('#64748b', row.source|title))[0] %}
+      {% set label = src_meta.get(row.source, ('#64748b', row.source|title))[1] %}
+      <div class="lo-bar-row">
+        <div class="lo-bar-label">{{ label }}</div>
+        <div class="lo-bar-track"><div class="lo-bar-fill" style="width:{{ (row.count / max_count * 100)|round(1) }}%;background:{{ fg }}"></div></div>
+        <div class="lo-bar-val">{{ '{:,}'.format(row.count) }}</div>
+      </div>
+      {% endfor %}
+      {% else %}
+      <div class="lo-empty-note">Not enough data yet — this fills in once Source is recorded on your leads</div>
+      {% endif %}
+    </div>
+    <div class="lo-panel">
+      <div class="lo-card-title">Which source works best</div>
+      <p class="lo-card-desc">Share of each source's leads that became an opportunity</p>
+      {% if data.source_conversion %}
+      {% for row in data.source_conversion %}
+      {% set fg = src_meta.get(row.source, ('#64748b', row.source|title))[0] %}
+      {% set label = src_meta.get(row.source, ('#64748b', row.source|title))[1] %}
+      <div class="lo-bar-row">
+        <div class="lo-bar-label">{{ label }}</div>
+        <div class="lo-bar-track"><div class="lo-bar-fill" style="width:{{ row.rate }}%;background:{{ fg }}"></div></div>
+        <div class="lo-bar-val">{{ row.rate }}%</div>
+      </div>
+      {% endfor %}
+      {% else %}
+      <div class="lo-empty-note">Not enough data yet</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ 4. TEAM PERFORMANCE ═══════════════ -->
+<div class="lo-section">
+  <div class="lo-section-head">
+    <div class="lo-section-title">4 · Team performance</div>
+    <div class="lo-section-note">Leads given, opportunities made, and deals won by each team member</div>
+  </div>
+  <div class="lo-panel" style="padding:0">
+    {% if data.by_rep_enough_data %}
+    <table class="lo-table">
+      <thead>
+        <tr>
+          <th>Team member</th>
+          <th class="num">Leads given</th>
+          <th class="num">Opportunities</th>
+          <th class="num">Won</th>
+          <th class="num">Win rate</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for rep in data.by_rep %}
+        <tr>
+          <td class="name"><span class="lo-rank">{{ loop.index }}</span>{{ rep.name }}</td>
+          <td class="num">{{ '{:,}'.format(rep.leads) }}</td>
+          <td class="num">{{ '{:,}'.format(rep.opportunities) }}</td>
+          <td class="num">{{ '{:,}'.format(rep.won) }}</td>
+          <td class="num">
+            {% if rep.win_rate is not none %}
+            <span class="lo-winpill {{ 'good' if rep.win_rate >= 50 else 'warn' }}">{{ rep.win_rate }}%</span>
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="lo-empty-note" style="padding:20px 22px">Not enough data yet — this fills in once leads are assigned to a team member</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ═══════════════ 5. SALES RESULTS ═══════════════ -->
+<div class="lo-section">
+  <div class="lo-section-head">
+    <div class="lo-section-title">5 · Sales results</div>
+    <div class="lo-section-note">{{ period_label }}</div>
+  </div>
+  <div class="lo-tiles">
+    <div class="lo-tile" data-tip="Of the deals that were decided (Won or Lost), what share were Won">
+      <div class="lo-tile-label">Win rate</div>
+      {% if data.win_rate is not none %}
+      <div class="lo-tile-value">{{ data.win_rate }}<span class="unit">%</span></div>
+      {% if data.win_rate_prev is not none %}
+      {% set diff = (data.win_rate - data.win_rate_prev)|round(1) %}
+      <div class="lo-tile-delta {{ 'up' if diff >= 0 else 'down' }}">{{ '▲' if diff >= 0 else '▼' }} {{ diff|abs }}pt <span class="vs">vs last period</span></div>
+      {% endif %}
+      {% else %}
+      <div class="lo-tile-empty">Not enough data yet</div>
+      {% endif %}
+    </div>
+    <div class="lo-tile" data-tip="The average amount of Won deals in this period">
+      <div class="lo-tile-label">Average sale amount</div>
+      {% if data.avg_deal_size is not none %}
+      <div class="lo-tile-value">₦{{ '{:,.0f}'.format(data.avg_deal_size) }}</div>
+      {% else %}
+      <div class="lo-tile-empty">Not enough data yet</div>
+      {% endif %}
+    </div>
+    <div class="lo-tile" data-tip="On average, how many days between a lead coming in and the deal being Won">
+      <div class="lo-tile-label">Average time to close a sale</div>
+      {% if data.sales_cycle_days is not none %}
+      <div class="lo-tile-value">{{ data.sales_cycle_days }} <span class="unit">days</span></div>
+      {% else %}
+      <div class="lo-tile-empty">Not enough data yet</div>
+      {% endif %}
+    </div>
+    <div class="lo-tile" data-tip="Roughly how much money the sales team is producing per day right now">
+      <div class="lo-tile-label">Revenue speed</div>
+      {% if data.revenue_speed is not none %}
+      <div class="lo-tile-value">₦{{ '{:,.0f}'.format(data.revenue_speed) }}<span class="unit">/day</span></div>
+      {% else %}
+      <div class="lo-tile-empty">Not enough data yet</div>
+      {% endif %}
+    </div>
+  </div>
+  <div class="lo-kpi-def"><b>Revenue speed</b> = open opportunities × win rate × average sale amount ÷ average time to close. It moves whenever any one of the four numbers above it improves.</div>
+</div>
+
+<div class="lo-footnote">
+  Every number on this page comes straight from your Leads and Sales Pipeline records — nothing here is estimated. A tile shows "Not enough data yet" instead of a number when there isn't enough recorded information to make that number meaningful yet — for example, if Source, Sale Amount, or Team Member hasn't been filled in on enough leads.
+</div>
+
+{% endblock %}

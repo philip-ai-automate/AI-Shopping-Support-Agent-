@@ -126,7 +126,7 @@
     </a>
     {% if not is_connect_host %}
     <a class="s-tab" href="#plan"          onclick="return switchTab('plan',this)">
-      <span class="tab-icon">📦</span> Package Plan
+      <span class="tab-icon">📦</span> My Plan
     </a>
     {% endif %}
     <a class="s-tab" href="#business"      onclick="return switchTab('business',this)">
@@ -387,9 +387,9 @@
     </div>
 
     {% if not is_connect_host %}
-    <!-- PACKAGE PLAN -->
+    <!-- MY PLAN -->
     <div class="s-panel card" id="panel-plan">
-      <h2 class="section-heading">Package Plan</h2>
+      <h2 class="section-heading">My Plan</h2>
       <p class="section-sub">Your current subscription and credit balance.</p>
 
       {% if plan_key %}
@@ -404,16 +404,17 @@
                 <span class="plan-badge plan-none">❌ Inactive</span>
               {% endif %}
             </div>
-            <a href="{{ url_for('portal.billing') }}" class="btn btn-sm btn-primary">
-              {% if plan_key.key_type == 'trial' %}⬆️ Upgrade Plan{% else %}💳 Buy Credits{% endif %}
-            </a>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <a href="{{ url_for('portal.billing_plans') }}" class="btn btn-sm btn-primary">⬆️ Upgrade Plan</a>
+              <a href="{{ url_for('portal.billing') }}" class="btn btn-sm">💳 Buy Credits</a>
+            </div>
           </div>
 
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px">
             <div>
-              <div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Plan Type</div>
+              <div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Plan</div>
               <div style="font-size:15px;font-weight:700">
-                {% if plan_key.key_type == 'trial' %}14-Day Free Trial{% else %}Paid Plan{% endif %}
+                {{ (current_plan or {}).get('plan_name') or 'Free' }}{% if plan_key.key_type == 'trial' %} <span class="muted" style="font-size:12px;font-weight:600">(14-day free trial)</span>{% endif %}
               </div>
             </div>
             <div>
@@ -461,11 +462,13 @@
             {% if plan_key.key_type == 'trial' %}Move to a paid plan to keep your AI assistant running after your trial ends.
             {% else %}Top up to keep your AI assistant running without interruption.{% endif %}
           </p>
-          <a href="{{ url_for('portal.billing') }}" class="btn btn-primary btn-sm">
-            {% if plan_key.key_type == 'trial' %}View Paid Plans →{% else %}Buy Credits →{% endif %}
-          </a>
-          <a href="{% if plan_key.key_type == 'whatsapp' %}https://phixtra.com/pricing-2/{% else %}https://phixtra.com/subscription-plans/{% endif %}" target="_blank" rel="noopener"
-             class="btn btn-sm" style="margin-left:8px">View Plan Details</a>
+          {% if plan_key.key_type == 'trial' %}
+          <a href="{{ url_for('portal.billing_plans') }}" class="btn btn-primary btn-sm">View Paid Plans →</a>
+          <a href="{{ url_for('portal.billing') }}" class="btn btn-sm" style="margin-left:8px">Buy Credits</a>
+          {% else %}
+          <a href="{{ url_for('portal.billing') }}" class="btn btn-primary btn-sm">Buy Credits →</a>
+          <a href="{{ url_for('portal.billing_plans') }}" class="btn btn-sm" style="margin-left:8px">View Plans</a>
+          {% endif %}
         </div>
 
         <!-- Cancel -->
@@ -507,8 +510,8 @@
         <div class="plan-card" style="text-align:center;padding:32px">
           <div style="font-size:40px;margin-bottom:12px">📦</div>
           <div style="font-size:16px;font-weight:700;margin-bottom:6px">No Active Plan</div>
-          <p class="muted" style="font-size:13px;margin-bottom:18px">Browse our packages to get started.</p>
-          <a href="{{ url_for('portal.billing') }}" class="btn btn-primary">View Plans</a>
+          <p class="muted" style="font-size:13px;margin-bottom:18px">Browse our plans to get started.</p>
+          <a href="{{ url_for('portal.billing_plans') }}" class="btn btn-primary">View Plans</a>
         </div>
       {% endif %}
     </div>

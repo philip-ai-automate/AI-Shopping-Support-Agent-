@@ -193,6 +193,23 @@
             </div>
           </div>
         </div>
+        {% set sel_outcome = args.getlist('outcome_category') %}
+        <div class="msdd {{ 'has-selection' if sel_outcome else '' }}">
+          <button type="button" class="msdd-trigger" onclick="toggleMsdd(this)">
+            <span>{{ 'Outcome (' ~ sel_outcome|length ~ ')' if sel_outcome else 'Outcome' }}</span>
+            <svg class="msdd-chevron" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="msdd-panel">
+            <div class="msdd-options">
+              {% for oc in lead_outcome_categories %}
+              <label class="msdd-option">
+                <input type="checkbox" name="outcome_category" value="{{ oc.key }}" {% if oc.key in sel_outcome %}checked{% endif %} onchange="updateMsddLabel(this,'Outcome')">
+                <span>{{ oc.label }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     {% elif entity == 'contacts' %}

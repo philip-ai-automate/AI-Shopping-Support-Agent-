@@ -15,9 +15,11 @@ import io
 import bcrypt
 from urllib.parse import urlencode
 from flask import (Blueprint, render_template, request, redirect,
-                   url_for, session, flash, send_file, send_from_directory, Response)
+                   url_for, session, flash, send_file, send_from_directory, Response,
+                   current_app)
 
 from db import get_db_connection, insert_audit_log
+from feature_access import check_feature_access, PLAN_LOCK_CODE_PATHS
 from meta_business_agent import sync_all_to_meta, check_eligibility, go_live_with_meta, revert_to_phixtra_ai
 from lead_pipeline import (STAGE_ORDER, STAGE_LABELS, STAGE_DESCRIPTIONS,
                             next_stage, record_stage_change, get_stage_history,
@@ -25,7 +27,9 @@ from lead_pipeline import (STAGE_ORDER, STAGE_LABELS, STAGE_DESCRIPTIONS,
                             sales_manager_month_progress, upsert_sales_manager_target)
 from portal_utils import (money_fmt, tokens_to_credits, credits_to_tokens,
                           send_email_with_attachment, TUTORIAL_VIDEOS)
-from portal_routes import _COMEBACK_VARIANTS, _render_comeback_email_html, PLAN_FEATURE_CATALOG
+from portal_routes import (_COMEBACK_VARIANTS, _render_comeback_email_html, PLAN_FEATURE_CATALOG,
+                           ROLE_FORM_GRID, PLAN_ONLY_FEATURE_KEYS,
+                           PLUGIN_FEATURE_PLAN_KEYS, _plugin_features_for_tenant)
 from buffer_client import (buffer_create_post, buffer_get_post_status,
                             buffer_list_channels, BufferAPIError)
 
@@ -46,7 +50,7 @@ ADMIN_MODULES = {
     "catalogue":                 {"label": "Catalogue",             "actions": ["view", "create", "modify", "delete"]},
     "api_keys":                  {"label": "API Keys",              "actions": ["view", "create", "modify", "delete"]},
     "invoices":                  {"label": "Invoices",              "actions": ["view"]},
-    "credit_packages":           {"label": "Credit Packages",       "actions": ["view", "create", "modify", "delete"]},
+    "credit_packages":           {"label": "Credit Top-ups",         "actions": ["view", "create", "modify", "delete"]},
     "plugins":                   {"label": "Plugins",               "actions": ["view", "create", "delete"]},
     "plans":                     {"label": "Plans",                 "actions": ["view", "modify"]},
     "school_plans":              {"label": "School Plans",          "actions": ["view", "modify"]},
@@ -907,6 +911,28 @@ def customer_detail(customer_id: int):
     except Exception:
         tenant_features = {}
 
+    # WooCommerce Plugin features — read-only here; the plan decides.
+    _PLUGIN_LABELS = [
+        ("product_recommendation",     "🛍️ Product Recommendation"),
+        ("related_products",           "🔗 Automated Cross-selling"),
+        ("cart_recovery",              "🛒 Intelligent Cart Revenue Recovery"),
+        ("verified_specs_web_lookup",  "🔎 Verified Specs Lookup (Web)"),
+        ("chat_archive_30days",        "📅 Chat Archive — 30 days"),
+        ("chat_archive_unlimited",     "♾️ Chat Archive — Unlimited"),
+        ("whatsapp_message_templates", "📩 WhatsApp Message Templates"),
+    ]
+    plugin_status = []
+    try:
+        _eff = _plugin_features_for_tenant(tenant_id)
+        cur.execute("SELECT feature_key FROM plan_feature_grants g JOIN tenants t ON t.plan_id=g.plan_id WHERE t.id=%s", (tenant_id,))
+        _grants = {r["feature_key"] for r in cur.fetchall()}
+        for _flag, _label in _PLUGIN_LABELS:
+            _in_plan = PLUGIN_FEATURE_PLAN_KEYS[_flag] in _grants
+            plugin_status.append({"label": _label, "in_plan": _in_plan,
+                                  "kept": bool(_eff.get(_flag)) and not _in_plan})
+    except Exception as e:
+        print("⚠️ customer_detail plugin_status error:", e)
+
     onboarding_other = None
     try:
         cur.execute("SELECT onboarding_other FROM tenants WHERE id=%s", (tenant_id,))
@@ -1028,6 +1054,7 @@ def customer_detail(customer_id: int):
                            customer=customer, keys=keys,
                            invoices=invs, audit=audit,
                            tenant_features=tenant_features,
+                           plugin_status=plugin_status,
                            doc_counts=doc_counts,
                            all_plans=all_plans,
                            msgs_used=msgs_used,
@@ -1614,14 +1641,9 @@ def customer_set_features(customer_id: int):
     r = _require_admin("customers", "modify")
     if r: return r
 
-    # Read the feature checkboxes from the form
-    feat_product_rec      = request.form.get("feat_product_recommendation") == "on"
-    feat_related_products = request.form.get("feat_related_products") == "on"
-    feat_cart_recovery    = request.form.get("feat_cart_recovery") == "on"
-    feat_verified_specs   = request.form.get("feat_verified_specs_web_lookup") == "on"
-    feat_chat_archive_30d = request.form.get("feat_chat_archive_30days") == "on"
-    feat_chat_archive_unl = request.form.get("feat_chat_archive_unlimited") == "on"
-    feat_wa_templates     = request.form.get("feat_wa_message_templates") == "on"
+    # WooCommerce Plugin features are decided by the customer's plan now
+    # (2026-09-23) — this form only saves the per-store settings below and
+    # leaves every other key in tenants.features untouched.
     feat_visual_match     = request.form.get("feat_visual_match") == "on"
     visual_match_on_uncertain = (request.form.get("visual_match_on_uncertain") or "clarify").strip()
     if visual_match_on_uncertain not in ("clarify", "handoff"):
@@ -1634,37 +1656,6 @@ def customer_set_features(customer_id: int):
         recovery_incentive_pct = max(0, min(50, int(request.form.get("cart_recovery_incentive_pct") or 0)))
     except (ValueError, TypeError):
         recovery_incentive_pct = 0
-
-    # Build the features dict — add more keys here as new features are added
-    features = {}
-    if feat_product_rec:
-        features["product_recommendation"] = True
-    # Related products requires product_recommendation to also be active
-    if feat_product_rec and feat_related_products:
-        features["related_products"] = True
-    # Cart Revenue Recovery
-    if feat_cart_recovery:
-        features["cart_recovery"] = True
-        if recovery_popup_message:
-            features["cart_recovery_popup_message"] = recovery_popup_message
-        if recovery_incentive_pct > 0:
-            features["cart_recovery_incentive_pct"] = recovery_incentive_pct
-
-    # Verified Specs Lookup (Web) — allows the AI backend to browse trusted sources for numeric specs
-    if feat_verified_specs:
-        features["verified_specs_web_lookup"] = True
-
-    # Chat Archive — 30 Days: search, PDF export, AI summaries, 30-day window
-    # Chat Archive — Unlimited: search, all exports, AI summaries, no day limit
-    # Only one tier should be active at a time; if both are ticked, Unlimited wins.
-    if feat_chat_archive_unl:
-        features["chat_archive_unlimited"] = True
-    elif feat_chat_archive_30d:
-        features["chat_archive_30days"] = True
-
-    # WhatsApp Message Templates — cart abandonment & order status via Meta-approved templates
-    if feat_wa_templates:
-        features["whatsapp_message_templates"] = True
 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -1683,11 +1674,27 @@ def customer_set_features(customer_id: int):
 
     tenant_id = int(row["tenant_id"])
 
+    cur.execute("SELECT features FROM tenants WHERE id=%s", (tenant_id,))
+    _raw = (cur.fetchone() or {}).get("features")
+    features = (_json.loads(_raw) if isinstance(_raw, str) and _raw else (dict(_raw) if isinstance(_raw, dict) else {}))
+
+    if recovery_popup_message:
+        features["cart_recovery_popup_message"] = recovery_popup_message
+    else:
+        features.pop("cart_recovery_popup_message", None)
+    if recovery_incentive_pct > 0:
+        features["cart_recovery_incentive_pct"] = recovery_incentive_pct
+    else:
+        features.pop("cart_recovery_incentive_pct", None)
+
     # Visual Product Match — Pro plan only, ignore the checkbox otherwise even
     # if somehow submitted (e.g. stale form from before a downgrade)
     if feat_visual_match and row["plan_slug"] == "pro":
         features["visual_product_match"] = True
         features["visual_match_on_uncertain"] = visual_match_on_uncertain
+    else:
+        features.pop("visual_product_match", None)
+        features.pop("visual_match_on_uncertain", None)
 
     features_json = _json.dumps(features) if features else None
     cur2 = conn.cursor()
@@ -2115,51 +2122,10 @@ def credit_packages():
         is_active = request.form.get("is_active") == "on"
         sort_order  = int(request.form.get("sort_order")   or 0)
 
-        # Stage 3 — package type and billing period
-        # package_type : 'topup' (default, existing behaviour) or 'subscription'
-        # billing_period: 'monthly' or 'annual' — only used for subscriptions
-        raw_pkg_type    = (request.form.get("package_type") or "topup").strip()
-        package_type    = raw_pkg_type if raw_pkg_type in ("topup", "subscription") else "topup"
-        raw_billing     = (request.form.get("billing_period") or "").strip()
-        billing_period  = raw_billing if raw_billing in ("monthly", "annual") else None
-        # billing_period is only meaningful for subscription packages
-        if package_type == "topup":
-            billing_period = None
+        # Credit Packages only sell extra AI-message credits, bought once
+        # (2026-09-23) — no subscriptions, no features (those come from Plans).
+        package_type, billing_period, features_json = "topup", None, None
 
-        # Read feature checkboxes
-        feat_product_rec      = request.form.get("feature_product_recommendation") == "on"
-        feat_related_products = request.form.get("feature_related_products") == "on"
-        feat_cart_recovery    = request.form.get("feature_cart_recovery") == "on"
-        feat_verified_specs  = request.form.get("feature_verified_specs_web_lookup") == "on"
-        feat_chat_archive_30d = request.form.get("feature_chat_archive_30days") == "on"
-        feat_chat_archive_unl = request.form.get("feature_chat_archive_unlimited") == "on"
-        feat_wa_templates     = request.form.get("feature_wa_message_templates") == "on"
-        features_dict = {}
-        if feat_product_rec:
-            features_dict["product_recommendation"] = True
-        # Related products requires product_recommendation to also be active
-        if feat_product_rec and feat_related_products:
-            features_dict["related_products"] = True
-        # Intelligent Cart Revenue Recovery
-        if feat_cart_recovery:
-            features_dict["cart_recovery"] = True
-        # Verified Specs Lookup (Web)
-        if feat_verified_specs:
-            features_dict["verified_specs_web_lookup"] = True
-        # Chat Archive tiers — only one can be set; Unlimited wins if both ticked
-        if feat_chat_archive_unl:
-            features_dict["chat_archive_unlimited"] = True
-        elif feat_chat_archive_30d:
-            features_dict["chat_archive_30days"] = True
-        # WhatsApp Message Templates
-        if feat_wa_templates:
-            features_dict["whatsapp_message_templates"] = True
-        # Custom features — one per line entered by admin
-        custom_text = (request.form.get("custom_features_text") or "").strip()
-        custom_list = [line.strip() for line in custom_text.splitlines() if line.strip()]
-        if custom_list:
-            features_dict["custom_features"] = custom_list
-        features_json = _json.dumps(features_dict) if features_dict else None
 
         if not name or credits <= 0 or price_pence <= 0:
             flash("Name, credits and price are required.", "danger")
@@ -2171,7 +2137,7 @@ def credit_packages():
                 (name, credits, price_pence, vat_rate, is_active, sort_order, features_json, package_type, billing_period))
             conn.commit()
             cur2.close()
-            flash("Package added.", "success")
+            flash("Top-up added.", "success")
         return redirect(url_for("portal_admin.credit_packages"))
 
     cur.execute("SELECT * FROM credit_packages ORDER BY sort_order ASC, id ASC")
@@ -2207,7 +2173,7 @@ def credit_packages_toggle(pkg_id: int):
     cur2.execute("UPDATE credit_packages SET is_active=%s WHERE id=%s", (new_val, pkg_id))
     conn.commit()
     cur2.close(); cur.close(); conn.close()
-    flash("Package updated.", "success")
+    flash("Top-up updated.", "success")
     return redirect(url_for("portal_admin.credit_packages"))
 
 
@@ -2230,9 +2196,9 @@ def credit_packages_delete(pkg_id: int):
             action="admin_delete_package",
             details={"package_id": pkg_id, "package_name": row.get("name")},
         )
-        flash(f"Package '{row.get('name')}' deleted.", "success")
+        flash(f"Top-up '{row.get('name')}' deleted.", "success")
     else:
-        flash("Package not found.", "danger")
+        flash("Top-up not found.", "danger")
     cur.close(); conn.close()
     return redirect(url_for("portal_admin.credit_packages"))
 
@@ -2249,44 +2215,9 @@ def credit_packages_edit(pkg_id: int):
     is_active = request.form.get("is_active") == "on"
     sort_order  = int(request.form.get("sort_order")   or 0)
 
-    # Stage 3 — package type and billing period
-    raw_pkg_type_e   = (request.form.get("package_type") or "topup").strip()
-    package_type_e   = raw_pkg_type_e if raw_pkg_type_e in ("topup", "subscription") else "topup"
-    raw_billing_e    = (request.form.get("billing_period") or "").strip()
-    billing_period_e = raw_billing_e if raw_billing_e in ("monthly", "annual") else None
-    if package_type_e == "topup":
-        billing_period_e = None
+    # One-time credit top-ups only (2026-09-23) — see credit_packages().
+    package_type_e, billing_period_e, features_json = "topup", None, None
 
-    feat_product_rec      = request.form.get("feature_product_recommendation") == "on"
-    feat_related_products = request.form.get("feature_related_products") == "on"
-    feat_cart_recovery    = request.form.get("feature_cart_recovery") == "on"
-    feat_verified_specs   = request.form.get("feature_verified_specs_web_lookup") == "on"
-    feat_chat_archive_30d = request.form.get("feature_chat_archive_30days") == "on"
-    feat_chat_archive_unl = request.form.get("feature_chat_archive_unlimited") == "on"
-    feat_wa_templates     = request.form.get("feature_wa_message_templates") == "on"
-    features_dict = {}
-    if feat_product_rec:
-        features_dict["product_recommendation"] = True
-    if feat_product_rec and feat_related_products:
-        features_dict["related_products"] = True
-    if feat_cart_recovery:
-        features_dict["cart_recovery"] = True
-    if feat_verified_specs:
-        features_dict["verified_specs_web_lookup"] = True
-    # Chat Archive tiers — only one can be set; Unlimited wins if both ticked
-    if feat_chat_archive_unl:
-        features_dict["chat_archive_unlimited"] = True
-    elif feat_chat_archive_30d:
-        features_dict["chat_archive_30days"] = True
-    # WhatsApp Message Templates
-    if feat_wa_templates:
-        features_dict["whatsapp_message_templates"] = True
-    # Custom features — one per line entered by admin
-    custom_text = (request.form.get("custom_features_text") or "").strip()
-    custom_list = [line.strip() for line in custom_text.splitlines() if line.strip()]
-    if custom_list:
-        features_dict["custom_features"] = custom_list
-    features_json = _json.dumps(features_dict) if features_dict else None
 
     if not name or credits <= 0 or price_pence <= 0:
         flash("Name, credits and price are required.", "danger")
@@ -2309,10 +2240,10 @@ def credit_packages_edit(pkg_id: int):
         admin_username=_admin_user(),
         action="admin_edit_package",
         details={"package_id": pkg_id, "name": name, "credits": credits,
-                 "price_pence": price_pence, "features": features_dict,
+                 "price_pence": price_pence,
                  "package_type": package_type_e, "billing_period": billing_period_e},
     )
-    flash(f"Package '{name}' updated.", "success")
+    flash(f"Top-up '{name}' updated.", "success")
     return redirect(url_for("portal_admin.credit_packages"))
 
 
@@ -5016,12 +4947,29 @@ def admin_modules_catalog():
         for key, _ in feats if key.startswith("legacy:")
     )
 
+    # Features-vs-Roles check (update policy, see feature_access.py) — run
+    # live on every visit so the red box reflects the code actually running.
+    granted_keys = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT DISTINCT feature_key FROM plan_feature_grants")
+        granted_keys = {r[0] for r in cur.fetchall()}
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ admin_modules_catalog plan grants error:", e)
+    access_problems = check_feature_access(
+        current_app, PLAN_FEATURE_CATALOG, ROLE_FORM_GRID, PLAN_ONLY_FEATURE_KEYS, granted_keys,
+        code_paths=PLAN_LOCK_CODE_PATHS,
+    )
+
     return render_template(
         "portal/admin_modules.html",
         feature_catalog=PLAN_FEATURE_CATALOG,
         module_count=module_count,
         feature_count=feature_count,
         legacy_count=legacy_count,
+        access_problems=access_problems,
     )
 
 
@@ -5108,7 +5056,7 @@ def _plan_form_to_dict(form) -> dict:
         "sort_order":          _int("sort_order", 0),
         "is_active":           form.get("is_active") == "on",
         "is_custom":           form.get("is_custom") == "on",
-        "channel_mode":        form.get("channel_mode") if form.get("channel_mode") in ("single", "dual", "both") else "single",
+        "channel_mode":        form.get("channel_mode") if form.get("channel_mode") in ("whatsapp", "woocommerce", "dual", "both") else "whatsapp",
         "parent_plan_id":      int(form["parent_plan_id"]) if (form.get("parent_plan_id") or "").strip() else None,
     }
     # Legacy feat_* columns are still the real gate for WhatsApp Campaigns /
@@ -5190,7 +5138,7 @@ def admin_plans_new():
              "products_limit": 50, "data_sources_limit": 1, "staff_limit": 0,
              "overage_per_msg_ngn": 10, "overage_per_msg_usd": 0.006,
              "annual_discount_pct": 5, "sort_order": 0, "is_active": True,
-             "is_custom": False, "channel_mode": "single", "parent_plan_id": None}
+             "is_custom": False, "channel_mode": "whatsapp", "parent_plan_id": None}
     for feature_key, _label in _ALL_CATALOG_ITEMS:
         if feature_key.startswith("legacy:"):
             blank[feature_key.split(":", 1)[1]] = False

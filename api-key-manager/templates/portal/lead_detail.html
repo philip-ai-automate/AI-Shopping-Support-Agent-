@@ -62,9 +62,15 @@
     <div style="display:flex;align-items:center;gap:10px">
       {% set outc = lead.outcome %}
       {% if outc %}
-      <span class="stage-pill" style="background:{{ '#f0fdf4' if outc=='won' else ('#fef2f2' if outc=='lost' else '#f8fafc') }};color:{{ '#15803d' if outc=='won' else ('#b91c1c' if outc=='lost' else '#64748b') }};font-size:13px;padding:7px 16px">{{ stage_labels.get(outc, outc.capitalize())|upper }}</span>
-      {% else %}
+      <span class="stage-pill" style="background:{{ '#f0fdf4' if outc=='won' else ('#fef2f2' if outc in ('lost','not_a_fit') else '#f8fafc') }};color:{{ '#15803d' if outc=='won' else ('#b91c1c' if outc in ('lost','not_a_fit') else '#64748b') }};font-size:13px;padding:7px 16px">{{ stage_labels.get(outc, outc.capitalize())|upper }}</span>
+      {% elif lead.is_opportunity %}
       <span class="stage-pill st-{{ lead.stage }}" style="font-size:13px;padding:7px 16px">{{ stage_labels.get(lead.stage, lead.stage)|upper }}</span>
+      {% else %}
+      <span class="stage-pill" style="background:#fffbeb;color:#b45309;font-size:13px;padding:7px 16px">AWAITING QUALIFICATION</span>
+      {% endif %}
+      {% if not outc and not lead.is_opportunity %}
+      <button type="button" class="lc-edit-btn" style="background:#15803d;color:#fff;border-color:#15803d" onclick="document.getElementById('qualifyModal').classList.add('open')">✅ Qualify</button>
+      <button type="button" class="lc-edit-btn" style="background:#b91c1c;color:#fff;border-color:#b91c1c" onclick="document.getElementById('notAFitModal').classList.add('open')">🚫 Not a Fit</button>
       {% endif %}
       <button type="button" class="lc-edit-btn" onclick="document.getElementById('editLeadModal').classList.add('open')">✏️ Edit Lead</button>
     </div>
@@ -118,7 +124,14 @@
     <div><div class="lc-field-label">Lead Score</div>
       {% set _sb = {'hot': ('🔥','#fef2f2','#b91c1c'), 'warm': ('🌤️','#fffbeb','#b45309'), 'cold': ('❄️','#eff6ff','#1d4ed8')} %}
       {% set icon, bg, fg = _sb.get(lead_tier, _sb['cold']) %}
-      <span class="stage-pill" style="background:{{ bg }};color:{{ fg }}" title="{{ score_labels.get(lead_tier, lead_tier.capitalize()) }}">{{ icon }} {{ lead_score }}</span>
+      <span class="stage-pill" style="background:{{ bg }};color:{{ fg }};cursor:default" title="{{ score_labels.get(lead_tier, lead_tier.capitalize()) }}">{{ icon }} {{ lead_score }}</span>
+      <div style="margin-top:6px;font-size:11px;line-height:1.7">
+        {% for s in score_breakdown %}
+        <div style="color:{{ '#15803d' if s.points > 0 else ('#b91c1c' if s.points < 0 else '#9ca3af') }}">
+          {{ '%+d'|format(s.points) if s.points else '±0' }} {{ s.label }}
+        </div>
+        {% endfor %}
+      </div>
     </div>
 
     <div style="grid-column: span 4">
@@ -130,8 +143,27 @@
   <!-- Pipeline -->
   <div class="lc-sec-head">
     <span>Pipeline</span>
+    {% if lead.is_opportunity %}
     <a href="{{ url_for('portal.sales_pipeline', q=lead.phone or lead.whatsapp_number or '') }}" style="font-size:11px;color:var(--ink);font-weight:700;text-decoration:none">Open on Pipeline Board →</a>
+    {% endif %}
   </div>
+  {% if not lead.is_opportunity %}
+  <div style="padding:22px 24px;border-bottom:1px solid var(--line)">
+    {% if outc == 'not_a_fit' %}
+    <div style="font-size:13px;font-weight:600;color:var(--ink)">This Lead was marked <strong style="color:#b91c1c">Not a Fit</strong> and never entered the Sales Pipeline.</div>
+    {% if lead.dropped_reason %}
+    <div style="margin-top:8px;font-size:12px;color:var(--muted)">Reason: <strong style="color:var(--ink)">{{ lead.dropped_reason }}</strong></div>
+    {% endif %}
+    {% else %}
+    <div style="font-size:13px;font-weight:600;color:var(--ink)">Not yet qualified — this Lead isn't in the Sales Pipeline yet.</div>
+    <div style="margin-top:4px;font-size:12px;color:var(--muted)">Decide whether it's worth pursuing: <strong>Qualify</strong> it to turn it into a real Opportunity, or mark it <strong>Not a Fit</strong>.</div>
+    <div style="margin-top:12px;display:flex;gap:8px">
+      <button type="button" class="lc-edit-btn" style="background:#15803d;color:#fff;border-color:#15803d" onclick="document.getElementById('qualifyModal').classList.add('open')">✅ Qualify</button>
+      <button type="button" class="lc-edit-btn" style="background:#b91c1c;color:#fff;border-color:#b91c1c" onclick="document.getElementById('notAFitModal').classList.add('open')">🚫 Not a Fit</button>
+    </div>
+    {% endif %}
+  </div>
+  {% else %}
   <div style="padding:22px 24px;border-bottom:1px solid var(--line);overflow-x:auto">
     <div style="display:flex;align-items:flex-start;min-width:640px">
       {% for s in stage_order %}
@@ -171,14 +203,25 @@
     <div style="margin-top:14px;font-size:12px;color:var(--muted)">Reason: <strong style="color:var(--ink)">{{ lead.dropped_reason }}</strong></div>
     {% endif %}
   </div>
+  {% endif %}
 
   <!-- Conversations -->
   <div class="lc-sec-head">Conversations</div>
   <div style="padding:16px 24px;border-bottom:1px solid var(--line)">
     <div style="display:flex;gap:8px;margin-bottom:12px">
       <button type="button" class="lc-tab active">💬 WhatsApp</button>
-      <button type="button" class="lc-tab disabled">📷 Instagram <span class="lc-soon">SOON</span></button>
-      <button type="button" class="lc-tab disabled">📘 Facebook <span class="lc-soon">SOON</span></button>
+      <button type="button" class="lc-tab disabled">
+        <span style="display:inline-flex;width:14px;height:14px;border-radius:4px;background:linear-gradient(135deg,#FEDA75,#D62976 45%,#4F5BD5);align-items:center;justify-content:center;flex-shrink:0">
+          <svg viewBox="0 0 24 24" width="9" height="9" fill="#fff"><path d="M7.0301.084c-1.2768.0602-2.1487.264-2.911.5634-.7888.3075-1.4575.72-2.1228 1.3877-.6652.6677-1.075 1.3368-1.3802 2.127-.2954.7638-.4956 1.6365-.552 2.914-.0564 1.2775-.0689 1.6882-.0626 4.947.0062 3.2586.0206 3.6671.0825 4.9473.061 1.2765.264 2.1482.5635 2.9107.308.7889.72 1.4573 1.388 2.1228.6679.6655 1.3365 1.0743 2.1285 1.38.7632.295 1.6361.4961 2.9134.552 1.2773.056 1.6884.069 4.9462.0627 3.2578-.0062 3.668-.0207 4.9478-.0814 1.28-.0607 2.147-.2652 2.9098-.5633.7889-.3086 1.4578-.72 2.1228-1.3881.665-.6682 1.0745-1.3378 1.3795-2.1284.2957-.7632.4966-1.636.552-2.9124.056-1.2809.0692-1.6898.063-4.948-.0063-3.2583-.021-3.6668-.0817-4.9465-.0607-1.2797-.264-2.1487-.5633-2.9117-.3084-.7889-.72-1.4568-1.3876-2.1228C21.2982 1.33 20.628.9208 19.8378.6165 19.074.321 18.2017.1197 16.9244.0645 15.6471.0093 15.236-.005 11.977.0014 8.718.0076 8.31.0215 7.0301.0839m.1402 21.6932c-1.17-.0509-1.8053-.2453-2.2287-.408-.5606-.216-.96-.4771-1.3819-.895-.422-.4178-.6811-.8186-.9-1.378-.1644-.4234-.3624-1.058-.4171-2.228-.0595-1.2645-.072-1.6442-.079-4.848-.007-3.2037.0053-3.583.0607-4.848.05-1.169.2456-1.805.408-2.2282.216-.5613.4762-.96.895-1.3816.4188-.4217.8184-.6814 1.3783-.9003.423-.1651 1.0575-.3614 2.227-.4171 1.2655-.06 1.6447-.072 4.848-.079 3.2033-.007 3.5835.005 4.8495.0608 1.169.0508 1.8053.2445 2.228.408.5608.216.96.4754 1.3816.895.4217.4194.6816.8176.9005 1.3787.1653.4217.3617 1.056.4169 2.2263.0602 1.2655.0739 1.645.0796 4.848.0058 3.203-.0055 3.5834-.061 4.848-.051 1.17-.245 1.8055-.408 2.2294-.216.5604-.4763.96-.8954 1.3814-.419.4215-.8181.6811-1.3783.9-.4224.1649-1.0577.3617-2.2262.4174-1.2656.0595-1.6448.072-4.8493.079-3.2045.007-3.5825-.006-4.848-.0608M16.953 5.5864A1.44 1.44 0 1 0 18.39 4.144a1.44 1.44 0 0 0-1.437 1.4424M5.8385 12.012c.0067 3.4032 2.7706 6.1557 6.173 6.1493 3.4026-.0065 6.157-2.7701 6.1506-6.1733-.0065-3.4032-2.771-6.1565-6.174-6.1498-3.403.0067-6.156 2.771-6.1496 6.1738M8 12.0077a4 4 0 1 1 4.008 3.9921A3.9996 3.9996 0 0 1 8 12.0077"/></svg>
+        </span>
+        Instagram <span class="lc-soon">SOON</span>
+      </button>
+      <button type="button" class="lc-tab disabled">
+        <span style="display:inline-flex;width:14px;height:14px;border-radius:4px;background:linear-gradient(135deg,#00B2FF,#006AFF);align-items:center;justify-content:center;flex-shrink:0">
+          <svg viewBox="0 0 24 24" width="9" height="9" fill="#fff"><path d="M12 0C5.24 0 0 4.952 0 11.64c0 3.499 1.434 6.521 3.769 8.61a.96.96 0 0 1 .323.683l.065 2.135a.96.96 0 0 0 1.347.85l2.381-1.053a.96.96 0 0 1 .641-.046A13 13 0 0 0 12 23.28c6.76 0 12-4.952 12-11.64S18.76 0 12 0m6.806 7.44c.522-.03.971.567.63 1.094l-4.178 6.457a.707.707 0 0 1-.977.208l-3.87-2.504a.44.44 0 0 0-.49.007l-4.363 3.01c-.637.438-1.415-.317-.995-.966l4.179-6.457a.706.706 0 0 1 .977-.21l3.87 2.505c.15.097.344.094.491-.007l4.362-3.008a.7.7 0 0 1 .364-.13"/></svg>
+        </span>
+        Facebook <span class="lc-soon">SOON</span>
+      </button>
     </div>
     {% if last_message %}
     <div style="display:flex;align-items:center;justify-content:space-between;background:#f8fafc;border-radius:10px;padding:10px 14px;flex-wrap:wrap;gap:8px">
@@ -251,9 +294,65 @@
       <div class="frow single">
         <div><label class="flbl">Notes</label><textarea name="notes" class="finp">{{ lead.notes or '' }}</textarea></div>
       </div>
+      <div class="frow single">
+        <div class="flbl" style="margin-bottom:6px">Sales Signals <span style="font-weight:400;color:#9ca3af">(feed the Lead Score — see "How Lead Scoring Works")</span></div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:8px;cursor:pointer">
+          <input type="checkbox" name="budget_confirmed" value="1" {{ 'checked' if lead.budget_confirmed }}> Budget confirmed
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:10px;cursor:pointer">
+          <input type="checkbox" name="decision_maker_engaged" value="1" {{ 'checked' if lead.decision_maker_engaged }}> Decision-maker engaged
+        </label>
+        <label class="flbl">Deadline / timeline stated <span style="font-weight:400;color:#9ca3af">(e.g. "needs to decide by end of month")</span></label>
+        <input type="date" name="deadline_date" class="finp" value="{{ lead.deadline_date.strftime('%Y-%m-%d') if lead.deadline_date else '' }}">
+      </div>
       <div class="modal-actions">
         <button type="button" class="modal-cancel" onclick="document.getElementById('editLeadModal').classList.remove('open')">Cancel</button>
         <button type="submit" class="modal-confirm">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Qualify modal — Lead → Opportunity redesign, 2026-09-21 -->
+<div class="modal-over" id="qualifyModal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal-card">
+    <div class="modal-title">Qualify — {{ lead.customer_name }}</div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:14px">This turns the Lead into a real Opportunity and moves it into the Sales Pipeline. Enter a Contact Person and/or a Company — at least one.</div>
+    <form method="POST" action="{{ url_for('portal.leads_qualify', lead_id=lead.id) }}">
+      <div class="frow single">
+        <div><label class="flbl">Contact Person</label><input type="text" name="contact_person" class="finp" value="{{ lead.contact_person or '' }}"></div>
+      </div>
+      <div class="frow single">
+        <div><label class="flbl">Company</label><input type="text" name="company_name" class="finp" value="{{ company.name if company else '' }}" placeholder="e.g. John's Phones Ltd"></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="modal-cancel" onclick="document.getElementById('qualifyModal').classList.remove('open')">Cancel</button>
+        <button type="submit" class="modal-confirm" style="background:#15803d">Qualify</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Not a Fit modal — Lead-level outcome, distinct from the Sales Pipeline's own Lost/Dropped -->
+<div class="modal-over" id="notAFitModal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal-card">
+    <div class="modal-title">Mark Not a Fit — {{ lead.customer_name }}</div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:14px">This closes the Lead out. It never enters the Sales Pipeline, but stays visible in Reports.</div>
+    <form method="POST" action="{{ url_for('portal.leads_not_a_fit', lead_id=lead.id) }}" id="notAFitForm">
+      <div class="frow single">
+        <label class="flbl">Reason</label>
+        {% for reason in not_a_fit_reasons %}
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:6px;cursor:pointer">
+          <input type="radio" name="reason" value="{{ reason }}" onchange="document.getElementById('notAFitOtherRow').style.display = (this.value==='Other' ? 'block' : 'none')" required> {{ reason }}
+        </label>
+        {% endfor %}
+      </div>
+      <div class="frow single" id="notAFitOtherRow" style="display:none">
+        <div><label class="flbl">Please specify</label><input type="text" name="reason_other" class="finp"></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="modal-cancel" onclick="document.getElementById('notAFitModal').classList.remove('open')">Cancel</button>
+        <button type="submit" class="modal-confirm" style="background:#b91c1c">Mark Not a Fit</button>
       </div>
     </form>
   </div>

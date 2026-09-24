@@ -269,7 +269,7 @@
     </a>
     <a class="asb-link {% if request.endpoint=='portal_admin.credit_packages' %}active{% endif %}"
        href="{{ url_for('portal_admin.credit_packages') }}">
-      <span class="asb-icon">📦</span> Packages
+      <span class="asb-icon">📦</span> Credit Top-ups
     </a>
     <a class="asb-link {% if request.endpoint=='portal_admin.plugins' %}active{% endif %}"
        href="{{ url_for('portal_admin.plugins') }}">
@@ -412,7 +412,7 @@
     { icon:'📂', title:'Catalogue',          desc:'Manage product catalogue and categories',   url:'{{ url_for("portal_admin.catalogue_dashboard") }}', tags:'catalogue products categories inventory' },
     { icon:'🔑', title:'API Keys',           desc:'View and manage all API keys',              url:'{{ url_for("portal_admin.api_keys") }}',            tags:'api keys access developer integration' },
     { icon:'🧾', title:'Invoices',           desc:'All merchant invoices and receipts',        url:'{{ url_for("portal_admin.invoices") }}',            tags:'invoices receipts billing history' },
-    { icon:'📦', title:'Credit Packages',    desc:'Manage top-up credit packages and pricing', url:'{{ url_for("portal_admin.credit_packages") }}',    tags:'packages credits pricing billing top up' },
+    { icon:'📦', title:'Credit Top-ups',      desc:'Manage credit top-ups and pricing', url:'{{ url_for("portal_admin.credit_packages") }}',    tags:'packages credits pricing billing top up' },
     { icon:'🔌', title:'Plugins',            desc:'Manage downloadable WooCommerce plugins',   url:'{{ url_for("portal_admin.plugins") }}',             tags:'plugins woocommerce download wordpress' },
     { icon:'🧩', title:'Modules',            desc:'Every module/feature the app knows about — read-only', url:'{{ url_for("portal_admin.admin_modules_catalog") }}', tags:'modules features catalog permissions roles plans reference' },
     { icon:'📋', title:'Plans',              desc:'Manage WhatsApp subscription plans',        url:'{{ url_for("portal_admin.admin_plans") }}',         tags:'plans subscription whatsapp quota limits assign' },

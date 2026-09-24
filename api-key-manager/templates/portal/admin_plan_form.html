@@ -120,12 +120,14 @@
         <input type="number" name="sort_order" value="{{ plan.sort_order }}">
       </div>
       <div class="pf-field">
-        <label>Channel mode</label>
+        <label>Who sees this plan</label>
         <select name="channel_mode" id="channelModeSelect" onchange="toggleParentField()">
-          <option value="single" {% if plan.channel_mode == 'single' %}selected{% endif %}>Single channel</option>
-          <option value="dual" {% if plan.channel_mode == 'dual' %}selected{% endif %}>Dual Agent (WhatsApp + Website)</option>
-          <option value="both" {% if plan.channel_mode == 'both' %}selected{% endif %}>Always shown (e.g. Custom)</option>
+          <option value="whatsapp" {% if plan.channel_mode in ('whatsapp', 'single') %}selected{% endif %}>WhatsApp merchants</option>
+          <option value="woocommerce" {% if plan.channel_mode == 'woocommerce' %}selected{% endif %}>WooCommerce merchants</option>
+          <option value="dual" {% if plan.channel_mode == 'dual' %}selected{% endif %}>Dual Agent (WhatsApp + Website) — shown to both</option>
+          <option value="both" {% if plan.channel_mode == 'both' %}selected{% endif %}>Everyone (e.g. Custom)</option>
         </select>
+        <div class="pf-hint">Merchants only see plans for the channel they signed up with, plus Dual Agent and Everyone plans.</div>
       </div>
       <div class="pf-field" id="parentPlanField" style="{% if plan.channel_mode != 'dual' %}display:none{% endif %}">
         <label>Mirrors limits/features of</label>
@@ -216,6 +218,10 @@
                             '#2E90FA','#6172F3','#7A5AF8','#7C3AED','#9E77ED','#EE46BC',
                             '#F63D68','#DC6803','#667085'] %}
 
+    <div id="pfWaNote" style="{% if plan.channel_mode != 'woocommerce' %}display:none;{% endif %}background:#FFFAEB;border:1px solid #FEDF89;color:#93370D;border-radius:10px;padding:12px 14px;font-size:13px;font-weight:600;margin-bottom:14px">
+      🔒 WhatsApp needs a Dual Agent plan. The WhatsApp ticks (greyed out below) do nothing on a WooCommerce plan — WooCommerce merchants on this plan won't get WhatsApp.
+    </div>
+    <style>.pf-wa-off .pf-wa{opacity:.4;pointer-events:none}</style>
     {% for group_name, items in feature_catalog.items() %}
     {% set grp_color = group_colors[loop.index0 % group_colors|length] %}
     <div class="pf-feature-group" data-group="{{ loop.index }}" style="--grp-color:{{ grp_color }};--grp-tint:{{ grp_color }}14">
@@ -231,11 +237,12 @@
       </div>
       <div class="pf-flags-grid">
         {% for feature_key, label in items %}
+          {% set _is_wa = feature_key.startswith(('wa.', 'campaigns_wa.', 'woo.message_templates', 'legacy:feat_broadcasts', 'legacy:feat_fw_checkout')) %}
           {% if feature_key.startswith('legacy:') %}
             {% set col = feature_key.split(':')[1] %}
-            <label class="pf-check"><input type="checkbox" class="pf-feat-cb" name="{{ feature_key }}" {% if plan[col] %}checked{% endif %} onchange="updateCounter()"> {{ label }}</label>
+            <label class="pf-check{% if _is_wa %} pf-wa{% endif %}"><input type="checkbox" class="pf-feat-cb" name="{{ feature_key }}" {% if plan[col] %}checked{% endif %} onchange="updateCounter()"> {{ label }}</label>
           {% else %}
-            <label class="pf-check"><input type="checkbox" class="pf-feat-cb" name="{{ feature_key }}" {% if feature_key in granted_keys %}checked{% endif %} onchange="updateCounter()"> {{ label }}</label>
+            <label class="pf-check{% if _is_wa %} pf-wa{% endif %}"><input type="checkbox" class="pf-feat-cb" name="{{ feature_key }}" {% if feature_key in granted_keys %}checked{% endif %} onchange="updateCounter()"> {{ label }}</label>
           {% endif %}
         {% endfor %}
       </div>
@@ -251,7 +258,11 @@
 function toggleParentField() {
   var mode = document.getElementById('channelModeSelect').value;
   document.getElementById('parentPlanField').style.display = (mode === 'dual') ? '' : 'none';
+  // WooCommerce-only plans never unlock WhatsApp (Dual Agent only).
+  document.getElementById('pfWaNote').style.display = (mode === 'woocommerce') ? '' : 'none';
+  document.body.classList.toggle('pf-wa-off', mode === 'woocommerce');
 }
+document.addEventListener('DOMContentLoaded', toggleParentField);
 
 function setGroup(idx, checked) {
   var group = document.querySelector('.pf-feature-group[data-group="' + idx + '"]');

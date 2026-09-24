@@ -550,230 +550,51 @@
 <div class="card" style="margin-bottom:16px; border:2px solid #dbeafe;">
   <div class="card-title" style="color:#1d4ed8;">🔌 Feature Management</div>
   <p style="font-size:13px; color:#6b7280; margin:0 0 16px 0;">
-    Controls which plugin features are active for this customer's store.
-    Changes take effect immediately on the customer's next chat message.
-    Features must also be included in a credit package offered to this customer.
+    WooCommerce Plugin features come from this customer's <strong>plan</strong>
+    ({{ customer.plan_name or customer.plan_slug or 'Free' }}). To change them, edit that plan in
+    <a href="{{ url_for('portal_admin.admin_plans') }}">Plans</a> or move the customer to another plan.
+    “Kept from before” means the customer had it before plans took over on 23 Sep 2026 and keeps it until their plan changes.
   </p>
 
   <form method="POST" action="{{ url_for('portal_admin.customer_set_features', customer_id=customer.id) }}">
 
-    {# Product Recommendation Feature #}
-    <div style="display:flex; align-items:flex-start; gap:12px; padding:14px;
-                background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; margin-bottom:10px;">
-      <input type="checkbox"
-             name="feat_product_recommendation"
-             id="feat_prod_rec"
-             style="width:auto; margin-top:3px;"
-             {% if tenant_features.get('product_recommendation') %}checked{% endif %}/>
-      <div style="flex:1">
-        <label for="feat_prod_rec" style="margin:0; font-weight:700; cursor:pointer; font-size:14px;">
-          🛍️ Product Recommendation
-        </label>
-        <p style="margin:4px 0 0 0; font-size:12px; color:#374151;">
-          When enabled, the AI chat widget will suggest relevant products during conversations
-          and display them as clickable cards with Add to Cart and Buy Now buttons.
-        </p>
-        <p style="margin:6px 0 0 0; font-size:11px; color:#6b7280;">
-          Current status:
-          {% if tenant_features.get('product_recommendation') %}
-            <span style="color:#059669; font-weight:700;">✓ ACTIVE</span>
-          {% else %}
-            <span style="color:#9ca3af; font-weight:700;">✗ Inactive</span>
-          {% endif %}
-        </p>
+    <div style="border:1px solid #e5e7eb; border-radius:8px; overflow:hidden; margin-bottom:12px;">
+      {% for f in plugin_status %}
+      <div style="display:flex; justify-content:space-between; gap:12px; padding:10px 14px; font-size:13.5px;
+                  {% if not loop.last %}border-bottom:1px solid #f1f5f9;{% endif %}">
+        <span style="font-weight:600;">{{ f.label }}</span>
+        {% if f.in_plan %}
+          <span style="color:#059669; font-weight:700;">✓ In plan</span>
+        {% elif f.kept %}
+          <span style="color:#b45309; font-weight:700;">✓ Kept from before</span>
+        {% else %}
+          <span style="color:#9ca3af; font-weight:700;">✗ Not in plan</span>
+        {% endif %}
       </div>
+      {% endfor %}
     </div>
 
-    {# Automated Cross-selling (Related Product Cards) — Feature 5 #}
-    <div style="display:flex; align-items:flex-start; gap:12px; padding:14px;
-                background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; margin-bottom:10px;">
-      <input type="checkbox"
-             name="feat_related_products"
-             id="feat_related_products"
-             style="width:auto; margin-top:3px;"
-             {% if tenant_features.get('related_products') %}checked{% endif %}/>
-      <div style="flex:1">
-        <label for="feat_related_products" style="margin:0; font-weight:700; cursor:pointer; font-size:14px;">
-          🔗 Automated Cross-selling
-        </label>
-        <p style="margin:4px 0 0 0; font-size:12px; color:#374151;">
-          After displaying recommended products, the widget automatically appends up to 2 related
-          products from the same category and price range — labelled "You may also like:". Requires
-          <strong>Product Recommendation</strong> to also be enabled.
-        </p>
-        <p style="margin:6px 0 0 0; font-size:11px; color:#6b7280;">
-          Current status:
-          {% if tenant_features.get('related_products') %}
-            <span style="color:#059669; font-weight:700;">✓ ACTIVE</span>
-          {% else %}
-            <span style="color:#9ca3af; font-weight:700;">✗ Inactive</span>
-          {% endif %}
-        </p>
-      </div>
-    </div>
-
-    {# Intelligent Cart Revenue Recovery #}
-    <div style="display:flex; align-items:flex-start; gap:12px; padding:14px;
-                background:#fdf4ff; border:1px solid #e9d5ff; border-radius:8px; margin-bottom:10px;">
-      <input type="checkbox"
-             name="feat_cart_recovery"
-             id="feat_cart_recovery"
-             style="width:auto; margin-top:3px;"
-             {% if tenant_features.get('cart_recovery') %}checked{% endif %}/>
-      <div style="flex:1">
-        <label for="feat_cart_recovery" style="margin:0; font-weight:700; cursor:pointer; font-size:14px;">
-          🛒 Intelligent Cart Revenue Recovery
-        </label>
-        <p style="margin:4px 0 0 0; font-size:12px; color:#374151;">
-          Detects cart abandonment in real time, scores intent (0–100), and automatically runs a
-          3-touch recovery sequence: a chat widget popup, a personalised AI email (T+2 hr), and a
-          final urgency email (T+24 hr). Targets 65%+ recovery rate vs Tidio's ~35%.
-        </p>
-        <p style="margin:6px 0 0 0; font-size:11px; color:#6b7280;">
-          Current status:
-          {% if tenant_features.get('cart_recovery') %}
-            <span style="color:#059669; font-weight:700;">✓ ACTIVE</span>
-          {% else %}
-            <span style="color:#9ca3af; font-weight:700;">✗ Inactive</span>
-          {% endif %}
-        </p>
-
-        {# Sub-settings — shown indented when feature is being configured #}
-        <div style="margin-top:12px; padding:12px; background:rgba(255,255,255,0.7);
-                    border:1px solid #e9d5ff; border-radius:8px;">
-          <p style="margin:0 0 8px 0; font-size:12px; font-weight:700; color:#6b7280;">
-            Recovery Popup Message (optional)
-          </p>
-          <input type="text"
-                 name="cart_recovery_popup_message"
-                 value="{{ tenant_features.get('cart_recovery_popup_message','') }}"
-                 placeholder="👋 Still thinking it over? Your cart is saved and ready for you!"
-                 style="font-size:12px; margin-bottom:8px;"/>
-          <p style="margin:0 0 8px 0; font-size:12px; font-weight:700; color:#6b7280;">
-            Discount Incentive % (0 = no discount)
-          </p>
-          <input type="number"
-                 name="cart_recovery_incentive_pct"
-                 value="{{ tenant_features.get('cart_recovery_incentive_pct', 0) }}"
-                 min="0" max="50" step="1"
-                 style="font-size:12px; width:100px;"/>
-          <p style="margin:4px 0 0 0; font-size:11px; color:#9ca3af;">
-            If set, recovery emails will offer this % off with a unique code (e.g. COMEBACK10).
-          </p>
-        </div>
-      </div>
-    </div>
-
-    <div style="display:flex; align-items:flex-start; gap:12px; padding:14px;
-            background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; margin-bottom:10px;">
-  <input type="checkbox"
-         name="feat_verified_specs_web_lookup"
-         id="feat_verified_specs_web_lookup"
-         style="width:auto; margin-top:3px;"
-         {% if tenant_features.get('verified_specs_web_lookup') %}checked{% endif %}/>
-  <div style="flex:1">
-    <label for="feat_verified_specs_web_lookup" style="margin:0; font-weight:700; cursor:pointer; font-size:14px;">
-      🔎 Verified Specs Lookup (Web)
-    </label>
-    <p style="margin:4px 0 0 0; font-size:12px; color:#374151;">
-      If a customer asks for a numeric specification (e.g., “How much does this laptop weigh?”) and the value is not
-      in your store’s RAG data, PhiXtra will browse trusted manufacturer sources and cite them — never guessing.
-      Verified specs are cached back into your search index for faster future answers.
-    </p>
-    <p style="margin:6px 0 0 0; font-size:11px; color:#6b7280;">
-      Current status:
-      {% if tenant_features.get('verified_specs_web_lookup') %}
-        <span style="color:#059669; font-weight:700;">✓ ACTIVE</span>
-      {% else %}
-        <span style="color:#9ca3af; font-weight:700;">✗ Inactive</span>
-      {% endif %}
-    </p>
-  </div>
-</div>
-
-    {# Chat Archive — 30 Days #}
-    <div style="display:flex; align-items:flex-start; gap:12px; padding:14px;
-                background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px; margin-bottom:10px;">
-      <input type="checkbox"
-             name="feat_chat_archive_30days"
-             id="feat_chat_archive_30days"
-             style="width:auto; margin-top:3px;"
-             {% if tenant_features.get('chat_archive_30days') %}checked{% endif %}/>
-      <div style="flex:1">
-        <label for="feat_chat_archive_30days" style="margin:0; font-weight:700; cursor:pointer; font-size:14px;">
-          📅 Chat Archive — 30 Days
-        </label>
-        <p style="margin:4px 0 0 0; font-size:12px; color:#374151;">
-          Gives the customer access to <strong>30 days</strong> of conversation history.
-          Includes fulltext keyword search, <strong>PDF export</strong> and AI conversation summaries.
-          Excel and Word exports are not included in this tier.
-          Free/trial accounts see only the last 3 days with no search or export.
-        </p>
-        <p style="margin:6px 0 0 0; font-size:11px; color:#6b7280;">
-          Current status:
-          {% if tenant_features.get('chat_archive_30days') %}
-            <span style="color:#059669; font-weight:700;">✓ ACTIVE</span>
-          {% else %}
-            <span style="color:#9ca3af; font-weight:700;">✗ Inactive</span>
-          {% endif %}
-        </p>
-      </div>
-    </div>
-
-    {# Chat Archive — Unlimited #}
-    <div style="display:flex; align-items:flex-start; gap:12px; padding:14px;
-                background:#f0fdf4; border:1px solid #6ee7b7; border-radius:8px; margin-bottom:10px;">
-      <input type="checkbox"
-             name="feat_chat_archive_unlimited"
-             id="feat_chat_archive_unlimited"
-             style="width:auto; margin-top:3px;"
-             {% if tenant_features.get('chat_archive_unlimited') %}checked{% endif %}/>
-      <div style="flex:1">
-        <label for="feat_chat_archive_unlimited" style="margin:0; font-weight:700; cursor:pointer; font-size:14px;">
-          ♾️ Chat Archive — Unlimited
-        </label>
-        <p style="margin:4px 0 0 0; font-size:12px; color:#374151;">
-          Full unlimited conversation history with no day limit.
-          Includes fulltext keyword search, <strong>PDF, Excel and Word export</strong> and AI conversation summaries.
-          If both 30-Day and Unlimited are ticked, Unlimited takes priority.
-        </p>
-        <p style="margin:6px 0 0 0; font-size:11px; color:#6b7280;">
-          Current status:
-          {% if tenant_features.get('chat_archive_unlimited') %}
-            <span style="color:#059669; font-weight:700;">✓ ACTIVE</span>
-          {% else %}
-            <span style="color:#9ca3af; font-weight:700;">✗ Inactive</span>
-          {% endif %}
-        </p>
-      </div>
-    </div>
-
-    {# WhatsApp Message Templates #}
-    <div style="display:flex; align-items:flex-start; gap:12px; padding:14px;
-                background:#f0fdf4; border:1px solid #6ee7b7; border-radius:8px; margin-bottom:10px;">
-      <input type="checkbox"
-             name="feat_wa_message_templates"
-             id="feat_wa_message_templates"
-             style="width:auto; margin-top:3px;"
-             {% if tenant_features.get('whatsapp_message_templates') %}checked{% endif %}/>
-      <div style="flex:1">
-        <label for="feat_wa_message_templates" style="margin:0; font-weight:700; cursor:pointer; font-size:14px;">
-          📩 WhatsApp Message Templates
-        </label>
-        <p style="margin:4px 0 0 0; font-size:12px; color:#374151;">
-          Enables the Message Templates page in the WhatsApp section of the portal. Lets the merchant
-          map Meta-approved templates to automated events — cart abandonment and order status updates.
-          Requires the WooCommerce plugin to be installed on the merchant's site.
-        </p>
-        <p style="margin:6px 0 0 0; font-size:11px; color:#6b7280;">
-          Current status:
-          {% if tenant_features.get('whatsapp_message_templates') %}
-            <span style="color:#059669; font-weight:700;">✓ ACTIVE</span>
-          {% else %}
-            <span style="color:#9ca3af; font-weight:700;">✗ Inactive</span>
-          {% endif %}
-        </p>
-      </div>
+    {# Cart Recovery settings — only used while Cart Recovery is on #}
+    <div style="padding:12px; background:#fdf4ff; border:1px solid #e9d5ff; border-radius:8px; margin-bottom:10px;">
+      <p style="margin:0 0 8px 0; font-size:12px; font-weight:700; color:#6b7280;">
+        Cart Recovery — popup message (optional)
+      </p>
+      <input type="text"
+             name="cart_recovery_popup_message"
+             value="{{ tenant_features.get('cart_recovery_popup_message','') }}"
+             placeholder="👋 Still thinking it over? Your cart is saved and ready for you!"
+             style="font-size:12px; margin-bottom:8px;"/>
+      <p style="margin:0 0 8px 0; font-size:12px; font-weight:700; color:#6b7280;">
+        Cart Recovery — discount incentive % (0 = no discount)
+      </p>
+      <input type="number"
+             name="cart_recovery_incentive_pct"
+             value="{{ tenant_features.get('cart_recovery_incentive_pct', 0) }}"
+             min="0" max="50" step="1"
+             style="font-size:12px; width:100px;"/>
+      <p style="margin:4px 0 0 0; font-size:11px; color:#9ca3af;">
+        If set, recovery emails will offer this % off with a unique code (e.g. COMEBACK10).
+      </p>
     </div>
 
     {# Visual Product Match — Pro plan only #}

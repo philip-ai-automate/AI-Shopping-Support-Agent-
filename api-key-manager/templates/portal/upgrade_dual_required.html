@@ -1,0 +1,85 @@
+{% extends "portal/base.html" %}
+{% block title %}WhatsApp needs Dual Agent — PhiXtra Portal{% endblock %}
+
+{% block content %}
+<style>
+.upgrade-wrap {
+  display:flex; align-items:center; justify-content:center;
+  min-height:60vh; padding:40px 20px;
+}
+.upgrade-card {
+  background:#fff; border:1px solid var(--line); border-radius:20px;
+  padding:48px 40px; max-width:500px; width:100%; text-align:center;
+  box-shadow:0 4px 24px rgba(3,12,24,.07);
+}
+.upgrade-icon { font-size:52px; margin-bottom:16px; line-height:1 }
+.upgrade-title { font-size:22px; font-weight:800; margin-bottom:8px; letter-spacing:-.3px }
+.upgrade-sub   { font-size:14px; color:var(--muted); line-height:1.6; margin-bottom:24px }
+
+.dual-price {
+  border:1px solid var(--line); border-radius:14px; padding:16px 18px;
+  margin-bottom:24px; display:flex; flex-direction:column; gap:4px;
+}
+.dual-price-label { font-size:12px; color:var(--muted) }
+.dual-price-amount { font-size:26px; font-weight:800; font-variant-numeric:tabular-nums }
+.dual-price-amount span { font-size:13px; font-weight:600; color:var(--muted) }
+.dual-price-name { font-size:13px; font-weight:700; color:#15803D }
+
+.upgrade-divider { height:1px; background:var(--line); margin:24px 0 }
+.upgrade-current { font-size:12px; color:var(--muted); margin-bottom:20px }
+.upgrade-current strong { color:var(--txt) }
+
+.upgrade-actions { display:flex; flex-direction:column; gap:12px }
+.btn-upgrade-main {
+  display:block; padding:14px; background:var(--ink); color:#fff;
+  border-radius:12px; font-size:15px; font-weight:700; text-decoration:none;
+  transition:.15s;
+}
+.btn-upgrade-main:hover { background:#000; text-decoration:none; color:#fff }
+.btn-upgrade-back {
+  display:block; padding:12px; background:#f4f4f5; color:var(--txt);
+  border-radius:12px; font-size:14px; font-weight:600; text-decoration:none;
+  transition:.15s;
+}
+.btn-upgrade-back:hover { background:#ebebeb; text-decoration:none; color:var(--txt) }
+</style>
+
+<div class="upgrade-wrap">
+  <div class="upgrade-card">
+
+    <div class="upgrade-icon">🔒</div>
+    <div class="upgrade-title">WhatsApp is part of the Dual Agent plan</div>
+    <div class="upgrade-sub">
+      Your plan runs the AI Sales Agent on your website.
+      Upgrade to a Dual Agent plan to add WhatsApp{% if feature_label and feature_label != 'WhatsApp' %} and unlock <strong>{{ feature_label }}</strong>{% endif %}.
+      The same AI then answers customers on your website and on WhatsApp, from one account.
+    </div>
+
+    {% if dual_plan %}
+    <div class="dual-price">
+      <div class="dual-price-label">Dual Agent plans start at</div>
+      <div class="dual-price-amount">₦{{ "{:,}".format(dual_plan.price_ngn) }} <span>/ month</span></div>
+      <div class="dual-price-name">{{ dual_plan.name }}</div>
+    </div>
+    {% endif %}
+
+    <div class="upgrade-current">
+      You are currently on the <strong>{{ current_plan }}</strong> plan
+      {% if is_trial %}(trial){% endif %}
+    </div>
+
+    <div class="upgrade-divider"></div>
+
+    <div class="upgrade-actions">
+      <a href="{{ url_for('portal.billing_plans', view='dual') }}" class="btn-upgrade-main">
+        See Dual Agent plans
+      </a>
+      <a href="javascript:history.back()" class="btn-upgrade-back">
+        ← Go back
+      </a>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}

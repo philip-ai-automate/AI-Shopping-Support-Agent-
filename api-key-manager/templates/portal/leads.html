@@ -1,5 +1,6 @@
 {% extends "portal/base.html" %}
 {% block title %}Leads — PhiXtra Portal{% endblock %}
+{% block wrap_class %}page-wide{% endblock %}
 {% block content %}
 
 <style>
@@ -179,6 +180,80 @@
   .lead-right { flex-direction:column-reverse; gap:8px }
   .lead-ribbon { position:static; margin-top:4px; display:inline-flex }
 }
+
+/* ── Kanban (Board) view — same board Sales Pipeline has, reachable from
+   here too (2026-09-20): same Lead records, same score, just a second
+   front door onto it. No per-card kebab menu here (unlike Sales Pipeline) —
+   this page has never had inline stage/edit actions, only a link through to
+   the Lead's own page, so the board follows that same convention. ── */
+.view-switch { display:inline-flex; border:1.5px solid var(--line); border-radius:999px; padding:2px; gap:2px }
+.view-switch a { display:flex; align-items:center; gap:5px; padding:6px 13px; border-radius:999px; font-size:12.5px; font-weight:700;
+                 color:var(--muted); text-decoration:none }
+.view-switch a.active { background:var(--ink); color:#fff }
+
+.cust-avatar{
+  width:34px;height:34px;border-radius:50%;flex-shrink:0;
+  display:inline-flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:700;color:#fff;
+}
+
+.board-wrap { display:flex; gap:12px; align-items:flex-start; overflow-x:auto; padding-bottom:8px }
+.board-col {
+  flex:1 1 0; min-width:150px; background:rgba(3,12,24,.025);
+  border:1px solid rgba(3,12,24,.08); border-radius:14px; padding:10px;
+  display:flex; flex-direction:column; gap:10px;
+}
+@media(max-width:760px){
+  .board-wrap { scroll-snap-type:x proximity }
+  .board-col { flex:0 0 82%; min-width:230px; max-width:320px; scroll-snap-align:start }
+}
+.board-col.hot-smart { background:#fef2f2; border:1.5px solid #fecaca }
+.board-col.hot-smart .board-col-head { border-bottom-color:var(--bad, #b91c1c) }
+.board-col-head { padding:4px 4px 8px; border-bottom:2px solid var(--stage-fg, var(--ink)) }
+.board-col-head-row { display:flex; align-items:center; gap:6px; min-width:0 }
+.board-col-head .dot { width:8px; height:8px; border-radius:50%; background:var(--stage-fg, var(--ink)); flex-shrink:0 }
+.board-col-head .name { font-size:12.5px; font-weight:800; color:var(--ink);
+                         overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0 }
+.board-col-head .count {
+  margin-left:auto; flex-shrink:0; background:var(--stage-bg, rgba(3,12,24,.06)); color:var(--stage-fg, var(--ink));
+  border-radius:999px; padding:1px 8px; font-size:11px; font-weight:700;
+}
+.board-col-head .total { font-size:11px; color:var(--muted); margin-top:4px; font-weight:600 }
+.board-cards { display:flex; flex-direction:column; gap:8px }
+.board-card {
+  background:#fff; border:1px solid var(--line); border-radius:11px; padding:11px;
+  box-shadow:0 3px 10px rgba(3,12,24,.05);
+}
+.board-card-top { display:flex; align-items:flex-start; justify-content:space-between; gap:6px; margin-bottom:8px }
+.board-card-name { display:flex; align-items:center; gap:8px; min-width:0 }
+.board-card-name span.nm { font-size:12.5px; font-weight:700; color:var(--ink); overflow:hidden;
+                            text-overflow:ellipsis; white-space:nowrap }
+.lead-name-link { color:inherit; text-decoration:none; cursor:pointer; }
+.lead-name-link:hover { color:#2563eb; text-decoration:underline; }
+.board-card-value { font-size:14px; font-weight:800; color:var(--ink); margin-bottom:6px }
+.board-card-contact { font-size:11px; color:var(--muted); margin-bottom:8px }
+.board-card-foot { display:flex; align-items:center; justify-content:space-between; gap:6px; flex-wrap:wrap }
+.board-more { font-size:11.5px; color:var(--muted); font-weight:600; padding:3px 4px; text-decoration:none; display:block }
+.board-more:hover { text-decoration:underline }
+.board-add-btn {
+  display:flex; align-items:center; justify-content:center; gap:6px; padding:8px; border-radius:9px;
+  border:1.5px dashed rgba(3,12,24,.18); background:transparent; color:var(--muted); font-size:11.5px;
+  font-weight:700; cursor:pointer; font-family:inherit;
+}
+
+.score-dot-btn {
+  display:flex; align-items:center; gap:4px; flex-shrink:0;
+  border:1px solid var(--line); background:#f8fafc; border-radius:999px; padding:3px 8px 3px 3px;
+  cursor:pointer; font-family:inherit; margin-top:1px;
+}
+.score-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0 }
+.score-dot.tier-hot  { background:var(--bad, #b91c1c) }
+.score-dot.tier-warm { background:#d97706 }
+.score-dot.tier-cold { background:#64748b }
+.score-dot-val { font-size:10px; font-weight:800; color:var(--ink) }
+.score-breakdown { display:none; margin-top:8px; padding-top:8px; border-top:1px dashed rgba(3,12,24,.1) }
+.score-breakdown.open { display:block }
+.score-breakdown-row { display:flex; justify-content:space-between; font-size:10.5px; padding:2px 0 }
 </style>
 
 <div class="leads-hero">
@@ -186,7 +261,7 @@
     <div class="leads-hero-icon">🔥</div>
     <div>
       <h1>Leads</h1>
-      <p>Every Lead's commercial info in one place — where it stands in your Pipeline is just one field on it.</p>
+      <p>Every Lead awaiting a decision — Qualify one to turn it into a real Opportunity on your <a href="{{ url_for('portal.sales_pipeline') }}">Sales Pipeline</a>, or mark it Not a Fit.</p>
     </div>
   </div>
   <div style="display:flex;gap:10px">
@@ -338,18 +413,105 @@
   <form class="leads-search" method="GET">
     <span class="leads-search-icon">🔍</span>
     <input type="text" name="q" value="{{ search }}" placeholder="Search by business or contact…">
+    {% if view_mode == 'board' %}<input type="hidden" name="view" value="board">{% endif %}
   </form>
-  <div class="filter-bar">
-    <a href="{{ url_for('portal.leads_page', q=search) }}" class="filter-btn {{ 'active' if tier_filter == 'all' }}">All ({{ tier_counts.values()|sum }})</a>
-    <a href="{{ url_for('portal.leads_page', q=search, tier='hot') }}" class="filter-btn {{ 'active' if tier_filter == 'hot' }}">🔥 Hot ({{ tier_counts.get('hot', 0) }})</a>
-    <a href="{{ url_for('portal.leads_page', q=search, tier='warm') }}" class="filter-btn {{ 'active' if tier_filter == 'warm' }}">🌤️ Warm ({{ tier_counts.get('warm', 0) }})</a>
-    <a href="{{ url_for('portal.leads_page', q=search, tier='cold') }}" class="filter-btn {{ 'active' if tier_filter == 'cold' }}">❄️ Cold ({{ tier_counts.get('cold', 0) }})</a>
+  <div class="view-switch">
+    <a href="{{ url_for('portal.leads_page', q=search, tier=(tier_filter if tier_filter != 'all' else none), view='list') }}"
+       class="{{ 'active' if view_mode == 'list' }}">☰ List</a>
+    <a href="{{ url_for('portal.leads_page', q=search, tier=(tier_filter if tier_filter != 'all' else none), view='board') }}"
+       class="{{ 'active' if view_mode == 'board' }}">▦ Board</a>
   </div>
+  <div class="filter-bar">
+    <a href="{{ url_for('portal.leads_page', q=search, view=view_mode) }}" class="filter-btn {{ 'active' if tier_filter == 'all' }}">All ({{ tier_counts.values()|sum }})</a>
+    <a href="{{ url_for('portal.leads_page', q=search, view=view_mode, tier='hot') }}" class="filter-btn {{ 'active' if tier_filter == 'hot' }}">🔥 Hot ({{ tier_counts.get('hot', 0) }})</a>
+    <a href="{{ url_for('portal.leads_page', q=search, view=view_mode, tier='warm') }}" class="filter-btn {{ 'active' if tier_filter == 'warm' }}">🌤️ Warm ({{ tier_counts.get('warm', 0) }})</a>
+    <a href="{{ url_for('portal.leads_page', q=search, view=view_mode, tier='cold') }}" class="filter-btn {{ 'active' if tier_filter == 'cold' }}">❄️ Cold ({{ tier_counts.get('cold', 0) }})</a>
+  </div>
+  {% if view_mode == 'list' %}
   <a href="{{ url_for('portal.leads_page', q=search, tier=(tier_filter if tier_filter != 'all' else none), sort=(none if sort_by == 'score' else 'score')) }}"
      class="filter-btn {{ 'active' if sort_by == 'score' }}">📊 {{ 'Sorted by Score' if sort_by == 'score' else 'Sort by Score' }}</a>
+  <form method="GET" style="display:flex;align-items:center;gap:6px;margin-left:auto">
+    <input type="hidden" name="q" value="{{ search }}">
+    {% if tier_filter != 'all' %}<input type="hidden" name="tier" value="{{ tier_filter }}">{% endif %}
+    {% if sort_by == 'score' %}<input type="hidden" name="sort" value="score">{% endif %}
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
+      Per page
+      <select name="per_page" onchange="this.form.submit()"
+              style="padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit">
+        {% for opt in per_page_options %}
+        <option value="{{ opt }}" {% if per_page == opt %}selected{% endif %}>{{ 'All' if opt == 'all' else opt }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </form>
+  {% endif %}
+  <a href="{{ url_for('portal.lead_scoring_explainer') }}" class="filter-btn">🎯 How this works</a>
 </div>
 
-{% if not real_leads %}
+{% if view_mode == 'board' %}
+{% macro cust_color(name) %}{% set _p=['#5C6BC0','#26A69A','#0288D1','#388E3C','#F57C00','#8E24AA','#E53935','#00838F'] %}{{ _p[(name|length)%8] }}{% endmacro %}
+{% macro cust_initials(name) %}{% set _w=name.split() %}{% if _w|length>=2 %}{{ _w[0][0]|upper }}{{ _w[1][0]|upper }}{% else %}{{ name[:2]|upper }}{% endif %}{% endmacro %}
+
+{% macro lead_card(l) %}
+<div class="board-card">
+  <div class="board-card-top">
+    <div class="board-card-name">
+      <span class="cust-avatar" style="width:22px;height:22px;font-size:9.5px;background:{{ cust_color(l.customer_name) }}">{{ cust_initials(l.customer_name) }}</span>
+      <a href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" class="nm lead-name-link" title="Open this Lead">{{ l.customer_name }}</a>
+    </div>
+    <button type="button" class="score-dot-btn" onclick="toggleScoreBreakdown('{{ l.id }}')" title="Why this score?">
+      <span class="score-dot tier-{{ l.lead_tier }}"></span><span class="score-dot-val">{{ l.lead_score }}</span>
+    </button>
+  </div>
+  <span class="stage-pill st-{{ l.stage }}">{{ stage_labels.get(l.stage, l.stage) }}</span>
+  <div class="board-card-value" style="margin-top:6px">{{ '₦{:,.0f}'.format(l.deal_value) if l.deal_value else '—' }}</div>
+  <div class="board-card-contact">{{ l.contact_person or l.phone or '—' }}</div>
+  <div id="score-breakdown-{{ l.id }}" class="score-breakdown">
+    {% for s in l.score_breakdown %}
+    <div class="score-breakdown-row" style="color:{{ '#15803d' if s.points > 0 else ('#b91c1c' if s.points < 0 else '#9ca3af') }}">
+      <span>{{ s.label }}</span><span>{{ '%+d'|format(s.points) if s.points else '±0' }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endmacro %}
+
+<!-- Board (Kanban) view — 2026-09-22: columns are the Hot/Warm/Cold score
+     tiers, not pipeline stages. A not-yet-qualified Lead hasn't earned a
+     pipeline stage yet — that used to be the same board Sales Pipeline
+     shows, which just looked like a smaller copy of it. See "How Lead
+     Scoring Works" for the score itself. Cards link straight to the Lead's
+     own page — this page has never had inline pipeline actions, unlike
+     Sales Pipeline's own board. -->
+<div class="board-wrap">
+  {% set _tier_fg = {'hot': '#b91c1c', 'warm': '#b45309', 'cold': '#1d4ed8'} %}
+  {% set _tier_bg = {'hot': '#fee2e2', 'warm': '#fef3c7', 'cold': '#dbeafe'} %}
+  {% for col in board_columns %}
+  <div class="board-col">
+    <div class="board-col-head" style="--stage-fg:{{ _tier_fg.get(col.key, '#64748b') }}">
+      <div class="board-col-head-row">
+        <span class="dot" style="background:{{ _tier_fg.get(col.key, '#64748b') }}"></span>
+        <span class="name">{{ col.icon }} {{ col.label }}</span>
+        <span class="count" style="--stage-bg:{{ _tier_bg.get(col.key, '#f1f5f9') }};color:{{ _tier_fg.get(col.key, '#64748b') }}">{{ col.count }}</span>
+      </div>
+    </div>
+    <div class="board-cards">
+      {% if not col.cards %}
+      <div class="empty-leads" style="padding:20px 8px"><div style="font-size:12px">No Leads</div></div>
+      {% endif %}
+      {% for l in col.cards %}{{ lead_card(l) }}{% endfor %}
+    </div>
+    {% if col.more > 0 %}
+    <a class="board-more" href="{{ url_for('portal.leads_page', view='list', tier=col.key, q=search) }}">+{{ col.more }} more</a>
+    {% endif %}
+    <button type="button" class="board-add-btn" onclick="document.getElementById('addLeadForm').classList.add('open'); document.getElementById('addLeadForm').scrollIntoView({behavior:'smooth'})">
+      + Add Lead
+    </button>
+  </div>
+  {% endfor %}
+</div>
+
+{% elif not real_leads %}
 <div class="empty-leads">
   <div class="empty-leads-icon">📇</div>
   <div style="font-size:17px;font-weight:700;margin-bottom:8px">No Leads yet</div>
@@ -400,12 +562,34 @@
       </tbody>
     </table>
   </div>
-  {% if total_pages > 1 %}
-  <div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:14px;border-top:1px solid var(--line)">
-    {% for p in range(1, total_pages + 1) %}
-    <a href="{{ url_for('portal.leads_page', q=search, tier=(tier_filter if tier_filter != 'all' else none), sort=(sort_by or none), page=p) }}"
-       class="btn btn-sm {{ 'btn-primary' if p == page else '' }}" style="text-decoration:none;min-width:30px;text-align:center">{{ p }}</a>
-    {% endfor %}
+  {% if real_leads %}
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
+              padding:12px 18px;border-top:1px solid rgba(3,12,24,.06)">
+    <span style="font-size:12px;color:var(--muted)">
+      {% if per_page == 'all' %}Showing all {{ filtered_total }}{% else %}Showing {{ ((page-1)*per_page|int)+1 }}–{{ [page*per_page|int, filtered_total]|min }} of {{ filtered_total }}{% endif %}
+    </span>
+    {% if total_pages > 1 %}
+    {% set base_args = {'q': search, 'tier': (tier_filter if tier_filter != 'all' else none),
+                         'sort': (sort_by or none), 'per_page': per_page} %}
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+      <a href="{{ url_for('portal.leads_page', page=page-1, **base_args) if page > 1 else '#' }}"
+         class="btn btn-sm btn-ghost" style="text-decoration:none;
+         {% if page <= 1 %}pointer-events:none;opacity:.4{% endif %}">← Prev</a>
+      {% for p in range(1, total_pages + 1) %}
+        {% if p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
+      <a href="{{ url_for('portal.leads_page', page=p, **base_args) }}"
+         class="btn btn-sm {{ 'btn-primary' if p == page else 'btn-ghost' }}"
+         style="text-decoration:none;padding:6px 11px;font-size:12px;min-width:30px;text-align:center">{{ p }}</a>
+        {% elif p == page - 3 or p == page + 3 %}
+      <span style="color:var(--muted);font-size:12px">…</span>
+        {% endif %}
+      {% endfor %}
+      <a href="{{ url_for('portal.leads_page', page=page+1, **base_args) if page < total_pages else '#' }}"
+         class="btn btn-sm btn-ghost" style="text-decoration:none;
+         {% if page >= total_pages %}pointer-events:none;opacity:.4{% endif %}">Next →</a>
+      <span style="font-size:11.5px;color:var(--muted);margin-left:6px">Page {{ page }} of {{ total_pages }}</span>
+    </div>
+    {% endif %}
   </div>
   {% endif %}
 </div>
@@ -419,5 +603,12 @@
 })();
 </script>
 {% endif %}
+
+<script>
+function toggleScoreBreakdown(id) {
+  var panel = document.getElementById('score-breakdown-' + id);
+  if (panel) panel.classList.toggle('open');
+}
+</script>
 
 {% endblock %}

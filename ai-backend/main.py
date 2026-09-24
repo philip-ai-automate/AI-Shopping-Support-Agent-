@@ -317,6 +317,54 @@ _SCOPE_INSTRUCTION = (
     "provided to you."
 )
 
+# ── WooCommerce Plugin features: the merchant's PLAN decides (2026-09-23) ──
+# Identical copy of api-key-manager/portal_routes.py PLUGIN_FEATURE_PLAN_KEYS
+# — change both together. Flag (as stored in tenants.features) -> the Plan
+# editor tick-box that now decides it. A merchant who had a flag ON before
+# the switch keeps it while tenants.features["_grandfathered_plan_id"] still
+# equals their current plan_id.
+_PLUGIN_FEATURE_PLAN_KEYS = {
+    "product_recommendation":     "woo.product_recommendation",
+    "related_products":           "woo.cross_selling",
+    "cart_recovery":              "woo.cart_recovery",
+    "verified_specs_web_lookup":  "woo.verified_specs_view",
+    "chat_archive_30days":        "woo.chat_archive_30days",
+    "chat_archive_unlimited":     "woo.chat_archive_unlimited",
+    "whatsapp_message_templates": "woo.message_templates_view",
+}
+
+
+def _plugin_feature_on(tenant_id: int, flag: str, stored_features: dict) -> bool:
+    """True if the merchant's plan ticks this plugin feature, or it's a
+    grandfathered flag on the same plan. On a DB error falls back to the
+    stored flag (the pre-2026-09-23 behaviour) so an outage never silently
+    switches a live merchant's feature off or on."""
+    conn = get_db_connection()
+    if not conn:
+        return bool(stored_features.get(flag))
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT t.plan_id, EXISTS (SELECT 1 FROM plan_feature_grants g "
+            "WHERE g.plan_id = t.plan_id AND g.feature_key = %s) "
+            "FROM tenants t WHERE t.id = %s",
+            (_PLUGIN_FEATURE_PLAN_KEYS[flag], tenant_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            return False
+        plan_id, in_plan = row
+        if in_plan:
+            return True
+        marker = stored_features.get("_grandfathered_plan_id")
+        return marker is not None and marker == plan_id and bool(stored_features.get(flag))
+    except Exception as exc:
+        print(f"⚠️ _plugin_feature_on error: {exc}")
+        return bool(stored_features.get(flag))
+    finally:
+        conn.close()
+
+
 def _plan_feature_enabled(tenant_id: int, feature_key: str) -> bool:
     """Plan-level gate for a granular WooCommerce Plugin feature — mirrors
     portal_routes.py's _plan_grants_feature/plan_feature_grants table (same
@@ -469,10 +517,8 @@ def chat(req: ChatRequest):
     elif isinstance(_raw_features, dict):
         _features = _raw_features
 
-    rec_enabled = bool(_features.get("product_recommendation", True)) and \
-        _plan_feature_enabled(int(tenant_id), "woo.product_recommendation")
-    related_enabled = bool(_features.get("related_products", False)) and \
-        _plan_feature_enabled(int(tenant_id), "woo.cross_selling")
+    rec_enabled = _plugin_feature_on(int(tenant_id), "product_recommendation", _features)
+    related_enabled = _plugin_feature_on(int(tenant_id), "related_products", _features)
 
     # Product recommendation instruction goes FIRST — before handoff rules —
     # so it carries maximum weight with the model.
@@ -627,7 +673,7 @@ def chat(req: ChatRequest):
     # If the user asks for a numeric spec (e.g., weight) and it is NOT present
     # in the RAG context, we DO NOT guess. If enabled, we attempt a verified
     # web lookup (trusted domains) and cache the verified fact back into Azure Search.
-    verified_specs_enabled = bool(_features.get("verified_specs_web_lookup", False))
+    verified_specs_enabled = _plugin_feature_on(int(tenant_id), "verified_specs_web_lookup", _features)
 
     # Per-tenant customisation: extra trusted domains and custom spec definitions.
     # Both default to empty list if not configured.
@@ -1466,7 +1512,7 @@ def cart_event(req: CartEventRequest):
     elif isinstance(_raw_features, dict):
         _features = _raw_features
 
-    if not bool(_features.get("cart_recovery", False)):
+    if not _plugin_feature_on(int(tenant_id), "cart_recovery", _features):
         # Feature not enabled for this tenant — silently accept but do nothing
         return {"status": "ok", "cart_recovery": "disabled"}
 
@@ -1603,7 +1649,7 @@ def check_recovery(req: CheckRecoveryRequest):
     elif isinstance(_raw_features, dict):
         _features = _raw_features
 
-    if not bool(_features.get("cart_recovery", False)):
+    if not _plugin_feature_on(int(tenant_id), "cart_recovery", _features):
         return {"show_popup": False}
 
     # Check queue
@@ -1661,7 +1707,7 @@ def cart_recovery_reply(req: CartRecoveryReplyRequest):
     elif isinstance(_raw_features, dict):
         _features = _raw_features
 
-    if not bool(_features.get("cart_recovery", False)):
+    if not _plugin_feature_on(int(tenant_id), "cart_recovery", _features):
         raise HTTPException(status_code=403, detail="Cart recovery not enabled for this tenant")
 
     print(f"✅ /cart-recovery-reply tenant_id={tenant_id} session={session_id}")

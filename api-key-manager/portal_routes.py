@@ -12,9 +12,11 @@ from datetime import datetime, timedelta, timezone
 
 import bcrypt
 from flask import (Blueprint, render_template, request, redirect,
-                   url_for, session, flash, send_file, jsonify, send_from_directory, Response)
+                   url_for, session, flash, send_file, jsonify, send_from_directory, Response,
+                   current_app)
 
 from db import get_db_connection, insert_audit_log
+from feature_access import team_feature, any_team_member, owner_only, public_route, team_member_may_enter, route_access
 from meta_business_agent import sync_all_to_meta
 from portal_utils import (
     hash_password, verify_password, make_token, utc_now_naive,
@@ -29,6 +31,7 @@ from merchant_pipeline import (STAGE_ORDER as PIPELINE_STAGE_ORDER,
                                 OUTCOME_DESCRIPTIONS as PIPELINE_OUTCOME_DESCRIPTIONS,
                                 LOST_REASONS as PIPELINE_LOST_REASONS,
                                 DROPPED_REASONS as PIPELINE_DROPPED_REASONS,
+                                NOT_A_FIT_REASONS as PIPELINE_NOT_A_FIT_REASONS,
                                 SCORE_TIER_DEFAULTS as PIPELINE_SCORE_TIER_DEFAULTS,
                                 next_stage as pipeline_next_stage,
                                 record_stage_change as pipeline_record_stage_change,
@@ -43,316 +46,21 @@ except Exception:
 
 portal_bp = Blueprint("portal", __name__)
 
-# ── Shared Team Inbox: restrict invited staff to Inbox-only endpoints ──────────
+# ── Team members: which pages a team-member session may even reach ─────────
 # session["customer_id"] is set to the ACCOUNT OWNER's id for a team-member
 # login (see login()) so every other route's tenant_id resolution keeps
-# working unchanged — this allowlist is therefore the ONLY thing standing
-# between a team member and full owner access (billing, settings, API keys).
-# Deny-by-default on purpose: a blocklist would need updating every time a
-# new route is added anywhere in this file. First before_request on this
-# blueprint — confirmed no other hook exists to conflict with.
-TEAM_MEMBER_ALLOWED_ENDPOINTS = {
-    "portal.my_inbox", "portal.inbox_reply", "portal.inbox_api_poll",
-    "portal.inbox_save_contact", "portal.inbox_resolve", "portal.inbox_takeover",
-    "portal.inbox_claim", "portal.inbox_release", "portal.logout", "static",
-}
-
-# Team/Roles/Departments/Positions endpoints — let a team member through the
-# blanket before_request block IF their role grants the specific permission
-# for that endpoint (checked inside each route via _require_team_permission).
-# This is the one section of the portal where a team member can be granted
-# more than Inbox access, e.g. a capped "Super User" role — every other
-# module stays fully blocked, unaffected by this set.
-TEAM_DELEGATED_ENDPOINTS = {
-    "portal.team_page", "portal.team_create", "portal.team_update_role",
-    "portal.team_roles_page", "portal.team_role_new", "portal.team_role_edit",
-    "portal.team_role_delete",
-    "portal.team_departments_page", "portal.team_department_new",
-    "portal.team_department_edit", "portal.team_department_delete",
-    "portal.team_positions_page", "portal.team_position_new",
-    "portal.team_position_edit", "portal.team_position_delete",
-    "portal.team_deactivate", "portal.team_activate", "portal.team_remove",
-    "portal.team_reset_password",
-    "portal.team_update_agents", "portal.team_update_messenger", "portal.team_update_webchat",
-}
-
-# CRM endpoints (Contacts/Companies/Merge Review/Segments/Tags/Pipeline) — same
-# idea as TEAM_DELEGATED_ENDPOINTS above: let a team member through IF their
-# role grants the relevant crm.* permission (checked inside each route via
-# _require_team_permission / _team_member_has_permission). Every sub-action
-# under a CRM area (add/edit/delete/notes/bulk actions/etc.) shares that
-# area's single catalog key — the catalog itself is only granular to the
-# page level for CRM, not per-action like Team/Inbox.
-CRM_DELEGATED_ENDPOINTS = {
-    # crm.contacts
-    "portal.whatsapp_contact_move_to_pipeline", "portal.whatsapp_contacts",
-    "portal.whatsapp_contacts_add", "portal.whatsapp_contacts_edit",
-    "portal.whatsapp_contacts_delete", "portal.whatsapp_contacts_import",
-    "portal.whatsapp_contacts_export", "portal.whatsapp_contacts_save_view",
-    "portal.whatsapp_contacts_delete_view", "portal.whatsapp_contact_detail",
-    "portal.whatsapp_contact_set_consent", "portal.whatsapp_contact_add_note",
-    "portal.whatsapp_contact_delete_note", "portal.whatsapp_contact_add_to_segment",
-    "portal.whatsapp_contact_remove_from_segment", "portal.whatsapp_contacts_bulk_action",
-    "portal.whatsapp_contact_set_status", "portal.whatsapp_contact_tags",
-    # crm.companies
-    "portal.crm_companies", "portal.crm_companies_add", "portal.crm_company_detail",
-    "portal.crm_company_edit", "portal.crm_company_add_note",
-    # crm.merge_review
-    "portal.crm_merge_review", "portal.crm_merge_review_confirm", "portal.crm_merge_review_reject",
-    # crm.segments
-    "portal.whatsapp_segments", "portal.whatsapp_segments_create",
-    "portal.whatsapp_segments_edit", "portal.whatsapp_segments_delete",
-    "portal.whatsapp_segment_detail", "portal.whatsapp_segment_add_member",
-    "portal.whatsapp_segment_remove_member", "portal.whatsapp_segment_contacts_json",
-    # crm.tags (the "Labels" routes)
-    "portal.lead_labels_page", "portal.lead_labels_list_json", "portal.lead_labels_create",
-    "portal.lead_labels_delete", "portal.lead_labels_members", "portal.lead_labels_remove_member",
-    "portal.lead_labels_bulk_add_members", "portal.lead_labels_search_leads_json",
-    "portal.lead_labels_contact_members", "portal.lead_labels_remove_contact_member",
-    "portal.lead_labels_bulk_add_contacts", "portal.lead_labels_search_contacts_json",
-    "portal.lead_labels_import_bounces",
-    # crm.pipeline_board
-    "portal.sales_pipeline_contacts_json", "portal.sales_pipeline", "portal.sales_pipeline_export",
-    "portal.sales_pipeline_edit", "portal.sales_pipeline_assign_ambassador",
-    "portal.sales_pipeline_advance", "portal.sales_pipeline_bulk_advance",
-    "portal.sales_pipeline_drop", "portal.sales_pipeline_history",
-    # crm.pipeline_settings
-    "portal.sales_pipeline_settings",
-}
-
-# WhatsApp + Email Campaigns endpoints — same idea again. `/email/unsubscribe`
-# is a public, no-login route and deliberately NOT included here — it never
-# reaches this hook via a team-member session at all.
-CAMPAIGNS_DELEGATED_ENDPOINTS = {
-    # campaigns_wa.all
-    "portal.whatsapp_campaigns", "portal.whatsapp_campaigns_create",
-    "portal.whatsapp_campaigns_send", "portal.whatsapp_campaigns_delete",
-    "portal.whatsapp_campaigns_templates", "portal.whatsapp_campaigns_upload_image",
-    # campaigns_wa.segments
-    "portal.whatsapp_campaign_segments_page", "portal.whatsapp_campaigns_pipeline_leads_json",
-    # campaigns_wa.reports
-    "portal.whatsapp_campaigns_reports", "portal.whatsapp_campaign_report",
-    # campaigns_wa.needs_review
-    "portal.whatsapp_campaign_reviews", "portal.whatsapp_campaign_automation_settings",
-    "portal.whatsapp_campaign_review_approve", "portal.whatsapp_campaign_review_reject",
-    # campaigns_email.all
-    "portal.email_campaigns", "portal.email_campaigns_create", "portal.email_campaigns_edit_data",
-    "portal.email_campaigns_update", "portal.email_campaigns_preview",
-    "portal.email_campaigns_send_test_draft", "portal.email_campaigns_send_test",
-    "portal.email_campaigns_duplicate_data", "portal.email_campaigns_send",
-    "portal.email_campaigns_delete", "portal.email_campaigns_upload_image",
-    "portal.email_campaigns_contacts_json",
-    # campaigns_email.segments
-    "portal.email_campaigns_pipeline_leads_json", "portal.email_segments_list",
-    "portal.email_segments_create", "portal.email_segments_delete",
-    "portal.email_segments_members", "portal.email_segments_add_member",
-    "portal.email_segments_remove_member", "portal.email_segments_bulk_add_members",
-    # campaigns_email.reports
-    "portal.email_campaigns_reports", "portal.email_campaign_report",
-}
-
-# Reports endpoints — same idea again. `reports_page` (the hub) uses
-# _require_any_team_permission instead of one fixed key (see its route),
-# and `report_export` checks a dynamic reports.<report> key built from its
-# own URL param — both still just need to be in this bypass set so the
-# before_request hook lets them reach their own in-route check at all.
-REPORTS_DELEGATED_ENDPOINTS = {
-    "portal.reports_page",
-    "portal.report_usage", "portal.report_export",
-    "portal.report_cart", "portal.report_billing",
-    "portal.report_pipeline_overview", "portal.report_pipeline_overview_export",
-    "portal.report_leads_sources", "portal.report_leads_sources_export",
-    "portal.report_custom_picker", "portal.report_custom_entity",
-    "portal.report_custom_entity_export", "portal.report_custom_save_view",
-    "portal.report_custom_delete_view",
-}
-
-# Channels hub page (channels.page). Messenger connect/manage
-# (channels.connect_messenger) and PressOne connect/manage
-# (channels.connect_pressone) live in separate blueprints (facebook_bp,
-# pressone_bp) that have NO before_request restriction of their own at
-# all — found while wiring this up: today, ANY logged-in team member,
-# regardless of role, can already reach those routes directly (e.g. POST
-# /messenger/complete or /pressone/disconnect) without ever passing through
-# this hook, since it's registered only on portal_bp. Those routes are
-# fixed with their own inline `_require_team_permission("channels.connect_*")`
-# checks instead of a set here — see portal_facebook_routes.py /
-# pressone_routes.py.
-CHANNELS_DELEGATED_ENDPOINTS = {
-    "portal.channels_page",
-}
-
-# Ecommerce & Integrations endpoints — same idea again.
-ECOM_DELEGATED_ENDPOINTS = {
-    # ecom.orders
-    "portal.orders", "portal.order_detail", "portal.order_verify_payment",
-    "portal.order_dispatch", "portal.order_deliver", "portal.order_cancel",
-    # ecom.products
-    "portal.products", "portal.product_add", "portal.product_edit",
-    "portal.product_delete", "portal.product_toggle_stock",
-    # ecom.customers
-    "portal.customers", "portal.customer_detail",
-    # ecom.data_sources
-    "portal.data_sources", "portal.data_source_upload", "portal.data_source_map",
-    "portal.data_source_sync", "portal.data_source_delete",
-    "portal.data_source_google_connect", "portal.data_source_google_callback",
-    "portal.data_source_google_setup",
-    # ecom.woo_sync
-    "portal.woo_sync", "portal.woo_sync_delete", "portal.woo_sync_bulk_delete",
-    # ecom.discount_settings
-    "portal.wa_discount_settings", "portal.wa_discount_product_save",
-    # ecom.catalogue
-    "portal.catalogue_browse", "portal.catalogue_category",
-    "portal.catalogue_toggle", "portal.catalogue_selections",
-}
-
-# WooCommerce Plugin endpoints — same idea again.
-WOO_DELEGATED_ENDPOINTS = {
-    # woo.cart_recovery_settings
-    "portal.cart_recovery_dashboard", "portal.cart_recovery_save_settings",
-    # woo.cart_recovery_templates
-    "portal.cart_recovery_email_template",
-    # woo.verified_specs
-    "portal.verified_specs_settings", "portal.verified_specs_domain_add",
-    "portal.verified_specs_domain_delete", "portal.verified_specs_spec_add",
-    "portal.verified_specs_spec_delete",
-    # woo.chat_archive
-    "portal.chat_archive", "portal.chat_archive_export", "portal.chat_archive_session_export",
-    # woo.message_templates
-    "portal.whatsapp_templates", "portal.whatsapp_save_templates",
-}
-
-# AI Assistant endpoints — same idea again.
-AI_DELEGATED_ENDPOINTS = {
-    # legacy:feat_advanced_ai
-    "portal.ai_instruction",
-    # ai.handoff_rules
-    "portal.handoff_rules", "portal.handoff_rules_add",
-    "portal.handoff_rules_toggle", "portal.handoff_rules_delete",
-    # ai.api_keys
-    "portal.api_keys", "portal.api_keys_revoke",
-    # ai.agent_profiles
-    "portal.ai_agents", "portal.ai_agents_new", "portal.ai_agents_edit",
-    "portal.ai_agents_activate", "portal.ai_agents_delete",
-}
-
-# Store Information — a single route dispatches all 3 catalog features via
-# a hidden `action` form field (see store_info()'s own dynamic key logic).
-STORE_INFO_DELEGATED_ENDPOINTS = {
-    "portal.store_info",
-}
-
-# Leads endpoints — leads_page() dispatches leads.page (GET) vs leads.create
-# (POST) dynamically, same shape as store_info() above.
-LEADS_DELEGATED_ENDPOINTS = {
-    "portal.leads_page", "portal.leads_create_from_conversation", "portal.lead_detail",
-}
-
-ANALYTICS_DELEGATED_ENDPOINTS = {
-    "portal.analytics",
-}
-
-DASHBOARD_DELEGATED_ENDPOINTS = {
-    "portal.dashboard",
-}
-
-# Settings endpoints — same idea again. `/settings/plan` is a trivial,
-# no-login redirect straight to `/settings#plan` (no DB access, nothing to
-# protect on its own) and `/settings/payments*` is the Billing module's
-# billing.payment_gateways key, not touched here — both deliberately left
-# out of this set.
-SETTINGS_DELEGATED_ENDPOINTS = {
-    "portal.settings", "portal.settings_profile", "portal.settings_password",
-    "portal.settings_avatar", "portal.settings_notifications",
-    "portal.settings_business", "portal.settings_cancel_plan",
-}
-
-# Billing endpoints. `/billing/flutterwave-order-webhook` and
-# `/billing/flutterwave-webhook` are external payment-gateway webhooks with
-# no session/login involved — deliberately excluded. So is
-# `/billing/plan-upgrade/callback` (Flutterwave's browser redirect back
-# after checkout) — it verifies the transaction directly with Flutterwave
-# rather than trusting the session, by design, so it has no
-# `_require_login()` call to hook a permission check onto; adding one would
-# fight that design, not follow it. Card management (add/save/remove/
-# set-default) is shared by both the Buy Credits and Subscription Plans
-# pages in the UI — mapped to billing.credits as its single primary owner.
-BILLING_DELEGATED_ENDPOINTS = {
-    # billing.credits
-    "portal.billing", "portal.billing_checkout", "portal.billing_add_card",
-    "portal.billing_save_card", "portal.billing_remove_card", "portal.billing_set_default_card",
-    # billing.invoices
-    "portal.invoices",
-    # billing.subscription
-    "portal.billing_subscribe", "portal.billing_subscribe_post",
-    "portal.billing_subscribe_checkout", "portal.billing_subscribe_complete",
-    "portal.billing_switch_plan", "portal.billing_plans", "portal.billing_plan_upgrade",
-    # billing.payment_gateways
-    "portal.payment_settings", "portal.payment_settings_paystack",
-    "portal.payment_settings_paystack_remove", "portal.payment_settings_flutterwave",
-    "portal.payment_settings_flutterwave_remove", "portal.payment_settings_flutterwave_toggle_checkout",
-    "portal.payment_settings_bank", "portal.payment_settings_reveal",
-}
-
-# Help & Tutorials endpoints — the last catalog module. Both keys already
-# match one route each 1:1, no dispatcher/hub shape to design around.
-HELP_DELEGATED_ENDPOINTS = {
-    "portal.tutorials", "portal.video_tutorials",
-}
-
-# WhatsApp Connect/Handoff Reports — a real gap found during an end-to-end
-# verification pass: this whole module (distinct from WhatsApp Campaigns)
-# had catalog keys and real routes but had NEVER been wired to any
-# permission check, discovered only because these routes weren't in any
-# earlier *_DELEGATED_ENDPOINTS set either — team members were still
-# fully blocked by the blanket rule, so there was no live security gap,
-# but the Roles UI's "WhatsApp Connect" checkboxes did nothing at all.
-WHATSAPP_DELEGATED_ENDPOINTS = {
-    "portal.whatsapp_connect", "portal.whatsapp_qr_code",
-    "portal.whatsapp_save_notify_phone", "portal.whatsapp_save_ack_text",
-    "portal.whatsapp_save_connection", "portal.whatsapp_disconnect",
-    "portal.whatsapp_embedded_complete", "portal.whatsapp_delete",
-    "portal.whatsapp_reports",
-}
-
-
+# working unchanged — this hook is therefore the ONLY thing standing between
+# a team member and full owner access (billing, settings, API keys).
+# Deny-by-default: a team member only gets past here to a route labelled
+# @team_feature(...) or @any_team_member, and that route then checks the
+# exact permission itself (_require_team_permission). Labels live on each
+# route, not in hand-kept lists here — see feature_access.py for why and for
+# the update policy every new feature must follow.
 @portal_bp.before_request
 def _restrict_team_members_to_inbox():
     if not session.get("team_member_id"):
         return None
-    if request.endpoint in TEAM_MEMBER_ALLOWED_ENDPOINTS:
-        return None
-    if request.endpoint in TEAM_DELEGATED_ENDPOINTS:
-        return None
-    if request.endpoint in CRM_DELEGATED_ENDPOINTS:
-        return None
-    if request.endpoint in CAMPAIGNS_DELEGATED_ENDPOINTS:
-        return None
-    if request.endpoint in REPORTS_DELEGATED_ENDPOINTS:
-        return None
-    if request.endpoint in CHANNELS_DELEGATED_ENDPOINTS:
-        return None
-    if request.endpoint in ECOM_DELEGATED_ENDPOINTS:
-        return None
-    if request.endpoint in WOO_DELEGATED_ENDPOINTS:
-        return None
-    if request.endpoint in AI_DELEGATED_ENDPOINTS:
-        return None
-    if request.endpoint in STORE_INFO_DELEGATED_ENDPOINTS:
-        return None
-    if request.endpoint in LEADS_DELEGATED_ENDPOINTS:
-        return None
-    if request.endpoint in ANALYTICS_DELEGATED_ENDPOINTS:
-        return None
-    if request.endpoint in DASHBOARD_DELEGATED_ENDPOINTS:
-        return None
-    if request.endpoint in SETTINGS_DELEGATED_ENDPOINTS:
-        return None
-    if request.endpoint in BILLING_DELEGATED_ENDPOINTS:
-        return None
-    if request.endpoint in HELP_DELEGATED_ENDPOINTS:
-        return None
-    if request.endpoint in WHATSAPP_DELEGATED_ENDPOINTS:
+    if team_member_may_enter(current_app.view_functions.get(request.endpoint)):
         return None
     flash("Your team account only has access to the Inbox.", "warning")
     return redirect(url_for("portal.my_inbox"))
@@ -382,7 +90,8 @@ CONNECT_HIDDEN_ENDPOINTS = {
     "portal.try_demo",  # the shared public demo logs into an AI-powered tenant
 
     # ── Store Information ───────────────────────────────────────────────
-    "portal.store_info",
+    "portal.store_info", "portal.store_info_create", "portal.store_info_modify",
+    "portal.store_info_modify_entry", "portal.store_info_delete", "portal.store_info_delete_entry",
 
     # ── Email Campaigns (a separate channel from WhatsApp Campaigns/Bulk
     # Messaging, which stays) ───────────────────────────────────────────
@@ -479,9 +188,11 @@ CONNECT_CRM_ENDPOINTS = {
     "portal.sales_pipeline_edit", "portal.sales_pipeline_assign_ambassador",
     "portal.sales_pipeline_advance", "portal.sales_pipeline_bulk_advance",
     "portal.sales_pipeline_drop", "portal.sales_pipeline_history",
-    "portal.lead_labels_page", "portal.lead_labels_create",
+    "portal.lead_scoring_explainer",
+    "portal.lead_labels_page", "portal.lead_labels_create", "portal.lead_labels_rename",
     "portal.lead_labels_delete", "portal.lead_labels_members",
-    "portal.lead_labels_remove_member", "portal.lead_labels_bulk_add_members",
+    "portal.lead_labels_remove_member", "portal.lead_labels_move_member",
+    "portal.lead_labels_bulk_add_members",
     # was "portal.lead_labels_search_leads" — didn't match the real endpoint
     # name (Flask registers routes by function name, and this one has no
     # explicit `endpoint=`), so this entry silently never gated anything.
@@ -498,6 +209,7 @@ CONNECT_CRM_ENDPOINTS = {
     # and stays available on Connect regardless — only viewing/managing the
     # full tag list from this dedicated page is gated, same as Sales Pipeline.
     "portal.lead_labels_contact_members", "portal.lead_labels_remove_contact_member",
+    "portal.lead_labels_move_contact_member",
     "portal.lead_labels_bulk_add_contacts", "portal.lead_labels_search_contacts_json",
     # Pipeline Overview report (2026-09-10) — reports on Sales Pipeline data,
     # same CRM gate as the rest of the pipeline.
@@ -589,6 +301,11 @@ def _inject_granted_features():
             if row.get(col):
                 granted.add(f"legacy:{col}")
         cur.close(); conn.close()
+        for _flag, _on in _plugin_features_for_tenant(tenant_id).items():
+            if _on:
+                granted.add(PLUGIN_FEATURE_PLAN_KEYS[_flag])
+        if _wa_locked_for_tenant(tenant_id):
+            granted = {k for k in granted if not _is_wa_feature_key(k)}
     except Exception as e:
         print("⚠️ _inject_granted_features error:", e)
 
@@ -798,35 +515,119 @@ def _require_plan_feature(customer: dict, plan_flag: str, min_plan_name: str):
 # they're one flag today, so splitting them into fake independent checkboxes
 # would just recreate the same "looks granular, isn't" problem this was
 # built to fix.
+# Module order below matches the sidebar's real top-to-bottom nav order
+# (templates/portal/base.html), not alphabetical/build order — reordered
+# 2026-09-22 per explicit request, so a section on the Roles page sits where
+# you'd expect it after scanning the sidebar. Dict order drives display order
+# everywhere this catalog is iterated (Roles form, /admin/modules); it has no
+# effect on what any key grants — see _build_role_form_grid's docstring.
 PLAN_FEATURE_CATALOG = {
     "Dashboard": [
         ("dashboard.page", "Dashboard"),
+        ("dashboard.handoff_handled", "Mark a handoff alert as handled"),
     ],
-    "Billing": [
-        ("billing.subscription_view",             "Subscription Plans — view"),
-        ("billing.subscription_manage",           "Subscribe / switch / upgrade a Subscription Plan"),
-        ("billing.credits_view",                  "Buy Credits — view"),
-        ("billing.credits_manage",                "Buy credits / manage saved cards"),
-        ("billing.invoices_view",                 "Invoices — view"),
-        ("billing.payment_gateways_view",         "Payment Gateways — view"),
-        ("billing.payment_gateways_manage",       "Connect / configure a Payment Gateway"),
-        ("billing.payment_gateways_remove",       "Disconnect a Payment Gateway"),
-        ("billing.payment_gateways_reveal_secret","Reveal a Payment Gateway's secret key"),
+    "Inbox": [
+        ("inbox.page",           "Inbox (Conversations) — view"),
+        ("inbox.reply",          "Reply to conversations"),
+        ("inbox.claim_release",  "Claim / Release conversations"),
+        ("inbox.resolve",        "Resolve conversations (hand back to AI)"),
+        ("inbox.takeover",       "Take over from AI"),
+        ("inbox.manage_contact", "Edit contact details from Inbox"),
     ],
-    "Settings": [
-        ("settings.account",      "Account Settings — view"),
-        ("settings.profile_edit", "Edit profile, avatar & notification preferences"),
-        ("settings.business_edit","Edit business/billing legal information"),
-        ("settings.password",     "Change password"),
-        ("settings.cancel_plan",  "Cancel subscription plan"),
+    "WhatsApp Campaigns": [
+        ("legacy:feat_broadcasts",           "Broadcast Messaging & Reports (plan unlock)"),
+        ("campaigns_wa.all_view",            "All Campaigns — view"),
+        ("campaigns_wa.all_create",          "Create a WhatsApp Campaign"),
+        ("campaigns_wa.all_send",            "Send a WhatsApp Campaign"),
+        ("campaigns_wa.all_delete",          "Delete a WhatsApp Campaign"),
+        ("campaigns_wa.segments_view",       "WhatsApp Segment — view"),
+        ("campaigns_wa.segments_create",     "Create a WhatsApp Segment"),
+        ("campaigns_wa.segments_edit",       "Edit WhatsApp Segment membership"),
+        ("campaigns_wa.segments_delete",     "Delete a WhatsApp Segment"),
+        ("campaigns_wa.reports_view",        "Reports — view"),
+        ("campaigns_wa.needs_review_view",   "Needs Review — view"),
+        ("campaigns_wa.needs_review_manage", "Approve / reject / configure Needs Review"),
     ],
-    "Help & Tutorials": [
-        ("help.tutorials", "Help & Tutorials"),
-        ("help.videos",    "Video Tutorials"),
+    "CRM": [
+        ("crm.contacts_view",          "Contacts — view"),
+        ("crm.contacts_create",        "Create / import a Contact"),
+        ("crm.contacts_edit",          "Edit a Contact (notes, consent, tags, status, segment, move to pipeline)"),
+        ("crm.contacts_delete",        "Delete a Contact"),
+        ("crm.companies_view",         "Companies — view"),
+        ("crm.companies_create",       "Create a Company"),
+        ("crm.companies_edit",         "Edit a Company (incl. notes)"),
+        ("crm.pipeline_board_view",    "Pipeline Board — view"),
+        ("crm.pipeline_board_edit",    "Edit a lead / advance or drop a pipeline stage"),
+        ("crm.segments_view",          "Segments — view"),
+        ("crm.segments_create",        "Create a Segment"),
+        ("crm.segments_edit",          "Edit a Segment (incl. members)"),
+        ("crm.segments_delete",        "Delete a Segment"),
+        ("crm.tags_view",              "Labels — view"),
+        ("crm.tags_create",            "Create a Label / import bounces"),
+        ("crm.tags_edit",              "Edit a Label — rename it, or move/remove records on it"),
+        ("crm.tags_delete",            "Delete a Label"),
+        ("crm.merge_review_view",      "Duplicate Merge Review — view"),
+        ("crm.merge_review_confirm",   "Confirm a merge (permanently merges the duplicate)"),
+        ("crm.merge_review_reject",    "Reject a merge suggestion"),
+        ("crm.pipeline_settings_view", "Pipeline Settings — view"),
+        ("crm.pipeline_settings_edit", "Edit Pipeline Settings"),
     ],
     "Leads": [
         ("leads.page",   "Leads — view"),
         ("leads.create", "Create a Lead (manually or from a Hot Conversation)"),
+        ("leads.qualify", "Qualify a Lead into an Opportunity / mark it Not a Fit"),
+    ],
+    "Voice Calls": [
+        ("voice.calls", "Voice Calls (PressOne)"),
+    ],
+    "Email Campaigns": [
+        ("legacy:feat_email_campaigns",  "Email Campaigns (plan unlock)"),
+        ("campaigns_email.all_view",     "All Campaigns — view"),
+        ("campaigns_email.all_create",   "Create an Email Campaign"),
+        ("campaigns_email.all_edit",     "Edit a draft/scheduled Email Campaign"),
+        ("campaigns_email.all_send",     "Send an Email Campaign (incl. test sends)"),
+        ("campaigns_email.all_delete",   "Delete an Email Campaign"),
+        ("campaigns_email.segments_view",   "Email Segment — view"),
+        ("campaigns_email.segments_create", "Create an Email Segment"),
+        ("campaigns_email.segments_edit",   "Edit Email Segment membership"),
+        ("campaigns_email.segments_delete", "Delete an Email Segment"),
+        ("campaigns_email.reports_view", "Reports — view"),
+    ],
+    "WhatsApp": [
+        ("legacy:feat_fw_checkout",  "Checkout (In-Chat Payments via Flutterwave)"),
+        ("wa.handoff_reports_view", "WhatsApp Handoff Reports — view"),
+        ("wa.report",               "WhatsApp Report"),
+        ("wa.history_import_view",   "Chat History Import — view"),
+        ("wa.history_import_create", "Import a WhatsApp chat history"),
+        ("wa.history_import_delete", "Delete an imported chat history"),
+    ],
+    "Ecommerce & Integrations": [
+        ("ecom.products_view",           "My Products — view"),
+        ("ecom.products_create",         "Add a Product"),
+        ("ecom.products_edit",           "Edit a Product / toggle stock"),
+        ("ecom.products_delete",         "Delete a Product"),
+        ("ecom.orders_view",             "Orders — view"),
+        ("ecom.orders_manage",           "Verify payment / mark dispatched / mark delivered"),
+        ("ecom.orders_cancel",           "Cancel an Order"),
+        ("ecom.customers_view",          "Customers — view"),
+        ("ecom.woo_sync_view",           "WooCommerce Sync — view"),
+        ("ecom.woo_sync_delete",         "Remove a WooCommerce Sync record"),
+        ("ecom.data_sources_view",       "Product Import — view"),
+        ("ecom.data_sources_create",     "Add a Product Import source (incl. Google Sheets)"),
+        ("ecom.data_sources_edit",       "Edit a Product Import source's mapping / re-sync"),
+        ("ecom.data_sources_delete",     "Delete a Product Import source"),
+        ("ecom.discount_settings_view",  "Discount Settings — view"),
+        ("ecom.discount_settings_edit",  "Edit Discount Settings"),
+        ("ecom.catalogue_view",          "My Catalogue — view"),
+        ("ecom.catalogue_edit",          "Add / remove a product from My Catalogue"),
+    ],
+    "Store Information": [
+        ("store.info",                   "Store Information — view / list"),
+        ("store.info_create",            "Create a Store Information entry"),
+        ("store.info_edit",              "Edit / rename a Store Information entry"),
+        ("store.info_delete",            "Delete a Store Information entry"),
+        ("store.info_documents_upload",  "Upload an AI knowledge document"),
+        ("store.info_documents_delete",  "Delete an AI knowledge document"),
     ],
     "Team": [
         ("team.manage",                    "Team — view"),
@@ -847,65 +648,6 @@ PLAN_FEATURE_CATALOG = {
         ("team.positions_create",          "Create a Position"),
         ("team.positions_edit",            "Edit a Position"),
         ("team.positions_delete",          "Delete a Position"),
-    ],
-    "Store Information": [
-        ("store.info",                   "Store Information — view"),
-        ("store.info_edit",              "Edit business details / AI knowledge text"),
-        ("store.info_documents_upload",  "Upload an AI knowledge document"),
-        ("store.info_documents_delete",  "Delete an AI knowledge document"),
-    ],
-    "Analytics": [
-        ("analytics.page", "Analytics"),
-    ],
-    "Inbox": [
-        ("inbox.page",           "Inbox (Conversations) — view"),
-        ("inbox.reply",          "Reply to conversations"),
-        ("inbox.claim_release",  "Claim / Release conversations"),
-        ("inbox.resolve",        "Resolve conversations (hand back to AI)"),
-        ("inbox.takeover",       "Take over from AI"),
-        ("inbox.manage_contact", "Edit contact details from Inbox"),
-    ],
-    "Channels": [
-        ("channels.page",                     "Channels — view"),
-        ("channels.connect_messenger",        "Connect Messenger (no separate disconnect exists)"),
-        ("channels.connect_pressone_view",    "PressOne — view connect page"),
-        ("channels.connect_pressone_manage",  "Connect / test / configure PressOne"),
-        ("channels.connect_pressone_remove",  "Disconnect PressOne"),
-    ],
-    "Voice Calls": [
-        ("voice.calls", "Voice Calls (PressOne)"),
-    ],
-    "WhatsApp": [
-        ("legacy:feat_fw_checkout",  "Checkout (In-Chat Payments via Flutterwave)"),
-        ("wa.connect_view",         "WhatsApp Connect — view"),
-        ("wa.connect_manage",       "Connect / configure your WhatsApp number"),
-        ("wa.connect_delete",       "Delete your WhatsApp connection"),
-        ("wa.handoff_reports_view", "WhatsApp Handoff Reports — view"),
-        ("wa.report",               "WhatsApp Report"),
-    ],
-    "CRM": [
-        ("crm.contacts_view",          "Contacts — view"),
-        ("crm.contacts_create",        "Create / import a Contact"),
-        ("crm.contacts_edit",          "Edit a Contact (notes, consent, tags, status, segment, move to pipeline)"),
-        ("crm.contacts_delete",        "Delete a Contact"),
-        ("crm.companies_view",         "Companies — view"),
-        ("crm.companies_create",       "Create a Company"),
-        ("crm.companies_edit",         "Edit a Company (incl. notes)"),
-        ("crm.pipeline_board_view",    "Pipeline Board — view"),
-        ("crm.pipeline_board_edit",    "Edit a lead / advance or drop a pipeline stage"),
-        ("crm.segments_view",          "Segments — view"),
-        ("crm.segments_create",        "Create a Segment"),
-        ("crm.segments_edit",          "Edit a Segment (incl. members)"),
-        ("crm.segments_delete",        "Delete a Segment"),
-        ("crm.tags_view",              "Tags — view"),
-        ("crm.tags_create",            "Create a Tag / import bounces"),
-        ("crm.tags_edit",              "Edit Tag membership"),
-        ("crm.tags_delete",            "Delete a Tag"),
-        ("crm.merge_review_view",      "Duplicate Merge Review — view"),
-        ("crm.merge_review_confirm",   "Confirm a merge (permanently merges the duplicate)"),
-        ("crm.merge_review_reject",    "Reject a merge suggestion"),
-        ("crm.pipeline_settings_view", "Pipeline Settings — view"),
-        ("crm.pipeline_settings_edit", "Edit Pipeline Settings"),
     ],
     "AI Assistant": [
         ("legacy:feat_advanced_ai",  "Custom AI Instructions (plan unlock)"),
@@ -935,32 +677,13 @@ PLAN_FEATURE_CATALOG = {
         ("woo.verified_specs_create",  "Add a Verified Specs domain / spec"),
         ("woo.verified_specs_delete",  "Delete a Verified Specs domain / spec"),
         ("woo.chat_archive_view",      "Chat Archive — view"),
+        ("woo.chat_archive_30days",    "Chat Archive — 30 days history (plan unlock)"),
+        ("woo.chat_archive_unlimited", "Chat Archive — Unlimited history (plan unlock, overrides 30 days)"),
         ("woo.message_templates_view", "WhatsApp Message Templates — view"),
         ("woo.message_templates_edit", "Edit WhatsApp Message Templates"),
     ],
-    "WhatsApp Campaigns": [
-        ("legacy:feat_broadcasts",           "Broadcast Messaging & Reports (plan unlock)"),
-        ("campaigns_wa.all_view",            "All Campaigns — view"),
-        ("campaigns_wa.all_create",          "Create a WhatsApp Campaign"),
-        ("campaigns_wa.all_send",            "Send a WhatsApp Campaign"),
-        ("campaigns_wa.all_delete",          "Delete a WhatsApp Campaign"),
-        ("campaigns_wa.segments_view",       "WhatsApp Segment — view"),
-        ("campaigns_wa.reports_view",        "Reports — view"),
-        ("campaigns_wa.needs_review_view",   "Needs Review — view"),
-        ("campaigns_wa.needs_review_manage", "Approve / reject / configure Needs Review"),
-    ],
-    "Email Campaigns": [
-        ("legacy:feat_email_campaigns",  "Email Campaigns (plan unlock)"),
-        ("campaigns_email.all_view",     "All Campaigns — view"),
-        ("campaigns_email.all_create",   "Create an Email Campaign"),
-        ("campaigns_email.all_edit",     "Edit a draft/scheduled Email Campaign"),
-        ("campaigns_email.all_send",     "Send an Email Campaign (incl. test sends)"),
-        ("campaigns_email.all_delete",   "Delete an Email Campaign"),
-        ("campaigns_email.segments_view",   "Email Segment — view"),
-        ("campaigns_email.segments_create", "Create an Email Segment"),
-        ("campaigns_email.segments_edit",   "Edit Email Segment membership"),
-        ("campaigns_email.segments_delete", "Delete an Email Segment"),
-        ("campaigns_email.reports_view", "Reports — view"),
+    "Analytics": [
+        ("analytics.page", "Analytics"),
     ],
     "Reports": [
         ("reports.pipeline_overview", "Pipeline Overview"),
@@ -970,25 +693,37 @@ PLAN_FEATURE_CATALOG = {
         ("reports.cart",              "Cart Recovery Reports"),
         ("reports.billing",           "Billing Reports"),
     ],
-    "Ecommerce & Integrations": [
-        ("ecom.products_view",           "My Products — view"),
-        ("ecom.products_create",         "Add a Product"),
-        ("ecom.products_edit",           "Edit a Product / toggle stock"),
-        ("ecom.products_delete",         "Delete a Product"),
-        ("ecom.orders_view",             "Orders — view"),
-        ("ecom.orders_manage",           "Verify payment / mark dispatched / mark delivered"),
-        ("ecom.orders_cancel",           "Cancel an Order"),
-        ("ecom.customers_view",          "Customers — view"),
-        ("ecom.woo_sync_view",           "WooCommerce Sync — view"),
-        ("ecom.woo_sync_delete",         "Remove a WooCommerce Sync record"),
-        ("ecom.data_sources_view",       "Product Import — view"),
-        ("ecom.data_sources_create",     "Add a Product Import source (incl. Google Sheets)"),
-        ("ecom.data_sources_edit",       "Edit a Product Import source's mapping / re-sync"),
-        ("ecom.data_sources_delete",     "Delete a Product Import source"),
-        ("ecom.discount_settings_view",  "Discount Settings — view"),
-        ("ecom.discount_settings_edit",  "Edit Discount Settings"),
-        ("ecom.catalogue_view",          "My Catalogue — view"),
-        ("ecom.catalogue_edit",          "Add / remove a product from My Catalogue"),
+    "Billing": [
+        ("billing.subscription_view",             "Subscription Plans — view"),
+        ("billing.subscription_manage",           "Subscribe / switch / upgrade a Subscription Plan"),
+        ("billing.credits_view",                  "Buy Credits — view"),
+        ("billing.credits_manage",                "Buy credits / manage saved cards"),
+        ("billing.invoices_view",                 "Invoices — view"),
+        ("billing.payment_gateways_view",         "Payment Gateways — view"),
+        ("billing.payment_gateways_manage",       "Connect / configure a Payment Gateway"),
+        ("billing.payment_gateways_remove",       "Disconnect a Payment Gateway"),
+        ("billing.payment_gateways_reveal_secret","Reveal a Payment Gateway's secret key"),
+    ],
+    "Integration": [
+        ("channels.page",                     "Channels — view"),
+        ("wa.connect_view",                   "WhatsApp — view connect page"),
+        ("wa.connect_manage",                 "Connect / configure your WhatsApp number"),
+        ("wa.connect_delete",                 "Delete your WhatsApp connection"),
+        ("channels.connect_messenger",        "Connect Messenger (no separate disconnect exists)"),
+        ("channels.connect_pressone_view",    "PressOne — view connect page"),
+        ("channels.connect_pressone_manage",  "Connect / test / configure PressOne"),
+        ("channels.connect_pressone_remove",  "Disconnect PressOne"),
+    ],
+    "Help & Tutorials": [
+        ("help.tutorials", "Help & Tutorials"),
+        ("help.videos",    "Video Tutorials"),
+    ],
+    "Settings": [
+        ("settings.account",      "Account Settings — view"),
+        ("settings.profile_edit", "Edit profile, avatar & notification preferences"),
+        ("settings.business_edit","Edit business/billing legal information"),
+        ("settings.password",     "Change password"),
+        ("settings.cancel_plan",  "Cancel subscription plan"),
     ],
 }
 
@@ -1008,28 +743,64 @@ PLAN_FEATURE_CATALOG = {
 # and now revisited — see project_team_access_control memory).
 ROLE_FORM_GRID = {
     "Dashboard": [
-        {"label": "Dashboard", "view": "dashboard.page"},
+        {"label": "Dashboard", "view": "dashboard.page", "other": ["dashboard.handoff_handled"]},
     ],
-    "Billing": [
-        {"label": "Subscription Plan", "view": "billing.subscription_view", "edit": "billing.subscription_manage"},
-        {"label": "Credits",           "view": "billing.credits_view",      "edit": "billing.credits_manage"},
-        {"label": "Invoices",          "view": "billing.invoices_view"},
-        {"label": "Payment Gateway",   "view": "billing.payment_gateways_view", "edit": "billing.payment_gateways_manage",
-         "delete": "billing.payment_gateways_remove", "other": ["billing.payment_gateways_reveal_secret"]},
+    "Inbox": [
+        {"label": "Inbox", "view": "inbox.page", "edit": "inbox.manage_contact",
+         "other": ["inbox.reply", "inbox.claim_release", "inbox.resolve", "inbox.takeover"]},
     ],
-    "Settings": [
-        {"label": "Account Settings", "view": "settings.account"},
-        {"label": "Profile",          "edit": "settings.profile_edit"},
-        {"label": "Business Info",    "edit": "settings.business_edit"},
-        {"label": "Password",         "edit": "settings.password"},
-        {"label": "Cancel Plan",      "delete": "settings.cancel_plan"},
+    "WhatsApp Campaigns": [
+        {"label": "Broadcast Messaging & Reports (plan unlock)", "other": ["legacy:feat_broadcasts"]},
+        {"label": "Campaign", "view": "campaigns_wa.all_view", "create": "campaigns_wa.all_create", "delete": "campaigns_wa.all_delete",
+         "other": ["campaigns_wa.all_send"]},
+        {"label": "Segment",      "view": "campaigns_wa.segments_view", "create": "campaigns_wa.segments_create",
+         "edit": "campaigns_wa.segments_edit", "delete": "campaigns_wa.segments_delete"},
+        {"label": "Reports",      "view": "campaigns_wa.reports_view"},
+        {"label": "Needs Review", "view": "campaigns_wa.needs_review_view", "edit": "campaigns_wa.needs_review_manage"},
     ],
-    "Help & Tutorials": [
-        {"label": "Help & Tutorials", "view": "help.tutorials"},
-        {"label": "Video Tutorials",  "view": "help.videos"},
+    "CRM": [
+        {"label": "Contact",        "view": "crm.contacts_view",        "create": "crm.contacts_create",  "edit": "crm.contacts_edit",  "delete": "crm.contacts_delete"},
+        {"label": "Company",        "view": "crm.companies_view",       "create": "crm.companies_create", "edit": "crm.companies_edit"},
+        {"label": "Pipeline Board", "view": "crm.pipeline_board_view",  "edit": "crm.pipeline_board_edit"},
+        {"label": "Segment",        "view": "crm.segments_view",        "create": "crm.segments_create",  "edit": "crm.segments_edit",  "delete": "crm.segments_delete"},
+        {"label": "Label",          "view": "crm.tags_view",            "create": "crm.tags_create",      "edit": "crm.tags_edit",      "delete": "crm.tags_delete"},
+        {"label": "Duplicate Merge Review", "view": "crm.merge_review_view", "other": ["crm.merge_review_confirm", "crm.merge_review_reject"]},
+        {"label": "Pipeline Settings", "view": "crm.pipeline_settings_view", "edit": "crm.pipeline_settings_edit"},
     ],
     "Leads": [
-        {"label": "Leads", "view": "leads.page", "create": "leads.create"},
+        {"label": "Leads", "view": "leads.page", "create": "leads.create", "other": ["leads.qualify"]},
+    ],
+    "Voice Calls": [
+        {"label": "Voice Calls (PressOne)", "view": "voice.calls"},
+    ],
+    "Email Campaigns": [
+        {"label": "Email Campaigns (plan unlock)", "other": ["legacy:feat_email_campaigns"]},
+        {"label": "Campaign", "view": "campaigns_email.all_view", "create": "campaigns_email.all_create",
+         "edit": "campaigns_email.all_edit", "delete": "campaigns_email.all_delete", "other": ["campaigns_email.all_send"]},
+        {"label": "Segment", "view": "campaigns_email.segments_view", "create": "campaigns_email.segments_create",
+         "edit": "campaigns_email.segments_edit", "delete": "campaigns_email.segments_delete"},
+        {"label": "Reports", "view": "campaigns_email.reports_view"},
+    ],
+    "WhatsApp": [
+        {"label": "Checkout (Flutterwave)", "other": ["legacy:feat_fw_checkout"]},
+        {"label": "Handoff Reports",        "view": "wa.handoff_reports_view"},
+        {"label": "WhatsApp Report",        "view": "wa.report"},
+        {"label": "Chat History Import",    "view": "wa.history_import_view", "create": "wa.history_import_create",
+         "delete": "wa.history_import_delete"},
+    ],
+    "Ecommerce & Integrations": [
+        {"label": "Product",  "view": "ecom.products_view", "create": "ecom.products_create", "edit": "ecom.products_edit", "delete": "ecom.products_delete"},
+        {"label": "Order",    "view": "ecom.orders_view",   "edit": "ecom.orders_manage", "other": ["ecom.orders_cancel"]},
+        {"label": "Customer", "view": "ecom.customers_view"},
+        {"label": "WooCommerce Sync",  "view": "ecom.woo_sync_view", "delete": "ecom.woo_sync_delete"},
+        {"label": "Product Import",    "view": "ecom.data_sources_view", "create": "ecom.data_sources_create",
+         "edit": "ecom.data_sources_edit", "delete": "ecom.data_sources_delete"},
+        {"label": "Discount Settings", "view": "ecom.discount_settings_view", "edit": "ecom.discount_settings_edit"},
+        {"label": "My Catalogue",      "view": "ecom.catalogue_view", "edit": "ecom.catalogue_edit"},
+    ],
+    "Store Information": [
+        {"label": "Store Information",  "view": "store.info", "create": "store.info_create", "edit": "store.info_edit", "delete": "store.info_delete"},
+        {"label": "Knowledge Document", "create": "store.info_documents_upload", "delete": "store.info_documents_delete"},
     ],
     "Team": [
         {"label": "Team", "view": "team.manage"},
@@ -1039,41 +810,6 @@ ROLE_FORM_GRID = {
         {"label": "Role",       "create": "team.roles_create",       "edit": "team.roles_edit",       "delete": "team.roles_delete"},
         {"label": "Department", "create": "team.departments_create", "edit": "team.departments_edit", "delete": "team.departments_delete"},
         {"label": "Position",   "create": "team.positions_create",   "edit": "team.positions_edit",   "delete": "team.positions_delete"},
-    ],
-    "Store Information": [
-        {"label": "Store Information",  "view": "store.info", "edit": "store.info_edit"},
-        {"label": "Knowledge Document", "create": "store.info_documents_upload", "delete": "store.info_documents_delete"},
-    ],
-    "Analytics": [
-        {"label": "Analytics", "view": "analytics.page"},
-    ],
-    "Inbox": [
-        {"label": "Inbox", "view": "inbox.page", "edit": "inbox.manage_contact",
-         "other": ["inbox.reply", "inbox.claim_release", "inbox.resolve", "inbox.takeover"]},
-    ],
-    "Channels": [
-        {"label": "Channels",  "view": "channels.page"},
-        {"label": "Messenger", "create": "channels.connect_messenger"},
-        {"label": "PressOne",  "view": "channels.connect_pressone_view", "edit": "channels.connect_pressone_manage",
-         "delete": "channels.connect_pressone_remove"},
-    ],
-    "Voice Calls": [
-        {"label": "Voice Calls (PressOne)", "view": "voice.calls"},
-    ],
-    "WhatsApp": [
-        {"label": "Checkout (Flutterwave)", "other": ["legacy:feat_fw_checkout"]},
-        {"label": "WhatsApp Connection", "view": "wa.connect_view", "edit": "wa.connect_manage", "delete": "wa.connect_delete"},
-        {"label": "Handoff Reports",     "view": "wa.handoff_reports_view"},
-        {"label": "WhatsApp Report",     "view": "wa.report"},
-    ],
-    "CRM": [
-        {"label": "Contact",        "view": "crm.contacts_view",        "create": "crm.contacts_create",  "edit": "crm.contacts_edit",  "delete": "crm.contacts_delete"},
-        {"label": "Company",        "view": "crm.companies_view",       "create": "crm.companies_create", "edit": "crm.companies_edit"},
-        {"label": "Pipeline Board", "view": "crm.pipeline_board_view",  "edit": "crm.pipeline_board_edit"},
-        {"label": "Segment",        "view": "crm.segments_view",        "create": "crm.segments_create",  "edit": "crm.segments_edit",  "delete": "crm.segments_delete"},
-        {"label": "Tag",            "view": "crm.tags_view",            "create": "crm.tags_create",      "edit": "crm.tags_edit",      "delete": "crm.tags_delete"},
-        {"label": "Duplicate Merge Review", "view": "crm.merge_review_view", "other": ["crm.merge_review_confirm", "crm.merge_review_reject"]},
-        {"label": "Pipeline Settings", "view": "crm.pipeline_settings_view", "edit": "crm.pipeline_settings_edit"},
     ],
     "AI Assistant": [
         {"label": "Custom AI Instructions (plan unlock)", "other": ["legacy:feat_advanced_ai"]},
@@ -1091,23 +827,11 @@ ROLE_FORM_GRID = {
         {"label": "Cart Recovery Email Templates", "view": "woo.cart_recovery_templates_view", "edit": "woo.cart_recovery_templates_edit"},
         {"label": "Verified Specs Lookup", "view": "woo.verified_specs_view", "create": "woo.verified_specs_create", "delete": "woo.verified_specs_delete"},
         {"label": "Chat Archive",          "view": "woo.chat_archive_view"},
+        {"label": "Chat Archive history (plan unlock)", "other": ["woo.chat_archive_30days", "woo.chat_archive_unlimited"]},
         {"label": "WhatsApp Message Templates", "view": "woo.message_templates_view", "edit": "woo.message_templates_edit"},
     ],
-    "WhatsApp Campaigns": [
-        {"label": "Broadcast Messaging & Reports (plan unlock)", "other": ["legacy:feat_broadcasts"]},
-        {"label": "Campaign", "view": "campaigns_wa.all_view", "create": "campaigns_wa.all_create", "delete": "campaigns_wa.all_delete",
-         "other": ["campaigns_wa.all_send"]},
-        {"label": "Segment",      "view": "campaigns_wa.segments_view"},
-        {"label": "Reports",      "view": "campaigns_wa.reports_view"},
-        {"label": "Needs Review", "view": "campaigns_wa.needs_review_view", "edit": "campaigns_wa.needs_review_manage"},
-    ],
-    "Email Campaigns": [
-        {"label": "Email Campaigns (plan unlock)", "other": ["legacy:feat_email_campaigns"]},
-        {"label": "Campaign", "view": "campaigns_email.all_view", "create": "campaigns_email.all_create",
-         "edit": "campaigns_email.all_edit", "delete": "campaigns_email.all_delete", "other": ["campaigns_email.all_send"]},
-        {"label": "Segment", "view": "campaigns_email.segments_view", "create": "campaigns_email.segments_create",
-         "edit": "campaigns_email.segments_edit", "delete": "campaigns_email.segments_delete"},
-        {"label": "Reports", "view": "campaigns_email.reports_view"},
+    "Analytics": [
+        {"label": "Analytics", "view": "analytics.page"},
     ],
     "Reports": [
         {"label": "Pipeline Overview",    "view": "reports.pipeline_overview"},
@@ -1117,17 +841,100 @@ ROLE_FORM_GRID = {
         {"label": "Cart Recovery Reports","view": "reports.cart"},
         {"label": "Billing Reports",      "view": "reports.billing"},
     ],
-    "Ecommerce & Integrations": [
-        {"label": "Product",  "view": "ecom.products_view", "create": "ecom.products_create", "edit": "ecom.products_edit", "delete": "ecom.products_delete"},
-        {"label": "Order",    "view": "ecom.orders_view",   "edit": "ecom.orders_manage", "other": ["ecom.orders_cancel"]},
-        {"label": "Customer", "view": "ecom.customers_view"},
-        {"label": "WooCommerce Sync",  "view": "ecom.woo_sync_view", "delete": "ecom.woo_sync_delete"},
-        {"label": "Product Import",    "view": "ecom.data_sources_view", "create": "ecom.data_sources_create",
-         "edit": "ecom.data_sources_edit", "delete": "ecom.data_sources_delete"},
-        {"label": "Discount Settings", "view": "ecom.discount_settings_view", "edit": "ecom.discount_settings_edit"},
-        {"label": "My Catalogue",      "view": "ecom.catalogue_view", "edit": "ecom.catalogue_edit"},
+    "Billing": [
+        {"label": "Subscription Plan", "view": "billing.subscription_view", "edit": "billing.subscription_manage"},
+        {"label": "Credits",           "view": "billing.credits_view",      "edit": "billing.credits_manage"},
+        {"label": "Invoices",          "view": "billing.invoices_view"},
+        {"label": "Payment Gateway",   "view": "billing.payment_gateways_view", "edit": "billing.payment_gateways_manage",
+         "delete": "billing.payment_gateways_remove", "other": ["billing.payment_gateways_reveal_secret"]},
+    ],
+    "Integration": [
+        {"label": "Channels",  "view": "channels.page"},
+        {"label": "WhatsApp",  "view": "wa.connect_view", "edit": "wa.connect_manage", "delete": "wa.connect_delete"},
+        {"label": "Messenger", "create": "channels.connect_messenger"},
+        {"label": "PressOne",  "view": "channels.connect_pressone_view", "edit": "channels.connect_pressone_manage",
+         "delete": "channels.connect_pressone_remove"},
+    ],
+    "Help & Tutorials": [
+        {"label": "Help & Tutorials", "view": "help.tutorials"},
+        {"label": "Video Tutorials",  "view": "help.videos"},
+    ],
+    "Settings": [
+        {"label": "Account Settings", "view": "settings.account"},
+        {"label": "Profile",          "edit": "settings.profile_edit"},
+        {"label": "Business Info",    "edit": "settings.business_edit"},
+        {"label": "Password",         "edit": "settings.password"},
+        {"label": "Cancel Plan",      "delete": "settings.cancel_plan"},
     ],
 }
+
+
+# Catalog keys that are a plan switch only (a WooCommerce plugin behaviour or
+# an old feat_* plan column) — no portal page checks them for a team member,
+# so the Features-vs-Roles check mustn't flag them as "controls nothing".
+# legacy:* keys are treated this way automatically.
+PLAN_ONLY_FEATURE_KEYS = {
+    "woo.product_recommendation", "woo.cross_selling", "woo.cart_recovery",
+    "woo.chat_archive_30days", "woo.chat_archive_unlimited",
+}
+
+
+# ── WooCommerce Plugin features: the merchant's PLAN decides ───────────────
+# Decided 2026-09-23: these used to be switched on by whatever Credit Package
+# a merchant bought (flags in tenants.features). Now the Plan editor
+# tick-box is the switch. Flag name (still what every reader asks for) ->
+# the Plan editor key that decides it. ai-backend/main.py keeps an identical
+# copy (_PLUGIN_FEATURE_PLAN_KEYS) — change both together.
+PLUGIN_FEATURE_PLAN_KEYS = {
+    "product_recommendation":     "woo.product_recommendation",
+    "related_products":           "woo.cross_selling",
+    "cart_recovery":              "woo.cart_recovery",
+    "verified_specs_web_lookup":  "woo.verified_specs_view",
+    "chat_archive_30days":        "woo.chat_archive_30days",
+    "chat_archive_unlimited":     "woo.chat_archive_unlimited",
+    "whatsapp_message_templates": "woo.message_templates_view",
+}
+# Merchants who already had a flag ON before the switch keep it until their
+# plan changes: tenants.features[GRANDFATHER_MARKER] holds the plan_id they
+# were on at the switch; once tenants.plan_id differs, the old flags stop
+# counting. Set once by the 2026-09-23 switch-over script, never by code.
+GRANDFATHER_MARKER = "_grandfathered_plan_id"
+
+
+def _plugin_features_for_tenant(tenant_id: int) -> dict:
+    """{flag: True/False} for every WooCommerce Plugin feature — plan tick-box,
+    or a grandfathered flag while the merchant is still on the same plan.
+    Fails closed (all False) on a DB error, like _has_feature always did."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT t.plan_id, t.features,
+                   ARRAY(SELECT g.feature_key FROM plan_feature_grants g WHERE g.plan_id = t.plan_id)
+            FROM tenants t WHERE t.id = %s""", (tenant_id,))
+        row = cur.fetchone()
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ _plugin_features_for_tenant error:", e)
+        row = None
+    if not row:
+        return {flag: False for flag in PLUGIN_FEATURE_PLAN_KEYS}
+    plan_id, raw, grants = row
+    feats = raw if isinstance(raw, dict) else (_json.loads(raw) if raw else {})
+    grants = set(grants or [])
+    grandfathered = feats.get(GRANDFATHER_MARKER) is not None and feats.get(GRANDFATHER_MARKER) == plan_id
+    out = {flag: (key in grants) or (grandfathered and bool(feats.get(flag)))
+           for flag, key in PLUGIN_FEATURE_PLAN_KEYS.items()}
+    # WhatsApp templates need WhatsApp — see _wa_locked_for_tenant.
+    if out.get("whatsapp_message_templates") and _wa_locked_for_tenant(tenant_id):
+        out["whatsapp_message_templates"] = False
+    return out
+
+
+def _plugin_feature_on(tenant_id: int, flag: str) -> bool:
+    return bool(_plugin_features_for_tenant(tenant_id).get(flag))
+
+
 
 
 def _build_role_form_grid(feature_catalog: dict) -> dict:
@@ -1173,10 +980,101 @@ def _build_role_form_grid(feature_catalog: dict) -> dict:
     return grid
 
 
+# ── WhatsApp for WooCommerce merchants needs a Dual Agent plan (2026-09-24) ──
+# A merchant who signed up through the WooCommerce plugin (tenants.source_type
+# 'web') only gets WhatsApp while their plan's "Who sees this plan" is Dual
+# Agent. A Custom plan ("both") follows its own ticks. Every other plan —
+# trial, Free, WooCommerce-only, or a WhatsApp plan they happen to sit on —
+# keeps WhatsApp locked. Goes by plan type only; no tenant is named. The
+# WhatsApp gateway and the plugin status endpoint apply the same rule.
+WA_FEATURE_PREFIXES = ("wa.", "campaigns_wa.", "woo.message_templates",
+                       "legacy:feat_broadcasts", "legacy:feat_fw_checkout")
+
+
+def _is_wa_feature_key(feature_key: str) -> bool:
+    return bool(feature_key) and feature_key.startswith(WA_FEATURE_PREFIXES)
+
+
+def _wa_locked_for_tenant(tenant_id: int) -> bool:
+    """True when this tenant is a WooCommerce merchant whose plan doesn't
+    include WhatsApp. Never raises; on a DB error it returns False so a
+    WhatsApp merchant is never locked out by a hiccup."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT t.source_type, COALESCE(p.channel_mode, 'whatsapp')
+            FROM tenants t LEFT JOIN plans p ON p.id = t.plan_id
+            WHERE t.id = %s""", (tenant_id,))
+        row = cur.fetchone()
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ _wa_locked_for_tenant error:", e)
+        return False
+    if not row:
+        return False
+    source_type, mode = row
+    return source_type == "web" and mode not in ("dual", "both")
+
+
+def _cheapest_dual_plan() -> dict | None:
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT name, price_ngn, price_usd FROM plans
+            WHERE channel_mode='dual' AND is_active=TRUE AND NOT is_custom
+            ORDER BY price_ngn, sort_order LIMIT 1""")
+        row = cur.fetchone()
+        cur.close(); conn.close()
+        return row
+    except Exception as e:
+        print("⚠️ _cheapest_dual_plan error:", e)
+        return None
+
+
+def _wa_dual_required_page(customer: dict, feature_label: str = "WhatsApp"):
+    plan = _get_tenant_plan(int(customer["tenant_id"]))
+    return render_template(
+        "portal/upgrade_dual_required.html",
+        customer=customer,
+        feature_label=feature_label,
+        dual_plan=_cheapest_dual_plan(),
+        current_plan=plan.get("plan_name", "Free"),
+        is_trial=plan.get("is_trial", False),
+    ), 403
+
+
+@portal_bp.before_request
+def _lock_whatsapp_without_dual_plan():
+    """Blocks every route labelled ONLY with WhatsApp feature keys (route
+    labels, feature_access.py) for a WooCommerce merchant without a Dual
+    Agent plan — typing the URL or posting directly can't skip it."""
+    view = current_app.view_functions.get(request.endpoint)
+    _kind, keys = route_access(view)
+    if not keys or not all(_is_wa_feature_key(k) for k in keys):
+        return None
+    cid = _customer_id()
+    customer = _get_customer(cid) if cid else None
+    if not customer or not _wa_locked_for_tenant(int(customer["tenant_id"])):
+        return None
+    if request.method != "GET" and (
+            request.is_json
+            or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+            or request.endpoint in ("portal.whatsapp_embedded_callback",
+                                    "portal.whatsapp_check_token")):
+        return jsonify({"error": "WhatsApp is part of the Dual Agent plan. "
+                                 "Upgrade to a Dual Agent plan to connect WhatsApp."}), 403
+    return _wa_dual_required_page(customer)
+
+
 def _plan_grants_feature(plan: dict, feature_key: str) -> bool:
     """True if the tenant's plan grants this feature_key. Legacy keys read
     the existing feat_* boolean column on the plan row; new keys are looked
     up in plan_feature_grants."""
+    if _is_wa_feature_key(feature_key) and plan.get("tenant_id") \
+            and _wa_locked_for_tenant(int(plan["tenant_id"])):
+        return False
     if feature_key.startswith("legacy:"):
         return bool(plan.get(feature_key.split(":", 1)[1]))
     conn = get_db_connection()
@@ -1190,25 +1088,28 @@ def _plan_grants_feature(plan: dict, feature_key: str) -> bool:
     return granted
 
 
-def _min_plan_for_feature(feature_key: str) -> str:
-    """Cheapest active single-channel plan that grants feature_key, for the
-    upgrade-required message. Falls back to 'a higher' if none do (Custom-only)."""
+def _min_plan_for_feature(feature_key: str, merchant_mode: str = "whatsapp") -> str:
+    """Cheapest active plan of the merchant's own channel (see
+    _merchant_plan_mode) that grants feature_key, for the upgrade-required
+    message. Falls back to 'a higher' if none do (Custom-only)."""
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     if feature_key.startswith("legacy:"):
         col = feature_key.split(":", 1)[1]
         cur.execute(f"""
             SELECT name FROM plans
-            WHERE channel_mode='single' AND is_active=TRUE AND {col}=TRUE
+            WHERE channel_mode IN (%s, CASE WHEN %s = 'whatsapp' THEN 'single' END)
+              AND is_active=TRUE AND {col}=TRUE
             ORDER BY sort_order LIMIT 1
-        """)
+        """, (merchant_mode, merchant_mode))
     else:
         cur.execute("""
             SELECT p.name FROM plans p
             JOIN plan_feature_grants g ON g.plan_id = p.id AND g.feature_key=%s
-            WHERE p.channel_mode='single' AND p.is_active=TRUE
+            WHERE p.channel_mode IN (%s, CASE WHEN %s = 'whatsapp' THEN 'single' END)
+              AND p.is_active=TRUE
             ORDER BY p.sort_order LIMIT 1
-        """, (feature_key,))
+        """, (feature_key, merchant_mode, merchant_mode))
     row = cur.fetchone()
     cur.close(); conn.close()
     return row["name"] if row else "a higher"
@@ -1223,16 +1124,22 @@ def _require_plan_sub_feature(customer: dict, feature_key: str, feature_label: s
     Returns None if allowed, or a Response (upgrade page) if blocked.
     """
     tenant_id = int(customer["tenant_id"])
+    if _is_wa_feature_key(feature_key) and _wa_locked_for_tenant(tenant_id):
+        return _wa_dual_required_page(customer, feature_label)
     plan = _get_tenant_plan(tenant_id)
 
     if _plan_grants_feature(plan, feature_key):
+        return None
+    # A grandfathered WooCommerce Plugin feature keeps its page open too.
+    _flag = next((f for f, k in PLUGIN_FEATURE_PLAN_KEYS.items() if k == feature_key), None)
+    if _flag and _plugin_feature_on(tenant_id, _flag):
         return None
 
     return render_template(
         "portal/upgrade_required.html",
         customer=customer,
         feature_label=feature_label,
-        min_plan_name=_min_plan_for_feature(feature_key),
+        min_plan_name=_min_plan_for_feature(feature_key, _merchant_plan_mode(customer)),
         current_plan=plan.get("plan_name", "Free"),
         is_trial=plan.get("is_trial", False),
     )
@@ -1522,7 +1429,10 @@ DESTRUCTIVE_FEATURE_KEYS = {
     "ai.handoff_rules_delete",
     "ai.agent_profiles_delete",
     "store.info_documents_delete",
+    "store.info_delete",
     "wa.connect_delete",
+    "campaigns_wa.segments_delete",
+    "wa.history_import_delete",
 }
 
 # Any permission that lets someone manage other team members' access at all.
@@ -2371,19 +2281,18 @@ def _grant_trial_upgrade(tenant_id: int, source_type: str) -> bool:
         return False
     is_founder = bool(row.get("is_founder"))
     trial_interval = "INTERVAL '1 year'" if is_founder else "INTERVAL '30 days'"
-    features = _json.dumps(_build_trial_features(source_type))
-
+    # WooCommerce Plugin features come from the trial plan itself now
+    # (PLUGIN_FEATURE_PLAN_KEYS) — the trial no longer writes feature flags.
     cur2 = conn.cursor()
     cur2.execute(f"""
         UPDATE tenants
         SET plan_id           = (SELECT id FROM plans WHERE slug='pro' LIMIT 1),
             plan_period_start = CURRENT_DATE,
             trial_ends_at     = CURRENT_DATE + {trial_interval},
-            trial_granted_at  = NOW(),
-            features          = %s
+            trial_granted_at  = NOW()
         WHERE id = %s AND trial_granted_at IS NULL
         RETURNING id
-    """, (features, tenant_id))
+    """, (tenant_id,))
     granted = cur2.fetchone() is not None
     conn.commit()
     cur2.close(); cur.close(); conn.close()
@@ -2398,6 +2307,7 @@ def _grant_trial_upgrade(tenant_id: int, source_type: str) -> bool:
 
 
 @portal_bp.route("/api/founder-spots")
+@public_route
 def api_founder_spots():
     """Public endpoint — returns remaining founder spots as JSON.
     Used by the marketing site to show a live spot count.
@@ -2591,6 +2501,7 @@ def _send_verified_welcome_email_web(
 
 
 @portal_bp.route("/", methods=["GET"])
+@public_route
 def home():
     if _logged_in() and _customer_id():
         return redirect(url_for("portal.dashboard"))
@@ -2600,6 +2511,7 @@ def home():
 
 
 @portal_bp.route("/sw.js")
+@public_route
 def service_worker():
     """Serve SW from root so its scope covers the entire portal."""
     return send_from_directory(
@@ -2610,6 +2522,7 @@ def service_worker():
 
 
 @portal_bp.route("/try-demo")
+@public_route
 def try_demo():
     """One-click public demo login — always lands on the shared demo account."""
     session.clear()
@@ -2649,6 +2562,23 @@ def _connect_status_rate_ok(ip):
     if len(attempts) >= _CONNECT_STATUS_MAX:
         return False
     _connect_status_attempts[ip].append(now)
+    return True
+
+
+# The plugin's WhatsApp plan check (/connect/whatsapp-status) gets its own,
+# higher limit: every store polls it every 15 min, and many WordPress stores
+# on one shared host come from the same IP address.
+_wa_status_attempts = _defaultdict(list)
+_WA_STATUS_MAX = 600
+_WA_STATUS_WINDOW = 3600
+
+def _wa_status_rate_ok(ip):
+    now = _time.time()
+    attempts = [t for t in _wa_status_attempts[ip] if now - t < _WA_STATUS_WINDOW]
+    _wa_status_attempts[ip] = attempts
+    if len(attempts) >= _WA_STATUS_MAX:
+        return False
+    _wa_status_attempts[ip].append(now)
     return True
 
 
@@ -2949,6 +2879,7 @@ def _register_web_merchant(first_name, last_name, email, password, phone_number,
 
 
 @portal_bp.route("/register/whatsapp-setup-qr")
+@public_route
 def register_whatsapp_setup_qr():
     """Public QR code — encodes the Phixtra setup WhatsApp number with SETUP pre-typed."""
     import re as _re, io, qrcode
@@ -2980,6 +2911,7 @@ def register_whatsapp_setup_qr():
 
 
 @portal_bp.route("/connect", methods=["GET", "POST"])
+@public_route
 def wp_connect():
     """
     Dedicated, simplified signup page for merchants arriving from the
@@ -3079,6 +3011,7 @@ def wp_connect():
 
 
 @portal_bp.route("/connect/status")
+@public_route
 def wp_connect_status():
     """
     Public, read-only status check the WordPress plugins (PhiXtra AI Shopping
@@ -3119,6 +3052,69 @@ def wp_connect_status():
     return jsonify({"verified": bool(row and row["email_verified"])})
 
 
+@portal_bp.route("/connect/whatsapp-status")
+@public_route
+def wp_whatsapp_status():
+    """
+    Read-only check the WooCommerce plugin calls (every 15 min + when its
+    settings page opens) to decide whether its "WhatsApp AI" button may be
+    used: WhatsApp for WooCommerce merchants needs a Dual Agent plan (see
+    _wa_locked_for_tenant). The store's API key comes in the X-PhiXtra-Key
+    header, never the URL. Returns the plan name and, when allowed, the
+    WhatsApp number connected in PhiXtra so the plugin can fill it in.
+    Rate-limited per IP (own, higher limit — see _wa_status_rate_ok).
+    """
+    client_ip = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
+    if not _wa_status_rate_ok(client_ip):
+        return jsonify({"error": "rate_limited"}), 429
+
+    api_key = (request.headers.get("X-PhiXtra-Key") or "").strip()
+    if not api_key or len(api_key) > 128:
+        return jsonify({"error": "missing_key"}), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT ak.api_key_hash, t.id AS tenant_id, COALESCE(p.name, 'Free') AS plan_name
+        FROM api_keys ak
+        JOIN tenants t ON t.id = ak.tenant_id
+        LEFT JOIN plans p ON p.id = t.plan_id
+        WHERE ak.is_active = TRUE AND t.status IN ('active', 'pending')
+          AND ak.api_key_plain = %s
+        LIMIT 1
+    """, (api_key,))
+    row = cur.fetchone()
+    ok = False
+    if row:
+        try:
+            ok = bcrypt.checkpw(api_key.encode("utf-8"), row["api_key_hash"].encode("utf-8"))
+        except Exception:
+            ok = False
+    if not ok:
+        cur.close(); conn.close()
+        return jsonify({"error": "invalid_key"}), 401
+
+    tenant_id = int(row["tenant_id"])
+    allowed = not _wa_locked_for_tenant(tenant_id)
+    number = ""
+    if allowed:
+        cur.execute("""
+            SELECT display_phone_number FROM wa_tenants
+            WHERE tenant_id=%s AND active=TRUE AND display_phone_number IS NOT NULL
+            ORDER BY id LIMIT 1
+        """, (tenant_id,))
+        wa = cur.fetchone()
+        number = "".join(ch for ch in (wa["display_phone_number"] if wa else "") if ch.isdigit())
+    cur.close(); conn.close()
+
+    return jsonify({
+        "whatsapp_allowed": allowed,
+        "plan_name": row["plan_name"],
+        "whatsapp_number": number,
+        "upgrade_url": f"{_PORTAL_BASE_URL}/billing/plans?view=dual",
+    })
+
+
 HEAR_ABOUT_US_OPTIONS = [
     ("google",           "Google"),
     ("referral",         "Referral"),
@@ -3138,6 +3134,7 @@ def _build_register_ctx(form_data=None):
 
 
 @portal_bp.route("/register", methods=["GET", "POST"])
+@public_route
 def register():
     if request.method == "GET":
         ref = (request.args.get("ref") or "").strip().lower()[:30]
@@ -3352,6 +3349,7 @@ def register():
 
 
 @portal_bp.route("/register/check-email")
+@public_route
 def register_check_email():
     """Standalone 'check your email' confirmation for the WordPress-plugin
     signup flow — styled to match the rest of that flow instead of the
@@ -3361,6 +3359,7 @@ def register_check_email():
 
 
 @portal_bp.route("/register/verify-phone", methods=["GET", "POST"])
+@public_route
 def register_verify_phone():
     """Bot-check step inserted right after registration: the account isn't
     usable until the phone number typed in at signup receives and echoes
@@ -3406,6 +3405,7 @@ def register_verify_phone():
 
 
 @portal_bp.route("/register/resend-phone-otp", methods=["POST"])
+@public_route
 def register_resend_phone_otp():
     email = session.get("reg_verify_email", "")
     phone = session.get("reg_verify_phone", "")
@@ -3425,6 +3425,7 @@ def register_resend_phone_otp():
 
 
 @portal_bp.route("/verify", methods=["GET"])
+@public_route
 def verify_email():
     token = (request.args.get("token") or "").strip()
     if not token:
@@ -3511,6 +3512,7 @@ def verify_email():
 
 
 @portal_bp.route("/resend-verify", methods=["GET", "POST"])
+@public_route
 def resend_verify():
     """Let customers who never received (or lost) their verification email request a new one."""
     if request.method == "GET":
@@ -3559,6 +3561,7 @@ def resend_verify():
 
 
 @portal_bp.route("/login", methods=["GET", "POST"])
+@public_route
 def login():
     nxt = _safe_next(request.values.get("next"))
 
@@ -3669,12 +3672,14 @@ def login():
 
 
 @portal_bp.route("/logout")
+@any_team_member
 def logout():
     session.clear()
     return redirect(url_for("portal.home"))
 
 
 @portal_bp.route("/demo-access/<token>")
+@public_route
 def demo_access(token: str):
     """Auto-login for ambassador demo portal tenants."""
     conn = get_db_connection()
@@ -3721,6 +3726,7 @@ def demo_access(token: str):
 
 
 @portal_bp.route("/forgot", methods=["GET", "POST"])
+@public_route
 def forgot_password():
     if request.method == "GET":
         return render_template("portal/forgot.html")
@@ -3757,6 +3763,7 @@ def forgot_password():
 
 
 @portal_bp.route("/reset", methods=["GET", "POST"])
+@public_route
 def reset_password():
     token = (request.args.get("token") or request.form.get("token") or "").strip()
     if request.method == "GET":
@@ -3805,6 +3812,7 @@ def reset_password():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/team")
+@team_feature("team.manage")
 def team_page():
     r = _require_login()
     if r: return r
@@ -3903,6 +3911,7 @@ def _get_team_members_for_manager_picker(tenant_id: int, exclude_id: int = None)
 
 
 @portal_bp.route("/team/new", methods=["GET", "POST"])
+@team_feature("team.members_create")
 def team_create():
     """Direct-create a team member — the PRIMARY way to add someone, per
     the user's explicit correction ("admin should create a user... I don't
@@ -4051,6 +4060,7 @@ def team_create():
 
 
 @portal_bp.route("/team/<int:member_id>/role", methods=["POST"])
+@team_feature("team.members_assign_role")
 def team_update_role(member_id: int):
     r = _require_login()
     if r: return r
@@ -4091,6 +4101,7 @@ def team_update_role(member_id: int):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/team/roles")
+@team_feature("team.roles_create", "team.roles_edit")
 def team_roles_page():
     r = _require_login()
     if r: return r
@@ -4118,6 +4129,7 @@ def team_roles_page():
 
 
 @portal_bp.route("/team/roles/new", methods=["GET", "POST"])
+@team_feature("team.roles_create")
 def team_role_new():
     r = _require_login()
     if r: return r
@@ -4163,6 +4175,7 @@ def team_role_new():
 
 
 @portal_bp.route("/team/roles/<int:role_id>/edit", methods=["GET", "POST"])
+@team_feature("team.roles_edit")
 def team_role_edit(role_id: int):
     r = _require_login()
     if r: return r
@@ -4217,6 +4230,7 @@ def team_role_edit(role_id: int):
 
 
 @portal_bp.route("/team/roles/<int:role_id>/delete", methods=["POST"])
+@team_feature("team.roles_delete")
 def team_role_delete(role_id: int):
     r = _require_login()
     if r: return r
@@ -4254,6 +4268,7 @@ def team_role_delete(role_id: int):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/team/departments")
+@team_feature("team.departments_create", "team.departments_edit")
 def team_departments_page():
     r = _require_login()
     if r: return r
@@ -4272,6 +4287,7 @@ def team_departments_page():
 
 
 @portal_bp.route("/team/departments/new", methods=["GET", "POST"])
+@team_feature("team.departments_create")
 def team_department_new():
     r = _require_login()
     if r: return r
@@ -4307,6 +4323,7 @@ def team_department_new():
 
 
 @portal_bp.route("/team/departments/<int:dept_id>/edit", methods=["GET", "POST"])
+@team_feature("team.departments_edit")
 def team_department_edit(dept_id: int):
     r = _require_login()
     if r: return r
@@ -4347,6 +4364,7 @@ def team_department_edit(dept_id: int):
 
 
 @portal_bp.route("/team/departments/<int:dept_id>/delete", methods=["POST"])
+@team_feature("team.departments_delete")
 def team_department_delete(dept_id: int):
     r = _require_login()
     if r: return r
@@ -4383,6 +4401,7 @@ def team_department_delete(dept_id: int):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/team/positions")
+@team_feature("team.positions_create", "team.positions_edit")
 def team_positions_page():
     r = _require_login()
     if r: return r
@@ -4401,6 +4420,7 @@ def team_positions_page():
 
 
 @portal_bp.route("/team/positions/new", methods=["GET", "POST"])
+@team_feature("team.positions_create")
 def team_position_new():
     r = _require_login()
     if r: return r
@@ -4436,6 +4456,7 @@ def team_position_new():
 
 
 @portal_bp.route("/team/positions/<int:pos_id>/edit", methods=["GET", "POST"])
+@team_feature("team.positions_edit")
 def team_position_edit(pos_id: int):
     r = _require_login()
     if r: return r
@@ -4476,6 +4497,7 @@ def team_position_edit(pos_id: int):
 
 
 @portal_bp.route("/team/positions/<int:pos_id>/delete", methods=["POST"])
+@team_feature("team.positions_delete")
 def team_position_delete(pos_id: int):
     r = _require_login()
     if r: return r
@@ -4508,6 +4530,7 @@ def team_position_delete(pos_id: int):
 
 
 @portal_bp.route("/team/<int:member_id>/deactivate", methods=["POST"])
+@team_feature("team.members_deactivate")
 def team_deactivate(member_id: int):
     r = _require_login()
     if r: return r
@@ -4527,6 +4550,7 @@ def team_deactivate(member_id: int):
 
 
 @portal_bp.route("/team/<int:member_id>/activate", methods=["POST"])
+@team_feature("team.members_deactivate")
 def team_activate(member_id: int):
     r = _require_login()
     if r: return r
@@ -4551,6 +4575,7 @@ def team_activate(member_id: int):
 
 
 @portal_bp.route("/team/<int:member_id>/remove", methods=["POST"])
+@team_feature("team.members_remove")
 def team_remove(member_id: int):
     r = _require_login()
     if r: return r
@@ -4570,6 +4595,7 @@ def team_remove(member_id: int):
 
 
 @portal_bp.route("/team/<int:member_id>/reset-password", methods=["POST"])
+@team_feature("team.members_reset_password")
 def team_reset_password(member_id: int):
     """The only recovery path for a team member who never got (or lost) the
     one-time password shown at creation — there is no self-service 'forgot
@@ -4610,6 +4636,7 @@ def team_reset_password(member_id: int):
 
 
 @portal_bp.route("/team/<int:member_id>/agents", methods=["POST"])
+@team_feature("team.members_agent_access")
 def team_update_agents(member_id: int):
     r = _require_login()
     if r: return r
@@ -4641,6 +4668,7 @@ def team_update_agents(member_id: int):
 
 
 @portal_bp.route("/team/<int:member_id>/messenger", methods=["POST"])
+@team_feature("team.members_messenger_access")
 def team_update_messenger(member_id: int):
     """Grant or remove one team member's access to Facebook Messenger
     conversations in the shared Inbox. Own switch, not folded into the
@@ -4676,6 +4704,7 @@ def team_update_messenger(member_id: int):
 
 
 @portal_bp.route("/team/<int:member_id>/webchat", methods=["POST"])
+@team_feature("team.members_webchat_access")
 def team_update_webchat(member_id: int):
     """Grant or remove one team member's access to Web Chat (the AI website
     chat widget's human-handoff conversations) in the shared Inbox. Own
@@ -4750,10 +4779,13 @@ def _get_pending_handoffs(tenant_id: int) -> list:
 
 
 @portal_bp.route("/handoff/<int:handoff_id>/handled", methods=["POST"])
+@team_feature("dashboard.handoff_handled")
 def handoff_mark_handled(handoff_id: int):
     """Mark a handoff request as handled. Only the owning tenant can do this."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("dashboard.handoff_handled")
+    if _rperm: return _rperm
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -4782,6 +4814,7 @@ def handoff_mark_handled(handoff_id: int):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/dashboard")
+@team_feature("dashboard.page")
 def dashboard():
     r = _require_login()
     if r: return r
@@ -4900,6 +4933,7 @@ def dashboard():
 
 # ── Dismiss onboarding wizard ──────────────────────────────────────────────────
 @portal_bp.route("/onboarding/dismiss", methods=["POST"])
+@owner_only
 def onboarding_dismiss():
     r = _require_login()
     if r: return r
@@ -4915,6 +4949,7 @@ def onboarding_dismiss():
 
 
 @portal_bp.route("/onboarding/dismiss-wa", methods=["POST"])
+@owner_only
 def onboarding_dismiss_wa():
     """Dismiss the WA getting-started wizard once wa_complete is True."""
     r = _require_login()
@@ -4934,6 +4969,7 @@ def onboarding_dismiss_wa():
 
 
 @portal_bp.route("/onboarding/dismiss-website", methods=["POST"])
+@owner_only
 def onboarding_dismiss_website():
     """Dismiss the optional website expansion card."""
     r = _require_login()
@@ -4953,6 +4989,7 @@ def onboarding_dismiss_website():
 
 
 @portal_bp.route("/onboarding/confirm-step", methods=["POST"])
+@owner_only
 def onboarding_confirm_step():
     """Customer manually confirms a setup step is done."""
     r = _require_login()
@@ -4984,6 +5021,7 @@ def onboarding_confirm_step():
 
 
 @portal_bp.route("/plugins/download/<plugin_key>")
+@owner_only
 def plugin_download(plugin_key: str):
     """Authenticated customers download a plugin zip."""
     r = _require_login()
@@ -5011,6 +5049,7 @@ def plugin_download(plugin_key: str):
 
 # ── Onboarding wizard detail page ──────────────────────────────────────────────
 @portal_bp.route("/onboarding")
+@owner_only
 def onboarding():
     r = _require_login()
     if r: return r
@@ -5037,6 +5076,7 @@ def onboarding():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/api-keys")
+@team_feature("ai.api_keys_view")
 def api_keys():
     r = _require_login()
     if r: return r
@@ -5083,6 +5123,7 @@ def api_keys():
 
 
 @portal_bp.route("/api-keys/<int:key_id>/revoke", methods=["POST"])
+@team_feature("ai.api_keys_revoke")
 def api_keys_revoke(key_id: int):
     r = _require_login()
     if r: return r
@@ -5130,6 +5171,7 @@ def api_keys_revoke(key_id: int):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/billing")
+@team_feature("billing.credits_view")
 def billing():
     r = _require_login()
     if r: return r
@@ -5200,6 +5242,7 @@ def billing():
 
 
 @portal_bp.route("/billing/checkout", methods=["POST"])
+@team_feature("billing.credits_manage")
 def billing_checkout():
     r = _require_login()
     if r: return r
@@ -5297,6 +5340,7 @@ def billing_checkout():
 
 
 @portal_bp.route("/stripe/webhook", methods=["POST"])
+@public_route
 def stripe_webhook():
     if not _stripe_ok():
         return "not configured", 400
@@ -5508,39 +5552,8 @@ def stripe_webhook():
     # Also reactivate any existing paid keys (handles non-trial top-ups)
     cur2.execute("UPDATE api_keys SET is_active=TRUE WHERE tenant_id=%s AND key_type='paid'", (tenant_id,))
 
-    # ── Apply the package's features to the tenant ────────────────────────────
-    # Look up the package that was purchased via the invoice, then merge its
-    # features JSON into the tenant's existing features so that any premium
-    # features included in the package are activated immediately on payment.
-    package_id = int(inv.get("package_id") or 0)
-    if package_id:
-        cur3 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur3.execute("SELECT features FROM credit_packages WHERE id=%s", (package_id,))
-        pkg_row = cur3.fetchone()
-        cur3.close()
-        if pkg_row and pkg_row.get("features"):
-            try:
-                pkg_features = _json_mod.loads(pkg_row["features"]) if isinstance(pkg_row["features"], str) else pkg_row["features"]
-            except Exception:
-                pkg_features = {}
-            if pkg_features:
-                # Load the tenant's current features, merge the package features in,
-                # then save back. This preserves any features already on the tenant.
-                cur4 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-                cur4.execute("SELECT features FROM tenants WHERE id=%s", (tenant_id,))
-                tenant_row = cur4.fetchone()
-                cur4.close()
-                try:
-                    existing = _json_mod.loads(tenant_row["features"]) if (tenant_row and tenant_row.get("features")) else {}
-                except Exception:
-                    existing = {}
-                # Merge: package features are added on top of existing features
-                existing.update(pkg_features)
-                cur5 = conn.cursor()
-                cur5.execute("UPDATE tenants SET features=%s WHERE id=%s",
-                             (_json_mod.dumps(existing), tenant_id))
-                cur5.close()
-    # ─────────────────────────────────────────────────────────────────────────
+    # Packages only sell AI-message credits (2026-09-23) — features come
+    # from the merchant's plan, so a purchase no longer touches tenants.features.
 
     cur.execute("""
         SELECT c.email, c.first_name, t.name AS tenant_name
@@ -5617,6 +5630,7 @@ def stripe_webhook():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/invoices")
+@team_feature("billing.invoices_view")
 def invoices():
     r = _require_login()
     if r: return r
@@ -5667,9 +5681,12 @@ def invoices():
 
 
 @portal_bp.route("/invoice/<int:invoice_id>/download")
+@team_feature("billing.invoices_view")
 def invoice_download(invoice_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("billing.invoices_view")
+    if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
     customer_id = int(customer["id"])
@@ -5746,7 +5763,7 @@ def _get_cart_recovery_data(tenant_id: int, days: int = 30) -> dict:
             features = _json.loads(t_row.get("features") or "{}")
         except Exception:
             pass
-        if not features.get("cart_recovery"):
+        if not _plugin_feature_on(tenant_id, "cart_recovery"):
             return _safe
         _safe["enabled"] = True
 
@@ -5872,6 +5889,7 @@ def _get_cart_recovery_data(tenant_id: int, days: int = 30) -> dict:
 
 
 @portal_bp.route("/cart-recovery/settings", methods=["POST"])
+@team_feature("woo.cart_recovery_edit")
 def cart_recovery_save_settings():
     """
     Allows the store owner (customer) to update their own cart recovery settings
@@ -5917,7 +5935,7 @@ def cart_recovery_save_settings():
             pass
 
         # Only allow changes if cart_recovery is already enabled for this tenant
-        if not features.get("cart_recovery"):
+        if not _plugin_feature_on(tenant_id, "cart_recovery"):
             flash("Cart Recovery is not yet enabled for your account. Contact PhiXtra support.", "warning")
             return redirect(url_for("portal.cart_recovery_dashboard"))
 
@@ -5960,6 +5978,7 @@ def cart_recovery_save_settings():
 
 
 @portal_bp.route("/cart-recovery")
+@team_feature("woo.cart_recovery_view")
 def cart_recovery_dashboard():
     r = _require_login()
     if r: return r
@@ -6082,6 +6101,7 @@ def _get_agents_for_tenant(tenant_id: int) -> list:
 
 
 @portal_bp.route("/agents", methods=["GET"])
+@team_feature("ai.agent_profiles_view")
 def ai_agents():
     r = _require_login()
     if r: return r
@@ -6104,6 +6124,7 @@ def ai_agents():
 
 
 @portal_bp.route("/agents/new", methods=["GET", "POST"])
+@team_feature("ai.agent_profiles_create")
 def ai_agents_new():
     r = _require_login()
     if r: return r
@@ -6161,6 +6182,7 @@ def ai_agents_new():
 
 
 @portal_bp.route("/agents/<int:agent_id>/edit", methods=["GET", "POST"])
+@team_feature("ai.agent_profiles_edit")
 def ai_agents_edit(agent_id: int):
     r = _require_login()
     if r: return r
@@ -6225,6 +6247,7 @@ def ai_agents_edit(agent_id: int):
 
 
 @portal_bp.route("/agents/<int:agent_id>/activate", methods=["POST"])
+@team_feature("ai.agent_profiles_edit")
 def ai_agents_activate(agent_id: int):
     r = _require_login()
     if r: return r
@@ -6265,6 +6288,7 @@ def ai_agents_activate(agent_id: int):
 
 
 @portal_bp.route("/agents/<int:agent_id>/delete", methods=["POST"])
+@team_feature("ai.agent_profiles_delete")
 def ai_agents_delete(agent_id: int):
     r = _require_login()
     if r: return r
@@ -6309,6 +6333,7 @@ def ai_agents_delete(agent_id: int):
 
 
 @portal_bp.route("/system-instruction", methods=["GET", "POST"])
+@team_feature("ai.instructions_edit", "ai.instructions_view")
 def ai_instruction():
     r = _require_login()
     if r: return r
@@ -6544,6 +6569,7 @@ def _save_spec_settings(tenant_id: int, domains: list, specs: list) -> None:
 
 
 @portal_bp.route("/verified-specs-settings", methods=["GET"])
+@team_feature("woo.verified_specs_view")
 def verified_specs_settings():
     """Render the Verified Specs settings page."""
     r = _require_login()
@@ -6555,7 +6581,7 @@ def verified_specs_settings():
         session.clear()
         flash("Your account could not be loaded. Please log in again.", "danger")
         return redirect(url_for("portal.login"))
-    r2 = _require_plan_sub_feature(customer, "woo.verified_specs", "Verified Specs Lookup")
+    r2 = _require_plan_sub_feature(customer, "woo.verified_specs_view", "Verified Specs Lookup")
     if r2: return r2
     tenant_id = int(customer["tenant_id"])
 
@@ -6568,7 +6594,7 @@ def verified_specs_settings():
         cur.close(); conn.close()
         import json as _j
         feat = _j.loads(row.get("features") or "{}") if isinstance(row.get("features"), str) else (row.get("features") or {})
-        feature_enabled = bool(feat.get("verified_specs_web_lookup", False))
+        feature_enabled = _plugin_feature_on(tenant_id, "verified_specs_web_lookup")
     except Exception:
         feature_enabled = False
 
@@ -6583,6 +6609,7 @@ def verified_specs_settings():
 
 
 @portal_bp.route("/verified-specs-settings/domain-add", methods=["POST"])
+@team_feature("woo.verified_specs_create")
 def verified_specs_domain_add():
     """Add a custom trusted domain for this tenant."""
     r = _require_login()
@@ -6592,7 +6619,7 @@ def verified_specs_domain_add():
     customer  = _get_customer(_customer_id())
     if not customer:
         return redirect(url_for("portal.login"))
-    r2 = _require_plan_sub_feature(customer, "woo.verified_specs", "Verified Specs Lookup")
+    r2 = _require_plan_sub_feature(customer, "woo.verified_specs_view", "Verified Specs Lookup")
     if r2: return r2
     tenant_id = int(customer["tenant_id"])
 
@@ -6624,6 +6651,7 @@ def verified_specs_domain_add():
 
 
 @portal_bp.route("/verified-specs-settings/domain-delete", methods=["POST"])
+@team_feature("woo.verified_specs_delete")
 def verified_specs_domain_delete():
     """Remove a custom trusted domain for this tenant."""
     r = _require_login()
@@ -6633,7 +6661,7 @@ def verified_specs_domain_delete():
     customer  = _get_customer(_customer_id())
     if not customer:
         return redirect(url_for("portal.login"))
-    r2 = _require_plan_sub_feature(customer, "woo.verified_specs", "Verified Specs Lookup")
+    r2 = _require_plan_sub_feature(customer, "woo.verified_specs_view", "Verified Specs Lookup")
     if r2: return r2
     tenant_id = int(customer["tenant_id"])
 
@@ -6658,6 +6686,7 @@ def verified_specs_domain_delete():
 
 
 @portal_bp.route("/verified-specs-settings/spec-add", methods=["POST"])
+@team_feature("woo.verified_specs_create")
 def verified_specs_spec_add():
     """Add a custom spec type for this tenant."""
     r = _require_login()
@@ -6667,7 +6696,7 @@ def verified_specs_spec_add():
     customer  = _get_customer(_customer_id())
     if not customer:
         return redirect(url_for("portal.login"))
-    r2 = _require_plan_sub_feature(customer, "woo.verified_specs", "Verified Specs Lookup")
+    r2 = _require_plan_sub_feature(customer, "woo.verified_specs_view", "Verified Specs Lookup")
     if r2: return r2
     tenant_id = int(customer["tenant_id"])
 
@@ -6708,6 +6737,7 @@ def verified_specs_spec_add():
 
 
 @portal_bp.route("/verified-specs-settings/spec-delete", methods=["POST"])
+@team_feature("woo.verified_specs_delete")
 def verified_specs_spec_delete():
     """Remove a custom spec type for this tenant."""
     r = _require_login()
@@ -6717,7 +6747,7 @@ def verified_specs_spec_delete():
     customer  = _get_customer(_customer_id())
     if not customer:
         return redirect(url_for("portal.login"))
-    r2 = _require_plan_sub_feature(customer, "woo.verified_specs", "Verified Specs Lookup")
+    r2 = _require_plan_sub_feature(customer, "woo.verified_specs_view", "Verified Specs Lookup")
     if r2: return r2
     tenant_id = int(customer["tenant_id"])
 
@@ -6837,7 +6867,11 @@ def _has_feature(tenant_id: int, key: str) -> bool:
     """
     Return True if the tenant's features JSON contains the given key set to a truthy value.
     Returns False on any error — callers must treat missing as 'not enabled'.
+    WooCommerce Plugin features are decided by the merchant's plan instead
+    (see PLUGIN_FEATURE_PLAN_KEYS).
     """
+    if key in PLUGIN_FEATURE_PLAN_KEYS:
+        return _plugin_feature_on(tenant_id, key)
     return bool(_get_recovery_features(tenant_id).get(key))
 
 
@@ -6870,22 +6904,10 @@ def _build_free_features(source_type: str) -> dict:
     }
 
 
-def _build_trial_features(source_type: str) -> dict:
-    """
-    Feature bundle granted on trial upgrade. cart_recovery is web-only —
-    it's driven by the website JS cart-abandonment widget and can never
-    fire for a WhatsApp-only merchant, so it's excluded for that channel.
-    """
-    return {
-        "product_recommendation":    True,
-        "related_products":          True,
-        "cart_recovery":             source_type != "whatsapp",
-        "verified_specs_web_lookup": True,
-        "chat_archive_unlimited":    True,
-    }
 
 
 @portal_bp.route("/cart-recovery/email-templates", methods=["GET", "POST"])
+@team_feature("woo.cart_recovery_templates_edit", "woo.cart_recovery_templates_view")
 def cart_recovery_email_template():
     r = _require_login()
     if r: return r
@@ -7949,11 +7971,24 @@ def _get_leads_sources_data(tenant_id: int, date_from, date_to) -> dict:
 
 CUSTOM_REPORT_EXPORT_MAX_ROWS = 20000
 
+# Lead → Opportunity redesign (2026-09-21) — the six outcome categories a
+# Lead/Opportunity can be reported by. Shared between the filter parsing
+# below, the SQL CASE in the "leads" entity's outcome column/filter, and the
+# report_custom_entity.html filter checkboxes. Every business's data.
+LEAD_OUTCOME_CATEGORIES = [
+    {"key": "new_open",   "label": "New / Open"},
+    {"key": "not_a_fit",  "label": "Not a Fit"},
+    {"key": "qualified",  "label": "Qualified"},
+    {"key": "won",        "label": "Won"},
+    {"key": "lost",       "label": "Lost"},
+    {"key": "dropped",    "label": "Dropped"},
+]
+
 CUSTOM_REPORT_ENTITIES = {
     "leads": {
         "label": "Leads and Deals",
         "icon": "🔥",
-        "desc": "Every lead and deal in your Sales Pipeline.",
+        "desc": "Every Lead and Opportunity you've recorded.",
         "columns": [
             {"key": "customer_name",  "label": "Customer Name",  "expr": "l.customer_name"},
             {"key": "contact_person", "label": "Contact Person", "expr": "l.contact_person"},
@@ -7961,7 +7996,10 @@ CUSTOM_REPORT_ENTITIES = {
             {"key": "email",          "label": "Email",          "expr": "l.email"},
             {"key": "deal_value",     "label": "Deal Value",     "expr": "l.deal_value",  "fmt": "money"},
             {"key": "stage",          "label": "Stage",          "expr": "l.stage",       "fmt": "stage_label"},
-            {"key": "outcome",        "label": "Outcome",        "expr": "l.outcome"},
+            {"key": "outcome",        "label": "Outcome",
+             "expr": "CASE WHEN l.outcome IN ('won','lost','dropped','not_a_fit') THEN l.outcome "
+                      "WHEN l.is_opportunity THEN 'qualified' ELSE 'new_open' END",
+             "fmt": "lead_outcome_label"},
             {"key": "source",         "label": "Source",         "expr": "l.source",      "fmt": "source_label"},
             {"key": "assigned_to",    "label": "Assigned To",    "expr": "l.assigned_to"},
             {"key": "company_name",   "label": "Company",        "expr": "co.name"},
@@ -8069,6 +8107,23 @@ def _custom_report_query_parts(tenant_id: int, entity: str, columns: list, filte
             if "none" in sources:
                 src_parts.append("l.source IS NULL")
             clauses.append("(" + " OR ".join(src_parts) + ")")
+        # Outcome category (2026-09-21 Lead → Opportunity redesign) — the same six
+        # categories the Outcome column itself computes, so filtering by "Qualified"
+        # here always matches what that column shows. Every business's data, no
+        # tenant-specific logic.
+        outcome_cats = filters.get("outcome_category") or []
+        if outcome_cats:
+            oc_parts = []
+            if "new_open" in outcome_cats:
+                oc_parts.append("l.outcome IS NULL AND NOT l.is_opportunity")
+            if "qualified" in outcome_cats:
+                oc_parts.append("l.outcome IS NULL AND l.is_opportunity")
+            for oc in ("not_a_fit", "won", "lost", "dropped"):
+                if oc in outcome_cats:
+                    oc_parts.append("l.outcome = %s")
+                    params.append(oc)
+            if oc_parts:
+                clauses.append("(" + " OR ".join(f"({p})" for p in oc_parts) + ")")
         if filters.get("date_from") and filters.get("date_to"):
             clauses.append("l.created_at::date BETWEEN %s AND %s")
             params.extend([filters["date_from"], filters["date_to"]])
@@ -8165,6 +8220,9 @@ def _format_custom_report_value(val, fmt: str, stage_labels: dict = None):
         return (stage_labels or {}).get(val, val)
     if fmt == "source_label":
         return {"whatsapp": "WhatsApp", "manual": "Manual Entry"}.get(val, "Not recorded")
+    if fmt == "lead_outcome_label":
+        return {"new_open": "New / Open", "qualified": "Qualified", "won": "Won",
+                "lost": "Lost", "dropped": "Dropped", "not_a_fit": "Not a Fit"}.get(val, val)
     if fmt == "campaign_status_label":
         return CAMPAIGN_STATUS_LABELS.get(val, val)
     if fmt == "title":
@@ -8175,6 +8233,7 @@ def _format_custom_report_value(val, fmt: str, stage_labels: dict = None):
 # ── Report pages ───────────────────────────────────────────────────────────────
 
 @portal_bp.route("/reports/usage")
+@team_feature("reports.usage")
 def report_usage():
     r = _require_login()
     if r: return r
@@ -8209,6 +8268,7 @@ def report_usage():
 
 
 @portal_bp.route("/reports/cart-recovery")
+@team_feature("reports.cart")
 def report_cart():
     r = _require_login()
     if r: return r
@@ -8244,6 +8304,7 @@ def report_cart():
 
 
 @portal_bp.route("/reports/billing")
+@team_feature("reports.billing")
 def report_billing():
     r = _require_login()
     if r: return r
@@ -8280,6 +8341,7 @@ def report_billing():
 
 
 @portal_bp.route("/reports/pipeline-overview")
+@team_feature("reports.pipeline_overview")
 def report_pipeline_overview():
     r = _require_login()
     if r: return r
@@ -8319,6 +8381,7 @@ def report_pipeline_overview():
 
 
 @portal_bp.route("/reports/pipeline-overview/export/<fmt>")
+@team_feature("reports.pipeline_overview")
 def report_pipeline_overview_export(fmt: str):
     """Same (title, subtitle, summary_pairs, headers, rows) shape as the
     generic /reports/export/<report>/<fmt> dispatcher, but its own dedicated
@@ -8381,6 +8444,7 @@ def report_pipeline_overview_export(fmt: str):
 
 
 @portal_bp.route("/reports/leads-sources")
+@team_feature("reports.leads_sources")
 def report_leads_sources():
     r = _require_login()
     if r: return r
@@ -8410,6 +8474,7 @@ def report_leads_sources():
 
 
 @portal_bp.route("/reports/leads-sources/export/<fmt>")
+@team_feature("reports.leads_sources")
 def report_leads_sources_export(fmt: str):
     """Same (title, subtitle, summary_pairs, headers, rows) export shape as
     Pipeline Overview -- NOT in CONNECT_CRM_ENDPOINTS on purpose, this
@@ -8452,6 +8517,7 @@ def report_leads_sources_export(fmt: str):
 
 
 @portal_bp.route("/reports/custom")
+@team_feature("reports.custom")
 def report_custom_picker():
     r = _require_login()
     if r: return r
@@ -8588,6 +8654,8 @@ def _read_custom_report_request(entity: str):
     if entity == "leads":
         filters["stage"]  = [s for s in request.args.getlist("stage") if s in PIPELINE_STAGE_ORDER]
         filters["source"] = [s for s in request.args.getlist("source") if s in ("whatsapp", "manual", "none")]
+        _valid_oc = {c["key"] for c in LEAD_OUTCOME_CATEGORIES}
+        filters["outcome_category"] = [o for o in request.args.getlist("outcome_category") if o in _valid_oc]
     elif entity == "contacts":
         filters["status"] = [s for s in request.args.getlist("status") if s in ("lead", "prospect", "customer", "inactive")]
     elif entity == "companies":
@@ -8605,6 +8673,7 @@ def _read_custom_report_request(entity: str):
 
 
 @portal_bp.route("/reports/custom/<entity>")
+@team_feature("reports.custom")
 def report_custom_entity(entity: str):
     r = _require_login()
     if r: return r
@@ -8702,10 +8771,12 @@ def report_custom_entity(entity: str):
         group_rows=group_rows, has_value_sum=has_value_sum,
         saved_views=saved_views, campaign_options=campaign_options,
         campaign_status_labels=CAMPAIGN_STATUS_LABELS,
+        lead_outcome_categories=LEAD_OUTCOME_CATEGORIES,
     )
 
 
 @portal_bp.route("/reports/custom/<entity>/export/<fmt>")
+@team_feature("reports.custom")
 def report_custom_entity_export(entity: str, fmt: str):
     r = _require_login()
     if r: return r
@@ -8781,6 +8852,8 @@ def _custom_report_config_from_form(entity: str, source) -> dict:
     if entity == "leads":
         cfg["stage"]  = [s for s in source.getlist("stage") if s in PIPELINE_STAGE_ORDER]
         cfg["source"] = [s for s in source.getlist("source") if s in ("whatsapp", "manual", "none")]
+        _valid_oc = {c["key"] for c in LEAD_OUTCOME_CATEGORIES}
+        cfg["outcome_category"] = [o for o in source.getlist("outcome_category") if o in _valid_oc]
     elif entity == "contacts":
         cfg["status"] = [s for s in source.getlist("status") if s in ("lead", "prospect", "customer", "inactive")]
     elif entity == "companies":
@@ -8820,6 +8893,7 @@ def _custom_report_config_normalized(cfg: dict) -> dict:
 
 
 @portal_bp.route("/reports/custom/<entity>/views/save", methods=["POST"])
+@team_feature("reports.custom")
 def report_custom_save_view(entity: str):
     r = _require_login()
     if r: return jsonify({"error": "Please log in again."}), 401
@@ -8855,6 +8929,7 @@ def report_custom_save_view(entity: str):
 
 
 @portal_bp.route("/reports/custom/<entity>/views/<int:view_id>/delete", methods=["POST"])
+@team_feature("reports.custom")
 def report_custom_delete_view(entity: str, view_id: int):
     r = _require_login()
     if r: return r
@@ -8880,6 +8955,7 @@ def report_custom_delete_view(entity: str, view_id: int):
 # ── Report export (PDF / Excel / Word) ────────────────────────────────────────
 
 @portal_bp.route("/reports/export/<report>/<fmt>")
+@team_feature("reports.usage", "reports.cart", "reports.billing")
 def report_export(report: str, fmt: str):
     r = _require_login()
     if r: return r
@@ -9480,6 +9556,7 @@ def _get_session_summary(tenant_id: int, session_id: str):
 
 
 @portal_bp.route("/chat-archive")
+@team_feature("woo.chat_archive_view")
 def chat_archive():
     r = _require_login()
     if r: return r
@@ -9488,7 +9565,7 @@ def chat_archive():
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "woo.chat_archive", "Chat Archive")
+    r2 = _require_plan_sub_feature(customer, "woo.chat_archive_view", "Chat Archive")
     if r2: return r2
 
     # ── Tier detection ────────────────────────────────────────────────────────
@@ -9595,6 +9672,7 @@ def chat_archive():
 
 
 @portal_bp.route("/chat-archive/export/<fmt>")
+@team_feature("woo.chat_archive_view")
 def chat_archive_export(fmt: str):
     """Export filtered chat archive as PDF / Excel / Word. Requires paid tier."""
     r = _require_login()
@@ -9608,7 +9686,7 @@ def chat_archive_export(fmt: str):
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "woo.chat_archive", "Chat Archive")
+    r2 = _require_plan_sub_feature(customer, "woo.chat_archive_view", "Chat Archive")
     if r2: return r2
 
     # ── Tier gate ─────────────────────────────────────────────────────────────
@@ -9679,6 +9757,7 @@ def chat_archive_export(fmt: str):
 
 
 @portal_bp.route("/chat-archive/session/<session_id>/export/<fmt>")
+@team_feature("woo.chat_archive_view")
 def chat_archive_session_export(session_id: str, fmt: str):
     """Export a single chat session as PDF / Excel / Word. Requires paid tier."""
     r = _require_login()
@@ -9692,7 +9771,7 @@ def chat_archive_session_export(session_id: str, fmt: str):
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "woo.chat_archive", "Chat Archive")
+    r2 = _require_plan_sub_feature(customer, "woo.chat_archive_view", "Chat Archive")
     if r2: return r2
 
     # ── Tier gate ─────────────────────────────────────────────────────────────
@@ -9801,6 +9880,7 @@ def _seed_default_rules(tenant_id: int) -> None:
 
 
 @portal_bp.route("/handoff-rules", methods=["GET"])
+@team_feature("ai.handoff_rules_view")
 def handoff_rules():
     r = _require_login()
     if r: return r
@@ -9812,7 +9892,7 @@ def handoff_rules():
         session.clear()
         flash("Your account could not be loaded. Please log in again.", "danger")
         return redirect(url_for("portal.login"))
-    r2 = _require_plan_sub_feature(customer, "ai.handoff_rules", "Handoff Rules")
+    r2 = _require_plan_sub_feature(customer, "ai.handoff_rules_view", "Handoff Rules")
     if r2: return r2
 
     tenant_id = int(customer["tenant_id"])
@@ -9836,6 +9916,7 @@ def handoff_rules():
 
 
 @portal_bp.route("/handoff-rules/add", methods=["POST"])
+@team_feature("ai.handoff_rules_create")
 def handoff_rules_add():
     r = _require_login()
     if r: return r
@@ -9882,6 +9963,7 @@ def handoff_rules_add():
 
 
 @portal_bp.route("/handoff-rules/<int:rule_id>/toggle", methods=["POST"])
+@team_feature("ai.handoff_rules_edit")
 def handoff_rules_toggle(rule_id: int):
     r = _require_login()
     if r: return r
@@ -9910,6 +9992,7 @@ def handoff_rules_toggle(rule_id: int):
 
 
 @portal_bp.route("/handoff-rules/<int:rule_id>/delete", methods=["POST"])
+@team_feature("ai.handoff_rules_delete")
 def handoff_rules_delete(rule_id: int):
     r = _require_login()
     if r: return r
@@ -9955,6 +10038,7 @@ ALLOWED_TIMEZONES = [
 
 
 @portal_bp.route("/tutorials", methods=["GET"])
+@team_feature("help.tutorials")
 def tutorials():
     r = _require_login()
     if r: return r
@@ -9965,6 +10049,7 @@ def tutorials():
 
 
 @portal_bp.route("/video-tutorials", methods=["GET"])
+@team_feature("help.videos")
 def video_tutorials():
     r = _require_login()
     if r: return r
@@ -9989,6 +10074,7 @@ def video_tutorials():
 
 
 @portal_bp.route("/settings", methods=["GET"])
+@team_feature("settings.account")
 def settings():
     r = _require_login()
     if r: return r
@@ -10038,8 +10124,11 @@ def settings():
         cur.close(); conn.close()
         import json as _j
         feat = _j.loads(row.get("features") or "{}") if isinstance(row.get("features"), str) else (row.get("features") or {})
+        _eff = _plugin_features_for_tenant(tenant_id)
         for k, label in _FEATURE_LABELS.items():
-            if feat.get(k):
+            if k == "chat_archive_30days" and _eff.get("chat_archive_unlimited"):
+                continue
+            if _eff.get(k) if k in _eff else feat.get(k):
                 plan_features.append(label)
         daily_report_enabled = int(row.get("daily_report_enabled") or 1)
         report_phone         = row.get("report_phone") or ""
@@ -10054,6 +10143,7 @@ def settings():
                            plan_days_left=plan_days_left,
                            balance_credits=balance_credits,
                            plan_features=plan_features,
+                           current_plan=_get_tenant_plan(tenant_id),
                            daily_report_enabled=daily_report_enabled,
                            report_phone=report_phone,
                            active_sub=_get_active_subscription(int(customer["id"])),
@@ -10061,6 +10151,7 @@ def settings():
 
 
 @portal_bp.route("/settings/profile", methods=["POST"])
+@team_feature("settings.profile_edit")
 def settings_profile():
     """Update first name, last name, phone number."""
     r = _require_login()
@@ -10107,6 +10198,7 @@ def settings_profile():
 
 
 @portal_bp.route("/settings/password", methods=["POST"])
+@team_feature("settings.password")
 def settings_password():
     """Change customer password (requires current password verification)."""
     r = _require_login()
@@ -10155,6 +10247,7 @@ def settings_password():
 
 
 @portal_bp.route("/settings/avatar", methods=["POST"])
+@team_feature("settings.profile_edit")
 def settings_avatar():
     """Upload or remove profile avatar (stored as base64 in DB)."""
     r = _require_login()
@@ -10214,6 +10307,7 @@ def settings_avatar():
 
 
 @portal_bp.route("/settings/notifications", methods=["POST"])
+@team_feature("settings.profile_edit")
 def settings_notifications():
     """Update notification preferences."""
     r = _require_login()
@@ -10287,12 +10381,14 @@ def settings_notifications():
 
 
 @portal_bp.route("/settings/plan")
+@public_route
 def settings_plan():
     """Package plan info page — redirects to settings with #plan tab."""
     return redirect(url_for("portal.settings") + "#plan")
 
 
 @portal_bp.route("/settings/cancel-plan", methods=["POST"])
+@team_feature("settings.cancel_plan")
 def settings_cancel_plan():
     """
     Customer requests plan cancellation.
@@ -10497,6 +10593,7 @@ def _get_default_payment_method(customer_id: int) -> dict | None:
 
 
 @portal_bp.route("/billing/add-card", methods=["GET"])
+@team_feature("billing.credits_view")
 def billing_add_card():
     """
     Stage 4 — Show the embedded Stripe card-save form.
@@ -10549,6 +10646,7 @@ def billing_add_card():
 
 
 @portal_bp.route("/billing/save-card", methods=["POST"])
+@team_feature("billing.credits_manage")
 def billing_save_card():
     """
     Stage 4 — Called by the Stripe Elements JS after the card is confirmed.
@@ -10623,6 +10721,7 @@ def billing_save_card():
 
 
 @portal_bp.route("/billing/remove-card/<int:method_id>", methods=["POST"])
+@team_feature("billing.credits_manage")
 def billing_remove_card(method_id: int):
     """
     Stage 4 — Remove a saved card.
@@ -10691,6 +10790,7 @@ def billing_remove_card(method_id: int):
 
 
 @portal_bp.route("/billing/set-default-card/<int:method_id>", methods=["POST"])
+@team_feature("billing.credits_manage")
 def billing_set_default_card(method_id: int):
     """
     Stage 4 — Set a saved card as the default for future charges.
@@ -10786,14 +10886,19 @@ def _charge_saved_card(stripe_cus_id: str, pm_id: str,
 
 
 @portal_bp.route("/billing/subscribe", methods=["GET"])
+@team_feature("billing.subscription_view")
 def billing_subscribe():
     """
     Stage 5 — Show available subscription plans and current subscription status.
+    Since 2026-09-23 Credit Packages are one-time credit top-ups only and
+    monthly billing lives in Plans, so this page just forwards to Plans
+    (every "Subscription Plans" link keeps working).
     """
     r = _require_login()
     if r: return r
     _rperm = _require_team_permission("billing.subscription_view")
     if _rperm: return _rperm
+    return redirect(url_for("portal.billing_plans"))
 
     customer    = _get_customer(_customer_id())
     if not customer:
@@ -10837,6 +10942,7 @@ def billing_subscribe():
 
 
 @portal_bp.route("/billing/subscribe", methods=["POST"])
+@team_feature("billing.subscription_manage")
 def billing_subscribe_post():
     """
     Stage 5 — Process subscription purchase.
@@ -11130,6 +11236,7 @@ def billing_subscribe_post():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/billing/subscribe/checkout", methods=["GET"])
+@team_feature("billing.subscription_view")
 def billing_subscribe_checkout():
     """
     Checkout page for a specific plan.
@@ -11229,6 +11336,7 @@ def billing_subscribe_checkout():
 
 
 @portal_bp.route("/billing/subscribe/complete", methods=["POST"])
+@team_feature("billing.subscription_manage")
 def billing_subscribe_complete():
     """
     AJAX endpoint called by Stripe.js after the customer confirms a new-card
@@ -11451,6 +11559,7 @@ def billing_subscribe_complete():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/billing/switch-plan", methods=["POST"])
+@team_feature("billing.subscription_manage")
 def billing_switch_plan():
     """
     Stage 8 — Switch a customer from their current subscription plan to a new one.
@@ -11624,6 +11733,7 @@ def billing_switch_plan():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/settings/business", methods=["POST"])
+@team_feature("settings.business_edit")
 def settings_business():
     """
     Stage 10 — Save business/billing information.
@@ -11864,6 +11974,16 @@ def _send_wa_text_from_portal(phone_number_id: str, access_token: str,
                                to: str, text: str) -> bool:
     """Send a plain text WhatsApp message via Meta Graph API."""
     import requests as _req
+    # WooCommerce merchant without a Dual Agent plan: WhatsApp is locked.
+    try:
+        _c = get_db_connection(); _k = _c.cursor()
+        _k.execute("SELECT tenant_id FROM wa_tenants WHERE phone_number_id=%s LIMIT 1", (phone_number_id,))
+        _row = _k.fetchone(); _k.close(); _c.close()
+        if _row and _wa_locked_for_tenant(int(_row[0])):
+            print(f"🔒 WhatsApp send skipped — tenant {_row[0]} needs a Dual Agent plan")
+            return False
+    except Exception as e:
+        print("⚠️ _send_wa_text_from_portal lock check error:", e)
     url = f"https://graph.facebook.com/v19.0/{phone_number_id}/messages"
     try:
         r = _req.post(
@@ -11885,6 +12005,7 @@ def _send_wa_text_from_portal(phone_number_id: str, access_token: str,
 
 
 @portal_bp.route("/whatsapp")
+@team_feature("wa.connect_view")
 def whatsapp_connect():
     r = _require_login()
     if r: return r
@@ -11892,7 +12013,7 @@ def whatsapp_connect():
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "wa.connect", "WhatsApp Connect")
+    r2 = _require_plan_sub_feature(customer, "wa.connect_view", "WhatsApp Connect")
     if r2: return r2
     connections = _get_wa_connections_all(tenant_id)
     connection  = connections[0] if connections else None  # primary (for backward-compat)
@@ -11972,6 +12093,7 @@ def whatsapp_connect():
 
 
 @portal_bp.route("/whatsapp/save-notify-phone", methods=["POST"])
+@team_feature("wa.connect_manage")
 def whatsapp_save_notify_phone():
     """Save the merchant's personal WhatsApp number for handoff + daily report alerts."""
     r = _require_login()
@@ -11980,7 +12102,7 @@ def whatsapp_save_notify_phone():
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "wa.connect", "WhatsApp Connect")
+    r2 = _require_plan_sub_feature(customer, "wa.connect_view", "WhatsApp Connect")
     if r2: return r2
 
     raw = (request.form.get("report_phone") or "").strip()
@@ -12014,6 +12136,7 @@ def whatsapp_save_notify_phone():
 
 
 @portal_bp.route("/whatsapp/save-ack-text", methods=["POST"])
+@team_feature("wa.connect_manage")
 def whatsapp_save_ack_text():
     """Save the instant acknowledgement message sent before the AI replies."""
     r = _require_login()
@@ -12022,7 +12145,7 @@ def whatsapp_save_ack_text():
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "wa.connect", "WhatsApp Connect")
+    r2 = _require_plan_sub_feature(customer, "wa.connect_view", "WhatsApp Connect")
     if r2: return r2
 
     ack_text = (request.form.get("typing_ack_text") or "").strip()[:200]
@@ -12052,6 +12175,7 @@ def whatsapp_save_ack_text():
 
 
 @portal_bp.route("/whatsapp/qr-code")
+@team_feature("wa.connect_view")
 def whatsapp_qr_code():
     """Return a QR code PNG for the tenant's WhatsApp click-to-chat onboarding link."""
     r = _require_login()
@@ -12060,7 +12184,7 @@ def whatsapp_qr_code():
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "wa.connect", "WhatsApp Connect")
+    r2 = _require_plan_sub_feature(customer, "wa.connect_view", "WhatsApp Connect")
     if r2: return r2
     connection = _get_wa_connection_any(tenant_id)
 
@@ -12091,6 +12215,7 @@ def whatsapp_qr_code():
 
 
 @portal_bp.route("/whatsapp/connect", methods=["POST"])
+@team_feature("wa.connect_manage")
 def whatsapp_save_connection():
     r = _require_login()
     if r: return r
@@ -12098,7 +12223,7 @@ def whatsapp_save_connection():
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "wa.connect", "WhatsApp Connect")
+    r2 = _require_plan_sub_feature(customer, "wa.connect_view", "WhatsApp Connect")
     if r2: return r2
 
     action          = (request.form.get("action") or "connect").strip()
@@ -12244,6 +12369,7 @@ def whatsapp_save_connection():
 
 
 @portal_bp.route("/whatsapp/disconnect", methods=["POST"])
+@team_feature("wa.connect_manage")
 def whatsapp_disconnect():
     r = _require_login()
     if r: return r
@@ -12251,7 +12377,7 @@ def whatsapp_disconnect():
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "wa.connect", "WhatsApp Connect")
+    r2 = _require_plan_sub_feature(customer, "wa.connect_view", "WhatsApp Connect")
     if r2: return r2
     wa_id     = request.form.get("wa_id", type=int)
 
@@ -12274,6 +12400,7 @@ def whatsapp_disconnect():
 
 
 @portal_bp.route("/whatsapp/delete", methods=["POST"])
+@team_feature("wa.connect_delete")
 def whatsapp_delete():
     r = _require_login()
     if r: return r
@@ -12281,7 +12408,7 @@ def whatsapp_delete():
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "wa.connect", "WhatsApp Connect")
+    r2 = _require_plan_sub_feature(customer, "wa.connect_view", "WhatsApp Connect")
     if r2: return r2
     wa_id     = request.form.get("wa_id", type=int)
 
@@ -12434,9 +12561,12 @@ def _get_wa_history_imports(tenant_id: int) -> list:
 
 
 @portal_bp.route("/whatsapp/history-import")
+@team_feature("wa.history_import_view")
 def whatsapp_history_import():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("wa.history_import_view")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -12448,9 +12578,12 @@ def whatsapp_history_import():
 
 
 @portal_bp.route("/whatsapp/history-import/upload", methods=["POST"])
+@team_feature("wa.history_import_create")
 def whatsapp_history_import_upload():
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("wa.history_import_create")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -12594,9 +12727,12 @@ def whatsapp_history_import_upload():
 
 
 @portal_bp.route("/whatsapp/history-import/<int:batch_id>/delete", methods=["POST"])
+@team_feature("wa.history_import_delete")
 def whatsapp_history_import_delete(batch_id: int):
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("wa.history_import_delete")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -12616,10 +12752,13 @@ def whatsapp_history_import_delete(batch_id: int):
 
 
 @portal_bp.route("/whatsapp/<int:wa_id>/assign-agent", methods=["POST"])
+@team_feature("wa.connect_manage")
 def whatsapp_assign_agent(wa_id: int):
     """Assign an AI agent profile to a specific WhatsApp number."""
     r = _require_login()
     if r: return r
+    _rperm = _require_team_permission("wa.connect_manage")
+    if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     agent_id  = request.form.get("agent_id", type=int)  # None/0 = unassign
@@ -12800,6 +12939,7 @@ def _save_wa_embedded_connection(tenant_id: int, phone_number_id: str, waba_id: 
 
 
 @portal_bp.route("/whatsapp/embedded-callback", methods=["POST"])
+@team_feature("wa.connect_manage")
 def whatsapp_embedded_callback():
     """
     Receives the auth code + optional session info from Meta Embedded Signup JS.
@@ -12809,6 +12949,8 @@ def whatsapp_embedded_callback():
     r = _require_login()
     if r:
         return jsonify({"error": "not_logged_in"}), 401
+    if not _team_member_has_permission("wa.connect_manage"):
+        return jsonify({"error": "You don't have permission to do that."}), 403
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -12883,6 +13025,7 @@ def whatsapp_embedded_callback():
 
 
 @portal_bp.route("/whatsapp/embedded-complete", methods=["POST"])
+@team_feature("wa.connect_manage")
 def whatsapp_embedded_complete():
     """
     Second step of Embedded Signup when tenant has multiple phone numbers.
@@ -12895,7 +13038,7 @@ def whatsapp_embedded_complete():
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "wa.connect", "WhatsApp Connect")
+    r2 = _require_plan_sub_feature(customer, "wa.connect_view", "WhatsApp Connect")
     if r2: return r2
 
     phone_number_id = (request.form.get("phone_number_id") or "").strip()
@@ -12937,6 +13080,7 @@ def whatsapp_embedded_complete():
 
 
 @portal_bp.route("/whatsapp/check-token", methods=["POST"])
+@team_feature("wa.connect_view")
 def whatsapp_check_token():
     """
     Validate the stored access token by calling Meta's /me endpoint.
@@ -12945,6 +13089,8 @@ def whatsapp_check_token():
     r = _require_login()
     if r:
         return jsonify({"valid": False, "error": "not_logged_in"}), 401
+    if not _team_member_has_permission("wa.connect_view"):
+        return jsonify({"valid": False, "error": "forbidden"}), 403
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -12978,6 +13124,7 @@ def whatsapp_check_token():
 
 
 @portal_bp.route("/whatsapp/templates", methods=["GET"])
+@team_feature("woo.message_templates_view")
 def whatsapp_templates():
     r = _require_login()
     if r: return r
@@ -12985,7 +13132,7 @@ def whatsapp_templates():
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "woo.message_templates", "WhatsApp Message Templates")
+    r2 = _require_plan_sub_feature(customer, "woo.message_templates_view", "WhatsApp Message Templates")
     if r2: return r2
 
     import json as _json
@@ -13000,7 +13147,7 @@ def whatsapp_templates():
     except Exception:
         _feats = {}
 
-    if not _feats.get("whatsapp_message_templates"):
+    if not _plugin_feature_on(tenant_id, "whatsapp_message_templates"):
         flash("WhatsApp Message Templates is not enabled on your account. Contact support to upgrade.", "warning")
         return redirect(url_for("portal.whatsapp_connect"))
 
@@ -13014,6 +13161,7 @@ def whatsapp_templates():
 
 
 @portal_bp.route("/whatsapp/templates", methods=["POST"])
+@team_feature("woo.message_templates_edit")
 def whatsapp_save_templates():
     r = _require_login()
     if r: return r
@@ -13021,7 +13169,7 @@ def whatsapp_save_templates():
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "woo.message_templates", "WhatsApp Message Templates")
+    r2 = _require_plan_sub_feature(customer, "woo.message_templates_view", "WhatsApp Message Templates")
     if r2: return r2
 
     import json as _j2
@@ -13035,7 +13183,7 @@ def whatsapp_save_templates():
     except Exception:
         _feats2 = {}
 
-    if not _feats2.get("whatsapp_message_templates"):
+    if not _plugin_feature_on(tenant_id, "whatsapp_message_templates"):
         flash("WhatsApp Message Templates is not enabled on your account.", "warning")
         return redirect(url_for("portal.whatsapp_connect"))
 
@@ -13066,6 +13214,7 @@ def whatsapp_save_templates():
 
 
 @portal_bp.route("/inbox/<path:session_id>/resolve", methods=["POST"])
+@team_feature("inbox.resolve")
 def inbox_resolve(session_id: str):
     r = _require_login()
     if r: return r
@@ -13106,6 +13255,7 @@ def inbox_resolve(session_id: str):
 
 
 @portal_bp.route("/inbox/takeover", methods=["POST"])
+@team_feature("inbox.takeover")
 def inbox_takeover():
     """Merchant manually takes over an AI-handled conversation."""
     r = _require_login()
@@ -13170,6 +13320,7 @@ def inbox_takeover():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/whatsapp/reports")
+@team_feature("wa.handoff_reports_view")
 def whatsapp_reports():
     r = _require_login()
     if r: return r
@@ -13177,7 +13328,7 @@ def whatsapp_reports():
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "wa.handoff_reports", "WhatsApp Handoff Reports")
+    r2 = _require_plan_sub_feature(customer, "wa.handoff_reports_view", "WhatsApp Handoff Reports")
     if r2: return r2
 
     days = int(request.args.get("days", 30))
@@ -13472,6 +13623,7 @@ def _move_contact_to_pipeline(tenant_id: int, contact_id: int, always_create: bo
 
 
 @portal_bp.route("/whatsapp/contacts/<int:contact_id>/move-to-pipeline", methods=["POST"])
+@team_feature("crm.contacts_edit")
 def whatsapp_contact_move_to_pipeline(contact_id: int):
     """'Create Sales Lead' action — Contacts page and contact detail page both
     post here. Always creates a new Lead (see _move_contact_to_pipeline's
@@ -13498,6 +13650,7 @@ def whatsapp_contact_move_to_pipeline(contact_id: int):
 
 
 @portal_bp.route("/whatsapp/contacts")
+@team_feature("crm.contacts_view")
 def whatsapp_contacts():
     r = _require_login()
     if r: return r
@@ -13505,7 +13658,7 @@ def whatsapp_contacts():
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "crm.contacts", "All Contacts")
+    r2 = _require_plan_sub_feature(customer, "crm.contacts_view", "All Contacts")
     if r2: return r2
 
     search         = (request.args.get("q") or "").strip()
@@ -13772,6 +13925,7 @@ def whatsapp_contacts():
 
 
 @portal_bp.route("/whatsapp/contacts/add", methods=["POST"])
+@team_feature("crm.contacts_create")
 def whatsapp_contacts_add():
     r = _require_login()
     if r: return r
@@ -13829,6 +13983,7 @@ def whatsapp_contacts_add():
 
 
 @portal_bp.route("/whatsapp/contacts/<int:contact_id>/edit", methods=["POST"])
+@team_feature("crm.contacts_edit")
 def whatsapp_contacts_edit(contact_id: int):
     r = _require_login()
     if r: return r
@@ -13878,6 +14033,7 @@ def whatsapp_contacts_edit(contact_id: int):
 
 
 @portal_bp.route("/whatsapp/contacts/<int:contact_id>/delete", methods=["POST"])
+@team_feature("crm.contacts_delete")
 def whatsapp_contacts_delete(contact_id: int):
     r = _require_login()
     if r: return r
@@ -13905,6 +14061,7 @@ def whatsapp_contacts_delete(contact_id: int):
 
 
 @portal_bp.route("/whatsapp/contacts/import", methods=["POST"])
+@team_feature("crm.contacts_create")
 def whatsapp_contacts_import():
     r = _require_login()
     if r: return r
@@ -13987,6 +14144,7 @@ def whatsapp_contacts_import():
 
 
 @portal_bp.route("/whatsapp/contacts/export")
+@team_feature("crm.contacts_view")
 def whatsapp_contacts_export():
     r = _require_login()
     if r: return r
@@ -14083,6 +14241,7 @@ def whatsapp_contacts_export():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/whatsapp/contacts/views/save", methods=["POST"])
+@team_feature("crm.contacts_view")
 def whatsapp_contacts_save_view():
     r = _require_login()
     if r: return jsonify({"error": "Please log in again."}), 401
@@ -14139,6 +14298,7 @@ def whatsapp_contacts_save_view():
 
 
 @portal_bp.route("/whatsapp/contacts/views/<int:view_id>/delete", methods=["POST"])
+@team_feature("crm.contacts_view")
 def whatsapp_contacts_delete_view(view_id: int):
     r = _require_login()
     if r: return r
@@ -14165,6 +14325,7 @@ def whatsapp_contacts_delete_view(view_id: int):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/whatsapp/contacts/<int:contact_id>")
+@team_feature("crm.contacts_view")
 def whatsapp_contact_detail(contact_id: int):
     r = _require_login()
     if r: return r
@@ -14172,7 +14333,7 @@ def whatsapp_contact_detail(contact_id: int):
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "crm.contacts", "All Contacts")
+    r2 = _require_plan_sub_feature(customer, "crm.contacts_view", "All Contacts")
     if r2: return r2
 
     try:
@@ -14341,6 +14502,7 @@ def whatsapp_contact_detail(contact_id: int):
 
 
 @portal_bp.route("/whatsapp/contacts/<int:contact_id>/consent", methods=["POST"])
+@team_feature("crm.contacts_edit")
 def whatsapp_contact_set_consent(contact_id: int):
     """Manual per-channel opt-out/opt-in from the Consent panel on a contact's
     profile — the toggle a staff member uses when a contact asks directly, or
@@ -14416,6 +14578,7 @@ def whatsapp_contact_set_consent(contact_id: int):
 
 
 @portal_bp.route("/whatsapp/contacts/<int:contact_id>/notes", methods=["POST"])
+@team_feature("crm.contacts_edit")
 def whatsapp_contact_add_note(contact_id: int):
     r = _require_login()
     if r: return r
@@ -14453,6 +14616,7 @@ def whatsapp_contact_add_note(contact_id: int):
 
 
 @portal_bp.route("/whatsapp/contacts/<int:contact_id>/notes/<int:note_id>/delete", methods=["POST"])
+@team_feature("crm.contacts_edit")
 def whatsapp_contact_delete_note(contact_id: int, note_id: int):
     r = _require_login()
     if r: return r
@@ -14478,6 +14642,7 @@ def whatsapp_contact_delete_note(contact_id: int, note_id: int):
 
 
 @portal_bp.route("/whatsapp/contacts/<int:contact_id>/add-to-segment", methods=["POST"])
+@team_feature("crm.contacts_edit")
 def whatsapp_contact_add_to_segment(contact_id: int):
     r = _require_login()
     if r: return r
@@ -14518,6 +14683,7 @@ def whatsapp_contact_add_to_segment(contact_id: int):
 
 
 @portal_bp.route("/whatsapp/contacts/<int:contact_id>/remove-from-segment/<int:seg_id>", methods=["POST"])
+@team_feature("crm.contacts_edit")
 def whatsapp_contact_remove_from_segment(contact_id: int, seg_id: int):
     r = _require_login()
     if r: return r
@@ -14549,6 +14715,7 @@ def whatsapp_contact_remove_from_segment(contact_id: int, seg_id: int):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/crm/companies")
+@team_feature("crm.companies_view")
 def crm_companies():
     r = _require_login()
     if r: return r
@@ -14556,7 +14723,7 @@ def crm_companies():
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "crm.companies", "Companies")
+    r2 = _require_plan_sub_feature(customer, "crm.companies_view", "Companies")
     if r2: return r2
     search = (request.args.get("q") or "").strip()
 
@@ -14621,6 +14788,7 @@ def crm_companies():
 
 
 @portal_bp.route("/crm/companies/add", methods=["POST"])
+@team_feature("crm.companies_create")
 def crm_companies_add():
     r = _require_login()
     if r: return r
@@ -14659,6 +14827,7 @@ def crm_companies_add():
 
 
 @portal_bp.route("/crm/companies/<int:company_id>")
+@team_feature("crm.companies_view")
 def crm_company_detail(company_id: int):
     r = _require_login()
     if r: return r
@@ -14666,7 +14835,7 @@ def crm_company_detail(company_id: int):
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "crm.companies", "Companies")
+    r2 = _require_plan_sub_feature(customer, "crm.companies_view", "Companies")
     if r2: return r2
 
     try:
@@ -14736,6 +14905,7 @@ def crm_company_detail(company_id: int):
 
 
 @portal_bp.route("/crm/companies/<int:company_id>/edit", methods=["POST"])
+@team_feature("crm.companies_edit")
 def crm_company_edit(company_id: int):
     r = _require_login()
     if r: return r
@@ -14764,6 +14934,7 @@ def crm_company_edit(company_id: int):
 
 
 @portal_bp.route("/crm/companies/<int:company_id>/notes", methods=["POST"])
+@team_feature("crm.companies_edit")
 def crm_company_add_note(company_id: int):
     r = _require_login()
     if r: return r
@@ -14801,6 +14972,7 @@ def crm_company_add_note(company_id: int):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/crm/merge-review")
+@team_feature("crm.merge_review_view")
 def crm_merge_review():
     r = _require_login()
     if r: return r
@@ -14808,7 +14980,7 @@ def crm_merge_review():
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "crm.merge_review", "Duplicate Merge Review")
+    r2 = _require_plan_sub_feature(customer, "crm.merge_review_view", "Duplicate Merge Review")
     if r2: return r2
     try:
         conn = get_db_connection()
@@ -14834,6 +15006,7 @@ def crm_merge_review():
 
 
 @portal_bp.route("/crm/merge-review/<int:candidate_id>/confirm", methods=["POST"])
+@team_feature("crm.merge_review_confirm")
 def crm_merge_review_confirm(candidate_id: int):
     r = _require_login()
     if r: return r
@@ -14868,6 +15041,7 @@ def crm_merge_review_confirm(candidate_id: int):
 
 
 @portal_bp.route("/crm/merge-review/<int:candidate_id>/reject", methods=["POST"])
+@team_feature("crm.merge_review_reject")
 def crm_merge_review_reject(candidate_id: int):
     r = _require_login()
     if r: return r
@@ -14895,6 +15069,7 @@ def crm_merge_review_reject(candidate_id: int):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/whatsapp/contacts/bulk-action", methods=["POST"])
+@team_feature("crm.contacts_delete", "crm.contacts_edit")
 def whatsapp_contacts_bulk_action():
     r = _require_login()
     if r: return r
@@ -15038,6 +15213,7 @@ def whatsapp_contacts_bulk_action():
 
 
 @portal_bp.route("/whatsapp/contacts/<int:contact_id>/set-status", methods=["POST"])
+@team_feature("crm.contacts_edit")
 def whatsapp_contact_set_status(contact_id: int):
     r = _require_login()
     if r: return r
@@ -15063,6 +15239,7 @@ def whatsapp_contact_set_status(contact_id: int):
 
 
 @portal_bp.route("/whatsapp/contacts/<int:contact_id>/tags", methods=["POST"])
+@team_feature("crm.contacts_edit")
 def whatsapp_contact_tags(contact_id: int):
     # Not currently linked from any template — kept correct against the
     # shared tag table (see _sync_contact_tags()) in case something calls it.
@@ -15091,6 +15268,7 @@ def whatsapp_contact_tags(contact_id: int):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/whatsapp/segments")
+@team_feature("crm.segments_view")
 def whatsapp_segments():
     r = _require_login()
     if r: return r
@@ -15098,7 +15276,7 @@ def whatsapp_segments():
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "crm.segments", "Segments")
+    r2 = _require_plan_sub_feature(customer, "crm.segments_view", "Segments")
     if r2: return r2
     try:
         conn = get_db_connection()
@@ -15124,6 +15302,7 @@ def whatsapp_segments():
 
 
 @portal_bp.route("/whatsapp/segments/create", methods=["POST"])
+@team_feature("crm.segments_create")
 def whatsapp_segments_create():
     r = _require_login()
     if r: return r
@@ -15158,6 +15337,7 @@ def whatsapp_segments_create():
 
 
 @portal_bp.route("/whatsapp/segments/<int:seg_id>/edit", methods=["POST"])
+@team_feature("crm.segments_edit")
 def whatsapp_segments_edit(seg_id: int):
     r = _require_login()
     if r: return r
@@ -15188,6 +15368,7 @@ def whatsapp_segments_edit(seg_id: int):
 
 
 @portal_bp.route("/whatsapp/segments/<int:seg_id>/delete", methods=["POST"])
+@team_feature("crm.segments_delete")
 def whatsapp_segments_delete(seg_id: int):
     r = _require_login()
     if r: return r
@@ -15208,6 +15389,7 @@ def whatsapp_segments_delete(seg_id: int):
 
 
 @portal_bp.route("/whatsapp/segments/<int:seg_id>")
+@team_feature("crm.segments_view")
 def whatsapp_segment_detail(seg_id: int):
     r = _require_login()
     if r: return r
@@ -15215,7 +15397,7 @@ def whatsapp_segment_detail(seg_id: int):
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "crm.segments", "Segments")
+    r2 = _require_plan_sub_feature(customer, "crm.segments_view", "Segments")
     if r2: return r2
     try:
         conn = get_db_connection()
@@ -15259,6 +15441,7 @@ def whatsapp_segment_detail(seg_id: int):
 
 
 @portal_bp.route("/whatsapp/segments/<int:seg_id>/add-member", methods=["POST"])
+@team_feature("crm.segments_edit")
 def whatsapp_segment_add_member(seg_id: int):
     r = _require_login()
     if r: return r
@@ -15298,6 +15481,7 @@ def whatsapp_segment_add_member(seg_id: int):
 
 
 @portal_bp.route("/whatsapp/segments/<int:seg_id>/remove-member/<int:contact_id>", methods=["POST"])
+@team_feature("crm.segments_edit")
 def whatsapp_segment_remove_member(seg_id: int, contact_id: int):
     r = _require_login()
     if r: return r
@@ -15325,6 +15509,7 @@ def whatsapp_segment_remove_member(seg_id: int, contact_id: int):
 
 
 @portal_bp.route("/whatsapp/segments/<int:seg_id>/contacts-json")
+@team_feature("crm.segments_view")
 def whatsapp_segment_contacts_json(seg_id: int):
     """Return segment member phones for campaign pre-fill."""
     r = _require_login()
@@ -15353,6 +15538,7 @@ def whatsapp_segment_contacts_json(seg_id: int):
 
 
 @portal_bp.route("/sales-pipeline/contacts-json")
+@team_feature("crm.pipeline_board_view")
 def sales_pipeline_contacts_json():
     """Return Sales Pipeline lead phones for campaign pre-fill (bridges the CRM to WhatsApp campaigns)."""
     r = _require_login()
@@ -15699,6 +15885,7 @@ if not _sched_started:
 
 
 @portal_bp.route("/whatsapp/campaigns")
+@team_feature("campaigns_wa.all_view")
 def whatsapp_campaigns():
     r = _require_login()
     if r: return r
@@ -15754,6 +15941,7 @@ def whatsapp_campaigns():
 
 
 @portal_bp.route("/whatsapp/campaigns/create", methods=["POST"])
+@team_feature("campaigns_wa.all_create")
 def whatsapp_campaigns_create():
     r = _require_login()
     if r: return r
@@ -15904,6 +16092,7 @@ def whatsapp_campaigns_create():
 
 
 @portal_bp.route("/whatsapp/campaigns/<int:campaign_id>/send", methods=["POST"])
+@team_feature("campaigns_wa.all_send")
 def whatsapp_campaigns_send(campaign_id: int):
     r = _require_login()
     if r: return r
@@ -15921,6 +16110,7 @@ def whatsapp_campaigns_send(campaign_id: int):
 
 
 @portal_bp.route("/whatsapp/campaigns/<int:campaign_id>/delete", methods=["POST"])
+@team_feature("campaigns_wa.all_delete")
 def whatsapp_campaigns_delete(campaign_id: int):
     r = _require_login()
     if r: return r
@@ -15950,6 +16140,7 @@ def whatsapp_campaigns_delete(campaign_id: int):
 
 
 @portal_bp.route("/whatsapp/campaigns/templates-json")
+@team_feature("campaigns_wa.all_view")
 def whatsapp_campaigns_templates():
     """Return the tenant's APPROVED Meta message templates as JSON for the drawer dropdown."""
     r = _require_login()
@@ -16027,6 +16218,7 @@ def whatsapp_campaigns_templates():
 
 
 @portal_bp.route("/whatsapp/campaigns/upload-image", methods=["POST"])
+@team_feature("campaigns_wa.all_create")
 def whatsapp_campaigns_upload_image():
     """Upload a campaign header media file (image, video, document) and return its public URL."""
     r = _require_login()
@@ -16082,6 +16274,7 @@ def whatsapp_campaigns_upload_image():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/whatsapp/campaigns/segments")
+@team_feature("campaigns_wa.segments_view")
 def whatsapp_campaign_segments_page():
     """Standalone WhatsApp Segments page (list + manage one segment's contacts) —
     was previously a popup on the WhatsApp Campaigns page; moved to its own URL
@@ -16148,11 +16341,14 @@ def whatsapp_campaign_segments_page():
 
 
 @portal_bp.route("/whatsapp/pipeline-segments")
+@team_feature("campaigns_wa.segments_view", "campaigns_wa.segments_edit", "campaigns_wa.all_create")
 def whatsapp_pipeline_segments_list():
     """List this tenant's WhatsApp Segments with live member counts, for the
     compose drawer's recipient dropdown and the segment manager modal."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not any(_team_member_has_permission(k) for k in ("campaigns_wa.segments_view", "campaigns_wa.segments_edit", "campaigns_wa.all_create")):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     try:
@@ -16182,9 +16378,12 @@ def whatsapp_pipeline_segments_list():
 
 
 @portal_bp.route("/whatsapp/pipeline-segments/create", methods=["POST"])
+@team_feature("campaigns_wa.segments_create")
 def whatsapp_pipeline_segments_create():
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_wa.segments_create"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     name = (request.form.get("name") or "").strip()
@@ -16206,9 +16405,12 @@ def whatsapp_pipeline_segments_create():
 
 
 @portal_bp.route("/whatsapp/pipeline-segments/<int:segment_id>/delete", methods=["POST"])
+@team_feature("campaigns_wa.segments_delete")
 def whatsapp_pipeline_segments_delete(segment_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_wa.segments_delete"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     try:
@@ -16224,11 +16426,14 @@ def whatsapp_pipeline_segments_delete(segment_id: int):
 
 
 @portal_bp.route("/whatsapp/pipeline-segments/<int:segment_id>/members")
+@team_feature("campaigns_wa.segments_view")
 def whatsapp_pipeline_segments_members(segment_id: int):
     """Return the segment's name plus its actual current members (id/name/phone) —
     the manage-segment modal shows only these, not every Sales Pipeline contact."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_wa.segments_view"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     try:
@@ -16257,11 +16462,14 @@ def whatsapp_pipeline_segments_members(segment_id: int):
 
 
 @portal_bp.route("/whatsapp/pipeline-segments/<int:segment_id>/members/add", methods=["POST"])
+@team_feature("campaigns_wa.segments_edit")
 def whatsapp_pipeline_segments_add_member(segment_id: int):
     """Add one Sales Pipeline contact to a WhatsApp Segment — single search-driven
     add, mirroring /email/segments/<id>/members/add."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_wa.segments_edit"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     lead_id_raw = (request.form.get("lead_id") or "").strip()
@@ -16302,9 +16510,12 @@ def whatsapp_pipeline_segments_add_member(segment_id: int):
 
 
 @portal_bp.route("/whatsapp/pipeline-segments/<int:segment_id>/members/remove", methods=["POST"])
+@team_feature("campaigns_wa.segments_edit")
 def whatsapp_pipeline_segments_remove_member(segment_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_wa.segments_edit"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     lead_id_raw = (request.form.get("lead_id") or "").strip()
@@ -16327,6 +16538,7 @@ def whatsapp_pipeline_segments_remove_member(segment_id: int):
 
 
 @portal_bp.route("/whatsapp/pipeline-segments/<int:segment_id>/members/bulk-add", methods=["POST"])
+@team_feature("campaigns_wa.segments_edit")
 def whatsapp_pipeline_segments_bulk_add_members(segment_id: int):
     """Add many Sales Pipeline leads to a WhatsApp Segment in one call — used by
     the Sales Pipeline page's multi-select "Add to WhatsApp Segment" bulk action.
@@ -16334,6 +16546,8 @@ def whatsapp_pipeline_segments_bulk_add_members(segment_id: int):
     in 'added'), mirroring the email version's eligibility rule."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_wa.segments_edit"):
+        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
@@ -16365,6 +16579,7 @@ def whatsapp_pipeline_segments_bulk_add_members(segment_id: int):
 
 
 @portal_bp.route("/whatsapp/campaigns/pipeline-leads-json")
+@team_feature("campaigns_wa.segments_view")
 def whatsapp_campaigns_pipeline_leads_json():
     """Search Sales Pipeline leads with a phone number, for the manage-segment
     modal's add-contact typeahead. Requires a query to keep results small —
@@ -16412,6 +16627,7 @@ def whatsapp_campaigns_pipeline_leads_json():
 
 
 @portal_bp.route("/whatsapp/campaigns/reports")
+@team_feature("campaigns_wa.reports_view")
 def whatsapp_campaigns_reports():
     r = _require_login()
     if r: return r
@@ -16443,6 +16659,7 @@ def whatsapp_campaigns_reports():
 
 
 @portal_bp.route("/whatsapp/campaigns/<int:campaign_id>/report")
+@team_feature("campaigns_wa.reports_view")
 def whatsapp_campaign_report(campaign_id: int):
     r = _require_login()
     if r: return r
@@ -16579,6 +16796,7 @@ def whatsapp_campaign_report(campaign_id: int):
 # project_wa_campaign_intelligence_proposal memory.
 
 @portal_bp.route("/whatsapp/campaigns/reviews")
+@team_feature("campaigns_wa.needs_review_view")
 def whatsapp_campaign_reviews():
     r = _require_login()
     if r: return r
@@ -16613,6 +16831,7 @@ def whatsapp_campaign_reviews():
 
 
 @portal_bp.route("/whatsapp/campaigns/automation-settings", methods=["POST"])
+@team_feature("campaigns_wa.needs_review_manage")
 def whatsapp_campaign_automation_settings():
     r = _require_login()
     if r: return r
@@ -16714,6 +16933,7 @@ def _approve_campaign_reply_review(review_id: int, tenant_id: int, staff_name: s
 
 
 @portal_bp.route("/whatsapp/campaigns/reviews/<int:review_id>/approve", methods=["POST"])
+@team_feature("campaigns_wa.needs_review_manage")
 def whatsapp_campaign_review_approve(review_id: int):
     r = _require_login()
     if r: return r
@@ -16733,6 +16953,7 @@ def whatsapp_campaign_review_approve(review_id: int):
 
 
 @portal_bp.route("/whatsapp/campaigns/reviews/<int:review_id>/reject", methods=["POST"])
+@team_feature("campaigns_wa.needs_review_manage")
 def whatsapp_campaign_review_reject(review_id: int):
     r = _require_login()
     if r: return r
@@ -17339,6 +17560,7 @@ if not _comeback_sched_started:
 
 
 @portal_bp.route("/comeback/unsubscribe")
+@public_route
 def comeback_unsubscribe():
     token = (request.args.get("t") or "").strip()
     payload = _decrypt_key(token) if token else ""
@@ -17374,6 +17596,7 @@ def comeback_unsubscribe():
 
 
 @portal_bp.route("/email/campaigns")
+@team_feature("campaigns_email.all_view")
 def email_campaigns():
     r = _require_login()
     if r: return r
@@ -17525,6 +17748,7 @@ def _parse_campaign_form(tenant_id: int, customer: dict, form):
 
 
 @portal_bp.route("/email/campaigns/create", methods=["POST"])
+@team_feature("campaigns_email.all_create")
 def email_campaigns_create():
     r = _require_login()
     if r: return r
@@ -17579,6 +17803,7 @@ def email_campaigns_create():
 
 
 @portal_bp.route("/email/campaigns/<int:campaign_id>/edit-data")
+@team_feature("campaigns_email.all_view")
 def email_campaigns_edit_data(campaign_id: int):
     """Return a campaign's full content + recipients + schedule so the compose drawer can
     be pre-filled for in-place editing. Allowed for any status except 'running'. Saving
@@ -17620,6 +17845,7 @@ def email_campaigns_edit_data(campaign_id: int):
 
 
 @portal_bp.route("/email/campaigns/<int:campaign_id>/update", methods=["POST"])
+@team_feature("campaigns_email.all_edit")
 def email_campaigns_update(campaign_id: int):
     r = _require_login()
     if r: return r
@@ -17718,6 +17944,7 @@ def email_campaigns_update(campaign_id: int):
 
 
 @portal_bp.route("/email/campaigns/preview", methods=["POST"])
+@team_feature("campaigns_email.all_view")
 def email_campaigns_preview():
     """Render exactly what would be saved as html_body for the compose-drawer's
     current form state, without saving anything — reuses the same render functions
@@ -17754,6 +17981,7 @@ def email_campaigns_preview():
 
 
 @portal_bp.route("/email/campaigns/send-test-draft", methods=["POST"])
+@team_feature("campaigns_email.all_send")
 def email_campaigns_send_test_draft():
     """Actually send a test email of the compose-drawer's current (unsaved) form
     state to the tenant's own account email — for checking real inbox rendering
@@ -17806,6 +18034,7 @@ def email_campaigns_send_test_draft():
 
 
 @portal_bp.route("/email/campaigns/<int:campaign_id>/send-test", methods=["POST"])
+@team_feature("campaigns_email.all_send")
 def email_campaigns_send_test(campaign_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
@@ -17849,6 +18078,7 @@ def email_campaigns_send_test(campaign_id: int):
 
 
 @portal_bp.route("/email/campaigns/<int:campaign_id>/duplicate-data")
+@team_feature("campaigns_email.all_view")
 def email_campaigns_duplicate_data(campaign_id: int):
     """Return a completed/failed/draft campaign's content so the compose drawer can be
     pre-filled to send it again to a different audience — campaigns are otherwise
@@ -17889,6 +18119,7 @@ def email_campaigns_duplicate_data(campaign_id: int):
 
 
 @portal_bp.route("/email/campaigns/<int:campaign_id>/send", methods=["POST"])
+@team_feature("campaigns_email.all_send")
 def email_campaigns_send(campaign_id: int):
     r = _require_login()
     if r: return r
@@ -17910,6 +18141,7 @@ def email_campaigns_send(campaign_id: int):
 
 
 @portal_bp.route("/email/campaigns/<int:campaign_id>/delete", methods=["POST"])
+@team_feature("campaigns_email.all_delete")
 def email_campaigns_delete(campaign_id: int):
     r = _require_login()
     if r: return r
@@ -17939,6 +18171,7 @@ def email_campaigns_delete(campaign_id: int):
 
 
 @portal_bp.route("/email/campaigns/upload-image", methods=["POST"])
+@team_feature("campaigns_email.all_create")
 def email_campaigns_upload_image():
     """Upload an optional hero image for a campaign and return its public URL."""
     r = _require_login()
@@ -17971,6 +18204,7 @@ def email_campaigns_upload_image():
 
 
 @portal_bp.route("/email/campaigns/contacts-json")
+@team_feature("campaigns_email.all_view")
 def email_campaigns_contacts_json():
     """Return Sales Pipeline lead emails for campaign recipient pre-fill."""
     r = _require_login()
@@ -18001,6 +18235,7 @@ def email_campaigns_contacts_json():
 # owning email_segments row.
 
 @portal_bp.route("/email/segments")
+@team_feature("campaigns_email.segments_view")
 def email_segments_list():
     """List this tenant's segments with live member counts, for the compose drawer's
     recipient dropdown and the segment manager modal."""
@@ -18036,6 +18271,7 @@ def email_segments_list():
 
 
 @portal_bp.route("/email/segments/create", methods=["POST"])
+@team_feature("campaigns_email.segments_create")
 def email_segments_create():
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
@@ -18062,6 +18298,7 @@ def email_segments_create():
 
 
 @portal_bp.route("/email/segments/<int:segment_id>/delete", methods=["POST"])
+@team_feature("campaigns_email.segments_delete")
 def email_segments_delete(segment_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
@@ -18082,6 +18319,7 @@ def email_segments_delete(segment_id: int):
 
 
 @portal_bp.route("/email/segments/<int:segment_id>/members")
+@team_feature("campaigns_email.segments_view")
 def email_segments_members(segment_id: int):
     """Return the segment's name plus its actual current members (id/name/email) — the
     manage-segment modal shows only these, not every Sales Pipeline contact."""
@@ -18116,6 +18354,7 @@ def email_segments_members(segment_id: int):
 
 
 @portal_bp.route("/email/segments/<int:segment_id>/members/add", methods=["POST"])
+@team_feature("campaigns_email.segments_edit")
 def email_segments_add_member(segment_id: int):
     """Add one Sales Pipeline contact to a segment — mirrors the single-add pattern
     already used for WhatsApp segments (whatsapp_segment_add_member) rather than a
@@ -18163,6 +18402,7 @@ def email_segments_add_member(segment_id: int):
 
 
 @portal_bp.route("/email/segments/<int:segment_id>/members/remove", methods=["POST"])
+@team_feature("campaigns_email.segments_edit")
 def email_segments_remove_member(segment_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
@@ -18190,6 +18430,7 @@ def email_segments_remove_member(segment_id: int):
 
 
 @portal_bp.route("/email/segments/<int:segment_id>/members/bulk-add", methods=["POST"])
+@team_feature("campaigns_email.segments_edit")
 def email_segments_bulk_add_members(segment_id: int):
     """Add many Sales Pipeline leads to a segment in one call — used by the Sales
     Pipeline page's multi-select "Add to Segment" bulk action, as opposed to the
@@ -18240,6 +18481,7 @@ def email_segments_bulk_add_members(segment_id: int):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/labels")
+@team_feature("crm.tags_view")
 def lead_labels_page():
     r = _require_login()
     if r: return r
@@ -18247,7 +18489,7 @@ def lead_labels_page():
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "crm.tags", "Tags")
+    r2 = _require_plan_sub_feature(customer, "crm.tags_view", "Labels")
     if r2: return r2
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -18277,6 +18519,7 @@ def lead_labels_page():
 
 
 @portal_bp.route("/labels/list")
+@team_feature("crm.tags_view")
 def lead_labels_list_json():
     """Same shape as /email/segments — used by the Sales Pipeline bulk 'Add to
     Label' modal and the campaign compose page's 'Exclude label' picker."""
@@ -18308,6 +18551,7 @@ def lead_labels_list_json():
 
 
 @portal_bp.route("/labels/create", methods=["POST"])
+@team_feature("crm.tags_create")
 def lead_labels_create():
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
@@ -18335,7 +18579,44 @@ def lead_labels_create():
         return jsonify({"error": str(e)}), 500
 
 
+@portal_bp.route("/labels/<int:label_id>/rename", methods=["POST"])
+@team_feature("crm.tags_edit")
+def lead_labels_rename(label_id: int):
+    """Rename a label in place — since every page that shows a label (Sales
+    Pipeline, Contacts, campaign pickers) reads the name live via a JOIN on
+    lead_labels.name rather than storing a copy of it, one UPDATE here is all
+    it takes for the new name to show up everywhere the label appears."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("crm.tags_edit"):
+        return jsonify({"error": "forbidden"}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    name = (request.form.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Label name is required."}), 400
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute(
+            "UPDATE lead_labels SET name=%s WHERE id=%s AND tenant_id=%s RETURNING id",
+            (name, label_id, tenant_id),
+        )
+        row = cur.fetchone()
+        conn.commit()
+        cur.close(); conn.close()
+        if not row:
+            return jsonify({"error": "Label not found."}), 404
+        return jsonify({"ok": True, "id": label_id, "name": name})
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback(); cur.close(); conn.close()
+        return jsonify({"error": f"A label named '{name}' already exists."}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @portal_bp.route("/labels/<int:label_id>/delete", methods=["POST"])
+@team_feature("crm.tags_delete")
 def lead_labels_delete(label_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
@@ -18359,6 +18640,7 @@ def lead_labels_delete(label_id: int):
 
 
 @portal_bp.route("/labels/<int:label_id>/members")
+@team_feature("crm.tags_view")
 def lead_labels_members(label_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
@@ -18391,6 +18673,7 @@ def lead_labels_members(label_id: int):
 
 
 @portal_bp.route("/labels/<int:label_id>/members/remove", methods=["POST"])
+@team_feature("crm.tags_edit")
 def lead_labels_remove_member(label_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
@@ -18417,7 +18700,53 @@ def lead_labels_remove_member(label_id: int):
         return jsonify({"error": str(e)}), 500
 
 
+@portal_bp.route("/labels/<int:label_id>/members/move", methods=["POST"])
+@team_feature("crm.tags_edit")
+def lead_labels_move_member(label_id: int):
+    """Move a Sales Pipeline lead off this label and onto a different one in
+    one action — takes it off the source label even if it was already on the
+    target (no duplicate labeling), so this always reads as a real 'move'
+    rather than just adding a second label."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("crm.tags_edit"):
+        return jsonify({"error": "forbidden"}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    lead_id_raw   = (request.form.get("lead_id") or "").strip()
+    target_id_raw = (request.form.get("target_label_id") or "").strip()
+    if not lead_id_raw.isdigit() or not target_id_raw.isdigit():
+        return jsonify({"error": "Invalid request."}), 400
+    lead_id, target_label_id = int(lead_id_raw), int(target_id_raw)
+    if target_label_id == label_id:
+        return jsonify({"error": "Pick a different label to move to."}), 400
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("SELECT id FROM lead_labels WHERE id=%s AND tenant_id=%s", (label_id, tenant_id))
+        if not cur.fetchone():
+            cur.close(); conn.close()
+            return jsonify({"error": "Label not found."}), 404
+        cur.execute("SELECT name FROM lead_labels WHERE id=%s AND tenant_id=%s", (target_label_id, tenant_id))
+        target = cur.fetchone()
+        if not target:
+            cur.close(); conn.close()
+            return jsonify({"error": "Target label not found."}), 404
+        cur.execute("DELETE FROM lead_label_leads WHERE label_id=%s AND lead_id=%s", (label_id, lead_id))
+        cur.execute(
+            "INSERT INTO lead_label_leads (label_id, lead_id) VALUES (%s, %s) "
+            "ON CONFLICT (label_id, lead_id) DO NOTHING",
+            (target_label_id, lead_id),
+        )
+        conn.commit()
+        cur.close(); conn.close()
+        return jsonify({"ok": True, "moved_to": target[0]})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @portal_bp.route("/labels/<int:label_id>/members/bulk-add", methods=["POST"])
+@team_feature("crm.tags_edit")
 def lead_labels_bulk_add_members(label_id: int):
     """Add many Sales Pipeline leads to a label in one call — used by the Sales
     Pipeline page's multi-select 'Add to Label' bulk action. Unlike segments,
@@ -18457,6 +18786,7 @@ def lead_labels_bulk_add_members(label_id: int):
 
 
 @portal_bp.route("/labels/search-leads")
+@team_feature("crm.tags_view")
 def lead_labels_search_leads_json():
     """Search Sales Pipeline leads for the Labels page's add-contact typeahead.
     No email requirement (unlike the segment version) since a label can apply
@@ -18513,6 +18843,7 @@ def lead_labels_search_leads_json():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/labels/<int:label_id>/contacts")
+@team_feature("crm.tags_view")
 def lead_labels_contact_members(label_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
@@ -18527,7 +18858,7 @@ def lead_labels_contact_members(label_id: int):
         label = cur.fetchone()
         if not label:
             cur.close(); conn.close()
-            return jsonify({"error": "Tag not found."}), 404
+            return jsonify({"error": "Label not found."}), 404
         cur.execute(
             "SELECT c.id, c.display_name, c.phone, c.email "
             "FROM lead_label_contacts lc JOIN wa_contacts c ON c.id = lc.contact_id "
@@ -18545,6 +18876,7 @@ def lead_labels_contact_members(label_id: int):
 
 
 @portal_bp.route("/labels/<int:label_id>/contacts/remove", methods=["POST"])
+@team_feature("crm.tags_edit")
 def lead_labels_remove_contact_member(label_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
@@ -18561,7 +18893,7 @@ def lead_labels_remove_contact_member(label_id: int):
         cur.execute("SELECT id FROM lead_labels WHERE id=%s AND tenant_id=%s", (label_id, tenant_id))
         if not cur.fetchone():
             cur.close(); conn.close()
-            return jsonify({"error": "Tag not found."}), 404
+            return jsonify({"error": "Label not found."}), 404
         cur.execute("DELETE FROM lead_label_contacts WHERE label_id=%s AND contact_id=%s",
                     (label_id, int(contact_id_raw)))
         conn.commit()
@@ -18571,7 +18903,51 @@ def lead_labels_remove_contact_member(label_id: int):
         return jsonify({"error": str(e)}), 500
 
 
+@portal_bp.route("/labels/<int:label_id>/contacts/move", methods=["POST"])
+@team_feature("crm.tags_edit")
+def lead_labels_move_contact_member(label_id: int):
+    """Move a WhatsApp Contact off this label and onto a different one in one
+    action — mirrors lead_labels_move_member() for Sales Pipeline leads."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("crm.tags_edit"):
+        return jsonify({"error": "forbidden"}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    contact_id_raw = (request.form.get("contact_id") or "").strip()
+    target_id_raw  = (request.form.get("target_label_id") or "").strip()
+    if not contact_id_raw.isdigit() or not target_id_raw.isdigit():
+        return jsonify({"error": "Invalid request."}), 400
+    contact_id, target_label_id = int(contact_id_raw), int(target_id_raw)
+    if target_label_id == label_id:
+        return jsonify({"error": "Pick a different label to move to."}), 400
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("SELECT id FROM lead_labels WHERE id=%s AND tenant_id=%s", (label_id, tenant_id))
+        if not cur.fetchone():
+            cur.close(); conn.close()
+            return jsonify({"error": "Label not found."}), 404
+        cur.execute("SELECT name FROM lead_labels WHERE id=%s AND tenant_id=%s", (target_label_id, tenant_id))
+        target = cur.fetchone()
+        if not target:
+            cur.close(); conn.close()
+            return jsonify({"error": "Target label not found."}), 404
+        cur.execute("DELETE FROM lead_label_contacts WHERE label_id=%s AND contact_id=%s", (label_id, contact_id))
+        cur.execute(
+            "INSERT INTO lead_label_contacts (label_id, contact_id) VALUES (%s, %s) "
+            "ON CONFLICT (label_id, contact_id) DO NOTHING",
+            (target_label_id, contact_id),
+        )
+        conn.commit()
+        cur.close(); conn.close()
+        return jsonify({"ok": True, "moved_to": target[0]})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @portal_bp.route("/labels/<int:label_id>/contacts/bulk-add", methods=["POST"])
+@team_feature("crm.tags_edit")
 def lead_labels_bulk_add_contacts(label_id: int):
     """Add many WhatsApp Contacts to a tag in one call — mirrors
     lead_labels_bulk_add_members() for Sales Pipeline leads."""
@@ -18592,7 +18968,7 @@ def lead_labels_bulk_add_contacts(label_id: int):
         cur.execute("SELECT id FROM lead_labels WHERE id=%s AND tenant_id=%s", (label_id, tenant_id))
         if not cur.fetchone():
             cur.close(); conn.close()
-            return jsonify({"error": "Tag not found."}), 404
+            return jsonify({"error": "Label not found."}), 404
         cur.execute(
             "INSERT INTO lead_label_contacts (label_id, contact_id) "
             "SELECT %s, c.id FROM wa_contacts c "
@@ -18609,6 +18985,7 @@ def lead_labels_bulk_add_contacts(label_id: int):
 
 
 @portal_bp.route("/labels/search-contacts")
+@team_feature("crm.tags_view")
 def lead_labels_search_contacts_json():
     """Search WhatsApp Contacts for the Tags page's People add typeahead."""
     r = _require_login()
@@ -18652,6 +19029,7 @@ BOUNCED_LABEL_NAME = "Bounced"
 
 
 @portal_bp.route("/labels/import-bounces", methods=["GET", "POST"])
+@team_feature("crm.tags_create")
 def lead_labels_import_bounces():
     """Upload a ZeptoMail 'Message Reports' CSV export. Every row with a non-empty
     HARD BOUNCE column is matched by email (case-insensitive) against this tenant's
@@ -18664,7 +19042,7 @@ def lead_labels_import_bounces():
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "crm.tags", "Tags")
+    r2 = _require_plan_sub_feature(customer, "crm.tags_view", "Labels")
     if r2: return r2
 
     if request.method == "GET":
@@ -18746,6 +19124,7 @@ def lead_labels_import_bounces():
 
 
 @portal_bp.route("/email/campaigns/pipeline-leads-json")
+@team_feature("campaigns_email.segments_view")
 def email_campaigns_pipeline_leads_json():
     """Search Sales Pipeline leads with an email address, for the manage-segment modal's
     add-contact typeahead. Requires a query (or an exclude_segment_id) to keep results
@@ -18792,6 +19171,7 @@ def email_campaigns_pipeline_leads_json():
 
 
 @portal_bp.route("/email/campaigns/reports")
+@team_feature("campaigns_email.reports_view")
 def email_campaigns_reports():
     r = _require_login()
     if r: return r
@@ -18819,6 +19199,7 @@ def email_campaigns_reports():
 
 
 @portal_bp.route("/email/campaigns/<int:campaign_id>/report")
+@team_feature("campaigns_email.reports_view")
 def email_campaign_report(campaign_id: int):
     r = _require_login()
     if r: return r
@@ -18872,6 +19253,7 @@ def email_campaign_report(campaign_id: int):
 
 
 @portal_bp.route("/email/unsubscribe")
+@public_route
 def email_unsubscribe():
     """Public, no-login route. Token = _encrypt_key('<tenant_id>:<email>')."""
     token = (request.args.get("t") or "").strip()
@@ -19052,6 +19434,7 @@ def _annotate_order(order: dict) -> dict:
 
 
 @portal_bp.route("/orders")
+@team_feature("ecom.orders_view")
 def orders():
     r = _require_login()
     if r: return r
@@ -19060,7 +19443,7 @@ def orders():
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "ecom.orders", "Orders")
+    r2 = _require_plan_sub_feature(customer, "ecom.orders_view", "Orders")
     if r2: return r2
 
     status_filter = (request.args.get("status") or "all").strip()
@@ -19091,6 +19474,7 @@ def orders():
 
 
 @portal_bp.route("/orders/<order_id>")
+@team_feature("ecom.orders_view")
 def order_detail(order_id: str):
     r = _require_login()
     if r: return r
@@ -19099,7 +19483,7 @@ def order_detail(order_id: str):
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "ecom.orders", "Orders")
+    r2 = _require_plan_sub_feature(customer, "ecom.orders_view", "Orders")
     if r2: return r2
 
     order, items = _get_single_order(tenant_id, order_id)
@@ -19163,6 +19547,7 @@ def _notify_customer_wa(tenant_id: int, customer_phone: str, message: str):
 
 
 @portal_bp.route("/orders/<order_id>/verify-payment", methods=["POST"])
+@team_feature("ecom.orders_manage")
 def order_verify_payment(order_id: str):
     r = _require_login()
     if r: return r
@@ -19212,6 +19597,7 @@ def order_verify_payment(order_id: str):
 
 
 @portal_bp.route("/orders/<order_id>/dispatch", methods=["POST"])
+@team_feature("ecom.orders_manage")
 def order_dispatch(order_id: str):
     r = _require_login()
     if r: return r
@@ -19270,6 +19656,7 @@ def order_dispatch(order_id: str):
 
 
 @portal_bp.route("/orders/<order_id>/deliver", methods=["POST"])
+@team_feature("ecom.orders_manage")
 def order_deliver(order_id: str):
     r = _require_login()
     if r: return r
@@ -19316,6 +19703,7 @@ def order_deliver(order_id: str):
 
 
 @portal_bp.route("/orders/<order_id>/cancel", methods=["POST"])
+@team_feature("ecom.orders_cancel")
 def order_cancel(order_id: str):
     r = _require_login()
     if r: return r
@@ -19493,6 +19881,7 @@ def _get_wa_product_stats(tenant_id):
 
 
 @portal_bp.route("/products")
+@team_feature("ecom.products_view")
 def products():
     r = _require_login()
     if r: return r
@@ -19501,7 +19890,7 @@ def products():
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "ecom.products", "My Products")
+    r2 = _require_plan_sub_feature(customer, "ecom.products_view", "My Products")
     if r2: return r2
 
     has_azure_index = bool(_get_tenant_azure_index(tenant_id))
@@ -19535,6 +19924,7 @@ def products():
 
 
 @portal_bp.route("/products/add", methods=["GET", "POST"])
+@team_feature("ecom.products_create")
 def product_add():
     r = _require_login()
     if r: return r
@@ -19543,7 +19933,7 @@ def product_add():
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "ecom.products", "My Products")
+    r2 = _require_plan_sub_feature(customer, "ecom.products_view", "My Products")
     if r2: return r2
 
     if request.method == "POST":
@@ -19602,6 +19992,7 @@ def product_add():
 
 
 @portal_bp.route("/products/<product_id>/edit", methods=["GET", "POST"])
+@team_feature("ecom.products_edit")
 def product_edit(product_id: str):
     r = _require_login()
     if r: return r
@@ -19610,7 +20001,7 @@ def product_edit(product_id: str):
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "ecom.products", "My Products")
+    r2 = _require_plan_sub_feature(customer, "ecom.products_view", "My Products")
     if r2: return r2
 
     product = _get_product(tenant_id, product_id)
@@ -19674,6 +20065,7 @@ def product_edit(product_id: str):
 
 
 @portal_bp.route("/products/<product_id>/delete", methods=["POST"])
+@team_feature("ecom.products_delete")
 def product_delete(product_id: str):
     r = _require_login()
     if r: return r
@@ -19682,7 +20074,7 @@ def product_delete(product_id: str):
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "ecom.products", "My Products")
+    r2 = _require_plan_sub_feature(customer, "ecom.products_view", "My Products")
     if r2: return r2
 
     try:
@@ -19704,6 +20096,7 @@ def product_delete(product_id: str):
 
 
 @portal_bp.route("/products/<product_id>/toggle-stock", methods=["POST"])
+@team_feature("ecom.products_edit")
 def product_toggle_stock(product_id: str):
     """Quick action: mark in-stock (999) or out-of-stock (0) from list view."""
     r = _require_login()
@@ -19762,6 +20155,7 @@ def _wizard_state(customer_id: int) -> dict:
 
 
 @portal_bp.route("/onboarding/whatsapp-connect", methods=["GET"])
+@owner_only
 def onboarding_wa_connect():
     """Final onboarding step — connect WhatsApp via Embedded Signup."""
     r = _require_login()
@@ -19786,6 +20180,7 @@ def onboarding_wa_connect():
 
 
 @portal_bp.route("/onboarding/catalogue", methods=["GET", "POST"])
+@owner_only
 def onboarding_catalogue_start():
     """Step 1 — pick your business department/vertical."""
     r = _require_login()
@@ -19842,6 +20237,7 @@ def onboarding_catalogue_start():
 
 
 @portal_bp.route("/onboarding/catalogue/categories", methods=["GET", "POST"])
+@owner_only
 def onboarding_catalogue_categories():
     """Step 2 — pick which categories within the chosen department."""
     r = _require_login()
@@ -19925,6 +20321,7 @@ def onboarding_catalogue_categories():
 
 
 @portal_bp.route("/onboarding/catalogue/products/<int:category_id>", methods=["GET", "POST"])
+@owner_only
 def onboarding_catalogue_products(category_id: int):
     """Step 2 — browse & select products for one category."""
     r = _require_login()
@@ -20087,6 +20484,7 @@ def onboarding_catalogue_products(category_id: int):
 
 
 @portal_bp.route("/onboarding/catalogue/review")
+@owner_only
 def onboarding_catalogue_review():
     """Step 3 — review all selected products before finishing."""
     r = _require_login()
@@ -20161,6 +20559,7 @@ def onboarding_catalogue_review():
 
 
 @portal_bp.route("/onboarding/catalogue/finish", methods=["POST"])
+@owner_only
 def onboarding_catalogue_finish():
     """Mark catalogue onboarding done → store info step."""
     r = _require_login()
@@ -20174,6 +20573,7 @@ def onboarding_catalogue_finish():
 
 
 @portal_bp.route("/onboarding/store-info", methods=["GET", "POST"])
+@owner_only
 def onboarding_store_info():
     """Optional onboarding step — add store information for the AI."""
     r = _require_login()
@@ -20255,6 +20655,7 @@ def onboarding_store_info():
 
 
 @portal_bp.route("/onboarding/catalogue/skip", methods=["POST"])
+@owner_only
 def onboarding_catalogue_skip():
     """Skip the wizard — mark done so we don't show it again."""
     r = _require_login()
@@ -20267,6 +20668,7 @@ def onboarding_catalogue_skip():
 
 
 @portal_bp.route("/onboarding/manual-product", methods=["POST"])
+@owner_only
 def onboarding_manual_product():
     """Add a custom (non-catalogue) product during the onboarding wizard."""
     r = _require_login()
@@ -20311,6 +20713,7 @@ def onboarding_manual_product():
 
 # Toggle during wizard (AJAX or form POST) — reuses the same endpoint as the main catalogue
 @portal_bp.route("/onboarding/catalogue/toggle-variant/<int:variant_id>", methods=["POST"])
+@owner_only
 def onboarding_catalogue_toggle_variant(variant_id: int):
     """Toggle a specific product variant on/off for the merchant (AJAX)."""
     r = _require_login()
@@ -20360,6 +20763,7 @@ def onboarding_catalogue_toggle_variant(variant_id: int):
 
 
 @portal_bp.route("/onboarding/catalogue/toggle/<int:category_id>/<int:product_id>", methods=["POST"])
+@owner_only
 def onboarding_catalogue_toggle(category_id: int, product_id: int):
     """Same as catalogue_toggle but stays within the wizard URL space."""
     r = _require_login()
@@ -20426,6 +20830,7 @@ def _merchant_selection_ids(cur, merchant_id: int) -> set:
 
 
 @portal_bp.route("/catalogue")
+@team_feature("ecom.catalogue_view")
 def catalogue_browse():
     r = _require_login()
     if r: return r
@@ -20496,6 +20901,7 @@ def catalogue_browse():
 
 
 @portal_bp.route("/catalogue/categories/<int:category_id>")
+@team_feature("ecom.catalogue_view")
 def catalogue_category(category_id: int):
     r = _require_login()
     if r: return r
@@ -20625,6 +21031,7 @@ def catalogue_category(category_id: int):
 
 
 @portal_bp.route("/catalogue/categories/<int:category_id>/toggle/<int:product_id>", methods=["POST"])
+@team_feature("ecom.catalogue_edit")
 def catalogue_toggle(category_id: int, product_id: int):
     """Add or remove a product from the merchant's store catalogue."""
     r = _require_login()
@@ -20686,6 +21093,7 @@ def catalogue_toggle(category_id: int, product_id: int):
 
 
 @portal_bp.route("/catalogue/my-selections")
+@team_feature("ecom.catalogue_view")
 def catalogue_selections():
     r = _require_login()
     if r: return r
@@ -20902,6 +21310,7 @@ def _get_customer_detail(tenant_id: int, phone: str):
 
 
 @portal_bp.route("/customers")
+@team_feature("ecom.customers_view")
 def customers():
     r = _require_login()
     if r: return r
@@ -20910,7 +21319,7 @@ def customers():
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "ecom.customers", "Customers")
+    r2 = _require_plan_sub_feature(customer, "ecom.customers_view", "Customers")
     if r2: return r2
 
     q = (request.args.get("q") or "").strip()
@@ -20934,6 +21343,7 @@ def customers():
 
 
 @portal_bp.route("/customers/<path:phone>")
+@team_feature("ecom.customers_view")
 def customer_detail(phone: str):
     r = _require_login()
     if r: return r
@@ -20942,7 +21352,7 @@ def customer_detail(phone: str):
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "ecom.customers", "Customers")
+    r2 = _require_plan_sub_feature(customer, "ecom.customers_view", "Customers")
     if r2: return r2
 
     # Normalise: strip leading + so URL and DB value match
@@ -21049,6 +21459,7 @@ def _webhook_health(last_webhook_at) -> str:
 
 
 @portal_bp.route("/settings/payments", methods=["GET"])
+@team_feature("billing.payment_gateways_view")
 def payment_settings():
     r = _require_login()
     if r: return r
@@ -21093,6 +21504,7 @@ def payment_settings():
 
 
 @portal_bp.route("/settings/payments/paystack", methods=["POST"])
+@team_feature("billing.payment_gateways_manage")
 def payment_settings_paystack():
     r = _require_login()
     if r: return r
@@ -21132,6 +21544,7 @@ def payment_settings_paystack():
 
 
 @portal_bp.route("/settings/payments/paystack/remove", methods=["POST"])
+@team_feature("billing.payment_gateways_remove")
 def payment_settings_paystack_remove():
     r = _require_login()
     if r: return r
@@ -21158,6 +21571,7 @@ def payment_settings_paystack_remove():
 
 
 @portal_bp.route("/settings/payments/flutterwave", methods=["POST"])
+@team_feature("billing.payment_gateways_manage")
 def payment_settings_flutterwave():
     r = _require_login()
     if r: return r
@@ -21219,6 +21633,7 @@ def payment_settings_flutterwave():
 
 
 @portal_bp.route("/settings/payments/flutterwave/remove", methods=["POST"])
+@team_feature("billing.payment_gateways_remove")
 def payment_settings_flutterwave_remove():
     r = _require_login()
     if r: return r
@@ -21245,6 +21660,7 @@ def payment_settings_flutterwave_remove():
 
 
 @portal_bp.route("/settings/payments/flutterwave/toggle-checkout", methods=["POST"])
+@team_feature("billing.payment_gateways_manage")
 def payment_settings_flutterwave_toggle_checkout():
     """
     Turns Flutterwave on/off for WhatsApp customer checkout, independent of
@@ -21299,6 +21715,7 @@ def payment_settings_flutterwave_toggle_checkout():
 
 
 @portal_bp.route("/settings/payments/bank", methods=["POST"])
+@team_feature("billing.payment_gateways_manage")
 def payment_settings_bank():
     r = _require_login()
     if r: return r
@@ -21358,6 +21775,7 @@ def payment_settings_bank():
 
 
 @portal_bp.route("/settings/payments/reveal/<gateway>", methods=["POST"])
+@team_feature("billing.payment_gateways_reveal_secret")
 def payment_settings_reveal(gateway: str):
     """AJAX endpoint — returns decrypted secret key for 10-second reveal."""
     r = _require_login()
@@ -21513,6 +21931,7 @@ def _analytics_data(tenant_id: int, days: int = 30) -> dict:
 
 
 @portal_bp.route("/analytics")
+@team_feature("analytics.page")
 def analytics():
     r = _require_login()
     if r: return r
@@ -21815,7 +22234,33 @@ def _extract_file_text(file_storage) -> str:
     return ""
 
 
+def _store_info_actor(customer: dict) -> dict:
+    """Who's making this Store Information change — for the audit log and
+    the 'last changed by' column shown on the List/Modify pages. Team
+    members are identified individually (not just "the account"), since
+    that's the whole point of the audit requirement — knowing WHICH staff
+    member created, renamed, edited, or deleted an entry."""
+    tm_id = session.get("team_member_id")
+    if tm_id:
+        return {
+            "audit_username": f"team_member:{session.get('team_member_email') or tm_id}",
+            "display_name": session.get("team_member_name") or "Team member",
+        }
+    return {
+        "audit_username": f"customer:{customer.get('email')}",
+        "display_name": (customer.get("first_name") or "").strip() or customer.get("email") or "Owner",
+    }
+
+
+def _store_info_entry_id_is_custom(entry_id: str, tenant_id: int) -> bool:
+    """True for a custom entry created via store_info_create (rename/delete-
+    able); False for one of the 7 fixed sections (edit-only, never deletable
+    or renamable — Meta sync keys off their fixed id/title)."""
+    return entry_id.startswith(f"store_info-{tenant_id}-entry-")
+
+
 @portal_bp.route("/store-info", methods=["GET", "POST"])
+@team_feature("store.info", "store.info_documents_upload", "store.info_documents_delete")
 def store_info():
     r = _require_login()
     if r: return r
@@ -21824,18 +22269,13 @@ def store_info():
     r2 = _require_plan_sub_feature(customer, "store.info", "Store Information")
     if r2: return r2
 
-    # This one route dispatches 3 different catalog features via a hidden
-    # `action` form field — upload/delete a knowledge document is a bigger
-    # action than editing the text sections, so it gets its own key rather
-    # than being folded into store.info_edit. GET (view) uses the base key.
+    # This route now only handles the List view and the Knowledge Document
+    # upload/delete actions — creating, editing/renaming, and deleting a
+    # Store Information entry each moved to their own route + single
+    # permission key in the 2026-09-21 rebuild (was one flat page before).
     if request.method == "POST":
-        _dispatch_action = request.form.get("action", "save_text")
-        if _dispatch_action == "upload_doc":
-            _perm_key = "store.info_documents_upload"
-        elif _dispatch_action == "delete_doc":
-            _perm_key = "store.info_documents_delete"
-        else:
-            _perm_key = "store.info_edit"
+        _dispatch_action = request.form.get("action", "")
+        _perm_key = "store.info_documents_upload" if _dispatch_action == "upload_doc" else "store.info_documents_delete"
     else:
         _perm_key = "store.info"
     _rperm = _require_team_permission(_perm_key)
@@ -21845,7 +22285,7 @@ def store_info():
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     if request.method == "POST":
-        action = request.form.get("action", "save_text")
+        action = request.form.get("action", "")
 
         # ── File upload ──────────────────────────────────────────────────────
         if action == "upload_doc":
@@ -21879,11 +22319,16 @@ def store_info():
                     else:
                         import uuid
                         doc_id = f"store_info-{tenant_id}-upload-{uuid.uuid4().hex[:8]}"
+                        actor = _store_info_actor(customer)
                         cur.execute("""
-                            INSERT INTO documents (id, tenant_id, type, title, content, file_bytes, file_name, updated_at)
-                            VALUES (%s, %s, 'store_info', %s, %s, %s, %s, NOW())
-                        """, (doc_id, tenant_id, doc_title, text, psycopg2.Binary(raw_bytes), uploaded.filename))
+                            INSERT INTO documents (id, tenant_id, type, title, content, file_bytes, file_name, updated_by, updated_at)
+                            VALUES (%s, %s, 'store_info', %s, %s, %s, %s, %s, NOW())
+                        """, (doc_id, tenant_id, doc_title, text, psycopg2.Binary(raw_bytes), uploaded.filename, actor["audit_username"]))
                         conn.commit()
+                        insert_audit_log(
+                            admin_username=actor["audit_username"], action="store_info_document_uploaded",
+                            tenant_id=tenant_id, details={"doc_id": doc_id, "title": doc_title, "file_name": uploaded.filename},
+                        )
                         flash(f"'{doc_title}' uploaded. The AI will index it within 5 minutes.", "success")
                 except Exception as e:
                     print("⚠️ store_info upload error:", e)
@@ -21895,49 +22340,46 @@ def store_info():
         if action == "delete_doc":
             doc_id = request.form.get("doc_id", "")
             if doc_id.startswith(f"store_info-{tenant_id}-upload-"):
+                cur.execute("SELECT title FROM documents WHERE id=%s AND tenant_id=%s", (doc_id, tenant_id))
+                _row = cur.fetchone()
                 cur.execute("DELETE FROM documents WHERE id=%s AND tenant_id=%s", (doc_id, tenant_id))
                 conn.commit()
+                actor = _store_info_actor(customer)
+                insert_audit_log(
+                    admin_username=actor["audit_username"], action="store_info_document_deleted",
+                    tenant_id=tenant_id, details={"doc_id": doc_id, "title": (_row or {}).get("title")},
+                )
                 flash("Document deleted.", "success")
             cur.close(); conn.close()
             return redirect(url_for("portal.store_info"))
 
-        # ── Save text sections ───────────────────────────────────────────────
-        for key, label, _ in _STORE_INFO_SECTIONS:
-            text = (request.form.get(key) or "").strip()
-            doc_id = f"store_info-{tenant_id}-{key}"
-            if text:
-                cur.execute("""
-                    INSERT INTO documents (id, tenant_id, type, title, content, updated_at)
-                    VALUES (%s, %s, 'store_info', %s, %s, NOW())
-                    ON CONFLICT (id) DO UPDATE SET
-                        title      = EXCLUDED.title,
-                        content    = EXCLUDED.content,
-                        embedding  = NULL,
-                        updated_at = NOW()
-                """, (doc_id, tenant_id, label, text))
-            else:
-                cur.execute("DELETE FROM documents WHERE id=%s", (doc_id,))
-        conn.commit()
         cur.close(); conn.close()
-        # wizard_marker passed explicitly — omitting it defaults to "" which
-        # crashes the Skills sync (see meta_business_agent._extract_skill_fragments).
-        sync_all_to_meta(tenant_id, wizard_marker=_WIZARD_MARKER)  # mirrors to Meta Business AI if opted in; no-op otherwise
-        flash("Store information saved. The AI will use it to answer customer questions.", "success")
         return redirect(url_for("portal.store_info"))
 
-    # ── GET: load existing sections + uploaded docs ──────────────────────────
+    # ── GET: load fixed sections + custom entries + uploaded docs ────────────
     cur.execute(
-        "SELECT id, title, content FROM documents WHERE tenant_id=%s AND type='store_info' ORDER BY updated_at",
+        "SELECT id, title, content, updated_at, updated_by FROM documents WHERE tenant_id=%s AND type='store_info' ORDER BY updated_at DESC",
         (tenant_id,)
     )
     all_docs = cur.fetchall()
     cur.close(); conn.close()
 
-    rows = {r["id"]: r["content"] for r in all_docs}
-    existing = {
-        key: rows.get(f"store_info-{tenant_id}-{key}", "")
-        for key, _, _ in _STORE_INFO_SECTIONS
-    }
+    by_id = {r["id"]: r for r in all_docs}
+    section_rows = []
+    for key, label, hint in _STORE_INFO_SECTIONS:
+        row = by_id.get(f"store_info-{tenant_id}-{key}")
+        section_rows.append({
+            "id": f"store_info-{tenant_id}-{key}",
+            "title": label,
+            "hint": hint,
+            "has_content": bool(row),
+            "updated_at": row["updated_at"] if row else None,
+            "updated_by": row["updated_by"] if row else None,
+        })
+    custom_entries = [
+        r for r in all_docs
+        if r["id"].startswith(f"store_info-{tenant_id}-entry-")
+    ]
     uploaded_docs = [
         r for r in all_docs
         if r["id"].startswith(f"store_info-{tenant_id}-upload-")
@@ -21945,13 +22387,258 @@ def store_info():
     return render_template(
         "portal/store_info.html",
         customer=customer,
-        sections=_STORE_INFO_SECTIONS,
-        existing=existing,
+        section_rows=section_rows,
+        custom_entries=custom_entries,
         uploaded_docs=uploaded_docs,
     )
 
 
+@portal_bp.route("/store-info/create", methods=["GET", "POST"])
+@team_feature("store.info_create")
+def store_info_create():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "store.info", "Store Information")
+    if r2: return r2
+    r3 = _require_team_permission("store.info_create")
+    if r3: return r3
+
+    if request.method == "POST":
+        title   = (request.form.get("title") or "").strip()
+        content = (request.form.get("content") or "").strip()
+        if not title or not content:
+            flash("Please enter a title and some information.", "warning")
+            return render_template("portal/store_info_create.html", customer=customer, title=title, content=content)
+
+        import uuid
+        entry_id = f"store_info-{tenant_id}-entry-{uuid.uuid4().hex[:8]}"
+        actor = _store_info_actor(customer)
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO documents (id, tenant_id, type, title, content, updated_by, updated_at)
+            VALUES (%s, %s, 'store_info', %s, %s, %s, NOW())
+        """, (entry_id, tenant_id, title, content, actor["audit_username"]))
+        conn.commit()
+        cur.close(); conn.close()
+
+        insert_audit_log(
+            admin_username=actor["audit_username"], action="store_info_created",
+            tenant_id=tenant_id, details={"entry_id": entry_id, "title": title},
+        )
+        # wizard_marker passed explicitly — omitting it defaults to "" which
+        # crashes the Skills sync (see meta_business_agent._extract_skill_fragments).
+        sync_all_to_meta(tenant_id, wizard_marker=_WIZARD_MARKER)  # mirrors to Meta Business AI if opted in; no-op otherwise
+        flash(f"'{title}' created.", "success")
+        return redirect(url_for("portal.store_info"))
+
+    return render_template("portal/store_info_create.html", customer=customer, title="", content="")
+
+
+@portal_bp.route("/store-info/modify")
+@team_feature("store.info_edit")
+def store_info_modify():
+    """Picker page — lists every Store Information entry with a link into
+    store_info_modify_entry() to actually edit it. A standalone submenu
+    destination rather than an action off the List page, per how this
+    module was asked to be laid out."""
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "store.info", "Store Information")
+    if r2: return r2
+    r3 = _require_team_permission("store.info_edit")
+    if r3: return r3
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        "SELECT id, title, content, updated_at, updated_by FROM documents WHERE tenant_id=%s AND type='store_info' ORDER BY updated_at DESC",
+        (tenant_id,)
+    )
+    all_docs = cur.fetchall()
+    cur.close(); conn.close()
+
+    by_id = {r["id"]: r for r in all_docs}
+    section_rows = []
+    for key, label, hint in _STORE_INFO_SECTIONS:
+        row = by_id.get(f"store_info-{tenant_id}-{key}")
+        section_rows.append({
+            "id": f"store_info-{tenant_id}-{key}",
+            "title": label,
+            "hint": hint,
+            "has_content": bool(row),
+            "updated_at": row["updated_at"] if row else None,
+            "updated_by": row["updated_by"] if row else None,
+        })
+    custom_entries = [
+        r for r in all_docs
+        if r["id"].startswith(f"store_info-{tenant_id}-entry-")
+    ]
+    return render_template(
+        "portal/store_info_modify.html",
+        customer=customer,
+        section_rows=section_rows,
+        custom_entries=custom_entries,
+    )
+
+
+@portal_bp.route("/store-info/modify/<path:entry_id>", methods=["GET", "POST"])
+@team_feature("store.info_edit")
+def store_info_modify_entry(entry_id):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "store.info", "Store Information")
+    if r2: return r2
+    r3 = _require_team_permission("store.info_edit")
+    if r3: return r3
+
+    if not entry_id.startswith(f"store_info-{tenant_id}-"):
+        flash("Store Information entry not found.", "warning")
+        return redirect(url_for("portal.store_info_modify"))
+
+    is_custom = _store_info_entry_id_is_custom(entry_id, tenant_id)
+    fixed_label = fixed_hint = None
+    if not is_custom:
+        for key, label, hint in _STORE_INFO_SECTIONS:
+            if entry_id == f"store_info-{tenant_id}-{key}":
+                fixed_label, fixed_hint = label, hint
+                break
+        if fixed_label is None:
+            flash("Store Information entry not found.", "warning")
+            return redirect(url_for("portal.store_info_modify"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    if request.method == "POST":
+        content = (request.form.get("content") or "").strip()
+        title = fixed_label if not is_custom else (request.form.get("title") or "").strip()
+
+        if not content:
+            flash("Please enter some information before saving.", "warning")
+            cur.close(); conn.close()
+            return redirect(url_for("portal.store_info_modify_entry", entry_id=entry_id))
+        if is_custom and not title:
+            flash("Please give this entry a title.", "warning")
+            cur.close(); conn.close()
+            return redirect(url_for("portal.store_info_modify_entry", entry_id=entry_id))
+
+        cur.execute("SELECT title FROM documents WHERE id=%s AND tenant_id=%s", (entry_id, tenant_id))
+        _existing = cur.fetchone()
+        renamed = bool(is_custom and _existing and _existing.get("title") != title)
+
+        actor = _store_info_actor(customer)
+        cur.execute("""
+            INSERT INTO documents (id, tenant_id, type, title, content, updated_by, updated_at)
+            VALUES (%s, %s, 'store_info', %s, %s, %s, NOW())
+            ON CONFLICT (id) DO UPDATE SET
+                title      = EXCLUDED.title,
+                content    = EXCLUDED.content,
+                embedding  = NULL,
+                updated_by = EXCLUDED.updated_by,
+                updated_at = NOW()
+        """, (entry_id, tenant_id, title, content, actor["audit_username"]))
+        conn.commit()
+        cur.close(); conn.close()
+
+        insert_audit_log(
+            admin_username=actor["audit_username"],
+            action="store_info_renamed" if renamed else "store_info_updated",
+            tenant_id=tenant_id,
+            details={"entry_id": entry_id, "title": title, "renamed": renamed},
+        )
+        sync_all_to_meta(tenant_id, wizard_marker=_WIZARD_MARKER)
+        flash(f"'{title}' saved.", "success")
+        return redirect(url_for("portal.store_info"))
+
+    cur.execute("SELECT title, content FROM documents WHERE id=%s AND tenant_id=%s", (entry_id, tenant_id))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+
+    return render_template(
+        "portal/store_info_modify_edit.html",
+        customer=customer,
+        entry_id=entry_id,
+        is_custom=is_custom,
+        title=(row["title"] if row else fixed_label),
+        content=(row["content"] if row else ""),
+        hint=fixed_hint,
+    )
+
+
+@portal_bp.route("/store-info/delete")
+@team_feature("store.info_delete")
+def store_info_delete():
+    """Picker page — only custom entries are listed, since the 7 fixed
+    sections can never be deleted (Meta sync keys off their fixed ids)."""
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "store.info", "Store Information")
+    if r2: return r2
+    r3 = _require_team_permission("store.info_delete")
+    if r3: return r3
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        "SELECT id, title, content, updated_at, updated_by FROM documents WHERE tenant_id=%s AND type='store_info' AND id LIKE %s ORDER BY updated_at DESC",
+        (tenant_id, f"store_info-{tenant_id}-entry-%")
+    )
+    custom_entries = cur.fetchall()
+    cur.close(); conn.close()
+
+    return render_template("portal/store_info_delete.html", customer=customer, custom_entries=custom_entries)
+
+
+@portal_bp.route("/store-info/delete/<path:entry_id>", methods=["POST"])
+@team_feature("store.info_delete")
+def store_info_delete_entry(entry_id):
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "store.info", "Store Information")
+    if r2: return r2
+    r3 = _require_team_permission("store.info_delete")
+    if r3: return r3
+
+    if not _store_info_entry_id_is_custom(entry_id, tenant_id):
+        flash("Only entries you created can be deleted.", "warning")
+        return redirect(url_for("portal.store_info_delete"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT title FROM documents WHERE id=%s AND tenant_id=%s", (entry_id, tenant_id))
+    row = cur.fetchone()
+    if not row:
+        cur.close(); conn.close()
+        flash("Store Information entry not found.", "warning")
+        return redirect(url_for("portal.store_info_delete"))
+
+    cur.execute("DELETE FROM documents WHERE id=%s AND tenant_id=%s", (entry_id, tenant_id))
+    conn.commit()
+    cur.close(); conn.close()
+
+    actor = _store_info_actor(customer)
+    insert_audit_log(
+        admin_username=actor["audit_username"], action="store_info_deleted",
+        tenant_id=tenant_id, details={"entry_id": entry_id, "title": row["title"]},
+    )
+    sync_all_to_meta(tenant_id, wizard_marker=_WIZARD_MARKER)
+    flash(f"'{row['title']}' deleted.", "success")
+    return redirect(url_for("portal.store_info_delete"))
+
+
 @portal_bp.route("/data-sources")
+@team_feature("ecom.data_sources_view")
 def data_sources():
     r = _require_login()
     if r: return r
@@ -21959,7 +22646,7 @@ def data_sources():
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "ecom.data_sources", "Data Sources / Product Import")
+    r2 = _require_plan_sub_feature(customer, "ecom.data_sources_view", "Data Sources / Product Import")
     if r2: return r2
     sources   = _get_data_sources(tenant_id)
     return render_template(
@@ -21973,6 +22660,7 @@ def data_sources():
 # ── Excel / CSV upload ────────────────────────────────────────────────────
 
 @portal_bp.route("/data-sources/upload", methods=["POST"])
+@team_feature("ecom.data_sources_create")
 def data_source_upload():
     r = _require_login()
     if r: return r
@@ -21980,7 +22668,7 @@ def data_source_upload():
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "ecom.data_sources", "Data Sources / Product Import")
+    r2 = _require_plan_sub_feature(customer, "ecom.data_sources_view", "Data Sources / Product Import")
     if r2: return r2
 
     f = request.files.get("file")
@@ -22032,6 +22720,7 @@ def data_source_upload():
 
 
 @portal_bp.route("/data-sources/<int:source_id>/map", methods=["GET", "POST"])
+@team_feature("ecom.data_sources_edit")
 def data_source_map(source_id: int):
     r = _require_login()
     if r: return r
@@ -22039,7 +22728,7 @@ def data_source_map(source_id: int):
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "ecom.data_sources", "Data Sources / Product Import")
+    r2 = _require_plan_sub_feature(customer, "ecom.data_sources_view", "Data Sources / Product Import")
     if r2: return r2
     source    = _get_data_source(tenant_id, source_id)
     if not source:
@@ -22092,6 +22781,7 @@ def data_source_map(source_id: int):
 
 
 @portal_bp.route("/data-sources/<int:source_id>/sync", methods=["POST", "GET"])
+@team_feature("ecom.data_sources_edit")
 def data_source_sync(source_id: int):
     r = _require_login()
     if r: return r
@@ -22099,7 +22789,7 @@ def data_source_sync(source_id: int):
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "ecom.data_sources", "Data Sources / Product Import")
+    r2 = _require_plan_sub_feature(customer, "ecom.data_sources_view", "Data Sources / Product Import")
     if r2: return r2
     source    = _get_data_source(tenant_id, source_id)
     if not source:
@@ -22143,6 +22833,7 @@ def data_source_sync(source_id: int):
 
 
 @portal_bp.route("/data-sources/<int:source_id>/delete", methods=["POST"])
+@team_feature("ecom.data_sources_delete")
 def data_source_delete(source_id: int):
     r = _require_login()
     if r: return r
@@ -22165,6 +22856,7 @@ def data_source_delete(source_id: int):
 # ── Google Sheets OAuth2 ──────────────────────────────────────────────────
 
 @portal_bp.route("/data-sources/google/connect")
+@team_feature("ecom.data_sources_create")
 def data_source_google_connect():
     r = _require_login()
     if r: return r
@@ -22184,6 +22876,7 @@ def data_source_google_connect():
 
 
 @portal_bp.route("/data-sources/google/callback")
+@team_feature("ecom.data_sources_create")
 def data_source_google_callback():
     r = _require_login()
     if r: return r
@@ -22228,6 +22921,7 @@ def data_source_google_callback():
 
 
 @portal_bp.route("/data-sources/google/<int:source_id>/setup", methods=["GET", "POST"])
+@team_feature("ecom.data_sources_create")
 def data_source_google_setup(source_id: int):
     r = _require_login()
     if r: return r
@@ -22307,6 +23001,7 @@ def data_source_google_setup(source_id: int):
 # ═══════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/woo-sync")
+@team_feature("ecom.woo_sync_view")
 def woo_sync():
     r = _require_login()
     if r: return r
@@ -22315,7 +23010,7 @@ def woo_sync():
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "ecom.woo_sync", "WooCommerce Sync")
+    r2 = _require_plan_sub_feature(customer, "ecom.woo_sync_view", "WooCommerce Sync")
     if r2: return r2
 
     type_f  = (request.args.get("type") or "").strip().lower()
@@ -22393,6 +23088,7 @@ def woo_sync():
 
 
 @portal_bp.route("/woo-sync/delete", methods=["POST"])
+@team_feature("ecom.woo_sync_delete")
 def woo_sync_delete():
     """Delete a single synced page or post. Products are excluded — those come
     back on the next Full Sync and should be removed from WooCommerce instead."""
@@ -22428,6 +23124,7 @@ def woo_sync_delete():
 
 
 @portal_bp.route("/woo-sync/bulk-delete", methods=["POST"])
+@team_feature("ecom.woo_sync_delete")
 def woo_sync_bulk_delete():
     """Delete multiple synced pages/posts at once. Same rules as the single
     delete — products excluded, and a future Full Sync brings back anything
@@ -22682,6 +23379,7 @@ def provision_whatsapp_merchant(wa_phone: str, business_name: str) -> dict:
 # ─── Internal provisioning endpoint ───────────────────────────────────────
 
 @portal_bp.route("/internal/provision-wa-merchant", methods=["POST"])
+@public_route
 def internal_provision_wa_merchant():
     """
     Called by the WhatsApp gateway when onboarding completes.
@@ -22709,6 +23407,7 @@ def internal_provision_wa_merchant():
 
 
 @portal_bp.route("/internal/grant-trial-upgrade", methods=["POST"])
+@public_route
 def internal_grant_trial_upgrade():
     """
     Called by phixtra-data-sync when a web merchant's first full catalogue
@@ -22737,6 +23436,7 @@ def internal_grant_trial_upgrade():
 
 
 @portal_bp.route("/internal/orders/<order_id>/fw-checkout-link", methods=["POST"])
+@public_route
 def internal_fw_checkout_link(order_id: str):
     """
     Called by the WhatsApp gateway when a customer reaches the payment step
@@ -22810,6 +23510,7 @@ def internal_fw_checkout_link(order_id: str):
 
 
 @portal_bp.route("/billing/flutterwave-order-webhook", methods=["POST"])
+@public_route
 def _confirm_fw_order_payment(order: dict, tx_ref: str, txn_data: dict, secret_key: str) -> bool:
     """
     Shared core of Flutterwave order-payment confirmation, used both by
@@ -22938,6 +23639,7 @@ def billing_flutterwave_order_webhook():
 
 
 @portal_bp.route("/pay/thank-you", methods=["GET"])
+@public_route
 def pay_thank_you():
     """Static landing page after Flutterwave checkout redirect — tells the customer to return to WhatsApp."""
     return render_template("portal/pay_thank_you.html")
@@ -22946,6 +23648,7 @@ def pay_thank_you():
 # ─── WhatsApp OTP login routes ────────────────────────────────────────────
 
 @portal_bp.route("/wa-login", methods=["GET"])
+@public_route
 def wa_login():
     if _logged_in():
         return redirect(url_for("portal.dashboard"))
@@ -22953,6 +23656,7 @@ def wa_login():
 
 
 @portal_bp.route("/wa-login/send", methods=["POST"])
+@public_route
 def wa_login_send():
     if _logged_in():
         return redirect(url_for("portal.dashboard"))
@@ -23008,6 +23712,7 @@ def wa_login_send():
 
 
 @portal_bp.route("/wa-login/verify", methods=["GET", "POST"])
+@public_route
 def wa_login_verify():
     if _logged_in():
         return redirect(url_for("portal.dashboard"))
@@ -23053,6 +23758,7 @@ def wa_login_verify():
 
 
 @portal_bp.route("/wa-login/resend", methods=["POST"])
+@public_route
 def wa_login_resend():
     phone = session.get("wa_otp_phone", "")
     if not phone:
@@ -23532,6 +24238,7 @@ def _get_inbox_messages(tenant_id: int, phone: str, limit: int = 100) -> list:
 
 
 @portal_bp.route("/channels")
+@team_feature("channels.page")
 def channels_page():
     """Unified hub — every connected (or connectable) social channel in
     one place, each with its real brand logo, not scattered across separate
@@ -23864,6 +24571,7 @@ def _send_webchat_reply(tenant_id: int, key: str, text: str, actor: dict):
 
 
 @portal_bp.route("/inbox")
+@team_feature("inbox.page")
 def my_inbox():
     r = _require_login()
     if r: return r
@@ -24001,6 +24709,7 @@ def my_inbox():
 
 
 @portal_bp.route("/inbox/<path:phone>/reply", methods=["POST"])
+@team_feature("inbox.reply")
 def inbox_reply(phone: str):
     r = _require_login()
     if r: return r
@@ -24084,6 +24793,10 @@ def inbox_reply(phone: str):
         flash("WhatsApp connection not found.", "danger")
         return redirect(url_for("portal.my_inbox", phone=phone))
 
+    if _wa_locked_for_tenant(tenant_id):
+        flash("WhatsApp is part of the Dual Agent plan. Upgrade to a Dual Agent plan to reply on WhatsApp.", "danger")
+        return redirect(url_for("portal.my_inbox", phone=phone))
+
     ok = _send_wa_text_from_portal(
         wa["phone_number_id"], wa["access_token"], phone, reply_text
     )
@@ -24109,6 +24822,7 @@ def inbox_reply(phone: str):
 
 
 @portal_bp.route("/inbox/<path:phone>/claim", methods=["POST"])
+@team_feature("inbox.claim_release")
 def inbox_claim(phone: str):
     r = _require_login()
     if r: return r
@@ -24148,6 +24862,7 @@ def inbox_claim(phone: str):
 
 
 @portal_bp.route("/inbox/<path:phone>/release", methods=["POST"])
+@team_feature("inbox.claim_release")
 def inbox_release(phone: str):
     r = _require_login()
     if r: return r
@@ -24178,6 +24893,7 @@ def inbox_release(phone: str):
 
 
 @portal_bp.route("/inbox/api/poll")
+@team_feature("inbox.page")
 def inbox_api_poll():
     """JSON endpoint: returns latest conversations + messages for a phone."""
     from flask import jsonify
@@ -24215,6 +24931,7 @@ def inbox_api_poll():
 
 
 @portal_bp.route("/inbox/<path:phone>/contact", methods=["POST"])
+@team_feature("inbox.manage_contact")
 def inbox_save_contact(phone: str):
     """Save or update a display name for a WhatsApp contact."""
     r = _require_login()
@@ -24266,7 +24983,7 @@ def _get_tenant_plan(tenant_id: int) -> dict:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
-            SELECT t.plan_period_start, t.billing_cycle, t.quota_notified_at,
+            SELECT t.id AS tenant_id, t.plan_period_start, t.billing_cycle, t.quota_notified_at,
                    t.trial_ends_at,
                    COALESCE(p.id,                1)       AS plan_id,
                    COALESCE(p.slug,          'free')      AS plan_slug,
@@ -24326,7 +25043,29 @@ def _get_tenant_plan(tenant_id: int) -> dict:
                 "ai_messages_limit": 100, "usage_pct": 0, "is_over_quota": False}
 
 
+# ── Who sees which plan (2026-09-23) ───────────────────────────────────────
+# plans.channel_mode ("Who sees this plan" on the admin Plan editor):
+#   whatsapp    — merchants who signed up for the WhatsApp AI Sales Agent
+#   woocommerce — merchants who signed up for the Website (WooCommerce) agent
+#   dual        — Dual Agent (both), shown to both kinds of merchant
+#   both        — everyone (e.g. Custom / Talk to Sales)
+# "single" is the old name for whatsapp and still means that. Which plans
+# exist is entirely up to PhiXtra admin — nothing here names a plan.
+def _merchant_plan_mode(customer) -> str:
+    return "woocommerce" if (customer or {}).get("tenant_source_type") == "web" else "whatsapp"
+
+
+def _plan_mode(plan) -> str:
+    mode = (plan or {}).get("channel_mode") or "whatsapp"
+    return "whatsapp" if mode == "single" else mode
+
+
+def _plan_visible_to(plan, merchant_mode: str) -> bool:
+    return _plan_mode(plan) in (merchant_mode, "dual", "both")
+
+
 @portal_bp.route("/billing/plans")
+@team_feature("billing.subscription_view")
 def billing_plans():
     r = _require_login()
     if r: return r
@@ -24344,14 +25083,26 @@ def billing_plans():
     cur.close(); conn.close()
 
     # Dual Agent Plan pricing (2026-09-18) — see project_dual_agent_pricing
-    # memory. Merchants toggle between the single-channel tiers and the
+    # memory. Merchants toggle between their own channel's tiers and the
     # dual-channel (WhatsApp + Website) tiers; the Custom tier always shows.
-    single_plans = [p for p in plans if p["channel_mode"] == "single"]
-    dual_plans   = [p for p in plans if p["channel_mode"] == "dual"]
-    custom_plans = [p for p in plans if p["channel_mode"] == "both"]
+    # Since 2026-09-23 "their own channel" is the one they signed up for:
+    # a WhatsApp merchant never sees WooCommerce-only plans and vice versa.
+    merchant_mode = _merchant_plan_mode(customer)
+    single_plans = [p for p in plans if _plan_mode(p) == merchant_mode]
+    dual_plans   = [p for p in plans if _plan_mode(p) == "dual"]
+    custom_plans = [p for p in plans if _plan_mode(p) == "both"]
+    has_own_plans = bool(single_plans)
+    # Always show the merchant's current plan, even when it belongs to the
+    # other channel (e.g. a WooCommerce merchant on the Enterprise trial, or
+    # dropped to Free afterwards) — shown as "Current plan", never buyable
+    # (billing_plan_upgrade still rejects plans not visible to them).
+    _cur = next((p for p in plans if p["id"] == current.get("plan_id")), None)
+    if _cur and not _plan_visible_to(_cur, merchant_mode):
+        single_plans = [_cur] + single_plans
 
     # Default the toggle to whichever mode the merchant is currently on.
-    default_channel_mode = "dual" if current.get("channel_mode") == "dual" else "single"
+    default_channel_mode = "dual" if (current.get("channel_mode") == "dual"
+                                      or request.args.get("view") == "dual") else "single"
 
     return render_template(
         "portal/billing_plans.html",
@@ -24362,6 +25113,8 @@ def billing_plans():
         dual_plans=dual_plans,
         custom_plans=custom_plans,
         default_channel_mode=default_channel_mode,
+        merchant_mode=merchant_mode,
+        has_own_plans=has_own_plans,
     )
 
 
@@ -24535,6 +25288,7 @@ def _activate_plan_subscription(tenant_id: int, plan_id: int, cycle: str,
 
 
 @portal_bp.route("/billing/plan-upgrade", methods=["POST"])
+@team_feature("billing.subscription_manage")
 def billing_plan_upgrade():
     r = _require_login()
     if r: return r
@@ -24560,7 +25314,7 @@ def billing_plan_upgrade():
     plan = cur.fetchone()
     cur.close(); conn.close()
 
-    if not plan or plan["price_ngn"] == 0:
+    if not plan or plan["price_ngn"] == 0 or not _plan_visible_to(plan, _merchant_plan_mode(customer)):
         flash("Invalid plan selected.", "danger")
         return redirect(url_for("portal.billing_plans"))
 
@@ -24677,6 +25431,7 @@ def billing_plan_upgrade():
 
 
 @portal_bp.route("/billing/plan-upgrade/callback")
+@public_route
 def billing_plan_upgrade_callback():
     """Flutterwave redirect after checkout — verify and activate plan."""
     import requests as _req
@@ -24741,6 +25496,7 @@ def billing_plan_upgrade_callback():
 
 
 @portal_bp.route("/billing/flutterwave-webhook", methods=["POST"])
+@public_route
 def billing_flutterwave_webhook():
     """Handle Flutterwave recurring charge and subscription webhooks."""
     import hashlib as _hl
@@ -24897,12 +25653,13 @@ def billing_flutterwave_webhook():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/reports")
+@team_feature("reports.pipeline_overview", "reports.leads_sources", "reports.custom", "reports.usage", "reports.cart", "reports.billing", "wa.report")
 def reports_page():
     r = _require_login()
     if r: return r
     _rperm = _require_any_team_permission([
         "reports.pipeline_overview", "reports.leads_sources", "reports.custom",
-        "reports.usage", "reports.cart", "reports.billing",
+        "reports.usage", "reports.cart", "reports.billing", "wa.report",
     ])
     if _rperm: return _rperm
     from datetime import date as _date, timedelta as _td
@@ -25011,7 +25768,288 @@ def reports_page():
 # LEADS — conversations flagged as hot / warm leads
 # ══════════════════════════════════════════════════════════════════════════════
 
+# Below this many records, an average or a rate is more likely to mislead than
+# inform (e.g. 1/1 = 100%) — those tiles show "Not enough data yet" instead of
+# a number. Same convention across every metric on Leads Overview.
+LEADS_OVERVIEW_MIN_SAMPLE = 3
+
+
+def _get_leads_overview_data(tenant_id: int, date_from, date_to, prev_from, prev_to) -> dict:
+    """Data for the Leads Overview management dashboard (2026-09-22) — built
+    from internationally standard sales/marketing funnel metrics (approved
+    design, see project_leads_overview_dashboard memory), computed the same
+    way for every business. A metric whose underlying field a business hasn't
+    started recording yet (Source, Deal Value, Assigned Rep, Contact/Won
+    dates) returns None and the template shows "Not enough data yet" — never
+    a fabricated number. Reuses the exact win-rate definition already used by
+    Pipeline Overview / the main Dashboard (Won / (Won+Lost), Dropped
+    excluded) so the numbers never disagree with those pages."""
+    safe = {
+        "total_leads": 0,
+        "new_leads": 0, "new_leads_prev": 0, "new_leads_pct": None,
+        "not_yet_decided": 0, "not_yet_decided_pct": None,
+        "avg_wait_days": None,
+        "became_opportunity": 0, "became_opportunity_pct": None,
+        "not_a_fit": 0, "not_a_fit_pct": None,
+        "tier_counts": {"hot": 0, "warm": 0, "cold": 0},
+        "became_opportunity_rate": None, "became_opportunity_rate_prev": None,
+        "not_a_fit_rate": None, "not_a_fit_rate_prev": None,
+        "time_to_first_contact": None,
+        "time_to_become_opportunity": None,
+        "by_source": [], "by_source_enough_data": False,
+        "source_conversion": [],
+        "by_rep": [], "by_rep_enough_data": False,
+        "win_rate": None, "win_rate_prev": None, "won_count": 0, "lost_count": 0,
+        "avg_deal_size": None,
+        "sales_cycle_days": None,
+        "revenue_speed": None,
+    }
+    conn = None
+    cur  = None
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        def _pct(curr, prev):
+            if prev and prev > 0:
+                return round((curr - prev) / prev * 100, 1)
+            return None
+
+        cur.execute("SELECT count(*) AS c FROM merchant_pipeline_leads WHERE tenant_id=%s", (tenant_id,))
+        total_leads = int(cur.fetchone()["c"])
+        safe["total_leads"] = total_leads
+
+        def _count_created(d_from, d_to):
+            cur.execute(
+                "SELECT count(*) AS c FROM merchant_pipeline_leads "
+                "WHERE tenant_id=%s AND created_at::date BETWEEN %s AND %s",
+                (tenant_id, d_from, d_to),
+            )
+            return int(cur.fetchone()["c"])
+        new_leads      = _count_created(date_from, date_to)
+        new_leads_prev = _count_created(prev_from, prev_to)
+        safe["new_leads"]      = new_leads
+        safe["new_leads_prev"] = new_leads_prev
+        safe["new_leads_pct"]  = _pct(new_leads, new_leads_prev)
+
+        # Where every lead stands right now (all-time snapshot, not period-scoped —
+        # "what's true today" isn't a sum over a date range).
+        cur.execute("""
+            SELECT
+              count(*) FILTER (WHERE NOT is_opportunity AND dropped_at IS NULL) AS undecided,
+              count(*) FILTER (WHERE is_opportunity) AS opportunities,
+              count(*) FILTER (WHERE outcome='not_a_fit') AS not_a_fit
+            FROM merchant_pipeline_leads WHERE tenant_id=%s
+        """, (tenant_id,))
+        row = cur.fetchone()
+        undecided, opportunities, naf = int(row["undecided"]), int(row["opportunities"]), int(row["not_a_fit"])
+        safe["not_yet_decided"]    = undecided
+        safe["became_opportunity"] = opportunities
+        safe["not_a_fit"]          = naf
+        if total_leads:
+            safe["not_yet_decided_pct"]    = round(undecided / total_leads * 100, 1)
+            safe["became_opportunity_pct"] = round(opportunities / total_leads * 100, 1)
+            safe["not_a_fit_pct"]          = round(naf / total_leads * 100, 1)
+
+        cur.execute("""
+            SELECT AVG(EXTRACT(EPOCH FROM (NOW() - created_at)) / 86400.0) AS d
+            FROM merchant_pipeline_leads WHERE tenant_id=%s AND NOT is_opportunity AND dropped_at IS NULL
+        """, (tenant_id,))
+        r = cur.fetchone()
+        if undecided >= LEADS_OVERVIEW_MIN_SAMPLE and r["d"] is not None:
+            safe["avg_wait_days"] = round(float(r["d"]), 1)
+
+        # Became-Opportunity / Not-a-Fit rate — scoped to leads CREATED in the
+        # period (cohort basis), same convention real CRMs use for lead
+        # conversion rate reporting.
+        def _cohort_rates(d_from, d_to):
+            cur.execute("""
+                SELECT count(*) AS total,
+                       count(*) FILTER (WHERE is_opportunity) AS opp,
+                       count(*) FILTER (WHERE outcome='not_a_fit') AS naf
+                FROM merchant_pipeline_leads
+                WHERE tenant_id=%s AND created_at::date BETWEEN %s AND %s
+            """, (tenant_id, d_from, d_to))
+            rr = cur.fetchone()
+            total = int(rr["total"])
+            if total < LEADS_OVERVIEW_MIN_SAMPLE:
+                return None, None
+            return round(int(rr["opp"]) / total * 100, 1), round(int(rr["naf"]) / total * 100, 1)
+        safe["became_opportunity_rate"], safe["not_a_fit_rate"] = _cohort_rates(date_from, date_to)
+        safe["became_opportunity_rate_prev"], safe["not_a_fit_rate_prev"] = _cohort_rates(prev_from, prev_to)
+
+        # Hot / Warm / Cold — current, every active (non-dropped) lead.
+        scored_from = _pipeline_scored_from_sql()
+        cur.execute(f"SELECT lead_tier, count(*) AS c FROM {scored_from} mpl GROUP BY lead_tier", [tenant_id])
+        for rr in cur.fetchall():
+            safe["tier_counts"][rr["lead_tier"]] = int(rr["c"])
+
+        cur.execute("""
+            SELECT count(*) AS n, AVG(contact_date - created_at::date) AS d
+            FROM merchant_pipeline_leads WHERE tenant_id=%s AND contact_date IS NOT NULL
+        """, (tenant_id,))
+        r = cur.fetchone()
+        if int(r["n"]) >= LEADS_OVERVIEW_MIN_SAMPLE:
+            safe["time_to_first_contact"] = round(float(r["d"]), 1)
+
+        cur.execute("""
+            SELECT count(*) AS n, AVG(EXTRACT(EPOCH FROM (opportunity_at - created_at)) / 86400.0) AS d
+            FROM merchant_pipeline_leads WHERE tenant_id=%s AND is_opportunity AND opportunity_at IS NOT NULL
+        """, (tenant_id,))
+        r = cur.fetchone()
+        if int(r["n"]) >= LEADS_OVERVIEW_MIN_SAMPLE:
+            safe["time_to_become_opportunity"] = round(float(r["d"]), 1)
+
+        cur.execute("""
+            SELECT source, count(*) AS c FROM merchant_pipeline_leads
+            WHERE tenant_id=%s AND source IS NOT NULL AND created_at::date BETWEEN %s AND %s
+            GROUP BY source ORDER BY c DESC
+        """, (tenant_id, date_from, date_to))
+        src_rows  = cur.fetchall()
+        src_total = sum(int(rr["c"]) for rr in src_rows)
+        if src_total >= LEADS_OVERVIEW_MIN_SAMPLE:
+            safe["by_source_enough_data"] = True
+            safe["by_source"] = [
+                {"source": rr["source"], "count": int(rr["c"]), "pct": round(int(rr["c"]) / src_total * 100, 1)}
+                for rr in src_rows
+            ]
+            cur.execute("""
+                SELECT source, count(*) AS total, count(*) FILTER (WHERE is_opportunity) AS opp
+                FROM merchant_pipeline_leads
+                WHERE tenant_id=%s AND source IS NOT NULL AND created_at::date BETWEEN %s AND %s
+                GROUP BY source
+            """, (tenant_id, date_from, date_to))
+            conv_rows = []
+            for rr in cur.fetchall():
+                total = int(rr["total"])
+                if total >= LEADS_OVERVIEW_MIN_SAMPLE:
+                    conv_rows.append({"source": rr["source"], "rate": round(int(rr["opp"]) / total * 100, 1)})
+            conv_rows.sort(key=lambda x: -x["rate"])
+            safe["source_conversion"] = conv_rows
+
+        cur.execute("""
+            SELECT assigned_to,
+                   count(*) AS leads,
+                   count(*) FILTER (WHERE is_opportunity) AS opportunities,
+                   count(*) FILTER (WHERE outcome='won') AS won,
+                   count(*) FILTER (WHERE outcome IN ('won','lost')) AS decided
+            FROM merchant_pipeline_leads
+            WHERE tenant_id=%s AND assigned_to IS NOT NULL AND assigned_to != ''
+            GROUP BY assigned_to
+        """, (tenant_id,))
+        rep_rows  = cur.fetchall()
+        rep_total = sum(int(rr["leads"]) for rr in rep_rows)
+        if rep_total >= LEADS_OVERVIEW_MIN_SAMPLE:
+            safe["by_rep_enough_data"] = True
+            reps = []
+            for rr in rep_rows:
+                decided  = int(rr["decided"])
+                win_rate = round(int(rr["won"]) / decided * 100, 1) if decided > 0 else None
+                reps.append({
+                    "name": rr["assigned_to"], "leads": int(rr["leads"]),
+                    "opportunities": int(rr["opportunities"]), "won": int(rr["won"]),
+                    "win_rate": win_rate,
+                })
+            reps.sort(key=lambda x: -x["leads"])
+            safe["by_rep"] = reps
+
+        def _win_rate(d_from, d_to):
+            cur.execute("""
+                SELECT outcome, COUNT(*) AS n FROM merchant_pipeline_leads
+                WHERE tenant_id=%s AND outcome IN ('won','lost')
+                  AND COALESCE(won_date, dropped_at::date) BETWEEN %s AND %s
+                GROUP BY outcome
+            """, (tenant_id, d_from, d_to))
+            rows = {rr["outcome"]: int(rr["n"]) for rr in cur.fetchall()}
+            won, lost = rows.get("won", 0), rows.get("lost", 0)
+            if won + lost < LEADS_OVERVIEW_MIN_SAMPLE:
+                return None, won, lost
+            return round(won / (won + lost) * 100, 1), won, lost
+
+        win_rate, won_count, lost_count = _win_rate(date_from, date_to)
+        win_rate_prev, _, _ = _win_rate(prev_from, prev_to)
+        safe["win_rate"]    = win_rate
+        safe["win_rate_prev"] = win_rate_prev
+        safe["won_count"]  = won_count
+        safe["lost_count"] = lost_count
+
+        cur.execute("""
+            SELECT count(*) AS n, AVG(deal_value) AS v FROM merchant_pipeline_leads
+            WHERE tenant_id=%s AND outcome='won' AND won_date BETWEEN %s AND %s AND deal_value IS NOT NULL
+        """, (tenant_id, date_from, date_to))
+        r = cur.fetchone()
+        if int(r["n"]) >= LEADS_OVERVIEW_MIN_SAMPLE:
+            safe["avg_deal_size"] = float(r["v"])
+
+        cur.execute("""
+            SELECT count(*) AS n, AVG(won_date - created_at::date) AS d FROM merchant_pipeline_leads
+            WHERE tenant_id=%s AND outcome='won' AND won_date BETWEEN %s AND %s
+        """, (tenant_id, date_from, date_to))
+        r = cur.fetchone()
+        if int(r["n"]) >= LEADS_OVERVIEW_MIN_SAMPLE:
+            safe["sales_cycle_days"] = round(float(r["d"]), 1)
+
+        # Revenue speed — how much value the open pipeline is generating per day,
+        # given how it's currently winning. Only shown once every lever it's
+        # built from (win rate, deal size, cycle length) is itself real.
+        if safe["win_rate"] is not None and safe["avg_deal_size"] is not None and safe["sales_cycle_days"]:
+            cur.execute("""
+                SELECT count(*) AS n FROM merchant_pipeline_leads
+                WHERE tenant_id=%s AND is_opportunity AND outcome IS NULL
+            """, (tenant_id,))
+            open_opps = int(cur.fetchone()["n"])
+            if safe["sales_cycle_days"] > 0:
+                safe["revenue_speed"] = round(
+                    open_opps * (safe["win_rate"] / 100.0) * safe["avg_deal_size"] / safe["sales_cycle_days"], 2
+                )
+
+    except Exception as e:
+        print("⚠️ _get_leads_overview_data error:", e)
+    finally:
+        # A query failing partway through must never leak the connection —
+        # close whatever actually got opened, whether the try block finished
+        # cleanly or raised.
+        if cur is not None:
+            cur.close()
+        if conn is not None:
+            conn.close()
+    return safe
+
+
+@portal_bp.route("/leads/overview")
+@team_feature("leads.page")
+def leads_overview():
+    """Leads Overview — a management decision-support dashboard for the Leads
+    funnel (2026-09-22, approved design + mockup, see
+    project_leads_overview_dashboard memory). Same permission gate as the
+    Leads page itself; same period picker as the main Dashboard's Sales
+    Overview, reused rather than re-invented, so 'This month' means the same
+    thing everywhere in the portal."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "leads.page", "Leads")
+    if r2: return r2
+
+    d_from, d_to, p_from, p_to, period_key, period_label, is_custom_period = _resolve_dashboard_period()
+    data = _get_leads_overview_data(tenant_id, d_from, d_to, p_from, p_to)
+
+    return render_template(
+        "portal/leads_overview.html",
+        customer=customer, data=data,
+        period_key=period_key, period_label=period_label, is_custom_period=is_custom_period,
+        date_from=d_from, date_to=d_to,
+        period_options=DASHBOARD_PERIOD_LABELS,
+        score_labels=pipeline_effective_score_labels(tenant_id),
+        min_sample=LEADS_OVERVIEW_MIN_SAMPLE,
+    )
+
+
 @portal_bp.route("/leads", methods=["GET", "POST"])
+@team_feature("leads.create", "leads.page")
 def leads_page():
     """The real home for Leads (see project_leads_page_redesign memory): a
     Lead is its own record — business, contact, deal value, source, product
@@ -25112,38 +26150,69 @@ def leads_page():
         per_page_raw = "50"
     page = request.args.get("page", "1")
     page = int(page) if page.isdigit() and int(page) > 0 else 1
-
-    clauses, params = _pipeline_filter_clauses(
-        tenant_id, search, "all", False, False, False,
-        tier_filter=tier_filter if tier_filter != "all" else None,
-    )
-    where = " AND ".join(clauses)
-    scored_from = _pipeline_scored_from_sql()
+    # List (a flat, sortable table of every Lead) or Board (the same Kanban
+    # by-stage view Sales Pipeline has — 2026-09-20, same board, same score,
+    # just reachable from here too since this is where Leads live now).
+    view_mode = (request.args.get("view") or "list").strip().lower()
+    if view_mode not in ("list", "board"):
+        view_mode = "list"
 
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute(f"SELECT count(*) AS c FROM {scored_from} mpl WHERE {where}", [tenant_id] + params)
-    filtered_total = cur.fetchone()["c"]
 
-    if per_page_raw == "all":
-        total_pages, page, limit_clause, limit_params = 1, 1, "", []
+    real_leads, filtered_total, total_pages = [], 0, 1
+    board_columns, hot_leads_smart, tier_counts = [], [], {}
+
+    # Lead → Opportunity redesign, rebuilt 2026-09-21 with a grandfathering
+    # backfill this time (see portal_migrations.py's general stage-based rule,
+    # plus the one-off tenant-19 label-based backfill run alongside this
+    # deploy) — verified against tenant 19's real counts before shipping, per
+    # feedback_verify_visibility_changes_against_busiest_tenant. This page
+    # only ever shows not-yet-qualified Leads; Qualifying moves a Lead onto
+    # the Sales Pipeline page instead. Applies to every business identically —
+    # the grandfathering is a one-time data backfill, not code here.
+    if view_mode == "board":
+        # 2026-09-22: Leads' own board, grouped by Hot/Warm/Cold score tier
+        # rather than pipeline stage — see _build_leads_tier_board(). Not the
+        # stage-based board Sales Pipeline uses; a not-yet-qualified Lead
+        # doesn't have a real pipeline stage yet. hot_leads_smart stays [] —
+        # that concept doesn't apply once Hot is already its own column.
+        board_columns, tier_counts = _build_leads_tier_board(cur, tenant_id, search)
     else:
-        per_page     = int(per_page_raw)
-        total_pages  = max(1, -(-filtered_total // per_page))
-        page         = min(page, total_pages)
-        limit_clause = "LIMIT %s OFFSET %s"
-        limit_params = [per_page, (page - 1) * per_page]
+        clauses, params = _pipeline_filter_clauses(
+            tenant_id, search, "all", False, False, False,
+            tier_filter=tier_filter if tier_filter != "all" else None,
+            opportunity_only=False,
+        )
+        where = " AND ".join(clauses)
+        scored_from = _pipeline_scored_from_sql()
 
-    order_sql = "mpl.lead_score DESC, mpl.created_at DESC, mpl.id DESC" if sort_by == "score" \
-                else "mpl.created_at DESC, mpl.id DESC"
-    cur.execute(
-        f"SELECT mpl.* FROM {scored_from} mpl WHERE {where} ORDER BY {order_sql} {limit_clause}",
-        [tenant_id] + params + limit_params,
-    )
-    real_leads = [dict(r) for r in cur.fetchall()]
+        cur.execute(f"SELECT count(*) AS c FROM {scored_from} mpl WHERE {where}", [tenant_id] + params)
+        filtered_total = cur.fetchone()["c"]
 
-    cur.execute(f"SELECT lead_tier, count(*) AS c FROM {scored_from} mpl GROUP BY lead_tier", [tenant_id])
-    tier_counts = {row["lead_tier"]: row["c"] for row in cur.fetchall()}
+        if per_page_raw == "all":
+            total_pages, page, limit_clause, limit_params = 1, 1, "", []
+        else:
+            per_page     = int(per_page_raw)
+            total_pages  = max(1, -(-filtered_total // per_page))
+            page         = min(page, total_pages)
+            limit_clause = "LIMIT %s OFFSET %s"
+            limit_params = [per_page, (page - 1) * per_page]
+
+        order_sql = "mpl.lead_score DESC, mpl.created_at DESC, mpl.id DESC" if sort_by == "score" \
+                    else "mpl.created_at DESC, mpl.id DESC"
+        cur.execute(
+            f"SELECT mpl.* FROM {scored_from} mpl WHERE {where} ORDER BY {order_sql} {limit_clause}",
+            [tenant_id] + params + limit_params,
+        )
+        real_leads = [dict(r) for r in cur.fetchall()]
+
+        cur.execute(
+            f"SELECT lead_tier, count(*) AS c FROM {scored_from} mpl WHERE mpl.is_opportunity=FALSE GROUP BY lead_tier",
+            [tenant_id],
+        )
+        tier_counts = {row["lead_tier"]: row["c"] for row in cur.fetchall()}
+
     cur.close(); conn.close()
 
     return render_template(
@@ -25156,10 +26225,13 @@ def leads_page():
         per_page_options=PIPELINE_PER_PAGE_OPTIONS,
         stage_labels=pipeline_effective_stage_labels(tenant_id),
         score_labels=pipeline_effective_score_labels(tenant_id),
+        view_mode=view_mode, board_columns=board_columns, hot_leads_smart=hot_leads_smart,
+        stage_order=PIPELINE_STAGE_ORDER,
     )
 
 
 @portal_bp.route("/leads/create-from-conversation", methods=["POST"])
+@team_feature("leads.create")
 def leads_create_from_conversation():
     """The 'Create Lead' button on a Hot Conversations card. Always creates a
     new Lead (same always-create rule as the Contacts page's 'Create Sales
@@ -25205,6 +26277,123 @@ def leads_create_from_conversation():
     return redirect(url_for("portal.leads_page"))
 
 
+@portal_bp.route("/leads/<int:lead_id>/qualify", methods=["POST"])
+@team_feature("leads.qualify")
+def leads_qualify(lead_id: int):
+    """The Lead → Opportunity decision (2026-09-21 redesign, agreed for every
+    business on the platform, not just one). Turns a raw Lead into a real
+    Opportunity — the only thing that makes it appear on the Sales Pipeline.
+    Requires a Contact Person and/or a Company, not both. Company can be an
+    existing name (matched case-insensitively) or a brand new one — same
+    find-or-create pattern _move_contact_to_pipeline() already uses for the
+    Contacts page, so Qualifying never creates a duplicate company."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("leads.qualify")
+    if _rperm: return _rperm
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    lead = _pipeline_lead_owned_by_tenant(lead_id, tenant_id)
+    if not lead:
+        flash("Lead not found.", "danger")
+        return redirect(url_for("portal.leads_page"))
+    if lead.get("is_opportunity"):
+        flash(f"{lead['customer_name']} is already an Opportunity.", "warning")
+        return redirect(url_for("portal.lead_detail", lead_id=lead_id))
+
+    contact_person = (request.form.get("contact_person") or "").strip()
+    company_name   = (request.form.get("company_name") or "").strip()
+    company_id     = lead.get("company_id")
+
+    if not contact_person and not company_name and not company_id:
+        flash("Enter a Contact Person and/or a Company before qualifying this Lead.", "danger")
+        return redirect(url_for("portal.lead_detail", lead_id=lead_id))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    if company_name:
+        # Find-or-create has a real race: two Qualify submissions for the same
+        # brand-new company name at nearly the same moment could both pass the
+        # "not found" check and both insert. A transaction-scoped advisory lock,
+        # keyed to this tenant + company name, serializes that one narrow case
+        # without a schema change — the second caller waits, then finds the
+        # first caller's row instead of creating a duplicate. Released
+        # automatically on commit/rollback below.
+        cur.execute("SELECT pg_advisory_xact_lock(%s, hashtext(%s))", (tenant_id, company_name.lower()))
+        cur.execute("SELECT id FROM crm_companies WHERE tenant_id=%s AND lower(name)=lower(%s)",
+                    (tenant_id, company_name))
+        row = cur.fetchone()
+        if row:
+            company_id = row[0]
+        else:
+            cur.execute("INSERT INTO crm_companies (tenant_id, name) VALUES (%s,%s) RETURNING id",
+                        (tenant_id, company_name))
+            company_id = cur.fetchone()[0]
+
+    set_parts = ["is_opportunity=TRUE", "opportunity_at=NOW()", "updated_at=NOW()"]
+    values = []
+    if contact_person:
+        set_parts.append("contact_person=%s")
+        values.append(contact_person)
+    if company_id:
+        set_parts.append("company_id=%s")
+        values.append(company_id)
+    cur.execute(f"UPDATE merchant_pipeline_leads SET {', '.join(set_parts)} WHERE id=%s",
+                values + [lead_id])
+    conn.commit()
+    cur.close(); conn.close()
+
+    changed_by = f"{customer.get('first_name','')} {customer.get('last_name','')}".strip()
+    pipeline_record_stage_change(lead_id, lead["stage"], "opportunity", changed_by,
+                                  "Qualified — became an Opportunity")
+    flash(f"{lead['customer_name']} qualified — now an Opportunity on the Sales Pipeline.", "success")
+    return redirect(url_for("portal.lead_detail", lead_id=lead_id))
+
+
+@portal_bp.route("/leads/<int:lead_id>/not-a-fit", methods=["POST"])
+@team_feature("leads.qualify")
+def leads_not_a_fit(lead_id: int):
+    """Closes a raw Lead as Not a Fit BEFORE it ever becomes an Opportunity —
+    a Lead-level outcome, distinct from the Sales Pipeline's own Lost/Dropped
+    (see OUTCOME_LABELS['not_a_fit'] in merchant_pipeline.py). A reason is
+    required, same convention as the Pipeline's own Drop route."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("leads.qualify")
+    if _rperm: return _rperm
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    lead = _pipeline_lead_owned_by_tenant(lead_id, tenant_id)
+    if not lead:
+        flash("Lead not found.", "danger")
+        return redirect(url_for("portal.leads_page"))
+    if lead.get("is_opportunity"):
+        flash(f"{lead['customer_name']} is already an Opportunity — close it from the Sales Pipeline instead.", "warning")
+        return redirect(url_for("portal.lead_detail", lead_id=lead_id))
+
+    reason = (request.form.get("reason") or "").strip()
+    if reason == "Other":
+        other_text = (request.form.get("reason_other") or "").strip()
+        if other_text:
+            reason = f"Other: {other_text}"
+    if not reason or (reason not in PIPELINE_NOT_A_FIT_REASONS and not reason.startswith("Other:")):
+        flash("Please choose a reason before marking this Lead Not a Fit.", "danger")
+        return redirect(url_for("portal.lead_detail", lead_id=lead_id))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("""
+        UPDATE merchant_pipeline_leads SET dropped_at=NOW(), dropped_reason=%s, outcome='not_a_fit' WHERE id=%s
+    """, (reason, lead_id))
+    conn.commit()
+    cur.close(); conn.close()
+
+    changed_by = f"{customer.get('first_name','')} {customer.get('last_name','')}".strip()
+    pipeline_record_stage_change(lead_id, lead["stage"], "not_a_fit", changed_by, reason)
+    flash(f"{lead['customer_name']} marked Not a Fit.", "success")
+    return redirect(url_for("portal.lead_detail", lead_id=lead_id))
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # SALES PIPELINE — merchant-facing CRM for tracking the merchant's own
 # customers/deals (separate from the auto-scored WhatsApp "Leads" page above,
@@ -25220,7 +26409,7 @@ def _pipeline_lead_owned_by_tenant(lead_id: int, tenant_id: int):
     return dict(row) if row else None
 
 
-PIPELINE_PER_PAGE_OPTIONS = ["20", "50", "100", "200", "500", "all"]
+PIPELINE_PER_PAGE_OPTIONS = ["10", "25", "50", "100", "200", "500", "all"]
 # Safety cap for per_page=all / CSV export — current pipelines are in the low
 # thousands; this is a defensive ceiling, not a real-world limit today.
 PIPELINE_EXPORT_MAX_ROWS = 20000
@@ -25244,81 +26433,101 @@ def _normalize_website_url(raw: str) -> str:
     return raw
 
 
-# ── Lead Scoring (2026-09-09) ────────────────────────────────────────────────
-# Score out of 100: up to 50 points for how big this deal is relative to the
-# tenant's OWN other deals (a percentile, not a fixed Naira amount — so it's
-# fair whether a business's typical deal is ₦20k or ₦20m), plus up to 50 for
-# how active the lead currently is (recently touched, how far along the
-# pipeline it's gotten, and real WhatsApp conversation activity on its
-# number). Hot/Warm/Cold reuses the same words the Inbox's own lead-scoring
-# (_score_lead) already uses, so the team isn't learning a second vocabulary
-# for "this lead matters." Deliberately Sales-Pipeline-only — a WhatsApp
-# conversation that never became a Lead is never scored, per the user's call.
+# ── Lead Scoring (rebuilt 2026-09-20) ────────────────────────────────────────
+# Replaces the 2026-09-09 formula, which put 50 of its 100 points on Deal
+# Value — a field the Add/Edit Lead form has always labelled "(optional)",
+# so a lead could literally never reach Hot without it, and almost nobody
+# filled it in (see project memory: every one of a 3,542-lead pipeline maxed
+# out at 8/100 under the old formula). Rebuilt around real sales-activity
+# signals instead — see "How Lead Scoring Works" (portal.lead_scoring_explainer)
+# for the team-facing version of this exact table:
+#
+#   Signal                              Points
+#   Touched in the last 48 hours          +15
+#   Reached Proposal Sent or later        +25
+#   Budget confirmed                      +20
+#   Decision-maker engaged                +20
+#   Deadline / timeline stated            +15
+#   No activity in 7+ days                 -25
+#
+#   Hot: 60+   Warm: 30-59   Cold: under 30
+#
+# Budget Confirmed / Decision-Maker Engaged / Deadline are booleans/date a
+# salesperson sets by hand on the Lead (see sales_pipeline_edit) — there's no
+# way to infer them from WhatsApp text reliably, so they're logged, not guessed.
 _PIPELINE_STAGE_POINTS_SQL = """
-    CASE mpl.stage
-        WHEN 'new_lead' THEN 0 WHEN 'contacted' THEN 3 WHEN 'qualified' THEN 6
-        WHEN 'proposal_sent' THEN 9 WHEN 'negotiating' THEN 12 WHEN 'won' THEN 15
-        ELSE 0
-    END
+    CASE WHEN mpl.stage IN ('proposal_sent', 'negotiating', 'won') THEN 25 ELSE 0 END
 """
 
 def _pipeline_scored_from_sql() -> str:
     """FROM-clause replacement for the bare 'merchant_pipeline_leads mpl' —
-    adds lead_score (0-100) and lead_tier ('hot'/'warm'/'cold') columns to
-    every row, scoped to one tenant's non-dropped leads. Has exactly one %s
-    placeholder (tenant_id); every caller must supply it as the FIRST param,
-    before whatever _pipeline_filter_clauses params come after it. The
+    adds lead_score and lead_tier ('hot'/'warm'/'cold') columns to every row,
+    scoped to one tenant's non-dropped leads. Has exactly one %s placeholder
+    (tenant_id); every caller must supply it as the FIRST param, before
+    whatever _pipeline_filter_clauses params come after it. The
     'mpl.tenant_id=%s AND mpl.dropped_at IS NULL' clause those callers still
     apply on top is redundant here (already true) but harmless."""
     return f"""
         (
             SELECT scored.*,
-                   CASE WHEN scored.lead_score >= 70 THEN 'hot'
-                        WHEN scored.lead_score >= 40 THEN 'warm'
+                   CASE WHEN scored.lead_score >= 60 THEN 'hot'
+                        WHEN scored.lead_score >= 30 THEN 'warm'
                         ELSE 'cold' END AS lead_tier
             FROM (
                 SELECT mpl.*,
-                       LEAST(100, GREATEST(0, (
-                           ROUND(COALESCE(PERCENT_RANK() OVER (ORDER BY mpl.deal_value ASC NULLS FIRST), 0) * 50)
-                           + CASE
-                               WHEN mpl.updated_at >= NOW() - INTERVAL '3 days'  THEN 20
-                               WHEN mpl.updated_at >= NOW() - INTERVAL '7 days'  THEN 14
-                               WHEN mpl.updated_at >= NOW() - INTERVAL '14 days' THEN 8
-                               WHEN mpl.updated_at >= NOW() - INTERVAL '30 days' THEN 3
-                               ELSE 0
-                             END
+                       (
+                           CASE WHEN mpl.updated_at >= NOW() - INTERVAL '48 hours' THEN 15 ELSE 0 END
                            + {_PIPELINE_STAGE_POINTS_SQL}
-                           + CASE
-                               WHEN COALESCE(wa_activity.msg_count, 0) = 0 THEN 0
-                               WHEN wa_activity.msg_count <= 3 THEN 5
-                               WHEN wa_activity.msg_count <= 9 THEN 10
-                               ELSE 15
-                             END
-                       ))::int) AS lead_score
+                           + CASE WHEN mpl.budget_confirmed THEN 20 ELSE 0 END
+                           + CASE WHEN mpl.decision_maker_engaged THEN 20 ELSE 0 END
+                           + CASE WHEN mpl.deadline_date IS NOT NULL THEN 15 ELSE 0 END
+                           + CASE WHEN mpl.updated_at < NOW() - INTERVAL '7 days' THEN -25 ELSE 0 END
+                       )::int AS lead_score
                 FROM merchant_pipeline_leads mpl
-                LEFT JOIN LATERAL (
-                    SELECT COUNT(*) AS msg_count
-                    FROM wa_message_log wml
-                    WHERE wml.tenant_id = mpl.tenant_id
-                      AND wml.created_at >= NOW() - INTERVAL '30 days'
-                      AND COALESCE(mpl.whatsapp_number, mpl.phone) IS NOT NULL
-                      AND regexp_replace(wml.customer_phone, '[^0-9]', '', 'g')
-                          = regexp_replace(COALESCE(mpl.whatsapp_number, mpl.phone), '[^0-9]', '', 'g')
-                ) wa_activity ON TRUE
                 WHERE mpl.tenant_id = %s AND mpl.dropped_at IS NULL
             ) scored
         )
     """
 
 
+def _pipeline_score_breakdown(lead: dict) -> list:
+    """Line-by-line reading of the same six signals _pipeline_scored_from_sql()
+    scores in SQL, for the Lead Command Centre's 'why this score' display —
+    every signal shown even at 0/negative, so a salesperson can see exactly
+    what to do next to move the number, not just the final total."""
+    now = datetime.now(timezone.utc)
+    updated_at = lead.get("updated_at")
+    touched_48h = bool(updated_at and updated_at >= now - timedelta(hours=48))
+    stale_7d    = bool(updated_at and updated_at < now - timedelta(days=7))
+    late_stage  = lead.get("stage") in ("proposal_sent", "negotiating", "won")
+    return [
+        {"label": "Touched in the last 48 hours",  "points": 15 if touched_48h else 0, "active": touched_48h},
+        {"label": "Reached Proposal Sent or later", "points": 25 if late_stage else 0,  "active": late_stage},
+        {"label": "Budget confirmed",               "points": 20 if lead.get("budget_confirmed") else 0, "active": bool(lead.get("budget_confirmed"))},
+        {"label": "Decision-maker engaged",         "points": 20 if lead.get("decision_maker_engaged") else 0, "active": bool(lead.get("decision_maker_engaged"))},
+        {"label": "Deadline / timeline stated",     "points": 15 if lead.get("deadline_date") else 0, "active": bool(lead.get("deadline_date"))},
+        {"label": "No activity in 7+ days",         "points": -25 if stale_7d else 0, "active": stale_7d},
+    ]
+
+
 def _pipeline_filter_clauses(tenant_id, search, stage_filter, has_phone, has_whatsapp, has_email,
                               hide_segment_ids=None, hide_label_ids=None, show_label_ids=None,
-                              hide_sms_segment_ids=None, hide_wa_segment_ids=None, tier_filter=None):
+                              hide_sms_segment_ids=None, hide_wa_segment_ids=None, tier_filter=None,
+                              opportunity_only=None):
     """Build the shared WHERE clauses/params for the Sales Pipeline list and its CSV
     export — kept in one place so the two can never drift apart on what "matches the
-    current filters" means."""
+    current filters" means.
+
+    opportunity_only: the Lead → Opportunity split (2026-09-21) — None applies no
+    filter, False restricts to not-yet-qualified Leads (the Leads page), True
+    restricts to qualified Opportunities (the Sales Pipeline page). Every caller
+    below is one or the other; None only exists for any future caller that
+    genuinely wants both."""
     clauses = ["mpl.tenant_id=%s", "mpl.dropped_at IS NULL"]
     params  = [tenant_id]
+    if opportunity_only is not None:
+        clauses.append("mpl.is_opportunity=%s")
+        params.append(bool(opportunity_only))
     if tier_filter in ("hot", "warm", "cold"):
         clauses.append("mpl.lead_tier=%s")
         params.append(tier_filter)
@@ -25353,7 +26562,261 @@ def _pipeline_filter_clauses(tenant_id, search, stage_filter, has_phone, has_wha
     return clauses, params
 
 
+def _build_pipeline_kanban_board(cur, tenant_id, search, tier_filter,
+                                  has_phone=False, has_whatsapp=False, has_email=False,
+                                  hide_segment_ids=None, hide_label_ids=None, show_label_ids=None,
+                                  hide_sms_segment_ids=None, hide_wa_segment_ids=None,
+                                  opportunity_only=None):
+    """Everything the Kanban board needs — stage columns (capped per column),
+    the cross-stage 'Hot Leads' smart column, and tenant-wide tier counts for
+    the filter toggle's badges. Shared by Sales Pipeline's board view and the
+    Leads page's board view (2026-09-20) — same underlying Lead records, same
+    score, so the board itself is identical wherever it's shown; only the
+    surrounding page differs. `cur` must be a RealDictCursor on an open
+    connection the caller owns (opens/closes nothing itself).
+
+    opportunity_only: see _pipeline_filter_clauses — Sales Pipeline's board
+    passes True (Opportunities only), Leads' board passes False (not-yet-
+    qualified Leads only) — 2026-09-21 Lead → Opportunity redesign."""
+    scored_from = _pipeline_scored_from_sql()
+
+    board_clauses, board_params = _pipeline_filter_clauses(
+        tenant_id, search, "all", has_phone, has_whatsapp, has_email,
+        hide_segment_ids, hide_label_ids, show_label_ids, hide_sms_segment_ids,
+        hide_wa_segment_ids, tier_filter=tier_filter if tier_filter != "all" else None,
+        opportunity_only=opportunity_only,
+    )
+    board_where = " AND ".join(board_clauses)
+    BOARD_CARDS_PER_COLUMN = 8
+    cur.execute(
+        f"""
+        SELECT * FROM (
+            SELECT mpl.*, a.first_name AS assigned_ambassador_first_name,
+                   a.last_name AS assigned_ambassador_last_name,
+                   count(*) OVER (PARTITION BY mpl.stage) AS stage_match_count,
+                   COALESCE(sum(mpl.deal_value) OVER (PARTITION BY mpl.stage), 0) AS stage_match_value,
+                   row_number() OVER (PARTITION BY mpl.stage ORDER BY mpl.created_at DESC, mpl.id DESC) AS rn
+              FROM {scored_from} mpl
+              LEFT JOIN ambassadors a ON a.id = mpl.assigned_ambassador_id
+             WHERE {board_where}
+        ) sub
+        WHERE rn <= %s
+        ORDER BY stage, rn
+        """,
+        [tenant_id] + board_params + [BOARD_CARDS_PER_COLUMN],
+    )
+    board_rows = [dict(r) for r in cur.fetchall()]
+
+    # "Hot Leads" smart column — pulls Hot-tier leads from EVERY stage into
+    # one place, ignoring which column they'd otherwise sit in. Respects
+    # search, but deliberately ignores the stage filter (always "all") and
+    # the tier toggle above (always forces tier_filter='hot') — it's meant
+    # to always be there, not something the toggle can hide.
+    hot_clauses, hot_params = _pipeline_filter_clauses(
+        tenant_id, search, "all", has_phone, has_whatsapp, has_email,
+        hide_segment_ids, hide_label_ids, show_label_ids, hide_sms_segment_ids,
+        hide_wa_segment_ids, tier_filter="hot", opportunity_only=opportunity_only,
+    )
+    hot_where = " AND ".join(hot_clauses)
+    HOT_SMART_LIMIT = 20
+    cur.execute(
+        f"""
+        SELECT mpl.*, a.first_name AS assigned_ambassador_first_name,
+               a.last_name AS assigned_ambassador_last_name
+          FROM {scored_from} mpl
+          LEFT JOIN ambassadors a ON a.id = mpl.assigned_ambassador_id
+         WHERE {hot_where}
+         ORDER BY mpl.lead_score DESC, mpl.updated_at DESC
+         LIMIT %s
+        """,
+        [tenant_id] + hot_params + [HOT_SMART_LIMIT],
+    )
+    hot_leads_smart = [dict(r) for r in cur.fetchall()]
+
+    board_lead_ids = list({r["id"] for r in board_rows} | {r["id"] for r in hot_leads_smart})
+
+    board_seg_map, board_wa_map, board_label_map = {}, {}, {}
+    if board_lead_ids:
+        cur.execute(
+            "SELECT sl.lead_id, s.name FROM email_segment_leads sl "
+            "JOIN email_segments s ON s.id = sl.segment_id "
+            "WHERE sl.lead_id = ANY(%s) AND s.tenant_id=%s",
+            (board_lead_ids, tenant_id),
+        )
+        for row in cur.fetchall():
+            board_seg_map.setdefault(row["lead_id"], []).append(row["name"])
+
+        cur.execute(
+            "SELECT sl.lead_id, s.name FROM wa_pipeline_segment_leads sl "
+            "JOIN wa_pipeline_segments s ON s.id = sl.segment_id "
+            "WHERE sl.lead_id = ANY(%s) AND s.tenant_id=%s",
+            (board_lead_ids, tenant_id),
+        )
+        for row in cur.fetchall():
+            board_wa_map.setdefault(row["lead_id"], []).append(row["name"])
+
+        cur.execute(
+            "SELECT ll.lead_id, lb.name FROM lead_label_leads ll "
+            "JOIN lead_labels lb ON lb.id = ll.label_id "
+            "WHERE ll.lead_id = ANY(%s) AND lb.tenant_id=%s",
+            (board_lead_ids, tenant_id),
+        )
+        for row in cur.fetchall():
+            board_label_map.setdefault(row["lead_id"], []).append(row["name"])
+
+    for r in board_rows + hot_leads_smart:
+        r["segment_names"]    = board_seg_map.get(r["id"], [])
+        r["wa_segment_names"] = board_wa_map.get(r["id"], [])
+        r["label_names"]      = board_label_map.get(r["id"], [])
+        r["score_breakdown"]  = _pipeline_score_breakdown(r)
+        if r.get("assigned_ambassador_first_name"):
+            r["assigned_ambassador_name"] = f"{r['assigned_ambassador_first_name']} {r['assigned_ambassador_last_name'] or ''}".strip()
+        else:
+            r["assigned_ambassador_name"] = None
+
+    board_by_stage = {}
+    for r in board_rows:
+        board_by_stage.setdefault(r["stage"], []).append(r)
+
+    board_columns = []
+    _board_labels = pipeline_effective_stage_labels(tenant_id)
+    for s in PIPELINE_STAGE_ORDER:
+        cards = board_by_stage.get(s, [])
+        match_count = int(cards[0]["stage_match_count"]) if cards else 0
+        match_value = float(cards[0]["stage_match_value"]) if cards else 0.0
+        board_columns.append({
+            "key":         s,
+            "label":       _board_labels[s],
+            "cards":       cards,
+            "count":       match_count,
+            "total_value": match_value,
+            "more":        max(0, match_count - len(cards)),
+        })
+
+    # Hot/Warm/Cold counts for the filter toggle's badges — tenant-wide, same
+    # "describes the whole pipeline" convention as stage_counts, unaffected
+    # by search/stage/tier so the toggle's own numbers don't shift depending
+    # on what it's currently set to. Still respects opportunity_only, though
+    # — Leads' badges must never count Opportunities and vice versa.
+    tc_where = "mpl.tenant_id=%s"
+    tc_params = [tenant_id]
+    if opportunity_only is not None:
+        tc_where += " AND mpl.is_opportunity=%s"
+        tc_params.append(bool(opportunity_only))
+    cur.execute(f"SELECT lead_tier, count(*) AS c FROM {scored_from} mpl WHERE {tc_where} GROUP BY lead_tier",
+                [tenant_id] + tc_params)
+    tier_counts = {row["lead_tier"]: row["c"] for row in cur.fetchall()}
+
+    return board_columns, hot_leads_smart, tier_counts
+
+
+def _build_leads_tier_board(cur, tenant_id, search):
+    """Kanban board for the Leads page (2026-09-22) — columns are the Hot/
+    Warm/Cold score tiers, not pipeline stages. A not-yet-qualified Lead
+    hasn't earned a pipeline stage yet (that only starts to mean something
+    once it's Qualified into an Opportunity — see Sales Pipeline's own
+    _build_pipeline_kanban_board), so showing 'Contacted'/'Qualified'/
+    'Proposal Sent' columns here was inherited UI from before the Lead →
+    Opportunity split and no longer made sense: it looked like a second
+    Sales Pipeline. Always scoped to not-yet-qualified Leads — never mixes
+    in real Opportunities. No 'Hot Leads' smart column here, unlike the
+    stage-based board — Hot is already its own top-level column, so pulling
+    it out separately would be pointless."""
+    scored_from = _pipeline_scored_from_sql()
+
+    clauses, params = _pipeline_filter_clauses(
+        tenant_id, search, "all", False, False, False, opportunity_only=False,
+    )
+    where = " AND ".join(clauses)
+    BOARD_CARDS_PER_COLUMN = 8
+    cur.execute(
+        f"""
+        SELECT * FROM (
+            SELECT mpl.*,
+                   count(*) OVER (PARTITION BY mpl.lead_tier) AS tier_match_count,
+                   row_number() OVER (PARTITION BY mpl.lead_tier
+                                       ORDER BY mpl.lead_score DESC, mpl.created_at DESC, mpl.id DESC) AS rn
+              FROM {scored_from} mpl
+             WHERE {where}
+        ) sub
+        WHERE rn <= %s
+        ORDER BY lead_tier, rn
+        """,
+        [tenant_id] + params + [BOARD_CARDS_PER_COLUMN],
+    )
+    board_rows = [dict(r) for r in cur.fetchall()]
+
+    board_lead_ids = [r["id"] for r in board_rows]
+    board_seg_map, board_wa_map, board_label_map = {}, {}, {}
+    if board_lead_ids:
+        cur.execute(
+            "SELECT sl.lead_id, s.name FROM email_segment_leads sl "
+            "JOIN email_segments s ON s.id = sl.segment_id "
+            "WHERE sl.lead_id = ANY(%s) AND s.tenant_id=%s",
+            (board_lead_ids, tenant_id),
+        )
+        for row in cur.fetchall():
+            board_seg_map.setdefault(row["lead_id"], []).append(row["name"])
+
+        cur.execute(
+            "SELECT sl.lead_id, s.name FROM wa_pipeline_segment_leads sl "
+            "JOIN wa_pipeline_segments s ON s.id = sl.segment_id "
+            "WHERE sl.lead_id = ANY(%s) AND s.tenant_id=%s",
+            (board_lead_ids, tenant_id),
+        )
+        for row in cur.fetchall():
+            board_wa_map.setdefault(row["lead_id"], []).append(row["name"])
+
+        cur.execute(
+            "SELECT ll.lead_id, lb.name FROM lead_label_leads ll "
+            "JOIN lead_labels lb ON lb.id = ll.label_id "
+            "WHERE ll.lead_id = ANY(%s) AND lb.tenant_id=%s",
+            (board_lead_ids, tenant_id),
+        )
+        for row in cur.fetchall():
+            board_label_map.setdefault(row["lead_id"], []).append(row["name"])
+
+    for r in board_rows:
+        r["segment_names"]    = board_seg_map.get(r["id"], [])
+        r["wa_segment_names"] = board_wa_map.get(r["id"], [])
+        r["label_names"]      = board_label_map.get(r["id"], [])
+        r["score_breakdown"]  = _pipeline_score_breakdown(r)
+
+    board_by_tier = {}
+    for r in board_rows:
+        board_by_tier.setdefault(r["lead_tier"], []).append(r)
+
+    score_labels = pipeline_effective_score_labels(tenant_id)
+    tier_meta = [
+        ("hot",  "🔥", score_labels.get("hot", "Hot")),
+        ("warm", "🌤️", score_labels.get("warm", "Warm")),
+        ("cold", "❄️", score_labels.get("cold", "Cold")),
+    ]
+    board_columns = []
+    for key, icon, label in tier_meta:
+        cards = board_by_tier.get(key, [])
+        match_count = int(cards[0]["tier_match_count"]) if cards else 0
+        board_columns.append({
+            "key": key, "icon": icon, "label": label,
+            "cards": cards, "count": match_count,
+            "more": max(0, match_count - len(cards)),
+        })
+
+    # Tenant-wide, search-independent — same "describes the whole picture"
+    # convention as the stage-based board's tier_counts, for the filter
+    # toggle's badges above the board.
+    cur.execute(
+        f"SELECT lead_tier, count(*) AS c FROM {scored_from} mpl "
+        f"WHERE mpl.tenant_id=%s AND mpl.is_opportunity=FALSE GROUP BY lead_tier",
+        [tenant_id, tenant_id],
+    )
+    tier_counts = {row["lead_tier"]: row["c"] for row in cur.fetchall()}
+
+    return board_columns, tier_counts
+
+
 @portal_bp.route("/sales-pipeline")
+@team_feature("crm.pipeline_board_view")
 def sales_pipeline():
     """Purely the STAGE tracker now (see project_leads_page_redesign memory)
     — creating a Lead, its commercial info, and its Hot/Warm/Cold score all
@@ -25365,7 +26828,7 @@ def sales_pipeline():
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "crm.pipeline_board", "Pipeline Board")
+    r2 = _require_plan_sub_feature(customer, "crm.pipeline_board_view", "Pipeline Board")
     if r2: return r2
 
     search        = (request.args.get("q") or "").strip()
@@ -25373,6 +26836,9 @@ def sales_pipeline():
     has_phone     = request.args.get("has_phone") == "1"
     has_whatsapp  = request.args.get("has_whatsapp") == "1"
     has_email     = request.args.get("has_email") == "1"
+    tier_filter   = (request.args.get("tier") or "all").strip().lower()
+    if tier_filter not in ("all", "hot", "warm", "cold"):
+        tier_filter = "all"
     view_mode     = (request.args.get("view") or "list").strip().lower()
     if view_mode not in ("list", "board"):
         view_mode = "list"
@@ -25391,17 +26857,21 @@ def sales_pipeline():
     page = request.args.get("page", "1")
     page = int(page) if page.isdigit() and int(page) > 0 else 1
 
+    # Rebuilt 2026-09-21 — see matching note in leads_page(). Only already-
+    # Qualified Opportunities show here now.
     clauses, params = _pipeline_filter_clauses(
         tenant_id, search, stage_filter, has_phone, has_whatsapp, has_email,
         hide_segment_ids, hide_label_ids, show_label_ids, hide_sms_segment_ids,
-        hide_wa_segment_ids,
+        hide_wa_segment_ids, tier_filter=tier_filter if tier_filter != "all" else None,
+        opportunity_only=True,
     )
     where = " AND ".join(clauses)
+    scored_from = _pipeline_scored_from_sql()
 
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    cur.execute(f"SELECT count(*) AS c FROM merchant_pipeline_leads mpl WHERE {where}", params)
+    cur.execute(f"SELECT count(*) AS c FROM {scored_from} mpl WHERE {where}", [tenant_id] + params)
     filtered_total = cur.fetchone()["c"]
 
     if per_page_raw == "all":
@@ -25423,10 +26893,10 @@ def sales_pipeline():
     cur.execute(
         f"""SELECT mpl.*, a.first_name AS assigned_ambassador_first_name,
                    a.last_name AS assigned_ambassador_last_name
-              FROM merchant_pipeline_leads mpl
+              FROM {scored_from} mpl
               LEFT JOIN ambassadors a ON a.id = mpl.assigned_ambassador_id
              WHERE {where} ORDER BY mpl.created_at DESC, mpl.id DESC {limit_clause}""",
-        params + limit_params,
+        [tenant_id] + params + limit_params,
     )
     leads = [dict(r) for r in cur.fetchall()]
     for l in leads:
@@ -25526,9 +26996,10 @@ def sales_pipeline():
     # Stage tallies and pipeline value are always over the FULL active (non-dropped)
     # pipeline, independent of the current search/stage/channel filters or pagination —
     # they describe the whole pipeline's shape, not just what's currently displayed.
+    # AND is_opportunity: a not-yet-qualified Lead must never count toward these.
     cur.execute(
         "SELECT stage, count(*) AS c FROM merchant_pipeline_leads "
-        "WHERE tenant_id=%s AND dropped_at IS NULL GROUP BY stage",
+        "WHERE tenant_id=%s AND dropped_at IS NULL AND is_opportunity GROUP BY stage",
         (tenant_id,),
     )
     stage_counts = {row["stage"]: row["c"] for row in cur.fetchall()}
@@ -25536,110 +27007,40 @@ def sales_pipeline():
     cur.execute(
         "SELECT COALESCE(SUM(deal_value) FILTER (WHERE stage != 'won'), 0) AS pv, "
         "       COALESCE(SUM(deal_value) FILTER (WHERE stage  = 'won'), 0) AS wv "
-        "FROM merchant_pipeline_leads WHERE tenant_id=%s AND dropped_at IS NULL",
+        "FROM merchant_pipeline_leads WHERE tenant_id=%s AND dropped_at IS NULL AND is_opportunity",
         (tenant_id,),
     )
     totals = cur.fetchone()
     total_pipeline_value = float(totals["pv"] or 0)
     won_value            = float(totals["wv"] or 0)
 
+    # is_opportunity here excludes Leads marked "Not a Fit" (dropped before ever
+    # qualifying) — those belong to the Leads page's own history, not the Sales
+    # Pipeline's Lost/Dropped list.
     cur.execute("""
         SELECT * FROM merchant_pipeline_leads
-        WHERE tenant_id=%s AND dropped_at IS NOT NULL
+        WHERE tenant_id=%s AND dropped_at IS NOT NULL AND is_opportunity
         ORDER BY dropped_at DESC
     """, (tenant_id,))
     dropped_leads = [dict(r) for r in cur.fetchall()]
 
     # Board (Kanban) view — grouped by stage, ignoring the stage filter (a column
     # per stage) but honouring every other filter (search, channel, segments,
-    # labels). Capped per column via a window function so one wide-open pipeline
-    # can't dump thousands of cards into the page; "more" links back to the List
-    # view pre-filtered to that stage. Only queried when actually viewing the
-    # board — the List view above already paid for its own query either way.
+    # labels). Only queried when actually viewing the board — the List view
+    # above already paid for its own query either way. See
+    # _build_pipeline_kanban_board() — shared with the Leads page's own board
+    # view (2026-09-20), same underlying Lead records and score either way.
     board_columns = []
+    hot_leads_smart = []
+    tier_counts = {}
     if view_mode == "board":
-        board_clauses, board_params = _pipeline_filter_clauses(
-            tenant_id, search, "all", has_phone, has_whatsapp, has_email,
-            hide_segment_ids, hide_label_ids, show_label_ids, hide_sms_segment_ids,
-            hide_wa_segment_ids,
+        board_columns, hot_leads_smart, tier_counts = _build_pipeline_kanban_board(
+            cur, tenant_id, search, tier_filter,
+            has_phone, has_whatsapp, has_email,
+            hide_segment_ids, hide_label_ids, show_label_ids,
+            hide_sms_segment_ids, hide_wa_segment_ids,
+            opportunity_only=True,
         )
-        board_where = " AND ".join(board_clauses)
-        BOARD_CARDS_PER_COLUMN = 8
-        cur.execute(
-            f"""
-            SELECT * FROM (
-                SELECT mpl.*, a.first_name AS assigned_ambassador_first_name,
-                       a.last_name AS assigned_ambassador_last_name,
-                       count(*) OVER (PARTITION BY mpl.stage) AS stage_match_count,
-                       COALESCE(sum(mpl.deal_value) OVER (PARTITION BY mpl.stage), 0) AS stage_match_value,
-                       row_number() OVER (PARTITION BY mpl.stage ORDER BY mpl.created_at DESC, mpl.id DESC) AS rn
-                  FROM merchant_pipeline_leads mpl
-                  LEFT JOIN ambassadors a ON a.id = mpl.assigned_ambassador_id
-                 WHERE {board_where}
-            ) sub
-            WHERE rn <= %s
-            ORDER BY stage, rn
-            """,
-            board_params + [BOARD_CARDS_PER_COLUMN],
-        )
-        board_rows = [dict(r) for r in cur.fetchall()]
-        board_lead_ids = [r["id"] for r in board_rows]
-
-        board_seg_map, board_wa_map, board_label_map = {}, {}, {}
-        if board_lead_ids:
-            cur.execute(
-                "SELECT sl.lead_id, s.name FROM email_segment_leads sl "
-                "JOIN email_segments s ON s.id = sl.segment_id "
-                "WHERE sl.lead_id = ANY(%s) AND s.tenant_id=%s",
-                (board_lead_ids, tenant_id),
-            )
-            for row in cur.fetchall():
-                board_seg_map.setdefault(row["lead_id"], []).append(row["name"])
-
-            cur.execute(
-                "SELECT sl.lead_id, s.name FROM wa_pipeline_segment_leads sl "
-                "JOIN wa_pipeline_segments s ON s.id = sl.segment_id "
-                "WHERE sl.lead_id = ANY(%s) AND s.tenant_id=%s",
-                (board_lead_ids, tenant_id),
-            )
-            for row in cur.fetchall():
-                board_wa_map.setdefault(row["lead_id"], []).append(row["name"])
-
-            cur.execute(
-                "SELECT ll.lead_id, lb.name FROM lead_label_leads ll "
-                "JOIN lead_labels lb ON lb.id = ll.label_id "
-                "WHERE ll.lead_id = ANY(%s) AND lb.tenant_id=%s",
-                (board_lead_ids, tenant_id),
-            )
-            for row in cur.fetchall():
-                board_label_map.setdefault(row["lead_id"], []).append(row["name"])
-
-        for r in board_rows:
-            r["segment_names"]    = board_seg_map.get(r["id"], [])
-            r["wa_segment_names"] = board_wa_map.get(r["id"], [])
-            r["label_names"]      = board_label_map.get(r["id"], [])
-            if r.get("assigned_ambassador_first_name"):
-                r["assigned_ambassador_name"] = f"{r['assigned_ambassador_first_name']} {r['assigned_ambassador_last_name'] or ''}".strip()
-            else:
-                r["assigned_ambassador_name"] = None
-
-        board_by_stage = {}
-        for r in board_rows:
-            board_by_stage.setdefault(r["stage"], []).append(r)
-
-        _board_labels = pipeline_effective_stage_labels(tenant_id)
-        for s in PIPELINE_STAGE_ORDER:
-            cards = board_by_stage.get(s, [])
-            match_count = int(cards[0]["stage_match_count"]) if cards else 0
-            match_value = float(cards[0]["stage_match_value"]) if cards else 0.0
-            board_columns.append({
-                "key":         s,
-                "label":       _board_labels[s],
-                "cards":       cards,
-                "count":       match_count,
-                "total_value": match_value,
-                "more":        max(0, match_count - len(cards)),
-            })
 
     cur.close(); conn.close()
 
@@ -25650,6 +27051,9 @@ def sales_pipeline():
         dropped_leads         = dropped_leads,
         view_mode              = view_mode,
         board_columns          = board_columns,
+        hot_leads_smart        = hot_leads_smart,
+        tier_filter            = tier_filter,
+        tier_counts            = tier_counts,
         stage_order           = PIPELINE_STAGE_ORDER,
         stage_labels          = pipeline_effective_stage_labels(tenant_id),
         stage_descriptions    = PIPELINE_STAGE_DESCRIPTIONS,
@@ -25683,6 +27087,7 @@ def sales_pipeline():
 
 
 @portal_bp.route("/sales-pipeline/export")
+@team_feature("crm.pipeline_board_view")
 def sales_pipeline_export():
     """CSV export of every lead matching the current filters (not just the current
     page) — a dedicated route rather than reusing the paginated list, since page-per-
@@ -25711,7 +27116,7 @@ def sales_pipeline_export():
     clauses, params = _pipeline_filter_clauses(
         tenant_id, search, stage_filter, has_phone, has_whatsapp, has_email,
         hide_segment_ids, hide_label_ids, show_label_ids, hide_sms_segment_ids,
-        hide_wa_segment_ids,
+        hide_wa_segment_ids, opportunity_only=True,
     )
     where = " AND ".join(clauses)
 
@@ -25749,6 +27154,7 @@ def sales_pipeline_export():
 
 
 @portal_bp.route("/sales-pipeline/<int:lead_id>/edit", methods=["POST"])
+@team_feature("crm.pipeline_board_edit")
 def sales_pipeline_edit(lead_id: int):
     """Correct a deal's core details — doesn't move its stage, same as the ambassador Leads Edit button."""
     r = _require_login()
@@ -25776,12 +27182,26 @@ def sales_pipeline_edit(lead_id: int):
         except ValueError:
             deal_value = None
 
+    deadline_raw = (f.get("deadline_date") or "").strip()
+    deadline_date = None
+    if deadline_raw:
+        try:
+            deadline_date = datetime.strptime(deadline_raw, "%Y-%m-%d").date()
+        except ValueError:
+            deadline_date = None
+    # Checkboxes: an unchecked box sends no field at all, so its absence from
+    # the submitted form IS "false" here — this is a full-form save, not a
+    # partial patch, so there's no way to distinguish "left unchecked" from
+    # "no opinion" and there doesn't need to be one.
+    budget_confirmed        = "budget_confirmed" in f
+    decision_maker_engaged  = "decision_maker_engaged" in f
+
     conn = get_db_connection()
     cur  = conn.cursor()
     cur.execute("""
         UPDATE merchant_pipeline_leads
            SET customer_name=%s, contact_person=%s, phone=%s, whatsapp_number=%s, email=%s, website=%s, deal_value=%s, notes=%s,
-               product_interest=%s, assigned_to=%s, updated_at=NOW()
+               product_interest=%s, assigned_to=%s, budget_confirmed=%s, decision_maker_engaged=%s, deadline_date=%s, updated_at=NOW()
          WHERE id=%s AND tenant_id=%s
     """, (
         customer_name,
@@ -25794,6 +27214,9 @@ def sales_pipeline_edit(lead_id: int):
         (f.get("notes") or "").strip() or None,
         (f.get("product_interest") or "").strip() or None,
         (f.get("assigned_to") or "").strip() or None,
+        budget_confirmed,
+        decision_maker_engaged,
+        deadline_date,
         lead_id, tenant_id,
     ))
     conn.commit()
@@ -25806,6 +27229,7 @@ def sales_pipeline_edit(lead_id: int):
 
 
 @portal_bp.route("/sales-pipeline/<int:lead_id>/assign-ambassador", methods=["POST"])
+@team_feature("crm.pipeline_board_edit")
 def sales_pipeline_assign_ambassador(lead_id: int):
     """Assign (or unassign) a company-sourced pipeline contact to an ambassador.
     Restricted to support@phixtra.com (PHIXTRA_SUPPORT_TENANT_ID) — this is how
@@ -25855,6 +27279,7 @@ def sales_pipeline_assign_ambassador(lead_id: int):
 
 
 @portal_bp.route("/sales-pipeline/<int:lead_id>/advance", methods=["POST"])
+@team_feature("crm.pipeline_board_edit")
 def sales_pipeline_advance(lead_id: int):
     r = _require_login()
     if r: return r
@@ -25866,6 +27291,9 @@ def sales_pipeline_advance(lead_id: int):
     if not lead:
         flash("Deal not found.", "danger")
         return redirect(url_for("portal.sales_pipeline"))
+    if not lead.get("is_opportunity"):
+        flash("This Lead hasn't been Qualified yet — Qualify it on the Leads page first.", "danger")
+        return redirect(url_for("portal.leads_page"))
 
     target = pipeline_next_stage(lead["stage"])
     if not target:
@@ -25946,6 +27374,7 @@ def sales_pipeline_advance(lead_id: int):
 
 
 @portal_bp.route("/sales-pipeline/bulk-advance", methods=["POST"])
+@team_feature("crm.pipeline_board_edit")
 def sales_pipeline_bulk_advance():
     """Move many selected leads to the same stage in one action — e.g. after sending
     an email campaign, select the recipients and mark them all Contacted (with a
@@ -26017,7 +27446,7 @@ def sales_pipeline_bulk_advance():
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
             "SELECT id, stage, customer_name FROM merchant_pipeline_leads "
-            "WHERE id = ANY(%s) AND tenant_id=%s AND dropped_at IS NULL",
+            "WHERE id = ANY(%s) AND tenant_id=%s AND dropped_at IS NULL AND is_opportunity",
             (lead_ids, tenant_id),
         )
         leads = cur.fetchall()
@@ -26048,6 +27477,7 @@ def sales_pipeline_bulk_advance():
 
 
 @portal_bp.route("/sales-pipeline/<int:lead_id>/drop", methods=["POST"])
+@team_feature("crm.pipeline_board_edit")
 def sales_pipeline_drop(lead_id: int):
     """Closes a deal as either Lost (pursued it, customer chose someone else)
     or Dropped (decided not to pursue at all) — two distinct outcomes with
@@ -26064,6 +27494,9 @@ def sales_pipeline_drop(lead_id: int):
     if not lead:
         flash("Deal not found.", "danger")
         return redirect(url_for("portal.sales_pipeline"))
+    if not lead.get("is_opportunity"):
+        flash("This Lead hasn't been Qualified yet — use Not a Fit on the Leads page instead.", "danger")
+        return redirect(url_for("portal.leads_page"))
 
     outcome = (request.form.get("outcome") or "dropped").strip().lower()
     if outcome not in ("lost", "dropped"):
@@ -26094,6 +27527,7 @@ def sales_pipeline_drop(lead_id: int):
 
 
 @portal_bp.route("/sales-pipeline/<int:lead_id>/history")
+@team_feature("crm.pipeline_board_view")
 def sales_pipeline_history(lead_id: int):
     r = _require_login()
     if r: return r
@@ -26112,7 +27546,27 @@ def sales_pipeline_history(lead_id: int):
     ])
 
 
+@portal_bp.route("/sales-pipeline/how-it-works")
+@team_feature("crm.pipeline_board_view")
+def lead_scoring_explainer():
+    """'How Lead Scoring Works' — a plain-language, team-facing walkthrough of
+    the exact six signals _pipeline_scored_from_sql() scores, why Deal Value
+    isn't one of them any more, and a worked example. View-only, same
+    permission as seeing the board itself — anyone who can see a lead's score
+    should be able to see why it is what it is."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("crm.pipeline_board_view")
+    if _rperm: return _rperm
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "crm.pipeline_board_view", "Pipeline Board")
+    if r2: return r2
+    return render_template("portal/lead_scoring_explainer.html", customer=customer)
+
+
 @portal_bp.route("/sales-pipeline/settings", methods=["GET", "POST"])
+@team_feature("crm.pipeline_settings_edit", "crm.pipeline_settings_view")
 def sales_pipeline_settings():
     """One Pipeline Stage names + Lead Score labels — both editable per
     business, everything else (order, meaning, colors, thresholds, the
@@ -26125,7 +27579,7 @@ def sales_pipeline_settings():
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "crm.pipeline_settings", "Pipeline Settings")
+    r2 = _require_plan_sub_feature(customer, "crm.pipeline_settings_view", "Pipeline Settings")
     if r2: return r2
 
     if request.method == "POST":
@@ -26169,6 +27623,7 @@ def sales_pipeline_settings():
 
 
 @portal_bp.route("/leads/<int:lead_id>")
+@team_feature("leads.page")
 def lead_detail(lead_id: int):
     """The Lead Command Centre — everything a salesperson needs to close this
     one deal, on one page. Lives under Leads, not Sales Pipeline (see
@@ -26197,6 +27652,7 @@ def lead_detail(lead_id: int):
     scored_from = _pipeline_scored_from_sql()
     cur.execute(f"SELECT lead_score, lead_tier FROM {scored_from} mpl WHERE mpl.id=%s", [tenant_id, lead_id])
     score_row = cur.fetchone() or {"lead_score": 0, "lead_tier": "cold"}
+    score_breakdown = _pipeline_score_breakdown(lead)
 
     # Campaign, if a WhatsApp campaign reply is what created this Lead
     # (Campaign Intelligence link) — checked by the link itself, not by
@@ -26259,6 +27715,7 @@ def lead_detail(lead_id: int):
         lead=lead,
         lead_score=score_row["lead_score"],
         lead_tier=score_row["lead_tier"],
+        score_breakdown=score_breakdown,
         score_labels=pipeline_effective_score_labels(tenant_id),
         stage_labels=pipeline_effective_stage_labels(tenant_id),
         stage_order=PIPELINE_STAGE_ORDER,
@@ -26270,6 +27727,7 @@ def lead_detail(lead_id: int):
         contact_id=contact_id,
         stage_history=stage_history,
         last_worked_by=last_worked_by,
+        not_a_fit_reasons=PIPELINE_NOT_A_FIT_REASONS,
     )
 
 
@@ -26325,6 +27783,7 @@ def _sms_segment_numbers(tenant_id: int, segment_id: int) -> list:
 
 
 @portal_bp.route("/sms/campaign/preview", methods=["POST"])
+@owner_only
 def sms_campaign_preview():
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
@@ -26383,6 +27842,7 @@ def sms_campaign_preview():
 
 
 @portal_bp.route("/sms/campaign/send", methods=["POST"])
+@owner_only
 def sms_campaign_send():
     r = _require_login()
     if r: return r
@@ -26420,6 +27880,7 @@ def sms_campaign_send():
 
 
 @portal_bp.route("/sms/campaign/<int:campaign_id>/resend", methods=["POST"])
+@owner_only
 def sms_campaign_resend(campaign_id: int):
     """Sends the exact same message to the exact same recipient list again,
     as a brand-new logged campaign (doesn't touch the original row)."""
@@ -26461,6 +27922,7 @@ def sms_campaign_resend(campaign_id: int):
 
 
 @portal_bp.route("/sms/campaign/<int:campaign_id>/delete", methods=["POST"])
+@owner_only
 def sms_campaign_delete(campaign_id: int):
     """Removes a campaign from your history log only — it obviously can't
     recall a text already delivered to someone's phone."""
@@ -26485,6 +27947,7 @@ def sms_campaign_delete(campaign_id: int):
 
 
 @portal_bp.route("/sms/campaign/<int:campaign_id>/numbers")
+@owner_only
 def sms_campaign_extract_numbers(campaign_id: int):
     """Downloads the phone numbers a past message was sent to as a .txt file."""
     r = _require_login()
@@ -26509,6 +27972,7 @@ def sms_campaign_extract_numbers(campaign_id: int):
 
 
 @portal_bp.route("/sms")
+@owner_only
 def sms_campaigns():
     """The 'SMS' sidebar menu's landing page — Sent SMS history by default.
     ?view=compose or ?view=segments auto-opens the matching drawer/modal on
@@ -26630,6 +28094,7 @@ def _send_sms_campaign_now(campaign_id: int):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/sms/segments")
+@owner_only
 def sms_pipeline_segments_list():
     """List this tenant's SMS Segments with live member counts, for the
     compose drawer's recipient dropdown and the segment manager modal."""
@@ -26665,6 +28130,7 @@ def sms_pipeline_segments_list():
 
 
 @portal_bp.route("/sms/segments/create", methods=["POST"])
+@owner_only
 def sms_pipeline_segments_create():
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
@@ -26691,6 +28157,7 @@ def sms_pipeline_segments_create():
 
 
 @portal_bp.route("/sms/segments/<int:segment_id>/delete", methods=["POST"])
+@owner_only
 def sms_pipeline_segments_delete(segment_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
@@ -26711,6 +28178,7 @@ def sms_pipeline_segments_delete(segment_id: int):
 
 
 @portal_bp.route("/sms/segments/<int:segment_id>/members")
+@owner_only
 def sms_pipeline_segments_members(segment_id: int):
     """Return the segment's name plus its actual current members (id/name/phone)."""
     r = _require_login()
@@ -26744,6 +28212,7 @@ def sms_pipeline_segments_members(segment_id: int):
 
 
 @portal_bp.route("/sms/segments/<int:segment_id>/members/add", methods=["POST"])
+@owner_only
 def sms_pipeline_segments_add_member(segment_id: int):
     """Add one Sales Pipeline contact to an SMS Segment — single search-driven add."""
     r = _require_login()
@@ -26790,6 +28259,7 @@ def sms_pipeline_segments_add_member(segment_id: int):
 
 
 @portal_bp.route("/sms/segments/<int:segment_id>/members/remove", methods=["POST"])
+@owner_only
 def sms_pipeline_segments_remove_member(segment_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
@@ -26817,6 +28287,7 @@ def sms_pipeline_segments_remove_member(segment_id: int):
 
 
 @portal_bp.route("/sms/segments/<int:segment_id>/members/bulk-add", methods=["POST"])
+@owner_only
 def sms_pipeline_segments_bulk_add_members(segment_id: int):
     """Add many Sales Pipeline leads to an SMS Segment in one call — used by the
     Sales Pipeline page's multi-select "Add to SMS Segment" bulk action. Leads
@@ -26857,6 +28328,7 @@ def sms_pipeline_segments_bulk_add_members(segment_id: int):
 
 
 @portal_bp.route("/sms/segments/pipeline-leads-json")
+@owner_only
 def sms_pipeline_segments_pipeline_leads_json():
     """Search Sales Pipeline leads with a phone number, for the manage-segment
     modal's add-contact typeahead. Mirrors /whatsapp/campaigns/pipeline-leads-json."""
@@ -26961,6 +28433,7 @@ def _get_products_with_discount(tenant_id: int) -> list:
 
 
 @portal_bp.route("/discount-settings", methods=["GET", "POST"])
+@team_feature("ecom.discount_settings_edit", "ecom.discount_settings_view")
 def wa_discount_settings():
     r = _require_login()
     if r: return r
@@ -26970,7 +28443,7 @@ def wa_discount_settings():
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "ecom.discount_settings", "Discount Settings")
+    r2 = _require_plan_sub_feature(customer, "ecom.discount_settings_view", "Discount Settings")
     if r2: return r2
 
     flash_msg  = None
@@ -27042,6 +28515,7 @@ def wa_discount_settings():
 
 
 @portal_bp.route("/discount-settings/product/<product_id>", methods=["POST"])
+@team_feature("ecom.discount_settings_edit")
 def wa_discount_product_save(product_id: str):
     r = _require_login()
     if r: return r

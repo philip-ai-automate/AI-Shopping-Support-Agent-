@@ -24,7 +24,7 @@ import json
 
 import psycopg2.extras
 
-from wa_db import get_db_connection, get_merchant_bank, delete_wa_shop_session
+from wa_db import get_db_connection, get_merchant_bank, delete_wa_shop_session, wa_locked_for_tenant
 from meta_sender import send_text
 
 _DEFAULT_REMIND_AFTER_HOURS = 4
@@ -42,6 +42,10 @@ def _load_cart(row: dict) -> dict:
 
 
 def _get_wa_creds(tenant_id: int) -> dict | None:
+    # WooCommerce merchant without a Dual Agent plan: WhatsApp is locked, so
+    # no WhatsApp message goes out (see wa_db.wa_locked_for_tenant).
+    if wa_locked_for_tenant(tenant_id)[0]:
+        return None
     conn = get_db_connection()
     if not conn:
         return None

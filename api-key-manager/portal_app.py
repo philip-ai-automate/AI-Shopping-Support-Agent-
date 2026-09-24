@@ -40,6 +40,24 @@ def create_app():
     flask_app.register_blueprint(school_bp, url_prefix="/school")
     flask_app.register_blueprint(estate_bp)
 
+    # Feature -> Roles/Modules update policy (feature_access.py): grant any
+    # brand-new catalog key to every plan once, then log anything that
+    # doesn't line up. Warns only — never stops the portal starting.
+    try:
+        from db import get_db_connection
+        from feature_access import (check_feature_access, sync_new_feature_keys_to_plans,
+                                    PLAN_LOCK_CODE_PATHS)
+        from portal_routes import PLAN_FEATURE_CATALOG, ROLE_FORM_GRID, PLAN_ONLY_FEATURE_KEYS
+        added = sync_new_feature_keys_to_plans(PLAN_FEATURE_CATALOG, get_db_connection)
+        if added:
+            print(f"✅ New features granted to every plan: {', '.join(added)}")
+        problems = check_feature_access(flask_app, PLAN_FEATURE_CATALOG, ROLE_FORM_GRID,
+                                        PLAN_ONLY_FEATURE_KEYS, code_paths=PLAN_LOCK_CODE_PATHS)
+        for p in problems:
+            print(f"⚠️ FEATURES NOT IN ROLES — {p['area']}: {p['item']} — {p['fix']}")
+    except Exception as e:
+        print("⚠️ Feature/Roles check could not run:", e)
+
     @flask_app.template_filter("with_plus")
     def _with_plus(value):
         """Prefix '+' only if not already present. Meta's display_phone_number
@@ -221,9 +239,13 @@ def create_app():
                     if isinstance(raw, str):
                         _g._cached_tenant_features = _json.loads(raw) if raw else {}
                     elif isinstance(raw, dict):
-                        _g._cached_tenant_features = raw
+                        _g._cached_tenant_features = dict(raw)
                     else:
                         _g._cached_tenant_features = {}
+                    # WooCommerce Plugin features: the plan decides, not the
+                    # stored flags (see PLUGIN_FEATURE_PLAN_KEYS).
+                    from portal_routes import _plugin_features_for_tenant
+                    _g._cached_tenant_features.update(_plugin_features_for_tenant(int(row[0])))
             except Exception as e:
                 print("⚠️ inject_tenant_features error:", e)
                 _g._cached_tenant_features = {}

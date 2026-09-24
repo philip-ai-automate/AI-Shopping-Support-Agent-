@@ -1,0 +1,48 @@
+{% extends "portal/base.html" %}
+{% block title %}Modify Store Information — PhiXtra Portal{% endblock %}
+{% block content %}
+<style>
+  .si-header{background:linear-gradient(135deg,#030C18 0%,#1a2744 100%);
+    border-radius:16px;padding:24px 28px;color:#fff;margin-bottom:24px}
+  .si-title{font-size:18px;font-weight:800;margin-bottom:4px}
+  .si-sub{font-size:13px;opacity:.7}
+  .si-section{background:#fff;border:1px solid var(--line);border-radius:14px;
+    padding:16px 20px;margin-bottom:10px;display:flex;justify-content:space-between;
+    align-items:center;gap:12px;flex-wrap:wrap}
+  .si-label{font-size:14px;font-weight:800}
+  .si-hint{font-size:12px;color:var(--muted);margin-top:2px}
+  .si-meta{font-size:11px;color:var(--muted);margin-top:4px}
+  .si-section-title{font-size:13px;font-weight:800;color:var(--muted);margin:20px 0 10px}
+</style>
+
+<div class="si-header">
+  <div class="si-title">✏️ Modify Store Information</div>
+  <div class="si-sub">Pick an entry below to edit its content{% if custom_entries %} — or rename it{% endif %}.</div>
+</div>
+
+<div class="si-section-title">Store Information</div>
+{% for s in section_rows %}
+<div class="si-section">
+  <div>
+    <div class="si-label">{{ s.title }}</div>
+    <div class="si-hint">{{ s.hint }}</div>
+    {% if s.updated_at %}<div class="si-meta">Last updated {{ s.updated_at.strftime('%d %b %Y, %H:%M') }}{% if s.updated_by %} by {{ s.updated_by.split(':')[-1] }}{% endif %}</div>{% endif %}
+  </div>
+  <a href="{{ url_for('portal.store_info_modify_entry', entry_id=s.id) }}" class="btn btn-sm">Edit</a>
+</div>
+{% endfor %}
+
+{% if custom_entries %}
+<div class="si-section-title">Your Custom Entries</div>
+{% for e in custom_entries %}
+<div class="si-section">
+  <div>
+    <div class="si-label">{{ e.title }}</div>
+    <div class="si-hint">{{ (e.content or '')[:120] }}{% if (e.content or '')|length > 120 %}…{% endif %}</div>
+    {% if e.updated_at %}<div class="si-meta">Last updated {{ e.updated_at.strftime('%d %b %Y, %H:%M') }}{% if e.updated_by %} by {{ e.updated_by.split(':')[-1] }}{% endif %}</div>{% endif %}
+  </div>
+  <a href="{{ url_for('portal.store_info_modify_entry', entry_id=e.id) }}" class="btn btn-sm">Edit</a>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}
