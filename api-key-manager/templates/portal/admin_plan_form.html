@@ -97,6 +97,9 @@
         {% endif %}
         <button type="submit" form="planForm" class="btn btn-primary">{{ 'Create plan' if is_new else 'Save changes' }}</button>
         <a href="{{ url_for('portal_admin.admin_plans') }}" class="btn btn-sm" style="background:#f4f4f5;color:var(--txt)">Cancel</a>
+        {% if not is_new and plan.id and can_delete_plan %}
+        <a href="{{ url_for('portal_admin.admin_plans') }}#delete-{{ plan.id }}" class="btn btn-sm btn-danger">🗑️ Delete this plan</a>
+        {% endif %}
       </div>
     </div>
   </div>

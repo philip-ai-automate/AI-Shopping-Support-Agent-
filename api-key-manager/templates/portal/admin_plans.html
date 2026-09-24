@@ -188,6 +188,16 @@
       <a href="{{ url_for('portal_admin.admin_plan_preview', plan_id=p.id) }}" class="pc-edit-btn" style="background:#fff;color:var(--ink);border:1px solid var(--line);flex:0" target="_blank" rel="noopener">👁️ Preview</a>
       <span class="pill {% if p.is_active %}pill-green{% else %}pill-grey{% endif %}">{{ 'Active' if p.is_active else 'Inactive' }}</span>
     </div>
+    <div class="pc-delete-row">
+      <span>{{ p.tenant_count }} merchant{{ '' if p.tenant_count == 1 else 's' }} on this plan</span>
+      {% if p.is_system %}
+        <span class="pill pill-grey" title="{{ p.system_reason }}">🔒 Used by the system</span>
+      {% elif can_delete_plans %}
+        <button type="button" class="pc-delete-btn js-plan-delete" id="delete-{{ p.id }}"
+                data-id="{{ p.id }}" data-name="{{ p.name }}" data-count="{{ p.tenant_count }}"
+                data-action="{{ url_for('portal_admin.admin_plans_delete', plan_id=p.id) }}">🗑️ Delete</button>
+      {% endif %}
+    </div>
   </div>
   {% endfor %}
 </div>
@@ -254,4 +264,69 @@
   </tbody>
 </table>
 </div>
+
+{# ── Delete plan dialog ─────────────────────────────────────────────────── #}
+<style>
+.pc-delete-row { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12px; color:var(--muted); margin-top:-4px }
+.pc-delete-btn { background:#fff; border:1px solid rgba(240,68,56,0.35); color:#B42318; border-radius:8px; padding:5px 10px; font-size:12px; font-weight:700; cursor:pointer }
+.pc-delete-btn:hover { background:rgba(240,68,56,0.08) }
+#planDeleteModal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:9999; padding:20px; overflow-y:auto }
+#planDeleteModal .box { background:#fff; border-radius:12px; width:100%; max-width:480px; margin:60px auto; box-shadow:0 20px 60px rgba(0,0,0,0.3); padding:22px 24px }
+</style>
+<div id="planDeleteModal" role="dialog" aria-modal="true" aria-labelledby="pdmTitle">
+  <div class="box">
+    <h2 id="pdmTitle" style="margin:0 0 10px;font-size:18px;font-weight:800">Delete plan?</h2>
+    <form id="pdmForm" method="POST">
+      <p id="pdmText" style="font-size:14px;margin:0 0 14px"></p>
+      <div id="pdmMove" class="form-group" style="display:none">
+        <label for="pdmSelect" style="font-weight:700">Move its merchants to</label>
+        <select id="pdmSelect" name="move_to_plan_id">
+          <option value="">— Choose a plan —</option>
+          {% for p in plans %}
+          <option value="{{ p.id }}">{{ p.name }}{% if not p.is_active %} (inactive){% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <p class="muted" style="font-size:12.5px;margin:0 0 18px">This can't be undone from the screen. A backup copy of the plan is saved first.</p>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button type="button" class="btn btn-sm" id="pdmCancel">Cancel</button>
+        <button type="submit" class="btn btn-sm btn-danger" id="pdmSubmit">Delete plan</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+(function () {
+  var modal = document.getElementById('planDeleteModal');
+  var form  = document.getElementById('pdmForm');
+  var sel   = document.getElementById('pdmSelect');
+  var move  = document.getElementById('pdmMove');
+  function open(btn) {
+    var id = btn.dataset.id, count = parseInt(btn.dataset.count, 10) || 0;
+    form.action = btn.dataset.action;
+    document.getElementById('pdmTitle').textContent = 'Delete "' + btn.dataset.name + '"?';
+    Array.prototype.forEach.call(sel.options, function (o) { o.hidden = o.disabled = (o.value === id); });
+    sel.value = '';
+    if (count > 0) {
+      document.getElementById('pdmText').textContent =
+        count + ' merchant' + (count === 1 ? ' is' : 's are') + ' on this plan. Pick the plan they should move to — they move first, then the plan is deleted.';
+      move.style.display = ''; sel.required = true;
+    } else {
+      document.getElementById('pdmText').textContent = 'No merchants are on this plan.';
+      move.style.display = 'none'; sel.required = false;
+    }
+    modal.style.display = 'block';
+  }
+  function close() { modal.style.display = 'none'; }
+  document.querySelectorAll('.js-plan-delete').forEach(function (b) {
+    b.addEventListener('click', function () { open(b); });
+  });
+  document.getElementById('pdmCancel').addEventListener('click', close);
+  modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+  // Arriving from the plan's edit page ("Delete this plan") opens the dialog.
+  var m = location.hash.match(/^#delete-(\d+)$/);
+  if (m) { var b = document.getElementById('delete-' + m[1]); if (b) open(b); }
+})();
+</script>
 {% endblock %}

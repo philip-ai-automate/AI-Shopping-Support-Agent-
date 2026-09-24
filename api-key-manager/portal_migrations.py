@@ -49,6 +49,18 @@ _GRANT_ONCE_SQL = (
 )
 
 
+def _seed_plans_once(cur, slugs, sql):
+    """Run a built-in plan seed only if none of its slugs was ever seeded.
+    Without this, a plan the admin deletes came straight back on the next
+    restart (ON CONFLICT only stops duplicates, not re-creation)."""
+    cur.execute("SELECT 1 FROM plan_seed_seen WHERE slug = ANY(%s) LIMIT 1", (list(slugs),))
+    if cur.fetchone():
+        return
+    cur.execute(sql)
+    cur.execute("INSERT INTO plan_seed_seen (slug) SELECT unnest(%s::text[]) ON CONFLICT DO NOTHING",
+                (list(slugs),))
+
+
 def ensure_portal_tables():
     """Idempotent: create multi-category catalogue tables if they don't exist."""
     conn = get_db_connection()
@@ -398,8 +410,18 @@ def ensure_portal_tables():
             )
         """)
 
-        # Seed the 4 plans (idempotent — slug is UNIQUE)
+        # Built-in plans are seeded once only — see _seed_plans_once. Every
+        # plan that exists now counts as seeded, so a deleted one stays gone.
         cur.execute("""
+            CREATE TABLE IF NOT EXISTS plan_seed_seen (
+                slug      VARCHAR(64) PRIMARY KEY,
+                seen_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        cur.execute("INSERT INTO plan_seed_seen (slug) SELECT slug FROM plans ON CONFLICT DO NOTHING")
+
+        # Seed the 4 plans (idempotent — slug is UNIQUE)
+        _seed_plans_once(cur, ["free", "starter", "growth", "pro"], """
             INSERT INTO plans
                 (slug, name, price_ngn, price_usd,
                  ai_messages_limit, ai_agents_limit, broadcasts_limit,
@@ -2284,7 +2306,7 @@ def ensure_portal_tables():
         # Seed the 3 Dual Agent tiers (idempotent — slug is UNIQUE). Limits and
         # feature flags mirror the parent single-channel tier exactly — this
         # fixes the unfair PRICE, it does not change what a tier includes.
-        cur.execute("""
+        _seed_plans_once(cur, ["startup_dual"], """
             INSERT INTO plans
                 (slug, name, price_ngn, price_usd,
                  ai_messages_limit, ai_agents_limit, broadcasts_limit,
@@ -2307,7 +2329,7 @@ def ensure_portal_tables():
             FROM plans WHERE slug='starter'
             ON CONFLICT (slug) DO NOTHING
         """)
-        cur.execute("""
+        _seed_plans_once(cur, ["business_dual"], """
             INSERT INTO plans
                 (slug, name, price_ngn, price_usd,
                  ai_messages_limit, ai_agents_limit, broadcasts_limit,
@@ -2330,7 +2352,7 @@ def ensure_portal_tables():
             FROM plans WHERE slug='growth'
             ON CONFLICT (slug) DO NOTHING
         """)
-        cur.execute("""
+        _seed_plans_once(cur, ["enterprise_dual"], """
             INSERT INTO plans
                 (slug, name, price_ngn, price_usd,
                  ai_messages_limit, ai_agents_limit, broadcasts_limit,
@@ -2356,7 +2378,7 @@ def ensure_portal_tables():
         # Custom tier — no fixed price, "Talk to Sales". Shown regardless of
         # which channel-mode toggle the merchant has selected on the billing
         # page (channel_mode='both').
-        cur.execute("""
+        _seed_plans_once(cur, ["custom"], """
             INSERT INTO plans
                 (slug, name, price_ngn, price_usd, is_custom, channel_mode,
                  sort_order, is_active,

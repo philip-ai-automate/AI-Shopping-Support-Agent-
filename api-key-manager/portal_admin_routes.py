@@ -52,7 +52,7 @@ ADMIN_MODULES = {
     "invoices":                  {"label": "Invoices",              "actions": ["view"]},
     "credit_packages":           {"label": "Credit Top-ups",         "actions": ["view", "create", "modify", "delete"]},
     "plugins":                   {"label": "Plugins",               "actions": ["view", "create", "delete"]},
-    "plans":                     {"label": "Plans",                 "actions": ["view", "modify"]},
+    "plans":                     {"label": "Plans",                 "actions": ["view", "modify", "delete"]},
     "school_plans":              {"label": "School Plans",          "actions": ["view", "modify"]},
     "wa_diagnostics":            {"label": "WA Diagnostics",        "actions": ["view"]},
     "recovery_queue":            {"label": "Recovery Queue",        "actions": ["view"]},
@@ -4993,6 +4993,14 @@ def admin_plans():
     # plan_feature_grants plus however many legacy feat_* flags are TRUE.
     _total_catalog_items = len(_ALL_CATALOG_ITEMS)
     _legacy_cols = [key.split(":", 1)[1] for key, _label in _ALL_CATALOG_ITEMS if key.startswith("legacy:")]
+    # Every tenant counts here, cancelled ones too — they still point at the
+    # plan, so a delete has to move them as well.
+    cur.execute("SELECT plan_id, COUNT(*) AS n FROM tenants WHERE plan_id IS NOT NULL GROUP BY plan_id")
+    _tenant_counts = {row["plan_id"]: row["n"] for row in (cur.fetchall() or [])}
+    for p in plans:
+        p["tenant_count"] = _tenant_counts.get(p["id"], 0)
+        p["is_system"] = p["slug"] in SYSTEM_PLAN_SLUGS
+        p["system_reason"] = SYSTEM_PLAN_SLUGS.get(p["slug"], "")
     cur.execute("SELECT plan_id, COUNT(*) AS n FROM plan_feature_grants GROUP BY plan_id")
     _grant_counts = {row["plan_id"]: row["n"] for row in (cur.fetchall() or [])}
     for p in plans:
@@ -5018,7 +5026,9 @@ def admin_plans():
     cur.close(); conn.close()
 
     return render_template("portal/admin_plans.html",
-                           plans=plans, tenants=tenants)
+                           plans=plans, tenants=tenants,
+                           can_delete_plans=_is_owner() or bool(
+                               session.get("portal_admin_permissions", {}).get("plans", {}).get("delete")))
 
 
 # Flattened (feature_key, label) pairs across every group in the catalog —
@@ -5202,7 +5212,97 @@ def admin_plans_edit(plan_id: int):
     return render_template("portal/admin_plan_form.html", plan=plan,
                             parent_candidates=parent_candidates,
                             feature_catalog=PLAN_FEATURE_CATALOG,
-                            granted_keys=granted_keys, is_new=False)
+                            granted_keys=granted_keys, is_new=False,
+                            can_delete_plan=plan["slug"] not in SYSTEM_PLAN_SLUGS and (_is_owner() or bool(
+                                session.get("portal_admin_permissions", {}).get("plans", {}).get("delete"))))
+
+
+# Plans the system itself relies on: an expired trial / lapsed plan drops to
+# 'free' (wa_plan_reset.py, portal_routes.py) and the WooCommerce trial
+# grants 'pro' (_grant_trial_upgrade). Deleting either breaks those steps.
+SYSTEM_PLAN_SLUGS = {"free": "Merchants drop to this plan when a trial or plan ends",
+                     "pro":  "New WooCommerce sign-ups get this plan as their free trial"}
+PLAN_DELETE_BACKUP_DIR = "/root/backups/plan_deletes"
+
+
+@portal_admin_bp.route("/plans/<int:plan_id>/delete", methods=["POST"])
+def admin_plans_delete(plan_id: int):
+    """Delete a plan. Any merchants on it are first moved to the plan the
+    admin picked, all in one transaction, with a JSON backup written first."""
+    r = _require_admin("plans", "delete")
+    if r: return r
+    import json as _json, os as _os
+    from datetime import datetime as _dt
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("SELECT * FROM plans WHERE id=%s", (plan_id,))
+        plan = cur.fetchone()
+        if not plan:
+            flash("Plan not found.", "danger")
+            return redirect(url_for("portal_admin.admin_plans"))
+        if plan["slug"] in SYSTEM_PLAN_SLUGS:
+            flash(f"\"{plan['name']}\" can't be deleted — {SYSTEM_PLAN_SLUGS[plan['slug']].lower()}.", "danger")
+            return redirect(url_for("portal_admin.admin_plans"))
+
+        cur.execute("SELECT id, name FROM tenants WHERE plan_id=%s ORDER BY id", (plan_id,))
+        moved = cur.fetchall() or []
+        cur.execute("SELECT COUNT(*) AS n FROM plan_subscriptions WHERE plan_id=%s", (plan_id,))
+        if (cur.fetchone() or {}).get("n"):
+            flash(f"\"{plan['name']}\" has subscription payment records, so it can't be deleted. "
+                  "Untick Active on the plan to hide it instead.", "danger")
+            return redirect(url_for("portal_admin.admin_plans"))
+
+        target = None
+        if moved:
+            raw = (request.form.get("move_to_plan_id") or "").strip()
+            if raw.isdigit() and int(raw) != plan_id:
+                cur.execute("SELECT id, name, slug FROM plans WHERE id=%s", (int(raw),))
+                target = cur.fetchone()
+            if not target:
+                flash(f"Choose which plan the {len(moved)} merchant(s) on \"{plan['name']}\" should move to.", "danger")
+                return redirect(url_for("portal_admin.admin_plans"))
+
+        cur.execute("SELECT feature_key FROM plan_feature_grants WHERE plan_id=%s ORDER BY feature_key", (plan_id,))
+        grants = [row["feature_key"] for row in (cur.fetchall() or [])]
+        cur.execute("SELECT id, name FROM plans WHERE parent_plan_id=%s", (plan_id,))
+        children = cur.fetchall() or []
+
+        _os.makedirs(PLAN_DELETE_BACKUP_DIR, exist_ok=True)
+        backup_path = _os.path.join(
+            PLAN_DELETE_BACKUP_DIR,
+            f"plan_{plan_id}_{plan['slug']}_{_dt.utcnow().strftime('%Y%m%d_%H%M%S')}.json")
+        with open(backup_path, "w") as fh:
+            _json.dump({"plan": plan, "feature_grants": grants,
+                        "moved_tenants": moved, "moved_to": target,
+                        "unlinked_children": children,
+                        "deleted_by": _admin_user()}, fh, indent=2, default=str)
+
+        cur2 = conn.cursor()
+        if moved:
+            cur2.execute("UPDATE tenants SET plan_id=%s WHERE plan_id=%s", (target["id"], plan_id))
+        cur2.execute("UPDATE plans SET parent_plan_id=NULL WHERE parent_plan_id=%s", (plan_id,))
+        cur2.execute("DELETE FROM plans WHERE id=%s", (plan_id,))   # feature grants cascade
+        conn.commit()
+        cur2.close()
+    except Exception as e:
+        conn.rollback()
+        print("⚠️ admin_plans_delete error:", e)
+        flash("The plan could not be deleted — nothing was changed.", "danger")
+        return redirect(url_for("portal_admin.admin_plans"))
+    finally:
+        cur.close(); conn.close()
+
+    insert_audit_log(action="plan_delete", admin_username=_admin_user(),
+                     details={"plan_id": plan_id, "slug": plan["slug"], "name": plan["name"],
+                              "moved_tenant_ids": [t["id"] for t in moved],
+                              "moved_to_plan_id": target["id"] if target else None,
+                              "backup": backup_path})
+    msg = f"Plan \"{plan['name']}\" deleted."
+    if moved:
+        msg += f" {len(moved)} merchant(s) moved to \"{target['name']}\"."
+    flash(msg, "success")
+    return redirect(url_for("portal_admin.admin_plans"))
 
 
 @portal_admin_bp.route("/plans/<int:plan_id>/preview")
