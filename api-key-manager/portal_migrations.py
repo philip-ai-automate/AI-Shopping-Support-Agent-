@@ -3292,10 +3292,10 @@ def ensure_portal_tables():
                  staff_limit, channel_mode, is_custom)
             SELECT 'connect', 'PhiXtra Connect', 0, 0, 0, ai_agents_limit,
                    broadcasts_limit, products_limit, data_sources_limit,
-                   feat_crm, FALSE, feat_integrations, feat_broadcasts,
+                   feat_crm, FALSE, feat_integrations, TRUE,
                    feat_full_reports, feat_multi_agents, 0, 0, TRUE, -1,
                    annual_discount_pct, FALSE, feat_fw_checkout, feat_email_campaigns,
-                   staff_limit, 'whatsapp', FALSE
+                   1, 'whatsapp', FALSE
               FROM plans WHERE slug='free'
             ON CONFLICT (slug) DO NOTHING;
 
@@ -3304,7 +3304,8 @@ def ensure_portal_tables():
               FROM plan_feature_grants g
              WHERE g.plan_id = (SELECT id FROM plans WHERE slug='free')
                AND g.feature_key NOT LIKE 'ai.%'
-               AND g.feature_key NOT LIKE 'woo.%'
+               AND (g.feature_key NOT LIKE 'woo.%'
+                    OR g.feature_key IN ('woo.message_templates_view', 'woo.message_templates_edit'))
                AND g.feature_key NOT LIKE 'ecom.%'
                AND g.feature_key NOT IN ('reports.usage', 'inbox.resolve', 'inbox.takeover',
                                          'dashboard.handoff_handled', 'wa.handoff_reports_view')
