@@ -14,6 +14,7 @@ This is what makes the AI message quota "refresh" each billing period.
 
 from datetime import date, datetime
 from fastapi import APIRouter, Header, HTTPException
+import html as _html
 import json
 import os
 import smtplib
@@ -248,10 +249,53 @@ def _run_wa_ai_trials(conn) -> dict:
         ended = cur.fetchall() or []
         conn.commit()
         out["wa_trials_ended"] = len(ended)
+
+        # Back on PhiXtra Connect: only the longest-serving staff up to its
+        # seats stay active; the rest are switched off (never deleted).
+        switched_off = {}
+        if ended:
+            cur.execute("""
+                UPDATE team_members tm SET is_active = FALSE
+                  FROM (SELECT m.id,
+                               ROW_NUMBER() OVER (PARTITION BY m.tenant_id
+                                                  ORDER BY m.created_at NULLS LAST, m.id) AS rn,
+                               COALESCE(p.staff_limit, 0) AS lim
+                          FROM team_members m
+                          JOIN tenants t ON t.id = m.tenant_id
+                          JOIN plans   p ON p.id = t.plan_id
+                         WHERE m.is_active AND t.id = ANY(%s)
+                           AND t.source_type = 'whatsapp' AND p.slug = 'connect') r
+                 WHERE tm.id = r.id AND r.rn > r.lim
+                RETURNING tm.tenant_id, tm.id
+            """, ([int(t["id"]) for t in ended],))
+            for r in cur.fetchall() or []:
+                switched_off.setdefault(int(r["tenant_id"]), []).append(int(r["id"]))
+            conn.commit()
+            for tid, mids in switched_off.items():
+                cur.execute("""
+                    INSERT INTO audit_logs (admin_username, action, tenant_id, details)
+                    VALUES ('system:wa_plan_reset', 'team_member_deactivated_plan_seats', %s, %s)
+                """, (tid, json.dumps({"team_member_ids": mids, "reason": "2-week AI trial ended"})))
+            conn.commit()
+
         for t in ended:
             try:
                 owner = _wa_trial_owner(cur, int(t["id"]))
                 business = t["name"] or "your business"
+                team_line = []
+                n_off = len(switched_off.get(int(t["id"]), []))
+                if n_off:
+                    cur.execute("SELECT name FROM team_members WHERE tenant_id=%s AND is_active ORDER BY created_at NULLS LAST, id",
+                                (int(t["id"]),))
+                    kept = [r["name"] for r in cur.fetchall() or [] if r.get("name")]
+                    kept_txt = (", ".join(f"<b>{_html.escape(k)}</b>" for k in kept) + (" stays" if len(kept) == 1 else " stay")
+                                + " active") if kept else "No staff stay active"
+                    team_line = [
+                        f"PhiXtra Connect includes a limited number of team seats, so {kept_txt} and "
+                        f"{n_off} other staff member{'s were' if n_off != 1 else ' was'} switched off. "
+                        "No one was deleted: you can swap who is active on the Team page, or upgrade "
+                        "to switch everyone back on."
+                    ]
                 if owner and owner.get("email"):
                     _trial_email(
                         owner["email"], owner.get("first_name") or "",
@@ -263,7 +307,7 @@ def _run_wa_ai_trials(conn) -> dict:
                             "The AI has stopped answering your WhatsApp customers and your AI features "
                             "are locked. Your staff can still reply from the Inbox as normal.",
                             "Your AI settings are saved. Choose a plan and the AI switches back on straight away.",
-                        ],
+                        ] + team_line,
                         button="Upgrade to unlock",
                         text=(f"Your 2-week AI trial for {business} has ended and your account is now "
                               "on PhiXtra Connect. The AI has stopped answering and your AI features "

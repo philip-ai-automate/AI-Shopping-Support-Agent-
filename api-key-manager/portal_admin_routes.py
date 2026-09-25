@@ -5226,6 +5226,26 @@ SYSTEM_PLAN_SLUGS = {"connect": "Every WhatsApp sign-up starts here, and WhatsAp
                      "pro":     "The 2-week WhatsApp AI trial and the WooCommerce trial use this plan"}
 
 
+def _trim_staff_to_connect_seats_sql(cur, tenant_ids) -> None:
+    """Same rule as portal_routes._trim_staff_to_connect_seats: back on
+    PhiXtra Connect, only the longest-serving staff up to its seats stay
+    active; the rest are switched off, never deleted."""
+    cur.execute("""
+        UPDATE team_members tm SET is_active = FALSE
+          FROM (SELECT m.id,
+                       ROW_NUMBER() OVER (PARTITION BY m.tenant_id
+                                          ORDER BY m.created_at NULLS LAST, m.id) AS rn,
+                       COALESCE(p.staff_limit, 0) AS lim
+                  FROM team_members m
+                  JOIN tenants t ON t.id = m.tenant_id
+                  JOIN plans   p ON p.id = t.plan_id
+                 WHERE m.is_active AND t.id = ANY(%s)
+                   AND t.source_type = 'whatsapp' AND p.slug = 'connect') r
+         WHERE tm.id = r.id AND r.rn > r.lim
+        RETURNING tm.tenant_id, tm.id
+    """, (list(tenant_ids),))
+
+
 def _sync_wa_ai_to_plan_sql(cur, where_sql: str, params) -> None:
     """Same rule as portal_routes._sync_wa_ai_to_plan: a WhatsApp merchant's
     AI is off on PhiXtra Connect and on for any other plan."""
@@ -5295,6 +5315,7 @@ def admin_plans_delete(plan_id: int):
         if moved:
             cur2.execute("UPDATE tenants SET plan_id=%s WHERE plan_id=%s", (target["id"], plan_id))
             _sync_wa_ai_to_plan_sql(cur2, "t.id = ANY(%s)", ([t["id"] for t in moved],))
+            _trim_staff_to_connect_seats_sql(cur2, [t["id"] for t in moved])
         cur2.execute("UPDATE plans SET parent_plan_id=NULL WHERE parent_plan_id=%s", (plan_id,))
         cur2.execute("DELETE FROM plans WHERE id=%s", (plan_id,))   # feature grants cascade
         conn.commit()
@@ -5372,6 +5393,7 @@ def admin_plans_assign(tenant_id: int):
     # trial_ends_at stops the daily check moving them back when an old
     # trial date passes.
     _sync_wa_ai_to_plan_sql(cur, "t.id = %s", (tenant_id,))
+    _trim_staff_to_connect_seats_sql(cur, [tenant_id])
     conn.commit()
     cur.close(); conn.close()
     insert_audit_log(action="plan_assign", admin_username=_admin_user(),

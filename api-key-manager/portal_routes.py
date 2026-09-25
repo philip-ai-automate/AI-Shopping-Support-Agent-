@@ -2371,6 +2371,41 @@ def _sync_wa_ai_to_plan(tenant_ids) -> None:
         print("⚠️ _sync_wa_ai_to_plan error:", e)
 
 
+def _trim_staff_to_connect_seats(tenant_ids) -> None:
+    """A WhatsApp merchant back on PhiXtra Connect keeps only as many staff
+    as Connect's seats allow: the longest-serving stay active, the rest are
+    switched off (never deleted — the owner can swap them on the Team page,
+    or upgrade and switch them back on)."""
+    ids = [int(t) for t in (tenant_ids or [])]
+    if not ids:
+        return
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("""
+        UPDATE team_members tm SET is_active = FALSE
+          FROM (SELECT m.id,
+                       ROW_NUMBER() OVER (PARTITION BY m.tenant_id
+                                          ORDER BY m.created_at NULLS LAST, m.id) AS rn,
+                       COALESCE(p.staff_limit, 0) AS lim
+                  FROM team_members m
+                  JOIN tenants t ON t.id = m.tenant_id
+                  JOIN plans   p ON p.id = t.plan_id
+                 WHERE m.is_active AND t.id = ANY(%s)
+                   AND t.source_type = 'whatsapp' AND p.slug = 'connect') r
+         WHERE tm.id = r.id AND r.rn > r.lim
+        RETURNING tm.tenant_id, tm.id
+        """, (ids,))
+        off = cur.fetchall() or []
+        conn.commit()
+        cur.close(); conn.close()
+        for tid, mid in off:
+            insert_audit_log(action="team_member_deactivated_plan_seats", tenant_id=int(tid),
+                             details={"team_member_id": int(mid), "reason": "back on PhiXtra Connect"})
+    except Exception as e:
+        print("⚠️ _trim_staff_to_connect_seats error:", e)
+
+
 @portal_bp.route("/api/founder-spots")
 @public_route
 def api_founder_spots():
@@ -5517,6 +5552,7 @@ def stripe_webhook():
                 """, (int(row["tenant_id"]),))
                 conn.commit(); cur2.close()
                 _sync_wa_ai_to_plan([int(row["tenant_id"])])
+                _trim_staff_to_connect_seats([int(row["tenant_id"])])
             cur.close(); conn.close()
 
             # Estate
