@@ -1,0 +1,109 @@
+{% extends layout_base %}
+{% block title %}Finish your post — {{ 'PhiXtra Admin' if is_admin else 'Social Posts' }}{% endblock %}
+{% block content %}
+{% include "portal/_ai_design_css.html" %}
+{% set services = (s.channels or [])|map(attribute='service')|unique|list %}
+{% set needs_wide = (not is_admin) and (services|select('in', ['facebook','linkedin','twitter'])|list) %}
+<div class="ad">
+  <div>
+    <div class="ad-crumb"><a href="{{ url_for(ep + 'pick', sid=s.id) }}">← Back to designs</a></div>
+    <p class="ad-title">Finish your post</p>
+    <p class="ad-sub">These changes are free.</p>
+  </div>
+
+  <div class="ad-two">
+    <div class="ad-panel">
+      <h3>Preview</h3>
+      <div class="ad-previews">
+        <figure style="width:{{ '52%' if needs_wide else '100%' }};max-width:420px"><img src="{{ url_for(ep + 'design_img', sid=s.id, idx=s.selected or 0, size='square') }}?t={{ stamp }}" alt="Square preview">{% if needs_wide %}Instagram and square posts{% else %}Square{% endif %}</figure>
+        {% if needs_wide %}
+        <figure style="width:44%"><img src="{{ url_for(ep + 'design_img', sid=s.id, idx=s.selected or 0, size='wide') }}?t={{ stamp }}" alt="Wide preview">Facebook, LinkedIn, X · wide</figure>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="ad-panel" id="words">
+      <h3>Quick edits</h3>
+      <form method="POST" action="{{ url_for(ep + 'design_action', sid=s.id, what='words') }}" class="ad" style="gap:12px">
+        <input type="hidden" name="back" value="finish">
+        <div class="ad-field"><label for="ad-h">Headline</label><input type="text" id="ad-h" name="headline" value="{{ v.headline }}" maxlength="80"></div>
+        <div class="ad-field"><label for="ad-p">Price label</label><input type="text" id="ad-p" name="price_label" value="{{ v.price_label }}" maxlength="40"><span class="ad-hint">{% if s.product and s.product.price_label %}From My Products ({{ s.product.price_label }}). Change it here if needed.{% else %}Leave empty for no price.{% endif %}</span></div>
+        <label class="ad-radio"><input type="checkbox" name="show_logo" value="1" {% if v.show_logo %}checked{% endif %}> <span>Show logo</span></label>
+        <label class="ad-radio"><input type="checkbox" name="show_contact" value="1" {% if v.show_contact %}checked{% endif %} {% if not kit.contact_line %}disabled{% endif %}> <span>Show contact line{% if kit.contact_line %} ({{ kit.contact_line }}){% else %} <span class="ad-hint">(add one in Brand Kit)</span>{% endif %}</span></label>
+        <div class="ad-row"><button type="submit" class="btn btn-sm">Update preview</button></div>
+      </form>
+      <form method="POST" action="{{ url_for(ep + 'design_action', sid=s.id, what='restyle') }}" class="ad-field">
+        <input type="hidden" name="back" value="finish">
+        <span class="ad-lbl">Colours</span>
+        <div class="ad-sw">{% for a, b in swatches %}<button type="submit" name="palette" value="{{ loop.index0 }}" class="{% if v.palette == loop.index0 %}on{% endif %}" style="background:linear-gradient(90deg,{{ a }} 50%,{{ b }} 0)" aria-label="Colour set {{ loop.index }}"></button>{% endfor %}</div>
+      </form>
+      <form method="POST" action="{{ url_for(ep + 'design_action', sid=s.id, what='restyle') }}" class="ad-field">
+        <input type="hidden" name="back" value="finish">
+        <span class="ad-lbl">Layout</span>
+        <div class="ad-chips">{% for lo in layouts %}<span class="ad-chip"><button type="submit" name="layout" value="{{ lo }}" class="{% if v.layout == lo %}on{% endif %}">{{ layout_labels[lo] }}</button></span>{% endfor %}</div>
+      </form>
+    </div>
+  </div>
+
+  <form method="POST" action="{{ url_for(ep + 'finish', sid=s.id) }}" class="ad-panel" id="ad-final">
+    <h3>Captions</h3>
+    {% for c in s.channels or [] %}
+    {% if loop.first or c.service not in (s.channels[:loop.index0]|map(attribute='service')|list) %}
+    <div class="ad-field">
+      <label for="cap-{{ c.service }}"><span class="ad-dot" style="background:{{ c.colour }}"></span> {{ c.label }}</label>
+      <textarea id="cap-{{ c.service }}" name="caption__{{ c.service }}" maxlength="2200" data-service="{{ c.service }}">{{ (v.captions or {}).get(c.service) or fallback.get(c.service, '') }}</textarea>
+      {% if c.service == 'twitter' %}<span class="ad-hint js-count" data-for="cap-twitter"></span>{% endif %}
+    </div>
+    {% endif %}
+    {% endfor %}
+
+    {% if is_admin %}
+    <div class="ad-row">
+      <button type="submit" name="action" value="draft" class="btn btn-primary">Add to Social Media Posts</button>
+      <span class="ad-hint">You send or schedule it through Buffer from Social Media Posts.</span>
+    </div>
+    {% else %}
+    <div class="ad-field">
+      <span class="ad-lbl">When</span>
+      <div class="ad-row">
+        <label class="ad-radio"><input type="radio" name="when" value="now" checked> <span>Post now</span></label>
+        <label class="ad-radio"><input type="radio" name="when" value="schedule"> <span>Schedule for later</span></label>
+      </div>
+      <div class="ad-field" id="ad-when-box" hidden style="max-width:300px">
+        <input type="datetime-local" id="ad-when-local" aria-label="Date and time to post">
+        <span class="ad-hint" id="ad-tz"></span>
+      </div>
+      <input type="hidden" name="scheduled_for_utc" id="ad-when-utc">
+    </div>
+    <div class="ad-row">
+      <button type="submit" name="action" value="now" class="btn btn-primary" id="ad-go">Post now</button>
+      <button type="submit" name="action" value="draft" class="btn" formnovalidate>Save as draft</button>
+      <a class="btn" href="{{ url_for(ep + 'pick', sid=s.id) }}">← Back to designs</a>
+    </div>
+    {% endif %}
+  </form>
+</div>
+<script>
+(function(){
+  var f = document.getElementById('ad-final');
+  document.querySelectorAll('.js-count').forEach(function(el){
+    var t = document.getElementById(el.dataset.for);
+    function c(){ var n = t.value.length; el.textContent = n + ' / 280 (X limit)'; el.style.color = n > 280 ? '#B42318' : ''; }
+    t.addEventListener('input', c); c();
+  });
+  var box = document.getElementById('ad-when-box');
+  if (!box) return;
+  var local = document.getElementById('ad-when-local'), utc = document.getElementById('ad-when-utc'), go = document.getElementById('ad-go');
+  var tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || '');
+  document.getElementById('ad-tz').textContent = 'Your time zone' + (tz ? ' (' + tz + ')' : '') + '.';
+  function sync(){
+    var s = (f.querySelector('input[name=when]:checked') || {}).value === 'schedule';
+    box.hidden = !s; local.required = s;
+    go.value = s ? 'schedule' : 'now'; go.textContent = s ? 'Schedule post' : 'Post now';
+  }
+  f.querySelectorAll('input[name=when]').forEach(function(r){ r.addEventListener('change', sync); });
+  sync();
+  f.addEventListener('submit', function(){ utc.value = local.value ? new Date(local.value).toISOString() : ''; });
+})();
+</script>
+{% endblock %}

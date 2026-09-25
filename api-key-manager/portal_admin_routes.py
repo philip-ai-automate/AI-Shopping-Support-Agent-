@@ -2122,9 +2122,11 @@ def credit_packages():
         is_active = request.form.get("is_active") == "on"
         sort_order  = int(request.form.get("sort_order")   or 0)
 
-        # Credit Packages only sell extra AI-message credits, bought once
-        # (2026-09-23) — no subscriptions, no features (those come from Plans).
-        package_type, billing_period, features_json = "topup", None, None
+        # Credit Packages sell extra AI-message credits, or (2026-09-25) extra
+        # AI Post Designer designs, bought once — no subscriptions, no
+        # features (those come from Plans).
+        package_type = "design_topup" if request.form.get("kind") == "designs" else "topup"
+        billing_period, features_json = None, None
 
 
         if not name or credits <= 0 or price_pence <= 0:
@@ -2215,8 +2217,9 @@ def credit_packages_edit(pkg_id: int):
     is_active = request.form.get("is_active") == "on"
     sort_order  = int(request.form.get("sort_order")   or 0)
 
-    # One-time credit top-ups only (2026-09-23) — see credit_packages().
-    package_type_e, billing_period_e, features_json = "topup", None, None
+    # One-time top-ups only (2026-09-23) — see credit_packages().
+    package_type_e = "design_topup" if request.form.get("kind") == "designs" else "topup"
+    billing_period_e, features_json = None, None
 
 
     if not name or credits <= 0 or price_pence <= 0:
@@ -2347,6 +2350,7 @@ def invoices():
     cur.execute("""
         SELECT i.id, i.invoice_number, i.credits, i.amount_pence, i.vat_pence,
                i.currency, i.status, i.created_at,
+               (SELECT cp.package_type FROM credit_packages cp WHERE cp.id = i.package_id) AS package_type,
                c.email AS customer_email,
                CONCAT(COALESCE(c.first_name,''),' ',COALESCE(c.last_name,'')) AS customer_name,
                t.name AS tenant_name, t.domain
@@ -5055,6 +5059,8 @@ def _plan_form_to_dict(form) -> dict:
         "price_ngn":           _int("price_ngn", 0),
         "price_usd":           _num("price_usd", 0),
         "ai_messages_limit":   _int("ai_messages_limit", 100),
+        "ai_designs_limit":    max(0, _int("ai_designs_limit", 0)),
+        "allow_own_ai_key":    form.get("allow_own_ai_key") == "on",
         "ai_agents_limit":     _int("ai_agents_limit", 1),
         "broadcasts_limit":    _int("broadcasts_limit", 0),
         "products_limit":      _int("products_limit", 50),
@@ -5144,7 +5150,8 @@ def admin_plans_new():
 
     cur.close(); conn.close()
     blank = {"slug": "", "name": "", "price_ngn": 0, "price_usd": 0,
-             "ai_messages_limit": 100, "ai_agents_limit": 1, "broadcasts_limit": 0,
+             "ai_messages_limit": 100, "ai_designs_limit": 0, "allow_own_ai_key": True,
+             "ai_agents_limit": 1, "broadcasts_limit": 0,
              "products_limit": 50, "data_sources_limit": 1, "staff_limit": 0,
              "overage_per_msg_ngn": 10, "overage_per_msg_usd": 0.006,
              "annual_discount_pct": 5, "sort_order": 0, "is_active": True,

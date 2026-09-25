@@ -1,0 +1,13 @@
+{% if allow.source == 'admin' %}
+<div class="ad-meter"><span>AI designs</span><b>Unlimited for PhiXtra admin</b></div>
+{% elif allow.own_key %}
+<div class="ad-meter"><span>AI designs</span><b>Unlimited: using your own AI key</b><span class="ad-hint">Your AI provider bills you directly.</span></div>
+{% else %}
+<div class="ad-meter">
+  <span>AI designs this month</span>
+  <div class="ad-bar" role="progressbar" aria-valuemin="0" aria-valuemax="{{ allow.limit }}" aria-valuenow="{{ allow.used }}"><i style="width:{{ (100 * allow.used / allow.limit)|round|int if allow.limit else 100 }}%"></i></div>
+  <b>{{ allow.used }} of {{ allow.limit }} used</b>
+  {% if allow.extra %}<span class="ad-pill ad-p-b">+{{ allow.extra }} extra</span>{% endif %}
+  <span class="ad-hint">Resets {{ month_reset }}</span>
+</div>
+{% endif %}

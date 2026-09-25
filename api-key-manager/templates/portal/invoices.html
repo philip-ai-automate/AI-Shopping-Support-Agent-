@@ -33,7 +33,7 @@
               <span class="pill pill-grey" style="font-size:11px;">⚡ Top-up</span>
             {% endif %}
           </td>
-          <td>{{ inv.credits }}</td>
+          <td>{{ inv.credits }}{% if inv.package_type == 'design_topup' %} AI designs{% endif %}</td>
           <td>{{ inv.total_fmt }}</td>
           <td>
             {% if inv.status == 'paid' %}

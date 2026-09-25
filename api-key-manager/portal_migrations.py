@@ -1313,6 +1313,131 @@ def ensure_portal_tables():
             )
         """)
         cur.execute("CREATE INDEX IF NOT EXISTS idx_tenant_social_posts_tenant ON tenant_social_posts (tenant_id, created_at DESC)")
+        # A second, wide (1200x628) picture for Facebook / LinkedIn / X when
+        # the post was made with the AI Post Designer; the main image is square.
+        if not _column_exists(cur, "tenant_social_posts", "wide_image_filename"):
+            cur.execute("ALTER TABLE tenant_social_posts ADD COLUMN wide_image_filename VARCHAR(255)")
+        # Per-network captions from the AI Post Designer ({service: text});
+        # NULL means every network uses `caption`.
+        if not _column_exists(cur, "tenant_social_posts", "captions"):
+            cur.execute("ALTER TABLE tenant_social_posts ADD COLUMN captions JSONB")
+
+        # ── AI Post Designer (2026-09-25) ──────────────────────────────────
+        # Plans: a separate monthly AI design allowance that never touches the
+        # AI-message (chat) allowance, and whether a business may connect its
+        # own AI key. Example figures are set once when the column is first
+        # added; admin changes them in the Plan editor.
+        if not _column_exists(cur, "plans", "ai_designs_limit"):
+            cur.execute("ALTER TABLE plans ADD COLUMN ai_designs_limit INTEGER NOT NULL DEFAULT 0")
+            cur.execute("""
+                UPDATE plans SET ai_designs_limit = CASE
+                    WHEN slug IN ('free', 'custom') THEN 5
+                    WHEN slug IN ('starter', 'startup_dual') THEN 30
+                    WHEN slug IN ('growth', 'business_dual') THEN 100
+                    WHEN slug IN ('pro', 'enterprise_dual') THEN 300
+                    ELSE 0 END""")
+        if not _column_exists(cur, "plans", "allow_own_ai_key"):
+            cur.execute("ALTER TABLE plans ADD COLUMN allow_own_ai_key BOOLEAN NOT NULL DEFAULT TRUE")
+        # Credit Top-ups may now sell "AI designs" packs too.
+        cur.execute("""SELECT pg_get_constraintdef(oid) FROM pg_constraint
+                       WHERE conname='credit_packages_package_type_check'""")
+        _ck = cur.fetchone()
+        if _ck and "design_topup" not in _ck[0]:
+            cur.execute("ALTER TABLE credit_packages DROP CONSTRAINT credit_packages_package_type_check")
+            cur.execute("""ALTER TABLE credit_packages ADD CONSTRAINT credit_packages_package_type_check
+                           CHECK (package_type IN ('topup', 'subscription', 'design_topup'))""")
+        # Bought "AI designs" top-up packs land here (never in token_balance).
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS tenant_design_balances (
+                tenant_id      INTEGER PRIMARY KEY,
+                design_credits INTEGER NOT NULL DEFAULT 0,
+                updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )""")
+        # Brand Kit per business ('tenant:<id>') and one for PhiXtra admin ('admin').
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS brand_kits (
+                owner_key     VARCHAR(40) PRIMARY KEY,
+                logo_filename VARCHAR(255),
+                color_main    VARCHAR(9)  NOT NULL DEFAULT '#1F2A44',
+                color_accent  VARCHAR(9)  NOT NULL DEFAULT '#F2B134',
+                color_bg      VARCHAR(9)  NOT NULL DEFAULT '#F7F4EE',
+                display_name  VARCHAR(120),
+                contact_line  VARCHAR(160),
+                style         VARCHAR(20) NOT NULL DEFAULT 'bold',
+                voice         VARCHAR(40) NOT NULL DEFAULT 'warm',
+                updated_by    VARCHAR(255),
+                updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )""")
+        # A business's own AI key (Fernet-encrypted, last 4 shown), same model
+        # as Buffer: when present, AI designs are unlimited and billed to them.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS ai_keys (
+                owner_key       VARCHAR(40) PRIMARY KEY,
+                tenant_id       INTEGER,
+                api_key_enc     TEXT NOT NULL,
+                key_last4       VARCHAR(8),
+                status          VARCHAR(20) NOT NULL DEFAULT 'ok',
+                last_error      TEXT,
+                last_checked_at TIMESTAMPTZ,
+                connected_by    VARCHAR(255),
+                connected_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )""")
+        # One design session = one post being designed (the 4 options, their
+        # restyles, rewrites used, feedback). Variants live in JSONB.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS ai_design_sessions (
+                id             SERIAL PRIMARY KEY,
+                owner_key      VARCHAR(40) NOT NULL,
+                tenant_id      INTEGER,
+                source         VARCHAR(20) NOT NULL,
+                product        JSONB,
+                idea           TEXT,
+                offer          TEXT,
+                channels       JSONB NOT NULL DEFAULT '[]',
+                picture_mode   VARCHAR(20) NOT NULL DEFAULT 'product',
+                subject_image  VARCHAR(255),
+                ai_image       VARCHAR(255),
+                variants       JSONB NOT NULL DEFAULT '[]',
+                selected       INTEGER NOT NULL DEFAULT 0,
+                rewrites_used  INTEGER NOT NULL DEFAULT 0,
+                sets_made      INTEGER NOT NULL DEFAULT 0,
+                feedback       JSONB,
+                post_id        INTEGER,
+                created_by     VARCHAR(255),
+                created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_ai_design_sessions_owner ON ai_design_sessions (owner_key, created_at DESC)")
+        # Every AI action: what it used (allowance / top-up / own key / admin)
+        # and whether it failed (failed = never counted).
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS ai_design_usage (
+                id          SERIAL PRIMARY KEY,
+                owner_key   VARCHAR(40) NOT NULL,
+                tenant_id   INTEGER,
+                session_id  INTEGER,
+                action      VARCHAR(30) NOT NULL,
+                source      VARCHAR(20) NOT NULL,
+                counted     BOOLEAN NOT NULL DEFAULT FALSE,
+                failed      BOOLEAN NOT NULL DEFAULT FALSE,
+                note        TEXT,
+                created_by  VARCHAR(255),
+                created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_ai_design_usage_owner ON ai_design_usage (owner_key, created_at DESC)")
+        # 👍 / 👎 per design — what "learns the business's taste".
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS ai_design_taste (
+                id         SERIAL PRIMARY KEY,
+                owner_key  VARCHAR(40) NOT NULL,
+                session_id INTEGER,
+                variant    INTEGER,
+                style      VARCHAR(20),
+                layout     VARCHAR(20),
+                vote       SMALLINT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (session_id, variant)
+            )""")
 
         # ── ambassador_broadcasts: admin WhatsApp broadcasts to ambassadors ──
         # Log of each admin-sent WhatsApp update (via one reusable Meta

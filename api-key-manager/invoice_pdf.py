@@ -22,6 +22,7 @@ def generate_invoice_pdf(
     vat_pence: int,
     currency: str,
     created_at: datetime,
+    kind: str = "credits",
 ) -> str:
     """Returns absolute file path."""
 
@@ -62,7 +63,10 @@ def generate_invoice_pdf(
     # Line item
     y -= 25
     c.setFont("Helvetica", 10)
-    c.drawString(40, y, f"Credit top-up: {credits} credits (1 credit = 5,000 tokens)")
+    if kind == "designs":
+        c.drawString(40, y, f"AI designs top-up: {credits} extra AI designs (AI Post Designer)")
+    else:
+        c.drawString(40, y, f"Credit top-up: {credits} credits (1 credit = 5,000 tokens)")
     c.drawRightString(width - 40, y, money_fmt(amount_pence, currency))
 
     # Totals

@@ -598,6 +598,10 @@ PLAN_FEATURE_CATALOG = {
         ("social.posts_create", "Create a Social Post (post now / schedule / draft)"),
         ("social.posts_edit",   "Edit / reschedule / cancel a Social Post"),
         ("social.posts_delete", "Delete a Social Post"),
+        ("social.ai_designs",   "Create AI designs (uses the monthly AI design allowance)"),
+        ("social.brand_kit_view", "Brand Kit — view"),
+        ("social.brand_kit_edit", "Edit the Brand Kit"),
+        ("social.usage_view",   "AI Design Usage — view"),
     ],
     "WhatsApp": [
         ("legacy:feat_fw_checkout",  "Checkout (In-Chat Payments via Flutterwave)"),
@@ -723,6 +727,9 @@ PLAN_FEATURE_CATALOG = {
         ("channels.connect_buffer_view",      "Buffer — view connect page"),
         ("channels.connect_buffer_manage",    "Connect Buffer / change key / choose accounts"),
         ("channels.connect_buffer_remove",    "Disconnect Buffer"),
+        ("channels.connect_ai_key_view",      "Your own AI key — view"),
+        ("channels.connect_ai_key_manage",    "Connect / replace your own AI key"),
+        ("channels.connect_ai_key_remove",    "Remove your own AI key"),
     ],
     "Help & Tutorials": [
         ("help.tutorials", "Help & Tutorials"),
@@ -794,6 +801,9 @@ ROLE_FORM_GRID = {
     "Social Posts": [
         {"label": "Social Post", "view": "social.posts_view", "create": "social.posts_create",
          "edit": "social.posts_edit", "delete": "social.posts_delete"},
+        {"label": "AI designs", "create": "social.ai_designs"},
+        {"label": "Brand Kit", "view": "social.brand_kit_view", "edit": "social.brand_kit_edit"},
+        {"label": "AI Design Usage", "view": "social.usage_view"},
     ],
     "WhatsApp": [
         {"label": "Checkout (Flutterwave)", "other": ["legacy:feat_fw_checkout"]},
@@ -871,6 +881,8 @@ ROLE_FORM_GRID = {
          "delete": "channels.connect_pressone_remove"},
         {"label": "Buffer",    "view": "channels.connect_buffer_view", "edit": "channels.connect_buffer_manage",
          "delete": "channels.connect_buffer_remove"},
+        {"label": "Your own AI key", "view": "channels.connect_ai_key_view", "edit": "channels.connect_ai_key_manage",
+         "delete": "channels.connect_ai_key_remove"},
     ],
     "Help & Tutorials": [
         {"label": "Help & Tutorials", "view": "help.tutorials"},
@@ -1454,6 +1466,7 @@ DESTRUCTIVE_FEATURE_KEYS = {
     "wa.history_import_delete",
     "channels.connect_buffer_remove",
     "social.posts_delete",
+    "channels.connect_ai_key_remove",
 }
 
 # Any permission that lets someone manage other team members' access at all.
@@ -5381,6 +5394,13 @@ def billing():
         ORDER BY sort_order ASC, id ASC
     """)
     packages = cur.fetchall() or []
+    # "AI designs" packs for the AI Post Designer (2026-09-25)
+    cur.execute("""SELECT * FROM credit_packages WHERE is_active=TRUE AND package_type='design_topup'
+                   ORDER BY sort_order ASC, id ASC""")
+    design_packs = cur.fetchall() or []
+    cur.execute("SELECT design_credits FROM tenant_design_balances WHERE tenant_id=%s", (tenant_id,))
+    _db_row = cur.fetchone()
+    design_balance = int(_db_row["design_credits"]) if _db_row else 0
     cur.close(); conn.close()
 
     import json as _json
@@ -5424,7 +5444,9 @@ def billing():
                            trial_days_left=trial_days_left,
                            trial_expired_billing=trial_expired_billing,
                            active_sub=active_sub,
-                           saved_methods=saved_methods)
+                           saved_methods=saved_methods,
+                           design_packs=design_packs,
+                           design_balance=design_balance)
 
 
 @portal_bp.route("/billing/checkout", methods=["POST"])
@@ -5497,8 +5519,11 @@ def billing_checkout():
         line_items=[{
             "price_data": {
                 "currency": pkg.get("currency") or "gbp",
-                "product_data": {"name": f"{credits} PhiXtra credits",
-                                 "description": "1 credit = 5,000 AI tokens"},
+                "product_data": ({"name": f"{credits} extra AI designs",
+                                  "description": "For the AI Post Designer. One-time, doesn't renew."}
+                                 if pkg.get("package_type") == "design_topup" else
+                                 {"name": f"{credits} PhiXtra credits",
+                                  "description": "1 credit = 5,000 AI tokens"}),
                 "unit_amount": total_pence,
             },
             "quantity": 1,
@@ -5727,23 +5752,37 @@ def stripe_webhook():
 
     tokens_add = credits_to_tokens(credits)
 
+    # An "AI designs" pack (2026-09-25) adds AI Post Designer designs, never
+    # AI-message tokens, and doesn't touch API keys.
+    cur.execute("SELECT package_type FROM credit_packages WHERE id=%s", (inv.get("package_id"),))
+    _pkg_row = cur.fetchone() or {}
+    is_design_pack = _pkg_row.get("package_type") == "design_topup"
+
     cur2 = conn.cursor()
-    cur2.execute("INSERT INTO tenant_balances (tenant_id, token_balance) VALUES (%s, 0) ON CONFLICT (tenant_id) DO NOTHING", (tenant_id,))
-    cur2.execute("UPDATE tenant_balances SET token_balance = token_balance + %s WHERE tenant_id=%s",
-                 (tokens_add, tenant_id))
+    was_trial = False
+    if is_design_pack:
+        tokens_add = 0
+        cur2.execute("""INSERT INTO tenant_design_balances (tenant_id, design_credits) VALUES (%s, %s)
+                        ON CONFLICT (tenant_id) DO UPDATE SET
+                            design_credits = tenant_design_balances.design_credits + EXCLUDED.design_credits,
+                            updated_at = NOW()""", (tenant_id, credits))
+    else:
+        cur2.execute("INSERT INTO tenant_balances (tenant_id, token_balance) VALUES (%s, 0) ON CONFLICT (tenant_id) DO NOTHING", (tenant_id,))
+        cur2.execute("UPDATE tenant_balances SET token_balance = token_balance + %s WHERE tenant_id=%s",
+                     (tokens_add, tenant_id))
 
-    # Convert any trial key to paid on first purchase — this is the critical
-    # step that upgrades a trial customer. We change key_type to 'paid',
-    # reactivate the key, and clear the trial expiry date.
-    cur2.execute("""
-        UPDATE api_keys
-        SET key_type='paid', is_active=TRUE, trial_expires_at=NULL
-        WHERE tenant_id=%s AND key_type='trial'
-    """, (tenant_id,))
-    was_trial = cur2.rowcount > 0
+        # Convert any trial key to paid on first purchase — this is the critical
+        # step that upgrades a trial customer. We change key_type to 'paid',
+        # reactivate the key, and clear the trial expiry date.
+        cur2.execute("""
+            UPDATE api_keys
+            SET key_type='paid', is_active=TRUE, trial_expires_at=NULL
+            WHERE tenant_id=%s AND key_type='trial'
+        """, (tenant_id,))
+        was_trial = cur2.rowcount > 0
 
-    # Also reactivate any existing paid keys (handles non-trial top-ups)
-    cur2.execute("UPDATE api_keys SET is_active=TRUE WHERE tenant_id=%s AND key_type='paid'", (tenant_id,))
+        # Also reactivate any existing paid keys (handles non-trial top-ups)
+        cur2.execute("UPDATE api_keys SET is_active=TRUE WHERE tenant_id=%s AND key_type='paid'", (tenant_id,))
 
     # Packages only sell AI-message credits (2026-09-23) — features come
     # from the merchant's plan, so a purchase no longer touches tenants.features.
@@ -5764,6 +5803,7 @@ def stripe_webhook():
         vat_pence=int(inv.get("vat_pence") or 0),
         currency=inv.get("currency") or "gbp",
         created_at=created_at,
+        kind="designs" if is_design_pack else "credits",
     )
 
     cur2.execute("""
@@ -5772,7 +5812,7 @@ def stripe_webhook():
     conn.commit()
     cur2.close()
 
-    insert_audit_log(action="credits_topped_up", tenant_id=tenant_id,
+    insert_audit_log(action="ai_designs_topped_up" if is_design_pack else "credits_topped_up", tenant_id=tenant_id,
                      details={"credits": credits, "tokens_added": tokens_add,
                               "invoice": inv.get("invoice_number")})
 
@@ -5837,10 +5877,11 @@ def invoices():
 
     # Original top-up invoices
     cur.execute("""
-        SELECT id, invoice_number, credits, amount_pence, vat_pence,
-               currency, status, created_at, 'topup' AS invoice_type,
-               pdf_path
-        FROM invoices WHERE customer_id=%s ORDER BY created_at DESC""",
+        SELECT i.id, i.invoice_number, i.credits, i.amount_pence, i.vat_pence,
+               i.currency, i.status, i.created_at, 'topup' AS invoice_type,
+               i.pdf_path, cp.package_type
+        FROM invoices i LEFT JOIN credit_packages cp ON cp.id = i.package_id
+        WHERE i.customer_id=%s ORDER BY i.created_at DESC""",
         (customer_id,))
     topup_rows = cur.fetchall() or []
 
@@ -7325,14 +7366,17 @@ def _get_billing_report_data(tenant_id: int, customer_id: int, days: int) -> dic
         # Invoices in period
         if days >= 9999:
             cur.execute("""
-                SELECT * FROM invoices WHERE customer_id=%s ORDER BY created_at DESC
+                SELECT i.*, cp.package_type FROM invoices i
+                LEFT JOIN credit_packages cp ON cp.id = i.package_id
+                WHERE i.customer_id=%s ORDER BY i.created_at DESC
             """, (customer_id,))
             safe["period_label"] = "All time"
         else:
             cur.execute("""
-                SELECT * FROM invoices
-                WHERE customer_id=%s AND created_at >= (NOW() - (INTERVAL '1 day' * %s))
-                ORDER BY created_at DESC
+                SELECT i.*, cp.package_type FROM invoices i
+                LEFT JOIN credit_packages cp ON cp.id = i.package_id
+                WHERE i.customer_id=%s AND i.created_at >= (NOW() - (INTERVAL '1 day' * %s))
+                ORDER BY i.created_at DESC
             """, (customer_id, days))
             safe["period_label"] = f"Last {days} days"
 
@@ -7352,7 +7396,9 @@ def _get_billing_report_data(tenant_id: int, customer_id: int, days: int) -> dic
         paid_invs = [i for i in invoices if i.get("status") == "paid"]
         total_pence = sum(int(i.get("amount_pence") or 0) + int(i.get("vat_pence") or 0) for i in paid_invs)
         total_vat   = sum(int(i.get("vat_pence") or 0)    for i in paid_invs)
-        total_cred  = sum(int(i.get("credits")   or 0)    for i in paid_invs)
+        # AI designs packs aren't AI-message credits (2026-09-25).
+        total_cred  = sum(int(i.get("credits")   or 0)    for i in paid_invs
+                          if i.get("package_type") != "design_topup")
 
         # Monthly spend chart
         monthly = defaultdict(int)
@@ -24490,6 +24536,14 @@ def channels_page():
     except Exception as e:
         print("⚠️ channels_page buffer lookup error:", e)
 
+    ai_key, ai_design_limit = None, 0
+    try:
+        import ai_designer as _D
+        ai_key = _D.get_ai_key_row(_D.tenant_owner(tenant_id))
+        ai_design_limit = _D.plan_design_settings(tenant_id)["limit"]
+    except Exception as e:
+        print("⚠️ channels_page ai key lookup error:", e)
+
     return render_template(
         "portal/channels.html",
         customer=customer,
@@ -24498,6 +24552,8 @@ def channels_page():
         pressone_account=pressone_account,
         buffer_account=buffer_account,
         buffer_channel_count=buffer_channel_count,
+        ai_key=ai_key,
+        ai_design_limit=ai_design_limit,
     )
 
 

@@ -1,0 +1,128 @@
+{% extends layout_base %}
+{% block title %}New Post — {{ 'PhiXtra Admin' if is_admin else 'Social Posts' }}{% endblock %}
+{% block content %}
+{% include "portal/_ai_design_css.html" %}
+<div class="ad">
+  <div class="ad-row ad-between">
+    <div>
+      <div class="ad-crumb">{% if is_admin %}<a href="{{ url_for('portal_admin.social_media_posts') }}">Social Media Posts</a> › New post{% else %}Social Posts › New Post{% endif %}</div>
+      <p class="ad-title">New post</p>
+      <p class="ad-sub">{% if is_admin %}Design a post for PhiXtra's own pages. It lands in Social Media Posts, ready to send through Buffer.{% else %}Posts go out through your Buffer account.{% endif %}</p>
+    </div>
+    <a class="btn btn-sm" href="{{ url_for(ep + 'brand_kit') }}">Brand Kit</a>
+  </div>
+
+  {% include "portal/_ai_design_meter.html" %}
+
+  {% if not allow.source %}
+  <div class="ad-alert warn"><b>You've used this month's {{ allow.limit }} AI designs.</b> You can still post with a ready-made layout (free) or your own image.
+    For more AI designs now:
+    {% if allow.allow_own_key %}<a href="{{ url_for('social.ai_key') }}">connect your own AI key</a> or{% endif %}
+    <a href="{{ url_for('portal.billing') }}">buy extra AI designs</a>.</div>
+  {% elif allow.own_key_broken %}
+  <div class="ad-alert warn">Your own AI key stopped working, so AI designs are using your plan's allowance. <a href="{{ url_for('social.ai_key') }}">Fix the key</a>.</div>
+  {% endif %}
+
+  {% if not is_admin %}
+  <form method="GET" action="{{ url_for(ep + 'new_post') }}" class="ad-row" id="ad-search" role="search">
+    <div class="ad-field" style="flex:1;min-width:220px"><label for="ad-q">Find a product</label><input type="search" id="ad-q" name="q" value="{{ q }}" placeholder="Search My Products"></div>
+    <button type="submit" class="btn" style="align-self:flex-end">Search</button>
+  </form>
+  {% endif %}
+
+  <form method="POST" enctype="multipart/form-data" action="{{ url_for(ep + 'new_post') }}" class="ad" id="ad-form">
+    <input type="hidden" name="q" value="{{ q }}">
+    <div class="ad-panel">
+      <h3>What's this post about?</h3>
+      {% if not is_admin %}
+      <div class="ad-seg" role="radiogroup" aria-label="Start from">
+        <label><input type="radio" name="source" value="product" {% if products %}checked{% endif %}> A product</label>
+        <label><input type="radio" name="source" value="idea" {% if not products %}checked{% endif %}> An idea</label>
+      </div>
+      <div id="ad-src-product">
+        {% if products %}
+        <div class="ad-prods">
+          {% for p in products %}
+          <label class="ad-prod">
+            <input type="radio" name="product_ref" value="{{ p.ref }}" {% if loop.first %}checked{% endif %}>
+            {% if p.image_url %}<img src="{{ p.image_url }}" alt="" loading="lazy">{% else %}<span class="ph">No photo</span>{% endif %}
+            <b>{{ p.name }}</b>
+            <span>{{ p.price_label or 'No price' }}{% if p.stock == 0 %} · out of stock{% endif %}</span>
+          </label>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="ad-alert info">{% if q %}No products match “{{ q }}”.{% else %}No products found in My Products yet.{% endif %} Choose <b>An idea</b> instead, or add products first.</div>
+        {% endif %}
+      </div>
+      {% else %}
+      <input type="hidden" name="source" value="idea">
+      {% endif %}
+      <div class="ad-field" id="ad-src-idea"><label for="ad-idea">Describe the post</label><textarea id="ad-idea" name="idea" maxlength="600" placeholder="e.g. We now deliver across Lagos in 48 hours">{{ request.form.idea or '' }}</textarea></div>
+      <div class="ad-field"><label for="ad-offer">Anything to highlight? (optional)</label><input type="text" id="ad-offer" name="offer" maxlength="300" placeholder="e.g. Weekend sale, 20% off, free Lagos delivery"><span class="ad-hint">Any prices or numbers you type here are copied exactly. The AI never makes up prices.</span></div>
+    </div>
+
+    <div class="ad-panel">
+      <h3>Where will it go?</h3>
+      {% if channels %}
+      <div class="ad-chips">
+        {% for c in channels %}
+        <label class="ad-chip"><input type="checkbox" name="channel_ids" value="{{ c.channel_id }}" checked><span><span class="ad-dot" style="background:{{ c.colour }}"></span>{{ c.label }}{% if c.title != c.label %} · {{ c.title }}{% endif %}</span></label>
+        {% endfor %}
+      </div>
+      <span class="ad-hint">Each picture is made the right size and each network gets its own caption.</span>
+      {% else %}
+      <div class="ad-alert info">No social accounts are switched on. {% if not is_admin %}Turn some on in <a href="{{ url_for('buffer.connect') }}">Integration › Buffer</a>.{% endif %}</div>
+      {% endif %}
+    </div>
+
+    <div class="ad-panel">
+      <h3>Picture</h3>
+      {% if not is_admin %}
+      <label class="ad-radio" id="ad-pic-product"><input type="radio" name="picture" value="product" checked> <span>Use my product photo on brand colours</span></label>
+      {% endif %}
+      <label class="ad-radio"><input type="radio" name="picture" value="ai_scene" {% if is_admin %}checked{% endif %}> <span>{% if is_admin %}Let AI create the picture{% else %}Put my product in a new AI scene <span class="ad-hint">(or an AI picture for an idea)</span>{% endif %}</span></label>
+      <label class="ad-radio"><input type="radio" name="picture" value="upload"> <span>Upload my own image</span></label>
+      <div class="ad-field" id="ad-upload" hidden><input type="file" name="image_file" accept="image/jpeg,image/png,image/webp" aria-label="Image to upload"><span class="ad-hint">JPG, PNG or WEBP, up to 15 MB.</span></div>
+    </div>
+
+    <div class="ad-row">
+      {% if can_ai %}
+      <button type="submit" name="action" value="ai" class="btn ad-btn-ai {% if not allow.source %}ad-off{% endif %}" {% if not allow.source %}disabled{% endif %}>
+        ✦ Create designs
+        {% if allow.source == 'allowance' %}<small>(uses 1 of {{ allow.left }} left)</small>{% elif allow.source == 'topup' %}<small>(uses 1 of {{ allow.extra }} extra)</small>{% elif allow.source == 'own_key' %}<small>(your own AI key)</small>{% endif %}
+      </button>
+      {% endif %}
+      <button type="submit" name="action" value="template" class="btn">Use a ready-made layout (free)</button>
+      <span class="ad-busy" id="ad-busy" role="status"><span class="ad-spin"></span>Designing… this can take up to a minute.</span>
+    </div>
+  </form>
+</div>
+<script>
+(function(){
+  var f = document.getElementById('ad-form');
+  function src(){ var r = f.querySelector('input[name=source]:checked'); return r ? r.value : 'idea'; }
+  var prod = document.getElementById('ad-src-product'), idea = document.getElementById('ad-src-idea'),
+      picProd = document.getElementById('ad-pic-product'), search = document.getElementById('ad-search');
+  function syncSrc(){
+    var p = src() === 'product';
+    if (prod) prod.hidden = !p;
+    if (search) search.hidden = !p;
+    idea.hidden = p;
+    if (picProd) { picProd.hidden = !p; if (!p && picProd.querySelector('input').checked) f.querySelector('input[name=picture][value=ai_scene]').checked = true; }
+  }
+  f.querySelectorAll('input[name=source]').forEach(function(r){ r.addEventListener('change', syncSrc); });
+  syncSrc();
+  var up = document.getElementById('ad-upload');
+  function syncPic(){ up.hidden = !(f.querySelector('input[name=picture]:checked') || {}).value || f.querySelector('input[name=picture]:checked').value !== 'upload'; }
+  f.querySelectorAll('input[name=picture]').forEach(function(r){ r.addEventListener('change', syncPic); });
+  syncPic();
+  f.addEventListener('submit', function(e){
+    if (e.submitter && e.submitter.value === 'ai') {
+      document.getElementById('ad-busy').classList.add('on');
+      f.querySelectorAll('button[type=submit]').forEach(function(b){ setTimeout(function(){ b.disabled = true; }, 0); });
+    }
+  });
+})();
+</script>
+{% endblock %}

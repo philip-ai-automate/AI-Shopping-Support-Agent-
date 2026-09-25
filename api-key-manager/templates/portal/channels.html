@@ -137,6 +137,26 @@
     </div>
   </div>
 
+  <!-- Your own AI key (2026-09-25) — optional, for unlimited AI designs -->
+  <div class="channel-card">
+    <div class="channel-card-top">
+      <div class="channel-logo" style="background:linear-gradient(135deg,#1B2B6B,#5B2BA6);color:#fff;font-weight:800;font-size:15px">AI</div>
+      <div>
+        <div class="channel-name">Your own AI key</div>
+        {% if ai_key and ai_key.status != 'ok' %}
+        <div class="channel-status" style="color:#B54708;font-weight:600">🟠 Needs attention: the key stopped working</div>
+        {% elif ai_key %}
+        <div class="channel-status on">🟢 Connected. Unlimited AI designs.</div>
+        {% else %}
+        <div class="channel-status">Not connected. Using your plan's {{ ai_design_limit }} AI designs a month.</div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="channel-card-foot">
+      <a href="{{ url_for('social.ai_key') }}" class="btn {% if not ai_key %}btn-primary{% endif %}">{{ 'Manage' if ai_key else 'Connect AI key' }} →</a>
+    </div>
+  </div>
+
   <!-- Instagram -->
   <div class="channel-card locked">
     <div class="channel-card-top">

@@ -57,7 +57,10 @@
     {% if is_owner %}
     <a class="btn btn-sm" href="{{ url_for('portal_admin.buffer_channels_settings') }}">⚙️ PhiXtra's Buffer</a>
     {% endif %}
+    <a class="btn btn-sm" href="{{ url_for('ai_admin.brand_kit') }}">Brand Kit</a>
+    <a class="btn btn-sm" href="{{ url_for('ai_admin.usage') }}">AI Design Usage</a>
     {% if can_manage %}
+    <a class="btn btn-sm" href="{{ url_for('ai_admin.new_post') }}" style="background:linear-gradient(135deg,#1B2B6B,#5B2BA6);color:#fff;border-color:transparent">✦ Design with AI</a>
     <button class="btn btn-sm btn-danger" onclick="openUrgentModal()">🚨 Urgent Post</button>
     <button class="btn btn-primary" onclick="openUploadModal()">＋ New Post</button>
     {% endif %}

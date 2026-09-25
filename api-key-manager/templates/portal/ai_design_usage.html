@@ -1,0 +1,60 @@
+{% extends layout_base %}
+{% block title %}AI Design Usage — {{ 'PhiXtra Admin' if is_admin else 'Social Posts' }}{% endblock %}
+{% block content %}
+{% include "portal/_ai_design_css.html" %}
+{% set action_labels = {'create': 'Created designs', 'new_set': 'Made new designs', 'rewrite': 'Rewrote words', 'ready_made': 'Ready-made layout'} %}
+{% set source_labels = {'allowance': 'Plan allowance', 'topup': 'Extra designs', 'own_key': 'Your own AI key', 'admin': 'PhiXtra admin', 'platform': 'Free rewrite', 'free': 'Free', 'none': '—'} %}
+<div class="ad">
+  <div>
+    <div class="ad-crumb">{% if is_admin %}<a href="{{ url_for('portal_admin.social_media_posts') }}">Social Media Posts</a>{% else %}Social Posts{% endif %} › AI Design Usage</div>
+    <p class="ad-title">AI Design Usage</p>
+    <p class="ad-sub">{% if is_admin %}PhiXtra admin designs are unlimited.{% elif allow.own_key %}You're using your own AI key, so AI designs are unlimited.{% else %}Your {{ allow.plan_name }} plan includes {{ allow.limit }} AI designs a month. Customer-chat messages are counted separately and never used here.{% endif %}</p>
+  </div>
+  {% include "portal/_ai_design_meter.html" %}
+
+  {% if not is_admin %}
+  <div class="ad-two">
+    <div class="ad-panel">
+      <h3>Need more?</h3>
+      <div class="ad-row">
+        {% if allow.allow_own_key %}<a class="btn btn-primary" href="{{ url_for('social.ai_key') }}">{{ 'Manage your own AI key' if allow.own_key else 'Connect your own AI key' }}</a>{% endif %}
+        <a class="btn" href="{{ url_for('portal.billing') }}">Buy extra AI designs</a>
+      </div>
+      <span class="ad-hint">With your own AI key, designs are unlimited and your AI provider bills you directly.{% if allow.extra %} You have {{ allow.extra }} extra designs, used after this month's allowance.{% endif %}</span>
+    </div>
+    <div class="ad-panel">
+      <h3>Free, never counted</h3>
+      <ul style="margin:0;padding-left:18px;font-size:13.5px;line-height:1.8">
+        <li>Restyling a design (style, colours, layout)</li>
+        <li>Up to 5 word rewrites per post</li>
+        <li>Quick edits and ready-made layouts</li>
+        <li>Designs that failed</li>
+      </ul>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="ad-panel">
+    <h3>History</h3>
+    {% if log %}
+    <div class="ad-tw"><table class="ad-table">
+      <thead><tr><th>Date</th><th>Post</th><th>What</th><th>Paid from</th><th>By</th><th>Used</th></tr></thead>
+      <tbody>
+      {% for u in log %}
+      <tr>
+        <td class="ad-num">{{ u.created_at.strftime('%d %b, %H:%M') }}</td>
+        <td>{{ u.subject[:50] }}</td>
+        <td>{{ action_labels.get(u.action, u.action) }}{% if u.failed %} <span class="ad-pill ad-p-w">Failed</span>{% endif %}</td>
+        <td>{{ source_labels.get(u.source, u.source) }}</td>
+        <td>{{ u.created_by or '—' }}</td>
+        <td class="ad-num">{% if u.counted %}1{% else %}0{% if u.failed %} <span class="ad-pill ad-p-n">not counted</span>{% endif %}{% endif %}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+    <p class="ad-hint" style="margin:0">Nothing yet.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,56 @@
+{% extends "portal/base.html" %}
+{% block title %}Your own AI key — PhiXtra Portal{% endblock %}
+{% block content %}
+{% include "portal/_ai_design_css.html" %}
+<div class="ad">
+  <div class="ad-crumb"><a href="{{ url_for('portal.channels_page') }}">Integration</a> › Your own AI key</div>
+  <div>
+    <p class="ad-title">Your own AI key</p>
+    <p class="ad-sub">Optional. Your {{ plan.plan_name }} plan includes {{ plan.limit }} AI designs a month. Connect your own OpenAI key for unlimited AI designs, billed by OpenAI to you. Your plan's allowance and customer-chat messages aren't used.</p>
+  </div>
+
+  {% if not plan.allow_own_key %}
+  <div class="ad-alert info">Your plan doesn't include connecting your own AI key. <a href="{{ url_for('portal.billing_plans') }}">See plans</a>.</div>
+  {% else %}
+
+  {% if key %}
+  <div class="ad-panel">
+    <h3>Connected key</h3>
+    {% if key.status != 'ok' %}
+    <div class="ad-alert warn"><b>This key stopped working.</b> It may have been deleted, or your OpenAI account has no credit. AI designs are using your plan's allowance until you fix it.</div>
+    {% endif %}
+    <table class="ad-table" style="max-width:520px">
+      <tr><td style="color:rgba(3,12,24,.56)">Key</td><td style="font-family:ui-monospace,monospace">•••• •••• {{ key.key_last4 }}</td></tr>
+      <tr><td style="color:rgba(3,12,24,.56)">Connected by</td><td>{{ key.connected_by or '—' }} · {{ key.connected_at.strftime('%d %b %Y') }}</td></tr>
+      <tr><td style="color:rgba(3,12,24,.56)">Status</td><td>{% if key.status == 'ok' %}<span class="ad-pill ad-p-g">Working</span>{% else %}<span class="ad-pill ad-p-w">Needs attention</span>{% endif %}</td></tr>
+    </table>
+    {% if can_remove %}
+    <form method="POST" action="{{ url_for('social.ai_key_disconnect') }}" onsubmit="return confirm('Remove your AI key? AI designs will use your plan allowance again.');">
+      <button type="submit" class="btn btn-sm btn-danger">Remove key</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if can_manage %}
+  <div class="ad-panel">
+    <h3>{{ 'Replace your key' if key else 'Connect your own AI key' }}</h3>
+    <ol style="margin:0;padding-left:20px;font-size:13.5px;line-height:1.75">
+      <li>Log in to your OpenAI account and open <b>API keys</b> (<a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a>).</li>
+      <li>Create a new key and copy it. Add a payment method there if you haven't.</li>
+      <li>Paste it below.</li>
+    </ol>
+    <form method="POST" class="ad" style="gap:12px">
+      <div class="ad-field" style="max-width:520px"><label for="ak">OpenAI API key</label>
+        <input type="password" id="ak" name="api_key" autocomplete="off" spellcheck="false" required>
+        <span class="ad-hint">Stored locked (encrypted). Only the last 4 characters are ever shown.</span></div>
+      {% if key_error %}<div class="ad-alert warn">{{ key_error }}</div>{% endif %}
+      <div class="ad-row"><button type="submit" class="btn btn-primary">Check key &amp; save</button></div>
+    </form>
+  </div>
+  {% elif not key %}
+  <div class="ad-alert info">Ask your account owner to connect an AI key. Your role can't change it.</div>
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

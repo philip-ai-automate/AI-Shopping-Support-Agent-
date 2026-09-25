@@ -116,6 +116,36 @@
 
 </div>
 
+{# ══ AI DESIGNS PACKS (AI Post Designer, 2026-09-25) ══ #}
+{% if design_packs %}
+<div class="card" id="ai-designs" style="margin-bottom:18px">
+  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
+    <div>
+      <div style="font-weight:800;font-size:16px;color:var(--ink)">Extra AI designs</div>
+      <div class="muted" style="font-size:13px">For Social Posts › New Post, used after your plan's monthly AI designs. One-time, never renews. Doesn't change your AI message credits.</div>
+    </div>
+    <div class="muted" style="font-size:13px">You have <b style="color:var(--ink)">{{ design_balance }}</b> extra designs</div>
+  </div>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px">
+    {% for pkg in design_packs %}
+    <div style="border:1px solid var(--line);border-radius:14px;padding:14px 16px;min-width:220px;display:flex;flex-direction:column;gap:8px">
+      <div style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.07em">{{ pkg.name }}</div>
+      <div style="font-size:22px;font-weight:900;color:var(--ink)">£{{ "%.2f"|format(pkg.price_pence / 100) }}</div>
+      <div style="font-weight:700">{{ pkg.credits }} AI designs</div>
+      {% if stripe_ready %}
+      <form method="POST" action="{{ url_for('portal.billing_checkout') }}">
+        <input type="hidden" name="package_id" value="{{ pkg.id }}"/>
+        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">Buy {{ pkg.credits }} AI designs</button>
+      </form>
+      {% else %}
+      <div class="muted" style="font-size:13px">Contact support to purchase</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 {# ══ PACKAGE CARDS ══ #}
 {% if packages %}
 <div class="grid g3">

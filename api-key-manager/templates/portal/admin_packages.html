@@ -8,7 +8,7 @@
 </div>
 
 <p class="muted" style="margin:-6px 0 16px;max-width:70ch">
-  A top-up sells <strong>extra AI-message credits</strong>, bought once. Features and monthly
+  A top-up sells <strong>extra AI-message credits</strong> or <strong>extra AI designs</strong>, bought once. Features and monthly
   billing come from <a href="{{ url_for('portal_admin.admin_plans') }}">Plans</a>.
 </p>
 
@@ -31,13 +31,14 @@
           <td>
             <strong style="font-size:13px">{{ p.name }}</strong>
             <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">
+              {% if p.package_type == 'design_topup' %}<span class="pill pill-green">AI designs</span>{% else %}<span class="pill pill-grey">AI messages</span>{% endif %}
               <span class="pill pill-grey">One-time top-up</span>
               <span class="pill pill-grey" style="color:var(--muted)" title="Display sort order">{{ p.sort_order or 0 }}</span>
             </div>
           </td>
           <td>
             <strong>{{ p.credits }}</strong>
-            <div class="muted">credits</div>
+            <div class="muted">{{ 'AI designs' if p.package_type == 'design_topup' else 'credits' }}</div>
           </td>
           <td>
             <strong>{{ p.price_fmt }}</strong>
@@ -57,6 +58,7 @@
                     data-action="{{ url_for('portal_admin.credit_packages_edit', pkg_id=p.id) }}"
                     data-name="{{ p.name | e }}"
                     data-credits="{{ p.credits or 0 }}"
+                    data-kind="{{ 'designs' if p.package_type == 'design_topup' else 'messages' }}"
                     data-price="{{ '%.2f' | format((p.price_pence or 0) / 100) }}"
                     data-vat="{{ p.vat_rate or 20 }}"
                     data-sort="{{ p.sort_order or 0 }}"
@@ -91,13 +93,20 @@
 
 {% macro package_fields(prefix) %}
       <div class="form-group">
+        <label for="{{ prefix }}_kind">What it sells</label>
+        <select id="{{ prefix }}_kind" name="kind">
+          <option value="messages">AI message credits (customer chats)</option>
+          <option value="designs">AI designs (Social Posts › AI Post Designer)</option>
+        </select>
+      </div>
+      <div class="form-group">
         <label for="{{ prefix }}_name">Top-up name</label>
         <input id="{{ prefix }}_name" name="name" required placeholder="Extra 100 credits"/>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
         <div class="form-group">
-          <label for="{{ prefix }}_credits">Credits</label>
+          <label for="{{ prefix }}_credits">Credits / designs in the pack</label>
           <input id="{{ prefix }}_credits" type="number" name="credits" required min="1" placeholder="100"/>
         </div>
         <div class="form-group">
@@ -179,6 +188,7 @@
     editForm.action = d.action;
     document.getElementById('edit_name').value       = d.name;
     document.getElementById('edit_credits').value    = d.credits;
+    document.getElementById('edit_kind').value       = d.kind || 'messages';
     document.getElementById('edit_price_gbp').value  = d.price;
     document.getElementById('edit_vat_rate').value   = d.vat;
     document.getElementById('edit_sort_order').value = d.sort;

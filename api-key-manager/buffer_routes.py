@@ -237,7 +237,15 @@ def _get_post(tenant_id: int, post_id: int):
         cur.close(); conn.close()
 
 
-def _image_url(post) -> str:
+WIDE_SERVICES = ("facebook", "linkedin", "twitter")
+
+
+def _image_url(post, service: str = None) -> str:
+    """Public address Buffer fetches the picture from. AI Post Designer
+    posts have a wide version too, used for Facebook / LinkedIn / X."""
+    if service in WIDE_SERVICES and post.get("wide_image_filename"):
+        ext = post["wide_image_filename"].rsplit(".", 1)[-1]
+        return f"{_public_base()}/social-posts/public/{post['public_token']}-wide.{ext}"
     if not post.get("image_filename"):
         return None
     ext = post["image_filename"].rsplit(".", 1)[-1]
@@ -298,14 +306,16 @@ def _delete_from_buffer(owner: str, post) -> list:
 def _send_to_buffer(owner: str, post, channels_by_id: dict, when):
     """Creates the post in Buffer on every picked account. Returns
     (status, buffer_post_ids, channel_results, error_text)."""
-    image_url = _image_url(post)
     when_iso = when.strftime("%Y-%m-%dT%H:%M:%S.000Z") if when else None
+    captions = post.get("captions") or {}
     ids, results, errors = {}, {}, []
     for ch_id in post["channel_ids"]:
         ch = channels_by_id.get(ch_id)
+        service = ch["service"] if ch else None
+        text = captions.get(service) or post["caption"]
         try:
-            buf_id, _st = ba.call(owner, buffer_create_post, ch_id, post["caption"], image_url, when_iso,
-                                  service=ch["service"] if ch else None)
+            buf_id, _st = ba.call(owner, buffer_create_post, ch_id, text, _image_url(post, service), when_iso,
+                                  service=service)
             ids[ch_id] = buf_id
             results[ch_id] = {"status": "scheduled" if when else "publishing"}
         except BufferAPIError as e:
@@ -373,6 +383,48 @@ def _refresh_statuses(tenant_id: int, limit: int = 10) -> int:
     return changed
 
 
+def create_post_from_design(customer, caption: str, captions: dict, square: str, wide: str,
+                            channel_ids: list, action: str, when, actor: str):
+    """Used by the AI Post Designer's last step: saves the finished post (its
+    pictures are already in UPLOAD_FOLDER) and, unless it's a draft, sends it
+    to Buffer exactly like a hand-made post. Returns (ok, message)."""
+    tenant_id = int(customer["tenant_id"])
+    owner = _owner(customer)
+    usable = {c["channel_id"]: c for c in ba.list_channels(owner, enabled_only=True)}
+    picked = [c for c in channel_ids if c in usable]
+    err = _validate(caption, picked, action, when, usable, True)
+    if err:
+        return False, err
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""INSERT INTO tenant_social_posts (tenant_id, caption, captions, image_filename, wide_image_filename,
+                          original_filename, public_token, channel_ids, status, scheduled_for, created_by)
+                   VALUES (%s,%s,%s,%s,%s,'AI design',%s,%s,'draft',%s,%s) RETURNING *""",
+                (tenant_id, caption, _json.dumps(captions) if captions else None, square, wide,
+                 uuid.uuid4().hex, picked, when, actor))
+    post = cur.fetchone()
+    conn.commit()
+    cur.close(); conn.close()
+    if action == "draft":
+        insert_audit_log(action="social_post_draft_saved", tenant_id=tenant_id, details={"post_id": post["id"], "by": actor, "ai": True})
+        return True, "Draft saved. Find it under Social Posts › Posts."
+    status, ids, results, errors = _send_to_buffer(owner, post, usable, when)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""UPDATE tenant_social_posts SET status=%s, buffer_post_ids=%s, channel_results=%s,
+                          buffer_error=%s, updated_at=NOW() WHERE id=%s""",
+                (status, _json.dumps(ids) if ids else None, _json.dumps(results), errors, post["id"]))
+    conn.commit()
+    cur.close(); conn.close()
+    insert_audit_log(action="social_post_sent_to_buffer", tenant_id=tenant_id,
+                     details={"post_id": post["id"], "status": status, "by": actor, "ai": True})
+    if status == "failed":
+        return False, f"Buffer didn't accept the post. It's saved under Posts so you can try again. {errors}"
+    if status == "partial":
+        return True, f"Sent to some accounts, but not all. {errors}"
+    return True, "Post scheduled. Buffer will publish it at the time you picked." if when else "Sent to Buffer. It's publishing now."
+
+
 @buffer_bp.route("/social-posts", methods=["GET"])
 @team_feature("social.posts_view")
 def posts():
@@ -402,6 +454,14 @@ def posts():
     rows = cur.fetchall() or []
     cur.close(); conn.close()
 
+    tab = request.args.get("tab", "all")
+    groups = {"scheduled": ("scheduled", "publishing"), "drafts": ("draft",), "posted": ("sent", "partial"),
+              "failed": ("failed", "partial")}
+    counts = {"all": len(rows)}
+    for k, sts in groups.items():
+        counts[k] = sum(1 for r in rows if r["status"] in sts)
+    shown = rows if tab not in groups else [r for r in rows if r["status"] in groups[tab]]
+
     editing = None
     edit_id = request.args.get("edit", "")
     if edit_id.isdigit():
@@ -413,7 +473,9 @@ def posts():
         account=account,
         channels=[c for c in channels if c["enabled"] and not c["is_disconnected"]],
         channels_by_id=channels_by_id,
-        posts=rows,
+        posts=shown,
+        tab=tab if tab in groups else "all",
+        counts=counts,
         editing=editing,
         status_labels=STATUS_LABELS,
         editable=EDITABLE,
@@ -510,11 +572,15 @@ def save_post(post_id: int = None):
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     if existing:
+        caption_changed = caption != existing["caption"]
         cur.execute("""UPDATE tenant_social_posts SET caption=%s, image_filename=%s, original_filename=%s,
                               channel_ids=%s, status='draft', scheduled_for=%s, buffer_post_ids=NULL,
-                              channel_results=NULL, buffer_error=NULL, updated_at=NOW()
+                              channel_results=NULL, buffer_error=NULL, updated_at=NOW(),
+                              captions = CASE WHEN %s THEN NULL ELSE captions END,
+                              wide_image_filename = CASE WHEN %s THEN NULL ELSE wide_image_filename END
                        WHERE id=%s RETURNING *""",
-                    (caption, image_filename, original_filename, picked, when, post_id))
+                    (caption, image_filename, original_filename, picked, when,
+                     caption_changed, bool(new_upload or remove_image), post_id))
     else:
         cur.execute("""INSERT INTO tenant_social_posts (tenant_id, caption, image_filename, original_filename,
                               public_token, channel_ids, status, scheduled_for, created_by)
@@ -525,6 +591,8 @@ def save_post(post_id: int = None):
     cur.close(); conn.close()
     if old_image:
         _remove_image(old_image)
+        if existing and existing.get("wide_image_filename"):
+            _remove_image(existing["wide_image_filename"])
 
     if action == "draft":
         insert_audit_log(action="social_post_draft_saved", tenant_id=tenant_id, details={"post_id": post["id"], "by": actor})
@@ -607,6 +675,7 @@ def delete_post(post_id: int):
     conn.commit()
     cur.close(); conn.close()
     _remove_image(post.get("image_filename"))
+    _remove_image(post.get("wide_image_filename"))
     insert_audit_log(action="social_post_deleted", tenant_id=tenant_id,
                      details={"post_id": post_id, "status": post["status"], "by": _current_actor(customer)["label"]})
     flash("Post deleted." + (" It stays on the social networks where it was already published."
@@ -648,14 +717,17 @@ def post_image(post_id: int):
 def public_image(token: str, ext: str):
     """No login by design: Buffer's servers fetch the image from here when
     the post publishes. The token is a random 32-character value per post."""
+    wide = token.endswith("-wide")
+    token = token[:-5] if wide else token
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT image_filename FROM tenant_social_posts WHERE public_token=%s", (token,))
+    cur.execute("SELECT image_filename, wide_image_filename FROM tenant_social_posts WHERE public_token=%s", (token,))
     row = cur.fetchone()
     cur.close(); conn.close()
-    if not row or not row[0]:
+    name = (row[1] if wide else row[0]) if row else None
+    if not name:
         abort(404)
-    return send_from_directory(UPLOAD_FOLDER, row[0])
+    return send_from_directory(UPLOAD_FOLDER, name)
 
 
 @buffer_bp.app_context_processor

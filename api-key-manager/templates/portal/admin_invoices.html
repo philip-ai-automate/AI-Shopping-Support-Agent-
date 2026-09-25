@@ -21,7 +21,7 @@
             <div class="muted">{{ inv.customer_email }}</div>
           </td>
           <td class="muted">{{ inv.tenant_name }}</td>
-          <td>{{ inv.credits }}</td>
+          <td>{{ inv.credits }}{% if inv.package_type == 'design_topup' %} AI designs{% endif %}</td>
           <td><strong>{{ inv.total_fmt }}</strong></td>
           <td>{% if inv.status=='paid' %}<span class="pill pill-green">Paid</span>{% else %}<span class="pill pill-grey">{{ inv.status }}</span>{% endif %}</td>
           <td class="muted">{{ inv.created_at.strftime('%Y-%m-%d') if inv.created_at else '—' }}</td>

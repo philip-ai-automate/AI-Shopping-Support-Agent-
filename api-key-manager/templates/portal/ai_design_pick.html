@@ -1,0 +1,86 @@
+{% extends layout_base %}
+{% block title %}Pick a design — {{ 'PhiXtra Admin' if is_admin else 'Social Posts' }}{% endblock %}
+{% block content %}
+{% include "portal/_ai_design_css.html" %}
+{% set sel = s.selected or 0 %}
+{% set subject = (s.product.name if s.product else s.idea) or '' %}
+<div class="ad">
+  <div>
+    <div class="ad-crumb">{% if is_admin %}<a href="{{ url_for('portal_admin.social_media_posts') }}">Social Media Posts</a>{% else %}Social Posts{% endif %} › <a href="{{ url_for(ep + 'new_post') }}">New Post</a> › Pick a design</div>
+    <p class="ad-title">Pick a design</p>
+    <p class="ad-sub">{{ subject[:90] }}{% if s.offer %} · {{ s.offer[:80] }}{% endif %}</p>
+  </div>
+
+  {% include "portal/_ai_design_meter.html" %}
+
+  <div class="ad-grid4">
+    {% for vv in s.variants %}
+    <div class="ad-opt {% if loop.index0 == sel %}sel{% endif %}">
+      <form method="POST" action="{{ url_for(ep + 'design_action', sid=s.id, what='select') }}">
+        <input type="hidden" name="i" value="{{ loop.index0 }}">
+        <button type="submit" class="ad-pickbtn" aria-label="Choose design {{ loop.index }} ({{ style_labels[vv.style] }})" aria-pressed="{{ 'true' if loop.index0 == sel else 'false' }}">
+          <img src="{{ url_for(ep + 'design_img', sid=s.id, idx=loop.index0, size='square') }}?t={{ stamp }}" alt="Design {{ loop.index }}, {{ style_labels[vv.style] }} style" loading="lazy">
+        </button>
+      </form>
+      <div class="cap">
+        <span>{{ style_labels[vv.style] }}{% if vv.use_ai_image %} · AI scene{% endif %}{% if loop.index0 == sel %} <span class="ad-pill ad-p-g">Selected</span>{% endif %}</span>
+        <span>
+          <form method="POST" action="{{ url_for(ep + 'design_action', sid=s.id, what='vote') }}"><input type="hidden" name="i" value="{{ loop.index0 }}"><input type="hidden" name="v" value="1"><button type="submit" class="ad-th {% if vv.thumb == 'up' %}up{% endif %}" title="I like this" aria-label="I like design {{ loop.index }}">👍</button></form>
+          <form method="POST" action="{{ url_for(ep + 'design_action', sid=s.id, what='vote') }}"><input type="hidden" name="i" value="{{ loop.index0 }}"><input type="hidden" name="v" value="-1"><button type="submit" class="ad-th {% if vv.thumb == 'down' %}down{% endif %}" title="Not for me" aria-label="Not for me, design {{ loop.index }}">👎</button></form>
+        </span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="ad-panel" id="restyle">
+    <div class="ad-row ad-between"><h3>Restyle the selected design</h3><span class="ad-pill ad-p-g">Free · no AI design used</span></div>
+    <div class="ad-restyle">
+      <form method="POST" action="{{ url_for(ep + 'design_action', sid=s.id, what='restyle') }}" class="ad-field">
+        <span class="ad-lbl">Style</span>
+        <div class="ad-chips">{% for st in styles %}<span class="ad-chip"><button type="submit" name="style" value="{{ st }}" class="{% if v.style == st %}on{% endif %}">{{ style_labels[st] }}</button></span>{% endfor %}</div>
+      </form>
+      <form method="POST" action="{{ url_for(ep + 'design_action', sid=s.id, what='restyle') }}" class="ad-field">
+        <span class="ad-lbl">Colours</span>
+        <div class="ad-sw">{% for a, b in swatches %}<button type="submit" name="palette" value="{{ loop.index0 }}" class="{% if v.palette == loop.index0 %}on{% endif %}" style="background:linear-gradient(90deg,{{ a }} 50%,{{ b }} 0)" aria-label="Colour set {{ loop.index }}"></button>{% endfor %}</div>
+      </form>
+      <form method="POST" action="{{ url_for(ep + 'design_action', sid=s.id, what='restyle') }}" class="ad-field">
+        <span class="ad-lbl">Layout</span>
+        <div class="ad-chips">{% for lo in layouts %}<span class="ad-chip"><button type="submit" name="layout" value="{{ lo }}" class="{% if v.layout == lo %}on{% endif %}">{{ layout_labels[lo] }}</button></span>{% endfor %}</div>
+      </form>
+    </div>
+    <span class="ad-hint">Same picture, new look. You can also change the words on the next step.</span>
+  </div>
+
+  <div class="ad-panel" id="rewrite">
+    <div class="ad-row ad-between"><h3>Words</h3>
+      <span class="ad-pill {% if s.rewrites_used < free_rewrites %}ad-p-g{% else %}ad-p-n{% endif %}">Free · {{ free_rewrites - s.rewrites_used }} of {{ free_rewrites }} rewrites left for this post</span></div>
+    <div><b style="font-size:15px">{{ v.headline }}</b>{% if v.price_label %} · {{ v.price_label }}{% endif %}</div>
+    {% set first_cap = (v.captions or {}).values()|list|first %}
+    {% if first_cap %}<div class="ad-hint" style="white-space:pre-line;font-size:13px;color:inherit">{{ first_cap }}</div>{% endif %}
+    <form method="POST" action="{{ url_for(ep + 'design_action', sid=s.id, what='rewrite') }}" class="ad-row" id="ad-rw">
+      <span class="ad-lbl">✎ Rewrite words:</span>
+      {% for key, _txt in tones.items() %}
+      <span class="ad-chip"><button type="submit" name="tone" value="{{ key }}" {% if s.rewrites_used >= free_rewrites %}disabled class="ad-off"{% endif %}>{{ {'shorter':'Shorter','fun':'More fun','professional':'More professional','urgency':'Add urgency','pidgin':'In Pidgin'}[key] }}</button></span>
+      {% endfor %}
+      <span class="ad-busy" id="ad-rw-busy" role="status"><span class="ad-spin"></span>Rewriting…</span>
+    </form>
+    <span class="ad-hint">Rewrites change the headline on the image and the captions together.</span>
+  </div>
+
+  <div class="ad-row">
+    <a class="btn btn-primary" href="{{ url_for(ep + 'finish', sid=s.id) }}">Use this design →</a>
+    {% if allow.source %}
+    <a class="btn" href="{{ url_for(ep + 'again', sid=s.id) }}">None of these? Make new designs {% if allow.source in ('allowance', 'topup') %}(1 AI design){% endif %}</a>
+    {% else %}
+    <span class="btn ad-off">None of these? Make new designs</span><span class="ad-hint">No AI designs left this month.</span>
+    {% endif %}
+  </div>
+</div>
+<script>
+(function(){
+  var f = document.getElementById('ad-rw');
+  if (f) f.addEventListener('submit', function(){ document.getElementById('ad-rw-busy').classList.add('on'); });
+})();
+</script>
+{% endblock %}

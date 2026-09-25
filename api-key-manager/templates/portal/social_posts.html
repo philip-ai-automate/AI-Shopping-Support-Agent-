@@ -1,5 +1,5 @@
 {% extends "portal/base.html" %}
-{% block title %}Social Posts — PhiXtra Portal{% endblock %}
+{% block title %}Posts — Social Posts — PhiXtra Portal{% endblock %}
 
 {% block head %}
 <style>
@@ -46,6 +46,9 @@
   .p-w{background:#FFFAEB;color:#B54708}
   .p-r{background:#FEF3F2;color:#B42318}
   .sp-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .sp-tabs{display:flex;gap:6px;flex-wrap:wrap}
+  .sp-tabs a{font-size:12.5px;font-weight:650;padding:7px 12px;border-radius:9px;background:#F2F4F7;color:var(--muted);text-decoration:none}
+  .sp-tabs a.on{background:var(--ink);color:#fff}
   .sp-empty{text-align:center;color:var(--muted);font-size:13.5px;padding:28px 12px}
   .sp-alert{border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.5}
   .sp-alert.warn{background:#FFFAEB;color:#B54708;border:1px solid rgba(181,71,8,.25)}
@@ -66,13 +69,13 @@
 <div class="sp-wrap">
   <div class="sp-top">
     <div>
-      <div class="pg-title">Social Posts</div>
+      <div class="pg-title">Posts</div>
       <div class="pg-sub">{% if account %}Posts go out through your Buffer account ({{ account.organization_name }}).{% else %}Write posts here and Buffer publishes them to your social pages.{% endif %}</div>
     </div>
     {% if account %}
     <div class="sp-row">
       <form method="POST" action="{{ url_for('buffer.refresh_posts') }}"><button type="submit" class="btn btn-sm">Check for updates</button></form>
-      {% if can_create and not editing %}<button type="button" class="btn btn-primary" id="sp-new-btn" aria-controls="sp-form-panel">+ New post</button>{% endif %}
+      {% if can_create and not editing %}<a class="btn btn-primary" href="{{ url_for('social.new_post') }}">+ New Post</a>{% endif %}
     </div>
     {% endif %}
   </div>
@@ -89,10 +92,16 @@
   <div class="sp-alert warn"><b>Buffer stopped accepting your saved key.</b> Posts can't be sent until it's fixed. <a href="{{ url_for('buffer.connect') }}">Put in a new key</a>.</div>
   {% endif %}
 
-  {% if (can_create and not editing) or (editing and can_edit) %}
+  <div class="sp-tabs" role="tablist" aria-label="Filter posts">
+    {% for key, label in [('all','All'),('scheduled','Scheduled'),('drafts','Drafts'),('posted','Posted'),('failed','Failed')] %}
+    <a role="tab" aria-selected="{{ 'true' if tab == key else 'false' }}" class="{{ 'on' if tab == key }}" href="{{ url_for('buffer.posts', tab=key) }}">{{ label }} {{ counts[key] }}</a>
+    {% endfor %}
+  </div>
+
+  {% if editing and can_edit %}
   <form method="POST" enctype="multipart/form-data" id="sp-form-panel" class="sp-panel"
         action="{{ url_for('buffer.save_post', post_id=editing.id) if editing else url_for('buffer.save_post') }}"
-        {% if not editing and posts and not request.args.get('new') %}hidden{% endif %}>
+        >
     <div class="sp-row" style="justify-content:space-between">
       <h3>{{ 'Edit post' if editing else 'New post' }}</h3>
       {% if editing and editing.status == 'scheduled' %}<span class="sp-hint">Saving replaces the scheduled copy in Buffer.</span>{% endif %}
@@ -158,8 +167,7 @@
     <div class="sp-row">
       <button type="submit" name="action" value="now" class="btn btn-primary" id="sp-go">Post now</button>
       <button type="submit" name="action" value="draft" class="btn" formnovalidate>Save as draft</button>
-      {% if editing %}<a href="{{ url_for('buffer.posts') }}" class="btn btn-ghost">Cancel editing</a>
-      {% else %}<button type="button" class="btn btn-ghost" id="sp-close">Close</button>{% endif %}
+      <a href="{{ url_for('buffer.posts') }}" class="btn btn-ghost">Cancel editing</a>
     </div>
   </form>
   {% endif %}
@@ -206,7 +214,7 @@
       </div>
     </div>
     {% else %}
-    <div class="sp-empty">No posts yet. Write your first one above.</div>
+    <div class="sp-empty">{% if tab == 'all' %}No posts yet. <a href="{{ url_for('social.new_post') }}">Create your first one</a>.{% else %}Nothing here.{% endif %}</div>
     {% endfor %}
   </div>
   {% endif %}
@@ -221,9 +229,6 @@
 
   var form = document.getElementById('sp-form-panel');
   if (!form) return;
-  var newBtn = document.getElementById('sp-new-btn'), closeBtn = document.getElementById('sp-close');
-  if (newBtn) newBtn.addEventListener('click', function(){ form.hidden = false; document.getElementById('sp-caption').focus(); });
-  if (closeBtn) closeBtn.addEventListener('click', function(){ form.hidden = true; });
 
   // Caption counter — X allows 280 characters, the others far more.
   var cap = document.getElementById('sp-caption'), cnt = document.getElementById('sp-count');

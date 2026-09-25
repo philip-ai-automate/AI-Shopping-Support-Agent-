@@ -184,6 +184,15 @@
         <input type="number" name="ai_messages_limit" value="{{ plan.ai_messages_limit }}">
       </div>
       <div class="pf-field">
+        <label>AI designs / month</label>
+        <input type="number" name="ai_designs_limit" min="0" value="{{ plan.ai_designs_limit if plan.ai_designs_limit is not none else 0 }}">
+        <span style="font-size:11.5px;color:rgba(3,12,24,.55)">AI Post Designer only. Never uses AI messages. 0 = the business needs its own AI key.</span>
+      </div>
+      <div class="pf-field">
+        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="allow_own_ai_key" style="width:auto" {% if plan.allow_own_ai_key is none or plan.allow_own_ai_key %}checked{% endif %}> Allow own AI key</label>
+        <span style="font-size:11.5px;color:rgba(3,12,24,.55)">Businesses on this plan can connect their own OpenAI key for unlimited AI designs, billed to them.</span>
+      </div>
+      <div class="pf-field">
         <label>AI agents</label>
         <input type="number" name="ai_agents_limit" value="{{ plan.ai_agents_limit }}">
       </div>

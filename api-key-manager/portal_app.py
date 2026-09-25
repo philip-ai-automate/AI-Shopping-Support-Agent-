@@ -24,6 +24,7 @@ def create_app():
     from portal_facebook_routes import facebook_bp
     from pressone_routes import pressone_bp
     from buffer_routes import buffer_bp
+    from ai_design_routes import social_bp, ai_admin_bp
     from ambassador_routes import ambassador_bp
     from school_routes import school_bp
     from school_migrations import ensure_school_tables
@@ -38,6 +39,8 @@ def create_app():
     flask_app.register_blueprint(facebook_bp)
     flask_app.register_blueprint(pressone_bp)
     flask_app.register_blueprint(buffer_bp)
+    flask_app.register_blueprint(social_bp)
+    flask_app.register_blueprint(ai_admin_bp)
     flask_app.register_blueprint(ambassador_bp)
     flask_app.register_blueprint(school_bp, url_prefix="/school")
     flask_app.register_blueprint(estate_bp)

@@ -1,0 +1,54 @@
+{% extends layout_base %}
+{% block title %}Make new designs — {{ 'PhiXtra Admin' if is_admin else 'Social Posts' }}{% endblock %}
+{% block content %}
+{% include "portal/_ai_design_css.html" %}
+<div class="ad">
+  <div>
+    <div class="ad-crumb"><a href="{{ url_for(ep + 'pick', sid=s.id) }}">← Back to my designs</a></div>
+    <p class="ad-title">Make new designs</p>
+    <p class="ad-sub">Tell the AI what to fix so the next 4 are closer to what you want.</p>
+  </div>
+  {% include "portal/_ai_design_meter.html" %}
+
+  <form method="POST" class="ad-panel" id="ad-again">
+    <h3>What didn't you like?</h3>
+    <span class="ad-hint">Tap all that apply.</span>
+    <div class="ad-chips">
+      {% for key, label in reasons.items() %}
+      <label class="ad-chip"><input type="checkbox" name="reasons" value="{{ key }}"><span>{{ label }}</span></label>
+      {% endfor %}
+    </div>
+    <div class="ad-field"><label for="ad-note">Anything else? (optional)</label><input type="text" id="ad-note" name="note" maxlength="200" placeholder="e.g. Show the headwrap being worn"></div>
+    <div class="ad-row">
+      <button type="submit" class="btn ad-btn-ai" {% if not allow.source %}disabled{% endif %}>✦ Make 4 new designs
+        {% if allow.source == 'allowance' %}<small>(uses 1 of {{ allow.left }} left)</small>{% elif allow.source == 'topup' %}<small>(uses 1 of {{ allow.extra }} extra)</small>{% elif allow.source == 'own_key' %}<small>(your own AI key)</small>{% endif %}</button>
+      <a class="btn" href="{{ url_for(ep + 'pick', sid=s.id) }}">← Back to my designs</a>
+      <span class="ad-busy" id="ad-busy" role="status"><span class="ad-spin"></span>Designing… this can take up to a minute.</span>
+    </div>
+    <span class="ad-hint">Your current designs are replaced by the new ones. If the AI fails, it isn't counted.</span>
+  </form>
+
+  <div class="ad-two">
+    <div class="ad-panel">
+      <div class="ad-row ad-between"><h3>What the AI has learned about your taste</h3><span class="ad-pill ad-p-b">From your 👍 / 👎</span></div>
+      {% if taste.count %}
+      <ul style="margin:0;padding-left:18px;font-size:13.5px;line-height:1.8">
+        {% if taste.liked %}<li>You like <b>{{ taste.liked|map('title')|join(', ') }}</b></li>{% endif %}
+        {% if taste.skipped %}<li>You usually skip <b>{{ taste.skipped|map('title')|join(', ') }}</b></li>{% endif %}
+        {% if taste.prefers_big_photo %}<li>You prefer the <b>photo large</b></li>{% endif %}
+        {% if not taste.liked and not taste.skipped and not taste.prefers_big_photo %}<li>Not enough 👍 / 👎 yet to see a pattern.</li>{% endif %}
+      </ul>
+      {% else %}
+      <p class="ad-hint" style="margin:0">Use 👍 / 👎 on designs and new sets will lean towards what you like.</p>
+      {% endif %}
+    </div>
+    <div class="ad-panel">
+      <h3>If something goes wrong</h3>
+      <p class="ad-hint" style="margin:0">If the AI fails or can't finish, it isn't counted and you can try again.</p>
+    </div>
+  </div>
+</div>
+<script>
+document.getElementById('ad-again').addEventListener('submit', function(){ document.getElementById('ad-busy').classList.add('on'); });
+</script>
+{% endblock %}

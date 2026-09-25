@@ -100,7 +100,7 @@
           <tr>
             <td><strong>{{ inv.invoice_number }}</strong></td>
             <td>{{ inv.created_at.strftime('%d %b %Y') if inv.created_at else 'N/A' }}</td>
-            <td>{{ inv.credits }}</td>
+            <td>{{ inv.credits }}{% if inv.package_type == 'design_topup' %} AI designs{% endif %}</td>
             <td>{{ inv.amount_fmt }}</td>
             <td>{{ inv.vat_fmt }}</td>
             <td><strong>{{ inv.total_fmt }}</strong></td>

@@ -780,14 +780,29 @@
       {% if 'voice.calls' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
     </a>
 
-    <!-- Social Posts (Buffer, 2026-09-25) — only once the business has
-         connected its own Buffer on Integration › Buffer -->
+    <!-- ── Social Posts group (Buffer + AI Post Designer, 2026-09-25) — only
+         once the business has connected its own Buffer on Integration › Buffer -->
     {% if buffer_connected %}
-    <a class="sb-link {% if request.endpoint == 'buffer.posts' %}active{% endif %}"
-       href="{{ url_for('buffer.posts') }}">
-      <span class="sb-icon">📣</span> Social Posts
-      {% if 'social.posts_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
-    </a>
+    {% set _social_group = request.endpoint in (social_menu_endpoints or ()) %}
+    <div class="sb-group">
+      <div class="sb-group-toggle {% if _social_group %}open{% endif %}" onclick="sbToggle(this)">
+        <span class="sb-gtitle">
+          <span class="sb-icon">📣</span> Social Posts
+          {% if 'social.posts_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
+        </span>
+        <span class="sb-arrow">▾</span>
+      </div>
+      <div class="sb-sub {% if _social_group %}open{% endif %}">
+        <a href="{{ url_for('social.new_post') }}"
+           class="{% if request.endpoint in ('social.new_post', 'social.pick', 'social.again', 'social.finish') %}active{% endif %}">New Post</a>
+        <a href="{{ url_for('buffer.posts') }}"
+           class="{% if request.endpoint == 'buffer.posts' %}active{% endif %}">Posts</a>
+        <a href="{{ url_for('social.brand_kit') }}"
+           class="{% if request.endpoint == 'social.brand_kit' %}active{% endif %}">Brand Kit</a>
+        <a href="{{ url_for('social.usage') }}"
+           class="{% if request.endpoint == 'social.usage' %}active{% endif %}">AI Design Usage</a>
+      </div>
+    </div>
     {% endif %}
 
     <!-- ── SMS group (support@phixtra.com only) ── -->
@@ -1187,7 +1202,7 @@
     {% endif %}
 
     <!-- Integration — every social account in one place, added 2026-09-11 (renamed from "Channels" 2026-09-22) -->
-    <a class="sb-link {% if request.endpoint in ('portal.channels_page', 'buffer.connect') %}active{% endif %}"
+    <a class="sb-link {% if request.endpoint in ('portal.channels_page', 'buffer.connect', 'social.ai_key') %}active{% endif %}"
        href="{{ url_for('portal.channels_page') }}">
       <span class="sb-icon">📡</span> Integration
       {% if 'channels.page' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
