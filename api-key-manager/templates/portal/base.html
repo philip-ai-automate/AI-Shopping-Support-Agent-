@@ -481,6 +481,77 @@
     .sb-search-item-title{font-size:13px;font-weight:650;color:var(--ink);line-height:1.3}
     .sb-search-item-desc{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.4}
     .sb-search-empty{padding:20px 14px;text-align:center;color:var(--muted);font-size:13px}
+
+    /* ═══════════════════════════════════════════════════════════
+       BRAND NAVY SIDEBAR (2026-09-25, approved mock-up)
+       The side menu uses PhiXtra's brand navy (#030C18, the logo and
+       phixtra.com colour) with WhatsApp green (#25D366) marking the page
+       you're on. Written as overrides of the white-menu rules above so
+       the layout rules stay untouched. The logo file is dark-on-white,
+       so it sits on a white rounded tile rather than being recoloured.
+    ═══════════════════════════════════════════════════════════ */
+    .sidebar{
+      background:linear-gradient(180deg,#071428 0%,#030C18 100%);
+      border-right:1px solid rgba(255,255,255,0.06);
+      box-shadow:4px 0 20px rgba(3,12,24,0.25);
+    }
+    .sb-brand{border-bottom-color:rgba(255,255,255,0.08)}
+    .sb-brand img.sb-logo-full{
+      background:#fff; border-radius:12px; padding:6px 12px;
+      box-sizing:content-box; height:42px;
+    }
+    .sb-brand img.sb-logo-icon{background:#fff; border-radius:8px; padding:3px; box-sizing:border-box}
+    .sb-brand-label{color:#fff}
+
+    .sb-link, .sb-group-toggle{color:#fff; border-bottom-color:rgba(255,255,255,0.07)}
+    .sb-link:hover, .sb-group-toggle:hover{background:rgba(255,255,255,0.06); color:#fff}
+    .sb-link.active{background:rgba(37,211,102,0.14); color:#fff; box-shadow:inset 3px 0 0 #25D366}
+    .sb-group-toggle.open{background:rgba(255,255,255,0.08); color:#fff; box-shadow:inset 3px 0 0 #25D366}
+
+    .sb-sub{border-left-color:rgba(255,255,255,0.12)}
+    .sb-sub a{color:#fff; border-bottom-color:rgba(255,255,255,0.05)}
+    .sb-sub a:before{background:rgba(255,255,255,0.45)}
+    .sb-sub a:hover{background:rgba(255,255,255,0.06); color:#fff}
+    .sb-sub a:hover:before{background:rgba(255,255,255,0.6)}
+    .sb-sub a.active{background:rgba(37,211,102,0.14); color:#fff}
+    .sb-sub a.active:before{background:#25D366; box-shadow:0 0 6px rgba(37,211,102,0.6)}
+
+    /* Padlock: the 🔒 emoji renders soft/grey and differently per device,
+       so it's hidden (font-size:0 keeps the markup and its tooltip) and a
+       crisp solid-gold padlock is drawn in its place — identical everywhere. */
+    .sb-lock{
+      opacity:1; font-size:0; line-height:0; display:inline-block;
+      width:13px; height:15px; flex-shrink:0;
+      background:no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 13 15'%3E%3Cpath d='M3.2 6.2V4.4a3.3 3.3 0 0 1 6.6 0v1.8' fill='none' stroke='%23FBBF24' stroke-width='1.8' stroke-linecap='round'/%3E%3Crect x='0.9' y='6.2' width='11.2' height='8' rx='1.8' fill='%23FBBF24'/%3E%3Ccircle cx='6.5' cy='9.7' r='1.15' fill='%23030C18'/%3E%3Crect x='5.95' y='10.2' width='1.1' height='2.2' rx='.5' fill='%23030C18'/%3E%3C/svg%3E");
+    }
+    .sb-link:hover .sb-lock, .sb-sub a:hover .sb-lock{opacity:1}
+
+    .sb-divider{background:rgba(255,255,255,0.08)}
+    .sb-footer{background:transparent; border-top-color:rgba(255,255,255,0.08)}
+    .sb-logout{color:#fff}
+    .sb-logout:hover{background:rgba(255,255,255,0.06); color:#fff}
+    /* Footer account card + Take a Tour carry inline dark-on-white styles */
+    .sb-footer > a:first-of-type{
+      background:rgba(255,255,255,0.06)!important; border-color:rgba(255,255,255,0.10)!important;
+    }
+    .sb-footer > a:first-of-type:hover{background:rgba(255,255,255,0.10)!important}
+    .sb-footer > a:first-of-type > div:first-child{background:#25D366!important; color:#03240F!important}
+    .sb-footer > a:first-of-type > div:last-child > div:first-child{color:#fff!important}
+    .sb-footer > a:first-of-type > div:last-child > div:last-child{color:#fff!important}
+    #tourStartBtn{color:#fff!important}
+    #tourStartBtn:hover{background:rgba(255,255,255,0.06)!important; color:#fff!important}
+
+    .sb-toggle{background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.14); color:#fff}
+    .sb-toggle:hover{background:rgba(255,255,255,0.14); border-color:rgba(255,255,255,0.24)}
+    .sidebar.collapsed .sb-toggle{background:rgba(255,255,255,0.16); border-color:rgba(255,255,255,0.22)}
+    .sb-close{background:rgba(255,255,255,0.08); color:#fff}
+    .sb-close:hover{background:rgba(255,255,255,0.16)}
+
+    .sb-search-box{background:rgba(255,255,255,0.07); border-color:rgba(255,255,255,0.12)}
+    .sb-search-box:focus-within{background:rgba(255,255,255,0.12); border-color:rgba(255,255,255,0.30); box-shadow:none}
+    .sb-search-icon{color:#fff}
+    .sb-search-input{color:#fff}
+    .sb-search-input::placeholder{color:rgba(255,255,255,0.8)}
   </style>
   {% block head %}{% endblock %}
 </head>
