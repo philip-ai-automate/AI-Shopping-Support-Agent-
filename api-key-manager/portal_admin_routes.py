@@ -30,8 +30,8 @@ from portal_utils import (money_fmt, tokens_to_credits, credits_to_tokens,
 from portal_routes import (_COMEBACK_VARIANTS, _render_comeback_email_html, PLAN_FEATURE_CATALOG,
                            ROLE_FORM_GRID, PLAN_ONLY_FEATURE_KEYS,
                            PLUGIN_FEATURE_PLAN_KEYS, _plugin_features_for_tenant)
-from buffer_client import (buffer_create_post, buffer_get_post_status,
-                            buffer_list_channels, BufferAPIError)
+from buffer_client import buffer_create_post, buffer_get_post_status, BufferAPIError
+import buffer_accounts as _ba
 
 portal_admin_bp = Blueprint("portal_admin", __name__)
 
@@ -91,11 +91,11 @@ SM_UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "static", "uploads", 
 SM_ALLOWED_EXTS  = {"jpg", "jpeg", "png", "webp", "gif"}
 SM_MAX_BYTES     = 15 * 1024 * 1024  # 15 MB
 SM_PLATFORMS = {
-    "facebook":  {"label": "Facebook",  "icon": "📘"},
-    "instagram": {"label": "Instagram", "icon": "📸"},
-    "linkedin":  {"label": "LinkedIn",  "icon": "💼"},
-    "tiktok":    {"label": "TikTok",    "icon": "🎵"},
-    "x":         {"label": "X",         "icon": "✖️"},
+    "facebook":  {"label": "Facebook",  "icon": "📘", "service": "facebook"},
+    "instagram": {"label": "Instagram", "icon": "📸", "service": "instagram"},
+    "linkedin":  {"label": "LinkedIn",  "icon": "💼", "service": "linkedin"},
+    "tiktok":    {"label": "TikTok",    "icon": "🎵", "service": "tiktok"},
+    "x":         {"label": "X",         "icon": "✖️", "service": "twitter"},
 }
 
 
@@ -7120,8 +7120,9 @@ def _sm_send_to_buffer(post_id: int, scheduled_for_iso: str = None):
     errors = []
     for platform in post["platforms"]:
         try:
-            buf_id, _status = buffer_create_post(
-                channel_map[platform], post["caption"], image_url, scheduled_for_iso)
+            buf_id, _status = _ba.call(
+                _ba.ADMIN_OWNER, buffer_create_post, channel_map[platform], post["caption"], image_url,
+                scheduled_for_iso, service=SM_PLATFORMS.get(platform, {}).get("service"))
             buffer_post_ids[platform] = buf_id
         except BufferAPIError as e:
             errors.append(f"{SM_PLATFORMS.get(platform, {}).get('label', platform)}: {e}")
@@ -7260,7 +7261,7 @@ def social_media_post_check_buffer_status(post_id: int):
     statuses = {}
     try:
         for platform, buf_id in post["buffer_post_ids"].items():
-            statuses[platform] = buffer_get_post_status(buf_id)
+            statuses[platform] = _ba.call(_ba.ADMIN_OWNER, buffer_get_post_status, buf_id)
     except BufferAPIError as e:
         cur.close(); conn.close()
         flash(f"Could not reach Buffer: {e}", "danger")
@@ -7461,33 +7462,64 @@ def social_media_post_download(post_id: int):
 
 @portal_admin_bp.route("/settings/buffer-channels", methods=["GET", "POST"])
 def buffer_channels_settings():
-    """Owner-only, one-time mapping of each Social Media Posts platform to
-    the PhiXtra Buffer account's channel id for it. Account-level config,
-    not a social_media-module permission, same as Team management."""
+    """PhiXtra's own Buffer (2026-09-25): the key is entered here instead of
+    on the server, and each Social Media Posts platform is pointed at one of
+    the real Buffer accounts from a dropdown. Owner-only, same as Team
+    management. Businesses connect their own Buffer separately on
+    Integration › Buffer (buffer_routes.py)."""
     r = _require_owner()
     if r: return r
+    owner = _ba.ADMIN_OWNER
 
     if request.method == "POST":
-        conn = get_db_connection()
-        cur  = conn.cursor()
-        for platform in SM_PLATFORMS:
-            channel_id = (request.form.get(f"channel__{platform}") or "").strip()
-            label      = (request.form.get(f"label__{platform}") or "").strip() or None
-            if channel_id:
-                cur.execute("""
-                    INSERT INTO buffer_channel_map (platform, buffer_channel_id, channel_label, updated_by)
-                    VALUES (%s, %s, %s, %s)
-                    ON CONFLICT (platform) DO UPDATE
-                        SET buffer_channel_id=EXCLUDED.buffer_channel_id,
-                            channel_label=EXCLUDED.channel_label,
-                            updated_at=NOW(), updated_by=EXCLUDED.updated_by
-                """, (platform, channel_id, label, _admin_user()))
-            else:
-                cur.execute("DELETE FROM buffer_channel_map WHERE platform=%s", (platform,))
-        conn.commit()
-        cur.close(); conn.close()
-        insert_audit_log(admin_username=_admin_user(), action="buffer_channels_update", details={})
-        flash("Buffer channel mapping saved.", "success")
+        action = request.form.get("action")
+        if action == "save_key":
+            api_key = (request.form.get("api_key") or "").strip()
+            if not api_key:
+                flash("Paste the Buffer API key first.", "warning")
+                return redirect(url_for("portal_admin.buffer_channels_settings"))
+            try:
+                orgs = _ba.check_key(api_key)
+                _ba.save_account(owner, None, api_key, orgs[0], _admin_user())
+            except BufferAPIError as e:
+                msg = ("Buffer didn't accept this key. Check you copied the whole key from Buffer › Settings › API, "
+                       "then try again.") if e.is_auth_error else f"Buffer said: {e}"
+                flash(msg, "danger")
+                return redirect(url_for("portal_admin.buffer_channels_settings"))
+            insert_audit_log(admin_username=_admin_user(), action="buffer_admin_key_saved",
+                              details={"organization": orgs[0].get("name")})
+            flash(f"Buffer accepted the key. Connected to “{orgs[0].get('name')}”.", "success")
+        elif action == "refresh":
+            try:
+                chans = _ba.refresh_channels(owner)
+                flash(f"Connection working. {len(chans)} Buffer account(s) found.", "success")
+            except BufferAPIError as e:
+                flash(f"Buffer said: {e}", "danger")
+        elif action == "disconnect":
+            _ba.disconnect(owner)
+            insert_audit_log(admin_username=_admin_user(), action="buffer_admin_disconnected", details={})
+            flash("PhiXtra's Buffer disconnected and the key deleted.", "success")
+        elif action == "save_map":
+            known = {c["channel_id"]: c for c in _ba.list_channels(owner)}
+            conn = get_db_connection()
+            cur  = conn.cursor()
+            for platform in SM_PLATFORMS:
+                channel_id = (request.form.get(f"channel__{platform}") or "").strip()
+                if channel_id in known:
+                    cur.execute("""
+                        INSERT INTO buffer_channel_map (platform, buffer_channel_id, channel_label, updated_by)
+                        VALUES (%s, %s, %s, %s)
+                        ON CONFLICT (platform) DO UPDATE
+                            SET buffer_channel_id=EXCLUDED.buffer_channel_id,
+                                channel_label=EXCLUDED.channel_label,
+                                updated_at=NOW(), updated_by=EXCLUDED.updated_by
+                    """, (platform, channel_id, known[channel_id]["title"], _admin_user()))
+                else:
+                    cur.execute("DELETE FROM buffer_channel_map WHERE platform=%s", (platform,))
+            conn.commit()
+            cur.close(); conn.close()
+            insert_audit_log(admin_username=_admin_user(), action="buffer_channels_update", details={})
+            flash("Saved which Buffer account each platform posts to.", "success")
         return redirect(url_for("portal_admin.buffer_channels_settings"))
 
     conn = get_db_connection()
@@ -7496,14 +7528,10 @@ def buffer_channels_settings():
     current = {row["platform"]: row for row in (cur.fetchall() or [])}
     cur.close(); conn.close()
 
-    live_channels, buffer_error = [], None
-    try:
-        live_channels = buffer_list_channels()
-    except BufferAPIError as e:
-        buffer_error = str(e)
-
+    account = _ba.get_account(owner)
+    channels = _ba.list_channels(owner) if account else []
     return render_template("portal/admin_buffer_channels.html", platforms=SM_PLATFORMS,
-                            current=current, live_channels=live_channels, buffer_error=buffer_error)
+                            current=current, account=account, channels=channels)
 
 
 # ── Ambassador WhatsApp Broadcast ────────────────────────────────────────────

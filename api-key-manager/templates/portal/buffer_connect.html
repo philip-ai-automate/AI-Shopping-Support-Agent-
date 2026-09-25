@@ -1,0 +1,232 @@
+{% extends "portal/base.html" %}
+{% block title %}Buffer — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  [hidden]{display:none!important}
+  .pg-title{font-size:22px;font-weight:800;letter-spacing:-.3px;color:var(--ink);margin:0 0 4px}
+  .pg-sub{font-size:13.5px;color:var(--muted);line-height:1.5;max-width:70ch}
+  .bf-wrap{display:flex;flex-direction:column;gap:18px;max-width:980px}
+  .bf-crumb{font-size:12.5px;color:var(--muted)}
+  .bf-crumb a{color:var(--muted)}
+  .bf-head{display:flex;align-items:center;gap:14px}
+  .bf-logo{width:52px;height:52px;border-radius:14px;background:#1B1B1B;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .bf-logo svg{width:26px;height:26px}
+  .bf-panel{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:14px}
+  .bf-panel h3{margin:0;font-size:15px;color:var(--ink)}
+  .bf-panel.off h3{color:var(--muted)}
+  .bf-step{display:flex;align-items:center;gap:10px}
+  .bf-num{width:26px;height:26px;border-radius:50%;background:var(--ink);color:#fff;font-size:12.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .bf-num.done{background:#027A48}
+  .bf-num.off{background:rgba(3,12,24,.2)}
+  .bf-how{margin:0;padding-left:20px;font-size:13.5px;line-height:1.75}
+  .bf-field{display:flex;flex-direction:column;gap:6px}
+  .bf-field label{font-size:12.5px;font-weight:700;color:var(--ink)}
+  .bf-field input,.bf-field select{font:inherit;font-size:14px;padding:11px 12px;border:1.5px solid var(--line);border-radius:10px;width:100%;max-width:520px;background:#fff}
+  .bf-field input.bad{border-color:rgba(180,35,24,.55)}
+  .bf-hint{font-size:12px;color:var(--muted)}
+  .bf-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .bf-alert{border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.5}
+  .bf-alert.ok{background:#ECFDF3;color:#027A48;border:1px solid rgba(2,122,72,.2)}
+  .bf-alert.err{background:#FEF3F2;color:#B42318;border:1px solid rgba(180,35,24,.2)}
+  .bf-alert.warn{background:#FFFAEB;color:#B54708;border:1px solid rgba(181,71,8,.25)}
+  .bf-alert.info{background:#F5F7FA;color:var(--txt);border:1px solid var(--line)}
+  .bf-two{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media (max-width:860px){.bf-two{grid-template-columns:1fr}}
+  .bf-kv{display:grid;grid-template-columns:130px 1fr;gap:8px 14px;font-size:13.5px;margin:0}
+  .bf-kv dt{color:var(--muted)}
+  .bf-kv dd{margin:0;font-weight:600;color:var(--ink)}
+  .bf-mono{font-family:"SF Mono","Fira Code",ui-monospace,monospace;font-size:13px}
+  .bf-pill{display:inline-block;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;margin-left:6px}
+  .bf-pill.g{background:#ECFDF3;color:#027A48}
+  .bf-pill.w{background:#FFFAEB;color:#B54708}
+  .bf-tw{overflow-x:auto}
+  .bf-table{width:100%;border-collapse:collapse;font-size:13.5px}
+  .bf-table th{text-align:left;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:650;padding:8px 10px;border-bottom:1px solid var(--line)}
+  .bf-table td{padding:11px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+  .bf-net{display:inline-flex;align-items:center;gap:8px;font-weight:600;white-space:nowrap}
+  .bf-dot{width:10px;height:10px;border-radius:3px;display:inline-block}
+  .bf-switch{position:relative;display:inline-block;width:38px;height:22px}
+  .bf-switch input{opacity:0;width:0;height:0}
+  .bf-switch span{position:absolute;inset:0;border-radius:999px;background:rgba(3,12,24,.18);cursor:pointer;transition:.15s}
+  .bf-switch span:after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.15s}
+  .bf-switch input:checked + span{background:#12B76A}
+  .bf-switch input:checked + span:after{left:19px}
+  .bf-switch input:focus-visible + span{outline:3px solid #6AA8FF;outline-offset:2px}
+  .bf-switch input:disabled + span{opacity:.5;cursor:not-allowed}
+  .bf-muted{color:var(--muted);font-size:12.5px;margin:0}
+</style>
+{% endblock %}
+
+{% set buf_svg %}<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 2 2 6.8l10 4.8 10-4.8L12 2Zm-7.4 8.2L2 11.5l10 4.8 10-4.8-2.6-1.3L12 13.8l-7.4-3.6Zm0 4.7L2 16.2 12 21l10-4.8-2.6-1.3L12 18.5l-7.4-3.6Z"/></svg>{% endset %}
+
+{% macro channel_table(editable) %}
+  {% if channels %}
+  <div class="bf-tw"><table class="bf-table">
+    <thead><tr><th>Account</th><th>Network</th><th>Use in PhiXtra</th></tr></thead>
+    <tbody>
+    {% for c in channels %}
+      <tr>
+        <td>{{ c.title }}{% if c.is_disconnected %} <span class="bf-pill w">Reconnect in Buffer</span>{% endif %}</td>
+        <td><span class="bf-net"><span class="bf-dot" style="background:{{ c.colour }}"></span>{{ c.label }}</span></td>
+        <td>
+          <label class="bf-switch" aria-label="Use {{ c.title }} in PhiXtra">
+            <input type="checkbox" name="channel_ids" value="{{ c.channel_id }}" {% if c.enabled %}checked{% endif %} {% if not editable %}disabled{% endif %}>
+            <span></span>
+          </label>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <div class="bf-alert info">No social accounts found in this Buffer organisation. Add your pages in Buffer first, then click <b>Check connection now</b>.</div>
+  {% endif %}
+{% endmacro %}
+
+{% block content %}
+<div class="bf-wrap">
+  <div class="bf-crumb"><a href="{{ url_for('portal.channels_page') }}">Integration</a> › Buffer</div>
+
+  <div class="bf-head">
+    <div class="bf-logo">{{ buf_svg }}</div>
+    <div>
+      <div class="pg-title">{{ 'Buffer' if account else 'Connect Buffer' }}</div>
+      <div class="pg-sub">{% if account %}Your Buffer account is connected. Posts you write on Social Posts go out through it.{% else %}You need a Buffer account with your social pages already added in Buffer.{% endif %}</div>
+    </div>
+  </div>
+
+{% if not account %}
+  {# ── Not connected: steps 1–3 ── #}
+  <div class="bf-panel">
+    <div class="bf-step"><span class="bf-num">1</span><h3>Get your key from Buffer</h3></div>
+    <ol class="bf-how">
+      <li>Log in to Buffer and open <b>Settings › API</b> (<a href="https://publish.buffer.com/settings/api" target="_blank" rel="noopener">publish.buffer.com/settings/api</a>).</li>
+      <li>Click <b>Generate API key</b> and copy it.</li>
+      <li>Come back here and paste it below.</li>
+    </ol>
+  </div>
+
+  <div class="bf-panel">
+    <div class="bf-step"><span class="bf-num">2</span><h3>Paste your Buffer key</h3></div>
+    {% if can_manage %}
+    <form method="POST" action="{{ url_for('buffer.save_key') }}" class="bf-wrap" style="gap:12px">
+      <div class="bf-field">
+        <label for="bf-key">Buffer API key</label>
+        <input id="bf-key" name="api_key" type="password" autocomplete="off" spellcheck="false" {% if key_error %}class="bad"{% endif %} required>
+        <span class="bf-hint">PhiXtra stores it locked (encrypted) and never shows it again in full.</span>
+      </div>
+      {% if key_error %}<div class="bf-alert err">{{ key_error }}</div>{% endif %}
+      <div class="bf-row"><button type="submit" class="btn btn-primary">Check key &amp; continue</button></div>
+    </form>
+    {% else %}
+    <div class="bf-alert info">Ask your account owner to connect Buffer. Your role can't change it.</div>
+    {% endif %}
+  </div>
+
+  <div class="bf-panel off">
+    <div class="bf-step"><span class="bf-num off">3</span><h3>Choose where PhiXtra can post</h3></div>
+    <p class="bf-muted">Available after Buffer accepts your key.</p>
+  </div>
+
+{% elif just_connected %}
+  {# ── Just connected: step 3 ── #}
+  <div class="bf-panel">
+    <div class="bf-step"><span class="bf-num done">✓</span><h3>Buffer accepted your key</h3></div>
+    <div class="bf-alert ok">✓ Connected to organisation <b>{{ account.organization_name }}</b>, with {{ channels|length }} social account{{ 's' if channels|length != 1 }}.</div>
+    {% if orgs and orgs|length > 1 and can_manage %}
+    <form method="POST" action="{{ url_for('buffer.switch_organization') }}" class="bf-row">
+      <div class="bf-field" style="flex:1;min-width:220px">
+        <label for="bf-org">Your key can see more than one Buffer organisation</label>
+        <select id="bf-org" name="organization_id">
+          {% for o in orgs %}<option value="{{ o.id }}" {% if o.id == account.organization_id %}selected{% endif %}>{{ o.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn" style="align-self:flex-end">Use this organisation</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <form method="POST" action="{{ url_for('buffer.save_channels') }}" class="bf-panel">
+    <div class="bf-step"><span class="bf-num">3</span><h3>Choose where PhiXtra can post</h3></div>
+    <p class="bf-muted">These are the social accounts inside your Buffer. Switch off any you don't want PhiXtra to post to.</p>
+    {{ channel_table(can_manage) }}
+    {% if can_manage %}
+    <div class="bf-row">
+      <button type="submit" class="btn btn-primary">Save &amp; finish</button>
+      <a href="{{ url_for('buffer.connect') }}" class="btn">Skip for now</a>
+    </div>
+    {% endif %}
+  </form>
+
+{% else %}
+  {# ── Connected: manage ── #}
+  {% if account.status == 'needs_attention' %}
+  <div class="bf-alert warn"><b>Buffer stopped accepting your saved key.</b> This usually means the key was deleted in Buffer or the Buffer account was closed. Create a new key in Buffer (Settings › API) and paste it under <b>Replace key</b>. Scheduled posts may not go out until this is fixed.</div>
+  {% endif %}
+
+  <div class="bf-two">
+    <div class="bf-panel">
+      <h3>Buffer account</h3>
+      <dl class="bf-kv">
+        <dt>Organisation</dt><dd>{{ account.organization_name or '—' }}</dd>
+        <dt>Key</dt><dd class="bf-mono">•••• •••• {{ account.key_last4 }}</dd>
+        <dt>Connected by</dt><dd>{{ account.connected_by or '—' }}{% if account.connected_at %} · {{ account.connected_at.strftime('%d %b %Y') }}{% endif %}</dd>
+        <dt>Last checked</dt>
+        <dd>{% if account.last_checked_at %}<span class="js-local" data-utc="{{ account.last_checked_at.isoformat() }}">{{ account.last_checked_at.strftime('%d %b %Y, %H:%M') }} UTC</span>{% else %}—{% endif %}
+          {% if account.status == 'needs_attention' %}<span class="bf-pill w">Needs attention</span>{% else %}<span class="bf-pill g">Working</span>{% endif %}</dd>
+      </dl>
+      <div class="bf-row">
+        {% if can_manage %}
+        <form method="POST" action="{{ url_for('buffer.refresh') }}"><button type="submit" class="btn btn-sm">Check connection now</button></form>
+        <button type="button" class="btn btn-sm" id="bf-replace-btn" aria-expanded="{{ 'true' if (key_error or account.status == 'needs_attention') else 'false' }}" aria-controls="bf-replace">Replace key</button>
+        {% endif %}
+        {% if can_remove %}
+        <form method="POST" action="{{ url_for('buffer.disconnect') }}" onsubmit="return confirm('Disconnect Buffer? Your key will be deleted from PhiXtra. Posts already scheduled in Buffer stay there.');">
+          <button type="submit" class="btn btn-sm btn-danger">Disconnect</button>
+        </form>
+        {% endif %}
+      </div>
+      {% if can_manage %}
+      <form method="POST" action="{{ url_for('buffer.save_key') }}" id="bf-replace" class="bf-wrap" style="gap:12px" {% if not (key_error or account.status == 'needs_attention') %}hidden{% endif %}>
+        <div class="bf-field">
+          <label for="bf-key2">New Buffer API key</label>
+          <input id="bf-key2" name="api_key" type="password" autocomplete="off" spellcheck="false" {% if key_error %}class="bad"{% endif %} required>
+          <span class="bf-hint">Your current key keeps working until Buffer accepts the new one.</span>
+        </div>
+        {% if key_error %}<div class="bf-alert err">{{ key_error }}</div>{% endif %}
+        <div class="bf-row"><button type="submit" class="btn btn-primary btn-sm">Check key &amp; save</button></div>
+      </form>
+      {% endif %}
+    </div>
+
+    <form method="POST" action="{{ url_for('buffer.save_channels') }}" class="bf-panel">
+      <h3>Social accounts PhiXtra can post to</h3>
+      {{ channel_table(can_manage) }}
+      <p class="bf-muted">Added a new page in Buffer? Click <b>Check connection now</b> and it appears here.</p>
+      {% if can_manage and channels %}
+      <div class="bf-row"><button type="submit" class="btn btn-primary btn-sm">Save</button></div>
+      {% endif %}
+    </form>
+  </div>
+
+  {% if can_post %}
+  <div class="bf-row"><a href="{{ url_for('buffer.posts') }}" class="btn btn-primary">Go to Social Posts →</a></div>
+  {% endif %}
+{% endif %}
+</div>
+
+<script>
+(function(){
+  var b = document.getElementById('bf-replace-btn'), f = document.getElementById('bf-replace');
+  if (b && f) b.addEventListener('click', function(){
+    f.hidden = !f.hidden; b.setAttribute('aria-expanded', String(!f.hidden));
+    if (!f.hidden) f.querySelector('input').focus();
+  });
+  document.querySelectorAll('.js-local').forEach(function(el){
+    var d = new Date(el.dataset.utc);
+    if (!isNaN(d)) el.textContent = d.toLocaleString(undefined, {day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'});
+  });
+})();
+</script>
+{% endblock %}

@@ -299,6 +299,10 @@
        href="{{ url_for('portal_admin.social_media_posts') }}">
       <span class="asb-icon">📣</span> Social Media Posts
     </a>
+    <a class="asb-link {% if request.endpoint=='portal_admin.buffer_channels_settings' %}active{% endif %}"
+       href="{{ url_for('portal_admin.buffer_channels_settings') }}">
+      <span class="asb-icon">🔗</span> PhiXtra's Buffer
+    </a>
     <a class="asb-link {% if request.endpoint=='portal_admin.admin_settings' %}active{% endif %}"
        href="{{ url_for('portal_admin.admin_settings') }}">
       <span class="asb-icon">⚙️</span> Settings

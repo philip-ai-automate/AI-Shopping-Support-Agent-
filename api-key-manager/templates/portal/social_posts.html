@@ -1,0 +1,275 @@
+{% extends "portal/base.html" %}
+{% block title %}Social Posts — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  [hidden]{display:none!important}
+  .pg-title{font-size:22px;font-weight:800;letter-spacing:-.3px;color:var(--ink);margin:0 0 4px}
+  .pg-sub{font-size:13.5px;color:var(--muted);line-height:1.5;max-width:70ch}
+  .sp-wrap{display:flex;flex-direction:column;gap:18px;max-width:1040px}
+  .sp-top{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap}
+  .sp-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .sp-panel{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:16px}
+  .sp-panel h3{margin:0;font-size:15px;color:var(--ink)}
+  .sp-two{display:grid;grid-template-columns:1.4fr 1fr;gap:18px}
+  @media (max-width:860px){.sp-two{grid-template-columns:1fr}}
+  .sp-field{display:flex;flex-direction:column;gap:6px}
+  .sp-field > label, .sp-label{font-size:12.5px;font-weight:700;color:var(--ink)}
+  .sp-field textarea{font:inherit;font-size:14px;padding:11px 12px;border:1.5px solid var(--line);border-radius:10px;width:100%;min-height:130px;resize:vertical}
+  .sp-field input[type=datetime-local]{font:inherit;font-size:14px;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;max-width:280px}
+  .sp-hint{font-size:12px;color:var(--muted)}
+  .sp-count{font-size:12px;color:var(--muted);align-self:flex-end;font-variant-numeric:tabular-nums}
+  .sp-count.over{color:#B42318;font-weight:700}
+  .sp-img{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .sp-thumb{width:96px;height:96px;border-radius:10px;object-fit:cover;background:#F2F4F7;border:1px solid var(--line);flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px;text-align:center}
+  .sp-chips{display:flex;gap:8px;flex-wrap:wrap}
+  .sp-chip{position:relative}
+  .sp-chip input{position:absolute;opacity:0;pointer-events:none}
+  .sp-chip > span{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;border:1.5px solid var(--line);border-radius:999px;padding:7px 12px;cursor:pointer;background:#fff;color:var(--txt)}
+  .sp-chip input:checked + span{border-color:var(--ink);background:var(--ink);color:#fff}
+  .sp-chip input:focus-visible + span{outline:3px solid #6AA8FF;outline-offset:2px}
+  .sp-dot{width:9px;height:9px;border-radius:3px;display:inline-block;flex-shrink:0}
+  .sp-when{display:flex;gap:16px;flex-wrap:wrap;font-size:13.5px}
+  .sp-when label{display:inline-flex;gap:7px;align-items:center;cursor:pointer;white-space:nowrap;font-weight:600}
+  .sp-when input[type=radio]{width:auto;margin:0;accent-color:var(--ink)}
+  .sp-chip input:checked + span .sp-dot{box-shadow:0 0 0 1.5px #fff}
+  .sp-list{display:flex;flex-direction:column;gap:12px}
+  .sp-post{background:#fff;border:1px solid var(--line);border-radius:14px;display:grid;grid-template-columns:96px 1fr auto;gap:14px;padding:12px;align-items:center}
+  @media (max-width:700px){.sp-post{grid-template-columns:72px 1fr}.sp-post .sp-thumb{width:72px;height:72px}.sp-post .sp-actions{grid-column:1/-1}}
+  .sp-cap{font-size:13.5px;line-height:1.45;color:var(--txt);white-space:pre-line;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .sp-meta{font-size:12px;color:var(--muted);margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .sp-err{font-size:12px;color:#B42318;margin-top:6px;line-height:1.4}
+  .sp-pill{display:inline-block;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px}
+  .p-n{background:#F2F4F7;color:#475467}
+  .p-b{background:#EFF4FF;color:#1849A9}
+  .p-g{background:#ECFDF3;color:#027A48}
+  .p-w{background:#FFFAEB;color:#B54708}
+  .p-r{background:#FEF3F2;color:#B42318}
+  .sp-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .sp-empty{text-align:center;color:var(--muted);font-size:13.5px;padding:28px 12px}
+  .sp-alert{border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.5}
+  .sp-alert.warn{background:#FFFAEB;color:#B54708;border:1px solid rgba(181,71,8,.25)}
+  .sp-alert.info{background:#F5F7FA;color:var(--txt);border:1px solid var(--line)}
+</style>
+{% endblock %}
+
+{% macro post_channels(p) -%}
+  {%- set names = [] -%}
+  {%- for cid in p.channel_ids -%}
+    {%- set c = channels_by_id.get(cid) -%}
+    {%- if names.append(c.label if c else 'Removed account') %}{% endif -%}
+  {%- endfor -%}
+  {{ names|join(', ') }}
+{%- endmacro %}
+
+{% block content %}
+<div class="sp-wrap">
+  <div class="sp-top">
+    <div>
+      <div class="pg-title">Social Posts</div>
+      <div class="pg-sub">{% if account %}Posts go out through your Buffer account ({{ account.organization_name }}).{% else %}Write posts here and Buffer publishes them to your social pages.{% endif %}</div>
+    </div>
+    {% if account %}
+    <div class="sp-row">
+      <form method="POST" action="{{ url_for('buffer.refresh_posts') }}"><button type="submit" class="btn btn-sm">Check for updates</button></form>
+      {% if can_create and not editing %}<button type="button" class="btn btn-primary" id="sp-new-btn" aria-controls="sp-form-panel">+ New post</button>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if not account %}
+  <div class="sp-panel">
+    <h3>Connect Buffer first</h3>
+    <p class="sp-hint" style="margin:0">Social Posts publishes through your own Buffer account. Connect it on Integration › Buffer, then come back here.</p>
+    <div class="sp-row"><a href="{{ url_for('buffer.connect') }}" class="btn btn-primary">Connect Buffer →</a></div>
+  </div>
+  {% else %}
+
+  {% if account.status == 'needs_attention' %}
+  <div class="sp-alert warn"><b>Buffer stopped accepting your saved key.</b> Posts can't be sent until it's fixed. <a href="{{ url_for('buffer.connect') }}">Put in a new key</a>.</div>
+  {% endif %}
+
+  {% if (can_create and not editing) or (editing and can_edit) %}
+  <form method="POST" enctype="multipart/form-data" id="sp-form-panel" class="sp-panel"
+        action="{{ url_for('buffer.save_post', post_id=editing.id) if editing else url_for('buffer.save_post') }}"
+        {% if not editing and posts and not request.args.get('new') %}hidden{% endif %}>
+    <div class="sp-row" style="justify-content:space-between">
+      <h3>{{ 'Edit post' if editing else 'New post' }}</h3>
+      {% if editing and editing.status == 'scheduled' %}<span class="sp-hint">Saving replaces the scheduled copy in Buffer.</span>{% endif %}
+    </div>
+
+    <div class="sp-two">
+      <div class="sp-field">
+        <label for="sp-caption">Caption</label>
+        <textarea id="sp-caption" name="caption" maxlength="5000" required placeholder="What do you want to tell your followers?">{{ editing.caption if editing else '' }}</textarea>
+        <span class="sp-count" id="sp-count" aria-live="polite"></span>
+      </div>
+      <div class="sp-field">
+        <span class="sp-label">Image</span>
+        <div class="sp-img">
+          {% if editing and editing.image_filename %}
+          <img class="sp-thumb" id="sp-preview" src="{{ url_for('buffer.post_image', post_id=editing.id) }}" alt="Current image">
+          {% else %}
+          <div class="sp-thumb" id="sp-preview-empty">No image</div>
+          <img class="sp-thumb" id="sp-preview" alt="Chosen image" hidden>
+          {% endif %}
+          <div class="sp-field" style="gap:8px">
+            <input type="file" id="sp-image" name="image_file" accept="image/jpeg,image/png,image/webp,image/gif">
+            {% if editing and editing.image_filename %}
+            <label class="sp-hint" style="display:inline-flex;gap:6px;align-items:center"><input type="checkbox" name="remove_image" value="1" style="width:auto;margin:0"> Remove this image</label>
+            {% endif %}
+            <span class="sp-hint">JPG, PNG, WEBP or GIF, up to 15 MB. Instagram needs an image.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sp-field">
+      <span class="sp-label">Post to</span>
+      {% if channels %}
+      <div class="sp-chips">
+        {% for c in channels %}
+        {% set on = (editing and c.channel_id in editing.channel_ids) or (not editing) %}
+        <label class="sp-chip" title="{{ c.title }}">
+          <input type="checkbox" name="channel_ids" value="{{ c.channel_id }}" data-service="{{ c.service }}" {% if on %}checked{% endif %}>
+          <span><span class="sp-dot" style="background:{{ c.colour }}"></span>{{ c.label }} · {{ c.title }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="sp-alert info">No social accounts switched on. Turn some on in <a href="{{ url_for('buffer.connect') }}">Integration › Buffer</a>.</div>
+      {% endif %}
+    </div>
+
+    <div class="sp-field">
+      <span class="sp-label">When</span>
+      <div class="sp-when">
+        <label><input type="radio" name="when" value="now" {% if not (editing and editing.scheduled_for) %}checked{% endif %}> Post now</label>
+        <label><input type="radio" name="when" value="schedule" {% if editing and editing.scheduled_for %}checked{% endif %}> Schedule for later</label>
+      </div>
+      <div class="sp-field" id="sp-when-box" {% if not (editing and editing.scheduled_for) %}hidden{% endif %}>
+        <input type="datetime-local" id="sp-when-local" aria-label="Date and time to post"
+               data-utc="{{ editing.scheduled_for.isoformat() if editing and editing.scheduled_for else '' }}">
+        <span class="sp-hint" id="sp-tz"></span>
+      </div>
+      <input type="hidden" name="scheduled_for_utc" id="sp-when-utc">
+    </div>
+
+    <div class="sp-row">
+      <button type="submit" name="action" value="now" class="btn btn-primary" id="sp-go">Post now</button>
+      <button type="submit" name="action" value="draft" class="btn" formnovalidate>Save as draft</button>
+      {% if editing %}<a href="{{ url_for('buffer.posts') }}" class="btn btn-ghost">Cancel editing</a>
+      {% else %}<button type="button" class="btn btn-ghost" id="sp-close">Close</button>{% endif %}
+    </div>
+  </form>
+  {% endif %}
+
+  <div class="sp-list">
+    {% for p in posts %}
+    {% set st = status_labels.get(p.status, (p.status|title, 'p-n')) %}
+    <div class="sp-post">
+      {% if p.image_filename %}
+      <img class="sp-thumb" src="{{ url_for('buffer.post_image', post_id=p.id) }}" alt="" loading="lazy">
+      {% else %}<div class="sp-thumb">Text only</div>{% endif %}
+      <div style="min-width:0">
+        <div class="sp-cap">{{ p.caption }}</div>
+        <div class="sp-meta">
+          <span class="sp-pill {{ st[1] }}">{{ st[0] }}</span>
+          {% if p.channel_ids %}<span>{{ post_channels(p) }}</span><span>·</span>{% endif %}
+          {% set t = p.sent_at if p.status in ('sent','partial') and p.sent_at else (p.scheduled_for or p.created_at) %}
+          <span class="js-local" data-utc="{{ t.isoformat() }}">{{ t.strftime('%d %b %Y, %H:%M') }} UTC</span>
+          {% if p.created_by %}<span>· by {{ p.created_by }}</span>{% endif %}
+        </div>
+        {% if p.status in ('failed', 'partial') and p.buffer_error %}
+        <div class="sp-err">{{ p.buffer_error }}</div>
+        {% endif %}
+        {% set links = [] %}
+        {% for cid, r in (p.channel_results or {}).items() %}{% if r.link %}{% if links.append((channels_by_id.get(cid).label if channels_by_id.get(cid) else 'Post', r.link)) %}{% endif %}{% endif %}{% endfor %}
+        {% if links %}
+        <div class="sp-meta">{% for name, link in links %}<a href="{{ link }}" target="_blank" rel="noopener">View on {{ name }}</a>{% endfor %}</div>
+        {% endif %}
+      </div>
+      <div class="sp-actions">
+        {% if p.status in editable and can_edit %}
+        <a class="btn btn-sm" href="{{ url_for('buffer.posts', edit=p.id) }}">{{ 'Try again' if p.status == 'failed' else 'Edit' }}</a>
+        {% endif %}
+        {% if p.status == 'scheduled' and can_edit %}
+        <form method="POST" action="{{ url_for('buffer.cancel_post', post_id=p.id) }}" onsubmit="return confirm('Cancel this scheduled post? It goes back to your drafts.');">
+          <button type="submit" class="btn btn-sm">Cancel</button>
+        </form>
+        {% endif %}
+        {% if can_delete %}
+        <form method="POST" action="{{ url_for('buffer.delete_post', post_id=p.id) }}" onsubmit="return confirm('Delete this post from PhiXtra?{{ ' It stays on the social networks where it was already published.' if p.status in ('sent','partial') else '' }}');">
+          <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% else %}
+    <div class="sp-empty">No posts yet. Write your first one above.</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<script>
+(function(){
+  function localStr(d){ return d.toLocaleString(undefined,{weekday:'short',day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
+  document.querySelectorAll('.js-local').forEach(function(el){
+    var d = new Date(el.dataset.utc); if (!isNaN(d)) el.textContent = localStr(d);
+  });
+
+  var form = document.getElementById('sp-form-panel');
+  if (!form) return;
+  var newBtn = document.getElementById('sp-new-btn'), closeBtn = document.getElementById('sp-close');
+  if (newBtn) newBtn.addEventListener('click', function(){ form.hidden = false; document.getElementById('sp-caption').focus(); });
+  if (closeBtn) closeBtn.addEventListener('click', function(){ form.hidden = true; });
+
+  // Caption counter — X allows 280 characters, the others far more.
+  var cap = document.getElementById('sp-caption'), cnt = document.getElementById('sp-count');
+  function hasX(){ return !!form.querySelector('input[name=channel_ids][data-service=twitter]:checked'); }
+  function count(){
+    var n = cap.value.length, x = hasX();
+    cnt.textContent = n + (x ? ' / 280 (X limit)' : ' characters');
+    cnt.classList.toggle('over', x && n > 280);
+  }
+  cap.addEventListener('input', count);
+  form.querySelectorAll('input[name=channel_ids]').forEach(function(c){ c.addEventListener('change', count); });
+  count();
+
+  // Image preview
+  var file = document.getElementById('sp-image'), prev = document.getElementById('sp-preview'),
+      empty = document.getElementById('sp-preview-empty');
+  file.addEventListener('change', function(){
+    if (file.files && file.files[0]) {
+      prev.src = URL.createObjectURL(file.files[0]); prev.hidden = false;
+      if (empty) empty.hidden = true;
+    }
+  });
+
+  // When: post now / schedule. The picked time is the viewer's own local
+  // time; it's converted to UTC before sending.
+  var box = document.getElementById('sp-when-box'), local = document.getElementById('sp-when-local'),
+      utc = document.getElementById('sp-when-utc'), go = document.getElementById('sp-go');
+  var tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || '');
+  document.getElementById('sp-tz').textContent = 'Your time zone' + (tz ? ' (' + tz + ')' : '') + '.';
+  function pad(n){ return String(n).padStart(2,'0'); }
+  if (local.dataset.utc) {
+    var d = new Date(local.dataset.utc);
+    if (!isNaN(d)) local.value = d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());
+  }
+  function mode(){ return (form.querySelector('input[name=when]:checked') || {}).value; }
+  function sync(){
+    var s = mode() === 'schedule';
+    box.hidden = !s; local.required = s;
+    go.value = s ? 'schedule' : 'now';
+    go.textContent = s ? 'Schedule post' : 'Post now';
+  }
+  form.querySelectorAll('input[name=when]').forEach(function(r){ r.addEventListener('change', sync); });
+  sync();
+  form.addEventListener('submit', function(){
+    utc.value = local.value ? new Date(local.value).toISOString() : '';
+  });
+})();
+</script>
+{% endblock %}

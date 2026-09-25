@@ -593,6 +593,12 @@ PLAN_FEATURE_CATALOG = {
         ("campaigns_email.segments_delete", "Delete an Email Segment"),
         ("campaigns_email.reports_view", "Reports — view"),
     ],
+    "Social Posts": [
+        ("social.posts_view",   "Social Posts — view"),
+        ("social.posts_create", "Create a Social Post (post now / schedule / draft)"),
+        ("social.posts_edit",   "Edit / reschedule / cancel a Social Post"),
+        ("social.posts_delete", "Delete a Social Post"),
+    ],
     "WhatsApp": [
         ("legacy:feat_fw_checkout",  "Checkout (In-Chat Payments via Flutterwave)"),
         ("wa.handoff_reports_view", "WhatsApp Handoff Reports — view"),
@@ -714,6 +720,9 @@ PLAN_FEATURE_CATALOG = {
         ("channels.connect_pressone_view",    "PressOne — view connect page"),
         ("channels.connect_pressone_manage",  "Connect / test / configure PressOne"),
         ("channels.connect_pressone_remove",  "Disconnect PressOne"),
+        ("channels.connect_buffer_view",      "Buffer — view connect page"),
+        ("channels.connect_buffer_manage",    "Connect Buffer / change key / choose accounts"),
+        ("channels.connect_buffer_remove",    "Disconnect Buffer"),
     ],
     "Help & Tutorials": [
         ("help.tutorials", "Help & Tutorials"),
@@ -781,6 +790,10 @@ ROLE_FORM_GRID = {
         {"label": "Segment", "view": "campaigns_email.segments_view", "create": "campaigns_email.segments_create",
          "edit": "campaigns_email.segments_edit", "delete": "campaigns_email.segments_delete"},
         {"label": "Reports", "view": "campaigns_email.reports_view"},
+    ],
+    "Social Posts": [
+        {"label": "Social Post", "view": "social.posts_view", "create": "social.posts_create",
+         "edit": "social.posts_edit", "delete": "social.posts_delete"},
     ],
     "WhatsApp": [
         {"label": "Checkout (Flutterwave)", "other": ["legacy:feat_fw_checkout"]},
@@ -856,6 +869,8 @@ ROLE_FORM_GRID = {
         {"label": "Messenger", "create": "channels.connect_messenger"},
         {"label": "PressOne",  "view": "channels.connect_pressone_view", "edit": "channels.connect_pressone_manage",
          "delete": "channels.connect_pressone_remove"},
+        {"label": "Buffer",    "view": "channels.connect_buffer_view", "edit": "channels.connect_buffer_manage",
+         "delete": "channels.connect_buffer_remove"},
     ],
     "Help & Tutorials": [
         {"label": "Help & Tutorials", "view": "help.tutorials"},
@@ -1437,6 +1452,8 @@ DESTRUCTIVE_FEATURE_KEYS = {
     "wa.connect_delete",
     "campaigns_wa.segments_delete",
     "wa.history_import_delete",
+    "channels.connect_buffer_remove",
+    "social.posts_delete",
 }
 
 # Any permission that lets someone manage other team members' access at all.
@@ -24463,12 +24480,24 @@ def channels_page():
     except Exception as e:
         print("⚠️ channels_page pressone_account lookup error:", e)
 
+    buffer_account, buffer_channel_count = None, 0
+    try:
+        import buffer_accounts as _ba
+        _owner = _ba.tenant_owner(tenant_id)
+        buffer_account = _ba.get_account(_owner)
+        if buffer_account:
+            buffer_channel_count = len(_ba.list_channels(_owner, enabled_only=True))
+    except Exception as e:
+        print("⚠️ channels_page buffer lookup error:", e)
+
     return render_template(
         "portal/channels.html",
         customer=customer,
         wa_connection=wa_connection,
         fb_pages=fb_pages,
         pressone_account=pressone_account,
+        buffer_account=buffer_account,
+        buffer_channel_count=buffer_channel_count,
     )
 
 

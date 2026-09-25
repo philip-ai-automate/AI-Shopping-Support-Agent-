@@ -1,74 +1,98 @@
 {% extends "portal/admin_base.html" %}
-{% block title %}Buffer Channels — PhiXtra Admin{% endblock %}
+{% block title %}PhiXtra's Buffer — PhiXtra Admin{% endblock %}
 {% block content %}
+<style>
+  .ab-two{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+  @media (max-width:900px){.ab-two{grid-template-columns:1fr}}
+  .ab-field{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+  .ab-field label{font-size:12.5px;font-weight:700}
+  .ab-field input,.ab-field select{font:inherit;font-size:14px;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;width:100%;background:#fff}
+  .ab-kv{display:grid;grid-template-columns:120px 1fr;gap:8px 14px;font-size:13.5px;margin:0 0 14px}
+  .ab-kv dt{color:var(--muted)}
+  .ab-kv dd{margin:0;font-weight:600}
+  .ab-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .ab-ok{background:#ECFDF3;color:#027A48;border:1px solid rgba(2,122,72,.2);border-radius:12px;padding:10px 12px;font-size:13px;margin-bottom:12px}
+  .ab-warn{background:#FFFAEB;color:#B54708;border:1px solid rgba(181,71,8,.25);border-radius:12px;padding:10px 12px;font-size:13px;margin-bottom:12px}
+</style>
 
 <div class="page-header">
-  <h1 class="section-title">⚙️ Buffer Channels</h1>
+  <h1 class="section-title">PhiXtra's Buffer</h1>
   <a href="{{ url_for('portal_admin.social_media_posts') }}" class="btn btn-sm">← Back to Social Media Posts</a>
 </div>
 
 <p class="muted" style="margin-bottom:20px">
-  One-time setup: tell PhiXtra which Buffer channel each platform should publish through.
-  This uses the <code>BUFFER_API_KEY</code> configured on the server — it's the same
-  PhiXtra Buffer account for every platform, just a different channel per row.
+  Used by Social Media Posts to publish PhiXtra's own posts. This is separate from any business's Buffer:
+  each business connects its own on Integration › Buffer in their portal.
 </p>
 
-{% if buffer_error %}
-<div class="card" style="border-color:rgba(240,68,56,0.35);background:rgba(240,68,56,0.06);margin-bottom:20px">
-  <p style="font-size:13px;margin:0">
-    ⚠️ Couldn't reach Buffer to list your connected channels: <strong>{{ buffer_error }}</strong>.
-    You can still save channel IDs manually below if you already have them.
-  </p>
-</div>
-{% elif live_channels %}
-<div class="card" style="margin-bottom:20px">
-  <p class="card-title">Channels on this Buffer account</p>
-  <p class="muted" style="font-size:12.5px;margin-bottom:12px">Copy the id you need into the matching row below.</p>
-  <div class="table-wrap" style="border:none">
-    <table>
-      <thead><tr><th>Service</th><th>Name</th><th>Channel ID</th></tr></thead>
-      <tbody>
-        {% for ch in live_channels %}
-        <tr>
-          <td>{{ ch.service }}</td>
-          <td>{{ ch.name or '—' }}</td>
-          <td><code>{{ ch.id }}</code></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-{% else %}
-<div class="card" style="margin-bottom:20px">
-  <p style="font-size:13px;margin:0" class="muted">No channels found on this Buffer account yet — connect them in Buffer first.</p>
-</div>
-{% endif %}
-
-<form method="POST">
-  <div class="card" style="padding:0">
-    <div class="table-wrap" style="border:none;border-radius:16px">
-      <table>
-        <thead>
-          <tr><th>Platform</th><th>Buffer Channel ID</th><th>Label (optional)</th></tr>
-        </thead>
-        <tbody>
-          {% for key, plat in platforms.items() %}
-          {% set row = current.get(key) %}
-          <tr>
-            <td><strong>{{ plat.icon }} {{ plat.label }}</strong></td>
-            <td><input type="text" name="channel__{{ key }}" value="{{ row.buffer_channel_id if row else '' }}"
-                       placeholder="paste channel id" style="width:100%;padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px"></td>
-            <td><input type="text" name="label__{{ key }}" value="{{ row.channel_label if row else '' }}"
-                       placeholder="e.g. PhiXtra Page" style="width:100%;padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px"></td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+<div class="ab-two">
+  <div class="card">
+    <p class="card-title">Buffer key</p>
+    {% if account %}
+      {% if account.status == 'needs_attention' %}
+      <div class="ab-warn"><b>Buffer stopped accepting the saved key.</b> Paste a new one below.</div>
+      {% else %}
+      <div class="ab-ok">✓ Connected to <b>{{ account.organization_name }}</b>.</div>
+      {% endif %}
+      <dl class="ab-kv">
+        <dt>Key</dt><dd style="font-family:ui-monospace,monospace">•••• •••• {{ account.key_last4 }}</dd>
+        <dt>Saved by</dt><dd>{{ account.connected_by or '—' }}</dd>
+        <dt>Last checked</dt><dd>{{ account.last_checked_at.strftime('%d %b %Y, %H:%M') ~ ' UTC' if account.last_checked_at else '—' }}</dd>
+      </dl>
+    {% endif %}
+    <form method="POST">
+      <input type="hidden" name="action" value="save_key">
+      <div class="ab-field">
+        <label for="ab-key">{{ 'Replace with a new Buffer API key' if account else 'Buffer API key' }}</label>
+        <input id="ab-key" name="api_key" type="password" autocomplete="off" spellcheck="false" required>
+        <span class="muted" style="font-size:12px">Create it in Buffer › Settings › API (publish.buffer.com/settings/api). Stored encrypted; only the last 4 characters are shown.</span>
+      </div>
+      <button type="submit" class="btn btn-primary">Check key &amp; save</button>
+    </form>
+    {% if account %}
+    <div class="ab-row" style="margin-top:14px">
+      <form method="POST"><input type="hidden" name="action" value="refresh"><button type="submit" class="btn btn-sm">Check connection now</button></form>
+      <form method="POST" onsubmit="return confirm('Disconnect PhiXtra\'s Buffer and delete the key?');">
+        <input type="hidden" name="action" value="disconnect"><button type="submit" class="btn btn-sm btn-danger">Disconnect</button>
+      </form>
     </div>
+    {% endif %}
   </div>
-  <p class="muted" style="font-size:12px;margin:10px 0">Clear a Channel ID field and save to remove that mapping.</p>
-  <button type="submit" class="btn btn-primary">Save Mapping</button>
-</form>
 
+  <div class="card">
+    <p class="card-title">Which Buffer account each platform posts to</p>
+    {% if not account %}
+      <p class="muted" style="font-size:13px;margin:0">Save the Buffer key first. The accounts then appear here to pick from.</p>
+    {% else %}
+    <form method="POST">
+      <input type="hidden" name="action" value="save_map">
+      <div class="table-wrap" style="border:none">
+        <table>
+          <thead><tr><th>Platform</th><th>Buffer account</th></tr></thead>
+          <tbody>
+          {% for key, plat in platforms.items() %}
+            {% set row = current.get(key) %}
+            {% set options = channels|selectattr('service', 'equalto', plat.service)|list %}
+            <tr>
+              <td><strong>{{ plat.label }}</strong></td>
+              <td>
+                <select name="channel__{{ key }}" aria-label="{{ plat.label }} account" style="font:inherit;font-size:13.5px;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;width:100%;background:#fff">
+                  <option value="">Not used</option>
+                  {% for c in options %}
+                  <option value="{{ c.channel_id }}" {% if row and row.buffer_channel_id == c.channel_id %}selected{% endif %}>{{ c.title }}</option>
+                  {% endfor %}
+                </select>
+                {% if not options %}<div class="muted" style="font-size:11.5px;margin-top:4px">No {{ plat.label }} account in this Buffer.</div>{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="muted" style="font-size:12px;margin:10px 0">Picked from the real accounts in PhiXtra's Buffer. Added one in Buffer? Click <b>Check connection now</b>.</p>
+      <button type="submit" class="btn btn-primary">Save</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
 {% endblock %}

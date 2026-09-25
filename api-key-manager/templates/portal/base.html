@@ -780,6 +780,16 @@
       {% if 'voice.calls' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
     </a>
 
+    <!-- Social Posts (Buffer, 2026-09-25) — only once the business has
+         connected its own Buffer on Integration › Buffer -->
+    {% if buffer_connected %}
+    <a class="sb-link {% if request.endpoint == 'buffer.posts' %}active{% endif %}"
+       href="{{ url_for('buffer.posts') }}">
+      <span class="sb-icon">📣</span> Social Posts
+      {% if 'social.posts_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
+    </a>
+    {% endif %}
+
     <!-- ── SMS group (support@phixtra.com only) ── -->
     {% if _portal_customer and _portal_customer.tenant_id == 19 %}
     {% set _sms_group = request.endpoint == 'portal.sms_campaigns' %}
@@ -1177,7 +1187,7 @@
     {% endif %}
 
     <!-- Integration — every social account in one place, added 2026-09-11 (renamed from "Channels" 2026-09-22) -->
-    <a class="sb-link {% if request.endpoint == 'portal.channels_page' %}active{% endif %}"
+    <a class="sb-link {% if request.endpoint in ('portal.channels_page', 'buffer.connect') %}active{% endif %}"
        href="{{ url_for('portal.channels_page') }}">
       <span class="sb-icon">📡</span> Integration
       {% if 'channels.page' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}

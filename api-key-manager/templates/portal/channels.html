@@ -110,6 +110,33 @@
     </div>
   </div>
 
+  <!-- Buffer (2026-09-25) — the business's own Buffer account, for Social Posts -->
+  <div class="channel-card">
+    <div class="channel-card-top">
+      <div class="channel-logo" style="background:#1B1B1B">
+        <svg viewBox="0 0 24 24" fill="#fff"><path d="M12 2 2 6.8l10 4.8 10-4.8L12 2Zm-7.4 8.2L2 11.5l10 4.8 10-4.8-2.6-1.3L12 13.8l-7.4-3.6Zm0 4.7L2 16.2 12 21l10-4.8-2.6-1.3L12 18.5l-7.4-3.6Z"/></svg>
+      </div>
+      <div>
+        <div class="channel-name">Buffer</div>
+        {% if buffer_account and buffer_account.status == 'needs_attention' %}
+        <div class="channel-status" style="color:#B54708;font-weight:600">🟠 Needs attention: Buffer stopped accepting your key</div>
+        {% elif buffer_account %}
+        <div class="channel-status on">🟢 Connected, {{ buffer_channel_count }} social account{{ 's' if buffer_channel_count != 1 }}</div>
+        {% else %}
+        <div class="channel-status">Not connected. Schedule posts to Facebook, Instagram, LinkedIn, TikTok and X through your Buffer account.</div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="channel-card-foot" style="display:flex;gap:8px;flex-wrap:wrap">
+      <a href="{{ url_for('buffer.connect') }}" class="btn {% if not buffer_account %}btn-primary{% endif %}">
+        {{ 'Manage' if buffer_account else 'Connect Buffer' }} →
+      </a>
+      {% if buffer_account %}
+      <a href="{{ url_for('buffer.posts') }}" class="btn">Social Posts</a>
+      {% endif %}
+    </div>
+  </div>
+
   <!-- Instagram -->
   <div class="channel-card locked">
     <div class="channel-card-top">

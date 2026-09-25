@@ -1251,6 +1251,69 @@ def ensure_portal_tables():
             )
         """)
 
+        # ── Buffer connections (2026-09-25): every business connects its OWN
+        # Buffer account on Integration › Buffer, and PhiXtra admin has one
+        # of its own. owner_key is 'tenant:<id>' or 'admin'. The key is
+        # Fernet-encrypted (same helper as payment gateways); only its last
+        # 4 characters are ever shown back.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS buffer_accounts (
+                owner_key         VARCHAR(40) PRIMARY KEY,
+                tenant_id         INTEGER,
+                api_key_enc       TEXT NOT NULL,
+                key_last4         VARCHAR(8),
+                organization_id   VARCHAR(64),
+                organization_name VARCHAR(255),
+                status            VARCHAR(20) NOT NULL DEFAULT 'ok',
+                last_error        TEXT,
+                last_checked_at   TIMESTAMPTZ,
+                alert_sent_at     TIMESTAMPTZ,
+                connected_by      VARCHAR(255),
+                connected_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        # One row per social account inside that Buffer; `enabled` is the
+        # "Use in PhiXtra" switch on the connect/manage page.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS buffer_channels (
+                owner_key       VARCHAR(40) NOT NULL REFERENCES buffer_accounts(owner_key) ON DELETE CASCADE,
+                channel_id      VARCHAR(64) NOT NULL,
+                service         VARCHAR(40),
+                name            VARCHAR(255),
+                display_name    VARCHAR(255),
+                avatar          TEXT,
+                is_disconnected BOOLEAN NOT NULL DEFAULT FALSE,
+                enabled         BOOLEAN NOT NULL DEFAULT TRUE,
+                updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (owner_key, channel_id)
+            )
+        """)
+        # A business's own Social Posts (the admin's live in social_media_posts).
+        # channel_ids = the Buffer channels picked; buffer_post_ids maps each
+        # channel id to the post Buffer created for it.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS tenant_social_posts (
+                id                SERIAL PRIMARY KEY,
+                tenant_id         INTEGER NOT NULL,
+                caption           TEXT NOT NULL,
+                image_filename    VARCHAR(255),
+                original_filename VARCHAR(255),
+                public_token      VARCHAR(64) UNIQUE,
+                channel_ids       TEXT[] NOT NULL DEFAULT '{}',
+                status            VARCHAR(20) NOT NULL DEFAULT 'draft',
+                scheduled_for     TIMESTAMPTZ,
+                buffer_post_ids   JSONB,
+                channel_results   JSONB,
+                buffer_error      TEXT,
+                created_by        VARCHAR(255),
+                created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                sent_at           TIMESTAMPTZ
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_tenant_social_posts_tenant ON tenant_social_posts (tenant_id, created_at DESC)")
+
         # ── ambassador_broadcasts: admin WhatsApp broadcasts to ambassadors ──
         # Log of each admin-sent WhatsApp update (via one reusable Meta
         # template) — who it targeted, recipient ids, and delivery counts.

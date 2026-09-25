@@ -38,9 +38,14 @@ from feature_access import team_feature, public_route
 from portal_routes import (
     _require_login, _customer_id, _get_customer, _exchange_code_for_tokens, _GRAPH,
     _require_team_permission, _team_member_has_permission,
+    _inject_granted_features, _inject_connect_flag,
 )
 
 facebook_bp = Blueprint("facebook", __name__, url_prefix="/facebook")
+# The side menu's padlocks read these; they're registered on portal_bp only,
+# so pages on this blueprint need them too or every menu item shows locked.
+facebook_bp.context_processor(_inject_granted_features)
+facebook_bp.context_processor(_inject_connect_flag)
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 

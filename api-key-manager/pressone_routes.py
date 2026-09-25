@@ -48,10 +48,14 @@ from db import get_db_connection, insert_audit_log
 from feature_access import team_feature, public_route
 from portal_routes import (
     _require_login, _customer_id, _get_customer, _get_wa_connection, _require_plan_sub_feature,
-    _require_team_permission,
+    _require_team_permission, _inject_granted_features, _inject_connect_flag,
 )
 
 pressone_bp = Blueprint("pressone", __name__, url_prefix="/pressone")
+# The side menu's padlocks read these; they're registered on portal_bp only,
+# so pages on this blueprint need them too or every menu item shows locked.
+pressone_bp.context_processor(_inject_granted_features)
+pressone_bp.context_processor(_inject_connect_flag)
 
 _API_BASE = "https://api.bedrock.pressone.co"
 _EVENTS = ["call.completed", "call.missed", "recording.ready"]
