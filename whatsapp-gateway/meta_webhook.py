@@ -23,6 +23,7 @@ from wa_db import log_message, is_handoff_active, is_campaign_recipient, create_
 from wa_onboarding import handle_onboarding_message
 from wa_shopping import handle_shopping_message
 from visual_match import evaluate_visual_match
+from staff_alerts import alert_chat_needs_reply, is_staff_alert_reply
 
 router = APIRouter()
 
@@ -236,7 +237,19 @@ async def notify_merchant_handoff(
     a customer requests a human agent.
     Sends FROM the tenant's own WhatsApp Business number.
     Silently skips if no personal phone is configured.
+
+    Since 2026-09-25 the team members' own Chat alerts (staff_alerts.py) go
+    first; this older owner alert only runs when nobody on the team has
+    alerts switched on, so existing accounts keep getting what they had.
     """
+    try:
+        if await alert_chat_needs_reply(tenant_id, phone_number_id, customer_phone,
+                                        last_customer_message, reason="handoff",
+                                        allow_owner_fallback=False):
+            return
+    except Exception as _se:
+        print(f"⚠️ staff alert on handoff failed, using owner alert: {_se}")
+
     from wa_db import get_db_connection as _gdb
     from datetime import datetime as _dt
 
@@ -628,6 +641,13 @@ async def receive_webhook(
 
     print(f"✅ [META] session={session_id} from={customer_phone} action={action_type or 'text'}: {text[:80]}")
 
+    # ── A team member answering a staff alert on the PhiXtra alert-sender
+    # number: kept in the log, but never answered by the AI and never
+    # alerted on (see staff_alerts.py). ───────────────────────────────────
+    if is_staff_alert_reply(phone_number_id, customer_phone):
+        print(f"   [META] staff alert reply from={customer_phone} — no AI, no alert")
+        return {"status": "ok", "reason": "staff_alert_reply"}
+
     # Mark message as read (blue ticks) — fire-and-forget
     asyncio.create_task(mark_as_read(phone_number_id, access_token, meta_message_id))
 
@@ -672,6 +692,10 @@ async def receive_webhook(
     # at signup. ─────────────────────────────────────────────────────────
     if not tenant.get("ai_enabled", True):
         print(f"   [META] AI off for tenant={tenant_id} — staff-only, no AI reply")
+        # Nobody else will answer this chat — alert the team straight away.
+        asyncio.create_task(alert_chat_needs_reply(
+            tenant_id, phone_number_id, customer_phone, text,
+            profile_name=msg.get("customer_name") or "", reason="new_chat"))
         return {"status": "ok", "reason": "ai_disabled"}
 
     # ── Campaign Intelligence — classify + flag a reply on the campaign

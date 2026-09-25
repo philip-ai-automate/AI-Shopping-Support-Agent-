@@ -1424,6 +1424,10 @@
 
 
 {% if _logged_in %}
+{% include "portal/_support_help.html" %}
+{% endif %}
+
+{% if _logged_in %}
 <!-- ══════════════ GUIDED TOUR ══════════════ -->
 <div id="tourBackdrop"  style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(3,12,24,0);"></div>
 <div id="tourHighlight" style="display:none;position:fixed;z-index:9001;pointer-events:none;border-radius:14px;

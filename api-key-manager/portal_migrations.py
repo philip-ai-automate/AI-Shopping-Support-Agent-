@@ -3320,6 +3320,30 @@ def ensure_portal_tables():
             if not _column_exists(cur, "tenants", _col):
                 cur.execute(f"ALTER TABLE tenants ADD COLUMN {_col} TIMESTAMPTZ")
 
+        # ── Staff chat alerts (2026-09-25): per-team-member alert settings and
+        # the per-chat alert log the WhatsApp gateway's reminder sweep reads.
+        for _col, _typ in (("alert_enabled", "BOOLEAN NOT NULL DEFAULT FALSE"),
+                           ("alert_reminder", "BOOLEAN NOT NULL DEFAULT TRUE"),
+                           ("alert_phone", "VARCHAR(32)")):
+            if not _column_exists(cur, "team_members", _col):
+                cur.execute(f"ALTER TABLE team_members ADD COLUMN {_col} {_typ}")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS chat_alerts (
+                id               BIGSERIAL PRIMARY KEY,
+                tenant_id        INTEGER NOT NULL,
+                channel          VARCHAR(20) NOT NULL DEFAULT 'whatsapp',
+                chat_key         VARCHAR(128) NOT NULL,
+                phone_number_id  VARCHAR(64),
+                reason           VARCHAR(20) NOT NULL,
+                customer_label   TEXT,
+                preview          TEXT,
+                recipients       JSONB NOT NULL DEFAULT '[]',
+                first_alert_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                reminder_sent_at TIMESTAMPTZ,
+                replied_at       TIMESTAMPTZ
+            )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS chat_alerts_open_idx ON chat_alerts (tenant_id, channel, chat_key, first_alert_at)")
+
         # Anything a backfill above granted this run is now "seen" — never
         # re-granted on a later start (see _GRANT_ONCE_SQL).
         cur.execute("""

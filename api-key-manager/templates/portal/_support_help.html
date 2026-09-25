@@ -1,0 +1,120 @@
+{# "Need help?" WhatsApp button — every logged-in portal page (2026-09-25).
+   Opens WhatsApp to PhiXtra Support (PHIXTRA_SUPPORT_WHATSAPP, injected as
+   support_whatsapp by portal_app.inject_support_whatsapp) with a message
+   already written: who they are and which page they were on. Computer: a
+   pill bottom-right with a small card above it. Phone: a round icon that
+   opens the card as a bottom sheet. #}
+{% if support_whatsapp %}
+<style>
+  .sh-btn{
+    position:fixed; right:20px; bottom:20px; z-index:8000;
+    display:inline-flex; align-items:center; gap:8px;
+    background:#25D366; color:#03240F; border:0; border-radius:999px;
+    padding:11px 16px; font:inherit; font-size:14px; font-weight:800; cursor:pointer;
+    box-shadow:0 8px 24px rgba(18,140,126,.35); transition:transform .15s;
+  }
+  .sh-btn:hover{transform:translateY(-1px)}
+  .sh-btn:focus-visible,.sh-go:focus-visible,.sh-x:focus-visible{outline:3px solid #030C18; outline-offset:2px}
+  .sh-btn svg{width:18px; height:18px; flex-shrink:0}
+  .sh-dim{display:none; position:fixed; inset:0; z-index:8001; background:rgba(3,12,24,.45)}
+  .sh-card{
+    display:none; position:fixed; right:20px; bottom:76px; z-index:8002;
+    width:300px; max-width:calc(100vw - 32px); background:#fff; color:#344054;
+    border:1px solid #E5E7EB; border-radius:16px; overflow:hidden;
+    box-shadow:0 18px 48px rgba(3,12,24,.18);
+  }
+  .sh-open .sh-card{display:block}
+  .sh-head{background:linear-gradient(135deg,#128C7E,#25D366); color:#fff; padding:14px 16px;
+           display:flex; gap:10px; align-items:center; position:relative}
+  .sh-av{width:38px; height:38px; border-radius:50%; background:#fff; display:grid; place-items:center; flex-shrink:0}
+  .sh-av img{width:28px; height:28px}
+  .sh-head b{font-size:15px}
+  .sh-x{position:absolute; right:10px; top:10px; background:none; border:0; color:#fff; font-size:18px;
+        cursor:pointer; width:30px; height:30px; border-radius:8px}
+  .sh-x:hover{background:rgba(255,255,255,.18)}
+  .sh-body{padding:14px 16px 16px; font-size:13.5px; line-height:1.55}
+  .sh-go{display:flex; align-items:center; justify-content:center; gap:8px; margin-top:12px;
+         background:#25D366; color:#03240F !important; font-weight:800; border-radius:10px; padding:11px;
+         text-decoration:none !important}
+  .sh-go svg{width:18px; height:18px}
+  .sh-num{display:block; text-align:center; color:#667085; font-size:12px; margin-top:8px}
+  @media(max-width:860px){
+    .sh-btn{right:16px; bottom:16px; width:54px; height:54px; padding:0; justify-content:center}
+    .sh-btn .sh-label{display:none}
+    .sh-btn svg{width:26px; height:26px; color:#fff}
+    .sh-open .sh-dim{display:block}
+    .sh-card{left:0; right:0; bottom:0; width:auto; max-width:none; border-radius:18px 18px 0 0;
+             padding-bottom:env(safe-area-inset-bottom, 0px)}
+  }
+  /* Inbox: the reply box and Send button sit bottom-right — keep clear of them */
+  .sh-raise .sh-btn{bottom:104px}
+  .sh-raise .sh-card{bottom:160px}
+  @media(max-width:860px){ .sh-raise .sh-btn{bottom:96px} .sh-raise .sh-card{bottom:0} }
+  @media(prefers-reduced-motion:reduce){.sh-btn{transition:none}}
+  @media print{.sh-btn,.sh-card,.sh-dim{display:none!important}}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><symbol id="shWa" viewBox="0 0 24 24"><path fill="currentColor" d="M17.47 14.38c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.17-.17.2-.35.22-.64.07-.3-.15-1.26-.46-2.4-1.48-.89-.79-1.49-1.77-1.66-2.07-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.67-1.62-.92-2.22-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37-.27.3-1.04 1.02-1.04 2.48s1.07 2.88 1.21 3.08c.15.2 2.1 3.2 5.08 4.49.71.31 1.26.49 1.69.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.7.25-1.29.17-1.41-.07-.13-.27-.2-.57-.35M12.05 21.8h-.01a9.8 9.8 0 0 1-5-1.37l-.36-.21-3.72.98 1-3.63-.24-.37a9.8 9.8 0 0 1-1.5-5.2c0-5.42 4.41-9.83 9.84-9.83 2.63 0 5.1 1.03 6.96 2.88a9.78 9.78 0 0 1 2.88 6.96c0 5.42-4.41 9.83-9.84 9.83m8.37-18.2A11.76 11.76 0 0 0 12.05.12C5.5.12.17 5.45.17 12c0 2.1.55 4.14 1.59 5.94L.07 24l6.2-1.63a11.84 11.84 0 0 0 5.78 1.47h.01c6.55 0 11.88-5.33 11.88-11.88 0-3.17-1.24-6.16-3.48-8.4"/></symbol></defs></svg>
+
+<div id="shWrap" class="{{ 'sh-raise' if request.endpoint and 'inbox' in request.endpoint else '' }}">
+  <div class="sh-dim" id="shDim"></div>
+  <div class="sh-card" id="shCard" role="dialog" aria-labelledby="shTitle">
+    <div class="sh-head">
+      <div class="sh-av"><img src="{{ url_for('static', filename='portal/phixtra-icon.png') }}" alt=""/></div>
+      <b id="shTitle">PhiXtra Support</b>
+      <button type="button" class="sh-x" id="shClose" aria-label="Close">✕</button>
+    </div>
+    <div class="sh-body">
+      Stuck, or not sure what to do next? Message us on WhatsApp and someone from our team will help you.
+      <a class="sh-go" id="shGo" href="https://wa.me/{{ support_whatsapp }}" target="_blank" rel="noopener">
+        <svg><use href="#shWa"/></svg>Chat with us on WhatsApp
+      </a>
+      <span class="sh-num">+{{ support_whatsapp }}</span>
+    </div>
+  </div>
+  <button type="button" class="sh-btn" id="shBtn" aria-expanded="false" aria-controls="shCard" aria-label="Need help? Chat with PhiXtra Support on WhatsApp">
+    <svg><use href="#shWa"/></svg><span class="sh-label">Need help?</span>
+  </button>
+</div>
+
+<script>
+(function(){
+  var wrap = document.getElementById('shWrap'), btn = document.getElementById('shBtn');
+  var go = document.getElementById('shGo');
+  var who = {{ {
+      'first': (_portal_customer.first_name if _portal_customer else '') or '',
+      'business': (_portal_customer.tenant_name if _portal_customer else '') or '',
+      'email': (_portal_customer.email if _portal_customer else '') or ''
+    } | tojson }};
+  function page(){
+    // The page's own name from its <title> ("Dashboard — PhiXtra Portal"),
+    // falling back to its heading when the title is just the product name.
+    var t = document.title.split(/\s[—|-]\s/)[0].trim();
+    if (!t || /^phixtra\b/i.test(t)) {
+      var h = document.querySelector('.site-main h1, .site-main .section-title');
+      t = (h && h.textContent.trim()) || 'the portal';
+    }
+    return t.replace(/\s+/g, ' ').slice(0, 80);
+  }
+  function message(topic){
+    var me = who.first ? "I'm " + who.first + (who.business ? " from " + who.business : "")
+                       : (who.business ? "I'm from " + who.business : "I'm a PhiXtra customer");
+    return "Hi PhiXtra Support, " + me + (who.email ? " (" + who.email + ")" : "") +
+           ". I need help with: " + (topic || page()) + ".";
+  }
+  function setOpen(open){
+    wrap.classList.toggle('sh-open', open);
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) go.href = 'https://wa.me/{{ support_whatsapp }}?text=' + encodeURIComponent(message());
+  }
+  btn.addEventListener('click', function(){ setOpen(!wrap.classList.contains('sh-open')); });
+  document.getElementById('shClose').addEventListener('click', function(){ setOpen(false); });
+  document.getElementById('shDim').addEventListener('click', function(){ setOpen(false); });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') setOpen(false); });
+  go.addEventListener('click', function(){ setTimeout(function(){ setOpen(false); }, 300); });
+  // Pages can open the card straight to WhatsApp with their own help link
+  // Page-level help links (e.g. the WhatsApp connect step) use the same message
+  window.phixtraSupportLink = function(topic){ return 'https://wa.me/{{ support_whatsapp }}?text=' + encodeURIComponent(message(topic)); };
+})();
+</script>
+{% endif %}

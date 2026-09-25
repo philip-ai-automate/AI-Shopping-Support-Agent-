@@ -1,0 +1,18 @@
+{# "Stuck connecting your number?" box under the WhatsApp connect button
+   (whatsapp.html and onboarding_wa_connect.html). Uses the same support
+   number and pre-written message as the "Need help?" button (_support_help.html). #}
+{% if support_whatsapp %}
+<div style="margin-top:16px;border:1px solid rgba(37,211,102,.4);background:rgba(37,211,102,.08);border-radius:12px;
+            padding:14px 16px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+  <div style="min-width:0;flex:1 1 220px">
+    <div style="font-weight:800;font-size:14.5px;color:#030C18">Stuck connecting your number?</div>
+    <div style="font-size:13px;color:#475467;margin-top:2px">Message us and we'll connect it with you, step by step.</div>
+  </div>
+  <a href="https://wa.me/{{ support_whatsapp }}" target="_blank" rel="noopener"
+     onclick="if(window.phixtraSupportLink){this.href=window.phixtraSupportLink('Connecting my WhatsApp number');}"
+     style="display:inline-flex;align-items:center;justify-content:center;gap:8px;background:#25D366;color:#03240F;
+            font-weight:800;border-radius:10px;padding:10px 14px;text-decoration:none;font-size:14px;flex:0 1 auto">
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><use href="#shWa"/></svg>Get help on WhatsApp
+  </a>
+</div>
+{% endif %}

@@ -95,6 +95,7 @@
     <span id="signupStatusText">Completing setup...</span>
   </div>
   <div id="signupError" class="flash danger"></div>
+  {% include "portal/_support_connect_help.html" %}
 
   <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--line)">
     <a href="{{ url_for('portal.dashboard') }}" class="muted" style="font-size:13px">

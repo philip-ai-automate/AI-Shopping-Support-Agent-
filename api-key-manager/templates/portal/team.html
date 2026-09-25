@@ -297,7 +297,7 @@
         <tr class="tm-manage-row" data-search="{{ (m.name ~ ' ' ~ m.email)|lower }}">
           <td colspan="6">
             <details class="tm-manage">
-              <summary>⚙️ Manage channel access</summary>
+              <summary>⚙️ Manage channel access &amp; chat alerts</summary>
               <div class="tm-manage-body">
                 {% if show_agent_picker %}
                 <div class="tm-manage-block">
@@ -329,6 +329,19 @@
                   <span class="tm-agent-tag {{ '' if m.webchat_access else 'off' }}">{{ 'Enabled' if m.webchat_access else 'Off' }}</span>
                   <form method="POST" action="{{ url_for('portal.team_update_webchat', member_id=m.id) }}">
                     <label class="agent-check"><input type="checkbox" name="webchat_access" {% if m.webchat_access %}checked{% endif %} onchange="this.form.submit()"/> Can access Web Chat (website AI chat handoffs)</label>
+                  </form>
+                </div>
+                <div class="tm-manage-block" style="flex-wrap:wrap">
+                  <span class="tm-manage-label">🔔 Chat alerts</span>
+                  <span class="tm-agent-tag {{ '' if m.alert_enabled else 'off' }}">{{ 'On' if m.alert_enabled else 'Off' }}</span>
+                  <form method="POST" action="{{ url_for('portal.team_update_alerts', member_id=m.id) }}"
+                        style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-left:8px">
+                    <label class="agent-check"><input type="checkbox" name="alert_enabled" {% if m.alert_enabled %}checked{% endif %}/> Alert when a chat needs a reply</label>
+                    <label class="agent-check"><input type="checkbox" name="alert_reminder" {% if m.alert_reminder is none or m.alert_reminder %}checked{% endif %}/> 10-minute reminder</label>
+                    <input type="tel" name="alert_phone" value="{{ m.alert_phone or '' }}" inputmode="tel"
+                           placeholder="Personal WhatsApp, e.g. +2348012345678"
+                           style="max-width:230px;padding:6px 10px;font-size:13px"/>
+                    <button type="submit" class="btn-edit">Save</button>
                   </form>
                 </div>
               </div>

@@ -178,6 +178,34 @@ def create_app():
         return {"_portal_customer": _g._cached_portal_customer}
 
     @flask_app.context_processor
+    def inject_support_whatsapp():
+        """The "Need help?" button's WhatsApp number (PHIXTRA_SUPPORT_WHATSAPP,
+        the one place it's set). Empty when unset, or on the PhiXtra Support
+        account itself, so the button never tells support staff to message
+        their own number."""
+        digits = "".join(ch for ch in os.getenv("PHIXTRA_SUPPORT_WHATSAPP", "") if ch.isdigit())
+        if not digits or not _session.get("portal_logged_in"):
+            return {"support_whatsapp": ""}
+        cid = _session.get("impersonate_customer_id") or _session.get("customer_id")
+        if not hasattr(_g, "_cached_support_whatsapp"):
+            _g._cached_support_whatsapp = digits
+            try:
+                from db import get_db_connection
+                conn = get_db_connection()
+                cur  = conn.cursor()
+                cur.execute("""
+                    SELECT 1 FROM wa_tenants w JOIN customers c ON c.tenant_id = w.tenant_id
+                     WHERE c.id = %s AND regexp_replace(COALESCE(w.display_phone_number, ''), '\\D', '', 'g') = %s
+                     LIMIT 1
+                """, (int(cid or 0), digits))
+                if cur.fetchone():
+                    _g._cached_support_whatsapp = ""
+                cur.close(); conn.close()
+            except Exception as e:
+                print("⚠️ inject_support_whatsapp error:", e)
+        return {"support_whatsapp": _g._cached_support_whatsapp}
+
+    @flask_app.context_processor
     def inject_has_woocommerce():
         """Detect whether tenant has a WooCommerce plugin connected.
         Tenants with key_type='paid' or 'trial' have a WooCommerce site (Profile B).

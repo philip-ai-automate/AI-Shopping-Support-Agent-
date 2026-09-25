@@ -639,6 +639,7 @@ PLAN_FEATURE_CATALOG = {
         ("team.members_agent_access",      "Manage a team member's AI Agent assignment"),
         ("team.members_messenger_access",  "Manage a team member's Messenger access"),
         ("team.members_webchat_access",    "Manage a team member's Web Chat access"),
+        ("team.members_alerts",            "Manage a team member's chat alerts"),
         ("team.roles_create",              "Create a Role"),
         ("team.roles_edit",                "Edit a Role's permissions"),
         ("team.roles_delete",              "Delete a Role"),
@@ -806,7 +807,8 @@ ROLE_FORM_GRID = {
         {"label": "Team", "view": "team.manage"},
         {"label": "Team Member", "create": "team.members_create", "delete": "team.members_remove",
          "other": ["team.members_assign_role", "team.members_deactivate", "team.members_reset_password",
-                   "team.members_agent_access", "team.members_messenger_access", "team.members_webchat_access"]},
+                   "team.members_agent_access", "team.members_messenger_access", "team.members_webchat_access",
+                   "team.members_alerts"]},
         {"label": "Role",       "create": "team.roles_create",       "edit": "team.roles_edit",       "delete": "team.roles_delete"},
         {"label": "Department", "create": "team.departments_create", "edit": "team.departments_edit", "delete": "team.departments_delete"},
         {"label": "Position",   "create": "team.positions_create",   "edit": "team.positions_edit",   "delete": "team.positions_delete"},
@@ -1219,7 +1221,7 @@ def _get_team_members(tenant_id: int, active_only: bool = False) -> list:
         q = ("SELECT id, name, first_name, last_name, email, role, role_id, is_active, "
              "last_login_at, created_at, messenger_access, "
              "webchat_access, department_id, position_id, avatar_data, line_manager_id, "
-             "location_city, location_country "
+             "location_city, location_country, alert_enabled, alert_reminder, alert_phone "
              "FROM team_members WHERE tenant_id=%s")
         if active_only:
             q += " AND is_active=TRUE"
@@ -1444,7 +1446,7 @@ DESTRUCTIVE_FEATURE_KEYS = {
 TEAM_MANAGEMENT_FEATURE_KEYS = {
     "team.members_create", "team.members_assign_role", "team.members_deactivate",
     "team.members_remove", "team.members_reset_password", "team.members_agent_access",
-    "team.members_messenger_access", "team.members_webchat_access",
+    "team.members_messenger_access", "team.members_webchat_access", "team.members_alerts",
     "team.roles_create", "team.roles_edit", "team.roles_delete",
     "team.departments_create", "team.departments_edit", "team.departments_delete",
     "team.positions_create", "team.positions_edit", "team.positions_delete",
@@ -4067,6 +4069,13 @@ def team_create():
     email      = (request.form.get("email") or "").strip().lower()
     location_city = (request.form.get("location_city") or "").strip()[:100] or None
     location_country = (request.form.get("location_country") or "").strip()[:10] or None
+    # Chat alerts (set on the create form; changeable later on the Team page)
+    alert_enabled  = request.form.get("alert_enabled") == "on"
+    alert_reminder = request.form.get("alert_reminder") == "on"
+    alert_phone    = _clean_alert_phone(request.form.get("alert_phone"))
+    if alert_phone is False:
+        flash("That WhatsApp number for alerts doesn't look right — use the full number, e.g. +2348012345678.", "danger")
+        return redirect(url_for("portal.team_create"))
     name = f"{first_name} {last_name}".strip()
 
     if not first_name or not email:
@@ -4139,12 +4148,12 @@ def team_create():
         INSERT INTO team_members
             (tenant_id, name, first_name, last_name, email, password_hash, is_active,
              invited_by, role_id, department_id, position_id, line_manager_id, avatar_data,
-             location_city, location_country)
-        VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, %s, %s, %s, %s, %s, %s, %s)
+             location_city, location_country, alert_enabled, alert_reminder, alert_phone)
+        VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id
     """, (tenant_id, name, first_name, last_name, email, hash_password(generated_password),
           int(customer["id"]), role_id, department_id, position_id, line_manager_id, avatar_data,
-          location_city, location_country))
+          location_city, location_country, alert_enabled, alert_reminder, alert_phone))
     new_id = cur.fetchone()["id"]
     conn.commit()
     cur.close(); conn.close()
@@ -4840,6 +4849,58 @@ def team_update_webchat(member_id: int):
         flash("Web Chat access granted. ✅", "success")
     else:
         flash("Web Chat access removed.", "warning")
+    return redirect(url_for("portal.team_page"))
+
+
+def _clean_alert_phone(raw: str):
+    """A personal WhatsApp number for chat alerts, as digits with a leading +,
+    or None. Rejects anything that isn't a plausible international number."""
+    import re as _re_phone
+    digits = _re_phone.sub(r"\D", "", raw or "")
+    if not digits:
+        return False if (raw or "").strip() else None
+    if digits.startswith("0") and len(digits) == 11:      # Nigerian local 080… → +234…
+        digits = "234" + digits[1:]
+    return "+" + digits if 10 <= len(digits) <= 15 else False
+
+
+@portal_bp.route("/team/<int:member_id>/alerts", methods=["POST"])
+@team_feature("team.members_alerts")
+def team_update_alerts(member_id: int):
+    """One team member's chat alerts: a WhatsApp + email alert when a chat
+    needs a reply, and one reminder after 10 minutes if nobody has replied.
+    Sent by the WhatsApp gateway (whatsapp-gateway/staff_alerts.py)."""
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
+    if r2: return r2
+    r3 = _require_team_permission("team.members_alerts")
+    if r3: return r3
+    tenant_id = int(customer["tenant_id"])
+
+    enabled  = request.form.get("alert_enabled") == "on"
+    reminder = request.form.get("alert_reminder") == "on"
+    phone    = _clean_alert_phone(request.form.get("alert_phone"))
+    if phone is False:
+        flash("That WhatsApp number doesn't look right — use the full number, e.g. +2348012345678.", "danger")
+        return redirect(url_for("portal.team_page"))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("""
+        UPDATE team_members SET alert_enabled=%s, alert_reminder=%s, alert_phone=%s
+         WHERE id=%s AND tenant_id=%s
+    """, (enabled, reminder, phone, member_id, tenant_id))
+    found = cur.rowcount
+    conn.commit()
+    cur.close(); conn.close()
+    if not found:
+        flash("Team member not found.", "danger")
+    elif enabled:
+        flash("Chat alerts switched on ✅" + ("" if phone else " (email only — add a WhatsApp number to get WhatsApp alerts too)"), "success")
+    else:
+        flash("Chat alerts switched off for this team member.", "warning")
     return redirect(url_for("portal.team_page"))
 
 
@@ -10458,37 +10519,19 @@ def settings_notifications():
     notif_billing   = bool(request.form.get("notif_billing"))
     notif_usage     = bool(request.form.get("notif_usage"))
     notif_marketing = bool(request.form.get("notif_marketing"))
-    notif_handoff   = bool(request.form.get("notif_handoff"))
 
-    # Custom handoff alert email — strip whitespace, store NULL if blank
-    import re as _re_email_notif
-    raw_handoff_email = (request.form.get("handoff_notify_email") or "").strip().lower()
-    if raw_handoff_email and not _re_email_notif.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", raw_handoff_email):
-        flash("Please enter a valid email address for handoff alerts, or leave it blank.", "danger")
-        return redirect(url_for("portal.settings") + "#notifications")
-    handoff_notify_email = raw_handoff_email or None
-
+    # Hand-over alert settings (notif_handoff / handoff_notify_email) are no
+    # longer on this form — chat alerts are per team member now (Team page).
+    # The stored values are left untouched: handoff_notify_email is still the
+    # owner's fallback address when nobody on the team has alerts switched on.
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
-
-        # Try saving with new handoff columns; if migration hasn't run yet,
-        # fall back gracefully to saving just the original three.
-        try:
-            cur.execute("""
-                UPDATE customers
-                SET notif_billing=%s, notif_usage=%s, notif_marketing=%s,
-                    notif_handoff=%s, handoff_notify_email=%s
-                WHERE id=%s
-            """, (notif_billing, notif_usage, notif_marketing,
-                  notif_handoff, handoff_notify_email, cid))
-        except Exception:
-            conn.rollback()
-            cur.execute("""
-                UPDATE customers
-                SET notif_billing=%s, notif_usage=%s, notif_marketing=%s
-                WHERE id=%s
-            """, (notif_billing, notif_usage, notif_marketing, cid))
+        cur.execute("""
+            UPDATE customers
+            SET notif_billing=%s, notif_usage=%s, notif_marketing=%s
+            WHERE id=%s
+        """, (notif_billing, notif_usage, notif_marketing, cid))
 
         conn.commit()
         cur.close(); conn.close()

@@ -106,6 +106,18 @@
       {% endif %}
     </div>
 
+    <div class="card" style="margin-bottom:16px">
+      <p class="card-title">🔔 Chat alerts</p>
+      <p class="muted" style="font-size:13px;margin:-4px 0 12px">Tell this person straight away when a customer's chat needs a reply — only for chats they can see.</p>
+      <label class="agent-check" style="display:flex;margin-bottom:8px"><input type="checkbox" name="alert_enabled"/> Alert them on WhatsApp and email when a chat needs a reply</label>
+      <label class="agent-check" style="display:flex;margin-bottom:12px"><input type="checkbox" name="alert_reminder" checked/> Remind them after 10 minutes if nobody has replied</label>
+      <div class="form-group" style="margin-bottom:0">
+        <label>Their personal WhatsApp number for alerts</label>
+        <input type="tel" name="alert_phone" inputmode="tel" placeholder="e.g. +2348012345678" style="max-width:280px"/>
+        <p class="muted" style="font-size:12px;margin-top:6px">Alerts come from PhiXtra's WhatsApp number. Email alerts go to the email address above.</p>
+      </div>
+    </div>
+
     <p class="muted" style="font-size:13px;margin-bottom:16px">
       A password is generated automatically and shown once after creation — share it with them yourself.
     </p>

@@ -19,8 +19,20 @@ from wa_daily_report import (
 from wa_plan_reset import router as plan_reset_router, run_plan_resets
 from pressone_calls import router as pressone_router
 
+from staff_alerts import run_alert_reminders, init_staff_alert_tables
+
 # ── Scheduler ─────────────────────────────────────────────────────────────────
 _scheduler = AsyncIOScheduler()
+
+# Staff chat alerts: one reminder 10 min after an unanswered alert — checked every minute
+_scheduler.add_job(
+    run_alert_reminders,
+    CronTrigger(minute="*", timezone="UTC"),
+    id="staff_alert_reminders",
+    replace_existing=True,
+    misfire_grace_time=120,
+    max_instances=1,
+)
 
 # Daily reports: 07:00 UTC = 08:00 WAT
 _scheduler.add_job(
@@ -78,6 +90,7 @@ _scheduler.add_job(
 async def lifespan(app: FastAPI):
     import asyncio
     init_wa_tables()
+    init_staff_alert_tables()
     _scheduler.start()
     print("✅ [SCHEDULER] Daily reports: 07:00 UTC | Plan resets: 00:05 UTC | Auto-close handoffs: every hour | Template poll: every 2 h", flush=True)
     asyncio.create_task(ensure_templates_submitted())
