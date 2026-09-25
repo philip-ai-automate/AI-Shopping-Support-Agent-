@@ -1142,6 +1142,8 @@ def _require_plan_sub_feature(customer: dict, feature_key: str, feature_label: s
         min_plan_name=_min_plan_for_feature(feature_key, _merchant_plan_mode(customer)),
         current_plan=plan.get("plan_name", "Free"),
         is_trial=plan.get("is_trial", False),
+        ai_trial_available=plan.get("ai_trial_available", False),
+        ai_trial_used=plan.get("ai_trial_used", False),
     )
 
 
@@ -2274,9 +2276,12 @@ def _grant_trial_upgrade(tenant_id: int, source_type: str) -> bool:
     """
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT is_founder FROM tenants WHERE id=%s", (tenant_id,))
+    cur.execute("SELECT is_founder, source_type FROM tenants WHERE id=%s", (tenant_id,))
     row = cur.fetchone()
-    if not row:
+    if not row or row.get("source_type") == "whatsapp":
+        # WhatsApp merchants never get an automatic trial — they start the
+        # 2-week AI trial themselves (_start_wa_ai_trial). This also stops a
+        # WhatsApp merchant's catalogue sync from triggering the web trial.
         cur.close(); conn.close()
         return False
     is_founder = bool(row.get("is_founder"))
@@ -2304,6 +2309,66 @@ def _grant_trial_upgrade(tenant_id: int, source_type: str) -> bool:
             details={"source_type": source_type, "is_founder": is_founder},
         )
     return granted
+
+
+WA_AI_TRIAL_DAYS = 14
+
+
+def _start_wa_ai_trial(tenant_id: int) -> bool:
+    """Start a WhatsApp merchant's 2-week AI trial: Enterprise (slug 'pro')
+    for WA_AI_TRIAL_DAYS days with the AI switched on. Founders get the same
+    2 weeks. Only from PhiXtra Connect, and once per business ever — the
+    trial_granted_at guard lives in the UPDATE itself, so a double click or
+    two tabs can't start it twice. Returns True if this call started it."""
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute(f"""
+        UPDATE tenants
+           SET plan_id              = (SELECT id FROM plans WHERE slug='pro' LIMIT 1),
+               plan_period_start    = CURRENT_DATE,
+               trial_ends_at        = CURRENT_DATE + INTERVAL '{WA_AI_TRIAL_DAYS} days',
+               trial_granted_at     = NOW(),
+               ai_enabled           = TRUE,
+               quota_notified_at    = NULL,
+               trial_reminder_3d_at = NULL,
+               trial_reminder_0d_at = NULL,
+               trial_ended_email_at = NULL
+         WHERE id = %s
+           AND source_type = 'whatsapp'
+           AND trial_granted_at IS NULL
+           AND plan_id = (SELECT id FROM plans WHERE slug='connect' LIMIT 1)
+         RETURNING trial_ends_at
+    """, (tenant_id,))
+    row = cur.fetchone()
+    conn.commit()
+    cur.close(); conn.close()
+    if row:
+        insert_audit_log(action="wa_ai_trial_started", tenant_id=tenant_id,
+                         details={"days": WA_AI_TRIAL_DAYS, "trial_ends_at": str(row[0])})
+    return row is not None
+
+
+def _sync_wa_ai_to_plan(tenant_ids) -> None:
+    """The plan decides whether a WhatsApp merchant's AI answers: off on
+    PhiXtra Connect, on for every other plan. Call after any plan change.
+    WooCommerce merchants are never touched. The admin AI switch still works
+    as an override between plan changes."""
+    ids = [int(t) for t in (tenant_ids or [])]
+    if not ids:
+        return
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("""
+            UPDATE tenants t
+               SET ai_enabled = (p.slug IS DISTINCT FROM 'connect')
+              FROM plans p
+             WHERE p.id = t.plan_id AND t.id = ANY(%s) AND t.source_type = 'whatsapp'
+        """, (ids,))
+        conn.commit()
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ _sync_wa_ai_to_plan error:", e)
 
 
 @portal_bp.route("/api/founder-spots")
@@ -2637,7 +2702,7 @@ def _register_whatsapp_merchant(
         if spots_claimed >= FOUNDER_SPOTS_LIMIT:
             flash(
                 "All 50 Founder spots have been claimed. "
-                "You've been signed up for our standard 30-day free trial instead.",
+                "You've been signed up as a standard account instead.",
                 "info",
             )
             is_founder = False
@@ -2654,9 +2719,6 @@ def _register_whatsapp_merchant(
 
     system_prompt_text = DEFAULT_SYSTEM_PROMPT.replace("{{business_name}}", business_name)
 
-    # Registration grants the free tier only — plan_id/trial_ends_at/features
-    # are upgraded to Pro by _grant_trial_upgrade() once this merchant actually
-    # connects a WhatsApp number via Embedded Signup, not before.
     free_features = _json.dumps(_build_free_features("whatsapp"))
 
     # Founder spot (is_founder/founder_year) is still reserved at registration —
@@ -2672,12 +2734,15 @@ def _register_whatsapp_merchant(
 
     signup_product = "connect" if _is_connect_host() else "portal"
 
+    # Every WhatsApp merchant starts on PhiXtra Connect (free, no AI). The AI
+    # only switches on when they start their 2-week trial or pay for a plan.
     cur2 = conn.cursor()
     cur2.execute(f"""
-        INSERT INTO tenants (name, domain, status, source_type, features, system_prompt, is_demo, ai_enabled, signup_product{founder_flags})
-        VALUES (%s, NULL, 'pending', 'whatsapp', %s, %s, %s, %s, %s{founder_vals})
+        INSERT INTO tenants (name, domain, status, source_type, features, system_prompt, is_demo, ai_enabled, signup_product, plan_id{founder_flags})
+        VALUES (%s, NULL, 'pending', 'whatsapp', %s, %s, %s, FALSE, %s,
+                COALESCE((SELECT id FROM plans WHERE slug='connect' LIMIT 1), 1){founder_vals})
         RETURNING id
-    """, (business_name, free_features, system_prompt_text, is_demo_signup, not _is_connect_host(), signup_product))
+    """, (business_name, free_features, system_prompt_text, is_demo_signup, signup_product))
     row = cur2.fetchone()
     tenant_id      = int(row[0])
     trial_ends_at  = None
@@ -2730,11 +2795,9 @@ def _register_whatsapp_merchant(
         hear_about_us=hear_about_us,
     )
 
-    # NOTE: the founder "your free year starts now" email used to fire here,
-    # but the trial/year no longer starts at registration — it starts when
-    # _grant_trial_upgrade() fires on real WhatsApp connection. Sending
-    # _send_founder_welcome_email_wa() at that point (with the connecting
-    # customer's email/name) is a follow-up, not yet wired.
+    # NOTE: the founder "your free year starts now" email used to fire here.
+    # Founders now get the same 2-week AI trial as everyone else, started
+    # from the dashboard (_start_wa_ai_trial).
 
     email_sent = _send_verify_email(email, verify_token, first_name)
 
@@ -3165,7 +3228,7 @@ def register():
         pass  # If Google is unreachable, allow through
     # ── end reCAPTCHA ───────────────────────────────────────────────────────
 
-    merchant_type   = (request.form.get("merchant_type") or "web").strip().lower()
+    merchant_type   = (request.form.get("merchant_type") or "whatsapp").strip().lower()
     first_name      = (request.form.get("first_name")      or "").strip()
     last_name       = (request.form.get("last_name")       or "").strip()
     email           = (request.form.get("email")           or "").strip().lower()
@@ -3201,7 +3264,13 @@ def register():
             hear_about_us=hear_about_us,
         )
 
-    # ── Web merchant registration continues below ───────────────────────────
+    # ── Website stores: WooCommerce merchants sign up only through the
+    # PhiXtra plugin inside WordPress (the /connect page, wp_connect),
+    # never through this form.
+    flash("Website stores sign up from the PhiXtra plugin inside WordPress. "
+          "This form is for WhatsApp businesses.", "info")
+    return redirect(url_for("portal.register"))
+
     phone_number    = (request.form.get("phone_number")    or "").strip()
     tenant_domain   = (request.form.get("tenant_domain")   or "").strip().lower()
 
@@ -5083,6 +5152,10 @@ def api_keys():
     _rperm = _require_team_permission("ai.api_keys_view")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
+    # AI page — locked on PhiXtra Connect until the merchant starts the
+    # 2-week AI trial or upgrades.
+    _gate = _require_plan_sub_feature(customer, "ai.api_keys_view", "API Keys")
+    if _gate: return _gate
     tenant_id = int(customer["tenant_id"])
     keys      = _get_api_keys(tenant_id)
     # Attach usage per key
@@ -5432,12 +5505,18 @@ def stripe_webhook():
                     UPDATE plan_subscriptions SET status='cancelled', updated_at=NOW()
                      WHERE provider_subscription_id=%s
                 """, (sub_id,))
+                # A cancelled WhatsApp merchant goes back to PhiXtra Connect
+                # (AI off); WooCommerce merchants to Free as before.
                 cur2.execute("""
                     UPDATE tenants
-                       SET plan_id=(SELECT id FROM plans WHERE slug='free' LIMIT 1)
+                       SET plan_id=COALESCE(
+                               CASE WHEN source_type='whatsapp'
+                                    THEN (SELECT id FROM plans WHERE slug='connect' LIMIT 1) END,
+                               (SELECT id FROM plans WHERE slug='free' LIMIT 1))
                      WHERE id=%s
                 """, (int(row["tenant_id"]),))
                 conn.commit(); cur2.close()
+                _sync_wa_ai_to_plan([int(row["tenant_id"])])
             cur.close(); conn.close()
 
             # Estate
@@ -6111,6 +6190,10 @@ def ai_agents():
     if not customer:
         session.clear()
         return redirect(url_for("portal.login"))
+    # AI page — locked on PhiXtra Connect until the merchant starts the
+    # 2-week AI trial or upgrades.
+    _gate = _require_plan_sub_feature(customer, "ai.agent_profiles_view", "AI Agent Profiles")
+    if _gate: return _gate
     tenant_id = int(customer["tenant_id"])
     agents = _get_agents_for_tenant(tenant_id)
     limit  = _get_ai_agents_limit(tenant_id)
@@ -6134,6 +6217,10 @@ def ai_agents_new():
     if not customer:
         session.clear()
         return redirect(url_for("portal.login"))
+    # AI page — locked on PhiXtra Connect until the merchant starts the
+    # 2-week AI trial or upgrades.
+    _gate = _require_plan_sub_feature(customer, "ai.agent_profiles_create", "AI Agent Profiles")
+    if _gate: return _gate
     tenant_id = int(customer["tenant_id"])
 
     agents = _get_agents_for_tenant(tenant_id)
@@ -6192,6 +6279,10 @@ def ai_agents_edit(agent_id: int):
     if not customer:
         session.clear()
         return redirect(url_for("portal.login"))
+    # AI page — locked on PhiXtra Connect until the merchant starts the
+    # 2-week AI trial or upgrades.
+    _gate = _require_plan_sub_feature(customer, "ai.agent_profiles_edit", "AI Agent Profiles")
+    if _gate: return _gate
     tenant_id = int(customer["tenant_id"])
 
     try:
@@ -6257,6 +6348,10 @@ def ai_agents_activate(agent_id: int):
     if not customer:
         session.clear()
         return redirect(url_for("portal.login"))
+    # AI page — locked on PhiXtra Connect until the merchant starts the
+    # 2-week AI trial or upgrades.
+    _gate = _require_plan_sub_feature(customer, "ai.agent_profiles_edit", "AI Agent Profiles")
+    if _gate: return _gate
     tenant_id = int(customer["tenant_id"])
 
     try:
@@ -6298,6 +6393,10 @@ def ai_agents_delete(agent_id: int):
     if not customer:
         session.clear()
         return redirect(url_for("portal.login"))
+    # AI page — locked on PhiXtra Connect until the merchant starts the
+    # 2-week AI trial or upgrades.
+    _gate = _require_plan_sub_feature(customer, "ai.agent_profiles_delete", "AI Agent Profiles")
+    if _gate: return _gate
     tenant_id = int(customer["tenant_id"])
 
     try:
@@ -6342,6 +6441,10 @@ def ai_instruction():
     )
     if _rperm: return _rperm
     customer = _get_customer(_customer_id())
+    # AI page — locked on PhiXtra Connect until the merchant starts the
+    # 2-week AI trial or upgrades.
+    _gate = _require_plan_sub_feature(customer, "ai.instructions_view", "System Instruction")
+    if _gate: return _gate
     gate = _require_plan_feature(customer, "feat_advanced_ai", "Growth")
     if gate: return gate
     if not customer:
@@ -12928,10 +13031,8 @@ def _save_wa_embedded_connection(tenant_id: int, phone_number_id: str, waba_id: 
               token_expires_at))
         conn.commit()
         cur.close(); conn.close()
-        try:
-            _grant_trial_upgrade(tenant_id, "whatsapp")
-        except Exception as e:
-            print("⚠️ _grant_trial_upgrade after embedded connection failed:", e)
+        # No automatic trial here any more — a WhatsApp merchant starts its
+        # 2-week AI trial itself from the dashboard (_start_wa_ai_trial).
         return True
     except Exception as e:
         print("⚠️ _save_wa_embedded_connection error:", e)
@@ -20838,6 +20939,8 @@ def catalogue_browse():
     if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
+    _gate = _require_plan_sub_feature(customer, "ecom.catalogue_view", "My Catalogue")
+    if _gate: return _gate
     merchant_id = int(customer["id"])
 
     q = (request.args.get("q") or "").strip()
@@ -20909,6 +21012,8 @@ def catalogue_category(category_id: int):
     if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
+    _gate = _require_plan_sub_feature(customer, "ecom.catalogue_view", "My Catalogue")
+    if _gate: return _gate
     merchant_id = int(customer["id"])
 
     conn = get_db_connection()
@@ -21040,6 +21145,8 @@ def catalogue_toggle(category_id: int, product_id: int):
     if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
+    _gate = _require_plan_sub_feature(customer, "ecom.catalogue_edit", "My Catalogue")
+    if _gate: return _gate
     merchant_id = int(customer["id"])
 
     conn = get_db_connection()
@@ -21101,6 +21208,8 @@ def catalogue_selections():
     if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
+    _gate = _require_plan_sub_feature(customer, "ecom.catalogue_view", "My Catalogue")
+    if _gate: return _gate
     merchant_id = int(customer["id"])
 
     conn = get_db_connection()
@@ -23314,15 +23423,14 @@ def provision_whatsapp_merchant(wa_phone: str, business_name: str) -> dict:
         }
 
     # ── Create tenant ────────────────────────────────────────────────────
-    # Registration grants the free tier only — plan_id/trial_ends_at/features
-    # are upgraded to Pro by _grant_trial_upgrade() once this merchant actually
-    # connects a WhatsApp number via Embedded Signup, not before. This chat-based
-    # "text SETUP" flow only collects business info — no channel is live yet.
+    # Like every WhatsApp sign-up, this starts on PhiXtra Connect with the AI
+    # off; the merchant starts its 2-week AI trial itself (_start_wa_ai_trial).
     free_features = _json.dumps(_build_free_features("whatsapp"))
     cur2 = conn.cursor()
     cur2.execute("""
-        INSERT INTO tenants (name, domain, status, source_type, features)
-        VALUES (%s, %s, 'active', 'whatsapp', %s)
+        INSERT INTO tenants (name, domain, status, source_type, features, ai_enabled, plan_id)
+        VALUES (%s, %s, 'active', 'whatsapp', %s, FALSE,
+                COALESCE((SELECT id FROM plans WHERE slug='connect' LIMIT 1), 1))
         RETURNING id
     """, (business_name or f"WA Business {phone[-4:]}", synth_email, free_features))
     tenant_id = int(cur2.fetchone()[0])
@@ -24984,7 +25092,7 @@ def _get_tenant_plan(tenant_id: int) -> dict:
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             SELECT t.id AS tenant_id, t.plan_period_start, t.billing_cycle, t.quota_notified_at,
-                   t.trial_ends_at,
+                   t.trial_ends_at, t.trial_granted_at, t.source_type,
                    COALESCE(p.id,                1)       AS plan_id,
                    COALESCE(p.slug,          'free')      AS plan_slug,
                    COALESCE(p.name,          'Free')      AS plan_name,
@@ -25024,7 +25132,10 @@ def _get_tenant_plan(tenant_id: int) -> dict:
         row["messages_remaining"] = remaining
         row["usage_pct"]          = pct
         row["period_start"]       = period_start
-        row["is_over_quota"]      = limit != -1 and used >= limit
+        # A plan with no AI messages (PhiXtra Connect) has no quota to run out of.
+        row["is_over_quota"]      = limit > 0 and used >= limit
+        if limit == 0:
+            row["usage_pct"] = 0
 
         # Trial days remaining
         trial_ends = row.get("trial_ends_at")
@@ -25035,6 +25146,16 @@ def _get_tenant_plan(tenant_id: int) -> dict:
         else:
             row["trial_days_left"] = 0
             row["is_trial"]        = False
+
+        # PhiXtra Connect (WhatsApp, no AI) and its one-off 2-week AI trial
+        is_wa = row.get("source_type") == "whatsapp"
+        row["is_connect_plan"]    = is_wa and row.get("plan_slug") == "connect"
+        row["ai_trial_available"] = row["is_connect_plan"] and not row.get("trial_granted_at")
+        row["ai_trial_used"]      = row["is_connect_plan"] and bool(row.get("trial_granted_at"))
+        row["is_wa_ai_trial"]     = is_wa and row["is_trial"]
+        # The daily check switches the trial off early on trial_ends_at, so
+        # the last full day the merchant has is the day before.
+        row["trial_last_day"]     = (trial_ends - timedelta(days=1)) if trial_ends else None
 
         return row
     except Exception as e:
@@ -25275,6 +25396,7 @@ def _activate_plan_subscription(tenant_id: int, plan_id: int, cycle: str,
           amount, now, period_end))
 
     conn.commit(); cur.close(); conn.close()
+    _sync_wa_ai_to_plan([tenant_id])
 
     # Record ambassador commission if this tenant was referred by an ambassador
     try:
@@ -25285,6 +25407,30 @@ def _activate_plan_subscription(tenant_id: int, plan_id: int, cycle: str,
         )
     except Exception as _ce:
         print("⚠️ ambassador commission hook error:", _ce)
+
+
+@portal_bp.route("/billing/start-ai-trial", methods=["POST"])
+@team_feature("billing.subscription_manage")
+def billing_start_ai_trial():
+    """PhiXtra Connect merchant clicks "Start my 2-week AI trial"."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("billing.subscription_manage")
+    if _rperm: return _rperm
+    customer = _get_customer(_customer_id())
+    if not customer:
+        return redirect(url_for("portal.login"))
+    if _start_wa_ai_trial(int(customer["tenant_id"])):
+        plan = _get_tenant_plan(int(customer["tenant_id"]))
+        ends = plan.get("trial_last_day")
+        ends_txt = ends.strftime("%-d %b %Y") if hasattr(ends, "strftime") else ""
+        flash(f"Your 2-week AI trial has started ✅ You're on Enterprise until {ends_txt}. "
+              "The AI is now answering your WhatsApp customers.", "success")
+    else:
+        flash("The 2-week AI trial isn't available on this account — it can only be "
+              "used once. Choose a plan to switch the AI on.", "warning")
+        return redirect(url_for("portal.billing_plans"))
+    return redirect(url_for("portal.dashboard"))
 
 
 @portal_bp.route("/billing/plan-upgrade", methods=["POST"])

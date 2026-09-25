@@ -114,15 +114,38 @@
       </div>
       <div class="usage-cycle">
         {% if current.is_trial %}
-          {% if customer.tenant_source_type == 'whatsapp' %}1-month free trial — AI WhatsApp Plan
-          {% else %}Free 30-day Pro trial{% endif %}
-          &nbsp;·&nbsp; Ends {{ current.trial_ends_at.strftime('%-d %b %Y') if current.trial_ends_at }}
+          {% if current.is_wa_ai_trial %}2-week free AI trial
+          &nbsp;·&nbsp; Last day {{ current.trial_last_day.strftime('%-d %b %Y') if current.trial_last_day }}
+          {% else %}Free 30-day Pro trial
+          &nbsp;·&nbsp; Ends {{ current.trial_ends_at.strftime('%-d %b %Y') if current.trial_ends_at }}{% endif %}
         {% else %}
           {{ current.billing_cycle | capitalize }} billing
           &nbsp;·&nbsp; Period from {{ current.period_start.strftime('%-d %b %Y') if current.period_start }}
         {% endif %}
       </div>
     </div>
+    {% if current.is_connect_plan %}
+    <div class="usage-counts"><span class="usage-denom">Free · no AI</span></div>
+  </div>
+  {% if current.ai_trial_available %}
+  <div style="background:rgba(18,183,106,0.08);border:1px solid rgba(18,183,106,0.35);border-radius:10px;
+              padding:14px 16px;font-size:13.5px;color:#030C18;margin-top:14px;display:flex;
+              justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+    <div><strong>Let AI answer your WhatsApp customers for 2 weeks, free.</strong><br>
+      Full Enterprise features for 14 days. No card needed. You can only start this once.</div>
+    <form method="POST" action="{{ url_for('portal.billing_start_ai_trial') }}" style="margin:0"
+          onsubmit="return confirm('Start your 2-week AI trial now? Your plan becomes Enterprise for 14 days and the AI starts answering your WhatsApp customers. You can only do this once.')">
+      <button type="submit" style="background:#12B76A;color:#fff;border:0;padding:10px 16px;border-radius:10px;font-weight:700;cursor:pointer">Start my 2-week AI trial</button>
+    </form>
+  </div>
+  {% else %}
+  <div style="background:#F2F4F7;border:1px solid #D0D5DD;border-radius:10px;
+              padding:12px 16px;font-size:13px;color:#344054;margin-top:14px">
+    🔒 Your 2-week AI trial has ended. AI features are locked on PhiXtra Connect — choose a plan below to switch the AI back on. Your AI settings are saved.
+  </div>
+  {% endif %}
+</div>
+{% else %}
     <div class="usage-counts">
       <span class="usage-num">{{ current.messages_used }}</span>
       <span class="usage-denom"> / {{ current.ai_messages_limit if current.ai_messages_limit != -1 else '∞' }} AI messages</span>
@@ -143,7 +166,13 @@
     </span>
   </div>
 
-  {% if current.is_trial and current.trial_days_left <= 7 %}
+  {% if current.is_wa_ai_trial %}
+  <div style="background:#FFFAEB;border:1px solid #FEC84B;border-radius:10px;
+              padding:12px 16px;font-size:13px;color:#93370D;margin-top:14px">
+    ⏳ Your AI trial has <strong>{{ current.trial_days_left }} day{{ 's' if current.trial_days_left != 1 }}</strong> left.
+    Choose a plan to keep the AI answering. If you don't, your AI features lock and you go back to PhiXtra Connect.
+  </div>
+  {% elif current.is_trial and current.trial_days_left <= 7 %}
   <div style="background:#FDF4FF;border:1px solid #E9D5FF;border-radius:10px;
               padding:12px 16px;font-size:13px;color:#6D28D9;margin-top:14px">
     ⏳ Your free Pro trial ends in <strong>{{ current.trial_days_left }} day{{ 's' if current.trial_days_left != 1 }}</strong>.
@@ -170,6 +199,7 @@
   </div>
   {% endif %}
 </div>
+{% endif %}
 
 {# ── Channel toggle ────────────────────────────────────────────────────────── #}
 {% if dual_plans %}
@@ -220,7 +250,14 @@
   <div class="plan-divider"></div>
 
   <ul class="plan-features">
-    {% if not plan.is_custom %}
+    {% set _no_ai = plan.ai_messages_limit == 0 %}
+    {% if _no_ai %}
+    <li><span class="feat-no">✗</span><span class="feat-lbl muted">No AI — your staff reply from the shared Inbox</span></li>
+    <li>
+      <span class="feat-yes">✓</span>
+      <span class="feat-lbl">Official WhatsApp Business API connection</span>
+    </li>
+    {% elif not plan.is_custom %}
     <li>
       <span class="feat-yes">✓</span>
       <span class="feat-lbl">
@@ -237,10 +274,12 @@
     </li>
     {% endif %}
 
+    {% if not _no_ai %}
     <li>
       <span class="feat-yes">✓</span>
       <span class="feat-lbl">Automated discount negotiation</span>
     </li>
+    {% endif %}
 
     {% if plan.channel_mode == 'dual' %}
     <li>
@@ -281,7 +320,7 @@
       <span class="feat-lbl">{{ support_map.get(plan.slug, 'Help Center support') }}</span>
     </li>
 
-    {% if not plan.is_custom %}
+    {% if not plan.is_custom and not _no_ai %}
     <li>
       <span class="feat-yes">✓</span>
       <span class="feat-lbl">Overage: ₦{{ plan.overage_per_msg_ngn|int }}/msg</span>
@@ -294,7 +333,7 @@
     <span class="btn-upgrade btn-current">Current plan</span>
     {% elif plan.is_custom %}
     <a href="mailto:sales@phixtra.com?subject=Custom%20plan%20enquiry" class="btn-upgrade btn-upgrade-outline">Talk to Sales</a>
-    {% elif plan.slug == 'free' %}
+    {% elif plan.slug in ('free', 'connect') %}
     <span class="btn-upgrade btn-upgrade-outline" style="cursor:default">Downgrade</span>
     {% elif is_popular %}
     <button type="button" onclick="openUpgradeModal('{{ plan.slug }}','{{ plan.name }}',{{ plan.price_ngn }},{{ plan.price_usd }},{{ plan.annual_discount_pct }})"

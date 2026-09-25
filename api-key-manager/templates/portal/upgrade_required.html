@@ -49,12 +49,27 @@
   <div class="upgrade-card">
 
     <div class="upgrade-icon">🔒</div>
+    {% if ai_trial_used %}
+    <div class="upgrade-title">Your 2-week AI trial has ended</div>
+    <div class="upgrade-sub">
+      <strong>{{ feature_label }}</strong> is locked on PhiXtra Connect. The AI has
+      stopped answering your WhatsApp customers, but your staff can still reply
+      from the Inbox. Your AI settings are saved and come back as soon as you upgrade.
+    </div>
+    {% elif ai_trial_available %}
+    <div class="upgrade-title">Try this free for 2 weeks</div>
+    <div class="upgrade-sub">
+      <strong>{{ feature_label }}</strong> is an AI feature, not included in
+      PhiXtra Connect. Start your 2-week AI trial to use it free, or choose a plan.
+    </div>
+    {% else %}
     <div class="upgrade-title">Upgrade to unlock this feature</div>
     <div class="upgrade-sub">
       <strong>{{ feature_label }}</strong> is not included in your current
       {% if is_trial %}trial{% endif %} plan.
       Upgrade to <strong>{{ min_plan_name }}</strong> or above to access it.
     </div>
+    {% endif %}
 
     <div class="upgrade-badge">
       ✦ Available on {{ min_plan_name }} and above
@@ -68,8 +83,16 @@
     <div class="upgrade-divider"></div>
 
     <div class="upgrade-actions">
+      {% if ai_trial_available %}
+      <form method="POST" action="{{ url_for('portal.billing_start_ai_trial') }}" style="margin:0"
+            onsubmit="return confirm('Start your 2-week AI trial now? Your plan becomes Enterprise for 14 days and the AI starts answering your WhatsApp customers. You can only do this once.')">
+        <button type="submit" class="btn-upgrade-main" style="width:100%;border:0;cursor:pointer;background:#12B76A">
+          Start my 2-week AI trial
+        </button>
+      </form>
+      {% endif %}
       <a href="{{ url_for('portal.billing_plans') }}" class="btn-upgrade-main">
-        View Plans &amp; Upgrade
+        {% if ai_trial_used %}Upgrade to unlock{% else %}View Plans &amp; Upgrade{% endif %}
       </a>
       <a href="javascript:history.back()" class="btn-upgrade-back">
         ← Go back

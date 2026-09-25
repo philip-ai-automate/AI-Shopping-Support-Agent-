@@ -3274,6 +3274,51 @@ def ensure_portal_tables():
                    AND stage IN ('qualified','proposal_sent','negotiating','won')
             """)
 
+        # ── PhiXtra Connect plan (2026-09-25) ────────────────────────────
+        # The free, no-AI plan every WhatsApp merchant starts on and falls back
+        # to when the 2-week AI trial ends unpaid. Built from the Free plan's
+        # columns + grants minus every AI key and the Ecommerce pages (those
+        # are for WooCommerce merchants). Free itself becomes the
+        # WooCommerce-only fallback (WooCommerce trials still end there).
+        # Seeded once — deleting it later won't bring it back.
+        _seed_plans_once(cur, ["connect"], """
+            INSERT INTO plans
+                (slug, name, price_ngn, price_usd, ai_messages_limit, ai_agents_limit,
+                 broadcasts_limit, products_limit, data_sources_limit,
+                 feat_crm, feat_advanced_ai, feat_integrations, feat_broadcasts,
+                 feat_full_reports, feat_multi_agents, overage_per_msg_ngn,
+                 overage_per_msg_usd, is_active, sort_order, annual_discount_pct,
+                 feat_visual_match, feat_fw_checkout, feat_email_campaigns,
+                 staff_limit, channel_mode, is_custom)
+            SELECT 'connect', 'PhiXtra Connect', 0, 0, 0, ai_agents_limit,
+                   broadcasts_limit, products_limit, data_sources_limit,
+                   feat_crm, FALSE, feat_integrations, feat_broadcasts,
+                   feat_full_reports, feat_multi_agents, 0, 0, TRUE, -1,
+                   annual_discount_pct, FALSE, feat_fw_checkout, feat_email_campaigns,
+                   staff_limit, 'whatsapp', FALSE
+              FROM plans WHERE slug='free'
+            ON CONFLICT (slug) DO NOTHING;
+
+            INSERT INTO plan_feature_grants (plan_id, feature_key)
+            SELECT (SELECT id FROM plans WHERE slug='connect'), g.feature_key
+              FROM plan_feature_grants g
+             WHERE g.plan_id = (SELECT id FROM plans WHERE slug='free')
+               AND g.feature_key NOT LIKE 'ai.%'
+               AND g.feature_key NOT LIKE 'woo.%'
+               AND g.feature_key NOT LIKE 'ecom.%'
+               AND g.feature_key NOT IN ('reports.usage', 'inbox.resolve', 'inbox.takeover',
+                                         'dashboard.handoff_handled', 'wa.handoff_reports_view')
+            ON CONFLICT DO NOTHING;
+
+            UPDATE plans SET channel_mode='woocommerce' WHERE slug='free';
+        """)
+
+        # Trial reminder emails (3 days left / ends today / ended) — one of
+        # each per business, so a restart or re-run never double-sends.
+        for _col in ("trial_reminder_3d_at", "trial_reminder_0d_at", "trial_ended_email_at"):
+            if not _column_exists(cur, "tenants", _col):
+                cur.execute(f"ALTER TABLE tenants ADD COLUMN {_col} TIMESTAMPTZ")
+
         # Anything a backfill above granted this run is now "seen" — never
         # re-granted on a later start (see _GRANT_ONCE_SQL).
         cur.execute("""

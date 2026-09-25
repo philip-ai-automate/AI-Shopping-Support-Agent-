@@ -163,7 +163,63 @@ a.act-row:hover .act-text{ text-decoration:underline }
    PLAN / QUOTA BANNER — an AI-message allowance, meaningless on
    PhiXtra Connect where every plan is free and unlimited.
 ═══════════════════════════════════════════════════════════════ #}
-{% if not is_connect_host %}
+{% if not is_connect_host and plan_info.ai_trial_available %}
+{# PhiXtra Connect, trial not used yet — offer the one-off 2-week AI trial #}
+<div style="padding:16px 18px;margin-bottom:18px;border-radius:14px;
+            background:rgba(18,183,106,0.08);border:1px solid rgba(18,183,106,0.35);">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+    <div>
+      <div style="font-size:15px;font-weight:800;color:#030C18">Let AI answer your WhatsApp customers for 2 weeks, free</div>
+      <div style="font-size:13px;color:#475467;margin-top:2px">Full Enterprise features for 14 days. No card needed. You can only start this once.</div>
+    </div>
+    <button type="button" onclick="document.getElementById('aiTrialConfirm').hidden=false;this.hidden=true"
+            style="background:#12B76A;color:#fff;border:0;padding:10px 16px;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;white-space:nowrap">
+      Start my 2-week AI trial
+    </button>
+  </div>
+  <div id="aiTrialConfirm" hidden style="margin-top:14px;padding:14px 16px;background:#fff;border:1px solid #E4E7EC;border-radius:12px;max-width:520px">
+    <div style="font-weight:800;color:#030C18;margin-bottom:6px">Start your 2-week AI trial?</div>
+    <ul style="margin:0 0 12px;padding-left:18px;color:#475467;font-size:13.5px;line-height:1.6">
+      <li>Your plan becomes Enterprise for 14 days.</li>
+      <li>The AI starts answering your WhatsApp customers straight away.</li>
+      <li>After 14 days you go back to PhiXtra Connect unless you choose a plan. We'll email you before it ends.</li>
+    </ul>
+    <form method="POST" action="{{ url_for('portal.billing_start_ai_trial') }}" style="display:flex;gap:8px;flex-wrap:wrap">
+      <button type="submit" style="background:#12B76A;color:#fff;border:0;padding:9px 16px;border-radius:10px;font-weight:700;cursor:pointer">Start trial</button>
+      <button type="button" onclick="location.reload()" style="background:#fff;color:#030C18;border:1px solid #E4E7EC;padding:9px 16px;border-radius:10px;font-weight:700;cursor:pointer">Not now</button>
+    </form>
+  </div>
+</div>
+{% elif not is_connect_host and plan_info.ai_trial_used %}
+{# PhiXtra Connect after the trial — AI features locked until they upgrade #}
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
+            padding:14px 18px;margin-bottom:18px;border-radius:14px;
+            background:#F2F4F7;border:1px solid #D0D5DD;">
+  <div style="display:flex;align-items:center;gap:10px">
+    <span style="font-size:18px">🔒</span>
+    <div>
+      <div style="font-size:14px;font-weight:700;color:#030C18">Your 2-week AI trial has ended — AI features are locked</div>
+      <div style="font-size:13px;color:#475467">You're on PhiXtra Connect. Your staff can still reply from the Inbox. Upgrade to switch the AI back on — your AI settings are saved.</div>
+    </div>
+  </div>
+  <a href="{{ url_for('portal.billing_plans') }}" style="display:inline-block;background:#12B76A;color:#fff;padding:9px 16px;border-radius:10px;text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap">Upgrade to unlock →</a>
+</div>
+{% elif not is_connect_host and plan_info.is_wa_ai_trial %}
+{# During the 2-week AI trial — countdown always visible #}
+{% set _dl = plan_info.trial_days_left | default(0) %}
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
+            padding:14px 18px;margin-bottom:18px;border-radius:14px;
+            background:rgba(247,144,9,0.08);border:1px solid rgba(247,144,9,0.35);">
+  <div style="display:flex;align-items:center;gap:10px">
+    <span style="font-size:18px">⏳</span>
+    <div>
+      <div style="font-size:14px;font-weight:700;color:#93370D">AI trial: {{ _dl }} day{{ '' if _dl == 1 else 's' }} left (ends {{ plan_info.trial_last_day.strftime('%-d %b %Y') }})</div>
+      <div style="font-size:13px;color:#475467">Choose a plan to keep the AI answering. If you don't, your AI features lock when the trial ends and you go back to PhiXtra Connect.</div>
+    </div>
+  </div>
+  <a href="{{ url_for('portal.billing_plans') }}" style="display:inline-block;background:#12B76A;color:#fff;padding:9px 16px;border-radius:10px;text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap">Choose a plan →</a>
+</div>
+{% elif not is_connect_host %}
 {% set _pct = plan_info.usage_pct | default(0) %}
 {% set _used = plan_info.messages_used | default(0) %}
 {% set _limit = plan_info.ai_messages_limit | default(100) %}

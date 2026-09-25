@@ -5217,11 +5217,24 @@ def admin_plans_edit(plan_id: int):
                                 session.get("portal_admin_permissions", {}).get("plans", {}).get("delete"))))
 
 
-# Plans the system itself relies on: an expired trial / lapsed plan drops to
-# 'free' (wa_plan_reset.py, portal_routes.py) and the WooCommerce trial
-# grants 'pro' (_grant_trial_upgrade). Deleting either breaks those steps.
-SYSTEM_PLAN_SLUGS = {"free": "Merchants drop to this plan when a trial or plan ends",
-                     "pro":  "New WooCommerce sign-ups get this plan as their free trial"}
+# Plans the system itself relies on (wa_plan_reset.py, portal_routes.py):
+# every WhatsApp sign-up starts on 'connect' and drops back to it when the
+# 2-week AI trial or a plan ends; WooCommerce merchants drop to 'free'; both
+# trials grant 'pro'. Deleting any of them breaks those steps.
+SYSTEM_PLAN_SLUGS = {"connect": "Every WhatsApp sign-up starts here, and WhatsApp trials and plans end here",
+                     "free":    "WooCommerce merchants drop to this plan when a trial or plan ends",
+                     "pro":     "The 2-week WhatsApp AI trial and the WooCommerce trial use this plan"}
+
+
+def _sync_wa_ai_to_plan_sql(cur, where_sql: str, params) -> None:
+    """Same rule as portal_routes._sync_wa_ai_to_plan: a WhatsApp merchant's
+    AI is off on PhiXtra Connect and on for any other plan."""
+    cur.execute(f"""
+        UPDATE tenants t
+           SET ai_enabled = (p.slug IS DISTINCT FROM 'connect')
+          FROM plans p
+         WHERE p.id = t.plan_id AND t.source_type = 'whatsapp' AND {where_sql}
+    """, params)
 PLAN_DELETE_BACKUP_DIR = "/root/backups/plan_deletes"
 
 
@@ -5281,6 +5294,7 @@ def admin_plans_delete(plan_id: int):
         cur2 = conn.cursor()
         if moved:
             cur2.execute("UPDATE tenants SET plan_id=%s WHERE plan_id=%s", (target["id"], plan_id))
+            _sync_wa_ai_to_plan_sql(cur2, "t.id = ANY(%s)", ([t["id"] for t in moved],))
         cur2.execute("UPDATE plans SET parent_plan_id=NULL WHERE parent_plan_id=%s", (plan_id,))
         cur2.execute("DELETE FROM plans WHERE id=%s", (plan_id,))   # feature grants cascade
         conn.commit()
@@ -5350,9 +5364,14 @@ def admin_plans_assign(tenant_id: int):
     cur  = conn.cursor()
     cur.execute("""
         UPDATE tenants
-        SET plan_id=%s, billing_cycle=%s, plan_period_start=%s, quota_notified_at=NULL
+        SET plan_id=%s, billing_cycle=%s, plan_period_start=%s, quota_notified_at=NULL,
+            trial_ends_at=NULL
         WHERE id=%s
     """, (plan_id, billing_cycle, _d.today(), tenant_id))
+    # An admin-assigned plan is a deliberate plan, not a trial — clearing
+    # trial_ends_at stops the daily check moving them back when an old
+    # trial date passes.
+    _sync_wa_ai_to_plan_sql(cur, "t.id = %s", (tenant_id,))
     conn.commit()
     cur.close(); conn.close()
     insert_audit_log(action="plan_assign", admin_username=_admin_user(),
