@@ -2118,6 +2118,7 @@ def credit_packages():
         name        = (request.form.get("name")        or "").strip()
         credits     = int(request.form.get("credits")  or 0)
         price_pence = int(float(request.form.get("price_gbp") or 0) * 100)
+        price_ngn   = int(float(request.form.get("price_ngn") or 0)) or None
         vat_rate    = float(request.form.get("vat_rate")   or 20.0)
         is_active = request.form.get("is_active") == "on"
         sort_order  = int(request.form.get("sort_order")   or 0)
@@ -2134,9 +2135,9 @@ def credit_packages():
         else:
             cur2 = conn.cursor()
             cur2.execute("""
-                INSERT INTO credit_packages (name, credits, price_pence, vat_rate, is_active, sort_order, features, package_type, billing_period)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                (name, credits, price_pence, vat_rate, is_active, sort_order, features_json, package_type, billing_period))
+                INSERT INTO credit_packages (name, credits, price_pence, price_ngn, vat_rate, is_active, sort_order, features, package_type, billing_period)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                (name, credits, price_pence, price_ngn, vat_rate, is_active, sort_order, features_json, package_type, billing_period))
             conn.commit()
             cur2.close()
             flash("Top-up added.", "success")
@@ -2213,6 +2214,7 @@ def credit_packages_edit(pkg_id: int):
     name        = (request.form.get("name")        or "").strip()
     credits     = int(request.form.get("credits")  or 0)
     price_pence = int(float(request.form.get("price_gbp") or 0) * 100)
+    price_ngn   = int(float(request.form.get("price_ngn") or 0)) or None
     vat_rate    = float(request.form.get("vat_rate")   or 20.0)
     is_active = request.form.get("is_active") == "on"
     sort_order  = int(request.form.get("sort_order")   or 0)
@@ -2230,11 +2232,11 @@ def credit_packages_edit(pkg_id: int):
     cur = conn.cursor()
     cur.execute("""
         UPDATE credit_packages
-        SET name=%s, credits=%s, price_pence=%s, vat_rate=%s,
+        SET name=%s, credits=%s, price_pence=%s, price_ngn=%s, vat_rate=%s,
             is_active=%s, sort_order=%s, features=%s,
             package_type=%s, billing_period=%s
         WHERE id=%s""",
-        (name, credits, price_pence, vat_rate, is_active, sort_order, features_json,
+        (name, credits, price_pence, price_ngn, vat_rate, is_active, sort_order, features_json,
          package_type_e, billing_period_e, pkg_id))
     conn.commit()
     cur.close(); conn.close()

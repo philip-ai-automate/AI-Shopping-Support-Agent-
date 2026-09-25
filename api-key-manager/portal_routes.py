@@ -5446,7 +5446,8 @@ def billing():
                            active_sub=active_sub,
                            saved_methods=saved_methods,
                            design_packs=design_packs,
-                           design_balance=design_balance)
+                           design_balance=design_balance,
+                           fw_ready=_fw_ok())
 
 
 @portal_bp.route("/billing/checkout", methods=["POST"])
@@ -5548,6 +5549,122 @@ def billing_checkout():
     cur.close(); conn.close()
 
     return redirect(sess.url)
+
+
+@portal_bp.route("/billing/checkout-ngn", methods=["POST"])
+@team_feature("billing.credits_manage")
+def billing_checkout_ngn():
+    """Buy a top-up in naira through Flutterwave (2026-09-25). The business
+    picks this or the £ card button on the billing page; only top-ups with
+    a naira price (credit_packages.price_ngn) offer it."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("billing.credits_manage")
+    if _rperm: return _rperm
+    if not _fw_ok():
+        flash("Naira payments are not configured yet. Contact support.", "warning")
+        return redirect(url_for("portal.billing"))
+
+    pkg_id   = int(request.form.get("package_id") or 0)
+    customer = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM credit_packages WHERE id=%s AND is_active=TRUE AND price_ngn > 0", (pkg_id,))
+    pkg = cur.fetchone()
+    if not pkg:
+        cur.close(); conn.close()
+        flash("That top-up isn't available in naira.", "danger")
+        return redirect(url_for("portal.billing"))
+    amount_ngn = int(pkg["price_ngn"])
+    inv_num = next_invoice_number()
+    cur2 = conn.cursor()
+    cur2.execute("""
+        INSERT INTO invoices (invoice_number, tenant_id, customer_id, package_id, credits,
+                              amount_pence, vat_pence, currency, status, payment_provider)
+        VALUES (%s, %s, %s, %s, %s, %s, 0, 'ngn', 'pending', 'flutterwave') RETURNING id""",
+        (inv_num, tenant_id, int(customer["id"]), pkg_id, int(pkg["credits"]), amount_ngn * 100))
+    invoice_id = cur2.fetchone()[0]
+    import time as _time
+    tx_ref = f"PXTOP-{invoice_id}-{int(_time.time())}"
+    cur2.execute("UPDATE invoices SET fw_tx_ref=%s WHERE id=%s", (tx_ref, invoice_id))
+    conn.commit()
+    cur2.close(); cur.close(); conn.close()
+
+    is_designs = pkg.get("package_type") == "design_topup"
+    import requests as _req
+    try:
+        resp = _req.post(
+            "https://api.flutterwave.com/v3/payments",
+            headers=_fw_headers(),
+            json={
+                "tx_ref": tx_ref,
+                "amount": amount_ngn,
+                "currency": "NGN",
+                "redirect_url": f"{_PORTAL_BASE_URL}/billing/topup-ngn/callback",
+                "customer": {"email": customer["email"],
+                             "name": f"{customer.get('first_name','')} {customer.get('last_name','')}".strip()},
+                "customizations": {"title": "PhiXtra top-up",
+                                   "description": f"{pkg['credits']} extra AI designs" if is_designs else f"{pkg['credits']} PhiXtra credits"},
+                "meta": {"invoice_id": str(invoice_id), "tenant_id": str(tenant_id)},
+            },
+            timeout=15,
+        )
+        data = resp.json()
+        if data.get("status") == "success":
+            return redirect(data["data"]["link"])
+        print("FW top-up init error:", data)
+        flash("Payment couldn't be started. Please try again.", "danger")
+    except Exception as e:
+        print("⚠️ billing_checkout_ngn FW error:", e)
+        flash("Could not reach the payment provider. Please try again.", "danger")
+    return redirect(url_for("portal.billing"))
+
+
+def _verify_fw_topup(transaction_id: str, tx_ref: str) -> tuple:
+    """Asks Flutterwave whether this naira top-up really was paid, in full,
+    for the invoice named in tx_ref. Returns (invoice_id or None, reason)."""
+    import requests as _req
+    m = _re.match(r"^PXTOP-(\d+)-\d+$", tx_ref or "")
+    if not m or not transaction_id:
+        return None, "missing reference"
+    invoice_id = int(m.group(1))
+    try:
+        resp = _req.get(f"https://api.flutterwave.com/v3/transactions/{transaction_id}/verify",
+                        headers=_fw_headers(), timeout=15)
+        data = resp.json()
+    except Exception as e:
+        return None, f"verify failed: {e}"
+    txn = data.get("data") or {}
+    if data.get("status") != "success" or txn.get("status") != "successful":
+        return None, "not successful"
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT amount_pence, currency, fw_tx_ref FROM invoices WHERE id=%s", (invoice_id,))
+    inv = cur.fetchone()
+    cur.close(); conn.close()
+    if not inv or inv.get("fw_tx_ref") != tx_ref or txn.get("tx_ref") != tx_ref:
+        return None, "reference mismatch"
+    if (txn.get("currency") or "").upper() != "NGN" or float(txn.get("amount") or 0) < int(inv["amount_pence"]) / 100:
+        return None, "amount or currency mismatch"
+    return invoice_id, "ok"
+
+
+@portal_bp.route("/billing/topup-ngn/callback")
+@public_route
+def billing_topup_ngn_callback():
+    """Flutterwave sends the business back here after paying in naira."""
+    if request.args.get("status") not in ("successful", "completed"):
+        flash("Payment was not completed. Nothing was charged.", "warning")
+        return redirect(url_for("portal.billing"))
+    invoice_id, reason = _verify_fw_topup(request.args.get("transaction_id", ""), request.args.get("tx_ref", ""))
+    if not invoice_id:
+        print("⚠️ NGN top-up verify failed:", reason, request.args.get("tx_ref"))
+        flash("We couldn't confirm the payment yet. If money left your account, it will show within a few minutes, or contact support.", "warning")
+        return redirect(url_for("portal.billing"))
+    _fulfil_topup_invoice(invoice_id, "flutterwave", request.args.get("tx_ref"))
+    flash("Payment received. Your top-up has been added.", "success")
+    return redirect(url_for("portal.billing"))
 
 
 @portal_bp.route("/stripe/webhook", methods=["POST"])
@@ -5736,19 +5853,28 @@ def stripe_webhook():
 
     # ── Credit package checkout (existing flow) ───────────────────────────────
     invoice_id  = int(meta.get("invoice_id")  or 0)
-    tenant_id   = int(meta.get("tenant_id")   or 0)
-    customer_id = int(meta.get("customer_id") or 0)
-    credits     = int(meta.get("credits")     or 0)
-    vat_pence   = int(meta.get("vat_pence")   or 0)
-    pi          = sess_obj.get("payment_intent")
+    _fulfil_topup_invoice(invoice_id, "stripe", sess_obj.get("payment_intent"))
+    return "ok", 200
 
+
+def _fulfil_topup_invoice(invoice_id: int, provider: str, paid_ref: str) -> bool:
+    """Gives a business what a paid top-up invoice bought — AI-message
+    credits, or (package_type 'design_topup') extra AI designs — marks the
+    invoice paid, makes the PDF and emails the receipt. Shared by the
+    Stripe webhook (card, £) and the Flutterwave callback/webhook (₦,
+    2026-09-25). Safe to call twice: an invoice already paid is skipped.
+    Returns True if this call did the work."""
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT * FROM invoices WHERE id=%s", (invoice_id,))
+    cur.execute("SELECT * FROM invoices WHERE id=%s FOR UPDATE", (invoice_id,))
     inv = cur.fetchone()
     if not inv or inv.get("status") == "paid":
         cur.close(); conn.close()
-        return "ok", 200
+        return False
+    tenant_id   = int(inv["tenant_id"])
+    customer_id = int(inv["customer_id"])
+    credits     = int(inv.get("credits") or 0)
+    pi          = paid_ref
 
     tokens_add = credits_to_tokens(credits)
 
@@ -5806,9 +5932,14 @@ def stripe_webhook():
         kind="designs" if is_design_pack else "credits",
     )
 
-    cur2.execute("""
-        UPDATE invoices SET status='paid', stripe_payment_intent=%s, pdf_path=%s
-        WHERE id=%s""", (pi, pdf_path, invoice_id))
+    if provider == "stripe":
+        cur2.execute("""
+            UPDATE invoices SET status='paid', stripe_payment_intent=%s, pdf_path=%s, payment_provider='stripe'
+            WHERE id=%s""", (pi, pdf_path, invoice_id))
+    else:
+        cur2.execute("""
+            UPDATE invoices SET status='paid', fw_tx_ref=%s, pdf_path=%s, payment_provider=%s
+            WHERE id=%s""", (pi, pdf_path, provider, invoice_id))
     conn.commit()
     cur2.close()
 
@@ -5820,7 +5951,7 @@ def stripe_webhook():
         insert_audit_log(
             action="trial_converted_to_paid",
             tenant_id=tenant_id,
-            details={"converted_by": "stripe_webhook", "invoice": inv.get("invoice_number")},
+            details={"converted_by": f"{provider}_payment", "invoice": inv.get("invoice_number")},
         )
 
     try:
@@ -5844,7 +5975,7 @@ def stripe_webhook():
               <h2 style="color:{BRAND}">{headline}</h2>
               <p>Hi {name},</p>
               {extra_para}
-              <p>We received your payment for <b>{credits} credits</b>.</p>
+              <p>We received your payment for <b>{credits} {'extra AI designs' if is_design_pack else 'credits'}</b>.</p>
               <p>Total: <b>{money_fmt(total, inv.get('currency') or 'gbp')}</b></p>
               <p><a href="{_PORTAL_BASE_URL}/invoices"
                  style="background:{BRAND};color:#fff;padding:10px 18px;border-radius:12px;text-decoration:none;display:inline-block">
@@ -5855,7 +5986,7 @@ def stripe_webhook():
         pass
 
     cur.close(); conn.close()
-    return "ok", 200
+    return True
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -25827,6 +25958,15 @@ def billing_flutterwave_webhook():
     event    = payload.get("event", "")
     txn_data = payload.get("data", {})
     tx_ref_wh = txn_data.get("tx_ref", "")
+
+    # ── Naira top-ups (tx_ref PXTOP-<invoice>-…): backup for when the
+    # business closes the tab before Flutterwave sends them back. ─────────
+    if tx_ref_wh.startswith("PXTOP-"):
+        if event == "charge.completed":
+            invoice_id, _reason = _verify_fw_topup(str(txn_data.get("id") or ""), tx_ref_wh)
+            if invoice_id:
+                _fulfil_topup_invoice(invoice_id, "flutterwave", tx_ref_wh)
+        return "ok", 200
 
     # ── Route WhatsApp order payments (tx_ref starts with PHX-) ───────────────
     # Covers tenants who use PhiXtra's own platform Flutterwave account for

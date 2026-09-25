@@ -149,7 +149,11 @@ def calc_vat(amount_pence: int, vat_rate: float) -> int:
 
 def money_fmt(pence: int, currency: str = "gbp") -> str:
     # simple format
-    return f"£{pence/100:.2f}" if currency.lower() == "gbp" else f"{pence/100:.2f} {currency.upper()}"
+    if currency.lower() == "gbp":
+        return f"£{pence/100:.2f}"
+    if currency.lower() == "ngn":
+        return f"₦{pence/100:,.2f}"
+    return f"{pence/100:.2f} {currency.upper()}"
 
 
 # Shared by portal_admin_routes.py (sees every video) and portal_routes.py

@@ -43,6 +43,7 @@
           <td>
             <strong>{{ p.price_fmt }}</strong>
             <div class="muted">+{{ p.vat_rate or 20 }}% VAT</div>
+            {% if p.price_ngn %}<div style="margin-top:4px"><strong>₦{{ "{:,}".format(p.price_ngn) }}</strong> <span class="muted">Nigeria</span></div>{% endif %}
           </td>
           <td>
             {% if p.is_active %}
@@ -60,6 +61,7 @@
                     data-credits="{{ p.credits or 0 }}"
                     data-kind="{{ 'designs' if p.package_type == 'design_topup' else 'messages' }}"
                     data-price="{{ '%.2f' | format((p.price_pence or 0) / 100) }}"
+                    data-ngn="{{ p.price_ngn or '' }}"
                     data-vat="{{ p.vat_rate or 20 }}"
                     data-sort="{{ p.sort_order or 0 }}"
                     data-active="{{ '1' if p.is_active else '0' }}">
@@ -110,11 +112,15 @@
           <input id="{{ prefix }}_credits" type="number" name="credits" required min="1" placeholder="100"/>
         </div>
         <div class="form-group">
-          <label for="{{ prefix }}_price_gbp">Price (£)</label>
+          <label for="{{ prefix }}_price_gbp">Price for UK (£, card)</label>
           <input id="{{ prefix }}_price_gbp" type="number" step="0.01" name="price_gbp" required placeholder="10.00"/>
         </div>
         <div class="form-group">
-          <label for="{{ prefix }}_vat_rate">VAT rate (%)</label>
+          <label for="{{ prefix }}_price_ngn">Price for Nigeria (₦, Flutterwave)</label>
+          <input id="{{ prefix }}_price_ngn" type="number" step="1" min="0" name="price_ngn" placeholder="Leave empty for £ only"/>
+        </div>
+        <div class="form-group">
+          <label for="{{ prefix }}_vat_rate">VAT rate (%, £ price only)</label>
           <input id="{{ prefix }}_vat_rate" type="number" step="0.01" name="vat_rate" value="20.00"/>
         </div>
         <div class="form-group">
@@ -190,6 +196,7 @@
     document.getElementById('edit_credits').value    = d.credits;
     document.getElementById('edit_kind').value       = d.kind || 'messages';
     document.getElementById('edit_price_gbp').value  = d.price;
+    document.getElementById('edit_price_ngn').value  = d.ngn || '';
     document.getElementById('edit_vat_rate').value   = d.vat;
     document.getElementById('edit_sort_order').value = d.sort;
     document.getElementById('edit_is_active').checked = d.active === '1';

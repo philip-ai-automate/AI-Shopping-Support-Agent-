@@ -1338,6 +1338,14 @@ def ensure_portal_tables():
                     ELSE 0 END""")
         if not _column_exists(cur, "plans", "allow_own_ai_key"):
             cur.execute("ALTER TABLE plans ADD COLUMN allow_own_ai_key BOOLEAN NOT NULL DEFAULT TRUE")
+        # Top-ups can have a naira price too (paid via Flutterwave), next to
+        # the £ card price (Stripe). NULL = sold in £ only. 2026-09-25.
+        if not _column_exists(cur, "credit_packages", "price_ngn"):
+            cur.execute("ALTER TABLE credit_packages ADD COLUMN price_ngn INTEGER")
+        if not _column_exists(cur, "invoices", "fw_tx_ref"):
+            cur.execute("ALTER TABLE invoices ADD COLUMN fw_tx_ref VARCHAR(120)")
+        if not _column_exists(cur, "invoices", "payment_provider"):
+            cur.execute("ALTER TABLE invoices ADD COLUMN payment_provider VARCHAR(20)")
         # Credit Top-ups may now sell "AI designs" packs too.
         cur.execute("""SELECT pg_get_constraintdef(oid) FROM pg_constraint
                        WHERE conname='credit_packages_package_type_check'""")

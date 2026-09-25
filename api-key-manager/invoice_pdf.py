@@ -4,7 +4,12 @@ from datetime import datetime
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
-from portal_utils import money_fmt
+from portal_utils import money_fmt as _money_fmt
+
+
+def money_fmt(pence, currency="gbp"):
+    # Helvetica (the PDF font) has no ₦ sign — write "NGN" instead.
+    return _money_fmt(pence, currency).replace("₦", "NGN ")
 
 
 def ensure_invoice_dir() -> str:
