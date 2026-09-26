@@ -1,5 +1,5 @@
 """
-social_analytics.py — Social Posts › Analytics (2026-09-26).
+social_analytics.py — Social Media › Analytics (2026-09-26).
 
 Buffer keeps numbers (reach, impressions, reactions, …) for each post it
 sent, per account. We copy them into social_post_metrics so the page opens

@@ -1,9 +1,9 @@
 """
-social_workflow.py — Social Posts approval + calendar helpers (2026-09-26).
+social_workflow.py — Social Media approval + calendar helpers (2026-09-26).
 
-Approval is a per-business switch (Social Posts › Approval). When it's on,
+Approval is a per-business switch (Social Media › Approval). When it's on,
 anyone who can't approve — a team member without the "Approve or send back
-Social Posts" tick — can't send a post to Buffer. Their "Post now" /
+Social Media" tick — can't send a post to Buffer. Their "Post now" /
 "Schedule" becomes "Submit for approval": the post stays a draft with
 approval='waiting', keeping the time they picked. The account owner and
 team members with the tick are approvers; their own posts go straight out.
@@ -307,7 +307,7 @@ def notify_submitter(customer, post, decision: str, by_label: str, note: str = N
 
 def people(customer) -> list:
     """Who a post can be given to: the account owner, then every active team
-    member (invite accepted) whose role can see Social Posts.
+    member (invite accepted) whose role can see Social Media.
     [{"key", "label", "email"}]"""
     out = [{"key": f"owner:{customer['id']}",
             "label": ((customer.get("first_name") or "").strip() or "Owner") + " (owner)",

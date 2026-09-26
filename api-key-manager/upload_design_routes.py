@@ -1,5 +1,5 @@
 """
-upload_design_routes.py — Social Posts › Upload Design pages (2026-09-25).
+upload_design_routes.py — Social Media › Upload Design pages (2026-09-25).
 Rules and file work are in upload_design.py; posting goes through
 buffer_routes.create_post_from_upload like every other post.
 
@@ -37,12 +37,12 @@ PLAN_KEY = "social.posts_view"
 def _ctx():
     """(response, customer, channels). Buffer must be connected."""
     customer = _get_customer(_customer_id())
-    r = _require_plan_sub_feature(customer, PLAN_KEY, "Social Posts")
+    r = _require_plan_sub_feature(customer, PLAN_KEY, "Social Media")
     if r:
         return r, None, None
     owner = ba.tenant_owner(customer["tenant_id"])
     if not ba.is_connected(owner):
-        flash("Connect Buffer first on Integration › Buffer. Social Posts publishes through it.", "warning")
+        flash("Connect Buffer first on Integration › Buffer. Social Media publishes through it.", "warning")
         return redirect(url_for("buffer.connect")), None, None
     if request.method == "GET":
         ba.refresh_channels_if_stale(owner)
@@ -412,7 +412,7 @@ def size_guide():
     if r:
         return r
     customer = _get_customer(_customer_id())
-    r = _require_plan_sub_feature(customer, PLAN_KEY, "Social Posts")
+    r = _require_plan_sub_feature(customer, PLAN_KEY, "Social Media")
     if r:
         return r
     return render_template("portal/upload_size_guide.html", **_common(customer=customer, extra=U.GUIDE_EXTRA))

@@ -1,10 +1,10 @@
 {% extends layout_base %}
-{% block title %}Brand Kit — {{ 'PhiXtra Admin' if is_admin else 'Social Posts' }}{% endblock %}
+{% block title %}Brand Kit — {{ 'PhiXtra Admin' if is_admin else 'Social Media' }}{% endblock %}
 {% block content %}
 {% include "portal/_ai_design_css.html" %}
 <div class="ad">
   <div>
-    <div class="ad-crumb">{% if is_admin %}<a href="{{ url_for('portal_admin.social_media_posts') }}">Social Media Posts</a>{% else %}Social Posts{% endif %} › Brand Kit</div>
+    <div class="ad-crumb">{% if is_admin %}<a href="{{ url_for('portal_admin.social_media_posts') }}">Social Media Posts</a>{% else %}Social Media{% endif %} › Brand Kit</div>
     <p class="ad-title">Brand Kit</p>
     <p class="ad-sub">Tell the AI how {{ 'PhiXtra' if is_admin else 'your brand' }} looks. Every design follows it. You can change it any time.</p>
   </div>

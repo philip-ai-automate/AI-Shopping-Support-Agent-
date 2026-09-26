@@ -1,5 +1,5 @@
 {% extends "portal/base.html" %}
-{% block title %}Published — Social Posts — PhiXtra Portal{% endblock %}
+{% block title %}Published — Social Media — PhiXtra Portal{% endblock %}
 
 {% block head %}
 <style>
@@ -37,7 +37,7 @@
   {% if not account %}
   <div class="sp-panel">
     <h3>Connect Buffer first</h3>
-    <p class="sp-hint" style="margin:0">Social Posts publishes through your own Buffer account. Connect it on Integration › Buffer, then come back here.</p>
+    <p class="sp-hint" style="margin:0">Social Media publishes through your own Buffer account. Connect it on Integration › Buffer, then come back here.</p>
     <div class="sp-row"><a href="{{ url_for('buffer.connect') }}" class="btn btn-primary">Connect Buffer →</a></div>
   </div>
   {% else %}

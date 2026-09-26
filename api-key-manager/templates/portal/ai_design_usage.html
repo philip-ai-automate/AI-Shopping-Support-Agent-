@@ -1,12 +1,12 @@
 {% extends layout_base %}
-{% block title %}AI Design Usage — {{ 'PhiXtra Admin' if is_admin else 'Social Posts' }}{% endblock %}
+{% block title %}AI Design Usage — {{ 'PhiXtra Admin' if is_admin else 'Social Media' }}{% endblock %}
 {% block content %}
 {% include "portal/_ai_design_css.html" %}
 {% set action_labels = {'create': 'Created designs', 'new_set': 'Made new designs', 'rewrite': 'Rewrote words', 'ready_made': 'Ready-made layout'} %}
 {% set source_labels = {'allowance': 'Plan allowance', 'topup': 'Extra designs', 'own_key': 'Your own AI key', 'admin': 'PhiXtra admin', 'platform': 'Free rewrite', 'free': 'Free', 'none': '—'} %}
 <div class="ad">
   <div>
-    <div class="ad-crumb">{% if is_admin %}<a href="{{ url_for('portal_admin.social_media_posts') }}">Social Media Posts</a>{% else %}Social Posts{% endif %} › AI Design Usage</div>
+    <div class="ad-crumb">{% if is_admin %}<a href="{{ url_for('portal_admin.social_media_posts') }}">Social Media Posts</a>{% else %}Social Media{% endif %} › AI Design Usage</div>
     <p class="ad-title">AI Design Usage</p>
     <p class="ad-sub">{% if is_admin %}PhiXtra admin designs are unlimited.{% elif allow.own_key %}You're using your own AI key, so AI designs are unlimited.{% else %}Your {{ allow.plan_name }} plan includes {{ allow.limit }} AI designs a month. Customer-chat messages are counted separately and never used here.{% endif %}</p>
   </div>

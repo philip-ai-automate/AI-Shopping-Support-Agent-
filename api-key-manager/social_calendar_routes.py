@@ -1,5 +1,5 @@
 """
-social_calendar_routes.py — Social Posts › Overview, Calendar and Approval (2026-09-26).
+social_calendar_routes.py — Social Media › Overview, Calendar and Approval (2026-09-26).
 Rules live in social_workflow.py; sending still goes through
 buffer_routes._send_to_buffer like every other post.
 
@@ -42,11 +42,11 @@ socialcal_bp.context_processor(_inject_connect_flag)
 def _ctx():
     """After the route's own login + team-role check: plan and Buffer
     connected. Returns (response, customer)."""
-    r, customer = _gate("social.posts_view", "Social Posts")
+    r, customer = _gate("social.posts_view", "Social Media")
     if r:
         return r, None
     if not ba.is_connected(_owner(customer)):
-        flash("Connect Buffer first on Integration › Buffer. Social Posts publishes through it.", "warning")
+        flash("Connect Buffer first on Integration › Buffer. Social Media publishes through it.", "warning")
         return redirect(url_for("buffer.connect")), None
     return None, customer
 

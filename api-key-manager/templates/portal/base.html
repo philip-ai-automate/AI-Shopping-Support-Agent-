@@ -527,7 +527,7 @@
       background:no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 13 15'%3E%3Cpath d='M3.2 6.2V4.4a3.3 3.3 0 0 1 6.6 0v1.8' fill='none' stroke='%23FBBF24' stroke-width='1.8' stroke-linecap='round'/%3E%3Crect x='0.9' y='6.2' width='11.2' height='8' rx='1.8' fill='%23FBBF24'/%3E%3Ccircle cx='6.5' cy='9.7' r='1.15' fill='%23030C18'/%3E%3Crect x='5.95' y='10.2' width='1.1' height='2.2' rx='.5' fill='%23030C18'/%3E%3C/svg%3E");
     }
     .sb-link:hover .sb-lock, .sb-sub a:hover .sb-lock{opacity:1}
-    /* Waiting-count badge on a sub-menu item (Social Posts › Approval) */
+    /* Waiting-count badge on a sub-menu item (Social Media › Approval) */
     .sb-count{margin-left:auto;background:#F79009;color:#2B1700;font-size:11px;font-weight:800;line-height:1.5;
       border-radius:10px;padding:0 7px;font-variant-numeric:tabular-nums}
 
@@ -819,14 +819,14 @@
     </a>
     {% endif %}
 
-    <!-- ── Social Posts group (Buffer + AI Post Designer, 2026-09-25) — only
+    <!-- ── Social Media group (Buffer + AI Post Designer, 2026-09-25) — only
          once the business has connected its own Buffer on Integration › Buffer -->
     {% if buffer_connected %}
     {% set _social_group = request.endpoint in (social_menu_endpoints or ()) %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _social_group %}open{% endif %}" onclick="sbToggle(this)">
         <span class="sb-gtitle">
-          <span class="sb-icon">📣</span> Social Posts
+          <span class="sb-icon">📣</span> Social Media
           {% if 'social.posts_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </span>
         <span class="sb-arrow">▾</span>

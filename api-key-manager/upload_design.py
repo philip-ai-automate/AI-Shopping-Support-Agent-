@@ -1,5 +1,5 @@
 """
-upload_design.py — Social Posts › Upload Design (2026-09-25). A business
+upload_design.py — Social Media › Upload Design (2026-09-25). A business
 posts its own finished images or video (made in Canva, Photoshop, by a
 designer…). No AI, nothing counted.
 

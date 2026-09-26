@@ -1,12 +1,12 @@
 {% extends layout_base %}
-{% block title %}Pick a design — {{ 'PhiXtra Admin' if is_admin else 'Social Posts' }}{% endblock %}
+{% block title %}Pick a design — {{ 'PhiXtra Admin' if is_admin else 'Social Media' }}{% endblock %}
 {% block content %}
 {% include "portal/_ai_design_css.html" %}
 {% set sel = s.selected or 0 %}
 {% set subject = (s.product.name if s.product else s.idea) or '' %}
 <div class="ad">
   <div>
-    <div class="ad-crumb">{% if is_admin %}<a href="{{ url_for('portal_admin.social_media_posts') }}">Social Media Posts</a>{% else %}Social Posts{% endif %} › <a href="{{ url_for(ep + 'new_post') }}">New Post</a> › Pick a design</div>
+    <div class="ad-crumb">{% if is_admin %}<a href="{{ url_for('portal_admin.social_media_posts') }}">Social Media Posts</a>{% else %}Social Media{% endif %} › <a href="{{ url_for(ep + 'new_post') }}">New Post</a> › Pick a design</div>
     <p class="ad-title">Pick a design</p>
     <p class="ad-sub">{{ subject[:90] }}{% if s.offer %} · {{ s.offer[:80] }}{% endif %}</p>
   </div>

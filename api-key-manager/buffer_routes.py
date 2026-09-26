@@ -2,7 +2,7 @@
 buffer_routes.py — Buffer for businesses (2026-09-25). Bring-your-own-account,
 same model as PressOne: a business that already uses Buffer pastes its own
 Buffer API key on Integration › Buffer, picks which of its Buffer social
-accounts PhiXtra may post to, then writes posts on the Social Posts page.
+accounts PhiXtra may post to, then writes posts on the Social Media page.
 PhiXtra never posts through anyone else's Buffer. PhiXtra's own Buffer is
 set up separately in admin (portal_admin_routes.buffer_channels_settings).
 
@@ -219,7 +219,7 @@ def disconnect():
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# Social Posts
+# Social Media
 # ══════════════════════════════════════════════════════════════════════════
 
 def _get_post(tenant_id: int, post_id: int):
@@ -464,8 +464,8 @@ def create_post_from_design(customer, caption: str, captions: dict, square: str,
     when = post["scheduled_for"] if action == "schedule" else None
     if action == "draft":
         insert_audit_log(action="social_post_draft_saved", tenant_id=tenant_id, details={"post_id": post["id"], "by": actor, "ai": True})
-        return True, ("Picture added to the planned draft. Find it under Social Posts › Content." if filled
-                      else "Draft saved. Find it under Social Posts › Content.")
+        return True, ("Picture added to the planned draft. Find it under Social Media › Content." if filled
+                      else "Draft saved. Find it under Social Media › Content.")
     if W.approval_needed(tenant_id):
         return True, W.hold_for_approval(customer, post, action, when, _current_actor(customer))
     status, ids, results, errors = _send_to_buffer(owner, post, usable, when)
@@ -510,8 +510,8 @@ def create_post_from_upload(customer, captions: dict, media: dict, cover: str, c
     when = post["scheduled_for"] if action == "schedule" else None
     if action == "draft":
         insert_audit_log(action="social_post_draft_saved", tenant_id=tenant_id, details={"post_id": post["id"], "by": actor, "upload": True})
-        return True, ("Picture added to the planned draft. Find it under Social Posts › Content." if filled
-                      else "Draft saved. Find it under Social Posts › Content."), post["id"]
+        return True, ("Picture added to the planned draft. Find it under Social Media › Content." if filled
+                      else "Draft saved. Find it under Social Media › Content."), post["id"]
     if W.approval_needed(tenant_id):
         return True, W.hold_for_approval(customer, post, action, when, _current_actor(customer)), post["id"]
     status, ids, results, errors = _send_to_buffer(owner, post, usable, when)
@@ -583,7 +583,7 @@ def posts():
     r = _require_login() or _require_team_permission("social.posts_view")
     if r:
         return r
-    r, customer = _gate("social.posts_view", "Social Posts")
+    r, customer = _gate("social.posts_view", "Social Media")
     if r:
         return r
     tenant_id, account, channels, channels_by_id = _list_context(customer)
@@ -639,7 +639,7 @@ def published():
     r = _require_login() or _require_team_permission("social.posts_view")
     if r:
         return r
-    r, customer = _gate("social.posts_view", "Social Posts")
+    r, customer = _gate("social.posts_view", "Social Media")
     if r:
         return r
     tenant_id, account, channels, channels_by_id = _list_context(customer)
@@ -715,7 +715,7 @@ def save_post(post_id: int = None):
     r = _require_login() or _require_team_permission(team_key)
     if r:
         return r
-    r, customer = _gate("social.posts_view", "Social Posts")
+    r, customer = _gate("social.posts_view", "Social Media")
     if r:
         return r
     tenant_id = int(customer["tenant_id"])
@@ -833,7 +833,7 @@ def cancel_post(post_id: int):
     r = _require_login() or _require_team_permission("social.posts_edit")
     if r:
         return r
-    r, customer = _gate("social.posts_view", "Social Posts")
+    r, customer = _gate("social.posts_view", "Social Media")
     if r:
         return r
     tenant_id = int(customer["tenant_id"])
@@ -863,7 +863,7 @@ def delete_post(post_id: int):
     r = _require_login() or _require_team_permission("social.posts_delete")
     if r:
         return r
-    r, customer = _gate("social.posts_view", "Social Posts")
+    r, customer = _gate("social.posts_view", "Social Media")
     if r:
         return r
     tenant_id = int(customer["tenant_id"])
@@ -899,7 +899,7 @@ def refresh_posts():
     r = _require_login() or _require_team_permission("social.posts_view")
     if r:
         return r
-    r, customer = _gate("social.posts_view", "Social Posts")
+    r, customer = _gate("social.posts_view", "Social Media")
     if r:
         return r
     n = _refresh_statuses(int(customer["tenant_id"]), limit=20)
@@ -913,7 +913,7 @@ def post_image(post_id: int):
     r = _require_login() or _require_team_permission("social.posts_view")
     if r:
         return r
-    r, customer = _gate("social.posts_view", "Social Posts")
+    r, customer = _gate("social.posts_view", "Social Media")
     if r:
         return r
     post = _get_post(int(customer["tenant_id"]), post_id)
@@ -958,7 +958,7 @@ def public_media(token: str, name: str):
 
 @buffer_bp.app_context_processor
 def _inject_buffer_menu():
-    """Social Posts appears in the side menu once Buffer is connected."""
+    """Social Media appears in the side menu once Buffer is connected."""
     try:
         if request.blueprint in (None, "portal_admin") or not session.get("portal_logged_in"):
             return {}

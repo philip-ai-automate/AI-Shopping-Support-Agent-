@@ -592,14 +592,14 @@ PLAN_FEATURE_CATALOG = {
         ("campaigns_email.segments_delete", "Delete an Email Segment"),
         ("campaigns_email.reports_view", "Reports — view"),
     ],
-    "Social Posts": [
-        ("social.posts_view",   "Social Posts — view"),
+    "Social Media": [
+        ("social.posts_view",   "Social Media — view"),
         ("social.posts_create", "Create a Social Post (post now / schedule / draft)"),
         ("social.posts_edit",   "Edit / reschedule / cancel a Social Post"),
         ("social.posts_delete", "Delete a Social Post"),
-        ("social.posts_approve", "Approve or send back Social Posts (when approval is switched on)"),
-        ("social.analytics_view", "Social Posts Analytics — view"),
-        ("social.ai_plan",      "Plan a month of Social Posts with AI (doesn't use AI designs)"),
+        ("social.posts_approve", "Approve or send back social media posts (when approval is switched on)"),
+        ("social.analytics_view", "Social Media Analytics — view"),
+        ("social.ai_plan",      "Plan a month of social media posts with AI (doesn't use AI designs)"),
         ("social.ai_designs",   "Create AI designs (uses the monthly AI design allowance)"),
         ("social.brand_kit_view", "Brand Kit — view"),
         ("social.brand_kit_edit", "Edit the Brand Kit"),
@@ -803,7 +803,7 @@ ROLE_FORM_GRID = {
          "edit": "campaigns_email.segments_edit", "delete": "campaigns_email.segments_delete"},
         {"label": "Reports", "view": "campaigns_email.reports_view"},
     ],
-    "Social Posts": [
+    "Social Media": [
         {"label": "Social Post", "view": "social.posts_view", "create": "social.posts_create",
          "edit": "social.posts_edit", "delete": "social.posts_delete", "other": ["social.posts_approve"]},
         {"label": "Analytics", "view": "social.analytics_view"},

@@ -1,11 +1,11 @@
 {% extends layout_base %}
-{% block title %}New Post — {{ 'PhiXtra Admin' if is_admin else 'Social Posts' }}{% endblock %}
+{% block title %}New Post — {{ 'PhiXtra Admin' if is_admin else 'Social Media' }}{% endblock %}
 {% block content %}
 {% include "portal/_ai_design_css.html" %}
 <div class="ad">
   <div class="ad-row ad-between">
     <div>
-      <div class="ad-crumb">{% if is_admin %}<a href="{{ url_for('portal_admin.social_media_posts') }}">Social Media Posts</a> › New post{% else %}Social Posts › New Post{% endif %}</div>
+      <div class="ad-crumb">{% if is_admin %}<a href="{{ url_for('portal_admin.social_media_posts') }}">Social Media Posts</a> › New post{% else %}Social Media › New Post{% endif %}</div>
       <p class="ad-title">New post</p>
       <p class="ad-sub">{% if is_admin %}Design a post for PhiXtra's own pages. It lands in Social Media Posts, ready to send through Buffer.{% else %}Posts go out through your Buffer account.{% endif %}</p>
     </div>

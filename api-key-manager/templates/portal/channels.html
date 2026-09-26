@@ -110,7 +110,7 @@
     </div>
   </div>
 
-  <!-- Buffer (2026-09-25) — the business's own Buffer account, for Social Posts -->
+  <!-- Buffer (2026-09-25) — the business's own Buffer account, for Social Media -->
   <div class="channel-card">
     <div class="channel-card-top">
       <div class="channel-logo" style="background:#1B1B1B">
@@ -132,7 +132,7 @@
         {{ 'Manage' if buffer_account else 'Connect Buffer' }} →
       </a>
       {% if buffer_account %}
-      <a href="{{ url_for('buffer.posts') }}" class="btn">Social Posts</a>
+      <a href="{{ url_for('buffer.posts') }}" class="btn">Social Media</a>
       {% endif %}
     </div>
   </div>

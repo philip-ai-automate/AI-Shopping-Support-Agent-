@@ -1,5 +1,5 @@
 {% extends "portal/base.html" %}
-{% block title %}Check your design — Social Posts{% endblock %}
+{% block title %}Check your design — Social Media{% endblock %}
 {% block head %}{% if processing %}<meta http-equiv="refresh" content="5">{% endif %}{% endblock %}
 {% block content %}
 {% set pill = {'ok': ('ad-p-g', '✓ Fits'), 'warn': ('ad-p-w', '⚠ May be cropped'), 'block': ('ud-p-r', '✗ Needs fixing'), 'processing': ('ad-p-b', 'Processing…')} %}
@@ -7,7 +7,7 @@
 {% set is_video = d['items'] and d['items'][0].kind == 'video' %}
 <div class="ad">
   <div>
-    <div class="ad-crumb"><a href="{{ url_for('upload.start') }}">Social Posts › Upload Design</a> › Check</div>
+    <div class="ad-crumb"><a href="{{ url_for('upload.start') }}">Social Media › Upload Design</a> › Check</div>
     <p class="ad-title">Check your design</p>
     <p class="ad-sub">Checked against every network you picked. Fix anything marked “Needs fixing”, then continue.</p>
   </div>

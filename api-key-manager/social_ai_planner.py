@@ -1,5 +1,5 @@
 """
-social_ai_planner.py — Social Posts › "Plan my month with AI" (2026-09-26).
+social_ai_planner.py — Social Media › "Plan my month with AI" (2026-09-26).
 
 The AI suggests a month of posts (day, topic, theme, a caption per network,
 call to action, and a short brief for the picture). Nothing reaches the

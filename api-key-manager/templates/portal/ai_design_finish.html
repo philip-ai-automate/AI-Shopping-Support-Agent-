@@ -1,5 +1,5 @@
 {% extends layout_base %}
-{% block title %}Finish your post — {{ 'PhiXtra Admin' if is_admin else 'Social Posts' }}{% endblock %}
+{% block title %}Finish your post — {{ 'PhiXtra Admin' if is_admin else 'Social Media' }}{% endblock %}
 {% block content %}
 {% include "portal/_ai_design_css.html" %}
 {% set services = (s.channels or [])|map(attribute='service')|unique|list %}

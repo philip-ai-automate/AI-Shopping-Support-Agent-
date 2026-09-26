@@ -2,7 +2,7 @@
 ai_design_routes.py — pages for the AI Post Designer (2026-09-25), one set
 of screens used twice:
 
-  social_bp      every business, under the Social Posts menu
+  social_bp      every business, under the Social Media menu
                  /social-posts/new, /social-posts/design/<id>…, /social-posts/brand-kit,
                  /social-posts/usage, and Integration › Your own AI key (/integrations/ai-key)
   ai_admin_bp    PhiXtra admin, from Social Media Posts
@@ -323,11 +323,11 @@ def _biz(team_key):
     if r:
         return r, None, None
     customer = _get_customer(_customer_id())
-    r = _require_plan_sub_feature(customer, PLAN_KEY, "Social Posts")
+    r = _require_plan_sub_feature(customer, PLAN_KEY, "Social Media")
     if r:
         return r, None, None
     if not ba.is_connected(ba.tenant_owner(customer["tenant_id"])):
-        flash("Connect Buffer first on Integration › Buffer. Social Posts publishes through it.", "warning")
+        flash("Connect Buffer first on Integration › Buffer. Social Media publishes through it.", "warning")
         return redirect(url_for("buffer.connect")), None, None
     ctx, customer = _business_ctx()
     return None, ctx, customer
@@ -511,7 +511,7 @@ def ai_key_disconnect():
 
 @social_bp.app_context_processor
 def _inject_social_menu():
-    """For the Social Posts side-menu group."""
+    """For the Social Media side-menu group."""
     return {"social_menu_endpoints": ("buffer.posts", "buffer.published", "social.new_post", "social.pick", "social.again",
                                       "social.finish", "social.brand_kit", "social.usage", "upload.start",
                                       "upload.check", "upload.fix", "upload.post", "upload.size_guide",

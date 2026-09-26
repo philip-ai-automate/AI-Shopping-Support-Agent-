@@ -1,5 +1,5 @@
 {% extends "portal/base.html" %}
-{% block title %}Approval — Social Posts — PhiXtra Portal{% endblock %}
+{% block title %}Approval — Social Media — PhiXtra Portal{% endblock %}
 
 {% block head %}
 <style>
@@ -64,7 +64,7 @@
     <div>
       <b>Posts need approval before they go out</b>
       <div class="ap-hint">
-        {% if required %}On. Team members who can't approve can only submit posts. The owner and anyone with the "Approve or send back Social Posts" tick in Team › Roles can approve, and their own posts go straight out.
+        {% if required %}On. Team members who can't approve can only submit posts. The owner and anyone with the "Approve or send back social media posts" tick in Team › Roles can approve, and their own posts go straight out.
         {% else %}Off. Everyone who can post sends straight to Buffer. Switch on to have posts checked first.{% endif %}
       </div>
     </div>

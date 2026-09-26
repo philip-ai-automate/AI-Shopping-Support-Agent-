@@ -1293,7 +1293,7 @@ def ensure_portal_tables():
         # the accounts re-read it once it's over 10 minutes old, so an account
         # added in Buffer later turns up without "Check connection now".
         cur.execute("ALTER TABLE buffer_accounts ADD COLUMN IF NOT EXISTS channels_checked_at TIMESTAMPTZ")
-        # A business's own Social Posts (the admin's live in social_media_posts).
+        # A business's own Social Media (the admin's live in social_media_posts).
         # channel_ids = the Buffer channels picked; buffer_post_ids maps each
         # channel id to the post Buffer created for it.
         cur.execute("""
@@ -1331,7 +1331,7 @@ def ensure_portal_tables():
         if not _column_exists(cur, "tenant_social_posts", "media"):
             cur.execute("ALTER TABLE tenant_social_posts ADD COLUMN media JSONB")
 
-        # ── Social Posts approval + calendar (2026-09-26) — see social_workflow.py.
+        # ── Social Media approval + calendar (2026-09-26) — see social_workflow.py.
         for col, typ in (("approval", "VARCHAR(12)"), ("approval_note", "TEXT"),
                          ("requested_action", "VARCHAR(10)"), ("submitted_by", "VARCHAR(255)"),
                          ("submitted_by_key", "VARCHAR(40)"), ("submitted_at", "TIMESTAMPTZ"),
@@ -1363,7 +1363,7 @@ def ensure_portal_tables():
             )
         """)
         cur.execute("CREATE INDEX IF NOT EXISTS idx_social_post_events_post ON social_post_events (tenant_id, post_id)")
-        # ── Social Posts analytics (2026-09-26) — see social_analytics.py.
+        # ── Social Media analytics (2026-09-26) — see social_analytics.py.
         # One row per post per account, holding the numbers Buffer last gave.
         # metrics = {type: value} as Buffer names them (reach, impressions, …);
         # a type missing means that network doesn't give it, not zero.
