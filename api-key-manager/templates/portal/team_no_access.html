@@ -1,0 +1,14 @@
+{% extends "portal/base.html" %}
+{% block title %}No access yet — PhiXtra Portal{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:520px;margin:48px auto;text-align:center;padding:36px 28px">
+  <div style="font-size:40px;margin-bottom:10px">🔑</div>
+  <h2 style="margin:0 0 10px">You don't have access to this yet</h2>
+  <p style="color:var(--muted);margin:0 0 22px">
+    Your role doesn't include this page. Ask your business owner to add it to your role
+    on the Team › Roles page — it will work on your next click, no need to log out.
+  </p>
+  <a class="btn" href="{{ url_for('portal.logout') }}">Log out</a>
+</div>
+{% endblock %}

@@ -125,6 +125,66 @@ def create_app():
             qs = ("?" + request.query_string.decode()) if request.query_string else ""
             return redirect(new_path + qs, code=302)
 
+    @flask_app.before_request
+    def _refresh_team_member_access():
+        """A team member's role permissions used to be copied into the session
+        once, at login — so unticking a permission, changing their role,
+        deactivating or removing them only took effect after they logged out
+        (found 2026-09-26). Re-read them on every request instead, for every
+        blueprint. Deactivated/removed → logged out straight away. A database
+        error keeps the session as it was rather than logging everyone out."""
+        from flask import session, flash, url_for
+        tm_id = session.get("team_member_id")
+        if not tm_id or request.endpoint == "static":
+            return None
+        try:
+            from db import get_db_connection
+            from portal_routes import _parse_json_maybe_role
+            conn = get_db_connection()
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("""
+                SELECT tm.is_active, tm.role_id, r.permissions
+                FROM team_members tm
+                JOIN customers c ON c.id = %s AND c.tenant_id = tm.tenant_id
+                LEFT JOIN tenant_roles r ON r.id = tm.role_id AND r.tenant_id = tm.tenant_id
+                WHERE tm.id = %s
+            """, (int(session.get("customer_id") or 0), int(tm_id)))
+            row = cur.fetchone()
+            cur.close(); conn.close()
+        except Exception as e:
+            print("⚠️ _refresh_team_member_access error:", e)
+            return None
+        if not row or not row["is_active"]:
+            session.clear()
+            flash("Your team account is no longer active. Contact your business owner.", "warning")
+            return redirect(url_for("portal.login"))
+        session["team_member_role_id"] = row["role_id"]
+        session["team_member_permissions"] = _parse_json_maybe_role(row["permissions"]) if row["role_id"] else {}
+        return None
+
+    @flask_app.context_processor
+    def _inject_staff_can_open():
+        """staff_can_open('portal.orders') for the side menu: True for the
+        account owner, and for a team member only if their role holds one of
+        the permissions that page is labelled with (feature_access.py) — the
+        same labels the page itself enforces, so the menu can never show a
+        staff member a link that just bounces them back to the Inbox."""
+        from flask import session
+        from feature_access import route_access, TEAM, TEAM_ANY
+
+        def staff_can_open(endpoint):
+            if not session.get("team_member_id"):
+                return True
+            view = flask_app.view_functions.get(endpoint)
+            kind, keys = route_access(view)
+            if kind == TEAM_ANY:
+                return True
+            if kind != TEAM:
+                return False
+            perms = session.get("team_member_permissions") or {}
+            return any(perms.get(k) for k in keys)
+        return {"staff_can_open": staff_can_open}
+
     # ── Global template context: inject current customer so every template,
     #    including base.html, can access avatar_data, first_name, etc.
     from flask import session as _session, g as _g

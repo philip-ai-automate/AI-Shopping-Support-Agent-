@@ -160,7 +160,7 @@
                   {% set key, label = row.cols[col] %}
                   {% set current = (role.permissions.get(key) if role else False) %}
                   <input type="checkbox" id="perm__{{ key }}" name="perm__{{ key }}"
-                         title="{{ label }}"
+                         title="{{ label }}" data-col="{{ col }}"
                          class="{{ 'rf-danger' if destructive_keys and key in destructive_keys else '' }}"
                          {% if current %}checked{% endif %} onchange="rfUpdateCounts()"/>
                   {% endif %}
@@ -199,6 +199,23 @@
 </div>
 
 <script>
+// Create/Edit/Delete/Other need the row's View to be any use (the page
+// won't open without it) — tick View with them, and unticking View unticks
+// the rest of the row. The server applies the same rule on save.
+document.addEventListener('change', function(e) {
+  var box = e.target;
+  if (!box.matches || !box.matches('[data-feature-row] input[type=checkbox]')) return;
+  var row = box.closest('[data-feature-row]');
+  var view = row.querySelector('input[data-col="view"]');
+  if (!view) return;
+  if (box === view && !view.checked) {
+    row.querySelectorAll('input[type=checkbox]').forEach(function(b) { b.checked = false; });
+  } else if (box !== view && box.checked) {
+    view.checked = true;
+  }
+  rfUpdateCounts();
+});
+
 function rfUpdateCounts() {
   var total = 0;
   document.querySelectorAll('[data-module]').forEach(function(mod) {

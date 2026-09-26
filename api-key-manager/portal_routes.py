@@ -62,8 +62,7 @@ def _restrict_team_members_to_inbox():
         return None
     if team_member_may_enter(current_app.view_functions.get(request.endpoint)):
         return None
-    flash("Your team account only has access to the Inbox.", "warning")
-    return redirect(url_for("portal.my_inbox"))
+    return _team_member_denied("Your role doesn't include that page.")
 
 
 # ── PhiXtra Connect: the AI-free surface (connect.phixtra.com) ─────────────
@@ -1392,6 +1391,32 @@ def _parse_role_permissions_form(form) -> dict:
     return granted
 
 
+def _add_implied_view_keys(permissions: dict) -> dict:
+    """Create/Edit/Delete/Other on a Roles row is useless without that row's
+    View — the page itself won't open (found 2026-09-26: e.g. Edit Discount
+    Settings alone bounced to the Inbox). Tick View along with them. Run
+    AFTER _cap_delegated_role_permissions so only surviving keys count."""
+    permissions = dict(permissions)
+    for key, view_key in _role_row_view_keys().items():
+        if permissions.get(key):
+            permissions[view_key] = True
+    return permissions
+
+
+def _role_row_view_keys() -> dict:
+    """{action key: its ROLE_FORM_GRID row's View key} for every row that has one."""
+    implied = {}
+    for rows in ROLE_FORM_GRID.values():
+        for row in rows:
+            view_key = row.get("view")
+            if not view_key:
+                continue
+            for k in [row.get(c) for c in ("create", "edit", "delete")] + list(row.get("other", [])):
+                if k and not k.startswith("legacy:"):
+                    implied[k] = view_key
+    return implied
+
+
 def _team_member_has_permission(feature_key: str) -> bool:
     """True if the CURRENTLY LOGGED IN actor may use this feature. The
     account owner (no team_member_id in session) always has full access —
@@ -1418,8 +1443,7 @@ def _require_team_permission(feature_key: str):
     Returns a redirect if denied, else None."""
     if _team_member_has_permission(feature_key):
         return None
-    flash("You don't have permission to do that.", "warning")
-    return redirect(url_for("portal.my_inbox"))
+    return _team_member_denied("You don't have permission to do that.")
 
 
 def _require_any_team_permission(feature_keys):
@@ -1430,8 +1454,18 @@ def _require_any_team_permission(feature_keys):
     the listed permissions to see the hub at all."""
     if any(_team_member_has_permission(k) for k in feature_keys):
         return None
-    flash("You don't have permission to do that.", "warning")
-    return redirect(url_for("portal.my_inbox"))
+    return _team_member_denied("You don't have permission to do that.")
+
+
+def _team_member_denied(message: str):
+    """Where a team member lands when a page is off-limits: the Inbox, if
+    their role can open it. If it can't (or this IS the Inbox), a plain "no
+    access" page instead — redirecting to the Inbox there looped forever
+    (found 2026-09-26 for a role without the Inbox tick)."""
+    flash(message, "warning")
+    if request.endpoint != "portal.my_inbox" and _team_member_has_permission("inbox.page"):
+        return redirect(url_for("portal.my_inbox"))
+    return render_template("portal/team_no_access.html"), 403
 
 
 # Destructive / delete-style actions. A role that can manage OTHER people's
@@ -4297,6 +4331,7 @@ def team_role_new():
 
     permissions = _parse_role_permissions_form(request.form)
     permissions = _cap_delegated_role_permissions(permissions, acting_is_owner)
+    permissions = _add_implied_view_keys(permissions)
 
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -4348,6 +4383,7 @@ def team_role_edit(role_id: int):
 
     permissions = _parse_role_permissions_form(request.form)
     permissions = _cap_delegated_role_permissions(permissions, acting_is_owner)
+    permissions = _add_implied_view_keys(permissions)
 
     conn = get_db_connection()
     cur  = conn.cursor()
@@ -6136,10 +6172,10 @@ def _get_cart_recovery_data(tenant_id: int, days: int = 30) -> dict:
         cur.execute("""
             SELECT
                 COUNT(*)                                                              AS total,
-                SUM(status = 'recovered')                                             AS recovered,
-                SUM(status = 'in_progress')                                           AS in_progress,
-                SUM(status = 'pending')                                               AS pending,
-                SUM(status = 'expired')                                               AS expired,
+                COUNT(*) FILTER (WHERE status = 'recovered')                                             AS recovered,
+                COUNT(*) FILTER (WHERE status = 'in_progress')                                           AS in_progress,
+                COUNT(*) FILTER (WHERE status = 'pending')                                               AS pending,
+                COUNT(*) FILTER (WHERE status = 'expired')                                               AS expired,
                 COALESCE(SUM(CASE WHEN status='recovered' THEN cart_value ELSE 0 END),0)
                                                                                       AS revenue_recovered,
                 COALESCE(AVG(CASE WHEN status='recovered' THEN cart_value END),0)
@@ -21595,7 +21631,7 @@ def _get_customers_list(tenant_id: int, q: str = "", page: int = 1, per_page: in
                 GROUP BY customer_phone
             ) hs ON hs.customer_phone = wml.customer_phone
             WHERE wml.tenant_id = %s {q_filter}
-            GROUP BY wml.customer_phone
+            GROUP BY wml.customer_phone, ord.order_count, ord.total_spent, hs.handoff_count
             ORDER BY last_seen DESC
             LIMIT %s OFFSET %s
         """, [tenant_id, tenant_id, tenant_id] + ([f"%{q}%"] if q else []) + [per_page, offset])
