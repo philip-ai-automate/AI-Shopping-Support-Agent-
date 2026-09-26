@@ -511,7 +511,8 @@ def ai_key_disconnect():
 def _inject_social_menu():
     """For the Social Posts side-menu group."""
     return {"social_menu_endpoints": ("buffer.posts", "social.new_post", "social.pick", "social.again",
-                                      "social.finish", "social.brand_kit", "social.usage")}
+                                      "social.finish", "social.brand_kit", "social.usage", "upload.start",
+                                      "upload.check", "upload.fix", "upload.post", "upload.size_guide")}
 
 
 # ══════════════════════════════════════════════════════════════════════════

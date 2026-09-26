@@ -1,0 +1,124 @@
+{% extends "portal/base.html" %}
+{% block title %}Check your design — Social Posts{% endblock %}
+{% block head %}{% if processing %}<meta http-equiv="refresh" content="5">{% endif %}{% endblock %}
+{% block content %}
+{% set pill = {'ok': ('ad-p-g', '✓ Fits'), 'warn': ('ad-p-w', '⚠ May be cropped'), 'block': ('ud-p-r', '✗ Needs fixing'), 'processing': ('ad-p-b', 'Processing…')} %}
+{% include "portal/_upload_css.html" %}
+{% set is_video = d['items'] and d['items'][0].kind == 'video' %}
+<div class="ad">
+  <div>
+    <div class="ad-crumb"><a href="{{ url_for('upload.start') }}">Social Posts › Upload Design</a> › Check</div>
+    <p class="ad-title">Check your design</p>
+    <p class="ad-sub">Checked against every network you picked. Fix anything marked “Needs fixing”, then continue.</p>
+  </div>
+
+  {% if processing %}
+  <div class="ad-alert info" role="status"><span class="ad-spin" style="display:inline-block;vertical-align:middle;margin-right:8px"></span>Processing your video. This page updates by itself every few seconds; you can leave and come back.</div>
+  {% endif %}
+
+  <div class="ad-panel">
+    <div class="ad-row ad-between"><h3>{{ 'Your video' if is_video else ('Your images' if d['items']|length > 1 else 'Your design') }}</h3>
+      {% if d['items'] and not is_video %}<span class="ad-hint">{{ d['items']|length }} of 10 · a carousel if more than one</span>{% endif %}</div>
+    {% for it in d['items'] %}
+    <div class="ud-file">
+      {% set tn = it.thumb if it.kind == 'video' else it.file %}
+      {% if tn %}<img class="ud-thumb" src="{{ url_for('upload.draft_media', did=d.id, name=tn) }}" alt="">{% else %}<span class="ud-thumb"></span>{% endif %}
+      <div style="min-width:0">
+        <b style="color:#030C18;word-break:break-all">{{ it.orig }}</b>
+        <div class="ud-meta">
+          <span><b>{{ it.w }} × {{ it.h }}</b> px</span><span>Shape <b>{{ it.ratio }}</b></span>
+          {% if it.kind == 'video' %}<span>Length <b>{{ fmt_dur(it.dur) }}</b></span>{% if not it.audio %}<span>No sound</span>{% endif %}{% endif %}
+          <span><b>{{ fmt_bytes(it.size) }}</b> {{ 'video' if it.kind == 'video' else (it.file.rsplit('.',1)[-1]|upper) }}</span>
+          {% if it.status == 'processing' %}<span class="ad-pill ad-p-b">{{ it.note or 'Processing…' }}</span>{% elif it.status == 'failed' %}<span class="ad-pill ud-p-r">{{ it.note }}</span>{% endif %}
+        </div>
+      </div>
+      <div class="ad-row">
+        <form method="POST" action="{{ url_for('upload.remove_item', did=d.id, item_id=it.id) }}"><button type="submit" class="btn btn-sm">Remove</button></form>
+        <label class="btn btn-sm" style="cursor:pointer">Replace<input type="file" hidden accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,.mov" data-replace="{{ it.id }}"></label>
+      </div>
+    </div>
+    {% else %}
+    <div class="ad-alert info">No files yet. Add one below.</div>
+    {% endfor %}
+    {% if not is_video and d['items']|length < 10 %}
+    <details {% if not d['items'] %}open{% endif %}><summary style="cursor:pointer;font-weight:650;font-size:13.5px">+ Add {{ 'a file' if not d['items'] else 'more images (carousel)' }}</summary>
+      <div style="margin-top:10px">
+      {% with up_id='ud-more', up_file_url=url_for('upload.add_file', did=d.id), up_done='reload', up_multi=True, up_title='Drop more images here' %}
+      {% include "portal/_upload_widget.html" %}
+      {% endwith %}
+      </div>
+    </details>
+    {% endif %}
+  </div>
+
+  <div class="ad-panel">
+    <div class="ad-row ad-between"><h3>Size check</h3>
+      <details><summary style="cursor:pointer;font-size:13px;font-weight:650">Change accounts</summary>
+        <form method="POST" action="{{ url_for('upload.networks', did=d.id) }}" class="ad" style="gap:10px;margin-top:10px">
+          <div class="ad-chips">{% for c in channels if not c.unsupported %}<label class="ad-chip"><input type="checkbox" name="channel_ids" value="{{ c.channel_id }}" {% if c.channel_id in picked_ids %}checked{% endif %}><span><span class="ad-dot" style="background:{{ c.colour }}"></span>{{ c.label }} · {{ c.title }}</span></label>{% endfor %}</div>
+          <div><button type="submit" class="btn btn-sm">Save accounts</button></div>
+        </form>
+      </details>
+    </div>
+    <div class="ud-checks">
+      {% for svc, res in results.items() %}
+      {% set fx = (d.fixes or {}).get(svc) %}
+      <div class="ud-ck">
+        <div class="ad-row" style="gap:8px"><span class="ad-dot" style="background:{{ (d.channels|selectattr('service','equalto',svc)|first).colour }}"></span><b>{{ specs[svc].label if svc in specs else svc }}</b>
+          {% if fx %}<span class="ad-pill ad-p-n">{{ {'crop': 'Cropped to ' ~ fx.ratio, 'fit': 'Borders, ' ~ fx.ratio, 'alt': 'Own version'}[fx.mode] }}</span>{% endif %}</div>
+        <div class="d">{% for l in res.lines %}{{ l }}{% if not loop.last %}<br>{% endif %}{% endfor %}</div>
+        <div class="ad-row" style="justify-content:flex-end">
+          <span class="ad-pill {{ pill[res.level][0] }}">{{ 'Fits perfectly' if res.level == 'ok' and not fx else pill[res.level][1] }}</span>
+          {% if res.fixable and svc in specs %}<a class="btn btn-sm" href="{{ url_for('upload.fix', did=d.id, service=svc) }}">{{ 'Change' if fx else ('Fix for ' ~ specs[svc].label if res.level in ('block','warn') else 'Adjust') }}</a>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <span class="ad-hint">“Needs fixing” stops posting to that network until it's fixed or unticked. “May be cropped” never stops you.</span>
+  </div>
+
+  {% if previews %}
+  <div class="ad-panel">
+    <h3>How it will look</h3>
+    <div class="ud-previews">
+      {% for p in previews %}
+      {% set m = p.item %}
+      <div class="ud-pv">
+        <div class="ud-phone">
+          <div class="top"><span class="av"></span>{{ (d.channels|selectattr('service','equalto',p.service)|first).title }}</div>
+          <div class="ud-frame" style="aspect-ratio:{{ '%.4f'|format(p.frame) }}">
+            {% set src = m.thumb if m.kind == 'video' else m.file %}
+            {% if src %}<img src="{{ url_for('upload.draft_media', did=d.id, name=src) }}" alt="Preview for {{ specs[p.service].label }}">{% endif %}
+            {% if m.kind == 'video' %}<span class="ud-play" aria-hidden="true">▶</span>{% endif %}
+            {% if p.count > 1 %}<span class="ud-badge">1/{{ p.count }}</span>{% endif %}
+          </div>
+        </div>
+        {{ specs[p.service].label }}{% if (m.w / m.h) - p.frame > 0.02 or p.frame - (m.w / m.h) > 0.02 %} <span class="ad-pill ad-p-w" style="margin-top:2px">edges trimmed</span>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <span class="ad-hint">Previews show the frame each feed uses. Tap-to-expand views on phones show the full image.</span>
+  </div>
+  {% endif %}
+
+  <div class="ad-row">
+    {% if can_continue %}<a class="btn btn-primary" href="{{ url_for('upload.post', did=d.id) }}">Continue to captions →</a>
+    {% else %}<span class="btn btn-primary ad-off" aria-disabled="true">Continue to captions →</span><span class="ad-hint">{% if processing %}Waiting for processing to finish.{% else %}Fix the networks marked “Needs fixing”, or untick them.{% endif %}</span>{% endif %}
+    <a class="btn btn-ghost" href="{{ url_for('upload.start') }}">Start over</a>
+  </div>
+</div>
+<script>
+(function(){
+  document.querySelectorAll('input[data-replace]').forEach(function(inp){
+    inp.addEventListener('change', function(){
+      if (!inp.files[0]) return;
+      var fd = new FormData(); fd.append('file', inp.files[0]);
+      var lbl = inp.parentNode; lbl.firstChild.textContent = 'Uploading…';
+      fetch({{ url_for('upload.add_file', did=d.id)|tojson }} + '?replace=' + encodeURIComponent(inp.dataset.replace), {method:'POST', body: fd, credentials:'same-origin'})
+        .then(function(r){ return r.json(); }).then(function(j){ if (!j.ok) alert(j.error); window.location.reload(); })
+        .catch(function(){ lbl.firstChild.textContent = 'Replace'; });
+    });
+  });
+})();
+</script>
+{% endblock %}

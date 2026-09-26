@@ -1322,6 +1322,25 @@ def ensure_portal_tables():
         if not _column_exists(cur, "tenant_social_posts", "captions"):
             cur.execute("ALTER TABLE tenant_social_posts ADD COLUMN captions JSONB")
 
+        # ── Upload Design (2026-09-25): posts made from the business's own
+        # images / videos. media = {service: [{"kind": "image"|"video", "file": name}]}
+        if not _column_exists(cur, "tenant_social_posts", "media"):
+            cur.execute("ALTER TABLE tenant_social_posts ADD COLUMN media JSONB")
+        # A design being uploaded and checked, before it becomes a post.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS upload_drafts (
+                id          SERIAL PRIMARY KEY,
+                tenant_id   INTEGER NOT NULL,
+                channels    JSONB NOT NULL DEFAULT '[]',
+                items       JSONB NOT NULL DEFAULT '[]',
+                fixes       JSONB NOT NULL DEFAULT '{}',
+                post_id     INTEGER,
+                created_by  VARCHAR(255),
+                created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_upload_drafts_tenant ON upload_drafts (tenant_id, created_at DESC)")
+
         # ── AI Post Designer (2026-09-25) ──────────────────────────────────
         # Plans: a separate monthly AI design allowance that never touches the
         # AI-message (chat) allowance, and whether a business may connect its

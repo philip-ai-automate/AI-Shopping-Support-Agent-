@@ -1,0 +1,126 @@
+{% extends "portal/base.html" %}
+{% block title %}Fix for {{ spec.label }} — Social Posts{% endblock %}
+{% block content %}
+{% include "portal/_upload_css.html" %}
+{% set cur_mode = fx.mode if fx else 'crop' %}
+{% set cur_ratio = fx.ratio if fx and fx.ratio else ratios[0] %}
+<div class="ad">
+  <div>
+    <div class="ad-crumb"><a href="{{ url_for('upload.check', did=d.id) }}">← Back to the check</a></div>
+    <p class="ad-title">Fix for {{ spec.label }}</p>
+    <p class="ad-sub">Only {{ spec.label }} changes. Other networks keep what they have, and your original file is never changed.</p>
+  </div>
+  <div class="ad-alert info">{% for l in result.lines %}{{ l }}{% if not loop.last %}<br>{% endif %}{% endfor %}</div>
+
+  <form method="POST" class="ad" id="ud-fix">
+    <input type="hidden" name="crops" id="ud-crops" value="{{ (fx.crops if fx and fx.crops else {})|tojson|forceescape }}">
+    <div class="ad-two" style="grid-template-columns:1.2fr 1fr;align-items:start">
+      <div class="ad-panel">
+        <div class="ad-row ad-between"><h3 id="ud-stage-title">Choose what to keep</h3>
+          <div class="ad-chips" role="radiogroup" aria-label="Shape">
+            {% for r in ratios %}<label class="ad-chip"><input type="radio" name="ratio" value="{{ r }}" {% if r == cur_ratio %}checked{% endif %}><span>{{ r }}{% if r == (spec.video.best if is_video else spec.best) %} · best{% endif %}</span></label>{% endfor %}
+          </div>
+        </div>
+        {% if d['items']|length > 1 %}
+        <div class="ud-items" role="tablist" aria-label="Which image">{% for it in d['items'] %}<button type="button" role="tab" data-i="{{ loop.index0 }}" class="{% if loop.first %}on{% endif %}" aria-label="Image {{ loop.index }}"><img src="{{ url_for('upload.draft_media', did=d.id, name=it.file) }}" alt=""></button>{% endfor %}</div>
+        {% endif %}
+        <div class="ud-stage">
+          <div class="ud-crop" id="ud-crop">
+            {% set first = d['items'][0] %}
+            <img id="ud-img" src="{{ url_for('upload.draft_media', did=d.id, name=(first.thumb if first.kind == 'video' else first.file)) }}" alt="Your design" draggable="false">
+            <div class="ud-box" id="ud-box" tabindex="0" role="slider" aria-label="Crop area: drag, or use the arrow keys"></div>
+          </div>
+        </div>
+        <div class="ad-field" id="ud-zoom-row"><label for="ud-zoom">Crop size</label><input type="range" id="ud-zoom" min="40" max="100" value="100"></div>
+        <span class="ad-hint" id="ud-stage-hint">Drag the box, or use the arrow keys, to choose what stays. {% if is_video %}Shown on a frame from your video.{% endif %}</span>
+      </div>
+
+      <div class="ad-panel">
+        <h3>How should it fit {{ spec.label }}?</h3>
+        <label class="ud-opt"><input type="radio" name="mode" value="crop" {% if cur_mode == 'crop' %}checked{% endif %}><span><b>Crop</b><br><span class="ad-hint">Pick the part to keep. Some edges are lost.</span></span></label>
+        <label class="ud-opt"><input type="radio" name="mode" value="fit" {% if cur_mode == 'fit' %}checked{% endif %}><span><b>Fit with borders</b><br><span class="ad-hint">Nothing is lost. The empty space is filled with a colour.</span>
+          <span class="ad-chips" style="margin-top:8px;display:flex">
+            {% for label, hx in kit_colours %}<label class="ad-chip"><input type="radio" name="colour" value="{{ hx }}" {% if (fx and fx.colour == hx) or (not fx and loop.first) %}checked{% endif %}><span><span class="ad-dot" style="background:{{ hx }};border:1px solid rgba(3,12,24,.2)"></span>{{ label }}</span></label>{% endfor %}
+            {% if not is_video %}<label class="ad-chip"><input type="radio" name="colour" value="blur" {% if fx and fx.colour == 'blur' %}checked{% endif %}><span>Blurred copy</span></label>{% endif %}
+          </span></span></label>
+        <label class="ud-opt"><input type="radio" name="mode" value="alt" {% if cur_mode == 'alt' %}checked{% endif %}><span><b>Use a different version for {{ spec.label }}</b><br><span class="ad-hint">For example the same design resized in Canva (Resize › {{ spec.canva }}).</span></span></label>
+        <div id="ud-alt" {% if cur_mode != 'alt' %}hidden{% endif %}>
+          {% if fx and fx.mode == 'alt' and fx.alt_items %}
+          <div class="ad-hint" style="margin-bottom:6px">Uploaded for {{ spec.label }}: {% for it in fx.alt_items %}<b>{{ it.orig }}</b> ({{ it.w }} × {{ it.h }}){% if not loop.last %}, {% endif %}{% endfor %}</div>
+          {% endif %}
+          {% with up_id='ud-alt-up', up_file_url=url_for('upload.add_file', did=d.id) ~ '?alt=' ~ service, up_done='reload', up_multi=not is_video, up_title='Drop the ' ~ spec.label ~ ' version here', up_label='Choose file' %}
+          {% include "portal/_upload_widget.html" %}
+          {% endwith %}
+        </div>
+        {% if fx %}<label class="ud-opt"><input type="radio" name="mode" value="original"><span><b>Undo: use the original</b></span></label>{% endif %}
+        {% if is_video %}<span class="ad-hint">Video changes are made in the background and can take a few minutes for long videos.</span>{% endif %}
+        <div class="ad-row"><button type="submit" class="btn btn-primary">Save for {{ spec.label }}</button><a class="btn" href="{{ url_for('upload.check', did=d.id) }}">Cancel</a></div>
+      </div>
+    </div>
+  </form>
+</div>
+<script>
+(function(){
+  var form = document.getElementById('ud-fix'), img = document.getElementById('ud-img'), box = document.getElementById('ud-box'),
+      zoom = document.getElementById('ud-zoom'), cropsIn = document.getElementById('ud-crops');
+  var R = {{ ratio_values|tojson }};
+  var items = {{ d['items']|map(attribute='id')|list|tojson }};
+  var srcs = {{ d['items']|map(attribute='file')|list|tojson }};
+  var dims = {{ d['items']|map(attribute='w')|list|tojson }}.map(function(w, i){ return [w, {{ d['items']|map(attribute='h')|list|tojson }}[i]]; });
+  var crops = {}; try { crops = JSON.parse(cropsIn.value || '{}'); } catch(e){}
+  var cur = 0, st = null;
+  function ratio(){ return R[(form.querySelector('input[name=ratio]:checked') || {}).value] || 1; }
+  function maxBox(i){ var ir = dims[i][0] / dims[i][1], r = ratio(); return ir > r ? [r / ir, 1] : [1, ir / r]; }
+  function state(i, reset){
+    var mb = maxBox(i), c = crops[items[i]];
+    if (c && !reset && Math.abs((c[2] * dims[i][0]) / (c[3] * dims[i][1]) - ratio()) < 0.02) return {x: c[0], y: c[1], s: c[2] / mb[0]};
+    return {x: (1 - mb[0]) / 2, y: (1 - mb[1]) / 2, s: 1};
+  }
+  function draw(){
+    var mb = maxBox(cur), w = mb[0] * st.s, h = mb[1] * st.s;
+    st.x = Math.min(Math.max(0, st.x), 1 - w); st.y = Math.min(Math.max(0, st.y), 1 - h);
+    box.style.left = (st.x * 100) + '%'; box.style.top = (st.y * 100) + '%';
+    box.style.width = (w * 100) + '%'; box.style.height = (h * 100) + '%';
+    zoom.value = Math.round(st.s * 100);
+    crops[items[cur]] = [+st.x.toFixed(4), +st.y.toFixed(4), +w.toFixed(4), +h.toFixed(4)];
+    cropsIn.value = JSON.stringify(crops);
+  }
+  function show(i, reset){ cur = i; st = state(i, reset); draw(); }
+  document.querySelectorAll('.ud-items button').forEach(function(b){
+    b.addEventListener('click', function(){
+      document.querySelectorAll('.ud-items button').forEach(function(x){ x.classList.remove('on'); }); b.classList.add('on');
+      var i = +b.dataset.i; img.src = img.src.replace(/[^/]+$/, srcs[i]); show(i);
+    });
+  });
+  form.querySelectorAll('input[name=ratio]').forEach(function(r){ r.addEventListener('change', function(){ crops = {}; show(cur, true); }); });
+  zoom.addEventListener('input', function(){
+    var mb = maxBox(cur), cx = st.x + mb[0] * st.s / 2, cy = st.y + mb[1] * st.s / 2;
+    st.s = zoom.value / 100; st.x = cx - mb[0] * st.s / 2; st.y = cy - mb[1] * st.s / 2; draw();
+  });
+  var drag = null;
+  box.addEventListener('pointerdown', function(e){ drag = {x: e.clientX, y: e.clientY, sx: st.x, sy: st.y}; box.setPointerCapture(e.pointerId); });
+  box.addEventListener('pointermove', function(e){
+    if (!drag) return; var r = img.getBoundingClientRect();
+    st.x = drag.sx + (e.clientX - drag.x) / r.width; st.y = drag.sy + (e.clientY - drag.y) / r.height; draw();
+  });
+  box.addEventListener('pointerup', function(){ drag = null; });
+  box.addEventListener('keydown', function(e){
+    var d = e.shiftKey ? 0.05 : 0.01;
+    if (e.key === 'ArrowLeft') st.x -= d; else if (e.key === 'ArrowRight') st.x += d;
+    else if (e.key === 'ArrowUp') st.y -= d; else if (e.key === 'ArrowDown') st.y += d; else return;
+    e.preventDefault(); draw();
+  });
+  function sync(){
+    var m = (form.querySelector('input[name=mode]:checked') || {}).value;
+    document.getElementById('ud-alt').hidden = m !== 'alt';
+    var crop = m === 'crop';
+    box.hidden = !crop; document.getElementById('ud-zoom-row').hidden = !crop;
+    document.getElementById('ud-stage-title').textContent = crop ? 'Choose what to keep' : (m === 'fit' ? 'Shape to fit into' : 'Your design');
+    document.getElementById('ud-stage-hint').hidden = !crop;
+  }
+  form.querySelectorAll('input[name=mode]').forEach(function(r){ r.addEventListener('change', sync); });
+  if (img.complete) show(0); else img.addEventListener('load', function(){ if (!st) show(0); });
+  sync();
+})();
+</script>
+{% endblock %}

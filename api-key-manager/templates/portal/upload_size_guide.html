@@ -1,0 +1,46 @@
+{% extends "portal/base.html" %}
+{% block title %}Image & video size guide — Social Posts{% endblock %}
+{% block content %}
+{% include "portal/_upload_css.html" %}
+<div class="ad">
+  <div>
+    <div class="ad-crumb"><a href="{{ url_for('upload.start') }}">Social Posts › Upload Design</a> › Size guide</div>
+    <p class="ad-title">Image &amp; video size guide</p>
+    <p class="ad-sub">Design at these sizes and your post shows full size, sharp and uncropped. Sizes follow Buffer's guide to each network (checked May 2026).</p>
+  </div>
+  <div class="ad-panel">
+    <h3>Images</h3>
+    <div class="ad-tw"><table class="ad-table">
+      <thead><tr><th>Network</th><th>Best shape</th><th>Size (pixels)</th><th>Also works</th><th>Canva preset</th></tr></thead>
+      <tbody>
+      {% for key, sp in specs.items() %}
+        {% set best_px = (sp.shapes|selectattr(0, 'equalto', sp.best)|first)[1] %}
+        <tr><td><b>{{ sp.label }}</b></td><td>{{ sp.best }}</td><td class="ad-num">{{ best_px }}</td>
+          <td>{% for r, px, note in sp.shapes if r != sp.best %}{{ r }} ({{ px }}){% if not loop.last %} · {% endif %}{% else %}—{% endfor %}{% if sp.max_images > 1 %}<br><span class="ad-hint">Up to {{ sp.max_images }} images</span>{% endif %}</td>
+          <td>{{ sp.canva }}</td></tr>
+      {% endfor %}
+      {% for name, shape, px, also, canva in extra %}
+        <tr><td><b>{{ name }}</b></td><td>{{ shape }}</td><td class="ad-num">{{ px }}</td><td>{{ also }}</td><td>{{ canva }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+  <div class="ad-panel">
+    <h3>Video</h3>
+    <div class="ad-tw"><table class="ad-table">
+      <thead><tr><th>Network</th><th>Best shape</th><th>Size (pixels)</th><th>Length</th></tr></thead>
+      <tbody>
+      {% for key, sp in specs.items() if sp.video %}
+        <tr><td><b>{{ sp.label }}</b>{% if key == 'instagram' %} <span class="ad-hint">(posted as a Reel)</span>{% endif %}</td><td>{{ sp.video.best }}</td><td class="ad-num">{{ sp.video.size }}</td>
+          <td class="ad-num">{{ sp.video.min_s }} s to {{ fmt_limit(sp.video.max_s) }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    <span class="ad-hint">MP4 (H.264) works everywhere. Other videos, such as iPhone MOV files, are converted automatically when you upload them. Up to 300 MB.</span>
+  </div>
+  <div class="ad-two">
+    <div class="ad-panel"><h3>One design for every network?</h3><p class="ad-sub" style="margin:0">Use <b>1:1 square, 1080 × 1080</b>. It shows uncropped on Instagram, Facebook, LinkedIn and Threads, and is only lightly trimmed on X.</p></div>
+    <div class="ad-panel"><h3>File tips</h3><ul style="margin:0;padding-left:18px;font-size:13.5px;line-height:1.75"><li><b>PNG</b> for designs with text or logos (sharpest)</li><li><b>JPG</b> for photos (smaller files)</li><li>At least <b>1080 pixels wide</b>, or it looks blurry</li><li>Keep words away from the outer edge, in case a network trims it</li></ul></div>
+  </div>
+</div>
+{% endblock %}

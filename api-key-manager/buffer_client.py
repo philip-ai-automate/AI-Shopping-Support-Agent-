@@ -88,22 +88,26 @@ def buffer_list_channels(api_key: str, organization_id: str) -> list:
     return data.get("channels") or []
 
 
-def _metadata_for(service: str):
-    """Buffer requires a post type for Instagram and Facebook; everything
-    PhiXtra sends is an ordinary feed post."""
+def _metadata_for(service: str, has_video: bool = False):
+    """Buffer requires a post type for Instagram and Facebook. Images go out
+    as ordinary feed posts; an Instagram video goes out as a Reel (also
+    shared to the feed), a Facebook video as a normal video post."""
     if service == "instagram":
-        return {"instagram": {"type": "post", "shouldShareToFeed": True}}
+        return {"instagram": {"type": "reel" if has_video else "post", "shouldShareToFeed": True}}
     if service == "facebook":
         return {"facebook": {"type": "post"}}
     return None
 
 
 def buffer_create_post(api_key: str, channel_id: str, caption: str, image_url: str = None,
-                       scheduled_for_iso: str = None, service: str = None):
+                       scheduled_for_iso: str = None, service: str = None, assets: list = None):
     """Creates one post on one Buffer channel.
 
     scheduled_for_iso=None  -> published now (Buffer "shareNow").
     scheduled_for_iso="2026-09-26T09:00:00.000Z" -> scheduled for that UTC time.
+
+    assets: a full Buffer assets list (several images, or one video
+    {"video": {"url": …}}) — used instead of image_url when given.
 
     Returns (buffer_post_id, status).
     """
@@ -113,11 +117,13 @@ def buffer_create_post(api_key: str, channel_id: str, caption: str, image_url: s
         "mode": "customScheduled" if scheduled_for_iso else "shareNow",
         "schedulingType": "automatic",  # Buffer publishes it; never a phone reminder
     }
-    if image_url:
+    if assets:
+        post_input["assets"] = assets
+    elif image_url:
         post_input["assets"] = [{"image": {"url": image_url}}]
     if scheduled_for_iso:
         post_input["dueAt"] = scheduled_for_iso
-    meta = _metadata_for(service or "")
+    meta = _metadata_for(service or "", has_video=any("video" in a for a in (assets or [])))
     if meta:
         post_input["metadata"] = meta
 

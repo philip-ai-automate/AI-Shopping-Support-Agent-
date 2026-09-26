@@ -1,0 +1,125 @@
+{% extends "portal/base.html" %}
+{% block title %}Captions & schedule — Social Posts{% endblock %}
+{% block content %}
+{% include "portal/_upload_css.html" %}
+{% set per = form.get('per_network') == '1' %}
+<div class="ad">
+  <div>
+    <div class="ad-crumb"><a href="{{ url_for('upload.check', did=d.id) }}">← Back to the check</a></div>
+    <p class="ad-title">Captions &amp; schedule</p>
+  </div>
+
+  <form method="POST" class="ad" id="ud-post">
+    <input type="hidden" name="order" id="ud-order" value="{{ d['items']|map(attribute='id')|join(',') }}">
+    {% if d['items']|length > 1 %}
+    <div class="ad-panel">
+      <div class="ad-row ad-between"><h3>Carousel order</h3><span class="ad-hint">Drag to reorder, or use ◀ ▶. The first image is the cover.</span></div>
+      <ul class="ud-strip" id="ud-strip">
+        {% for it in d['items'] %}
+        <li draggable="true" data-id="{{ it.id }}"><img src="{{ url_for('upload.draft_media', did=d.id, name=it.file) }}" alt="Image {{ loop.index }}"><span class="n">{{ loop.index }}</span>
+          <span class="mv"><button type="button" data-mv="-1" aria-label="Move earlier">◀</button><button type="button" data-mv="1" aria-label="Move later">▶</button></span></li>
+        {% endfor %}
+      </ul>
+      {% for svc in services if specs[svc].max_images < d['items']|length %}<span class="ad-hint">{{ specs[svc].label }} takes up to {{ specs[svc].max_images }} images, so only the first {{ specs[svc].max_images }} are sent there.</span>{% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="ad-panel">
+      <div class="ad-row ad-between"><h3>Caption</h3>
+        <label class="ad-radio" style="align-items:center"><input type="checkbox" name="per_network" value="1" id="ud-per" {% if per %}checked{% endif %}> <span>Different caption per network</span></label></div>
+      <div id="ud-one" {% if per %}hidden{% endif %}>
+        <div class="ud-cap">
+          <div class="h"><span>All networks</span><span class="ud-count" id="ud-one-count"></span></div>
+          <textarea name="caption" id="ud-one-text" maxlength="25000" aria-label="Caption for all networks" placeholder="What do you want to say?">{{ form.get('caption', '') }}</textarea>
+        </div>
+      </div>
+      <div id="ud-many" class="ad" style="gap:10px" {% if not per %}hidden{% endif %}>
+        {% for svc in services %}
+        <div class="ud-cap">
+          <div class="h"><span class="ad-row" style="gap:6px"><span class="ad-dot" style="background:{{ (d.channels|selectattr('service','equalto',svc)|first).colour }}"></span>{{ specs[svc].label }}</span><span class="ud-count" data-count="{{ svc }}"></span></div>
+          <textarea name="caption__{{ svc }}" data-svc="{{ svc }}" maxlength="25000" aria-label="{{ specs[svc].label }} caption">{{ form.get('caption__' ~ svc, '') }}</textarea>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="ad-panel">
+      <span class="ad-lbl">When</span>
+      <div class="ad-row">
+        <label class="ad-radio"><input type="radio" name="when" value="now" checked> <span>Post now</span></label>
+        <label class="ad-radio"><input type="radio" name="when" value="schedule"> <span>Schedule for later</span></label>
+      </div>
+      <div class="ad-field" id="ud-when-box" hidden style="max-width:300px"><input type="datetime-local" id="ud-when-local" aria-label="Date and time to post"><span class="ad-hint" id="ud-tz"></span></div>
+      <input type="hidden" name="scheduled_for_utc" id="ud-when-utc">
+      <div class="ad-row">
+        <button type="submit" name="action" value="now" class="btn btn-primary" id="ud-go">Post now</button>
+        <button type="submit" name="action" value="draft" class="btn" formnovalidate>Save as draft</button>
+      </div>
+      <span class="ad-hint">It then appears under <b>Posts</b> with an “Uploaded” label. While scheduled you can change the words or time, or cancel it there.</span>
+    </div>
+  </form>
+</div>
+<script>
+(function(){
+  var LIM = {{ limits|tojson }}, NAMES = {{ services|tojson }}, LABEL = {};
+  {% for svc in services %}LABEL[{{ svc|tojson }}] = {{ specs[svc].label|tojson }};{% endfor %}
+  function len(svc, t){
+    if (svc === 'instagram') return t.length + (t.match(/\n/g) || []).length;
+    if (svc === 'twitter'){ t = t.replace(/https?:\/\/\S+/g, 'xxxxxxxxxxxxxxxxxxxxxxx'); var n = 0; for (var ch of t) n += ch.codePointAt(0) > 0x2FFF ? 2 : 1; return n; }
+    return t.length;
+  }
+  var go = document.getElementById('ud-go');
+  function update(){
+    var per = document.getElementById('ud-per').checked, over = [];
+    document.getElementById('ud-one').hidden = per; document.getElementById('ud-many').hidden = !per;
+    var one = document.getElementById('ud-one-text').value;
+    if (!per){
+      var worst = null;
+      NAMES.forEach(function(s){ var n = len(s, one); if (n > LIM[s]) over.push(LABEL[s] + ' (' + n + ' / ' + LIM[s] + ')'); if (!worst || LIM[s] < LIM[worst]) worst = s; });
+      var el = document.getElementById('ud-one-count');
+      el.textContent = over.length ? 'Too long for ' + over.join(', ') : len(worst, one).toLocaleString() + ' / ' + LIM[worst].toLocaleString() + ' (' + LABEL[worst] + ' limit)';
+      el.classList.toggle('over', over.length > 0);
+    } else {
+      document.querySelectorAll('textarea[data-svc]').forEach(function(t){
+        var s = t.dataset.svc, n = len(s, t.value), el = document.querySelector('[data-count="' + s + '"]');
+        var tags = s === 'instagram' ? ' · ' + (t.value.match(/#/g) || []).length + ' of 30 hashtags' : '';
+        el.textContent = n.toLocaleString() + ' / ' + LIM[s].toLocaleString() + tags;
+        var bad = n > LIM[s] || (s === 'instagram' && (t.value.match(/#/g) || []).length > 30);
+        el.classList.toggle('over', bad); if (bad) over.push(LABEL[s]);
+      });
+    }
+    go.disabled = over.length > 0;
+    go.title = over.length ? 'Shorten the caption first' : '';
+  }
+  document.getElementById('ud-per').addEventListener('change', function(){
+    if (this.checked){ var v = document.getElementById('ud-one-text').value; document.querySelectorAll('textarea[data-svc]').forEach(function(t){ if (!t.value) t.value = v; }); }
+    update();
+  });
+  document.querySelectorAll('#ud-post textarea').forEach(function(t){ t.addEventListener('input', update); });
+  update();
+
+  // carousel order
+  var strip = document.getElementById('ud-strip');
+  if (strip){
+    var dragEl = null;
+    function renumber(){ var ids = []; strip.querySelectorAll('li').forEach(function(li, i){ li.querySelector('.n').textContent = i + 1; ids.push(li.dataset.id); }); document.getElementById('ud-order').value = ids.join(','); }
+    strip.addEventListener('dragstart', function(e){ dragEl = e.target.closest('li'); dragEl.classList.add('drag'); });
+    strip.addEventListener('dragend', function(){ if (dragEl) dragEl.classList.remove('drag'); dragEl = null; renumber(); });
+    strip.addEventListener('dragover', function(e){ e.preventDefault(); var li = e.target.closest('li'); if (!li || li === dragEl) return;
+      var r = li.getBoundingClientRect(); strip.insertBefore(dragEl, (e.clientX - r.left) > r.width / 2 ? li.nextSibling : li); });
+    strip.addEventListener('click', function(e){ var b = e.target.closest('button[data-mv]'); if (!b) return; var li = b.closest('li');
+      if (b.dataset.mv === '-1' && li.previousElementSibling) strip.insertBefore(li, li.previousElementSibling);
+      if (b.dataset.mv === '1' && li.nextElementSibling) strip.insertBefore(li.nextElementSibling, li); renumber(); b.focus(); });
+  }
+
+  // when
+  var f = document.getElementById('ud-post'), box = document.getElementById('ud-when-box'), local = document.getElementById('ud-when-local'), utc = document.getElementById('ud-when-utc');
+  var tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || '');
+  document.getElementById('ud-tz').textContent = 'Your time zone' + (tz ? ' (' + tz + ')' : '') + '.';
+  function syncWhen(){ var s = (f.querySelector('input[name=when]:checked') || {}).value === 'schedule'; box.hidden = !s; local.required = s; go.value = s ? 'schedule' : 'now'; go.textContent = s ? 'Schedule post' : 'Post now'; }
+  f.querySelectorAll('input[name=when]').forEach(function(r){ r.addEventListener('change', syncWhen); });
+  syncWhen();
+  f.addEventListener('submit', function(){ utc.value = local.value ? new Date(local.value).toISOString() : ''; });
+})();
+</script>
+{% endblock %}

@@ -833,6 +833,10 @@
         <a href="{{ url_for('social.new_post') }}"
            class="{% if request.endpoint in ('social.new_post', 'social.pick', 'social.again', 'social.finish') %}active{% endif %}">New Post</a>
         {% endif %}
+        {% if staff_can_open('upload.start') %}
+        <a href="{{ url_for('upload.start') }}"
+           class="{% if request.endpoint in ('upload.start', 'upload.check', 'upload.fix', 'upload.post', 'upload.size_guide') %}active{% endif %}">Upload Design</a>
+        {% endif %}
         {% if staff_can_open('buffer.posts') %}
         <a href="{{ url_for('buffer.posts') }}"
            class="{% if request.endpoint == 'buffer.posts' %}active{% endif %}">Posts</a>
@@ -1311,7 +1315,7 @@
         {% if staff_can_open('portal.billing') %}
         <a href="{{ url_for('portal.billing') }}"
            class="{% if request.endpoint == 'portal.billing' %}active{% endif %}">
-          Buy Credits
+          Buy AI Credit
           {% if 'billing.credits_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
@@ -1891,7 +1895,7 @@
     {% endif %}
     {% if not is_connect_host %}
     { icon:'📋', title:'Subscription Plans',     desc:'View and manage your subscription',            url:'{{ url_for("portal.billing_subscribe") }}',          tags:'subscription plan monthly upgrade downgrade' },
-    { icon:'💳', title:'Buy Credits',            desc:'Top up your AI credit balance',               url:'{{ url_for("portal.billing") }}',                    tags:'credits buy top up balance tokens recharge' },
+    { icon:'💳', title:'Buy AI Credit',          desc:'Top up your AI credit balance',               url:'{{ url_for("portal.billing") }}',                    tags:'credits buy top up balance tokens recharge ai designs' },
     { icon:'🧾', title:'Invoices',               desc:'Download your billing receipts',               url:'{{ url_for("portal.invoices") }}',                   tags:'invoice receipt billing history download pdf payment' },
     {% endif %}
     {% if not is_connect_host %}

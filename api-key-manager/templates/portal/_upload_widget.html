@@ -1,0 +1,104 @@
+{# Upload Design uploader. Include with:
+   up_id       unique id prefix
+   up_file_url endpoint that takes one file (POST "file"), returns JSON
+   up_start_url (optional) creates the draft first, form fields from #{{up_form}}
+   up_form     (optional) id of the form holding channel_ids
+   up_done     "reload" | "goto" (goto uses check_url from the start call)
+   up_multi    allow several files
+   up_label    button label #}
+<div class="up" id="{{ up_id }}" data-file-url="{{ up_file_url }}" data-start-url="{{ up_start_url or '' }}"
+     data-form="{{ up_form or '' }}" data-done="{{ up_done or 'reload' }}" data-multi="{{ '1' if up_multi else '0' }}">
+  <div class="up-drop" tabindex="0" role="button" aria-label="Upload images or video: drop files, paste, or press Enter to browse">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 16V4m0 0-4 4m4-4 4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+    <div class="up-big">{{ up_title or 'Drop images or a video here' }}</div>
+    <div class="ad-hint">or <b>paste</b> (Ctrl / ⌘ + V), or</div>
+    <span class="btn btn-primary up-browse">{{ up_label or 'Choose files' }}</span>
+    <div class="ad-hint">Images: JPG, PNG or WEBP, up to 20 MB each{% if up_multi %}, up to 10 for a carousel{% endif %}. Video: MP4 or MOV, up to 300 MB.</div>
+    <input type="file" class="up-input" {% if up_multi %}multiple{% endif %} accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,.mov,.m4v" hidden>
+  </div>
+  <ul class="up-list" aria-live="polite"></ul>
+  <div class="up-foot" hidden><span class="up-msg"></span> <button type="button" class="btn btn-sm up-continue" hidden>Continue anyway</button></div>
+</div>
+<script>
+(function(){
+  var root = document.getElementById({{ up_id|tojson }});
+  if (!root || root.dataset.ready) return; root.dataset.ready = '1';
+  var drop = root.querySelector('.up-drop'), input = root.querySelector('.up-input'), list = root.querySelector('.up-list'),
+      foot = root.querySelector('.up-foot'), msg = root.querySelector('.up-msg'), cont = root.querySelector('.up-continue');
+  var fileUrl = root.dataset.fileUrl, startUrl = root.dataset.startUrl, done = root.dataset.done, multi = root.dataset.multi === '1';
+  var nextUrl = null, pending = 0, failed = 0, draftUrl = fileUrl;
+  var IMG = ['jpg','jpeg','png','webp'], VID = ['mp4','mov','m4v'];
+
+  function ext(n){ return (n.split('.').pop() || '').toLowerCase(); }
+  function precheck(f){
+    var e = ext(f.name || '');
+    if (!e && f.type) e = f.type.split('/').pop();
+    if (IMG.indexOf(e) < 0 && VID.indexOf(e) < 0 && e !== 'jpeg' && e !== 'quicktime') return '“' + f.name + '” isn’t a supported file. Use JPG, PNG, WEBP, MP4 or MOV.';
+    var vid = VID.indexOf(e) >= 0 || e === 'quicktime';
+    if (f.size > (vid ? 300 : 20) * 1048576) return '“' + f.name + '” is over ' + (vid ? 300 : 20) + ' MB.';
+    return null;
+  }
+  function finish(){
+    if (pending > 0) return;
+    if (!failed) { go(); return; }
+    foot.hidden = false; msg.textContent = failed + ' file' + (failed > 1 ? 's' : '') + ' didn’t upload. Retry, or continue without ' + (failed > 1 ? 'them' : 'it') + '.';
+    cont.hidden = false;
+  }
+  function go(){ if (done === 'goto' && nextUrl) window.location = nextUrl; else window.location.reload(); }
+  cont.addEventListener('click', go);
+
+  function row(f){
+    var li = document.createElement('li'); li.className = 'up-row';
+    li.innerHTML = '<span class="up-name"></span><span class="up-bar"><i></i></span><span class="up-state">Waiting…</span>';
+    li.querySelector('.up-name').textContent = f.name || 'Pasted image';
+    list.appendChild(li); return li;
+  }
+  function send(f, li){
+    var st = li.querySelector('.up-state'), bar = li.querySelector('.up-bar i');
+    var err = precheck(f);
+    if (err){ st.textContent = err; li.classList.add('bad'); failed++; pending--; finish(); return; }
+    var fd = new FormData(); fd.append('file', f, f.name || 'pasted.png');
+    var x = new XMLHttpRequest(); x.open('POST', draftUrl);
+    x.upload.onprogress = function(e){ if (e.lengthComputable){ var p = Math.round(100 * e.loaded / e.total); bar.style.width = p + '%'; st.textContent = p < 100 ? p + '%' : 'Checking…'; } };
+    x.onload = function(){
+      var j = {}; try { j = JSON.parse(x.responseText); } catch(e){}
+      if (x.status === 200 && j.ok){ st.textContent = 'Uploaded'; li.classList.add('ok'); bar.style.width = '100%'; }
+      else { fail(j.error || 'Upload failed. Check your connection and retry.'); return; }
+      pending--; finish();
+    };
+    x.onerror = function(){ fail('Connection lost. Retry when you’re back online.'); };
+    function fail(text){
+      st.textContent = text; li.classList.add('bad'); failed++; pending--;
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-sm'; b.textContent = 'Retry';
+      b.onclick = function(){ b.remove(); li.classList.remove('bad'); failed--; pending++; foot.hidden = true; st.textContent = 'Retrying…'; send(f, li); };
+      li.appendChild(b); finish();
+    }
+    x.send(fd);
+  }
+  function start(files){
+    files = Array.prototype.slice.call(files || []);
+    if (!files.length) return;
+    if (!multi) files = files.slice(0, 1);
+    function run(){ pending += files.length; files.forEach(function(f){ send(f, row(f)); }); }
+    if (!startUrl) { run(); return; }
+    var form = document.getElementById(root.dataset.form);
+    var fd = new FormData(form || undefined);
+    fetch(startUrl, {method: 'POST', body: fd, credentials: 'same-origin'}).then(function(r){ return r.json(); }).then(function(j){
+      if (!j.ok){ foot.hidden = false; msg.textContent = j.error || 'Could not start the upload.'; return; }
+      nextUrl = j.check_url; draftUrl = fileUrl.replace('/0/', '/' + j.id + '/'); startUrl = ''; run();
+    }).catch(function(){ foot.hidden = false; msg.textContent = 'Connection lost. Try again.'; });
+  }
+  drop.addEventListener('click', function(e){ if (e.target.closest('.up-list')) return; input.click(); });
+  drop.addEventListener('keydown', function(e){ if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); input.click(); } });
+  input.addEventListener('change', function(){ start(input.files); input.value = ''; });
+  ['dragenter','dragover'].forEach(function(t){ drop.addEventListener(t, function(e){ e.preventDefault(); drop.classList.add('over'); }); });
+  ['dragleave','drop'].forEach(function(t){ drop.addEventListener(t, function(e){ e.preventDefault(); drop.classList.remove('over'); }); });
+  drop.addEventListener('drop', function(e){ start(e.dataTransfer.files); });
+  document.addEventListener('paste', function(e){
+    if (e.target.closest && e.target.closest('textarea,input')) return;
+    var fs = []; var items = (e.clipboardData || {}).items || [];
+    for (var i = 0; i < items.length; i++){ if (items[i].kind === 'file'){ var f = items[i].getAsFile(); if (f) fs.push(f); } }
+    if (fs.length){ e.preventDefault(); start(fs); }
+  });
+})();
+</script>

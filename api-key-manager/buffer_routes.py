@@ -240,6 +240,23 @@ def _get_post(tenant_id: int, post_id: int):
 WIDE_SERVICES = ("facebook", "linkedin", "twitter")
 
 
+def _media_assets(post, service):
+    """Upload Design posts: the exact images / video chosen for this network
+    (fixes already applied), as Buffer assets. None for other posts."""
+    media = (post.get("media") or {})
+    items = media.get(service) or media.get("_default")
+    if not items:
+        return None
+    base = f"{_public_base()}/social-posts/media/{post['public_token']}"
+    out = []
+    for m in items:
+        if m["kind"] == "video":
+            out.append({"video": {"url": f"{base}/{m['file']}", "metadata": {"thumbnailOffset": 1000}}})
+        else:
+            out.append({"image": {"url": f"{base}/{m['file']}"}})
+    return out
+
+
 def _image_url(post, service: str = None) -> str:
     """Public address Buffer fetches the picture from. AI Post Designer
     posts have a wide version too, used for Facebook / LinkedIn / X."""
@@ -314,8 +331,10 @@ def _send_to_buffer(owner: str, post, channels_by_id: dict, when):
         service = ch["service"] if ch else None
         text = captions.get(service) or post["caption"]
         try:
-            buf_id, _st = ba.call(owner, buffer_create_post, ch_id, text, _image_url(post, service), when_iso,
-                                  service=service)
+            assets = _media_assets(post, service)
+            buf_id, _st = ba.call(owner, buffer_create_post, ch_id, text,
+                                  None if assets else _image_url(post, service), when_iso,
+                                  service=service, assets=assets)
             ids[ch_id] = buf_id
             results[ch_id] = {"status": "scheduled" if when else "publishing"}
         except BufferAPIError as e:
@@ -423,6 +442,52 @@ def create_post_from_design(customer, caption: str, captions: dict, square: str,
     if status == "partial":
         return True, f"Sent to some accounts, but not all. {errors}"
     return True, "Post scheduled. Buffer will publish it at the time you picked." if when else "Sent to Buffer. It's publishing now."
+
+
+def create_post_from_upload(customer, captions: dict, media: dict, cover: str, channel_ids: list,
+                            action: str, when, actor: str):
+    """Upload Design's last step: saves the post with the exact media for each
+    network and, unless it's a draft, sends it to Buffer. Returns (ok, msg, post_id)."""
+    tenant_id = int(customer["tenant_id"])
+    owner = _owner(customer)
+    usable = {c["channel_id"]: c for c in ba.list_channels(owner, enabled_only=True)}
+    picked = [c for c in channel_ids if c in usable]
+    if not picked:
+        return False, "Pick at least one social account.", None
+    if action == "schedule":
+        if not when:
+            return False, "Pick the date and time to post.", None
+        if when < datetime.now(timezone.utc) + timedelta(minutes=2):
+            return False, "Pick a time at least 2 minutes from now, or choose Post now.", None
+    main = next((t for t in captions.values() if t), "")
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""INSERT INTO tenant_social_posts (tenant_id, caption, captions, image_filename, original_filename,
+                          public_token, channel_ids, status, scheduled_for, created_by, media)
+                   VALUES (%s,%s,%s,%s,'upload',%s,%s,'draft',%s,%s,%s) RETURNING *""",
+                (tenant_id, main or " ", _json.dumps(captions), cover, uuid.uuid4().hex, picked, when, actor,
+                 _json.dumps(media)))
+    post = cur.fetchone()
+    conn.commit()
+    cur.close(); conn.close()
+    if action == "draft":
+        insert_audit_log(action="social_post_draft_saved", tenant_id=tenant_id, details={"post_id": post["id"], "by": actor, "upload": True})
+        return True, "Draft saved. Find it under Social Posts › Posts.", post["id"]
+    status, ids, results, errors = _send_to_buffer(owner, post, usable, when)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""UPDATE tenant_social_posts SET status=%s, buffer_post_ids=%s, channel_results=%s,
+                          buffer_error=%s, updated_at=NOW() WHERE id=%s""",
+                (status, _json.dumps(ids) if ids else None, _json.dumps(results), errors, post["id"]))
+    conn.commit()
+    cur.close(); conn.close()
+    insert_audit_log(action="social_post_sent_to_buffer", tenant_id=tenant_id,
+                     details={"post_id": post["id"], "status": status, "by": actor, "upload": True})
+    if status == "failed":
+        return False, f"Buffer didn't accept the post. It's saved under Posts so you can try again. {errors}", post["id"]
+    if status == "partial":
+        return True, f"Sent to some accounts, but not all. {errors}", post["id"]
+    return True, ("Post scheduled. Buffer will publish it at the time you picked." if when else "Sent to Buffer. It's publishing now."), post["id"]
 
 
 @buffer_bp.route("/social-posts", methods=["GET"])
@@ -538,6 +603,10 @@ def save_post(post_id: int = None):
     file = request.files.get("image_file")
     new_upload = bool(file and file.filename)
     remove_image = request.form.get("remove_image") == "1"
+    if existing and existing.get("media"):
+        # Upload Design posts keep their checked images / video; only the
+        # words, accounts and time can change here.
+        new_upload, remove_image, file = False, False, None
     has_image = new_upload or (existing and existing.get("image_filename") and not remove_image)
     back = url_for("buffer.posts", edit=post_id) if post_id else url_for("buffer.posts", new=1)
 
@@ -676,6 +745,10 @@ def delete_post(post_id: int):
     cur.close(); conn.close()
     _remove_image(post.get("image_filename"))
     _remove_image(post.get("wide_image_filename"))
+    for lst in (post.get("media") or {}).values():
+        for m in lst:
+            _remove_image(m.get("file"))
+            _remove_image(m.get("thumb"))
     insert_audit_log(action="social_post_deleted", tenant_id=tenant_id,
                      details={"post_id": post_id, "status": post["status"], "by": _current_actor(customer)["label"]})
     flash("Post deleted." + (" It stays on the social networks where it was already published."
@@ -728,6 +801,22 @@ def public_image(token: str, ext: str):
     if not name:
         abort(404)
     return send_from_directory(UPLOAD_FOLDER, name)
+
+
+@buffer_bp.route("/social-posts/media/<token>/<name>", methods=["GET"])
+@public_route
+def public_media(token: str, name: str):
+    """No login by design: Buffer's servers fetch Upload Design images and
+    videos from here. Only files that belong to that post are served."""
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT media FROM tenant_social_posts WHERE public_token=%s", (token,))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    files = {m["file"] for lst in ((row or {}).get("media") or {}).values() for m in lst}
+    if not row or name not in files:
+        abort(404)
+    return send_from_directory(UPLOAD_FOLDER, name, conditional=True)
 
 
 @buffer_bp.app_context_processor

@@ -113,6 +113,12 @@
         <textarea id="sp-caption" name="caption" maxlength="5000" required placeholder="What do you want to tell your followers?">{{ editing.caption if editing else '' }}</textarea>
         <span class="sp-count" id="sp-count" aria-live="polite"></span>
       </div>
+      {% if editing.media %}
+      <div class="sp-field">
+        <span class="sp-label">Design</span>
+        <p class="sp-hint" style="margin:0">This post was made with Upload Design and keeps its checked {{ 'video' if (editing.media.get('_default') or [{}])[0].get('kind') == 'video' else 'images' }}. To change them, delete it and upload again.</p>
+      </div>
+      {% else %}
       <div class="sp-field">
         <span class="sp-label">Image</span>
         <div class="sp-img">
@@ -131,6 +137,7 @@
           </div>
         </div>
       </div>
+      {% endif %}
     </div>
 
     <div class="sp-field">
@@ -183,6 +190,8 @@
         <div class="sp-cap">{{ p.caption }}</div>
         <div class="sp-meta">
           <span class="sp-pill {{ st[1] }}">{{ st[0] }}</span>
+          {% if p.original_filename == 'upload' %}<span class="sp-pill p-n">Uploaded</span>{% elif p.original_filename == 'AI design' %}<span class="sp-pill p-b">AI design</span>{% endif %}
+          {% if p.media and ((p.media.get('_default') or [{}])[0].get('kind') == 'video') %}<span class="sp-pill p-n">▶ Video</span>{% endif %}
           {% if p.channel_ids %}<span>{{ post_channels(p) }}</span><span>·</span>{% endif %}
           {% set t = p.sent_at if p.status in ('sent','partial') and p.sent_at else (p.scheduled_for or p.created_at) %}
           <span class="js-local" data-utc="{{ t.isoformat() }}">{{ t.strftime('%d %b %Y, %H:%M') }} UTC</span>
@@ -245,7 +254,7 @@
   // Image preview
   var file = document.getElementById('sp-image'), prev = document.getElementById('sp-preview'),
       empty = document.getElementById('sp-preview-empty');
-  file.addEventListener('change', function(){
+  if (file) file.addEventListener('change', function(){
     if (file.files && file.files[0]) {
       prev.src = URL.createObjectURL(file.files[0]); prev.hidden = false;
       if (empty) empty.hidden = true;

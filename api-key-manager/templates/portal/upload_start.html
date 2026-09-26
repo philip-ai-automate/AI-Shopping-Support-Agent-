@@ -1,0 +1,81 @@
+{% extends "portal/base.html" %}
+{% block title %}Upload Design — Social Posts{% endblock %}
+{% macro shape_box(r) -%}
+  {%- set sz = {'1:1': (40,40), '4:5': (36,45), '3:4': (34,45), '9:16': (27,48), '16:9': (57,32), '1.91:1': (57,30), '2:3': (32,48), '4:3': (48,36)}[r] -%}
+  <i style="width:{{ sz[0] }}px;height:{{ sz[1] }}px"></i>
+{%- endmacro %}
+{% block content %}
+{% include "portal/_upload_css.html" %}
+<div class="ad">
+  <div>
+    <div class="ad-crumb">Social Posts › Upload Design</div>
+    <p class="ad-title">Upload Design</p>
+    <p class="ad-sub">Post a design you made yourself, in Canva or anywhere else. No AI, nothing counted.</p>
+  </div>
+
+  <form id="ud-start" method="POST" enctype="multipart/form-data" action="{{ url_for('upload.start') }}" class="ad">
+    <div class="ad-panel">
+      <h3>1. Where will it go?</h3>
+      {% if channels %}
+      <div class="ad-chips">
+        {% for c in channels %}
+        {% if c.unsupported %}
+        <span class="ad-chip" title="{{ c.unsupported }}"><span class="ad-off" style="border:1.5px solid rgba(3,12,24,.1);border-radius:999px;padding:7px 12px;font-size:12.5px;font-weight:600;display:inline-flex;gap:7px;align-items:center"><span class="ad-dot" style="background:{{ c.colour }}"></span>{{ c.label }} · {{ c.title }}</span></span>
+        {% else %}
+        <label class="ad-chip"><input type="checkbox" name="channel_ids" value="{{ c.channel_id }}" data-service="{{ c.service }}" checked><span><span class="ad-dot" style="background:{{ c.colour }}"></span>{{ c.label }} · {{ c.title }}</span></label>
+        {% endif %}
+        {% endfor %}
+      </div>
+      {% for c in channels if c.unsupported %}{% if loop.first %}<span class="ad-hint">{% endif %}{{ c.unsupported }} {% if loop.last %}</span>{% endif %}{% endfor %}
+      {% else %}
+      <div class="ad-alert info">No social accounts are switched on. Turn some on in <a href="{{ url_for('buffer.connect') }}">Integration › Buffer</a>.</div>
+      {% endif %}
+    </div>
+
+    <div class="ad-two">
+      <div class="ad-panel">
+        <h3>2. Upload your design</h3>
+        <noscript>
+          <div class="ad-field"><input type="file" name="files" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"></div>
+          <button type="submit" class="btn btn-primary">Upload</button>
+        </noscript>
+        {% with up_id='ud-up', up_file_url=url_for('upload.add_file', did=0), up_start_url=url_for('upload.start_json'),
+                up_form='ud-start', up_done='goto', up_multi=True %}
+        {% include "portal/_upload_widget.html" %}
+        {% endwith %}
+        <div class="ad-hint"><b>From Canva:</b> Share › Download › <b>PNG</b> for designs with text or logos, <b>JPG</b> for photos, <b>MP4</b> for video. Pick "Size ×1" or larger, never smaller.</div>
+      </div>
+
+      <div class="ad-panel">
+        <div class="ad-row ad-between"><h3>Best sizes for where you're posting</h3><a class="btn btn-sm" href="{{ url_for('upload.size_guide') }}" target="_blank" rel="noopener">Full size guide</a></div>
+        {% for c in channels if not c.unsupported %}
+        {% if c.service not in (channels[:loop.index0]|map(attribute='service')|list) %}
+        {% set sp = specs[c.service] %}
+        <div class="ud-guide" data-service="{{ c.service }}">
+          <div class="ud-net"><span class="ad-dot" style="background:{{ c.colour }}"></span>{{ sp.label }}</div>
+          <div class="ud-shapes" style="margin-top:8px">
+            {% for r, px, note in sp.shapes %}
+            <div class="ud-shape {% if r == sp.best %}best{% endif %}">{{ shape_box(r) }}{{ r }}<br>{{ px }}{% if note %}<br>{{ note }}{% endif %}</div>
+            {% endfor %}
+            {% if sp.video %}<div class="ud-shape">{{ shape_box(sp.video.best) }}Video {{ sp.video.best }}<br>{{ sp.video.size }}<br>up to {{ fmt_limit(sp.video.max_s) }}</div>{% endif %}
+          </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+        <div class="ad-alert info" style="font-size:12.5px"><b>One design for everything?</b> Use <b>1:1 square, 1080 × 1080</b>. It fits every network, with at most a light trim on X.</div>
+      </div>
+    </div>
+  </form>
+</div>
+<script>
+(function(){
+  var f = document.getElementById('ud-start');
+  function sync(){
+    var on = {}; f.querySelectorAll('input[name=channel_ids]').forEach(function(c){ if (c.checked) on[c.dataset.service] = 1; });
+    document.querySelectorAll('.ud-guide').forEach(function(g){ g.hidden = !on[g.dataset.service]; });
+  }
+  f.querySelectorAll('input[name=channel_ids]').forEach(function(c){ c.addEventListener('change', sync); });
+  sync();
+})();
+</script>
+{% endblock %}
