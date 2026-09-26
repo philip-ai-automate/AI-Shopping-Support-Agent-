@@ -4,6 +4,8 @@ Rules live in social_workflow.py; sending still goes through
 buffer_routes._send_to_buffer like every other post.
 
   GET  /social-posts/overview                the owner's summary (?month=YYYY-MM)
+  GET  /social-posts/analytics               Buffer's numbers for the month's sent posts (?month=YYYY-MM)
+  POST /social-posts/analytics/refresh       ask Buffer for the latest numbers now
   GET  /social-posts/calendar                month view (?month=YYYY-MM)
   GET  /social-posts/calendar/plan           start a post for a day (?date=YYYY-MM-DD&via=ai|upload)
   GET  /social-posts/<id>/view               one post: preview, status, history, actions
@@ -24,6 +26,7 @@ from portal_routes import (_require_login, _require_team_permission, _team_membe
                            _current_actor, _inject_granted_features, _inject_connect_flag)
 import buffer_accounts as ba
 import social_workflow as W
+import social_analytics as SA
 from buffer_routes import _gate, _owner, _get_post, _send_to_buffer, _validate, _parse_when
 
 socialcal_bp = Blueprint("socialcal", __name__)
@@ -142,6 +145,21 @@ def _who(p) -> str:
     return p.get("owner_key") or "name:" + W.owner_name(p)
 
 
+def _month(today):
+    """(first day, previous month's first, next month's first, and a UTC
+    window a day wider each side) for ?month=YYYY-MM, default this month.
+    Callers trim to the month in the business's own time zone."""
+    try:
+        first = datetime.strptime(request.args.get("month", ""), "%Y-%m").date().replace(day=1)
+    except ValueError:
+        first = today.replace(day=1)
+    nxt = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
+    prev = (first - timedelta(days=1)).replace(day=1)
+    start = datetime.combine(first, datetime.min.time(), timezone.utc) - timedelta(days=1)
+    end = datetime.combine(nxt, datetime.min.time(), timezone.utc) + timedelta(days=1)
+    return first, prev, nxt, start, end
+
+
 @socialcal_bp.route("/social-posts/overview", methods=["GET"])
 @team_feature("social.posts_view")
 def overview():
@@ -156,14 +174,7 @@ def overview():
     tenant_id = int(customer["tenant_id"])
     tz = W.tz_for(customer)
     today = W.today_for(customer)
-    try:
-        first = datetime.strptime(request.args.get("month", ""), "%Y-%m").date().replace(day=1)
-    except ValueError:
-        first = today.replace(day=1)
-    nxt = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
-    prev = (first - timedelta(days=1)).replace(day=1)
-    start = datetime.combine(first, datetime.min.time(), timezone.utc) - timedelta(days=1)
-    end = datetime.combine(nxt, datetime.min.time(), timezone.utc) + timedelta(days=1)
+    first, prev, nxt, start, end = _month(today)
 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -233,6 +244,96 @@ def overview():
         can_create=_team_member_has_permission("social.posts_create"),
         can_ai=_team_member_has_permission("social.ai_designs"),
     )
+
+
+# ── Analytics ──────────────────────────────────────────────────────────────
+
+@socialcal_bp.route("/social-posts/analytics", methods=["GET"])
+@team_feature("social.analytics_view")
+def analytics():
+    """Buffer's numbers for each post that went out this month, per account."""
+    r = _require_login() or _require_team_permission("social.analytics_view")
+    if r:
+        return r
+    r, customer = _ctx()
+    if r:
+        return r
+    tenant_id = int(customer["tenant_id"])
+    problem = SA.refresh(tenant_id)
+    if problem:
+        flash(problem, "warning")
+    tz = W.tz_for(customer)
+    today = W.today_for(customer)
+    first, prev, nxt, start, end = _month(today)
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""SELECT * FROM tenant_social_posts WHERE tenant_id=%s AND status IN ('sent','partial')
+                     AND sent_at >= %s AND sent_at < %s ORDER BY sent_at DESC, id DESC""", (tenant_id, start, end))
+    posts = [p for p in cur.fetchall() or [] if p["sent_at"].astimezone(tz).date().replace(day=1) == first]
+    cur.close(); conn.close()
+
+    chans = _channels(customer)
+    numbers = SA.stored(tenant_id, [p["id"] for p in posts])
+    rows, accounts, kinds = [], {}, set()
+    for p in posts:
+        results = p.get("channel_results") or {}
+        if isinstance(results, str):
+            results = _json.loads(results)
+        lines = []
+        for ch in p.get("channel_ids") or []:
+            if (results.get(ch) or {}).get("status") == "failed":
+                continue                      # never went out on this account
+            c = chans.get(ch) or {}
+            got = numbers.get((p["id"], ch))
+            m = (got or {}).get("metrics") or {}
+            kinds.update(m)
+            a = accounts.setdefault(ch, {"id": ch, "service": c.get("service") or "", "name": c.get("name") or "Removed account",
+                                         "label": ba.service_label(c.get("service") or ""), "colour": ba.service_colour(c.get("service") or ""),
+                                         "posts": 0, "with_numbers": 0, "totals": {}, "rates": []})
+            a["posts"] += 1
+            if m:
+                a["with_numbers"] += 1
+                for k, v in m.items():
+                    if k == SA.RATE:
+                        a["rates"].append(v)
+                    else:
+                        a["totals"][k] = a["totals"].get(k, 0) + v
+            lines.append({"account": a, "metrics": m, "updated": (got or {}).get("updated"),
+                          "link": (results.get(ch) or {}).get("link")})
+        if lines:
+            rows.append({"post": p, "title": W.title_of(p), "lines": lines})
+    for a in accounts.values():
+        a["gives"] = set(a["totals"]) | ({SA.RATE} if a["rates"] else set())
+        if a["rates"]:
+            a["totals"][SA.RATE] = sum(a["rates"]) / len(a["rates"])
+    cols = SA.order(kinds)
+    updated = [ln["updated"] for r_ in rows for ln in r_["lines"] if ln["updated"]]
+    return render_template(
+        "portal/social_analytics.html",
+        customer=customer,
+        month=first, prev=prev.strftime("%Y-%m"), next=nxt.strftime("%Y-%m"),
+        this_month=today.replace(day=1) == first,
+        rows=rows, accounts=sorted(accounts.values(), key=lambda a: (a["label"], a["name"])),
+        cols=cols, label_for=SA.label_for, explain={k: e for k, _, e in SA.METRICS}, rate=SA.RATE,
+        buffer_updated=max(updated) if updated else None,
+        checked=SA.checked_at(tenant_id),
+    )
+
+
+@socialcal_bp.route("/social-posts/analytics/refresh", methods=["POST"])
+@team_feature("social.analytics_view")
+def analytics_refresh():
+    r = _require_login() or _require_team_permission("social.analytics_view")
+    if r:
+        return r
+    r, customer = _ctx()
+    if r:
+        return r
+    problem = SA.refresh(int(customer["tenant_id"]), force=True)
+    flash(problem or "Checked with Buffer. These are the latest numbers it has.", "warning" if problem else "success")
+    month = request.form.get("month", "")
+    return redirect(url_for("socialcal.analytics", **({"month": month} if month else {})))
 
 
 @socialcal_bp.route("/social-posts/calendar/plan", methods=["GET"])

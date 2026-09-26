@@ -1363,6 +1363,24 @@ def ensure_portal_tables():
             )
         """)
         cur.execute("CREATE INDEX IF NOT EXISTS idx_social_post_events_post ON social_post_events (tenant_id, post_id)")
+        # ── Social Posts analytics (2026-09-26) — see social_analytics.py.
+        # One row per post per account, holding the numbers Buffer last gave.
+        # metrics = {type: value} as Buffer names them (reach, impressions, …);
+        # a type missing means that network doesn't give it, not zero.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS social_post_metrics (
+                tenant_id          INTEGER NOT NULL,
+                buffer_post_id     VARCHAR(64) NOT NULL,
+                post_id            INTEGER NOT NULL,
+                channel_id         VARCHAR(64) NOT NULL,
+                service            VARCHAR(40),
+                metrics            JSONB NOT NULL DEFAULT '{}',
+                metrics_updated_at TIMESTAMPTZ,
+                fetched_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (tenant_id, buffer_post_id)
+            )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_social_post_metrics_post ON social_post_metrics (tenant_id, post_id)")
+        cur.execute("ALTER TABLE social_settings ADD COLUMN IF NOT EXISTS metrics_checked_at TIMESTAMPTZ")
         # A design being uploaded and checked, before it becomes a post.
         cur.execute("""
             CREATE TABLE IF NOT EXISTS upload_drafts (

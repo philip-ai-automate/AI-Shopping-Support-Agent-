@@ -169,3 +169,31 @@ def buffer_delete_post(api_key: str, buffer_post_id: str) -> None:
     }
     """
     _buffer_graphql(api_key, query, {"input": {"id": buffer_post_id}})
+
+
+def buffer_sent_posts(api_key: str, organization_id: str, channel_ids: list, after: str = None,
+                      first: int = 100) -> tuple:
+    """One page of this organization's sent posts, with the numbers Buffer
+    holds for each. Returns (posts, next_cursor or None). Each post:
+    {"id", "channelId", "channelService", "sentAt", "metricsUpdatedAt",
+     "metrics": [{"type", "unit", "value"}]}.
+    Which metric types come back depends on the network (checked 2026-09-26:
+    LinkedIn gives reach but not clicks, Facebook clicks but not reach), and
+    Buffer refreshes them on its own schedule, not live."""
+    query = """
+    query SentPosts($input: PostsInput!, $first: Int, $after: String) {
+      posts(first: $first, after: $after, input: $input) {
+        edges { node { id channelId channelService sentAt metricsUpdatedAt metrics { type unit value } } }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+    """
+    filt = {"status": ["sent"]}
+    if channel_ids:
+        filt["channelIds"] = list(channel_ids)
+    data = _buffer_graphql(api_key, query, {"input": {"organizationId": organization_id, "filter": filt},
+                                            "first": first, "after": after})
+    page = data.get("posts") or {}
+    posts = [e["node"] for e in page.get("edges") or [] if e.get("node")]
+    info = page.get("pageInfo") or {}
+    return posts, (info.get("endCursor") if info.get("hasNextPage") else None)

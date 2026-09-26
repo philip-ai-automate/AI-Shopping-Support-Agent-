@@ -857,6 +857,10 @@
         <a href="{{ url_for('buffer.published') }}"
            class="{% if request.endpoint == 'buffer.published' or _post_out %}active{% endif %}">Published</a>
         {% endif %}
+        {% if staff_can_open('socialcal.analytics') %}
+        <a href="{{ url_for('socialcal.analytics') }}"
+           class="{% if request.endpoint == 'socialcal.analytics' %}active{% endif %}">Analytics</a>
+        {% endif %}
         {% if staff_can_open('socialcal.approval') %}
         <a href="{{ url_for('socialcal.approval') }}"
            class="{% if request.endpoint == 'socialcal.approval' %}active{% endif %}">Approval{% if social_waiting_count %} <span class="sb-count" title="{{ social_waiting_count }} waiting for approval">{{ social_waiting_count }}</span>{% endif %}</a>
