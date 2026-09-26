@@ -1337,6 +1337,10 @@ def ensure_portal_tables():
                          ("submitted_by_key", "VARCHAR(40)"), ("submitted_at", "TIMESTAMPTZ"),
                          ("decided_by", "VARCHAR(255)"), ("decided_at", "TIMESTAMPTZ")):
             cur.execute(f"ALTER TABLE tenant_social_posts ADD COLUMN IF NOT EXISTS {col} {typ}")
+        # Person responsible + due date (2026-09-26). owner_key is 'owner:<customer id>'
+        # or 'team:<team member id>'; owner_label keeps the name shown even if they leave.
+        for col, typ in (("owner_key", "VARCHAR(40)"), ("owner_label", "VARCHAR(255)"), ("due_date", "DATE")):
+            cur.execute(f"ALTER TABLE tenant_social_posts ADD COLUMN IF NOT EXISTS {col} {typ}")
         cur.execute("""CREATE INDEX IF NOT EXISTS idx_tenant_social_posts_waiting
                        ON tenant_social_posts (tenant_id) WHERE status='draft' AND approval='waiting'""")
         cur.execute("""

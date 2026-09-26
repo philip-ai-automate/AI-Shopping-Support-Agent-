@@ -198,7 +198,11 @@
           {% if p.channel_ids %}<span>{{ post_channels(p) }}</span><span>·</span>{% endif %}
           {% set t = p.sent_at if p.status in ('sent','partial') and p.sent_at else (p.scheduled_for or p.created_at) %}
           <span class="js-local" data-utc="{{ t.isoformat() }}">{{ t.strftime('%d %b %Y, %H:%M') }} UTC</span>
-          {% if p.created_by %}<span>· by {{ p.created_by }}</span>{% endif %}
+          {% if p.owner_label or p.created_by %}<span>· {{ p.owner_label or p.created_by }}</span>{% endif %}
+          {% if p.due_date %}
+            {% set late = p.status == 'draft' and p.approval != 'waiting' and p.due_date < today %}
+            <span {% if late %}style="color:#B42318;font-weight:700"{% endif %}>· due {{ p.due_date.strftime('%d %b') }}{% if late %} · overdue{% endif %}</span>
+          {% endif %}
         </div>
         {% if p.status in ('failed', 'partial') and p.buffer_error %}
         <div class="sp-err">{{ p.buffer_error }}</div>

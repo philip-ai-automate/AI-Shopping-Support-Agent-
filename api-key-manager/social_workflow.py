@@ -17,6 +17,11 @@ tenant_social_posts.approval:
   'changes'  sent back with a note (approval_note); the writer edits and resubmits
   'approved' an approver approved it and it went to Buffer
 The approval queue is always status='draft' AND approval='waiting'.
+
+Each post also has a person responsible (owner_key / owner_label, default
+whoever made it) and an optional due date: the day the content should be
+ready. A post is overdue when its due date has passed and it's still a
+draft that nobody has submitted (see is_overdue).
 """
 import threading
 from datetime import datetime, timezone
@@ -93,6 +98,8 @@ def events(tenant_id: int, post_id: int) -> list:
 
 
 EVENT_TEXT = {
+    "assigned": "Person responsible changed",
+    "due_set": "Due date changed",
     "submitted": "Submitted for approval",
     "resubmitted": "Submitted again after changes",
     "withdrawn": "Taken back out of approval (saved as a draft)",
@@ -291,4 +298,124 @@ def notify_submitter(customer, post, decision: str, by_label: str, note: str = N
             + (f"<p style=\"background:#FEF3F2;border:1px solid #FECDCA;border-radius:8px;padding:10px 12px\">"
                f"<b>Comments:</b><br>{_esc(note)}</p>" if note else "")
             + f"<p><a href=\"{link}\">Open the post</a></p>")
+    _send_later([to], subject, html, text)
+
+
+# ── Person responsible + due date ──────────────────────────────────────────
+
+def people(customer) -> list:
+    """Who a post can be given to: the account owner, then every active team
+    member (invite accepted) whose role can see Social Posts.
+    [{"key", "label", "email"}]"""
+    out = [{"key": f"owner:{customer['id']}",
+            "label": ((customer.get("first_name") or "").strip() or "Owner") + " (owner)",
+            "email": customer.get("email")}]
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""SELECT tm.id, COALESCE(NULLIF(TRIM(tm.name),''), tm.email), tm.email
+                       FROM team_members tm JOIN tenant_roles r ON r.id = tm.role_id
+                       WHERE tm.tenant_id=%s AND tm.is_active AND tm.password_hash IS NOT NULL
+                         AND COALESCE((r.permissions->>'social.posts_view')::boolean, FALSE)
+                       ORDER BY 2""", (int(customer["tenant_id"]),))
+        out += [{"key": f"team:{i}", "label": name, "email": email} for i, name, email in cur.fetchall()]
+    finally:
+        cur.close(); conn.close()
+    return out
+
+
+def default_owner(customer, actor: dict) -> dict:
+    """Whoever is making the post, in the same shape as people()."""
+    for p in people(customer):
+        if p["key"] == actor["key"]:
+            return p
+    return {"key": actor["key"], "label": actor["label"], "email": None}
+
+
+def parse_due(raw: str):
+    try:
+        return datetime.strptime((raw or "").strip(), "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def assignment_from_form(customer, form, actor: dict, keep: dict = None):
+    """(owner dict, due date or None, error) from a form's owner_key / due_date.
+    An empty owner_key means "unchanged": `keep` (the post's current person)
+    when editing, else whoever is making the post."""
+    key = (form.get("owner_key") or "").strip()
+    owner = keep if keep and keep.get("key") else default_owner(customer, actor)
+    if key:
+        match = next((p for p in people(customer) if p["key"] == key), None)
+        if not match:
+            return None, None, "That person can't be given this post. Pick someone from the list."
+        owner = match
+    raw = (form.get("due_date") or "").strip()
+    due = parse_due(raw)
+    if raw and not due:
+        return None, None, "The due date isn't a real date."
+    return owner, due, None
+
+
+def today_for(customer):
+    """Today in the business's own time zone (UTC if it hasn't set one)."""
+    tz = timezone.utc
+    name = (customer or {}).get("timezone")
+    if name:
+        try:
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo(name)
+        except Exception:
+            pass
+    return datetime.now(tz).date()
+
+
+def is_overdue(post, today) -> bool:
+    return bool(post.get("due_date") and post["due_date"] < today
+                and post["status"] == "draft" and post.get("approval") != "waiting")
+
+
+def owner_name(post) -> str:
+    return post.get("owner_label") or post.get("created_by") or ""
+
+
+def set_assignment(customer, post, owner: dict, due, actor_label: str) -> bool:
+    """Saves a new person / due date on an existing post, with history and an
+    email to a newly assigned person. Returns True if anything changed."""
+    tenant_id = int(customer["tenant_id"])
+    changed_owner = owner["key"] != (post.get("owner_key") or "")
+    changed_due = due != post.get("due_date")
+    if not (changed_owner or changed_due):
+        return False
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""UPDATE tenant_social_posts SET owner_key=%s, owner_label=%s, due_date=%s, updated_at=NOW()
+                       WHERE id=%s AND tenant_id=%s""", (owner["key"], owner["label"], due, post["id"], tenant_id))
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    if changed_owner:
+        log_event(tenant_id, post["id"], "assigned", actor_label, f"Now {owner['label']}")
+    if changed_due:
+        log_event(tenant_id, post["id"], "due_set", actor_label,
+                  f"Due {due.strftime('%a %d %b %Y')}" if due else "No due date")
+    if changed_owner:
+        notify_assignee(customer, dict(post, owner_key=owner["key"], due_date=due), owner, actor_label)
+    return True
+
+
+def notify_assignee(customer, post, owner: dict, by_label: str):
+    """Emails someone who was given a post by somebody else."""
+    to = owner.get("email")
+    if not to or by_label == owner.get("label"):
+        return
+    title = title_of(post, 90)
+    link = f"{_base_url()}/social-posts/{post['id']}/view"
+    due = post.get("due_date")
+    due_text = f" It's due {due.strftime('%A %d %B')}." if due else ""
+    subject = f"Social post for you: {title}"
+    text = f"{by_label} made you responsible for a social post.{due_text}\n\n\"{title}\"\n\nOpen it: {link}\n"
+    html = (f"<p>{_esc(by_label)} made you responsible for a social post.{_esc(due_text)}</p>"
+            f"<p style=\"font-size:15px\"><b>{_esc(title)}</b></p><p><a href=\"{link}\">Open the post</a></p>")
     _send_later([to], subject, html, text)

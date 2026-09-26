@@ -1,0 +1,38 @@
+{# Person responsible + due date, on New Post (AI Post Designer) and Upload Design.
+   Needs social_people / social_me from social_calendar_routes' context processor. #}
+{% if social_people %}
+<div class="sa-fields" style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
+  <div style="display:flex;flex-direction:column;gap:6px;min-width:200px">
+    <label for="sa-owner" style="font-size:12.5px;font-weight:700;color:var(--ink)">Person responsible</label>
+    <select id="sa-owner" name="owner_key" style="font:inherit;font-size:14px;padding:9px 10px;border:1.5px solid var(--line);border-radius:10px;background:#fff">
+      {% for p in social_people %}
+      <option value="{{ p.key }}" {% if p.key == social_me %}selected{% endif %}>{{ p.label }}{% if p.key == social_me %} (you){% endif %}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:6px">
+    <label for="sa-due" style="font-size:12.5px;font-weight:700;color:var(--ink)">Due date <span style="font-weight:500;color:var(--muted)">(optional)</span></label>
+    <input type="date" id="sa-due" name="due_date" style="font:inherit;font-size:14px;padding:8px 10px;border:1.5px solid var(--line);border-radius:10px">
+  </div>
+  <span id="sa-hint" style="font-size:12px;color:var(--muted);flex-basis:100%">The day the post should be ready. After that it shows as overdue until it's submitted or sent.</span>
+</div>
+<script>
+(function(){
+  // Picking a "Schedule for later" time suggests a due date 2 days earlier,
+  // unless someone already chose one.
+  var due = document.getElementById('sa-due'), touched = false;
+  if (!due) return;
+  due.addEventListener('input', function(){ touched = true; });
+  var local = document.querySelector('input[type=datetime-local][data-plan]');
+  function suggest(){
+    if (touched || !local || !local.value) return;
+    var d = new Date(local.value); if (isNaN(d)) return;
+    d.setDate(d.getDate() - 2);
+    var today = new Date(); today.setHours(0,0,0,0);
+    if (d < today) d = today;
+    due.value = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+  if (local) { local.addEventListener('change', suggest); setTimeout(suggest, 0); }
+})();
+</script>
+{% endif %}

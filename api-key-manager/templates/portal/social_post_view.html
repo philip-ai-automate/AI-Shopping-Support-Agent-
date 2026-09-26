@@ -30,6 +30,10 @@
   .p-n{background:#F2F4F7;color:#475467}.p-b{background:#EFF4FF;color:#1849A9}.p-g{background:#ECFDF3;color:#027A48}
   .p-w{background:#FFFAEB;color:#B54708}.p-r{background:#FEF3F2;color:#B42318}
   .pv-err{font-size:12.5px;color:#B42318}
+  .pv-late{color:#B42318;font-weight:700}
+  .pv-assign{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+  .pv-assign label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:700;color:var(--ink)}
+  .pv-assign select,.pv-assign input{font:inherit;font-size:14px;padding:8px 10px;border:1.5px solid var(--line);border-radius:10px;background:#fff;min-width:180px}
 </style>
 {% endblock %}
 
@@ -40,6 +44,7 @@
     <a class="pv-back" href="{{ url_for('socialcal.calendar') }}">← Calendar</a> <span class="pv-back">·</span> <a class="pv-back" href="{{ url_for('buffer.posts') }}">Posts</a>
     <h1>{{ card.title }}</h1>
     <div class="pv-row" style="margin-top:8px"><span class="sp-pill {{ d[1] }}">{{ d[0] }}</span>
+      {% if card.overdue %}<span class="sp-pill p-r">Overdue</span>{% endif %}
       {% if p.original_filename == 'upload' %}<span class="sp-pill p-n">Uploaded</span>{% elif p.original_filename == 'AI design' %}<span class="sp-pill p-b">AI design</span>{% endif %}</div>
   </div>
 
@@ -62,6 +67,8 @@
         <div><b>Post to</b>
           {% set names = [] %}{% for cid in p.channel_ids %}{% set c = chans.get(cid) %}{% if names.append(c.label ~ ' · ' ~ c.title if c else 'Removed account') %}{% endif %}{% endfor %}
           {{ names|join(', ') or 'No accounts picked' }}</div>
+        <div><b>Person responsible</b>{{ card.owner or '—' }}</div>
+        <div><b>Due</b>{% if p.due_date %}<span class="{{ 'pv-late' if card.overdue }}">{{ p.due_date.strftime('%a %d %b %Y') }}{% if card.overdue %} · overdue{% endif %}</span>{% else %}No due date{% endif %}</div>
         <div><b>Made by</b>{{ p.created_by or '—' }}</div>
         {% if p.decided_by %}<div><b>{{ 'Approved by' if p.approval == 'approved' else 'Reviewed by' }}</b>{{ p.decided_by }}</div>{% endif %}
       </div>
@@ -86,12 +93,34 @@
     </div>
   </div>
 
+  {% if can_assign %}
+  <div class="pv-panel">
+    <h2>Person responsible and due date</h2>
+    <form method="POST" action="{{ url_for('socialcal.assign', post_id=p.id) }}" class="pv-assign">
+      <label for="pv-owner">Person responsible
+        <select id="pv-owner" name="owner_key">
+          {% set known = people|map(attribute='key')|list %}
+          {% if p.owner_key and p.owner_key not in known %}<option value="" selected>{{ card.owner }} (no longer on the team)</option>{% endif %}
+          {% for person in people %}
+          <option value="{{ person.key }}" {% if person.key == p.owner_key %}selected{% endif %}>{{ person.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label for="pv-due">Due date
+        <input type="date" id="pv-due" name="due_date" value="{{ p.due_date.isoformat() if p.due_date else '' }}">
+      </label>
+      <button type="submit" class="btn">Save</button>
+    </form>
+    <p class="sp-hint" style="font-size:12px;color:var(--muted);margin:8px 0 0">They get an email when a post is given to them. Changing these doesn't touch the post in Buffer.</p>
+  </div>
+  {% endif %}
+
   <div class="pv-panel">
     <h2>History</h2>
     <ul class="pv-time">
       <li style="--c:#667085">Created{% if p.created_by %} by {{ p.created_by }}{% endif %}<small class="js-local" data-utc="{{ p.created_at.isoformat() }}"></small></li>
       {% for e in history %}
-      <li style="--c:{{ {'approved':'#12B76A','changes':'#F04438','submitted':'#F79009','resubmitted':'#F79009'}.get(e.action, '#98A2B3') }}">
+      <li style="--c:{{ {'approved':'#12B76A','changes':'#F04438','submitted':'#F79009','resubmitted':'#F79009','assigned':'#2E90FA','due_set':'#2E90FA'}.get(e.action, '#98A2B3') }}">
         {{ event_text.get(e.action, e.action) }}{% if e.actor %} by {{ e.actor }}{% endif %}
         <small class="js-local" data-utc="{{ e.created_at.isoformat() }}"></small>
         {% if e.note %}<q>"{{ e.note }}"</q>{% endif %}

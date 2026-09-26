@@ -46,11 +46,15 @@ def _channels(customer) -> dict:
     return {c["channel_id"]: c for c in ba.list_channels(_owner(customer))}
 
 
-def _card(p, chans: dict) -> dict:
+def _card(p, chans: dict, today=None) -> dict:
     """What the calendar / approval pages need about one post."""
     k = W.display_key(p)
     d = W.post_date(p)
     return {
+        "owner": W.owner_name(p),
+        "owner_key": p.get("owner_key") or "",
+        "due": p["due_date"].isoformat() if p.get("due_date") else None,
+        "overdue": bool(today and W.is_overdue(p, today)),
         "id": p["id"],
         "title": W.title_of(p),
         "key": k,
@@ -100,13 +104,19 @@ def calendar():
     cur.close(); conn.close()
 
     chans = _channels(customer)
+    today = W.today_for(customer)
+    cards = [_card(p, chans, today) for p in dated]
+    undated_cards = [_card(p, chans, today) for p in undated]
+    owners = sorted({(c["owner_key"], c["owner"]) for c in cards + undated_cards if c["owner"]}, key=lambda o: o[1].lower())
     return render_template(
         "portal/social_calendar.html",
         customer=customer,
         month=first, prev=prev.strftime("%Y-%m"), next=nxt.strftime("%Y-%m"),
         this_month=date.today().replace(day=1) == first,
-        cards=[_card(p, chans) for p in dated],
-        undated=[_card(p, chans) for p in undated],
+        cards=cards,
+        undated=undated_cards,
+        owners=owners,
+        overdue_count=sum(1 for c in cards + undated_cards if c["overdue"]),
         display=W.DISPLAY,
         can_create=_team_member_has_permission("social.posts_create"),
         can_ai=_team_member_has_permission("social.ai_designs"),
@@ -149,9 +159,12 @@ def post_view(post_id: int):
     if not p:
         abort(404)
     chans = _channels(customer)
+    today = W.today_for(customer)
+    can_assign = _team_member_has_permission("social.posts_edit") and p["status"] in ("draft", "scheduled", "failed")
     return render_template(
         "portal/social_post_view.html",
-        customer=customer, p=p, card=_card(p, chans), chans=chans,
+        customer=customer, p=p, card=_card(p, chans, today), chans=chans,
+        people=W.people(customer) if can_assign else [], can_assign=can_assign,
         history=W.events(tenant_id, post_id), event_text=W.EVENT_TEXT, display=W.DISPLAY,
         can_edit=_team_member_has_permission("social.posts_edit"),
         can_approve=W.can_approve(),
@@ -185,7 +198,7 @@ def approval():
     return render_template(
         "portal/social_approval.html",
         customer=customer, waiting=waiting, recent=recent, chans=chans,
-        cards={p["id"]: _card(p, chans) for p in waiting + recent},
+        cards={p["id"]: _card(p, chans, W.today_for(customer)) for p in waiting + recent},
         display=W.DISPLAY,
         required=W.approval_required(tenant_id),
         can_approve=W.can_approve(),
@@ -313,6 +326,40 @@ def request_changes(post_id: int):
     return redirect(back)
 
 
+@socialcal_bp.route("/social-posts/<int:post_id>/assign", methods=["POST"])
+@team_feature("social.posts_edit")
+def assign(post_id: int):
+    """Change only the person responsible and due date. Doesn't touch the
+    copy in Buffer, so a scheduled post stays scheduled."""
+    r = _require_login() or _require_team_permission("social.posts_edit")
+    if r:
+        return r
+    r, customer = _ctx()
+    if r:
+        return r
+    p = _get_post(int(customer["tenant_id"]), post_id)
+    if not p:
+        abort(404)
+    back = url_for("socialcal.post_view", post_id=post_id)
+    if p["status"] not in ("draft", "scheduled", "failed"):
+        flash("This post has already gone out, so it can't be reassigned.", "warning")
+        return redirect(back)
+    actor = _current_actor(customer)
+    current = {"key": p.get("owner_key"), "label": W.owner_name(p), "email": None}
+    person, due, err = W.assignment_from_form(customer, request.form, actor, keep=current)
+    if err:
+        flash(err, "warning")
+        return redirect(back)
+    if W.set_assignment(customer, p, person, due, actor["label"]):
+        insert_audit_log(action="social_post_assigned", tenant_id=int(customer["tenant_id"]),
+                         details={"post_id": post_id, "owner": person["label"],
+                                  "due": due.isoformat() if due else None, "by": actor["label"]})
+        flash(f"Saved. {person['label']} is responsible" + (f", due {due.strftime('%a %d %b')}." if due else ", no due date."), "success")
+    else:
+        flash("Nothing changed.", "success")
+    return redirect(back)
+
+
 @socialcal_bp.app_context_processor
 def _inject_social_workflow():
     """Approval badge in the side menu, and the pre-filled day + "Submit for
@@ -332,6 +379,10 @@ def _inject_social_workflow():
         out["social_waiting_count"] = W.waiting_count(tid) if W.can_approve() else 0
         if request.blueprint in ("buffer", "social", "upload", "socialcal"):
             out["social_needs_approval"] = W.approval_needed(tid)
+            if request.endpoint in ("social.finish", "upload.post"):
+                from portal_routes import _current_actor as _ca
+                out["social_people"] = W.people(customer)
+                out["social_me"] = _ca(customer)["key"]
             # The day picked with "+" on the calendar; forgotten after 2 hours
             # so an abandoned plan doesn't pre-fill some later, unrelated post.
             day, _, at = (session.get("social_plan_date") or "").partition("|")

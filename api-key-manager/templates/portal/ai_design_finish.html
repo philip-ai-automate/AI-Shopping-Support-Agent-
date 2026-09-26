@@ -75,6 +75,7 @@
       </div>
       <input type="hidden" name="scheduled_for_utc" id="ad-when-utc">
     </div>
+    {% include "portal/_social_assign_fields.html" %}
     {% if social_needs_approval %}<div style="background:#FFFAEB;border:1px solid rgba(181,71,8,.25);color:#7A4F00;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.5">Posts need approval before they go out. <b>Submit for approval</b> sends it to an approver first. Once they approve it, it goes out at the time you picked (or straight away if you chose Post now).</div>{% endif %}
     <div class="ad-row">
       <button type="submit" name="action" value="now" class="btn btn-primary" id="ad-go" data-approval="{{ '1' if social_needs_approval else '' }}">Post now</button>

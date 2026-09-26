@@ -34,6 +34,11 @@
   .sc-chip:hover{background:color-mix(in srgb,var(--c) 15%,#fff);text-decoration:none}
   .sc-chip b{font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .sc-chip small{display:flex;justify-content:space-between;gap:4px;color:var(--muted);font-size:10.5px;margin-top:3px}
+  .sc-chip .late{color:#B42318;font-weight:800}
+  .sc-chip.is-late{box-shadow:inset 0 0 0 1px rgba(217,45,32,.45)}
+  .sc-filter{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px}
+  .sc-filter select{font:inherit;font-size:13px;padding:6px 9px;border:1.5px solid var(--line);border-radius:9px;background:#fff}
+  .sc-latebox{background:#FEF3F2;border:1px solid #FECDCA;color:#7A271A;border-radius:10px;padding:6px 10px;font-size:12.5px;font-weight:650}
   .sc-side{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px}
   .sc-side h3{margin:0 0 8px;font-size:14px;color:var(--ink)}
   .sc-undated{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
@@ -53,7 +58,7 @@
   <div class="sc-top">
     <div>
       <div class="pg-title">Calendar</div>
-      <div class="pg-sub">Every post on the day it's planned, scheduled or went out. Click a post to open it{% if can_create or can_ai %}, or use + on a day to plan a new one{% endif %}.</div>
+      <div class="pg-sub">Every post on the day it's planned, scheduled or went out, with the person responsible. Click a post to open it{% if can_create or can_ai %}, or use + on a day to plan a new one{% endif %}.</div>
     </div>
     {% if can_ai or can_create %}
     <div class="sc-row">
@@ -68,6 +73,15 @@
     <h2>{{ month.strftime('%B %Y') }}</h2>
     <a class="btn btn-sm" href="{{ url_for('socialcal.calendar', month=next) }}" aria-label="Next month">›</a>
     {% if not this_month %}<a class="btn btn-sm" href="{{ url_for('socialcal.calendar') }}">Today</a>{% endif %}
+    {% if owners|length > 1 %}
+    <label class="sc-filter" for="sc-who">Show
+      <select id="sc-who">
+        <option value="">Everyone</option>
+        {% for key, name in owners %}<option value="{{ key or name }}">{{ name }}</option>{% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    {% if overdue_count %}<span class="sc-latebox">{{ overdue_count }} overdue</span>{% endif %}
     <div class="sc-legend">
       {% for k in ['draft','waiting','changes','sched','sent','failed'] %}
       <span class="sc-key" style="--c:{{ colours[k] }}"><i></i>{{ display[k][0] }}</span>
@@ -82,7 +96,7 @@
     {% if undated %}
     <div class="sc-undated">
       {% for c in undated %}
-      <a class="sc-chip" style="--c:{{ colours[c.key] }}" href="{{ url_for('socialcal.post_view', post_id=c.id) }}"><b>{{ c.title }}</b><small><span>{{ c.label }}</span><span>{{ c.by }}</span></small></a>
+      <a class="sc-chip{{ ' is-late' if c.overdue }}" data-who="{{ c.owner_key or c.owner }}" style="--c:{{ colours[c.key] }}" href="{{ url_for('socialcal.post_view', post_id=c.id) }}"><b>{{ c.title }}</b><small><span>{% if c.overdue %}<span class="late">Overdue</span>{% else %}{{ c.label }}{% endif %}</span><span>{{ c.owner }}</span></small></a>
       {% endfor %}
     </div>
     {% else %}
@@ -119,8 +133,9 @@
     var chips = (byDay[k] || []).map(function(c){
       var t = c._t.toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit'});
       var nets = c.services.map(function(s){ return NAMES[s] || s; }).join(', ');
-      return '<a class="sc-chip" style="--c:' + COL[c.key] + '" href="' + VIEW.replace('/0/', '/' + c.id + '/') + '" title="' + esc(c.title + (nets ? ' · ' + nets : '')) + '">'
-        + '<b>' + esc(c.title) + '</b><small><span>' + esc(c.label) + ' · ' + t + '</span><span>' + esc(c.by) + '</span></small></a>';
+      var due = c.due ? ' · due ' + new Date(c.due + 'T12:00').toLocaleDateString(undefined, {day:'numeric', month:'short'}) : '';
+      return '<a class="sc-chip' + (c.overdue ? ' is-late' : '') + '" data-who="' + esc(c.owner_key || c.owner) + '" style="--c:' + COL[c.key] + '" href="' + VIEW.replace('/0/', '/' + c.id + '/') + '" title="' + esc(c.title + (nets ? ' · ' + nets : '') + (c.owner ? ' · ' + c.owner : '') + due) + '">'
+        + '<b>' + esc(c.title) + '</b><small><span>' + (c.overdue ? '<span class="late">Overdue</span>' : esc(c.label) + ' · ' + t) + '</span><span>' + esc(c.owner) + '</span></small></a>';
     }).join('');
     var canPlan = (CAN_AI || CAN_UP) && d >= past;
     html += '<div class="sc-day' + (out ? ' out' : '') + (wd === 0 || wd === 6 ? ' wknd' : '') + (k === today ? ' today' : '') + '">'
@@ -148,6 +163,12 @@
   });
   document.addEventListener('click', function(e){ if (menu && !menu.contains(e.target)) close(); });
   document.addEventListener('keydown', function(e){ if (e.key === 'Escape') close(); });
+
+  // Show one person's posts.
+  var who = document.getElementById('sc-who');
+  if (who) who.addEventListener('change', function(){
+    document.querySelectorAll('.sc-chip[data-who]').forEach(function(ch){ ch.hidden = !!who.value && ch.dataset.who !== who.value; });
+  });
 })();
 </script>
 {% endblock %}

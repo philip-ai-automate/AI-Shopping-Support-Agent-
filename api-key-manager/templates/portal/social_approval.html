@@ -92,6 +92,8 @@
       <div class="ap-meta">
         <div><b>Goes out</b>{% if p.scheduled_for %}<span class="js-local" data-utc="{{ p.scheduled_for.isoformat() }}"></span>{% if p.scheduled_for < now %} <span class="sp-pill p-r">time has passed</span>{% endif %}{% else %}As soon as it's approved{% endif %}</div>
         <div><b>Post to</b>{{ nets(p) or 'No accounts picked' }}</div>
+        <div><b>Person responsible</b>{{ c.owner or '—' }}</div>
+        {% if p.due_date %}<div><b>Due</b>{{ p.due_date.strftime('%a %d %b') }}</div>{% endif %}
       </div>
       <div class="ap-cap">{{ p.caption }}</div>
       {% if p.captions %}<div class="ap-per">Has its own wording for {{ p.captions.keys()|map('capitalize')|join(', ') }}. <a href="{{ url_for('socialcal.post_view', post_id=p.id) }}">See each version</a>.</div>{% endif %}

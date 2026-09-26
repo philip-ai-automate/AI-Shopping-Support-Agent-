@@ -418,16 +418,21 @@ def create_post_from_design(customer, caption: str, captions: dict, square: str,
     err = _validate(caption, picked, action, when, usable, True)
     if err:
         return False, err
+    person, due, err = W.assignment_from_form(customer, request.form, _current_actor(customer))
+    if err:
+        return False, err
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""INSERT INTO tenant_social_posts (tenant_id, caption, captions, image_filename, wide_image_filename,
-                          original_filename, public_token, channel_ids, status, scheduled_for, created_by)
-                   VALUES (%s,%s,%s,%s,%s,'AI design',%s,%s,'draft',%s,%s) RETURNING *""",
+                          original_filename, public_token, channel_ids, status, scheduled_for, created_by,
+                          owner_key, owner_label, due_date)
+                   VALUES (%s,%s,%s,%s,%s,'AI design',%s,%s,'draft',%s,%s,%s,%s,%s) RETURNING *""",
                 (tenant_id, caption, _json.dumps(captions) if captions else None, square, wide,
-                 uuid.uuid4().hex, picked, when, actor))
+                 uuid.uuid4().hex, picked, when, actor, person["key"], person["label"], due))
     post = cur.fetchone()
     conn.commit()
     cur.close(); conn.close()
+    W.notify_assignee(customer, post, person, actor)
     session.pop("social_plan_date", None)
     if action == "draft":
         insert_audit_log(action="social_post_draft_saved", tenant_id=tenant_id, details={"post_id": post["id"], "by": actor, "ai": True})
@@ -467,16 +472,21 @@ def create_post_from_upload(customer, captions: dict, media: dict, cover: str, c
         if when < datetime.now(timezone.utc) + timedelta(minutes=2):
             return False, "Pick a time at least 2 minutes from now, or choose Post now.", None
     main = next((t for t in captions.values() if t), "")
+    person, due, err = W.assignment_from_form(customer, request.form, _current_actor(customer))
+    if err:
+        return False, err, None
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""INSERT INTO tenant_social_posts (tenant_id, caption, captions, image_filename, original_filename,
-                          public_token, channel_ids, status, scheduled_for, created_by, media)
-                   VALUES (%s,%s,%s,%s,'upload',%s,%s,'draft',%s,%s,%s) RETURNING *""",
+                          public_token, channel_ids, status, scheduled_for, created_by, media,
+                          owner_key, owner_label, due_date)
+                   VALUES (%s,%s,%s,%s,'upload',%s,%s,'draft',%s,%s,%s,%s,%s,%s) RETURNING *""",
                 (tenant_id, main or " ", _json.dumps(captions), cover, uuid.uuid4().hex, picked, when, actor,
-                 _json.dumps(media)))
+                 _json.dumps(media), person["key"], person["label"], due))
     post = cur.fetchone()
     conn.commit()
     cur.close(); conn.close()
+    W.notify_assignee(customer, post, person, actor)
     session.pop("social_plan_date", None)
     if action == "draft":
         insert_audit_log(action="social_post_draft_saved", tenant_id=tenant_id, details={"post_id": post["id"], "by": actor, "upload": True})
@@ -546,6 +556,7 @@ def posts():
     return render_template(
         "portal/social_posts.html",
         customer=customer,
+        today=W.today_for(customer),
         account=account,
         channels=[c for c in channels if c["enabled"] and not c["is_disconnected"]],
         channels_by_id=channels_by_id,
