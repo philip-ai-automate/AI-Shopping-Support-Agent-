@@ -285,7 +285,7 @@ def approve(post_id: int):
                  else "It's been sent to Buffer and is publishing now.")
     if status == "failed":
         W.notify_submitter(customer, p, "approved", actor, when_text="But Buffer didn't accept it: " + (errors or ""))
-        flash(f"Approved, but Buffer didn't accept the post. It's under Posts as Failed so it can be tried again. {errors}", "danger")
+        flash(f"Approved, but Buffer didn't accept the post. It's under Content as Failed so it can be tried again. {errors}", "danger")
     else:
         W.notify_submitter(customer, p, "approved", actor, when_text=when_text)
         flash(("Approved. " + when_text) if status != "partial" else f"Approved and sent to some accounts, but not all. {errors}",

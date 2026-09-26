@@ -222,7 +222,7 @@ def h_finish(ctx, sid, customer=None):
         square, wide = D.save_final_images(ctx.owner_key, s, UPLOAD_FOLDER)
         ok, msg = create_post_from_design(customer, main_caption, caps, square, wide,
                                           [c["channel_id"] for c in s.get("channels") or []], action, when, ctx.actor)
-        if not ok and "saved under Posts" not in msg:
+        if not ok and "saved under Content" not in msg:
             for n in (square, wide):
                 try:
                     os.remove(os.path.join(UPLOAD_FOLDER, n))
@@ -512,7 +512,7 @@ def ai_key_disconnect():
 @social_bp.app_context_processor
 def _inject_social_menu():
     """For the Social Posts side-menu group."""
-    return {"social_menu_endpoints": ("buffer.posts", "social.new_post", "social.pick", "social.again",
+    return {"social_menu_endpoints": ("buffer.posts", "buffer.published", "social.new_post", "social.pick", "social.again",
                                       "social.finish", "social.brand_kit", "social.usage", "upload.start",
                                       "upload.check", "upload.fix", "upload.post", "upload.size_guide",
                                       "socialcal.calendar", "socialcal.approval", "socialcal.post_view")}

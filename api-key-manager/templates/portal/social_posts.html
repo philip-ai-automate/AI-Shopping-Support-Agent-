@@ -1,5 +1,5 @@
 {% extends "portal/base.html" %}
-{% block title %}Posts — Social Posts — PhiXtra Portal{% endblock %}
+{% block title %}Content — Social Posts — PhiXtra Portal{% endblock %}
 
 {% block head %}
 <style>
@@ -54,28 +54,21 @@
   .sp-alert.warn{background:#FFFAEB;color:#B54708;border:1px solid rgba(181,71,8,.25)}
   .sp-alert.info{background:#F5F7FA;color:var(--txt);border:1px solid var(--line)}
 </style>
+{% include "portal/_social_list_css.html" %}
 {% endblock %}
 
-{% macro post_channels(p) -%}
-  {%- set names = [] -%}
-  {%- for cid in p.channel_ids -%}
-    {%- set c = channels_by_id.get(cid) -%}
-    {%- if names.append(c.label if c else 'Removed account') %}{% endif -%}
-  {%- endfor -%}
-  {{ names|join(', ') }}
-{%- endmacro %}
 
 {% block content %}
 <div class="sp-wrap">
   <div class="sp-top">
     <div>
-      <div class="pg-title">Posts</div>
-      <div class="pg-sub">{% if account %}Posts go out through your Buffer account ({{ account.organization_name }}).{% else %}Write posts here and Buffer publishes them to your social pages.{% endif %}</div>
+      <div class="pg-title">Content</div>
+      <div class="pg-sub">Every post that hasn't gone out yet, who's responsible and when it's due. Posts that went out are under <a href="{{ url_for('buffer.published') }}">Published</a>.</div>
     </div>
     {% if account %}
     <div class="sp-row">
       <form method="POST" action="{{ url_for('buffer.refresh_posts') }}"><button type="submit" class="btn btn-sm">Check for updates</button></form>
-      {% if can_create and not editing %}<a class="btn btn-primary" href="{{ url_for('social.new_post') }}">+ New Post</a>{% endif %}
+      {% if can_create and not editing %}<a class="btn" href="{{ url_for('upload.start') }}">Upload Design</a><a class="btn btn-primary" href="{{ url_for('social.new_post') }}">+ New Post</a>{% endif %}
     </div>
     {% endif %}
   </div>
@@ -92,10 +85,33 @@
   <div class="sp-alert warn"><b>Buffer stopped accepting your saved key.</b> Posts can't be sent until it's fixed. <a href="{{ url_for('buffer.connect') }}">Put in a new key</a>.</div>
   {% endif %}
 
-  <div class="sp-tabs" role="tablist" aria-label="Filter posts">
-    {% for key, label in [('all','All'),('scheduled','Scheduled'),('drafts','Drafts'),('posted','Posted'),('failed','Failed')] %}
-    <a role="tab" aria-selected="{{ 'true' if tab == key else 'false' }}" class="{{ 'on' if tab == key }}" href="{{ url_for('buffer.posts', tab=key) }}">{{ label }} {{ counts[key] }}</a>
-    {% endfor %}
+  <div class="sl-flow" aria-label="How a post moves along">
+    <span class="sp-pill p-n">Draft</span><span class="sl-arrow">→</span>
+    {% if approval_on %}<span class="sp-pill p-w">Awaiting approval</span><span class="sl-arrow">→</span>{% endif %}
+    <span class="sp-pill p-b">Scheduled</span> <span class="sl-auto">auto</span><span class="sl-arrow">→</span>
+    <span class="sp-pill p-g">Posted</span> <span class="sl-auto">auto</span>
+    <span style="flex-basis:100%;margin-top:2px">Scheduled and Posted update by themselves from Buffer. Once a post goes out, it moves to Published.{% if approval_on %} If an approver sends a post back, it shows as Changes requested until it's submitted again.{% endif %}</span>
+  </div>
+
+  <div class="sl-bar">
+    <div class="sp-tabs" role="tablist" aria-label="Filter posts">
+      {% for key, label in tabs %}
+      {% if key == 'all' or counts[key] or tab == key %}
+      <a role="tab" aria-selected="{{ 'true' if tab == key else 'false' }}" class="{{ 'on' if tab == key }}" href="{{ url_for('buffer.posts', tab=key, person=person or None) }}"{% if key == 'overdue' and counts[key] %} style="{{ '' if tab == key else 'color:#B42318' }}"{% endif %}>{{ label }} {{ counts[key] }}</a>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% if people|length > 1 or person %}
+    <form method="GET" action="{{ url_for('buffer.posts') }}" class="sl-person">
+      <input type="hidden" name="tab" value="{{ tab }}">
+      <label for="sl-person">Person</label>
+      <select id="sl-person" name="person" onchange="this.form.submit()">
+        <option value="">Everyone</option>
+        {% for key, name in people %}<option value="{{ key }}" {% if key == person %}selected{% endif %}>{{ name }}</option>{% endfor %}
+      </select>
+      <noscript><button type="submit" class="btn btn-sm">Show</button></noscript>
+    </form>
+    {% endif %}
   </div>
 
   {% if editing and can_edit %}
@@ -180,69 +196,66 @@
   </form>
   {% endif %}
 
-  <div class="sp-list">
-    {% for p in posts %}
-    {% set st = status_labels.get(p.status, (p.status|title, 'p-n')) %}
-    {% if p.status == 'draft' and p.approval == 'waiting' %}{% set st = ('Awaiting approval', 'p-w') %}
-    {% elif p.status == 'draft' and p.approval == 'changes' %}{% set st = ('Changes requested', 'p-r') %}{% endif %}
-    <div class="sp-post">
-      {% if p.image_filename %}
-      <img class="sp-thumb" src="{{ url_for('buffer.post_image', post_id=p.id) }}" alt="" loading="lazy">
-      {% else %}<div class="sp-thumb">Text only</div>{% endif %}
-      <div style="min-width:0">
-        <div class="sp-cap">{{ p.caption }}</div>
-        <div class="sp-meta">
-          <span class="sp-pill {{ st[1] }}">{{ st[0] }}</span>
-          {% if p.original_filename == 'upload' %}<span class="sp-pill p-n">Uploaded</span>{% elif p.original_filename == 'AI design' %}<span class="sp-pill p-b">AI design</span>{% endif %}
-          {% if p.media and ((p.media.get('_default') or [{}])[0].get('kind') == 'video') %}<span class="sp-pill p-n">▶ Video</span>{% endif %}
-          {% if p.channel_ids %}<span>{{ post_channels(p) }}</span><span>·</span>{% endif %}
-          {% set t = p.sent_at if p.status in ('sent','partial') and p.sent_at else (p.scheduled_for or p.created_at) %}
-          <span class="js-local" data-utc="{{ t.isoformat() }}">{{ t.strftime('%d %b %Y, %H:%M') }} UTC</span>
-          {% if p.owner_label or p.created_by %}<span>· {{ p.owner_label or p.created_by }}</span>{% endif %}
-          {% if p.due_date %}
-            {% set late = p.status == 'draft' and p.approval != 'waiting' and p.due_date < today %}
-            <span {% if late %}style="color:#B42318;font-weight:700"{% endif %}>· due {{ p.due_date.strftime('%d %b') }}{% if late %} · overdue{% endif %}</span>
+  <div class="sl-card">
+    <table class="sl-table">
+      <thead><tr><th>Post</th><th>Status</th><th>Person responsible</th><th>Due</th><th>Goes out</th><th>Accounts</th><th><span class="sr-only">Actions</span></th></tr></thead>
+      <tbody>
+      {% for p in posts %}
+      {% set d = display[display_key(p)] %}
+      {% set late = is_overdue(p, today) %}
+      <tr>
+        <td>
+          <div class="sl-post">
+            {% if p.image_filename %}<img class="sl-thumb" src="{{ url_for('buffer.post_image', post_id=p.id) }}" alt="" loading="lazy">{% else %}<div class="sl-thumb">Text only</div>{% endif %}
+            <div style="min-width:0">
+              <a class="sl-title" href="{{ url_for('socialcal.post_view', post_id=p.id) }}">{{ title_of(p) }}</a>
+              <div class="sl-sub">
+                {% if p.original_filename == 'upload' %}<span>Uploaded</span>{% elif p.original_filename == 'AI design' %}<span>AI design</span>{% endif %}
+                {% if p.media and ((p.media.get('_default') or [{}])[0].get('kind') == 'video') %}<span>▶ Video</span>{% endif %}
+              </div>
+              {% if p.status == 'failed' and p.buffer_error %}<div class="sl-note">{{ p.buffer_error }}</div>{% endif %}
+              {% if p.status == 'draft' and p.approval == 'changes' and p.approval_note %}<div class="sl-note"><b>{{ p.decided_by }}:</b> {{ p.approval_note }}</div>{% endif %}
+            </div>
+          </div>
+        </td>
+        <td><span class="sp-pill {{ d[1] }}">{{ d[0] }}</span>{% if late %}<br><span class="sp-pill p-r" style="margin-top:4px">Overdue</span>{% endif %}</td>
+        <td>{{ p.owner_label or p.created_by or '—' }}</td>
+        <td class="sl-nw {{ 'sl-late' if late }}">{{ p.due_date.strftime('%a %d %b') if p.due_date else '—' }}</td>
+        <td class="sl-nw">{% if p.scheduled_for %}<span class="js-local" data-utc="{{ p.scheduled_for.isoformat() }}">{{ p.scheduled_for.strftime('%d %b, %H:%M') }} UTC</span>{% else %}<span class="sp-hint">Not set</span>{% endif %}</td>
+        <td><div class="sl-accts">
+          {% for cid in p.channel_ids or [] %}{% set c = channels_by_id.get(cid) %}
+          <span class="sl-acct" title="{{ c.title if c else 'This account was removed from Buffer' }}"><span class="sl-dot" style="background:{{ c.colour if c else '#98A2B3' }}"></span>{{ c.label if c else 'Removed' }}</span>
+          {% else %}<span class="sp-hint">None picked</span>{% endfor %}
+        </div></td>
+        <td><div class="sl-acts">
+          <a class="btn btn-sm" href="{{ url_for('socialcal.post_view', post_id=p.id) }}">Open</a>
+          {% if p.status in editable and can_edit %}
+          <a class="btn btn-sm" href="{{ url_for('buffer.posts', edit=p.id) }}">{{ 'Try again' if p.status == 'failed' else 'Edit' }}</a>
           {% endif %}
-        </div>
-        {% if p.status in ('failed', 'partial') and p.buffer_error %}
-        <div class="sp-err">{{ p.buffer_error }}</div>
-        {% endif %}
-        {% if p.status == 'draft' and p.approval == 'changes' and p.approval_note %}
-        <div class="sp-err"><b>{{ p.decided_by }} asked for changes:</b> {{ p.approval_note }}</div>
-        {% endif %}
-        {% set links = [] %}
-        {% for cid, r in (p.channel_results or {}).items() %}{% if r.link %}{% if links.append((channels_by_id.get(cid).label if channels_by_id.get(cid) else 'Post', r.link)) %}{% endif %}{% endif %}{% endfor %}
-        {% if links %}
-        <div class="sp-meta">{% for name, link in links %}<a href="{{ link }}" target="_blank" rel="noopener">View on {{ name }}</a>{% endfor %}</div>
-        {% endif %}
-      </div>
-      <div class="sp-actions">
-        <a class="btn btn-sm" href="{{ url_for('socialcal.post_view', post_id=p.id) }}">Open</a>
-        {% if p.status in editable and can_edit %}
-        <a class="btn btn-sm" href="{{ url_for('buffer.posts', edit=p.id) }}">{{ 'Try again' if p.status == 'failed' else 'Edit' }}</a>
-        {% endif %}
-        {% if p.status == 'scheduled' and can_edit %}
-        <form method="POST" action="{{ url_for('buffer.cancel_post', post_id=p.id) }}" onsubmit="return confirm('Cancel this scheduled post? It goes back to your drafts.');">
-          <button type="submit" class="btn btn-sm">Cancel</button>
-        </form>
-        {% endif %}
-        {% if can_delete %}
-        <form method="POST" action="{{ url_for('buffer.delete_post', post_id=p.id) }}" onsubmit="return confirm('Delete this post from PhiXtra?{{ ' It stays on the social networks where it was already published.' if p.status in ('sent','partial') else '' }}');">
-          <button type="submit" class="btn btn-sm btn-danger">Delete</button>
-        </form>
-        {% endif %}
-      </div>
-    </div>
-    {% else %}
-    <div class="sp-empty">{% if tab == 'all' %}No posts yet. <a href="{{ url_for('social.new_post') }}">Create your first one</a>.{% else %}Nothing here.{% endif %}</div>
-    {% endfor %}
+          {% if p.status == 'scheduled' and can_edit %}
+          <form method="POST" action="{{ url_for('buffer.cancel_post', post_id=p.id) }}" onsubmit="return confirm('Cancel this scheduled post? It goes back to your drafts.');">
+            <button type="submit" class="btn btn-sm">Cancel</button>
+          </form>
+          {% endif %}
+          {% if can_delete %}
+          <form method="POST" action="{{ url_for('buffer.delete_post', post_id=p.id) }}" onsubmit="return confirm('Delete this post from PhiXtra?');">
+            <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+          </form>
+          {% endif %}
+        </div></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7"><div class="sp-empty">{% if tab == 'all' and not person %}Nothing waiting to go out.{% if can_create %} <a href="{{ url_for('social.new_post') }}">Create a post</a>.{% endif %}{% else %}Nothing here.{% endif %}</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
   </div>
   {% endif %}
 </div>
 
 <script>
 (function(){
-  function localStr(d){ return d.toLocaleString(undefined,{weekday:'short',day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
+  function localStr(d){ return d.toLocaleString(undefined,{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); }
   document.querySelectorAll('.js-local').forEach(function(el){
     var d = new Date(el.dataset.utc); if (!isNaN(d)) el.textContent = localStr(d);
   });

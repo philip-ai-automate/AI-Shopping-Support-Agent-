@@ -8,7 +8,7 @@ Social Posts" tick — can't send a post to Buffer. Their "Post now" /
 approval='waiting', keeping the time they picked. The account owner and
 team members with the tick are approvers; their own posts go straight out.
 
-Every way a post reaches Buffer (Posts › Edit, AI Post Designer, Upload
+Every way a post reaches Buffer (Content › Edit, AI Post Designer, Upload
 Design) calls hold_for_approval() before sending, so there's one gate.
 
 tenant_social_posts.approval:

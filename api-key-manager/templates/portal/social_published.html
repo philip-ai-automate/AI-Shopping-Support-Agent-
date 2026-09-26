@@ -1,0 +1,134 @@
+{% extends "portal/base.html" %}
+{% block title %}Published — Social Posts — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  .pg-title{font-size:22px;font-weight:800;letter-spacing:-.3px;color:var(--ink);margin:0 0 4px}
+  .pg-sub{font-size:13.5px;color:var(--muted);line-height:1.5;max-width:70ch}
+  .sp-wrap{display:flex;flex-direction:column;gap:16px;max-width:1100px}
+  .sp-top{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap}
+  .sp-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .sp-hint{font-size:12px;color:var(--muted)}
+  .sp-pill{display:inline-block;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap}
+  .p-g{background:#ECFDF3;color:#027A48}
+  .p-w{background:#FFFAEB;color:#B54708}
+  .sp-tabs{display:flex;gap:6px;flex-wrap:wrap}
+  .sp-tabs a{font-size:12.5px;font-weight:650;padding:7px 12px;border-radius:9px;background:#F2F4F7;color:var(--muted);text-decoration:none}
+  .sp-tabs a.on{background:var(--ink);color:#fff}
+  .sp-empty{text-align:center;color:var(--muted);font-size:13.5px;padding:28px 12px}
+  .sp-panel{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:12px}
+  .sp-panel h3{margin:0;font-size:15px;color:var(--ink)}
+</style>
+{% include "portal/_social_list_css.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="sp-wrap">
+  <div class="sp-top">
+    <div>
+      <div class="pg-title">Published</div>
+      <div class="pg-sub">Posts Buffer has sent out, newest first. They land here by themselves once Buffer confirms they went out. Posts still being worked on are under <a href="{{ url_for('buffer.posts') }}">Content</a>.</div>
+    </div>
+    {% if account %}
+    <form method="POST" action="{{ url_for('buffer.refresh_posts') }}"><input type="hidden" name="back" value="published"><button type="submit" class="btn btn-sm">Check for updates</button></form>
+    {% endif %}
+  </div>
+
+  {% if not account %}
+  <div class="sp-panel">
+    <h3>Connect Buffer first</h3>
+    <p class="sp-hint" style="margin:0">Social Posts publishes through your own Buffer account. Connect it on Integration › Buffer, then come back here.</p>
+    <div class="sp-row"><a href="{{ url_for('buffer.connect') }}" class="btn btn-primary">Connect Buffer →</a></div>
+  </div>
+  {% else %}
+
+  <div class="sl-bar">
+    <div class="sp-tabs" role="tablist" aria-label="Filter posts">
+      <a role="tab" aria-selected="{{ 'true' if tab == 'all' else 'false' }}" class="{{ 'on' if tab == 'all' }}" href="{{ url_for('buffer.published', person=person or None) }}">All {{ counts.all }}</a>
+      {% if counts.partial or tab == 'partial' %}
+      <a role="tab" aria-selected="{{ 'true' if tab == 'partial' else 'false' }}" class="{{ 'on' if tab == 'partial' }}" href="{{ url_for('buffer.published', tab='partial', person=person or None) }}">Partly posted {{ counts.partial }}</a>
+      {% endif %}
+    </div>
+    {% if people|length > 1 or person %}
+    <form method="GET" action="{{ url_for('buffer.published') }}" class="sl-person">
+      {% if tab == 'partial' %}<input type="hidden" name="tab" value="partial">{% endif %}
+      <label for="sl-person">Person</label>
+      <select id="sl-person" name="person" onchange="this.form.submit()">
+        <option value="">Everyone</option>
+        {% for key, name in people %}<option value="{{ key }}" {% if key == person %}selected{% endif %}>{{ name }}</option>{% endfor %}
+      </select>
+      <noscript><button type="submit" class="btn btn-sm">Show</button></noscript>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="sl-card">
+    <table class="sl-table">
+      <thead><tr><th>Post</th><th>Went out</th><th>Accounts</th><th>Person responsible</th><th>Approved by</th><th><span class="sr-only">Actions</span></th></tr></thead>
+      <tbody>
+      {% for p in posts %}
+      {% set results = p.channel_results or {} %}
+      {% set t = p.sent_at or p.scheduled_for or p.created_at %}
+      <tr>
+        <td>
+          <div class="sl-post">
+            {% if p.image_filename %}<img class="sl-thumb" src="{{ url_for('buffer.post_image', post_id=p.id) }}" alt="" loading="lazy">{% else %}<div class="sl-thumb">Text only</div>{% endif %}
+            <div style="min-width:0">
+              <a class="sl-title" href="{{ url_for('socialcal.post_view', post_id=p.id) }}">{{ title_of(p) }}</a>
+              <div class="sl-sub">
+                {% if p.status == 'partial' %}<span class="sp-pill p-w">Partly posted</span>{% else %}<span class="sp-pill p-g">Posted</span>{% endif %}
+                {% if p.original_filename == 'upload' %}<span>Uploaded</span>{% elif p.original_filename == 'AI design' %}<span>AI design</span>{% endif %}
+                {% if p.media and ((p.media.get('_default') or [{}])[0].get('kind') == 'video') %}<span>▶ Video</span>{% endif %}
+              </div>
+              {% if p.status == 'partial' and p.buffer_error %}<div class="sl-note">{{ p.buffer_error }}</div>{% endif %}
+            </div>
+          </div>
+        </td>
+        <td class="sl-nw"><span class="js-local" data-utc="{{ t.isoformat() }}">{{ t.strftime('%d %b, %H:%M') }} UTC</span><br><span class="sl-auto">from Buffer</span></td>
+        <td><div class="sl-accts">
+          {% for cid in p.channel_ids or [] %}{% set c = channels_by_id.get(cid) %}{% set r = results.get(cid) or {} %}
+          {% set name = c.label if c else 'Removed account' %}
+          {% if r.link %}
+          <a class="sl-acct" href="{{ r.link }}" target="_blank" rel="noopener" title="View on {{ name }}{{ ' · ' ~ c.title if c else '' }}"><span class="sl-dot" style="background:{{ c.colour if c else '#98A2B3' }}"></span>{{ name }} ↗</a>
+          {% elif r.status == 'failed' %}
+          <span class="sl-acct bad" title="{{ r.error or 'Buffer couldn\'t publish it here.' }}"><span class="sl-dot" style="background:#B42318"></span>{{ name }} · not posted</span>
+          {% else %}
+          <span class="sl-acct" title="{{ c.title if c else '' }}"><span class="sl-dot" style="background:{{ c.colour if c else '#98A2B3' }}"></span>{{ name }}</span>
+          {% endif %}
+          {% endfor %}
+        </div></td>
+        <td>{{ owner_name(p) or '—' }}</td>
+        <td>{% if p.approval == 'approved' and p.decided_by %}{{ p.decided_by }}{% else %}<span class="sp-hint">Not needed</span>{% endif %}</td>
+        <td><div class="sl-acts">
+          <a class="btn btn-sm" href="{{ url_for('socialcal.post_view', post_id=p.id) }}">Open</a>
+          {% if can_delete %}
+          <form method="POST" action="{{ url_for('buffer.delete_post', post_id=p.id) }}" onsubmit="return confirm('Delete this post from PhiXtra? It stays on the social networks where it was already published.');">
+            <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+          </form>
+          {% endif %}
+        </div></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6"><div class="sp-empty">{% if tab == 'all' and not person %}Nothing has gone out yet. Posts land here once Buffer sends them.{% else %}Nothing here.{% endif %}</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if pages > 1 %}
+  <div class="sl-pages">
+    <span>Page {{ page }} of {{ pages }} · {{ total }} posts</span>
+    {% if page > 1 %}<a class="btn btn-sm" href="{{ url_for('buffer.published', tab=tab if tab != 'all' else None, person=person or None, page=page-1) }}">← Newer</a>{% endif %}
+    {% if page < pages %}<a class="btn btn-sm" href="{{ url_for('buffer.published', tab=tab if tab != 'all' else None, person=person or None, page=page+1) }}">Older →</a>{% endif %}
+  </div>
+  {% endif %}
+  {% endif %}
+</div>
+
+<script>
+document.querySelectorAll('.js-local').forEach(function(el){
+  var d = new Date(el.dataset.utc);
+  if (!isNaN(d)) el.textContent = d.toLocaleString(undefined,{weekday:'short',day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+});
+</script>
+{% endblock %}

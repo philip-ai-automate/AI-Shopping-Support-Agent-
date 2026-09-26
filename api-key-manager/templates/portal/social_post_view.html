@@ -41,7 +41,7 @@
 {% set d = display[card.key] %}
 <div class="pv-wrap">
   <div class="pv-head">
-    <a class="pv-back" href="{{ url_for('socialcal.calendar') }}">← Calendar</a> <span class="pv-back">·</span> <a class="pv-back" href="{{ url_for('buffer.posts') }}">Posts</a>
+    <a class="pv-back" href="{{ url_for('socialcal.calendar') }}">← Calendar</a> <span class="pv-back">·</span> {% if p.status in ('sent', 'partial') %}<a class="pv-back" href="{{ url_for('buffer.published') }}">Published</a>{% else %}<a class="pv-back" href="{{ url_for('buffer.posts') }}">Content</a>{% endif %}
     <h1>{{ card.title }}</h1>
     <div class="pv-row" style="margin-top:8px"><span class="sp-pill {{ d[1] }}">{{ d[0] }}</span>
       {% if card.overdue %}<span class="sp-pill p-r">Overdue</span>{% endif %}

@@ -13,7 +13,8 @@ set up separately in admin (portal_admin_routes.buffer_channels_settings).
   POST /integrations/buffer/refresh       re-check the key and re-read the social accounts
   POST /integrations/buffer/disconnect
 
-  GET  /social-posts                      list + new-post form (?edit=<id> fills it for editing)
+  GET  /social-posts                      Content: posts not yet out (?tab=, ?person=; ?edit=<id> opens the edit form)
+  GET  /social-posts/published            Published: posts Buffer sent out (?tab=partial, ?person=, ?page=)
   POST /social-posts/save                 new post: post now / schedule / save as draft
   POST /social-posts/<id>/save            edit a draft, scheduled or failed post in place
   POST /social-posts/<id>/cancel          take a scheduled post out of Buffer, back to draft
@@ -50,14 +51,6 @@ UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "static", "uploads", "te
 ALLOWED_EXTS = {"jpg", "jpeg", "png", "webp", "gif"}
 MAX_BYTES = 15 * 1024 * 1024
 
-STATUS_LABELS = {
-    "draft":      ("Draft",        "p-n"),
-    "scheduled":  ("Scheduled",    "p-b"),
-    "publishing": ("Publishing",   "p-b"),
-    "sent":       ("Posted",       "p-g"),
-    "partial":    ("Partly posted", "p-w"),
-    "failed":     ("Failed",       "p-r"),
-}
 EDITABLE = ("draft", "scheduled", "failed")
 
 
@@ -450,7 +443,7 @@ def create_post_from_design(customer, caption: str, captions: dict, square: str,
     insert_audit_log(action="social_post_sent_to_buffer", tenant_id=tenant_id,
                      details={"post_id": post["id"], "status": status, "by": actor, "ai": True})
     if status == "failed":
-        return False, f"Buffer didn't accept the post. It's saved under Posts so you can try again. {errors}"
+        return False, f"Buffer didn't accept the post. It's saved under Content so you can try again. {errors}"
     if status == "partial":
         return True, f"Sent to some accounts, but not all. {errors}"
     return True, "Post scheduled. Buffer will publish it at the time you picked." if when else "Sent to Buffer. It's publishing now."
@@ -504,21 +497,30 @@ def create_post_from_upload(customer, captions: dict, media: dict, cover: str, c
     insert_audit_log(action="social_post_sent_to_buffer", tenant_id=tenant_id,
                      details={"post_id": post["id"], "status": status, "by": actor, "upload": True})
     if status == "failed":
-        return False, f"Buffer didn't accept the post. It's saved under Posts so you can try again. {errors}", post["id"]
+        return False, f"Buffer didn't accept the post. It's saved under Content so you can try again. {errors}", post["id"]
     if status == "partial":
         return True, f"Sent to some accounts, but not all. {errors}", post["id"]
     return True, ("Post scheduled. Buffer will publish it at the time you picked." if when else "Sent to Buffer. It's publishing now."), post["id"]
 
 
-@buffer_bp.route("/social-posts", methods=["GET"])
-@team_feature("social.posts_view")
-def posts():
-    r = _require_login() or _require_team_permission("social.posts_view")
-    if r:
-        return r
-    r, customer = _gate("social.posts_view", "Social Posts")
-    if r:
-        return r
+OUT = ("sent", "partial")   # went out (all or some accounts) → Published; everything else → Content
+
+CONTENT_TABS = [("all", "All not yet out"), ("overdue", "Overdue"), ("draft", "Drafts"),
+                ("waiting", "Awaiting approval"), ("changes", "Changes requested"),
+                ("sched", "Scheduled"), ("failed", "Failed")]
+
+
+def _in_tab(p, tab, today) -> bool:
+    if tab == "all":
+        return True
+    if tab == "overdue":
+        return W.is_overdue(p, today)
+    k = W.display_key(p)
+    return k == tab or (tab == "sched" and k == "publishing")
+
+
+def _list_context(customer):
+    """What both Content and Published need: Buffer account, channels, fresh statuses."""
     tenant_id = int(customer["tenant_id"])
     owner = _owner(customer)
     ba.refresh_channels_if_stale(owner)
@@ -529,24 +531,50 @@ def posts():
         except Exception as e:
             print("⚠️ social posts status refresh:", e)
     channels = ba.list_channels(owner) if account else []
-    channels_by_id = {c["channel_id"]: c for c in channels}
+    return tenant_id, account, channels, {c["channel_id"]: c for c in channels}
+
+
+def _people_in(rows) -> list:
+    """(key, name) of everyone responsible for at least one of these posts, for the person filter."""
+    seen = {}
+    for r in rows:
+        name = W.owner_name(r)
+        if name:
+            seen.setdefault(r.get("owner_key") or "name:" + name, name)
+    return sorted(seen.items(), key=lambda o: o[1].lower())
+
+
+def _person_match(p, person: str) -> bool:
+    return not person or (p.get("owner_key") or "name:" + W.owner_name(p)) == person
+
+
+@buffer_bp.route("/social-posts", methods=["GET"])
+@team_feature("social.posts_view")
+def posts():
+    """Content: every post that hasn't gone out yet, who's responsible and when it's due."""
+    r = _require_login() or _require_team_permission("social.posts_view")
+    if r:
+        return r
+    r, customer = _gate("social.posts_view", "Social Posts")
+    if r:
+        return r
+    tenant_id, account, channels, channels_by_id = _list_context(customer)
 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("""SELECT * FROM tenant_social_posts WHERE tenant_id=%s
-                   ORDER BY CASE status WHEN 'scheduled' THEN 0 WHEN 'draft' THEN 1 ELSE 2 END,
-                            COALESCE(scheduled_for, sent_at, created_at) DESC
-                   LIMIT 200""", (tenant_id,))
+    cur.execute("""SELECT * FROM tenant_social_posts WHERE tenant_id=%s AND status NOT IN ('sent','partial')
+                   ORDER BY scheduled_for IS NULL, scheduled_for, created_at DESC""", (tenant_id,))
     rows = cur.fetchall() or []
     cur.close(); conn.close()
 
+    today = W.today_for(customer)
+    person = request.args.get("person", "")
+    mine = [p for p in rows if _person_match(p, person)]
     tab = request.args.get("tab", "all")
-    groups = {"scheduled": ("scheduled", "publishing"), "drafts": ("draft",), "posted": ("sent", "partial"),
-              "failed": ("failed", "partial")}
-    counts = {"all": len(rows)}
-    for k, sts in groups.items():
-        counts[k] = sum(1 for r in rows if r["status"] in sts)
-    shown = rows if tab not in groups else [r for r in rows if r["status"] in groups[tab]]
+    if tab not in dict(CONTENT_TABS):
+        tab = "all"
+    counts = {k: sum(1 for p in mine if _in_tab(p, k, today)) for k, _ in CONTENT_TABS}
+    shown = [p for p in mine if _in_tab(p, tab, today)]
 
     editing = None
     edit_id = request.args.get("edit", "")
@@ -556,18 +584,66 @@ def posts():
     return render_template(
         "portal/social_posts.html",
         customer=customer,
-        today=W.today_for(customer),
+        today=today,
         account=account,
         channels=[c for c in channels if c["enabled"] and not c["is_disconnected"]],
         channels_by_id=channels_by_id,
         posts=shown,
-        tab=tab if tab in groups else "all",
-        counts=counts,
+        tab=tab, tabs=CONTENT_TABS, counts=counts,
+        people=_people_in(rows), person=person,
+        approval_on=W.approval_required(tenant_id),
+        display=W.DISPLAY, display_key=W.display_key, is_overdue=W.is_overdue, title_of=W.title_of,
         editing=editing,
-        status_labels=STATUS_LABELS,
         editable=EDITABLE,
         can_create=_team_member_has_permission("social.posts_create"),
         can_edit=_team_member_has_permission("social.posts_edit"),
+        can_delete=_team_member_has_permission("social.posts_delete"),
+    )
+
+
+PUBLISHED_PER_PAGE = 50
+
+
+@buffer_bp.route("/social-posts/published", methods=["GET"])
+@team_feature("social.posts_view")
+def published():
+    """Published: posts Buffer has sent out, newest first."""
+    r = _require_login() or _require_team_permission("social.posts_view")
+    if r:
+        return r
+    r, customer = _gate("social.posts_view", "Social Posts")
+    if r:
+        return r
+    tenant_id, account, channels, channels_by_id = _list_context(customer)
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""SELECT * FROM tenant_social_posts WHERE tenant_id=%s AND status IN ('sent','partial')
+                   ORDER BY COALESCE(sent_at, scheduled_for, created_at) DESC, id DESC""", (tenant_id,))
+    rows = cur.fetchall() or []
+    cur.close(); conn.close()
+
+    person = request.args.get("person", "")
+    mine = [p for p in rows if _person_match(p, person)]
+    tab = "partial" if request.args.get("tab") == "partial" else "all"
+    counts = {"all": len(mine), "partial": sum(1 for p in mine if p["status"] == "partial")}
+    shown = [p for p in mine if tab == "all" or p["status"] == "partial"]
+    pages = max(1, -(-len(shown) // PUBLISHED_PER_PAGE))
+    try:
+        page = min(max(1, int(request.args.get("page", 1))), pages)
+    except ValueError:
+        page = 1
+
+    return render_template(
+        "portal/social_published.html",
+        customer=customer,
+        account=account,
+        channels_by_id=channels_by_id,
+        posts=shown[(page - 1) * PUBLISHED_PER_PAGE: page * PUBLISHED_PER_PAGE],
+        page=page, pages=pages, total=len(shown),
+        tab=tab, counts=counts,
+        people=_people_in(rows), person=person,
+        title_of=W.title_of, owner_name=W.owner_name,
         can_delete=_team_member_has_permission("social.posts_delete"),
     )
 
@@ -785,8 +861,8 @@ def delete_post(post_id: int):
     insert_audit_log(action="social_post_deleted", tenant_id=tenant_id,
                      details={"post_id": post_id, "status": post["status"], "by": _current_actor(customer)["label"]})
     flash("Post deleted." + (" It stays on the social networks where it was already published."
-                             if post["status"] in ("sent", "partial") else ""), "success")
-    return redirect(url_for("buffer.posts"))
+                             if post["status"] in OUT else ""), "success")
+    return redirect(url_for("buffer.published") if post["status"] in OUT else url_for("buffer.posts"))
 
 
 @buffer_bp.route("/social-posts/refresh", methods=["POST"])
@@ -800,7 +876,7 @@ def refresh_posts():
         return r
     n = _refresh_statuses(int(customer["tenant_id"]), limit=20)
     flash(f"Checked with Buffer. {n} post{'s' if n != 1 else ''} updated." if n else "Checked with Buffer. Nothing new yet.", "success")
-    return redirect(url_for("buffer.posts"))
+    return redirect(url_for("buffer.published") if request.form.get("back") == "published" else url_for("buffer.posts"))
 
 
 @buffer_bp.route("/social-posts/<int:post_id>/image", methods=["GET"])

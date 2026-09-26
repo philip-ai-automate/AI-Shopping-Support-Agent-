@@ -845,8 +845,13 @@
            class="{% if request.endpoint == 'socialcal.calendar' %}active{% endif %}">Calendar</a>
         {% endif %}
         {% if staff_can_open('buffer.posts') %}
+        {% set _post_out = request.endpoint == 'socialcal.post_view' and p is defined and p and p.status in ('sent', 'partial') %}
         <a href="{{ url_for('buffer.posts') }}"
-           class="{% if request.endpoint in ('buffer.posts', 'socialcal.post_view') %}active{% endif %}">Posts</a>
+           class="{% if request.endpoint == 'buffer.posts' or (request.endpoint == 'socialcal.post_view' and not _post_out) %}active{% endif %}">Content</a>
+        {% endif %}
+        {% if staff_can_open('buffer.published') %}
+        <a href="{{ url_for('buffer.published') }}"
+           class="{% if request.endpoint == 'buffer.published' or _post_out %}active{% endif %}">Published</a>
         {% endif %}
         {% if staff_can_open('socialcal.approval') %}
         <a href="{{ url_for('socialcal.approval') }}"
