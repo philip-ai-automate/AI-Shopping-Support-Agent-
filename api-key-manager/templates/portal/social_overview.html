@@ -1,0 +1,190 @@
+{% extends "portal/base.html" %}
+{% block title %}Overview — Social Posts — PhiXtra Portal{% endblock %}
+
+{% block head %}
+{% include "portal/_social_list_css.html" %}
+<style>
+  .pg-title{font-size:22px;font-weight:800;letter-spacing:-.3px;color:var(--ink);margin:0 0 4px}
+  .pg-sub{font-size:13.5px;color:var(--muted);line-height:1.5;max-width:70ch}
+  .ov-wrap{display:flex;flex-direction:column;gap:16px;max-width:1180px}
+  .ov-top{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap}
+  .ov-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .ov-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .ov-bar h2{margin:0;font-size:17px;color:var(--ink);min-width:150px}
+  .ov-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:10px}
+  .ov-kpi{background:#fff;border:1px solid var(--line);border-top:3px solid var(--c);border-radius:12px;padding:12px 14px;
+    text-decoration:none;color:inherit;display:block}
+  a.ov-kpi:hover{background:#FAFBFC;text-decoration:none}
+  .ov-kpi .v{font-size:26px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.1}
+  .ov-kpi .l{font-size:12.5px;color:var(--muted)}
+  .ov-kpi.late .v{color:#B42318}
+  .ov-two{display:grid;grid-template-columns:1fr 1.25fr;gap:14px}
+  @media (max-width:980px){.ov-two{grid-template-columns:1fr}}
+  .ov-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+  .ov-card h3{margin:0 0 12px;font-size:15px;color:var(--ink)}
+  .ov-funnel{display:grid;gap:9px}
+  .ov-f{display:grid;grid-template-columns:140px 1fr 36px;gap:10px;align-items:center;font-size:13px}
+  .ov-fbar{height:10px;border-radius:5px;background:#F2F4F7;overflow:hidden}
+  .ov-fbar span{display:block;height:100%;background:var(--c);border-radius:5px;min-width:0}
+  .ov-f b{text-align:right;font-variant-numeric:tabular-nums}
+  .ov-note{font-size:12px;color:var(--muted);margin:10px 0 0;line-height:1.45}
+  .ov-group{margin-bottom:12px}
+  .ov-group:last-child{margin-bottom:0}
+  .ov-gh{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12px;font-weight:700;text-transform:uppercase;
+    letter-spacing:.5px;color:var(--muted);margin-bottom:4px}
+  .ov-gh a{text-transform:none;letter-spacing:0;font-weight:650}
+  .ov-item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .ov-group .ov-item:last-child{border-bottom:0}
+  .ov-item a.t{color:var(--ink);font-weight:650;text-decoration:none;line-height:1.35}
+  .ov-item a.t:hover{text-decoration:underline}
+  .ov-item .m{font-size:12px;color:var(--muted);white-space:nowrap}
+  .ov-dot{width:8px;height:8px;border-radius:50%;background:var(--c);display:inline-block;margin-right:7px;flex-shrink:0}
+  .ov-it{display:flex;align-items:center;min-width:0}
+  .ov-empty{color:var(--muted);font-size:13px}
+  .ov-good{color:#027A48;font-size:13px;font-weight:600}
+  .ov-table td.n,.ov-table th.n{text-align:right;font-variant-numeric:tabular-nums}
+  .ov-table .zero{color:#98A2B3}
+  .ov-table .late{color:#B42318;font-weight:800}
+  .ov-table a{color:var(--ink);font-weight:650;text-decoration:none}
+  .ov-table a:hover{text-decoration:underline}
+</style>
+{% endblock %}
+
+{% block content %}
+{% set content = url_for('buffer.posts') %}
+<div class="ov-wrap">
+  <div class="ov-top">
+    <div>
+      <div class="pg-title">Overview</div>
+      <div class="pg-sub">Where this month's posts are, what needs someone now, and who is doing what. The numbers update by themselves as posts move along.</div>
+    </div>
+    <div class="ov-row">
+      <a class="btn" href="{{ url_for('socialcal.calendar', month=month.strftime('%Y-%m')) }}">Open calendar</a>
+      {% if can_ai %}<a class="btn btn-primary" href="{{ url_for('social.new_post') }}">+ New Post</a>
+      {% elif can_create %}<a class="btn btn-primary" href="{{ url_for('upload.start') }}">Upload Design</a>{% endif %}
+    </div>
+  </div>
+
+  <div class="ov-bar">
+    <a class="btn btn-sm" href="{{ url_for('socialcal.overview', month=prev) }}" aria-label="Previous month">‹</a>
+    <h2>{{ month.strftime('%B %Y') }}</h2>
+    <a class="btn btn-sm" href="{{ url_for('socialcal.overview', month=next) }}" aria-label="Next month">›</a>
+    {% if not this_month %}<a class="btn btn-sm" href="{{ url_for('socialcal.overview') }}">This month</a>{% endif %}
+  </div>
+
+  <div class="ov-kpis">
+    <a class="ov-kpi" style="--c:var(--ink)" href="{{ url_for('socialcal.calendar', month=month.strftime('%Y-%m')) }}"><div class="v">{{ total }}</div><div class="l">Posts this month</div></a>
+    {% for b, label, c in buckets %}
+      {% if (b not in ('waiting','changes') or show_approval) and (b != 'failed' or counts[b]) %}
+      <div class="ov-kpi" style="--c:{{ c }}"><div class="v">{{ counts[b] }}</div><div class="l">{{ label }}</div></div>
+      {% endif %}
+    {% endfor %}
+    <a class="ov-kpi{{ ' late' if overdue }}" style="--c:#D92D20" href="{{ content }}?tab=overdue"><div class="v">{{ overdue|length }}</div><div class="l">Overdue now</div></a>
+  </div>
+
+  <div class="ov-two">
+    <div class="ov-card">
+      <h3>Where {{ month.strftime('%B') }}'s posts are</h3>
+      {% if total %}
+      <div class="ov-funnel">
+        {% for b, label, c in buckets %}
+          {% if (b not in ('waiting','changes') or show_approval) and (b != 'failed' or counts[b]) %}
+          <div class="ov-f"><span>{{ label }}</span><span class="ov-fbar"><span style="width:{{ (counts[b] / total * 100)|round(1) }}%;--c:{{ c }}"></span></span><b>{{ counts[b] }}</b></div>
+          {% endif %}
+        {% endfor %}
+      </div>
+      <p class="ov-note">A post counts in the month it's planned for, scheduled for or went out.{% if undated %} {{ undated }} draft{{ 's' if undated != 1 }} with no date yet {{ 'are' if undated != 1 else 'is' }} not counted, see <a href="{{ url_for('socialcal.calendar') }}">Calendar</a>.{% endif %}</p>
+      {% else %}
+      <p class="ov-empty">No posts planned for {{ month.strftime('%B') }} yet.{% if can_ai or can_create %} Use + on a day in the <a href="{{ url_for('socialcal.calendar', month=month.strftime('%Y-%m')) }}">Calendar</a> to plan one.{% endif %}</p>
+      {% if undated %}<p class="ov-note">{{ undated }} draft{{ 's' if undated != 1 }} with no date yet.</p>{% endif %}
+      {% endif %}
+    </div>
+
+    <div class="ov-card">
+      <h3>Needs attention now</h3>
+      {% if not (waiting or changes or overdue or failed) %}
+      <p class="ov-good">Nothing needs attention right now.</p>
+      {% endif %}
+
+      {% macro items(list, dot, meta) %}
+        {% for c in list[:5] %}
+        <div class="ov-item">
+          <span class="ov-it"><span class="ov-dot" style="--c:{{ dot }}"></span><a class="t" href="{{ url_for('socialcal.post_view', post_id=c.id) }}">{{ c.title }}</a></span>
+          <span class="m">{{ c.owner }}{% if meta == 'due' and c.due %} · due <span data-day="{{ c.due }}">{{ c.due }}</span>{% elif c.when %} · <span data-when="{{ c.when }}"></span>{% endif %}</span>
+        </div>
+        {% endfor %}
+      {% endmacro %}
+
+      {% if waiting %}
+      <div class="ov-group">
+        <div class="ov-gh"><span>Awaiting approval ({{ waiting|length }})</span>{% if can_approve %}<a href="{{ url_for('socialcal.approval') }}">Review</a>{% endif %}</div>
+        {{ items(waiting, '#F79009', 'when') }}
+      </div>
+      {% endif %}
+      {% if overdue %}
+      <div class="ov-group">
+        <div class="ov-gh"><span>Overdue ({{ overdue|length }})</span><a href="{{ content }}?tab=overdue">See all</a></div>
+        {{ items(overdue, '#D92D20', 'due') }}
+      </div>
+      {% endif %}
+      {% if changes %}
+      <div class="ov-group">
+        <div class="ov-gh"><span>Sent back for changes ({{ changes|length }})</span><a href="{{ content }}?tab=changes">See all</a></div>
+        {{ items(changes, '#F04438', 'when') }}
+      </div>
+      {% endif %}
+      {% if failed %}
+      <div class="ov-group">
+        <div class="ov-gh"><span>Buffer didn't accept ({{ failed|length }})</span><a href="{{ content }}?tab=failed">See all</a></div>
+        {{ items(failed, '#D92D20', 'when') }}
+      </div>
+      {% endif %}
+
+      <div class="ov-group" style="margin-top:14px">
+        <div class="ov-gh"><span>Going out next</span></div>
+        {% if upcoming %}{{ items(upcoming, '#7A5AF8', 'when') }}
+        {% else %}<p class="ov-empty">Nothing is scheduled yet.</p>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="ov-card">
+    <h3>Team</h3>
+    <p class="ov-note" style="margin:-6px 0 8px">{{ month.strftime('%B') }}'s posts for each person responsible. Overdue is everything overdue right now. Click a name to see their posts under Content.</p>
+    <div style="overflow-x:auto">
+      <table class="sl-table ov-table">
+        <thead><tr>
+          <th>Person</th><th class="n">Posts this month</th><th class="n">Being worked on</th>
+          {% if show_approval %}<th class="n">Awaiting approval</th>{% endif %}
+          <th class="n">Scheduled</th><th class="n">Published</th><th class="n">Overdue now</th>
+        </tr></thead>
+        <tbody>
+        {% for t in team %}
+        <tr>
+          <td><a href="{{ content }}?person={{ t.key|urlencode }}">{{ t.name }}</a></td>
+          {% for k in ['total','draft'] + (['waiting'] if show_approval else []) + ['sched','out'] %}
+          <td class="n{{ ' zero' if not t[k] }}">{{ t[k] }}</td>
+          {% endfor %}
+          <td class="n{{ ' late' if t.overdue else ' zero' }}">{{ t.overdue }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // Times in the viewer's own time zone, like the calendar.
+  document.querySelectorAll('[data-when]').forEach(function(el){
+    var d = new Date(el.dataset.when);
+    el.textContent = d.toLocaleDateString(undefined, {weekday:'short', day:'numeric', month:'short'}) + ', '
+      + d.toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit'});
+  });
+  document.querySelectorAll('[data-day]').forEach(function(el){
+    el.textContent = new Date(el.dataset.day + 'T12:00').toLocaleDateString(undefined, {weekday:'short', day:'numeric', month:'short'});
+  });
+})();
+</script>
+{% endblock %}

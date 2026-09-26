@@ -832,6 +832,10 @@
         <span class="sb-arrow">▾</span>
       </div>
       <div class="sb-sub {% if _social_group %}open{% endif %}">
+        {% if staff_can_open('socialcal.overview') %}
+        <a href="{{ url_for('socialcal.overview') }}"
+           class="{% if request.endpoint == 'socialcal.overview' %}active{% endif %}">Overview</a>
+        {% endif %}
         {% if staff_can_open('social.new_post') %}
         <a href="{{ url_for('social.new_post') }}"
            class="{% if request.endpoint in ('social.new_post', 'social.pick', 'social.again', 'social.finish') %}active{% endif %}">New Post</a>

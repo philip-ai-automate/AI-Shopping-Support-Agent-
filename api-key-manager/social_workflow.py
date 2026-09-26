@@ -357,17 +357,21 @@ def assignment_from_form(customer, form, actor: dict, keep: dict = None):
     return owner, due, None
 
 
-def today_for(customer):
-    """Today in the business's own time zone (UTC if it hasn't set one)."""
-    tz = timezone.utc
+def tz_for(customer):
+    """The business's own time zone (UTC if it hasn't set one)."""
     name = (customer or {}).get("timezone")
     if name:
         try:
             from zoneinfo import ZoneInfo
-            tz = ZoneInfo(name)
+            return ZoneInfo(name)
         except Exception:
             pass
-    return datetime.now(tz).date()
+    return timezone.utc
+
+
+def today_for(customer):
+    """Today in the business's own time zone."""
+    return datetime.now(tz_for(customer)).date()
 
 
 def is_overdue(post, today) -> bool:

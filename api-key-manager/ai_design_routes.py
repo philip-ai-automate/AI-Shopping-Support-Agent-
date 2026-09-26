@@ -515,7 +515,8 @@ def _inject_social_menu():
     return {"social_menu_endpoints": ("buffer.posts", "buffer.published", "social.new_post", "social.pick", "social.again",
                                       "social.finish", "social.brand_kit", "social.usage", "upload.start",
                                       "upload.check", "upload.fix", "upload.post", "upload.size_guide",
-                                      "socialcal.calendar", "socialcal.approval", "socialcal.post_view")}
+                                      "socialcal.overview", "socialcal.calendar", "socialcal.approval",
+                                      "socialcal.post_view")}
 
 
 # ══════════════════════════════════════════════════════════════════════════

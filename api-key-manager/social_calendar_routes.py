@@ -1,8 +1,9 @@
 """
-social_calendar_routes.py — Social Posts › Calendar and Approval (2026-09-26).
+social_calendar_routes.py — Social Posts › Overview, Calendar and Approval (2026-09-26).
 Rules live in social_workflow.py; sending still goes through
 buffer_routes._send_to_buffer like every other post.
 
+  GET  /social-posts/overview                the owner's summary (?month=YYYY-MM)
   GET  /social-posts/calendar                month view (?month=YYYY-MM)
   GET  /social-posts/calendar/plan           start a post for a day (?date=YYYY-MM-DD&via=ai|upload)
   GET  /social-posts/<id>/view               one post: preview, status, history, actions
@@ -118,6 +119,117 @@ def calendar():
         owners=owners,
         overdue_count=sum(1 for c in cards + undated_cards if c["overdue"]),
         display=W.DISPLAY,
+        can_create=_team_member_has_permission("social.posts_create"),
+        can_ai=_team_member_has_permission("social.ai_designs"),
+    )
+
+
+# ── Overview ───────────────────────────────────────────────────────────────
+
+# Where a month's posts are: (bucket, label, colour). Colours match the calendar.
+OV_BUCKETS = [("draft", "Draft", "#667085"), ("changes", "Changes requested", "#F04438"),
+              ("waiting", "Awaiting approval", "#F79009"), ("sched", "Scheduled", "#7A5AF8"),
+              ("out", "Published", "#12B76A"), ("failed", "Failed", "#D92D20")]
+
+
+def _bucket(p) -> str:
+    k = W.display_key(p)
+    return {"publishing": "sched", "sent": "out", "partial": "out"}.get(k, k)
+
+
+def _who(p) -> str:
+    """Same person key the Content page's Person filter uses."""
+    return p.get("owner_key") or "name:" + W.owner_name(p)
+
+
+@socialcal_bp.route("/social-posts/overview", methods=["GET"])
+@team_feature("social.posts_view")
+def overview():
+    """The owner's summary: the month's posts by stage, what needs someone
+    now, and each person's share."""
+    r = _require_login() or _require_team_permission("social.posts_view")
+    if r:
+        return r
+    r, customer = _ctx()
+    if r:
+        return r
+    tenant_id = int(customer["tenant_id"])
+    tz = W.tz_for(customer)
+    today = W.today_for(customer)
+    try:
+        first = datetime.strptime(request.args.get("month", ""), "%Y-%m").date().replace(day=1)
+    except ValueError:
+        first = today.replace(day=1)
+    nxt = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
+    prev = (first - timedelta(days=1)).replace(day=1)
+    start = datetime.combine(first, datetime.min.time(), timezone.utc) - timedelta(days=1)
+    end = datetime.combine(nxt, datetime.min.time(), timezone.utc) + timedelta(days=1)
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    # Same "which day does a post belong to" rule as the calendar, then
+    # trimmed to the month in the business's own time zone.
+    cur.execute("""SELECT * FROM tenant_social_posts WHERE tenant_id=%s AND (
+                       (status IN ('sent','partial') AND sent_at >= %s AND sent_at < %s)
+                    OR (NOT (status IN ('sent','partial') AND sent_at IS NOT NULL)
+                        AND COALESCE(scheduled_for, CASE WHEN status <> 'draft' THEN created_at END) >= %s
+                        AND COALESCE(scheduled_for, CASE WHEN status <> 'draft' THEN created_at END) < %s))""",
+                (tenant_id, start, end, start, end))
+    month_posts = [p for p in cur.fetchall() or []
+                   if W.post_date(p) and W.post_date(p).astimezone(tz).date().replace(day=1) == first]
+    # "Needs attention" is about right now, whatever month a post is planned for.
+    cur.execute("""SELECT * FROM tenant_social_posts WHERE tenant_id=%s AND (
+                       (status='draft' AND approval IN ('waiting','changes'))
+                    OR status='failed'
+                    OR (status='draft' AND due_date < %s AND approval IS DISTINCT FROM 'waiting'))
+                   ORDER BY COALESCE(scheduled_for, submitted_at, created_at), id""", (tenant_id, today))
+    open_posts = cur.fetchall() or []
+    cur.execute("""SELECT * FROM tenant_social_posts WHERE tenant_id=%s AND status='scheduled' AND scheduled_for > NOW()
+                   ORDER BY scheduled_for LIMIT 5""", (tenant_id,))
+    upcoming = cur.fetchall() or []
+    cur.execute("""SELECT COUNT(*) AS n FROM tenant_social_posts
+                   WHERE tenant_id=%s AND status='draft' AND scheduled_for IS NULL""", (tenant_id,))
+    undated = cur.fetchone()["n"]
+    cur.close(); conn.close()
+
+    counts = {b: 0 for b, _, _ in OV_BUCKETS}
+    for p in month_posts:
+        counts[_bucket(p)] += 1
+    overdue = [p for p in open_posts if W.is_overdue(p, today)]
+    waiting = [p for p in open_posts if p["status"] == "draft" and p.get("approval") == "waiting"]
+    changes = [p for p in open_posts if p["status"] == "draft" and p.get("approval") == "changes"]
+    failed = [p for p in open_posts if p["status"] == "failed"]
+
+    # A row for everyone who can be given posts, plus anyone still holding
+    # posts who has since left the team.
+    blank = lambda k, name: {"key": k, "name": name, "total": 0, "draft": 0, "waiting": 0,
+                             "sched": 0, "out": 0, "overdue": 0}
+    team = {m["key"]: blank(m["key"], m["label"]) for m in W.people(customer)}
+    def row(p):
+        k = _who(p)
+        return team.setdefault(k, blank(k, W.owner_name(p) or "No one"))
+    for p in month_posts:
+        t = row(p)
+        t["total"] += 1
+        b = _bucket(p)
+        t[b if b in ("waiting", "sched", "out") else "draft"] += 1   # changes/failed still need work
+    for p in overdue:
+        row(p)["overdue"] += 1
+
+    chans = _channels(customer)
+    cards = lambda rows: [_card(p, chans, today) for p in rows]
+    approval_on = W.approval_required(tenant_id)
+    return render_template(
+        "portal/social_overview.html",
+        customer=customer, today=today,
+        month=first, prev=prev.strftime("%Y-%m"), next=nxt.strftime("%Y-%m"),
+        this_month=today.replace(day=1) == first,
+        total=len(month_posts), counts=counts, buckets=OV_BUCKETS,
+        show_approval=bool(approval_on or counts["waiting"] or counts["changes"] or waiting or changes),
+        waiting=cards(waiting), changes=cards(changes), overdue=cards(overdue), failed=cards(failed),
+        upcoming=cards(upcoming), undated=undated,
+        team=sorted(team.values(), key=lambda t: (-t["total"], -t["overdue"], t["name"].lower())),
+        can_approve=W.can_approve(),
         can_create=_team_member_has_permission("social.posts_create"),
         can_ai=_team_member_has_permission("social.ai_designs"),
     )
