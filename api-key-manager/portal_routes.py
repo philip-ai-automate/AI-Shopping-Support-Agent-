@@ -757,6 +757,9 @@ PLAN_FEATURE_CATALOG = {
 # "other" list instead of being forced into a column that would misdescribe
 # them (this exact tradeoff was raised with the user in the original design
 # and now revisited — see project_team_access_control memory).
+# "needs_view": a row with no View of its own whose ticks only work from
+# another row's page (e.g. Knowledge Documents live on Store Information) —
+# that page's View key gets ticked along with them, same as a row's own View.
 ROLE_FORM_GRID = {
     "Dashboard": [
         {"label": "Dashboard", "view": "dashboard.page", "other": ["dashboard.handoff_handled"]},
@@ -823,11 +826,12 @@ ROLE_FORM_GRID = {
     ],
     "Store Information": [
         {"label": "Store Information",  "view": "store.info", "create": "store.info_create", "edit": "store.info_edit", "delete": "store.info_delete"},
-        {"label": "Knowledge Document", "create": "store.info_documents_upload", "delete": "store.info_documents_delete"},
+        {"label": "Knowledge Document", "create": "store.info_documents_upload", "delete": "store.info_documents_delete",
+         "needs_view": "store.info"},
     ],
     "Team": [
         {"label": "Team", "view": "team.manage"},
-        {"label": "Team Member", "create": "team.members_create", "delete": "team.members_remove",
+        {"label": "Team Member", "create": "team.members_create", "delete": "team.members_remove", "needs_view": "team.manage",
          "other": ["team.members_assign_role", "team.members_deactivate", "team.members_reset_password",
                    "team.members_agent_access", "team.members_messenger_access", "team.members_webchat_access",
                    "team.members_alerts"]},
@@ -889,10 +893,10 @@ ROLE_FORM_GRID = {
     ],
     "Settings": [
         {"label": "Account Settings", "view": "settings.account"},
-        {"label": "Profile",          "edit": "settings.profile_edit"},
-        {"label": "Business Info",    "edit": "settings.business_edit"},
-        {"label": "Password",         "edit": "settings.password"},
-        {"label": "Cancel Plan",      "delete": "settings.cancel_plan"},
+        {"label": "Profile",          "edit": "settings.profile_edit",   "needs_view": "settings.account"},
+        {"label": "Business Info",    "edit": "settings.business_edit",  "needs_view": "settings.account"},
+        {"label": "Password",         "edit": "settings.password",       "needs_view": "settings.account"},
+        {"label": "Cancel Plan",      "delete": "settings.cancel_plan",  "needs_view": "settings.account"},
     ],
 }
 
@@ -997,6 +1001,7 @@ def _build_role_form_grid(feature_catalog: dict) -> dict:
                 rows.append({
                     "label": row_def["label"], "cols": cols, "other": other,
                     "search": " ".join(search_parts).lower(),
+                    "needs_view": row_def.get("needs_view"),
                 })
         for key, label in feats:
             if key not in placed:
@@ -1408,7 +1413,7 @@ def _role_row_view_keys() -> dict:
     implied = {}
     for rows in ROLE_FORM_GRID.values():
         for row in rows:
-            view_key = row.get("view")
+            view_key = row.get("view") or row.get("needs_view")
             if not view_key:
                 continue
             for k in [row.get(c) for c in ("create", "edit", "delete")] + list(row.get("other", [])):
@@ -4278,14 +4283,14 @@ def team_update_role(member_id: int):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/team/roles")
-@team_feature("team.roles_create", "team.roles_edit")
+@team_feature("team.roles_create", "team.roles_edit", "team.roles_delete")
 def team_roles_page():
     r = _require_login()
     if r: return r
     customer  = _get_customer(_customer_id())
     r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
     if r2: return r2
-    r3 = _require_any_team_permission(["team.roles_create", "team.roles_edit"])
+    r3 = _require_any_team_permission(["team.roles_create", "team.roles_edit", "team.roles_delete"])
     if r3: return r3
     tenant_id = int(customer["tenant_id"])
 
@@ -4447,14 +4452,14 @@ def team_role_delete(role_id: int):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/team/departments")
-@team_feature("team.departments_create", "team.departments_edit")
+@team_feature("team.departments_create", "team.departments_edit", "team.departments_delete")
 def team_departments_page():
     r = _require_login()
     if r: return r
     customer  = _get_customer(_customer_id())
     r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
     if r2: return r2
-    r3 = _require_any_team_permission(["team.departments_create", "team.departments_edit"])
+    r3 = _require_any_team_permission(["team.departments_create", "team.departments_edit", "team.departments_delete"])
     if r3: return r3
     tenant_id = int(customer["tenant_id"])
 
@@ -4580,14 +4585,14 @@ def team_department_delete(dept_id: int):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/team/positions")
-@team_feature("team.positions_create", "team.positions_edit")
+@team_feature("team.positions_create", "team.positions_edit", "team.positions_delete")
 def team_positions_page():
     r = _require_login()
     if r: return r
     customer  = _get_customer(_customer_id())
     r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
     if r2: return r2
-    r3 = _require_any_team_permission(["team.positions_create", "team.positions_edit"])
+    r3 = _require_any_team_permission(["team.positions_create", "team.positions_edit", "team.positions_delete"])
     if r3: return r3
     tenant_id = int(customer["tenant_id"])
 

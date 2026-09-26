@@ -152,7 +152,7 @@
             </thead>
             <tbody>
               {% for row in grid[mod_name] %}
-              <tr data-feature-row data-search="{{ row.search }}">
+              <tr data-feature-row data-search="{{ row.search }}"{% if row.needs_view %} data-needs-view="{{ row.needs_view }}"{% endif %}>
                 <td class="rf-grid-feature">{{ row.label }}</td>
                 {% for col in ['view', 'create', 'edit', 'delete'] %}
                 <td>
@@ -207,10 +207,15 @@ document.addEventListener('change', function(e) {
   if (!box.matches || !box.matches('[data-feature-row] input[type=checkbox]')) return;
   var row = box.closest('[data-feature-row]');
   var view = row.querySelector('input[data-col="view"]');
-  if (!view) return;
-  if (box === view && !view.checked) {
+  // Rows with no View of their own that work from another row's page
+  // (e.g. Knowledge Documents → Store Information) tick that page's View.
+  var parentView = row.dataset.needsView && document.getElementById('perm__' + row.dataset.needsView);
+  if (box.checked && parentView) parentView.checked = true;
+  if (view && box === view && !view.checked) {
     row.querySelectorAll('input[type=checkbox]').forEach(function(b) { b.checked = false; });
-  } else if (box !== view && box.checked) {
+    document.querySelectorAll('[data-needs-view="' + view.name.slice(6) + '"] input[type=checkbox]')
+      .forEach(function(b) { b.checked = false; });
+  } else if (view && box !== view && box.checked) {
     view.checked = true;
   }
   rfUpdateCounts();
