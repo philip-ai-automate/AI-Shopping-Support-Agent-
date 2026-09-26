@@ -1,0 +1,342 @@
+"""
+social_calendar_routes.py — Social Posts › Calendar and Approval (2026-09-26).
+Rules live in social_workflow.py; sending still goes through
+buffer_routes._send_to_buffer like every other post.
+
+  GET  /social-posts/calendar                month view (?month=YYYY-MM)
+  GET  /social-posts/calendar/plan           start a post for a day (?date=YYYY-MM-DD&via=ai|upload)
+  GET  /social-posts/<id>/view               one post: preview, status, history, actions
+  GET  /social-posts/approval                posts waiting for approval + the on/off switch
+  POST /social-posts/approval/settings       switch approval on / off
+  POST /social-posts/<id>/approve            approve: sends it to Buffer
+  POST /social-posts/<id>/request-changes    send it back with a note
+"""
+import json as _json
+from datetime import datetime, timezone, timedelta, date
+
+import psycopg2.extras
+from flask import Blueprint, request, render_template, redirect, url_for, flash, session, abort
+
+from db import get_db_connection, insert_audit_log
+from feature_access import team_feature
+from portal_routes import (_require_login, _require_team_permission, _team_member_has_permission,
+                           _current_actor, _inject_granted_features, _inject_connect_flag)
+import buffer_accounts as ba
+import social_workflow as W
+from buffer_routes import _gate, _owner, _get_post, _send_to_buffer, _validate, _parse_when
+
+socialcal_bp = Blueprint("socialcal", __name__)
+socialcal_bp.context_processor(_inject_granted_features)
+socialcal_bp.context_processor(_inject_connect_flag)
+
+
+def _ctx():
+    """After the route's own login + team-role check: plan and Buffer
+    connected. Returns (response, customer)."""
+    r, customer = _gate("social.posts_view", "Social Posts")
+    if r:
+        return r, None
+    if not ba.is_connected(_owner(customer)):
+        flash("Connect Buffer first on Integration › Buffer. Social Posts publishes through it.", "warning")
+        return redirect(url_for("buffer.connect")), None
+    return None, customer
+
+
+def _channels(customer) -> dict:
+    return {c["channel_id"]: c for c in ba.list_channels(_owner(customer))}
+
+
+def _card(p, chans: dict) -> dict:
+    """What the calendar / approval pages need about one post."""
+    k = W.display_key(p)
+    d = W.post_date(p)
+    return {
+        "id": p["id"],
+        "title": W.title_of(p),
+        "key": k,
+        "label": W.DISPLAY[k][0],
+        "when": d.isoformat() if d else None,
+        "by": p.get("submitted_by") or p.get("created_by") or "",
+        "services": [chans[c]["service"] for c in (p.get("channel_ids") or []) if c in chans],
+        "has_image": bool(p.get("image_filename")),
+    }
+
+
+# ── Calendar ───────────────────────────────────────────────────────────────
+
+@socialcal_bp.route("/social-posts/calendar", methods=["GET"])
+@team_feature("social.posts_view")
+def calendar():
+    r = _require_login() or _require_team_permission("social.posts_view")
+    if r:
+        return r
+    r, customer = _ctx()
+    if r:
+        return r
+    tenant_id = int(customer["tenant_id"])
+    raw = request.args.get("month", "")
+    try:
+        first = datetime.strptime(raw, "%Y-%m").date().replace(day=1)
+    except ValueError:
+        first = date.today().replace(day=1)
+    nxt = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
+    prev = (first - timedelta(days=1)).replace(day=1)
+    # A day either side, so posts near midnight land right in the viewer's own time zone.
+    start = datetime.combine(first, datetime.min.time(), timezone.utc) - timedelta(days=1)
+    end = datetime.combine(nxt, datetime.min.time(), timezone.utc) + timedelta(days=1)
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""SELECT * FROM tenant_social_posts WHERE tenant_id=%s AND (
+                       (status IN ('sent','partial') AND sent_at >= %s AND sent_at < %s)
+                    OR (NOT (status IN ('sent','partial') AND sent_at IS NOT NULL)
+                        AND COALESCE(scheduled_for, CASE WHEN status <> 'draft' THEN created_at END) >= %s
+                        AND COALESCE(scheduled_for, CASE WHEN status <> 'draft' THEN created_at END) < %s))
+                   ORDER BY 1""", (tenant_id, start, end, start, end))
+    dated = cur.fetchall() or []
+    cur.execute("""SELECT * FROM tenant_social_posts WHERE tenant_id=%s AND status='draft' AND scheduled_for IS NULL
+                   ORDER BY created_at DESC LIMIT 50""", (tenant_id,))
+    undated = cur.fetchall() or []
+    cur.close(); conn.close()
+
+    chans = _channels(customer)
+    return render_template(
+        "portal/social_calendar.html",
+        customer=customer,
+        month=first, prev=prev.strftime("%Y-%m"), next=nxt.strftime("%Y-%m"),
+        this_month=date.today().replace(day=1) == first,
+        cards=[_card(p, chans) for p in dated],
+        undated=[_card(p, chans) for p in undated],
+        display=W.DISPLAY,
+        can_create=_team_member_has_permission("social.posts_create"),
+        can_ai=_team_member_has_permission("social.ai_designs"),
+    )
+
+
+@socialcal_bp.route("/social-posts/calendar/plan", methods=["GET"])
+@team_feature("social.posts_create", "social.ai_designs")
+def calendar_plan():
+    """"+" on a calendar day: remembers the day, then opens New Post or
+    Upload Design, which pre-fill "Schedule for later" with it."""
+    via = request.args.get("via") or ("ai" if _team_member_has_permission("social.ai_designs") else "upload")
+    r = _require_login() or _require_team_permission("social.ai_designs" if via == "ai" else "social.posts_create")
+    if r:
+        return r
+    r, customer = _ctx()
+    if r:
+        return r
+    try:
+        day = datetime.strptime(request.args.get("date", ""), "%Y-%m-%d").date()
+        session["social_plan_date"] = f"{day.isoformat()}|{int(datetime.now(timezone.utc).timestamp())}"
+    except ValueError:
+        session.pop("social_plan_date", None)
+    return redirect(url_for("social.new_post") if via == "ai" else url_for("upload.start"))
+
+
+# ── One post ───────────────────────────────────────────────────────────────
+
+@socialcal_bp.route("/social-posts/<int:post_id>/view", methods=["GET"])
+@team_feature("social.posts_view")
+def post_view(post_id: int):
+    r = _require_login() or _require_team_permission("social.posts_view")
+    if r:
+        return r
+    r, customer = _ctx()
+    if r:
+        return r
+    tenant_id = int(customer["tenant_id"])
+    p = _get_post(tenant_id, post_id)
+    if not p:
+        abort(404)
+    chans = _channels(customer)
+    return render_template(
+        "portal/social_post_view.html",
+        customer=customer, p=p, card=_card(p, chans), chans=chans,
+        history=W.events(tenant_id, post_id), event_text=W.EVENT_TEXT, display=W.DISPLAY,
+        can_edit=_team_member_has_permission("social.posts_edit"),
+        can_approve=W.can_approve(),
+        now=datetime.now(timezone.utc),
+    )
+
+
+# ── Approval ───────────────────────────────────────────────────────────────
+
+@socialcal_bp.route("/social-posts/approval", methods=["GET"])
+@team_feature("social.posts_view")
+def approval():
+    r = _require_login() or _require_team_permission("social.posts_view")
+    if r:
+        return r
+    r, customer = _ctx()
+    if r:
+        return r
+    tenant_id = int(customer["tenant_id"])
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""SELECT * FROM tenant_social_posts WHERE tenant_id=%s AND status='draft' AND approval='waiting'
+                   ORDER BY COALESCE(scheduled_for, submitted_at), id""", (tenant_id,))
+    waiting = cur.fetchall() or []
+    cur.execute("""SELECT * FROM tenant_social_posts WHERE tenant_id=%s AND approval IN ('approved','changes')
+                     AND decided_at > NOW() - INTERVAL '14 days'
+                   ORDER BY decided_at DESC LIMIT 20""", (tenant_id,))
+    recent = cur.fetchall() or []
+    cur.close(); conn.close()
+    chans = _channels(customer)
+    return render_template(
+        "portal/social_approval.html",
+        customer=customer, waiting=waiting, recent=recent, chans=chans,
+        cards={p["id"]: _card(p, chans) for p in waiting + recent},
+        display=W.DISPLAY,
+        required=W.approval_required(tenant_id),
+        can_approve=W.can_approve(),
+        now=datetime.now(timezone.utc),
+    )
+
+
+@socialcal_bp.route("/social-posts/approval/settings", methods=["POST"])
+@team_feature(W.APPROVE_KEY)
+def approval_settings():
+    r = _require_login() or _require_team_permission(W.APPROVE_KEY)
+    if r:
+        return r
+    r, customer = _ctx()
+    if r:
+        return r
+    on = request.form.get("approval_required") == "1"
+    W.set_approval_required(int(customer["tenant_id"]), on, _current_actor(customer)["label"])
+    flash("Approval switched on. Posts from people who can't approve now wait here until someone approves them."
+          if on else "Approval switched off. Everyone who can post sends straight to Buffer again. "
+                     "Posts already waiting stay here until approved or sent back.", "success")
+    return redirect(url_for("socialcal.approval"))
+
+
+def _waiting_post(customer, post_id):
+    p = _get_post(int(customer["tenant_id"]), post_id)
+    if not p or p["status"] != "draft" or p.get("approval") != "waiting":
+        flash("That post isn't waiting for approval any more.", "warning")
+        return None
+    return p
+
+
+@socialcal_bp.route("/social-posts/<int:post_id>/approve", methods=["POST"])
+@team_feature(W.APPROVE_KEY)
+def approve(post_id: int):
+    r = _require_login() or _require_team_permission(W.APPROVE_KEY)
+    if r:
+        return r
+    r, customer = _ctx()
+    if r:
+        return r
+    back = request.form.get("back") == "view" and url_for("socialcal.post_view", post_id=post_id) or url_for("socialcal.approval")
+    p = _waiting_post(customer, post_id)
+    if not p:
+        return redirect(back)
+    tenant_id = int(customer["tenant_id"])
+    owner = _owner(customer)
+    actor = _current_actor(customer)["label"]
+
+    mode = request.form.get("mode") or "planned"   # planned | now | other
+    if mode == "now":
+        action, when = "now", None
+    elif mode == "other":
+        action, when = "schedule", _parse_when(request.form.get("scheduled_for_utc"))
+    else:
+        action, when = ("schedule", p["scheduled_for"]) if p.get("scheduled_for") else ("now", None)
+
+    usable = {c["channel_id"]: c for c in ba.list_channels(owner, enabled_only=True)}
+    picked = [c for c in p["channel_ids"] if c in usable]
+    has_image = bool(p.get("image_filename") or p.get("media"))
+    err = _validate(p["caption"], picked, action, when, usable, has_image)
+    if err:
+        if mode == "planned" and when:
+            err = "The planned time has passed. Choose Post now or pick another time."
+        flash(err, "warning")
+        return redirect(back)
+    p = dict(p, channel_ids=picked)
+
+    status, ids, results, errors = _send_to_buffer(owner, p, usable, when)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""UPDATE tenant_social_posts SET status=%s, buffer_post_ids=%s, channel_results=%s, buffer_error=%s,
+                          channel_ids=%s, scheduled_for=%s, approval='approved', approval_note=NULL,
+                          decided_by=%s, decided_at=NOW(), updated_at=NOW()
+                   WHERE id=%s AND tenant_id=%s""",
+                (status, _json.dumps(ids) if ids else None, _json.dumps(results), errors, picked, when,
+                 actor, post_id, tenant_id))
+    conn.commit()
+    cur.close(); conn.close()
+    W.log_event(tenant_id, post_id, "approved", actor)
+    insert_audit_log(action="social_post_approved", tenant_id=tenant_id,
+                     details={"post_id": post_id, "status": status, "by": actor})
+    when_text = ("It's scheduled and Buffer will publish it at the planned time." if when
+                 else "It's been sent to Buffer and is publishing now.")
+    if status == "failed":
+        W.notify_submitter(customer, p, "approved", actor, when_text="But Buffer didn't accept it: " + (errors or ""))
+        flash(f"Approved, but Buffer didn't accept the post. It's under Posts as Failed so it can be tried again. {errors}", "danger")
+    else:
+        W.notify_submitter(customer, p, "approved", actor, when_text=when_text)
+        flash(("Approved. " + when_text) if status != "partial" else f"Approved and sent to some accounts, but not all. {errors}",
+              "success" if status != "partial" else "warning")
+    return redirect(back)
+
+
+@socialcal_bp.route("/social-posts/<int:post_id>/request-changes", methods=["POST"])
+@team_feature(W.APPROVE_KEY)
+def request_changes(post_id: int):
+    r = _require_login() or _require_team_permission(W.APPROVE_KEY)
+    if r:
+        return r
+    r, customer = _ctx()
+    if r:
+        return r
+    back = request.form.get("back") == "view" and url_for("socialcal.post_view", post_id=post_id) or url_for("socialcal.approval")
+    note = (request.form.get("note") or "").strip()[:2000]
+    if not note:
+        flash("Write what needs changing, so the writer knows what to fix.", "warning")
+        return redirect(back)
+    p = _waiting_post(customer, post_id)
+    if not p:
+        return redirect(back)
+    tenant_id = int(customer["tenant_id"])
+    actor = _current_actor(customer)["label"]
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""UPDATE tenant_social_posts SET approval='changes', approval_note=%s, decided_by=%s,
+                          decided_at=NOW(), updated_at=NOW() WHERE id=%s AND tenant_id=%s""",
+                (note, actor, post_id, tenant_id))
+    conn.commit()
+    cur.close(); conn.close()
+    W.log_event(tenant_id, post_id, "changes", actor, note)
+    insert_audit_log(action="social_post_changes_requested", tenant_id=tenant_id, details={"post_id": post_id, "by": actor})
+    W.notify_submitter(customer, p, "changes", actor, note=note)
+    flash(f"Sent back to {p.get('submitted_by') or 'the writer'} with your comments.", "success")
+    return redirect(back)
+
+
+@socialcal_bp.app_context_processor
+def _inject_social_workflow():
+    """Approval badge in the side menu, and the pre-filled day + "Submit for
+    approval" wording on the post forms."""
+    out = {}
+    try:
+        if request.blueprint in (None, "portal_admin", "ai_admin") or not session.get("portal_logged_in"):
+            return out
+        from portal_routes import _customer_id, _get_customer
+        cid = _customer_id()
+        customer = _get_customer(cid) if cid else None
+        if not customer or not customer.get("tenant_id"):
+            return out
+        tid = int(customer["tenant_id"])
+        if not ba.is_connected(ba.tenant_owner(tid)):
+            return out
+        out["social_waiting_count"] = W.waiting_count(tid) if W.can_approve() else 0
+        if request.blueprint in ("buffer", "social", "upload", "socialcal"):
+            out["social_needs_approval"] = W.approval_needed(tid)
+            # The day picked with "+" on the calendar; forgotten after 2 hours
+            # so an abandoned plan doesn't pre-fill some later, unrelated post.
+            day, _, at = (session.get("social_plan_date") or "").partition("|")
+            if day and at.isdigit() and datetime.now(timezone.utc).timestamp() - int(at) < 7200:
+                out["social_plan_date"] = day
+    except Exception as e:
+        print("⚠️ social workflow context:", e)
+    return out

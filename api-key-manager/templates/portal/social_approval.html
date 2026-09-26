@@ -1,0 +1,157 @@
+{% extends "portal/base.html" %}
+{% block title %}Approval — Social Posts — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  [hidden]{display:none!important}
+  .pg-title{font-size:22px;font-weight:800;letter-spacing:-.3px;color:var(--ink);margin:0 0 4px}
+  .pg-sub{font-size:13.5px;color:var(--muted);line-height:1.5;max-width:70ch}
+  .ap-wrap{display:flex;flex-direction:column;gap:16px;max-width:1040px}
+  .ap-panel{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px 18px}
+  .ap-switch{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+  .ap-switch b{color:var(--ink)}
+  .ap-hint{font-size:12.5px;color:var(--muted);line-height:1.5}
+  .ap-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;display:grid;grid-template-columns:200px 1fr;gap:18px}
+  @media (max-width:760px){.ap-card{grid-template-columns:1fr}}
+  .ap-img{width:100%;max-width:200px;aspect-ratio:1/1;object-fit:cover;border-radius:12px;border:1px solid var(--line);background:#F2F4F7;
+    display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px}
+  .ap-card h2{margin:6px 0 0;font-size:16px;color:var(--ink);text-wrap:balance}
+  .ap-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 16px;margin:10px 0 12px;font-size:13px}
+  .ap-meta b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:650}
+  .ap-cap{background:#F5F7FA;border-radius:10px;padding:10px 12px;font-size:13.5px;line-height:1.5;white-space:pre-line;max-height:220px;overflow:auto}
+  .ap-per{font-size:12px;color:var(--muted);margin-top:6px}
+  .ap-form{display:flex;flex-direction:column;gap:10px;margin-top:12px;border-top:1px solid var(--line);padding-top:12px}
+  .ap-when{display:flex;gap:14px;flex-wrap:wrap;font-size:13px}
+  .ap-when label{display:inline-flex;gap:6px;align-items:center;font-weight:600;cursor:pointer}
+  .ap-when input{accent-color:var(--ink);margin:0}
+  .ap-form input[type=datetime-local]{font:inherit;font-size:14px;padding:8px 10px;border:1.5px solid var(--line);border-radius:10px;max-width:260px}
+  .ap-form textarea{font:inherit;font-size:13.5px;padding:9px 11px;border:1.5px solid var(--line);border-radius:10px;width:100%;min-height:70px;resize:vertical}
+  .ap-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .btn-approve{background:#12B76A;border-color:#12B76A;color:#fff}
+  .btn-approve:hover{background:#0E9F5C;color:#fff}
+  .sp-pill{display:inline-block;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px}
+  .p-n{background:#F2F4F7;color:#475467}.p-b{background:#EFF4FF;color:#1849A9}.p-g{background:#ECFDF3;color:#027A48}
+  .p-w{background:#FFFAEB;color:#B54708}.p-r{background:#FEF3F2;color:#B42318}
+  .ap-empty{text-align:center;color:var(--muted);font-size:13.5px;padding:26px 12px}
+  .ap-recent{display:flex;flex-direction:column}
+  .ap-recent a{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px;color:var(--txt);text-decoration:none;flex-wrap:wrap}
+  .ap-recent a:last-child{border-bottom:0}
+  .ap-recent a:hover b{text-decoration:underline}
+  .ap-toggle{position:relative;display:inline-flex;align-items:center;gap:10px;cursor:pointer;font-weight:650;font-size:13px}
+  .ap-toggle input{position:absolute;opacity:0}
+  .ap-toggle span.t{width:40px;height:23px;border-radius:12px;background:#D0D5DD;position:relative;transition:.15s;flex-shrink:0}
+  .ap-toggle span.t:after{content:"";position:absolute;top:3px;left:3px;width:17px;height:17px;border-radius:50%;background:#fff;transition:.15s}
+  .ap-toggle input:checked + span.t{background:#12B76A}
+  .ap-toggle input:checked + span.t:after{left:20px}
+  .ap-toggle input:focus-visible + span.t{outline:3px solid #6AA8FF;outline-offset:2px}
+</style>
+{% endblock %}
+
+{% macro nets(p) -%}
+  {%- set names = [] -%}
+  {%- for cid in p.channel_ids -%}{%- set c = chans.get(cid) -%}{%- if names.append(c.label ~ ' · ' ~ c.title if c else 'Removed account') %}{% endif -%}{%- endfor -%}
+  {{ names|join(', ') }}
+{%- endmacro %}
+
+{% block content %}
+<div class="ap-wrap">
+  <div>
+    <div class="pg-title">Approval</div>
+    <div class="pg-sub">{% if can_approve %}Posts waiting for you. Approve to send them to Buffer, or send them back with your comments.{% else %}Posts waiting for someone to approve them. You'll get an email when yours is approved or sent back.{% endif %}</div>
+  </div>
+
+  <div class="ap-panel ap-switch">
+    <div>
+      <b>Posts need approval before they go out</b>
+      <div class="ap-hint">
+        {% if required %}On. Team members who can't approve can only submit posts. The owner and anyone with the "Approve or send back Social Posts" tick in Team › Roles can approve, and their own posts go straight out.
+        {% else %}Off. Everyone who can post sends straight to Buffer. Switch on to have posts checked first.{% endif %}
+      </div>
+    </div>
+    {% if can_approve %}
+    <form method="POST" action="{{ url_for('socialcal.approval_settings') }}" id="ap-setting">
+      <input type="hidden" name="approval_required" value="{{ '0' if required else '1' }}">
+      <label class="ap-toggle"><input type="checkbox" id="ap-required" {% if required %}checked{% endif %} onchange="this.form.submit()"><span class="t"></span>{{ 'On' if required else 'Off' }}</label>
+    </form>
+    {% else %}
+    <span class="sp-pill {{ 'p-g' if required else 'p-n' }}">{{ 'On' if required else 'Off' }}</span>
+    {% endif %}
+  </div>
+
+  {% for p in waiting %}
+  {% set c = cards[p.id] %}
+  <article class="ap-card" id="post-{{ p.id }}">
+    <div>
+      {% if p.image_filename %}<img class="ap-img" src="{{ url_for('buffer.post_image', post_id=p.id) }}" alt="Post image">
+      {% else %}<div class="ap-img">Text only</div>{% endif %}
+    </div>
+    <div style="min-width:0">
+      <div class="ap-row"><span class="sp-pill p-w">Awaiting approval</span>
+        <span class="ap-hint">Submitted by {{ p.submitted_by or p.created_by or 'a team member' }}{% if p.submitted_at %} · <span class="js-local" data-utc="{{ p.submitted_at.isoformat() }}"></span>{% endif %}</span></div>
+      <h2>{{ c.title }}</h2>
+      <div class="ap-meta">
+        <div><b>Goes out</b>{% if p.scheduled_for %}<span class="js-local" data-utc="{{ p.scheduled_for.isoformat() }}"></span>{% if p.scheduled_for < now %} <span class="sp-pill p-r">time has passed</span>{% endif %}{% else %}As soon as it's approved{% endif %}</div>
+        <div><b>Post to</b>{{ nets(p) or 'No accounts picked' }}</div>
+      </div>
+      <div class="ap-cap">{{ p.caption }}</div>
+      {% if p.captions %}<div class="ap-per">Has its own wording for {{ p.captions.keys()|map('capitalize')|join(', ') }}. <a href="{{ url_for('socialcal.post_view', post_id=p.id) }}">See each version</a>.</div>{% endif %}
+
+      {% if can_approve %}
+      <form method="POST" class="ap-form" action="{{ url_for('socialcal.approve', post_id=p.id) }}" data-approve>
+        <div class="ap-when" role="radiogroup" aria-label="When it goes out">
+          {% set future = p.scheduled_for and p.scheduled_for > now %}
+          {% if future %}<label><input type="radio" name="mode" value="planned" checked> At the planned time</label>{% endif %}
+          <label><input type="radio" name="mode" value="now" {% if not future %}checked{% endif %}> Post now</label>
+          <label><input type="radio" name="mode" value="other"> Pick another time</label>
+        </div>
+        <div data-other hidden><input type="datetime-local" aria-label="New date and time"></div>
+        <input type="hidden" name="scheduled_for_utc">
+        <div class="ap-row">
+          <button type="submit" class="btn btn-approve">✓ Approve</button>
+          <a class="btn" href="{{ url_for('socialcal.post_view', post_id=p.id) }}">Open full post</a>
+        </div>
+      </form>
+      <form method="POST" class="ap-form" action="{{ url_for('socialcal.request_changes', post_id=p.id) }}">
+        <label for="note-{{ p.id }}" class="ap-hint">What needs changing? {{ p.submitted_by or 'The writer' }} sees this and gets it by email.</label>
+        <textarea id="note-{{ p.id }}" name="note" required maxlength="2000" placeholder="e.g. Use a real customer example and shorten the caption to three lines."></textarea>
+        <div class="ap-row"><button type="submit" class="btn">Request changes</button></div>
+      </form>
+      {% endif %}
+    </div>
+  </article>
+  {% else %}
+  <div class="ap-panel ap-empty">Nothing is waiting for approval.</div>
+  {% endfor %}
+
+  {% if recent %}
+  <div class="ap-panel">
+    <b style="color:var(--ink)">Decided in the last 14 days</b>
+    <div class="ap-recent">
+      {% for p in recent %}
+      {% set c = cards[p.id] %}
+      <a href="{{ url_for('socialcal.post_view', post_id=p.id) }}">
+        <span><b>{{ c.title }}</b> <span class="ap-hint">· by {{ p.submitted_by or p.created_by }}</span></span>
+        <span class="ap-hint">{{ 'Approved' if p.approval == 'approved' else 'Sent back' }} by {{ p.decided_by }} · <span class="js-local" data-utc="{{ p.decided_at.isoformat() }}"></span></span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+(function(){
+  document.querySelectorAll('.js-local').forEach(function(el){
+    var d = new Date(el.dataset.utc);
+    if (!isNaN(d)) el.textContent = d.toLocaleString(undefined, {weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
+  });
+  document.querySelectorAll('form[data-approve]').forEach(function(f){
+    var box = f.querySelector('[data-other]'), local = box.querySelector('input'), utc = f.querySelector('input[name=scheduled_for_utc]');
+    function sync(){ var o = (f.querySelector('input[name=mode]:checked') || {}).value === 'other'; box.hidden = !o; local.required = o; }
+    f.querySelectorAll('input[name=mode]').forEach(function(r){ r.addEventListener('change', sync); });
+    sync();
+    f.addEventListener('submit', function(){ utc.value = local.value ? new Date(local.value).toISOString() : ''; });
+  });
+})();
+</script>
+{% endblock %}

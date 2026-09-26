@@ -597,6 +597,7 @@ PLAN_FEATURE_CATALOG = {
         ("social.posts_create", "Create a Social Post (post now / schedule / draft)"),
         ("social.posts_edit",   "Edit / reschedule / cancel a Social Post"),
         ("social.posts_delete", "Delete a Social Post"),
+        ("social.posts_approve", "Approve or send back Social Posts (when approval is switched on)"),
         ("social.ai_designs",   "Create AI designs (uses the monthly AI design allowance)"),
         ("social.brand_kit_view", "Brand Kit — view"),
         ("social.brand_kit_edit", "Edit the Brand Kit"),
@@ -802,7 +803,7 @@ ROLE_FORM_GRID = {
     ],
     "Social Posts": [
         {"label": "Social Post", "view": "social.posts_view", "create": "social.posts_create",
-         "edit": "social.posts_edit", "delete": "social.posts_delete"},
+         "edit": "social.posts_edit", "delete": "social.posts_delete", "other": ["social.posts_approve"]},
         {"label": "AI designs", "create": "social.ai_designs"},
         {"label": "Brand Kit", "view": "social.brand_kit_view", "edit": "social.brand_kit_edit"},
         {"label": "AI Design Usage", "view": "social.usage_view"},

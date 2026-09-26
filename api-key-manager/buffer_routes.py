@@ -37,6 +37,7 @@ from portal_routes import (_require_login, _customer_id, _get_customer, _require
                            _require_team_permission, _team_member_has_permission, _current_actor,
                            _inject_granted_features, _inject_connect_flag)
 import buffer_accounts as ba
+import social_workflow as W
 from buffer_client import BufferAPIError, buffer_create_post, buffer_get_post, buffer_delete_post
 
 buffer_bp = Blueprint("buffer", __name__)
@@ -324,7 +325,9 @@ def _delete_from_buffer(owner: str, post) -> list:
 def _send_to_buffer(owner: str, post, channels_by_id: dict, when):
     """Creates the post in Buffer on every picked account. Returns
     (status, buffer_post_ids, channel_results, error_text)."""
-    when_iso = when.strftime("%Y-%m-%dT%H:%M:%S.000Z") if when else None
+    # Always UTC: a time read back from the database carries the server's
+    # own offset, and Buffer reads this string as UTC ("Z").
+    when_iso = when.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z") if when else None
     captions = post.get("captions") or {}
     ids, results, errors = {}, {}, []
     for ch_id in post["channel_ids"]:
@@ -425,9 +428,12 @@ def create_post_from_design(customer, caption: str, captions: dict, square: str,
     post = cur.fetchone()
     conn.commit()
     cur.close(); conn.close()
+    session.pop("social_plan_date", None)
     if action == "draft":
         insert_audit_log(action="social_post_draft_saved", tenant_id=tenant_id, details={"post_id": post["id"], "by": actor, "ai": True})
         return True, "Draft saved. Find it under Social Posts › Posts."
+    if W.approval_needed(tenant_id):
+        return True, W.hold_for_approval(customer, post, action, when, _current_actor(customer))
     status, ids, results, errors = _send_to_buffer(owner, post, usable, when)
     conn = get_db_connection()
     cur = conn.cursor()
@@ -471,9 +477,12 @@ def create_post_from_upload(customer, captions: dict, media: dict, cover: str, c
     post = cur.fetchone()
     conn.commit()
     cur.close(); conn.close()
+    session.pop("social_plan_date", None)
     if action == "draft":
         insert_audit_log(action="social_post_draft_saved", tenant_id=tenant_id, details={"post_id": post["id"], "by": actor, "upload": True})
         return True, "Draft saved. Find it under Social Posts › Posts.", post["id"]
+    if W.approval_needed(tenant_id):
+        return True, W.hold_for_approval(customer, post, action, when, _current_actor(customer)), post["id"]
     status, ids, results, errors = _send_to_buffer(owner, post, usable, when)
     conn = get_db_connection()
     cur = conn.cursor()
@@ -557,8 +566,14 @@ def _form_values(owner):
     usable = {c["channel_id"]: c for c in ba.list_channels(owner, enabled_only=True)}
     picked = [c for c in request.form.getlist("channel_ids") if c in usable]
     action = request.form.get("action") or "draft"  # now | schedule | draft
-    when = _parse_when(request.form.get("scheduled_for_utc")) if action == "schedule" else None
+    when = _parse_when(request.form.get("scheduled_for_utc")) if wants_time(action) else None
     return caption, picked, action, when, usable
+
+
+def wants_time(action: str) -> bool:
+    """Schedule uses the picked time; a draft keeps it too as its planned
+    date (shown on the calendar), if "Schedule for later" was chosen."""
+    return action == "schedule" or (action == "draft" and request.form.get("when") == "schedule")
 
 
 def _validate(caption, picked, action, when, usable, has_image):
@@ -666,8 +681,13 @@ def save_post(post_id: int = None):
             _remove_image(existing["wide_image_filename"])
 
     if action == "draft":
+        W.withdraw_if_waiting(tenant_id, post, actor)
         insert_audit_log(action="social_post_draft_saved", tenant_id=tenant_id, details={"post_id": post["id"], "by": actor})
         flash("Draft saved.", "success")
+        return redirect(url_for("buffer.posts"))
+
+    if W.approval_needed(tenant_id):
+        flash(W.hold_for_approval(customer, post, action, when, _current_actor(customer)), "success")
         return redirect(url_for("buffer.posts"))
 
     status, ids, results, errors = _send_to_buffer(owner, post, usable, when)

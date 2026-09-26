@@ -70,13 +70,14 @@
         <label class="ad-radio"><input type="radio" name="when" value="schedule"> <span>Schedule for later</span></label>
       </div>
       <div class="ad-field" id="ad-when-box" hidden style="max-width:300px">
-        <input type="datetime-local" id="ad-when-local" aria-label="Date and time to post">
+        <input type="datetime-local" id="ad-when-local" aria-label="Date and time to post" data-plan="{{ social_plan_date or '' }}">
         <span class="ad-hint" id="ad-tz"></span>
       </div>
       <input type="hidden" name="scheduled_for_utc" id="ad-when-utc">
     </div>
+    {% if social_needs_approval %}<div style="background:#FFFAEB;border:1px solid rgba(181,71,8,.25);color:#7A4F00;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.5">Posts need approval before they go out. <b>Submit for approval</b> sends it to an approver first. Once they approve it, it goes out at the time you picked (or straight away if you chose Post now).</div>{% endif %}
     <div class="ad-row">
-      <button type="submit" name="action" value="now" class="btn btn-primary" id="ad-go">Post now</button>
+      <button type="submit" name="action" value="now" class="btn btn-primary" id="ad-go" data-approval="{{ '1' if social_needs_approval else '' }}">Post now</button>
       <button type="submit" name="action" value="draft" class="btn" formnovalidate>Save as draft</button>
       <a class="btn" href="{{ url_for(ep + 'pick', sid=s.id) }}">← Back to designs</a>
     </div>
@@ -99,7 +100,12 @@
   function sync(){
     var s = (f.querySelector('input[name=when]:checked') || {}).value === 'schedule';
     box.hidden = !s; local.required = s;
-    go.value = s ? 'schedule' : 'now'; go.textContent = s ? 'Schedule post' : 'Post now';
+    go.value = s ? 'schedule' : 'now'; go.textContent = go.dataset.approval ? 'Submit for approval' : (s ? 'Schedule post' : 'Post now');
+  }
+  // Came from "+" on a calendar day: that day at 10:00, "Schedule for later".
+  if (local.dataset.plan && !local.value) {
+    local.value = local.dataset.plan + 'T10:00';
+    var sch = f.querySelector('input[name=when][value=schedule]'); if (sch) sch.checked = true;
   }
   f.querySelectorAll('input[name=when]').forEach(function(r){ r.addEventListener('change', sync); });
   sync();

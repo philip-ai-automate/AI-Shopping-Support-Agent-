@@ -217,8 +217,8 @@ def h_finish(ctx, sid, customer=None):
         main_caption = next((t for t in caps.values() if t), "")
         if ctx.is_admin:
             return _admin_finish(ctx, s, main_caption)
-        from buffer_routes import UPLOAD_FOLDER, create_post_from_design, _parse_when
-        when = _parse_when(request.form.get("scheduled_for_utc")) if action == "schedule" else None
+        from buffer_routes import UPLOAD_FOLDER, create_post_from_design, _parse_when, wants_time
+        when = _parse_when(request.form.get("scheduled_for_utc")) if wants_time(action) else None
         square, wide = D.save_final_images(ctx.owner_key, s, UPLOAD_FOLDER)
         ok, msg = create_post_from_design(customer, main_caption, caps, square, wide,
                                           [c["channel_id"] for c in s.get("channels") or []], action, when, ctx.actor)
@@ -514,7 +514,8 @@ def _inject_social_menu():
     """For the Social Posts side-menu group."""
     return {"social_menu_endpoints": ("buffer.posts", "social.new_post", "social.pick", "social.again",
                                       "social.finish", "social.brand_kit", "social.usage", "upload.start",
-                                      "upload.check", "upload.fix", "upload.post", "upload.size_guide")}
+                                      "upload.check", "upload.fix", "upload.post", "upload.size_guide",
+                                      "socialcal.calendar", "socialcal.approval", "socialcal.post_view")}
 
 
 # ══════════════════════════════════════════════════════════════════════════

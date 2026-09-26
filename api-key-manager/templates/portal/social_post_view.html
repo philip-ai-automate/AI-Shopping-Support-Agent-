@@ -1,0 +1,112 @@
+{% extends "portal/base.html" %}
+{% block title %}{{ card.title }} — Social Posts — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  [hidden]{display:none!important}
+  .pv-wrap{display:flex;flex-direction:column;gap:16px;max-width:980px}
+  .pv-back{font-size:13px;color:var(--muted);text-decoration:none}
+  .pv-back:hover{color:var(--ink)}
+  .pv-head h1{font-size:21px;font-weight:800;letter-spacing:-.3px;color:var(--ink);margin:6px 0 0;text-wrap:balance}
+  .pv-grid{display:grid;grid-template-columns:260px 1fr;gap:18px}
+  @media (max-width:800px){.pv-grid{grid-template-columns:1fr}}
+  .pv-panel{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px 18px}
+  .pv-panel h2{margin:0 0 10px;font-size:14px;color:var(--ink)}
+  .pv-img{width:100%;max-width:260px;aspect-ratio:1/1;object-fit:cover;border-radius:12px;border:1px solid var(--line);background:#F2F4F7;
+    display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px}
+  .pv-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px 18px;font-size:13px}
+  .pv-meta b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:650}
+  .pv-cap{background:#F5F7FA;border-radius:10px;padding:10px 12px;font-size:13.5px;line-height:1.5;white-space:pre-line}
+  .pv-cap + .pv-cap{margin-top:8px}
+  .pv-cap-lbl{font-size:11.5px;font-weight:700;color:var(--muted);margin:10px 0 4px}
+  .pv-note{background:#FEF3F2;border:1px solid #FECDCA;border-radius:12px;padding:12px 14px;font-size:13.5px;line-height:1.5;color:#7A271A}
+  .pv-time{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px;font-size:13px}
+  .pv-time li{display:grid;grid-template-columns:12px 1fr;gap:9px}
+  .pv-time li:before{content:"";width:8px;height:8px;border-radius:50%;background:var(--c,#98A2B3);margin-top:6px}
+  .pv-time small{display:block;color:var(--muted);font-size:12px}
+  .pv-time q{display:block;margin-top:4px;font-size:12.5px;color:#7A271A;quotes:none}
+  .pv-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .sp-pill{display:inline-block;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px}
+  .p-n{background:#F2F4F7;color:#475467}.p-b{background:#EFF4FF;color:#1849A9}.p-g{background:#ECFDF3;color:#027A48}
+  .p-w{background:#FFFAEB;color:#B54708}.p-r{background:#FEF3F2;color:#B42318}
+  .pv-err{font-size:12.5px;color:#B42318}
+</style>
+{% endblock %}
+
+{% block content %}
+{% set d = display[card.key] %}
+<div class="pv-wrap">
+  <div class="pv-head">
+    <a class="pv-back" href="{{ url_for('socialcal.calendar') }}">← Calendar</a> <span class="pv-back">·</span> <a class="pv-back" href="{{ url_for('buffer.posts') }}">Posts</a>
+    <h1>{{ card.title }}</h1>
+    <div class="pv-row" style="margin-top:8px"><span class="sp-pill {{ d[1] }}">{{ d[0] }}</span>
+      {% if p.original_filename == 'upload' %}<span class="sp-pill p-n">Uploaded</span>{% elif p.original_filename == 'AI design' %}<span class="sp-pill p-b">AI design</span>{% endif %}</div>
+  </div>
+
+  {% if p.status == 'draft' and p.approval == 'changes' and p.approval_note %}
+  <div class="pv-note"><b>Changes requested by {{ p.decided_by }}:</b><br>{{ p.approval_note }}
+    {% if can_edit %}<div class="pv-row" style="margin-top:10px"><a class="btn btn-sm" href="{{ url_for('buffer.posts', edit=p.id) }}">Edit and submit again</a></div>{% endif %}
+  </div>
+  {% endif %}
+
+  <div class="pv-grid">
+    <div class="pv-panel">
+      {% if p.image_filename %}<img class="pv-img" src="{{ url_for('buffer.post_image', post_id=p.id) }}" alt="Post image">
+      {% else %}<div class="pv-img">Text only</div>{% endif %}
+    </div>
+    <div class="pv-panel">
+      <div class="pv-meta">
+        <div><b>{{ 'Went out' if p.status in ('sent','partial') else ('Planned for' if p.status == 'draft' else 'Goes out') }}</b>
+          {% set t = p.sent_at if p.status in ('sent','partial') and p.sent_at else p.scheduled_for %}
+          {% if t %}<span class="js-local" data-utc="{{ t.isoformat() }}"></span>{% elif p.requested_action == 'now' and p.approval == 'waiting' %}As soon as it's approved{% else %}No date yet{% endif %}</div>
+        <div><b>Post to</b>
+          {% set names = [] %}{% for cid in p.channel_ids %}{% set c = chans.get(cid) %}{% if names.append(c.label ~ ' · ' ~ c.title if c else 'Removed account') %}{% endif %}{% endfor %}
+          {{ names|join(', ') or 'No accounts picked' }}</div>
+        <div><b>Made by</b>{{ p.created_by or '—' }}</div>
+        {% if p.decided_by %}<div><b>{{ 'Approved by' if p.approval == 'approved' else 'Reviewed by' }}</b>{{ p.decided_by }}</div>{% endif %}
+      </div>
+      <div class="pv-cap-lbl">Caption</div>
+      <div class="pv-cap">{{ p.caption }}</div>
+      {% for svc, text in (p.captions or {}).items() %}{% if text and text != p.caption %}
+      <div class="pv-cap-lbl">{{ svc|capitalize }} version</div><div class="pv-cap">{{ text }}</div>
+      {% endif %}{% endfor %}
+      {% if p.status in ('failed','partial') and p.buffer_error %}<p class="pv-err">{{ p.buffer_error }}</p>{% endif %}
+      {% set links = [] %}
+      {% for cid, r in (p.channel_results or {}).items() %}{% if r.link %}{% if links.append((chans.get(cid).label if chans.get(cid) else 'Post', r.link)) %}{% endif %}{% endif %}{% endfor %}
+      {% if links %}<div class="pv-row" style="margin-top:10px">{% for name, link in links %}<a class="btn btn-sm" href="{{ link }}" target="_blank" rel="noopener">View on {{ name }}</a>{% endfor %}</div>{% endif %}
+
+      <div class="pv-row" style="margin-top:14px">
+        {% if p.status == 'draft' and p.approval == 'waiting' and can_approve %}
+          <a class="btn btn-primary" href="{{ url_for('socialcal.approval') }}#post-{{ p.id }}">Approve or send back</a>
+        {% endif %}
+        {% if p.status in ('draft','scheduled','failed') and can_edit and not (p.approval == 'changes' and p.status == 'draft') %}
+          <a class="btn" href="{{ url_for('buffer.posts', edit=p.id) }}">{{ 'Try again' if p.status == 'failed' else 'Edit' }}</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="pv-panel">
+    <h2>History</h2>
+    <ul class="pv-time">
+      <li style="--c:#667085">Created{% if p.created_by %} by {{ p.created_by }}{% endif %}<small class="js-local" data-utc="{{ p.created_at.isoformat() }}"></small></li>
+      {% for e in history %}
+      <li style="--c:{{ {'approved':'#12B76A','changes':'#F04438','submitted':'#F79009','resubmitted':'#F79009'}.get(e.action, '#98A2B3') }}">
+        {{ event_text.get(e.action, e.action) }}{% if e.actor %} by {{ e.actor }}{% endif %}
+        <small class="js-local" data-utc="{{ e.created_at.isoformat() }}"></small>
+        {% if e.note %}<q>"{{ e.note }}"</q>{% endif %}
+      </li>
+      {% endfor %}
+      {% if p.status == 'scheduled' %}<li style="--c:#7A5AF8">Scheduled in Buffer</li>{% endif %}
+      {% if p.status in ('sent','partial') and p.sent_at %}<li style="--c:#12B76A">{{ 'Posted' if p.status == 'sent' else 'Partly posted' }}, confirmed by Buffer<small class="js-local" data-utc="{{ p.sent_at.isoformat() }}"></small></li>{% endif %}
+      {% if p.status == 'failed' %}<li style="--c:#D92D20">Buffer couldn't publish it</li>{% endif %}
+    </ul>
+  </div>
+</div>
+<script>
+document.querySelectorAll('.js-local').forEach(function(el){
+  var d = new Date(el.dataset.utc);
+  if (!isNaN(d)) el.textContent = d.toLocaleString(undefined, {weekday:'short', day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'});
+});
+</script>
+{% endblock %}

@@ -171,8 +171,9 @@
       <input type="hidden" name="scheduled_for_utc" id="sp-when-utc">
     </div>
 
+    {% if social_needs_approval %}<div style="background:#FFFAEB;border:1px solid rgba(181,71,8,.25);color:#7A4F00;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.5">Posts need approval before they go out. <b>Submit for approval</b> sends it to an approver first. Once they approve it, it goes out at the time you picked (or straight away if you chose Post now).</div>{% endif %}
     <div class="sp-row">
-      <button type="submit" name="action" value="now" class="btn btn-primary" id="sp-go">Post now</button>
+      <button type="submit" name="action" value="now" class="btn btn-primary" id="sp-go" data-approval="{{ '1' if social_needs_approval else '' }}">Post now</button>
       <button type="submit" name="action" value="draft" class="btn" formnovalidate>Save as draft</button>
       <a href="{{ url_for('buffer.posts') }}" class="btn btn-ghost">Cancel editing</a>
     </div>
@@ -182,6 +183,8 @@
   <div class="sp-list">
     {% for p in posts %}
     {% set st = status_labels.get(p.status, (p.status|title, 'p-n')) %}
+    {% if p.status == 'draft' and p.approval == 'waiting' %}{% set st = ('Awaiting approval', 'p-w') %}
+    {% elif p.status == 'draft' and p.approval == 'changes' %}{% set st = ('Changes requested', 'p-r') %}{% endif %}
     <div class="sp-post">
       {% if p.image_filename %}
       <img class="sp-thumb" src="{{ url_for('buffer.post_image', post_id=p.id) }}" alt="" loading="lazy">
@@ -200,6 +203,9 @@
         {% if p.status in ('failed', 'partial') and p.buffer_error %}
         <div class="sp-err">{{ p.buffer_error }}</div>
         {% endif %}
+        {% if p.status == 'draft' and p.approval == 'changes' and p.approval_note %}
+        <div class="sp-err"><b>{{ p.decided_by }} asked for changes:</b> {{ p.approval_note }}</div>
+        {% endif %}
         {% set links = [] %}
         {% for cid, r in (p.channel_results or {}).items() %}{% if r.link %}{% if links.append((channels_by_id.get(cid).label if channels_by_id.get(cid) else 'Post', r.link)) %}{% endif %}{% endif %}{% endfor %}
         {% if links %}
@@ -207,6 +213,7 @@
         {% endif %}
       </div>
       <div class="sp-actions">
+        <a class="btn btn-sm" href="{{ url_for('socialcal.post_view', post_id=p.id) }}">Open</a>
         {% if p.status in editable and can_edit %}
         <a class="btn btn-sm" href="{{ url_for('buffer.posts', edit=p.id) }}">{{ 'Try again' if p.status == 'failed' else 'Edit' }}</a>
         {% endif %}
@@ -277,7 +284,7 @@
     var s = mode() === 'schedule';
     box.hidden = !s; local.required = s;
     go.value = s ? 'schedule' : 'now';
-    go.textContent = s ? 'Schedule post' : 'Post now';
+    go.textContent = go.dataset.approval ? 'Submit for approval' : (s ? 'Schedule post' : 'Post now');
   }
   form.querySelectorAll('input[name=when]').forEach(function(r){ r.addEventListener('change', sync); });
   sync();

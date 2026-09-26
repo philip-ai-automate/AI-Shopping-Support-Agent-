@@ -1330,6 +1330,35 @@ def ensure_portal_tables():
         # images / videos. media = {service: [{"kind": "image"|"video", "file": name}]}
         if not _column_exists(cur, "tenant_social_posts", "media"):
             cur.execute("ALTER TABLE tenant_social_posts ADD COLUMN media JSONB")
+
+        # ── Social Posts approval + calendar (2026-09-26) — see social_workflow.py.
+        for col, typ in (("approval", "VARCHAR(12)"), ("approval_note", "TEXT"),
+                         ("requested_action", "VARCHAR(10)"), ("submitted_by", "VARCHAR(255)"),
+                         ("submitted_by_key", "VARCHAR(40)"), ("submitted_at", "TIMESTAMPTZ"),
+                         ("decided_by", "VARCHAR(255)"), ("decided_at", "TIMESTAMPTZ")):
+            cur.execute(f"ALTER TABLE tenant_social_posts ADD COLUMN IF NOT EXISTS {col} {typ}")
+        cur.execute("""CREATE INDEX IF NOT EXISTS idx_tenant_social_posts_waiting
+                       ON tenant_social_posts (tenant_id) WHERE status='draft' AND approval='waiting'""")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS social_settings (
+                tenant_id         INTEGER PRIMARY KEY,
+                approval_required BOOLEAN NOT NULL DEFAULT FALSE,
+                updated_by        VARCHAR(255),
+                updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS social_post_events (
+                id         SERIAL PRIMARY KEY,
+                tenant_id  INTEGER NOT NULL,
+                post_id    INTEGER NOT NULL,
+                action     VARCHAR(30) NOT NULL,
+                actor      VARCHAR(255),
+                note       TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_social_post_events_post ON social_post_events (tenant_id, post_id)")
         # A design being uploaded and checked, before it becomes a post.
         cur.execute("""
             CREATE TABLE IF NOT EXISTS upload_drafts (

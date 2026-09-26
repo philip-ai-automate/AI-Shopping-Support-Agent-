@@ -527,6 +527,9 @@
       background:no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 13 15'%3E%3Cpath d='M3.2 6.2V4.4a3.3 3.3 0 0 1 6.6 0v1.8' fill='none' stroke='%23FBBF24' stroke-width='1.8' stroke-linecap='round'/%3E%3Crect x='0.9' y='6.2' width='11.2' height='8' rx='1.8' fill='%23FBBF24'/%3E%3Ccircle cx='6.5' cy='9.7' r='1.15' fill='%23030C18'/%3E%3Crect x='5.95' y='10.2' width='1.1' height='2.2' rx='.5' fill='%23030C18'/%3E%3C/svg%3E");
     }
     .sb-link:hover .sb-lock, .sb-sub a:hover .sb-lock{opacity:1}
+    /* Waiting-count badge on a sub-menu item (Social Posts › Approval) */
+    .sb-count{margin-left:auto;background:#F79009;color:#2B1700;font-size:11px;font-weight:800;line-height:1.5;
+      border-radius:10px;padding:0 7px;font-variant-numeric:tabular-nums}
 
     .sb-divider{background:rgba(255,255,255,0.08)}
     .sb-footer{background:transparent; border-top-color:rgba(255,255,255,0.08)}
@@ -837,9 +840,17 @@
         <a href="{{ url_for('upload.start') }}"
            class="{% if request.endpoint in ('upload.start', 'upload.check', 'upload.fix', 'upload.post', 'upload.size_guide') %}active{% endif %}">Upload Design</a>
         {% endif %}
+        {% if staff_can_open('socialcal.calendar') %}
+        <a href="{{ url_for('socialcal.calendar') }}"
+           class="{% if request.endpoint == 'socialcal.calendar' %}active{% endif %}">Calendar</a>
+        {% endif %}
         {% if staff_can_open('buffer.posts') %}
         <a href="{{ url_for('buffer.posts') }}"
-           class="{% if request.endpoint == 'buffer.posts' %}active{% endif %}">Posts</a>
+           class="{% if request.endpoint in ('buffer.posts', 'socialcal.post_view') %}active{% endif %}">Posts</a>
+        {% endif %}
+        {% if staff_can_open('socialcal.approval') %}
+        <a href="{{ url_for('socialcal.approval') }}"
+           class="{% if request.endpoint == 'socialcal.approval' %}active{% endif %}">Approval{% if social_waiting_count %} <span class="sb-count" title="{{ social_waiting_count }} waiting for approval">{{ social_waiting_count }}</span>{% endif %}</a>
         {% endif %}
         {% if staff_can_open('social.brand_kit') %}
         <a href="{{ url_for('social.brand_kit') }}"

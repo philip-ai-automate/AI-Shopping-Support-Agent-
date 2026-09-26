@@ -387,8 +387,8 @@ def post(did):
             media[svc] = [{"kind": m["kind"], "file": m["file"], "thumb": m.get("thumb")} for m in lst]
         first = d["items"][0]
         cover = first.get("thumb") if first["kind"] == "video" else first["file"]
-        from buffer_routes import create_post_from_upload, _parse_when
-        when = _parse_when(request.form.get("scheduled_for_utc")) if action == "schedule" else None
+        from buffer_routes import create_post_from_upload, _parse_when, wants_time
+        when = _parse_when(request.form.get("scheduled_for_utc")) if wants_time(action) else None
         ok, msg, post_id = create_post_from_upload(customer, captions, media, cover, [c["channel_id"] for c in d["channels"]],
                                                    action, when, _current_actor(customer)["label"])
         if not post_id:
