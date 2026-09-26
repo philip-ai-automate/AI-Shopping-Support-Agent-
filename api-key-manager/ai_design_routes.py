@@ -52,6 +52,8 @@ def _business_ctx():
     customer = _get_customer(_customer_id())
     tid = int(customer["tenant_id"])
     owner = ba.tenant_owner(tid)
+    if request.method == "GET":
+        ba.refresh_channels_if_stale(owner)
     chans = [{"channel_id": c["channel_id"], "service": c["service"], "label": c["label"], "title": c["title"],
               "colour": c["colour"]} for c in ba.list_channels(owner, enabled_only=True)]
     return Ctx(D.tenant_owner(tid), tid, _current_actor(customer)["label"], False, chans,

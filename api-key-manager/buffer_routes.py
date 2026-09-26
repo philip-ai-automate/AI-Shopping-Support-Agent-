@@ -101,6 +101,7 @@ def connect():
     if r:
         return r
     owner = _owner(customer)
+    ba.refresh_channels_if_stale(owner)
     account = ba.get_account(owner)
     channels = ba.list_channels(owner) if account else []
     orgs = session.pop("buffer_orgs", None) if account else None
@@ -501,6 +502,7 @@ def posts():
         return r
     tenant_id = int(customer["tenant_id"])
     owner = _owner(customer)
+    ba.refresh_channels_if_stale(owner)
     account = ba.get_account(owner)
     if account:
         try:

@@ -44,6 +44,8 @@ def _ctx():
     if not ba.is_connected(owner):
         flash("Connect Buffer first on Integration › Buffer. Social Posts publishes through it.", "warning")
         return redirect(url_for("buffer.connect")), None, None
+    if request.method == "GET":
+        ba.refresh_channels_if_stale(owner)
     chans = []
     for c in ba.list_channels(owner, enabled_only=True):
         chans.append({"channel_id": c["channel_id"], "service": c["service"], "label": c["label"],

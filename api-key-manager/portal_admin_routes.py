@@ -7537,6 +7537,7 @@ def buffer_channels_settings():
     current = {row["platform"]: row for row in (cur.fetchall() or [])}
     cur.close(); conn.close()
 
+    _ba.refresh_channels_if_stale(owner)
     account = _ba.get_account(owner)
     channels = _ba.list_channels(owner) if account else []
     return render_template("portal/admin_buffer_channels.html", platforms=SM_PLATFORMS,

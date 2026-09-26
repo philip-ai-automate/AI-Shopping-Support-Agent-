@@ -171,6 +171,7 @@ def refresh_channels(owner_key: str) -> list:
     acct = get_account(owner_key)
     if not acct:
         return []
+    _stamp_channels_checked(owner_key)
     live = call(owner_key, buffer_list_channels, acct["organization_id"])
     conn = get_db_connection()
     cur = conn.cursor()
@@ -196,6 +197,43 @@ def refresh_channels(owner_key: str) -> list:
     finally:
         cur.close(); conn.close()
     return list_channels(owner_key)
+
+
+CHANNELS_MAX_AGE_MINUTES = 10
+
+
+def refresh_channels_if_stale(owner_key: str):
+    """Re-reads the channel list from Buffer if it's over 10 minutes old
+    (read-only Buffer call). Called by every page that shows the accounts,
+    so one added in Buffer later appears on its own. Never breaks the page:
+    a Buffer error is logged and the saved list is used; the attempt still
+    counts, so a broken key isn't retried on every page load."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""SELECT 1 FROM buffer_accounts WHERE owner_key=%s
+                       AND (channels_checked_at IS NULL
+                            OR channels_checked_at < NOW() - make_interval(mins => %s))""",
+                    (owner_key, CHANNELS_MAX_AGE_MINUTES))
+        stale = cur.fetchone() is not None
+    finally:
+        cur.close(); conn.close()
+    if not stale:
+        return
+    try:
+        refresh_channels(owner_key)
+    except Exception as e:
+        print(f"⚠️ Buffer channel auto-refresh for {owner_key}:", e)
+
+
+def _stamp_channels_checked(owner_key: str):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("UPDATE buffer_accounts SET channels_checked_at=NOW() WHERE owner_key=%s", (owner_key,))
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
 
 
 def set_enabled_channels(owner_key: str, enabled_ids):

@@ -1289,6 +1289,10 @@ def ensure_portal_tables():
                 PRIMARY KEY (owner_key, channel_id)
             )
         """)
+        # When the channel list was last re-read from Buffer — pages that show
+        # the accounts re-read it once it's over 10 minutes old, so an account
+        # added in Buffer later turns up without "Check connection now".
+        cur.execute("ALTER TABLE buffer_accounts ADD COLUMN IF NOT EXISTS channels_checked_at TIMESTAMPTZ")
         # A business's own Social Posts (the admin's live in social_media_posts).
         # channel_ids = the Buffer channels picked; buffer_post_ids maps each
         # channel id to the post Buffer created for it.
