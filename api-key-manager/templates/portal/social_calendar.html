@@ -60,8 +60,9 @@
       <div class="pg-title">Calendar</div>
       <div class="pg-sub">Every post on the day it's planned, scheduled or went out, with the person responsible. Click a post to open it{% if can_create or can_ai %}, or use + on a day to plan a new one{% endif %}.</div>
     </div>
-    {% if can_ai or can_create %}
+    {% if can_ai or can_create or can_plan %}
     <div class="sc-row">
+      {% if can_plan %}<a class="btn" style="background:linear-gradient(135deg,#0B3B2A,#030C18);color:#fff;border-color:transparent" href="{{ url_for('socialcal.plan_month', month=month.strftime('%Y-%m')) }}">✦ Plan my month with AI</a>{% endif %}
       {% if can_create %}<a class="btn" href="{{ url_for('upload.start') }}">Upload Design</a>{% endif %}
       {% if can_ai %}<a class="btn btn-primary" href="{{ url_for('social.new_post') }}">+ New Post</a>{% endif %}
     </div>

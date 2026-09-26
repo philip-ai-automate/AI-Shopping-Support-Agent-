@@ -106,6 +106,8 @@ EVENT_TEXT = {
     "approved": "Approved",
     "changes": "Sent back for changes",
     "approval_on": "Approval switched on",
+    "planned": "Added from an AI month plan",
+    "picture_added": "Picture added",
 }
 
 

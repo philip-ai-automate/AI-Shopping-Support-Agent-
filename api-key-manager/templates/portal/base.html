@@ -846,7 +846,7 @@
         {% endif %}
         {% if staff_can_open('socialcal.calendar') %}
         <a href="{{ url_for('socialcal.calendar') }}"
-           class="{% if request.endpoint == 'socialcal.calendar' %}active{% endif %}">Calendar</a>
+           class="{% if request.endpoint in ('socialcal.calendar', 'socialcal.plan_month', 'socialcal.plan_review') %}active{% endif %}">Calendar</a>
         {% endif %}
         {% if staff_can_open('buffer.posts') %}
         {% set _post_out = request.endpoint == 'socialcal.post_view' and p is defined and p and p.status in ('sent', 'partial') %}

@@ -14,6 +14,7 @@
   </div>
 
   <form id="ud-start" method="POST" enctype="multipart/form-data" action="{{ url_for('upload.start') }}" class="ad">
+    {% with start=True %}{% include "portal/_social_fill_notice.html" %}{% endwith %}
     <div class="ad-panel">
       <h3>1. Where will it go?</h3>
       {% if channels %}
@@ -22,7 +23,7 @@
         {% if c.unsupported %}
         <span class="ad-chip" title="{{ c.unsupported }}"><span class="ad-off" style="border:1.5px solid rgba(3,12,24,.1);border-radius:999px;padding:7px 12px;font-size:12.5px;font-weight:600;display:inline-flex;gap:7px;align-items:center"><span class="ad-dot" style="background:{{ c.colour }}"></span>{{ c.label }} · {{ c.title }}</span></span>
         {% else %}
-        <label class="ad-chip"><input type="checkbox" name="channel_ids" value="{{ c.channel_id }}" data-service="{{ c.service }}" checked><span><span class="ad-dot" style="background:{{ c.colour }}"></span>{{ c.label }} · {{ c.title }}</span></label>
+        <label class="ad-chip"><input type="checkbox" name="channel_ids" value="{{ c.channel_id }}" data-service="{{ c.service }}" {% if not social_fill or not social_fill.channel_ids or c.channel_id in social_fill.channel_ids %}checked{% endif %}><span><span class="ad-dot" style="background:{{ c.colour }}"></span>{{ c.label }} · {{ c.title }}</span></label>
         {% endif %}
         {% endfor %}
       </div>

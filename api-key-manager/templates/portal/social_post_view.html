@@ -77,6 +77,11 @@
       {% for svc, text in (p.captions or {}).items() %}{% if text and text != p.caption %}
       <div class="pv-cap-lbl">{{ svc|capitalize }} version</div><div class="pv-cap">{{ text }}</div>
       {% endif %}{% endfor %}
+      {% if p.plan_brief %}
+      <div class="pv-cap-lbl">From the AI month plan</div>
+      <div class="pv-cap" style="background:#FFFBF0;border:1px solid #F5E1B0">{% if p.plan_topic %}<b>{{ p.plan_topic }}</b>
+{% endif %}Picture: {{ p.plan_brief }}</div>
+      {% endif %}
       {% if p.status in ('failed','partial') and p.buffer_error %}<p class="pv-err">{{ p.buffer_error }}</p>{% endif %}
       {% set links = [] %}
       {% for cid, r in (p.channel_results or {}).items() %}{% if r.link %}{% if links.append((chans.get(cid).label if chans.get(cid) else 'Post', r.link)) %}{% endif %}{% endif %}{% endfor %}
@@ -85,6 +90,10 @@
       <div class="pv-row" style="margin-top:14px">
         {% if p.status == 'draft' and p.approval == 'waiting' and can_approve %}
           <a class="btn btn-primary" href="{{ url_for('socialcal.approval') }}#post-{{ p.id }}">Approve or send back</a>
+        {% endif %}
+        {% if p.status == 'draft' and p.approval != 'waiting' and can_edit and not p.image_filename and not p.media %}
+          {% if can_ai %}<a class="btn btn-primary" href="{{ url_for('socialcal.make_picture', post_id=p.id, via='ai') }}">Make the picture with AI</a>{% endif %}
+          {% if can_create %}<a class="btn" href="{{ url_for('socialcal.make_picture', post_id=p.id, via='upload') }}">Upload the picture</a>{% endif %}
         {% endif %}
         {% if p.status in ('draft','scheduled','failed') and can_edit and not (p.approval == 'changes' and p.status == 'draft') %}
           <a class="btn" href="{{ url_for('buffer.posts', edit=p.id) }}">{{ 'Try again' if p.status == 'failed' else 'Edit' }}</a>

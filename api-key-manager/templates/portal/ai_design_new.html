@@ -32,12 +32,13 @@
 
   <form method="POST" enctype="multipart/form-data" action="{{ url_for(ep + 'new_post') }}" class="ad" id="ad-form">
     <input type="hidden" name="q" value="{{ q }}">
+    {% with start=True %}{% include "portal/_social_fill_notice.html" %}{% endwith %}
     <div class="ad-panel">
       <h3>What's this post about?</h3>
       {% if not is_admin %}
       <div class="ad-seg" role="radiogroup" aria-label="Start from">
-        <label><input type="radio" name="source" value="product" {% if products %}checked{% endif %}> A product</label>
-        <label><input type="radio" name="source" value="idea" {% if not products %}checked{% endif %}> An idea</label>
+        <label><input type="radio" name="source" value="product" {% if products and not social_fill %}checked{% endif %}> A product</label>
+        <label><input type="radio" name="source" value="idea" {% if not products or social_fill %}checked{% endif %}> An idea</label>
       </div>
       <div id="ad-src-product">
         {% if products %}
@@ -58,7 +59,7 @@
       {% else %}
       <input type="hidden" name="source" value="idea">
       {% endif %}
-      <div class="ad-field" id="ad-src-idea"><label for="ad-idea">Describe the post</label><textarea id="ad-idea" name="idea" maxlength="600" placeholder="e.g. We now deliver across Lagos in 48 hours">{{ request.form.idea or '' }}</textarea></div>
+      <div class="ad-field" id="ad-src-idea"><label for="ad-idea">Describe the post</label><textarea id="ad-idea" name="idea" maxlength="600" placeholder="e.g. We now deliver across Lagos in 48 hours">{{ request.form.idea or (social_fill.idea if social_fill else '') }}</textarea></div>
       <div class="ad-field"><label for="ad-offer">Anything to highlight? (optional)</label><input type="text" id="ad-offer" name="offer" maxlength="300" placeholder="e.g. Weekend sale, 20% off, free Lagos delivery"><span class="ad-hint">Any prices or numbers you type here are copied exactly. The AI never makes up prices.</span></div>
     </div>
 
@@ -67,7 +68,7 @@
       {% if channels %}
       <div class="ad-chips">
         {% for c in channels %}
-        <label class="ad-chip"><input type="checkbox" name="channel_ids" value="{{ c.channel_id }}" checked><span><span class="ad-dot" style="background:{{ c.colour }}"></span>{{ c.label }}{% if c.title != c.label %} · {{ c.title }}{% endif %}</span></label>
+        <label class="ad-chip"><input type="checkbox" name="channel_ids" value="{{ c.channel_id }}" {% if not social_fill or not social_fill.channel_ids or c.channel_id in social_fill.channel_ids %}checked{% endif %}><span><span class="ad-dot" style="background:{{ c.colour }}"></span>{{ c.label }}{% if c.title != c.label %} · {{ c.title }}{% endif %}</span></label>
         {% endfor %}
       </div>
       <span class="ad-hint">Each picture is made the right size and each network gets its own caption.</span>

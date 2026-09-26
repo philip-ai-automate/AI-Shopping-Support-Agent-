@@ -1,0 +1,101 @@
+{% extends "portal/base.html" %}
+{% block title %}AI month plan — Social Posts — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  .pg-title{font-size:22px;font-weight:800;letter-spacing:-.3px;color:var(--ink);margin:0 0 4px}
+  .pg-sub{font-size:13.5px;color:var(--muted);line-height:1.5;max-width:72ch}
+  .pr-wrap{display:flex;flex-direction:column;gap:14px;max-width:1000px}
+  .pr-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 14px;position:sticky;top:0;z-index:3}
+  .pr-bar .pr-count{font-size:13px;color:var(--muted)}
+  .pr-list{display:flex;flex-direction:column;gap:10px}
+  .pr-item{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:grid;grid-template-columns:28px 1fr;gap:12px}
+  .pr-item.done{background:#FAFBFC}
+  .pr-item.off{opacity:.55}
+  .pr-item input[type=checkbox]{width:18px;height:18px;margin:3px 0 0}
+  .pr-head{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+  .pr-topic{font-size:15px;font-weight:750;color:var(--ink)}
+  .pr-theme{font-size:11px;font-weight:700;border-radius:6px;padding:2px 8px;background:#F2F4F7;color:#475467;white-space:nowrap}
+  .pr-ctrls{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+  .pr-ctrls label{display:flex;flex-direction:column;gap:4px;font-size:11.5px;font-weight:700;color:var(--muted)}
+  .pr-ctrls input,.pr-ctrls select{font:inherit;font-size:13px;padding:6px 9px;border:1.5px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);font-weight:500}
+  .pr-body{margin-top:10px;display:grid;gap:8px}
+  .pr-brief{font-size:12.5px;color:var(--txt);background:#FFFBF0;border:1px solid #F5E1B0;border-radius:10px;padding:8px 11px;line-height:1.45}
+  .pr-cap{font-size:12.5px;line-height:1.45;white-space:pre-line;background:#F5F7FA;border-radius:10px;padding:8px 11px;color:var(--txt)}
+  .pr-cap b{display:flex;align-items:center;gap:6px;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:3px}
+  .pr-dot{width:8px;height:8px;border-radius:3px;display:inline-block}
+  .pr-done{font-size:12.5px;color:#027A48;font-weight:650}
+  .pr-body details summary{cursor:pointer;font-size:12.5px;font-weight:650;color:var(--ink)}
+</style>
+{% endblock %}
+
+{% block content %}
+{% set svc = {} %}{% for a in accounts %}{% set _ = svc.update({a.service: a}) %}{% endfor %}
+<div class="pr-wrap">
+  <div>
+    <div class="pg-title">✦ Suggested posts for {{ plan.month.strftime('%B %Y') }}</div>
+    <div class="pg-sub">Untick any you don't want, change the day or person if you like, then add them. They land on the calendar as drafts with no picture yet. On each draft, "Make the picture" opens the AI Post Designer or Upload Design with the topic filled in.</div>
+  </div>
+
+  {% if left %}
+  <form method="POST" action="{{ url_for('socialcal.plan_add', plan_id=plan.id) }}" class="pr-wrap" style="gap:10px" id="pr-form">
+    <div class="pr-bar">
+      <span class="pr-count"><b id="pr-n">{{ left }}</b> of {{ left }} ticked · going to {% for a in accounts %}{{ a.label }}{{ ', ' if not loop.last }}{% endfor %}</span>
+      <span style="display:flex;gap:8px;flex-wrap:wrap">
+        <button type="button" class="btn btn-sm" id="pr-none">Untick all</button>
+        <button class="btn btn-primary" type="submit">Add ticked posts as drafts</button>
+      </span>
+    </div>
+  {% else %}
+  <div class="pr-bar"><span class="pr-count">All of these have been added to the calendar.</span><a class="btn btn-primary" href="{{ url_for('socialcal.calendar', month=plan.month.strftime('%Y-%m')) }}">Open calendar</a></div>
+  {% endif %}
+
+  <div class="pr-list">
+    {% for it in items %}
+    <div class="pr-item {{ 'done' if it.post_id }}">
+      {% if it.post_id %}<span aria-hidden="true" style="color:#027A48;font-weight:800">✓</span>
+      {% else %}<input type="checkbox" name="pick" value="{{ it.i }}" checked aria-label="Add “{{ it.topic }}”" form="pr-form">{% endif %}
+      <div>
+        <div class="pr-head">
+          <span class="pr-topic">{{ it.topic }}</span>
+          <span class="pr-theme">{{ theme_names.get(it.theme, it.theme) }}</span>
+        </div>
+        {% if it.post_id %}
+        <div class="pr-done" style="margin-top:6px">Added · <a href="{{ url_for('socialcal.post_view', post_id=it.post_id) }}">Open the draft</a></div>
+        {% else %}
+        <div class="pr-ctrls">
+          <label>Day<input type="date" name="date_{{ it.i }}" value="{{ it.date }}" min="{{ tomorrow.isoformat() }}" form="pr-form"></label>
+          <label>Person responsible<select name="owner_{{ it.i }}" form="pr-form">
+            {% for p in people %}<option value="{{ p.key }}" {% if p.key == plan.settings.owner_key %}selected{% endif %}>{{ p.label }}</option>{% endfor %}
+          </select></label>
+        </div>
+        {% endif %}
+        <div class="pr-body">
+          {% if it.brief %}<div class="pr-brief"><b>Picture:</b> {{ it.brief }}{% if it.cta %}<br><b>Call to action:</b> {{ it.cta }}{% endif %}</div>{% endif %}
+          <details {% if loop.first and not it.post_id %}open{% endif %}><summary>Captions</summary>
+            <div style="display:grid;gap:8px;margin-top:8px">
+            {% for s, text in it.captions.items() %}
+              <div class="pr-cap"><b><span class="pr-dot" style="background:{{ svc[s].colour if s in svc else '#667085' }}"></span>{{ svc[s].label if s in svc else s|title }}</b>{{ text }}</div>
+            {% endfor %}
+            </div>
+          </details>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% if left %}</form>{% endif %}
+
+  <div><a class="btn" href="{{ url_for('socialcal.plan_month', month=plan.month.strftime('%Y-%m')) }}">Make a different plan</a></div>
+</div>
+<script>
+(function(){
+  var boxes = document.querySelectorAll('input[name=pick]'), n = document.getElementById('pr-n');
+  function sync(){ var c = 0; boxes.forEach(function(b){ c += b.checked; b.closest('.pr-item').classList.toggle('off', !b.checked); }); if (n) n.textContent = c; }
+  boxes.forEach(function(b){ b.addEventListener('change', sync); });
+  var none = document.getElementById('pr-none');
+  if (none) none.addEventListener('click', function(){ var any = [].some.call(boxes, function(b){ return b.checked; });
+    boxes.forEach(function(b){ b.checked = !any; }); none.textContent = any ? 'Tick all' : 'Untick all'; sync(); });
+})();
+</script>
+{% endblock %}

@@ -1381,6 +1381,23 @@ def ensure_portal_tables():
             )""")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_social_post_metrics_post ON social_post_metrics (tenant_id, post_id)")
         cur.execute("ALTER TABLE social_settings ADD COLUMN IF NOT EXISTS metrics_checked_at TIMESTAMPTZ")
+        # ── "Plan my month with AI" (2026-09-26) — see social_ai_planner.py.
+        # items = [{i, date, topic, theme, captions, cta, brief, post_id}];
+        # post_id is set once that suggestion is added as a draft.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS social_ai_plans (
+                id         SERIAL PRIMARY KEY,
+                tenant_id  INTEGER NOT NULL,
+                month      DATE NOT NULL,
+                settings   JSONB NOT NULL DEFAULT '{}',
+                items      JSONB NOT NULL DEFAULT '[]',
+                source     VARCHAR(12) NOT NULL,
+                created_by VARCHAR(255),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_social_ai_plans_tenant ON social_ai_plans (tenant_id, created_at DESC)")
+        for col, typ in (("plan_topic", "VARCHAR(160)"), ("plan_brief", "TEXT"), ("ai_plan_id", "INTEGER")):
+            cur.execute(f"ALTER TABLE tenant_social_posts ADD COLUMN IF NOT EXISTS {col} {typ}")
         # A design being uploaded and checked, before it becomes a post.
         cur.execute("""
             CREATE TABLE IF NOT EXISTS upload_drafts (

@@ -516,6 +516,7 @@ def _inject_social_menu():
                                       "social.finish", "social.brand_kit", "social.usage", "upload.start",
                                       "upload.check", "upload.fix", "upload.post", "upload.size_guide",
                                       "socialcal.overview", "socialcal.calendar", "socialcal.approval", "socialcal.analytics",
+                                      "socialcal.plan_month", "socialcal.plan_review",
                                       "socialcal.post_view")}
 
 

@@ -1,0 +1,153 @@
+{% extends "portal/base.html" %}
+{% block title %}Plan my month with AI — Social Posts — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  .pg-title{font-size:22px;font-weight:800;letter-spacing:-.3px;color:var(--ink);margin:0 0 4px}
+  .pg-sub{font-size:13.5px;color:var(--muted);line-height:1.5;max-width:72ch}
+  .pm-wrap{display:flex;flex-direction:column;gap:16px;max-width:860px}
+  .pm-panel{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+  .pm-panel h3{margin:0;font-size:15px;color:var(--ink)}
+  .pm-field{display:flex;flex-direction:column;gap:6px}
+  .pm-field > label,.pm-lbl{font-size:12.5px;font-weight:700;color:var(--ink)}
+  .pm-field select,.pm-field input[type=time],.pm-field textarea{font:inherit;font-size:14px;padding:9px 10px;border:1.5px solid var(--line);border-radius:10px;background:#fff}
+  .pm-field textarea{min-height:80px;resize:vertical}
+  .pm-row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
+  .pm-chips{display:flex;gap:8px;flex-wrap:wrap}
+  .pm-chip{display:inline-flex;align-items:center;gap:7px;border:1.5px solid var(--line);border-radius:999px;padding:6px 12px;font-size:13px;cursor:pointer;background:#fff}
+  .pm-chip input{margin:0}
+  .pm-chip:has(input:checked){border-color:var(--ink);background:#F5F7FA}
+  .pm-dot{width:9px;height:9px;border-radius:3px;display:inline-block}
+  .pm-hint{font-size:12px;color:var(--muted);line-height:1.45}
+  .pm-info{background:#F5F7FA;border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:13px;color:var(--txt);line-height:1.5}
+  .pm-go{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .pm-go .btn[disabled]{opacity:.6;cursor:wait}
+  .pm-recent a{color:var(--ink);font-weight:650}
+  .pm-recent li{font-size:13px;margin:4px 0}
+</style>
+{% endblock %}
+
+{% block content %}
+{% set chosen = form.getlist('channel_ids') if form else [] %}
+{% set days = form.getlist('weekdays') if form else ['0','1','2','3','4'] %}
+{% set th = form.getlist('themes') if form else ['tips','product','story','offer'] %}
+<div class="pm-wrap">
+  <div>
+    <div class="pg-title">✦ Plan my month with AI</div>
+    <div class="pg-sub">PhiXtra AI suggests a month of posts: the day, topic, a caption for each network, a call to action and a note on what the picture should show. You choose which to keep. Nothing goes on the calendar until you do.</div>
+  </div>
+
+  <div class="pm-info">
+    This doesn't use your AI designs. It only writes words.
+    {% if own_key %}It runs on your own AI key.{% else %}You can make {{ plans_left }} more plan{{ 's' if plans_left != 1 }} this month (up to {{ max_plans }}).{% endif %}
+    The AI uses your Brand Kit's voice, your About Us, your products and your recent posts.
+  </div>
+
+  {% if knows_little %}
+  <div class="pm-info" style="background:#FFFBF0;border-color:#F5E1B0"><b>Tip:</b> PhiXtra doesn't know much about this business yet, so the suggestions will be general. Add an About Us in <a href="{{ url_for('portal.store_info') }}">Store Information</a>, or products, or type what you do in "Anything to focus on" below.</div>
+  {% endif %}
+  {% if not channels %}
+  <div class="pm-info">No social accounts are switched on. Turn some on in <a href="{{ url_for('buffer.connect') }}">Integration › Buffer</a> first.</div>
+  {% elif not months %}
+  <div class="pm-info">There's nothing left to plan this month.</div>
+  {% else %}
+  <form method="POST" id="pm-form" class="pm-wrap" style="gap:14px">
+    <div class="pm-panel">
+      <h3>Which month, and how much?</h3>
+      <div class="pm-row">
+        <div class="pm-field"><label for="pm-month">Month</label>
+          <select id="pm-month" name="month">
+            {% for m in months %}{% set v = m.strftime('%Y-%m') %}
+            <option value="{{ v }}" {% if (form and form.month == v) or (not form and month and month == m) %}selected{% endif %}>{{ m.strftime('%B %Y') }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="pm-field"><label for="pm-count">How many posts</label>
+          <select id="pm-count" name="count">
+            {% for n in counts %}<option value="{{ n }}" {% if (form and form.count == n|string) or (not form and n == 12) %}selected{% endif %}>{{ n }} posts</option>{% endfor %}
+          </select>
+        </div>
+        <div class="pm-field"><label for="pm-time">Planned time</label>
+          <input type="time" id="pm-time" name="time" value="{{ form.time if form and form.time else '10:00' }}">
+        </div>
+      </div>
+      <div class="pm-field"><span class="pm-lbl">Days of the week to post on</span>
+        <div class="pm-chips">
+          {% for d in weekdays %}<label class="pm-chip"><input type="checkbox" name="weekdays" value="{{ loop.index0 }}" {% if loop.index0|string in days %}checked{% endif %}>{{ d }}</label>{% endfor %}
+        </div>
+        <span class="pm-hint">Posts are spread evenly over these days, from tomorrow onwards. If there are fewer days than posts, you get one post a day.</span>
+      </div>
+    </div>
+
+    <div class="pm-panel">
+      <h3>Where will they go?</h3>
+      <div class="pm-chips">
+        {% for c in channels %}
+        <label class="pm-chip"><input type="checkbox" name="channel_ids" value="{{ c.channel_id }}" {% if not form or c.channel_id in chosen %}checked{% endif %}><span class="pm-dot" style="background:{{ c.colour }}"></span>{{ c.label }} · {{ c.name }}</label>
+        {% endfor %}
+      </div>
+      <span class="pm-hint">Each post gets its own caption for each network.</span>
+    </div>
+
+    <div class="pm-panel">
+      <h3>What should the month be about?</h3>
+      <div class="pm-field"><span class="pm-lbl">Mix of post types</span>
+        <div class="pm-chips">
+          {% for k, l in themes %}<label class="pm-chip"><input type="checkbox" name="themes" value="{{ k }}" {% if k in th %}checked{% endif %}>{{ l }}</label>{% endfor %}
+        </div>
+        <span class="pm-hint">Leave them all unticked to let the AI choose.</span>
+      </div>
+      <div class="pm-field"><label for="pm-focus">Anything to focus on this month? <span style="font-weight:500;color:var(--muted)">(optional)</span></label>
+        <textarea id="pm-focus" name="focus" maxlength="600" placeholder="e.g. Our new Abuja branch opens on the 15th. Push the weekend delivery offer.">{{ form.focus if form else '' }}</textarea>
+        <span class="pm-hint">The AI never makes up prices, discounts or dates. Put any you want used here. Where a post needs a detail it doesn't have, it writes [add detail] for you to fill in.</span>
+      </div>
+    </div>
+
+    <div class="pm-panel">
+      <h3>Who will work on them?</h3>
+      <div class="pm-row">
+        <div class="pm-field"><label for="pm-owner">Person responsible</label>
+          <select id="pm-owner" name="owner_key">
+            {% for p in people %}<option value="{{ p.key }}" {% if (form and form.owner_key == p.key) or (not form and p.key == me) %}selected{% endif %}>{{ p.label }}{% if p.key == me %} (you){% endif %}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="pm-field"><label for="pm-due">Content due</label>
+          <select id="pm-due" name="due_days">
+            {% set cur_due = form.due_days if form else '2' %}
+            {% for n, l in [('0','On the posting day'),('1','1 day before'),('2','2 days before'),('3','3 days before'),('5','5 days before'),('7','A week before'),('','No due date')] %}
+            <option value="{{ n }}" {% if cur_due == n %}selected{% endif %}>{{ l }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <span class="pm-hint">You can change the person for each post before adding them.</span>
+    </div>
+
+    <div class="pm-go">
+      <button class="btn btn-primary" type="submit" id="pm-submit" {% if not own_key and not plans_left %}disabled{% endif %}>✦ Suggest my posts</button>
+      <span class="pm-hint" id="pm-wait" hidden>Writing your plan… this can take up to a minute.</span>
+      <a class="btn" href="{{ url_for('socialcal.calendar') }}">Back to calendar</a>
+    </div>
+  </form>
+  {% endif %}
+
+  {% if recent %}
+  <div class="pm-panel pm-recent">
+    <h3>Plans already made</h3>
+    <ul style="margin:0;padding-left:18px">
+      {% for r in recent %}
+      <li><a href="{{ url_for('socialcal.plan_review', plan_id=r.id) }}">{{ r.month.strftime('%B %Y') }}</a> · {{ r.n }} suggestions, {{ r.added }} added · made by {{ r.created_by }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+</div>
+<script>
+(function(){
+  var f = document.getElementById('pm-form'); if (!f) return;
+  f.addEventListener('submit', function(){
+    var b = document.getElementById('pm-submit'); b.disabled = true; b.textContent = 'Writing your plan…';
+    document.getElementById('pm-wait').hidden = false;
+  });
+})();
+</script>
+{% endblock %}

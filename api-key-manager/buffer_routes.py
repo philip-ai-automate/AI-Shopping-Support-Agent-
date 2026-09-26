@@ -399,6 +399,50 @@ def _refresh_statuses(tenant_id: int, limit: int = 10) -> int:
     return changed
 
 
+def _insert_or_fill(customer, cols: dict, action: str, when, actor: str):
+    """Saves a finished design as a post. If "Make the picture" was started
+    from a planned draft (social_ai_planner.fill_target), THAT draft is
+    updated instead of a second post being made; its planned day and person
+    stay unless the form changed them. Returns (post, filled: bool, person)."""
+    import social_ai_planner as PL
+    tenant_id = int(customer["tenant_id"])
+    target = PL.fill_target(tenant_id)
+    if target and request.form.get("fill_post_id") != str(target["id"]):
+        target = None                           # unticked: make a separate post
+    keep = {"key": target.get("owner_key"), "label": W.owner_name(target), "email": None} if target else None
+    person, due, err = W.assignment_from_form(customer, request.form, _current_actor(customer), keep=keep)
+    if err:
+        return None, False, err
+    if target and not request.form.get("due_date") and target.get("due_date"):
+        due = target["due_date"]
+    if target and not when and action == "draft":
+        when = target.get("scheduled_for")      # a plain "save draft" keeps the planned day
+    cols = dict(cols, scheduled_for=when, owner_key=person["key"], owner_label=person["label"], due_date=due)
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    if target:
+        sets = ", ".join(f"{k}=%s" for k in cols)
+        cur.execute(f"UPDATE tenant_social_posts SET {sets}, updated_at=NOW() WHERE id=%s AND tenant_id=%s RETURNING *",
+                    list(cols.values()) + [target["id"], tenant_id])
+    else:
+        cols = dict(cols, tenant_id=tenant_id, public_token=uuid.uuid4().hex, status="draft", created_by=actor)
+        cur.execute(f"INSERT INTO tenant_social_posts ({', '.join(cols)}) VALUES ({', '.join(['%s'] * len(cols))}) RETURNING *",
+                    list(cols.values()))
+    post = cur.fetchone()
+    conn.commit()
+    cur.close(); conn.close()
+    session.pop(PL.FILL_KEY, None)
+    session.pop("social_plan_date", None)
+    if target:
+        W.log_event(tenant_id, post["id"], "picture_added", actor)
+        if person["key"] != (target.get("owner_key") or ""):
+            W.log_event(tenant_id, post["id"], "assigned", actor, f"Now {person['label']}")
+            W.notify_assignee(customer, post, person, actor)
+    else:
+        W.notify_assignee(customer, post, person, actor)
+    return post, bool(target), person
+
+
 def create_post_from_design(customer, caption: str, captions: dict, square: str, wide: str,
                             channel_ids: list, action: str, when, actor: str):
     """Used by the AI Post Designer's last step: saves the finished post (its
@@ -411,25 +455,17 @@ def create_post_from_design(customer, caption: str, captions: dict, square: str,
     err = _validate(caption, picked, action, when, usable, True)
     if err:
         return False, err
-    person, due, err = W.assignment_from_form(customer, request.form, _current_actor(customer))
-    if err:
+    post, filled, err = _insert_or_fill(customer, {
+        "caption": caption, "captions": _json.dumps(captions) if captions else None, "image_filename": square,
+        "wide_image_filename": wide, "original_filename": "AI design", "channel_ids": picked, "media": None},
+        action, when, actor)
+    if not post:
         return False, err
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("""INSERT INTO tenant_social_posts (tenant_id, caption, captions, image_filename, wide_image_filename,
-                          original_filename, public_token, channel_ids, status, scheduled_for, created_by,
-                          owner_key, owner_label, due_date)
-                   VALUES (%s,%s,%s,%s,%s,'AI design',%s,%s,'draft',%s,%s,%s,%s,%s) RETURNING *""",
-                (tenant_id, caption, _json.dumps(captions) if captions else None, square, wide,
-                 uuid.uuid4().hex, picked, when, actor, person["key"], person["label"], due))
-    post = cur.fetchone()
-    conn.commit()
-    cur.close(); conn.close()
-    W.notify_assignee(customer, post, person, actor)
-    session.pop("social_plan_date", None)
+    when = post["scheduled_for"] if action == "schedule" else None
     if action == "draft":
         insert_audit_log(action="social_post_draft_saved", tenant_id=tenant_id, details={"post_id": post["id"], "by": actor, "ai": True})
-        return True, "Draft saved. Find it under Social Posts › Posts."
+        return True, ("Picture added to the planned draft. Find it under Social Posts › Content." if filled
+                      else "Draft saved. Find it under Social Posts › Content.")
     if W.approval_needed(tenant_id):
         return True, W.hold_for_approval(customer, post, action, when, _current_actor(customer))
     status, ids, results, errors = _send_to_buffer(owner, post, usable, when)
@@ -465,25 +501,17 @@ def create_post_from_upload(customer, captions: dict, media: dict, cover: str, c
         if when < datetime.now(timezone.utc) + timedelta(minutes=2):
             return False, "Pick a time at least 2 minutes from now, or choose Post now.", None
     main = next((t for t in captions.values() if t), "")
-    person, due, err = W.assignment_from_form(customer, request.form, _current_actor(customer))
-    if err:
+    post, filled, err = _insert_or_fill(customer, {
+        "caption": main or " ", "captions": _json.dumps(captions), "image_filename": cover,
+        "wide_image_filename": None, "original_filename": "upload", "channel_ids": picked,
+        "media": _json.dumps(media)}, action, when, actor)
+    if not post:
         return False, err, None
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("""INSERT INTO tenant_social_posts (tenant_id, caption, captions, image_filename, original_filename,
-                          public_token, channel_ids, status, scheduled_for, created_by, media,
-                          owner_key, owner_label, due_date)
-                   VALUES (%s,%s,%s,%s,'upload',%s,%s,'draft',%s,%s,%s,%s,%s,%s) RETURNING *""",
-                (tenant_id, main or " ", _json.dumps(captions), cover, uuid.uuid4().hex, picked, when, actor,
-                 _json.dumps(media), person["key"], person["label"], due))
-    post = cur.fetchone()
-    conn.commit()
-    cur.close(); conn.close()
-    W.notify_assignee(customer, post, person, actor)
-    session.pop("social_plan_date", None)
+    when = post["scheduled_for"] if action == "schedule" else None
     if action == "draft":
         insert_audit_log(action="social_post_draft_saved", tenant_id=tenant_id, details={"post_id": post["id"], "by": actor, "upload": True})
-        return True, "Draft saved. Find it under Social Posts › Posts.", post["id"]
+        return True, ("Picture added to the planned draft. Find it under Social Posts › Content." if filled
+                      else "Draft saved. Find it under Social Posts › Content."), post["id"]
     if W.approval_needed(tenant_id):
         return True, W.hold_for_approval(customer, post, action, when, _current_actor(customer)), post["id"]
     status, ids, results, errors = _send_to_buffer(owner, post, usable, when)

@@ -1,0 +1,16 @@
+{# "Make the picture" for a planned draft (social_ai_planner.start_fill).
+   start=True on the first step (just says so); on the last step it adds the
+   tick box whose value tells the save to fill that draft. #}
+{% if social_fill %}
+<div class="ad-alert info" style="display:flex;flex-direction:column;gap:6px">
+  <span>Making the picture for the planned post <b>“{{ social_fill.title }}”</b>.</span>
+  {% if start %}
+  <span style="font-size:12.5px">When you finish, it goes into that draft, keeping its planned day and person responsible.</span>
+  {% else %}
+  <label style="display:inline-flex;gap:8px;align-items:center;font-size:13px;font-weight:600">
+    <input type="checkbox" name="fill_post_id" value="{{ social_fill.id }}" checked style="width:auto;margin:0">
+    Put this into the planned draft (untick to make a separate new post)
+  </label>
+  {% endif %}
+</div>
+{% endif %}

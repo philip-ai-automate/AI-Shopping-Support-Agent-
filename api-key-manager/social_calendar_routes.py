@@ -8,6 +8,10 @@ buffer_routes._send_to_buffer like every other post.
   POST /social-posts/analytics/refresh       ask Buffer for the latest numbers now
   GET  /social-posts/calendar                month view (?month=YYYY-MM)
   GET  /social-posts/calendar/plan           start a post for a day (?date=YYYY-MM-DD&via=ai|upload)
+  GET  /social-posts/plan-month              "Plan my month with AI" form; POST makes the plan
+  GET  /social-posts/plan-month/<id>         the AI's suggestions, to pick from
+  POST /social-posts/plan-month/<id>/add     add the picked suggestions as drafts
+  GET  /social-posts/<id>/make-picture       give a planned draft its picture (?via=ai|upload)
   GET  /social-posts/<id>/view               one post: preview, status, history, actions
   GET  /social-posts/approval                posts waiting for approval + the on/off switch
   POST /social-posts/approval/settings       switch approval on / off
@@ -27,6 +31,7 @@ from portal_routes import (_require_login, _require_team_permission, _team_membe
 import buffer_accounts as ba
 import social_workflow as W
 import social_analytics as SA
+import social_ai_planner as PL
 from buffer_routes import _gate, _owner, _get_post, _send_to_buffer, _validate, _parse_when
 
 socialcal_bp = Blueprint("socialcal", __name__)
@@ -124,6 +129,7 @@ def calendar():
         display=W.DISPLAY,
         can_create=_team_member_has_permission("social.posts_create"),
         can_ai=_team_member_has_permission("social.ai_designs"),
+        can_plan=_team_member_has_permission("social.ai_plan"),
     )
 
 
@@ -336,6 +342,156 @@ def analytics_refresh():
     return redirect(url_for("socialcal.analytics", **({"month": month} if month else {})))
 
 
+# ── Plan my month with AI ──────────────────────────────────────────────────
+
+def _plan_form_ctx(customer, **extra):
+    tid = int(customer["tenant_id"])
+    today = W.today_for(customer)
+    source = PL.ai_source(customer)
+    chans = [dict(c, label=ba.service_label(c["service"]), colour=ba.service_colour(c["service"]))
+             for c in ba.list_channels(_owner(customer), enabled_only=True) if not c.get("is_disconnected")]
+    return dict(customer=customer, months=PL.month_choices(today), channels=chans,
+                people=W.people(customer), me=_current_actor(customer)["key"], themes=PL.THEMES,
+                weekdays=PL.WEEKDAYS, counts=PL.COUNTS, own_key=source == "own_key",
+                plans_left=max(0, PL.MAX_PLANS_PER_MONTH - PL.plans_this_month(tid)),
+                max_plans=PL.MAX_PLANS_PER_MONTH, recent=PL.recent_plans(tid),
+                knows_little=PL.knows_little(customer), **extra)
+
+
+@socialcal_bp.route("/social-posts/plan-month", methods=["GET", "POST"])
+@team_feature("social.ai_plan")
+def plan_month():
+    r = _require_login() or _require_team_permission("social.ai_plan")
+    if r:
+        return r
+    r, customer = _ctx()
+    if r:
+        return r
+    ctx = _plan_form_ctx(customer)
+    f = request.form
+    if request.method == "GET":
+        want = request.args.get("month", "")
+        month = next((m for m in ctx["months"] if m.strftime("%Y-%m") == want), None)
+        return render_template("portal/social_plan_month.html", form={}, month=month, **ctx)
+
+    def again(msg):
+        flash(msg, "warning")
+        return render_template("portal/social_plan_month.html", form=f, month=None, **ctx)
+    month = next((m for m in ctx["months"] if m.strftime("%Y-%m") == f.get("month")), None)
+    if not month:
+        return again("Pick the month to plan.")
+    count = int(f.get("count")) if (f.get("count") or "").isdigit() else 0
+    if count not in PL.COUNTS:
+        return again("Pick how many posts.")
+    picked = set(f.getlist("channel_ids"))
+    channels = [c for c in ctx["channels"] if c["channel_id"] in picked]
+    if not channels:
+        return again("Pick at least one social account.")
+    weekdays = sorted({int(d) for d in f.getlist("weekdays") if d.isdigit() and int(d) < 7})
+    if not weekdays:
+        return again("Pick at least one day of the week to post on.")
+    try:
+        time_text = datetime.strptime(f.get("time") or "10:00", "%H:%M").strftime("%H:%M")
+    except ValueError:
+        return again("The posting time isn't a real time.")
+    themes = [k for k, _ in PL.THEMES if k in f.getlist("themes")]
+    owner = next((p for p in ctx["people"] if p["key"] == f.get("owner_key")), None)
+    if not owner:
+        return again("Pick who the posts are for.")
+    due_raw = f.get("due_days", "2")
+    due_days = int(due_raw) if due_raw.isdigit() and int(due_raw) <= 14 else None
+    try:
+        plan_id = PL.make_plan(customer, _current_actor(customer)["label"], month=month, count=count,
+                               channels=channels, weekdays=weekdays, time_text=time_text, themes=themes,
+                               focus=(f.get("focus") or "").strip()[:600], owner=owner, due_days=due_days)
+    except PL.PlanError as e:
+        return again(str(e))
+    return redirect(url_for("socialcal.plan_review", plan_id=plan_id))
+
+
+@socialcal_bp.route("/social-posts/plan-month/<int:plan_id>", methods=["GET"])
+@team_feature("social.ai_plan")
+def plan_review(plan_id: int):
+    r = _require_login() or _require_team_permission("social.ai_plan")
+    if r:
+        return r
+    r, customer = _ctx()
+    if r:
+        return r
+    plan = PL.get_plan(int(customer["tenant_id"]), plan_id)
+    if not plan:
+        abort(404)
+    chans = _channels(customer)
+    accounts = [dict(chans[c], label=ba.service_label(chans[c]["service"]), colour=ba.service_colour(chans[c]["service"]))
+                for c in plan["settings"].get("channel_ids") or [] if c in chans]
+    return render_template("portal/social_plan_review.html", customer=customer, plan=plan, items=plan["items"],
+                           accounts=accounts, people=W.people(customer), theme_names=PL.THEME_NAMES,
+                           tomorrow=W.today_for(customer) + timedelta(days=1),
+                           left=sum(1 for it in plan["items"] if not it.get("post_id")))
+
+
+@socialcal_bp.route("/social-posts/plan-month/<int:plan_id>/add", methods=["POST"])
+@team_feature("social.ai_plan")
+def plan_add(plan_id: int):
+    r = _require_login() or _require_team_permission("social.ai_plan")
+    if r:
+        return r
+    r, customer = _ctx()
+    if r:
+        return r
+    plan = PL.get_plan(int(customer["tenant_id"]), plan_id)
+    if not plan:
+        abort(404)
+    back = url_for("socialcal.plan_review", plan_id=plan_id)
+    people = {p["key"]: p for p in W.people(customer)}
+    tomorrow = W.today_for(customer) + timedelta(days=1)
+    picks, skipped = [], 0
+    for raw in request.form.getlist("pick"):
+        if not raw.isdigit():
+            continue
+        i = int(raw)
+        day = W.parse_due(request.form.get(f"date_{i}"))
+        person = people.get(request.form.get(f"owner_{i}") or plan["settings"].get("owner_key"))
+        if not day or day < tomorrow or not person:
+            skipped += 1
+            continue
+        picks.append({"i": i, "date": day, "owner": person})
+    if not picks:
+        flash("Tick at least one post, with a day from tomorrow onwards." if not skipped else
+              "None were added: each needs a day from tomorrow onwards and a person responsible.", "warning")
+        return redirect(back)
+    added = PL.add_drafts(customer, plan, picks, _current_actor(customer)["label"])
+    msg = f"Added {added} draft{'s' if added != 1 else ''} to the calendar."
+    if skipped:
+        msg += f" {skipped} weren't added: each needs a day from tomorrow onwards and a person responsible."
+    flash(msg, "success" if not skipped else "warning")
+    first = min(p["date"] for p in picks)
+    return redirect(url_for("socialcal.calendar", month=first.strftime("%Y-%m")))
+
+
+@socialcal_bp.route("/social-posts/<int:post_id>/make-picture", methods=["GET"])
+@team_feature("social.ai_designs", "social.posts_edit")
+def make_picture(post_id: int):
+    """A planned draft has no picture yet: open the AI Post Designer or Upload
+    Design with it filled in; their last step fills this draft."""
+    via = request.args.get("via") or "ai"
+    r = (_require_login() or _require_team_permission("social.posts_edit")
+         or _require_team_permission("social.ai_designs" if via == "ai" else "social.posts_create"))
+    if r:
+        return r
+    r, customer = _ctx()
+    if r:
+        return r
+    p = _get_post(int(customer["tenant_id"]), post_id)
+    if not p:
+        abort(404)
+    if p["status"] != "draft" or p.get("approval") == "waiting":
+        flash("This post can't be changed now: it's waiting for approval or has already gone to Buffer.", "warning")
+        return redirect(url_for("socialcal.post_view", post_id=post_id))
+    PL.start_fill(p)
+    return redirect(url_for("social.new_post") if via == "ai" else url_for("upload.start"))
+
+
 @socialcal_bp.route("/social-posts/calendar/plan", methods=["GET"])
 @team_feature("social.posts_create", "social.ai_designs")
 def calendar_plan():
@@ -380,6 +536,8 @@ def post_view(post_id: int):
         people=W.people(customer) if can_assign else [], can_assign=can_assign,
         history=W.events(tenant_id, post_id), event_text=W.EVENT_TEXT, display=W.DISPLAY,
         can_edit=_team_member_has_permission("social.posts_edit"),
+        can_ai=_team_member_has_permission("social.ai_designs"),
+        can_create=_team_member_has_permission("social.posts_create"),
         can_approve=W.can_approve(),
         now=datetime.now(timezone.utc),
     )
@@ -596,6 +754,13 @@ def _inject_social_workflow():
                 from portal_routes import _current_actor as _ca
                 out["social_people"] = W.people(customer)
                 out["social_me"] = _ca(customer)["key"]
+            if request.blueprint in ("social", "upload"):
+                t = PL.fill_target(tid)
+                if t:
+                    out["social_fill"] = {"id": t["id"], "title": t.get("plan_topic") or W.title_of(t),
+                                          "idea": PL.fill_idea(t), "channel_ids": list(t.get("channel_ids") or []),
+                                          "owner_key": t.get("owner_key"),
+                                          "due": t["due_date"].isoformat() if t.get("due_date") else None}
             # The day picked with "+" on the calendar; forgotten after 2 hours
             # so an abandoned plan doesn't pre-fill some later, unrelated post.
             day, _, at = (session.get("social_plan_date") or "").partition("|")
