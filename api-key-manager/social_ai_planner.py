@@ -6,10 +6,10 @@ call to action, and a short brief for the picture). Nothing reaches the
 calendar until someone picks which to add; accepted ones become ordinary
 drafts with a planned day, person responsible and due date.
 
-Cost: text only, so it does NOT use the AI design allowance (user decision
-2026-09-26). It runs on the business's own AI key when one is connected,
-otherwise on PhiXtra's key, capped at MAX_PLANS_PER_MONTH per business so a
-stuck button can't run up a bill.
+Cost: each plan that works uses 1 AI design — from the plan's monthly AI
+designs first, then bought extra AI designs (user decision 2026-09-27, which
+replaced the old "free, 10 a month" cap and the business's own AI key). A
+failed plan isn't counted. Runs on PhiXtra's AI key.
 
 A planned draft has no picture yet. "Make the picture" on its page opens the
 AI Post Designer or Upload Design with the topic filled in, and their last
@@ -26,7 +26,6 @@ import ai_designer as D
 import buffer_accounts as ba
 import social_workflow as W
 
-MAX_PLANS_PER_MONTH = 10
 MAX_POSTS = 31
 COUNTS = (4, 8, 12, 16, 20)
 THEMES = [
@@ -79,22 +78,10 @@ def spread(days: list, n: int) -> list:
 
 # ── Making the plan ────────────────────────────────────────────────────────
 
-def plans_this_month(tenant_id: int) -> int:
-    conn = get_db_connection()
-    cur = conn.cursor()
-    try:
-        cur.execute("""SELECT COUNT(*) FROM social_ai_plans WHERE tenant_id=%s AND source='platform'
-                       AND created_at >= date_trunc('month', NOW())""", (tenant_id,))
-        return cur.fetchone()[0]
-    finally:
-        cur.close(); conn.close()
-
-
-def ai_source(customer) -> str:
-    """'own_key' when the business has a working AI key of its own, else 'platform'."""
+def design_allowance(customer) -> dict:
+    """What the next month plan would use: D.allowance()'s numbers ('source' None = nothing left)."""
     tid = int(customer["tenant_id"])
-    allow = D.allowance(D.tenant_owner(tid), tid)
-    return "own_key" if allow.get("own_key") else "platform"
+    return D.allowance(D.tenant_owner(tid), tid)
 
 
 _SKIP_PAGES = ("about", "contact", "privacy", "terms", "cookie", "cart", "checkout", "account", "login",
@@ -220,15 +207,15 @@ def make_plan(customer, actor: str, *, month: date, count: int, channels: list, 
         raise PlanError("There are no posting days left in that month on the days you picked. "
                         "Pick more days of the week, or a later month.")
     services = sorted({c["service"] for c in channels})
-    source = ai_source(customer)
-    if source == "platform" and plans_this_month(tid) >= MAX_PLANS_PER_MONTH:
-        raise PlanError(f"This business has made {MAX_PLANS_PER_MONTH} AI month plans this month, the most allowed. "
-                        "Open one of the plans already made, or try again next month.")
+    owner_key = D.tenant_owner(tid)
+    source = D.allowance(owner_key, tid)["source"]
+    if not source:
+        raise PlanError("You've used all your AI designs. A month plan uses 1 AI design. "
+                        "Buy extra AI designs on the Billing page, then try again.")
     allowed_themes = themes or [k for k, _ in THEMES]
     ctx = _business_context(customer)
-    owner_key = D.tenant_owner(tid)
     try:
-        client = D._client(owner_key, "own_key" if source == "own_key" else "allowance")
+        client = D._client(owner_key, source)
     except D.DesignError as e:
         raise PlanError(str(e).replace(" This wasn't counted.", ""))
     # The AI sometimes stops short of the number asked for, so ask again for
@@ -255,10 +242,10 @@ def make_plan(customer, actor: str, *, month: date, count: int, channels: list, 
         if not got:
             break
     if not by_day:
-        raise first_error or PlanError("The AI didn't send back a plan. Try again.")
+        err = first_error or PlanError("The AI didn't send back a plan. Try again.")
+        D._record(owner_key, tid, None, "month_plan", source, False, True, str(err), actor)
+        raise PlanError(str(err).rstrip(".") + ". This wasn't counted.")
     items = [dict(by_day[d], i=n) for n, d in enumerate(d for d in days if d in by_day)]
-    if not items:
-        raise PlanError("The AI didn't send back a usable plan. Try again.")
     settings = {"month": month.isoformat(), "channel_ids": [c["channel_id"] for c in channels],
                 "time": time_text, "owner_key": owner["key"], "owner_label": owner["label"],
                 "due_days": due_days, "themes": allowed_themes, "focus": focus, "weekdays": weekdays}
@@ -272,6 +259,7 @@ def make_plan(customer, actor: str, *, month: date, count: int, channels: list, 
         conn.commit()
     finally:
         cur.close(); conn.close()
+    D._record(owner_key, tid, None, "month_plan", source, True, False, f"plan {plan_id}: {len(items)} posts", actor)
     insert_audit_log(action="social_ai_month_plan", tenant_id=tid,
                      details={"plan_id": plan_id, "posts": len(items), "source": source, "by": actor})
     return plan_id

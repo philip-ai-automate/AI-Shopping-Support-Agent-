@@ -38,8 +38,10 @@
   </div>
 
   <div class="pm-info">
-    This doesn't use your AI designs. It only writes words.
-    {% if own_key %}It runs on your own AI key.{% else %}You can make {{ plans_left }} more plan{{ 's' if plans_left != 1 }} this month (up to {{ max_plans }}).{% endif %}
+    Each plan uses <b>1 AI design</b>, only if it works.
+    {% if allow.source == 'allowance' %}You have {{ allow.left }} of this month's {{ allow.limit }} AI designs left{% if allow.extra %}, plus {{ allow.extra }} extra{% endif %}.
+    {% elif allow.source == 'topup' %}This month's AI designs are used up, so it uses 1 of your {{ allow.extra }} extra AI designs.
+    {% else %}<b>You've used all your AI designs.</b> <a href="{{ url_for('portal.billing') }}">Buy extra AI designs</a> to make a plan.{% endif %}
     The AI uses your Brand Kit's voice, your About Us, your products and your recent posts.
   </div>
 
@@ -123,7 +125,7 @@
     </div>
 
     <div class="pm-go">
-      <button class="btn btn-primary" type="submit" id="pm-submit" {% if not own_key and not plans_left %}disabled{% endif %}>✦ Suggest my posts</button>
+      <button class="btn btn-primary" type="submit" id="pm-submit" {% if not allow.source %}disabled{% endif %}>✦ Suggest my posts</button>
       <span class="pm-hint" id="pm-wait" hidden>Writing your plan… this can take up to a minute.</span>
       <a class="btn" href="{{ url_for('socialcal.calendar') }}">Back to calendar</a>
     </div>

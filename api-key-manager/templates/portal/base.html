@@ -1363,7 +1363,7 @@
 
     <!-- Integration — every social account in one place, added 2026-09-11 (renamed from "Channels" 2026-09-22) -->
     {% if staff_can_open('portal.channels_page') %}
-    <a class="sb-link {% if request.endpoint in ('portal.channels_page', 'buffer.connect', 'social.ai_key') %}active{% endif %}"
+    <a class="sb-link {% if request.endpoint in ('portal.channels_page', 'buffer.connect') %}active{% endif %}"
        href="{{ url_for('portal.channels_page') }}">
       <span class="sb-icon">📡</span> Integration
       {% if 'channels.page' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}

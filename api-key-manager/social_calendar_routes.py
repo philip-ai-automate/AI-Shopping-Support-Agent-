@@ -347,14 +347,12 @@ def analytics_refresh():
 def _plan_form_ctx(customer, **extra):
     tid = int(customer["tenant_id"])
     today = W.today_for(customer)
-    source = PL.ai_source(customer)
+    allow = PL.design_allowance(customer)
     chans = [dict(c, label=ba.service_label(c["service"]), colour=ba.service_colour(c["service"]))
              for c in ba.list_channels(_owner(customer), enabled_only=True) if not c.get("is_disconnected")]
     return dict(customer=customer, months=PL.month_choices(today), channels=chans,
                 people=W.people(customer), me=_current_actor(customer)["key"], themes=PL.THEMES,
-                weekdays=PL.WEEKDAYS, counts=PL.COUNTS, own_key=source == "own_key",
-                plans_left=max(0, PL.MAX_PLANS_PER_MONTH - PL.plans_this_month(tid)),
-                max_plans=PL.MAX_PLANS_PER_MONTH, recent=PL.recent_plans(tid),
+                weekdays=PL.WEEKDAYS, counts=PL.COUNTS, allow=allow, recent=PL.recent_plans(tid),
                 knows_little=PL.knows_little(customer), **extra)
 
 

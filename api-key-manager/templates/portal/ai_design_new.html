@@ -17,10 +17,7 @@
   {% if not allow.source %}
   <div class="ad-alert warn"><b>You've used this month's {{ allow.limit }} AI designs.</b> You can still post with a ready-made layout (free) or your own image.
     For more AI designs now:
-    {% if allow.allow_own_key %}<a href="{{ url_for('social.ai_key') }}">connect your own AI key</a> or{% endif %}
     <a href="{{ url_for('portal.billing') }}">buy extra AI designs</a>.</div>
-  {% elif allow.own_key_broken %}
-  <div class="ad-alert warn">Your own AI key stopped working, so AI designs are using your plan's allowance. <a href="{{ url_for('social.ai_key') }}">Fix the key</a>.</div>
   {% endif %}
 
   {% if not is_admin %}
@@ -91,7 +88,7 @@
       {% if can_ai %}
       <button type="submit" name="action" value="ai" class="btn ad-btn-ai {% if not allow.source %}ad-off{% endif %}" {% if not allow.source %}disabled{% endif %}>
         ✦ Create designs
-        {% if allow.source == 'allowance' %}<small>(uses 1 of {{ allow.left }} left)</small>{% elif allow.source == 'topup' %}<small>(uses 1 of {{ allow.extra }} extra)</small>{% elif allow.source == 'own_key' %}<small>(your own AI key)</small>{% endif %}
+        {% if allow.source == 'allowance' %}<small>(uses 1 of {{ allow.left }} left)</small>{% elif allow.source == 'topup' %}<small>(uses 1 of {{ allow.extra }} extra)</small>{% endif %}
       </button>
       {% endif %}
       <button type="submit" name="action" value="template" class="btn">Use a ready-made layout (free)</button>

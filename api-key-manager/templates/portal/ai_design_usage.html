@@ -2,13 +2,13 @@
 {% block title %}AI Design Usage — {{ 'PhiXtra Admin' if is_admin else 'Social Media' }}{% endblock %}
 {% block content %}
 {% include "portal/_ai_design_css.html" %}
-{% set action_labels = {'create': 'Created designs', 'new_set': 'Made new designs', 'rewrite': 'Rewrote words', 'ready_made': 'Ready-made layout'} %}
-{% set source_labels = {'allowance': 'Plan allowance', 'topup': 'Extra designs', 'own_key': 'Your own AI key', 'admin': 'PhiXtra admin', 'platform': 'Free rewrite', 'free': 'Free', 'none': '—'} %}
+{% set action_labels = {'create': 'Created designs', 'new_set': 'Made new designs', 'rewrite': 'Rewrote words', 'ready_made': 'Ready-made layout', 'month_plan': 'Planned a month with AI'} %}
+{% set source_labels = {'allowance': 'Plan allowance', 'topup': 'Extra designs', 'admin': 'PhiXtra admin', 'platform': 'Free rewrite', 'free': 'Free', 'none': '—'} %}
 <div class="ad">
   <div>
     <div class="ad-crumb">{% if is_admin %}<a href="{{ url_for('portal_admin.social_media_posts') }}">Social Media Posts</a>{% else %}Social Media{% endif %} › AI Design Usage</div>
     <p class="ad-title">AI Design Usage</p>
-    <p class="ad-sub">{% if is_admin %}PhiXtra admin designs are unlimited.{% elif allow.own_key %}You're using your own AI key, so AI designs are unlimited.{% else %}Your {{ allow.plan_name }} plan includes {{ allow.limit }} AI designs a month. Customer-chat messages are counted separately and never used here.{% endif %}</p>
+    <p class="ad-sub">{% if is_admin %}PhiXtra admin designs are unlimited.{% else %}Your {{ allow.plan_name }} plan includes {{ allow.limit }} AI designs a month. Customer-chat messages are counted separately and never used here.{% endif %}</p>
   </div>
   {% include "portal/_ai_design_meter.html" %}
 
@@ -17,10 +17,9 @@
     <div class="ad-panel">
       <h3>Need more?</h3>
       <div class="ad-row">
-        {% if allow.allow_own_key %}<a class="btn btn-primary" href="{{ url_for('social.ai_key') }}">{{ 'Manage your own AI key' if allow.own_key else 'Connect your own AI key' }}</a>{% endif %}
-        <a class="btn" href="{{ url_for('portal.billing') }}">Buy extra AI designs</a>
+        <a class="btn btn-primary" href="{{ url_for('portal.billing') }}">Buy extra AI designs</a>
       </div>
-      <span class="ad-hint">With your own AI key, designs are unlimited and your AI provider bills you directly.{% if allow.extra %} You have {{ allow.extra }} extra designs, used after this month's allowance.{% endif %}</span>
+      <span class="ad-hint">Extra AI designs are used after this month's allowance and never expire.{% if allow.extra %} You have {{ allow.extra }} extra.{% endif %}</span>
     </div>
     <div class="ad-panel">
       <h3>Free, never counted</h3>

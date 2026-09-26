@@ -599,7 +599,7 @@ PLAN_FEATURE_CATALOG = {
         ("social.posts_delete", "Delete a Social Post"),
         ("social.posts_approve", "Approve or send back social media posts (when approval is switched on)"),
         ("social.analytics_view", "Social Media Analytics — view"),
-        ("social.ai_plan",      "Plan a month of social media posts with AI (doesn't use AI designs)"),
+        ("social.ai_plan",      "Plan a month of social media posts with AI (uses 1 AI design per plan)"),
         ("social.ai_designs",   "Create AI designs (uses the monthly AI design allowance)"),
         ("social.brand_kit_view", "Brand Kit — view"),
         ("social.brand_kit_edit", "Edit the Brand Kit"),
@@ -729,9 +729,6 @@ PLAN_FEATURE_CATALOG = {
         ("channels.connect_buffer_view",      "Buffer — view connect page"),
         ("channels.connect_buffer_manage",    "Connect Buffer / change key / choose accounts"),
         ("channels.connect_buffer_remove",    "Disconnect Buffer"),
-        ("channels.connect_ai_key_view",      "Your own AI key — view"),
-        ("channels.connect_ai_key_manage",    "Connect / replace your own AI key"),
-        ("channels.connect_ai_key_remove",    "Remove your own AI key"),
     ],
     "Help & Tutorials": [
         ("help.tutorials", "Help & Tutorials"),
@@ -889,8 +886,6 @@ ROLE_FORM_GRID = {
          "delete": "channels.connect_pressone_remove"},
         {"label": "Buffer",    "view": "channels.connect_buffer_view", "edit": "channels.connect_buffer_manage",
          "delete": "channels.connect_buffer_remove"},
-        {"label": "Your own AI key", "view": "channels.connect_ai_key_view", "edit": "channels.connect_ai_key_manage",
-         "delete": "channels.connect_ai_key_remove"},
     ],
     "Help & Tutorials": [
         {"label": "Help & Tutorials", "view": "help.tutorials"},
@@ -1510,7 +1505,6 @@ DESTRUCTIVE_FEATURE_KEYS = {
     "wa.history_import_delete",
     "channels.connect_buffer_remove",
     "social.posts_delete",
-    "channels.connect_ai_key_remove",
 }
 
 # Any permission that lets someone manage other team members' access at all.
@@ -24713,14 +24707,6 @@ def channels_page():
     except Exception as e:
         print("⚠️ channels_page buffer lookup error:", e)
 
-    ai_key, ai_design_limit = None, 0
-    try:
-        import ai_designer as _D
-        ai_key = _D.get_ai_key_row(_D.tenant_owner(tenant_id))
-        ai_design_limit = _D.plan_design_settings(tenant_id)["limit"]
-    except Exception as e:
-        print("⚠️ channels_page ai key lookup error:", e)
-
     return render_template(
         "portal/channels.html",
         customer=customer,
@@ -24729,8 +24715,6 @@ def channels_page():
         pressone_account=pressone_account,
         buffer_account=buffer_account,
         buffer_channel_count=buffer_channel_count,
-        ai_key=ai_key,
-        ai_design_limit=ai_design_limit,
     )
 
 

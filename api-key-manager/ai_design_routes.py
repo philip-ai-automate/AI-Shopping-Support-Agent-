@@ -4,7 +4,7 @@ of screens used twice:
 
   social_bp      every business, under the Social Media menu
                  /social-posts/new, /social-posts/design/<id>…, /social-posts/brand-kit,
-                 /social-posts/usage, and Integration › Your own AI key (/integrations/ai-key)
+                 /social-posts/usage
   ai_admin_bp    PhiXtra admin, from Social Media Posts
                  /admin/social-media/design/…, /admin/social-media/brand-kit
 
@@ -452,61 +452,6 @@ def usage():
     if r:
         return r
     return render_template("portal/ai_design_usage.html", **_common(ctx, log=D.usage_log(ctx.owner_key)))
-
-
-# ── Integration › Your own AI key ──
-
-@social_bp.route("/integrations/ai-key", methods=["GET", "POST"])
-@team_feature("channels.connect_ai_key_view", "channels.connect_ai_key_manage")
-def ai_key():
-    key = "channels.connect_ai_key_manage" if request.method == "POST" else "channels.connect_ai_key_view"
-    r = _require_login() or _require_team_permission(key)
-    if r:
-        return r
-    customer = _get_customer(_customer_id())
-    r = _require_plan_sub_feature(customer, "channels.connect_ai_key_view", "Your own AI key")
-    if r:
-        return r
-    tid = int(customer["tenant_id"])
-    owner = D.tenant_owner(tid)
-    plan = D.plan_design_settings(tid)
-    if request.method == "POST":
-        if not plan["allow_own_key"]:
-            flash("Your plan doesn't allow connecting your own AI key.", "warning")
-            return redirect(url_for("social.ai_key"))
-        api_key = (request.form.get("api_key") or "").strip()
-        if not api_key:
-            session["ai_key_error"] = "Paste your OpenAI API key first."
-            return redirect(url_for("social.ai_key"))
-        try:
-            D.check_and_save_ai_key(owner, tid, api_key, _current_actor(customer)["label"])
-        except D.DesignError as e:
-            session["ai_key_error"] = str(e)
-            return redirect(url_for("social.ai_key"))
-        insert_audit_log(action="ai_key_connected", tenant_id=tid, details={"by": _current_actor(customer)["label"]})
-        flash("Key working. AI designs are now unlimited and no longer use your plan's allowance.", "success")
-        return redirect(url_for("social.ai_key"))
-    return render_template("portal/ai_key_connect.html", customer=customer, key=D.get_ai_key_row(owner),
-                           plan=plan, allow=D.allowance(owner, tid), key_error=session.pop("ai_key_error", None),
-                           can_manage=_team_member_has_permission("channels.connect_ai_key_manage"),
-                           can_remove=_team_member_has_permission("channels.connect_ai_key_remove"))
-
-
-@social_bp.route("/integrations/ai-key/disconnect", methods=["POST"])
-@team_feature("channels.connect_ai_key_remove")
-def ai_key_disconnect():
-    r = _require_login() or _require_team_permission("channels.connect_ai_key_remove")
-    if r:
-        return r
-    customer = _get_customer(_customer_id())
-    r = _require_plan_sub_feature(customer, "channels.connect_ai_key_view", "Your own AI key")
-    if r:
-        return r
-    tid = int(customer["tenant_id"])
-    D.remove_ai_key(D.tenant_owner(tid))
-    insert_audit_log(action="ai_key_disconnected", tenant_id=tid, details={"by": _current_actor(customer)["label"]})
-    flash("Your AI key was removed. AI designs now use your plan's monthly allowance.", "success")
-    return redirect(url_for("social.ai_key"))
 
 
 @social_bp.app_context_processor

@@ -9,8 +9,9 @@ How design costs are counted (approved "option 3"):
   * Only "Create designs" and "Make new designs" use 1 AI design. Restyling,
     up to 5 word rewrites per post, quick edits and ready-made layouts are free.
   * Failed sets are never counted.
-  * A business can connect its own AI key: then designs are unlimited and its
-    AI provider bills it directly (source 'own_key').
+  * No business connects its own AI key (removed 2026-09-27): everything runs
+    on PhiXtra's AI account and businesses buy extra AI designs as top-ups.
+  * "Plan my month with AI" also uses 1 AI design (social_ai_planner.py).
   * When the monthly allowance is used up, bought "AI designs" top-up packs
     (tenant_design_balances) are used next.
   * PhiXtra admin designs on the platform key with no limit (source 'admin').
@@ -87,11 +88,6 @@ def _db(dict_rows=True):
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) if dict_rows else conn.cursor()
     return conn, cur
-
-
-def _crypto():
-    from portal_routes import _encrypt_key, _decrypt_key
-    return _encrypt_key, _decrypt_key
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -200,77 +196,6 @@ def colours_from_logo(owner_key: str):
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# Own AI key
-# ══════════════════════════════════════════════════════════════════════════
-
-def get_ai_key_row(owner_key: str):
-    conn, cur = _db()
-    try:
-        cur.execute("""SELECT owner_key, key_last4, status, last_error, last_checked_at, connected_by, connected_at
-                       FROM ai_keys WHERE owner_key=%s""", (owner_key,))
-        return cur.fetchone()
-    finally:
-        cur.close(); conn.close()
-
-
-def _own_key(owner_key: str) -> str:
-    conn, cur = _db(False)
-    try:
-        cur.execute("SELECT api_key_enc FROM ai_keys WHERE owner_key=%s", (owner_key,))
-        row = cur.fetchone()
-    finally:
-        cur.close(); conn.close()
-    if not row:
-        return ""
-    return _crypto()[1](row[0])
-
-
-def check_and_save_ai_key(owner_key: str, tenant_id, api_key: str, actor: str) -> None:
-    from openai import OpenAI, AuthenticationError, APIConnectionError
-    try:
-        OpenAI(api_key=api_key, timeout=20).models.list()
-    except AuthenticationError:
-        raise DesignError("OpenAI didn't accept this key. Check you copied the whole key from "
-                          "platform.openai.com/api-keys, then try again.")
-    except APIConnectionError:
-        raise DesignError("Couldn't reach OpenAI to check the key. Try again in a minute.")
-    except Exception as e:
-        raise DesignError(f"OpenAI said: {e}")
-    conn, cur = _db()
-    try:
-        cur.execute("""
-            INSERT INTO ai_keys (owner_key, tenant_id, api_key_enc, key_last4, status, last_error,
-                                 last_checked_at, connected_by, connected_at)
-            VALUES (%s,%s,%s,%s,'ok',NULL,NOW(),%s,NOW())
-            ON CONFLICT (owner_key) DO UPDATE SET api_key_enc=EXCLUDED.api_key_enc,
-                key_last4=EXCLUDED.key_last4, status='ok', last_error=NULL, last_checked_at=NOW(),
-                connected_by=EXCLUDED.connected_by
-        """, (owner_key, tenant_id, _crypto()[0](api_key), api_key[-4:], actor))
-        conn.commit()
-    finally:
-        cur.close(); conn.close()
-
-
-def remove_ai_key(owner_key: str) -> None:
-    conn, cur = _db()
-    try:
-        cur.execute("DELETE FROM ai_keys WHERE owner_key=%s", (owner_key,))
-        conn.commit()
-    finally:
-        cur.close(); conn.close()
-
-
-def _mark_key(owner_key: str, ok: bool, err: str = None):
-    conn, cur = _db()
-    try:
-        cur.execute("UPDATE ai_keys SET status=%s, last_error=%s, last_checked_at=NOW() WHERE owner_key=%s",
-                    ("ok" if ok else "needs_attention", err, owner_key))
-        conn.commit()
-    finally:
-        cur.close(); conn.close()
-
-
-# ══════════════════════════════════════════════════════════════════════════
 # Allowance
 # ══════════════════════════════════════════════════════════════════════════
 
@@ -278,10 +203,9 @@ def plan_design_settings(tenant_id: int) -> dict:
     conn, cur = _db()
     try:
         cur.execute("""SELECT COALESCE(p.name, 'Free') AS plan_name,
-                              COALESCE(p.ai_designs_limit, 0) AS limit,
-                              COALESCE(p.allow_own_ai_key, TRUE) AS allow_own_key
+                              COALESCE(p.ai_designs_limit, 0) AS limit
                        FROM tenants t LEFT JOIN plans p ON p.id = t.plan_id WHERE t.id=%s""", (tenant_id,))
-        return dict(cur.fetchone() or {"plan_name": "Free", "limit": 0, "allow_own_key": True})
+        return dict(cur.fetchone() or {"plan_name": "Free", "limit": 0})
     finally:
         cur.close(); conn.close()
 
@@ -290,7 +214,7 @@ def allowance(owner_key: str, tenant_id) -> dict:
     """Where the next AI design would come from, and the numbers for the meter."""
     if owner_key == ADMIN_OWNER:
         return {"source": "admin", "unlimited": True, "limit": 0, "used": 0, "left": 0,
-                "extra": 0, "own_key": False, "allow_own_key": False, "plan_name": "PhiXtra admin"}
+                "extra": 0, "plan_name": "PhiXtra admin"}
     plan = plan_design_settings(int(tenant_id))
     conn, cur = _db()
     try:
@@ -303,20 +227,15 @@ def allowance(owner_key: str, tenant_id) -> dict:
         extra = int(row["design_credits"]) if row else 0
     finally:
         cur.close(); conn.close()
-    key = get_ai_key_row(owner_key) if plan["allow_own_key"] else None
-    own = bool(key and key["status"] == "ok")
     left = max(0, int(plan["limit"]) - used)
-    if own:
-        source = "own_key"
-    elif left > 0:
+    if left > 0:
         source = "allowance"
     elif extra > 0:
         source = "topup"
     else:
         source = None
-    return {"source": source, "unlimited": own, "limit": int(plan["limit"]), "used": used, "left": left,
-            "extra": extra, "own_key": own, "own_key_broken": bool(key and key["status"] != "ok"),
-            "allow_own_key": plan["allow_own_key"], "plan_name": plan["plan_name"]}
+    return {"source": source, "unlimited": False, "limit": int(plan["limit"]), "used": used, "left": left,
+            "extra": extra, "plan_name": plan["plan_name"]}
 
 
 def _record(owner_key, tenant_id, session_id, action, source, counted, failed, note, actor):
@@ -551,22 +470,15 @@ def format_price(price, currency=None) -> str:
 
 def _client(owner_key: str, source: str):
     from openai import OpenAI
-    key = _own_key(owner_key) if source == "own_key" else os.getenv("OPENAI_API_KEY", "")
+    key = os.getenv("OPENAI_API_KEY", "")
     if not key:
         raise DesignError("AI isn't set up on this platform yet. Contact support.")
     return OpenAI(api_key=key, timeout=120)
 
 
 def _ai_error(owner_key, source, e) -> DesignError:
-    from openai import AuthenticationError, RateLimitError, APIConnectionError, BadRequestError
-    if isinstance(e, AuthenticationError) and source == "own_key":
-        _mark_key(owner_key, False, str(e)[:300])
-        return DesignError("Your AI key stopped working. Put in a new one on Integration › Your own AI key. "
-                           "This wasn't counted.")
+    from openai import RateLimitError, APIConnectionError, BadRequestError
     if isinstance(e, RateLimitError):
-        if source == "own_key":
-            return DesignError("Your AI account is out of credit or busy. Check your OpenAI billing, then try again. "
-                               "This wasn't counted.")
         return DesignError("The AI is busy right now. Wait a minute and try again. This wasn't counted.")
     if isinstance(e, APIConnectionError):
         return DesignError("Couldn't reach the AI. Try again in a minute. This wasn't counted.")
@@ -781,7 +693,7 @@ def make_set(owner_key, tenant_id, s, actor, feedback=None, note="", action="new
     allow = allowance(owner_key, tenant_id)
     source = allow["source"]
     if not source:
-        raise DesignError("You've used this month's AI designs. Connect your own AI key or buy extra AI designs.")
+        raise DesignError("You've used this month's AI designs. Buy extra AI designs on the Billing page.")
     kit = get_brand_kit(owner_key)
     t = taste(owner_key)
     s["feedback"] = {"reasons": feedback or [], "note": (note or "")[:200]} if (feedback or note) else None
@@ -812,8 +724,6 @@ def make_set(owner_key, tenant_id, s, actor, feedback=None, note="", action="new
     s["sets_made"] = int(s.get("sets_made") or 0) + 1
     _save_session(s)
     _record(owner_key, tenant_id, s["id"], action, source, source in ("allowance", "topup"), False, None, actor)
-    if source == "own_key":
-        _mark_key(owner_key, True)
 
 
 def rewrite(owner_key, tenant_id, s, actor, tone: str) -> None:
@@ -823,13 +733,13 @@ def rewrite(owner_key, tenant_id, s, actor, tone: str) -> None:
     idx = int(s.get("selected") or 0)
     v = s["variants"][idx]
     allow = allowance(owner_key, tenant_id)
-    source = "own_key" if allow.get("own_key") else ("admin" if owner_key == ADMIN_OWNER else "platform")
+    source = "admin" if owner_key == ADMIN_OWNER else "platform"
     kit = get_brand_kit(owner_key)
     instruction = REWRITE_TONES.get(tone) or "Improve it."
     extra = (f"Current headline: {v.get('headline')}\nCurrent captions: {json.dumps(v.get('captions') or {})}\n"
              f"Rewrite request: {instruction} Return 4 variants anyway; only the first is used.")
     try:
-        words = _ask_words(owner_key, "own_key" if source == "own_key" else "platform",
+        words = _ask_words(owner_key, "platform",
                            _words_prompt(s, kit, s.get("channels") or [], [], taste(owner_key), extra))
     except Exception as e:
         _record(owner_key, tenant_id, s["id"], "rewrite", source, False, True, f"{type(e).__name__}: {e}", actor)

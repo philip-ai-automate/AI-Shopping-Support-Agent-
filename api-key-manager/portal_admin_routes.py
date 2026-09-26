@@ -5062,7 +5062,6 @@ def _plan_form_to_dict(form) -> dict:
         "price_usd":           _num("price_usd", 0),
         "ai_messages_limit":   _int("ai_messages_limit", 100),
         "ai_designs_limit":    max(0, _int("ai_designs_limit", 0)),
-        "allow_own_ai_key":    form.get("allow_own_ai_key") == "on",
         "ai_agents_limit":     _int("ai_agents_limit", 1),
         "broadcasts_limit":    _int("broadcasts_limit", 0),
         "products_limit":      _int("products_limit", 50),
@@ -5152,7 +5151,7 @@ def admin_plans_new():
 
     cur.close(); conn.close()
     blank = {"slug": "", "name": "", "price_ngn": 0, "price_usd": 0,
-             "ai_messages_limit": 100, "ai_designs_limit": 0, "allow_own_ai_key": True,
+             "ai_messages_limit": 100, "ai_designs_limit": 0,
              "ai_agents_limit": 1, "broadcasts_limit": 0,
              "products_limit": 50, "data_sources_limit": 1, "staff_limit": 0,
              "overage_per_msg_ngn": 10, "overage_per_msg_usd": 0.006,

@@ -21,7 +21,7 @@
     <div class="ad-field"><label for="ad-note">Anything else? (optional)</label><input type="text" id="ad-note" name="note" maxlength="200" placeholder="e.g. Show the headwrap being worn"></div>
     <div class="ad-row">
       <button type="submit" class="btn ad-btn-ai" {% if not allow.source %}disabled{% endif %}>✦ Make 4 new designs
-        {% if allow.source == 'allowance' %}<small>(uses 1 of {{ allow.left }} left)</small>{% elif allow.source == 'topup' %}<small>(uses 1 of {{ allow.extra }} extra)</small>{% elif allow.source == 'own_key' %}<small>(your own AI key)</small>{% endif %}</button>
+        {% if allow.source == 'allowance' %}<small>(uses 1 of {{ allow.left }} left)</small>{% elif allow.source == 'topup' %}<small>(uses 1 of {{ allow.extra }} extra)</small>{% endif %}</button>
       <a class="btn" href="{{ url_for(ep + 'pick', sid=s.id) }}">← Back to my designs</a>
       <span class="ad-busy" id="ad-busy" role="status"><span class="ad-spin"></span>Designing… this can take up to a minute.</span>
     </div>
