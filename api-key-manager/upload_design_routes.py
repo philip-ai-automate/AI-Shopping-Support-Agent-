@@ -22,14 +22,12 @@ from flask import Blueprint, request, render_template, redirect, url_for, flash,
 
 from feature_access import team_feature
 from portal_routes import (_require_login, _customer_id, _get_customer, _require_plan_sub_feature,
-                           _require_team_permission, _current_actor, _inject_granted_features,
-                           _inject_connect_flag)
+                           _require_team_permission, _current_actor, _inject_granted_features)
 import buffer_accounts as ba
 import upload_design as U
 
 upload_bp = Blueprint("upload", __name__)
 upload_bp.context_processor(_inject_granted_features)
-upload_bp.context_processor(_inject_connect_flag)
 
 PLAN_KEY = "social.posts_view"
 

@@ -209,26 +209,14 @@
 <div class="funnel-card">
   <div class="funnel-header">
     <h2>Campaign Funnel</h2>
-    {% if needs_review_count and not is_connect_host %}
+    {% if needs_review_count %}
     <a href="{{ url_for('portal.whatsapp_campaign_reviews') }}" class="review-link">
       {{ needs_review_count }} Interested repl{{ 'ies' if needs_review_count != 1 else 'y' }} awaiting review →
     </a>
     {% endif %}
   </div>
   <div class="funnel-row">
-    {# The Replied/Interested/Opportunities steps come from the AI reply
-       classifier, which never runs for a PhiXtra Connect business (see
-       CONNECT_HIDDEN_ENDPOINTS in portal_routes.py) — skipped here so
-       Connect's funnel only shows real, non-AI data: message delivery plus
-       the Sales Pipeline stages a lead can still reach manually. #}
     {% set steps = [
-      ('Sent', sent, '#16a34a'),
-      ('Delivered', delivered, '#2563eb'),
-      ('Read', read, '#7c3aed'),
-      ('Qualified', qualified_count, '#4338ca'),
-      ('Proposals', proposal_count, '#92400e'),
-      ('Won', won_count, '#15803d'),
-    ] if is_connect_host else [
       ('Sent', sent, '#16a34a'),
       ('Delivered', delivered, '#2563eb'),
       ('Read', read, '#7c3aed'),
@@ -253,9 +241,7 @@
     {% endfor %}
   </div>
   <div class="funnel-aside">
-    {% if not is_connect_host %}
     <span>Not interested: <strong>{{ not_interested }}</strong></span>
-    {% endif %}
     <span>Opted out since: <strong>{{ opted_out }}</strong></span>
     <span>Failed: <strong>{{ failed }}</strong></span>
   </div>
@@ -301,19 +287,13 @@
           <th>Phone Number</th>
           <th>Status</th>
           <th>Sent At</th>
-          {% if not is_connect_host %}<th>Reply</th>{% endif %}
+          <th>Reply</th>
           <th>Error</th>
         </tr>
       </thead>
       <tbody>
-        {# On Connect, the AI reply classifier never runs, so a status past
-           'read' (replied/interested/not_interested/opportunity/converted)
-           can only be leftover from before that was true — displayed here
-           capped at the real delivery status so the AI-derived outcome
-           never shows. #}
-        {% set _AI_STATUSES = ('replied','interested','not_interested','opportunity','converted') %}
         {% for r in recipients %}
-        {% set _display_status = 'read' if (is_connect_host and r.status in _AI_STATUSES) else r.status %}
+        {% set _display_status = r.status %}
         <tr data-status="{{ _display_status }}" data-phone="{{ r.phone }}">
           <td style="color:var(--muted);font-size:12px">{{ loop.index }}</td>
           <td style="font-weight:600;font-family:monospace">+{{ r.phone }}</td>
@@ -321,7 +301,6 @@
           <td style="font-size:12px;color:var(--muted);white-space:nowrap">
             {{ r.sent_at.strftime('%d %b %Y %H:%M:%S') if r.sent_at else '—' }}
           </td>
-          {% if not is_connect_host %}
           <td>
             {% if r.reply_text %}
             <span class="reply-quote" title="{{ r.reply_text }}">“{{ r.reply_text }}”</span>
@@ -331,7 +310,6 @@
             {% endif %}
             {% if not r.reply_text and not r.pipeline_lead_id %}—{% endif %}
           </td>
-          {% endif %}
           <td style="font-size:12px;color:#dc2626;max-width:260px;
                      overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
               title="{{ r.error_msg or '' }}">

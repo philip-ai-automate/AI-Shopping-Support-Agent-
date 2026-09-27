@@ -65,197 +65,6 @@ def _restrict_team_members_to_inbox():
     return _team_member_denied("Your role doesn't include that page.")
 
 
-# ── PhiXtra Connect: the AI-free surface (connect.phixtra.com) ─────────────
-# Same app, same tenants — a business reaching the portal through this
-# domain must never land on an AI-only screen, whether from a nav link or by
-# typing the URL directly (Meta's App Review will try exactly that).
-CONNECT_HOST = os.environ.get("CONNECT_HOST", "connect.phixtra.com")
-
-def _is_connect_host():
-    host = (request.host or "").split(":")[0].lower()
-    return host in (CONNECT_HOST, "www." + CONNECT_HOST)
-
-
-CONNECT_HIDDEN_ENDPOINTS = {
-    # ── AI-only screens ──────────────────────────────────────────────────
-    "portal.ai_agents", "portal.ai_agents_new", "portal.ai_agents_edit",
-    "portal.ai_agents_activate", "portal.ai_agents_delete",
-    "portal.ai_instruction", "portal.api_keys", "portal.api_keys_revoke",
-    "portal.handoff_rules", "portal.handoff_rules_add",
-    "portal.handoff_rules_toggle", "portal.handoff_rules_delete",
-    "portal.verified_specs_settings", "portal.verified_specs_domain_add",
-    "portal.verified_specs_domain_delete", "portal.verified_specs_spec_add",
-    "portal.verified_specs_spec_delete", "portal.report_usage",
-    "portal.try_demo",  # the shared public demo logs into an AI-powered tenant
-
-    # ── Store Information ───────────────────────────────────────────────
-    "portal.store_info", "portal.store_info_create", "portal.store_info_modify",
-    "portal.store_info_modify_entry", "portal.store_info_delete", "portal.store_info_delete_entry",
-
-    # ── Email Campaigns (a separate channel from WhatsApp Campaigns/Bulk
-    # Messaging, which stays) ───────────────────────────────────────────
-    "portal.email_campaigns", "portal.email_campaigns_create",
-    "portal.email_campaigns_edit_data", "portal.email_campaigns_update",
-    "portal.email_campaigns_preview", "portal.email_campaigns_send_test_draft",
-    "portal.email_campaigns_send_test", "portal.email_campaigns_duplicate_data",
-    "portal.email_campaigns_send", "portal.email_campaigns_delete",
-    "portal.email_campaigns_upload_image", "portal.email_campaigns_contacts_json",
-    "portal.email_campaigns_pipeline_leads_json", "portal.email_campaigns_reports",
-    "portal.email_campaign_report",
-
-    # ── Orders ───────────────────────────────────────────────────────────
-    "portal.orders", "portal.order_detail", "portal.order_verify_payment",
-    "portal.order_dispatch", "portal.order_deliver", "portal.order_cancel",
-
-    # ── Discount Settings ────────────────────────────────────────────────
-    "portal.wa_discount_settings", "portal.wa_discount_product_save",
-
-    # ── Product Import ───────────────────────────────────────────────────
-    "portal.data_sources", "portal.data_source_upload", "portal.data_source_map",
-    "portal.data_source_sync", "portal.data_source_delete",
-    "portal.data_source_google_connect", "portal.data_source_google_callback",
-    "portal.data_source_google_setup",
-
-    # ── Payment Gateways ─────────────────────────────────────────────────
-    "portal.payment_settings", "portal.payment_settings_paystack",
-    "portal.payment_settings_paystack_remove", "portal.payment_settings_flutterwave",
-    "portal.payment_settings_flutterwave_remove",
-    "portal.payment_settings_flutterwave_toggle_checkout",
-    "portal.payment_settings_bank", "portal.payment_settings_reveal",
-
-    # ── Ecommerce group (My Products, My Catalogue, Customers/orders-and-
-    # spend data) — a different thing from a plain WhatsApp contact list;
-    # not part of PhiXtra Connect ────────────────────────────────────────
-    "portal.products", "portal.product_add", "portal.product_edit",
-    "portal.product_delete", "portal.product_toggle_stock",
-    "portal.catalogue_browse", "portal.catalogue_category",
-    "portal.catalogue_toggle", "portal.catalogue_selections",
-    "portal.customers", "portal.customer_detail",
-
-    # ── Help & Tutorials ─────────────────────────────────────────────────
-    # portal.video_tutorials deliberately NOT in this set (as of 2026-09-11)
-    # — PhiXtra Connect now gets Video Tutorials too, filtered to whichever
-    # videos an admin has tagged "connect" for (see tutorial_video_products
-    # table / video_tutorials() below). portal.tutorials (the written guide)
-    # stays hidden — it wasn't asked for and still has AI-worded content.
-    "portal.tutorials",
-
-    # ── Handoff Reports — an AI-handoff concept, meaningless without AI ──
-    "portal.whatsapp_reports",
-
-    # ── Billing / Subscription Plans / Buy Credits / Invoices — Connect has
-    # no paid tier at all, so the whole billing family is out of scope.
-    # (Payment-provider webhooks are deliberately NOT in this list — they're
-    # server-to-server callbacks, never a page a business navigates to.) ───
-    "portal.billing", "portal.billing_checkout", "portal.billing_add_card",
-    "portal.billing_save_card", "portal.billing_remove_card",
-    "portal.billing_set_default_card", "portal.billing_subscribe",
-    "portal.billing_subscribe_post", "portal.billing_subscribe_checkout",
-    "portal.billing_subscribe_complete", "portal.billing_switch_plan",
-    "portal.billing_plans", "portal.billing_plan_upgrade",
-    "portal.billing_plan_upgrade_callback", "portal.invoices",
-
-    # ── Campaign Intelligence Needs Review — an AI reply-classifier's queue.
-    # 2026-09-09: the classifier itself (meta_webhook.py, an LLM call) is now
-    # gated off entirely for a PhiXtra Connect business (tenants.ai_enabled),
-    # same switch as the shopping/chat AI — Connect never gets billed for or
-    # exposed to this AI feature. Previously this group only blocked
-    # Approve/Reject behind the CRM-enabled toggle while leaving the
-    # reply-flagging itself (Replied/Interested/Not interested) visible on
-    # the campaign report as "just messaging data" — that reasoning no
-    # longer applies now the classification never runs, so it's hidden
-    # outright here instead of the narrower CONNECT_CRM_ENDPOINTS gate below.
-    # Unaffected on portal.phixtra.com Sales AI, which keeps ai_enabled=True. ─
-    "portal.whatsapp_campaign_reviews", "portal.whatsapp_campaign_review_approve",
-    "portal.whatsapp_campaign_review_reject", "portal.whatsapp_campaign_automation_settings",
-}
-
-
-# ── Sales Pipeline (the standalone CRM page) — NOT the pipeline data that
-# WhatsApp Campaigns itself reads (portal.sales_pipeline_contacts_json and
-# everything under /whatsapp/pipeline-segments stay reachable; Campaigns
-# depends on them for its own audience picker) — and Labels (the standalone
-# page) — NOT portal.lead_labels_list_json, which the Campaigns compose
-# screen's "exclude label" picker calls. Plain CRM, no AI involved; hidden
-# on Connect by default and unlocked per-business only by PhiXtra admin
-# (tenants.crm_enabled) — see customer_toggle_crm in portal_admin_routes.py.
-# This constant, and everything that reads it below, is ONLY ever consulted
-# when _is_connect_host() is already True — portal.phixtra.com always has
-# full Sales Pipeline access for every tenant, unaffected by crm_enabled.
-CONNECT_CRM_ENDPOINTS = {
-    "portal.sales_pipeline", "portal.sales_pipeline_export",
-    "portal.sales_pipeline_edit", "portal.sales_pipeline_assign_ambassador",
-    "portal.sales_pipeline_advance", "portal.sales_pipeline_bulk_advance",
-    "portal.sales_pipeline_drop", "portal.sales_pipeline_history",
-    "portal.lead_scoring_explainer",
-    "portal.lead_labels_page", "portal.lead_labels_create", "portal.lead_labels_rename",
-    "portal.lead_labels_delete", "portal.lead_labels_members",
-    "portal.lead_labels_remove_member", "portal.lead_labels_move_member",
-    "portal.lead_labels_bulk_add_members",
-    # was "portal.lead_labels_search_leads" — didn't match the real endpoint
-    # name (Flask registers routes by function name, and this one has no
-    # explicit `endpoint=`), so this entry silently never gated anything.
-    # Fixed while adding the tags-unification entries below.
-    "portal.lead_labels_search_leads_json", "portal.lead_labels_import_bounces",
-    # CRM merge (2026-09-09): merge-review is deal-matching, same gate as the
-    # rest of Sales Pipeline. Companies stays OUT of this set on purpose — a
-    # company is core contact data (like a Contact itself), not deal data.
-    "portal.crm_merge_review", "portal.crm_merge_review_confirm", "portal.crm_merge_review_reject",
-    # Tags unification (2026-09-09): the "🏷️ Tags" page's People section —
-    # browsing/managing which Contacts carry a tag from the Tags management
-    # page itself. Actually tagging a Contact from the Contacts pages
-    # (whatsapp_contacts_add/edit/bulk_action) is NOT in this set on purpose
-    # and stays available on Connect regardless — only viewing/managing the
-    # full tag list from this dedicated page is gated, same as Sales Pipeline.
-    "portal.lead_labels_contact_members", "portal.lead_labels_remove_contact_member",
-    "portal.lead_labels_move_contact_member",
-    "portal.lead_labels_bulk_add_contacts", "portal.lead_labels_search_contacts_json",
-    # Pipeline Overview report (2026-09-10) — reports on Sales Pipeline data,
-    # same CRM gate as the rest of the pipeline.
-    "portal.report_pipeline_overview", "portal.report_pipeline_overview_export",
-}
-
-
-def _tenant_crm_enabled(tenant_id: int) -> bool:
-    """Whether this tenant's Sales Pipeline (CRM) pages are unlocked on
-    PhiXtra Connect — a PhiXtra-admin-only switch (Admin -> Customers ->
-    business -> Sales CRM), never shown to the business. Defaults TRUE for
-    every Connect business as of 2026-09-08 (user decision: CRM ships free
-    to everyone, not opt-in) — fails OPEN on a DB error to match, same
-    direction as _tenant_ai_enabled. Admin can still turn it off per
-    business if ever needed. Meaningless on portal.phixtra.com, where
-    Sales Pipeline is already unconditionally available — never call this
-    without an _is_connect_host() check alongside it."""
-    try:
-        conn = get_db_connection()
-        cur  = conn.cursor()
-        cur.execute("SELECT crm_enabled FROM tenants WHERE id=%s", (tenant_id,))
-        row = cur.fetchone()
-        cur.close(); conn.close()
-        return bool(row[0]) if row else True
-    except Exception as e:
-        print("⚠️ _tenant_crm_enabled error:", e)
-        return True
-
-
-@portal_bp.before_request
-def _block_ai_on_connect_host():
-    if _is_connect_host() and request.endpoint in CONNECT_HIDDEN_ENDPOINTS:
-        flash("That feature isn't part of PhiXtra Connect.", "info")
-        return redirect(url_for("portal.home"))
-
-    # Sales Pipeline / Labels — separate, narrower gate: only ever runs on
-    # connect.phixtra.com (the outer check below), and only blocks when this
-    # specific business hasn't been opted in by a PhiXtra admin. Portal.phixtra.com
-    # requests never reach past the first condition, so this can't touch them.
-    if _is_connect_host() and request.endpoint in CONNECT_CRM_ENDPOINTS:
-        cid = _customer_id()
-        customer = _get_customer(cid) if cid else None
-        if not customer or not _tenant_crm_enabled(int(customer["tenant_id"])):
-            flash("Sales CRM isn't turned on for this account yet.", "info")
-            return redirect(url_for("portal.home"))
-
-
 @portal_bp.context_processor
 def _inject_granted_features():
     """Sidebar nav lock badges — every business sees every menu item (per
@@ -309,18 +118,6 @@ def _inject_granted_features():
         print("⚠️ _inject_granted_features error:", e)
 
     return {"granted_features": granted}
-
-
-@portal_bp.context_processor
-def _inject_connect_flag():
-    connect_crm_enabled = False
-    if _is_connect_host():
-        cid = _customer_id()
-        if cid:
-            customer = _get_customer(cid)
-            if customer:
-                connect_crm_enabled = _tenant_crm_enabled(int(customer["tenant_id"]))
-    return {"is_connect_host": _is_connect_host(), "connect_crm_enabled": connect_crm_enabled}
 
 
 BRAND = "#030C18"
@@ -2675,8 +2472,6 @@ def _send_verified_welcome_email_web(
 def home():
     if _logged_in() and _customer_id():
         return redirect(url_for("portal.dashboard"))
-    if _is_connect_host():
-        return render_template("portal/home_connect.html")
     return render_template("portal/home.html")
 
 
@@ -2837,7 +2632,7 @@ def _register_whatsapp_merchant(
 
     is_demo_signup = _is_presale_test_signup(email)
 
-    signup_product = "connect" if _is_connect_host() else "portal"
+    signup_product = "portal"
 
     # Every WhatsApp merchant starts on PhiXtra Connect (free, no AI). The AI
     # only switches on when they start their 2-week trial or pay for a plan.
@@ -5102,10 +4897,7 @@ def dashboard():
     plan_info = _get_tenant_plan(tenant_id)
 
     # ── Sales Overview KPI row (Dashboard redesign Phase 1, 2026-09-10) ────
-    # Same CRM gate as the Sales Pipeline nav group (_crm_pipeline_on in
-    # base.html): unconditionally on for portal.phixtra.com, opt-in-per-
-    # business on PhiXtra Connect.
-    _crm_on = (not _is_connect_host()) or _tenant_crm_enabled(tenant_id)
+    _crm_on = True
     dash_period     = None
     crm_kpis        = None
     dash_pipeline   = None
@@ -8395,12 +8187,7 @@ def _get_leads_sources_data(tenant_id: int, date_from, date_to) -> dict:
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CUSTOM REPORT BUILDER (Phase 1, 2026-09-10) — pick an entity, pick columns,
-# pick filters, get a real table. Deliberately NOT gated by CONNECT_CRM_ENDPOINTS:
-# 2 of its 3 entities (Contacts, Companies) already have their own pages fully
-# available on Connect regardless of the Sales CRM toggle, and the third (Leads)
-# matches the ungated Leads page / Leads & Sources report, not the gated Pipeline
-# Overview report -- gating the whole page would wrongly hide Contacts/Companies
-# reporting for a CRM-off Connect business.
+# pick filters, get a real table.
 # ══════════════════════════════════════════════════════════════════════════════
 
 CUSTOM_REPORT_EXPORT_MAX_ROWS = 20000
@@ -8819,9 +8606,7 @@ def report_pipeline_overview():
 def report_pipeline_overview_export(fmt: str):
     """Same (title, subtitle, summary_pairs, headers, rows) shape as the
     generic /reports/export/<report>/<fmt> dispatcher, but its own dedicated
-    route rather than folded into that one — this report is Sales Pipeline
-    data, so it needs the CRM gate (CONNECT_CRM_ENDPOINTS) the other reports
-    (Usage/Cart/Billing) don't."""
+    route rather than folded into that one."""
     r = _require_login()
     if r: return r
     _rperm = _require_team_permission("reports.pipeline_overview")
@@ -8911,9 +8696,7 @@ def report_leads_sources():
 @team_feature("reports.leads_sources")
 def report_leads_sources_export(fmt: str):
     """Same (title, subtitle, summary_pairs, headers, rows) export shape as
-    Pipeline Overview -- NOT in CONNECT_CRM_ENDPOINTS on purpose, this
-    reports on Lead volume/source, the same ungated data the Leads page
-    itself already shows on Connect regardless of the CRM toggle."""
+    Pipeline Overview."""
     r = _require_login()
     if r: return r
     _rperm = _require_team_permission("reports.leads_sources")
@@ -10495,7 +10278,7 @@ def video_tutorials():
     # (tutorial_video_products table). A video with no row yet defaults to
     # ["portal"] — that's the truth for every video that existed before this
     # tagging feature (2026-09-11), none of them were ever shown on Connect.
-    this_product = "connect" if _is_connect_host() else "portal"
+    this_product = "portal"
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("SELECT slug, products FROM tutorial_video_products")
@@ -13637,10 +13420,6 @@ def inbox_resolve(session_id: str):
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
-    if _is_connect_host():
-        flash("That feature isn't part of PhiXtra Connect.", "info")
-        return redirect(url_for("portal.my_inbox"))
-
     phone_redirect = None
     try:
         conn = get_db_connection()
@@ -13678,10 +13457,6 @@ def inbox_takeover():
     if r2: return r2
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-
-    if _is_connect_host():
-        flash("That feature isn't part of PhiXtra Connect.", "info")
-        return redirect(url_for("portal.my_inbox"))
 
     customer_phone = (request.form.get("customer_phone") or "").strip().lstrip("+")
     if not customer_phone:
@@ -19252,8 +19027,7 @@ def lead_labels_search_leads_json():
 # remove WhatsApp Contacts for a tag exactly the way it already does for
 # Sales Pipeline leads. See _sync_contact_tags() for how a Contact's own Tags
 # field (Add/Edit Contact, Edit Profile) writes to the same lead_labels /
-# lead_label_contacts tables — that path is NOT gated by CONNECT_CRM_ENDPOINTS,
-# only this management page is (see the comment on that set).
+# lead_label_contacts tables.
 # ══════════════════════════════════════════════════════════════════════════════
 
 @portal_bp.route("/labels/<int:label_id>/contacts")
@@ -25014,7 +24788,7 @@ def my_inbox():
     if r2: return r2
     r3 = _require_team_permission("inbox.page")
     if r3: return r3
-    ai_enabled = not _is_connect_host()
+    ai_enabled = True
     connection = _get_wa_connection(tenant_id)
     # Only worth showing per-number filter tabs / color dots when 2+ numbers
     # are connected — single-number tenants (the common case) see no change.
@@ -26594,7 +26368,7 @@ def leads_page():
     # Sales Agent experience, which Connect deliberately doesn't have. ─────
     connection = _get_wa_connection(tenant_id)
     hot_leads, hot_count, warm_count = [], 0, 0
-    if connection and not _is_connect_host():
+    if connection:
         conversations = _get_inbox_conversations(tenant_id)
         tier_order = {"hot": 0, "warm": 1, "": 2}
         hot_leads = [c for c in conversations if c.get("lead_tier") in ("hot", "warm")]

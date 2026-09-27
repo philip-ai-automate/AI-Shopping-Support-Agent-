@@ -1595,42 +1595,6 @@ def customer_revert_phixtra_ai(customer_id: int):
     return redirect(url_for("portal_admin.customer_detail", customer_id=customer_id))
 
 
-@portal_admin_bp.route("/customers/<int:customer_id>/toggle-crm", methods=["POST"])
-def customer_toggle_crm(customer_id: int):
-    """PhiXtra-admin-only switch: unlock the Sales Pipeline (CRM) pages for
-    this business on PhiXtra Connect. Never exposed to the business itself.
-    Only ever matters on connect.phixtra.com — portal.phixtra.com already
-    has Sales Pipeline available to every tenant regardless of this flag."""
-    r = _require_admin("customers", "modify")
-    if r: return r
-
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT tenant_id FROM customers WHERE id=%s", (customer_id,))
-    row = cur.fetchone()
-    if not row:
-        cur.close(); conn.close()
-        flash("Customer not found.", "danger")
-        return redirect(url_for("portal_admin.customers"))
-    tenant_id = int(row["tenant_id"])
-
-    cur.execute("SELECT crm_enabled FROM tenants WHERE id=%s", (tenant_id,))
-    trow = cur.fetchone() or {}
-    new_val = not bool(trow.get("crm_enabled", False))
-
-    cur2 = conn.cursor()
-    cur2.execute("UPDATE tenants SET crm_enabled=%s WHERE id=%s", (new_val, tenant_id))
-    conn.commit()
-    cur2.close(); cur.close(); conn.close()
-
-    insert_audit_log(admin_username=_admin_user(),
-                     action="admin_toggle_crm",
-                     tenant_id=tenant_id,
-                     details={"customer_id": customer_id, "new_crm_enabled": new_val})
-    flash(f"Sales CRM {'turned on' if new_val else 'turned off'} for this business on PhiXtra Connect.", "success")
-    return redirect(url_for("portal_admin.customer_detail", customer_id=customer_id))
-
-
 # ══════════════════════════════════════════════════════════════════════════════
 # FEATURE MANAGEMENT (NEW)
 # Sets which plugin features are active for a specific customer's tenant.

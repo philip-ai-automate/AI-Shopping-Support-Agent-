@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
-  <title>{% block title %}{{ 'PhiXtra Connect' if is_connect_host else 'PhiXtra Portal' }}{% endblock %}</title>
+  <title>{% block title %}PhiXtra Portal{% endblock %}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='portal/favicon.png') }}"/>
   <link rel="manifest" href="/static/portal/manifest.json"/>
@@ -628,7 +628,6 @@
     {% endif %}
 
     <!-- WhatsApp Campaigns -->
-    {% set _crm_pipeline_on = not is_connect_host or connect_crm_enabled %}
     {% set _camp_group = request.endpoint in ('portal.whatsapp_campaigns','portal.whatsapp_campaign_report','portal.whatsapp_campaigns_reports','portal.whatsapp_campaign_reviews') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _camp_group %}open{% endif %}"
@@ -661,14 +660,7 @@
           {% if 'campaigns_wa.reports_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
-        {% if not is_connect_host %}
-        {# Needs Review is the Campaign Intelligence AI reply-classifier's queue —
-           2026-09-09: that classifier no longer runs at all for a PhiXtra Connect
-           business (tenants.ai_enabled gates it off in meta_webhook.py), so this
-           page would only ever be empty there. Hidden on Connect outright, not
-           just gated by _crm_pipeline_on (CRM being on doesn't matter — there's
-           nothing for AI classification to feed it). Stays fully available on
-           portal.phixtra.com Sales AI. #}
+        {# Needs Review is the Campaign Intelligence AI reply-classifier's queue. #}
         {% if staff_can_open('portal.whatsapp_campaign_reviews') %}
         <a href="{{ url_for('portal.whatsapp_campaign_reviews') }}"
            class="{% if request.endpoint == 'portal.whatsapp_campaign_reviews' %}active{% endif %}"
@@ -683,19 +675,13 @@
           {% endif %}
         </a>
         {% endif %}
-        {% endif %}
       </div>
     </div>
 
     <!-- ── CRM group (2026-09-09 merge) — one menu for the whole contact
          record: people, companies, phone/WhatsApp numbers, notes, tags and
          activity all live on the same profile now instead of being split
-         across a separate "Contacts" menu and "Sales Pipeline" menu. The
-         deal-tracking sub-items (Pipeline Board, Tags) keep the exact same
-         visibility rule the old "Sales Pipeline" group had — still hidden on
-         Connect unless a PhiXtra admin has opted this business in (see
-         customer_toggle_crm) — everything else in the group is always shown. ── -->
-    {% set _crm_pipeline_on = not is_connect_host or connect_crm_enabled %}
+         across a separate "Contacts" menu and "Sales Pipeline" menu. ── -->
     {% set _crm_group = request.endpoint in ('portal.whatsapp_contacts', 'portal.whatsapp_contact_detail',
                                               'portal.crm_companies', 'portal.crm_company_detail',
                                               'portal.crm_merge_review',
@@ -726,7 +712,6 @@
           {% if 'crm.companies_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
-        {% if _crm_pipeline_on %}
         {% if staff_can_open('portal.report_pipeline_overview') %}
         <a href="{{ url_for('portal.report_pipeline_overview') }}"
            class="{% if request.endpoint == 'portal.report_pipeline_overview' %}active{% endif %}">
@@ -741,7 +726,6 @@
           {% if 'crm.pipeline_board_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
-        {% endif %}
         {% if staff_can_open('portal.whatsapp_segments') %}
         <a href="{{ url_for('portal.whatsapp_segments') }}"
            class="{% if request.endpoint in ('portal.whatsapp_segments','portal.whatsapp_segment_detail') %}active{% endif %}">
@@ -749,7 +733,6 @@
           {% if 'crm.segments_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
-        {% if _crm_pipeline_on %}
         {% if staff_can_open('portal.lead_labels_page') %}
         <a href="{{ url_for('portal.lead_labels_page') }}"
            class="{% if request.endpoint in ('portal.lead_labels_page', 'portal.lead_labels_import_bounces') %}active{% endif %}">
@@ -763,7 +746,6 @@
           Pipeline Settings
           {% if 'crm.pipeline_settings_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
-        {% endif %}
         {% endif %}
       </div>
     </div>
@@ -911,7 +893,6 @@
     </div>
     {% endif %}
 
-    {% if not is_connect_host %}
     <!-- ── Email Campaigns group — a separate channel from WhatsApp Campaigns, not part of PhiXtra Connect ── -->
     {% set _email_camp_group = request.endpoint in ('portal.email_campaigns',) %}
     <div class="sb-group">
@@ -940,7 +921,6 @@
         {% endif %}
       </div>
     </div>
-    {% endif %}
 
     <!-- ── WhatsApp group ── -->
     {% set _wa_group = request.endpoint in ('portal.whatsapp_connect', 'portal.whatsapp_reports', 'portal.billing_plans') or (request.endpoint == 'portal.whatsapp_templates' and _tenant_features.get('whatsapp_message_templates')) %}
@@ -960,14 +940,12 @@
           {% if 'wa.connect_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
-        {% if not is_connect_host %}
         {% if staff_can_open('portal.whatsapp_reports') %}
         <a href="{{ url_for('portal.whatsapp_reports') }}"
            class="{% if request.endpoint == 'portal.whatsapp_reports' %}active{% endif %}">
           Handoff Reports
           {% if 'wa.handoff_reports_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
-        {% endif %}
         {% endif %}
         {% if _tenant_features.get('whatsapp_message_templates') %}
         {% if staff_can_open('portal.whatsapp_templates') %}
@@ -985,7 +963,6 @@
           {% if 'wa.report' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
-        {% if not is_connect_host %}
         {% if staff_can_open('portal.billing_plans') %}
         <a href="{{ url_for('portal.billing_plans') }}"
            class="{% if request.endpoint == 'portal.billing_plans' %}active{% endif %}">
@@ -998,11 +975,9 @@
           {% endif %}
         </a>
         {% endif %}
-        {% endif %}
       </div>
     </div>
 
-    {% if not is_connect_host %}
     <!-- ── Ecommerce group — My Products, My Catalogue, and Customers (order/
          spend history) are a different thing from a plain WhatsApp contact
          list; none of this is part of PhiXtra Connect ── -->
@@ -1080,9 +1055,7 @@
         {% endif %}
       </div>
     </div>
-    {% endif %}
 
-    {% if not is_connect_host %}
     <!-- Store Information group — not part of PhiXtra Connect. Restructured
          into a submenu 2026-09-21 (was a single link) so List/Create/Modify/
          Delete each have their own real destination. -->
@@ -1110,7 +1083,6 @@
         {% endif %}
       </div>
     </div>
-    {% endif %}
 
     <!-- Team group. Restructured into a submenu 2026-09-19 (was a single
          link) so Departments/Positions/Roles/Create each have their own real
@@ -1144,7 +1116,6 @@
       </div>
     </div>
 
-    {% if not is_connect_host %}
     <!-- ── AI Assistant group — not part of PhiXtra Connect ── -->
     {% set _ai_group = request.endpoint in ('portal.api_keys', 'portal.ai_instruction', 'portal.handoff_rules', 'portal.ai_agents', 'portal.ai_agents_new', 'portal.ai_agents_edit') or (request.endpoint == 'portal.verified_specs_settings' and customer is defined and customer and customer.tenant_source_type != 'whatsapp') %}
     <div class="sb-group">
@@ -1195,7 +1166,6 @@
         {% endif %}
       </div>
     </div>
-    {% endif %}
 
     {# ── WooCommerce-only items — hidden for WhatsApp-only tenants ── #}
     {% if _has_woocommerce %}
@@ -1246,7 +1216,6 @@
          other report — including Leads Report, moved here from the Leads
          menu — is consolidated here so there's exactly one place to look
          for any report. ── -->
-    {% set _crm_pipeline_on = not is_connect_host or connect_crm_enabled %}
     {% set _rep_group = request.endpoint in ('portal.reports', 'portal.report_usage', 'portal.report_cart', 'portal.report_billing', 'portal.report_ai_performance', 'portal.report_custom_picker', 'portal.report_custom_entity', 'portal.report_leads_sources', 'portal.email_campaigns_reports', 'portal.email_campaign_report') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _rep_group %}open{% endif %}"
@@ -1257,14 +1226,12 @@
         <span class="sb-arrow">▾</span>
       </div>
       <div class="sb-sub {% if _rep_group %}open{% endif %}">
-        {% if not is_connect_host %}
         {% if staff_can_open('portal.report_usage') %}
         <a href="{{ url_for('portal.report_usage') }}"
            class="{% if request.endpoint == 'portal.report_usage' %}active{% endif %}">
           AI Usage Report
           {% if 'reports.usage' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
-        {% endif %}
         {% endif %}
         {% if staff_can_open('portal.report_leads_sources') %}
         <a href="{{ url_for('portal.report_leads_sources') }}"
@@ -1317,7 +1284,6 @@
 
     <div class="sb-divider"></div>
 
-    {% if not is_connect_host %}
     <!-- ── Billing group — Connect has no paid tier, so no billing screens at all ── -->
     {% set _bill_group = request.endpoint in ('portal.billing', 'portal.invoices', 'portal.billing_subscribe', 'portal.billing_subscribe_checkout', 'portal.payment_settings') %}
     <div class="sb-group">
@@ -1359,7 +1325,6 @@
         {% endif %}
       </div>
     </div>
-    {% endif %}
 
     <!-- Integration — every social account in one place, added 2026-09-11 (renamed from "Channels" 2026-09-22) -->
     {% if staff_can_open('portal.channels_page') %}
@@ -1379,7 +1344,6 @@
     </a>
     {% endif %}
 
-    {% if not is_connect_host %}
     <!-- Help & Tutorials -->
     {% if staff_can_open('portal.tutorials') %}
     <a class="sb-link {% if request.endpoint == 'portal.tutorials' %}active{% endif %}"
@@ -1387,7 +1351,6 @@
       <span class="sb-icon">📚</span> Help & Tutorials
       {% if 'help.tutorials' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
     </a>
-    {% endif %}
     {% endif %}
 
     <!-- Video Tutorials (available on both portal.phixtra.com and connect.phixtra.com) -->
@@ -1686,11 +1649,9 @@
     { sel: '[data-tour="nav-whatsapp"]', pos: 'right',
       title: '📱 WhatsApp',
       body:  'Connect your WhatsApp Business number, manage the agent inbox, set message templates, and view your usage report.' },
-    {% if not is_connect_host %}
     { sel: '[data-tour="nav-ai"]', pos: 'right',
       title: '🤖 AI Assistant',
       body:  'Customise your AI\'s personality and behaviour. Set handoff rules to decide when the AI steps aside for a human agent.' },
-    {% endif %}
     { sel: '[data-tour="nav-ecommerce"]', pos: 'right',
       title: '🏪 Ecommerce',
       body:  'Manage your products, view customer profiles, sync your WooCommerce store, and browse your catalogue — all feeding your AI\'s knowledge.' },
@@ -1867,40 +1828,27 @@
     { icon:'📣', title:'WhatsApp Campaigns',      desc:'Send WhatsApp broadcast messages',              url:'{{ url_for("portal.whatsapp_campaigns") }}',         tags:'broadcast blast promotions bulk send' },
     { icon:'📋', title:'WhatsApp Segment',        desc:'Saved groups of Sales Pipeline contacts for WhatsApp Campaign', url:'{{ url_for("portal.whatsapp_campaign_segments_page") }}', tags:'segment audience group whatsapp campaign' },
     { icon:'📊', title:'Campaign Reports',       desc:'See how your campaigns performed',              url:'{{ url_for("portal.whatsapp_campaigns_reports") }}', tags:'campaign analytics results' },
-    {% if not is_connect_host %}
     { icon:'✅', title:'Needs Review',           desc:'Interested campaign replies awaiting approval', url:'{{ url_for("portal.whatsapp_campaign_reviews") }}', tags:'campaign intelligence interested opportunity approve reject automation' },
-    {% endif %}
     { icon:'👥', title:'Contacts',               desc:'View and manage all your customers',            url:'{{ url_for("portal.whatsapp_contacts") }}',          tags:'customers phone numbers contacts list' },
     { icon:'🔥', title:'Leads',                  desc:'Customers with strong buying intent',           url:'{{ url_for("portal.leads_page") }}',                 tags:'hot warm cold intent prospects' },
-    {% if not is_connect_host or connect_crm_enabled %}
     { icon:'🧭', title:'Sales Pipeline',         desc:'Track your own customers and deals by stage',  url:'{{ url_for("portal.sales_pipeline") }}',             tags:'crm pipeline deals stages sales customers negotiate' },
     { icon:'🏷️', title:'Labels',                 desc:'Label Contacts and deals (Bounced, VIP…)',  url:'{{ url_for("portal.lead_labels_page") }}',           tags:'tags labels status bounced vip' },
     { icon:'⚙️', title:'Pipeline Settings',       desc:'Rename your pipeline stages and Lead Score labels', url:'{{ url_for("portal.sales_pipeline_settings") }}', tags:'settings stage names score hot warm cold rename' },
     { icon:'🎯', title:'How Lead Scoring Works',  desc:'What makes a Lead Hot, Warm, or Cold, explained',  url:'{{ url_for("portal.lead_scoring_explainer") }}', tags:'hot warm cold score points explainer signals' },
-    {% endif %}
     {% if _portal_customer and _portal_customer.tenant_id == 19 %}
     { icon:'📟', title:'Sent SMS',                desc:'History of every SMS batch sent',               url:'{{ url_for("portal.sms_campaigns") }}',              tags:'sms text message history resend delete extract numbers' },
     { icon:'✏️', title:'Compose and Send SMS',    desc:'Write and send a new bulk SMS',                 url:'{{ url_for("portal.sms_campaigns", view="compose") }}', tags:'sms text message compose send bulk campaign' },
     { icon:'📋', title:'SMS Segments',            desc:'Saved groups of Sales Pipeline contacts for SMS', url:'{{ url_for("portal.sms_campaigns", view="segments") }}', tags:'sms segment audience group campaign' },
     {% endif %}
-    {% if not is_connect_host %}
     { icon:'✉️', title:'Email Campaigns',        desc:'Compose and send bulk email to your contacts', url:'{{ url_for("portal.email_campaigns") }}',            tags:'email campaign newsletter bulk send marketing zeptomail' },
     { icon:'📊', title:'Email Campaign Reports', desc:'See how your email campaigns performed',       url:'{{ url_for("portal.email_campaigns_reports") }}',    tags:'email campaign analytics results delivery' },
     { icon:'🧾', title:'Orders',                 desc:'View all orders and purchase history',          url:'{{ url_for("portal.orders") }}',                     tags:'sales purchases transactions history' },
-    {% endif %}
     { icon:'📱', title:'WhatsApp Connect',       desc:'Connect or manage your WhatsApp number',       url:'{{ url_for("portal.whatsapp_connect") }}',           tags:'connect phone qr code number link setup' },
-    {% if not is_connect_host %}
     { icon:'📊', title:'Handoff Reports',        desc:'Response times, missed handoffs, performance',  url:'{{ url_for("portal.whatsapp_reports") }}',           tags:'handoff response time missed reports analytics' },
-    {% endif %}
     { icon:'📈', title:'WhatsApp Report',        desc:'Usage stats for your WhatsApp channel',        url:'{{ url_for("portal.reports_page") }}',               tags:'usage stats messages sent received analytics' },
-    {% if not is_connect_host %}
     { icon:'📋', title:'Plan',                   desc:'View or upgrade your plan',                    url:'{{ url_for("portal.billing_plans") }}',              tags:'plan upgrade subscription quota limit whatsapp' },
-    {% endif %}
-    {% if not is_connect_host %}
     { icon:'🏪', title:'My Products',            desc:'Add, edit and manage your products',           url:'{{ url_for("portal.products") }}',                   tags:'products inventory catalogue stock add edit' },
     { icon:'👤', title:'My Customers',           desc:'View your customer list and profiles',         url:'{{ url_for("portal.customers") }}',                  tags:'customers buyers profiles crm list' },
-    {% endif %}
-    {% if not is_connect_host %}
     { icon:'💰', title:'Discount Settings',      desc:'Set WhatsApp discount offers',                 url:'{{ url_for("portal.wa_discount_settings") }}',       tags:'discount promo offer coupon price sale' },
     { icon:'🗂️', title:'Product Import',          desc:'Import your product catalogue from Google Sheets or a spreadsheet file',    url:'{{ url_for("portal.data_sources") }}',               tags:'upload files csv excel spreadsheet google sheets product import catalogue' },
     { icon:'🏬', title:'Store Information',      desc:'Update your business name and details',        url:'{{ url_for("portal.store_info") }}',                 tags:'business name address details profile store info list' },
@@ -1908,23 +1856,16 @@
     { icon:'✏️', title:'Modify Store Information', desc:'Edit or rename a Store Information entry',   url:'{{ url_for("portal.store_info_modify") }}',          tags:'business store info edit modify rename' },
     { icon:'🗑️', title:'Delete Store Information', desc:'Remove a custom Store Information entry',    url:'{{ url_for("portal.store_info_delete") }}',          tags:'business store info delete remove' },
     { icon:'💳', title:'Payment Gateways',       desc:'Connect Stripe or Paystack',                   url:'{{ url_for("portal.payment_settings") }}',           tags:'payment gateway stripe paystack checkout' },
-    {% endif %}
-    {% if not is_connect_host %}
     { icon:'🔑', title:'API Keys',               desc:'Manage your AI integration keys',              url:'{{ url_for("portal.api_keys") }}',                   tags:'api keys developer integration access token' },
     { icon:'🤖', title:'AI System Instruction',  desc:'Customise your AI assistant personality',      url:'{{ url_for("portal.ai_instruction") }}',             tags:'ai bot personality system prompt instruction custom behaviour' },
     { icon:'🔀', title:'Handoff Rules',          desc:'When the AI should pass to a human agent',    url:'{{ url_for("portal.handoff_rules") }}',              tags:'handoff rules human agent escalate transfer live' },
     {% if customer is defined and customer and customer.tenant_source_type != 'whatsapp' %}
     { icon:'✅', title:'Verified Specs',         desc:'Product specs the AI can confirm accurately',  url:'{{ url_for("portal.verified_specs_settings") }}',    tags:'verified specs product guarantee confirm accuracy' },
     {% endif %}
-    {% endif %}
-    {% if not is_connect_host %}
     { icon:'📋', title:'Subscription Plans',     desc:'View and manage your subscription',            url:'{{ url_for("portal.billing_subscribe") }}',          tags:'subscription plan monthly upgrade downgrade' },
     { icon:'💳', title:'Buy AI Credit',          desc:'Top up your AI credit balance',               url:'{{ url_for("portal.billing") }}',                    tags:'credits buy top up balance tokens recharge ai designs' },
     { icon:'🧾', title:'Invoices',               desc:'Download your billing receipts',               url:'{{ url_for("portal.invoices") }}',                   tags:'invoice receipt billing history download pdf payment' },
-    {% endif %}
-    {% if not is_connect_host %}
     { icon:'📚', title:'Help & Tutorials',       desc:'Guides to get the most from PhiXtra',         url:'{{ url_for("portal.tutorials") }}',                  tags:'help guide tutorial support how to faq learn' },
-    {% endif %}
     { icon:'🎬', title:'Video Tutorials',        desc:'Watch short walkthroughs of key features',    url:'{{ url_for("portal.video_tutorials") }}',            tags:'video tutorial watch walkthrough demo guide' },
     { icon:'⚙️', title:'Account Settings',       desc:'Update profile, password and preferences',    url:'{{ url_for("portal.settings") }}',                   tags:'settings account profile password email notification preferences' },
     {% if _has_woocommerce %}
@@ -1933,9 +1874,7 @@
     { icon:'🛒', title:'Cart Recovery',          desc:'Recover abandoned shopping carts',             url:'{{ url_for("portal.cart_recovery_dashboard") }}',    tags:'abandoned cart recovery settings whatsapp' },
     { icon:'✉️', title:'Cart Email Templates',   desc:'Email messages sent for cart recovery',       url:'{{ url_for("portal.cart_recovery_email_template") }}',tags:'email template cart recovery message' },
     { icon:'📈', title:'Analytics',              desc:'Sales and performance analytics',              url:'{{ url_for("portal.analytics") }}',                  tags:'analytics performance charts graphs data sales' },
-    {% if not is_connect_host %}
     { icon:'📊', title:'AI Usage Report',        desc:'How many AI credits you have used',           url:'{{ url_for("portal.report_usage") }}',               tags:'usage report ai tokens credits consumption' },
-    {% endif %}
     { icon:'🛒', title:'Cart Recovery Report',   desc:'How many carts were recovered',               url:'{{ url_for("portal.report_cart") }}',                tags:'cart recovery report results conversions' },
     { icon:'💰', title:'Billing Summary',        desc:'Revenue and billing history report',           url:'{{ url_for("portal.report_billing") }}',             tags:'billing summary revenue report' },
     { icon:'💬', title:'Chat Archive',           desc:'Browse all past AI conversations',             url:'{{ url_for("portal.chat_archive") }}',               tags:'chat archive history past conversations log' },

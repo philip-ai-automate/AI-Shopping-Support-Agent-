@@ -22,14 +22,13 @@ from db import insert_audit_log
 from feature_access import team_feature
 from portal_routes import (_require_login, _customer_id, _get_customer, _require_plan_sub_feature,
                            _require_team_permission, _team_member_has_permission, _current_actor,
-                           _inject_granted_features, _inject_connect_flag)
+                           _inject_granted_features)
 import ai_designer as D
 import ai_design_render as R
 import buffer_accounts as ba
 
 social_bp = Blueprint("social", __name__)
 social_bp.context_processor(_inject_granted_features)
-social_bp.context_processor(_inject_connect_flag)
 ai_admin_bp = Blueprint("ai_admin", __name__, url_prefix="/admin/social-media")
 
 PLAN_KEY = "social.posts_view"

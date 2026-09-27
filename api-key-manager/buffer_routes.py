@@ -36,7 +36,7 @@ from db import get_db_connection, insert_audit_log
 from feature_access import team_feature, public_route
 from portal_routes import (_require_login, _customer_id, _get_customer, _require_plan_sub_feature,
                            _require_team_permission, _team_member_has_permission, _current_actor,
-                           _inject_granted_features, _inject_connect_flag)
+                           _inject_granted_features)
 import buffer_accounts as ba
 import social_workflow as W
 from buffer_client import BufferAPIError, buffer_create_post, buffer_get_post, buffer_delete_post
@@ -45,7 +45,6 @@ buffer_bp = Blueprint("buffer", __name__)
 # The side menu's padlocks read these; they're registered on portal_bp only,
 # so pages on this blueprint need them too or every menu item shows locked.
 buffer_bp.context_processor(_inject_granted_features)
-buffer_bp.context_processor(_inject_connect_flag)
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "static", "uploads", "tenant_social_posts")
 ALLOWED_EXTS = {"jpg", "jpeg", "png", "webp", "gif"}

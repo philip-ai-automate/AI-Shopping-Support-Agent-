@@ -19,7 +19,7 @@ previous run first, by campaign name):
   - The matching Sales Pipeline deals for the opportunity/converted contacts
   - 2 pending rows in the Needs Review queue, ready to Approve/Reject
 
-Works on both portal.phixtra.com and connect.phixtra.com — same login
+Works on portal.phixtra.com
 (demo@phixtra.com / Demo1234!), same tenant/database, see
 project_phixtra_connect_design memory.
 """
@@ -178,7 +178,7 @@ print("=" * 60)
 print("✅  Campaign Intelligence demo data added!")
 print("=" * 60)
 print(f"   Login    : demo@phixtra.com / Demo1234!")
-print(f"   Works on : https://portal.phixtra.com and https://connect.phixtra.com")
+print(f"   Works on : https://portal.phixtra.com")
 print(f"   Campaign : {CAMPAIGN_NAME}")
 print(f"   See it at: WhatsApp Campaigns → Reports → {CAMPAIGN_NAME}")
 print(f"   Review at: WhatsApp Campaigns → Needs Review (2 pending items)")

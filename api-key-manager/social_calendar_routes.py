@@ -27,7 +27,7 @@ from flask import Blueprint, request, render_template, redirect, url_for, flash,
 from db import get_db_connection, insert_audit_log
 from feature_access import team_feature
 from portal_routes import (_require_login, _require_team_permission, _team_member_has_permission,
-                           _current_actor, _inject_granted_features, _inject_connect_flag)
+                           _current_actor, _inject_granted_features)
 import buffer_accounts as ba
 import social_workflow as W
 import social_analytics as SA
@@ -36,7 +36,6 @@ from buffer_routes import _gate, _owner, _get_post, _send_to_buffer, _validate, 
 
 socialcal_bp = Blueprint("socialcal", __name__)
 socialcal_bp.context_processor(_inject_granted_features)
-socialcal_bp.context_processor(_inject_connect_flag)
 
 
 def _ctx():

@@ -124,11 +124,9 @@
     <a class="s-tab" href="#notifications" onclick="return switchTab('notifications',this)">
       <span class="tab-icon">🔔</span> Notifications
     </a>
-    {% if not is_connect_host %}
     <a class="s-tab" href="#plan"          onclick="return switchTab('plan',this)">
       <span class="tab-icon">📦</span> My Plan
     </a>
-    {% endif %}
     <a class="s-tab" href="#business"      onclick="return switchTab('business',this)">
       <span class="tab-icon">🏢</span> Business Info
     </a>
@@ -348,7 +346,6 @@
       </form>
     </div>
 
-    {% if not is_connect_host %}
     <!-- MY PLAN -->
     <div class="s-panel card" id="panel-plan">
       <h2 class="section-heading">My Plan</h2>
@@ -477,7 +474,6 @@
         </div>
       {% endif %}
     </div>
-    {% endif %}
 
     <!-- BUSINESS INFORMATION — Stage 10 -->
     <div class="s-panel card" id="panel-business">
