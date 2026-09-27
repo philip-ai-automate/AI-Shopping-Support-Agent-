@@ -57,7 +57,7 @@
   <div>
     <div class="si-label">{{ s.title }}{% if not s.has_content %}<span class="si-empty-tag">not filled in</span>{% endif %}</div>
     <div class="si-hint">{{ s.hint }}</div>
-    {% if s.updated_at %}<div class="si-meta">Last updated {{ s.updated_at.strftime('%d %b %Y, %H:%M') }}{% if s.updated_by %} by {{ s.updated_by.split(':')[-1] }}{% endif %}</div>{% endif %}
+    {% if s.updated_at %}<div class="si-meta">Last updated {{ s.updated_at.strftime('%d %b %Y, %H:%M') }}{% if s.updated_by %} by {{ s.updated_by|changed_by }}{% endif %}</div>{% endif %}
   </div>
 </div>
 {% endfor %}
@@ -67,20 +67,28 @@
   <div>
     <div class="si-label">{{ e.title }}</div>
     <div class="si-hint">{{ (e.content or '')[:120] }}{% if (e.content or '')|length > 120 %}…{% endif %}</div>
-    {% if e.updated_at %}<div class="si-meta">Last updated {{ e.updated_at.strftime('%d %b %Y, %H:%M') }}{% if e.updated_by %} by {{ e.updated_by.split(':')[-1] }}{% endif %}</div>{% endif %}
+    {% if e.updated_at %}<div class="si-meta">Last updated {{ e.updated_at.strftime('%d %b %Y, %H:%M') }}{% if e.updated_by %} by {{ e.updated_by|changed_by }}{% endif %}</div>{% endif %}
   </div>
+  {% if staff_can_open('portal.store_info_delete') %}
   <a href="{{ url_for('portal.store_info_delete') }}" class="btn btn-sm" style="color:var(--bad,#b02020);border-color:rgba(240,68,56,.3)">🗑 Delete</a>
+  {% endif %}
 </div>
 {% endfor %}
 {% if not custom_entries %}
-<div style="font-size:12px;color:var(--muted);padding:4px 4px 0">No custom entries yet — use <strong>+ Create</strong> above to add your own.</div>
+<div style="font-size:12px;color:var(--muted);padding:4px 4px 0">No custom entries yet{% if staff_can_open('portal.store_info_create') %} — use <strong>+ Create</strong> above to add your own{% endif %}.</div>
 {% endif %}
 
 {# ── Upload a document ── #}
 <div class="upload-box">
+  {% if staff_can('store.info_documents_upload') %}
   <div class="upload-box-title">📎 Upload a Document</div>
   <div class="upload-box-sub">Upload a PDF, Word (.docx), plain text, CSV, JSON, or XML file. The AI will read and index the content automatically within 5 minutes.</div>
+  {% else %}
+  <div class="upload-box-title">📎 Documents</div>
+  {% if not uploaded_docs %}<div class="upload-box-sub">No documents uploaded yet.</div>{% endif %}
+  {% endif %}
 
+  {% if staff_can('store.info_documents_upload') %}
   <form method="POST" enctype="multipart/form-data">
     <input type="hidden" name="action" value="upload_doc"/>
     <div class="upload-row">
@@ -97,6 +105,7 @@
       </div>
     </div>
   </form>
+  {% endif %}
 
   {% if uploaded_docs %}
   <div class="doc-list">
@@ -107,11 +116,13 @@
         <div class="doc-row-title">{{ doc.title }}</div>
         <div class="doc-row-meta">{{ (doc.content or '')|length }} characters extracted &nbsp;·&nbsp; <span class="embed-badge">✓ indexed</span></div>
       </div>
+      {% if staff_can('store.info_documents_delete') %}
       <form method="POST" style="margin:0" onsubmit="return confirm('Delete this document?')">
         <input type="hidden" name="action" value="delete_doc"/>
         <input type="hidden" name="doc_id" value="{{ doc.id }}"/>
         <button type="submit" class="btn btn-sm" style="color:var(--bad,#b02020);border-color:rgba(240,68,56,.3)">Delete</button>
       </form>
+      {% endif %}
     </div>
     {% endfor %}
   </div>

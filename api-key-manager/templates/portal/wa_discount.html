@@ -125,6 +125,12 @@
   <p>Customers trigger discounts by replying <strong>DISCOUNT</strong> during the ordering flow.</p>
 </div>
 
+{% set _can_disc = staff_can_open('portal.wa_discount_product_save') %}
+{% if not _can_disc %}
+<div class="how-box" style="background:#f8fafc">
+  <p style="margin:0">🔒 Your role can view these discount settings but not change them.</p>
+</div>
+{% endif %}
 <!-- ── Section 1: Discount Mode ─────────────────────────────────── -->
 <div class="ds-section">
   <div class="ds-section-head">
@@ -135,11 +141,11 @@
     </div>
   </div>
 
-  <form method="POST" action="{{ url_for('portal.wa_discount_settings') }}">
+  <form method="POST" action="{{ url_for('portal.wa_discount_settings') }}"><fieldset {% if not _can_disc %}disabled{% endif %} style="border:0;padding:0;margin:0;min-width:0">
     <input type="hidden" name="form_type" value="mode">
     <div class="mode-grid">
       <label class="mode-card {% if settings.discount_mode == 'merchant_only' %}selected{% endif %}"
-             onclick="selectMode(this)">
+             {% if _can_disc %}onclick="selectMode(this)"{% endif %}>
         <input type="radio" name="discount_mode" value="merchant_only"
                {% if settings.discount_mode == 'merchant_only' %}checked{% endif %}>
         <div class="mode-check">✓</div>
@@ -148,7 +154,7 @@
         <div class="mode-card-desc">All discount requests go straight to you. AI never negotiates.</div>
       </label>
       <label class="mode-card {% if settings.discount_mode == 'ai_then_merchant' %}selected{% endif %}"
-             onclick="selectMode(this)">
+             {% if _can_disc %}onclick="selectMode(this)"{% endif %}>
         <input type="radio" name="discount_mode" value="ai_then_merchant"
                {% if settings.discount_mode == 'ai_then_merchant' %}checked{% endif %}>
         <div class="mode-check">✓</div>
@@ -157,8 +163,8 @@
         <div class="mode-card-desc">AI offers your set discount first. Pushback → you're brought in.</div>
       </label>
     </div>
-    <button type="submit" class="btn-primary">Save Mode</button>
-  </form>
+    {% if _can_disc %}<button type="submit" class="btn-primary">Save Mode</button>{% endif %}
+  </fieldset></form>
 </div>
 
 <!-- ── Section 2: Default Discount ──────────────────────────────── -->
@@ -172,7 +178,7 @@
   </div>
 
   <div class="card">
-    <form method="POST" action="{{ url_for('portal.wa_discount_settings') }}">
+    <form method="POST" action="{{ url_for('portal.wa_discount_settings') }}"><fieldset {% if not _can_disc %}disabled{% endif %} style="border:0;padding:0;margin:0;min-width:0">
       <input type="hidden" name="form_type" value="default">
       <div class="field-row">
         <div class="field-group">
@@ -198,8 +204,8 @@
           {% endif %}
         </div>
       </div>
-      <button type="submit" class="btn-primary">Save Default Discount</button>
-    </form>
+      {% if _can_disc %}<button type="submit" class="btn-primary">Save Default Discount</button>{% endif %}
+    </fieldset></form>
     <p class="hint">Set to 0 to disable AI auto-discounts. The AI will then always escalate to you when a customer asks.</p>
   </div>
 </div>
@@ -256,7 +262,7 @@
           <td>
             <form method="POST"
                   action="{{ url_for('portal.wa_discount_product_save', product_id=p.product_id) }}"
-                  id="pf-{{ loop.index }}">
+                  id="pf-{{ loop.index }}"><fieldset {% if not _can_disc %}disabled{% endif %} style="border:0;padding:0;margin:0;min-width:0">
               <select name="discount_type" class="disc-select">
                 <option value="percent" {% if p.discount_type == 'percent' %}selected{% endif %}>% Percent</option>
                 <option value="flat"    {% if p.discount_type == 'flat'    %}selected{% endif %}>₦ Flat</option>
@@ -269,8 +275,8 @@
               <input type="hidden" name="product_name" value="{{ p.name }}">
           </td>
           <td>
-              <button type="submit" class="btn-primary btn-sm">Save</button>
-            </form>
+              {% if _can_disc %}<button type="submit" class="btn-primary btn-sm">Save</button>{% endif %}
+            </fieldset></form>
           </td>
         </tr>
         {% endfor %}

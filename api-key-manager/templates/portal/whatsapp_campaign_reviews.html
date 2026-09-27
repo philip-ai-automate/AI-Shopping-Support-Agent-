@@ -49,13 +49,14 @@
     <h1>Needs Review</h1>
     <p>Every campaign reply is flagged automatically. When a reply looks Interested, it lands here for a team member to approve into a real Sales Pipeline opportunity, or reject to leave it as just an Interested reply.</p>
   </div>
-  <form method="POST" action="{{ url_for('portal.whatsapp_campaign_automation_settings') }}" class="auto-toggle" onchange="this.submit()">
+  {% set _can_auto = staff_can_open('portal.whatsapp_campaign_automation_settings') %}
+  <form method="POST" action="{{ url_for('portal.whatsapp_campaign_automation_settings') }}" class="auto-toggle" {% if _can_auto %}onchange="this.submit()"{% else %}title="Your role can view this setting but not change it."{% endif %}>
     <div>
       <div class="auto-toggle-label">Auto-create opportunities</div>
       <div class="auto-toggle-sub">{{ "On — Interested replies create a deal instantly" if auto_actions else "Off — Interested replies wait here for approval" }}</div>
     </div>
     <label class="switch">
-      <input type="checkbox" name="auto_actions" {{ "checked" if auto_actions }}>
+      <input type="checkbox" name="auto_actions" {{ "checked" if auto_actions }}{% if not _can_auto %} disabled{% endif %}>
       <span class="switch-slider"></span>
     </label>
   </form>
@@ -79,6 +80,7 @@
     <div class="rv-reply">“{{ rv.reply_text }}”</div>
     {% endif %}
   </div>
+  {% if staff_can_open('portal.whatsapp_campaign_review_approve') %}
   <div class="rv-actions">
     <form method="POST" action="{{ url_for('portal.whatsapp_campaign_review_approve', review_id=rv.id) }}">
       <button type="submit" class="btn-confirm">Approve — Create Opportunity</button>
@@ -87,6 +89,7 @@
       <button type="submit" class="btn-reject">Reject</button>
     </form>
   </div>
+  {% endif %}
 </div>
 {% endfor %}
 {% endif %}

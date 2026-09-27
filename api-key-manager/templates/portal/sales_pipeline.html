@@ -1,6 +1,13 @@
 {% extends "portal/base.html" %}
 {% block title %}Sales Pipeline — PhiXtra Portal{% endblock %}
 {% block content %}
+{# Role-aware buttons — same route labels the save routes enforce. #}
+{% set can_edit_deal = staff_can_open('portal.sales_pipeline_edit') %}
+{% set can_bulk_email_seg = staff_can_open('portal.email_segments_bulk_add_members') %}
+{% set can_bulk_wa_seg    = staff_can_open('portal.whatsapp_pipeline_segments_bulk_add_members') %}
+{% set can_bulk_sms_seg   = staff_can_open('portal.sms_pipeline_segments_bulk_add_members') %}
+{% set can_bulk_label     = staff_can_open('portal.lead_labels_bulk_add_members') %}
+{% set can_bulk_any = can_edit_deal or can_bulk_email_seg or can_bulk_wa_seg or can_bulk_sms_seg or can_bulk_label %}
 
 <style>
   .sp-hero { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; margin-bottom:22px }
@@ -297,10 +304,12 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
       Take a Tour
     </button>
+    {% if staff_can('leads.create') %}
     <a class="btn btn-primary" data-sptour="add-deal-btn" href="{{ url_for('portal.leads_page') }}" style="text-decoration:none">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
       Add Lead
     </a>
+    {% endif %}
   </div>
 </div>
 
@@ -611,8 +620,10 @@
       </label>
       {% endif %}
     </div>
+    {% if staff_can_open('portal.sales_pipeline_export') %}
     <a href="{{ url_for('portal.sales_pipeline_export', stage=stage_filter, q=search, **filter_args) }}"
        class="btn" style="text-decoration:none">⬇️ Export CSV</a>
+    {% endif %}
     {% if customer.tenant_id == 19 %}
     <a href="{{ url_for('portal.sms_campaigns') }}" class="btn btn-primary" style="text-decoration:none">📟 SMS</a>
     {% endif %}
@@ -628,13 +639,13 @@
 {% if view_mode == 'list' %}
 <div class="bulk-action-bar" id="bulkActionBar" style="display:none">
   <span><strong id="bulkSelectedCount">0</strong> selected</span>
-  <button type="button" class="btn btn-sm btn-primary" onclick="openBulkAdvanceModal()">➡️ Move Stage</button>
-  <button type="button" class="btn btn-sm btn-primary" onclick="openBulkSegmentModal()">📋 Add to Email Segment</button>
-  <button type="button" class="btn btn-sm btn-primary" onclick="openBulkWaSegmentModal()">📱 Add to WhatsApp Segment</button>
-  {% if is_phixtra_support_account %}
+  {% if can_edit_deal %}<button type="button" class="btn btn-sm btn-primary" onclick="openBulkAdvanceModal()">➡️ Move Stage</button>{% endif %}
+  {% if can_bulk_email_seg %}<button type="button" class="btn btn-sm btn-primary" onclick="openBulkSegmentModal()">📋 Add to Email Segment</button>{% endif %}
+  {% if can_bulk_wa_seg %}<button type="button" class="btn btn-sm btn-primary" onclick="openBulkWaSegmentModal()">📱 Add to WhatsApp Segment</button>{% endif %}
+  {% if is_phixtra_support_account and can_bulk_sms_seg %}
   <button type="button" class="btn btn-sm btn-primary" onclick="openBulkSmsSegmentModal()">📟 Add to SMS Segment</button>
   {% endif %}
-  <button type="button" class="btn btn-sm btn-primary" onclick="openBulkLabelModal()">🏷️ Add to Label</button>
+  {% if can_bulk_label %}<button type="button" class="btn btn-sm btn-primary" onclick="openBulkLabelModal()">🏷️ Add to Label</button>{% endif %}
   <button type="button" class="btn btn-sm" onclick="clearLeadSelection()">Clear</button>
 </div>
 
@@ -644,7 +655,7 @@
     <table>
       <thead>
         <tr>
-          <th style="width:34px"><input type="checkbox" id="selectAllLeadsCb" onchange="toggleSelectAllLeads(this)"></th>
+          <th style="width:34px">{% if can_bulk_any %}<input type="checkbox" id="selectAllLeadsCb" onchange="toggleSelectAllLeads(this)">{% endif %}</th>
           <th>Customer</th>
           <th data-col="segment" class="col-hidden">Email Segment</th>
           <th data-col="wa_segment" class="col-hidden">WhatsApp Segment</th>
@@ -677,7 +688,7 @@
         {% endif %}
         {% for l in leads %}
         <tr class="lead-row" data-stage="{{ l.stage }}" data-lead-id="{{ l.id }}">
-          <td><input type="checkbox" class="lead-select-cb" onchange="updateBulkBar()"></td>
+          <td>{% if can_bulk_any %}<input type="checkbox" class="lead-select-cb" onchange="updateBulkBar()">{% endif %}</td>
           <td>
             <div class="cust-cell">
               <span class="cust-avatar" style="background:{{ cust_color(l.customer_name) }}">{{ cust_initials(l.customer_name) }}</span>
@@ -750,19 +761,19 @@
                   Open Lead Page
                 </a>
                 <div class="row-action-divider"></div>
-                {% if target %}
+                {% if target and can_edit_deal %}
                 <button type="button" class="row-action-item primary"
                         onclick='closeAllRowMenus(); openAdvanceModal({{ l.id }}, "{{ l.customer_name|e }}", "{{ target }}", {{ (l.deal_value or "null") }})'>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
                   Move to {{ stage_labels[target] }}
                 </button>
                 {% endif %}
-                <button type="button" class="row-action-item" {% if loop.first %}data-sptour="edit-btn"{% endif %}
+{% if can_edit_deal %}                <button type="button" class="row-action-item" {% if loop.first %}data-sptour="edit-btn"{% endif %}
                         onclick='closeAllRowMenus(); openEditModal({{ l.id }}, {{ (l.customer_name or "")|tojson }}, {{ (l.contact_person or "")|tojson }}, {{ (l.phone or "")|tojson }}, {{ (l.email or "")|tojson }}, {{ (l.deal_value if l.deal_value is not none else "")|tojson }}, {{ (l.notes or "")|tojson }}, {{ (l.whatsapp_number or "")|tojson }}, {{ (l.product_interest or "")|tojson }}, {{ l.budget_confirmed|tojson }}, {{ l.decision_maker_engaged|tojson }}, {{ (l.deadline_date.strftime('%Y-%m-%d') if l.deadline_date else "")|tojson }})'>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                   Edit Deal
-                </button>
-                {% if is_phixtra_support_account %}
+                </button>{% endif %}
+                {% if is_phixtra_support_account and can_edit_deal %}
                 <button type="button" class="row-action-item"
                         onclick='closeAllRowMenus(); openAssignAmbassadorModal({{ l.id }}, {{ (l.customer_name or "")|tojson }}, {{ l.assigned_ambassador_id or "null" }})'>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.5-6 8-6s8 2 8 6"/></svg>
@@ -773,7 +784,7 @@
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
                   View History
                 </button>
-                <div class="row-action-divider"></div>
+                {% if can_edit_deal %}<div class="row-action-divider"></div>
                 <button type="button" class="row-action-item danger" {% if loop.first %}data-sptour="drop-btn"{% endif %} onclick="closeAllRowMenus(); openDropModal({{ l.id }}, '{{ l.customer_name|e }}', 'lost')">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
                   Mark as Lost
@@ -781,7 +792,7 @@
                 <button type="button" class="row-action-item danger" onclick="closeAllRowMenus(); openDropModal({{ l.id }}, '{{ l.customer_name|e }}', 'dropped')">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
                   Mark as Dropped
-                </button>
+                </button>{% endif %}
               </div>
             </div>
           </td>
@@ -920,19 +931,19 @@
               </a>
               <div class="row-action-divider"></div>
               {% set target = next_stage(l.stage) %}
-              {% if target %}
+              {% if target and can_edit_deal %}
               <button type="button" class="row-action-item primary"
                       onclick='closeAllRowMenus(); openAdvanceModal({{ l.id }}, "{{ l.customer_name|e }}", "{{ target }}", {{ (l.deal_value or "null") }})'>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
                 Move to {{ stage_labels[target] }}
               </button>
               {% endif %}
-              <button type="button" class="row-action-item"
+{% if can_edit_deal %}              <button type="button" class="row-action-item"
                       onclick='closeAllRowMenus(); openEditModal({{ l.id }}, {{ (l.customer_name or "")|tojson }}, {{ (l.contact_person or "")|tojson }}, {{ (l.phone or "")|tojson }}, {{ (l.email or "")|tojson }}, {{ (l.deal_value if l.deal_value is not none else "")|tojson }}, {{ (l.notes or "")|tojson }}, {{ (l.whatsapp_number or "")|tojson }}, {{ (l.product_interest or "")|tojson }}, {{ l.budget_confirmed|tojson }}, {{ l.decision_maker_engaged|tojson }}, {{ (l.deadline_date.strftime('%Y-%m-%d') if l.deadline_date else "")|tojson }})'>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                 Edit Deal
-              </button>
-              {% if is_phixtra_support_account %}
+              </button>{% endif %}
+              {% if is_phixtra_support_account and can_edit_deal %}
               <button type="button" class="row-action-item"
                       onclick='closeAllRowMenus(); openAssignAmbassadorModal({{ l.id }}, {{ (l.customer_name or "")|tojson }}, {{ l.assigned_ambassador_id or "null" }})'>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.5-6 8-6s8 2 8 6"/></svg>
@@ -943,7 +954,7 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
                 View History
               </button>
-              <div class="row-action-divider"></div>
+              {% if can_edit_deal %}<div class="row-action-divider"></div>
               <button type="button" class="row-action-item danger" onclick="closeAllRowMenus(); openDropModal({{ l.id }}, '{{ l.customer_name|e }}', 'lost')">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
                 Mark as Lost
@@ -951,7 +962,7 @@
               <button type="button" class="row-action-item danger" onclick="closeAllRowMenus(); openDropModal({{ l.id }}, '{{ l.customer_name|e }}', 'dropped')">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
                 Mark as Dropped
-              </button>
+              </button>{% endif %}
             </div>
           </div>
         </div>

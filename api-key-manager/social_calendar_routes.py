@@ -26,7 +26,7 @@ from flask import Blueprint, request, render_template, redirect, url_for, flash,
 
 from db import get_db_connection, insert_audit_log
 from feature_access import team_feature
-from portal_routes import (_require_login, _require_team_permission, _team_member_has_permission,
+from portal_routes import (display_actor, _require_login, _require_team_permission, _team_member_has_permission,
                            _current_actor, _inject_granted_features)
 import buffer_accounts as ba
 import social_workflow as W
@@ -68,7 +68,8 @@ def _card(p, chans: dict, today=None) -> dict:
         "key": k,
         "label": W.DISPLAY[k][0],
         "when": d.isoformat() if d else None,
-        "by": p.get("submitted_by") or p.get("created_by") or "",
+        "by": (display_actor(p.get("submitted_by"), p.get("submitted_by_key")) if p.get("submitted_by")
+               else display_actor(p.get("created_by"))) or "",
         "services": [chans[c]["service"] for c in (p.get("channel_ids") or []) if c in chans],
         "has_image": bool(p.get("image_filename")),
     }
@@ -690,7 +691,7 @@ def request_changes(post_id: int):
     W.log_event(tenant_id, post_id, "changes", actor, note)
     insert_audit_log(action="social_post_changes_requested", tenant_id=tenant_id, details={"post_id": post_id, "by": actor})
     W.notify_submitter(customer, p, "changes", actor, note=note)
-    flash(f"Sent back to {p.get('submitted_by') or 'the writer'} with your comments.", "success")
+    flash(f"Sent back to {display_actor(p.get('submitted_by'), p.get('submitted_by_key')) or 'the writer'} with your comments.", "success")
     return redirect(back)
 
 

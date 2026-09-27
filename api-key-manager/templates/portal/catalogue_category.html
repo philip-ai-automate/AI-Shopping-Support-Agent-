@@ -109,6 +109,7 @@
     </div>
     {% endif %}
 
+    {% if staff_can_open('portal.catalogue_toggle') %}
     <div class="toggle-btn">
       <button class="{% if is_sel %}btn-remove{% else %}btn-add{% endif %}"
               data-product-id="{{ p.id }}"
@@ -118,6 +119,9 @@
         {% if is_sel %}✓ In My Store{% else %}+ Add to Store{% endif %}
       </button>
     </div>
+    {% elif is_sel %}
+    <div class="toggle-btn"><span class="muted" style="font-size:12px;font-weight:600">✓ In My Store</span></div>
+    {% endif %}
   </div>
   {% endfor %}
 </div>

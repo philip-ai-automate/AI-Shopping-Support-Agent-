@@ -94,7 +94,7 @@
           {% endfor %}
         </select>
       </div>
-      {% if show_agent_picker %}
+      {% if show_agent_picker and staff_can_open('portal.team_update_agents') %}
       <div class="agent-picker" style="margin-top:0;padding-top:0;border-top:none">
         <div class="agent-picker-label">Which AI Agent(s) can they see? (leave blank and they'll see nothing until you assign one)</div>
         <div class="agent-picker-list">
@@ -106,6 +106,7 @@
       {% endif %}
     </div>
 
+    {% if staff_can_open('portal.team_update_alerts') %}
     <div class="card" style="margin-bottom:16px">
       <p class="card-title">🔔 Chat alerts</p>
       <p class="muted" style="font-size:13px;margin:-4px 0 12px">Tell this person straight away when a customer's chat needs a reply — only for chats they can see.</p>
@@ -117,6 +118,7 @@
         <p class="muted" style="font-size:12px;margin-top:6px">Alerts come from PhiXtra's WhatsApp number. Email alerts go to the email address above.</p>
       </div>
     </div>
+    {% endif %}
 
     <p class="muted" style="font-size:13px;margin-bottom:16px">
       A password is generated automatically and shown once after creation — share it with them yourself.

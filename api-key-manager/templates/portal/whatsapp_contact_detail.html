@@ -226,6 +226,8 @@
 {% endblock %}
 
 {% block content %}
+{# Role-aware buttons — same route labels the save routes enforce. #}
+{% set can_edit_contact = staff_can_open('portal.whatsapp_contacts_edit') %}
 
 <!-- Breadcrumb -->
 <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-bottom:16px">
@@ -410,6 +412,7 @@
           Open Conversation
         </a>
         {% endif %}
+        {% if can_edit_contact %}
         <button class="btn-edit-profile" onclick="openEdit()">
           <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           Edit Profile
@@ -420,7 +423,8 @@
             Create Sales Lead
           </button>
         </form>
-        {% if available_segments %}
+        {% endif %}
+        {% if available_segments and can_edit_contact %}
         <div style="position:relative">
           <select id="quickSegSelect" class="field-select" style="font-size:12px;padding:8px 12px"
                   onchange="quickAddSegment(this.value)">
@@ -445,7 +449,7 @@
       <div class="sc-body">
         <div class="consent-master {{ 'out' if is_out else 'in' }}">
           <span class="consent-master-text">{{ 'Opted out of marketing' if is_out else 'Subscribed to marketing' }}</span>
-          {% if not is_out %}
+          {% if not is_out and can_edit_contact %}
           <form method="POST" action="{{ url_for('portal.whatsapp_contact_set_consent', contact_id=contact.id) }}" style="margin:0">
             <input type="hidden" name="channel" value="all">
             <input type="hidden" name="action" value="opt_out">
@@ -459,7 +463,7 @@
           <form method="POST" action="{{ url_for('portal.whatsapp_contact_set_consent', contact_id=contact.id) }}" style="margin:0">
             <input type="hidden" name="channel" value="whatsapp">
             <input type="hidden" name="action" value="{{ 'opt_in' if contact.opted_out else 'opt_out' }}">
-            <button type="submit" class="consent-btn {{ 'is-out' if contact.opted_out else 'is-in' }}">{{ 'Opted out' if contact.opted_out else 'Subscribed' }}</button>
+            <button type="submit" class="consent-btn {{ 'is-out' if contact.opted_out else 'is-in' }}"{% if not can_edit_contact %} disabled style="cursor:default" title="Your role can view this but not change it"{% endif %}>{{ 'Opted out' if contact.opted_out else 'Subscribed' }}</button>
           </form>
         </div>
         <div class="consent-row">
@@ -467,7 +471,7 @@
           <form method="POST" action="{{ url_for('portal.whatsapp_contact_set_consent', contact_id=contact.id) }}" style="margin:0">
             <input type="hidden" name="channel" value="email">
             <input type="hidden" name="action" value="{{ 'opt_in' if contact.email_opted_out else 'opt_out' }}">
-            <button type="submit" class="consent-btn {{ 'is-out' if contact.email_opted_out else 'is-in' }}">{{ 'Opted out' if contact.email_opted_out else 'Subscribed' }}</button>
+            <button type="submit" class="consent-btn {{ 'is-out' if contact.email_opted_out else 'is-in' }}"{% if not can_edit_contact %} disabled style="cursor:default" title="Your role can view this but not change it"{% endif %}>{{ 'Opted out' if contact.email_opted_out else 'Subscribed' }}</button>
           </form>
         </div>
         <div class="consent-row">
@@ -475,7 +479,7 @@
           <form method="POST" action="{{ url_for('portal.whatsapp_contact_set_consent', contact_id=contact.id) }}" style="margin:0">
             <input type="hidden" name="channel" value="sms">
             <input type="hidden" name="action" value="{{ 'opt_in' if contact.sms_opted_out else 'opt_out' }}">
-            <button type="submit" class="consent-btn {{ 'is-out' if contact.sms_opted_out else 'is-in' }}">{{ 'Opted out' if contact.sms_opted_out else 'Subscribed' }}</button>
+            <button type="submit" class="consent-btn {{ 'is-out' if contact.sms_opted_out else 'is-in' }}"{% if not can_edit_contact %} disabled style="cursor:default" title="Your role can view this but not change it"{% endif %}>{{ 'Opted out' if contact.sms_opted_out else 'Subscribed' }}</button>
           </form>
         </div>
 
@@ -507,11 +511,13 @@
             <a href="{{ url_for('portal.whatsapp_segment_detail', seg_id=seg.id) }}"
                style="font-size:13px;font-weight:600;color:var(--ink);text-decoration:none">{{ seg.name }}</a>
           </div>
+          {% if can_edit_contact %}
           <form method="POST" action="{{ url_for('portal.whatsapp_contact_remove_from_segment', contact_id=contact.id, seg_id=seg.id) }}"
                 onsubmit="return confirm('Remove from {{ seg.name }}?')">
             <button type="submit" style="background:none;border:none;cursor:pointer;color:#cbd5e1;font-size:12px;padding:0"
                     onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='#cbd5e1'">✕</button>
           </form>
+          {% endif %}
         </div>
         {% endfor %}
       </div>
@@ -532,14 +538,16 @@
       </div>
       <div class="sc-body">
         <!-- Add note form -->
+        {% if can_edit_contact %}
         <form method="POST" action="{{ url_for('portal.whatsapp_contact_add_note', contact_id=contact.id) }}" class="notes-form">
           <textarea name="body" placeholder="Add a note — follow-up reminder, call outcome, deal details…" rows="2"></textarea>
           <button type="submit" class="btn-add-note">Add Note</button>
         </form>
+        {% endif %}
 
         <!-- Timeline -->
         {% if not timeline %}
-        <div class="empty-timeline">Nothing here yet. Add the first note above.</div>
+        <div class="empty-timeline">Nothing here yet.{% if can_edit_contact %} Add the first note above.{% endif %}</div>
         {% else %}
         <div class="timeline">
           {% for item in timeline %}
@@ -594,11 +602,13 @@
             {{ note.body }}
             <div style="font-size:11px;color:var(--muted);margin-top:2px">{{ note.author_name or 'You' }} · {{ note.created_at.strftime('%d %b %Y, %H:%M') if note.created_at else '' }}</div>
           </div>
+          {% if can_edit_contact %}
           <form method="POST"
                 action="{{ url_for('portal.whatsapp_contact_delete_note', contact_id=contact.id, note_id=note.id) }}"
                 onsubmit="return confirm('Delete this note?')" style="flex-shrink:0">
             <button type="submit" class="tl-del">Delete</button>
           </form>
+          {% endif %}
         </div>
         {% endfor %}
       </div>

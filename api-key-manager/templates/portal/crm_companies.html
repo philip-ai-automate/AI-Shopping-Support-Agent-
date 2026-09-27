@@ -79,7 +79,7 @@
     <h1>Companies</h1>
     <p>The businesses behind your contacts and deals.</p>
   </div>
-  <button class="btn-primary-green" onclick="document.getElementById('addModal').classList.add('open')">+ Add Company</button>
+  {% if staff_can_open('portal.crm_companies_add') %}<button class="btn-primary-green" onclick="document.getElementById('addModal').classList.add('open')">+ Add Company</button>{% endif %}
 </div>
 
 <div class="toolbar">

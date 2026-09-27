@@ -1,6 +1,9 @@
 {% extends "portal/base.html" %}
 {% block title %}Labels — PhiXtra Portal{% endblock %}
 {% block content %}
+{% set can_create_lbl = staff_can_open('portal.lead_labels_create') %}
+{% set can_edit_lbl   = staff_can_open('portal.lead_labels_rename') %}
+{% set can_delete_lbl = staff_can_open('portal.lead_labels_delete') %}
 
 <style>
   .lbl-hero { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; margin-bottom:22px }
@@ -63,12 +66,13 @@
     </div>
   </div>
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-    <a href="{{ url_for('portal.lead_labels_import_bounces') }}" class="btn">📥 Import Bounces</a>
-    <a href="{{ url_for('portal.sales_pipeline') }}" class="btn btn-primary">🧭 Go to Sales Pipeline</a>
+    {% if can_create_lbl %}<a href="{{ url_for('portal.lead_labels_import_bounces') }}" class="btn">📥 Import Bounces</a>{% endif %}
+    {% if staff_can_open('portal.sales_pipeline') %}<a href="{{ url_for('portal.sales_pipeline') }}" class="btn btn-primary">🧭 Go to Sales Pipeline</a>{% endif %}
   </div>
 </div>
 
 <div class="card" style="padding:20px">
+  {% if can_create_lbl %}
   <form method="POST" action="{{ url_for('portal.lead_labels_create') }}" class="lbl-create-row" onsubmit="return submitCreateLabel(event)">
     <div style="flex:1;max-width:320px">
       <input type="text" name="name" id="newLabelName" class="finp" placeholder="New label name, e.g. VIP" required autocomplete="off">
@@ -76,6 +80,7 @@
     </div>
     <button type="submit" class="btn btn-primary">+ Create Label</button>
   </form>
+  {% endif %}
 
   {% if labels %}
   <div class="table-wrap">
@@ -91,13 +96,15 @@
           <td class="muted">{{ l.member_count }} deal{{ 's' if l.member_count != 1 else '' }}</td>
           <td class="muted">{{ l.created_at.strftime('%d %b %Y') if l.created_at else '—' }}</td>
           <td style="text-align:right">
-            <button type="button" class="btn btn-sm" onclick='openMembersModal({{ l.id }}, {{ l.name|tojson }})'>View / Edit</button>
-            <button type="button" class="btn btn-sm" onclick='openRenameModal({{ l.id }}, {{ l.name|tojson }})'>Rename</button>
+            <button type="button" class="btn btn-sm" onclick='openMembersModal({{ l.id }}, {{ l.name|tojson }})'>{{ 'View / Edit' if can_edit_lbl else 'View' }}</button>
+            {% if can_edit_lbl %}<button type="button" class="btn btn-sm" onclick='openRenameModal({{ l.id }}, {{ l.name|tojson }})'>Rename</button>{% endif %}
+            {% if can_delete_lbl %}
             <form method="POST" action="{{ url_for('portal.lead_labels_delete', label_id=l.id) }}" style="display:inline"
                   onsubmit="return confirm('Delete the {{ l.name }} label? This removes it from every contact and deal it\'s on — nothing else about them is affected.')">
               <input type="hidden" name="redirect" value="1">
               <button type="submit" class="btn btn-sm btn-danger">Delete</button>
             </form>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}
@@ -108,7 +115,7 @@
   <div class="lbl-empty">
     <div class="lbl-empty-icon">🏷️</div>
     <h3 style="font-size:15px;font-weight:700;color:var(--ink);margin:0 0 6px">No labels yet</h3>
-    <p style="font-size:13px;margin:0;max-width:320px">Create one above, or add a label from a Contact's profile or the Sales Pipeline's "Add to Label" — either way works.</p>
+    <p style="font-size:13px;margin:0;max-width:320px">{% if can_create_lbl %}Create one above, or add{% else %}Add{% endif %} a label from a Contact's profile or the Sales Pipeline's "Add to Label" — either way works.</p>
   </div>
   {% endif %}
 </div>
@@ -126,7 +133,7 @@
 
     {% for kind, placeholder in [('contact', 'Search contacts by name or email…'), ('lead', 'Search deals by name or email…')] %}
     <div class="lm-section {{ 'active' if kind == 'contact' else '' }}" id="lmSection-{{ kind }}">
-      <div style="position:relative;margin-bottom:16px">
+      <div style="position:relative;margin-bottom:16px"{% if not can_edit_lbl %} hidden{% endif %}>
         <input type="text" class="finp" id="lmAddSearch-{{ kind }}" autocomplete="off" placeholder="{{ placeholder }}"
                oninput="onLmSearchInput('{{ kind }}')" onblur="setTimeout(function(){document.getElementById('lmAddResults-{{ kind }}').style.display='none'}, 200)">
         <div id="lmAddResults-{{ kind }}" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:50;
@@ -165,6 +172,7 @@
 </div>
 
 <script>
+var CAN_EDIT_LABEL = {{ can_edit_lbl|tojson }};
 function submitCreateLabel(ev) {
   ev.preventDefault();
   var input = document.getElementById('newLabelName');
@@ -284,10 +292,10 @@ function loadMembers(kind) {
           + '<div style="min-width:0;flex:1">'
           + '<div style="font-weight:600;font-size:13px;overflow-wrap:break-word">' + escapeHtmlLm(m.name || '') + '</div>'
           + '<div style="font-size:11.5px;color:var(--muted);overflow-wrap:break-word">' + escapeHtmlLm(m.email || 'no email') + '</div></div>'
-          + (otherLabels.length ? '<select class="finp" style="width:auto;flex-shrink:0;padding:6px 8px;font-size:12px" '
+          + (CAN_EDIT_LABEL && otherLabels.length ? '<select class="finp" style="width:auto;flex-shrink:0;padding:6px 8px;font-size:12px" '
               + 'onchange="if(this.value){moveMember(\'' + kind + '\', ' + m.id + ', this.value);} this.selectedIndex=0;">'
               + '<option value="">Move to…</option>' + moveOptions + '</select>' : '')
-          + '<button type="button" class="btn btn-sm btn-ghost" style="flex-shrink:0" onclick="removeMember(\'' + kind + '\', ' + m.id + ')">Remove</button>'
+          + (CAN_EDIT_LABEL ? '<button type="button" class="btn btn-sm btn-ghost" style="flex-shrink:0" onclick="removeMember(\'' + kind + '\', ' + m.id + ')">Remove</button>' : '')
           + '</div>';
       }).join('');
     })

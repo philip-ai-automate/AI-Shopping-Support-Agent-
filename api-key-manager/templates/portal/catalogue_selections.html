@@ -91,11 +91,13 @@
     </div>
   </td>
   <td>
+    {% if staff_can_open('portal.catalogue_toggle') %}
     <form method="POST"
           action="{{ url_for('portal.catalogue_toggle', category_id=p.cat_id, product_id=p.id) }}"
           onsubmit="return confirm('Remove {{ p.model_name }} from your store?')">
       <button type="submit" class="btn btn-sm btn-danger" style="font-size:11px">Remove</button>
     </form>
+    {% endif %}
   </td>
 </tr>
 {% endfor %}

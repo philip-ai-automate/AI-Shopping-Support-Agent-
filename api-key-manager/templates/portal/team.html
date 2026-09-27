@@ -136,7 +136,8 @@
       <div class="tm-subtitle">Create a login for each team member and assign them a Role that decides what they can access. Team/Roles/Departments/Positions access is now controlled by role (so you can grant a capped "Super User" without full access); every other section, including the Inbox itself, is still open to any team member regardless of role while it's rolled out feature by feature.</div>
     </div>
     <div class="tm-header-actions">
-      {% if seats_left <= 0 %}
+      {% if not staff_can_open('portal.team_create') %}
+      {% elif seats_left <= 0 %}
       <span class="btn btn-primary btn-sm" style="opacity:.5;cursor:not-allowed">+ New Team Member</span>
       {% else %}
       <a href="{{ url_for('portal.team_create') }}" class="btn btn-primary btn-sm">+ New Team Member</a>
@@ -146,9 +147,9 @@
 
   <div class="tm-tabs">
     <a href="{{ url_for('portal.team_page') }}" class="tm-tab active">Members</a>
-    <a href="{{ url_for('portal.team_roles_page') }}" class="tm-tab">Roles</a>
-    <a href="{{ url_for('portal.team_departments_page') }}" class="tm-tab">Departments</a>
-    <a href="{{ url_for('portal.team_positions_page') }}" class="tm-tab">Positions</a>
+    {% if staff_can_open('portal.team_roles_page') %}<a href="{{ url_for('portal.team_roles_page') }}" class="tm-tab">Roles</a>{% endif %}
+    {% if staff_can_open('portal.team_departments_page') %}<a href="{{ url_for('portal.team_departments_page') }}" class="tm-tab">Departments</a>{% endif %}
+    {% if staff_can_open('portal.team_positions_page') %}<a href="{{ url_for('portal.team_positions_page') }}" class="tm-tab">Positions</a>{% endif %}
   </div>
 
   {% if staff_limit == 0 %}
@@ -187,7 +188,7 @@
       <div class="kpi-card-icon" style="background:rgba(2,136,209,.10)">🔐</div>
       <div class="kpi-card-val">{{ roles|length }}</div>
       <div class="kpi-card-label">Roles defined</div>
-      <div class="kpi-card-sub"><a href="{{ url_for('portal.team_roles_page') }}">Manage roles →</a></div>
+      {% if staff_can_open('portal.team_roles_page') %}<div class="kpi-card-sub"><a href="{{ url_for('portal.team_roles_page') }}">Manage roles →</a></div>{% endif %}
     </div>
   </div>
 
@@ -212,6 +213,30 @@
         </tr>
       </thead>
       <tbody>
+        {# Account owner — owner's own view only (team members see only the company name, never the owner — user 2026-09-27). Always first, read-only: the owner isn't a team_members row, so it can't be edited or removed here. #}
+        {% if not session.get('team_member_id') %}
+        {% set _owner_name = ((customer.first_name or '') ~ ' ' ~ (customer.last_name or ''))|trim %}
+        <tr class="tm-owner-row" style="background:#FFFBEB">
+          <td>
+            <div class="tm-identity">
+              {% if customer.avatar_data %}
+              <img src="{{ customer.avatar_data }}" class="tm-avatar"/>
+              {% else %}
+              <div class="tm-avatar">{{ (_owner_name or customer.email or '?')[0]|upper }}</div>
+              {% endif %}
+              <div>
+                <div class="tm-name">{{ _owner_name or customer.email }}</div>
+                <div class="tm-email">{{ customer.email }}</div>
+              </div>
+            </div>
+          </td>
+          <td><span class="tm-pill" style="background:#FEF3C7;color:#92400E;border:1px solid #FCD34D">👑 Account owner</span></td>
+          <td><span class="tm-meta-sub">—</span></td>
+          <td><span class="tm-meta-sub">—</span></td>
+          <td><span class="tm-pill active">Active</span></td>
+          <td style="text-align:right"><span class="tm-meta-sub">Full access · can't be changed or removed</span></td>
+        </tr>
+        {% endif %}
         {% for m in members %}
         <tr class="tm-row" data-search="{{ (m.name ~ ' ' ~ m.email ~ ' ' ~ (m.department_name or '') ~ ' ' ~ (m.position_name or ''))|lower }}">
           <td>
@@ -228,6 +253,10 @@
             </div>
           </td>
           <td class="tm-role-cell">
+            {% if not staff_can_open('portal.team_update_role') %}
+            {% set _r = roles|selectattr('id', 'equalto', m.role_id)|first %}
+            <span class="tm-meta-line">{{ _r.name if _r else '—' }}</span>
+            {% else %}
             <form method="POST" action="{{ url_for('portal.team_update_role', member_id=m.id) }}">
               <select name="role_id" class="tm-role-select" onchange="this.form.submit()">
                 {% for role in roles %}
@@ -239,6 +268,7 @@
                 {% endfor %}
               </select>
             </form>
+            {% endif %}
           </td>
           <td>
             {% if m.position_name or m.department_name %}
@@ -269,7 +299,8 @@
           </td>
           <td>
             <div class="tm-actions-cell">
-              {% if m.is_active %}
+              {% if not staff_can_open('portal.team_deactivate') %}
+              {% elif m.is_active %}
               <form method="POST" action="{{ url_for('portal.team_deactivate', member_id=m.id) }}"
                     onsubmit="return confirm('Deactivate {{ m.name }}? They will no longer be able to log in.')">
                 <button type="submit" class="btn-edit">Deactivate</button>
@@ -279,14 +310,18 @@
                 <button type="submit" class="btn-edit" {% if seats_left <= 0 %}disabled style="opacity:.5;cursor:not-allowed"{% endif %}>Re-activate</button>
               </form>
               {% endif %}
+              {% if staff_can_open('portal.team_reset_password') %}
               <form method="POST" action="{{ url_for('portal.team_reset_password', member_id=m.id) }}"
                     onsubmit="return confirm('Reset the password for {{ m.name }}? Their old password will stop working immediately, and the new one is only shown once.')">
                 <button type="submit" class="btn-edit">Reset Password</button>
               </form>
+              {% endif %}
+              {% if staff_can_open('portal.team_remove') %}
               <form method="POST" action="{{ url_for('portal.team_remove', member_id=m.id) }}"
                     onsubmit="return confirm('Remove {{ m.name }} completely? This can\'t be undone.')">
                 <button type="submit" class="btn-del">Remove</button>
               </form>
+              {% endif %}
             </div>
           </td>
         </tr>
@@ -294,12 +329,15 @@
            condition (unlike Agents/Messenger below), so it must never be
            nested inside one or it becomes unreachable for a single-agent
            business with no Messenger connected. #}
+        {% set _ca = staff_can_open('portal.team_update_agents') %}{% set _cm = staff_can_open('portal.team_update_messenger') %}
+        {% set _cw = staff_can_open('portal.team_update_webchat') %}{% set _cal = staff_can_open('portal.team_update_alerts') %}
+        {% if _ca or _cm or _cw or _cal %}
         <tr class="tm-manage-row" data-search="{{ (m.name ~ ' ' ~ m.email)|lower }}">
           <td colspan="6">
             <details class="tm-manage">
               <summary>⚙️ Manage channel access &amp; chat alerts</summary>
               <div class="tm-manage-body">
-                {% if show_agent_picker %}
+                {% if show_agent_picker and _ca %}
                 <div class="tm-manage-block">
                   <span class="tm-manage-label">AI Agents</span>
                   {% if m.assigned_agent_names %}
@@ -315,7 +353,7 @@
                   </form>
                 </div>
                 {% endif %}
-                {% if messenger_connected %}
+                {% if messenger_connected and _cm %}
                 <div class="tm-manage-block">
                   <span class="tm-manage-label">Messenger</span>
                   <span class="tm-agent-tag {{ '' if m.messenger_access else 'off' }}">{{ 'Enabled' if m.messenger_access else 'Off' }}</span>
@@ -324,6 +362,7 @@
                   </form>
                 </div>
                 {% endif %}
+                {% if _cw %}
                 <div class="tm-manage-block">
                   <span class="tm-manage-label">Web Chat</span>
                   <span class="tm-agent-tag {{ '' if m.webchat_access else 'off' }}">{{ 'Enabled' if m.webchat_access else 'Off' }}</span>
@@ -331,6 +370,8 @@
                     <label class="agent-check"><input type="checkbox" name="webchat_access" {% if m.webchat_access %}checked{% endif %} onchange="this.form.submit()"/> Can access Web Chat (website AI chat handoffs)</label>
                   </form>
                 </div>
+                {% endif %}
+                {% if _cal %}
                 <div class="tm-manage-block" style="flex-wrap:wrap">
                   <span class="tm-manage-label">🔔 Chat alerts</span>
                   <span class="tm-agent-tag {{ '' if m.alert_enabled else 'off' }}">{{ 'On' if m.alert_enabled else 'Off' }}</span>
@@ -344,10 +385,12 @@
                     <button type="submit" class="btn-edit">Save</button>
                   </form>
                 </div>
+                {% endif %}
               </div>
             </details>
           </td>
         </tr>
+        {% endif %}
         {% endfor %}
       </tbody>
     </table>
@@ -355,7 +398,7 @@
   {% else %}
   <div class="empty-state">
     <div class="empty-icon">👥</div>
-    <div class="empty-text">No team members yet.<br>Create one above to share the Inbox with them.</div>
+    <div class="empty-text">No team members yet.{% if staff_can_open('portal.team_create') %}<br>Create one above to share the Inbox with them.{% endif %}</div>
   </div>
   {% endif %}
 

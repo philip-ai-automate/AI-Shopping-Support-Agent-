@@ -144,7 +144,7 @@
       </button>
       <a href="{{ url_for('portal.products') }}" class="btn">Cancel</a>
 
-      {% if mode == 'edit' %}
+      {% if mode == 'edit' and staff_can_open('portal.product_delete') %}
       <div style="flex:1"></div>
       <form method="POST"
             action="{{ url_for('portal.product_delete', product_id=product.id) }}"

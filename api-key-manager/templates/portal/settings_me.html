@@ -1,0 +1,93 @@
+{% extends "portal/base.html" %}
+{% block title %}My Settings — PhiXtra Portal{% endblock %}
+
+{# Team members' own settings only: name, photo, password. Nothing about the
+   company or the account owner is shown here (company portal — user 2026-09-27). #}
+
+{% block head %}
+<style>
+  .me-wrap{max-width:640px}
+  .me-head h1{font-size:22px;font-weight:800;margin:0 0 4px}
+  .me-head p{margin:0 0 20px;color:var(--muted);font-size:13px}
+  .me-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-bottom:16px}
+  .me-card h2{font-size:15px;font-weight:800;margin:0 0 4px}
+  .me-card .me-sub{margin:0 0 14px;color:var(--muted);font-size:12.5px}
+  .me-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:560px){.me-row{grid-template-columns:1fr}}
+  .me-avatar{display:flex;align-items:center;gap:14px;margin-bottom:12px}
+  .me-avatar img,.me-avatar .me-initial{width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid var(--line)}
+  .me-avatar .me-initial{display:flex;align-items:center;justify-content:center;background:var(--ink);color:#fff;font-weight:800;font-size:20px}
+  .me-readonly{font-size:13px;color:var(--ink);padding:8px 0}
+  .me-note{font-size:12.5px;color:var(--muted);margin-top:10px}
+</style>
+{% endblock %}
+
+{% block content %}
+{% set _full = me.name or ((me.first_name or '') ~ ' ' ~ (me.last_name or ''))|trim %}
+{% set _first = me.first_name or (_full.split(' ')[0] if _full else '') %}
+{% set _last = me.last_name or (' '.join(_full.split(' ')[1:]) if (_full and not me.first_name) else '') %}
+{% set _can_edit = staff_can('settings.profile_edit') %}
+
+<div class="me-wrap">
+  <div class="me-head">
+    <h1>My Settings</h1>
+    <p>Your own details, photo and password.</p>
+  </div>
+
+  <div class="me-card">
+    <h2>👤 My details</h2>
+    <p class="me-sub">How your name appears to your colleagues.</p>
+    {% if _can_edit %}
+    <form method="POST" action="{{ url_for('portal.settings_profile') }}">
+      <div class="me-row">
+        <div class="form-group"><label>First name *</label><input type="text" name="first_name" value="{{ _first }}" maxlength="100" required/></div>
+        <div class="form-group"><label>Last name</label><input type="text" name="last_name" value="{{ _last }}" maxlength="100"/></div>
+      </div>
+      <div class="form-group"><label>Email address</label><div class="me-readonly">{{ me.email }}</div></div>
+      <button type="submit" class="btn btn-primary">Save my details</button>
+    </form>
+    {% else %}
+    <div class="form-group"><label>Name</label><div class="me-readonly">{{ _full or '—' }}</div></div>
+    <div class="form-group"><label>Email address</label><div class="me-readonly">{{ me.email }}</div></div>
+    <p class="me-note">Your role can't change these. Ask whoever manages your team.</p>
+    {% endif %}
+  </div>
+
+  {% if _can_edit %}
+  <div class="me-card">
+    <h2>🖼️ My photo</h2>
+    <p class="me-sub">Shows in the side menu and on the team list.</p>
+    <div class="me-avatar">
+      {% if me.avatar_data %}<img src="{{ me.avatar_data }}" alt="Your photo"/>{% else %}<div class="me-initial">{{ (_first or me.email or '?')[0]|upper }}</div>{% endif %}
+      {% if me.avatar_data %}
+      <form method="POST" action="{{ url_for('portal.settings_avatar') }}">
+        <input type="hidden" name="action" value="remove"/>
+        <button type="submit" class="btn btn-sm">Remove photo</button>
+      </form>
+      {% endif %}
+    </div>
+    <form method="POST" action="{{ url_for('portal.settings_avatar') }}" enctype="multipart/form-data">
+      <input type="file" name="avatar" accept="image/jpeg,image/png,image/gif,image/webp" required/>
+      <p class="me-note">JPEG, PNG, GIF or WebP · max 2 MB</p>
+      <button type="submit" class="btn btn-primary">Upload photo</button>
+    </form>
+  </div>
+  {% endif %}
+
+  {% if staff_can('settings.password') %}
+  <div class="me-card">
+    <h2>🔒 My password</h2>
+    <p class="me-sub">Change the password you use to log in.</p>
+    <form method="POST" action="{{ url_for('portal.settings_password') }}">
+      <div class="form-group"><label>Current password *</label><input type="password" name="current_password" required autocomplete="current-password"/></div>
+      <div class="me-row">
+        <div class="form-group"><label>New password * <span class="muted" style="font-size:12px">(min 8 characters)</span></label><input type="password" name="new_password" required minlength="8" autocomplete="new-password"/></div>
+        <div class="form-group"><label>Confirm new password *</label><input type="password" name="confirm_password" required minlength="8" autocomplete="new-password"/></div>
+      </div>
+      <button type="submit" class="btn btn-primary">Change password</button>
+    </form>
+    <p class="me-note">Forgotten your current password? Ask whoever manages your team to reset it for you.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

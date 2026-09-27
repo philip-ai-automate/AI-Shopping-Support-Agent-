@@ -1339,7 +1339,7 @@
     {% if staff_can_open('portal.settings') %}
     <a class="sb-link {% if request.endpoint == 'portal.settings' %}active{% endif %}"
        href="{{ url_for('portal.settings') }}" data-tour="nav-settings">
-      <span class="sb-icon">⚙️</span> Account Settings
+      <span class="sb-icon">⚙️</span> {{ 'My Settings' if session.get('team_member_id') else 'Account Settings' }}
       {% if 'settings.account' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
     </a>
     {% endif %}
@@ -1414,7 +1414,9 @@
         </div>
         <div style="font-size:11px;color:var(--muted);
                     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-          ⚙️ Account Settings
+          {% if _portal_customer and _portal_customer.is_team_member %}
+            {{ _portal_customer.tenant_name or _portal_customer.tenant_domain }}
+          {% else %}⚙️ Account Settings{% endif %}
         </div>
       </div>
     </a>

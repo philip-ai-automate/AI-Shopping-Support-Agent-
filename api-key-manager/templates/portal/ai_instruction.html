@@ -56,6 +56,12 @@
 </div>
 {% endif %}
 
+{% set _can_ai_edit = staff_can('ai.instructions_edit') %}
+{% if not _can_ai_edit %}
+<div class="card" style="max-width:820px;margin-bottom:14px;background:#f8fafc">
+  <p style="margin:0;font-size:13px">🔒 Your role can view the AI instruction but not change it.</p>
+</div>
+{% endif %}
 {% if is_custom_prompt %}
 <div style="background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.25);
             border-radius:12px;padding:12px 16px;margin-bottom:18px;font-size:13px;color:#1D4ED8">
@@ -76,7 +82,7 @@
 {% endif %}
 
 <div class="card" style="max-width:820px">
-  <form method="POST" action="{{ url_for('portal.ai_instruction') }}" id="wizardForm">
+  <form method="POST" action="{{ url_for('portal.ai_instruction') }}" id="wizardForm"><fieldset {% if not _can_ai_edit %}disabled{% endif %} style="border:0;padding:0;margin:0;min-width:0">
     {% if selected_agent_id %}<input type="hidden" name="agent_id" value="{{ selected_agent_id }}">{% endif %}
 
     <!-- ── Step 1: Business category ──────────────────────────────────────── -->
@@ -167,15 +173,15 @@
     <input type="hidden" name="ai_instructions" id="aiInstructionsHidden"/>
 
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:22px">
-      <button type="submit" class="btn btn-primary">Save changes</button>
-      <a class="btn" href="{{ url_for('portal.dashboard') }}">Cancel</a>
+      {% if _can_ai_edit %}<button type="submit" class="btn btn-primary">Save changes</button>{% endif %}
+      <a class="btn" href="{{ url_for('portal.dashboard') }}">{{ 'Cancel' if _can_ai_edit else 'Back' }}</a>
     </div>
 
     <p class="muted" style="margin-top:12px;font-size:12px">
       ⚡ Changes take effect immediately on the next customer conversation.
     </p>
 
-  </form>
+  </fieldset></form>
 </div>
 {% endif %}
 
@@ -189,7 +195,7 @@
       This is the complete instruction your AI receives at the start of every conversation.
       {% if not is_custom_prompt %}Editing here saves your own wording exactly as typed — the category wizard above will no longer apply to it afterwards.{% endif %}
     </p>
-    <form method="POST" action="{{ url_for('portal.ai_instruction') }}">
+    <form method="POST" action="{{ url_for('portal.ai_instruction') }}"><fieldset {% if not _can_ai_edit %}disabled{% endif %} style="border:0;padding:0;margin:0;min-width:0">
       {% if selected_agent_id %}<input type="hidden" name="agent_id" value="{{ selected_agent_id }}">{% endif %}
       <textarea name="raw_prompt" rows="16"
                 style="width:100%;box-sizing:border-box;background:#fff;border:1.5px solid var(--line);border-radius:10px;
@@ -197,9 +203,9 @@
                        color:var(--txt);font-family:inherit;resize:vertical"
       >{{ full_prompt }}</textarea>
       <div style="margin-top:12px">
-        <button type="submit" class="btn btn-primary">Save wording</button>
+        {% if _can_ai_edit %}<button type="submit" class="btn btn-primary">Save wording</button>{% endif %}
       </div>
-    </form>
+    </fieldset></form>
   </details>
 </div>
 

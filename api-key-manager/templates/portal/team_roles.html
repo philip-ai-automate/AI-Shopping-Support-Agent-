@@ -40,14 +40,16 @@
       <div class="tm-title">Roles</div>
       <div class="tm-subtitle">A role is a named set of permissions you can give to any team member — create it once, assign it to as many people as you like. Out of {{ total_features }} real features in the app, a role grants exactly the ones you tick.</div>
     </div>
+    {% if staff_can_open('portal.team_role_new') %}
     <a href="{{ url_for('portal.team_role_new') }}" class="btn btn-primary btn-sm">+ New Role</a>
+    {% endif %}
   </div>
 
   <div class="tm-tabs">
-    <a href="{{ url_for('portal.team_page') }}" class="tm-tab">Members</a>
+    {% if staff_can_open('portal.team_page') %}<a href="{{ url_for('portal.team_page') }}" class="tm-tab">Members</a>{% endif %}
     <a href="{{ url_for('portal.team_roles_page') }}" class="tm-tab active">Roles</a>
-    <a href="{{ url_for('portal.team_departments_page') }}" class="tm-tab">Departments</a>
-    <a href="{{ url_for('portal.team_positions_page') }}" class="tm-tab">Positions</a>
+    {% if staff_can_open('portal.team_departments_page') %}<a href="{{ url_for('portal.team_departments_page') }}" class="tm-tab">Departments</a>{% endif %}
+    {% if staff_can_open('portal.team_positions_page') %}<a href="{{ url_for('portal.team_positions_page') }}" class="tm-tab">Positions</a>{% endif %}
   </div>
 
   {% if roles %}
@@ -68,11 +70,15 @@
           <td class="muted">{{ role.member_count }} active</td>
           <td>
             <div class="tm-actions-cell" style="justify-content:flex-end">
+              {% if staff_can_open('portal.team_role_edit') %}
               <a href="{{ url_for('portal.team_role_edit', role_id=role.id) }}" class="btn-edit">Edit</a>
+              {% endif %}
+              {% if staff_can_open('portal.team_role_delete') %}
               <form method="POST" action="{{ url_for('portal.team_role_delete', role_id=role.id) }}"
                     onsubmit="return confirm('Delete role \'{{ role.name }}\'? This can\'t be undone.')">
                 <button type="submit" class="btn-del" {% if role.member_count %}disabled title="Reassign the {{ role.member_count }} team member(s) on this role first"{% endif %}>Delete</button>
               </form>
+              {% endif %}
             </div>
           </td>
         </tr>
@@ -83,7 +89,7 @@
   {% else %}
   <div class="empty-state">
     <div class="empty-icon">🔐</div>
-    <div>No roles yet.<br>Create one to start assigning access.</div>
+    <div>No roles yet.{% if staff_can_open('portal.team_role_new') %}<br>Create one to start assigning access.{% endif %}</div>
   </div>
   {% endif %}
 

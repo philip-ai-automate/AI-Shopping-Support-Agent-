@@ -40,13 +40,15 @@
       <div class="tm-title">Positions</div>
       <div class="tm-subtitle">Create the job titles your team uses — they'll show up as a picker when you create or edit a team member.</div>
     </div>
+    {% if staff_can_open('portal.team_position_new') %}
     <a href="{{ url_for('portal.team_position_new') }}" class="btn btn-primary btn-sm">+ New Position</a>
+    {% endif %}
   </div>
 
   <div class="tm-tabs">
-    <a href="{{ url_for('portal.team_page') }}" class="tm-tab">Members</a>
-    <a href="{{ url_for('portal.team_roles_page') }}" class="tm-tab">Roles</a>
-    <a href="{{ url_for('portal.team_departments_page') }}" class="tm-tab">Departments</a>
+    {% if staff_can_open('portal.team_page') %}<a href="{{ url_for('portal.team_page') }}" class="tm-tab">Members</a>{% endif %}
+    {% if staff_can_open('portal.team_roles_page') %}<a href="{{ url_for('portal.team_roles_page') }}" class="tm-tab">Roles</a>{% endif %}
+    {% if staff_can_open('portal.team_departments_page') %}<a href="{{ url_for('portal.team_departments_page') }}" class="tm-tab">Departments</a>{% endif %}
     <a href="{{ url_for('portal.team_positions_page') }}" class="tm-tab active">Positions</a>
   </div>
 
@@ -63,11 +65,15 @@
           <td class="muted">{{ p.member_count }} active</td>
           <td>
             <div class="tm-actions-cell" style="justify-content:flex-end">
+              {% if staff_can_open('portal.team_position_edit') %}
               <a href="{{ url_for('portal.team_position_edit', pos_id=p.id) }}" class="btn-edit">Edit</a>
+              {% endif %}
+              {% if staff_can_open('portal.team_position_delete') %}
               <form method="POST" action="{{ url_for('portal.team_position_delete', pos_id=p.id) }}"
                     onsubmit="return confirm('Delete position \'{{ p.name }}\'?')">
                 <button type="submit" class="btn-del" {% if p.member_count %}disabled title="Move the {{ p.member_count }} team member(s) out first"{% endif %}>Delete</button>
               </form>
+              {% endif %}
             </div>
           </td>
         </tr>
@@ -78,7 +84,7 @@
   {% else %}
   <div class="empty-state">
     <div class="empty-icon">🏷️</div>
-    <div>No positions yet.<br>Create one to start organising your team.</div>
+    <div>No positions yet.{% if staff_can_open('portal.team_position_new') %}<br>Create one to start organising your team.{% endif %}</div>
   </div>
   {% endif %}
 

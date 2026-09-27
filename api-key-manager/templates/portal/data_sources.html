@@ -97,46 +97,57 @@
 
   <!-- Actions -->
   <div class="source-actions">
+    {% set _can_ds_edit = staff_can_open('portal.data_source_map') %}
+    {% set _can_gs_setup = staff_can_open('portal.data_source_google_setup') %}
     {% if src.sync_status == 'pending' %}
       {% if stype == 'google_sheet' %}
+        {% if _can_gs_setup %}
         <a class="btn btn-sm btn-primary"
            href="{{ url_for('portal.data_source_google_setup', source_id=src.id) }}">Setup</a>
-      {% else %}
+        {% endif %}
+      {% elif _can_ds_edit %}
         <a class="btn btn-sm btn-primary"
            href="{{ url_for('portal.data_source_map', source_id=src.id) }}">Map Columns</a>
       {% endif %}
     {% else %}
       {% if stype == 'google_sheet' %}
+        {% if _can_gs_setup %}
         <a class="btn btn-sm"
            href="{{ url_for('portal.data_source_google_setup', source_id=src.id) }}">Edit</a>
-      {% else %}
+        {% endif %}
+      {% elif _can_ds_edit %}
         <a class="btn btn-sm"
            href="{{ url_for('portal.data_source_map', source_id=src.id) }}">Mapping</a>
       {% endif %}
+      {% if staff_can_open('portal.data_source_sync') %}
       <form method="post"
             action="{{ url_for('portal.data_source_sync', source_id=src.id) }}"
             style="display:inline">
         <button class="btn btn-sm btn-primary" type="submit">↻ Sync</button>
       </form>
+      {% endif %}
     {% endif %}
+    {% if staff_can_open('portal.data_source_delete') %}
     <form method="post"
           action="{{ url_for('portal.data_source_delete', source_id=src.id) }}"
           style="display:inline"
           onsubmit="return confirm('Remove this data source?')">
       <button class="btn btn-sm btn-danger" type="submit">Remove</button>
     </form>
+    {% endif %}
   </div>
 
 </div>
 {% endfor %}
 {% else %}
 <div style="text-align:center;padding:40px 0;color:var(--muted);font-size:14px">
-  No products imported yet. Upload a file or connect Google Sheets above.
+  No products imported yet.{% if staff_can_open('portal.data_source_upload') %} Upload a file or connect Google Sheets above.{% endif %}
 </div>
 {% endif %}
 
 <div class="divider"></div>
 
+{% if staff_can_open('portal.data_source_upload') %}
 <!-- File format guide -->
 <div class="card" style="margin-bottom:20px;background:rgba(37,99,235,0.03);border-color:rgba(37,99,235,0.18)">
   <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px">
@@ -210,6 +221,7 @@
 
   </form>
 </div>
+{% endif %}
 
 <div class="divider"></div>
 

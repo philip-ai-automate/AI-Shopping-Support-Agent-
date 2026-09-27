@@ -60,6 +60,10 @@ portal_bp = Blueprint("portal", __name__)
 def _restrict_team_members_to_inbox():
     if not session.get("team_member_id"):
         return None
+    # Background app file every page loads (PWA service worker) — not a page,
+    # so blocking it only flashed a false "role doesn't include" warning.
+    if request.endpoint == "portal.service_worker":
+        return None
     if team_member_may_enter(current_app.view_functions.get(request.endpoint)):
         return None
     return _team_member_denied("Your role doesn't include that page.")
@@ -248,6 +252,44 @@ def _current_actor(customer: dict = None) -> dict:
     return {"key": f"owner:{cid}", "label": name, "is_team": False, "team_member_id": None}
 
 
+def _owner_display_names() -> set:
+    """Every form the account owner's name is saved under ("Erica", "Erica
+    Ibeks", "Erica (owner)", their email, "Owner") — cached per request."""
+    from flask import g
+    if not hasattr(g, "_owner_display_names"):
+        names = {"Owner", "Owner (owner)"}
+        try:
+            cid = session.get("impersonate_customer_id") or session.get("customer_id")
+            o = _get_customer(cid) if cid else None
+            if o:
+                first = (o.get("first_name") or "").strip()
+                full = f"{first} {(o.get('last_name') or '').strip()}".strip()
+                for n in (first, full, o.get("email")):
+                    if n:
+                        names.update({n, f"{n} (owner)"})
+                g._owner_company_name = o.get("tenant_name") or o.get("tenant_domain")
+        except Exception as e:
+            print("⚠️ _owner_display_names error:", e)
+        g._owner_display_names = names
+    return g._owner_display_names
+
+
+def display_actor(label, key=None):
+    """What to show for a saved "who did it" name. A team member never sees
+    the account owner's identity (company portal — user 2026-09-27): an owner
+    action reads as the company name. Owner and staff names otherwise unchanged."""
+    if not label or not session.get("team_member_id"):
+        return label
+    k = str(key or "")
+    if k.startswith("team:"):
+        return label
+    if k.startswith("owner:") or str(label).strip() in _owner_display_names():
+        from flask import g
+        _owner_display_names()
+        return getattr(g, "_owner_company_name", None) or "the business"
+    return label
+
+
 def _require_plan_feature(customer: dict, plan_flag: str, min_plan_name: str):
     """
     Gate a route by WhatsApp plan feature flag.
@@ -349,11 +391,13 @@ PLAN_FEATURE_CATALOG = {
         ("crm.contacts_create",        "Create / import a Contact"),
         ("crm.contacts_edit",          "Edit a Contact (notes, consent, tags, status, segment, move to pipeline)"),
         ("crm.contacts_delete",        "Delete a Contact"),
+        ("crm.contacts_export",        "Export Contacts (download CSV)"),
         ("crm.companies_view",         "Companies — view"),
         ("crm.companies_create",       "Create a Company"),
         ("crm.companies_edit",         "Edit a Company (incl. notes)"),
         ("crm.pipeline_board_view",    "Pipeline Board — view"),
         ("crm.pipeline_board_edit",    "Edit a lead / advance or drop a pipeline stage"),
+        ("crm.pipeline_board_export",  "Export the Pipeline (download CSV)"),
         ("crm.segments_view",          "Segments — view"),
         ("crm.segments_create",        "Create a Segment"),
         ("crm.segments_edit",          "Edit a Segment (incl. members)"),
@@ -575,9 +619,11 @@ ROLE_FORM_GRID = {
         {"label": "Needs Review", "view": "campaigns_wa.needs_review_view", "edit": "campaigns_wa.needs_review_manage"},
     ],
     "CRM": [
-        {"label": "Contact",        "view": "crm.contacts_view",        "create": "crm.contacts_create",  "edit": "crm.contacts_edit",  "delete": "crm.contacts_delete"},
+        {"label": "Contact",        "view": "crm.contacts_view",        "create": "crm.contacts_create",  "edit": "crm.contacts_edit",  "delete": "crm.contacts_delete",
+         "other": ["crm.contacts_export"]},
         {"label": "Company",        "view": "crm.companies_view",       "create": "crm.companies_create", "edit": "crm.companies_edit"},
-        {"label": "Pipeline Board", "view": "crm.pipeline_board_view",  "edit": "crm.pipeline_board_edit"},
+        {"label": "Pipeline Board", "view": "crm.pipeline_board_view",  "edit": "crm.pipeline_board_edit",
+         "other": ["crm.pipeline_board_export"]},
         {"label": "Segment",        "view": "crm.segments_view",        "create": "crm.segments_create",  "edit": "crm.segments_edit",  "delete": "crm.segments_delete"},
         {"label": "Label",          "view": "crm.tags_view",            "create": "crm.tags_create",      "edit": "crm.tags_edit",      "delete": "crm.tags_delete"},
         {"label": "Duplicate Merge Review", "view": "crm.merge_review_view", "other": ["crm.merge_review_confirm", "crm.merge_review_reject"]},
@@ -3932,10 +3978,12 @@ def team_create():
     email      = (request.form.get("email") or "").strip().lower()
     location_city = (request.form.get("location_city") or "").strip()[:100] or None
     location_country = (request.form.get("location_country") or "").strip()[:10] or None
-    # Chat alerts (set on the create form; changeable later on the Team page)
-    alert_enabled  = request.form.get("alert_enabled") == "on"
-    alert_reminder = request.form.get("alert_reminder") == "on"
-    alert_phone    = _clean_alert_phone(request.form.get("alert_phone"))
+    # Chat alerts (set on the create form; changeable later on the Team page).
+    # Only someone who may manage chat alerts can set them here too.
+    _may_alerts = _team_member_has_permission("team.members_alerts")
+    alert_enabled  = _may_alerts and request.form.get("alert_enabled") == "on"
+    alert_reminder = (request.form.get("alert_reminder") == "on") if _may_alerts else True
+    alert_phone    = _clean_alert_phone(request.form.get("alert_phone")) if _may_alerts else None
     if alert_phone is False:
         flash("That WhatsApp number for alerts doesn't look right — use the full number, e.g. +2348012345678.", "danger")
         return redirect(url_for("portal.team_create"))
@@ -4026,9 +4074,11 @@ def team_create():
     assignable = _get_assignable_agents(tenant_id)
     if len(assignable) == 1:
         agent_ids = [assignable[0]["id"]]
-    else:
+    elif _team_member_has_permission("team.members_agent_access"):
         valid_ids = {a["id"] for a in assignable}
         agent_ids = [int(x) for x in request.form.getlist("agent_ids") if x.isdigit() and int(x) in valid_ids]
+    else:
+        agent_ids = []   # someone with AI-agent access assigns them later
     _set_team_member_agent_ids(tenant_id, new_id, agent_ids)
 
     flash(f"'{name}' created. Password: {generated_password} (shown once — share it securely, e.g. by WhatsApp or in person).", "success")
@@ -10050,13 +10100,13 @@ def chat_archive_session_export(session_id: str, fmt: str):
 # Default rules seeded the first time a tenant visits the Handoff Rules page.
 # sort_order controls display order (lower = shown first).
 _DEFAULT_HANDOFF_RULES = [
-    ("Visitor asks to speak to a human, agent, or real person",         "visitor_initiated", 1, 0),
-    ("Visitor provides their phone number or WhatsApp number",          "visitor_initiated", 1, 1),
-    ("Visitor asks about promotions, discount codes, or special offers","ai_initiated",      1, 2),
-    ("Visitor expresses unhappiness, frustration, or makes a complaint","ai_initiated",      1, 3),
-    ("Visitor asks about bulk orders or trade accounts",                "ai_initiated",      0, 4),
-    ("Visitor asks about a price match or price negotiation",           "ai_initiated",      0, 5),
-    ("Visitor asks about returns, refunds, or exchanges",               "ai_initiated",      0, 6),
+    ("Visitor asks to speak to a human, agent, or real person",         "visitor_initiated", True, 0),
+    ("Visitor provides their phone number or WhatsApp number",          "visitor_initiated", True, 1),
+    ("Visitor asks about promotions, discount codes, or special offers","ai_initiated",      True, 2),
+    ("Visitor expresses unhappiness, frustration, or makes a complaint","ai_initiated",      True, 3),
+    ("Visitor asks about bulk orders or trade accounts",                "ai_initiated",      False, 4),
+    ("Visitor asks about a price match or price negotiation",           "ai_initiated",      False, 5),
+    ("Visitor asks about returns, refunds, or exchanges",               "ai_initiated",      False, 6),
 ]
 
 
@@ -10290,6 +10340,90 @@ def video_tutorials():
     return render_template("portal/video_tutorials.html", customer=customer, videos=videos)
 
 
+def _settings_me_row():
+    """The logged-in team member's own record (never the owner's)."""
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""SELECT id, tenant_id, name, first_name, last_name, email, avatar_data, password_hash
+                   FROM team_members WHERE id=%s""", (int(session["team_member_id"]),))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    return row
+
+
+def _settings_me_page():
+    """Team members get "My Settings": only their own name, photo and password.
+    Nothing about the company or the owner (company portal — user 2026-09-27)."""
+    me = _settings_me_row()
+    if not me:
+        return redirect(url_for("portal.my_inbox"))
+    return render_template("portal/settings_me.html", me=me)
+
+
+def _settings_me_save(kind: str):
+    """Saves from "My Settings" — always the team member's own row only."""
+    tm_id = int(session["team_member_id"])
+    me = _settings_me_row()
+    if not me:
+        return redirect(url_for("portal.my_inbox"))
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        if kind == "profile":
+            first = (request.form.get("first_name") or "").strip()[:100]
+            last  = (request.form.get("last_name") or "").strip()[:100]
+            if not first:
+                flash("First name is required.", "danger")
+                return redirect(url_for("portal.settings"))
+            full = f"{first} {last}".strip()
+            cur.execute("UPDATE team_members SET first_name=%s, last_name=%s, name=%s WHERE id=%s",
+                        (first, last or None, full, tm_id))
+            session["team_member_name"] = full
+            flash("Your details were saved ✅", "success")
+        elif kind == "avatar":
+            if (request.form.get("action") or "upload").strip() == "remove":
+                cur.execute("UPDATE team_members SET avatar_data=NULL WHERE id=%s", (tm_id,))
+                flash("Photo removed.", "success")
+            else:
+                f = request.files.get("avatar")
+                if not f or not f.filename:
+                    flash("Please select an image file.", "danger")
+                    return redirect(url_for("portal.settings"))
+                if f.content_type not in {"image/jpeg", "image/png", "image/gif", "image/webp"}:
+                    flash("Only JPEG, PNG, GIF, or WebP images are allowed.", "danger")
+                    return redirect(url_for("portal.settings"))
+                data = f.read()
+                if len(data) > 2 * 1024 * 1024:
+                    flash("Your photo must be under 2 MB.", "danger")
+                    return redirect(url_for("portal.settings"))
+                uri = f"data:{f.content_type};base64,{_base64.b64encode(data).decode('utf-8')}"
+                cur.execute("UPDATE team_members SET avatar_data=%s WHERE id=%s", (uri, tm_id))
+                flash("Photo updated ✅", "success")
+        elif kind == "password":
+            cur_pw  = (request.form.get("current_password") or "").strip()
+            new_pw  = (request.form.get("new_password") or "").strip()
+            conf_pw = (request.form.get("confirm_password") or "").strip()
+            if not cur_pw or not new_pw or not conf_pw:
+                flash("All password fields are required.", "danger")
+            elif new_pw != conf_pw:
+                flash("New passwords do not match.", "danger")
+            elif len(new_pw) < 8:
+                flash("New password must be at least 8 characters.", "danger")
+            elif not verify_password(cur_pw, me.get("password_hash") or ""):
+                flash("Current password is incorrect.", "danger")
+            else:
+                cur.execute("UPDATE team_members SET password_hash=%s WHERE id=%s", (hash_password(new_pw), tm_id))
+                flash("Password changed successfully ✅", "success")
+        conn.commit()
+        cur.close(); conn.close()
+        insert_audit_log(action=f"team_member_settings_{kind}", tenant_id=me["tenant_id"],
+                         details={"team_member_id": tm_id})
+    except Exception as e:
+        print(f"⚠️ _settings_me_save {kind} error:", e)
+        flash("Could not save. Please try again.", "danger")
+    return redirect(url_for("portal.settings"))
+
+
 @portal_bp.route("/settings", methods=["GET"])
 @team_feature("settings.account")
 def settings():
@@ -10297,6 +10431,8 @@ def settings():
     if r: return r
     _rperm = _require_team_permission("settings.account")
     if _rperm: return _rperm
+    if session.get("team_member_id"):
+        return _settings_me_page()
     customer = _get_customer(_customer_id())
     if not customer:
         session.clear()
@@ -10375,6 +10511,8 @@ def settings_profile():
     if r: return r
     _rperm = _require_team_permission("settings.profile_edit")
     if _rperm: return _rperm
+    if session.get("team_member_id"):
+        return _settings_me_save("profile")
 
     cid        = _customer_id()
     first_name = (request.form.get("first_name") or "").strip()
@@ -10422,6 +10560,8 @@ def settings_password():
     if r: return r
     _rperm = _require_team_permission("settings.password")
     if _rperm: return _rperm
+    if session.get("team_member_id"):
+        return _settings_me_save("password")
 
     cid          = _customer_id()
     current_pw   = (request.form.get("current_password") or "").strip()
@@ -10471,6 +10611,8 @@ def settings_avatar():
     if r: return r
     _rperm = _require_team_permission("settings.profile_edit")
     if _rperm: return _rperm
+    if session.get("team_member_id"):
+        return _settings_me_save("avatar")
 
     cid    = _customer_id()
     action = (request.form.get("action") or "upload").strip()
@@ -10529,6 +10671,9 @@ def settings_notifications():
     """Update notification preferences."""
     r = _require_login()
     if r: return r
+    if session.get("team_member_id"):   # company settings — owner only (company portal)
+        flash("Only the account owner can change this.", "danger")
+        return redirect(url_for("portal.settings"))
     _rperm = _require_team_permission("settings.profile_edit")
     if _rperm: return _rperm
 
@@ -10598,6 +10743,9 @@ def settings_cancel_plan():
     """
     r = _require_login()
     if r: return r
+    if session.get("team_member_id"):   # company settings — owner only (company portal)
+        flash("Only the account owner can change this.", "danger")
+        return redirect(url_for("portal.settings"))
     _rperm = _require_team_permission("settings.cancel_plan")
     if _rperm: return _rperm
 
@@ -11943,6 +12091,9 @@ def settings_business():
     """
     r = _require_login()
     if r: return r
+    if session.get("team_member_id"):   # company settings — owner only (company portal)
+        flash("Only the account owner can change this.", "danger")
+        return redirect(url_for("portal.settings"))
     _rperm = _require_team_permission("settings.business_edit")
     if _rperm: return _rperm
 
@@ -14333,11 +14484,11 @@ def whatsapp_contacts_import():
 
 
 @portal_bp.route("/whatsapp/contacts/export")
-@team_feature("crm.contacts_view")
+@team_feature("crm.contacts_export")
 def whatsapp_contacts_export():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.contacts_view")
+    _rperm = _require_team_permission("crm.contacts_export")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -25129,6 +25280,11 @@ def inbox_api_poll():
             d["created_at"] = d["created_at"].strftime("%Y-%m-%dT%H:%M:%S")
         if d.get("last_message_at"):
             d["last_message_at"] = d["last_message_at"].strftime("%Y-%m-%dT%H:%M:%S")
+        # Team members never see the owner's name (company portal).
+        if d.get("assigned_to_label"):
+            d["assigned_to_label"] = display_actor(d["assigned_to_label"], d.get("assigned_to_key"))
+        if d.get("sent_by_label"):
+            d["sent_by_label"] = display_actor(d["sent_by_label"])
         return d
 
     return jsonify({
@@ -27341,14 +27497,14 @@ def sales_pipeline():
 
 
 @portal_bp.route("/sales-pipeline/export")
-@team_feature("crm.pipeline_board_view")
+@team_feature("crm.pipeline_board_export")
 def sales_pipeline_export():
     """CSV export of every lead matching the current filters (not just the current
     page) — a dedicated route rather than reusing the paginated list, since page-per-
     view is meant to lighten what's rendered on screen, not cap what you can export."""
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("crm.pipeline_board_view")
+    _rperm = _require_team_permission("crm.pipeline_board_export")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])

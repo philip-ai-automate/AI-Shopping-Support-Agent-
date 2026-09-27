@@ -133,9 +133,11 @@
                 {{ o.created_at.strftime('%d %b %Y') if o.created_at else '—' }}
               </td>
               <td>
+                {% if staff_can_open('portal.order_detail') %}
                 <a href="{{ url_for('portal.order_detail', order_id=o.id) }}"
                    style="font-size:12px;font-weight:600;color:var(--ink);
                           text-decoration:none">View →</a>
+                {% endif %}
               </td>
             </tr>
             {% endfor %}
@@ -167,9 +169,11 @@
         {% endfor %}
       </div>
       <div style="margin-top:12px">
+        {% if staff_can_open('portal.chat_archive') %}
         <a href="{{ url_for('portal.chat_archive') }}" class="btn btn-sm">
           Open Full Chat Archive →
         </a>
+        {% endif %}
       </div>
     </div>
     {% endif %}
@@ -195,10 +199,12 @@
             {% endif %}
           </div>
         </div>
+        {% if staff_can_open('portal.my_inbox') %}
         <a href="{{ url_for('portal.my_inbox', phone=phone) }}"
            style="font-size:12px;font-weight:600;color:var(--ink);text-decoration:none">
           Inbox →
         </a>
+        {% endif %}
       </div>
       {% endfor %}
     </div>
@@ -218,14 +224,18 @@
            class="btn btn-primary" style="justify-content:center">
           💬 Message on WhatsApp
         </a>
+        {% if staff_can_open('portal.whatsapp_campaigns') %}
         <a href="{{ url_for('portal.whatsapp_campaigns') }}"
            class="btn" style="justify-content:center">
           📢 Send Campaign
         </a>
+        {% endif %}
+        {% if staff_can_open('portal.orders') %}
         <a href="{{ url_for('portal.orders') }}?q={{ phone }}"
            class="btn" style="justify-content:center">
           📦 View All Orders
         </a>
+        {% endif %}
       </div>
     </div>
 

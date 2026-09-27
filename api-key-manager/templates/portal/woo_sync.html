@@ -202,7 +202,8 @@
   <input type="hidden" name="page_n" value="{{ page }}">
 </form>
 
-{% if docs %}
+{% set _can_ws_del = staff_can_open('portal.woo_sync_delete') %}
+{% if docs and _can_ws_del %}
 <div class="ws-bulk-bar" id="ws-bulk-bar" style="display:none;align-items:center;gap:10px;padding:10px 18px;background:#fff3f2;border:1px solid rgba(240,68,56,.3);border-radius:12px 12px 0 0;font-size:13px">
   <span id="ws-bulk-count" style="font-weight:600"></span>
   <button type="submit" form="woo-bulk-form" class="btn btn-sm"
@@ -219,7 +220,7 @@
   <table class="ws-table">
     <thead>
       <tr>
-        <th style="width:32px"><input type="checkbox" id="ws-select-all"></th>
+        <th style="width:32px">{% if _can_ws_del %}<input type="checkbox" id="ws-select-all">{% endif %}</th>
         <th style="width:54px"></th>
         <th>Title</th>
         <th>Type</th>
@@ -234,7 +235,7 @@
       {% for d in docs %}
       <tr>
         <td>
-          {% if d.type in ('page', 'post') %}
+          {% if d.type in ('page', 'post') and _can_ws_del %}
           <input type="checkbox" class="ws-row-check" name="doc_ids" value="{{ d.id }}" form="woo-bulk-form">
           {% endif %}
         </td>
@@ -302,7 +303,7 @@
           <a href="{{ d.url }}" target="_blank" rel="noopener"
              class="btn btn-sm" title="View on store">↗</a>
           {% endif %}
-          {% if d.type in ('page', 'post') %}
+          {% if d.type in ('page', 'post') and _can_ws_del %}
           <form method="POST" action="{{ url_for('portal.woo_sync_delete') }}"
                 style="display:inline" onsubmit="return confirm('Delete this {{ d.type }}? The AI will stop using it to answer customers.')">
             <input type="hidden" name="doc_id" value="{{ d.id }}">

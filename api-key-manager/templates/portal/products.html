@@ -82,8 +82,12 @@
     <p class="muted">Products your AI recommends on WhatsApp</p>
   </div>
   <div style="display:flex;gap:8px">
+    {% if staff_can_open('portal.product_add') %}
     <a href="{{ url_for('portal.product_add') }}" class="btn btn-primary btn-sm">+ Add Product</a>
+    {% endif %}
+    {% if staff_can_open('portal.catalogue_browse') %}
     <a href="{{ url_for('portal.catalogue_browse') }}" class="btn btn-sm">Browse Catalogue</a>
+    {% endif %}
   </div>
 </div>
 
@@ -132,8 +136,12 @@
             </div>
             {% if not (q or category) %}
             <div style="display:flex;gap:8px;justify-content:center;margin-top:6px">
+              {% if staff_can_open('portal.product_add') %}
               <a href="{{ url_for('portal.product_add') }}" class="btn btn-primary btn-sm">+ Add Product</a>
+              {% endif %}
+              {% if staff_can_open('portal.catalogue_browse') %}
               <a href="{{ url_for('portal.catalogue_browse') }}" class="btn btn-sm">Browse Catalogue</a>
+              {% endif %}
             </div>
             {% endif %}
           </td>
@@ -166,17 +174,23 @@
           </td>
           <td>
             <div class="row-actions" style="justify-content:flex-end">
+              {% if staff_can_open('portal.product_edit') %}
               <a href="{{ url_for('portal.product_edit', product_id=p.id) }}" class="btn btn-sm">Edit</a>
+              {% endif %}
+              {% if staff_can_open('portal.product_toggle_stock') %}
               <form method="POST" action="{{ url_for('portal.product_toggle_stock', product_id=p.id) }}">
                 <input type="hidden" name="action" value="{{ 'out_of_stock' if p.stock_quantity else 'in_stock' }}">
                 <button type="submit" class="btn btn-sm">
                   {{ 'Mark Out of Stock' if p.stock_quantity else 'Mark In Stock' }}
                 </button>
               </form>
+              {% endif %}
+              {% if staff_can_open('portal.product_delete') %}
               <form method="POST" action="{{ url_for('portal.product_delete', product_id=p.id) }}"
                     onsubmit="return confirm('Remove this product from your catalogue?')">
                 <button type="submit" class="btn btn-sm btn-danger">Remove</button>
               </form>
+              {% endif %}
             </div>
           </td>
         </tr>

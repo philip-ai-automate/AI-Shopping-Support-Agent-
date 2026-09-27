@@ -24,12 +24,16 @@
 {% endblock %}
 
 {% block content %}
+{# View-only roles see the settings read-only; saving needs crm.pipeline_settings_edit. #}
+{% set can_edit_settings = staff_can('crm.pipeline_settings_edit') %}
 <div class="crumb"><a href="{{ url_for('portal.sales_pipeline') }}">Sales Pipeline</a> / <b>Pipeline Settings</b></div>
+{% if not can_edit_settings %}<div class="settings-card" style="padding:12px 16px;font-size:13px;color:var(--muted)">You can view these settings. Your role doesn't allow changing them.</div>{% endif %}
 
 <div class="settings-card">
   <h2>Pipeline Stage Names</h2>
   <p class="sub">One Sales Pipeline, your own wording. Every deal still moves through these steps in this order — only the names are yours to set. Leave a field blank to keep the default.</p>
   <form method="POST">
+    <fieldset {% if not can_edit_settings %}disabled{% endif %} style="border:0;padding:0;margin:0;min-width:0">
     <input type="hidden" name="form_type" value="stage_labels">
 
     <div class="grp-label">Active — the deal is still open</div>
@@ -55,8 +59,9 @@
     {% endfor %}
 
     <div style="display:flex;justify-content:flex-end;margin-top:18px">
-      <button type="submit" class="btn-save">💾 Save Stage Names</button>
+      {% if can_edit_settings %}<button type="submit" class="btn-save">💾 Save Stage Names</button>{% endif %}
     </div>
+    </fieldset>
   </form>
 </div>
 
@@ -64,6 +69,7 @@
   <h2>Lead Score Labels</h2>
   <p class="sub">Same scoring underneath — the colors and the 0–100 thresholds don't change. Only these three words are yours to set. Leave blank to keep the default.</p>
   <form method="POST">
+    <fieldset {% if not can_edit_settings %}disabled{% endif %} style="border:0;padding:0;margin:0;min-width:0">
     <input type="hidden" name="form_type" value="score_labels">
 
     {% set score_meta = {'hot': ('🔥', '#fef2f2', 'Score 70–100'), 'warm': ('🌤️', '#fffbeb', 'Score 40–69'), 'cold': ('❄️', '#eff6ff', 'Score 0–39')} %}
@@ -83,8 +89,9 @@
     </div>
 
     <div style="display:flex;justify-content:flex-end;margin-top:18px">
-      <button type="submit" class="btn-save">💾 Save Score Labels</button>
+      {% if can_edit_settings %}<button type="submit" class="btn-save">💾 Save Score Labels</button>{% endif %}
     </div>
+    </fieldset>
   </form>
 </div>
 {% endblock %}

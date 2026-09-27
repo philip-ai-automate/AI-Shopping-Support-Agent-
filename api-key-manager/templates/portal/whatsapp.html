@@ -220,6 +220,7 @@
           <!-- Agent assignment -->
           <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <span style="font-size:12px;font-weight:600;color:var(--muted)">🤖 AI Agent:</span>
+            {% if staff_can_open('portal.whatsapp_assign_agent') %}
             <form method="POST" action="{{ url_for('portal.whatsapp_assign_agent', wa_id=cn.id) }}"
                   style="display:flex;align-items:center;gap:6px">
               <select name="agent_id"
@@ -235,7 +236,11 @@
               </select>
               <button type="submit" class="btn btn-sm btn-primary" style="padding:4px 10px;font-size:12px">Assign</button>
             </form>
-            {% if not agents %}
+            {% else %}
+            {% set _ag = (agents or [])|selectattr('id', 'equalto', cn.agent_id)|first %}
+            <span style="font-size:12px;color:var(--ink)">{{ _ag.name if _ag else 'Default instruction' }}</span>
+            {% endif %}
+            {% if not agents and staff_can_open('portal.ai_agents_new') %}
               <a href="{{ url_for('portal.ai_agents') }}" style="font-size:12px;color:var(--muted)">Create agents →</a>
             {% endif %}
           </div>
@@ -243,29 +248,33 @@
 
         <!-- Actions -->
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex-shrink:0">
-          <a href="{{ url_for('portal.whatsapp_connect', edit_wa_id=cn.id) }}#manual-connect" class="btn btn-sm">✏️ Edit</a>
+          {% if staff_can_open('portal.whatsapp_save_connection') %}<a href="{{ url_for('portal.whatsapp_connect', edit_wa_id=cn.id) }}#manual-connect" class="btn btn-sm">✏️ Edit</a>{% endif %}
           {% if cn.active %}
           <button onclick="document.getElementById('qrModal_{{ cn.id }}').classList.add('open')"
                   class="btn btn-sm">QR Code</button>
+          {% if staff_can_open('portal.whatsapp_disconnect') %}
           <form method="POST" action="{{ url_for('portal.whatsapp_disconnect') }}"
                 onsubmit="return confirm('Disconnect this number? The AI will stop replying until you reconnect.')">
             <input type="hidden" name="wa_id" value="{{ cn.id }}">
             <button type="submit" class="btn btn-sm btn-danger">Disconnect</button>
           </form>
           {% endif %}
+          {% endif %}
+          {% if staff_can_open('portal.whatsapp_delete') %}
           <form method="POST" action="{{ url_for('portal.whatsapp_delete') }}"
                 onsubmit="return confirm('Delete this WhatsApp number? This cannot be undone.')">
             <input type="hidden" name="wa_id" value="{{ cn.id }}">
             <button type="submit" class="btn btn-sm"
                     style="background:rgba(240,68,56,.1);color:#b02020;border:1px solid rgba(240,68,56,.35)">Delete</button>
           </form>
+          {% endif %}
         </div>
       </div>
 
       {% if cn.active and cn.token_expires_at and token_expiry_status in ('expired','expiring') %}
       <div class="flash {% if token_expiry_status == 'expired' %}danger{% else %}warning{% endif %}"
            style="margin-top:12px;margin-bottom:0">
-        {% if token_expiry_status == 'expired' %}Your token has expired. Reconnect below.
+        {% if token_expiry_status == 'expired' %}Your token has expired. {{ 'Reconnect below.' if staff_can_open('portal.whatsapp_save_connection') else 'Ask your account owner to reconnect it.' }}
         {% else %}Your token expires soon. Reconnect to get a fresh token.{% endif %}
       </div>
       {% endif %}
@@ -273,7 +282,8 @@
       <!-- Ack text for active numbers -->
       {% if cn.active %}
       <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
-        <form method="POST" action="{{ url_for('portal.whatsapp_save_ack_text') }}">
+        {% set _can_ack = staff_can_open('portal.whatsapp_save_ack_text') %}
+        <form method="POST" action="{{ url_for('portal.whatsapp_save_ack_text') }}"><fieldset {% if not _can_ack %}disabled{% endif %} style="border:0;padding:0;margin:0;min-width:0">
           <input type="hidden" name="wa_id" value="{{ cn.id }}">
           <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;color:var(--muted)">
             Instant acknowledgement message
@@ -284,9 +294,9 @@
                    value="{{ cn.typing_ack_text or '' }}"
                    placeholder="e.g. ⏳ or Got it, one moment..."
                    style="flex:1;padding:7px 12px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:var(--bg)">
-            <button type="submit" class="btn btn-sm btn-primary">Save</button>
+            {% if _can_ack %}<button type="submit" class="btn btn-sm btn-primary">Save</button>{% endif %}
           </div>
-        </form>
+        </fieldset></form>
       </div>
       {% endif %}
     </div>
@@ -332,6 +342,7 @@
 </div>
 {% endif %}
 
+{% if staff_can_open('portal.whatsapp_save_connection') %}
 <!-- ── Connect Section ───────────────────────────────────────────────────── -->
 <div class="section-hd"><span>➕</span><span class="section-hd-title">Add a Number</span><span class="section-hd-line"></span></div>
 {% if embedded_enabled %}
@@ -747,6 +758,7 @@
 </div><!-- end webhook div -->
 </div><!-- end manual card -->
 {% endif %}
+{% endif %}{# end Add a Number (manage only) #}
 
 <script>
 function copyText(id, btn) {
@@ -822,6 +834,8 @@ function useApiKey(evt) {
 }
 </script>
 
+{# Owner's personal number — never shown to team members (company portal, user 2026-09-27). #}
+{% if not session.get('team_member_id') %}
 {# ── Personal WhatsApp notification number ────────────────────────────────── #}
 <div class="section-hd"><span>🔔</span><span class="section-hd-title">Alerts</span><span class="section-hd-line"></span></div>
 <div class="card">
@@ -863,5 +877,6 @@ function useApiKey(evt) {
     </button>
   </form>
 </div>
+{% endif %}
 
 {% endblock %}

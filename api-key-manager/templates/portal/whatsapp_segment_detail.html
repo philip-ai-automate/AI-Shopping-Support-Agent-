@@ -67,6 +67,7 @@
 {% endblock %}
 
 {% block content %}
+{% set can_edit_seg = staff_can_open('portal.whatsapp_segment_add_member') %}
 
 <div class="seg-hero">
   <div class="seg-dot" style="background:{{ segment.color }}"></div>
@@ -116,12 +117,14 @@
             </td>
             <td><span class="status-badge badge-{{ c.status or 'lead' }}">{{ (c.status or 'lead')|title }}</span></td>
             <td>
+              {% if can_edit_seg %}
               <form method="POST" action="{{ url_for('portal.whatsapp_segment_remove_member', seg_id=segment.id, contact_id=c.id) }}"
                     onsubmit="return confirm('Remove from segment?')">
                 <button type="submit" class="icon-btn del" title="Remove from segment">
                   <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
                 </button>
               </form>
+              {% endif %}
             </td>
           </tr>
           {% endfor %}
@@ -132,6 +135,7 @@
   </div>
 
   <!-- Add contacts panel -->
+  {% if can_edit_seg %}
   <div class="section-card">
     <div class="section-card-header">
       <h2>Add Contacts</h2>
@@ -161,6 +165,7 @@
     </div>
     {% endif %}
   </div>
+  {% endif %}
 
 </div>
 

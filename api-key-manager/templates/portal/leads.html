@@ -265,8 +265,12 @@
     </div>
   </div>
   <div style="display:flex;gap:10px">
+    {% if staff_can_open('portal.sales_pipeline_settings') %}
     <a href="{{ url_for('portal.sales_pipeline_settings') }}" class="btn btn-sm" style="text-decoration:none">⚙️ Settings</a>
+    {% endif %}
+    {% if staff_can('leads.create') %}
     <button type="button" class="btn btn-primary btn-sm" onclick="document.getElementById('addLeadForm').classList.add('open'); document.getElementById('addLeadForm').scrollIntoView({behavior:'smooth'})">➕ Add Lead</button>
+    {% endif %}
   </div>
 </div>
 
@@ -350,7 +354,7 @@
       <a class="lead-open-btn" href="{{ url_for('portal.my_inbox') }}?phone={{ c.customer_phone }}">Open chat →</a>
       {% if c.already_lead %}
       <span class="lead-already">✓ Already a Lead</span>
-      {% else %}
+      {% elif staff_can('leads.create') %}
       <form method="POST" action="{{ url_for('portal.leads_create_from_conversation') }}" style="margin:0">
         <input type="hidden" name="phone" value="{{ c.customer_phone }}">
         <input type="hidden" name="display_name" value="{{ c.display_name or '' }}">
@@ -368,7 +372,7 @@
 {# ══════════════ YOUR LEADS (the real record list) ══════════════ #}
 <div class="section-title-row"><h2>📇 Your Leads</h2></div>
 
-<div class="lead-form{% if request.args.get('open_add') %} open{% endif %}" id="addLeadForm">
+<div class="lead-form{% if request.args.get('open_add') and staff_can('leads.create') %} open{% endif %}" id="addLeadForm">
   <div class="lf-title">➕ Add Lead</div>
   <form method="POST" action="{{ url_for('portal.leads_page') }}">
     <div class="frow">
@@ -502,9 +506,11 @@
     {% if col.more > 0 %}
     <a class="board-more" href="{{ url_for('portal.leads_page', view='list', tier=col.key, q=search) }}">+{{ col.more }} more</a>
     {% endif %}
+    {% if staff_can('leads.create') %}
     <button type="button" class="board-add-btn" onclick="document.getElementById('addLeadForm').classList.add('open'); document.getElementById('addLeadForm').scrollIntoView({behavior:'smooth'})">
       + Add Lead
     </button>
+    {% endif %}
   </div>
   {% endfor %}
 </div>

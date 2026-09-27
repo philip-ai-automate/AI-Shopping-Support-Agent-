@@ -78,6 +78,9 @@
 {% endblock %}
 
 {% block content %}
+{% set can_create_seg = staff_can_open('portal.whatsapp_segments_create') %}
+{% set can_edit_seg   = staff_can_open('portal.whatsapp_segments_edit') %}
+{% set can_delete_seg = staff_can_open('portal.whatsapp_segments_delete') %}
 
 <!-- Hero -->
 <div class="seg-hero">
@@ -90,10 +93,12 @@
       <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
       All Contacts
     </a>
+    {% if can_create_seg %}
     <button class="btn-primary" onclick="openCreate()">
       <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
       New Segment
     </button>
+    {% endif %}
   </div>
 </div>
 
@@ -114,7 +119,7 @@
   <div class="empty-icon-wrap">🗂️</div>
   <h3>No segments yet</h3>
   <p>Create your first segment to group contacts by deal stage, location, interest, or any criteria that matters to your business.</p>
-  <button class="btn-primary" onclick="openCreate()" style="margin-top:20px">+ Create First Segment</button>
+  {% if can_create_seg %}<button class="btn-primary" onclick="openCreate()" style="margin-top:20px">+ Create First Segment</button>{% endif %}
 </div>
 {% else %}
 <div class="seg-grid">
@@ -143,20 +148,26 @@
         <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
       </a>
       <div style="display:flex;gap:6px">
+        {% if staff_can_open('portal.whatsapp_campaigns') %}
         <a href="{{ url_for('portal.whatsapp_campaigns') }}?segment_id={{ seg.id }}"
            title="Target this segment in a campaign"
            style="text-decoration:none" class="icon-btn">
           <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         </a>
+        {% endif %}
+        {% if can_edit_seg %}
         <button class="icon-btn" title="Edit segment"
                 onclick="openEdit({{ seg.id }}, '{{ seg.name|replace("'","\\'") }}', '{{ (seg.description or '')|replace("'","\\'") }}', '{{ seg.color }}')">
           <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         </button>
+        {% endif %}
+        {% if can_delete_seg %}
         <form method="POST" action="{{ url_for('portal.whatsapp_segments_delete', seg_id=seg.id) }}" style="display:inline" onsubmit="return confirm('Delete segment &quot;{{ seg.name }}&quot;? Contacts will not be deleted.')">
           <button class="icon-btn del" type="submit" title="Delete segment">
             <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6l-1 14H6L5 6"/></svg>
           </button>
         </form>
+        {% endif %}
       </div>
     </div>
   </div>

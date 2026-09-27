@@ -122,28 +122,31 @@
           <!-- Toggle on/off -->
           <form class="toggle-form" method="post"
                 action="{{ url_for('portal.handoff_rules_toggle', rule_id=rule.id) }}">
-            <button type="submit"
+            <button type="submit" {% if not staff_can_open('portal.handoff_rules_toggle') %}disabled style="cursor:default;opacity:.7"{% endif %}
                     class="toggle-btn {% if rule.is_active %}on{% else %}off{% endif %}"
                     title="{{ 'Disable' if rule.is_active else 'Enable' }} this rule">
               <span class="toggle-knob"></span>
             </button>
           </form>
           <!-- Delete -->
+          {% if staff_can_open('portal.handoff_rules_delete') %}
           <form method="post"
                 action="{{ url_for('portal.handoff_rules_delete', rule_id=rule.id) }}"
                 onsubmit="return confirm('Delete this rule?')">
             <button type="submit" class="btn btn-sm btn-danger" title="Delete rule"
                     style="padding:5px 10px;font-size:13px">✕</button>
           </form>
+          {% endif %}
         </div>
       </div>
       {% endfor %}
     {% else %}
-      <div class="empty-rules">No visitor-initiated rules yet. Add one below.</div>
+      <div class="empty-rules">No visitor-initiated rules yet.{% if staff_can_open('portal.handoff_rules_add') %} Add one below.{% endif %}</div>
     {% endif %}
   </div>
 
   <!-- Add visitor-initiated rule -->
+  {% if staff_can_open('portal.handoff_rules_add') %}
   <div class="add-rule-card">
     <h4>+ Add visitor-initiated rule</h4>
     <form method="post" action="{{ url_for('portal.handoff_rules_add') }}">
@@ -161,6 +164,7 @@
       </div>
     </form>
   </div>
+  {% endif %}
 </div>
 
 
@@ -188,28 +192,31 @@
           <!-- Toggle on/off -->
           <form class="toggle-form" method="post"
                 action="{{ url_for('portal.handoff_rules_toggle', rule_id=rule.id) }}">
-            <button type="submit"
+            <button type="submit" {% if not staff_can_open('portal.handoff_rules_toggle') %}disabled style="cursor:default;opacity:.7"{% endif %}
                     class="toggle-btn {% if rule.is_active %}on{% else %}off{% endif %}"
                     title="{{ 'Disable' if rule.is_active else 'Enable' }} this rule">
               <span class="toggle-knob"></span>
             </button>
           </form>
           <!-- Delete -->
+          {% if staff_can_open('portal.handoff_rules_delete') %}
           <form method="post"
                 action="{{ url_for('portal.handoff_rules_delete', rule_id=rule.id) }}"
                 onsubmit="return confirm('Delete this rule?')">
             <button type="submit" class="btn btn-sm btn-danger" title="Delete rule"
                     style="padding:5px 10px;font-size:13px">✕</button>
           </form>
+          {% endif %}
         </div>
       </div>
       {% endfor %}
     {% else %}
-      <div class="empty-rules">No AI-decided rules yet. Add one below.</div>
+      <div class="empty-rules">No AI-decided rules yet.{% if staff_can_open('portal.handoff_rules_add') %} Add one below.{% endif %}</div>
     {% endif %}
   </div>
 
   <!-- Add AI-decided rule -->
+  {% if staff_can_open('portal.handoff_rules_add') %}
   <div class="add-rule-card">
     <h4>+ Add AI-decided rule</h4>
     <form method="post" action="{{ url_for('portal.handoff_rules_add') }}">
@@ -227,6 +234,7 @@
       </div>
     </form>
   </div>
+  {% endif %}
 </div>
 
 

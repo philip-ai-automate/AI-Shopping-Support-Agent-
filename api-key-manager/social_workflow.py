@@ -266,10 +266,23 @@ def _esc(s) -> str:
     return html.escape(str(s or ""))
 
 
+def _by_for_staff(customer, by_label: str) -> str:
+    """Emails to team members never name the account owner (company portal —
+    user 2026-09-27): an owner action reads as the company name."""
+    first = (customer.get("first_name") or "").strip()
+    full = f"{first} {(customer.get('last_name') or '').strip()}".strip()
+    owner_names = {n for n in (first, full, customer.get("email"), "Owner") if n}
+    owner_names |= {f"{n} (owner)" for n in list(owner_names)}
+    if (by_label or "").strip() in owner_names:
+        return customer.get("tenant_name") or customer.get("tenant_domain") or "Your business"
+    return by_label
+
+
 def notify_approvers(customer, post, by_label: str):
     to = _approver_emails(customer)
     if not to:
         return
+    by_label = _by_for_staff(customer, by_label)
     title = title_of(post, 90)
     link = f"{_base_url()}/social-posts/approval"
     subject = f"Social post waiting for your approval: {title}"
@@ -287,6 +300,8 @@ def notify_submitter(customer, post, decision: str, by_label: str, note: str = N
     to = _email_for_key(customer, post.get("submitted_by_key"))
     if not to:
         return
+    if str(post.get("submitted_by_key") or "").startswith("team:"):
+        by_label = _by_for_staff(customer, by_label)
     title = title_of(post, 90)
     link = f"{_base_url()}/social-posts/{post['id']}/view"
     if decision == "approved":
@@ -309,9 +324,15 @@ def people(customer) -> list:
     """Who a post can be given to: the account owner, then every active team
     member (invite accepted) whose role can see Social Media.
     [{"key", "label", "email"}]"""
-    out = [{"key": f"owner:{customer['id']}",
-            "label": ((customer.get("first_name") or "").strip() or "Owner") + " (owner)",
-            "email": customer.get("email")}]
+    from flask import session
+    if session.get("team_member_id"):   # company portal: staff see the company, not the owner
+        out = [{"key": f"owner:{customer['id']}",
+                "label": customer.get("tenant_name") or customer.get("tenant_domain") or "The business",
+                "email": None}]
+    else:
+        out = [{"key": f"owner:{customer['id']}",
+                "label": ((customer.get("first_name") or "").strip() or "Owner") + " (owner)",
+                "email": customer.get("email")}]
     conn = get_db_connection()
     cur = conn.cursor()
     try:
@@ -382,7 +403,10 @@ def is_overdue(post, today) -> bool:
 
 
 def owner_name(post) -> str:
-    return post.get("owner_label") or post.get("created_by") or ""
+    from portal_routes import display_actor   # team members never see the owner's name
+    if post.get("owner_label"):
+        return display_actor(post["owner_label"], post.get("owner_key")) or ""
+    return display_actor(post.get("created_by")) or ""
 
 
 def set_assignment(customer, post, owner: dict, due, actor_label: str) -> bool:
@@ -416,6 +440,8 @@ def notify_assignee(customer, post, owner: dict, by_label: str):
     to = owner.get("email")
     if not to or by_label == owner.get("label"):
         return
+    if str(owner.get("key") or "").startswith("team:"):
+        by_label = _by_for_staff(customer, by_label)
     title = title_of(post, 90)
     link = f"{_base_url()}/social-posts/{post['id']}/view"
     due = post.get("due_date")

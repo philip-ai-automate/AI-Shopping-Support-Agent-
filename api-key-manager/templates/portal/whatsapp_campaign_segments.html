@@ -107,6 +107,7 @@
 
 <div class="card">
   <div class="seg-detail-body">
+    {% if staff_can_open('portal.whatsapp_pipeline_segments_add_member') %}
     <div class="seg-add-wrap">
       <label class="field-label">Add a contact</label>
       <input type="text" class="field-input" id="segAddSearch" autocomplete="off"
@@ -115,19 +116,22 @@
              onblur="setTimeout(() => { document.getElementById('segAddResults').style.display='none' }, 200)">
       <div id="segAddResults" class="seg-add-results" style="display:none"></div>
     </div>
+    {% endif %}
 
     {% if members %}
     <div class="seg-members-head"><span></span><span>Name</span><span>Phone</span></div>
     {% for m in members %}
     <div class="seg-member-row">
+      {% if staff_can_open('portal.whatsapp_pipeline_segments_remove_member') %}
       <button type="button" class="seg-remove-btn" title="Remove from segment" onclick="removeSegMember({{ m.id }})">✕</button>
+      {% else %}<span></span>{% endif %}
       <span class="seg-member-name" title="{{ m.name }}">{{ m.name }}</span>
       <span class="seg-member-phone" title="{{ m.phone }}">{{ m.phone }}</span>
     </div>
     {% endfor %}
     {% else %}
     <div class="empty-state" style="padding:30px 20px">
-      <p>No contacts added yet — search above to add some.</p>
+      <p>No contacts added yet{% if staff_can_open('portal.whatsapp_pipeline_segments_add_member') %} — search above to add some{% endif %}.</p>
     </div>
     {% endif %}
   </div>
@@ -140,10 +144,12 @@
     <h1>WhatsApp Segments</h1>
     <p>Saved groups of Sales Pipeline contacts, for targeting WhatsApp Campaigns.</p>
   </div>
+  {% if staff_can_open('portal.whatsapp_pipeline_segments_create') %}
   <form class="seg-create-row" onsubmit="createSegment(event)">
     <input type="text" id="segNewName" placeholder="New segment name, e.g. VIP customers">
     <button type="submit" class="btn-primary">+ Create</button>
   </form>
+  {% endif %}
 </div>
 
 {% if segments %}
@@ -156,7 +162,9 @@
     </div>
     <div class="seg-card-actions">
       <a class="btn-ghost" href="{{ url_for('portal.whatsapp_campaign_segments_page', segment_id=s.id) }}">Manage contacts</a>
+      {% if staff_can_open('portal.whatsapp_pipeline_segments_delete') %}
       <button type="button" class="btn-danger" onclick="deleteSegment({{ s.id }}, '{{ s.name|replace("'", "\\'") }}')">Delete</button>
+      {% endif %}
     </div>
   </div>
   {% endfor %}
@@ -166,7 +174,11 @@
   <div class="empty-state">
     <div class="empty-icon-wrap">📋</div>
     <h3>No WhatsApp Segments yet</h3>
+    {% if staff_can_open('portal.whatsapp_pipeline_segments_create') %}
     <p>Create one above, then add Sales Pipeline contacts to it — you'll be able to target it directly from a WhatsApp Campaign.</p>
+    {% else %}
+    <p>Your business hasn't created any yet.</p>
+    {% endif %}
   </div>
 </div>
 {% endif %}

@@ -87,7 +87,7 @@
     </div>
     <div style="min-width:0">
       <div class="ap-row"><span class="sp-pill p-w">Awaiting approval</span>
-        <span class="ap-hint">Submitted by {{ p.submitted_by or p.created_by or 'a team member' }}{% if p.submitted_at %} · <span class="js-local" data-utc="{{ p.submitted_at.isoformat() }}"></span>{% endif %}</span></div>
+        <span class="ap-hint">Submitted by {{ (p.submitted_by|who(p.submitted_by_key)) if p.submitted_by else ((p.created_by|who) or 'a team member') }}{% if p.submitted_at %} · <span class="js-local" data-utc="{{ p.submitted_at.isoformat() }}"></span>{% endif %}</span></div>
       <h2>{{ c.title }}</h2>
       <div class="ap-meta">
         <div><b>Goes out</b>{% if p.scheduled_for %}<span class="js-local" data-utc="{{ p.scheduled_for.isoformat() }}"></span>{% if p.scheduled_for < now %} <span class="sp-pill p-r">time has passed</span>{% endif %}{% else %}As soon as it's approved{% endif %}</div>
@@ -132,7 +132,7 @@
       {% for p in recent %}
       {% set c = cards[p.id] %}
       <a href="{{ url_for('socialcal.post_view', post_id=p.id) }}">
-        <span><b>{{ c.title }}</b> <span class="ap-hint">· by {{ p.submitted_by or p.created_by }}</span></span>
+        <span><b>{{ c.title }}</b> <span class="ap-hint">· by {{ (p.submitted_by|who(p.submitted_by_key)) if p.submitted_by else (p.created_by|who) }}</span></span>
         <span class="ap-hint">{{ 'Approved' if p.approval == 'approved' else 'Sent back' }} by {{ p.decided_by }} · <span class="js-local" data-utc="{{ p.decided_at.isoformat() }}"></span></span>
       </a>
       {% endfor %}

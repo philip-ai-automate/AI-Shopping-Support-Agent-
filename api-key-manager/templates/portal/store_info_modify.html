@@ -26,7 +26,7 @@
   <div>
     <div class="si-label">{{ s.title }}</div>
     <div class="si-hint">{{ s.hint }}</div>
-    {% if s.updated_at %}<div class="si-meta">Last updated {{ s.updated_at.strftime('%d %b %Y, %H:%M') }}{% if s.updated_by %} by {{ s.updated_by.split(':')[-1] }}{% endif %}</div>{% endif %}
+    {% if s.updated_at %}<div class="si-meta">Last updated {{ s.updated_at.strftime('%d %b %Y, %H:%M') }}{% if s.updated_by %} by {{ s.updated_by|changed_by }}{% endif %}</div>{% endif %}
   </div>
   <a href="{{ url_for('portal.store_info_modify_entry', entry_id=s.id) }}" class="btn btn-sm">Edit</a>
 </div>
@@ -39,7 +39,7 @@
   <div>
     <div class="si-label">{{ e.title }}</div>
     <div class="si-hint">{{ (e.content or '')[:120] }}{% if (e.content or '')|length > 120 %}…{% endif %}</div>
-    {% if e.updated_at %}<div class="si-meta">Last updated {{ e.updated_at.strftime('%d %b %Y, %H:%M') }}{% if e.updated_by %} by {{ e.updated_by.split(':')[-1] }}{% endif %}</div>{% endif %}
+    {% if e.updated_at %}<div class="si-meta">Last updated {{ e.updated_at.strftime('%d %b %Y, %H:%M') }}{% if e.updated_by %} by {{ e.updated_by|changed_by }}{% endif %}</div>{% endif %}
   </div>
   <a href="{{ url_for('portal.store_info_modify_entry', entry_id=e.id) }}" class="btn btn-sm">Edit</a>
 </div>

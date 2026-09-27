@@ -67,6 +67,25 @@ def create_app():
     except Exception as e:
         print("⚠️ Feature/Roles check could not run:", e)
 
+    @flask_app.template_filter("who")
+    def _who(label, key=None):
+        """{{ name|who }} / {{ name|who(key) }} — hides the owner's name from team members."""
+        from portal_routes import display_actor
+        return display_actor(label, key)
+
+    @flask_app.template_filter("changed_by")
+    def _changed_by(value):
+        """Label for a stored "customer:<email>" / "team_member:<email>" actor.
+        Team members never see the account owner's identity (company portal —
+        user 2026-09-27), so an owner change reads as the company name."""
+        from flask import session as _s, g as _gg
+        v = str(value or "")
+        kind, _, who = v.partition(":")
+        if kind == "customer" and _s.get("team_member_id"):
+            me = getattr(_gg, "_cached_portal_customer", None) or {}
+            return me.get("tenant_name") or me.get("tenant_domain") or "the business"
+        return who or v
+
     @flask_app.template_filter("with_plus")
     def _with_plus(value):
         """Prefix '+' only if not already present. Meta's display_phone_number
@@ -187,7 +206,15 @@ def create_app():
                 return False
             perms = session.get("team_member_permissions") or {}
             return any(perms.get(k) for k in keys)
-        return {"staff_can_open": staff_can_open}
+
+        def staff_can(feature_key):
+            """Button-level check for actions whose route accepts several
+            keys (e.g. bulk actions: delete vs edit). Owner always True."""
+            if not session.get("team_member_id"):
+                return True
+            perms = session.get("team_member_permissions") or {}
+            return bool(perms.get(feature_key))
+        return {"staff_can_open": staff_can_open, "staff_can": staff_can}
 
     # ── Global template context: inject current customer so every template,
     #    including base.html, can access avatar_data, first_name, etc.
@@ -219,21 +246,31 @@ def create_app():
                 if tm_id:
                     cur.execute("""
                         SELECT tm.id, tm.name AS first_name, '' AS last_name, tm.email,
-                               NULL AS avatar_data, NULL AS phone_number, NULL AS timezone,
+                               tm.avatar_data, NULL AS phone_number, NULL AS timezone,
                                FALSE AS notif_billing, FALSE AS notif_usage, FALSE AS notif_marketing,
                                TRUE AS email_verified, tm.is_active, tm.created_at,
-                               t.domain AS tenant_domain, t.name AS tenant_name, t.id AS tenant_id
+                               t.domain AS tenant_domain, t.name AS tenant_name, t.id AS tenant_id,
+                               TRUE AS is_team_member,
+                               COALESCE(NULLIF(TRIM(tm.first_name), ''), SPLIT_PART(TRIM(tm.name), ' ', 1)) AS greeting_name,
+                               r.name AS role_name,
+                               TRIM(COALESCE(o.first_name, '') || ' ' || COALESCE(o.last_name, '')) AS owner_name,
+                               o.email AS owner_email
                         FROM team_members tm
                         JOIN tenants t ON t.id = tm.tenant_id
+                        LEFT JOIN tenant_roles r ON r.id = tm.role_id AND r.tenant_id = tm.tenant_id
+                        LEFT JOIN customers o ON o.id = %s AND o.tenant_id = tm.tenant_id
                         WHERE tm.id = %s
-                    """, (int(tm_id),))
+                    """, (int(cid), int(tm_id)))
                 else:
                     cur.execute("""
                         SELECT c.id, c.first_name, c.last_name, c.email,
                                c.avatar_data, c.phone_number, c.timezone,
                                c.notif_billing, c.notif_usage, c.notif_marketing,
                                c.email_verified, c.is_active, c.created_at,
-                               t.domain AS tenant_domain, t.name AS tenant_name, t.id AS tenant_id
+                               t.domain AS tenant_domain, t.name AS tenant_name, t.id AS tenant_id,
+                               FALSE AS is_team_member, c.first_name AS greeting_name, NULL AS role_name,
+                               TRIM(COALESCE(c.first_name, '') || ' ' || COALESCE(c.last_name, '')) AS owner_name,
+                               c.email AS owner_email
                         FROM customers c
                         JOIN tenants t ON t.id = c.tenant_id
                         WHERE c.id = %s

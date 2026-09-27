@@ -282,8 +282,15 @@ a.act-row:hover .act-text{ text-decoration:underline }
 ═══════════════════════════════════════════════════════════════ #}
 <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
   <div>
-    <h1 class="dash-greeting">Hi {% if customer.first_name %}{{ customer.first_name }}{% else %}there{% endif %} 👋</h1>
-    <p class="dash-sub">{{ customer.tenant_domain }}</p>
+    {% set _me = _portal_customer or {} %}
+    {% set _hi = _me.greeting_name if _me else customer.first_name %}
+    {% set _biz = _me.tenant_name or customer.tenant_domain or 'this business' %}
+    <h1 class="dash-greeting">Hi {% if _hi %}{{ _hi }}{% else %}there{% endif %} 👋</h1>
+    {% if _me.is_team_member %}
+    <p class="dash-sub"><strong>{{ _biz }}</strong></p>
+    {% else %}
+    <p class="dash-sub"><strong>{{ _biz }}</strong> · You're the account owner{% if customer.tenant_domain and customer.tenant_domain != _biz %} · {{ customer.tenant_domain }}{% endif %}</p>
+    {% endif %}
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
     {% if customer.tenant_source_type == 'whatsapp' %}
@@ -323,7 +330,9 @@ a.act-row:hover .act-text{ text-decoration:underline }
         <button type="submit" class="btn btn-sm">Apply</button>
       </span>
     </form>
+    {% if staff_can('leads.create') %}
     <a href="{{ url_for('portal.leads_page', open_add=1) }}" class="btn btn-primary btn-sm">+ Add Lead</a>
+    {% endif %}
   </div>
 </div>
 

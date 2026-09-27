@@ -137,7 +137,7 @@
     <h3>Plans already made</h3>
     <ul style="margin:0;padding-left:18px">
       {% for r in recent %}
-      <li><a href="{{ url_for('socialcal.plan_review', plan_id=r.id) }}">{{ r.month.strftime('%B %Y') }}</a> · {{ r.n }} suggestions, {{ r.added }} added · made by {{ r.created_by }}</li>
+      <li><a href="{{ url_for('socialcal.plan_review', plan_id=r.id) }}">{{ r.month.strftime('%B %Y') }}</a> · {{ r.n }} suggestions, {{ r.added }} added · made by {{ r.created_by|who }}</li>
       {% endfor %}
     </ul>
   </div>

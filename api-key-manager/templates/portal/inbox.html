@@ -786,7 +786,7 @@ html, body { overflow: hidden; height: 100%; }
                 {{ (c.last_content or '')|truncate(50) }}
               </span>
               {% if has_team and c.assigned_to_label %}
-              <span class="claim-tag" title="Claimed by {{ c.assigned_to_label }}">🙋 {{ c.assigned_to_label if c.assigned_to_key != current_actor_key else 'You' }}</span>
+              <span class="claim-tag" title="Claimed by {{ (c.assigned_to_label|who(c.assigned_to_key)) }}">🙋 {{ (c.assigned_to_label|who(c.assigned_to_key)) if c.assigned_to_key != current_actor_key else 'You' }}</span>
               {% endif %}
               {% if c.needs_reply %}
               <span class="conv-badge" title="Awaiting reply">●</span>
@@ -842,7 +842,7 @@ html, body { overflow: hidden; height: 100%; }
         {% if has_team %}
           {% if active_conv and active_conv.assigned_to_label %}
           <span style="font-size:11.5px;font-weight:600;color:var(--muted);white-space:nowrap">
-            {% if active_conv.assigned_to_key == current_actor_key %}🙋 Claimed by you{% else %}🔒 Claimed by {{ active_conv.assigned_to_label }}{% endif %}
+            {% if active_conv.assigned_to_key == current_actor_key %}🙋 Claimed by you{% else %}🔒 Claimed by {{ (active_conv.assigned_to_label|who(active_conv.assigned_to_key)) }}{% endif %}
           </span>
           <form method="POST" action="{{ url_for('portal.inbox_release', phone=active_phone) }}">
             <button type="submit" class="btn btn-sm" style="background:#F2F4F7;color:var(--ink);border:1px solid var(--line);white-space:nowrap">Release</button>
@@ -933,7 +933,7 @@ html, body { overflow: hidden; height: 100%; }
                the "AI" label below. #}
             <div class="msg-wrap outbound" data-ts="{{ msg.created_at.isoformat() if msg.created_at else '' }}">
               <div class="bubble-col">
-                <div class="bubble-sender">{{ msg.sent_by_label if (has_team and msg.sent_by_label) else 'You' }}</div>
+                <div class="bubble-sender">{{ (msg.sent_by_label|who) if (has_team and (msg.sent_by_label|who)) else 'You' }}</div>
                 <div class="chat-bubble bubble-agent">
                   {{ msg_body(msg) }}
                   <span class="bubble-time">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}</span>
@@ -961,7 +961,7 @@ html, body { overflow: hidden; height: 100%; }
         {% if must_claim %}
         <div style="padding:16px 20px;text-align:center">
           {% if active_conv and active_conv.assigned_to_label %}
-          <p style="font-size:13px;color:var(--muted);margin-bottom:10px">🔒 Claimed by {{ active_conv.assigned_to_label }} — release it to reply here.</p>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:10px">🔒 Claimed by {{ (active_conv.assigned_to_label|who(active_conv.assigned_to_key)) }} — release it to reply here.</p>
           <form method="POST" action="{{ url_for('portal.inbox_release', phone=active_phone) }}">
             <button type="submit" class="btn btn-sm" style="background:#F2F4F7;color:var(--ink);border:1px solid var(--line)">Release conversation</button>
           </form>
@@ -1074,7 +1074,7 @@ html, body { overflow: hidden; height: 100%; }
                 {{ (c.last_content or '')|truncate(50) }}
               </span>
               {% if has_team and c.assigned_to_label %}
-              <span class="claim-tag" title="Claimed by {{ c.assigned_to_label }}">🙋 {{ c.assigned_to_label if c.assigned_to_key != current_actor_key else 'You' }}</span>
+              <span class="claim-tag" title="Claimed by {{ (c.assigned_to_label|who(c.assigned_to_key)) }}">🙋 {{ (c.assigned_to_label|who(c.assigned_to_key)) if c.assigned_to_key != current_actor_key else 'You' }}</span>
               {% endif %}
               {% if c.needs_reply %}<span class="conv-badge" title="Awaiting reply">●</span>{% endif %}
             </div>
@@ -1106,7 +1106,7 @@ html, body { overflow: hidden; height: 100%; }
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
             {% if active_msngr_conv and active_msngr_conv.assigned_to_label %}
             <span style="font-size:11.5px;font-weight:600;color:var(--muted);white-space:nowrap">
-              {% if active_msngr_conv.assigned_to_key == current_actor_key %}🙋 Claimed by you{% else %}🔒 Claimed by {{ active_msngr_conv.assigned_to_label }}{% endif %}
+              {% if active_msngr_conv.assigned_to_key == current_actor_key %}🙋 Claimed by you{% else %}🔒 Claimed by {{ (active_msngr_conv.assigned_to_label|who(active_msngr_conv.assigned_to_key)) }}{% endif %}
             </span>
             <form method="POST" action="{{ url_for('portal.inbox_release', phone=active_phone) }}">
               <button type="submit" class="btn btn-sm" style="background:#F2F4F7;color:var(--ink);border:1px solid var(--line);white-space:nowrap">Release</button>
@@ -1148,7 +1148,7 @@ html, body { overflow: hidden; height: 100%; }
             {% else %}
             <div class="msg-wrap outbound">
               <div class="bubble-col">
-                <div class="bubble-sender">{{ msg.sent_by_label if (has_team and msg.sent_by_label) else 'You' }}</div>
+                <div class="bubble-sender">{{ (msg.sent_by_label|who) if (has_team and (msg.sent_by_label|who)) else 'You' }}</div>
                 <div class="chat-bubble bubble-agent">
                   {{ msg.content or '(message)' }}
                   <span class="bubble-time">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}</span>
@@ -1165,7 +1165,7 @@ html, body { overflow: hidden; height: 100%; }
           {% if msngr_must_claim %}
           <div style="padding:16px 20px;text-align:center">
             {% if active_msngr_conv and active_msngr_conv.assigned_to_label %}
-            <p style="font-size:13px;color:var(--muted);margin-bottom:10px">🔒 Claimed by {{ active_msngr_conv.assigned_to_label }} — release it to reply here.</p>
+            <p style="font-size:13px;color:var(--muted);margin-bottom:10px">🔒 Claimed by {{ (active_msngr_conv.assigned_to_label|who(active_msngr_conv.assigned_to_key)) }} — release it to reply here.</p>
             <form method="POST" action="{{ url_for('portal.inbox_release', phone=active_phone) }}">
               <button type="submit" class="btn btn-sm" style="background:#F2F4F7;color:var(--ink);border:1px solid var(--line)">Release conversation</button>
             </form>
@@ -1240,7 +1240,7 @@ html, body { overflow: hidden; height: 100%; }
                 {{ (c.last_content or '')|truncate(50) }}
               </span>
               {% if has_team and c.assigned_to_label %}
-              <span class="claim-tag" title="Claimed by {{ c.assigned_to_label }}">🙋 {{ c.assigned_to_label if c.assigned_to_key != current_actor_key else 'You' }}</span>
+              <span class="claim-tag" title="Claimed by {{ (c.assigned_to_label|who(c.assigned_to_key)) }}">🙋 {{ (c.assigned_to_label|who(c.assigned_to_key)) if c.assigned_to_key != current_actor_key else 'You' }}</span>
               {% endif %}
               {% if c.needs_reply %}<span class="conv-badge" title="Waiting for a reply">●</span>{% endif %}
             </div>
@@ -1275,7 +1275,7 @@ html, body { overflow: hidden; height: 100%; }
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
             {% if active_webchat_conv and active_webchat_conv.assigned_to_label %}
             <span style="font-size:11.5px;font-weight:600;color:var(--muted);white-space:nowrap">
-              {% if active_webchat_conv.assigned_to_key == current_actor_key %}🙋 Claimed by you{% else %}🔒 Claimed by {{ active_webchat_conv.assigned_to_label }}{% endif %}
+              {% if active_webchat_conv.assigned_to_key == current_actor_key %}🙋 Claimed by you{% else %}🔒 Claimed by {{ (active_webchat_conv.assigned_to_label|who(active_webchat_conv.assigned_to_key)) }}{% endif %}
             </span>
             <form method="POST" action="{{ url_for('portal.inbox_release', phone=active_phone) }}">
               <button type="submit" class="btn btn-sm" style="background:#F2F4F7;color:var(--ink);border:1px solid var(--line);white-space:nowrap">Release</button>
@@ -1317,7 +1317,7 @@ html, body { overflow: hidden; height: 100%; }
             {% else %}
             <div class="msg-wrap outbound">
               <div class="bubble-col">
-                <div class="bubble-sender">{{ msg.sent_by_label or 'You' }}</div>
+                <div class="bubble-sender">{{ (msg.sent_by_label|who) or 'You' }}</div>
                 <div class="chat-bubble bubble-agent">
                   {{ msg.content or '(message)' }}
                   <span class="bubble-time">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}</span>
@@ -1334,7 +1334,7 @@ html, body { overflow: hidden; height: 100%; }
           {% if webchat_must_claim %}
           <div style="padding:16px 20px;text-align:center">
             {% if active_webchat_conv and active_webchat_conv.assigned_to_label %}
-            <p style="font-size:13px;color:var(--muted);margin-bottom:10px">🔒 Claimed by {{ active_webchat_conv.assigned_to_label }} — release it to reply here.</p>
+            <p style="font-size:13px;color:var(--muted);margin-bottom:10px">🔒 Claimed by {{ (active_webchat_conv.assigned_to_label|who(active_webchat_conv.assigned_to_key)) }} — release it to reply here.</p>
             <form method="POST" action="{{ url_for('portal.inbox_release', phone=active_phone) }}">
               <button type="submit" class="btn btn-sm" style="background:#F2F4F7;color:var(--ink);border:1px solid var(--line)">Release conversation</button>
             </form>

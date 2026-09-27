@@ -57,9 +57,14 @@
       </div>
     </div>
     <div class="channel-card-foot">
-      <a href="{{ url_for('portal.whatsapp_connect') }}" class="btn {% if not (wa_connection and wa_connection.active) %}btn-primary{% endif %}">
-        {{ 'Manage' if (wa_connection and wa_connection.active) else 'Connect WhatsApp' }} →
+      {% set _wa_on = wa_connection and wa_connection.active %}
+      {% if staff_can_open('portal.whatsapp_save_connection') %}
+      <a href="{{ url_for('portal.whatsapp_connect') }}" class="btn {% if not _wa_on %}btn-primary{% endif %}">
+        {{ 'Manage' if _wa_on else 'Connect WhatsApp' }} →
       </a>
+      {% elif _wa_on and staff_can_open('portal.whatsapp_connect') %}
+      <a href="{{ url_for('portal.whatsapp_connect') }}" class="btn">View →</a>
+      {% endif %}
     </div>
   </div>
 
@@ -79,9 +84,11 @@
       </div>
     </div>
     <div class="channel-card-foot">
+      {% if staff_can_open('facebook.messenger_connect') %}
       <a href="{{ url_for('facebook.messenger_connect') }}" class="btn {% if not fb_pages %}btn-primary{% endif %}">
         {{ 'Manage' if fb_pages else 'Connect Messenger' }} →
       </a>
+      {% endif %}
     </div>
   </div>
 
@@ -101,10 +108,15 @@
       </div>
     </div>
     <div class="channel-card-foot" style="display:flex;gap:8px;flex-wrap:wrap">
-      <a href="{{ url_for('pressone.connect') }}" class="btn {% if not (pressone_account and pressone_account.active) %}btn-primary{% endif %}">
-        {{ 'Manage' if (pressone_account and pressone_account.active) else 'Connect PressOne' }} →
+      {% set _po_on = pressone_account and pressone_account.active %}
+      {% if staff_can_open('pressone.connect_submit') %}
+      <a href="{{ url_for('pressone.connect') }}" class="btn {% if not _po_on %}btn-primary{% endif %}">
+        {{ 'Manage' if _po_on else 'Connect PressOne' }} →
       </a>
-      {% if pressone_account and pressone_account.active %}
+      {% elif _po_on and staff_can_open('pressone.connect') %}
+      <a href="{{ url_for('pressone.connect') }}" class="btn">View →</a>
+      {% endif %}
+      {% if _po_on and staff_can_open('pressone.call_log') %}
       <a href="{{ url_for('pressone.call_log') }}" class="btn">Call Log</a>
       {% endif %}
     </div>
@@ -128,10 +140,14 @@
       </div>
     </div>
     <div class="channel-card-foot" style="display:flex;gap:8px;flex-wrap:wrap">
+      {% if staff_can_open('buffer.save_key') %}
       <a href="{{ url_for('buffer.connect') }}" class="btn {% if not buffer_account %}btn-primary{% endif %}">
         {{ 'Manage' if buffer_account else 'Connect Buffer' }} →
       </a>
-      {% if buffer_account %}
+      {% elif buffer_account and staff_can_open('buffer.connect') %}
+      <a href="{{ url_for('buffer.connect') }}" class="btn">View →</a>
+      {% endif %}
+      {% if buffer_account and staff_can_open('buffer.posts') %}
       <a href="{{ url_for('buffer.posts') }}" class="btn">Social Media</a>
       {% endif %}
     </div>

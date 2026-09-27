@@ -40,14 +40,16 @@
       <div class="tm-title">Departments</div>
       <div class="tm-subtitle">Create the departments your team is organised into — they'll show up as a picker when you create or edit a team member.</div>
     </div>
+    {% if staff_can_open('portal.team_department_new') %}
     <a href="{{ url_for('portal.team_department_new') }}" class="btn btn-primary btn-sm">+ New Department</a>
+    {% endif %}
   </div>
 
   <div class="tm-tabs">
-    <a href="{{ url_for('portal.team_page') }}" class="tm-tab">Members</a>
-    <a href="{{ url_for('portal.team_roles_page') }}" class="tm-tab">Roles</a>
+    {% if staff_can_open('portal.team_page') %}<a href="{{ url_for('portal.team_page') }}" class="tm-tab">Members</a>{% endif %}
+    {% if staff_can_open('portal.team_roles_page') %}<a href="{{ url_for('portal.team_roles_page') }}" class="tm-tab">Roles</a>{% endif %}
     <a href="{{ url_for('portal.team_departments_page') }}" class="tm-tab active">Departments</a>
-    <a href="{{ url_for('portal.team_positions_page') }}" class="tm-tab">Positions</a>
+    {% if staff_can_open('portal.team_positions_page') %}<a href="{{ url_for('portal.team_positions_page') }}" class="tm-tab">Positions</a>{% endif %}
   </div>
 
   {% if departments %}
@@ -63,11 +65,15 @@
           <td class="muted">{{ d.member_count }} active</td>
           <td>
             <div class="tm-actions-cell" style="justify-content:flex-end">
+              {% if staff_can_open('portal.team_department_edit') %}
               <a href="{{ url_for('portal.team_department_edit', dept_id=d.id) }}" class="btn-edit">Edit</a>
+              {% endif %}
+              {% if staff_can_open('portal.team_department_delete') %}
               <form method="POST" action="{{ url_for('portal.team_department_delete', dept_id=d.id) }}"
                     onsubmit="return confirm('Delete department \'{{ d.name }}\'?')">
                 <button type="submit" class="btn-del" {% if d.member_count %}disabled title="Move the {{ d.member_count }} team member(s) out first"{% endif %}>Delete</button>
               </form>
+              {% endif %}
             </div>
           </td>
         </tr>
@@ -78,7 +84,7 @@
   {% else %}
   <div class="empty-state">
     <div class="empty-icon">🏢</div>
-    <div>No departments yet.<br>Create one to start organising your team.</div>
+    <div>No departments yet.{% if staff_can_open('portal.team_department_new') %}<br>Create one to start organising your team.{% endif %}</div>
   </div>
   {% endif %}
 

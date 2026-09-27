@@ -171,7 +171,7 @@
       <dl class="bf-kv">
         <dt>Organisation</dt><dd>{{ account.organization_name or '—' }}</dd>
         <dt>Key</dt><dd class="bf-mono">•••• •••• {{ account.key_last4 }}</dd>
-        <dt>Connected by</dt><dd>{{ account.connected_by or '—' }}{% if account.connected_at %} · {{ account.connected_at.strftime('%d %b %Y') }}{% endif %}</dd>
+        <dt>Connected by</dt><dd>{{ (account.connected_by|who) or '—' }}{% if account.connected_at %} · {{ account.connected_at.strftime('%d %b %Y') }}{% endif %}</dd>
         <dt>Last checked</dt>
         <dd>{% if account.last_checked_at %}<span class="js-local" data-utc="{{ account.last_checked_at.isoformat() }}">{{ account.last_checked_at.strftime('%d %b %Y, %H:%M') }} UTC</span>{% else %}—{% endif %}
           {% if account.status == 'needs_attention' %}<span class="bf-pill w">Needs attention</span>{% else %}<span class="bf-pill g">Working</span>{% endif %}</dd>

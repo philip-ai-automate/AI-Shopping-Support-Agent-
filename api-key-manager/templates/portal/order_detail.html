@@ -270,6 +270,12 @@
 
   <!-- ═══ RIGHT COLUMN — Actions ═══ -->
   <div class="action-card" style="display:flex;flex-direction:column;gap:14px">
+    {# Order status decides which actions exist; the person's role decides which they see. #}
+    {% set _can_manage = staff_can_open('portal.order_verify_payment') %}
+    {% set can_verify_payment = can_verify_payment and _can_manage %}
+    {% set can_dispatch = can_dispatch and _can_manage %}
+    {% set can_deliver = can_deliver and _can_manage %}
+    {% set can_cancel = can_cancel and staff_can_open('portal.order_cancel') %}
 
     <!-- Verify Payment -->
     {% if can_verify_payment %}

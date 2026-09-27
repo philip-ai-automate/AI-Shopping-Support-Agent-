@@ -72,7 +72,7 @@
   <div class="ph-stats">
     <div class="stat-pill"><div class="v">{{ people|length }}</div><div class="l">People</div></div>
     <div class="stat-pill"><div class="v">₦{{ '{:,.0f}'.format(deal_summary.open_deal_value or 0) }}</div><div class="l">Open Deals</div></div>
-    <button class="btn-ghost" onclick="document.getElementById('editModal').classList.add('open')">Edit</button>
+    {% if staff_can_open('portal.crm_company_edit') %}<button class="btn-ghost" onclick="document.getElementById('editModal').classList.add('open')">Edit</button>{% endif %}
   </div>
 </div>
 
@@ -103,10 +103,12 @@
 
 <div class="section-card">
   <div class="sc-head"><h3>Company Activity & Notes</h3></div>
+  {% if staff_can_open('portal.crm_company_add_note') %}
   <form method="POST" action="{{ url_for('portal.crm_company_add_note', company_id=company.id) }}" class="note-box">
     <textarea name="body" placeholder="Add a company-level note — a meeting, agreement, or general update..."></textarea>
     <div class="note-box-foot"><button type="submit" class="btn-primary">Add Note</button></div>
   </form>
+  {% endif %}
   {% if not notes %}
   <div class="empty">No company notes yet.</div>
   {% else %}

@@ -219,7 +219,7 @@
           </div>
         </td>
         <td><span class="sp-pill {{ d[1] }}">{{ d[0] }}</span>{% if late %}<br><span class="sp-pill p-r" style="margin-top:4px">Overdue</span>{% endif %}</td>
-        <td>{{ p.owner_label or p.created_by or '—' }}</td>
+        <td>{{ (p.owner_label|who(p.owner_key)) if p.owner_label else ((p.created_by|who) or '—') }}</td>
         <td class="sl-nw {{ 'sl-late' if late }}">{{ p.due_date.strftime('%a %d %b') if p.due_date else '—' }}</td>
         <td class="sl-nw">{% if p.scheduled_for %}<span class="js-local" data-utc="{{ p.scheduled_for.isoformat() }}">{{ p.scheduled_for.strftime('%d %b, %H:%M') }} UTC</span>{% else %}<span class="sp-hint">Not set</span>{% endif %}</td>
         <td><div class="sl-accts">

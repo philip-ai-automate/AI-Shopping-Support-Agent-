@@ -365,6 +365,13 @@
 {% endblock %}
 
 {% block content %}
+{# Role-aware buttons: a team member only sees actions their role can save.
+   staff_can_open() reads the same route labels the save routes enforce. #}
+{% set can_add_contact    = staff_can_open('portal.whatsapp_contacts_add') %}
+{% set can_edit_contact   = staff_can_open('portal.whatsapp_contacts_edit') %}
+{% set can_delete_contact = staff_can_open('portal.whatsapp_contacts_delete') %}
+{% set can_add_company    = staff_can_open('portal.crm_companies_add') %}
+{% set can_bulk = can_edit_contact or can_delete_contact %}
 
 <!-- ── Hero ──────────────────────────────────────────────────────────────── -->
 <div class="contacts-hero">
@@ -373,22 +380,30 @@
     <p>Manage your CRM — segment, tag, and track every lead through to customer.</p>
   </div>
   <div class="hero-actions">
+    {% if staff_can_open('portal.whatsapp_contacts_export') %}
     <a href="{{ url_for('portal.whatsapp_contacts_export', q=search, status_filter=status_filter, tag_filter=tag_filter, segment_filter=segment_filter, date_from=date_from, date_to=date_to, has_phone='1' if has_phone else '', has_email='1' if has_email else '', has_pers='1' if has_pers else '') }}" class="btn-outline-white" title="Exports contacts matching your current search/filters">
       <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
       Export CSV
     </a>
+    {% endif %}
+    {% if can_add_contact %}
     <button class="btn-outline-white" onclick="openImport()">
       <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
       Import CSV
     </button>
+    {% endif %}
+    {% if can_add_company %}
     <a href="{{ url_for('portal.crm_companies') }}" class="btn-outline-white">
       <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1m-6 4h1m4 0h1m-6 4h1m4 0h1"/></svg>
       Add Company
     </a>
+    {% endif %}
+    {% if can_add_contact %}
     <button class="btn-primary-green" onclick="openAddDrawer()">
       <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
       Add Contact
     </button>
+    {% endif %}
   </div>
 </div>
 
@@ -701,11 +716,13 @@
           <p>Try adjusting your search or filter criteria.</p>
           {% else %}
           <h3>No contacts yet</h3>
+          {% if can_add_contact %}
           <p>Add your first contact manually or import a CSV file.</p>
           <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;justify-content:center">
             <button type="button" class="btn-primary-green" onclick="openAddDrawer()">+ Add Contact</button>
             <button type="button" class="btn-ghost" onclick="openImport()">Import CSV</button>
           </div>
+          {% endif %}
           {% endif %}
         </div>
         {% else %}
@@ -713,7 +730,7 @@
           <table class="contacts-table">
             <thead>
               <tr>
-                <th style="width:36px"><input type="checkbox" class="select-all-check" id="selectAll" title="Select all"></th>
+                <th style="width:36px">{% if can_bulk %}<input type="checkbox" class="select-all-check" id="selectAll" title="Select all">{% endif %}</th>
                 <th style="width:40px"></th>
                 <th>Name</th>
                 <th data-col="company">Company</th>
@@ -731,7 +748,7 @@
             <tbody>
               {% for c in contacts %}
               <tr>
-                <td><input type="checkbox" class="row-check" name="contact_ids" value="{{ c.id }}"></td>
+                <td>{% if can_bulk %}<input type="checkbox" class="row-check" name="contact_ids" value="{{ c.id }}">{% endif %}</td>
                 <td>
                   <div class="avatar">
                     {% if c.display_name %}{{ c.display_name[0] }}{% else %}#{% endif %}
@@ -820,6 +837,7 @@
                     <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
                   </span>
                   {% endif %}
+                  {% if can_edit_contact %}
                   <form method="POST"
                         action="{{ url_for('portal.whatsapp_contact_move_to_pipeline', contact_id=c.id) }}"
                         style="display:inline;margin-right:4px">
@@ -831,6 +849,8 @@
                           onclick="openEdit({{ c.id }}, '{{ (c.display_name or '')|replace("'","\\'")|replace('"','\\"') }}', '{{ (c.notes or '')|replace("'","\\'")|replace('"','\\"')|replace('\n',' ') }}', '{{ c.status or 'lead' }}', '{{ (c.tags_list or [])|join(',') }}', '{{ (c.email or '')|replace("'","\\'") }}', '{{ (c.personalization_note or '')|replace("'","\\'")|replace('"','\\"')|replace('\n',' ') }}', {{ c.company_id or 'null' }}, '{{ (c.contact_person or '')|replace("'","\\'")|replace('"','\\"') }}')">
                     <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                   </button>
+                  {% endif %}
+                  {% if can_delete_contact %}
                   <form method="POST"
                         action="{{ url_for('portal.whatsapp_contacts_delete', contact_id=c.id) }}"
                         style="display:inline;margin-left:4px"
@@ -839,6 +859,7 @@
                       <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2"/></svg>
                     </button>
                   </form>
+                  {% endif %}
                 </td>
               </tr>
               {% endfor %}
@@ -878,6 +899,7 @@
       <div class="bulk-bar" id="bulkBar">
         <span class="bulk-count" id="bulkCount">0 selected</span>
         <span class="bulk-sep"></span>
+        {% if can_edit_contact %}
         <button type="button" class="bulk-btn" onclick="openBulkStatus()">
           <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
           Set Status
@@ -896,10 +918,13 @@
           <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
           Create Sales Lead
         </button>
+        {% endif %}
+        {% if can_delete_contact %}
         <button type="button" class="bulk-btn danger" onclick="bulkDelete()">
           <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M3 6h18M19 6l-1 14H6L5 6"/></svg>
           Delete
         </button>
+        {% endif %}
         <button type="button" class="bulk-btn-cancel" onclick="clearSelection()">Cancel</button>
       </div>
     </form>

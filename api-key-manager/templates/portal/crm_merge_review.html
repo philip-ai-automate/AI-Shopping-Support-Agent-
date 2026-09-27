@@ -57,12 +57,16 @@
   </div>
   <span class="m-reason">{{ m.reason }}</span>
   <div class="m-actions">
+    {% if staff_can_open('portal.crm_merge_review_confirm') %}
     <form method="POST" action="{{ url_for('portal.crm_merge_review_confirm', candidate_id=m.id) }}">
       <button type="submit" class="btn-confirm">Confirm — Same Person</button>
     </form>
+    {% endif %}
+    {% if staff_can_open('portal.crm_merge_review_reject') %}
     <form method="POST" action="{{ url_for('portal.crm_merge_review_reject', candidate_id=m.id) }}">
       <button type="submit" class="btn-reject">Not the Same</button>
     </form>
+    {% endif %}
   </div>
 </div>
 {% endfor %}

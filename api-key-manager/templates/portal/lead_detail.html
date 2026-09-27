@@ -68,11 +68,13 @@
       {% else %}
       <span class="stage-pill" style="background:#fffbeb;color:#b45309;font-size:13px;padding:7px 16px">AWAITING QUALIFICATION</span>
       {% endif %}
-      {% if not outc and not lead.is_opportunity %}
+      {% if not outc and not lead.is_opportunity and staff_can_open('portal.leads_qualify') %}
       <button type="button" class="lc-edit-btn" style="background:#15803d;color:#fff;border-color:#15803d" onclick="document.getElementById('qualifyModal').classList.add('open')">✅ Qualify</button>
       <button type="button" class="lc-edit-btn" style="background:#b91c1c;color:#fff;border-color:#b91c1c" onclick="document.getElementById('notAFitModal').classList.add('open')">🚫 Not a Fit</button>
       {% endif %}
+      {% if staff_can_open('portal.sales_pipeline_edit') %}
       <button type="button" class="lc-edit-btn" onclick="document.getElementById('editLeadModal').classList.add('open')">✏️ Edit Lead</button>
+      {% endif %}
     </div>
   </div>
 
@@ -157,10 +159,12 @@
     {% else %}
     <div style="font-size:13px;font-weight:600;color:var(--ink)">Not yet qualified — this Lead isn't in the Sales Pipeline yet.</div>
     <div style="margin-top:4px;font-size:12px;color:var(--muted)">Decide whether it's worth pursuing: <strong>Qualify</strong> it to turn it into a real Opportunity, or mark it <strong>Not a Fit</strong>.</div>
+    {% if staff_can_open('portal.leads_qualify') %}
     <div style="margin-top:12px;display:flex;gap:8px">
       <button type="button" class="lc-edit-btn" style="background:#15803d;color:#fff;border-color:#15803d" onclick="document.getElementById('qualifyModal').classList.add('open')">✅ Qualify</button>
       <button type="button" class="lc-edit-btn" style="background:#b91c1c;color:#fff;border-color:#b91c1c" onclick="document.getElementById('notAFitModal').classList.add('open')">🚫 Not a Fit</button>
     </div>
+    {% endif %}
     {% endif %}
   </div>
   {% else %}
@@ -248,7 +252,7 @@
       {% if lead.notes %}
       <div style="font-size:12.5px;color:var(--ink);background:#f8fafc;border-radius:10px;padding:10px 14px;white-space:pre-line">{{ lead.notes }}</div>
       {% else %}
-      <div style="font-size:12.5px;color:var(--muted)">No notes yet — click "✏️ Edit Lead" above to add some.</div>
+      <div style="font-size:12.5px;color:var(--muted)">No notes yet{% if staff_can_open('portal.sales_pipeline_edit') %} — click "✏️ Edit Lead" above to add some{% endif %}.</div>
       {% endif %}
     </div>
     <div id="lcHistoryPane" style="display:none">

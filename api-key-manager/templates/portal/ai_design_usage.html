@@ -45,7 +45,7 @@
         <td>{{ u.subject[:50] }}</td>
         <td>{{ action_labels.get(u.action, u.action) }}{% if u.failed %} <span class="ad-pill ad-p-w">Failed</span>{% endif %}</td>
         <td>{{ source_labels.get(u.source, u.source) }}</td>
-        <td>{{ u.created_by or '—' }}</td>
+        <td>{{ (u.created_by|who) or '—' }}</td>
         <td class="ad-num">{% if u.counted %}1{% else %}0{% if u.failed %} <span class="ad-pill ad-p-n">not counted</span>{% endif %}{% endif %}</td>
       </tr>
       {% endfor %}

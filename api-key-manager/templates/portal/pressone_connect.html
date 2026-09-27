@@ -36,13 +36,19 @@
     Calls will appear on a contact's page automatically. If nothing shows up after a real call, send a test event below to check the connection itself.
   </p>
   <div style="display:flex;gap:10px;flex-wrap:wrap">
+    {% if staff_can_open('pressone.call_log') %}
     <a href="{{ url_for('pressone.call_log') }}" class="btn btn-primary">📞 View Call Log</a>
+    {% endif %}
+    {% if staff_can_open('pressone.test_event') %}
     <form method="POST" action="{{ url_for('pressone.test_event') }}">
       <button type="submit" class="btn">Send test event</button>
     </form>
+    {% endif %}
+    {% if staff_can_open('pressone.disconnect') %}
     <form method="POST" action="{{ url_for('pressone.disconnect') }}" onsubmit="return confirm('Disconnect PressOne? Calls will stop appearing on contacts until reconnected.');">
       <button type="submit" class="btn btn-danger">Disconnect</button>
     </form>
+    {% endif %}
   </div>
 </div>
 
@@ -54,7 +60,7 @@
 
   {% if not wa_connection or not wa_connection.active %}
   <div class="flash warning" style="margin-bottom:14px">
-    WhatsApp isn't connected yet — <a href="{{ url_for('portal.whatsapp_connect') }}">connect it</a> for this to actually send anything.
+    WhatsApp isn't connected yet — {% if staff_can_open('portal.whatsapp_save_connection') %}<a href="{{ url_for('portal.whatsapp_connect') }}">connect it</a>{% else %}it needs connecting{% endif %} for this to actually send anything.
   </div>
   {% endif %}
 
@@ -66,9 +72,11 @@
 
   <form method="POST" action="{{ url_for('pressone.toggle_auto_reply') }}">
     <input type="hidden" name="enabled" value="{{ '0' if (account.auto_reply_missed_calls) else '1' }}">
+    {% if staff_can_open('pressone.toggle_auto_reply') %}
     <button type="submit" class="btn {{ 'btn-danger' if account.auto_reply_missed_calls else 'btn-primary' }}">
       {{ 'Turn off' if account.auto_reply_missed_calls else 'Turn on' }}
     </button>
+    {% endif %}
     <span class="muted" style="font-size:13px;margin-left:8px">
       Currently {{ 'ON' if account.auto_reply_missed_calls else 'OFF' }}
     </span>
@@ -81,6 +89,7 @@
     (developers section) — PhiXtra doesn't create or bill for the PressOne number itself, it only reads the
     calls from an account you already have.
   </p>
+  {% if staff_can_open('pressone.connect_submit') %}
   <form method="POST" action="{{ url_for('pressone.connect_submit') }}">
     <div class="po-field">
       <label for="account_id">PressOne Account ID</label>
@@ -93,6 +102,9 @@
     </div>
     <button type="submit" class="btn btn-primary">Connect PressOne</button>
   </form>
+  {% else %}
+  <p class="muted" style="font-size:13px;margin:0">PressOne isn't connected. Your role can't connect it.</p>
+  {% endif %}
 </div>
 {% endif %}
 

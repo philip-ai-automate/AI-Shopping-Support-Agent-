@@ -74,7 +74,8 @@
       <div class="ag-title">AI Agent Profiles</div>
       <div class="ag-subtitle">Create named AI personas with their own system prompts. Each WhatsApp number can be assigned a different agent.</div>
     </div>
-    {% if used < limit %}
+    {% if not staff_can_open('portal.ai_agents_new') %}
+    {% elif used < limit %}
     <a href="{{ url_for('portal.ai_agents_new') }}" class="btn btn-primary" style="white-space:nowrap">+ New Agent</a>
     {% else %}
     <button class="btn btn-primary" disabled style="opacity:.5;cursor:not-allowed;white-space:nowrap">+ New Agent</button>
@@ -87,10 +88,10 @@
     <div>
       <b>How agents connect to WhatsApp numbers</b>
       Each agent profile is assigned to a WhatsApp number on the
-      <a href="{{ url_for('portal.whatsapp_connect') }}" style="color:#1E3A8A;font-weight:700">WhatsApp Settings</a> page.
+      {% if staff_can_open('portal.whatsapp_connect') %}<a href="{{ url_for('portal.whatsapp_connect') }}" style="color:#1E3A8A;font-weight:700">WhatsApp Settings</a>{% else %}<b>WhatsApp Settings</b>{% endif %} page.
       When a customer messages that number, the AI uses that agent's system prompt automatically.
       A number with no agent assigned uses your default
-      <a href="{{ url_for('portal.ai_instruction') }}" style="color:#1E3A8A;font-weight:700">System Instruction</a>.
+      {% if staff_can_open('portal.ai_instruction') %}<a href="{{ url_for('portal.ai_instruction') }}" style="color:#1E3A8A;font-weight:700">System Instruction</a>{% else %}<b>System Instruction</b>{% endif %}.
     </div>
   </div>
 
@@ -137,11 +138,15 @@
         </div>
       </div>
       <div class="agent-actions">
+        {% if staff_can_open('portal.ai_agents_edit') %}
         <a href="{{ url_for('portal.ai_agents_edit', agent_id=ag.id) }}" class="btn-edit">Edit</a>
+        {% endif %}
+        {% if staff_can_open('portal.ai_agents_delete') %}
         <form method="POST" action="{{ url_for('portal.ai_agents_delete', agent_id=ag.id) }}" style="display:inline"
               onsubmit="return confirm('Delete agent \'{{ ag.name }}\'? Any WhatsApp numbers assigned to this agent will revert to your default instruction.')">
           <button type="submit" class="btn-del">Delete</button>
         </form>
+        {% endif %}
       </div>
     </div>
     {% endfor %}
@@ -149,7 +154,7 @@
   {% else %}
   <div class="empty-state">
     <div class="empty-icon">🤖</div>
-    <div class="empty-text">No agent profiles yet.<br>Create one, then assign it to a WhatsApp number on the <a href="{{ url_for('portal.whatsapp_connect') }}">WhatsApp Settings</a> page.</div>
+    <div class="empty-text">No agent profiles yet.{% if staff_can_open('portal.ai_agents_new') %}<br>Create one, then assign it to a WhatsApp number on the {% if staff_can_open('portal.whatsapp_connect') %}<a href="{{ url_for('portal.whatsapp_connect') }}">WhatsApp Settings</a>{% else %}<b>WhatsApp Settings</b>{% endif %} page.{% endif %}</div>
   </div>
   {% endif %}
 

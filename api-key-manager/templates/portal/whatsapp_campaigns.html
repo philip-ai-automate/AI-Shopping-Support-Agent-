@@ -575,11 +575,15 @@
   </div>
   {% if connection %}
   <div style="display:flex;gap:10px;flex-shrink:0">
+    {% if staff_can_open('portal.whatsapp_campaign_segments_page') %}
     <a class="btn-preview" href="{{ url_for('portal.whatsapp_campaign_segments_page') }}" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);color:#fff;text-decoration:none">📋 WhatsApp Segments</a>
+    {% endif %}
+    {% if staff_can_open('portal.whatsapp_campaigns_create') %}
     <button class="btn-new-camp" onclick="openDrawer()">
       <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
       New Campaign
     </button>
+    {% endif %}
   </div>
   {% endif %}
 </div>
@@ -620,9 +624,13 @@
     <div class="empty-icon-wrap">📵</div>
     <h3>WhatsApp not connected</h3>
     <p>Connect your WhatsApp Business account to start sending campaigns.</p>
+    {% if staff_can_open('portal.whatsapp_connect') %}
     <a href="{{ url_for('portal.whatsapp_connect') }}" class="btn-new-camp" style="margin-top:18px;text-decoration:none">
       Connect WhatsApp
     </a>
+    {% else %}
+    <p style="margin-top:10px">Ask your account owner to connect it.</p>
+    {% endif %}
   </div>
 </div>
 {% else %}
@@ -704,6 +712,7 @@
           </td>
           <td style="white-space:nowrap">
             {% if c.status in ('draft','scheduled') %}
+            {% if staff_can_open('portal.whatsapp_campaigns_send') %}
             <form method="POST"
                   action="{{ url_for('portal.whatsapp_campaigns_send', campaign_id=c.id) }}"
                   style="display:inline"
@@ -713,6 +722,8 @@
                 Send
               </button>
             </form>
+            {% endif %}
+            {% if staff_can_open('portal.whatsapp_campaigns_delete') %}
             <form method="POST"
                   action="{{ url_for('portal.whatsapp_campaigns_delete', campaign_id=c.id) }}"
                   style="display:inline;margin-left:6px"
@@ -723,7 +734,8 @@
               </button>
             </form>
             {% endif %}
-            {% if c.status in ('done','failed','running') %}
+            {% endif %}
+            {% if c.status in ('done','failed','running') and staff_can_open('portal.whatsapp_campaign_report') %}
             <a href="{{ url_for('portal.whatsapp_campaign_report', campaign_id=c.id) }}"
                class="act-btn" style="color:#2563eb;border-color:rgba(37,99,235,.25);text-decoration:none;margin-left:{% if c.status in ('draft','scheduled') %}6{% else %}0{% endif %}px">
               <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>

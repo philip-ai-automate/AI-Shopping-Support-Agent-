@@ -44,6 +44,11 @@ def _digits(p) -> str:
     return re.sub(r"\D", "", p or "")
 
 
+def _one_line(s) -> str:
+    """Meta refuses template values with new lines, tabs or 4+ spaces in a row."""
+    return re.sub(r"\s+", " ", str(s or "")).strip() or "-"
+
+
 def _sender_id() -> str:
     return (os.getenv("PHIXTRA_ALERT_SENDER_PHONE_NUMBER_ID") or "").strip()
 
@@ -208,7 +213,7 @@ async def _send_whatsapp(to_phone: str, template_type: str, params: list, text: 
         return False
     tmpl = get_active_template(int(s["tenant_id"]), template_type)
     if tmpl and await send_template(sid, s["access_token"], to, tmpl["template_name"],
-                                    tmpl["language_code"], params):
+                                    tmpl["language_code"], [_one_line(p) for p in params]):
         return True
     return await send_text(sid, s["access_token"], to, text)
 

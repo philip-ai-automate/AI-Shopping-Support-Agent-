@@ -344,11 +344,15 @@
     <p>Compose and send bulk email straight from PhiXtra.</p>
   </div>
   <div style="display:flex;gap:10px;flex-wrap:wrap">
+    {% if staff_can_open('portal.email_segments_list') %}
     <button class="btn-preview" onclick="openSegmentsModal()">📋 Segments</button>
+    {% endif %}
+    {% if staff_can_open('portal.email_campaigns_create') %}
     <button class="btn-new-camp" onclick="openDrawer()">
       <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
       New Campaign
     </button>
+    {% endif %}
   </div>
 </div>
 
@@ -447,13 +451,14 @@
           </td>
           <td style="font-size:12px;color:var(--muted);white-space:nowrap">{{ c.created_at.strftime('%d %b %Y') if c.created_at else '' }}</td>
           <td style="white-space:nowrap">
-            {% if c.status != 'running' %}
+            {% if c.status != 'running' and staff_can_open('portal.email_campaigns_update') %}
             <button type="button" class="act-btn" style="color:#0f172a;border-color:rgba(15,23,42,.2)"
                     onclick="editCampaign({{ c.id }})">
               ✎ Edit
             </button>
             {% endif %}
             {% if c.status in ('draft','scheduled') %}
+            {% if staff_can_open('portal.email_campaigns_send') %}
             <button type="button" class="act-btn act-btn-test" style="margin-left:6px" onclick="sendTest({{ c.id }}, this)">
               ✉️ Test
             </button>
@@ -462,19 +467,22 @@
                   onsubmit="return confirm('Send this campaign now to {{ c.total_count }} recipient(s)?')">
               <button type="submit" class="act-btn act-btn-send">Send</button>
             </form>
+            {% endif %}
+            {% if staff_can_open('portal.email_campaigns_delete') %}
             <form method="POST" action="{{ url_for('portal.email_campaigns_delete', campaign_id=c.id) }}"
                   style="display:inline;margin-left:6px"
                   onsubmit="return confirm('Delete \"{{ c.name }}\"?')">
               <button type="submit" class="act-btn act-btn-del">Delete</button>
             </form>
             {% endif %}
-            {% if c.status in ('done','failed','running') %}
+            {% endif %}
+            {% if c.status in ('done','failed','running') and staff_can_open('portal.email_campaign_report') %}
             <a href="{{ url_for('portal.email_campaign_report', campaign_id=c.id) }}"
                class="act-btn" style="color:#2563eb;border-color:rgba(37,99,235,.25);text-decoration:none">
               Report
             </a>
             {% endif %}
-            {% if c.status != 'running' %}
+            {% if c.status != 'running' and staff_can_open('portal.email_campaigns_create') %}
             <button type="button" class="act-btn" style="color:#7c3aed;border-color:rgba(124,58,237,.25);margin-left:6px"
                     onclick="duplicateCampaign({{ c.id }})">
               ⧉ Duplicate
@@ -684,7 +692,7 @@
             </label>
             <select class="field-input" id="f-segment-id" name="segment_id"></select>
             <div id="segmentEmptyNote" style="display:none;font-size:12px;color:#94a3b8;margin-top:6px">
-              No segments yet. <a href="javascript:void(0)" onclick="openSegmentsModal()">Create one</a>.
+              No segments yet.{% if staff_can_open('portal.email_segments_create') %} <a href="javascript:void(0)" onclick="openSegmentsModal()">Create one</a>.{% endif %}
             </div>
           </div>
         </div>
@@ -701,7 +709,7 @@
         <div id="excludeLabelField">
           <div class="field">
             <label class="field-label">Exclude label
-              <span class="field-hint"><a href="{{ url_for('portal.lead_labels_page') }}" target="_blank">Manage labels</a></span>
+              {% if staff_can_open('portal.lead_labels_page') %}<span class="field-hint"><a href="{{ url_for('portal.lead_labels_page') }}" target="_blank">Manage labels</a></span>{% endif %}
             </label>
             <div class="excl-label-list" id="excludeLabelList">
               <div style="font-size:12px;color:#94a3b8">Loading…</div>
@@ -754,7 +762,9 @@
     <div style="display:flex;gap:10px;align-items:center">
       <button class="btn-ghost" id="btnBack" style="display:none" onclick="prevStep()">← Back</button>
       <button type="button" class="btn-preview" onclick="openPreview()">👁 Preview</button>
+      {% if staff_can_open('portal.email_campaigns_send_test_draft') %}
       <button type="button" class="btn-preview" id="btnSendTestDraft" onclick="sendTestDraft()">✉️ Send Test</button>
+      {% endif %}
     </div>
     <div class="drawer-foot-right">
       <button class="btn-ghost" onclick="closeDrawer()">Cancel</button>
@@ -793,10 +803,12 @@
       <button type="button" class="drawer-close" style="background:#f1f5f9;border-color:rgba(3,12,24,.1);color:#64748b" onclick="closeSegmentsModal()">✕</button>
     </div>
     <div class="seg-modal-body">
+      {% if staff_can_open('portal.email_segments_create') %}
       <div style="display:flex;gap:8px;margin-bottom:18px">
         <input type="text" class="field-input" id="segNewName" placeholder="New segment name, e.g. VIP customers" style="flex:1">
         <button type="button" class="btn-launch" style="padding:0 18px" onclick="createSegment()">+ Create</button>
       </div>
+      {% endif %}
       <div id="segmentsListWrap">
         <div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">Loading…</div>
       </div>
@@ -812,7 +824,7 @@
       <button type="button" class="drawer-close" style="background:#f1f5f9;border-color:rgba(3,12,24,.1);color:#64748b" onclick="closeSegMembersModal()">✕</button>
     </div>
     <div class="seg-modal-body">
-      <div class="field" style="position:relative;margin-bottom:0">
+      <div class="field" style="position:relative;margin-bottom:0{% if not staff_can_open('portal.email_segments_add_member') %};display:none{% endif %}">
         <label class="field-label">Add a contact</label>
         <input type="text" class="field-input" id="segAddSearch" autocomplete="off"
                placeholder="Search Sales Pipeline contacts by name or email…"
@@ -888,6 +900,10 @@ quill.on('text-change', function() {
 })
 
 const CAMPAIGN_CREATE_URL = "{{ url_for('portal.email_campaigns_create') }}"
+// What this person's role may do in the Segments pop-ups (owner: all true).
+const CAN_SEG_CREATE = {{ 'true' if staff_can_open('portal.email_segments_create') else 'false' }}
+const CAN_SEG_DELETE = {{ 'true' if staff_can_open('portal.email_segments_delete') else 'false' }}
+const CAN_SEG_EDIT   = {{ 'true' if staff_can_open('portal.email_segments_add_member') else 'false' }}
 
 function openDrawer(title) {
   document.getElementById('drawerOverlay').classList.add('open')
@@ -967,7 +983,7 @@ function renderSegmentsList() {
     .then(data => {
       const segments = data.segments || []
       if (segments.length === 0) {
-        wrap.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">No segments yet — create one above.</div>'
+        wrap.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">No segments yet' + (CAN_SEG_CREATE ? ' — create one above' : '') + '.</div>'
         return
       }
       wrap.innerHTML = segments.map(s => `
@@ -979,8 +995,8 @@ function renderSegmentsList() {
           <div class="seg-row-actions">
             <button type="button" class="act-btn" data-seg-id="${s.id}" data-seg-name="${escapeHtml(s.name)}"
                     onclick="openSegMembersModal(this.dataset.segId, this.dataset.segName)">Manage contacts</button>
-            <button type="button" class="act-btn act-btn-del" data-seg-id="${s.id}" data-seg-name="${escapeHtml(s.name)}"
-                    onclick="deleteSegment(this.dataset.segId, this.dataset.segName)">Delete</button>
+            ${CAN_SEG_DELETE ? `<button type="button" class="act-btn act-btn-del" data-seg-id="${s.id}" data-seg-name="${escapeHtml(s.name)}"
+                    onclick="deleteSegment(this.dataset.segId, this.dataset.segName)">Delete</button>` : ''}
           </div>
         </div>
       `).join('')
@@ -1053,12 +1069,12 @@ function renderSegMembersList() {
   document.getElementById('segMembersHeadCount').textContent = '(' + members.length + ')'
   document.getElementById('segMembersCount').textContent = members.length + (members.length === 1 ? ' contact' : ' contacts')
   if (members.length === 0) {
-    wrap.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">No contacts added yet — search above to add some.</div>'
+    wrap.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">No contacts added yet' + (CAN_SEG_EDIT ? ' — search above to add some' : '') + '.</div>'
     return
   }
   const rows = members.map(m => `
     <div class="seg-member-row">
-      <button type="button" class="seg-remove-btn" title="Remove from segment" onclick="removeSegMember(${m.id})">✕</button>
+      ${CAN_SEG_EDIT ? `<button type="button" class="seg-remove-btn" title="Remove from segment" onclick="removeSegMember(${m.id})">✕</button>` : '<span></span>'}
       <span class="seg-member-name" title="${escapeHtml(m.name)}">${escapeHtml(m.name)}</span>
       <span class="seg-member-email" title="${escapeHtml(m.email)}">${escapeHtml(m.email)}</span>
     </div>

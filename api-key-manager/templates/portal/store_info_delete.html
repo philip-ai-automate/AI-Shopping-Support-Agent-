@@ -29,7 +29,7 @@
   <div>
     <div class="si-label">{{ e.title }}</div>
     <div class="si-hint">{{ (e.content or '')[:150] }}{% if (e.content or '')|length > 150 %}…{% endif %}</div>
-    {% if e.updated_at %}<div class="si-meta">Last updated {{ e.updated_at.strftime('%d %b %Y, %H:%M') }}{% if e.updated_by %} by {{ e.updated_by.split(':')[-1] }}{% endif %}</div>{% endif %}
+    {% if e.updated_at %}<div class="si-meta">Last updated {{ e.updated_at.strftime('%d %b %Y, %H:%M') }}{% if e.updated_by %} by {{ e.updated_by|changed_by }}{% endif %}</div>{% endif %}
   </div>
   <form method="POST" action="{{ url_for('portal.store_info_delete_entry', entry_id=e.id) }}" style="margin:0"
         onsubmit="return confirm('Delete &quot;{{ e.title|e }}&quot;? This cannot be undone.')">

@@ -69,7 +69,7 @@
           {{ names|join(', ') or 'No accounts picked' }}</div>
         <div><b>Person responsible</b>{{ card.owner or '—' }}</div>
         <div><b>Due</b>{% if p.due_date %}<span class="{{ 'pv-late' if card.overdue }}">{{ p.due_date.strftime('%a %d %b %Y') }}{% if card.overdue %} · overdue{% endif %}</span>{% else %}No due date{% endif %}</div>
-        <div><b>Made by</b>{{ p.created_by or '—' }}</div>
+        <div><b>Made by</b>{{ (p.created_by|who) or '—' }}</div>
         {% if p.decided_by %}<div><b>{{ 'Approved by' if p.approval == 'approved' else 'Reviewed by' }}</b>{{ p.decided_by }}</div>{% endif %}
       </div>
       <div class="pv-cap-lbl">Caption</div>
@@ -127,10 +127,10 @@
   <div class="pv-panel">
     <h2>History</h2>
     <ul class="pv-time">
-      <li style="--c:#667085">Created{% if p.created_by %} by {{ p.created_by }}{% endif %}<small class="js-local" data-utc="{{ p.created_at.isoformat() }}"></small></li>
+      <li style="--c:#667085">Created{% if p.created_by %} by {{ p.created_by|who }}{% endif %}<small class="js-local" data-utc="{{ p.created_at.isoformat() }}"></small></li>
       {% for e in history %}
       <li style="--c:{{ {'approved':'#12B76A','changes':'#F04438','submitted':'#F79009','resubmitted':'#F79009','assigned':'#2E90FA','due_set':'#2E90FA'}.get(e.action, '#98A2B3') }}">
-        {{ event_text.get(e.action, e.action) }}{% if e.actor %} by {{ e.actor }}{% endif %}
+        {{ event_text.get(e.action, e.action) }}{% if e.actor %} by {{ e.actor|who }}{% endif %}
         <small class="js-local" data-utc="{{ e.created_at.isoformat() }}"></small>
         {% if e.note %}<q>"{{ e.note }}"</q>{% endif %}
       </li>
