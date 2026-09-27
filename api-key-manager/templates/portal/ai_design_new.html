@@ -15,9 +15,8 @@
   {% include "portal/_ai_design_meter.html" %}
 
   {% if not allow.source %}
-  <div class="ad-alert warn"><b>You've used this month's {{ allow.limit }} AI designs.</b> You can still post with a ready-made layout (free) or your own image.
-    For more AI designs now:
-    <a href="{{ url_for('portal.billing') }}">buy extra AI designs</a>.</div>
+  <div class="ad-alert warn">{% include "portal/_ai_design_none.html" %}
+    You can still post with a ready-made layout (free) or your own image.</div>
   {% endif %}
 
   {% if not is_admin %}

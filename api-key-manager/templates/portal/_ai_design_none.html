@@ -1,0 +1,10 @@
+{# No AI designs left. A plan with none included (e.g. PhiXtra Connect) must not say "you've used them all". #}
+{% if allow.limit %}<b>You've used this month's {{ allow.limit }} AI designs.</b>
+  <a href="{{ url_for('portal.billing') }}">Buy extra AI designs</a>.
+{% elif allow.trial_available %}<b>Your plan doesn't include AI designs.</b>
+  <a href="{{ url_for('portal.billing_plans') }}">Start your 2-week AI trial</a> or
+  <a href="{{ url_for('portal.billing') }}">buy extra AI designs</a>.
+{% else %}<b>Your plan doesn't include AI designs.</b>
+  <a href="{{ url_for('portal.billing_plans') }}">Upgrade your plan</a> or
+  <a href="{{ url_for('portal.billing') }}">buy extra AI designs</a>.
+{% endif %}

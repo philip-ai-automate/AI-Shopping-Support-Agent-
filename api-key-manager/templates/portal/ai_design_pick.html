@@ -73,7 +73,7 @@
     {% if allow.source %}
     <a class="btn" href="{{ url_for(ep + 'again', sid=s.id) }}">None of these? Make new designs {% if allow.source in ('allowance', 'topup') %}(1 AI design){% endif %}</a>
     {% else %}
-    <span class="btn ad-off">None of these? Make new designs</span><span class="ad-hint">No AI designs left this month.</span>
+    <span class="btn ad-off">None of these? Make new designs</span><span class="ad-hint">{% if allow.limit %}No AI designs left this month.{% else %}Your plan doesn't include AI designs.{% endif %}</span>
     {% endif %}
   </div>
 </div>

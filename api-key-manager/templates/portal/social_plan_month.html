@@ -41,7 +41,7 @@
     Each plan uses <b>1 AI design</b>, only if it works.
     {% if allow.source == 'allowance' %}You have {{ allow.left }} of this month's {{ allow.limit }} AI designs left{% if allow.extra %}, plus {{ allow.extra }} extra{% endif %}.
     {% elif allow.source == 'topup' %}This month's AI designs are used up, so it uses 1 of your {{ allow.extra }} extra AI designs.
-    {% else %}<b>You've used all your AI designs.</b> <a href="{{ url_for('portal.billing') }}">Buy extra AI designs</a> to make a plan.{% endif %}
+    {% else %}{% include "portal/_ai_design_none.html" %}{% endif %}
     The AI uses your Brand Kit's voice, your About Us, your products and your recent posts.
   </div>
 

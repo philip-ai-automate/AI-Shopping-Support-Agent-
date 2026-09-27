@@ -202,10 +202,14 @@ def colours_from_logo(owner_key: str):
 def plan_design_settings(tenant_id: int) -> dict:
     conn, cur = _db()
     try:
+        # trial_available: same rule as the "Start my 2-week AI trial" button
+        # (PhiXtra Connect, never had the trial).
         cur.execute("""SELECT COALESCE(p.name, 'Free') AS plan_name,
-                              COALESCE(p.ai_designs_limit, 0) AS limit
+                              COALESCE(p.ai_designs_limit, 0) AS limit,
+                              (p.slug = 'connect' AND t.trial_granted_at IS NULL) AS trial_available
                        FROM tenants t LEFT JOIN plans p ON p.id = t.plan_id WHERE t.id=%s""", (tenant_id,))
-        return dict(cur.fetchone() or {"plan_name": "Free", "limit": 0})
+        row = cur.fetchone()
+        return dict(row) if row else {"plan_name": "Free", "limit": 0, "trial_available": False}
     finally:
         cur.close(); conn.close()
 
@@ -235,7 +239,19 @@ def allowance(owner_key: str, tenant_id) -> dict:
     else:
         source = None
     return {"source": source, "unlimited": False, "limit": int(plan["limit"]), "used": used, "left": left,
-            "extra": extra, "plan_name": plan["plan_name"]}
+            "extra": extra, "plan_name": plan["plan_name"],
+            "trial_available": bool(plan.get("trial_available"))}
+
+
+def no_designs_message(allow: dict) -> str:
+    """What to tell a business with no AI designs left. A plan with none
+    included mustn't say "you've used them all"."""
+    if int(allow.get("limit") or 0) > 0:
+        return "You've used this month's AI designs. Buy extra AI designs on the Billing page."
+    if allow.get("trial_available"):
+        return ("Your plan doesn't include AI designs. Start your 2-week AI trial "
+                "or buy extra AI designs on the Billing page.")
+    return "Your plan doesn't include AI designs. Upgrade your plan or buy extra AI designs on the Billing page."
 
 
 def _record(owner_key, tenant_id, session_id, action, source, counted, failed, note, actor):
@@ -693,7 +709,7 @@ def make_set(owner_key, tenant_id, s, actor, feedback=None, note="", action="new
     allow = allowance(owner_key, tenant_id)
     source = allow["source"]
     if not source:
-        raise DesignError("You've used this month's AI designs. Buy extra AI designs on the Billing page.")
+        raise DesignError(no_designs_message(allow))
     kit = get_brand_kit(owner_key)
     t = taste(owner_key)
     s["feedback"] = {"reasons": feedback or [], "note": (note or "")[:200]} if (feedback or note) else None

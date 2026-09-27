@@ -208,10 +208,10 @@ def make_plan(customer, actor: str, *, month: date, count: int, channels: list, 
                         "Pick more days of the week, or a later month.")
     services = sorted({c["service"] for c in channels})
     owner_key = D.tenant_owner(tid)
-    source = D.allowance(owner_key, tid)["source"]
+    allow = D.allowance(owner_key, tid)
+    source = allow["source"]
     if not source:
-        raise PlanError("You've used all your AI designs. A month plan uses 1 AI design. "
-                        "Buy extra AI designs on the Billing page, then try again.")
+        raise PlanError(D.no_designs_message(allow) + " A month plan uses 1 AI design.")
     allowed_themes = themes or [k for k, _ in THEMES]
     ctx = _business_context(customer)
     try:
