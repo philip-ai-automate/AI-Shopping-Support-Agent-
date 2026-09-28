@@ -10,3 +10,4 @@ qrcode[pil]
 openai
 pypdf
 python-docx
+phonenumbers==9.0.40

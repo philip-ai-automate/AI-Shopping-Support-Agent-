@@ -19,7 +19,7 @@ from message_normalizer import normalize, extract_statuses
 from meta_sender import send_text, send_template, mark_as_read
 from response_formatter import dispatch_response
 from interactive_handler import handle_addcart, handle_details, handle_list_select
-from wa_db import log_message, is_handoff_active, is_campaign_recipient, create_handoff, cache_products, get_wa_shop_session, delete_wa_shop_session, get_viewed_products, get_active_template, update_campaign_recipient_status, get_session_products, mark_product_viewed, record_cross_channel_optout, get_latest_campaign_recipient_for_reply, record_campaign_reply_flag, queue_campaign_reply_for_review, create_pipeline_opportunity_from_reply
+from wa_db import log_message, is_handoff_active, is_campaign_recipient, create_handoff, cache_products, get_wa_shop_session, delete_wa_shop_session, get_viewed_products, get_active_template, update_campaign_recipient_status, get_session_products, mark_product_viewed, record_cross_channel_optout, get_latest_campaign_recipient_for_reply, record_campaign_reply_flag, queue_campaign_reply_for_review, create_pipeline_opportunity_from_reply, ensure_contact_from_inbound
 from wa_onboarding import handle_onboarding_message
 from wa_shopping import handle_shopping_message
 from visual_match import evaluate_visual_match
@@ -658,6 +658,11 @@ async def receive_webhook(
     if is_staff_alert_reply(phone_number_id, customer_phone):
         print(f"   [META] staff alert reply from={customer_phone} — no AI, no alert")
         return {"status": "ok", "reason": "staff_alert_reply"}
+
+    # One Address Book Phase 2 (2026-09-28): everyone who messages becomes a
+    # contact (WhatsApp number + WhatsApp profile name). Before the STOP
+    # check, so a STOP from a new number lands on this same contact.
+    ensure_contact_from_inbound(tenant_id, customer_phone, msg.get("customer_name") or "")
 
     # Mark message as read (blue ticks) — fire-and-forget
     asyncio.create_task(mark_as_read(phone_number_id, access_token, meta_message_id))

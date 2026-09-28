@@ -132,6 +132,49 @@ def log_message(
         conn.close()
 
 
+def ensure_contact_from_inbound(tenant_id: int, customer_phone: str, profile_name: str = "") -> None:
+    """One Address Book Phase 2 (2026-09-28): everyone who messages the
+    business on WhatsApp becomes a contact. New sender -> contact with the
+    WhatsApp number (Phone number left empty), their WhatsApp profile name
+    and source 'whatsapp'. Existing contact with this WhatsApp number -> only
+    an empty name is filled, nothing overwritten. A contact that has this
+    number only in its Phone number box is left alone (the team moves it
+    by hand) and no second contact is made. Best-effort: never raises."""
+    import re as _re
+    digits = _re.sub(r"[^\d]", "", customer_phone or "")
+    if not tenant_id or len(digits) < 8:
+        return
+    name = (profile_name or "").strip()[:200] or None
+    conn = get_db_connection()
+    if not conn:
+        return
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT id, display_name FROM wa_contacts WHERE tenant_id=%s AND whatsapp_number=%s LIMIT 1",
+                    (tenant_id, digits))
+        row = cur.fetchone()
+        if row:
+            if name and not row[1]:
+                cur.execute("UPDATE wa_contacts SET display_name=%s, updated_at=NOW() WHERE id=%s", (name, row[0]))
+                conn.commit()
+            return
+        cur.execute("SELECT 1 FROM wa_contacts WHERE tenant_id=%s AND phone=%s LIMIT 1", (tenant_id, digits))
+        if cur.fetchone():
+            return
+        cur.execute(
+            """INSERT INTO wa_contacts (tenant_id, whatsapp_number, display_name, source)
+               VALUES (%s, %s, %s, 'whatsapp')
+               ON CONFLICT (tenant_id, whatsapp_number) DO NOTHING""",
+            (tenant_id, digits, name),
+        )
+        conn.commit()
+    except Exception as e:
+        print(f"⚠️ ensure_contact_from_inbound tenant={tenant_id} phone={customer_phone}:", e)
+    finally:
+        cur.close()
+        conn.close()
+
+
 def cache_products(session_id: str, products: list):
     """
     Store product data for a session so interactive_handler can look up

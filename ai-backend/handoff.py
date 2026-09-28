@@ -302,6 +302,104 @@ def detect_and_process_handoff(
 # ── Contact capture ─────────────────────────────────────────────────────────
 # Called when the visitor submits the in-widget contact form after a handoff.
 
+# ── One Address Book Phase 2 (2026-09-28): web chat visitor → contact ─────────
+
+def _contact_phone(raw: str, country: str = None) -> str:
+    """Same contact phone format as the portal's _normalise_contact_phone:
+    digits, country code first, no '+'. '+…'/'00…' keep their own code; a
+    local '0…' gets the business's country code; no country set → kept as
+    typed (never guessed)."""
+    import phonenumbers as _pn
+    s = (raw or "").strip()
+    digits = re.sub(r"[^\d]", "", s)
+    if not digits:
+        return ""
+    if s.startswith("+"):
+        return digits
+    if digits.startswith("00"):
+        return digits[2:]
+    country = (country or "").upper()
+    if country not in _pn.SUPPORTED_REGIONS:
+        return digits
+    if digits.startswith("0"):
+        try:
+            return _pn.format_number(_pn.parse(digits, country), _pn.PhoneNumberFormat.E164)[1:]
+        except Exception:
+            return digits
+    try:
+        if _pn.is_valid_number(_pn.parse("+" + digits, None)):
+            return digits
+    except Exception:
+        pass
+    try:
+        n = _pn.parse(digits, country)
+        if _pn.is_valid_number(n):
+            return _pn.format_number(n, _pn.PhoneNumberFormat.E164)[1:]
+    except Exception:
+        pass
+    return digits
+
+
+def save_web_visitor_contact(tenant_id: int, name: str, phone: str, email: str) -> None:
+    """A website chat visitor who left a number or email becomes a contact.
+    The number goes in the Phone number box (the form asks for "Mobile /
+    WhatsApp number", so it isn't proven to be on WhatsApp; staff can move
+    it). Finds the same person by that number in either box, or by email
+    (any capitals); fills only EMPTY details, never overwrites, and never
+    puts a number on a contact when another contact already has it. Nobody
+    matched → new contact, source 'web'. Best-effort: never raises."""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return
+        cur = conn.cursor()
+        cur.execute("SELECT business_country FROM customers WHERE tenant_id=%s "
+                    "AND business_country IS NOT NULL ORDER BY id LIMIT 1", (tenant_id,))
+        row = cur.fetchone()
+        num = _contact_phone(phone, row[0] if row else None)
+        if not (8 <= len(num) <= 15):
+            num = ""
+        email = (email or "").strip()[:200]
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+            email = ""
+        name = (name or "").strip()[:200]
+        if not (num or email):
+            cur.close(); conn.close()
+            return
+        found = None
+        if num:
+            cur.execute("SELECT id FROM wa_contacts WHERE tenant_id=%s AND (phone=%s OR whatsapp_number=%s) "
+                        "ORDER BY id LIMIT 1", (tenant_id, num, num))
+            found = cur.fetchone()
+        if not found and email:
+            cur.execute("SELECT id FROM wa_contacts WHERE tenant_id=%s AND lower(email)=lower(%s) "
+                        "ORDER BY id LIMIT 1", (tenant_id, email))
+            found = cur.fetchone()
+        if found:
+            cid = found[0]
+            cur.execute("SELECT phone, whatsapp_number, email, display_name FROM wa_contacts WHERE id=%s", (cid,))
+            c_phone, c_wa, c_email, c_name = cur.fetchone()
+            sets, vals = [], []
+            if num and not c_phone and num != c_wa:
+                cur.execute("SELECT 1 FROM wa_contacts WHERE tenant_id=%s AND id<>%s AND (phone=%s OR whatsapp_number=%s)",
+                            (tenant_id, cid, num, num))
+                if not cur.fetchone():
+                    sets.append("phone=%s"); vals.append(num)
+            if email and not c_email:
+                sets.append("email=%s"); vals.append(email)
+            if name and not c_name:
+                sets.append("display_name=%s"); vals.append(name)
+            if sets:
+                cur.execute(f"UPDATE wa_contacts SET {', '.join(sets)}, updated_at=NOW() WHERE id=%s", vals + [cid])
+        else:
+            cur.execute("INSERT INTO wa_contacts (tenant_id, phone, email, display_name, source) "
+                        "VALUES (%s, %s, %s, %s, 'web')", (tenant_id, num or None, email or None, name or None))
+        conn.commit()
+        cur.close(); conn.close()
+    except Exception as e:
+        print(f"⚠️ [HANDOFF] save_web_visitor_contact tenant={tenant_id}: {e}")
+
+
 def update_handoff_contact(
     tenant_id: int,
     session_id: str,
@@ -408,6 +506,9 @@ def update_handoff_contact(
             print(f"✅ [HANDOFF] Contact details saved for session={session_id}")
     except Exception as e:
         print(f"⚠️ [HANDOFF] update_handoff_contact DB error: {e}")
+
+    # Web chat visitor who left a number or email becomes a contact (2026-09-28)
+    save_web_visitor_contact(tenant_id, visitor_name, final_phone, visitor_email)
 
     # ── 3. Send the ONE alert email with everything we know
     contact_email = _get_tenant_contact_email(tenant_id)

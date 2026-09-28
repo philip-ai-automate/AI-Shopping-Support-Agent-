@@ -7,3 +7,4 @@ bcrypt
 openai
 requests
 python-multipart==0.0.32
+phonenumbers==9.0.40
