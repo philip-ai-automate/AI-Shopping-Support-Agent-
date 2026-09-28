@@ -80,9 +80,23 @@
 
   <!-- Lead record fields -->
   <div class="lc-fields">
+    <div>
+      <div class="lc-field-label">Contact</div>
+      {% if contact_id %}
+      <a href="{{ url_for('portal.whatsapp_contact_detail', contact_id=contact_id) }}" class="lc-field-value" style="color:#2563eb;text-decoration:none">{{ contact_name }} →</a>
+      {% else %}
+      <div class="lc-field-value" style="font-weight:500;color:#667085;font-size:12.5px">
+        No contact yet: add a phone, WhatsApp or email
+        {% if staff_can_open('portal.sales_pipeline_edit') %}
+        <button type="button" onclick="document.getElementById('editLeadModal').classList.add('open')"
+                style="display:block;margin-top:4px;background:none;border:0;padding:0;color:#2563eb;font:inherit;font-weight:700;cursor:pointer">Add details →</button>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
     <div><div class="lc-field-label">Contact Person</div><div class="lc-field-value">{{ lead.contact_person or '—' }}</div></div>
-    <div><div class="lc-field-label">Phone</div><div class="lc-field-value" style="font-family:'SF Mono','Fira Code',monospace">{{ lead.phone or '—' }}</div></div>
-    <div><div class="lc-field-label">WhatsApp</div><div class="lc-field-value" style="font-family:'SF Mono','Fira Code',monospace;color:#15803d">{{ lead.whatsapp_number or '—' }}</div></div>
+    <div><div class="lc-field-label">Phone Number</div><div class="lc-field-value" style="font-family:'SF Mono','Fira Code',monospace">{{ lead.phone|phone_display or '—' }}</div></div>
+    <div><div class="lc-field-label">WhatsApp Number</div><div class="lc-field-value" style="font-family:'SF Mono','Fira Code',monospace;color:#15803d">{{ lead.whatsapp_number|phone_display or '—' }}</div></div>
     <div><div class="lc-field-label">Email</div><div class="lc-field-value">{{ lead.email or '—' }}</div></div>
 
     <div>
@@ -284,8 +298,8 @@
         <div><label class="flbl">Contact Person</label><input type="text" name="contact_person" class="finp" value="{{ lead.contact_person or '' }}"></div>
       </div>
       <div class="frow">
-        <div><label class="flbl">Phone</label><input type="tel" name="phone" class="finp" value="{{ lead.phone or '' }}"></div>
-        <div><label class="flbl">WhatsApp</label><input type="tel" name="whatsapp_number" class="finp" value="{{ lead.whatsapp_number or '' }}"></div>
+        <div><label class="flbl">Phone Number</label><input type="tel" name="phone" class="finp" value="{{ lead.phone or '' }}"></div>
+        <div><label class="flbl">WhatsApp Number</label><input type="tel" name="whatsapp_number" class="finp" value="{{ lead.whatsapp_number or '' }}"></div>
       </div>
       <div class="frow">
         <div><label class="flbl">Email</label><input type="email" name="email" class="finp" value="{{ lead.email or '' }}"></div>

@@ -94,6 +94,22 @@ def create_app():
         s = str(value or "")
         return s if s.startswith("+") else f"+{s}"
 
+    @flask_app.template_filter("phone_display")
+    def _phone_display(value):
+        """One on-screen format for phone numbers: +<country code><number>.
+        Deals/contacts are stored in mixed formats ('234…', '+234…',
+        '+234-803-…', Nigerian local '080…'); this only changes how they
+        LOOK, never what's stored or matched (2026-09-28). Empty → ''."""
+        import re as _re_pd
+        digits = _re_pd.sub(r"\D", "", str(value or ""))
+        if not digits:
+            return ""
+        if digits.startswith("0"):
+            # Local number with no country code: shown as typed, never
+            # guessed (any-country rule, 2026-09-28).
+            return digits
+        return "+" + digits
+
     @flask_app.template_filter("richtext")
     def _richtext(value):
         """Plain-text -> safe HTML for admin-authored copy (e.g. feature

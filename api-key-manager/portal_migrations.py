@@ -2182,6 +2182,30 @@ def ensure_portal_tables():
         if not _column_exists(cur, "wa_contacts", "sms_opted_out_at"):
             cur.execute("ALTER TABLE wa_contacts ADD COLUMN sms_opted_out_at TIMESTAMPTZ")
 
+        # ── wa_contacts: separate Phone number + WhatsApp number (2026-09-28,
+        # One Address Book Phase 1a). Same two fields leads already have.
+        # WhatsApp features use ONLY whatsapp_number; PressOne/SMS use ONLY
+        # phone — never one in place of the other. Until now wa_contacts.phone
+        # was the number every WhatsApp feature used, so on first run it moves
+        # into whatsapp_number and phone starts empty (only proven data kept).
+        # Either number, both, or neither (email-only contact) is allowed.
+        if not _column_exists(cur, "wa_contacts", "whatsapp_number"):
+            cur.execute("ALTER TABLE wa_contacts ADD COLUMN whatsapp_number VARCHAR(32)")
+            cur.execute("ALTER TABLE wa_contacts ALTER COLUMN phone DROP NOT NULL")
+            cur.execute("UPDATE wa_contacts SET whatsapp_number = phone, phone = NULL")
+        if not _constraint_exists(cur, "wa_contacts_tenant_id_whatsapp_number_key"):
+            cur.execute(
+                "ALTER TABLE wa_contacts ADD CONSTRAINT wa_contacts_tenant_id_whatsapp_number_key "
+                "UNIQUE (tenant_id, whatsapp_number)"
+            )
+        # Phase 1b (2026-09-28): contacts made from a Sales Lead get source 'lead'.
+        cur.execute("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='wa_contacts_source_check'")
+        _src = cur.fetchone()
+        if _src and "'lead'" not in _src[0]:
+            cur.execute("ALTER TABLE wa_contacts DROP CONSTRAINT wa_contacts_source_check")
+            cur.execute("ALTER TABLE wa_contacts ADD CONSTRAINT wa_contacts_source_check "
+                        "CHECK (source IN ('manual','csv','whatsapp','web','lead'))")
+
         if not _table_exists(cur, "contact_consent_log"):
             cur.execute("""
                 CREATE TABLE contact_consent_log (

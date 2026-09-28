@@ -73,6 +73,13 @@
     <div class="stat-pill"><div class="v">{{ people|length }}</div><div class="l">People</div></div>
     <div class="stat-pill"><div class="v">₦{{ '{:,.0f}'.format(deal_summary.open_deal_value or 0) }}</div><div class="l">Open Deals</div></div>
     {% if staff_can_open('portal.crm_company_edit') %}<button class="btn-ghost" onclick="document.getElementById('editModal').classList.add('open')">Edit</button>{% endif %}
+    {% if staff_can_open('portal.crm_company_delete') %}
+    <form method="POST" action="{{ url_for('portal.crm_company_delete', company_id=company.id) }}" style="display:inline;margin:0"
+          data-msg="Delete the company {{ company.name }}? Its {{ people|length }} contact(s) and any deals are kept, just no longer linked to a company. Company notes are deleted. This can't be undone."
+          onsubmit="return confirm(this.dataset.msg)">
+      <button type="submit" class="btn-ghost" style="color:#dc2626;border-color:rgba(220,38,38,.35)">Delete</button>
+    </form>
+    {% endif %}
   </div>
 </div>
 
@@ -85,11 +92,12 @@
   <div class="person-row">
     <div class="avatar">{% if p.display_name %}{{ p.display_name[0] }}{% else %}#{% endif %}</div>
     <div style="width:150px">
-      <div class="pr-name"><a href="{{ url_for('portal.whatsapp_contact_detail', contact_id=p.id) }}">{{ p.display_name or ('+' + p.phone) }}</a></div>
+      <div class="pr-name"><a href="{{ url_for('portal.whatsapp_contact_detail', contact_id=p.id) }}">{{ p.display_name or (p.whatsapp_number|phone_display) or (p.phone|phone_display) or p.email }}</a></div>
       {% if p.contact_person %}<div style="font-size:11.5px;color:var(--muted)">{{ p.contact_person }}</div>{% endif %}
     </div>
     <div class="pr-mid">
-      <div class="pr-col"><div class="l">Phone</div><div class="v">+{{ p.phone }}</div></div>
+      <div class="pr-col"><div class="l">Phone Number</div><div class="v">{{ (p.phone|phone_display) or '—' }}</div></div>
+      <div class="pr-col"><div class="l">WhatsApp Number</div><div class="v">{{ (p.whatsapp_number|phone_display) or '—' }}</div></div>
     </div>
     {% if p.pipeline_stage %}
     <span class="stage-pill st-{{ p.pipeline_stage }}">{{ stage_labels.get(p.pipeline_stage, p.pipeline_stage) }}</span>

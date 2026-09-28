@@ -113,7 +113,7 @@
             <td><div class="avatar">{% if c.display_name %}{{ c.display_name[0] }}{% else %}#{% endif %}</div></td>
             <td>
               <div style="font-weight:600;font-size:13px">{{ c.display_name or '<span style="color:var(--muted);font-style:italic">Unnamed</span>'|safe }}</div>
-              <div class="add-cand-phone">+{{ c.phone }}</div>
+              <div class="add-cand-phone">{% if c.phone %}📞 {{ c.phone|phone_display }}{% endif %}{% if c.phone and c.whatsapp_number %} · {% endif %}{% if c.whatsapp_number %}💬 {{ c.whatsapp_number|phone_display }}{% endif %}{% if not c.phone and not c.whatsapp_number %}{{ c.email or '—' }}{% endif %}</div>
             </td>
             <td><span class="status-badge badge-{{ c.status or 'lead' }}">{{ (c.status or 'lead')|title }}</span></td>
             <td>
@@ -149,11 +149,11 @@
     </div>
     <div class="add-cand-list" id="candidateList">
       {% for c in non_members %}
-      <div class="add-cand-row" data-name="{{ (c.display_name or '')|lower }}" data-phone="{{ c.phone }}">
+      <div class="add-cand-row" data-name="{{ (c.display_name or '')|lower }}" data-phone="{{ c.phone or '' }} {{ c.whatsapp_number or '' }}">
         <div class="avatar">{% if c.display_name %}{{ c.display_name[0] }}{% else %}#{% endif %}</div>
         <div class="add-cand-info">
           <div class="add-cand-name">{{ c.display_name or 'Unnamed' }}</div>
-          <div class="add-cand-phone">+{{ c.phone }}</div>
+          <div class="add-cand-phone">{% if c.phone %}📞 {{ c.phone|phone_display }}{% endif %}{% if c.phone and c.whatsapp_number %} · {% endif %}{% if c.whatsapp_number %}💬 {{ c.whatsapp_number|phone_display }}{% endif %}{% if not c.phone and not c.whatsapp_number %}{{ c.email or '—' }}{% endif %}</div>
         </div>
         <span class="status-badge badge-{{ c.status or 'lead' }}" style="flex-shrink:0">{{ (c.status or 'lead')|title }}</span>
         <form method="POST" action="{{ url_for('portal.whatsapp_segment_add_member', seg_id=segment.id) }}" style="flex-shrink:0">

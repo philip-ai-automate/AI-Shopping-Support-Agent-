@@ -1,10 +1,10 @@
 {% extends "portal/base.html" %}
-{% block title %}{{ contact.display_name or contact.phone }} — Contact — PhiXtra Portal{% endblock %}
+{% block title %}{{ contact.display_name or contact.whatsapp_number or contact.phone or contact.email }} — Contact — PhiXtra Portal{% endblock %}
 
 {% block head %}
 <style>
 /* ── Layout ──────────────────────────────────────────────────────────────── */
-.cd-layout { display: grid; grid-template-columns: 300px 1fr; gap: 20px; align-items: start; }
+.cd-layout { display: grid; grid-template-columns: 340px minmax(0,1fr); gap: 20px; align-items: start; }
 
 /* ── Profile card ────────────────────────────────────────────────────────── */
 .profile-card {
@@ -56,6 +56,7 @@
 .src-csv       { background: #f0fdf4; color: #15803d; }
 .src-whatsapp  { background: #dcfce7; color: #15803d; }
 .src-web       { background: #eff6ff; color: #1d4ed8; }
+.src-lead      { background: #fef3c7; color: #92400e; }
 
 /* Tag pill */
 .tag-pill {
@@ -218,6 +219,64 @@
 .stat-pill-value { font-size:22px; font-weight:800; color:var(--ink); line-height:1; }
 .stat-pill-label { font-size:11px; color:var(--muted); font-weight:600; margin-top:3px; }
 
+/* ── Side column sections (2026-09-28 redesign) ─────────────────────────── */
+.profile-card { position: static; overflow: visible; }  /* visible: the label list may overhang the card */
+.profile-card > .pc-head { border-radius: 16px 16px 0 0; }
+.pc-head { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 20px; display: flex; gap: 14px; align-items: center; }
+.pc-av { width: 52px; height: 52px; font-size: 21px; margin: 0; flex-shrink: 0; }
+.pc-name { font-size: 17px; font-weight: 800; color: #fff; margin: 0; overflow-wrap: break-word; }
+.pc-sub { font-size: 12px; color: #aab4c8; margin-top: 2px; }
+.pc-stats { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.pc-stats span { background: rgba(255,255,255,.1); color: #e2e8f0; border-radius: 999px; padding: 2px 9px; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pc-sec { padding: 14px 20px; border-top: 1px solid rgba(3,12,24,.07); }
+.pc-sec:first-of-type { border-top: 0; }
+.pc-h { margin: 0 0 8px; font-size: 10px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .09em; }
+.pc-h-row { display: flex; justify-content: space-between; align-items: baseline; }
+.pc-row { display: grid; grid-template-columns: 18px 100px minmax(0,1fr); gap: 6px; align-items: center; padding: 5px 0; font-size: 13px; }
+.pc-row.pc-top { align-items: start; }
+.pc-row.pc-top .pc-ic, .pc-row.pc-top .pc-k { padding-top: 3px; }
+.pc-ic { font-size: 12px; color: var(--muted); text-align: center; }
+.pc-k { font-size: 12px; color: var(--muted); }
+.pc-v { font-weight: 600; color: var(--ink); overflow-wrap: break-word; min-width: 0; }
+.pc-num { font-family: 'SF Mono','Fira Code',monospace; font-size: 12.5px; }
+.pc-wa { color: #15803d; }
+.pc-none { color: var(--muted); font-weight: 400; }
+.pc-add { background: none; border: 0; padding: 0; color: #2563eb; font: inherit; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.pc-add:hover { text-decoration: underline; }
+.pc-link { color: #2563eb; text-decoration: none; font-weight: 600; }
+.pc-link:hover { text-decoration: underline; }
+.pc-cc { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: #fef0c7; color: #93370d; font-size: 10.5px; font-weight: 700; font-family: inherit; vertical-align: middle; }
+.pc-status { appearance: none; -webkit-appearance: none; border: 1px solid transparent; border-radius: 999px; padding: 3px 26px 3px 10px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+  background: #eef4ff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23475467' stroke-width='3'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 9px center; color: #3538cd; }
+.pc-status.st-prospect { background-color: #fff6ed; color: #c4320a; }
+.pc-status.st-customer { background-color: #ecfdf3; color: #15803d; }
+.pc-status.st-inactive { background-color: #f2f4f7; color: #475467; }
+.pc-status:focus-visible { outline: 2px solid #6366f1; outline-offset: 2px; }
+.pc-saved { font-size: 11px; font-weight: 700; color: #15803d; }
+.pc-saved.err { color: #d92d20; }
+.pc-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.pc-deal { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pc-money { font-size: 16px; color: var(--ink); }
+.pc-btn { border: 1px solid #e2e8f0; background: #fff; border-radius: 9px; padding: 6px 11px; font: inherit; font-size: 12px; font-weight: 700; color: #334155; cursor: pointer; }
+.pc-btn:hover { background: #f1f5f9; }
+.pc-note { font-size: 13px; color: #475467; line-height: 1.5; margin-bottom: 8px; }
+.pc-note:last-child { margin-bottom: 0; }
+.pc-note b { display: block; font-size: 11.5px; color: var(--ink); margin-bottom: 1px; }
+.pc-note b span { font-weight: 400; color: var(--muted); }
+.pc-primary { background: #0f172a; color: #fff; border-color: #0f172a; }
+.pc-primary:hover { background: #1e293b; color: #fff; }
+.pc-meta { font-size: 11.5px; color: var(--muted); padding: 10px 20px 14px; border-top: 1px solid rgba(3,12,24,.07); }
+
+/* ── Edit form sections ───────────────────────────────────────────────── */
+.ep-sec { border: 0; margin: 0; padding: 0 0 14px; margin-bottom: 16px; border-bottom: 1px solid rgba(3,12,24,.07); min-width: 0; }
+.ep-sec:last-child { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
+.ep-sec legend { font-size: 10.5px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .09em; padding: 0; margin-bottom: 12px; }
+.ep-sec legend span { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.ep-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ep-2 .field { min-width: 0; }
+.ep-labels { border: 1px solid #e2e8f0; border-radius: 10px; padding: 7px; min-height: 42px; background: #fff; }
+@media (max-width:560px) { .ep-2 { grid-template-columns: 1fr; } }
+
 @media (max-width:820px) {
   .cd-layout { grid-template-columns:1fr; }
   .profile-card { position:static; }
@@ -233,208 +292,162 @@
 <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-bottom:16px">
   <a href="{{ url_for('portal.whatsapp_contacts') }}" style="color:var(--muted);text-decoration:none;font-weight:600">Contacts</a>
   <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
-  <span style="color:var(--ink);font-weight:700">{{ contact.display_name or ('+' + contact.phone) }}</span>
+  <span style="color:var(--ink);font-weight:700">{{ contact.display_name or (contact.whatsapp_number|phone_display) or (contact.phone|phone_display) or contact.email }}</span>
 </div>
 
 <div class="cd-layout">
 
   <!-- ── Left: Profile card ──────────────────────────────────────────── -->
   <aside>
+    {# Side column redesign (2026-09-28): grouped into Contact details /
+       About / Sales / Notes. Status and Labels change in place (saved
+       straight away); segments live only in the Segments box below. #}
+    {% set cc_badge = '<span title="This number has no country code. Edit it to add one, or set your business country in Settings." class="pc-cc">Add country code</span>' %}
     <div class="profile-card">
-      <div class="profile-card-top">
-        <div class="profile-avatar {% if not contact.display_name %}unnamed{% endif %}">
+      <div class="pc-head">
+        <div class="profile-avatar pc-av {% if not contact.display_name %}unnamed{% endif %}">
           {% if contact.display_name %}{{ contact.display_name[0] }}{% else %}?{% endif %}
         </div>
-        <h1 class="profile-name">{{ contact.display_name or 'Unnamed Contact' }}</h1>
-        <span class="profile-phone">
-          <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
-          +{{ contact.phone }}
-        </span>
+        <div style="min-width:0">
+          <h1 class="pc-name">{{ contact.display_name or 'Unnamed Contact' }}</h1>
+          {% if contact.contact_person or contact.company_name %}
+          <div class="pc-sub">{{ [contact.contact_person, contact.company_name]|select|join(' · ') }}</div>
+          {% endif %}
+          <div class="pc-stats">
+            <span>{{ msg_count }} message{{ '' if msg_count == 1 else 's' }}</span>
+            <span>{{ notes|length }} note{{ '' if notes|length == 1 else 's' }}</span>
+          </div>
+        </div>
       </div>
 
-      <div class="profile-body">
-
-        <!-- Stats -->
-        <div class="stat-row">
-          <div class="stat-pill">
-            <div class="stat-pill-value">{{ msg_count }}</div>
-            <div class="stat-pill-label">Messages</div>
-          </div>
-          <div class="stat-pill">
-            <div class="stat-pill-value">{{ notes|length }}</div>
-            <div class="stat-pill-label">Notes</div>
-          </div>
-        </div>
-
-        <!-- Status -->
-        <div class="profile-field">
-          <div class="profile-field-label">Status</div>
-          <span class="status-badge badge-{{ contact.status or 'lead' }}">
-            <span class="status-dot"></span>{{ (contact.status or 'lead')|title }}
+      <div class="pc-sec">
+        <h3 class="pc-h">Contact details</h3>
+        <div class="pc-row">
+          <span class="pc-ic" aria-hidden="true">📞</span><span class="pc-k">Phone number</span>
+          <span class="pc-v pc-num">
+            {% if contact.phone %}{{ contact.phone|phone_display }}{% if (contact.phone or '')|string|trim|first == '0' %}{{ cc_badge|safe }}{% endif %}
+            {% elif can_edit_contact %}<button type="button" class="pc-add" onclick="openEdit('ep-phone')">+ Add phone number</button>
+            {% else %}<span class="pc-none">—</span>{% endif %}
           </span>
         </div>
-
-        <!-- Email -->
-        {% if contact.email %}
-        <div class="profile-field">
-          <div class="profile-field-label">Email</div>
-          <div class="profile-field-value" style="font-size:13px">{{ contact.email }}</div>
+        <div class="pc-row">
+          <span class="pc-ic" aria-hidden="true">💬</span><span class="pc-k">WhatsApp number</span>
+          <span class="pc-v pc-num pc-wa">
+            {% if contact.whatsapp_number %}{{ contact.whatsapp_number|phone_display }}{% if (contact.whatsapp_number or '')|string|trim|first == '0' %}{{ cc_badge|safe }}{% endif %}
+            {% elif can_edit_contact %}<button type="button" class="pc-add" onclick="openEdit('ep-whatsapp')">+ Add WhatsApp number</button>
+            {% else %}<span class="pc-none">—</span>{% endif %}
+          </span>
         </div>
-        {% endif %}
-
-        <!-- Contact Person (who to deal with, when Display Name is a business) -->
-        {% if contact.contact_person %}
-        <div class="profile-field">
-          <div class="profile-field-label">Contact Person</div>
-          <div class="profile-field-value" style="font-size:13px">{{ contact.contact_person }}</div>
+        <div class="pc-row">
+          <span class="pc-ic" aria-hidden="true">✉️</span><span class="pc-k">Email</span>
+          <span class="pc-v">
+            {% if contact.email %}{{ contact.email }}
+            {% elif can_edit_contact %}<button type="button" class="pc-add" onclick="openEdit('ep-email')">+ Add email</button>
+            {% else %}<span class="pc-none">—</span>{% endif %}
+          </span>
         </div>
-        {% endif %}
-
-        <!-- Source -->
-        <div class="profile-field">
-          <div class="profile-field-label">Source</div>
-          {% set src = contact.source or 'manual' %}
-          {% set src_icons = {'manual':'✏️','csv':'📋','whatsapp':'💬','web':'🌐'} %}
-          <span class="source-badge src-{{ src }}">{{ src_icons.get(src,'📌') }} {{ src|title }}</span>
+        <div class="pc-row">
+          <span class="pc-ic" aria-hidden="true">👤</span><span class="pc-k">Contact person</span>
+          <span class="pc-v">{{ contact.contact_person or '' }}{% if not contact.contact_person %}<span class="pc-none">—</span>{% endif %}</span>
         </div>
+        <div class="pc-row">
+          <span class="pc-ic" aria-hidden="true">🏢</span><span class="pc-k">Company</span>
+          <span class="pc-v">
+            {% if contact.company_name %}<a href="{{ url_for('portal.crm_company_detail', company_id=contact.company_id) }}" class="pc-link">{{ contact.company_name }}</a>
+            {% else %}<span class="pc-none">—</span>{% endif %}
+          </span>
+        </div>
+      </div>
 
-        <!-- Tags -->
-        <div class="profile-field">
-          <div class="profile-field-label">Tags</div>
-          <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:2px">
-            {% if contact.tags_list %}
-              {% for tag in contact.tags_list %}
-              <span class="tag-pill">#{{ tag }}</span>
+      <div class="pc-sec">
+        <div class="pc-h-row"><h3 class="pc-h">About</h3><span class="pc-saved" id="pcSaved" role="status" aria-live="polite"></span></div>
+        <div class="pc-row">
+          <span class="pc-ic" aria-hidden="true">●</span><span class="pc-k">Status</span>
+          <span class="pc-v">
+            {% set st = contact.status or 'lead' %}
+            {% if can_edit_contact %}
+            <select id="pcStatus" class="pc-status st-{{ st }}" aria-label="Status" data-was="{{ st }}">
+              {% for val, label in [('lead','Lead'),('prospect','Prospect'),('customer','Customer'),('inactive','Inactive')] %}
+              <option value="{{ val }}" {% if st == val %}selected{% endif %}>{{ label }}</option>
               {% endfor %}
+            </select>
             {% else %}
-              <span style="font-size:12px;color:var(--muted)">No tags</span>
+            <span class="status-badge badge-{{ st }}"><span class="status-dot"></span>{{ st|title }}</span>
             {% endif %}
-          </div>
+          </span>
         </div>
-
-        <!-- Company -->
-        <div class="profile-field">
-          <div class="profile-field-label">Company</div>
-          {% if contact.company_name %}
-          <a href="{{ url_for('portal.crm_company_detail', company_id=contact.company_id) }}"
-             class="seg-chip" style="text-decoration:none;background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe">
-            🏢 {{ contact.company_name }}
-          </a>
-          {% else %}
-          <span style="font-size:12px;color:var(--muted)">No company — set one via Edit Profile</span>
-          {% endif %}
+        <div class="pc-row">
+          <span class="pc-ic" aria-hidden="true">↘</span><span class="pc-k">Source</span>
+          <span class="pc-v">
+            {% set src = contact.source or 'manual' %}
+            {% set src_icons = {'manual':'✏️','csv':'📋','whatsapp':'💬','web':'🌐','lead':'💼'} %}
+            {% set src_names = {'manual':'Added by hand','csv':'CSV import','whatsapp':'WhatsApp','web':'Website','lead':'Sales Lead'} %}
+            <span class="source-badge src-{{ src }}">{{ src_icons.get(src,'📌') }} {{ src_names.get(src, src|title) }}</span>
+          </span>
         </div>
-
-        <!-- WhatsApp Number (only shown when it differs from Phone above —
-             a linked deal can carry its own WhatsApp field separate from the
-             phone number it was reached on) -->
-        {% if pipeline_lead and pipeline_lead.whatsapp_number and pipeline_lead.whatsapp_number != contact.phone %}
-        <div class="profile-field">
-          <div class="profile-field-label">WhatsApp Number</div>
-          <div class="profile-field-value" style="font-family:'SF Mono','Fira Code',monospace">{{ pipeline_lead.whatsapp_number }}</div>
+        <div class="pc-row pc-top">
+          <span class="pc-ic" aria-hidden="true">🏷</span><span class="pc-k">Labels</span>
+          <span class="pc-v">
+            {% if can_edit_contact %}
+            <span id="pcLabels"></span>
+            {% elif contact.tags_list %}
+            <span class="pc-chips">{% for t in contact.tags_list %}<span class="tag-pill">{{ t }}</span>{% endfor %}</span>
+            {% else %}<span class="pc-none">No labels</span>{% endif %}
+          </span>
         </div>
-        {% endif %}
+      </div>
 
-        <!-- Segments -->
-        <div class="profile-field">
-          <div class="profile-field-label">Segments</div>
-          <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:2px">
-            {% if contact_segments %}
-              {% for seg in contact_segments %}
-              <span class="seg-chip">
-                <span class="seg-dot" style="background:{{ seg.color }}"></span>
-                {{ seg.name }}
-              </span>
-              {% endfor %}
-            {% else %}
-              <span style="font-size:12px;color:var(--muted)">No segments</span>
-            {% endif %}
-          </div>
-        </div>
-
-        <!-- Deal -->
-        <div class="profile-field">
-          <div class="profile-field-label">Deal</div>
-          {% if pipeline_lead %}
+      <div class="pc-sec">
+        <h3 class="pc-h">Sales</h3>
+        {% if pipeline_lead %}
+        <div class="pc-deal">
           <span class="stage-pill st-{{ pipeline_lead.stage }}" style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700">
             {{ stage_labels.get(pipeline_lead.stage, pipeline_lead.stage) }}
           </span>
-          {% if pipeline_lead.deal_value %}
-          <div class="profile-field-value" style="margin-top:6px;font-size:18px">₦{{ '{:,.0f}'.format(pipeline_lead.deal_value) }}</div>
-          {% endif %}
-          <a href="{{ url_for('portal.lead_detail', lead_id=pipeline_lead.id) }}" style="font-size:11px;color:#2563eb;font-weight:700;text-decoration:none;display:inline-block;margin-top:4px">Open this Sales Lead →</a>
+          {% if pipeline_lead.deal_value %}<b class="pc-money">₦{{ '{:,.0f}'.format(pipeline_lead.deal_value) }}</b>{% endif %}
+        </div>
+        <div class="pc-deal" style="margin-top:6px">
+          <a href="{{ url_for('portal.lead_detail', lead_id=pipeline_lead.id) }}" class="pc-link" style="font-size:12px">Open this Sales Lead →</a>
           {% if pipeline_lead_count and pipeline_lead_count > 1 %}
-          <a href="{{ url_for('portal.sales_pipeline', q=contact.phone) }}" style="font-size:11px;color:var(--muted);font-weight:600;text-decoration:none;display:block;margin-top:2px">+{{ pipeline_lead_count - 1 }} more Sales Lead{{ 's' if pipeline_lead_count > 2 else '' }} →</a>
-          {% endif %}
-          {% else %}
-          <div style="font-size:12px;color:var(--muted);margin-bottom:6px">No Sales Lead yet</div>
+          <a href="{{ url_for('portal.sales_pipeline', q=contact.whatsapp_number or contact.phone or contact.email or contact.display_name) }}" class="pc-none" style="font-size:12px;text-decoration:none">+{{ pipeline_lead_count - 1 }} more Sales Lead{{ 's' if pipeline_lead_count > 2 else '' }} →</a>
           {% endif %}
         </div>
-
-        <!-- Notes snippet -->
-        {% if contact.notes %}
-        <div class="profile-field">
-          <div class="profile-field-label">Profile Notes</div>
-          <div class="profile-field-value" style="font-weight:400;font-size:13px;color:var(--muted);line-height:1.5">{{ contact.notes }}</div>
+        {% else %}
+        <div class="pc-deal">
+          <span class="pc-none" style="font-size:13px">No Sales Lead yet</span>
+          {% if can_edit_contact %}
+          <form method="POST" action="{{ url_for('portal.whatsapp_contact_move_to_pipeline', contact_id=contact.id) }}" style="margin:0">
+            <button type="submit" class="pc-btn">+ Create Sales Lead</button>
+          </form>
+          {% endif %}
         </div>
         {% endif %}
+      </div>
 
-        <!-- Personalization (used in campaign messages) -->
-        {% if contact.personalization_note %}
-        <div class="profile-field">
-          <div class="profile-field-label">Personalization</div>
-          <div class="profile-field-value" style="font-weight:400;font-size:13px;color:var(--muted);line-height:1.5">{{ contact.personalization_note }}</div>
-        </div>
-        {% endif %}
-
-        <!-- Dates -->
-        <div class="profile-field" style="margin-bottom:0">
-          <div class="profile-field-label">Added</div>
-          <div class="profile-field-value" style="font-size:12px">
-            {{ contact.created_at.strftime('%d %b %Y, %H:%M') if contact.created_at else '—' }}
-          </div>
-        </div>
-        {% if contact.updated_at and contact.updated_at != contact.created_at %}
-        <div class="profile-field" style="margin-top:8px;margin-bottom:0">
-          <div class="profile-field-label">Last Updated</div>
-          <div class="profile-field-value" style="font-size:12px">
-            {{ contact.updated_at.strftime('%d %b %Y, %H:%M') }}
-          </div>
-        </div>
-        {% endif %}
-
-      </div><!-- /profile-body -->
+      <div class="pc-sec">
+        <h3 class="pc-h">Notes</h3>
+        <div class="pc-note"><b>Profile notes</b>{% if contact.notes %}{{ contact.notes }}{% else %}<span class="pc-none">None yet</span>{% endif %}</div>
+        <div class="pc-note"><b>Personalization <span>(used in WhatsApp campaigns)</span></b>{% if contact.personalization_note %}{{ contact.personalization_note }}{% else %}<span class="pc-none">None yet</span>{% endif %}</div>
+      </div>
 
       <div class="profile-actions">
-        {% if msg_count > 0 %}
-        <a href="{{ url_for('portal.my_inbox') }}?phone={{ contact.phone }}" class="btn-wa">
-          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.122 1.534 5.854L0 24l6.336-1.508A11.933 11.933 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.8 9.8 0 01-5.002-1.372l-.36-.213-3.727.887.908-3.617-.234-.375A9.808 9.808 0 012.182 12C2.182 6.58 6.58 2.182 12 2.182S21.818 6.58 21.818 12 17.42 21.818 12 21.818z"/></svg>
-          Open Conversation
-        </a>
-        {% endif %}
         {% if can_edit_contact %}
-        <button class="btn-edit-profile" onclick="openEdit()">
+        <button class="btn-edit-profile pc-primary" onclick="openEdit()">
           <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-          Edit Profile
+          Edit profile
         </button>
+        {% endif %}
+        {% if msg_count > 0 %}
+        <a href="{{ url_for('portal.my_inbox') }}?phone={{ contact.whatsapp_number }}" class="btn-wa">Open conversation</a>
+        {% endif %}
+        {% if pipeline_lead and can_edit_contact %}
         <form method="POST" action="{{ url_for('portal.whatsapp_contact_move_to_pipeline', contact_id=contact.id) }}" style="margin:0">
-          <button type="submit" class="btn-edit-profile" title="Creates a new Sales Lead for this contact — the Contact itself is untouched, and this works even if they already have one or more Sales Leads">
-            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-            Create Sales Lead
-          </button>
+          <button type="submit" class="btn-edit-profile" title="Creates another Sales Lead for this contact — works even if they already have one">+ Another Sales Lead</button>
         </form>
         {% endif %}
-        {% if available_segments and can_edit_contact %}
-        <div style="position:relative">
-          <select id="quickSegSelect" class="field-select" style="font-size:12px;padding:8px 12px"
-                  onchange="quickAddSegment(this.value)">
-            <option value="">+ Add to Segment…</option>
-            {% for seg in available_segments %}
-            <option value="{{ seg.id }}">{{ seg.name }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        {% endif %}
+      </div>
+      <div class="pc-meta">
+        Added {{ contact.created_at.strftime('%d %b %Y, %H:%M') if contact.created_at else '—' }}{% if contact.updated_at and contact.updated_at != contact.created_at %} · Updated {{ contact.updated_at.strftime('%d %b %Y, %H:%M') }}{% endif %}
       </div>
     </div><!-- /profile-card -->
 
@@ -496,11 +509,10 @@
       </div>
     </div>
 
-    <!-- Segments membership -->
-    {% if contact_segments %}
+    <!-- Segments — the one place a contact's segments are shown (2026-09-28) -->
     <div class="section-card" style="margin-top:16px">
       <div class="sc-head">
-        <h2>In Segments</h2>
+        <h2>Segments</h2>
         <span class="sc-head-count">{{ contact_segments|length }}</span>
       </div>
       <div class="sc-body" style="padding:12px 16px">
@@ -513,16 +525,27 @@
           </div>
           {% if can_edit_contact %}
           <form method="POST" action="{{ url_for('portal.whatsapp_contact_remove_from_segment', contact_id=contact.id, seg_id=seg.id) }}"
-                onsubmit="return confirm('Remove from {{ seg.name }}?')">
-            <button type="submit" style="background:none;border:none;cursor:pointer;color:#cbd5e1;font-size:12px;padding:0"
-                    onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='#cbd5e1'">✕</button>
+                onsubmit="return confirm('Remove from {{ seg.name|replace("'", "\\'") }}?')">
+            <button type="submit" aria-label="Remove from {{ seg.name }}" title="Remove from segment"
+                    style="background:none;border:none;cursor:pointer;color:#98a2b3;font-size:13px;padding:0 4px"
+                    onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='#98a2b3'">✕</button>
           </form>
           {% endif %}
         </div>
+        {% else %}
+        <div style="font-size:12.5px;color:var(--muted);padding:2px 0 4px">Not in any segment yet.</div>
         {% endfor %}
+        {% if available_segments and can_edit_contact %}
+        <select id="quickSegSelect" class="field-select" style="font-size:12px;padding:8px 12px;margin-top:10px"
+                onchange="quickAddSegment(this.value)" aria-label="Add to segment">
+          <option value="">+ Add to segment…</option>
+          {% for seg in available_segments %}
+          <option value="{{ seg.id }}">{{ seg.name }}</option>
+          {% endfor %}
+        </select>
+        {% endif %}
       </div>
     </div>
-    {% endif %}
   </aside>
 
   <!-- ── Right: Timeline + Messages ─────────────────────────────────── -->
@@ -622,7 +645,7 @@
         <div style="display:flex;align-items:center;gap:10px">
           <span class="sc-head-count">{{ msg_count }} total</span>
           {% if msg_count > 0 %}
-          <a href="{{ url_for('portal.my_inbox') }}?phone={{ contact.phone }}"
+          <a href="{{ url_for('portal.my_inbox') }}?phone={{ contact.whatsapp_number }}"
              style="font-size:12px;color:#25D366;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:4px">
             Open Chat
             <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
@@ -648,7 +671,7 @@
         </div>
         {% if msg_count > 10 %}
         <div style="padding-top:12px;text-align:center">
-          <a href="{{ url_for('portal.my_inbox') }}?phone={{ contact.phone }}"
+          <a href="{{ url_for('portal.my_inbox') }}?phone={{ contact.whatsapp_number }}"
              style="font-size:12px;color:#6366f1;font-weight:700;text-decoration:none">
             View all {{ msg_count }} messages in Inbox →
           </a>
@@ -674,92 +697,120 @@
 <div class="drawer-overlay" id="editOverlay" onclick="closeEdit()"></div>
 <div class="drawer" id="editDrawer">
   <div class="drawer-head">
-    <h2>Edit Profile</h2>
+    <h2>Edit profile</h2>
     <button type="button" class="drawer-close" onclick="closeEdit()">✕</button>
   </div>
   <div class="drawer-body">
     <form id="editForm" method="POST"
           action="{{ url_for('portal.whatsapp_contacts_edit', contact_id=contact.id) }}">
 
-      <div class="field">
-        <label class="field-label">Display Name</label>
-        <input class="field-input" type="text" name="display_name"
-               value="{{ contact.display_name or '' }}" placeholder="Full name">
-      </div>
+      <fieldset class="ep-sec">
+        <legend>Name and company</legend>
+        <div class="ep-2">
+          <div class="field">
+            <label class="field-label" for="ep-name">Display name</label>
+            <input class="field-input" type="text" name="display_name" id="ep-name"
+                   value="{{ contact.display_name or '' }}" placeholder="Full name or business name">
+          </div>
+          <div class="field">
+            <label class="field-label" for="ep-person">Contact person <span class="field-hint">optional</span></label>
+            <input class="field-input" type="text" name="contact_person" id="ep-person"
+                   value="{{ contact.contact_person or '' }}" placeholder="Who you deal with there">
+          </div>
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <label class="field-label" for="ep-company-select">Company <span class="field-hint">optional</span></label>
+          <select class="field-select" name="company_id" id="ep-company-select" onchange="toggleNewCompanyBox(this,'ep-new-company')">
+            <option value="" {% if not contact.company_id %}selected{% endif %}>— No Company —</option>
+            {% for co in all_companies %}
+            <option value="{{ co.id }}" {% if contact.company_id == co.id %}selected{% endif %}>{{ co.name }}</option>
+            {% endfor %}
+            <option value="__new__">+ New Company…</option>
+          </select>
+          <input class="field-input" type="text" name="new_company_name" id="ep-new-company"
+                 placeholder="New company name" style="display:none;margin-top:8px" autocomplete="off" aria-label="New company name">
+          <div class="dedupe-warn" id="ep-dedupe"></div>
+        </div>
+      </fieldset>
 
-      <div class="field">
-        <label class="field-label">Contact Person <span class="field-hint">optional — if Display Name is a business, who's your actual contact there?</span></label>
-        <input class="field-input" type="text" name="contact_person"
-               value="{{ contact.contact_person or '' }}" placeholder="e.g. Amira Johnson">
-      </div>
+      <fieldset class="ep-sec">
+        <legend>How to reach them <span>· any one is enough</span></legend>
+        <div class="ep-2">
+          <div class="field">
+            <label class="field-label" for="ep-phone">📞 Phone number</label>
+            <input class="field-input" type="text" name="phone" id="ep-phone" inputmode="numeric"
+                   value="{{ contact.phone or '' }}" placeholder="2348012345678">
+            <div style="font-size:11px;color:#94a3b8;margin-top:4px">For phone calls and SMS</div>
+          </div>
+          <div class="field">
+            <label class="field-label" for="ep-whatsapp">💬 WhatsApp number</label>
+            <input class="field-input" type="text" name="whatsapp_number" id="ep-whatsapp" inputmode="numeric"
+                   value="{{ contact.whatsapp_number or '' }}" placeholder="2348012345678">
+            <div style="font-size:11px;color:#94a3b8;margin-top:4px">For WhatsApp chats and campaigns</div>
+          </div>
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <label class="field-label" for="ep-email">✉️ Email</label>
+          <input class="field-input" type="email" name="email" id="ep-email"
+                 value="{{ contact.email or '' }}" placeholder="e.g. amira@business.com">
+        </div>
+      </fieldset>
 
-      <div class="field">
-        <label class="field-label">Company <span class="field-hint">optional</span></label>
-        <select class="field-select" name="company_id" id="ep-company-select" onchange="toggleNewCompanyBox(this,'ep-new-company')">
-          <option value="" {% if not contact.company_id %}selected{% endif %}>— No Company —</option>
-          {% for co in all_companies %}
-          <option value="{{ co.id }}" {% if contact.company_id == co.id %}selected{% endif %}>{{ co.name }}</option>
-          {% endfor %}
-          <option value="__new__">+ New Company…</option>
-        </select>
-        <input class="field-input" type="text" name="new_company_name" id="ep-new-company"
-               placeholder="New company name" style="display:none;margin-top:8px" autocomplete="off">
-        <div class="dedupe-warn" id="ep-dedupe"></div>
-      </div>
+      <fieldset class="ep-sec">
+        <legend>Status and labels</legend>
+        <div class="field">
+          <label class="field-label" for="ep-status">Status</label>
+          <select class="field-select" name="status" id="ep-status">
+            {% for val, label in [('lead','Lead'),('prospect','Prospect'),('customer','Customer'),('inactive','Inactive')] %}
+            <option value="{{ val }}" {% if (contact.status or 'lead') == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <label class="field-label">Labels <span class="field-hint">pick from your labels or create a new one</span></label>
+          <div class="ep-labels" id="ep-labels"></div>
+          <input type="hidden" name="tags_csv" id="ep-tags" value="{{ (contact.tags_list or [])|join(', ') }}">
+        </div>
+      </fieldset>
 
-      <div class="field">
-        <label class="field-label">Email <span class="field-hint">optional</span></label>
-        <input class="field-input" type="email" name="email"
-               value="{{ contact.email or '' }}" placeholder="e.g. amira@business.com">
-      </div>
-
-      <div class="field">
-        <label class="field-label">Status</label>
-        <select class="field-select" name="status">
-          {% for val, label in [('lead','Lead'),('prospect','Prospect'),('customer','Customer'),('inactive','Inactive')] %}
-          <option value="{{ val }}" {% if (contact.status or 'lead') == val %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <div class="field">
-        <label class="field-label">Tags <span class="field-hint">comma separated</span></label>
-        <input class="field-input" type="text" name="tags_csv" id="ep-tags"
-               value="{{ (contact.tags_list or [])|join(', ') }}"
-               placeholder="e.g. Lagos, VIP, Hot Lead" autocomplete="off">
-        <div class="dedupe-warn" id="ep-tags-dedupe"></div>
-      </div>
-
-      <div class="field">
-        <label class="field-label">Notes</label>
-        <textarea class="field-textarea" name="notes" rows="4"
-                  placeholder="Profile notes about this contact…">{{ contact.notes or '' }}</textarea>
-      </div>
-
-      <div class="field" style="margin-bottom:0">
-        <label class="field-label">Personalization <span class="field-hint">used in campaign messages, e.g. "a fashion boutique in Lagos"</span></label>
-        <textarea class="field-textarea" name="personalization_note" rows="2"
-                  placeholder="e.g. a travel agency in Lagos">{{ contact.personalization_note or '' }}</textarea>
-      </div>
+      <fieldset class="ep-sec">
+        <legend>Notes</legend>
+        <div class="field">
+          <label class="field-label" for="ep-notes">Profile notes <span class="field-hint">optional</span></label>
+          <textarea class="field-textarea" name="notes" id="ep-notes" rows="3"
+                    placeholder="Profile notes about this contact…">{{ contact.notes or '' }}</textarea>
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <label class="field-label" for="ep-pers">Personalization <span class="field-hint">used in WhatsApp campaign messages, e.g. "a fashion boutique in Lagos"</span></label>
+          <textarea class="field-textarea" name="personalization_note" id="ep-pers" rows="2"
+                    placeholder="e.g. a travel agency in Lagos">{{ contact.personalization_note or '' }}</textarea>
+        </div>
+      </fieldset>
     </form>
   </div>
   <div class="drawer-foot">
     <button type="button" class="btn-ghost" onclick="closeEdit()">Cancel</button>
-    <button type="button" class="btn-save" onclick="document.getElementById('editForm').submit()">Save Changes</button>
+    <button type="button" class="btn-save" onclick="document.getElementById('editForm').submit()">Save changes</button>
   </div>
 </div>
 
 <script>
-function openEdit() {
+function openEdit(focusId) {
   document.getElementById('editOverlay').classList.add('open')
   document.getElementById('editDrawer').classList.add('open')
   document.body.style.overflow = 'hidden'
+  document.body.classList.add('sh-hide')   // hide "Need help?" so it can't cover Save
+  if (focusId) setTimeout(function () { var el = document.getElementById(focusId); if (el) el.focus() }, 250)
 }
 function closeEdit() {
   document.getElementById('editOverlay').classList.remove('open')
   document.getElementById('editDrawer').classList.remove('open')
   document.body.style.overflow = ''
+  document.body.classList.remove('sh-hide')
 }
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && document.getElementById('editDrawer').classList.contains('open')) closeEdit()
+})
 
 function quickAddSegment(segId) {
   if (!segId) return
@@ -790,13 +841,49 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   })
 
-  /* Duplicate-name warning for the Tags field (comma separated) —
-     tags unification, 2026-09-09. */
-  crmDedupeWatchCsv({
-    input: document.getElementById('ep-tags'),
-    warnBox: document.getElementById('ep-tags-dedupe'),
-    label: 'Similar tag already exists — did you mean:',
-    getItems: function () { return {{ dedupe_tags|tojson }} },
+  /* Labels (shown as "Tags" before 2026-09-28): one picker in the About
+     section that saves straight away, one in the Edit form that saves with
+     the form. They stay in step with each other. */
+  var LABEL_OPTIONS = {{ label_options|tojson }};
+  var CONTACT_LABELS = {{ (contact.tags_list or [])|tojson }};
+  var savedEl = document.getElementById('pcSaved'), savedTimer = null
+  function showSaved(msg, isErr) {
+    if (!savedEl) return
+    savedEl.textContent = msg; savedEl.classList.toggle('err', !!isErr)
+    clearTimeout(savedTimer)
+    if (!isErr) savedTimer = setTimeout(function () { savedEl.textContent = '' }, 1800)
+  }
+  function post(url, data) {
+    var fd = new FormData(); Object.keys(data).forEach(function (k) { fd.append(k, data[k]) })
+    return fetch(url, {method: 'POST', body: fd, headers: {'X-Requested-With': 'XMLHttpRequest'}, credentials: 'same-origin'})
+      .then(function (r) { return r.json().catch(function () { return {} }).then(function (j) { if (!r.ok || !j.ok) throw new Error(j.error || 'Could not save. Please try again.'); return j }) })
+  }
+
+  var formPicker = LabelPicker.mount(document.getElementById('ep-labels'), {
+    labels: CONTACT_LABELS, all: LABEL_OPTIONS, hiddenInput: document.getElementById('ep-tags')
+  })
+  var aboutEl = document.getElementById('pcLabels')
+  if (aboutEl) {
+    var lastSaved = CONTACT_LABELS.slice()
+    var aboutPicker = LabelPicker.mount(aboutEl, {
+      labels: CONTACT_LABELS, all: LABEL_OPTIONS,
+      onChange: function (labels) {
+        showSaved('Saving…')
+        post('{{ url_for('portal.whatsapp_contact_tags', contact_id=contact.id) }}', {labels: labels.join(', ')})
+          .then(function () { lastSaved = labels.slice(); formPicker.set(labels); showSaved('✓ Saved') })
+          .catch(function (e) { aboutPicker.set(lastSaved); showSaved(e.message, true) })
+      }
+    })
+  }
+
+  var st = document.getElementById('pcStatus')
+  if (st) st.addEventListener('change', function () {
+    var val = st.value, was = st.getAttribute('data-was')
+    st.className = 'pc-status st-' + val
+    showSaved('Saving…')
+    post('{{ url_for('portal.whatsapp_contact_set_status', contact_id=contact.id) }}', {status: val})
+      .then(function () { st.setAttribute('data-was', val); document.getElementById('ep-status').value = val; showSaved('✓ Saved') })
+      .catch(function (e) { st.value = was; st.className = 'pc-status st-' + was; showSaved(e.message, true) })
   })
 })
 </script>

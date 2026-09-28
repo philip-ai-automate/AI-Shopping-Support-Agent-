@@ -10,6 +10,9 @@
 {% if support_whatsapp %}
 <style>
   .sh-dock{position:fixed; right:20px; bottom:20px; z-index:8000}
+  /* A page adds body.sh-hide while one of its side forms is open, so this
+     button never covers that form's Save button (2026-09-28). */
+  body.sh-hide #shWrap{display:none}
   .sh-btn{
     display:inline-flex; touch-action:none; user-select:none; -webkit-user-select:none; align-items:center; gap:8px;
     background:#25D366; color:#03240F; border:0; border-radius:999px;

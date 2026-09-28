@@ -544,7 +544,7 @@ def record_cross_channel_optout(tenant_id: int, phone: str, reason: str) -> None
             UPDATE wa_contacts
             SET email_opted_out=TRUE, email_opted_out_at=NOW(),
                 sms_opted_out=TRUE, sms_opted_out_at=NOW()
-            WHERE tenant_id=%s AND phone=%s
+            WHERE tenant_id=%s AND whatsapp_number=%s
             RETURNING id, email
             """,
             (tenant_id, phone),
@@ -1311,11 +1311,11 @@ def _find_matching_pipeline_lead_gw(cur, tenant_id: int, phone: str, contact_id:
         """
         SELECT id FROM merchant_pipeline_leads
         WHERE tenant_id=%s AND dropped_at IS NULL
-          AND regexp_replace(COALESCE(whatsapp_number, phone), '[^0-9]', '', 'g')
-              = regexp_replace(%s, '[^0-9]', '', 'g')
+          AND (regexp_replace(COALESCE(whatsapp_number, ''), '[^0-9]', '', 'g') = regexp_replace(%s, '[^0-9]', '', 'g')
+               OR regexp_replace(COALESCE(phone, ''), '[^0-9]', '', 'g') = regexp_replace(%s, '[^0-9]', '', 'g'))
         LIMIT 1
         """,
-        (tenant_id, phone),
+        (tenant_id, phone, phone),
     )
     row = cur.fetchone()
     return row["id"] if row else None
@@ -1334,8 +1334,26 @@ def create_pipeline_opportunity_from_reply(tenant_id: int, campaign_id: int, rec
         return None
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
-        cur.execute("SELECT * FROM wa_contacts WHERE tenant_id=%s AND phone=%s", (tenant_id, phone))
+        digits = _re.sub(r"[^\d]", "", phone or "")
+        cur.execute("SELECT * FROM wa_contacts WHERE tenant_id=%s AND whatsapp_number=%s",
+                    (tenant_id, digits))
         contact = cur.fetchone()
+        if not contact and digits:
+            # Same person saved with this number only as their Phone number.
+            cur.execute("SELECT * FROM wa_contacts WHERE tenant_id=%s AND phone=%s LIMIT 1", (tenant_id, digits))
+            contact = cur.fetchone()
+        if not contact and digits:
+            # One Address Book Phase 1b (2026-09-28): every lead gets a
+            # contact. The reply came from WhatsApp, so the number is saved
+            # as their WhatsApp number (Phone number left empty).
+            cur.execute(
+                """INSERT INTO wa_contacts (tenant_id, whatsapp_number, source)
+                   VALUES (%s, %s, 'whatsapp')
+                   ON CONFLICT (tenant_id, whatsapp_number) DO UPDATE SET updated_at = NOW()
+                   RETURNING *""",
+                (tenant_id, digits),
+            )
+            contact = cur.fetchone()
         contact_id = contact["id"] if contact else None
 
         lead_id = _find_matching_pipeline_lead_gw(cur, tenant_id, phone, contact_id)
@@ -1356,7 +1374,11 @@ def create_pipeline_opportunity_from_reply(tenant_id: int, campaign_id: int, rec
                 VALUES (%s, %s, %s, %s, %s, %s, 'new_lead', 'whatsapp', CURRENT_DATE, %s, %s, 'whatsapp')
                 RETURNING id
                 """,
-                (tenant_id, label, digits_phone, digits_phone,
+                # The reply number is a WhatsApp number; Phone number only if
+                # the contact already has one saved — never copied across.
+                (tenant_id, label,
+                 (_re.sub(r"[^\d]", "", contact.get("phone") or "") or None) if contact else None,
+                 digits_phone,
                  contact.get("email") if contact else None, notes,
                  contact_id, contact.get("company_id") if contact else None),
             )

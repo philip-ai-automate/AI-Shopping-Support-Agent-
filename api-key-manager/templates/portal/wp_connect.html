@@ -106,9 +106,15 @@
 
       <div style="display:flex;flex-direction:column;gap:6px">
         <label style="font-size:12.5px;font-weight:700">Mobile phone</label>
-        <input type="tel" name="phone_number" required placeholder="+234 801 234 5678" autocomplete="tel"
-               value="{{ form_data.get('phone_number', '') if form_data else '' }}"
-               style="padding:11px 13px;border:1px solid var(--line);border-radius:10px;font-size:14px"/>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          {% set pc_name = 'phone_country' %}{% set pc_id = 'fPhoneCountry' %}
+          {% set pc_selected = form_data.get('phone_country', '') if form_data else '' %}
+          {% set pc_style = 'flex:0 1 190px;min-width:0;padding:11px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px;background:#fff' %}
+          {% include "portal/_phone_country_select.html" %}
+          <input type="tel" name="phone_number" required placeholder="801 234 5678" autocomplete="tel-national"
+                 value="{{ form_data.get('phone_number', '') if form_data else '' }}"
+                 style="flex:1 1 170px;min-width:0;padding:11px 13px;border:1px solid var(--line);border-radius:10px;font-size:14px"/>
+        </div>
         <span style="font-size:11.5px;color:var(--muted)">For billing alerts and optional two-factor login.</span>
       </div>
 

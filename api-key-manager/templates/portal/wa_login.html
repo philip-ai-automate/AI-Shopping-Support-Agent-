@@ -19,10 +19,14 @@
   <form method="POST" action="{{ url_for('portal.wa_login_send') }}">
     <div class="form-group">
       <label>WhatsApp number</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      {% set pc_name = 'phone_country' %}{% set pc_id = 'fPhoneCountry' %}{% set pc_selected = '' %}{% set pc_style = 'flex:0 1 190px;min-width:0' %}
+      {% include "portal/_phone_country_select.html" %}
       <input type="tel" name="phone" required autofocus
-             placeholder="08012345678"
-             style="font-size:16px;letter-spacing:.03em"
+             placeholder="801 234 5678"
+             style="flex:1 1 170px;min-width:0;font-size:16px;letter-spacing:.03em"
              inputmode="tel"/>
+      </div>
       <div style="font-size:12px;color:var(--muted);margin-top:5px">
         Enter the same number you used when setting up on WhatsApp.
       </div>

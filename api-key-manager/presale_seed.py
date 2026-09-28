@@ -149,7 +149,7 @@ contacts = [
 ]
 for phone, name in contacts:
     cur.execute("""
-        INSERT INTO wa_contacts (tenant_id, phone, display_name, notes, created_at)
+        INSERT INTO wa_contacts (tenant_id, whatsapp_number, display_name, notes, created_at)
         VALUES (%s, %s, %s, '', NOW() - INTERVAL '15 days')
         ON CONFLICT DO NOTHING
     """, (tenant_id, phone, name))

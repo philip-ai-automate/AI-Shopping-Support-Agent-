@@ -100,9 +100,9 @@ print("👥  Creating contacts...")
 contact_ids = {}
 for phone, name, *_ in PEOPLE:
     cur.execute("""
-        INSERT INTO wa_contacts (tenant_id, phone, display_name, source, created_at)
+        INSERT INTO wa_contacts (tenant_id, whatsapp_number, display_name, source, created_at)
         VALUES (%s, %s, %s, 'whatsapp', %s)
-        ON CONFLICT (tenant_id, phone) DO UPDATE SET display_name = EXCLUDED.display_name
+        ON CONFLICT (tenant_id, whatsapp_number) DO UPDATE SET display_name = EXCLUDED.display_name
         RETURNING id
     """, (tenant_id, phone, name, days_ago(6)))
     contact_ids[phone] = cur.fetchone()["id"]

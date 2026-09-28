@@ -395,6 +395,7 @@ PLAN_FEATURE_CATALOG = {
         ("crm.companies_view",         "Companies — view"),
         ("crm.companies_create",       "Create a Company"),
         ("crm.companies_edit",         "Edit a Company (incl. notes)"),
+        ("crm.companies_delete",       "Delete a Company"),
         ("crm.pipeline_board_view",    "Pipeline Board — view"),
         ("crm.pipeline_board_edit",    "Edit a lead / advance or drop a pipeline stage"),
         ("crm.pipeline_board_export",  "Export the Pipeline (download CSV)"),
@@ -621,7 +622,7 @@ ROLE_FORM_GRID = {
     "CRM": [
         {"label": "Contact",        "view": "crm.contacts_view",        "create": "crm.contacts_create",  "edit": "crm.contacts_edit",  "delete": "crm.contacts_delete",
          "other": ["crm.contacts_export"]},
-        {"label": "Company",        "view": "crm.companies_view",       "create": "crm.companies_create", "edit": "crm.companies_edit"},
+        {"label": "Company",        "view": "crm.companies_view",       "create": "crm.companies_create", "edit": "crm.companies_edit", "delete": "crm.companies_delete"},
         {"label": "Pipeline Board", "view": "crm.pipeline_board_view",  "edit": "crm.pipeline_board_edit",
          "other": ["crm.pipeline_board_export"]},
         {"label": "Segment",        "view": "crm.segments_view",        "create": "crm.segments_create",  "edit": "crm.segments_edit",  "delete": "crm.segments_delete"},
@@ -1329,6 +1330,7 @@ DESTRUCTIVE_FEATURE_KEYS = {
     "team.positions_delete",
     "settings.cancel_plan",
     "crm.contacts_delete",
+    "crm.companies_delete",
     "crm.segments_delete",
     "crm.tags_delete",
     "crm.merge_review_confirm",
@@ -2631,7 +2633,7 @@ def _send_registration_otp_sms(phone: str, otp: str) -> bool:
 def _register_whatsapp_merchant(
     first_name: str, last_name: str, email: str, password: str,
     business_name: str, phone_number: str = "",
-    is_founder: bool = False, hear_about_us: str = "",
+    is_founder: bool = False, hear_about_us: str = "", business_country: str = None,
 ):
     """
     Self-service registration path for WhatsApp-only merchants.
@@ -2702,10 +2704,10 @@ def _register_whatsapp_merchant(
     cur3.execute("""
         INSERT INTO customers
             (tenant_id, first_name, last_name, email, password_hash,
-             phone_number, email_verified, verify_token, hear_about_us)
-        VALUES (%s, %s, %s, %s, %s, %s, FALSE, %s, %s)
+             phone_number, email_verified, verify_token, hear_about_us, business_country)
+        VALUES (%s, %s, %s, %s, %s, %s, FALSE, %s, %s, %s)
     """, (tenant_id, first_name, last_name, email, pw_hash, phone_number or None, verify_token,
-          hear_about_us or None))
+          hear_about_us or None, business_country or None))
     conn.commit()
     cur3.close()
 
@@ -2775,7 +2777,7 @@ def _register_whatsapp_merchant(
 
 
 def _register_web_merchant(first_name, last_name, email, password, phone_number,
-                            tenant_domain, hear_about_us="", ref_code=""):
+                            tenant_domain, hear_about_us="", ref_code="", business_country=None):
     """
     Self-service registration path for web (WooCommerce/Shopify/custom site)
     merchants. Creates tenant (if needed) + customer + trial api_key, and
@@ -2827,10 +2829,11 @@ def _register_web_merchant(first_name, last_name, email, password, phone_number,
         cur2.execute("""
             INSERT INTO customers
                 (tenant_id, first_name, last_name, email, password_hash,
-                 phone_number, email_verified, verify_token, hear_about_us)
-            VALUES (%s, %s, %s, %s, %s, %s, FALSE, %s, %s)""",
+                 phone_number, email_verified, verify_token, hear_about_us, business_country)
+            VALUES (%s, %s, %s, %s, %s, %s, FALSE, %s, %s, %s)""",
             (int(tenant["id"]), first_name, last_name, email,
-             pw_hash, phone_number or None, verify_token, hear_about_us or None))
+             pw_hash, phone_number or None, verify_token, hear_about_us or None,
+             business_country or None))
         conn.commit()
         cur2.close()
     except Exception:
@@ -2984,8 +2987,10 @@ def wp_connect():
         return render_template("portal/wp_connect.html", domain=tenant_domain, email=email,
                                form_data=request.form)
 
-    if not phone_number:
-        flash("Mobile phone is required.", "danger")
+    phone_country = (request.form.get("phone_country") or "").strip().upper()
+    phone_number, _perr = _phone_from_form(phone_number, phone_country)
+    if _perr:
+        flash(_perr, "danger")
         return render_template("portal/wp_connect.html", domain=tenant_domain, email=email,
                                form_data=request.form)
 
@@ -2997,7 +3002,7 @@ def wp_connect():
     result = _register_web_merchant(
         first_name=first_name, last_name=last_name, email=email, password=password,
         phone_number=phone_number, tenant_domain=tenant_domain,
-        hear_about_us="wordpress_plugin",
+        hear_about_us="wordpress_plugin", business_country=phone_country,
     )
 
     if not result["ok"]:
@@ -3197,11 +3202,13 @@ def register():
 
     # ── WhatsApp-only merchant registration ─────────────────────────────────
     if merchant_type == "whatsapp":
-        wa_phone_number = (request.form.get("wa_phone_number") or "").strip()
-        if not wa_phone_number:
-            flash("Mobile phone is required.", "danger")
+        wa_phone_country = (request.form.get("wa_phone_country") or "").strip().upper()
+        wa_phone_number, _perr = _phone_from_form(request.form.get("wa_phone_number"), wa_phone_country)
+        if _perr:
+            flash(_perr, "danger")
             return render_template("portal/register.html", **_build_register_ctx(request.form), form_data=request.form)
         return _register_whatsapp_merchant(
+            business_country=wa_phone_country,
             first_name=first_name, last_name=last_name,
             email=email, password=password,
             business_name=(request.form.get("business_name") or "").strip(),
@@ -3983,9 +3990,9 @@ def team_create():
     _may_alerts = _team_member_has_permission("team.members_alerts")
     alert_enabled  = _may_alerts and request.form.get("alert_enabled") == "on"
     alert_reminder = (request.form.get("alert_reminder") == "on") if _may_alerts else True
-    alert_phone    = _clean_alert_phone(request.form.get("alert_phone")) if _may_alerts else None
+    alert_phone    = _clean_alert_phone(request.form.get("alert_phone"), _tenant_country(tenant_id)) if _may_alerts else None
     if alert_phone is False:
-        flash("That WhatsApp number for alerts doesn't look right — use the full number, e.g. +2348012345678.", "danger")
+        flash("That WhatsApp number for alerts doesn't look right — use the full number, e.g. +2348012345678 or +447700900123.", "danger")
         return redirect(url_for("portal.team_create"))
     name = f"{first_name} {last_name}".strip()
 
@@ -4767,15 +4774,16 @@ def team_update_webchat(member_id: int):
     return redirect(url_for("portal.team_page"))
 
 
-def _clean_alert_phone(raw: str):
+def _clean_alert_phone(raw: str, country: str = None):
     """A personal WhatsApp number for chat alerts, as digits with a leading +,
-    or None. Rejects anything that isn't a plausible international number."""
-    import re as _re_phone
-    digits = _re_phone.sub(r"\D", "", raw or "")
-    if not digits:
-        return False if (raw or "").strip() else None
-    if digits.startswith("0") and len(digits) == 11:      # Nigerian local 080… → +234…
-        digits = "234" + digits[1:]
+    or None. Rejects anything that isn't a plausible international number.
+    A local 0… number gets the business's country code (any country); with
+    no business country set it's rejected rather than guessed."""
+    if not (raw or "").strip():
+        return None
+    digits = _normalise_contact_phone(raw, country)
+    if not digits or digits.startswith("0"):
+        return False
     return "+" + digits if 10 <= len(digits) <= 15 else False
 
 
@@ -4796,9 +4804,9 @@ def team_update_alerts(member_id: int):
 
     enabled  = request.form.get("alert_enabled") == "on"
     reminder = request.form.get("alert_reminder") == "on"
-    phone    = _clean_alert_phone(request.form.get("alert_phone"))
+    phone    = _clean_alert_phone(request.form.get("alert_phone"), _tenant_country(tenant_id))
     if phone is False:
-        flash("That WhatsApp number doesn't look right — use the full number, e.g. +2348012345678.", "danger")
+        flash("That WhatsApp number doesn't look right — use the full number, e.g. +2348012345678 or +447700900123.", "danger")
         return redirect(url_for("portal.team_page"))
 
     conn = get_db_connection()
@@ -7980,7 +7988,7 @@ def _get_dashboard_recent_activity(tenant_id: int, limit: int = 8) -> list:
         cur.execute("""
             SELECT m.customer_phone, m.created_at, c.display_name
             FROM wa_message_log m
-            LEFT JOIN wa_contacts c ON c.tenant_id = m.tenant_id AND c.phone = m.customer_phone
+            LEFT JOIN wa_contacts c ON c.tenant_id = m.tenant_id AND c.whatsapp_number = m.customer_phone
             WHERE m.tenant_id=%s AND m.direction='inbound' AND m.is_historical IS NOT TRUE
             ORDER BY m.created_at DESC LIMIT %s
         """, (tenant_id, limit))
@@ -8263,7 +8271,8 @@ CUSTOM_REPORT_ENTITIES = {
         "columns": [
             {"key": "customer_name",  "label": "Customer Name",  "expr": "l.customer_name"},
             {"key": "contact_person", "label": "Contact Person", "expr": "l.contact_person"},
-            {"key": "phone",          "label": "Phone",          "expr": "l.phone"},
+            {"key": "phone",          "label": "Phone Number",   "expr": "l.phone"},
+            {"key": "whatsapp_number", "label": "WhatsApp Number", "expr": "l.whatsapp_number"},
             {"key": "email",          "label": "Email",          "expr": "l.email"},
             {"key": "deal_value",     "label": "Deal Value",     "expr": "l.deal_value",  "fmt": "money"},
             {"key": "stage",          "label": "Stage",          "expr": "l.stage",       "fmt": "stage_label"},
@@ -8276,7 +8285,7 @@ CUSTOM_REPORT_ENTITIES = {
             {"key": "company_name",   "label": "Company",        "expr": "co.name"},
             {"key": "created_at",     "label": "Created Date",   "expr": "l.created_at",  "fmt": "date"},
         ],
-        "default_columns": ["customer_name", "phone", "deal_value", "stage", "created_at"],
+        "default_columns": ["customer_name", "phone", "whatsapp_number", "deal_value", "stage", "created_at"],
     },
     "contacts": {
         "label": "Contacts",
@@ -8285,7 +8294,8 @@ CUSTOM_REPORT_ENTITIES = {
         "columns": [
             {"key": "display_name",   "label": "Name",           "expr": "c.display_name"},
             {"key": "contact_person", "label": "Contact Person", "expr": "c.contact_person"},
-            {"key": "phone",          "label": "Phone",          "expr": "c.phone"},
+            {"key": "phone",          "label": "Phone Number",   "expr": "c.phone"},
+            {"key": "whatsapp_number", "label": "WhatsApp Number", "expr": "c.whatsapp_number"},
             {"key": "email",          "label": "Email",          "expr": "c.email"},
             {"key": "status",         "label": "Status",         "expr": "c.status",      "fmt": "title"},
             {"key": "company_name",   "label": "Company",        "expr": "co.name"},
@@ -8294,7 +8304,7 @@ CUSTOM_REPORT_ENTITIES = {
                       "JOIN lead_labels ll ON ll.id = llc.label_id WHERE llc.contact_id = c.id)"},
             {"key": "created_at",     "label": "Created Date",   "expr": "c.created_at",  "fmt": "date"},
         ],
-        "default_columns": ["display_name", "phone", "status", "created_at"],
+        "default_columns": ["display_name", "phone", "whatsapp_number", "status", "created_at"],
     },
     "companies": {
         "label": "Companies",
@@ -8320,7 +8330,7 @@ CUSTOM_REPORT_ENTITIES = {
         "desc": "Every WhatsApp campaign message sent, and what happened after — including revenue, via the Sales Pipeline deal it turned into.",
         "columns": [
             {"key": "campaign_name", "label": "Campaign",     "expr": "wc.name"},
-            {"key": "phone",         "label": "Phone",        "expr": "r.phone"},
+            {"key": "phone",         "label": "WhatsApp Number", "expr": "r.phone"},
             {"key": "status",        "label": "Status",       "expr": "r.status",      "fmt": "campaign_status_label"},
             {"key": "reply_text",    "label": "Reply",        "expr": "r.reply_text"},
             {"key": "sent_at",       "label": "Sent At",      "expr": "r.sent_at",      "fmt": "date"},
@@ -12104,6 +12114,9 @@ def settings_business():
     addr_city    = (request.form.get("billing_city")          or "").strip()[:100]
     addr_post    = (request.form.get("billing_postcode")       or "").strip()[:20]
     addr_country = (request.form.get("billing_country")       or "GB").strip()[:10]
+    biz_country  = (request.form.get("business_country")      or "").strip().upper()
+    if biz_country not in _pn.SUPPORTED_REGIONS:
+        biz_country = None
 
     try:
         conn = get_db_connection()
@@ -12115,7 +12128,8 @@ def settings_business():
                 billing_address_line1 = %s,
                 billing_city          = %s,
                 billing_postcode      = %s,
-                billing_country       = %s
+                billing_country       = %s,
+                business_country      = COALESCE(%s, business_country)
             WHERE id = %s
         """, (
             company_name or None,
@@ -12124,8 +12138,10 @@ def settings_business():
             addr_city    or None,
             addr_post    or None,
             addr_country or "GB",
+            biz_country,
             cid,
         ))
+        _tenant_country_cache.clear()
         conn.commit()
         cur.close(); conn.close()
         insert_audit_log(
@@ -12978,10 +12994,9 @@ def whatsapp_history_import_upload():
         flash("Only .txt or .zip files are supported — export from WhatsApp's Export Chat.", "danger")
         return redirect(url_for("portal.whatsapp_history_import"))
 
-    import re as _re
-    digits = _re.sub(r"[^\d+]", "", customer_phone)
-    if digits and not digits.startswith("+"):
-        digits = "+" + digits
+    # Same format as live WhatsApp messages and contacts (digits, country
+    # code first, no '+') so an imported chat joins the live conversation.
+    digits = _normalise_contact_phone(customer_phone, _tenant_country(tenant_id))
     if len(digits) < 8:
         flash("Please enter a valid phone number including country code, e.g. +2348012345678.", "danger")
         return redirect(url_for("portal.whatsapp_history_import"))
@@ -13786,10 +13801,200 @@ def whatsapp_reports():
 # WHATSAPP CONTACTS
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _normalise_phone(raw: str) -> str:
-    """Strip +, spaces, dashes, parens from a phone number string."""
+import phonenumbers as _pn
+try:
+    from phonenumbers.geocoder import _region_display_name as _pn_region_name
+except Exception:  # pragma: no cover
+    _pn_region_name = None
+
+# Every country (not just Nigeria) — 2026-09-28. Popular ones first in pickers.
+_PHONE_POPULAR = ["NG", "GB", "GH", "US", "KE", "ZA"]
+
+
+def _build_phone_countries():
+    rows = []
+    for iso in _pn.SUPPORTED_REGIONS:
+        name = (_pn_region_name(iso, "en") if _pn_region_name else "") or iso
+        rows.append((iso, name, _pn.country_code_for_region(iso)))
+    rows.sort(key=lambda r: r[1])
+    popular = [r for p in _PHONE_POPULAR for r in rows if r[0] == p]
+    return popular, rows
+
+
+PHONE_COUNTRIES_POPULAR, PHONE_COUNTRIES = _build_phone_countries()
+_PHONE_COUNTRY_NAMES = {iso: name for iso, name, _cc in PHONE_COUNTRIES}
+
+
+@portal_bp.app_context_processor
+def _inject_phone_countries():
+    return {"PHONE_COUNTRIES": PHONE_COUNTRIES,
+            "PHONE_COUNTRIES_POPULAR": PHONE_COUNTRIES_POPULAR}
+
+
+_tenant_country_cache = {}
+
+
+def _tenant_country(tenant_id) -> str:
+    """The business's own country (customers.business_country, ISO code like
+    'NG'/'GB'), used to add the right country code to local numbers that
+    start with 0. None when the business hasn't set it — then nothing is
+    guessed. Cached for 60s so a big CSV import / campaign doesn't query
+    once per row."""
+    import time
+    if not tenant_id:
+        return None
+    hit = _tenant_country_cache.get(int(tenant_id))
+    if hit and time.time() - hit[1] < 60:
+        return hit[0]
+    country = None
+    try:
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("SELECT business_country FROM customers WHERE tenant_id=%s "
+                    "AND business_country IS NOT NULL ORDER BY id LIMIT 1", (int(tenant_id),))
+        row = cur.fetchone()
+        country = (row[0] if row else None) or None
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ _tenant_country error:", e)
+    _tenant_country_cache[int(tenant_id)] = (country, time.time())
+    return country
+
+
+@portal_bp.app_template_global()
+def business_country_not_set() -> bool:
+    """True when the logged-in business hasn't chosen its country yet —
+    the Contacts page then asks for it once (never guessed)."""
+    try:
+        cid = _customer_id()
+        if not cid:
+            return False
+        c = _get_customer(cid)
+        return bool(c) and not _tenant_country(c["tenant_id"])
+    except Exception:
+        return False
+
+
+def _normalise_contact_phone(raw: str, country: str = None) -> str:
+    """Contact phone format: digits only, country code first, no '+'
+    (2348012345678 / 447700900123) — the same format WhatsApp-created
+    contacts use, so a typed/imported number matches the contact WhatsApp
+    already created. Works for every country (2026-09-28):
+      '+44 7700…' / '0044 7700…'  -> keeps its own country code
+      local '0…'                  -> gets the BUSINESS's country code
+                                     (`country`, e.g. 'GB' 07700… -> 447700…,
+                                     'NG' 0803… -> 234803…)
+      local '0…', no country set  -> kept as typed (shown on screen as
+                                     "add country code"; never guessed)
+      already '447700…'/'234803…' -> unchanged
+    Own name on purpose: the separate `_normalise_phone` (E.164 with '+')
+    is used by WhatsApp login/onboarding."""
     import re
-    return re.sub(r"[^\d]", "", raw)
+    s = (raw or "").strip()
+    digits = re.sub(r"[^\d]", "", s)
+    if not digits:
+        return ""
+    if s.startswith("+"):
+        return digits
+    if digits.startswith("00"):
+        return digits[2:]
+    country = (country or "").upper()
+    if country not in _pn.SUPPORTED_REGIONS:
+        return digits
+    if digits.startswith("0"):
+        try:
+            return _pn.format_number(_pn.parse(digits, country), _pn.PhoneNumberFormat.E164)[1:]
+        except Exception:
+            return digits
+    # No '+' and no leading 0: normally already has its country code (what
+    # WhatsApp sends). Only read it as a local number when it isn't a valid
+    # international number but IS valid for the business's country
+    # (e.g. a US business typing 4155552671).
+    try:
+        if _pn.is_valid_number(_pn.parse("+" + digits, None)):
+            return digits
+    except Exception:
+        pass
+    try:
+        n = _pn.parse(digits, country)
+        if _pn.is_valid_number(n):
+            return _pn.format_number(n, _pn.PhoneNumberFormat.E164)[1:]
+    except Exception:
+        pass
+    return digits
+
+
+def _phone_from_form(raw: str, country: str):
+    """A phone number typed on a form next to a country picker (registration,
+    WordPress connect, WhatsApp login). The person chooses the country, so
+    nothing is guessed. Returns ('+447700900123', None) or (None, message)."""
+    country = (country or "").upper()
+    if country not in _pn.SUPPORTED_REGIONS:
+        return None, "Please choose the country for your phone number."
+    s = (raw or "").strip()
+    if not s:
+        return None, "Mobile phone is required."
+    if s.startswith("00"):
+        s = "+" + s[2:]
+    try:
+        n = _pn.parse(s, country)
+    except Exception:
+        return None, "That phone number doesn't look right. Please check it."
+    if not _pn.is_valid_number(n):
+        name = _PHONE_COUNTRY_NAMES.get(country, country)
+        return None, (f"That doesn't look like a valid {name} number. "
+                      "Please check the number and the country.")
+    return _pn.format_number(n, _pn.PhoneNumberFormat.E164), None
+
+
+def _contact_numbers_from_form(form, tenant_id: int):
+    """The two separate number boxes every contact has (2026-09-28, One
+    Address Book Phase 1a): Phone number and WhatsApp number, same as leads.
+    Returns (phone, whatsapp_number, error) — each number in contact format
+    (digits, country code first) or None when left empty. Nothing is copied
+    from one box to the other."""
+    country = _tenant_country(tenant_id)
+    phone = _normalise_contact_phone(form.get("phone") or "", country) or None
+    whatsapp_number = _normalise_contact_phone(form.get("whatsapp_number") or "", country) or None
+    if phone and len(phone) < 7:
+        return None, None, "That phone number looks too short. Please check it."
+    if whatsapp_number and len(whatsapp_number) < 7:
+        return None, None, "That WhatsApp number looks too short. Please check it."
+    return phone, whatsapp_number, None
+
+
+def _find_existing_contact(cur, tenant_id: int, phone=None, whatsapp_number=None,
+                           email=None, exclude_id=None):
+    """Is this person already in Contacts? One contact per person: a number
+    typed in either box is checked against BOTH number fields (it's the same
+    number either way — this is only for spotting the same person, never for
+    deciding which number a message goes to), then the email. Returns
+    (contact_id, matched_on) or (None, None); matched_on is 'whatsapp_number',
+    'phone' or 'email'."""
+    not_self = " AND id <> %s" if exclude_id else ""
+    extra = [exclude_id] if exclude_id else []
+    for val, label in ((whatsapp_number, "whatsapp_number"), (phone, "phone")):
+        if not val:
+            continue
+        cur.execute(
+            "SELECT id FROM wa_contacts "
+            "WHERE tenant_id=%s AND (whatsapp_number = %s OR phone = %s)" + not_self +
+            " ORDER BY (whatsapp_number = %s) DESC, id LIMIT 1",
+            [tenant_id, val, val] + extra + [val],
+        )
+        row = cur.fetchone()
+        if row:
+            row_id = row["id"] if isinstance(row, dict) else row[0]
+            return row_id, label
+    if email:
+        cur.execute(
+            "SELECT id FROM wa_contacts WHERE tenant_id=%s AND lower(trim(email)) = lower(trim(%s))"
+            + not_self + " ORDER BY id LIMIT 1",
+            [tenant_id, email] + extra,
+        )
+        row = cur.fetchone()
+        if row:
+            return (row["id"] if isinstance(row, dict) else row[0]), "email"
+    return None, None
 
 
 def _resolve_company_from_form(cur, tenant_id: int):
@@ -13844,6 +14049,143 @@ def _sync_contact_tags(cur, tenant_id: int, contact_id: int, tags_csv: str):
         )
 
 
+def _add_contact_labels(cur, tenant_id: int, contact_id: int, names):
+    """Adds labels to a contact without removing the ones it already has
+    (CSV import, 2026-09-28). Creates any label name the business doesn't
+    have yet — same shared list as the Labels page."""
+    for name in names:
+        name = (name or "").strip()[:50]
+        if not name:
+            continue
+        cur.execute("SELECT id FROM lead_labels WHERE tenant_id=%s AND lower(name)=lower(%s)", (tenant_id, name))
+        row = cur.fetchone()
+        if not row:
+            cur.execute("INSERT INTO lead_labels (tenant_id, name) VALUES (%s,%s) RETURNING id", (tenant_id, name))
+            row = cur.fetchone()
+        label_id = row["id"] if isinstance(row, dict) else row[0]
+        cur.execute("INSERT INTO lead_label_contacts (label_id, contact_id) VALUES (%s,%s) ON CONFLICT DO NOTHING",
+                    (label_id, contact_id))
+
+
+def _link_lead_to_contact(cur, tenant_id: int, lead_id: int):
+    """One Address Book Phase 1b (2026-09-28): every lead is joined to a
+    contact. Looks for the same person by WhatsApp number, then Phone number
+    (a number in either box counts), then email; joins the lead to them and
+    fills in any EMPTY details on the contact from the lead (never overwrites,
+    never copies one number box into the other). If nobody matches, makes a
+    new contact from the lead. A lead with no phone, WhatsApp number or email
+    gets no contact (the lead page says so). A lead already joined to a
+    contact stays with it. Returns the contact id or None. Caller commits."""
+    cur.execute(
+        "SELECT id, customer_name, contact_person, phone, whatsapp_number, email, company_id, "
+        "wa_contact_id, source FROM merchant_pipeline_leads WHERE id=%s AND tenant_id=%s",
+        (lead_id, tenant_id),
+    )
+    lead = cur.fetchone()
+    if not lead:
+        return None
+    if not isinstance(lead, dict):
+        lead = dict(zip([d[0] for d in cur.description], lead))
+    country = _tenant_country(tenant_id)
+    phone = _normalise_contact_phone(lead.get("phone") or "", country) or None
+    wa    = _normalise_contact_phone(lead.get("whatsapp_number") or "", country) or None
+    if phone and len(phone) < 7:
+        phone = None
+    if wa and len(wa) < 7:
+        wa = None
+    email = (lead.get("email") or "").strip()[:200] or None
+
+    contact_id = lead.get("wa_contact_id")
+    if not contact_id:
+        if not (phone or wa or email):
+            return None
+        contact_id, _ = _find_existing_contact(cur, tenant_id, phone, wa, email)
+
+    if contact_id:
+        # Fill in only what the contact is missing. A number that already
+        # belongs to a different contact is left off (one number, one person).
+        cur.execute("SELECT phone, whatsapp_number, email, display_name, contact_person, company_id "
+                    "FROM wa_contacts WHERE id=%s AND tenant_id=%s", (contact_id, tenant_id))
+        c = cur.fetchone()
+        if not c:
+            return None
+        if not isinstance(c, dict):
+            c = dict(zip([d[0] for d in cur.description], c))
+        sets, vals = [], []
+        for col, val in (("phone", phone), ("whatsapp_number", wa)):
+            if val and not c.get(col) and not _find_existing_contact(cur, tenant_id, **{col: val}, exclude_id=contact_id)[0]:
+                sets.append(f"{col}=%s"); vals.append(val)
+        for col, val in (("email", email), ("display_name", lead.get("customer_name")),
+                         ("contact_person", lead.get("contact_person")), ("company_id", lead.get("company_id"))):
+            if val and not c.get(col):
+                sets.append(f"{col}=%s"); vals.append(val)
+        if sets:
+            cur.execute(f"UPDATE wa_contacts SET {', '.join(sets)}, updated_at=NOW() WHERE id=%s AND tenant_id=%s",
+                        vals + [contact_id, tenant_id])
+    else:
+        cur.execute(
+            """INSERT INTO wa_contacts (tenant_id, phone, whatsapp_number, email, display_name, contact_person,
+                                        company_id, source)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            (tenant_id, phone, wa, email, lead.get("customer_name"), lead.get("contact_person"),
+             lead.get("company_id"), "whatsapp" if lead.get("source") == "whatsapp" else "lead"),
+        )
+        row = cur.fetchone()
+        contact_id = row["id"] if isinstance(row, dict) else row[0]
+
+    if lead.get("wa_contact_id") != contact_id:
+        cur.execute("UPDATE merchant_pipeline_leads SET wa_contact_id=%s WHERE id=%s AND tenant_id=%s",
+                    (contact_id, lead_id, tenant_id))
+    return contact_id
+
+
+def _link_lead_to_contact_now(tenant_id: int, lead_id: int):
+    """_link_lead_to_contact() in its own connection, for routes that have
+    already committed and closed theirs. Best-effort: a problem here never
+    undoes the lead that was just saved."""
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cid = _link_lead_to_contact(cur, tenant_id, lead_id)
+        conn.commit(); cur.close(); conn.close()
+        return cid
+    except Exception as e:
+        print(f"⚠️ _link_lead_to_contact lead={lead_id}:", e)
+        return None
+
+
+CUSTOMERS_LABEL = "Customers"
+
+
+def _on_lead_won(tenant_id: int, lead_id: int) -> None:
+    """Deal marked Won (2026-09-28 decision): the contact stays a contact (no
+    status change) and gets the "Customers" label from the shared Labels list
+    (created the first time it's needed, matched case-insensitively so an
+    existing "customers" label is reused). Joins the lead to a contact first
+    if it isn't yet. Best-effort: never blocks the Won save."""
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        contact_id = _link_lead_to_contact(cur, tenant_id, lead_id)
+        if contact_id:
+            _add_contact_labels(cur, tenant_id, contact_id, [CUSTOMERS_LABEL])
+        conn.commit(); cur.close(); conn.close()
+    except Exception as e:
+        print(f"⚠️ _on_lead_won lead={lead_id}:", e)
+
+
+def _open_lead_count(cur, tenant_id: int, contact_id: int) -> int:
+    """Open Sales Leads for a contact: not dropped and not Won/Lost/Dropped/
+    Not a fit. A contact with any of these can't be deleted (2026-09-28)."""
+    cur.execute(
+        "SELECT COUNT(*) AS n FROM merchant_pipeline_leads WHERE tenant_id=%s AND wa_contact_id=%s "
+        "AND dropped_at IS NULL AND (outcome IS NULL OR outcome NOT IN ('won','lost','dropped','not_a_fit'))",
+        (tenant_id, contact_id),
+    )
+    row = cur.fetchone()
+    return int(row["n"] if isinstance(row, dict) else row[0])
+
+
 def _stamp_campaign_converted(lead_id: int) -> None:
     """When a deal is marked Won, stamp 'Converted' back onto whichever
     WhatsApp campaign originally turned it into an opportunity (Campaign
@@ -13884,13 +14226,16 @@ def _find_matching_pipeline_lead(cur, tenant_id: int, phone: str, contact_id: in
             return row
     if not phone:
         return None
+    # Either of the lead's two numbers — this only spots the same person, it
+    # never decides which number a message goes to.
     cur.execute("""
         SELECT id, customer_name, stage, deal_value, phone, whatsapp_number, contact_channel FROM merchant_pipeline_leads
         WHERE tenant_id=%s AND dropped_at IS NULL
-          AND regexp_replace(COALESCE(whatsapp_number, phone), '[^0-9]', '', 'g')
-              = regexp_replace(%s, '[^0-9]', '', 'g')
+          AND regexp_replace(%s, '[^0-9]', '', 'g') <> ''
+          AND (regexp_replace(COALESCE(whatsapp_number, ''), '[^0-9]', '', 'g') = regexp_replace(%s, '[^0-9]', '', 'g')
+               OR regexp_replace(COALESCE(phone, ''), '[^0-9]', '', 'g') = regexp_replace(%s, '[^0-9]', '', 'g'))
         LIMIT 1
-    """, (tenant_id, phone))
+    """, (tenant_id, phone, phone, phone))
     return cur.fetchone()
 
 
@@ -13922,11 +14267,13 @@ def _move_contact_to_pipeline(tenant_id: int, contact_id: int, always_create: bo
     if not contact:
         cur.close(); conn.close()
         return None, "not_found", None
-    label = contact.get("display_name") or contact.get("phone") or "Contact"
-    if not contact.get("phone"):
+    label = (contact.get("display_name") or contact.get("whatsapp_number") or contact.get("phone")
+             or contact.get("email") or "Contact")
+    if not (contact.get("phone") or contact.get("whatsapp_number") or contact.get("email")):
         cur.close(); conn.close()
         return None, "no_phone", label
-    existing = None if always_create else _find_matching_pipeline_lead(cur, tenant_id, contact["phone"], contact_id)
+    existing = None if always_create else _find_matching_pipeline_lead(
+        cur, tenant_id, contact.get("whatsapp_number") or contact.get("phone"), contact_id)
     if existing:
         # Backfill the CRM link if this pair predates it (matched by phone only
         # so far) so it shows up joined from here on instead of re-matching by
@@ -13938,24 +14285,20 @@ def _move_contact_to_pipeline(tenant_id: int, contact_id: int, always_create: bo
         conn.commit()
         cur.close(); conn.close()
         return False, "exists", label
-    # Sales Pipeline stores phone digits-only (no leading '+'), unlike wa_contacts —
-    # match its existing convention so the new row looks like every other pipeline
-    # lead, not just to the dedupe check (which already normalizes either way).
-    # NOTE: deliberately not calling the module-level _normalise_phone() here — this
-    # file defines that name TWICE (a digits-only version near the top of the
-    # WHATSAPP CONTACTS section, and a later E.164-with-'+' version further down)
-    # and the later definition silently wins for every caller regardless of where
-    # in the file they're written. Normalizing inline avoids that trap.
+    # Each number goes into the SAME box on the lead (2026-09-28): Phone number
+    # -> phone, WhatsApp number -> whatsapp_number. Nothing is copied across.
     import re as _re_pipeline_phone
-    pipeline_phone = _re_pipeline_phone.sub(r"[^\d]", "", contact["phone"])
+    lead_phone = _re_pipeline_phone.sub(r"[^\d]", "", contact.get("phone") or "") or None
+    lead_wa    = _re_pipeline_phone.sub(r"[^\d]", "", contact.get("whatsapp_number") or "") or None
     cur.execute("""
         INSERT INTO merchant_pipeline_leads
           (tenant_id, customer_name, phone, whatsapp_number, email, notes, stage, contact_channel,
            wa_contact_id, company_id, source)
-        VALUES (%s, %s, %s, %s, %s, %s, 'new_lead', 'whatsapp', %s, %s, 'whatsapp')
+        VALUES (%s, %s, %s, %s, %s, %s, 'new_lead', %s, %s, %s, %s)
         RETURNING id
-    """, (tenant_id, label, pipeline_phone, pipeline_phone, contact.get("email"), contact.get("notes"),
-          contact_id, contact.get("company_id")))
+    """, (tenant_id, label, lead_phone, lead_wa, contact.get("email"), contact.get("notes"),
+          'whatsapp' if lead_wa else None, contact_id, contact.get("company_id"),
+          'whatsapp' if lead_wa else 'manual'))
     lead_id = cur.fetchone()["id"]
     conn.commit()
     cur.close(); conn.close()
@@ -13980,7 +14323,7 @@ def whatsapp_contact_move_to_pipeline(contact_id: int):
         if status == "not_found":
             flash("Contact not found.", "warning")
         elif status == "no_phone":
-            flash(f"{label} has no phone number, so a Sales Lead can't be created for them.", "warning")
+            flash(f"{label} has no phone number, WhatsApp number or email, so a Sales Lead can't be created for them.", "warning")
         else:
             flash(f"Sales Lead created for {label}.", "success")
     except Exception as e:
@@ -14009,6 +14352,7 @@ def whatsapp_contacts():
     tag_filter     = [t for t in request.args.getlist("tag_filter") if t.isdigit()]
     segment_filter = [s for s in request.args.getlist("segment_filter") if s.isdigit()]
     has_phone      = request.args.get("has_phone") == "1"
+    has_whatsapp   = request.args.get("has_whatsapp") == "1"
     has_email      = request.args.get("has_email") == "1"
     has_pers       = request.args.get("has_pers") == "1"
     date_from      = (request.args.get("date_from") or "").strip()
@@ -14031,8 +14375,8 @@ def whatsapp_contacts():
         clauses = ["c.tenant_id = %s"]
         where_params = [tenant_id]
         if search:
-            clauses.append("(c.phone ILIKE %s OR c.display_name ILIKE %s OR c.email ILIKE %s)")
-            where_params += [f"%{search}%", f"%{search}%", f"%{search}%"]
+            clauses.append("(c.phone ILIKE %s OR c.whatsapp_number ILIKE %s OR c.display_name ILIKE %s OR c.email ILIKE %s)")
+            where_params += [f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%"]
         if status_filter:
             clauses.append("c.status = ANY(%s)")
             where_params.append(status_filter)
@@ -14044,6 +14388,8 @@ def whatsapp_contacts():
             where_params.append([int(s) for s in segment_filter])
         if has_phone:
             clauses.append("(c.phone IS NOT NULL AND c.phone <> '')")
+        if has_whatsapp:
+            clauses.append("(c.whatsapp_number IS NOT NULL AND c.whatsapp_number <> '')")
         if has_email:
             clauses.append("(c.email IS NOT NULL AND c.email <> '')")
         if has_pers:
@@ -14170,7 +14516,7 @@ def whatsapp_contacts():
         current_filters_norm = {
             "status_filter": sorted(status_filter), "tag_filter": sorted(tag_filter),
             "segment_filter": sorted(segment_filter), "date_from": date_from, "date_to": date_to,
-            "has_phone": has_phone, "has_email": has_email, "has_pers": has_pers,
+            "has_phone": has_phone, "has_whatsapp": has_whatsapp, "has_email": has_email, "has_pers": has_pers,
         }
         saved_views = []
         for row in cur.fetchall():
@@ -14179,6 +14525,7 @@ def whatsapp_contacts():
                 "status_filter": sorted(vf.get("status_filter", [])), "tag_filter": sorted(vf.get("tag_filter", [])),
                 "segment_filter": sorted(vf.get("segment_filter", [])), "date_from": vf.get("date_from", ""),
                 "date_to": vf.get("date_to", ""), "has_phone": bool(vf.get("has_phone")),
+                "has_whatsapp": bool(vf.get("has_whatsapp")),
                 "has_email": bool(vf.get("has_email")), "has_pers": bool(vf.get("has_pers")),
             }
             saved_views.append({
@@ -14210,12 +14557,22 @@ def whatsapp_contacts():
         cur.execute("SELECT id, name FROM lead_labels WHERE tenant_id=%s ORDER BY name", (tenant_id,))
         dedupe_tags = cur.fetchall()
 
-        # Every contact's id/name/phone, for the Add Contact drawer's
-        # duplicate-check (exact phone match + fuzzy name match) — never
+        # Every label with how many contacts carry it, for the label picker
+        # (Add/Edit Contact forms + contact page About section, 2026-09-28).
+        cur.execute("""
+            SELECT lb.name, COUNT(lc.contact_id) AS count
+            FROM lead_labels lb LEFT JOIN lead_label_contacts lc ON lc.label_id = lb.id
+            WHERE lb.tenant_id=%s GROUP BY lb.id, lb.name ORDER BY lb.name
+        """, (tenant_id,))
+        label_options = [{"name": r_["name"], "count": r_["count"]} for r_ in cur.fetchall()]
+
+        # Every contact's id/name/numbers, for the Add Contact drawer's
+        # duplicate-check (exact number match + fuzzy name match) — never
         # blocks saving, just warns before creating a possible duplicate.
-        cur.execute("SELECT id, display_name, phone FROM wa_contacts WHERE tenant_id=%s", (tenant_id,))
+        cur.execute("SELECT id, display_name, phone, whatsapp_number, email FROM wa_contacts WHERE tenant_id=%s", (tenant_id,))
         dedupe_contacts = [
-            {"id": r["id"], "name": r["display_name"] or r["phone"], "phone": r["phone"],
+            {"id": r["id"], "name": r["display_name"] or r["whatsapp_number"] or r["phone"] or r["email"],
+             "phone": r["phone"], "whatsapp_number": r["whatsapp_number"],
              "url": url_for("portal.whatsapp_contact_detail", contact_id=r["id"])}
             for r in cur.fetchall()
         ]
@@ -14229,6 +14586,7 @@ def whatsapp_contacts():
         selected_tags, status_counts, saved_views = [], {}, []
         selected_segments, selected_statuses = [], []
         dedupe_contacts = []
+        label_options = []
 
     return render_template(
         "portal/whatsapp_contacts.html",
@@ -14240,6 +14598,7 @@ def whatsapp_contacts():
         tag_filter=tag_filter,
         segment_filter=segment_filter,
         has_phone=has_phone,
+        has_whatsapp=has_whatsapp,
         has_email=has_email,
         has_pers=has_pers,
         date_from=date_from,
@@ -14254,6 +14613,7 @@ def whatsapp_contacts():
         all_companies=all_companies,
         dedupe_tags=dedupe_tags,
         dedupe_contacts=dedupe_contacts,
+        label_options=label_options,
         filtered_total=filtered_total,
         per_page=per_page_raw,
         page=page,
@@ -14274,7 +14634,7 @@ def whatsapp_contacts_add():
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
-    phone           = _normalise_phone(request.form.get("phone") or "")
+    phone, whatsapp_number, num_err = _contact_numbers_from_form(request.form, tenant_id)
     email           = (request.form.get("email") or "").strip()[:200] or None
     display_name    = (request.form.get("display_name") or "").strip()[:200]
     contact_person  = (request.form.get("contact_person") or "").strip()[:200] or None
@@ -14285,28 +14645,50 @@ def whatsapp_contacts_add():
         status = "lead"
     tags_csv = (request.form.get("tags_csv") or "").strip()
 
-    if not phone or len(phone) < 7:
-        flash("A valid phone number with country code is required.", "danger")
+    if num_err:
+        flash(num_err, "danger")
+        return redirect(url_for("portal.whatsapp_contacts"))
+    # Any one of phone number, WhatsApp number or email is enough (email-only
+    # contacts are allowed — One Address Book decision, 2026-09-28).
+    if not (phone or whatsapp_number or email):
+        flash("Add a phone number, a WhatsApp number or an email address.", "danger")
         return redirect(url_for("portal.whatsapp_contacts"))
 
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         company_id = _resolve_company_from_form(cur, tenant_id)
-        cur.execute("""
-            INSERT INTO wa_contacts (tenant_id, phone, email, display_name, contact_person, notes, personalization_note, status, source, company_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'manual', %s)
-            ON CONFLICT (tenant_id, phone)
-            DO UPDATE SET email=EXCLUDED.email,
-                          display_name=EXCLUDED.display_name,
-                          contact_person=EXCLUDED.contact_person,
-                          notes=EXCLUDED.notes,
-                          personalization_note=EXCLUDED.personalization_note,
-                          status=EXCLUDED.status,
-                          company_id=COALESCE(EXCLUDED.company_id, wa_contacts.company_id),
-                          updated_at=NOW()
-            RETURNING id
-        """, (tenant_id, phone, email, display_name or None, contact_person, notes or None, personalization_note, status, company_id))
+        existing_id, _matched_on = _find_existing_contact(cur, tenant_id, phone, whatsapp_number, email)
+        if existing_id:
+            # Same person already saved (either number or the email matches):
+            # update that contact instead of creating a second one — same
+            # overwrite-on-save rule this form always had for a repeat number.
+            # A number box left empty never wipes a number already saved.
+            for val, col in ((phone, "phone"), (whatsapp_number, "whatsapp_number")):
+                if val:
+                    clash_id, _ = _find_existing_contact(cur, tenant_id,
+                                                         **{col: val}, exclude_id=existing_id)
+                    if clash_id:
+                        cur.close(); conn.close()
+                        flash("That number already belongs to another contact. Please check the numbers.", "danger")
+                        return redirect(url_for("portal.whatsapp_contacts"))
+            cur.execute("""
+                UPDATE wa_contacts
+                SET phone=COALESCE(%s, phone), whatsapp_number=COALESCE(%s, whatsapp_number),
+                    email=COALESCE(%s, email), display_name=%s, contact_person=%s, notes=%s,
+                    personalization_note=%s, status=%s, company_id=COALESCE(%s, company_id), updated_at=NOW()
+                WHERE id=%s AND tenant_id=%s
+                RETURNING id
+            """, (phone, whatsapp_number, email, display_name or None, contact_person, notes or None,
+                  personalization_note, status, company_id, existing_id, tenant_id))
+        else:
+            cur.execute("""
+                INSERT INTO wa_contacts (tenant_id, phone, whatsapp_number, email, display_name, contact_person,
+                                         notes, personalization_note, status, source, company_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'manual', %s)
+                RETURNING id
+            """, (tenant_id, phone, whatsapp_number, email, display_name or None, contact_person,
+                  notes or None, personalization_note, status, company_id))
         new_contact_id = cur.fetchone()["id"]
         _sync_contact_tags(cur, tenant_id, new_contact_id, tags_csv)
         if company_id:
@@ -14314,7 +14696,11 @@ def whatsapp_contacts_add():
                         (company_id, new_contact_id))
         conn.commit()
         cur.close(); conn.close()
-        flash(f"Contact {display_name or phone} saved.", "success")
+        label = display_name or whatsapp_number or phone or email
+        if existing_id:
+            flash(f"{label} was already in your contacts, so their details were updated.", "success")
+        else:
+            flash(f"Contact {label} saved.", "success")
     except Exception as e:
         print("⚠️ whatsapp_contacts_add error:", e)
         flash("Could not save contact. Please try again.", "danger")
@@ -14346,6 +14732,30 @@ def whatsapp_contacts_edit(contact_id: int):
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         company_id = _resolve_company_from_form(cur, tenant_id)
+        # Phone number + WhatsApp number boxes (2026-09-28). Only touched when
+        # the form actually carries them, so an older form can't wipe them.
+        if "phone" in request.form or "whatsapp_number" in request.form:
+            cur.execute("SELECT phone, whatsapp_number FROM wa_contacts WHERE id=%s AND tenant_id=%s",
+                        (contact_id, tenant_id))
+            current = cur.fetchone() or {}
+            phone, whatsapp_number, num_err = _contact_numbers_from_form(request.form, tenant_id)
+            if "phone" not in request.form:
+                phone = current.get("phone")
+            if "whatsapp_number" not in request.form:
+                whatsapp_number = current.get("whatsapp_number")
+            if not num_err and not (phone or whatsapp_number or email):
+                num_err = "A contact needs at least a phone number, a WhatsApp number or an email address."
+            if not num_err:
+                for val, col in ((phone, "phone"), (whatsapp_number, "whatsapp_number")):
+                    if val and _find_existing_contact(cur, tenant_id, **{col: val}, exclude_id=contact_id)[0]:
+                        num_err = "That number already belongs to another contact. Please check the numbers."
+                        break
+            if num_err:
+                cur.close(); conn.close()
+                flash(num_err, "danger")
+                return redirect(request.referrer or url_for("portal.whatsapp_contacts"))
+            cur.execute("UPDATE wa_contacts SET phone=%s, whatsapp_number=%s WHERE id=%s AND tenant_id=%s",
+                        (phone, whatsapp_number, contact_id, tenant_id))
         cur.execute("""
             UPDATE wa_contacts
             SET display_name=%s, contact_person=%s, email=%s, notes=%s, personalization_note=%s, status=%s,
@@ -14385,6 +14795,17 @@ def whatsapp_contacts_delete(contact_id: int):
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
+        # A contact with open Sales Leads can't be deleted (2026-09-28): the
+        # leads would lose who they're for. Closed ones keep their own details.
+        open_n = _open_lead_count(cur, tenant_id, contact_id)
+        if open_n:
+            cur.execute("SELECT COALESCE(display_name, whatsapp_number, phone, email, 'This contact') "
+                        "FROM wa_contacts WHERE id=%s AND tenant_id=%s", (contact_id, tenant_id))
+            nm = (cur.fetchone() or ["This contact"])[0]
+            cur.close(); conn.close()
+            flash(f"{nm} has {open_n} open Sales Lead{'s' if open_n != 1 else ''}. "
+                  "Close or delete those leads first, then delete the contact.", "warning")
+            return redirect(request.referrer or url_for("portal.whatsapp_contacts"))
         cur.execute("DELETE FROM wa_contacts WHERE id=%s AND tenant_id=%s", (contact_id, tenant_id))
         conn.commit()
         deleted = cur.rowcount
@@ -14428,57 +14849,98 @@ def whatsapp_contacts_import():
         flash("The CSV file is empty.", "warning")
         return redirect(url_for("portal.whatsapp_contacts"))
 
-    # Auto-detect header row
-    first = [c.strip().lower() for c in rows[0]]
-    has_header = any(h in first for h in ("phone", "name", "mobile", "number", "contact"))
-    data_rows  = rows[1:] if has_header else rows
+    # Header row (2026-09-28): a contact has TWO separate number fields now,
+    # Phone number and WhatsApp number, so the file must say which column is
+    # which — a file with no header row is refused rather than guessed.
+    import re as _re_hdr
+    def _hdr(h):
+        return _re_hdr.sub(r"[^a-z]", "", (h or "").lower())
+    first = [_hdr(c) for c in rows[0]]
+    WA_HEADERS    = ("whatsapp", "whatsappnumber", "whatsappno", "whatsappphone", "wa", "wanumber")
+    PHONE_HEADERS = ("phone", "phonenumber", "phoneno", "mobile", "mobilenumber", "mobileno",
+                     "number", "tel", "telephone", "telephonenumber")
+    wa_col    = next((i for i, h in enumerate(first) if h in WA_HEADERS), None)
+    phone_col = next((i for i, h in enumerate(first) if h in PHONE_HEADERS), None)
+    email_col = next((i for i, h in enumerate(first) if h in ("email", "emailaddress")), None)
+    name_col  = next((i for i, h in enumerate(first) if h in ("name", "displayname", "contact", "fullname", "customer")), None)
+    notes_col = next((i for i, h in enumerate(first) if h in ("notes", "note", "comment", "remarks")), None)
+    pers_col  = next((i for i, h in enumerate(first) if h in ("personalization", "personalizationnote", "personalisation")), None)
+    # Labels (was "Tags" before 2026-09-28 — both headers accepted), several
+    # in one cell separated by commas or semicolons. Only ADDS labels.
+    labels_col = next((i for i, h in enumerate(first) if h in ("labels", "label", "tags", "tag")), None)
+    if wa_col is None and phone_col is None and email_col is None:
+        flash("The first row of the file must name the columns, with at least one of: "
+              "phone_number, whatsapp_number, email.", "danger")
+        return redirect(url_for("portal.whatsapp_contacts"))
+    data_rows = rows[1:]
 
-    # Detect column positions
-    phone_col = next((i for i, h in enumerate(first) if h in ("phone","mobile","number","tel","whatsapp")), 0)
-    email_col = next((i for i, h in enumerate(first) if h in ("email","email_address")), None)
-    name_col  = next((i for i, h in enumerate(first) if h in ("name","display_name","contact","full_name","customer")), 1 if len(first) > 1 else None)
-    notes_col = next((i for i, h in enumerate(first) if h in ("notes","note","comment","remarks")), None)
-    pers_col  = next((i for i, h in enumerate(first) if h in ("personalization","personalization_note","personalisation")), None)
+    def _cell(row, col):
+        return row[col].strip() if col is not None and col < len(row) else ""
 
-    imported = skipped = errors = 0
+    country = _tenant_country(tenant_id)
+    imported = updated = skipped = errors = 0
     conn = get_db_connection()
     cur  = conn.cursor()
 
     for row in data_rows:
-        if not row: continue
-        raw_phone = row[phone_col].strip() if phone_col < len(row) else ""
-        phone = _normalise_phone(raw_phone)
-        if not phone or len(phone) < 7:
+        if not row or not any((c or "").strip() for c in row):
+            continue
+        phone = _normalise_contact_phone(_cell(row, phone_col), country) or None
+        whatsapp_number = _normalise_contact_phone(_cell(row, wa_col), country) or None
+        if phone and len(phone) < 7:
+            phone = None
+        if whatsapp_number and len(whatsapp_number) < 7:
+            whatsapp_number = None
+        email = _cell(row, email_col)[:200] or None
+        if not (phone or whatsapp_number or email):
             skipped += 1
             continue
 
-        name  = row[name_col].strip()[:200] if name_col is not None and name_col < len(row) else None
-        notes = row[notes_col].strip() if notes_col is not None and notes_col < len(row) else None
-        email = row[email_col].strip()[:200] if email_col is not None and email_col < len(row) and row[email_col].strip() else None
-        pers  = row[pers_col].strip()[:500] if pers_col is not None and pers_col < len(row) and row[pers_col].strip() else None
+        name  = _cell(row, name_col)[:200] or None
+        notes = _cell(row, notes_col) or None
+        pers  = _cell(row, pers_col)[:500] or None
 
         try:
-            cur.execute("""
-                INSERT INTO wa_contacts (tenant_id, phone, display_name, notes, email, personalization_note, source)
-                VALUES (%s, %s, %s, %s, %s, %s, 'csv')
-                ON CONFLICT (tenant_id, phone)
-                DO UPDATE SET display_name=COALESCE(EXCLUDED.display_name, wa_contacts.display_name),
-                              notes=COALESCE(EXCLUDED.notes, wa_contacts.notes),
-                              email=COALESCE(EXCLUDED.email, wa_contacts.email),
-                              personalization_note=COALESCE(EXCLUDED.personalization_note, wa_contacts.personalization_note),
-                              updated_at=NOW()
-            """, (tenant_id, phone, name or None, notes or None, email, pers))
-            imported += 1
+            cur.execute("SAVEPOINT csv_row")
+            existing_id, _ = _find_existing_contact(cur, tenant_id, phone, whatsapp_number, email)
+            if existing_id:
+                # Already a contact: same rule the import always had — a value
+                # in the file replaces the saved one, an empty cell keeps it.
+                # Numbers are only filled in where missing, never replaced.
+                cur.execute("""
+                    UPDATE wa_contacts
+                    SET phone=COALESCE(phone, %s), whatsapp_number=COALESCE(whatsapp_number, %s),
+                        display_name=COALESCE(%s, display_name), notes=COALESCE(%s, notes),
+                        email=COALESCE(%s, email), personalization_note=COALESCE(%s, personalization_note),
+                        updated_at=NOW()
+                    WHERE id=%s AND tenant_id=%s
+                """, (phone, whatsapp_number, name, notes, email, pers, existing_id, tenant_id))
+                row_contact_id = existing_id
+                updated += 1
+            else:
+                cur.execute("""
+                    INSERT INTO wa_contacts (tenant_id, phone, whatsapp_number, display_name, notes, email,
+                                             personalization_note, source)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'csv')
+                    RETURNING id
+                """, (tenant_id, phone, whatsapp_number, name, notes, email, pers))
+                row_contact_id = cur.fetchone()[0]
+                imported += 1
+            _add_contact_labels(cur, tenant_id, row_contact_id,
+                                _re_hdr.split(r"[,;]", _cell(row, labels_col)))
+            cur.execute("RELEASE SAVEPOINT csv_row")
         except Exception:
+            cur.execute("ROLLBACK TO SAVEPOINT csv_row")
             errors += 1
 
     conn.commit()
     cur.close(); conn.close()
 
     parts = [f"{imported} contact{'s' if imported != 1 else ''} imported"]
-    if skipped: parts.append(f"{skipped} skipped (invalid number)")
+    if updated: parts.append(f"{updated} already in your contacts (details updated)")
+    if skipped: parts.append(f"{skipped} skipped (no valid phone number, WhatsApp number or email)")
     if errors:  parts.append(f"{errors} errors")
-    flash(" · ".join(parts) + ".", "success" if imported else "warning")
+    flash(" · ".join(parts) + ".", "success" if (imported or updated) else "warning")
 
     return redirect(url_for("portal.whatsapp_contacts"))
 
@@ -14498,6 +14960,7 @@ def whatsapp_contacts_export():
     tag_filter     = [t for t in request.args.getlist("tag_filter") if t.isdigit()]
     segment_filter = [s for s in request.args.getlist("segment_filter") if s.isdigit()]
     has_phone      = request.args.get("has_phone") == "1"
+    has_whatsapp   = request.args.get("has_whatsapp") == "1"
     has_email      = request.args.get("has_email") == "1"
     has_pers       = request.args.get("has_pers") == "1"
     date_from      = (request.args.get("date_from") or "").strip()
@@ -14515,8 +14978,8 @@ def whatsapp_contacts_export():
         clauses = ["c.tenant_id = %s"]
         where_params = [tenant_id]
         if search:
-            clauses.append("(c.phone ILIKE %s OR c.display_name ILIKE %s OR c.email ILIKE %s)")
-            where_params += [f"%{search}%", f"%{search}%", f"%{search}%"]
+            clauses.append("(c.phone ILIKE %s OR c.whatsapp_number ILIKE %s OR c.display_name ILIKE %s OR c.email ILIKE %s)")
+            where_params += [f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%"]
         if status_filter:
             clauses.append("c.status = ANY(%s)")
             where_params.append(status_filter)
@@ -14528,6 +14991,8 @@ def whatsapp_contacts_export():
             where_params.append([int(s) for s in segment_filter])
         if has_phone:
             clauses.append("(c.phone IS NOT NULL AND c.phone <> '')")
+        if has_whatsapp:
+            clauses.append("(c.whatsapp_number IS NOT NULL AND c.whatsapp_number <> '')")
         if has_email:
             clauses.append("(c.email IS NOT NULL AND c.email <> '')")
         if has_pers:
@@ -14542,7 +15007,9 @@ def whatsapp_contacts_export():
         where = " AND ".join(clauses)
 
         cur.execute(f"""
-            SELECT c.phone, c.email, c.display_name, c.contact_person, c.notes, c.created_at
+            SELECT c.phone, c.whatsapp_number, c.email, c.display_name, c.contact_person, c.notes, c.created_at,
+                   (SELECT string_agg(lb.name, ', ' ORDER BY lb.name) FROM lead_label_contacts lc
+                    JOIN lead_labels lb ON lb.id = lc.label_id WHERE lc.contact_id = c.id) AS labels
             FROM wa_contacts c
             WHERE {where}
             ORDER BY c.display_name ASC NULLS LAST
@@ -14555,14 +15022,16 @@ def whatsapp_contacts_export():
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["phone", "email", "name", "contact_person", "notes", "added"])
+    writer.writerow(["phone_number", "whatsapp_number", "email", "name", "contact_person", "notes", "labels", "added"])
     for row in rows:
         writer.writerow([
-            row["phone"],
+            row["phone"] or "",
+            row["whatsapp_number"] or "",
             row["email"] or "",
             row["display_name"] or "",
             row["contact_person"] or "",
             row["notes"] or "",
+            row["labels"] or "",
             row["created_at"].strftime("%Y-%m-%d") if row["created_at"] else "",
         ])
 
@@ -14609,6 +15078,7 @@ def whatsapp_contacts_save_view():
         "date_from":      date_from,
         "date_to":        date_to,
         "has_phone":      "1" if request.form.get("has_phone") == "1" else "",
+        "has_whatsapp":   "1" if request.form.get("has_whatsapp") == "1" else "",
         "has_email":      "1" if request.form.get("has_email") == "1" else "",
         "has_pers":       "1" if request.form.get("has_pers") == "1" else "",
     }
@@ -14713,7 +15183,7 @@ def whatsapp_contact_detail(contact_id: int):
                 WHERE tenant_id=%s AND customer_phone=%s
                 ORDER BY created_at DESC LIMIT 10
             ) r ORDER BY created_at ASC
-        """, (tenant_id, contact["phone"]))
+        """, (tenant_id, contact["whatsapp_number"]))
         recent_messages = cur.fetchall()
 
         # Segments this contact belongs to
@@ -14742,7 +15212,7 @@ def whatsapp_contact_detail(contact_id: int):
             SELECT COUNT(*) AS msg_count
             FROM wa_message_log
             WHERE tenant_id=%s AND customer_phone=%s
-        """, (tenant_id, contact["phone"]))
+        """, (tenant_id, contact["whatsapp_number"]))
         msg_count = cur.fetchone()["msg_count"]
 
         # CRM: a Contact can now hold several live Sales Leads at once (see
@@ -14752,22 +15222,23 @@ def whatsapp_contact_detail(contact_id: int):
         # Centre page (/sales-pipeline/<id>), not here.
         pipeline_lead = None
         pipeline_lead_count = 0
-        if contact.get("phone"):
-            cur.execute("""
-                SELECT * FROM merchant_pipeline_leads
-                WHERE tenant_id=%s AND dropped_at IS NULL
-                  AND (wa_contact_id=%s OR regexp_replace(COALESCE(whatsapp_number, phone), '[^0-9]', '', 'g')
-                                          = regexp_replace(%s, '[^0-9]', '', 'g'))
-                ORDER BY updated_at DESC LIMIT 1
-            """, (tenant_id, contact_id, contact["phone"]))
-            pipeline_lead = cur.fetchone()
-            cur.execute("""
-                SELECT COUNT(*) AS c FROM merchant_pipeline_leads
-                WHERE tenant_id=%s AND dropped_at IS NULL
-                  AND (wa_contact_id=%s OR regexp_replace(COALESCE(whatsapp_number, phone), '[^0-9]', '', 'g')
-                                          = regexp_replace(%s, '[^0-9]', '', 'g'))
-            """, (tenant_id, contact_id, contact["phone"]))
-            pipeline_lead_count = cur.fetchone()["c"]
+        # Linked by the real CRM link, or (for older pairs) by either of the
+        # lead's numbers matching either of the contact's numbers.
+        _contact_nums = [n for n in (contact.get("whatsapp_number"), contact.get("phone")) if n]
+        _lead_match_sql = """
+            tenant_id=%s AND dropped_at IS NULL
+            AND (wa_contact_id=%s
+                 OR regexp_replace(COALESCE(whatsapp_number, ''), '[^0-9]', '', 'g') = ANY(%s)
+                 OR regexp_replace(COALESCE(phone, ''), '[^0-9]', '', 'g') = ANY(%s))
+        """
+        import re as _re_cd
+        _nums_digits = [_re_cd.sub(r"[^0-9]", "", n) for n in _contact_nums]
+        cur.execute(f"SELECT * FROM merchant_pipeline_leads WHERE {_lead_match_sql} ORDER BY updated_at DESC LIMIT 1",
+                    (tenant_id, contact_id, _nums_digits, _nums_digits))
+        pipeline_lead = cur.fetchone()
+        cur.execute(f"SELECT COUNT(*) AS c FROM merchant_pipeline_leads WHERE {_lead_match_sql}",
+                    (tenant_id, contact_id, _nums_digits, _nums_digits))
+        pipeline_lead_count = cur.fetchone()["c"]
         stage_history = pipeline_get_stage_history(pipeline_lead["id"]) if pipeline_lead else []
 
         # ── Unified Activity & Notes timeline: notes + deal-stage moves +
@@ -14817,6 +15288,15 @@ def whatsapp_contact_detail(contact_id: int):
         cur.execute("SELECT id, name FROM lead_labels WHERE tenant_id=%s ORDER BY name", (tenant_id,))
         dedupe_tags = cur.fetchall()
 
+        # Every label with how many contacts carry it, for the label picker
+        # (Add/Edit Contact forms + contact page About section, 2026-09-28).
+        cur.execute("""
+            SELECT lb.name, COUNT(lc.contact_id) AS count
+            FROM lead_labels lb LEFT JOIN lead_label_contacts lc ON lc.label_id = lb.id
+            WHERE lb.tenant_id=%s GROUP BY lb.id, lb.name ORDER BY lb.name
+        """, (tenant_id,))
+        label_options = [{"name": r_["name"], "count": r_["count"]} for r_ in cur.fetchall()]
+
         cur.close(); conn.close()
     except Exception as e:
         print("⚠️ contact_detail error:", e)
@@ -14832,6 +15312,7 @@ def whatsapp_contact_detail(contact_id: int):
         available_segments=available_segments,
         all_companies=all_companies,
         dedupe_tags=dedupe_tags,
+        label_options=label_options,
         msg_count=msg_count,
         pipeline_lead=pipeline_lead,
         pipeline_lead_count=pipeline_lead_count,
@@ -15273,6 +15754,35 @@ def crm_company_edit(company_id: int):
     return redirect(url_for("portal.crm_company_detail", company_id=company_id))
 
 
+@portal_bp.route("/crm/companies/<int:company_id>/delete", methods=["POST"])
+@team_feature("crm.companies_delete")
+def crm_company_delete(company_id: int):
+    """Delete a Company (added 2026-09-28 — there was no way to remove one).
+    Its contacts and deals are KEPT, just unlinked (FK ON DELETE SET NULL);
+    only the company itself and its company-level notes go (notes CASCADE)."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("crm.companies_delete")
+    if _rperm: return _rperm
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("DELETE FROM crm_companies WHERE id=%s AND tenant_id=%s RETURNING name",
+                    (company_id, tenant_id))
+        row = cur.fetchone()
+        conn.commit(); cur.close(); conn.close()
+        if row:
+            flash(f"Company \"{row[0]}\" deleted. Its contacts and deals were kept.", "success")
+        else:
+            flash("Company not found.", "warning")
+    except Exception as e:
+        print("⚠️ crm_company_delete error:", e)
+        flash("Could not delete the company. Please try again.", "danger")
+    return redirect(url_for("portal.crm_companies"))
+
+
 @portal_bp.route("/crm/companies/<int:company_id>/notes", methods=["POST"])
 @team_feature("crm.companies_edit")
 def crm_company_add_note(company_id: int):
@@ -15328,6 +15838,7 @@ def crm_merge_review():
         cur.execute("""
             SELECT m.*,
                    c.display_name AS contact_name, c.phone AS contact_phone,
+                   c.whatsapp_number AS contact_whatsapp,
                    pl.customer_name, pl.contact_person, pl.phone AS lead_phone,
                    pl.whatsapp_number AS lead_whatsapp
             FROM crm_match_candidates m
@@ -15434,11 +15945,32 @@ def whatsapp_contacts_bulk_action():
         cur  = conn.cursor()
 
         if action == "delete":
+            # Contacts with open Sales Leads are kept (2026-09-28); the rest go.
             cur.execute(
-                "DELETE FROM wa_contacts WHERE id = ANY(%s) AND tenant_id=%s",
+                "SELECT c.id, COALESCE(c.display_name, c.whatsapp_number, c.phone, c.email, 'A contact') AS name, COUNT(l.id) AS n "
+                "FROM wa_contacts c JOIN merchant_pipeline_leads l ON l.wa_contact_id = c.id AND l.tenant_id = c.tenant_id "
+                "WHERE c.id = ANY(%s) AND c.tenant_id=%s AND l.dropped_at IS NULL "
+                "AND (l.outcome IS NULL OR l.outcome NOT IN ('won','lost','dropped','not_a_fit')) "
+                "GROUP BY c.id, name ORDER BY name",
                 (contact_ids, tenant_id)
             )
-            flash(f"{cur.rowcount} contact(s) deleted.", "success")
+            blocked = cur.fetchall()
+            blocked_ids = {b[0] for b in blocked}
+            deletable = [i for i in contact_ids if i not in blocked_ids]
+            deleted = 0
+            if deletable:
+                cur.execute(
+                    "DELETE FROM wa_contacts WHERE id = ANY(%s) AND tenant_id=%s",
+                    (deletable, tenant_id)
+                )
+                deleted = cur.rowcount
+            if deleted:
+                flash(f"{deleted} contact(s) deleted.", "success")
+            if blocked:
+                names = ", ".join(f"{b[1]} ({b[2]})" for b in blocked[:5])
+                more = f" and {len(blocked) - 5} more" if len(blocked) > 5 else ""
+                flash(f"Not deleted, because they still have open Sales Leads: {names}{more}. "
+                      "Close or delete those leads first.", "warning")
 
         elif action == "set_status":
             new_status = request.form.get("new_status", "").strip()
@@ -15458,7 +15990,7 @@ def whatsapp_contacts_bulk_action():
             # Pipeline deal tags — see _sync_contact_tags().
             new_tag = (request.form.get("new_tag") or "").strip()[:50]
             if not new_tag:
-                flash("Please enter a tag name.", "warning")
+                flash("Please enter a label name.", "warning")
             else:
                 cur.execute("SELECT id FROM lead_labels WHERE tenant_id=%s AND lower(name)=lower(%s)",
                             (tenant_id, new_tag))
@@ -15475,7 +16007,7 @@ def whatsapp_contacts_bulk_action():
                     "ON CONFLICT DO NOTHING",
                     (label_id, contact_ids, tenant_id)
                 )
-                flash(f"Tag '{new_tag}' added to {cur.rowcount} contact(s).", "success")
+                flash(f"Label '{new_tag}' added to {cur.rowcount} contact(s).", "success")
 
         elif action == "remove_tag":
             # Not currently exposed in the UI (no "remove tag" button wired up
@@ -15490,9 +16022,9 @@ def whatsapp_contacts_bulk_action():
                         "DELETE FROM lead_label_contacts WHERE label_id=%s AND contact_id = ANY(%s)",
                         (row[0], contact_ids)
                     )
-                    flash(f"Tag '{rem_tag}' removed.", "success")
+                    flash(f"Label '{rem_tag}' removed.", "success")
                 else:
-                    flash(f"Tag '{rem_tag}' not found.", "warning")
+                    flash(f"Label '{rem_tag}' not found.", "warning")
 
         elif action == "add_to_segment":
             seg_id = request.form.get("segment_id", "").strip()
@@ -15562,7 +16094,12 @@ def whatsapp_contact_set_status(contact_id: int):
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     new_status = request.form.get("status", "").strip()
+    # Contact page About section changes Status in place (2026-09-28) and
+    # asks for a JSON answer instead of a page reload.
+    wants_json = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     if new_status not in ("lead", "prospect", "customer", "inactive"):
+        if wants_json:
+            return jsonify({"error": "Pick a status from the list."}), 400
         flash("Invalid status.", "danger")
         return redirect(url_for("portal.whatsapp_contacts"))
     try:
@@ -15572,34 +16109,54 @@ def whatsapp_contact_set_status(contact_id: int):
             "UPDATE wa_contacts SET status=%s, updated_at=NOW() WHERE id=%s AND tenant_id=%s",
             (new_status, contact_id, tenant_id)
         )
+        updated = cur.rowcount
         conn.commit(); cur.close(); conn.close()
+        if wants_json:
+            return (jsonify({"ok": True, "status": new_status}) if updated
+                    else (jsonify({"error": "Contact not found."}), 404))
     except Exception as e:
         print("⚠️ set_status error:", e)
+        if wants_json:
+            return jsonify({"error": "Could not save the status. Please try again."}), 500
     return redirect(request.referrer or url_for("portal.whatsapp_contacts"))
 
 
 @portal_bp.route("/whatsapp/contacts/<int:contact_id>/tags", methods=["POST"])
 @team_feature("crm.contacts_edit")
 def whatsapp_contact_tags(contact_id: int):
-    # Not currently linked from any template — kept correct against the
-    # shared tag table (see _sync_contact_tags()) in case something calls it.
+    """Sets a contact's Labels (shown as "Tags" before 2026-09-28) — the label
+    picker in the contact page's About section posts here and asks for JSON,
+    so adding/removing a label saves without reopening the Edit form. Same
+    shared label list as the Labels page (see _sync_contact_tags())."""
     r = _require_login()
     if r: return r
     _rperm = _require_team_permission("crm.contacts_edit")
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    tags_raw  = (request.form.get("tags") or "").strip()
+    wants_json = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    labels_raw = (request.form.get("labels") if "labels" in request.form else request.form.get("tags") or "").strip()
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        _sync_contact_tags(cur, tenant_id, contact_id, tags_raw)
+        cur.execute("SELECT id FROM wa_contacts WHERE id=%s AND tenant_id=%s", (contact_id, tenant_id))
+        if not cur.fetchone():
+            cur.close(); conn.close()
+            if wants_json:
+                return jsonify({"error": "Contact not found."}), 404
+            flash("Contact not found.", "warning")
+            return redirect(url_for("portal.whatsapp_contacts"))
+        _sync_contact_tags(cur, tenant_id, contact_id, labels_raw)
         cur.execute("UPDATE wa_contacts SET updated_at=NOW() WHERE id=%s AND tenant_id=%s", (contact_id, tenant_id))
         conn.commit(); cur.close(); conn.close()
-        flash("Tags updated.", "success")
+        if wants_json:
+            return jsonify({"ok": True})
+        flash("Labels updated.", "success")
     except Exception as e:
         print("⚠️ contact_tags error:", e)
-        flash("Could not update tags.", "danger")
+        if wants_json:
+            return jsonify({"error": "Could not save the labels. Please try again."}), 500
+        flash("Could not update labels.", "danger")
     return redirect(request.referrer or url_for("portal.whatsapp_contacts"))
 
 
@@ -15866,9 +16423,9 @@ def whatsapp_segment_contacts_json(seg_id: int):
             cur.close(); conn.close()
             return jsonify({"error": "not found"}), 404
         cur.execute("""
-            SELECT c.phone, c.display_name FROM wa_contacts c
+            SELECT c.whatsapp_number AS phone, c.display_name FROM wa_contacts c
             JOIN wa_segment_members m ON m.contact_id = c.id
-            WHERE m.segment_id = %s
+            WHERE m.segment_id = %s AND c.whatsapp_number IS NOT NULL AND c.whatsapp_number <> ''
         """, (seg_id,))
         rows = cur.fetchall()
         cur.close(); conn.close()
@@ -15891,8 +16448,8 @@ def sales_pipeline_contacts_json():
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
-            SELECT COALESCE(whatsapp_number, phone) AS phone FROM merchant_pipeline_leads
-            WHERE tenant_id=%s AND (whatsapp_number IS NOT NULL OR phone IS NOT NULL) AND dropped_at IS NULL
+            SELECT whatsapp_number AS phone FROM merchant_pipeline_leads
+            WHERE tenant_id=%s AND whatsapp_number IS NOT NULL AND whatsapp_number <> '' AND dropped_at IS NULL
         """, (tenant_id,))
         rows = cur.fetchall()
         cur.close(); conn.close()
@@ -16019,10 +16576,16 @@ def _send_campaign_now(campaign_id: int, tenant_id: int):
         try:
             pc = get_db_connection(); pcc = pc.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             pcc.execute(
-                "SELECT phone, display_name, personalization_note, opted_out FROM wa_contacts WHERE tenant_id=%s",
+                "SELECT whatsapp_number, display_name, personalization_note, opted_out FROM wa_contacts "
+                "WHERE tenant_id=%s AND whatsapp_number IS NOT NULL AND whatsapp_number <> ''",
                 (tenant_id,),
             )
-            contacts_by_phone = {c["phone"]: c for c in pcc.fetchall()}
+            # Keyed by the one contact phone format (Phase 0, 2026-09-28): the
+            # old '+'-prefixed lookup never matched digits-only contacts, so
+            # names and opt-outs were silently missed. WhatsApp number ONLY
+            # (Phase 1a) — a contact's Phone number is never used by WhatsApp.
+            contacts_by_phone = {_normalise_contact_phone(c["whatsapp_number"], _tenant_country(tenant_id)): c
+                                 for c in pcc.fetchall()}
             pcc.close(); pc.close()
         except Exception as _pe:
             print(f"⚠️ [CAMPAIGN {campaign_id}] contact fetch error:", _pe)
@@ -16069,17 +16632,33 @@ def _send_campaign_now(campaign_id: int, tenant_id: int):
             })
 
         for phone in phones:
-            # Strip leading + then normalise Nigerian formats:
-            # 07XXXXXXXXX (11 digits) → 2347XXXXXXXXX
-            # 08XXXXXXXXX (11 digits) → 2348XXXXXXXXX
-            # 2347XXXXXXXXX / 2348XXXXXXXXX (13 digits) → kept as-is
-            norm_phone = phone.strip().lstrip("+").strip()
-            if norm_phone.startswith("0") and len(norm_phone) == 11:
-                norm_phone = "234" + norm_phone[1:]
-            contact    = contacts_by_phone.get("+" + norm_phone)
+            # Any country (2026-09-28): a local 0… number gets the business's
+            # own country code; +/00/full international numbers keep theirs.
+            # Was Nigeria-only (0… -> 234…), which sent a UK business's
+            # 07700… to a wrong +2347700… number.
+            norm_phone = _normalise_contact_phone(phone, _tenant_country(tenant_id))
+            contact    = contacts_by_phone.get(norm_phone)
             rec_status = "failed"
             rec_error  = None
             rec_msg_id = None
+
+            if norm_phone.startswith("0"):
+                # Local number and the business hasn't set its country: never
+                # guess a country code — skip it with a clear reason.
+                try:
+                    rc = get_db_connection(); rcc = rc.cursor()
+                    rcc.execute(
+                        """INSERT INTO wa_campaign_recipients
+                               (campaign_id, tenant_id, phone, status, error_msg, sent_at)
+                           VALUES (%s, %s, %s, %s, %s, NOW())""",
+                        (campaign_id, tenant_id, norm_phone, "failed",
+                         "No country code — add it to the number, or set your business country in Settings"),
+                    )
+                    rc.commit(); rcc.close(); rc.close()
+                except Exception:
+                    pass
+                failed += 1
+                continue
 
             if contact and contact.get("opted_out"):
                 rec_status = "opted_out"
@@ -16256,12 +16835,12 @@ def whatsapp_campaigns():
             (tenant_id,),
         )
         proactive_log = cur.fetchall()
-        # Sales Pipeline contacts with a phone number — the recipient source
+        # Sales Pipeline contacts with a WhatsApp number — the recipient source
         # this page's compose drawer sources from (see WhatsApp Segments,
         # mirroring pipeline_email_count on the Email Campaigns page).
         cur.execute(
             "SELECT count(*) AS c FROM merchant_pipeline_leads "
-            "WHERE tenant_id=%s AND (whatsapp_number IS NOT NULL OR phone IS NOT NULL) AND dropped_at IS NULL",
+            "WHERE tenant_id=%s AND whatsapp_number IS NOT NULL AND whatsapp_number <> '' AND dropped_at IS NULL",
             (tenant_id,),
         )
         pipeline_phone_count = cur.fetchone()["c"]
@@ -16315,7 +16894,7 @@ def whatsapp_campaigns_create():
     # Recipients now resolve server-side against the Sales Pipeline (same
     # trusted-query pattern as Email Campaign's _parse_campaign_form), not a
     # client-side JS copy-paste into the textarea. Three sources:
-    #  - "pipeline": every Sales Pipeline contact with a phone number
+    #  - "pipeline": every Sales Pipeline contact with a WhatsApp number
     #  - "segment":  a saved WhatsApp Segment (wa_pipeline_segment_leads),
     #                itself a group of Sales Pipeline contacts
     #  - "manual" (or anything else / no pipeline data): the pasted textarea,
@@ -16326,9 +16905,11 @@ def whatsapp_campaigns_create():
     if recipient_source == "pipeline":
         try:
             _pc = get_db_connection(); _pcc = _pc.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            # WhatsApp number ONLY (2026-09-28): a lead with just a Phone
+            # number is left out — WhatsApp never uses the Phone number.
             _pcc.execute("""
-                SELECT COALESCE(whatsapp_number, phone) AS phone FROM merchant_pipeline_leads
-                WHERE tenant_id=%s AND (whatsapp_number IS NOT NULL OR phone IS NOT NULL) AND dropped_at IS NULL
+                SELECT whatsapp_number AS phone FROM merchant_pipeline_leads
+                WHERE tenant_id=%s AND whatsapp_number IS NOT NULL AND whatsapp_number <> '' AND dropped_at IS NULL
             """, (tenant_id,))
             phones = [r["phone"] for r in _pcc.fetchall()]
             _pcc.close(); _pc.close()
@@ -16342,10 +16923,10 @@ def whatsapp_campaigns_create():
             if _scc.fetchone():
                 pipeline_segment_id = seg_int
                 _scc.execute("""
-                    SELECT COALESCE(l.whatsapp_number, l.phone) AS phone
+                    SELECT l.whatsapp_number AS phone
                     FROM wa_pipeline_segment_leads sl
                     JOIN merchant_pipeline_leads l ON l.id = sl.lead_id
-                    WHERE sl.segment_id = %s AND (l.whatsapp_number IS NOT NULL OR l.phone IS NOT NULL)
+                    WHERE sl.segment_id = %s AND l.whatsapp_number IS NOT NULL AND l.whatsapp_number <> ''
                           AND l.dropped_at IS NULL
                 """, (seg_int,))
                 phones = [r["phone"] for r in _scc.fetchall()]
@@ -16362,7 +16943,8 @@ def whatsapp_campaigns_create():
         return redirect(url_for("portal.whatsapp_campaigns"))
 
     if not phones:
-        flash("No recipients found. Select a segment with contacts or enter phone numbers.", "danger")
+        flash("No recipients found. Only contacts with a WhatsApp number can receive a WhatsApp campaign — "
+              "select a segment with WhatsApp numbers or enter WhatsApp numbers.", "danger")
         return redirect(url_for("portal.whatsapp_campaigns"))
 
     # Which connected number this campaign sends from. Must belong to this
@@ -16637,7 +17219,7 @@ def whatsapp_campaign_segments_page():
         """
         SELECT s.id, s.name,
                count(sl.lead_id) FILTER (
-                   WHERE (l.whatsapp_number IS NOT NULL OR l.phone IS NOT NULL)
+                   WHERE l.whatsapp_number IS NOT NULL AND l.whatsapp_number <> ''
                          AND l.dropped_at IS NULL
                ) AS member_count
         FROM wa_pipeline_segments s
@@ -16659,11 +17241,11 @@ def whatsapp_campaign_segments_page():
         if active_segment:
             cur.execute(
                 """
-                SELECT l.id, l.customer_name AS name, COALESCE(l.whatsapp_number, l.phone) AS phone
+                SELECT l.id, l.customer_name AS name, l.whatsapp_number AS phone
                 FROM wa_pipeline_segment_leads sl
                 JOIN merchant_pipeline_leads l ON l.id = sl.lead_id
                 WHERE sl.segment_id=%s AND l.tenant_id=%s
-                      AND (l.whatsapp_number IS NOT NULL OR l.phone IS NOT NULL) AND l.dropped_at IS NULL
+                      AND l.whatsapp_number IS NOT NULL AND l.whatsapp_number <> '' AND l.dropped_at IS NULL
                 ORDER BY l.customer_name
                 """,
                 (segment_id, tenant_id),
@@ -16698,7 +17280,7 @@ def whatsapp_pipeline_segments_list():
             """
             SELECT s.id, s.name,
                    count(sl.lead_id) FILTER (
-                       WHERE (l.whatsapp_number IS NOT NULL OR l.phone IS NOT NULL)
+                       WHERE l.whatsapp_number IS NOT NULL AND l.whatsapp_number <> ''
                              AND l.dropped_at IS NULL
                    ) AS member_count
             FROM wa_pipeline_segments s
@@ -16786,7 +17368,7 @@ def whatsapp_pipeline_segments_members(segment_id: int):
             return jsonify({"error": "Segment not found."}), 404
         cur.execute(
             "SELECT l.id, l.customer_name, l.contact_person, "
-            "COALESCE(l.whatsapp_number, l.phone) AS phone "
+            "l.whatsapp_number AS phone "
             "FROM wa_pipeline_segment_leads sl JOIN merchant_pipeline_leads l ON l.id = sl.lead_id "
             "WHERE sl.segment_id=%s ORDER BY l.customer_name",
             (segment_id,),
@@ -16824,15 +17406,18 @@ def whatsapp_pipeline_segments_add_member(segment_id: int):
             cur.close(); conn.close()
             return jsonify({"error": "Segment not found."}), 404
         cur.execute(
-            "SELECT id, customer_name, contact_person, COALESCE(whatsapp_number, phone) AS phone "
+            "SELECT id, customer_name, contact_person, whatsapp_number AS phone "
             "FROM merchant_pipeline_leads "
-            "WHERE id=%s AND tenant_id=%s AND (whatsapp_number IS NOT NULL OR phone IS NOT NULL) AND dropped_at IS NULL",
+            "WHERE id=%s AND tenant_id=%s AND dropped_at IS NULL",
             (lead_id, tenant_id),
         )
         lead = cur.fetchone()
         if not lead:
             cur.close(); conn.close()
             return jsonify({"error": "Contact not found."}), 404
+        if not (lead["phone"] or "").strip():
+            cur.close(); conn.close()
+            return jsonify({"error": "This contact has no WhatsApp number, so they can't be added to a WhatsApp segment."}), 400
         cur.execute(
             "INSERT INTO wa_pipeline_segment_leads (segment_id, lead_id) VALUES (%s, %s) "
             "ON CONFLICT (segment_id, lead_id) DO NOTHING",
@@ -16906,7 +17491,7 @@ def whatsapp_pipeline_segments_bulk_add_members(segment_id: int):
             "INSERT INTO wa_pipeline_segment_leads (segment_id, lead_id) "
             "SELECT %s, l.id FROM merchant_pipeline_leads l "
             "WHERE l.id = ANY(%s) AND l.tenant_id=%s "
-            "AND (l.whatsapp_number IS NOT NULL OR l.phone IS NOT NULL) AND l.dropped_at IS NULL "
+            "AND l.whatsapp_number IS NOT NULL AND l.whatsapp_number <> '' AND l.dropped_at IS NULL "
             "ON CONFLICT (segment_id, lead_id) DO NOTHING",
             (segment_id, lead_ids, tenant_id),
         )
@@ -16933,7 +17518,7 @@ def whatsapp_campaigns_pipeline_leads_json():
     q = (request.args.get("q") or "").strip()
     exclude_segment_id = (request.args.get("exclude_segment_id") or "").strip()
 
-    where  = ["l.tenant_id=%s", "(l.whatsapp_number IS NOT NULL OR l.phone IS NOT NULL)", "l.dropped_at IS NULL"]
+    where  = ["l.tenant_id=%s", "l.whatsapp_number IS NOT NULL", "l.whatsapp_number <> ''", "l.dropped_at IS NULL"]
     params = [tenant_id]
     if q:
         where.append("(l.customer_name ILIKE %s OR l.contact_person ILIKE %s OR l.phone ILIKE %s OR l.whatsapp_number ILIKE %s)")
@@ -16947,7 +17532,7 @@ def whatsapp_campaigns_pipeline_leads_json():
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
-            "SELECT id, customer_name, contact_person, COALESCE(whatsapp_number, phone) AS phone "
+            "SELECT id, customer_name, contact_person, whatsapp_number AS phone "
             "FROM merchant_pipeline_leads l "
             "WHERE " + " AND ".join(where) + " ORDER BY customer_name LIMIT 20",
             params,
@@ -17065,7 +17650,7 @@ def whatsapp_campaign_report(campaign_id: int):
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
             """SELECT COUNT(*) AS c FROM wa_campaign_recipients wcr
-               JOIN wa_contacts wc ON wc.tenant_id = wcr.tenant_id AND wc.phone = wcr.phone
+               JOIN wa_contacts wc ON wc.tenant_id = wcr.tenant_id AND wc.whatsapp_number = wcr.phone
                WHERE wcr.campaign_id=%s AND wc.opted_out = TRUE""",
             (campaign_id,),
         )
@@ -17155,7 +17740,7 @@ def whatsapp_campaign_reviews():
         cur.execute("""
             SELECT rv.*, wc.display_name AS contact_name, wcam.name AS campaign_name
             FROM wa_campaign_reply_reviews rv
-            LEFT JOIN wa_contacts wc ON wc.tenant_id = rv.tenant_id AND wc.phone = rv.phone
+            LEFT JOIN wa_contacts wc ON wc.tenant_id = rv.tenant_id AND wc.whatsapp_number = rv.phone
             LEFT JOIN wa_campaigns wcam ON wcam.id = rv.campaign_id
             WHERE rv.tenant_id=%s AND rv.status='pending'
             ORDER BY rv.created_at ASC
@@ -17214,8 +17799,8 @@ def _approve_campaign_reply_review(review_id: int, tenant_id: int, staff_name: s
             cur.close(); conn.close()
             return None, "not_found"
 
-        phone = review["phone"]
-        cur.execute("SELECT * FROM wa_contacts WHERE tenant_id=%s AND phone=%s", (tenant_id, phone))
+        phone = review["phone"]  # the number that replied on WhatsApp
+        cur.execute("SELECT * FROM wa_contacts WHERE tenant_id=%s AND whatsapp_number=%s", (tenant_id, phone))
         contact = cur.fetchone()
         contact_id = contact["id"] if contact else None
 
@@ -17241,7 +17826,11 @@ def _approve_campaign_reply_review(review_id: int, tenant_id: int, staff_name: s
                    contact_channel, contact_date, wa_contact_id, company_id, source)
                 VALUES (%s, %s, %s, %s, %s, %s, 'new_lead', 'whatsapp', CURRENT_DATE, %s, %s, 'whatsapp')
                 RETURNING id
-            """, (tenant_id, label, digits_phone, digits_phone,
+            """, (tenant_id, label,
+                  # Phone number only if the contact has one saved — the reply
+                  # number is a WhatsApp number and goes in WhatsApp number.
+                  (_re_review.sub(r"[^\d]", "", contact.get("phone") or "") or None) if contact else None,
+                  digits_phone,
                   contact.get("email") if contact else None, notes,
                   contact_id, contact.get("company_id") if contact else None))
             lead_id = cur.fetchone()["id"]
@@ -17251,6 +17840,7 @@ def _approve_campaign_reply_review(review_id: int, tenant_id: int, staff_name: s
                 (lead_id, staff_name or "Staff (review queue)", notes),
             )
 
+        _link_lead_to_contact(cur, tenant_id, lead_id)   # Phase 1b: every lead gets a contact
         cur.execute(
             "UPDATE wa_campaign_recipients SET status='opportunity', pipeline_lead_id=%s, updated_at=NOW() WHERE id=%s",
             (lead_id, review["recipient_id"]),
@@ -19199,13 +19789,14 @@ def lead_labels_contact_members(label_id: int):
             cur.close(); conn.close()
             return jsonify({"error": "Label not found."}), 404
         cur.execute(
-            "SELECT c.id, c.display_name, c.phone, c.email "
+            "SELECT c.id, c.display_name, c.phone, c.whatsapp_number, c.email "
             "FROM lead_label_contacts lc JOIN wa_contacts c ON c.id = lc.contact_id "
-            "WHERE lc.label_id=%s ORDER BY c.display_name NULLS LAST, c.phone",
+            "WHERE lc.label_id=%s ORDER BY c.display_name NULLS LAST, c.whatsapp_number, c.phone",
             (label_id,),
         )
         members = [
-            {"id": row["id"], "name": row["display_name"] or row["phone"], "email": row["email"]}
+            {"id": row["id"], "name": row["display_name"] or row["whatsapp_number"] or row["phone"] or row["email"],
+             "email": row["email"]}
             for row in cur.fetchall()
         ]
         cur.close(); conn.close()
@@ -19339,9 +19930,9 @@ def lead_labels_search_contacts_json():
     where  = ["c.tenant_id=%s"]
     params = [tenant_id]
     if q:
-        where.append("(c.display_name ILIKE %s OR c.phone ILIKE %s OR c.email ILIKE %s)")
+        where.append("(c.display_name ILIKE %s OR c.phone ILIKE %s OR c.whatsapp_number ILIKE %s OR c.email ILIKE %s)")
         like = f"%{q}%"
-        params += [like, like, like]
+        params += [like, like, like, like]
     if exclude_label_id.isdigit():
         where.append("c.id NOT IN (SELECT contact_id FROM lead_label_contacts WHERE label_id=%s)")
         params.append(int(exclude_label_id))
@@ -19350,12 +19941,13 @@ def lead_labels_search_contacts_json():
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
-            "SELECT id, display_name, phone, email FROM wa_contacts c "
-            "WHERE " + " AND ".join(where) + " ORDER BY display_name NULLS LAST, phone LIMIT 20",
+            "SELECT id, display_name, phone, whatsapp_number, email FROM wa_contacts c "
+            "WHERE " + " AND ".join(where) + " ORDER BY display_name NULLS LAST, whatsapp_number, phone LIMIT 20",
             params,
         )
         contacts = [
-            {"id": row["id"], "name": row["display_name"] or row["phone"], "email": row["email"]}
+            {"id": row["id"], "name": row["display_name"] or row["whatsapp_number"] or row["phone"] or row["email"],
+             "email": row["email"]}
             for row in cur.fetchall()
         ]
         cur.close(); conn.close()
@@ -24008,7 +24600,10 @@ def wa_login_send():
         return redirect(url_for("portal.dashboard"))
 
     raw_phone = (request.form.get("phone") or "").strip()
-    phone     = _normalise_phone(raw_phone)
+    phone, _perr = _phone_from_form(raw_phone, request.form.get("phone_country"))
+    if _perr:
+        flash(_perr, "danger")
+        return redirect(url_for("portal.wa_login"))
 
     if not phone:
         flash("Please enter a valid WhatsApp number.", "danger")
@@ -24508,8 +25103,8 @@ def _get_inbox_conversations(tenant_id: int, allowed_agent_ids=None) -> list:
                     )                                                          AS display_name
                 FROM wa_message_log m
                 LEFT JOIN wa_contacts wc
-                       ON wc.tenant_id = m.tenant_id
-                      AND wc.phone     = m.customer_phone
+                       ON wc.tenant_id       = m.tenant_id
+                      AND wc.whatsapp_number = m.customer_phone
                 LEFT JOIN customers cu
                        ON cu.tenant_id = m.tenant_id
                       AND REPLACE(REPLACE(COALESCE(cu.phone_number,''), '+', ''), ' ', '')
@@ -25308,20 +25903,23 @@ def inbox_save_contact(phone: str):
         return "forbidden", 403
 
     display_name = (request.form.get("display_name") or "").strip()[:200]
+    contact_phone = _normalise_contact_phone(phone, _tenant_country(tenant_id))
 
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
         if display_name:
             cur.execute("""
-                INSERT INTO wa_contacts (tenant_id, phone, display_name, source)
+                INSERT INTO wa_contacts (tenant_id, whatsapp_number, display_name, source)
                 VALUES (%s, %s, %s, 'whatsapp')
-                ON CONFLICT (tenant_id, phone) DO UPDATE SET display_name = EXCLUDED.display_name, updated_at = NOW()
-            """, (tenant_id, phone, display_name))
+                ON CONFLICT (tenant_id, whatsapp_number) DO UPDATE SET display_name = EXCLUDED.display_name, updated_at = NOW()
+            """, (tenant_id, contact_phone, display_name))
         else:
+            # Clearing the name only clears the name. This used to DELETE the
+            # whole contact (labels, segments, notes, consent) — fixed 2026-09-28.
             cur.execute(
-                "DELETE FROM wa_contacts WHERE tenant_id=%s AND phone=%s",
-                (tenant_id, phone)
+                "UPDATE wa_contacts SET display_name=NULL, updated_at=NOW() WHERE tenant_id=%s AND whatsapp_number=%s",
+                (tenant_id, contact_phone)
             )
         conn.commit()
         cur.close(); conn.close()
@@ -26512,6 +27110,7 @@ def leads_page():
               whatsapp_number or None, email or None, notes or None, deal_value,
               product_interest or None, assigned_to or None, source))
         new_id = cur.fetchone()[0]
+        _link_lead_to_contact(cur, tenant_id, new_id)   # Phase 1b: every lead gets a contact
         conn.commit()
         cur.close(); conn.close()
         pipeline_record_stage_change(new_id, None, "new_lead",
@@ -26537,11 +27136,13 @@ def leads_page():
         if hot_leads:
             import re as _re_leads
             conn = get_db_connection(); cur = conn.cursor()
+            # Either of the lead's numbers — only spots the same person.
             cur.execute("""
-                SELECT regexp_replace(COALESCE(whatsapp_number, phone), '[^0-9]', '', 'g')
+                SELECT regexp_replace(COALESCE(whatsapp_number, ''), '[^0-9]', '', 'g'),
+                       regexp_replace(COALESCE(phone, ''), '[^0-9]', '', 'g')
                 FROM merchant_pipeline_leads WHERE tenant_id=%s AND dropped_at IS NULL
             """, (tenant_id,))
-            already_lead_phones = {row[0] for row in cur.fetchall()}
+            already_lead_phones = {n for row in cur.fetchall() for n in row if n}
             cur.close(); conn.close()
             for c in hot_leads:
                 c["already_lead"] = _re_leads.sub(r"[^\d]", "", c["customer_phone"] or "") in already_lead_phones
@@ -26663,21 +27264,25 @@ def leads_create_from_conversation():
 
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT * FROM wa_contacts WHERE tenant_id=%s AND phone=%s", (tenant_id, phone))
+    import re as _re_leads2
+    digits_phone = _re_leads2.sub(r"[^\d]", "", phone)  # the WhatsApp number that chatted
+    cur.execute("SELECT * FROM wa_contacts WHERE tenant_id=%s AND whatsapp_number IN (%s, %s)",
+                (tenant_id, phone, digits_phone))
     contact = cur.fetchone()
     label = display_name or (contact.get("display_name") if contact else None) or phone
-    import re as _re_leads2
-    digits_phone = _re_leads2.sub(r"[^\d]", "", phone)
     cur.execute("""
         INSERT INTO merchant_pipeline_leads
             (tenant_id, customer_name, phone, whatsapp_number, email, notes, stage,
              contact_channel, wa_contact_id, company_id, source)
         VALUES (%s, %s, %s, %s, %s, %s, 'new_lead', 'whatsapp', %s, %s, 'whatsapp')
         RETURNING id
-    """, (tenant_id, label, digits_phone, digits_phone,
+    """, (tenant_id, label,
+          (_re_leads2.sub(r"[^\d]", "", contact.get("phone") or "") or None) if contact else None,
+          digits_phone,
           contact.get("email") if contact else None, contact.get("notes") if contact else None,
           contact["id"] if contact else None, contact.get("company_id") if contact else None))
     lead_id = cur.fetchone()["id"]
+    _link_lead_to_contact(cur, tenant_id, lead_id)   # Phase 1b: makes the contact if there wasn't one
     conn.commit()
     cur.close(); conn.close()
     pipeline_record_stage_change(lead_id, None, "new_lead",
@@ -27631,6 +28236,9 @@ def sales_pipeline_edit(lead_id: int):
     ))
     conn.commit()
     cur.close(); conn.close()
+    # Phase 1b: a lead that now has a phone/WhatsApp/email gets joined to a
+    # contact; one already joined only fills the contact's empty boxes.
+    _link_lead_to_contact_now(tenant_id, lead_id)
 
     flash(f"{customer_name} updated.", "success")
     # Editing can happen from the Lead's own page or from Sales Pipeline —
@@ -27779,6 +28387,7 @@ def sales_pipeline_advance(lead_id: int):
     pipeline_record_stage_change(lead_id, lead["stage"], target, changed_by)
     if target == "won":
         _stamp_campaign_converted(lead_id)
+        _on_lead_won(tenant_id, lead_id)
     flash(f"{lead['customer_name']} moved to {pipeline_effective_stage_labels(tenant_id)[target]}.", "success")
     return redirect(url_for("portal.sales_pipeline"))
 
@@ -27876,6 +28485,7 @@ def sales_pipeline_bulk_advance():
             pipeline_record_stage_change(lead["id"], lead["stage"], target, changed_by)
             if target == "won":
                 _stamp_campaign_converted(lead["id"])
+                _on_lead_won(tenant_id, lead["id"])
         cur.close(); conn.close()
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -28094,24 +28704,41 @@ def lead_detail(lead_id: int):
     # a link to the real Contact page for the full history. Never rebuilt here.
     last_message = None
     contact_id = lead.get("wa_contact_id")
-    lookup_phone = lead.get("whatsapp_number") or lead.get("phone")
-    if lookup_phone:
+    # WhatsApp messages only ever come from the WhatsApp number.
+    if lead.get("whatsapp_number"):
         cur.execute("""
             SELECT content, direction, created_at FROM wa_message_log
             WHERE tenant_id=%s AND regexp_replace(customer_phone, '[^0-9]', '', 'g')
                                   = regexp_replace(%s, '[^0-9]', '', 'g')
             ORDER BY created_at DESC LIMIT 1
-        """, (tenant_id, lookup_phone))
+        """, (tenant_id, lead["whatsapp_number"]))
         last_message = cur.fetchone()
-        if not contact_id:
+    if not contact_id:
+        # Not linked yet: find the contact by either number.
+        for _num in (lead.get("whatsapp_number"), lead.get("phone")):
+            if not _num or contact_id:
+                continue
             cur.execute("""
                 SELECT id FROM wa_contacts
-                WHERE tenant_id=%s AND regexp_replace(phone, '[^0-9]', '', 'g')
-                                       = regexp_replace(%s, '[^0-9]', '', 'g')
+                WHERE tenant_id=%s AND regexp_replace(%s, '[^0-9]', '', 'g') <> ''
+                  AND (regexp_replace(COALESCE(whatsapp_number, ''), '[^0-9]', '', 'g') = regexp_replace(%s, '[^0-9]', '', 'g')
+                       OR regexp_replace(COALESCE(phone, ''), '[^0-9]', '', 'g') = regexp_replace(%s, '[^0-9]', '', 'g'))
                 LIMIT 1
-            """, (tenant_id, lookup_phone))
+            """, (tenant_id, _num, _num, _num))
             _c = cur.fetchone()
             contact_id = _c["id"] if _c else None
+
+    # The contact this lead belongs to, shown at the top of the lead record
+    # (Phase 1b, 2026-09-28) — or "No contact yet" when it has none.
+    contact_name = None
+    if contact_id:
+        cur.execute("SELECT COALESCE(display_name, whatsapp_number, phone, email) AS n FROM wa_contacts "
+                    "WHERE id=%s AND tenant_id=%s", (contact_id, tenant_id))
+        _cn = cur.fetchone()
+        if _cn:
+            contact_name = _cn["n"] or "Contact"
+        else:
+            contact_id = None
 
     # Activity — Stage History (real) is its own tab; Notes shown here is the
     # Lead's own notes field, editable via the existing Edit Deal modal.
@@ -28135,6 +28762,7 @@ def lead_detail(lead_id: int):
         is_phixtra_support_account=(tenant_id == PHIXTRA_SUPPORT_TENANT_ID),
         last_message=last_message,
         contact_id=contact_id,
+        contact_name=contact_name,
         stage_history=stage_history,
         last_worked_by=last_worked_by,
         not_a_fit_reasons=PIPELINE_NOT_A_FIT_REASONS,
@@ -28457,10 +29085,17 @@ def _send_sms_campaign_now(campaign_id: int):
         sc  = get_db_connection()
         scc = sc.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         scc.execute(
-            "SELECT phone, opted_out, sms_opted_out FROM wa_contacts WHERE tenant_id=%s",
+            "SELECT phone, whatsapp_number, opted_out, sms_opted_out FROM wa_contacts WHERE tenant_id=%s",
             (tenant_id,),
         )
-        contacts_by_phone = {c["phone"]: c for c in scc.fetchall()}
+        # Opt-outs belong to the PERSON, so a number matching either of the
+        # contact's two numbers finds their consent (the message itself still
+        # only ever goes to the Phone number that was listed).
+        _country = _tenant_country(tenant_id)
+        for c in scc.fetchall():
+            for _n in (c["whatsapp_number"], c["phone"]):
+                if _n:
+                    contacts_by_phone[_normalise_contact_phone(_n, _country)] = c
         scc.close(); sc.close()
     except Exception as _se:
         print(f"⚠️ [SMS CAMPAIGN {campaign_id}] suppression fetch error:", _se)
@@ -28468,10 +29103,7 @@ def _send_sms_campaign_now(campaign_id: int):
     to_send = []
     suppressed = 0
     for n in numbers:
-        norm_phone = n.strip().lstrip("+").strip()
-        if norm_phone.startswith("0") and len(norm_phone) == 11:
-            norm_phone = "234" + norm_phone[1:]
-        contact = contacts_by_phone.get("+" + norm_phone)
+        contact = contacts_by_phone.get(_normalise_contact_phone(n, _tenant_country(tenant_id)))
         if contact and (contact.get("opted_out") or contact.get("sms_opted_out")):
             suppressed += 1
             continue

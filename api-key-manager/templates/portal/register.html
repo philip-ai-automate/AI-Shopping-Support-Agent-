@@ -247,9 +247,14 @@
         </div>
         <div class="form-group">
           <label>Mobile phone *</label>
-          <input type="tel" name="phone_number" id="fPhone" placeholder="+234 801 234 5678"
-                 autocomplete="tel"
-                 value="{{ form_data.get('phone_number', '') if form_data else '' }}"/>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            {% set pc_name = 'phone_country' %}{% set pc_id = 'fPhoneCountry' %}{% set pc_required = false %}
+            {% set pc_selected = form_data.get('phone_country', '') if form_data else '' %}{% set pc_style = 'flex:0 1 190px;min-width:0' %}
+            {% include "portal/_phone_country_select.html" %}
+            <input type="tel" name="phone_number" id="fPhone" placeholder="801 234 5678"
+                   autocomplete="tel-national" style="flex:1 1 170px;min-width:0"
+                   value="{{ form_data.get('phone_number', '') if form_data else '' }}"/>
+          </div>
           <p class="field-hint info" style="margin-top:4px">For billing alerts and optional two-factor authentication.</p>
           <p class="field-hint err" id="hPhone" style="display:none">Mobile phone is required.</p>
         </div>
@@ -268,9 +273,15 @@
         </div>
         <div class="form-group">
           <label>Mobile phone *</label>
-          <input type="tel" name="wa_phone_number" id="fPhoneWa" placeholder="+234 801 234 5678"
-                 autocomplete="tel"
-                 value="{{ form_data.get('wa_phone_number', '') if form_data else '' }}"/>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            {% set pc_name = 'wa_phone_country' %}{% set pc_id = 'fPhoneWaCountry' %}{% set pc_required = false %}
+            {% set pc_selected = form_data.get('wa_phone_country', '') if form_data else '' %}{% set pc_style = 'flex:0 1 190px;min-width:0' %}
+            {% include "portal/_phone_country_select.html" %}
+            <input type="tel" name="wa_phone_number" id="fPhoneWa" placeholder="801 234 5678"
+                   autocomplete="tel-national" style="flex:1 1 170px;min-width:0"
+                   value="{{ form_data.get('wa_phone_number', '') if form_data else '' }}"/>
+          </div>
+          <p class="field-hint info" style="margin-top:4px">Choose your country, then type your number. We add the country code for you.</p>
           <p class="field-hint info" style="margin-top:4px">For billing alerts and optional two-factor authentication.</p>
           <p class="field-hint err" id="hPhoneWa" style="display:none">Mobile phone is required.</p>
         </div>
@@ -440,6 +451,8 @@ function setType(type) {
   document.getElementById('fPhone').required          = (type === 'web');
   document.getElementById('fBusinessName').required  = (type === 'whatsapp');
   document.getElementById('fPhoneWa').required        = (type === 'whatsapp');
+  document.getElementById('fPhoneCountry').required   = (type === 'web');
+  document.getElementById('fPhoneWaCountry').required = (type === 'whatsapp');
 }
 
 setType(currentType);

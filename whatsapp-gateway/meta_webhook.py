@@ -73,21 +73,32 @@ def _wants_opt_out(text: str) -> bool:
     return (text or "").strip().lower() in _OPT_OUT_KEYWORDS
 
 
+def _contact_phone(raw: str) -> str:
+    """Contact phone format: digits only, country code first, no '+'.
+    WhatsApp always sends the full international number (any country), so
+    no local-number guessing is needed here."""
+    return re.sub(r"[^\d]", "", raw or "")
+
+
 async def _handle_opt_out(tenant_id: int, customer_phone: str, phone_number_id: str, access_token: str) -> None:
     """Records the opt-out (upsert — the customer may not have an existing
     wa_contacts row yet), then extends it to Email and SMS too — a "STOP"
     on WhatsApp means stop everywhere, not just here — before confirming it
     back to the customer. Called instead of all normal AI/shopping/handoff
     processing for this message."""
-    phone = "+" + customer_phone.lstrip("+")
+    # One contact phone format (digits, country code first, no '+'), so the
+    # STOP lands on the existing contact instead of creating a '+' duplicate.
+    phone = _contact_phone(customer_phone)
     try:
         conn = _get_db()
         if conn:
             cur = conn.cursor()
             cur.execute(
-                """INSERT INTO wa_contacts (tenant_id, phone, opted_out, opted_out_at, source)
+                # STOP came from the contact's WhatsApp number (2026-09-28:
+                # contacts keep Phone number and WhatsApp number separately).
+                """INSERT INTO wa_contacts (tenant_id, whatsapp_number, opted_out, opted_out_at, source)
                        VALUES (%s, %s, TRUE, NOW(), 'whatsapp')
-                   ON CONFLICT (tenant_id, phone) DO UPDATE
+                   ON CONFLICT (tenant_id, whatsapp_number) DO UPDATE
                        SET opted_out=TRUE, opted_out_at=NOW()""",
                 (tenant_id, phone),
             )

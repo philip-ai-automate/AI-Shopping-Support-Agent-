@@ -1,0 +1,20 @@
+{# Country picker shown next to a phone number box (any country, 2026-09-28).
+   Set before including: pc_name (field name), pc_selected (ISO code or ''),
+   optional pc_id, pc_required (default true), pc_style, pc_placeholder. #}
+{% set _pop = PHONE_COUNTRIES_POPULAR | map(attribute=0) | list %}
+<select name="{{ pc_name }}"{% if pc_id %} id="{{ pc_id }}"{% endif %}
+        {% if pc_required is not defined or pc_required %}required{% endif %}
+        aria-label="Country for this phone number"
+        style="{{ pc_style or '' }}">
+  <option value="">{{ pc_placeholder or 'Country…' }}</option>
+  <optgroup label="Most used">
+    {% for iso, name, cc in PHONE_COUNTRIES_POPULAR %}
+      <option value="{{ iso }}" {% if pc_selected == iso %}selected{% endif %}>{{ name }} (+{{ cc }})</option>
+    {% endfor %}
+  </optgroup>
+  <optgroup label="All countries">
+    {% for iso, name, cc in PHONE_COUNTRIES %}
+      <option value="{{ iso }}" {% if pc_selected == iso and iso not in _pop %}selected{% endif %}>{{ name }} (+{{ cc }})</option>
+    {% endfor %}
+  </optgroup>
+</select>

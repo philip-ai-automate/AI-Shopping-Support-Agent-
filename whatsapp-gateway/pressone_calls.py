@@ -90,24 +90,31 @@ def _find_or_create_contact(cur, tenant_id: int, phone: str):
     That's the actual CRM value here: a call from a brand-new number still
     shows up as a Contact, not a call that vanishes into nothing."""
     digits = _digits(phone)
+    # One contact phone format: Nigerian local 0XXXXXXXXXX -> 234XXXXXXXXXX.
+    if digits.startswith("0") and len(digits) == 11:
+        digits = "234" + digits[1:]
     if not digits:
         return None
-    cur.execute(
-        """SELECT id FROM wa_contacts
-           WHERE tenant_id=%s AND regexp_replace(phone, '[^0-9]', '', 'g') = %s
-           LIMIT 1""",
-        (tenant_id, digits),
-    )
-    row = cur.fetchone()
-    if row:
-        return row["id"]
+    # Calls are on the Phone number (2026-09-28). The contact's WhatsApp
+    # number is only checked second, to attach the call to the same person
+    # instead of creating a duplicate — nothing is ever sent to it.
+    for col in ("phone", "whatsapp_number"):
+        cur.execute(
+            f"""SELECT id FROM wa_contacts
+               WHERE tenant_id=%s AND regexp_replace(COALESCE({col}, ''), '[^0-9]', '', 'g') = %s
+               LIMIT 1""",
+            (tenant_id, digits),
+        )
+        row = cur.fetchone()
+        if row:
+            return row["id"]
     try:
         cur.execute(
             """INSERT INTO wa_contacts (tenant_id, phone, display_name)
                VALUES (%s, %s, %s)
                ON CONFLICT (tenant_id, phone) DO UPDATE SET phone = EXCLUDED.phone
                RETURNING id""",
-            (tenant_id, phone, phone),
+            (tenant_id, digits, digits),
         )
         row = cur.fetchone()
         return row["id"] if row else None

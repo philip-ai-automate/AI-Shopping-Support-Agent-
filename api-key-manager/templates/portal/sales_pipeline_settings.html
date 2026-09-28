@@ -72,7 +72,7 @@
     <fieldset {% if not can_edit_settings %}disabled{% endif %} style="border:0;padding:0;margin:0;min-width:0">
     <input type="hidden" name="form_type" value="score_labels">
 
-    {% set score_meta = {'hot': ('🔥', '#fef2f2', 'Score 70–100'), 'warm': ('🌤️', '#fffbeb', 'Score 40–69'), 'cold': ('❄️', '#eff6ff', 'Score 0–39')} %}
+    {% set score_meta = {'hot': ('🔥', '#fef2f2', 'Score 60–100'), 'warm': ('🌤️', '#fffbeb', 'Score 30–59'), 'cold': ('❄️', '#eff6ff', 'Score 0–29')} %}
     {% for tier in ['hot', 'warm', 'cold'] %}
     {% set icon, bg, range_label = score_meta[tier] %}
     <div class="score-row">

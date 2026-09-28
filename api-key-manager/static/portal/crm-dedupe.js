@@ -149,14 +149,16 @@
         var match = null;
         if (typedPhone.length >= 7) {
           for (var i = 0; i < contacts.length; i++) {
-            if (contacts[i].phone && normPhone(contacts[i].phone) === typedPhone) { match = contacts[i]; break; }
+            // Either of the contact's two numbers (Phone number / WhatsApp number).
+            if ((contacts[i].phone && normPhone(contacts[i].phone) === typedPhone) ||
+                (contacts[i].whatsapp_number && normPhone(contacts[i].whatsapp_number) === typedPhone)) { match = contacts[i]; break; }
           }
         }
         if (match) {
           opts.phoneWarnBox.innerHTML = '';
           var label = document.createElement('div');
           label.className = 'dedupe-label';
-          label.textContent = 'A contact with this phone number already exists:';
+          label.textContent = 'A contact with this number already exists:';
           opts.phoneWarnBox.appendChild(label);
           var link = document.createElement('a');
           link.href = match.url;

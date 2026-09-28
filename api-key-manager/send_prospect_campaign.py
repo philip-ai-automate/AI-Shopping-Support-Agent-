@@ -62,9 +62,10 @@ def _get_tenant_credentials(cur, tenant_id: int):
 def _fetch_batch(cur, tenant_id: int, limit: int):
     cur.execute(
         """
-        SELECT id, phone, display_name, personalization_note
+        SELECT id, whatsapp_number AS phone, display_name, personalization_note
         FROM wa_contacts
         WHERE tenant_id = %s
+          AND whatsapp_number IS NOT NULL AND whatsapp_number <> ''
           AND personalization_note IS NOT NULL
           AND personalization_note <> ''
           AND NOT ('messaged' = ANY(tags))
