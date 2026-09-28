@@ -912,9 +912,9 @@
           {% if 'campaigns_email.all_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
-        {% if staff_can_open('portal.email_campaigns') %}
-        <a href="{{ url_for('portal.email_campaigns', view='segments') }}"
-           class="{% if request.endpoint == 'portal.email_campaigns' and request.args.get('view') == 'segments' %}active{% endif %}">
+        {% if staff_can_open('portal.email_campaign_segments_page') %}
+        <a href="{{ url_for('portal.email_campaign_segments_page') }}"
+           class="{% if request.endpoint == 'portal.email_campaign_segments_page' %}active{% endif %}">
           Email Segment
           {% if 'campaigns_email.segments_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>

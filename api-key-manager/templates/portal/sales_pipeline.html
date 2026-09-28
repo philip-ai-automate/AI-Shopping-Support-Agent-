@@ -3,7 +3,7 @@
 {% block content %}
 {# Role-aware buttons — same route labels the save routes enforce. #}
 {% set can_edit_deal = staff_can_open('portal.sales_pipeline_edit') %}
-{% set can_bulk_email_seg = staff_can_open('portal.email_segments_bulk_add_members') %}
+{% set can_bulk_email_seg = staff_can_open('portal.email_csegments_bulk_add_members') %}
 {% set can_bulk_wa_seg    = staff_can_open('portal.whatsapp_pipeline_segments_bulk_add_members') %}
 {% set can_bulk_sms_seg   = staff_can_open('portal.sms_pipeline_segments_bulk_add_members') %}
 {% set can_bulk_label     = staff_can_open('portal.lead_labels_bulk_add_members') %}
@@ -1320,7 +1320,7 @@ function closeBulkSegmentModal() {
 function renderBulkSegList() {
   var wrap = document.getElementById('bulkSegListWrap');
   wrap.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Loading segments…</div>';
-  fetch('/email/segments')
+  fetch('/email/csegments')
     .then(function(r){ return r.json(); })
     .then(function(data){
       var segments = data.segments || [];
@@ -1343,15 +1343,16 @@ function bulkAddToSegment(segmentId) {
   if (ids.length === 0) return;
   var fd = new FormData();
   ids.forEach(function(id){ fd.append('lead_ids', id); });
-  return fetch('/email/segments/' + segmentId + '/members/bulk-add', { method: 'POST', body: fd })
+  return fetch('/email/csegments/' + segmentId + '/members/bulk-add', { method: 'POST', body: fd })
     .then(function(r){ return r.json(); });
 }
 function addSelectedToSegment(segmentId) {
   bulkAddToSegment(segmentId).then(function(data){
     if (data.error) { alert(data.error); return; }
-    var skipped = data.requested - data.added;
     var msg = 'Added ' + data.added + ' contact(s) to the Email Segment.';
-    if (skipped > 0) msg += ' (' + skipped + ' skipped — already in the segment or missing an email address.)';
+    if (data.missing > 0) msg += ' ' + data.missing + ' deal(s) skipped: no email address.';
+    var dup = data.requested - data.missing - data.added;
+    if (dup > 0) msg += ' ' + dup + ' already in the segment (or the same person as another ticked deal).';
     alert(msg);
     closeBulkSegmentModal();
     clearLeadSelection();
@@ -1363,7 +1364,7 @@ function createSegmentAndBulkAdd() {
   if (!name) { input.focus(); return; }
   var fd = new FormData();
   fd.append('name', name);
-  fetch('/email/segments/create', { method: 'POST', body: fd })
+  fetch('/email/csegments/create', { method: 'POST', body: fd })
     .then(function(r){ return r.json(); })
     .then(function(data){
       if (data.error) { alert(data.error); return; }

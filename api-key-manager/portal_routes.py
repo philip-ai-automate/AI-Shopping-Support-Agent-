@@ -14101,6 +14101,24 @@ def _local_number_on_contact(cur, tenant_id: int, raw: str):
     return num if int(r["n"] if isinstance(r, dict) else r[0]) == 1 else None
 
 
+def _clearly_different_person(cur, contact_id: int, lead_email, lead_name) -> bool:
+    """A lead that shares a number with a contact is still a DIFFERENT person
+    when both its email and its name differ from the contact's (both sides
+    filled in). Guards against placeholder numbers shared by many imported
+    leads (found 2026-09-28: one number on 114 businesses)."""
+    le = (lead_email or "").strip().lower()
+    ln = (lead_name or "").strip().lower()
+    if not le or not ln:
+        return False
+    cur.execute("SELECT email, display_name FROM wa_contacts WHERE id=%s", (contact_id,))
+    row = cur.fetchone()
+    if not row:
+        return False
+    ce, cn = (row["email"], row["display_name"]) if isinstance(row, dict) else row
+    ce, cn = (ce or "").strip().lower(), (cn or "").strip().lower()
+    return bool(ce and cn and ce != le and cn != ln)
+
+
 def _link_lead_to_contact(cur, tenant_id: int, lead_id: int):
     """One Address Book Phase 1b (2026-09-28): every lead is joined to a
     contact. Looks for the same person by WhatsApp number, then Phone number
@@ -14140,7 +14158,20 @@ def _link_lead_to_contact(cur, tenant_id: int, lead_id: int):
     if not contact_id:
         if not (phone or wa or email):
             return None
-        contact_id, _ = _find_existing_contact(cur, tenant_id, phone, wa, email)
+        contact_id, matched_on = _find_existing_contact(cur, tenant_id, phone, wa, email)
+        if contact_id and matched_on in ("phone", "whatsapp_number") and \
+                _clearly_different_person(cur, contact_id, email, lead.get("customer_name")):
+            # Same number, but a different email AND a different name: the
+            # number is shared (e.g. a placeholder on imported leads), not the
+            # same person. Leave the number with its owner and match by email
+            # only, else make a new contact without it (2026-09-28).
+            if phone and _find_existing_contact(cur, tenant_id, phone=phone)[0]:
+                phone = None
+            if wa and _find_existing_contact(cur, tenant_id, whatsapp_number=wa)[0]:
+                wa = None
+            contact_id = _find_existing_contact(cur, tenant_id, email=email)[0] if email else None
+            if not contact_id and not (phone or wa or email):
+                return None
 
     if contact_id:
         # Fill in only what the contact is missing. A number that already
@@ -17324,6 +17355,18 @@ def _opportunity_stage_sql(alias: str = "l") -> str:
             f"({alias}.outcome IS NULL OR {alias}.outcome NOT IN ('lost','dropped','not_a_fit'))")
 
 
+_WA_SEG_CH = {
+    "module": "whatsapp", "title": "WhatsApp Segments", "one": "WhatsApp Segment", "icon": "📱",
+    "field": "whatsapp", "field_label": "WhatsApp number", "reach": "can get WhatsApp campaigns",
+    "missing": "No WhatsApp number", "search_ph": "name, WhatsApp number or email",
+    "base": "/whatsapp/pipeline-segments", "page_endpoint": "portal.whatsapp_campaign_segments_page",
+    "back_endpoint": "portal.whatsapp_campaigns", "back_label": "WhatsApp Campaigns",
+    "use_url": "/whatsapp/campaigns?segment_id=",
+    "ep_create": "portal.whatsapp_pipeline_segments_create", "ep_delete": "portal.whatsapp_pipeline_segments_delete",
+    "ep_edit": "portal.whatsapp_pipeline_segments_add_member", "ep_campaign": "portal.whatsapp_campaigns_create",
+}
+
+
 def _wa_seg_or_404(cur, tenant_id: int, segment_id: int) -> bool:
     return _segment_visible(cur, tenant_id, segment_id, "whatsapp")
 
@@ -17353,7 +17396,7 @@ def whatsapp_campaign_segments_page():
                 flash("Segment not found.", "warning")
                 return redirect(url_for("portal.whatsapp_campaign_segments_page"))
             cur.execute(
-                "SELECT c.id, COALESCE(c.display_name, c.whatsapp_number, c.email) AS name, c.whatsapp_number, "
+                "SELECT c.id, COALESCE(c.display_name, c.whatsapp_number, c.email) AS name, c.whatsapp_number AS contact_value, "
                 "COALESCE(c.opted_out, FALSE) AS opted_out FROM wa_segment_members m "
                 "JOIN wa_contacts c ON c.id = m.contact_id WHERE m.segment_id=%s "
                 "ORDER BY lower(COALESCE(c.display_name, '')), c.id", (segment["id"],))
@@ -17369,21 +17412,21 @@ def whatsapp_campaign_segments_page():
             by_stage = {row["stage"]: row["n"] for row in cur.fetchall()}
             stages = [{"key": k, "label": PIPELINE_STAGE_LABELS.get(k, k), "count": by_stage.get(k, 0)}
                       for k in PIPELINE_STAGE_ORDER]
-            return render_template("portal/whatsapp_campaign_segments.html", active_segment=segment,
-                                   members=members, stages=stages, segments=None,
+            return render_template("portal/channel_segments.html", ch=_WA_SEG_CH, active_segment=segment,
+                                   members=members, stages=stages, segments=None, old_groups=None,
                                    segments_see_all=_segments_see_all())
         cur.execute(
             "SELECT s.id, s.name, s.created_by_member_id, tm.name AS created_by_name, tm.is_active AS created_by_active, "
             "COUNT(m.contact_id) AS member_count, "
-            "COUNT(m.contact_id) FILTER (WHERE " + _WA_AUDIENCE_OK + ") AS wa_count "
+            "COUNT(m.contact_id) FILTER (WHERE " + _WA_AUDIENCE_OK + ") AS reach_count "
             "FROM wa_segments s LEFT JOIN wa_segment_members m ON m.segment_id = s.id "
             "LEFT JOIN wa_contacts c ON c.id = m.contact_id "
             "LEFT JOIN team_members tm ON tm.id = s.created_by_member_id "
             "WHERE s.tenant_id=%s" + vis + " GROUP BY s.id, tm.name, tm.is_active ORDER BY s.created_at DESC",
             [tenant_id] + vp)
         segments = cur.fetchall()
-        return render_template("portal/whatsapp_campaign_segments.html", active_segment=None,
-                               segments=segments, segments_see_all=_segments_see_all())
+        return render_template("portal/channel_segments.html", ch=_WA_SEG_CH, active_segment=None,
+                               segments=segments, old_groups=None, segments_see_all=_segments_see_all())
     finally:
         cur.close(); conn.close()
 
@@ -17505,14 +17548,14 @@ def whatsapp_segment_source_search(segment_id: int):
         if source == "leads":
             cur.execute(
                 "SELECT l.id AS lead_id, c.id AS contact_id, COALESCE(l.customer_name, c.display_name) AS name, "
-                "c.whatsapp_number FROM merchant_pipeline_leads l JOIN wa_contacts c ON c.id = l.wa_contact_id "
+                "c.whatsapp_number AS value FROM merchant_pipeline_leads l JOIN wa_contacts c ON c.id = l.wa_contact_id "
                 "WHERE l.tenant_id=%s AND NOT l.is_opportunity AND l.dropped_at IS NULL AND " + _WA_HAS_NUMBER +
                 " AND (l.customer_name ILIKE %s OR l.contact_person ILIKE %s OR c.whatsapp_number ILIKE %s OR l.email ILIKE %s)"
                 + not_in + " ORDER BY l.customer_name LIMIT 25",
                 (tenant_id, like, like, like, like, segment_id))
         else:
             cur.execute(
-                "SELECT c.id AS contact_id, COALESCE(c.display_name, c.whatsapp_number) AS name, c.whatsapp_number "
+                "SELECT c.id AS contact_id, COALESCE(c.display_name, c.whatsapp_number) AS name, c.whatsapp_number AS value "
                 "FROM wa_contacts c WHERE c.tenant_id=%s AND " + _WA_HAS_NUMBER +
                 " AND (c.display_name ILIKE %s OR c.whatsapp_number ILIKE %s OR c.email ILIKE %s OR c.contact_person ILIKE %s)"
                 + not_in + " ORDER BY lower(COALESCE(c.display_name,'')) LIMIT 25",
@@ -18743,7 +18786,13 @@ def _parse_campaign_form(tenant_id: int, customer: dict, form):
         if not name or not subject or not hero_heading or not body_has_text:
             return None, "Campaign name, subject, heading and message body are required."
 
-    segment_id = int(segment_id_raw) if recipient_src == "segment" and segment_id_raw.isdigit() else None
+    # "segment": a new Email Segment (plain id) or an older lead-based group ("old:<id>")
+    segment_id = contact_segment_id = None
+    if recipient_src == "segment":
+        if segment_id_raw.startswith("old:") and segment_id_raw[4:].isdigit():
+            segment_id = int(segment_id_raw[4:])
+        elif segment_id_raw.isdigit():
+            contact_segment_id = int(segment_id_raw)
 
     emails = []
     if recipient_src == "pipeline":
@@ -18764,6 +18813,14 @@ def _parse_campaign_form(tenant_id: int, customer: dict, form):
             cur.close(); conn.close()
         except Exception as e:
             print("⚠️ _parse_campaign_form pipeline fetch error:", e)
+    elif recipient_src == "segment" and contact_segment_id:
+        try:
+            conn = get_db_connection()
+            cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            emails = _email_segment_audience(cur, tenant_id, contact_segment_id, exclude_label_ids)
+            cur.close(); conn.close()
+        except Exception as e:
+            print("⚠️ _parse_campaign_form email segment fetch error:", e)
     elif recipient_src == "segment" and segment_id:
         try:
             conn = get_db_connection()
@@ -18796,7 +18853,7 @@ def _parse_campaign_form(tenant_id: int, customer: dict, form):
     emails = dedup
 
     if not emails:
-        return None, "No recipients found. Choose Sales Pipeline contacts or paste email addresses."
+        return None, "No recipients found. Choose Sales Pipeline contacts, an Email Segment whose members have an email address, or paste email addresses."
 
     sender = _get_email_sender(tenant_id)
     from_name = sender["from_name"] if sender else (customer.get("business_name") or "")
@@ -18819,6 +18876,7 @@ def _parse_campaign_form(tenant_id: int, customer: dict, form):
         "name": name, "subject": subject, "preheader": preheader,
         "html_body": html_body, "status": status, "scheduled_at": scheduled_at,
         "emails": emails, "send_now": send_now, "sender": sender, "segment_id": segment_id,
+        "contact_segment_id": contact_segment_id,
         "exclude_label_ids": exclude_label_ids or None,
     }, None
 
@@ -18847,13 +18905,13 @@ def email_campaigns_create():
             """
             INSERT INTO email_campaigns
               (tenant_id, name, subject, preheader, html_body, status,
-               scheduled_at, segment_id, recipients, total_count, exclude_label_ids)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               scheduled_at, segment_id, recipients, total_count, exclude_label_ids, contact_segment_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (tenant_id, fields["name"], fields["subject"], fields["preheader"], fields["html_body"],
              fields["status"], fields["scheduled_at"], fields["segment_id"],
-             "\n".join(fields["emails"]), len(fields["emails"]), fields["exclude_label_ids"]),
+             "\n".join(fields["emails"]), len(fields["emails"]), fields["exclude_label_ids"], fields["contact_segment_id"]),
         )
         campaign_id = cur.fetchone()[0]
         conn.commit()
@@ -18968,13 +19026,13 @@ def email_campaigns_update(campaign_id: int):
                 """
                 INSERT INTO email_campaigns
                   (tenant_id, name, subject, preheader, html_body, status,
-                   scheduled_at, segment_id, recipients, total_count, exclude_label_ids)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                   scheduled_at, segment_id, recipients, total_count, exclude_label_ids, contact_segment_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (tenant_id, fields["name"], fields["subject"], fields["preheader"], fields["html_body"],
                  fields["status"], fields["scheduled_at"], fields["segment_id"],
-                 "\n".join(fields["emails"]), len(fields["emails"]), fields["exclude_label_ids"]),
+                 "\n".join(fields["emails"]), len(fields["emails"]), fields["exclude_label_ids"], fields["contact_segment_id"]),
             )
             campaign_id = cur.fetchone()[0]
         else:
@@ -18982,12 +19040,13 @@ def email_campaigns_update(campaign_id: int):
                 """
                 UPDATE email_campaigns
                 SET name=%s, subject=%s, preheader=%s, html_body=%s, status=%s,
-                    scheduled_at=%s, segment_id=%s, recipients=%s, total_count=%s, exclude_label_ids=%s
+                    scheduled_at=%s, segment_id=%s, recipients=%s, total_count=%s, exclude_label_ids=%s,
+                    contact_segment_id=%s
                 WHERE id=%s AND tenant_id=%s
                 """,
                 (fields["name"], fields["subject"], fields["preheader"], fields["html_body"], fields["status"],
                  fields["scheduled_at"], fields["segment_id"], "\n".join(fields["emails"]), len(fields["emails"]),
-                 fields["exclude_label_ids"], campaign_id, tenant_id),
+                 fields["exclude_label_ids"], fields["contact_segment_id"], campaign_id, tenant_id),
             )
         conn.commit()
         cur.close(); conn.close()
@@ -19555,6 +19614,337 @@ def email_segments_bulk_add_members(segment_id: int):
 # never appear as a pickable campaign audience. See lead_labels_import_bounces
 # below for the ZeptoMail hard-bounce importer that feeds the "Bounced" label.
 # ══════════════════════════════════════════════════════════════════════════════
+
+# ══════════════════════════════════════════════════════════════════════════════
+# EMAIL SEGMENTS — the Email Campaign module's OWN segments (2026-09-28)
+# Same shape as WhatsApp Segments (wa_segments, module='email', members are
+# contacts) but only a contact's EMAIL address is used; controlled by the
+# campaigns_email.segments_* Role ticks. Sources: All Contacts, Leads, or CRM
+# (Sales Pipeline stages). The older lead-based groups (email_segments) keep
+# working as they are until the business deletes them.
+# ══════════════════════════════════════════════════════════════════════════════
+
+_EMAIL_HAS = "c.email IS NOT NULL AND c.email <> ''"
+_EMAIL_AUDIENCE_OK = _EMAIL_HAS + " AND NOT COALESCE(c.email_opted_out, FALSE)"
+
+
+def _email_seg_ok(cur, tenant_id: int, segment_id: int) -> bool:
+    return _segment_visible(cur, tenant_id, segment_id, "email")
+
+
+def _email_segment_audience(cur, tenant_id: int, seg_id: int, exclude_label_ids=None) -> list:
+    """Email addresses of an Email Segment's members this person may use:
+    has an email, not opted out of email, and (optionally) without any of the
+    excluded labels on the contact or on any of its leads."""
+    if not _email_seg_ok(cur, tenant_id, seg_id):
+        return []
+    excl, params = "", [tenant_id, seg_id]
+    if exclude_label_ids:
+        excl = (" AND c.id NOT IN (SELECT contact_id FROM lead_label_contacts WHERE label_id = ANY(%s))"
+                " AND NOT EXISTS (SELECT 1 FROM merchant_pipeline_leads l2 JOIN lead_label_leads ll ON ll.lead_id = l2.id"
+                " WHERE l2.wa_contact_id = c.id AND ll.label_id = ANY(%s))")
+        params += [exclude_label_ids, exclude_label_ids]
+    cur.execute("SELECT DISTINCT c.email FROM wa_segment_members m JOIN wa_contacts c ON c.id = m.contact_id AND c.tenant_id=%s "
+                "WHERE m.segment_id=%s AND " + _EMAIL_AUDIENCE_OK + excl, params)
+    return [r["email"] if isinstance(r, dict) else r[0] for r in cur.fetchall()]
+
+
+_EMAIL_SEG_CH = {
+    "module": "email", "title": "Email Segments", "one": "Email Segment", "icon": "✉️",
+    "field": "email", "field_label": "Email address", "reach": "can get email campaigns",
+    "missing": "No email address", "search_ph": "name, email address or company",
+    "base": "/email/csegments", "page_endpoint": "portal.email_campaign_segments_page",
+    "back_endpoint": "portal.email_campaigns", "back_label": "Email Campaigns",
+    "use_url": "/email/campaigns?use_segment=",
+    "ep_create": "portal.email_csegments_create", "ep_delete": "portal.email_csegments_delete",
+    "ep_edit": "portal.email_csegments_add_member", "ep_campaign": "portal.email_campaigns_create",
+}
+
+
+@portal_bp.route("/email/campaigns/segments")
+@team_feature("campaigns_email.segments_view")
+def email_campaign_segments_page():
+    """Email Segments list, or one segment's page (?segment_id=N)."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("campaigns_email.segments_view")
+    if _rperm: return _rperm
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "campaigns_email.segments_view", "Email Segments")
+    if r2: return r2
+    seg_id_raw = (request.args.get("segment_id") or "").strip()
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        vis, vp = _seg_vis("s", "email")
+        if seg_id_raw.isdigit():
+            cur.execute("SELECT s.* FROM wa_segments s WHERE s.id=%s AND s.tenant_id=%s" + vis,
+                        [int(seg_id_raw), tenant_id] + vp)
+            segment = cur.fetchone()
+            if not segment:
+                flash("Segment not found.", "warning")
+                return redirect(url_for("portal.email_campaign_segments_page"))
+            cur.execute(
+                "SELECT c.id, COALESCE(c.display_name, c.email) AS name, c.email AS contact_value, "
+                "COALESCE(c.email_opted_out, FALSE) AS opted_out FROM wa_segment_members m "
+                "JOIN wa_contacts c ON c.id = m.contact_id WHERE m.segment_id=%s "
+                "ORDER BY lower(COALESCE(c.display_name, '')), c.id", (segment["id"],))
+            members = cur.fetchall()
+            cur.execute(
+                "SELECT l.stage, COUNT(DISTINCT c.id) AS n FROM merchant_pipeline_leads l "
+                "JOIN wa_contacts c ON c.id = l.wa_contact_id "
+                "WHERE l.tenant_id=%s AND " + _opportunity_stage_sql("l") + " AND " + _EMAIL_HAS +
+                " AND c.id NOT IN (SELECT contact_id FROM wa_segment_members WHERE segment_id=%s) "
+                "GROUP BY l.stage", (tenant_id, segment["id"]))
+            by_stage = {row["stage"]: row["n"] for row in cur.fetchall()}
+            stages = [{"key": k, "label": PIPELINE_STAGE_LABELS.get(k, k), "count": by_stage.get(k, 0)}
+                      for k in PIPELINE_STAGE_ORDER]
+            return render_template("portal/channel_segments.html", ch=_EMAIL_SEG_CH, active_segment=segment,
+                                   members=members, stages=stages, segments=None, old_groups=None,
+                                   segments_see_all=_segments_see_all())
+        cur.execute(
+            "SELECT s.id, s.name, s.created_by_member_id, tm.name AS created_by_name, tm.is_active AS created_by_active, "
+            "COUNT(m.contact_id) AS member_count, "
+            "COUNT(m.contact_id) FILTER (WHERE " + _EMAIL_AUDIENCE_OK + ") AS reach_count "
+            "FROM wa_segments s LEFT JOIN wa_segment_members m ON m.segment_id = s.id "
+            "LEFT JOIN wa_contacts c ON c.id = m.contact_id "
+            "LEFT JOIN team_members tm ON tm.id = s.created_by_member_id "
+            "WHERE s.tenant_id=%s" + vis + " GROUP BY s.id, tm.name, tm.is_active ORDER BY s.created_at DESC",
+            [tenant_id] + vp)
+        segments = cur.fetchall()
+        # The older lead-based groups, shown until the business deletes them
+        cur.execute("SELECT s.id, s.name, count(sl.lead_id) AS member_count FROM email_segments s "
+                    "LEFT JOIN email_segment_leads sl ON sl.segment_id = s.id WHERE s.tenant_id=%s "
+                    "GROUP BY s.id, s.name ORDER BY s.name", (tenant_id,))
+        old_groups = cur.fetchall()
+        return render_template("portal/channel_segments.html", ch=_EMAIL_SEG_CH, active_segment=None,
+                               segments=segments, old_groups=old_groups, segments_see_all=_segments_see_all())
+    finally:
+        cur.close(); conn.close()
+
+
+@portal_bp.route("/email/csegments")
+@team_feature("campaigns_email.segments_view", "campaigns_email.segments_edit", "campaigns_email.all_create")
+def email_csegments_list():
+    """Email Segments this person may see (Pipeline Board picker + campaign
+    form). ?with_old=1 also returns the older groups for the campaign form."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not (_team_member_has_permission("campaigns_email.segments_view")
+            or _team_member_has_permission("campaigns_email.segments_edit")
+            or _team_member_has_permission("campaigns_email.all_create")):
+        return jsonify({"error": "forbidden"}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        vis, vp = _seg_vis("s", "email")
+        cur.execute(
+            "SELECT s.id, s.name, COUNT(m.contact_id) AS member_count, "
+            "COUNT(m.contact_id) FILTER (WHERE " + _EMAIL_AUDIENCE_OK + ") AS reach_count "
+            "FROM wa_segments s LEFT JOIN wa_segment_members m ON m.segment_id = s.id "
+            "LEFT JOIN wa_contacts c ON c.id = m.contact_id "
+            "WHERE s.tenant_id=%s" + vis + " GROUP BY s.id, s.name ORDER BY lower(s.name), s.id", [tenant_id] + vp)
+        out = {"segments": cur.fetchall()}
+        if request.args.get("with_old") == "1":
+            cur.execute("SELECT s.id, s.name, count(sl.lead_id) FILTER (WHERE l.email IS NOT NULL AND l.dropped_at IS NULL) AS member_count "
+                        "FROM email_segments s LEFT JOIN email_segment_leads sl ON sl.segment_id = s.id "
+                        "LEFT JOIN merchant_pipeline_leads l ON l.id = sl.lead_id WHERE s.tenant_id=%s "
+                        "GROUP BY s.id, s.name ORDER BY s.name", (tenant_id,))
+            out["old_groups"] = cur.fetchall()
+        return jsonify(out)
+    finally:
+        cur.close(); conn.close()
+
+
+@portal_bp.route("/email/csegments/create", methods=["POST"])
+@team_feature("campaigns_email.segments_create")
+def email_csegments_create():
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.segments_create"):
+        return jsonify({"error": "forbidden"}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    name = (request.form.get("name") or "").strip()[:100]
+    if not name:
+        return jsonify({"error": "Segment name is required."}), 400
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("INSERT INTO wa_segments (tenant_id, name, module, created_by_member_id) VALUES (%s, %s, 'email', %s) RETURNING id",
+                (tenant_id, name, _segment_creator_id()))
+    new_id = cur.fetchone()[0]
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({"ok": True, "id": new_id, "name": name})
+
+
+@portal_bp.route("/email/csegments/<int:segment_id>/delete", methods=["POST"])
+@team_feature("campaigns_email.segments_delete")
+def email_csegments_delete(segment_id: int):
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.segments_delete"):
+        return jsonify({"error": "forbidden"}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    conn = get_db_connection(); cur = conn.cursor()
+    vis, vp = _seg_vis("s", "email")
+    cur.execute("DELETE FROM wa_segments s WHERE s.id=%s AND s.tenant_id=%s" + vis, [segment_id, tenant_id] + vp)
+    ok = cur.rowcount > 0
+    conn.commit(); cur.close(); conn.close()
+    return (jsonify({"ok": True}) if ok else (jsonify({"error": "Segment not found."}), 404))
+
+
+@portal_bp.route("/email/csegments/<int:segment_id>/source-search")
+@team_feature("campaigns_email.segments_edit")
+def email_csegments_source_search(segment_id: int):
+    """Search All Contacts or Leads for people with an email address."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.segments_edit"):
+        return jsonify({"error": "forbidden"}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    source = request.args.get("source") or "contacts"
+    like = f"%{(request.args.get('q') or '').strip()[:100]}%"
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        if not _email_seg_ok(cur, tenant_id, segment_id):
+            return jsonify({"error": "Segment not found."}), 404
+        not_in = " AND c.id NOT IN (SELECT contact_id FROM wa_segment_members WHERE segment_id=%s)"
+        if source == "leads":
+            cur.execute(
+                "SELECT l.id AS lead_id, c.id AS contact_id, COALESCE(l.customer_name, c.display_name) AS name, "
+                "c.email AS value FROM merchant_pipeline_leads l JOIN wa_contacts c ON c.id = l.wa_contact_id "
+                "WHERE l.tenant_id=%s AND NOT l.is_opportunity AND l.dropped_at IS NULL AND " + _EMAIL_HAS +
+                " AND (l.customer_name ILIKE %s OR l.contact_person ILIKE %s OR c.email ILIKE %s OR l.email ILIKE %s)"
+                + not_in + " ORDER BY l.customer_name LIMIT 25", (tenant_id, like, like, like, like, segment_id))
+        else:
+            cur.execute(
+                "SELECT c.id AS contact_id, COALESCE(c.display_name, c.email) AS name, c.email AS value "
+                "FROM wa_contacts c WHERE c.tenant_id=%s AND " + _EMAIL_HAS +
+                " AND (c.display_name ILIKE %s OR c.email ILIKE %s OR c.contact_person ILIKE %s)"
+                + not_in + " ORDER BY lower(COALESCE(c.display_name,'')) LIMIT 25", (tenant_id, like, like, like, segment_id))
+        return jsonify({"results": cur.fetchall()})
+    finally:
+        cur.close(); conn.close()
+
+
+@portal_bp.route("/email/csegments/<int:segment_id>/members/add", methods=["POST"])
+@team_feature("campaigns_email.segments_edit")
+def email_csegments_add_member(segment_id: int):
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.segments_edit"):
+        return jsonify({"error": "forbidden"}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    cid = (request.form.get("contact_id") or "").strip()
+    if not cid.isdigit():
+        return jsonify({"error": "Pick a contact."}), 400
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        if not _email_seg_ok(cur, tenant_id, segment_id):
+            return jsonify({"error": "Segment not found."}), 404
+        cur.execute("SELECT 1 FROM wa_contacts c WHERE c.id=%s AND c.tenant_id=%s AND " + _EMAIL_HAS, (int(cid), tenant_id))
+        if not cur.fetchone():
+            return jsonify({"error": "Only contacts with an email address can join an Email Segment."}), 400
+        cur.execute("INSERT INTO wa_segment_members (segment_id, contact_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    (segment_id, int(cid)))
+        conn.commit()
+        return jsonify({"ok": True})
+    finally:
+        cur.close(); conn.close()
+
+
+@portal_bp.route("/email/csegments/<int:segment_id>/members/remove", methods=["POST"])
+@team_feature("campaigns_email.segments_edit")
+def email_csegments_remove_member(segment_id: int):
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.segments_edit"):
+        return jsonify({"error": "forbidden"}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    cid = (request.form.get("contact_id") or "").strip()
+    if not cid.isdigit():
+        return jsonify({"error": "Pick a contact."}), 400
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        if not _email_seg_ok(cur, tenant_id, segment_id):
+            return jsonify({"error": "Segment not found."}), 404
+        cur.execute("DELETE FROM wa_segment_members WHERE segment_id=%s AND contact_id=%s", (segment_id, int(cid)))
+        conn.commit()
+        return jsonify({"ok": True})
+    finally:
+        cur.close(); conn.close()
+
+
+@portal_bp.route("/email/csegments/<int:segment_id>/members/add-stage", methods=["POST"])
+@team_feature("campaigns_email.segments_edit")
+def email_csegments_add_stage(segment_id: int):
+    """CRM source: contacts of every Opportunity in the ticked stages that
+    have an email address."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.segments_edit"):
+        return jsonify({"error": "forbidden"}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    stages = [st for st in request.form.getlist("stages") if st in PIPELINE_STAGE_ORDER]
+    if not stages:
+        return jsonify({"error": "Tick at least one stage."}), 400
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        if not _email_seg_ok(cur, tenant_id, segment_id):
+            return jsonify({"error": "Segment not found."}), 404
+        cur.execute("SELECT COUNT(DISTINCT l.id) FROM merchant_pipeline_leads l LEFT JOIN wa_contacts c ON c.id = l.wa_contact_id "
+                    "WHERE l.tenant_id=%s AND l.stage = ANY(%s) AND " + _opportunity_stage_sql("l") +
+                    " AND (l.wa_contact_id IS NULL OR NOT (" + _EMAIL_HAS + "))", (tenant_id, stages))
+        missing = cur.fetchone()[0]
+        cur.execute("INSERT INTO wa_segment_members (segment_id, contact_id) "
+                    "SELECT DISTINCT %s, c.id FROM merchant_pipeline_leads l JOIN wa_contacts c ON c.id = l.wa_contact_id "
+                    "WHERE l.tenant_id=%s AND l.stage = ANY(%s) AND " + _opportunity_stage_sql("l") + " AND " + _EMAIL_HAS +
+                    " ON CONFLICT DO NOTHING", (segment_id, tenant_id, stages))
+        added = cur.rowcount
+        conn.commit()
+        return jsonify({"ok": True, "added": added, "missing": missing})
+    finally:
+        cur.close(); conn.close()
+
+
+@portal_bp.route("/email/csegments/<int:segment_id>/members/bulk-add", methods=["POST"])
+@team_feature("campaigns_email.segments_edit")
+def email_csegments_bulk_add_members(segment_id: int):
+    """Pipeline Board "Add to Email Segment": each ticked deal's contact, if it
+    has an email address."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.segments_edit"):
+        return jsonify({"error": "forbidden"}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    lead_ids = list({int(v) for v in request.form.getlist("lead_ids") if v.isdigit()})
+    if not lead_ids:
+        return jsonify({"error": "No deals selected."}), 400
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        if not _email_seg_ok(cur, tenant_id, segment_id):
+            return jsonify({"error": "Segment not found."}), 404
+        cur.execute("SELECT count(*) FROM merchant_pipeline_leads l LEFT JOIN wa_contacts c ON c.id = l.wa_contact_id "
+                    "WHERE l.id = ANY(%s) AND l.tenant_id=%s AND (l.wa_contact_id IS NULL OR NOT (" + _EMAIL_HAS + "))",
+                    (lead_ids, tenant_id))
+        missing = cur.fetchone()[0]
+        cur.execute("INSERT INTO wa_segment_members (segment_id, contact_id) "
+                    "SELECT DISTINCT %s, c.id FROM merchant_pipeline_leads l JOIN wa_contacts c ON c.id = l.wa_contact_id "
+                    "WHERE l.id = ANY(%s) AND l.tenant_id=%s AND " + _EMAIL_HAS + " ON CONFLICT DO NOTHING",
+                    (segment_id, lead_ids, tenant_id))
+        added = cur.rowcount
+        conn.commit()
+        return jsonify({"ok": True, "added": added, "requested": len(lead_ids), "missing": missing})
+    finally:
+        cur.close(); conn.close()
+
 
 @portal_bp.route("/labels")
 @team_feature("crm.tags_view")
@@ -27705,9 +28095,19 @@ def _pipeline_filter_clauses(tenant_id, search, stage_filter, has_phone, has_wha
         clauses.append("(mpl.whatsapp_number IS NOT NULL AND mpl.whatsapp_number <> '')")
     if has_email:
         clauses.append("(mpl.email IS NOT NULL AND mpl.email <> '')")
-    if hide_segment_ids:
+    # Positive ids = older lead-based email groups; negative ids = the new
+    # Email Segments (wa_segments module 'email'), matched through the deal's contact.
+    old_hide = [i for i in (hide_segment_ids or []) if i > 0]
+    new_hide = [-i for i in (hide_segment_ids or []) if i < 0]
+    if old_hide:
         clauses.append("mpl.id NOT IN (SELECT lead_id FROM email_segment_leads WHERE segment_id = ANY(%s))")
-        params.append(hide_segment_ids)
+        params.append(old_hide)
+    if new_hide:
+        clauses.append("(mpl.wa_contact_id IS NULL OR mpl.wa_contact_id NOT IN "
+                       "(SELECT sm.contact_id FROM wa_segment_members sm JOIN wa_segments s ON s.id = sm.segment_id "
+                       "WHERE sm.segment_id = ANY(%s)" + _seg_vis("s", "email")[0] + "))")
+        params.append(new_hide)
+        params.extend(_seg_vis("s", "email")[1])
     if hide_label_ids:
         clauses.append("mpl.id NOT IN (SELECT lead_id FROM lead_label_leads WHERE label_id = ANY(%s))")
         params.append(hide_label_ids)
@@ -27807,6 +28207,16 @@ def _build_pipeline_kanban_board(cur, tenant_id, search, tier_filter,
             "JOIN email_segments s ON s.id = sl.segment_id "
             "WHERE sl.lead_id = ANY(%s) AND s.tenant_id=%s",
             (board_lead_ids, tenant_id),
+        )
+        for row in cur.fetchall():
+            board_seg_map.setdefault(row["lead_id"], []).append(row["name"])
+        # …and the new Email Segments the deal's contact is in
+        cur.execute(
+            "SELECT l.id AS lead_id, s.name FROM merchant_pipeline_leads l "
+            "JOIN wa_segment_members m ON m.contact_id = l.wa_contact_id "
+            "JOIN wa_segments s ON s.id = m.segment_id "
+            "WHERE l.id = ANY(%s) AND s.tenant_id=%s" + _seg_vis("s", "email")[0],
+            [board_lead_ids, tenant_id] + _seg_vis("s", "email")[1],
         )
         for row in cur.fetchall():
             board_seg_map.setdefault(row["lead_id"], []).append(row["name"])
@@ -27924,6 +28334,16 @@ def _build_leads_tier_board(cur, tenant_id, search):
         )
         for row in cur.fetchall():
             board_seg_map.setdefault(row["lead_id"], []).append(row["name"])
+        # …and the new Email Segments the deal's contact is in
+        cur.execute(
+            "SELECT l.id AS lead_id, s.name FROM merchant_pipeline_leads l "
+            "JOIN wa_segment_members m ON m.contact_id = l.wa_contact_id "
+            "JOIN wa_segments s ON s.id = m.segment_id "
+            "WHERE l.id = ANY(%s) AND s.tenant_id=%s" + _seg_vis("s", "email")[0],
+            [board_lead_ids, tenant_id] + _seg_vis("s", "email")[1],
+        )
+        for row in cur.fetchall():
+            board_seg_map.setdefault(row["lead_id"], []).append(row["name"])
 
         cur.execute(
             # WhatsApp Segments the deal's contact is in, only ones this person may see
@@ -28014,7 +28434,7 @@ def sales_pipeline():
     if stage_filter != "all" and stage_filter not in PIPELINE_STAGE_ORDER:
         stage_filter = "all"
 
-    hide_segment_ids = [int(v) for v in request.args.getlist("hide_segment") if v.isdigit()]
+    hide_segment_ids = [int(v) for v in request.args.getlist("hide_segment") if v.lstrip("-").isdigit()]
     hide_label_ids   = [int(v) for v in request.args.getlist("hide_label") if v.isdigit()]
     show_label_ids   = [int(v) for v in request.args.getlist("label") if v.isdigit()]
     hide_sms_segment_ids = [int(v) for v in request.args.getlist("hide_sms_segment") if v.isdigit()]
@@ -28097,11 +28517,24 @@ def sales_pipeline():
         )
         for row in cur.fetchall():
             lead_segment_map.setdefault(row["lead_id"], []).append(row["name"])
+        # …and the new Email Segments the deal's contact is in
+        cur.execute(
+            "SELECT l.id AS lead_id, s.name FROM merchant_pipeline_leads l "
+            "JOIN wa_segment_members m ON m.contact_id = l.wa_contact_id "
+            "JOIN wa_segments s ON s.id = m.segment_id "
+            "WHERE l.id = ANY(%s) AND s.tenant_id=%s" + _seg_vis("s", "email")[0],
+            [lead_ids_on_page, tenant_id] + _seg_vis("s", "email")[1],
+        )
+        for row in cur.fetchall():
+            lead_segment_map.setdefault(row["lead_id"], []).append(row["name"])
     for l in leads:
         l["segment_names"] = lead_segment_map.get(l["id"], [])
 
-    cur.execute("SELECT id, name FROM email_segments WHERE tenant_id=%s ORDER BY name", (tenant_id,))
+    cur.execute("SELECT -s.id AS id, s.name FROM wa_segments s WHERE s.tenant_id=%s" + _seg_vis("s", "email")[0]
+                + " ORDER BY lower(s.name)", [tenant_id] + _seg_vis("s", "email")[1])
     all_segments = cur.fetchall()
+    cur.execute("SELECT id, name || ' (older group)' AS name FROM email_segments WHERE tenant_id=%s ORDER BY name", (tenant_id,))
+    all_segments += cur.fetchall()
 
     # Which WhatsApp Segment(s), if any, each lead on this page already belongs to —
     # same badge pattern as email segments above. Available to every tenant, same as
@@ -28279,7 +28712,7 @@ def sales_pipeline_export():
     if stage_filter != "all" and stage_filter not in PIPELINE_STAGE_ORDER:
         stage_filter = "all"
 
-    hide_segment_ids = [int(v) for v in request.args.getlist("hide_segment") if v.isdigit()]
+    hide_segment_ids = [int(v) for v in request.args.getlist("hide_segment") if v.lstrip("-").isdigit()]
     hide_label_ids   = [int(v) for v in request.args.getlist("hide_label") if v.isdigit()]
     show_label_ids   = [int(v) for v in request.args.getlist("label") if v.isdigit()]
     hide_sms_segment_ids = [int(v) for v in request.args.getlist("hide_sms_segment") if v.isdigit()]

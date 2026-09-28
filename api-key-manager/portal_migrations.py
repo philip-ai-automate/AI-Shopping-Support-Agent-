@@ -2237,6 +2237,10 @@ def ensure_portal_tables():
         # old WhatsApp Segments belong to WhatsApp.
         cur.execute("ALTER TABLE wa_segments ADD COLUMN IF NOT EXISTS module VARCHAR(20) NOT NULL DEFAULT 'crm'")
         cur.execute("CREATE INDEX IF NOT EXISTS wa_segments_tenant_module_idx ON wa_segments(tenant_id, module)")
+        # Email Segments (module='email') are recorded on an email campaign in
+        # their own column; segment_id stays for the older lead-based groups.
+        cur.execute("ALTER TABLE email_campaigns ADD COLUMN IF NOT EXISTS contact_segment_id INTEGER "
+                    "REFERENCES wa_segments(id) ON DELETE SET NULL")
         cur.execute("""UPDATE wa_segments SET module='whatsapp'
                        WHERE module='crm' AND id IN (SELECT moved_to_segment_id FROM wa_pipeline_segments
                                                      WHERE moved_to_segment_id IS NOT NULL)""")

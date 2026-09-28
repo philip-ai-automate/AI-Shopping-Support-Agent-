@@ -344,8 +344,8 @@
     <p>Compose and send bulk email straight from PhiXtra.</p>
   </div>
   <div style="display:flex;gap:10px;flex-wrap:wrap">
-    {% if staff_can_open('portal.email_segments_list') %}
-    <button class="btn-preview" onclick="openSegmentsModal()">📋 Segments</button>
+    {% if staff_can_open('portal.email_campaign_segments_page') %}
+    <a class="btn-preview" href="{{ url_for('portal.email_campaign_segments_page') }}" style="text-decoration:none">📋 Email Segments</a>
     {% endif %}
     {% if staff_can_open('portal.email_campaigns_create') %}
     <button class="btn-new-camp" onclick="openDrawer()">
@@ -671,8 +671,8 @@
           <div class="recip-opt" id="optSegment" onclick="selectRecipientSource('segment')">
             <div class="recip-opt-icon">📋</div>
             <div class="recip-opt-text">
-              <strong>Segment</strong>
-              <small>A saved group of Sales Pipeline contacts</small>
+              <strong>Email Segment</strong>
+              <small>A saved Email Segment</small>
             </div>
           </div>
           <div class="recip-opt" id="optManual" onclick="selectRecipientSource('manual')">
@@ -687,12 +687,12 @@
 
         <div id="segmentRecipField">
           <div class="field">
-            <label class="field-label">Segment
-              <span class="field-hint"><a href="javascript:void(0)" onclick="openSegmentsModal()">Manage segments</a></span>
+            <label class="field-label">Email Segment
+              <span class="field-hint"><a href="{{ url_for('portal.email_campaign_segments_page') }}" target="_blank" rel="noopener">Manage Email Segments</a></span>
             </label>
             <select class="field-input" id="f-segment-id" name="segment_id"></select>
             <div id="segmentEmptyNote" style="display:none;font-size:12px;color:#94a3b8;margin-top:6px">
-              No segments yet.{% if staff_can_open('portal.email_segments_create') %} <a href="javascript:void(0)" onclick="openSegmentsModal()">Create one</a>.{% endif %}
+              No Email Segments yet.{% if staff_can_open('portal.email_csegments_create') %} <a href="{{ url_for('portal.email_campaign_segments_page') }}" target="_blank" rel="noopener">Create one</a>.{% endif %}
             </div>
           </div>
         </div>
@@ -1274,24 +1274,42 @@ function loadExcludeLabelChecklist() {
     .catch(() => { wrap.innerHTML = '<div style="font-size:12px;color:#dc2626">Could not load labels.</div>' })
 }
 
+/* Email Segments (the number shown = members with an email address who
+   haven't opted out of email), then any older groups ("old:<id>") that still
+   work until the business deletes them. */
 function loadSegmentsIntoSelect() {
-  fetch('/email/segments')
+  fetch('{{ url_for("portal.email_csegments_list") }}?with_old=1')
     .then(r => r.json())
     .then(data => {
       const sel = document.getElementById('f-segment-id')
       const emptyNote = document.getElementById('segmentEmptyNote')
       const segments = data.segments || []
-      const prevValue = sel.value
+      const olds = data.old_groups || []
+      const prevValue = window._wantSegment || sel.value
+      window._wantSegment = null
       sel.innerHTML = ''
       segments.forEach(s => {
         const opt = document.createElement('option')
         opt.value = s.id
-        opt.textContent = s.name + ' (' + s.member_count + ')'
+        opt.textContent = s.name + ' (' + s.reach_count + ')'
         sel.appendChild(opt)
       })
-      if (prevValue && segments.some(s => String(s.id) === prevValue)) sel.value = prevValue
-      emptyNote.style.display = segments.length === 0 ? 'block' : 'none'
-      sel.style.display = segments.length === 0 ? 'none' : ''
+      if (olds.length) {
+        const grp = document.createElement('optgroup')
+        grp.label = 'Older groups'
+        olds.forEach(s => {
+          const opt = document.createElement('option')
+          opt.value = 'old:' + s.id
+          opt.textContent = s.name + ' (' + s.member_count + ')'
+          grp.appendChild(opt)
+        })
+        sel.appendChild(grp)
+      }
+      const all = segments.map(s => String(s.id)).concat(olds.map(s => 'old:' + s.id))
+      if (prevValue && all.includes(String(prevValue))) sel.value = String(prevValue)
+      const none = all.length === 0
+      emptyNote.style.display = none ? 'block' : 'none'
+      sel.style.display = none ? 'none' : ''
     })
     .catch(() => {})
 }
@@ -1480,9 +1498,18 @@ function submitCampaign() {
   document.getElementById('campForm').submit()
 }
 
+/* The old "Segments" pop-up link now goes to the Email Segments page;
+   "📣 Use" on an Email Segment opens a new campaign with it chosen. */
 if (new URLSearchParams(window.location.search).get('view') === 'segments') {
-  openSegmentsModal()
+  window.location.replace('{{ url_for("portal.email_campaign_segments_page") }}')
 }
+;(function () {
+  const want = new URLSearchParams(window.location.search).get('use_segment')
+  if (!want || !/^\d+$/.test(want) || !document.getElementById('optSegment')) return
+  window._wantSegment = want
+  openDrawer()
+  selectRecipientSource('segment')
+})()
 </script>
 
 {% endblock %}

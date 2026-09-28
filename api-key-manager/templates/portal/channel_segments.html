@@ -1,5 +1,5 @@
 {% extends "portal/base.html" %}
-{% block title %}WhatsApp Segments — PhiXtra Portal{% endblock %}
+{% block title %}{{ ch.title }} — PhiXtra Portal{% endblock %}
 
 {% block head %}
 <style>
@@ -99,20 +99,20 @@
 {% endblock %}
 
 {% block content %}
-{% set can_edit = staff_can_open('portal.whatsapp_pipeline_segments_add_member') %}
+{% set can_edit = staff_can_open(ch.ep_edit) %}
 
 {% if active_segment %}
-<a href="{{ url_for('portal.whatsapp_campaign_segments_page') }}" class="seg-hero-back">← Back to all WhatsApp Segments</a>
+<a href="{{ url_for(ch.page_endpoint) }}" class="seg-hero-back">← Back to all {{ ch.title }}</a>
 {% else %}
-<a href="{{ url_for('portal.whatsapp_campaigns') }}" class="seg-hero-back">← Back to WhatsApp Campaigns</a>
+<a href="{{ url_for(ch.back_endpoint) }}" class="seg-hero-back">← Back to {{ ch.back_label }}</a>
 {% endif %}
 
 {% if active_segment %}
-<!-- ── One WhatsApp Segment ─────────────────────────────────────────── -->
+<!-- ── One segment ─────────────────────────────────────────── -->
 <div class="seg-hero">
   <div class="seg-hero-left">
     <h1>{{ active_segment.name }}</h1>
-    <p>{{ members|length }} people in this WhatsApp Segment. Campaigns use their WhatsApp number only.</p>
+    <p>{{ members|length }} people in this {{ ch.one }}. Campaigns use their {{ ch.field_label|lower }} only.</p>
   </div>
 </div>
 
@@ -130,7 +130,7 @@
       <div class="src-panel on" id="src-contacts">
         <div class="seg-add-wrap" style="margin-bottom:0">
           <input type="text" class="field-input" id="q-contacts" autocomplete="off"
-                 placeholder="Search contacts by name, WhatsApp number or email…" oninput="srcSearch('contacts')"
+                 placeholder="Search contacts by {{ ch.search_ph }}…" oninput="srcSearch('contacts')"
                  onblur="setTimeout(() => { document.getElementById('r-contacts').style.display='none' }, 200)">
           <div id="r-contacts" class="seg-add-results" style="display:none"></div>
         </div>
@@ -139,7 +139,7 @@
       <div class="src-panel" id="src-leads">
         <div class="seg-add-wrap" style="margin-bottom:0">
           <input type="text" class="field-input" id="q-leads" autocomplete="off"
-                 placeholder="Search the Leads list by name, WhatsApp number or email…" oninput="srcSearch('leads')"
+                 placeholder="Search the Leads list by {{ ch.search_ph }}…" oninput="srcSearch('leads')"
                  onblur="setTimeout(() => { document.getElementById('r-leads').style.display='none' }, 200)">
           <div id="r-leads" class="seg-add-results" style="display:none"></div>
         </div>
@@ -157,19 +157,19 @@
           <button type="submit" class="btn-primary" style="margin-top:10px">Add everyone in the ticked stages</button>
         </form>
       </div>
-      <div class="muted-note">Only people with a WhatsApp number are offered. Leads and Opportunities are added through their contact, so the same person is never in the segment twice.</div>
+      <div class="muted-note">Only people with {{ 'an email address' if ch.field == 'email' else 'a WhatsApp number' }} are offered. Leads and Opportunities are added through their contact, so the same person is never in the segment twice.</div>
     </div>
     {% endif %}
 
     {% if members %}
-    <div class="seg-members-head"><span></span><span>Name</span><span>WhatsApp number</span></div>
+    <div class="seg-members-head"><span></span><span>Name</span><span>{{ ch.field_label }}</span></div>
     {% for m in members %}
     <div class="seg-member-row">
       {% if can_edit %}
       <button type="button" class="seg-remove-btn" title="Remove from segment" onclick="removeMember({{ m.id }})">✕</button>
       {% else %}<span></span>{% endif %}
       <span class="seg-member-name" title="{{ m.name }}">{{ m.name }}</span>
-      <span class="seg-member-phone">{% if m.whatsapp_number %}{{ m.whatsapp_number|phone_display }}{% else %}No WhatsApp number{% endif %}{% if m.opted_out %}<span class="tag-off">opted out</span>{% endif %}</span>
+      <span class="seg-member-phone">{% if m.contact_value %}{{ m.contact_value|phone_display if ch.field == 'whatsapp' else m.contact_value }}{% else %}{{ ch.missing }}{% endif %}{% if m.opted_out %}<span class="tag-off">opted out</span>{% endif %}</span>
     </div>
     {% endfor %}
     {% else %}
@@ -181,14 +181,14 @@
 </div>
 
 {% else %}
-<!-- ── WhatsApp Segments list ─────────────────────────────────────── -->
+<!-- ── Segments list ─────────────────────────────────────── -->
 <div class="seg-hero">
   <div class="seg-hero-left">
-    <h1>WhatsApp Segments</h1>
-    <p>Saved groups of people for WhatsApp Campaigns, picked from All Contacts, Leads or Sales Pipeline stages.
-      {% if segments_see_all %}You see every WhatsApp Segment in the business.{% else %}Segments you make are private to you.{% endif %}</p>
+    <h1>{{ ch.icon }} {{ ch.title }}</h1>
+    <p>Saved groups of people for {{ ch.back_label }}, picked from All Contacts, Leads or Sales Pipeline stages.
+      {% if segments_see_all %}You see every {{ ch.one }} in the business.{% else %}Segments you make are private to you.{% endif %}</p>
   </div>
-  {% if staff_can_open('portal.whatsapp_pipeline_segments_create') %}
+  {% if staff_can_open(ch.ep_create) %}
   <form class="seg-create-row" onsubmit="createSegment(event)">
     <input type="text" id="segNewName" placeholder="New segment name, e.g. VIP customers">
     <button type="submit" class="btn-primary">+ Create</button>
@@ -202,32 +202,49 @@
   <div class="seg-card">
     <div>
       <div class="seg-card-name">{{ s.name }}</div>
-      <div class="seg-card-count">{{ s.member_count }} people · 💬 {{ s.wa_count }} can get WhatsApp campaigns</div>
+      <div class="seg-card-count">{{ s.member_count }} people · {{ ch.icon }} {{ s.reach_count }} {{ ch.reach }}</div>
       {% if segments_see_all %}
       <div class="seg-card-count">Made by {{ s.created_by_name or 'the business owner' }}{% if s.created_by_member_id and s.created_by_active == false %} (no longer active: now belongs to the business owner){% endif %}</div>
       {% endif %}
     </div>
     <div class="seg-card-actions">
-      <a class="btn-ghost" href="{{ url_for('portal.whatsapp_campaign_segments_page', segment_id=s.id) }}">Manage people</a>
-      {% if staff_can_open('portal.whatsapp_campaigns_create') %}
-      <a class="btn-ghost" href="{{ url_for('portal.whatsapp_campaigns') }}?segment_id={{ s.id }}" title="Send a WhatsApp Campaign to this segment">📣 Use</a>
+      <a class="btn-ghost" href="{{ url_for(ch.page_endpoint, segment_id=s.id) }}">Manage people</a>
+      {% if staff_can_open(ch.ep_campaign) %}
+      <a class="btn-ghost" href="{{ ch.use_url }}{{ s.id }}" title="Send a campaign to this segment">📣 Use</a>
       {% endif %}
-      {% if staff_can_open('portal.whatsapp_pipeline_segments_delete') %}
+      {% if staff_can_open(ch.ep_delete) %}
       <button type="button" class="btn-danger" onclick="deleteSegment({{ s.id }}, '{{ s.name|replace("'", "\\'") }}')">Delete</button>
       {% endif %}
     </div>
   </div>
   {% endfor %}
 </div>
-{% else %}
-<div class="card">
+{% endif %}
+{% if old_groups %}
+<div class="card" style="margin-top:22px">
+  <div class="seg-detail-body">
+    <div class="seg-card-name" style="margin-bottom:4px">Older groups</div>
+    <div class="muted-note" style="margin-top:0;margin-bottom:12px">Groups made before {{ ch.title }} existed (lists of leads). They still work in campaigns until you delete them.</div>
+    {% for g in old_groups %}
+    <div class="stage-row">
+      <span>{{ g.name }}</span><span class="n">{{ g.member_count }} leads</span>
+      {% if staff_can_open('portal.email_segments_delete') %}
+      <button type="button" class="btn-danger" style="margin-left:12px" onclick="deleteOldGroup({{ g.id }}, '{{ g.name|replace("'", "\\'") }}')">Delete</button>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+{% if not segments %}
+<div class="card"{% if old_groups %} style="margin-top:22px"{% endif %}>
   <div class="empty-state">
     <div class="empty-icon-wrap">📋</div>
-    <h3>No WhatsApp Segments yet</h3>
-    {% if staff_can_open('portal.whatsapp_pipeline_segments_create') %}
-    <p>Create one above, then add people from All Contacts, Leads or Sales Pipeline stages. You can then choose it in a WhatsApp Campaign.</p>
+    <h3>No {{ ch.title }} yet</h3>
+    {% if staff_can_open(ch.ep_create) %}
+    <p>Create one above, then add people from All Contacts, Leads or Sales Pipeline stages. You can then choose it in a campaign.</p>
     {% else %}
-    <p>No WhatsApp Segments you can see yet.</p>
+    <p>No {{ ch.title }} you can see yet.</p>
     {% endif %}
   </div>
 </div>
@@ -236,6 +253,7 @@
 
 <script>
 const ACTIVE_SEGMENT_ID = {{ active_segment.id if active_segment else 'null' }};
+const BASE = '{{ ch.base }}';
 function post(url, fd) { return fetch(url, { method: 'POST', body: fd }).then(r => r.json()); }
 function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
@@ -244,14 +262,21 @@ function createSegment(e) {
   const name = document.getElementById('segNewName').value.trim();
   if (!name) return;
   const fd = new FormData(); fd.append('name', name);
-  post('{{ url_for("portal.whatsapp_pipeline_segments_create") }}', fd).then(d => {
+  post(BASE + '/create', fd).then(d => {
     if (d.error) { alert(d.error); return; }
-    location.href = '{{ url_for("portal.whatsapp_campaign_segments_page") }}?segment_id=' + d.id;
+    location.href = '{{ url_for(ch.page_endpoint) }}?segment_id=' + d.id;
   });
 }
 function deleteSegment(id, name) {
-  if (!confirm('Delete the WhatsApp Segment "' + name + '"? The people stay in your contacts.')) return;
-  post('/whatsapp/pipeline-segments/' + id + '/delete', new FormData()).then(d => {
+  if (!confirm('Delete the {{ ch.one }} "' + name + '"? The people stay in your contacts.')) return;
+  post(BASE + '/' + id + '/delete', new FormData()).then(d => {
+    if (d.error) { alert(d.error); return; }
+    location.reload();
+  });
+}
+function deleteOldGroup(id, name) {
+  if (!confirm('Delete the older group "' + name + '"? The leads themselves are not deleted.')) return;
+  fetch('/email/segments/' + id + '/delete', { method: 'POST' }).then(r => r.json()).then(d => {
     if (d.error) { alert(d.error); return; }
     location.reload();
   });
@@ -266,27 +291,27 @@ function srcSearch(src) {
   srcTimer = setTimeout(() => {
     const q = document.getElementById('q-' + src).value.trim();
     const box = document.getElementById('r-' + src);
-    fetch('/whatsapp/pipeline-segments/' + ACTIVE_SEGMENT_ID + '/source-search?source=' + src + '&q=' + encodeURIComponent(q))
+    fetch(BASE + '/' + ACTIVE_SEGMENT_ID + '/source-search?source=' + src + '&q=' + encodeURIComponent(q))
       .then(r => r.json()).then(d => {
         const rows = d.results || [];
         box.innerHTML = rows.length ? rows.map(x =>
           '<div class="seg-add-result" onmousedown="addMember(' + x.contact_id + ')"><span>' + escapeHtml(x.name) +
-          '</span><span style="color:#64748b">' + escapeHtml(x.whatsapp_number) + '</span></div>').join('')
-          : '<div class="seg-add-empty">No one found with a WhatsApp number' + (q ? ' for "' + escapeHtml(q) + '"' : '') + '.</div>';
+          '</span><span style="color:#64748b">' + escapeHtml(x.value) + '</span></div>').join('')
+          : '<div class="seg-add-empty">No one found with {{ "an email address" if ch.field == "email" else "a WhatsApp number" }}' + (q ? ' for "' + escapeHtml(q) + '"' : '') + '.</div>';
         box.style.display = 'block';
       });
   }, 250);
 }
 function addMember(contactId) {
   const fd = new FormData(); fd.append('contact_id', contactId);
-  post('/whatsapp/pipeline-segments/' + ACTIVE_SEGMENT_ID + '/members/add', fd).then(d => {
+  post(BASE + '/' + ACTIVE_SEGMENT_ID + '/members/add', fd).then(d => {
     if (d.error) { alert(d.error); return; }
     location.reload();
   });
 }
 function removeMember(contactId) {
   const fd = new FormData(); fd.append('contact_id', contactId);
-  post('/whatsapp/pipeline-segments/' + ACTIVE_SEGMENT_ID + '/members/remove', fd).then(d => {
+  post(BASE + '/' + ACTIVE_SEGMENT_ID + '/members/remove', fd).then(d => {
     if (d.error) { alert(d.error); return; }
     location.reload();
   });
@@ -295,10 +320,11 @@ function addStages(e) {
   e.preventDefault();
   const fd = new FormData(e.target);
   if (!fd.getAll('stages').length) { alert('Tick at least one stage.'); return; }
-  post('/whatsapp/pipeline-segments/' + ACTIVE_SEGMENT_ID + '/members/add-stage', fd).then(d => {
+  post(BASE + '/' + ACTIVE_SEGMENT_ID + '/members/add-stage', fd).then(d => {
     if (d.error) { alert(d.error); return; }
     let msg = 'Added ' + d.added + ' people.';
-    if (d.no_whatsapp) msg += ' ' + d.no_whatsapp + ' skipped: no WhatsApp number.';
+    const skipped = d.no_whatsapp || d.missing || 0;
+    if (skipped) msg += ' ' + skipped + ' skipped: {{ ch.missing|lower }}.';
     alert(msg);
     location.reload();
   });
