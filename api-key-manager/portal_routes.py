@@ -14067,6 +14067,40 @@ def _add_contact_labels(cur, tenant_id: int, contact_id: int, names):
                     (label_id, contact_id))
 
 
+def _local_number_on_contact(cur, tenant_id: int, raw: str):
+    """A number typed in local form (one leading 0, e.g. 08168540799) that
+    exactly ONE existing contact already has in full with a country code in
+    front (2348168540799, in either number box). Returns that full number
+    so the lead joins that person instead of a new contact being made with
+    the business's country code. None when it isn't a local number, or when
+    no contact / more than one contact matches (then the normal rule
+    applies). Same for every business."""
+    import re
+    s = (raw or "").strip()
+    digits = re.sub(r"[^\d]", "", s)
+    if s.startswith("+") or not digits.startswith("0") or digits.startswith("00"):
+        return None
+    national = digits[1:]
+    if len(national) < 7:
+        return None
+    cur.execute(
+        """SELECT DISTINCT num FROM (
+               SELECT phone AS num FROM wa_contacts WHERE tenant_id=%s AND phone LIKE %s
+               UNION ALL
+               SELECT whatsapp_number FROM wa_contacts WHERE tenant_id=%s AND whatsapp_number LIKE %s) x
+           WHERE length(num) BETWEEN %s AND %s""",
+        (tenant_id, "%" + national, tenant_id, "%" + national, len(national) + 1, len(national) + 3),
+    )
+    rows = cur.fetchall()
+    if len(rows) != 1:
+        return None
+    num = rows[0]["num"] if isinstance(rows[0], dict) else rows[0][0]
+    cur.execute("SELECT COUNT(DISTINCT id) AS n FROM wa_contacts WHERE tenant_id=%s AND (phone=%s OR whatsapp_number=%s)",
+                (tenant_id, num, num))
+    r = cur.fetchone()
+    return num if int(r["n"] if isinstance(r, dict) else r[0]) == 1 else None
+
+
 def _link_lead_to_contact(cur, tenant_id: int, lead_id: int):
     """One Address Book Phase 1b (2026-09-28): every lead is joined to a
     contact. Looks for the same person by WhatsApp number, then Phone number
@@ -14087,8 +14121,15 @@ def _link_lead_to_contact(cur, tenant_id: int, lead_id: int):
     if not isinstance(lead, dict):
         lead = dict(zip([d[0] for d in cur.description], lead))
     country = _tenant_country(tenant_id)
-    phone = _normalise_contact_phone(lead.get("phone") or "", country) or None
-    wa    = _normalise_contact_phone(lead.get("whatsapp_number") or "", country) or None
+    # A local number (0…) that an existing contact already has in full
+    # (e.g. 0816… vs 234816… from WhatsApp) is that same person: use their
+    # full number instead of adding the business's country code (Phase 3).
+    phone = (_local_number_on_contact(cur, tenant_id, lead.get("phone"))
+             or _normalise_contact_phone(lead.get("phone") or "", country) or None)
+    wa    = (_local_number_on_contact(cur, tenant_id, lead.get("whatsapp_number"))
+             or _normalise_contact_phone(lead.get("whatsapp_number") or "", country) or None)
+    # Contact names hold 200 characters; the lead keeps its full name.
+    lead["customer_name"] = (lead.get("customer_name") or "").strip()[:200] or None
     if phone and len(phone) < 7:
         phone = None
     if wa and len(wa) < 7:
