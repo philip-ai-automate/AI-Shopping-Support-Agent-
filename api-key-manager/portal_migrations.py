@@ -2206,6 +2206,30 @@ def ensure_portal_tables():
             cur.execute("ALTER TABLE wa_contacts ADD CONSTRAINT wa_contacts_source_check "
                         "CHECK (source IN ('manual','csv','whatsapp','web','lead'))")
 
+        # Phase 4a (2026-09-28): one segment system. A segment belongs to the
+        # team member who made it (NULL = the business owner); same names are
+        # allowed; WhatsApp (pipeline) segments are moved into contact
+        # segments once (moved_to_segment_id marks the move).
+        cur.execute("ALTER TABLE wa_segments ADD COLUMN IF NOT EXISTS created_by_member_id INTEGER "
+                    "REFERENCES team_members(id) ON DELETE SET NULL")
+        cur.execute("ALTER TABLE wa_segments DROP CONSTRAINT IF EXISTS wa_segments_tenant_id_name_key")
+        cur.execute("CREATE INDEX IF NOT EXISTS wa_segments_tenant_idx ON wa_segments(tenant_id)")
+        cur.execute("ALTER TABLE wa_pipeline_segments ADD COLUMN IF NOT EXISTS moved_to_segment_id INTEGER "
+                    "REFERENCES wa_segments(id) ON DELETE SET NULL")
+        cur.execute("SELECT id, tenant_id, name FROM wa_pipeline_segments WHERE moved_to_segment_id IS NULL FOR UPDATE")
+        for _ps in cur.fetchall():
+            _ps_id, _ps_t, _ps_name = (_ps["id"], _ps["tenant_id"], _ps["name"]) if isinstance(_ps, dict) else _ps
+            cur.execute("INSERT INTO wa_segments (tenant_id, name, description) VALUES (%s, %s, %s) RETURNING id",
+                        (_ps_t, _ps_name, "Moved from WhatsApp Segments"))
+            _r = cur.fetchone()
+            _new_id = _r["id"] if isinstance(_r, dict) else _r[0]
+            cur.execute("""INSERT INTO wa_segment_members (segment_id, contact_id)
+                           SELECT DISTINCT %s, l.wa_contact_id FROM wa_pipeline_segment_leads sl
+                           JOIN merchant_pipeline_leads l ON l.id = sl.lead_id
+                           WHERE sl.segment_id = %s AND l.wa_contact_id IS NOT NULL
+                           ON CONFLICT DO NOTHING""", (_new_id, _ps_id))
+            cur.execute("UPDATE wa_pipeline_segments SET moved_to_segment_id=%s WHERE id=%s", (_new_id, _ps_id))
+
         if not _table_exists(cur, "contact_consent_log"):
             cur.execute("""
                 CREATE TABLE contact_consent_log (

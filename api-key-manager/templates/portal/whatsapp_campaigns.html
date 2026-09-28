@@ -575,8 +575,8 @@
   </div>
   {% if connection %}
   <div style="display:flex;gap:10px;flex-shrink:0">
-    {% if staff_can_open('portal.whatsapp_campaign_segments_page') %}
-    <a class="btn-preview" href="{{ url_for('portal.whatsapp_campaign_segments_page') }}" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);color:#fff;text-decoration:none">📋 WhatsApp Segments</a>
+    {% if staff_can_open('portal.whatsapp_segments') %}
+    <a class="btn-preview" href="{{ url_for('portal.whatsapp_segments') }}" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);color:#fff;text-decoration:none">📋 Segments</a>
     {% endif %}
     {% if staff_can_open('portal.whatsapp_campaigns_create') %}
     <button class="btn-new-camp" onclick="openDrawer()">
@@ -957,21 +957,21 @@
           <div class="recip-opt selected" id="optPipeline" onclick="selectRecipientSource('pipeline')">
             <div class="recip-opt-icon">🧭</div>
             <div class="recip-opt-text">
-              <strong>Sales Pipeline contacts</strong>
-              <small>{{ pipeline_phone_count }} contact(s) with a phone number</small>
+              <strong>Everyone in the Sales Pipeline</strong>
+              <small>{{ pipeline_phone_count }} contact(s) with an open lead and a WhatsApp number</small>
             </div>
           </div>
           <div class="recip-opt" id="optSegment" onclick="selectRecipientSource('segment')">
             <div class="recip-opt-icon">📋</div>
             <div class="recip-opt-text">
-              <strong>WhatsApp Segment</strong>
-              <small>A saved group of Sales Pipeline contacts</small>
+              <strong>A segment</strong>
+              <small>A saved group of contacts from CRM › Segments</small>
             </div>
           </div>
           <div class="recip-opt" id="optManual" onclick="selectRecipientSource('manual')">
             <div class="recip-opt-icon">✍️</div>
             <div class="recip-opt-text">
-              <strong>Paste phone numbers</strong>
+              <strong>Type WhatsApp numbers</strong>
               <small>One per line</small>
             </div>
           </div>
@@ -980,12 +980,13 @@
 
         <div id="segmentRecipField">
           <div class="field">
-            <label class="field-label">WhatsApp Segment
-              <span class="field-hint"><a href="{{ url_for('portal.whatsapp_campaign_segments_page') }}" target="_blank" rel="noopener">Manage segments</a></span>
+            <label class="field-label">Segment
+              <span class="field-hint"><a href="{{ url_for('portal.whatsapp_segments') }}" target="_blank" rel="noopener">Manage segments</a></span>
             </label>
-            <select class="field-select" id="f-pipeline-segment-id" name="pipeline_segment_id"></select>
+            <select class="field-select" id="f-pipeline-segment-id" name="segment_id"></select>
+            <div style="font-size:12px;color:#94a3b8;margin-top:6px">The number shown is how many members have a WhatsApp number and haven't opted out.</div>
             <div id="segmentEmptyNote" style="display:none;font-size:12px;color:#94a3b8;margin-top:6px">
-              No WhatsApp Segments yet. <a href="{{ url_for('portal.whatsapp_campaign_segments_page') }}" target="_blank" rel="noopener">Create one</a>.
+              No segments yet. <a href="{{ url_for('portal.whatsapp_segments') }}" target="_blank" rel="noopener">Create one in CRM › Segments</a>.
             </div>
           </div>
         </div>
@@ -1269,11 +1270,15 @@ function validateStep(n) {
     const src = document.getElementById('f-recipient-source').value
     if (src === 'manual' && parsePhones().length === 0) { shake('f-recipients'); return false }
     if (src === 'pipeline' && {{ pipeline_phone_count }} === 0) {
-      alert('No Sales Pipeline contacts have a phone number yet. Choose "Paste phone numbers" instead.')
+      alert('No one in the Sales Pipeline has a WhatsApp number yet. Choose a segment or "Type WhatsApp numbers" instead.')
       return false
     }
     if (src === 'segment' && !document.getElementById('f-pipeline-segment-id').value) {
-      alert('Choose a WhatsApp Segment, or create one first via "Manage segments".')
+      alert('Choose a segment, or create one first via "Manage segments".')
+      return false
+    }
+    if (src === 'segment' && !(pipelineSegmentCounts[document.getElementById('f-pipeline-segment-id').value] > 0)) {
+      alert('No one in this segment has a WhatsApp number (or they have all opted out). Choose another segment.')
       return false
     }
   }
@@ -1309,7 +1314,7 @@ function countRecipients(el) {
   counter.classList.toggle('has-nums', n > 0)
 }
 
-/* ── Recipient source picker (Sales Pipeline / WhatsApp Segment / Manual) ── */
+/* ── Recipient source picker (Sales Pipeline / Segment / Manual) ── */
 let pipelineSegmentCounts = {}
 
 function selectRecipientSource(src) {
@@ -1323,7 +1328,7 @@ function selectRecipientSource(src) {
 }
 
 function loadPipelineSegmentsIntoSelect() {
-  fetch('/whatsapp/pipeline-segments')
+  fetch('{{ url_for('portal.whatsapp_segments_for_campaign') }}')
     .then(r => r.json())
     .then(data => {
       const sel = document.getElementById('f-pipeline-segment-id')
@@ -1339,12 +1344,24 @@ function loadPipelineSegmentsIntoSelect() {
         opt.textContent = s.name + ' (' + s.member_count + ')'
         sel.appendChild(opt)
       })
-      if (prevValue && segments.some(s => String(s.id) === prevValue)) sel.value = prevValue
+      const want = window._wantSegmentId || prevValue
+      if (want && segments.some(s => String(s.id) === want)) sel.value = want
+      window._wantSegmentId = null
       emptyNote.style.display = segments.length === 0 ? 'block' : 'none'
       sel.style.display = segments.length === 0 ? 'none' : ''
     })
     .catch(() => {})
 }
+
+/* CRM › Segments "Target this segment in a campaign" opens here with
+   ?segment_id=N: open the new-campaign drawer with that segment chosen. */
+document.addEventListener('DOMContentLoaded', function () {
+  const want = new URLSearchParams(location.search).get('segment_id')
+  if (!want || !/^\d+$/.test(want) || !document.getElementById('optSegment')) return
+  window._wantSegmentId = want
+  if (typeof openDrawer === 'function') openDrawer()
+  selectRecipientSource('segment')
+})
 
 /* "Manage segments"/"Create one" now open the Segments page in a new tab (it's
    its own standalone page, not a popup) — re-load the dropdown whenever this

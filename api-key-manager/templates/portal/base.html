@@ -646,11 +646,11 @@
           {% if 'campaigns_wa.all_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
-        {% if staff_can_open('portal.whatsapp_campaign_segments_page') %}
-        <a href="{{ url_for('portal.whatsapp_campaign_segments_page') }}"
-           class="{% if request.endpoint == 'portal.whatsapp_campaign_segments_page' %}active{% endif %}">
-          WhatsApp Segment
-          {% if 'campaigns_wa.segments_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
+        {# WhatsApp Segments retired 2026-09-28: every segment lives in CRM › Segments #}
+        {% if staff_can_open('portal.whatsapp_segments') %}
+        <a href="{{ url_for('portal.whatsapp_segments') }}">
+          Segments
+          {% if 'crm.segments_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
         {% if staff_can_open('portal.whatsapp_campaigns_reports') %}

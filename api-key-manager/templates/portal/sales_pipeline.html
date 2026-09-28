@@ -479,7 +479,7 @@
       <div class="col-picker-wrap wa-seg-picker-wrap">
         <button type="button" class="col-picker-btn" onclick="toggleWaSegPicker()">
           <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
-          Hide WhatsApp segments{% if hide_wa_segment_ids %} ({{ hide_wa_segment_ids|length }}){% endif %}
+          Hide CRM segments{% if hide_wa_segment_ids %} ({{ hide_wa_segment_ids|length }}){% endif %}
         </button>
         <div class="col-picker-menu" id="waSegPickerMenu">
           {% for seg in all_wa_segments %}
@@ -547,7 +547,7 @@
         </button>
         <div class="col-picker-menu" id="colPickerMenu">
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="segment">Email Segment</label>
-          <label class="col-picker-item"><input type="checkbox" data-col-toggle="wa_segment">WhatsApp Segment</label>
+          <label class="col-picker-item"><input type="checkbox" data-col-toggle="wa_segment">Segments</label>
           {% if customer.tenant_id == 19 %}
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="sms_segment" checked>SMS Segment</label>
           {% endif %}
@@ -594,7 +594,7 @@
   <span><strong id="bulkSelectedCount">0</strong> selected</span>
   {% if can_edit_deal %}<button type="button" class="btn btn-sm btn-primary" onclick="openBulkAdvanceModal()">➡️ Move Stage</button>{% endif %}
   {% if can_bulk_email_seg %}<button type="button" class="btn btn-sm btn-primary" onclick="openBulkSegmentModal()">📋 Add to Email Segment</button>{% endif %}
-  {% if can_bulk_wa_seg %}<button type="button" class="btn btn-sm btn-primary" onclick="openBulkWaSegmentModal()">📱 Add to WhatsApp Segment</button>{% endif %}
+  {% if can_bulk_wa_seg %}<button type="button" class="btn btn-sm btn-primary" onclick="openBulkWaSegmentModal()">👥 Add to CRM segment</button>{% endif %}
   {% if is_phixtra_support_account and can_bulk_sms_seg %}
   <button type="button" class="btn btn-sm btn-primary" onclick="openBulkSmsSegmentModal()">📟 Add to SMS Segment</button>
   {% endif %}
@@ -611,7 +611,7 @@
           <th style="width:34px">{% if can_bulk_any %}<input type="checkbox" id="selectAllLeadsCb" onchange="toggleSelectAllLeads(this)">{% endif %}</th>
           <th>Customer</th>
           <th data-col="segment" class="col-hidden">Email Segment</th>
-          <th data-col="wa_segment" class="col-hidden">WhatsApp Segment</th>
+          <th data-col="wa_segment" class="col-hidden">Segments</th>
           {% if is_phixtra_support_account %}
           <th data-col="sms_segment">SMS Segment</th>
           {% endif %}
@@ -1043,7 +1043,7 @@
 <!-- ── Bulk "Add to WhatsApp Segment" modal ── -->
 <div class="modal-over" id="bulkWaSegModal" onclick="if(event.target===this)closeBulkWaSegmentModal()">
   <div class="modal-card">
-    <div class="modal-title">Add <span id="bulkWaSegCount">0</span> contact(s) to a WhatsApp Segment</div>
+    <div class="modal-title">Add the contacts of <span id="bulkWaSegCount">0</span> deal(s) to a CRM segment</div>
     <p class="modal-sub">WhatsApp Segments are reusable groups you can target with a WhatsApp Campaign. Pick an existing one, or create a new one below.</p>
 
     <div style="display:flex;gap:8px;margin-bottom:16px">
@@ -1420,9 +1420,10 @@ function bulkAddToWaSegment(segmentId) {
 function addSelectedToWaSegment(segmentId) {
   bulkAddToWaSegment(segmentId).then(function(data){
     if (data.error) { alert(data.error); return; }
-    var skipped = data.requested - data.added;
-    var msg = 'Added ' + data.added + ' contact(s) to the WhatsApp Segment.';
-    if (skipped > 0) msg += ' (' + skipped + ' skipped — already in the segment or missing a WhatsApp number.)';
+    var msg = 'Added ' + data.added + ' contact(s) to the segment.';
+    if (data.no_contact > 0) msg += ' ' + data.no_contact + ' deal(s) skipped: no contact yet (add a phone, WhatsApp or email to the deal).';
+    var dup = data.requested - data.no_contact - data.added;
+    if (dup > 0) msg += ' ' + dup + ' already in the segment (or the same person as another ticked deal).';
     alert(msg);
     closeBulkWaSegmentModal();
     clearLeadSelection();

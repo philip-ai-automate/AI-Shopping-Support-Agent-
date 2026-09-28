@@ -86,7 +86,8 @@
 <div class="seg-hero">
   <div>
     <h1>Segments</h1>
-    <p>Group contacts into named lists — use them to target campaigns and manage leads.</p>
+    <p>Group contacts into named lists — use them to target campaigns and manage leads.
+      {% if segments_see_all %}You see every segment in the business.{% else %}Segments you make are private to you.{% endif %}</p>
   </div>
   <div style="display:flex;gap:10px;flex-wrap:wrap">
     <a href="{{ url_for('portal.whatsapp_contacts') }}" class="btn-outline-white">
@@ -137,6 +138,10 @@
         </div>
       </div>
       <div class="seg-name">{{ seg.name }}</div>
+      <div class="seg-desc">💬 {{ seg.wa_count }} can get WhatsApp campaigns</div>
+      {% if segments_see_all %}
+      <div class="seg-desc">Made by {{ seg.created_by_name or 'the business owner' }}{% if seg.created_by_member_id and seg.created_by_active == false %} (no longer active: now belongs to the business owner){% endif %}</div>
+      {% endif %}
       {% if seg.description %}
       <div class="seg-desc">{{ seg.description }}</div>
       {% endif %}

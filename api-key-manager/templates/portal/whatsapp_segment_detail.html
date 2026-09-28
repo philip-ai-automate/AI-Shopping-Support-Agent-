@@ -141,11 +141,17 @@
       <h2>Add Contacts</h2>
       <span style="font-size:12px;color:var(--muted)">{{ non_members|length }} available</span>
     </div>
-    {% if not non_members %}
+    {% if not non_members and not cand_q %}
     <div class="empty-small">All contacts are already in this segment.</div>
     {% else %}
     <div class="add-search-wrap">
-      <input type="text" id="candidateSearch" placeholder="Filter by name or phone…" oninput="filterCandidates(this.value)" autocomplete="off">
+      <form method="GET" onsubmit="return true" style="margin:0">
+        <input type="text" id="candidateSearch" name="q" value="{{ cand_q or '' }}" placeholder="Search all contacts: name, number or email, then press Enter" oninput="filterCandidates(this.value)" autocomplete="off">
+      </form>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">
+        {% if cand_q %}{% if non_members %}Showing contacts matching “{{ cand_q }}”.{% else %}No contacts match “{{ cand_q }}”.{% endif %} <a href="{{ url_for('portal.whatsapp_segment_detail', seg_id=segment.id) }}">Clear</a>
+        {% elif non_members|length >= 500 %}Showing the first 500. Press Enter to search all contacts, or tick contacts on the Contacts page and choose "Add to segment".{% endif %}
+      </div>
     </div>
     <div class="add-cand-list" id="candidateList">
       {% for c in non_members %}

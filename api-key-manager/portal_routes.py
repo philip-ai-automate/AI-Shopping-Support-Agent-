@@ -14425,8 +14425,11 @@ def whatsapp_contacts():
             clauses.append("EXISTS (SELECT 1 FROM lead_label_contacts lc WHERE lc.contact_id=c.id AND lc.label_id = ANY(%s))")
             where_params.append([int(t) for t in tag_filter])
         if segment_filter:
-            clauses.append("EXISTS (SELECT 1 FROM wa_segment_members sm WHERE sm.contact_id=c.id AND sm.segment_id = ANY(%s))")
+            _sv, _svp = _seg_vis("sg")
+            clauses.append("EXISTS (SELECT 1 FROM wa_segment_members sm JOIN wa_segments sg ON sg.id = sm.segment_id "
+                           "WHERE sm.contact_id=c.id AND sm.segment_id = ANY(%s)" + _sv + ")")
             where_params.append([int(s) for s in segment_filter])
+            where_params.extend(_svp)
         if has_phone:
             clauses.append("(c.phone IS NOT NULL AND c.phone <> '')")
         if has_whatsapp:
@@ -14581,9 +14584,9 @@ def whatsapp_contacts():
             SELECT s.id, s.name, s.color, COUNT(m.contact_id) AS member_count
             FROM wa_segments s
             LEFT JOIN wa_segment_members m ON m.segment_id = s.id
-            WHERE s.tenant_id = %s
+            WHERE s.tenant_id = %s""" + _seg_vis("s")[0] + """
             GROUP BY s.id ORDER BY s.name
-        """, (tenant_id,))
+        """, [tenant_id] + _seg_vis("s")[1])
         segments = cur.fetchall()
         selected_segments = [s for s in segments if str(s["id"]) in segment_filter]
         selected_statuses = [{"value": v, "label": v.title()} for v in status_filter]
@@ -15028,8 +15031,11 @@ def whatsapp_contacts_export():
             clauses.append("EXISTS (SELECT 1 FROM lead_label_contacts lc WHERE lc.contact_id=c.id AND lc.label_id = ANY(%s))")
             where_params.append([int(t) for t in tag_filter])
         if segment_filter:
-            clauses.append("EXISTS (SELECT 1 FROM wa_segment_members sm WHERE sm.contact_id=c.id AND sm.segment_id = ANY(%s))")
+            _sv, _svp = _seg_vis("sg")
+            clauses.append("EXISTS (SELECT 1 FROM wa_segment_members sm JOIN wa_segments sg ON sg.id = sm.segment_id "
+                           "WHERE sm.contact_id=c.id AND sm.segment_id = ANY(%s)" + _sv + ")")
             where_params.append([int(s) for s in segment_filter])
+            where_params.extend(_svp)
         if has_phone:
             clauses.append("(c.phone IS NOT NULL AND c.phone <> '')")
         if has_whatsapp:
@@ -15232,9 +15238,9 @@ def whatsapp_contact_detail(contact_id: int):
             SELECT s.id, s.name, s.color
             FROM wa_segments s
             JOIN wa_segment_members m ON m.segment_id = s.id
-            WHERE m.contact_id = %s
+            WHERE m.contact_id = %s""" + _seg_vis("s")[0] + """
             ORDER BY s.name
-        """, (contact_id,))
+        """, [contact_id] + _seg_vis("s")[1])
         contact_segments = cur.fetchall()
 
         # All segments (for "add to segment" dropdown)
@@ -15243,9 +15249,9 @@ def whatsapp_contact_detail(contact_id: int):
             WHERE s.tenant_id=%s
               AND s.id NOT IN (
                 SELECT segment_id FROM wa_segment_members WHERE contact_id=%s
-              )
+              )""" + _seg_vis("s")[0] + """
             ORDER BY s.name
-        """, (tenant_id, contact_id))
+        """, [tenant_id, contact_id] + _seg_vis("s")[1])
         available_segments = cur.fetchall()
 
         # Message count
@@ -15527,8 +15533,7 @@ def whatsapp_contact_add_to_segment(contact_id: int):
             flash("Contact not found.", "danger")
             cur.close(); conn.close()
             return redirect(url_for("portal.whatsapp_contacts"))
-        cur.execute("SELECT id FROM wa_segments WHERE id=%s AND tenant_id=%s", (seg_id, tenant_id))
-        if not cur.fetchone():
+        if not _segment_visible(cur, tenant_id, seg_id):
             flash("Segment not found.", "danger")
         else:
             cur.execute(
@@ -15557,8 +15562,7 @@ def whatsapp_contact_remove_from_segment(contact_id: int, seg_id: int):
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
-        cur.execute("SELECT id FROM wa_segments WHERE id=%s AND tenant_id=%s", (seg_id, tenant_id))
-        if cur.fetchone():
+        if _segment_visible(cur, tenant_id, seg_id):
             cur.execute(
                 "DELETE FROM wa_segment_members WHERE segment_id=%s AND contact_id=%s",
                 (seg_id, contact_id)
@@ -16073,11 +16077,7 @@ def whatsapp_contacts_bulk_action():
                 flash("Invalid segment.", "warning")
             else:
                 seg_id = int(seg_id)
-                cur.execute(
-                    "SELECT id FROM wa_segments WHERE id=%s AND tenant_id=%s",
-                    (seg_id, tenant_id)
-                )
-                if not cur.fetchone():
+                if not _segment_visible(cur, tenant_id, seg_id):
                     flash("Segment not found.", "danger")
                 else:
                     for cid in contact_ids:
@@ -16205,6 +16205,65 @@ def whatsapp_contact_tags(contact_id: int):
 # WHATSAPP SEGMENTS
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _segments_see_all() -> bool:
+    """One segment system (Phase 4a, 2026-09-28): a segment is private to the
+    team member who made it. The business owner, and any team member whose
+    role can manage the Team (Team ticks, e.g. an IT Admin), see them all."""
+    if not session.get("team_member_id"):
+        return True
+    perms = session.get("team_member_permissions") or {}
+    return any(v for k, v in perms.items() if k.startswith("team."))
+
+
+def _seg_vis(alias: str = "s"):
+    """(" AND …", params) that limits a wa_segments query to the segments this
+    person may see. Empty for the owner / Team managers."""
+    if _segments_see_all():
+        return "", []
+    return f" AND {alias}.created_by_member_id = %s", [int(session["team_member_id"])]
+
+
+def _segment_visible(cur, tenant_id: int, seg_id: int) -> bool:
+    vis, vp = _seg_vis("s")
+    cur.execute("SELECT 1 FROM wa_segments s WHERE s.id=%s AND s.tenant_id=%s" + vis, [seg_id, tenant_id] + vp)
+    return cur.fetchone() is not None
+
+
+# WhatsApp campaign audiences come from contacts (Phase 4a): only a contact's
+# WhatsApp number is used, and people who opted out are left out up front so
+# the count shown before sending is what actually goes.
+_WA_AUDIENCE_OK = ("c.whatsapp_number IS NOT NULL AND c.whatsapp_number <> '' "
+                   "AND NOT COALESCE(c.opted_out, FALSE)")
+_OPEN_LEAD_SQL = ("l.dropped_at IS NULL AND (l.outcome IS NULL OR "
+                  "l.outcome NOT IN ('won','lost','dropped','not_a_fit'))")
+
+
+def _wa_pipeline_audience(cur, tenant_id: int) -> list:
+    """"Everyone in the Sales Pipeline": contacts with an open Sales Lead."""
+    cur.execute(
+        "SELECT DISTINCT c.whatsapp_number AS phone FROM wa_contacts c "
+        "JOIN merchant_pipeline_leads l ON l.wa_contact_id = c.id AND l.tenant_id = c.tenant_id "
+        "WHERE c.tenant_id=%s AND " + _WA_AUDIENCE_OK + " AND " + _OPEN_LEAD_SQL, (tenant_id,))
+    return [r["phone"] if isinstance(r, dict) else r[0] for r in cur.fetchall()]
+
+
+def _wa_segment_audience(cur, tenant_id: int, seg_id: int) -> list:
+    """Members of a segment this person may see, with a WhatsApp number."""
+    if not _segment_visible(cur, tenant_id, seg_id):
+        return []
+    cur.execute(
+        "SELECT DISTINCT c.whatsapp_number AS phone FROM wa_segment_members m "
+        "JOIN wa_contacts c ON c.id = m.contact_id AND c.tenant_id=%s "
+        "WHERE m.segment_id=%s AND " + _WA_AUDIENCE_OK, (tenant_id, seg_id))
+    return [r["phone"] if isinstance(r, dict) else r[0] for r in cur.fetchall()]
+
+
+def _segment_creator_id():
+    """Stored on a new segment: the team member making it, or NULL for the owner."""
+    tm = session.get("team_member_id")
+    return int(tm) if tm else None
+
+
 @portal_bp.route("/whatsapp/segments")
 @team_feature("crm.segments_view")
 def whatsapp_segments():
@@ -16221,13 +16280,18 @@ def whatsapp_segments():
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             SELECT s.*,
-                   COUNT(m.contact_id) AS member_count
+                   COUNT(m.contact_id) AS member_count,
+                   COUNT(m.contact_id) FILTER (WHERE c.whatsapp_number IS NOT NULL AND c.whatsapp_number <> ''
+                                               AND NOT COALESCE(c.opted_out, FALSE)) AS wa_count,
+                   tm.name AS created_by_name, tm.is_active AS created_by_active
             FROM wa_segments s
             LEFT JOIN wa_segment_members m ON m.segment_id = s.id
-            WHERE s.tenant_id = %s
-            GROUP BY s.id
+            LEFT JOIN wa_contacts c ON c.id = m.contact_id
+            LEFT JOIN team_members tm ON tm.id = s.created_by_member_id
+            WHERE s.tenant_id = %s""" + _seg_vis("s")[0] + """
+            GROUP BY s.id, tm.name, tm.is_active
             ORDER BY s.created_at DESC
-        """, (tenant_id,))
+        """, [tenant_id] + _seg_vis("s")[1])
         segments = cur.fetchall()
         cur.execute("SELECT COUNT(*) AS total FROM wa_contacts WHERE tenant_id=%s", (tenant_id,))
         total_contacts = cur.fetchone()["total"]
@@ -16236,7 +16300,8 @@ def whatsapp_segments():
         print("⚠️ whatsapp_segments error:", e)
         segments, total_contacts = [], 0
     return render_template("portal/whatsapp_segments.html",
-                           segments=segments, total_contacts=total_contacts)
+                           segments=segments, total_contacts=total_contacts,
+                           segments_see_all=_segments_see_all())
 
 
 @portal_bp.route("/whatsapp/segments/create", methods=["POST"])
@@ -16258,16 +16323,12 @@ def whatsapp_segments_create():
         conn = get_db_connection()
         cur  = conn.cursor()
         cur.execute(
-            "INSERT INTO wa_segments(tenant_id, name, description, color) "
-            "VALUES(%s, %s, %s, %s) ON CONFLICT DO NOTHING RETURNING id",
-            (tenant_id, name, desc or None, color)
+            "INSERT INTO wa_segments(tenant_id, name, description, color, created_by_member_id) "
+            "VALUES(%s, %s, %s, %s, %s) RETURNING id",
+            (tenant_id, name, desc or None, color, _segment_creator_id())
         )
-        row = cur.fetchone()
         conn.commit(); cur.close(); conn.close()
-        if row:
-            flash(f"Segment '{name}' created.", "success")
-        else:
-            flash(f"A segment named '{name}' already exists.", "warning")
+        flash(f"Segment '{name}' created.", "success")
     except Exception as e:
         print("⚠️ segments_create error:", e)
         flash("Could not create segment.", "danger")
@@ -16293,9 +16354,9 @@ def whatsapp_segments_edit(seg_id: int):
         conn = get_db_connection()
         cur  = conn.cursor()
         cur.execute(
-            "UPDATE wa_segments SET name=%s, description=%s, color=%s, updated_at=NOW() "
-            "WHERE id=%s AND tenant_id=%s",
-            (name, desc or None, color, seg_id, tenant_id)
+            "UPDATE wa_segments s SET name=%s, description=%s, color=%s, updated_at=NOW() "
+            "WHERE s.id=%s AND s.tenant_id=%s" + _seg_vis("s")[0],
+            [name, desc or None, color, seg_id, tenant_id] + _seg_vis("s")[1]
         )
         conn.commit(); cur.close(); conn.close()
         flash("Segment updated.", "success")
@@ -16317,7 +16378,8 @@ def whatsapp_segments_delete(seg_id: int):
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
-        cur.execute("DELETE FROM wa_segments WHERE id=%s AND tenant_id=%s", (seg_id, tenant_id))
+        cur.execute("DELETE FROM wa_segments s WHERE s.id=%s AND s.tenant_id=%s" + _seg_vis("s")[0],
+                    [seg_id, tenant_id] + _seg_vis("s")[1])
         conn.commit(); cur.close(); conn.close()
         flash("Segment deleted.", "success")
     except Exception as e:
@@ -16341,7 +16403,8 @@ def whatsapp_segment_detail(seg_id: int):
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
-            "SELECT * FROM wa_segments WHERE id=%s AND tenant_id=%s", (seg_id, tenant_id)
+            "SELECT * FROM wa_segments s WHERE s.id=%s AND s.tenant_id=%s" + _seg_vis("s")[0],
+            [seg_id, tenant_id] + _seg_vis("s")[1]
         )
         segment = cur.fetchone()
         if not segment:
@@ -16356,15 +16419,23 @@ def whatsapp_segment_detail(seg_id: int):
         """, (seg_id,))
         members = cur.fetchall()
 
+        # Contacts to add: first 500, or a search across ALL contacts (?q=)
+        cand_q = (request.args.get("q") or "").strip()[:100]
+        cand_sql, cand_params = "", []
+        if cand_q:
+            like = f"%{cand_q}%"
+            cand_sql = (" AND (c.display_name ILIKE %s OR c.phone ILIKE %s OR c.whatsapp_number ILIKE %s "
+                        "OR c.email ILIKE %s OR c.contact_person ILIKE %s)")
+            cand_params = [like] * 5
         cur.execute("""
             SELECT c.* FROM wa_contacts c
             WHERE c.tenant_id = %s
               AND c.id NOT IN (
                 SELECT contact_id FROM wa_segment_members WHERE segment_id=%s
-              )
+              )""" + cand_sql + """
             ORDER BY c.display_name ASC NULLS LAST
             LIMIT 500
-        """, (tenant_id, seg_id))
+        """, [tenant_id, seg_id] + cand_params)
         non_members = cur.fetchall()
 
         cur.close(); conn.close()
@@ -16375,7 +16446,8 @@ def whatsapp_segment_detail(seg_id: int):
         return redirect(url_for("portal.whatsapp_segments"))
 
     return render_template("portal/whatsapp_segment_detail.html",
-                           segment=segment, members=members, non_members=non_members)
+                           segment=segment, members=members, non_members=non_members,
+                           cand_q=cand_q)
 
 
 @portal_bp.route("/whatsapp/segments/<int:seg_id>/add-member", methods=["POST"])
@@ -16395,8 +16467,7 @@ def whatsapp_segment_add_member(seg_id: int):
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
-        cur.execute("SELECT id FROM wa_segments WHERE id=%s AND tenant_id=%s", (seg_id, tenant_id))
-        if not cur.fetchone():
+        if not _segment_visible(cur, tenant_id, seg_id):
             flash("Segment not found.", "danger")
         else:
             cur.execute(
@@ -16430,10 +16501,7 @@ def whatsapp_segment_remove_member(seg_id: int, contact_id: int):
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
-        cur.execute(
-            "SELECT id FROM wa_segments WHERE id=%s AND tenant_id=%s", (seg_id, tenant_id)
-        )
-        if cur.fetchone():
+        if _segment_visible(cur, tenant_id, seg_id):
             cur.execute(
                 "DELETE FROM wa_segment_members WHERE segment_id=%s AND contact_id=%s",
                 (seg_id, contact_id)
@@ -16444,6 +16512,36 @@ def whatsapp_segment_remove_member(seg_id: int, contact_id: int):
         print("⚠️ remove_member error:", e)
         flash("Could not remove contact.", "danger")
     return redirect(url_for("portal.whatsapp_segment_detail", seg_id=seg_id))
+
+
+@portal_bp.route("/whatsapp/segments/for-campaign")
+@team_feature("campaigns_wa.all_create")
+def whatsapp_segments_for_campaign():
+    """Segments offered in the WhatsApp campaign form (Phase 4a): the ones this
+    person may see, each with how many members would actually receive it
+    (WhatsApp number, not opted out)."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_wa.all_create"):
+        return jsonify({"error": "forbidden"}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        vis, vp = _seg_vis("s")
+        cur.execute(
+            "SELECT s.id, s.name, COUNT(c.id) FILTER (WHERE " + _WA_AUDIENCE_OK + ") AS member_count "
+            "FROM wa_segments s LEFT JOIN wa_segment_members m ON m.segment_id = s.id "
+            "LEFT JOIN wa_contacts c ON c.id = m.contact_id "
+            "WHERE s.tenant_id=%s" + vis + " GROUP BY s.id, s.name ORDER BY lower(s.name), s.id",
+            [tenant_id] + vp)
+        segments = cur.fetchall()
+        cur.close(); conn.close()
+        return jsonify({"segments": segments})
+    except Exception as e:
+        print("⚠️ segments_for_campaign error:", e)
+        return jsonify({"error": "Could not load segments."}), 500
 
 
 @portal_bp.route("/whatsapp/segments/<int:seg_id>/contacts-json")
@@ -16459,8 +16557,7 @@ def whatsapp_segment_contacts_json(seg_id: int):
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT id FROM wa_segments WHERE id=%s AND tenant_id=%s", (seg_id, tenant_id))
-        if not cur.fetchone():
+        if not _segment_visible(cur, tenant_id, seg_id):
             cur.close(); conn.close()
             return jsonify({"error": "not found"}), 404
         cur.execute("""
@@ -16879,12 +16976,7 @@ def whatsapp_campaigns():
         # Sales Pipeline contacts with a WhatsApp number — the recipient source
         # this page's compose drawer sources from (see WhatsApp Segments,
         # mirroring pipeline_email_count on the Email Campaigns page).
-        cur.execute(
-            "SELECT count(*) AS c FROM merchant_pipeline_leads "
-            "WHERE tenant_id=%s AND whatsapp_number IS NOT NULL AND whatsapp_number <> '' AND dropped_at IS NULL",
-            (tenant_id,),
-        )
-        pipeline_phone_count = cur.fetchone()["c"]
+        pipeline_phone_count = len(_wa_pipeline_audience(cur, tenant_id))
         cur.close(); conn.close()
     except Exception as e:
         print("⚠️ whatsapp_campaigns fetch error:", e)
@@ -16916,7 +17008,7 @@ def whatsapp_campaigns_create():
     language_code    = (request.form.get("language_code") or "en").strip()
     recipients       = (request.form.get("recipients") or "").strip()
     recipient_source = (request.form.get("recipient_source") or "").strip()
-    pipeline_segment_id_raw = (request.form.get("pipeline_segment_id") or "").strip()
+    segment_id_raw   = (request.form.get("segment_id") or "").strip()
     schedule_str     = (request.form.get("scheduled_at") or "").strip()
     send_now         = request.form.get("send_now") == "1"
     header_type      = (request.form.get("header_type") or "").strip().upper() or None
@@ -16932,48 +17024,24 @@ def whatsapp_campaigns_create():
         header_location = _json.dumps({"latitude": loc_lat, "longitude": loc_lng,
                                         "name": loc_name, "address": loc_address})
 
-    # Recipients now resolve server-side against the Sales Pipeline (same
-    # trusted-query pattern as Email Campaign's _parse_campaign_form), not a
-    # client-side JS copy-paste into the textarea. Three sources:
-    #  - "pipeline": every Sales Pipeline contact with a WhatsApp number
-    #  - "segment":  a saved WhatsApp Segment (wa_pipeline_segment_leads),
-    #                itself a group of Sales Pipeline contacts
-    #  - "manual" (or anything else / no pipeline data): the pasted textarea,
-    #                unchanged fallback behavior
-    pipeline_segment_id = None
+    # Recipients resolve server-side from Contacts (Phase 4a, 2026-09-28):
+    #  - "pipeline": contacts with an open Sales Lead
+    #  - "segment":  a segment from CRM › Segments this person may see
+    #  - "manual":   the typed numbers
+    # Only a contact's WhatsApp number is used; opted-out people are left out.
+    segment_id = None
     phones = []
-
-    if recipient_source == "pipeline":
-        try:
-            _pc = get_db_connection(); _pcc = _pc.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            # WhatsApp number ONLY (2026-09-28): a lead with just a Phone
-            # number is left out — WhatsApp never uses the Phone number.
-            _pcc.execute("""
-                SELECT whatsapp_number AS phone FROM merchant_pipeline_leads
-                WHERE tenant_id=%s AND whatsapp_number IS NOT NULL AND whatsapp_number <> '' AND dropped_at IS NULL
-            """, (tenant_id,))
-            phones = [r["phone"] for r in _pcc.fetchall()]
-            _pcc.close(); _pc.close()
-        except Exception as _pe:
-            print("⚠️ pipeline phones fetch error:", _pe)
-    elif recipient_source == "segment" and pipeline_segment_id_raw.isdigit():
-        seg_int = int(pipeline_segment_id_raw)
-        try:
-            _sc = get_db_connection(); _scc = _sc.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            _scc.execute("SELECT id FROM wa_pipeline_segments WHERE id=%s AND tenant_id=%s", (seg_int, tenant_id))
-            if _scc.fetchone():
-                pipeline_segment_id = seg_int
-                _scc.execute("""
-                    SELECT l.whatsapp_number AS phone
-                    FROM wa_pipeline_segment_leads sl
-                    JOIN merchant_pipeline_leads l ON l.id = sl.lead_id
-                    WHERE sl.segment_id = %s AND l.whatsapp_number IS NOT NULL AND l.whatsapp_number <> ''
-                          AND l.dropped_at IS NULL
-                """, (seg_int,))
-                phones = [r["phone"] for r in _scc.fetchall()]
-            _scc.close(); _sc.close()
-        except Exception as _se:
-            print("⚠️ WhatsApp segment phones fetch error:", _se)
+    try:
+        _ac = get_db_connection(); _acc = _ac.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        if recipient_source == "pipeline":
+            phones = _wa_pipeline_audience(_acc, tenant_id)
+        elif recipient_source == "segment" and segment_id_raw.isdigit():
+            if _segment_visible(_acc, tenant_id, int(segment_id_raw)):
+                segment_id = int(segment_id_raw)
+                phones = _wa_segment_audience(_acc, tenant_id, segment_id)
+        _acc.close(); _ac.close()
+    except Exception as _ae:
+        print("⚠️ WhatsApp campaign audience error:", _ae)
 
     # Fall back to (or supplement with) manually pasted phones
     if not phones and recipients:
@@ -17023,14 +17091,14 @@ def whatsapp_campaigns_create():
             INSERT INTO wa_campaigns
               (tenant_id, name, template_name, language_code, status,
                scheduled_at, total_count, recipients,
-               header_type, header_image_url, header_text, header_location, pipeline_segment_id,
+               header_type, header_image_url, header_text, header_location, segment_id,
                wa_tenant_id)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (tenant_id, name, template_name, language_code, status,
              scheduled_at, len(phones), "\n".join(phones),
-             header_type, header_image_url, header_text, header_location, pipeline_segment_id,
+             header_type, header_image_url, header_text, header_location, segment_id,
              wa_tenant_id),
         )
         campaign_id = cur.fetchone()[0]
@@ -17227,144 +17295,83 @@ def whatsapp_campaigns_upload_image():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# WHATSAPP SEGMENTS (Sales Pipeline based) — reusable named groups of Sales
-# Pipeline contacts for WhatsApp Campaign, mirroring the /email/segments routes
-# exactly (same shape, phone instead of email) so WhatsApp Campaign has real
-# parity with Email Campaign's recipient sourcing. Deliberately separate from
-# the older /whatsapp/segments routes (wa_segments/wa_segment_members), which
-# group wa_contacts (WhatsApp Contacts page) — a different, unrelated contact
-# table. This is WHATSAPP SEGMENT; the older one stays "Segments" under Contacts.
+# WHATSAPP SEGMENTS (retired 2026-09-28, One Address Book Phase 4a)
+# The separate Sales-Pipeline-based "WhatsApp Segments" (wa_pipeline_segments)
+# were moved into contact segments (CRM › Segments). The old page redirects
+# there; the JSON routes the Pipeline Board still calls now work on contact
+# segments: a deal is added through its contact. The old tables are kept
+# read-only so past campaign reports keep their history.
 # ══════════════════════════════════════════════════════════════════════════════
+
+_WA_SEG_MOVED = "WhatsApp Segments have moved to CRM › Segments."
+
 
 @portal_bp.route("/whatsapp/campaigns/segments")
 @team_feature("campaigns_wa.segments_view")
 def whatsapp_campaign_segments_page():
-    """Standalone WhatsApp Segments page (list + manage one segment's contacts) —
-    was previously a popup on the WhatsApp Campaigns page; moved to its own URL
-    so it can be reached/bookmarked/refreshed directly instead of only opening
-    as an overlay. Reuses the same wa_pipeline_segments/wa_pipeline_segment_leads
-    tables and add/remove/create/delete JSON endpoints below."""
     r = _require_login()
     if r: return r
     _rperm = _require_team_permission("campaigns_wa.segments_view")
     if _rperm: return _rperm
-    customer  = _get_customer(_customer_id())
-    tenant_id = int(customer["tenant_id"])
-
-    segment_id_raw = request.args.get("segment_id")
-    segment_id = int(segment_id_raw) if segment_id_raw and segment_id_raw.isdigit() else None
-
-    conn = get_db_connection()
-    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute(
-        """
-        SELECT s.id, s.name,
-               count(sl.lead_id) FILTER (
-                   WHERE l.whatsapp_number IS NOT NULL AND l.whatsapp_number <> ''
-                         AND l.dropped_at IS NULL
-               ) AS member_count
-        FROM wa_pipeline_segments s
-        LEFT JOIN wa_pipeline_segment_leads sl ON sl.segment_id = s.id
-        LEFT JOIN merchant_pipeline_leads l ON l.id = sl.lead_id
-        WHERE s.tenant_id=%s
-        GROUP BY s.id, s.name
-        ORDER BY s.name
-        """,
-        (tenant_id,),
-    )
-    segments = cur.fetchall()
-
-    active_segment = None
-    members = []
-    if segment_id:
-        cur.execute("SELECT id, name FROM wa_pipeline_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
-        active_segment = cur.fetchone()
-        if active_segment:
-            cur.execute(
-                """
-                SELECT l.id, l.customer_name AS name, l.whatsapp_number AS phone
-                FROM wa_pipeline_segment_leads sl
-                JOIN merchant_pipeline_leads l ON l.id = sl.lead_id
-                WHERE sl.segment_id=%s AND l.tenant_id=%s
-                      AND l.whatsapp_number IS NOT NULL AND l.whatsapp_number <> '' AND l.dropped_at IS NULL
-                ORDER BY l.customer_name
-                """,
-                (segment_id, tenant_id),
-            )
-            members = cur.fetchall()
-    cur.close(); conn.close()
-
-    return render_template(
-        "portal/whatsapp_campaign_segments.html",
-        customer       = customer,
-        segments       = segments,
-        active_segment = active_segment,
-        members        = members,
-    )
+    flash("WhatsApp Segments are now part of CRM › Segments: one place for every segment.", "info")
+    return redirect(url_for("portal.whatsapp_segments"))
 
 
 @portal_bp.route("/whatsapp/pipeline-segments")
 @team_feature("campaigns_wa.segments_view", "campaigns_wa.segments_edit", "campaigns_wa.all_create")
 def whatsapp_pipeline_segments_list():
-    """List this tenant's WhatsApp Segments with live member counts, for the
-    compose drawer's recipient dropdown and the segment manager modal."""
+    """Segments for the Pipeline Board's "Add to WhatsApp segment" picker:
+    the contact segments this person may see."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not any(_team_member_has_permission(k) for k in ("campaigns_wa.segments_view", "campaigns_wa.segments_edit", "campaigns_wa.all_create")):
+    if not (_team_member_has_permission("campaigns_wa.segments_view")
+            or _team_member_has_permission("campaigns_wa.segments_edit")
+            or _team_member_has_permission("campaigns_wa.all_create")):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        vis, vp = _seg_vis("s")
         cur.execute(
-            """
-            SELECT s.id, s.name,
-                   count(sl.lead_id) FILTER (
-                       WHERE l.whatsapp_number IS NOT NULL AND l.whatsapp_number <> ''
-                             AND l.dropped_at IS NULL
-                   ) AS member_count
-            FROM wa_pipeline_segments s
-            LEFT JOIN wa_pipeline_segment_leads sl ON sl.segment_id = s.id
-            LEFT JOIN merchant_pipeline_leads l ON l.id = sl.lead_id
-            WHERE s.tenant_id=%s
-            GROUP BY s.id, s.name
-            ORDER BY s.name
-            """,
-            (tenant_id,),
-        )
+            "SELECT s.id, s.name, COUNT(m.contact_id) AS member_count FROM wa_segments s "
+            "LEFT JOIN wa_segment_members m ON m.segment_id = s.id "
+            "WHERE s.tenant_id=%s" + vis + " GROUP BY s.id, s.name ORDER BY lower(s.name), s.id",
+            [tenant_id] + vp)
         segments = cur.fetchall()
         cur.close(); conn.close()
         return jsonify({"segments": segments})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print("⚠️ pipeline_segments_list error:", e)
+        return jsonify({"error": "Could not load segments."}), 500
 
 
 @portal_bp.route("/whatsapp/pipeline-segments/create", methods=["POST"])
 @team_feature("campaigns_wa.segments_create")
 def whatsapp_pipeline_segments_create():
+    """"New segment" from the Pipeline Board: makes a contact segment owned by
+    the person making it."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
     if not _team_member_has_permission("campaigns_wa.segments_create"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    name = (request.form.get("name") or "").strip()
+    name = (request.form.get("name") or "").strip()[:100]
     if not name:
         return jsonify({"error": "Segment name is required."}), 400
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
-        cur.execute(
-            "INSERT INTO wa_pipeline_segments (tenant_id, name) VALUES (%s, %s) RETURNING id",
-            (tenant_id, name),
-        )
-        seg_id = cur.fetchone()[0]
-        conn.commit()
-        cur.close(); conn.close()
-        return jsonify({"ok": True, "id": seg_id, "name": name, "member_count": 0})
+        cur.execute("INSERT INTO wa_segments (tenant_id, name, created_by_member_id) VALUES (%s, %s, %s) RETURNING id",
+                    (tenant_id, name, _segment_creator_id()))
+        new_id = cur.fetchone()[0]
+        conn.commit(); cur.close(); conn.close()
+        return jsonify({"ok": True, "id": new_id, "name": name})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print("⚠️ pipeline_segments_create error:", e)
+        return jsonify({"error": "Could not create segment."}), 500
 
 
 @portal_bp.route("/whatsapp/pipeline-segments/<int:segment_id>/delete", methods=["POST"])
@@ -17374,105 +17381,27 @@ def whatsapp_pipeline_segments_delete(segment_id: int):
     if r: return jsonify({"error": "unauthorised"}), 401
     if not _team_member_has_permission("campaigns_wa.segments_delete"):
         return jsonify({"error": "forbidden"}), 403
-    customer  = _get_customer(_customer_id())
-    tenant_id = int(customer["tenant_id"])
-    try:
-        conn = get_db_connection()
-        cur  = conn.cursor()
-        cur.execute("DELETE FROM wa_pipeline_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
-        deleted = cur.rowcount > 0
-        conn.commit()
-        cur.close(); conn.close()
-        return jsonify({"ok": deleted})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    return jsonify({"error": _WA_SEG_MOVED}), 410
 
 
 @portal_bp.route("/whatsapp/pipeline-segments/<int:segment_id>/members")
 @team_feature("campaigns_wa.segments_view")
 def whatsapp_pipeline_segments_members(segment_id: int):
-    """Return the segment's name plus its actual current members (id/name/phone) —
-    the manage-segment modal shows only these, not every Sales Pipeline contact."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
     if not _team_member_has_permission("campaigns_wa.segments_view"):
         return jsonify({"error": "forbidden"}), 403
-    customer  = _get_customer(_customer_id())
-    tenant_id = int(customer["tenant_id"])
-    try:
-        conn = get_db_connection()
-        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT id, name FROM wa_pipeline_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
-        seg = cur.fetchone()
-        if not seg:
-            cur.close(); conn.close()
-            return jsonify({"error": "Segment not found."}), 404
-        cur.execute(
-            "SELECT l.id, l.customer_name, l.contact_person, "
-            "l.whatsapp_number AS phone "
-            "FROM wa_pipeline_segment_leads sl JOIN merchant_pipeline_leads l ON l.id = sl.lead_id "
-            "WHERE sl.segment_id=%s ORDER BY l.customer_name",
-            (segment_id,),
-        )
-        members = [
-            {"id": row["id"], "name": row["customer_name"] or row["contact_person"] or row["phone"], "phone": row["phone"]}
-            for row in cur.fetchall()
-        ]
-        cur.close(); conn.close()
-        return jsonify({"id": seg["id"], "name": seg["name"], "members": members})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    return jsonify({"error": _WA_SEG_MOVED}), 410
 
 
 @portal_bp.route("/whatsapp/pipeline-segments/<int:segment_id>/members/add", methods=["POST"])
 @team_feature("campaigns_wa.segments_edit")
 def whatsapp_pipeline_segments_add_member(segment_id: int):
-    """Add one Sales Pipeline contact to a WhatsApp Segment — single search-driven
-    add, mirroring /email/segments/<id>/members/add."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
     if not _team_member_has_permission("campaigns_wa.segments_edit"):
         return jsonify({"error": "forbidden"}), 403
-    customer  = _get_customer(_customer_id())
-    tenant_id = int(customer["tenant_id"])
-    lead_id_raw = (request.form.get("lead_id") or "").strip()
-    if not lead_id_raw.isdigit():
-        return jsonify({"error": "Invalid contact."}), 400
-    lead_id = int(lead_id_raw)
-    try:
-        conn = get_db_connection()
-        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT id FROM wa_pipeline_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
-        if not cur.fetchone():
-            cur.close(); conn.close()
-            return jsonify({"error": "Segment not found."}), 404
-        cur.execute(
-            "SELECT id, customer_name, contact_person, whatsapp_number AS phone "
-            "FROM merchant_pipeline_leads "
-            "WHERE id=%s AND tenant_id=%s AND dropped_at IS NULL",
-            (lead_id, tenant_id),
-        )
-        lead = cur.fetchone()
-        if not lead:
-            cur.close(); conn.close()
-            return jsonify({"error": "Contact not found."}), 404
-        if not (lead["phone"] or "").strip():
-            cur.close(); conn.close()
-            return jsonify({"error": "This contact has no WhatsApp number, so they can't be added to a WhatsApp segment."}), 400
-        cur.execute(
-            "INSERT INTO wa_pipeline_segment_leads (segment_id, lead_id) VALUES (%s, %s) "
-            "ON CONFLICT (segment_id, lead_id) DO NOTHING",
-            (segment_id, lead_id),
-        )
-        conn.commit()
-        cur.close(); conn.close()
-        return jsonify({"ok": True, "member": {
-            "id": lead["id"],
-            "name": lead["customer_name"] or lead["contact_person"] or lead["phone"],
-            "phone": lead["phone"],
-        }})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    return jsonify({"error": _WA_SEG_MOVED}), 410
 
 
 @portal_bp.route("/whatsapp/pipeline-segments/<int:segment_id>/members/remove", methods=["POST"])
@@ -17482,66 +17411,46 @@ def whatsapp_pipeline_segments_remove_member(segment_id: int):
     if r: return jsonify({"error": "unauthorised"}), 401
     if not _team_member_has_permission("campaigns_wa.segments_edit"):
         return jsonify({"error": "forbidden"}), 403
-    customer  = _get_customer(_customer_id())
-    tenant_id = int(customer["tenant_id"])
-    lead_id_raw = (request.form.get("lead_id") or "").strip()
-    if not lead_id_raw.isdigit():
-        return jsonify({"error": "Invalid contact."}), 400
-    lead_id = int(lead_id_raw)
-    try:
-        conn = get_db_connection()
-        cur  = conn.cursor()
-        cur.execute("SELECT id FROM wa_pipeline_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
-        if not cur.fetchone():
-            cur.close(); conn.close()
-            return jsonify({"error": "Segment not found."}), 404
-        cur.execute("DELETE FROM wa_pipeline_segment_leads WHERE segment_id=%s AND lead_id=%s", (segment_id, lead_id))
-        conn.commit()
-        cur.close(); conn.close()
-        return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    return jsonify({"error": _WA_SEG_MOVED}), 410
 
 
 @portal_bp.route("/whatsapp/pipeline-segments/<int:segment_id>/members/bulk-add", methods=["POST"])
 @team_feature("campaigns_wa.segments_edit")
 def whatsapp_pipeline_segments_bulk_add_members(segment_id: int):
-    """Add many Sales Pipeline leads to a WhatsApp Segment in one call — used by
-    the Sales Pipeline page's multi-select "Add to WhatsApp Segment" bulk action.
-    Leads without a phone or already dropped are silently skipped (not counted
-    in 'added'), mirroring the email version's eligibility rule."""
+    """Pipeline Board "Add to WhatsApp segment": adds each ticked deal's
+    CONTACT to a contact segment (Phase 4a). Deals with no contact yet are
+    reported as skipped. A contact already in the segment isn't added twice."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
     if not _team_member_has_permission("campaigns_wa.segments_edit"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-
     lead_ids = list({int(v) for v in request.form.getlist("lead_ids") if v.isdigit()})
     if not lead_ids:
-        return jsonify({"error": "No contacts selected."}), 400
-
+        return jsonify({"error": "No deals selected."}), 400
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
-        cur.execute("SELECT id FROM wa_pipeline_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
-        if not cur.fetchone():
+        if not _segment_visible(cur, tenant_id, segment_id):
             cur.close(); conn.close()
             return jsonify({"error": "Segment not found."}), 404
+        cur.execute("SELECT count(*) FROM merchant_pipeline_leads WHERE id = ANY(%s) AND tenant_id=%s "
+                    "AND wa_contact_id IS NULL", (lead_ids, tenant_id))
+        no_contact = cur.fetchone()[0]
         cur.execute(
-            "INSERT INTO wa_pipeline_segment_leads (segment_id, lead_id) "
-            "SELECT %s, l.id FROM merchant_pipeline_leads l "
-            "WHERE l.id = ANY(%s) AND l.tenant_id=%s "
-            "AND l.whatsapp_number IS NOT NULL AND l.whatsapp_number <> '' AND l.dropped_at IS NULL "
-            "ON CONFLICT (segment_id, lead_id) DO NOTHING",
+            "INSERT INTO wa_segment_members (segment_id, contact_id) "
+            "SELECT DISTINCT %s, l.wa_contact_id FROM merchant_pipeline_leads l "
+            "WHERE l.id = ANY(%s) AND l.tenant_id=%s AND l.wa_contact_id IS NOT NULL "
+            "ON CONFLICT DO NOTHING",
             (segment_id, lead_ids, tenant_id),
         )
         added = cur.rowcount
-        conn.commit()
-        cur.close(); conn.close()
-        return jsonify({"ok": True, "added": added, "requested": len(lead_ids)})
+        conn.commit(); cur.close(); conn.close()
+        return jsonify({"ok": True, "added": added, "requested": len(lead_ids), "no_contact": no_contact})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print("⚠️ pipeline_segments_bulk_add error:", e)
+        return jsonify({"error": "Could not add to segment."}), 500
 
 
 @portal_bp.route("/whatsapp/campaigns/pipeline-leads-json")
@@ -27613,8 +27522,12 @@ def _pipeline_filter_clauses(tenant_id, search, stage_filter, has_phone, has_wha
         clauses.append("mpl.id NOT IN (SELECT lead_id FROM sms_pipeline_segment_leads WHERE segment_id = ANY(%s))")
         params.append(hide_sms_segment_ids)
     if hide_wa_segment_ids:
-        clauses.append("mpl.id NOT IN (SELECT lead_id FROM wa_pipeline_segment_leads WHERE segment_id = ANY(%s))")
+        # Hide deals whose contact is in any of these contact segments (Phase 4a)
+        clauses.append("(mpl.wa_contact_id IS NULL OR mpl.wa_contact_id NOT IN "
+                       "(SELECT sm.contact_id FROM wa_segment_members sm JOIN wa_segments s ON s.id = sm.segment_id "
+                       "WHERE sm.segment_id = ANY(%s)" + _seg_vis("s")[0] + "))")
         params.append(hide_wa_segment_ids)
+        params.extend(_seg_vis("s")[1])
     return clauses, params
 
 
@@ -27703,10 +27616,12 @@ def _build_pipeline_kanban_board(cur, tenant_id, search, tier_filter,
             board_seg_map.setdefault(row["lead_id"], []).append(row["name"])
 
         cur.execute(
-            "SELECT sl.lead_id, s.name FROM wa_pipeline_segment_leads sl "
-            "JOIN wa_pipeline_segments s ON s.id = sl.segment_id "
-            "WHERE sl.lead_id = ANY(%s) AND s.tenant_id=%s",
-            (board_lead_ids, tenant_id),
+            # Contact segments the deal's contact is in (Phase 4a), only ones this person may see
+            "SELECT l.id AS lead_id, s.name FROM merchant_pipeline_leads l "
+            "JOIN wa_segment_members m ON m.contact_id = l.wa_contact_id "
+            "JOIN wa_segments s ON s.id = m.segment_id "
+            "WHERE l.id = ANY(%s) AND s.tenant_id=%s" + _seg_vis("s")[0],
+            [board_lead_ids, tenant_id] + _seg_vis("s")[1],
         )
         for row in cur.fetchall():
             board_wa_map.setdefault(row["lead_id"], []).append(row["name"])
@@ -27815,10 +27730,12 @@ def _build_leads_tier_board(cur, tenant_id, search):
             board_seg_map.setdefault(row["lead_id"], []).append(row["name"])
 
         cur.execute(
-            "SELECT sl.lead_id, s.name FROM wa_pipeline_segment_leads sl "
-            "JOIN wa_pipeline_segments s ON s.id = sl.segment_id "
-            "WHERE sl.lead_id = ANY(%s) AND s.tenant_id=%s",
-            (board_lead_ids, tenant_id),
+            # Contact segments the deal's contact is in (Phase 4a), only ones this person may see
+            "SELECT l.id AS lead_id, s.name FROM merchant_pipeline_leads l "
+            "JOIN wa_segment_members m ON m.contact_id = l.wa_contact_id "
+            "JOIN wa_segments s ON s.id = m.segment_id "
+            "WHERE l.id = ANY(%s) AND s.tenant_id=%s" + _seg_vis("s")[0],
+            [board_lead_ids, tenant_id] + _seg_vis("s")[1],
         )
         for row in cur.fetchall():
             board_wa_map.setdefault(row["lead_id"], []).append(row["name"])
@@ -27996,17 +27913,20 @@ def sales_pipeline():
     lead_wa_segment_map = {}
     if lead_ids_on_page:
         cur.execute(
-            "SELECT sl.lead_id, s.name FROM wa_pipeline_segment_leads sl "
-            "JOIN wa_pipeline_segments s ON s.id = sl.segment_id "
-            "WHERE sl.lead_id = ANY(%s) AND s.tenant_id=%s",
-            (lead_ids_on_page, tenant_id),
+            # Contact segments the deal's contact is in (Phase 4a), only ones this person may see
+            "SELECT l.id AS lead_id, s.name FROM merchant_pipeline_leads l "
+            "JOIN wa_segment_members m ON m.contact_id = l.wa_contact_id "
+            "JOIN wa_segments s ON s.id = m.segment_id "
+            "WHERE l.id = ANY(%s) AND s.tenant_id=%s" + _seg_vis("s")[0],
+            [lead_ids_on_page, tenant_id] + _seg_vis("s")[1],
         )
         for row in cur.fetchall():
             lead_wa_segment_map.setdefault(row["lead_id"], []).append(row["name"])
     for l in leads:
         l["wa_segment_names"] = lead_wa_segment_map.get(l["id"], [])
 
-    cur.execute("SELECT id, name FROM wa_pipeline_segments WHERE tenant_id=%s ORDER BY name", (tenant_id,))
+    cur.execute("SELECT s.id, s.name FROM wa_segments s WHERE s.tenant_id=%s" + _seg_vis("s")[0]
+                + " ORDER BY lower(s.name), s.id", [tenant_id] + _seg_vis("s")[1])
     all_wa_segments = cur.fetchall()
 
     # Which SMS Segment(s), if any, each lead on this page already belongs to — same
