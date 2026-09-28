@@ -2230,6 +2230,17 @@ def ensure_portal_tables():
                            ON CONFLICT DO NOTHING""", (_new_id, _ps_id))
             cur.execute("UPDATE wa_pipeline_segments SET moved_to_segment_id=%s WHERE id=%s", (_new_id, _ps_id))
 
+        # 2026-09-28 (user): each module has its OWN segments. CRM Segments,
+        # WhatsApp Segments and Email Segments all live in wa_segments (members
+        # are contacts) but are kept apart by `module`; each module's page and
+        # Role ticks only ever touch its own. The segments moved over from the
+        # old WhatsApp Segments belong to WhatsApp.
+        cur.execute("ALTER TABLE wa_segments ADD COLUMN IF NOT EXISTS module VARCHAR(20) NOT NULL DEFAULT 'crm'")
+        cur.execute("CREATE INDEX IF NOT EXISTS wa_segments_tenant_module_idx ON wa_segments(tenant_id, module)")
+        cur.execute("""UPDATE wa_segments SET module='whatsapp'
+                       WHERE module='crm' AND id IN (SELECT moved_to_segment_id FROM wa_pipeline_segments
+                                                     WHERE moved_to_segment_id IS NOT NULL)""")
+
         if not _table_exists(cur, "contact_consent_log"):
             cur.execute("""
                 CREATE TABLE contact_consent_log (

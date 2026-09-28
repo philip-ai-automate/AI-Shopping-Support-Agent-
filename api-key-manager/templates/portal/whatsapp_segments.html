@@ -86,7 +86,7 @@
 <div class="seg-hero">
   <div>
     <h1>Segments</h1>
-    <p>Group contacts into named lists — use them to target campaigns and manage leads.
+    <p>CRM Segments: group contacts into named lists for your CRM work. (WhatsApp and Email campaigns have their own segments.)
       {% if segments_see_all %}You see every segment in the business.{% else %}Segments you make are private to you.{% endif %}</p>
   </div>
   <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -138,7 +138,6 @@
         </div>
       </div>
       <div class="seg-name">{{ seg.name }}</div>
-      <div class="seg-desc">💬 {{ seg.wa_count }} can get WhatsApp campaigns</div>
       {% if segments_see_all %}
       <div class="seg-desc">Made by {{ seg.created_by_name or 'the business owner' }}{% if seg.created_by_member_id and seg.created_by_active == false %} (no longer active: now belongs to the business owner){% endif %}</div>
       {% endif %}
@@ -153,13 +152,6 @@
         <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
       </a>
       <div style="display:flex;gap:6px">
-        {% if staff_can_open('portal.whatsapp_campaigns') %}
-        <a href="{{ url_for('portal.whatsapp_campaigns') }}?segment_id={{ seg.id }}"
-           title="Target this segment in a campaign"
-           style="text-decoration:none" class="icon-btn">
-          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-        </a>
-        {% endif %}
         {% if can_edit_seg %}
         <button class="icon-btn" title="Edit segment"
                 onclick="openEdit({{ seg.id }}, '{{ seg.name|replace("'","\\'") }}', '{{ (seg.description or '')|replace("'","\\'") }}', '{{ seg.color }}')">
