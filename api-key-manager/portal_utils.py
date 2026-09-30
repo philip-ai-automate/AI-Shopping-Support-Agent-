@@ -165,7 +165,9 @@ TUTORIAL_VIDEOS = [
      "audience": "merchant"},
     {"slug": "crm-pipeline", "title": "Your CRM & Sales Pipeline",
      "sub": "Leads, the Lead Command Centre, the Pipeline Board, Contacts, Companies, Segments, Tags, and Pipeline Settings — the full tour",
-     "audience": "merchant"},
+     "audience": "merchant",
+     # Recorded before One Address Book / separate segments (2026-09-28).
+     "older": True, "guide_topic": "crm"},
     {"slug": "reports", "title": "Your Reports",
      "sub": "Pipeline Overview, Leads & Sources, and the Custom Report Builder — Leads, Contacts, Companies and Campaigns, grouped, saved, and exportable",
      "audience": "merchant"},

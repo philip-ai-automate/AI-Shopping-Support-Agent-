@@ -232,6 +232,14 @@ def create_app():
             return bool(perms.get(feature_key))
         return {"staff_can_open": staff_can_open, "staff_can": staff_can}
 
+    @flask_app.context_processor
+    def _inject_sms_enabled():
+        """SMS_ENABLED for templates: the one on/off switch for everything SMS
+        (menu, Sales Pipeline SMS bits, SMS consent row, SMS wording).
+        Lives in portal_routes.py; off since 2026-09-28."""
+        from portal_routes import SMS_ENABLED
+        return {"SMS_ENABLED": SMS_ENABLED}
+
     # ── Global template context: inject current customer so every template,
     #    including base.html, can access avatar_data, first_name, etc.
     from flask import session as _session, g as _g

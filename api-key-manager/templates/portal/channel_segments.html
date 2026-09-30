@@ -10,8 +10,8 @@
 }
 .seg-hero-left h1 { font-size:21px; font-weight:800; color:#fff; margin:0 0 4px; }
 .seg-hero-left p  { font-size:13px; color:rgba(255,255,255,.5); margin:0; }
-.seg-hero-back { font-size:12px; color:rgba(255,255,255,.55); text-decoration:none; display:inline-flex; align-items:center; gap:5px; margin-bottom:8px; }
-.seg-hero-back:hover { color:#fff; }
+.seg-hero-back { font-size:12px; color:#64748b; text-decoration:none; display:inline-flex; align-items:center; gap:5px; margin-bottom:8px; }
+.seg-hero-back:hover { color:var(--ink); }
 
 .seg-create-row { display:flex; gap:8px; }
 .seg-create-row input {
@@ -81,7 +81,9 @@
 .src-panel { display:none; } .src-panel.on { display:block; }
 .stage-row { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid rgba(3,12,24,.06); font-size:13px; }
 .stage-row:last-child { border-bottom:none; }
-.stage-row .n { margin-left:auto; color:#64748b; font-size:12px; }
+.stage-row .n { margin-left:auto; color:#64748b; font-size:12px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.stage-row input[type=checkbox] { width:16px; height:16px; flex:none; margin:0; padding:0; }
+.stage-row .st-name { flex:1; text-align:left; font-weight:600; color:var(--ink); }
 .add-box { border:1px solid rgba(3,12,24,.08); border-radius:12px; padding:14px 16px; margin-bottom:20px; background:#fafbfc; }
 .muted-note { font-size:12px; color:#64748b; margin-top:8px; line-height:1.5; }
 .tag-off { font-size:11px; color:#b45309; background:#fffbeb; border-radius:6px; padding:1px 6px; margin-left:6px; }
@@ -112,7 +114,7 @@
 <div class="seg-hero">
   <div class="seg-hero-left">
     <h1>{{ active_segment.name }}</h1>
-    <p>{{ members|length }} people in this {{ ch.one }}. Campaigns use their {{ ch.field_label|lower }} only.</p>
+    <p>{{ members|length }} people in this {{ ch.one }}. Campaigns use their {{ 'email address' if ch.field == 'email' else 'WhatsApp number' }} only.</p>
   </div>
 </div>
 
@@ -150,7 +152,7 @@
           {% for st in stages %}
           <label class="stage-row">
             <input type="checkbox" name="stages" value="{{ st.key }}" {% if not st.count %}disabled{% endif %}>
-            {{ st.label }}
+            <span class="st-name">{{ st.label }}</span>
             <span class="n">{{ st.count }} to add</span>
           </label>
           {% endfor %}

@@ -1017,7 +1017,7 @@
           <div class="field">
             <label class="field-label" for="af-phone">📞 Phone number</label>
             <input class="field-input" type="text" name="phone" id="af-phone" placeholder="2348012345678" autocomplete="off" inputmode="numeric">
-            <div style="font-size:11px;color:#94a3b8;margin-top:4px">For phone calls and SMS</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:4px">For phone calls{{ ' and SMS' if SMS_ENABLED }}</div>
             <div class="dedupe-warn" id="af-phone-dedupe"></div>
           </div>
           <div class="field">
@@ -1142,7 +1142,7 @@
             <div class="field">
               <label class="field-label" for="ef-phone">📞 Phone number</label>
               <input class="field-input" type="text" name="phone" id="ef-phone" placeholder="2348012345678" inputmode="numeric">
-              <div style="font-size:11px;color:#94a3b8;margin-top:4px">For phone calls and SMS</div>
+              <div style="font-size:11px;color:#94a3b8;margin-top:4px">For phone calls{{ ' and SMS' if SMS_ENABLED }}</div>
             </div>
             <div class="field">
               <label class="field-label" for="ef-whatsapp">💬 WhatsApp number</label>

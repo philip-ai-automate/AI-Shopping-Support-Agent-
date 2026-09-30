@@ -1,31 +1,48 @@
 {% extends "portal/base.html" %}
-{% block title %}New Team Member — PhiXtra Portal{% endblock %}
+{% block title %}{{ 'Edit Team Member' if member else 'New Team Member' }} — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+/* Tick boxes: the portal's global input rule (width:100%, padding) made them
+   huge and pushed their labels away — keep them normal-sized next to the text. */
+.agent-check{display:flex;align-items:flex-start;gap:8px;font-size:13.5px;color:var(--txt);
+             cursor:pointer;margin-bottom:8px;font-weight:500;line-height:1.45}
+.agent-check input[type=checkbox]{width:16px;height:16px;padding:0;margin:2px 0 0;flex:none;
+             accent-color:var(--ink);border-radius:4px}
+.agent-picker-label{font-size:13px;color:var(--muted);margin-bottom:8px}
+.agent-picker-list{display:flex;flex-wrap:wrap;gap:4px 18px}
+.tm-current-photo{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+.tm-current-photo img{width:44px;height:44px;border-radius:50%;object-fit:cover}
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="page" style="max-width:640px">
 
   <div class="page-header">
-    <h1 class="section-title">➕ New Team Member</h1>
+    <h1 class="section-title">{{ '✏️ Edit Team Member' if member else '➕ New Team Member' }}</h1>
     <a href="{{ url_for('portal.team_page') }}" class="btn btn-sm">← Back to Team</a>
   </div>
 
-  <form method="POST" enctype="multipart/form-data" action="{{ url_for('portal.team_create') }}">
+  <form method="POST" enctype="multipart/form-data"
+        action="{{ url_for('portal.team_edit', member_id=member.id) if member else url_for('portal.team_create') }}">
 
     <div class="card" style="margin-bottom:16px">
       <p class="card-title">Profile</p>
       <div class="grid g2">
         <div class="form-group">
           <label>First name *</label>
-          <input type="text" name="first_name" required maxlength="100"/>
+          <input type="text" name="first_name" required maxlength="100" value="{{ member.first_name or '' if member else '' }}"/>
         </div>
         <div class="form-group">
           <label>Last name</label>
-          <input type="text" name="last_name" maxlength="100"/>
+          <input type="text" name="last_name" maxlength="100" value="{{ member.last_name or '' if member else '' }}"/>
         </div>
       </div>
       <div class="form-group">
         <label>Email address *</label>
-        <input type="email" name="email" required/>
+        <input type="email" name="email" required value="{{ member.email or '' if member else '' }}"/>
+        {% if member %}<p class="muted" style="font-size:12px;margin-top:4px">This is the email they log in with. If you change it, tell them — their password stays the same.</p>{% endif %}
       </div>
       <div class="grid g2">
         <div class="form-group">
@@ -33,7 +50,7 @@
           <select name="department_id">
             <option value="">— None —</option>
             {% for d in departments %}
-            <option value="{{ d.id }}">{{ d.name }}</option>
+            <option value="{{ d.id }}" {% if member and member.department_id == d.id %}selected{% endif %}>{{ d.name }}</option>
             {% endfor %}
           </select>
           <p class="muted" style="font-size:11.5px;margin-top:4px">
@@ -45,7 +62,7 @@
           <select name="position_id">
             <option value="">— None —</option>
             {% for p in positions %}
-            <option value="{{ p.id }}">{{ p.name }}</option>
+            <option value="{{ p.id }}" {% if member and member.position_id == p.id %}selected{% endif %}>{{ p.name }}</option>
             {% endfor %}
           </select>
           <p class="muted" style="font-size:11.5px;margin-top:4px">
@@ -56,14 +73,14 @@
       <div class="grid g2">
         <div class="form-group">
           <label>City</label>
-          <input type="text" name="location_city" maxlength="100" placeholder="e.g. Lagos, London"/>
+          <input type="text" name="location_city" maxlength="100" placeholder="e.g. Lagos, London" value="{{ member.location_city or '' if member else '' }}"/>
         </div>
         <div class="form-group">
           <label>Country</label>
           <select name="location_country">
             <option value="">— None —</option>
             {% for code, cname in countries %}
-            <option value="{{ code }}">{{ cname }}</option>
+            <option value="{{ code }}" {% if member and member.location_country == code %}selected{% endif %}>{{ cname }}</option>
             {% endfor %}
           </select>
         </div>
@@ -73,17 +90,31 @@
         <select name="line_manager_id">
           <option value="">— None —</option>
           {% for m in managers %}
-          <option value="{{ m.id }}">{{ m.name }}</option>
+          <option value="{{ m.id }}" {% if member and member.line_manager_id == m.id %}selected{% endif %}>{{ m.name }}</option>
           {% endfor %}
         </select>
       </div>
       <div class="form-group">
         <label>Photo</label>
+        {% if member and member.avatar_data %}
+        <div class="tm-current-photo">
+          <img src="{{ member.avatar_data }}" alt=""/>
+          <label class="agent-check" style="margin:0"><input type="checkbox" name="remove_avatar"/> Remove this photo</label>
+        </div>
+        {% endif %}
         <input type="file" name="avatar" accept="image/jpeg,image/png,image/gif,image/webp"/>
-        <p class="muted" style="font-size:12px;margin-top:4px">JPEG, PNG, GIF or WebP, under 2 MB. Optional.</p>
+        <p class="muted" style="font-size:12px;margin-top:4px">JPEG, PNG, GIF or WebP, under 2 MB. Optional.{% if member and member.avatar_data %} Choose a new file to replace the current photo.{% endif %}</p>
       </div>
     </div>
 
+    {% if member %}
+    <p class="muted" style="font-size:13px;margin-bottom:16px">
+      Role, channel access and chat alerts are changed on the Team page. This page doesn't change their password.
+    </p>
+
+    <button type="submit" class="btn btn-primary">Save Changes</button>
+    <a href="{{ url_for('portal.team_page') }}" class="btn">Cancel</a>
+    {% else %}
     <div class="card" style="margin-bottom:16px">
       <p class="card-title">Access</p>
       <div class="form-group">
@@ -110,8 +141,8 @@
     <div class="card" style="margin-bottom:16px">
       <p class="card-title">🔔 Chat alerts</p>
       <p class="muted" style="font-size:13px;margin:-4px 0 12px">Tell this person straight away when a customer's chat needs a reply — only for chats they can see.</p>
-      <label class="agent-check" style="display:flex;margin-bottom:8px"><input type="checkbox" name="alert_enabled"/> Alert them on WhatsApp and email when a chat needs a reply</label>
-      <label class="agent-check" style="display:flex;margin-bottom:12px"><input type="checkbox" name="alert_reminder" checked/> Remind them after 10 minutes if nobody has replied</label>
+      <label class="agent-check"><input type="checkbox" name="alert_enabled"/> Alert them on WhatsApp and email when a chat needs a reply</label>
+      <label class="agent-check" style="margin-bottom:12px"><input type="checkbox" name="alert_reminder" checked/> Remind them after 10 minutes if nobody has replied</label>
       <div class="form-group" style="margin-bottom:0">
         <label>Their personal WhatsApp number for alerts</label>
         <input type="tel" name="alert_phone" inputmode="tel" placeholder="e.g. +2348012345678" style="max-width:280px"/>
@@ -126,6 +157,7 @@
 
     <button type="submit" class="btn btn-primary">Create Team Member</button>
     <a href="{{ url_for('portal.team_page') }}" class="btn">Cancel</a>
+    {% endif %}
   </form>
 
 </div>

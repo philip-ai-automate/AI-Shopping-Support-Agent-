@@ -3,7 +3,7 @@
 {% block content %}
 {# Role-aware buttons — same route labels the save routes enforce. #}
 {% set can_edit_deal = staff_can_open('portal.sales_pipeline_edit') %}
-{% set can_bulk_email_seg = staff_can_open('portal.email_csegments_bulk_add_members') %}
+{% set can_bulk_email_seg = staff_can_open('portal.email_csegments_bulk_add_members') and 'campaigns_email.segments_edit' in (granted_features or []) %}
 {% set can_bulk_wa_seg    = staff_can_open('portal.whatsapp_pipeline_segments_bulk_add_members') %}
 {% set can_bulk_sms_seg   = staff_can_open('portal.sms_pipeline_segments_bulk_add_members') %}
 {% set can_bulk_label     = staff_can_open('portal.lead_labels_bulk_add_members') %}
@@ -493,7 +493,7 @@
         </div>
       </div>
       {% endif %}
-      {% if customer.tenant_id == 19 and all_sms_segments %}
+      {% if SMS_ENABLED and customer.tenant_id == 19 and all_sms_segments %}
       <div class="col-picker-wrap sms-seg-picker-wrap">
         <button type="button" class="col-picker-btn" onclick="toggleSmsSegPicker()">
           <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
@@ -548,7 +548,7 @@
         <div class="col-picker-menu" id="colPickerMenu">
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="segment">Email Segment</label>
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="wa_segment">WhatsApp Segment</label>
-          {% if customer.tenant_id == 19 %}
+          {% if SMS_ENABLED and customer.tenant_id == 19 %}
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="sms_segment" checked>SMS Segment</label>
           {% endif %}
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="label" checked>Label</label>
@@ -577,7 +577,7 @@
     <a href="{{ url_for('portal.sales_pipeline_export', stage=stage_filter, q=search, **filter_args) }}"
        class="btn" style="text-decoration:none">⬇️ Export CSV</a>
     {% endif %}
-    {% if customer.tenant_id == 19 %}
+    {% if SMS_ENABLED and customer.tenant_id == 19 %}
     <a href="{{ url_for('portal.sms_campaigns') }}" class="btn btn-primary" style="text-decoration:none">📟 SMS</a>
     {% endif %}
   </div>
@@ -587,7 +587,8 @@
 {% endif %}
 
 {% set is_phixtra_support_account = (customer.tenant_id == 19) %}
-{% set empty_colspan = 15 if is_phixtra_support_account else 13 %}
+{% set sms_cols = SMS_ENABLED and is_phixtra_support_account %}
+{% set empty_colspan = 13 + (1 if is_phixtra_support_account else 0) + (1 if sms_cols else 0) %}
 
 {% if view_mode == 'list' %}
 <div class="bulk-action-bar" id="bulkActionBar" style="display:none">
@@ -595,7 +596,7 @@
   {% if can_edit_deal %}<button type="button" class="btn btn-sm btn-primary" onclick="openBulkAdvanceModal()">➡️ Move Stage</button>{% endif %}
   {% if can_bulk_email_seg %}<button type="button" class="btn btn-sm btn-primary" onclick="openBulkSegmentModal()">📋 Add to Email Segment</button>{% endif %}
   {% if can_bulk_wa_seg %}<button type="button" class="btn btn-sm btn-primary" onclick="openBulkWaSegmentModal()">📱 Add to WhatsApp Segment</button>{% endif %}
-  {% if is_phixtra_support_account and can_bulk_sms_seg %}
+  {% if sms_cols and can_bulk_sms_seg %}
   <button type="button" class="btn btn-sm btn-primary" onclick="openBulkSmsSegmentModal()">📟 Add to SMS Segment</button>
   {% endif %}
   {% if can_bulk_label %}<button type="button" class="btn btn-sm btn-primary" onclick="openBulkLabelModal()">🏷️ Add to Label</button>{% endif %}
@@ -612,7 +613,7 @@
           <th>Customer</th>
           <th data-col="segment" class="col-hidden">Email Segment</th>
           <th data-col="wa_segment" class="col-hidden">WhatsApp Segment</th>
-          {% if is_phixtra_support_account %}
+          {% if sms_cols %}
           <th data-col="sms_segment">SMS Segment</th>
           {% endif %}
           <th data-col="label">Label</th>
@@ -666,7 +667,7 @@
               <span class="muted">—</span>
             {% endif %}
           </td>
-          {% if is_phixtra_support_account %}
+          {% if sms_cols %}
           <td data-col="sms_segment" style="font-size:11px">
             {% if l.sms_segment_names %}
               {% for sname in l.sms_segment_names %}
@@ -1175,7 +1176,7 @@
 {% endif %}
 
 <!-- ── Bulk "Add to SMS Segment" modal (support@phixtra.com only) ── -->
-{% if is_phixtra_support_account %}
+{% if sms_cols %}
 <div class="modal-over" id="bulkSmsSegModal" onclick="if(event.target===this)closeBulkSmsSegmentModal()">
   <div class="modal-card">
     <div class="modal-title">Add <span id="bulkSmsSegCount">0</span> contact(s) to an SMS Segment</div>

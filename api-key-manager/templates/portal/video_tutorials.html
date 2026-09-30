@@ -33,6 +33,11 @@
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
 }
 
+.vt-older {
+  display:inline-block; margin-top:8px; font-size:11px; font-weight:700; color:#B54708;
+  background:#FEF3E2; border-radius:999px; padding:2px 9px;
+}
+.vt-guide-link { display:block; margin-top:6px; font-size:11px; font-weight:700; color:var(--ink) }
 .vt-modal {
   display:none; position:fixed; inset:0; background:rgba(3,12,24,.75); z-index:9999;
   align-items:center; justify-content:center; padding:24px;
@@ -49,7 +54,10 @@
 </style>
 
 <div class="page-header">
-  <div class="section-title">Video Tutorials</div>
+  <div>
+    <div class="section-title">Video Tutorials</div>
+    <p class="muted">Short walkthrough videos. For full written steps, see <a href="{{ url_for('portal.tutorials') }}">How-To Guides</a>.</p>
+  </div>
 </div>
 
 <div class="vt-grid">
@@ -66,6 +74,10 @@
     <div class="vt-info">
       <div class="vt-title">{{ v.title }}</div>
       <div class="vt-sub">{{ v.sub }}</div>
+      {% if v.older %}
+      <span class="vt-older">Older video: some screens have changed</span>
+      <a class="vt-guide-link" href="{{ url_for('portal.tutorials', topic=v.guide_topic) }}" onclick="event.stopPropagation()">Read the up-to-date written guide →</a>
+      {% endif %}
     </div>
   </div>
   {% endfor %}

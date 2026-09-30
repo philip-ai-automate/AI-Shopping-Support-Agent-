@@ -104,13 +104,30 @@ def _reset_session(phone: str):
         conn.close()
 
 
-def _save_products(tenant_id: int, products: list, default_category: str = None):
+def _save_products(tenant_id: int, products: list, default_category: str = None) -> list:
+    """Saves products up to the plan's product limit (-1 = unlimited).
+    Returns the products actually saved."""
     if not products:
-        return
+        return []
     conn = get_db_connection()
     if not conn:
-        return
+        return []
     cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT p.products_limit,
+                   (SELECT COUNT(*) FROM products WHERE tenant_id = t.id)
+                 + (SELECT COUNT(*) FROM merchant_product_catalogue mpc
+                    JOIN customers c ON c.id = mpc.merchant_id
+                    WHERE c.tenant_id = t.id AND mpc.is_active)
+            FROM tenants t JOIN plans p ON p.id = t.plan_id WHERE t.id = %s
+        """, (tenant_id,))
+        row = cur.fetchone()
+        if row and row[0] is not None and int(row[0]) >= 0:
+            products = products[:max(int(row[0]) - int(row[1] or 0), 0)]
+    except Exception as e:
+        conn.rollback()
+        print("⚠️ [ONBOARDING] product limit check:", e)
     try:
         for p in products:
             cur.execute(
@@ -133,8 +150,10 @@ def _save_products(tenant_id: int, products: list, default_category: str = None)
             )
         conn.commit()
         print(f"✅ [ONBOARDING] Saved {len(products)} product(s) for tenant {tenant_id}")
+        return products
     except Exception as e:
         print("⚠️ [ONBOARDING] _save_products:", e)
+        return []
     finally:
         cur.close()
         conn.close()
@@ -251,7 +270,7 @@ async def _complete_registration(phone: str, collected: dict):
     tenant_id = int(result["tenant_id"])
 
     if products:
-        _save_products(tenant_id, products, default_category=category)
+        products = _save_products(tenant_id, products, default_category=category)
 
     n_products   = len(products)
     product_line = (

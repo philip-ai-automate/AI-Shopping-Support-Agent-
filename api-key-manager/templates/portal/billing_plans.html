@@ -189,7 +189,7 @@
       Upgrade your plan to resume service — or wait until your next billing period resets.
       <br><br>
       <strong>Overage rate:</strong> ₦{{ current.overage_per_msg_ngn }} per message
-      (${{ "%.4f"|format(current.overage_per_msg_usd|float) }})
+      (£{{ "%.4f"|format(current.overage_per_msg_usd|float) }})
     </div>
   </div>
   {% elif pct >= 80 %}
@@ -229,15 +229,15 @@
   <div class="plan-name">{{ plan.name }}</div>
 
   {% if plan.is_custom %}
-  <div class="plan-price" style="font-size:22px">Custom</div>
-  <div class="plan-period">Talk to us for volume pricing</div>
+  <div class="plan-period">For customisation requests. Contact us to discuss what you need.</div>
   {% else %}
   <div class="plan-price">
     {% if plan.price_ngn == 0 %}Free
     {% else %}₦{{ "{:,}".format(plan.price_ngn) }}{% endif %}
   </div>
   {% if plan.price_ngn > 0 %}
-  <div class="plan-currency">${{ plan.price_usd }} / month</div>
+  {% set _gbp = plan.price_usd|float %}
+  {% if _gbp > 0 %}<div class="plan-currency">£{{ '%d'|format(_gbp) if _gbp == _gbp|int else '%.2f'|format(_gbp) }} / month</div>{% endif %}
   <div class="plan-period">
     billed monthly
     <span class="plan-annual"> · ₦{{ "{:,}".format(annual_ngn) }}/mo if annual ({{ plan.annual_discount_pct }}% off)</span>
@@ -247,16 +247,19 @@
   {% endif %}
   {% endif %}
 
+  {% if not plan.is_custom %}
   <div class="plan-divider"></div>
 
   <ul class="plan-features">
     {% set _no_ai = plan.ai_messages_limit == 0 %}
-    {% if _no_ai %}
-    <li><span class="feat-no">✗</span><span class="feat-lbl muted">No AI — your staff reply from the shared Inbox</span></li>
+    {% if not plan.is_custom and plan.channel_mode != 'woocommerce' %}
     <li>
       <span class="feat-yes">✓</span>
       <span class="feat-lbl">Official WhatsApp Business API connection</span>
     </li>
+    {% endif %}
+    {% if _no_ai %}
+    <li><span class="feat-no">✗</span><span class="feat-lbl muted">No AI — your staff reply from the shared Inbox</span></li>
     {% elif not plan.is_custom %}
     <li>
       <span class="feat-yes">✓</span>
@@ -300,8 +303,27 @@
     <li><span class="feat-no">✗</span><span class="feat-lbl muted">WhatsApp broadcast messaging</span></li>
     {% endif %}
 
+    {% set f = plan_feats.get(plan.id, []) %}
+    {% set _crm_on = [] %}{% for k in crm_keys %}{% if k in f %}{% set _ = _crm_on.append(k) %}{% endif %}{% endfor %}
+    {% if _crm_on and _crm_on|length < crm_keys|length %}
+    <li><span class="feat-yes">✓</span><span class="feat-lbl">CRM</span></li>
+    {% endif %}
+    {% for on, label in [
+        (crm_keys and _crm_on|length == crm_keys|length, 'Full CRM'),
+        ('campaigns_email.all_view' in f, 'Email Marketing'),
+        ('social.posts_view' in f,        'Social Media'),
+        ('voice.calls' in f,              'Voice Calls'),
+    ] %}
+    <li>
+      {% if on %}
+      <span class="feat-yes">✓</span><span class="feat-lbl">{{ label }}</span>
+      {% else %}
+      <span class="feat-no">✗</span><span class="feat-lbl muted">{{ label }}</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+
     {% for flag, label in [
-        ('feat_crm',         'Full CRM'),
         ('feat_advanced_ai', 'Custom AI personality'),
         ('feat_integrations','Integrations'),
         ('feat_visual_match','Shop by sending a photo'),
@@ -327,6 +349,7 @@
     </li>
     {% endif %}
   </ul>
+  {% endif %}
 
   <div class="plan-cta">
     {% if is_current %}
@@ -370,7 +393,7 @@
 </div>
 
 <p style="font-size:12px;color:var(--muted);margin-top:20px;text-align:center">
-  Payments are processed securely via Flutterwave (NGN) and Stripe (USD). Annual billing saves 10–20%.
+  Payments are processed securely via Flutterwave (Naira) and Stripe (British Pounds). Annual billing saves 10–20%.
 </p>
 
 {# ── Flash messages from callback ─────────────────────────────────────────── #}
@@ -438,12 +461,12 @@
             </div>
           </label>
           <label style="flex:1;cursor:pointer">
-            <input type="radio" name="currency" value="USD" onchange="updatePrices()"
+            <input type="radio" name="currency" value="GBP" onchange="updatePrices()"
                    style="display:none" id="currUSD">
             <div class="curr-btn" id="btnUSD" style="border:2px solid var(--line);background:#f9fafb;
                  border-radius:10px;padding:12px;text-align:center">
               <div style="font-weight:700;font-size:14px">💳 Stripe</div>
-              <div style="font-size:12px;color:var(--muted)">Pay in USD</div>
+              <div style="font-size:12px;color:var(--muted)">Pay in GBP (£)</div>
             </div>
           </label>
         </div>
@@ -498,14 +521,19 @@ function updatePrices() {
   var annualNGN = Math.round(ngn * 12 * (1 - disc));
   var annualUSD = Math.round(usd * 12 * (1 - disc) * 100) / 100;
 
-  document.getElementById('priceMonthlyNGN').textContent = '₦' + ngn.toLocaleString() + '/mo';
-  document.getElementById('priceAnnualNGN').textContent  = '₦' + Math.round(ngn*(1-disc)).toLocaleString() + '/mo';
+  if (currency === 'GBP') {
+    document.getElementById('priceMonthlyNGN').textContent = '£' + usd.toFixed(2) + '/mo';
+    document.getElementById('priceAnnualNGN').textContent  = '£' + (Math.round(usd*(1-disc)*100)/100).toFixed(2) + '/mo';
+  } else {
+    document.getElementById('priceMonthlyNGN').textContent = '₦' + ngn.toLocaleString() + '/mo';
+    document.getElementById('priceAnnualNGN').textContent  = '₦' + Math.round(ngn*(1-disc)).toLocaleString() + '/mo';
+  }
 
   // Highlight selected cycle
   document.getElementById('btnMonthly').style.borderColor = cycle === 'monthly' ? 'var(--ink)' : 'var(--line)';
   document.getElementById('btnAnnual').style.borderColor  = cycle === 'annual'  ? 'var(--ink)' : 'var(--line)';
   document.getElementById('btnNGN').style.borderColor     = currency === 'NGN'  ? 'var(--ink)' : 'var(--line)';
-  document.getElementById('btnUSD').style.borderColor     = currency === 'USD'  ? 'var(--ink)' : 'var(--line)';
+  document.getElementById('btnUSD').style.borderColor     = currency === 'GBP'  ? 'var(--ink)' : 'var(--line)';
 
   var summary, note;
   if (currency === 'NGN') {
@@ -518,10 +546,10 @@ function updatePrices() {
     }
   } else {
     if (cycle === 'monthly') {
-      summary = '$' + usd.toFixed(2) + '/month';
+      summary = '£' + usd.toFixed(2) + '/month';
       note    = 'Charged monthly via Stripe. Cancel anytime.';
     } else {
-      summary = '$' + annualUSD.toFixed(2) + '/year';
+      summary = '£' + annualUSD.toFixed(2) + '/year';
       note    = _modalDiscPct + '% off — billed annually via Stripe.';
     }
   }

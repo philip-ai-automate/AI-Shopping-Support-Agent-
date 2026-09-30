@@ -454,7 +454,7 @@
     <!-- Consent — one record, every channel. WhatsApp/Email/SMS opt-outs used
          to live in three separate places (or nowhere, for SMS); this is the
          one place a staff member sees and changes all three. -->
-    {% set is_out = contact.opted_out or contact.email_opted_out or contact.sms_opted_out %}
+    {% set is_out = contact.opted_out or contact.email_opted_out or (SMS_ENABLED and contact.sms_opted_out) %}
     <div class="section-card" style="margin-top:16px">
       <div class="sc-head">
         <h2>Consent</h2>
@@ -466,7 +466,7 @@
           <form method="POST" action="{{ url_for('portal.whatsapp_contact_set_consent', contact_id=contact.id) }}" style="margin:0">
             <input type="hidden" name="channel" value="all">
             <input type="hidden" name="action" value="opt_out">
-            <button type="submit" class="consent-btn is-out" onclick="return confirm('Opt this contact out of WhatsApp, Email and SMS campaigns?')">Opt out of all</button>
+            <button type="submit" class="consent-btn is-out" onclick="return confirm('Opt this contact out of WhatsApp{{ ', Email and SMS' if SMS_ENABLED else ' and Email' }} campaigns?')">Opt out of all</button>
           </form>
           {% endif %}
         </div>
@@ -487,6 +487,7 @@
             <button type="submit" class="consent-btn {{ 'is-out' if contact.email_opted_out else 'is-in' }}"{% if not can_edit_contact %} disabled style="cursor:default" title="Your role can view this but not change it"{% endif %}>{{ 'Opted out' if contact.email_opted_out else 'Subscribed' }}</button>
           </form>
         </div>
+        {% if SMS_ENABLED %}{# SMS switched off 2026-09-28: row hidden, stored opt-outs kept #}
         <div class="consent-row">
           <span class="consent-row-label">SMS</span>
           <form method="POST" action="{{ url_for('portal.whatsapp_contact_set_consent', contact_id=contact.id) }}" style="margin:0">
@@ -495,10 +496,12 @@
             <button type="submit" class="consent-btn {{ 'is-out' if contact.sms_opted_out else 'is-in' }}"{% if not can_edit_contact %} disabled style="cursor:default" title="Your role can view this but not change it"{% endif %}>{{ 'Opted out' if contact.sms_opted_out else 'Subscribed' }}</button>
           </form>
         </div>
+        {% endif %}
 
-        {% if consent_log %}
+        {% set _clog = consent_log if SMS_ENABLED else (consent_log or [])|rejectattr('channel', 'equalto', 'sms')|list %}
+        {% if _clog %}
         <div style="margin-top:12px">
-          {% for c in consent_log %}
+          {% for c in _clog %}
           <div class="consent-log-item">
             <b>{{ c.channel|title }}</b> {{ 'opted out' if c.action == 'opted_out' else 'opted back in' }} — {{ c.reason or (c.source|replace('_',' ')|title) }}
             <div style="margin-top:1px">{{ c.created_at.strftime('%d %b %Y, %H:%M') if c.created_at else '' }}</div>
@@ -740,7 +743,7 @@
             <label class="field-label" for="ep-phone">📞 Phone number</label>
             <input class="field-input" type="text" name="phone" id="ep-phone" inputmode="numeric"
                    value="{{ contact.phone or '' }}" placeholder="2348012345678">
-            <div style="font-size:11px;color:#94a3b8;margin-top:4px">For phone calls and SMS</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:4px">For phone calls{{ ' and SMS' if SMS_ENABLED }}</div>
           </div>
           <div class="field">
             <label class="field-label" for="ep-whatsapp">💬 WhatsApp number</label>

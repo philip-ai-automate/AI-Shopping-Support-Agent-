@@ -1,0 +1,865 @@
+{# CRM How-To Guide. Generated from the reviewed guide (draft 2, 2026-09-28)
+   by scratchpad to_portal.py: ids are prefixed crm-, pictures live in
+   static/portal/tutorial/crm/. Shown to every team member in full. #}
+<style>
+.crmg{
+  --g-ink:#030C18; --g-navy:#0E2240; --g-gold:#B8860B; --g-gold-soft:#FBF3DE;
+  --g-card:#FFFFFF; --g-txt:#1A2433; --g-muted:#5B6678; --g-line:#DDE3EB;
+  --g-chip:#EEF2F7; --g-good:#0F9F5F; --g-good-soft:#E7F7EF; --g-bad:#D92D20; --g-bad-soft:#FDECEA;
+  --g-link:#1D4ED8; --g-shadow:0 1px 2px rgba(3,12,24,.06);
+  color:var(--g-txt); font-size:15px; line-height:1.65;
+}
+.crmg *{box-sizing:border-box}
+.crmg a{color:var(--g-link)}
+.crmg .g-head{margin:0 0 18px}
+.crmg .g-lede{max-width:72ch;color:var(--g-muted);margin:0 0 6px;font-size:14px}
+.crmg .g-meta{font-size:12px;color:var(--g-muted)}
+.crmg nav.toc{background:var(--g-card);border:1px solid var(--g-line);border-radius:12px;padding:6px 14px;margin:0 0 26px;font-size:13.5px}
+.crmg nav.toc summary{cursor:pointer;font-weight:750;color:var(--g-ink);padding:8px 0;list-style-position:inside}
+.crmg nav.toc .h{display:none}
+.crmg nav.toc ol{list-style:none;margin:0;padding:0 0 8px;columns:3 220px;column-gap:18px}
+.crmg nav.toc ol > li{break-inside:avoid;margin:0}
+.crmg nav.toc ol ol{columns:1;padding:0 0 6px 12px;font-size:12.5px}
+.crmg nav.toc a{display:block;padding:4px 8px;border-radius:6px;color:var(--g-txt);text-decoration:none}
+.crmg nav.toc a:hover{background:var(--g-chip)}
+.crmg nav.toc ol ol a{color:var(--g-muted);padding:2px 8px}
+.crmg main{display:block;max-width:860px}
+.crmg section.part{padding-top:8px;margin-bottom:52px}
+.crmg h2{font-size:23px;line-height:1.25;color:var(--g-ink);margin:0 0 6px;scroll-margin-top:80px;font-weight:800}
+.crmg h2 .num{color:var(--g-gold);font-weight:800;margin-right:8px}
+.crmg .where{font-size:13px;color:var(--g-muted);margin:0 0 16px}
+.crmg h3{font-size:18px;color:var(--g-ink);margin:32px 0 8px;scroll-margin-top:80px;font-weight:750}
+.crmg h4{font-size:15px;color:var(--g-ink);margin:20px 0 6px;font-weight:700}
+.crmg p,.crmg li{max-width:72ch}
+.crmg p{margin:0 0 12px}
+.crmg ul,.crmg ol{padding-left:22px;margin:0 0 12px}
+.crmg li{margin:4px 0}
+.crmg .ui{display:inline-block;font-size:.88em;font-weight:650;padding:1px 7px;border:1px solid var(--g-line);border-radius:5px;background:var(--g-card);color:var(--g-ink);white-space:nowrap;box-shadow:var(--g-shadow)}
+.crmg .f{font-weight:650;color:var(--g-ink)}
+.crmg figure{margin:16px 0 24px}
+.crmg figure img{display:block;width:100%;max-width:100%;height:auto;border:1px solid var(--g-line);border-radius:8px;background:var(--g-card)}
+.crmg figcaption{font-size:13px;color:var(--g-muted);margin-top:8px}
+.crmg .box{border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px;border:1px solid var(--g-line);background:var(--g-card)}
+.crmg .box > :first-child{margin-top:0}.crmg .box > :last-child{margin-bottom:0}
+.crmg .box b.t{display:block;font-size:12px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:4px}
+.crmg .tip{background:var(--g-good-soft);border-color:transparent}.crmg .tip b.t{color:var(--g-good)}
+.crmg .careful{background:var(--g-bad-soft);border-color:transparent}.crmg .careful b.t{color:var(--g-bad)}
+.crmg .know{background:var(--g-gold-soft);border-color:transparent}.crmg .know b.t{color:var(--g-gold)}
+.crmg .tbl{overflow-x:auto;margin:14px 0 22px;border:1px solid var(--g-line);border-radius:8px;background:var(--g-card)}
+.crmg table{border-collapse:collapse;width:100%;font-size:13.5px}
+.crmg th,.crmg td{text-align:left;vertical-align:top;padding:9px 12px;border-bottom:1px solid var(--g-line)}
+.crmg th{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--g-muted);background:var(--g-chip);font-weight:700}
+.crmg tr:last-child td{border-bottom:0}
+.crmg td:first-child{font-weight:650;color:var(--g-ink);white-space:nowrap}
+.crmg td.wrapok{white-space:normal}
+.crmg .need{display:inline-block;font-size:12px;color:var(--g-muted);border:1px dashed var(--g-line);border-radius:999px;padding:1px 9px;margin-top:2px}
+.crmg ol.steps{counter-reset:s;list-style:none;padding-left:0}
+.crmg ol.steps > li{counter-increment:s;position:relative;padding-left:36px;margin:10px 0}
+.crmg ol.steps > li::before{content:counter(s);position:absolute;left:0;top:1px;width:24px;height:24px;border-radius:50%;background:var(--g-navy);color:#fff;font-size:12.5px;font-weight:700;display:grid;place-items:center}
+.crmg .map{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:18px 0}
+.crmg .map div{background:var(--g-card);border:1px solid var(--g-line);border-radius:8px;padding:12px 14px;font-size:14px}
+.crmg .map b{display:block;color:var(--g-ink);margin-bottom:2px}
+.crmg .flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:16px 0;font-size:14px}
+.crmg .flow span{background:var(--g-card);border:1px solid var(--g-line);border-radius:6px;padding:6px 10px;font-weight:600;color:var(--g-ink)}
+.crmg .flow i{font-style:normal;color:var(--g-muted)}
+.crmg .recipe{border-left:3px solid var(--g-navy);padding:2px 0 2px 16px;margin:20px 0}
+.crmg .recipe h4{margin-top:0}
+.crmg{scroll-margin-top:80px}
+.crmg .g-top{position:sticky;bottom:90px;float:right;margin-top:-8px;font-size:12px;font-weight:700;background:var(--g-card);border:1px solid var(--g-line);border-radius:999px;padding:5px 12px;text-decoration:none;color:var(--g-ink);box-shadow:0 2px 8px rgba(3,12,24,.08)}
+</style>
+<div class="crmg" id="crm-top">
+<div class="g-head">
+  <p class="g-lede">Everything under <b>CRM</b> in the side menu, screen by screen and button by button: contacts, companies, your sales pipeline, segments, labels and settings. It also covers the WhatsApp and Email Segments that campaigns use. Every picture is from the live portal.</p>
+  <div class="g-meta">Last checked against the live portal: 28 September 2026</div>
+</div>
+<nav class="toc" aria-label="Contents"><details open><summary>Contents</summary>
+  <p class="h">Contents</p>
+  <ol>
+    <li><a href="#crm-start">1. How the CRM fits together</a></li>
+    <li><a href="#crm-contacts">2. All Contacts</a>
+      <ol>
+        <li><a href="#crm-c-find">Finding people</a></li>
+        <li><a href="#crm-c-table">Reading the list</a></li>
+        <li><a href="#crm-c-add">Adding a contact</a></li>
+        <li><a href="#crm-c-import">Importing a CSV</a></li>
+        <li><a href="#crm-c-export">Exporting</a></li>
+        <li><a href="#crm-c-bulk">Changing many at once</a></li>
+        <li><a href="#crm-c-delete">Deleting</a></li>
+        <li><a href="#crm-c-auto">How contacts are added for you</a></li>
+      </ol></li>
+    <li><a href="#crm-profile">3. A contact's profile</a></li>
+    <li><a href="#crm-companies">4. Companies</a></li>
+    <li><a href="#crm-merge">5. Merge Review</a></li>
+    <li><a href="#crm-overview">6. Pipeline Overview</a></li>
+    <li><a href="#crm-board">7. Pipeline Board</a>
+      <ol>
+        <li><a href="#crm-b-stages">The stages</a></li>
+        <li><a href="#crm-b-list">List view</a></li>
+        <li><a href="#crm-b-move">Moving a deal</a></li>
+        <li><a href="#crm-b-close">Lost and Dropped</a></li>
+        <li><a href="#crm-b-bulk">Many deals at once</a></li>
+        <li><a href="#crm-b-board">Board view</a></li>
+        <li><a href="#crm-b-score">Lead score</a></li>
+      </ol></li>
+    <li><a href="#crm-deal">8. A deal's page</a></li>
+    <li><a href="#crm-segments">9. Segments</a>
+      <ol>
+        <li><a href="#crm-s-kinds">Three kinds</a></li>
+        <li><a href="#crm-s-crm">CRM Segments</a></li>
+        <li><a href="#crm-s-wa">WhatsApp Segments</a></li>
+        <li><a href="#crm-s-email">Email Segments</a></li>
+      </ol></li>
+    <li><a href="#crm-labels">10. Labels</a></li>
+    <li><a href="#crm-settings">11. Pipeline Settings</a></li>
+    <li><a href="#crm-roles">12. Who can do what</a></li>
+    <li><a href="#crm-recipes">13. Everyday tasks</a></li>
+    <li><a href="#crm-faq">14. Questions and problems</a></li>
+  </ol>
+</details></nav>
+
+<main>
+
+<!-- 1 -->
+<section class="part" id="crm-start">
+<h2><span class="num">1</span>How the CRM fits together</h2>
+<p class="where">CRM means "customer relationship management": one place that remembers every customer, what you've said to them, and where each sale has got to.</p>
+
+<p>Open <b>CRM</b> in the side menu and you'll see seven pages:</p>
+<figure><img src="/static/portal/tutorial/crm/c01_contacts.jpg" width="1100" height="688" alt="The CRM menu is open on the left. All Contacts is the first page." loading="lazy"><figcaption>The CRM menu is open on the left. All Contacts is the first page.</figcaption></figure>
+
+<div class="map">
+  <div><b>All Contacts</b>Your one address book: every person or business you deal with, with their phone number, WhatsApp number, email, status, labels, notes and history.</div>
+  <div><b>Companies</b>The businesses behind your contacts. Several contacts can belong to one company.</div>
+  <div><b>Pipeline Overview</b>A report of your open deals: how many, what they're worth, and how fast they move.</div>
+  <div><b>Pipeline Board</b>Where you work your deals, moving each one stage by stage until it's won or closed.</div>
+  <div><b>Segments</b>CRM's own named lists of contacts (for example "Lagos customers"). WhatsApp and Email campaigns have their own segments; see <a href="#crm-segments">section 9</a>.</div>
+  <div><b>Labels</b>Short markers such as "VIP" or "Follow-up" that you can put on contacts and deals.</div>
+  <div><b>Pipeline Settings</b>Change the names of your pipeline stages and of the Hot / Warm / Cold score words.</div>
+</div>
+
+<h3>Contacts and deals are different things</h3>
+<p>This is the most important idea in the CRM:</p>
+<ul>
+  <li>A <b>contact</b> is a <em>person or business</em>. They stay in your CRM for as long as you keep them.</li>
+  <li>A <b>deal</b> (the portal also calls it a <b>Sales Lead</b>) is <em>one chance to sell something</em> to that contact. It starts, moves through stages, and ends as Won, Lost or Dropped.</li>
+</ul>
+<p>One contact can have several deals over time: a first order in March, a repeat order in August. Every deal is joined to its contact, so a contact's page shows all their deals, and a deal's page links back to the contact. Closing a deal never deletes the contact.</p>
+
+<h3>How a customer moves through the CRM</h3>
+<div class="flow"><span>Someone messages you, leaves details in your website chat, or you add or import them</span><i>→</i><span>Contact</span><i>→</i><span>Lead (Leads menu)</span><i>→</i><span>Qualify</span><i>→</i><span>Deal on the Pipeline Board</span><i>→</i><span>Won / Lost / Dropped</span></div>
+<ol>
+  <li>People who message your WhatsApp number, and website chat visitors who leave a number or email, are added to <b>All Contacts</b> automatically. You can also add people by hand or import a spreadsheet. Adding a Sales Lead also adds its contact if they're new. <a href="#crm-c-auto">How this works.</a></li>
+  <li>When someone shows buying interest, a <b>Lead</b> is created. This happens automatically from campaign replies and the AI, or you press <span class="ui">Create Sales Lead</span> on a contact.</li>
+  <li>Leads wait on the <b>Leads</b> page until someone decides: <span class="ui">Qualify</span> (a real sales chance) or <span class="ui">Not a Fit</span>. The Leads guide covers this step in full.</li>
+  <li>A qualified lead appears on the <b>Pipeline Board</b> as a deal at the first stage. From here your team moves it forward stage by stage.</li>
+</ol>
+
+<h3>Why you might not see a button</h3>
+<ul>
+  <li><b>A gold padlock 🔒 next to a menu item</b> means your business's plan doesn't include that page. The owner can upgrade under Settings › My Plan.</li>
+  <li><b>A button is missing altogether</b> means your role doesn't allow that action (for example, only some staff may delete contacts). Ask the person who manages your team. <a href="#crm-roles">Section 12</a> lists every permission.</li>
+</ul>
+</section>
+
+<!-- 2 -->
+<section class="part" id="crm-contacts">
+<h2><span class="num">2</span>All Contacts</h2>
+<p class="where">CRM › All Contacts</p>
+<p>Your full list of customers and prospects. At the top are four buttons:</p>
+<div class="tbl"><table>
+<tr><th>Button</th><th>What it does</th></tr>
+<tr><td><span class="ui">Export CSV</span></td><td class="wrapok">Downloads the contacts you're currently looking at as a spreadsheet file. <a href="#crm-c-export">More below.</a></td></tr>
+<tr><td><span class="ui">Import CSV</span></td><td class="wrapok">Adds many contacts at once from a spreadsheet. <a href="#crm-c-import">More below.</a></td></tr>
+<tr><td><span class="ui">Add Company</span></td><td class="wrapok">Takes you to the Companies page, where you can add a business.</td></tr>
+<tr><td><span class="ui">Add Contact</span></td><td class="wrapok">Opens a form on the right to add one person. <a href="#crm-c-add">More below.</a></td></tr>
+</table></div>
+
+<p>Under the buttons are four number boxes:</p>
+<ul>
+  <li><span class="f">Total Contacts</span>: everyone in your CRM.</li>
+  <li><span class="f">Added This Week</span>: contacts added in the last 7 days.</li>
+  <li><span class="f">Companies</span>: how many companies you have. <span class="ui">View all →</span> opens Companies.</li>
+  <li><span class="f">Labels Used</span>: how many different labels are on your contacts.</li>
+</ul>
+<div class="box know"><b class="t">Yellow bars at the top?</b>
+<ul>
+  <li>"<b>Choose your business country</b>" means your business country isn't set yet. Until it is, numbers typed without a country code (like 0803… or 07700…) are kept exactly as typed. Press <span class="ui">Set it in Settings</span>.</li>
+  <li>"N contacts need a quick check" means the system found numbers that look almost the same on a contact and a deal. Press <span class="ui">Review now</span>. See <a href="#crm-merge">Merge Review</a>.</li>
+</ul></div>
+
+<h3 id="crm-c-find">Finding people</h3>
+<h4>Search</h4>
+<p>Type part of a name, a number (phone or WhatsApp) or an email in <span class="f">Search by name, number or email…</span> and press <span class="ui">Search</span>.</p>
+
+<h4>Filters</h4>
+<p>Press <span class="ui">Filters</span> to open the filter panel. A number on the button shows how many filters are switched on.</p>
+<figure><img src="/static/portal/tutorial/crm/c02_filters.jpg" width="1100" height="818" alt="The filter panel. Pick what you want, then press Apply Filters." loading="lazy"><figcaption>The filter panel. Pick what you want, then press Apply Filters.</figcaption></figure>
+<div class="tbl"><table>
+<tr><th>Filter</th><th>How to use it</th></tr>
+<tr><td>Status</td><td class="wrapok">Tick one or more of Lead, Prospect, Customer, Inactive. The number beside each shows how many contacts have it.</td></tr>
+<tr><td>Segment</td><td class="wrapok">Show only people in the CRM Segments you tick. You only see segments you're allowed to see (see <a href="#crm-s-kinds">section 9</a>).</td></tr>
+<tr><td>Labels</td><td class="wrapok">Show only people with the labels you tick. Type in the small search box to find a label in a long list.</td></tr>
+<tr><td>Date added</td><td class="wrapok">Pick a start date, an end date, or both.</td></tr>
+<tr><td>Has Phone Number / Has WhatsApp Number / Has Email</td><td class="wrapok">Show only contacts where that detail is filled in. Useful before a campaign.</td></tr>
+<tr><td>Has Personalization</td><td class="wrapok">Show only contacts with a personalization note (see <a href="#crm-c-add">Adding a contact</a>).</td></tr>
+</table></div>
+<p>Then press <span class="ui">Apply Filters</span>. When several are ticked, a contact must match all of them. Within one filter (for example two statuses), matching either is enough.</p>
+<p>After applying, each active filter shows as a coloured chip above the list, with the count ("5 of 13 contacts"). Press <b>✕</b> on a chip to remove just that filter, <span class="ui">Reset filters</span> to clear the panel, or <span class="ui">Clear all</span> to clear search and filters together.</p>
+
+<h4>Saved views</h4>
+<p>If you use the same filters often, save them:</p>
+<ol class="steps">
+  <li>Set up the filters you want.</li>
+  <li>Press <span class="ui">☆ Save this filter as a view</span> at the bottom of the panel.</li>
+  <li>Type a name, such as "Lagos customers with email", and press <span class="ui">Save</span>.</li>
+</ol>
+<p>Your view now appears under <span class="f">Saved Views</span> at the top of the filter panel. Click its name to apply it. The <b>✕</b> beside it deletes the shortcut only; no contacts are affected. Saved views are shared: everyone in your business sees the same list.</p>
+
+<h3 id="crm-c-table">Reading the list</h3>
+<div class="tbl"><table>
+<tr><th>Column</th><th>What it shows</th></tr>
+<tr><td>Name</td><td class="wrapok">Click the name to open the contact's profile. The grey line under it is the start of their profile notes.</td></tr>
+<tr><td>Company</td><td class="wrapok">The company they belong to. Click to open it.</td></tr>
+<tr><td>Contact Person</td><td class="wrapok">If the name is a business, who you actually speak to there.</td></tr>
+<tr><td>Phone Number</td><td class="wrapok">The number for calls (📞), with country code.</td></tr>
+<tr><td>WhatsApp Number</td><td class="wrapok">The number used for WhatsApp chats and campaigns (green 💬). It can be the same as the phone number or different. A number shown with an <b>Add country code</b> warning was saved without one; edit it.</td></tr>
+<tr><td>Status</td><td class="wrapok">Lead, Prospect, Customer or Inactive (see table below).</td></tr>
+<tr><td>Labels</td><td class="wrapok">Up to three labels; "+2" means two more.</td></tr>
+<tr><td>Stage</td><td class="wrapok">Where their deal is on the Pipeline Board. "+1 more" means they have more than one open deal.</td></tr>
+<tr><td>Added</td><td class="wrapok">The date they entered your CRM.</td></tr>
+<tr><td>Email, Personalization</td><td class="wrapok">Hidden at first. Switch them on with <span class="ui">Columns</span>.</td></tr>
+</table></div>
+
+<h4>What the four statuses mean</h4>
+<div class="tbl"><table>
+<tr><th>Status</th><th>Use it for</th></tr>
+<tr><td>Lead</td><td class="wrapok">Someone new you know little about yet. New contacts start here.</td></tr>
+<tr><td>Prospect</td><td class="wrapok">Someone who has shown real interest and you're talking to.</td></tr>
+<tr><td>Customer</td><td class="wrapok">Someone who has bought from you.</td></tr>
+<tr><td>Inactive</td><td class="wrapok">Someone who has gone quiet or you no longer deal with.</td></tr>
+</table></div>
+<div class="box know"><b class="t">Good to know</b>Status is a simple label on the contact that you set yourself. It is separate from the deal <i>stage</i> on the Pipeline Board, and changing one does not change the other.</div>
+
+<h4>Choosing columns and page size</h4>
+<p>Press <span class="ui">Columns</span> and tick or untick columns. The portal remembers your choice on this computer.</p>
+<figure><img src="/static/portal/tutorial/crm/c03_columns.jpg" width="1100" height="818" alt="The Columns menu. Email and Personalization start switched off." loading="lazy"><figcaption>The Columns menu. Email and Personalization start switched off.</figcaption></figure>
+<p><span class="f">Per page</span> (top right of the search bar) sets how many contacts show at once: 25, 50, 100, 300, 500 or All. With more contacts than that, use <span class="ui">← Prev</span>, the page numbers and <span class="ui">Next →</span> at the bottom.</p>
+
+<h4>Buttons at the end of each row</h4>
+<div class="tbl"><table>
+<tr><th>Button</th><th>What it does</th></tr>
+<tr><td>Green tick ✓</td><td class="wrapok">Not a button. It means this contact already has a Sales Lead.</td></tr>
+<tr><td><span class="ui">+</span></td><td class="wrapok"><b>Create Sales Lead.</b> Starts a new lead for this contact on the Leads page. It works even if they already have one, so use it for a second or third sale.<br><span class="need">Needs: Edit a Contact</span></td></tr>
+<tr><td>Pencil ✎</td><td class="wrapok">Opens <b>Edit Contact</b>, with the same sections as Add Contact. You can change both numbers; the portal refuses a number that already belongs to another contact.<br><span class="need">Needs: Edit a Contact</span></td></tr>
+<tr><td>Bin 🗑</td><td class="wrapok">Deletes the contact after you confirm. <a href="#crm-c-delete">Read what gets deleted first.</a><br><span class="need">Needs: Delete a Contact</span></td></tr>
+</table></div>
+<figure><img src="/static/portal/tutorial/crm/c07_edit.jpg" width="1100" height="818" alt="Edit Contact. Change anything, then press Save Changes." loading="lazy"><figcaption>Edit Contact. Change anything, then press Save Changes.</figcaption></figure>
+
+<h3 id="crm-c-add">Adding a contact</h3>
+<ol class="steps">
+  <li>Press <span class="ui">Add Contact</span>. A form slides in from the right, in four parts.</li>
+  <li>Fill in what you know. You need <b>at least one</b> of phone number, WhatsApp number or email; all three is best.</li>
+  <li>Press <span class="ui">Save contact</span>.</li>
+</ol>
+<figure><img src="/static/portal/tutorial/crm/c05_add.jpg" width="1100" height="818" alt="The Add Contact form: name and company, how to reach them, status and labels, notes." loading="lazy"><figcaption>The Add Contact form: name and company, how to reach them, status and labels, notes.</figcaption></figure>
+<div class="tbl"><table>
+<tr><th>Field</th><th>What to enter</th></tr>
+<tr><td>Display name</td><td class="wrapok">The name you want to see in the list: a person ("Amira Johnson") or a business ("Bello Fabrics").</td></tr>
+<tr><td>Contact person</td><td class="wrapok">If the display name is a business, the person you actually talk to there.</td></tr>
+<tr><td>Company</td><td class="wrapok">Choose an existing company, or pick <b>+ New Company…</b> and type a name to create one there and then.</td></tr>
+<tr><td>Phone number</td><td class="wrapok">For phone calls. Full number with country code, for example <b>2348012345678</b> (Nigeria) or <b>447911123456</b> (UK). A number starting with 0 gets your business country's code added.</td></tr>
+<tr><td>WhatsApp number</td><td class="wrapok">For WhatsApp chats and campaigns. Fill it in even if it's the same as the phone number: WhatsApp never uses the Phone number box.</td></tr>
+<tr><td>Email</td><td class="wrapok">Needed to reach them by email campaign.</td></tr>
+<tr><td>Status</td><td class="wrapok">Lead, Prospect, Customer or Inactive. Starts as Lead.</td></tr>
+<tr><td>Labels</td><td class="wrapok">Press <span class="ui">+ Add label</span>, then pick from your labels or type a new one.</td></tr>
+<tr><td>Profile notes</td><td class="wrapok">Anything useful: "Interested in Plan B, follow up Friday".</td></tr>
+<tr><td>Personalization</td><td class="wrapok">A short description used inside WhatsApp campaign messages, such as "a fashion boutique in Lagos". Write it so it reads naturally in a sentence like "We help businesses like <i>a fashion boutique in Lagos</i>…".</td></tr>
+</table></div>
+
+<h4>Warnings while you type</h4>
+<p>The form checks your typing against what's already in the CRM and shows a yellow warning if:</p>
+<ul>
+  <li>"A contact with this number already exists". The warning names the existing contact.</li>
+  <li>"Similar contact(s) already exist, did you mean…". A close name, allowing for small typos.</li>
+  <li>"Similar company already exists" or "Similar label already exists". Pick the existing one instead of making a near-duplicate (for example "Bello Fabric" vs "Bello Fabrics").</li>
+</ul>
+<div class="box careful"><b class="t">Careful</b>If either number or the email already belongs to a contact, saving <b>updates that contact</b> instead of making a second one, and you'll see "… was already in your contacts, so their details were updated". The name, contact person, notes, personalization and status you typed replace theirs, and fields you left blank blank them out. Numbers and email are only added where they were empty. If the warning appears, edit the existing contact instead.</div>
+
+<h3 id="crm-c-import">Importing contacts from a spreadsheet</h3>
+<ol class="steps">
+  <li>In Excel or Google Sheets, put one contact per row. <b>The first row must name the columns</b>; a file without column names is refused, because the portal can't guess which number is which.</li>
+  <li>Save or download it as <b>CSV</b> (File › Save As › CSV UTF-8).</li>
+  <li>Press <span class="ui">Import CSV</span>, drag the file onto the box (or click to choose it), then press <span class="ui">Import Contacts</span>.</li>
+  <li>A message tells you how many were imported, how many were already in your contacts (and updated), and how many were skipped.</li>
+</ol>
+<figure><img src="/static/portal/tutorial/crm/c06_import.jpg" width="1100" height="818" alt="The import window lists the columns it understands." loading="lazy"><figcaption>The import window lists the columns it understands.</figcaption></figure>
+<div class="tbl"><table>
+<tr><th>Column name</th><th>Also accepted</th><th>Notes</th></tr>
+<tr><td>phone_number</td><td class="wrapok">phone, mobile, number, tel, telephone</td><td class="wrapok">Goes in the Phone number box.</td></tr>
+<tr><td>whatsapp_number</td><td class="wrapok">whatsapp, wa</td><td class="wrapok">Goes in the WhatsApp number box.</td></tr>
+<tr><td>email</td><td class="wrapok">email_address</td><td class="wrapok">Each row needs at least one of phone_number, whatsapp_number or email. Rows with none are skipped.</td></tr>
+<tr><td>name</td><td class="wrapok">display_name, contact, full_name, customer</td><td class="wrapok">Becomes Display name.</td></tr>
+<tr><td>labels</td><td class="wrapok">label, tags, tag</td><td class="wrapok">Several in one cell, separated by commas or semicolons. Labels are only added, never removed.</td></tr>
+<tr><td>notes</td><td class="wrapok">note, comment, remarks</td><td class="wrapok"></td></tr>
+<tr><td>personalization</td><td class="wrapok">personalization_note, personalisation</td><td class="wrapok"></td></tr>
+</table></div>
+<div class="box know"><b class="t">Good to know</b>
+<ul>
+  <li>If a row's number or email is <b>already</b> in your CRM, the import updates that contact with what the file has. An empty cell keeps what's saved, and numbers are only filled in where missing, never replaced.</li>
+  <li>Status, company and contact person are <b>not</b> read from the file. Imported contacts start as Lead and their Source shows <b>CSV</b>.</li>
+  <li>If you see "Could not read the CSV file", save it again as <b>CSV UTF-8</b>.</li>
+</ul></div>
+<div class="box tip"><b class="t">Tip</b>Put a <b>labels</b> column in the file (for example "Trade fair Sept") so the whole batch is labelled as it comes in.</div>
+
+<h3 id="crm-c-export">Exporting contacts</h3>
+<p><span class="ui">Export CSV</span> downloads a file called <b>contacts.csv</b> with these columns: phone_number, whatsapp_number, email, name, contact_person, notes, labels, added. It uses the same column names as the import, so an exported file can be edited and imported back.</p>
+<p>It exports <b>only what you're currently looking at</b>. Search or filter first to export a smaller group (for example all Customers with an email).</p>
+<p><span class="need">Needs: Export Contacts</span></p>
+
+<h3 id="crm-c-bulk">Changing many contacts at once</h3>
+<ol class="steps">
+  <li>Tick the box at the start of each row you want. The box in the header ticks every contact on the page.</li>
+  <li>A dark bar appears at the bottom showing "N selected".</li>
+  <li>Choose an action from the bar.</li>
+</ol>
+<figure><img src="/static/portal/tutorial/crm/c04_bulkbar.jpg" width="1100" height="818" alt="Two contacts selected; the action bar is at the bottom." loading="lazy"><figcaption>Two contacts selected; the action bar is at the bottom.</figcaption></figure>
+<div class="tbl"><table>
+<tr><th>Action</th><th>What it does</th></tr>
+<tr><td><span class="ui">Set Status</span></td><td class="wrapok">Pick one status and apply it to everyone selected.</td></tr>
+<tr><td><span class="ui">Add Label</span></td><td class="wrapok">Pick or type a label; it's added to everyone selected. Their other labels are kept.</td></tr>
+<tr><td><span class="ui">Add to Segment</span></td><td class="wrapok">Choose one of your CRM Segments and add everyone to it. Only shows once you have at least one.</td></tr>
+<tr><td><span class="ui">Create Sales Lead</span></td><td class="wrapok">Creates a new lead for each selected contact.</td></tr>
+<tr><td><span class="ui">Delete</span></td><td class="wrapok">Deletes everyone selected after you confirm, except people with open Sales Leads, who are kept and named in a message. <a href="#crm-c-delete">Read what gets deleted.</a></td></tr>
+<tr><td><span class="ui">Cancel</span></td><td class="wrapok">Unticks everything and hides the bar.</td></tr>
+</table></div>
+<p>Only the contacts on the current page can be ticked. To act on more, raise <span class="f">Per page</span> first.</p>
+
+<h3 id="crm-c-delete">Deleting a contact</h3>
+<div class="box careful"><b class="t">Deleting can't be undone</b>
+<p><b>A contact with open Sales Leads can't be deleted.</b> The portal says, for example, "Tunde Bakare has 1 open Sales Lead. Close or delete those leads first, then delete the contact." Deals that are already Won, Lost or Dropped don't block it.</p>
+<p>When you delete a contact, these are removed with it: their notes, their labels, their segment memberships and their consent (opt-out) history.</p>
+<p>These are <b>kept</b>: their closed deals (with their own name and numbers, just no longer linked), their call log entries, and their WhatsApp conversation in the Inbox.</p>
+<p>If you just want to stop contacting someone, set them to <b>Inactive</b> or opt them out (see <a href="#crm-profile">Consent</a>) instead of deleting.</p></div>
+<figure><img src="/static/portal/tutorial/crm/n09_delete_blocked.jpg" width="1100" height="818" alt="Trying to delete a contact who still has an open Sales Lead." loading="lazy"><figcaption>Trying to delete a contact who still has an open Sales Lead.</figcaption></figure>
+
+<h3 id="crm-c-auto">How contacts are added for you</h3>
+<p>Your team doesn't have to type everyone in. The portal adds contacts in these cases, and never makes a second contact for someone it already has (it matches by either number or the email):</p>
+<div class="tbl"><table>
+<tr><th>When</th><th>What's saved</th><th>Source shown</th></tr>
+<tr><td>Someone messages your WhatsApp number</td><td class="wrapok">Their WhatsApp number and WhatsApp profile name. If they're already a contact, only an empty name is filled in.</td><td>WhatsApp</td></tr>
+<tr><td>A website chat visitor leaves their details</td><td class="wrapok">Their name, email, and the number they typed, in the <b>Phone number</b> box (the chat can't tell if it's on WhatsApp; move it if it is).</td><td>Web</td></tr>
+<tr><td>A Sales Lead is added (Leads page, "Create Lead" from a conversation, a campaign reply, or the AI)</td><td class="wrapok">The lead's name, contact person, numbers (each in its own box) and email. If the person is already a contact, the lead joins them and only their empty details are filled in.</td><td>Sales Lead (or WhatsApp)</td></tr>
+<tr><td>A customer replies STOP on WhatsApp</td><td class="wrapok">Their WhatsApp number, opted out of all marketing.</td><td>WhatsApp</td></tr>
+<tr><td>A PressOne call from a new number</td><td class="wrapok">The caller's number in the Phone number box.</td><td>—</td></tr>
+</table></div>
+<div class="box know"><b class="t">A number shared by different businesses</b>Some imported lists put the same placeholder number on many businesses. When a new lead has the same number as a contact but a different email <b>and</b> a different name, the portal treats it as a different business and gives it its own contact, without that number.</div>
+</section>
+
+<!-- 3 -->
+<section class="part" id="crm-profile">
+<h2><span class="num">3</span>A contact's profile</h2>
+<p class="where">CRM › All Contacts › click a name</p>
+<p>Everything about one person on one page. The left column holds their details; the right column holds everything that has happened.</p>
+<figure><img src="/static/portal/tutorial/crm/c08_detail.jpg" width="1100" height="1447" alt="A contact&#x27;s profile page." loading="lazy"><figcaption>A contact's profile page.</figcaption></figure>
+
+<h3>The left column</h3>
+<p>The card at the top shows their name, contact person and company, and how many messages and notes they have. Under it, four groups:</p>
+<div class="tbl"><table>
+<tr><th>Group</th><th>What's in it</th></tr>
+<tr><td>Contact details</td><td class="wrapok"><span class="f">Phone number</span>, <span class="f">WhatsApp number</span>, <span class="f">Email</span>, <span class="f">Contact person</span> and <span class="f">Company</span> (click to open it).</td></tr>
+<tr><td>About</td><td class="wrapok"><span class="f">Status</span>: change it right there from the drop-down; it saves at once. <span class="f">Source</span>: how they got into the CRM (WhatsApp, Web, Sales Lead, Manual or CSV). <span class="f">Labels</span>: press ✕ to take one off, or <span class="ui">+ Add label</span> to pick or create one; each change saves at once.</td></tr>
+<tr><td>Sales</td><td class="wrapok">Their deal's stage and value. <span class="ui">Open this Sales Lead →</span> opens the deal. If they have more than one, "+N more Sales Leads →" lists them on the Pipeline Board.</td></tr>
+<tr><td>Notes</td><td class="wrapok"><span class="f">Profile notes</span> and <span class="f">Personalization</span> (used in WhatsApp campaigns).</td></tr>
+</table></div>
+<p>At the bottom of the card: the date they were added.</p>
+
+<h3>Buttons in the card</h3>
+<div class="tbl"><table>
+<tr><th>Button</th><th>What it does</th></tr>
+<tr><td><span class="ui">Open Conversation</span></td><td class="wrapok">Opens their WhatsApp chat in the Inbox. Only shows if you've exchanged messages.</td></tr>
+<tr><td><span class="ui">Edit profile</span></td><td class="wrapok">Opens the edit form on the right, in the same four parts as <a href="#crm-c-add">Add Contact</a>, with the Save button always visible at the bottom.</td></tr>
+<tr><td><span class="ui">+ Another Sales Lead</span> (or <span class="ui">Create Sales Lead</span>)</td><td class="wrapok">Starts a new lead for this person. Works even if they already have one.</td></tr>
+</table></div>
+<figure><img src="/static/portal/tutorial/crm/c09_detail_edit.jpg" width="1100" height="818" alt="Edit profile opens on the right." loading="lazy"><figcaption>Edit profile opens on the right.</figcaption></figure>
+
+<h3>Consent</h3>
+<p>This panel controls whether your <b>marketing campaigns</b> can reach this person. It does not stop you replying to them in a normal chat.</p>
+<ul>
+  <li>The top line says <b>Subscribed to marketing</b> or <b>Opted out of marketing</b>.</li>
+  <li><span class="ui">Opt out of all</span> stops WhatsApp and Email campaigns to them in one go.</li>
+  <li>Each channel (WhatsApp and Email) has its own button. Click <b>Subscribed</b> to switch that channel off; click <b>Opted out</b> to switch it back on.</li>
+  <li>Under the buttons is a history of every change: which channel, whether they opted out or back in, why, and when. It records changes made by staff and ones the customer made themselves (for example clicking the unsubscribe link in an email, which opts them out of everything).</li>
+</ul>
+<div class="box careful"><b class="t">Respect opt-outs</b>Only switch someone back on if they have clearly asked to hear from you again. The history is kept so you can show when and how consent changed.</div>
+
+<h3>Segments</h3>
+<p>Lists every CRM Segment this person is in that you're allowed to see. Click a name to open the segment, or press <b>✕</b> to take them out of it (the contact itself is not deleted). Use the drop-down in this box to add them to another CRM Segment. WhatsApp and Email Segments are managed on their own pages (<a href="#crm-segments">section 9</a>).</p>
+
+<h3>Activity & Notes (right)</h3>
+<p>A timeline of everything, newest first:</p>
+<ul>
+  <li>📝 Notes your team added, with who wrote them and when</li>
+  <li>🔁 Deal stage changes, with the note typed at the time</li>
+  <li>💬 WhatsApp messages sent and received</li>
+  <li>📞 Phone calls (incoming, outgoing, missed), with length and a recording link where your phone system provides one</li>
+  <li>✨ When the contact was created</li>
+</ul>
+<p>To add a note, type in the box at the top (a call outcome, a promise, a reminder) and press <span class="ui">Add Note</span>.</p>
+<p><span class="f">Your Notes</span> lists only the notes, each with a <span class="ui">Delete</span> link. <span class="f">Recent Messages</span> shows the last 10 WhatsApp messages; <span class="ui">Open Chat</span> or "View all N messages in Inbox →" opens the full conversation.</p>
+<div class="box know"><b class="t">Profile Notes vs notes on the timeline</b><b>Profile Notes</b> (in Edit Profile) is one piece of text that you overwrite. Use it for lasting facts ("Prefers WhatsApp, orders quarterly"). <b>Add Note</b> creates a new dated entry each time. Use it for things that happened.</div>
+</section>
+
+<!-- 4 -->
+<section class="part" id="crm-companies">
+<h2><span class="num">4</span>Companies</h2>
+<p class="where">CRM › Companies</p>
+<p>A company is the business behind one or more contacts. Linking contacts to their company lets you see everyone you know at, say, Ikorodu Plastics, and the total value of that company's open deals.</p>
+<figure><img src="/static/portal/tutorial/crm/c10_companies.jpg" width="1100" height="818" alt="Companies in Grid view." loading="lazy"><figcaption>Companies in Grid view.</figcaption></figure>
+<h3>The Companies page</h3>
+<ul>
+  <li><b>Search companies…</b> filters by name.</li>
+  <li><span class="ui">Grid</span> and <span class="ui">List</span> switch between cards and a table. Both show: name, website, number of people, number of open deals, and open deal value.</li>
+  <li>Click any company to open it.</li>
+</ul>
+<figure><img src="/static/portal/tutorial/crm/c11_companies_list.jpg" width="1100" height="818" alt="The same companies in List view." loading="lazy"><figcaption>The same companies in List view.</figcaption></figure>
+
+<h3>Adding a company</h3>
+<ol class="steps">
+  <li>Press <span class="ui">+ Add Company</span>.</li>
+  <li>Type the <span class="f">Company name</span> and, if you like, the <span class="f">Website</span>. A warning appears if a similar company already exists.</li>
+  <li>Press <span class="ui">Add Company</span>.</li>
+</ol>
+<figure><img src="/static/portal/tutorial/crm/c12_company_add.jpg" width="1100" height="818" alt="Add Company." loading="lazy"><figcaption>Add Company.</figcaption></figure>
+<p>Companies are also created for you: when a deal is qualified with a company name, or when you choose <b>+ New Company…</b> on a contact form.</p>
+
+<h3>How contacts get linked to a company</h3>
+<p>Open the contact, press <span class="ui">Edit Profile</span>, choose the company in <span class="f">Company</span>, and save. Any deal belonging to that contact is linked to the same company automatically.</p>
+
+<h3>A company's page</h3>
+<figure><img src="/static/portal/tutorial/crm/c13_company_detail.jpg" width="1100" height="818" alt="A company page: people on the left, company notes on the right." loading="lazy"><figcaption>A company page: people on the left, company notes on the right.</figcaption></figure>
+<ul>
+  <li>At the top: the name, website, number of <span class="f">People</span> and the value of <span class="f">Open Deals</span>.</li>
+  <li><span class="ui">Edit</span> changes the name or website.</li>
+  <li><b>People at this company</b>: each linked contact, their phone, and their deal stage (or "No deal"). Click a name to open them.</li>
+  <li><b>Company Activity & Notes</b>: notes about the business as a whole, such as a meeting or an agreement. Type and press <span class="ui">Add Note</span>.</li>
+</ul>
+<div class="box know"><b class="t">Good to know</b>Companies can't be deleted at the moment. To remove a person from a company, edit the contact and set Company to "— No Company —".</div>
+</section>
+
+<!-- 5 -->
+<section class="part" id="crm-merge">
+<h2><span class="num">5</span>Merge Review</h2>
+<p class="where">Appears from the yellow bar on All Contacts when there is something to check</p>
+<p>The CRM joins a deal to its contact automatically when a number or the email matches (a local number like 0816… also matches the same number saved as 234816…). When two numbers are only <i>almost</i> the same (for example one is missing a digit), it doesn't guess. It puts them here for a person to decide.</p>
+<figure><img src="/static/portal/tutorial/crm/c14_merge.jpg" width="1100" height="818" alt="When there&#x27;s nothing to check, the page says so." loading="lazy"><figcaption>When there's nothing to check, the page says so.</figcaption></figure>
+<p>Each item shows the WhatsApp contact on one side, the Sales Pipeline lead on the other, and why they look alike.</p>
+<ul>
+  <li><span class="ui">Confirm, Same Person</span> links them together permanently.</li>
+  <li><span class="ui">Not the Same</span> keeps them separate, and the pair won't be suggested again.</li>
+</ul>
+<div class="box careful"><b class="t">Careful</b>Confirming can't be undone. If you aren't sure, check both phone numbers with the customer first.</div>
+</section>
+
+<!-- 6 -->
+<section class="part" id="crm-overview">
+<h2><span class="num">6</span>Pipeline Overview</h2>
+<p class="where">CRM › Pipeline Overview</p>
+<p>A read-only report on your deals. Use it in a weekly sales meeting.</p>
+<figure><img src="/static/portal/tutorial/crm/c15_overview.jpg" width="1100" height="1265" alt="Pipeline Overview." loading="lazy"><figcaption>Pipeline Overview.</figcaption></figure>
+
+<h3>Choosing the time period</h3>
+<p>Press <span class="ui">Last 7 days</span>, <span class="ui">Last 30 days</span> (the default) or <span class="ui">Last 90 days</span>, or choose two dates and press <span class="ui">Apply custom range</span>. <span class="ui">Reset to last 30 days</span> goes back.</p>
+<p>The period only changes the numbers about <b>closed</b> deals: Won, Lost, Dropped, Win Rate and Avg. Time to Close. <b>Active Deals</b> and <b>Open Pipeline Value</b> are always "right now".</p>
+
+<h3>The numbers</h3>
+<div class="tbl"><table>
+<tr><th>Box</th><th>Meaning</th></tr>
+<tr><td>Active Deals</td><td class="wrapok">Deals still open today.</td></tr>
+<tr><td>Open Pipeline Value</td><td class="wrapok">The total ₦ value of those open deals.</td></tr>
+<tr><td>Won</td><td class="wrapok">Value and number of deals won in the period.</td></tr>
+<tr><td>Win Rate</td><td class="wrapok">Won ÷ (Won + Lost). Dropped deals are left out, because you chose not to pursue them.</td></tr>
+<tr><td>Lost / Dropped</td><td class="wrapok">How many deals closed that way in the period.</td></tr>
+<tr><td>Avg. Time to Close</td><td class="wrapok">On average, how many days a won deal took from start to win.</td></tr>
+</table></div>
+
+<h3>The charts</h3>
+<ul>
+  <li><b>Funnel, deals by stage</b>: a bar per stage. The longer the bar, the more deals sit there right now, with their total value.</li>
+  <li><b>Deals by stage</b>: the same as a table, adding the average deal size.</li>
+  <li><b>Avg. time in each stage</b>: how many days deals usually wait before moving to the next stage. A long bar shows where deals get stuck. This uses all history, not just the chosen period.</li>
+</ul>
+
+<h3>Downloading the report</h3>
+<p>Next to <b>Export:</b> press <span class="ui">🧾 CSV</span>, <span class="ui">📊 Excel</span> or <span class="ui">📄 PDF</span>. The file uses the period you've chosen.</p>
+</section>
+
+<!-- 7 -->
+<section class="part" id="crm-board">
+<h2><span class="num">7</span>Pipeline Board</h2>
+<p class="where">CRM › Pipeline Board</p>
+<p>This is where your sales team works deals from first contact to a win. Every deal here has been qualified on the Leads page first.</p>
+<figure><img src="/static/portal/tutorial/crm/c16_pipeline_list.jpg" width="1100" height="818" alt="The Pipeline Board in List view." loading="lazy"><figcaption>The Pipeline Board in List view.</figcaption></figure>
+
+<h3>Top of the page</h3>
+<ul>
+  <li><span class="ui">Take a Tour</span> runs a short guided tour of this page.</li>
+  <li><span class="ui">+ Add Lead</span> takes you to the <b>Leads</b> page. New deals always start as a lead; once you <b>Qualify</b> it, it appears here.</li>
+  <li>Three boxes: <span class="f">Active deals</span>, <span class="f">Open pipeline value</span> (all open deals added up) and <span class="f">Won</span> (value and count of all won deals).</li>
+  <li>The <b>stage strip</b> shows how many deals sit at each stage. Click a stage to list only those deals; click <b>All</b> to see everything.</li>
+</ul>
+
+<h3 id="crm-b-stages">The stages</h3>
+<p>Every business has the same six stages, in this order. You can rename them in <a href="#crm-settings">Pipeline Settings</a>, but their meaning stays the same.</p>
+<div class="tbl"><table>
+<tr><th>Stage</th><th>Means</th><th>When you move a deal here, you're asked for</th></tr>
+<tr><td>Opportunity</td><td class="wrapok">A lead has been qualified and is now a real sales chance. Deals start here.</td><td class="wrapok">(Starting stage)</td></tr>
+<tr><td>Contacted</td><td class="wrapok">Someone has actually spoken to or messaged the customer.</td><td class="wrapok"><b>Contact Channel</b> (Phone Call, WhatsApp, Email, In Person) and <b>Contact Date</b>, both required. Notes: "What did they say?"</td></tr>
+<tr><td>Qualified</td><td class="wrapok">You've confirmed a genuine need, budget and timing.</td><td class="wrapok"><b>Qualified Date</b> (required) and Notes.</td></tr>
+<tr><td>Proposal Sent</td><td class="wrapok">A quotation or proposal has actually been sent.</td><td class="wrapok"><b>Proposal Date</b> (required), Deal Value (updates the quoted amount) and Notes.</td></tr>
+<tr><td>Negotiating</td><td class="wrapok">Price, quantity, terms or delivery are being discussed.</td><td class="wrapok">Notes only.</td></tr>
+<tr><td>Won</td><td class="wrapok">The deal is done. The contact automatically gets the <b>Customers</b> label.</td><td class="wrapok"><b>Won Date</b> (required) and Final Deal Value.</td></tr>
+</table></div>
+<p>A deal can also end as <b>Lost</b> or <b>Dropped</b> from any stage. See <a href="#crm-b-close">below</a>.</p>
+
+<h3 id="crm-b-list">List view</h3>
+<p>Press <span class="ui">List</span> or <span class="ui">Board</span> to switch views. List view is best for finding, filtering and bulk changes.</p>
+<h4>Search and filters</h4>
+<div class="tbl"><table>
+<tr><th>Control</th><th>What it does</th></tr>
+<tr><td>Search</td><td class="wrapok">Finds deals by customer name, contact person or phone. <span class="ui">Clear search</span> removes it.</td></tr>
+<tr><td><span class="ui">Filter</span></td><td class="wrapok">Tick <b>Has Phone</b>, <b>Has WhatsApp</b> or <b>Has Email</b> to show only deals with that detail. Changes apply at once.</td></tr>
+<tr><td><span class="ui">Hide Email segments</span></td><td class="wrapok">Hides deals whose contact is in the Email Segments you tick (older email groups are listed too, marked "older group"). Useful to avoid emailing the same people twice.</td></tr>
+<tr><td><span class="ui">Hide WhatsApp segments</span></td><td class="wrapok">The same for WhatsApp Segments.</td></tr>
+<tr><td><span class="ui">Label</span></td><td class="wrapok">For each label choose <b>Only</b> (show just deals with it) or <b>Hide</b> (leave them out).</td></tr>
+<tr><td><span class="ui">Columns</span></td><td class="wrapok">Show or hide columns: Email Segment, WhatsApp Segment, Label, Contact Person, Phone, WhatsApp Number, Email, Deal Value, Stage, Added.</td></tr>
+<tr><td>Per page</td><td class="wrapok">How many deals per page.</td></tr>
+<tr><td><span class="ui">⬇️ Export CSV</span></td><td class="wrapok">Downloads the deals you're looking at: Customer, Contact Person, Phone, WhatsApp Number, Email, Deal Value, Stage, Added.</td></tr>
+</table></div>
+<figure><img src="/static/portal/tutorial/crm/c25_pipeline_filter.jpg" width="1100" height="818" alt="The Filter menu." loading="lazy"><figcaption>The Filter menu.</figcaption></figure>
+<figure><img src="/static/portal/tutorial/crm/c26_pipeline_labelfilter.jpg" width="1100" height="818" alt="The Label menu. Tick Only or Hide next to each label." loading="lazy"><figcaption>The Label menu. Tick Only or Hide next to each label.</figcaption></figure>
+
+<h4>The ⋮ menu on each deal</h4>
+<p>Click the three dots at the end of a row:</p>
+<figure><img src="/static/portal/tutorial/crm/c17_row_menu.jpg" width="1100" height="818" alt="The actions menu for one deal." loading="lazy"><figcaption>The actions menu for one deal.</figcaption></figure>
+<div class="tbl"><table>
+<tr><th>Option</th><th>What it does</th></tr>
+<tr><td>Open Lead Page</td><td class="wrapok">Opens the deal's own page. See <a href="#crm-deal">section 8</a>.</td></tr>
+<tr><td>Move to [next stage]</td><td class="wrapok">Moves the deal one stage forward. See <a href="#crm-b-move">Moving a deal</a>.</td></tr>
+<tr><td>Edit Deal</td><td class="wrapok">Correct the deal's details without moving it.</td></tr>
+<tr><td>View History</td><td class="wrapok">Every stage change: from where, to where, who did it, when, and the note.</td></tr>
+<tr><td>Mark as Lost</td><td class="wrapok">Close the deal because the customer went elsewhere.</td></tr>
+<tr><td>Mark as Dropped</td><td class="wrapok">Close the deal because <i>you</i> decided to stop.</td></tr>
+</table></div>
+
+<h3 id="crm-b-move">Moving a deal to the next stage</h3>
+<ol class="steps">
+  <li>Click ⋮ on the deal, then <b>Move to …</b>.</li>
+  <li>A box explains what the new stage means and asks for the details in the <a href="#crm-b-stages">stage table</a>.</li>
+  <li>Fill them in and press <span class="ui">Confirm</span>.</li>
+</ol>
+<figure><img src="/static/portal/tutorial/crm/c18_move.jpg" width="1100" height="818" alt="Moving a deal to Proposal Sent asks for the proposal date and lets you update the value." loading="lazy"><figcaption>Moving a deal to Proposal Sent asks for the proposal date and lets you update the value.</figcaption></figure>
+<p>The move, your date and your note are saved to the deal's history and appear on the contact's timeline.</p>
+
+<h4>Editing a deal</h4>
+<p><b>Edit Deal</b> lets you correct the Customer / Business Name, Contact Person, Phone, Email, WhatsApp Number (if different from phone), Deal Value, Product / Service Interested In and Notes. It never changes the stage.</p>
+<p>It also has three <b>Sales Signals</b> that raise the deal's score: <span class="f">Budget confirmed</span>, <span class="f">Decision-maker engaged</span> and <span class="f">Deadline / timeline stated</span>. See <a href="#crm-b-score">Lead score</a>.</p>
+<figure><img src="/static/portal/tutorial/crm/c19_edit_deal.jpg" width="1100" height="818" alt="Edit Deal, with the three Sales Signals at the bottom." loading="lazy"><figcaption>Edit Deal, with the three Sales Signals at the bottom.</figcaption></figure>
+
+<h4>History</h4>
+<figure><img src="/static/portal/tutorial/crm/c21_history.jpg" width="1100" height="818" alt="View History lists every stage change." loading="lazy"><figcaption>View History lists every stage change.</figcaption></figure>
+
+<h3 id="crm-b-close">Closing a deal as Lost or Dropped</h3>
+<ul>
+  <li><b>Lost</b>: you tried, but the customer chose someone else or said no. Reasons: Price too high, Customer chose a competitor, Budget unavailable, No longer interested, Other.</li>
+  <li><b>Dropped</b>: you decided not to pursue it. Reasons: No response, Invalid lead, Wrong contact, Duplicate, Other.</li>
+</ul>
+<ol class="steps">
+  <li>Click ⋮ and choose <b>Mark as Lost</b> or <b>Mark as Dropped</b>.</li>
+  <li>Pick a reason (required). If you choose <b>Other</b>, type a short explanation.</li>
+  <li>Press <span class="ui">Confirm</span>.</li>
+</ol>
+<figure><img src="/static/portal/tutorial/crm/c20_lost.jpg" width="1100" height="818" alt="Marking a deal as Lost." loading="lazy"><figcaption>Marking a deal as Lost.</figcaption></figure>
+<p>The deal leaves the active list and moves to <b>Closed, Lost &amp; Dropped</b> at the bottom of Board view, showing the outcome, the stage it had reached, the reason and the date. Lost deals count against your Win Rate; Dropped deals don't.</p>
+<div class="box know"><b class="t">Good to know</b>A closed deal can't be reopened. If the customer comes back, create a new Sales Lead from their contact page. Their earlier history is kept.</div>
+
+<h3 id="crm-b-bulk">Changing many deals at once</h3>
+<p>In List view, tick the boxes on the left (or the header box for the whole page). A bar appears above the table:</p>
+<figure><img src="/static/portal/tutorial/crm/c22_pipeline_bulk.jpg" width="1100" height="818" alt="Two deals selected." loading="lazy"><figcaption>Two deals selected.</figcaption></figure>
+<div class="tbl"><table>
+<tr><th>Button</th><th>What it does</th></tr>
+<tr><td><span class="ui">➡️ Move Stage</span></td><td class="wrapok">Moves every selected deal to <b>any</b> stage you choose, with the same date and note for all. Handy after a campaign: mark everyone you just messaged as Contacted.</td></tr>
+<tr><td><span class="ui">📋 Add to Email Segment</span></td><td class="wrapok">Adds each selected deal's <b>contact</b> to one of your Email Segments. Pick one, or type a name and press <span class="ui">+ Create &amp; Add</span>. Deals whose contact has no email are skipped and counted in the message.</td></tr>
+<tr><td><span class="ui">📱 Add to WhatsApp Segment</span></td><td class="wrapok">The same for your WhatsApp Segments. Deals whose contact has no WhatsApp number are skipped.</td></tr>
+<tr><td><span class="ui">🏷️ Add to Label</span></td><td class="wrapok">Puts a label on all of them, or creates a new one.</td></tr>
+<tr><td><span class="ui">Clear</span></td><td class="wrapok">Unticks everything.</td></tr>
+</table></div>
+<figure><img src="/static/portal/tutorial/crm/c23_bulk_move.jpg" width="1100" height="818" alt="Move Stage for several deals. The questions change with the stage you pick." loading="lazy"><figcaption>Move Stage for several deals. The questions change with the stage you pick.</figcaption></figure>
+<figure><img src="/static/portal/tutorial/crm/c24_bulk_label.jpg" width="1100" height="818" alt="Add to Label: pick a label or create a new one." loading="lazy"><figcaption>Add to Label: pick a label or create a new one.</figcaption></figure>
+<figure><img src="/static/portal/tutorial/crm/n07_board_wa_segment.jpg" width="1100" height="818" alt="Two deals ticked, choosing a WhatsApp Segment for their contacts." loading="lazy"><figcaption>Two deals ticked, choosing a WhatsApp Segment for their contacts.</figcaption></figure>
+<div class="box know"><b class="t">The person is added, not the deal</b>Segments hold people. Adding a deal adds its contact, so the same person is never in a segment twice, even if you tick two of their deals.</div>
+
+<h3 id="crm-b-board">Board view</h3>
+<p>Board view shows every stage as a column, like cards on a wall. Each column header shows the stage, number of deals and total ₦ value.</p>
+<figure><img src="/static/portal/tutorial/crm/c27_board.jpg" width="1100" height="2032" alt="Board view, with Closed, Lost &amp;amp; Dropped at the bottom." loading="lazy"><figcaption>Board view, with Closed, Lost &amp; Dropped at the bottom.</figcaption></figure>
+<ul>
+  <li><b>All / Hot / Warm / Cold</b> buttons show only deals with that score. <span class="ui">🎯 How this works</span> explains the score.</li>
+  <li><b>🔥 Hot Leads</b> strip (when you have hot deals): your daily follow-up list, drawn from every stage.</li>
+  <li>Each <b>card</b> shows the customer, score bubble, deal value, contact person or phone, the first segment or label, and the date added. Click the name to open the deal.</li>
+  <li>The <b>⋮</b> on a card has the same options as in List view.</li>
+  <li>"+N more" at the bottom of a busy column opens the full list for that stage.</li>
+  <li><span class="ui">+ Add deal</span> at the bottom of each column does the same as <span class="ui">+ Add Lead</span>: new deals start on the Leads page.</li>
+</ul>
+
+<h3 id="crm-b-score">Lead score (Hot, Warm, Cold)</h3>
+<p>Every deal gets a score, built from six facts on its record. Click the score bubble on a card ("Why this score?") to see how it was worked out.</p>
+<figure><img src="/static/portal/tutorial/crm/c28_score.jpg" width="1100" height="818" alt="Clicking the score bubble shows each signal and its points." loading="lazy"><figcaption>Clicking the score bubble shows each signal and its points.</figcaption></figure>
+<div class="tbl"><table>
+<tr><th>Signal</th><th>Points</th><th>How it's set</th></tr>
+<tr><td>Touched in the last 48 hours</td><td>+15</td><td class="wrapok">Automatic: anyone edited or moved the deal in the last 2 days.</td></tr>
+<tr><td>Reached Proposal Sent or later</td><td>+25</td><td class="wrapok">Automatic, from the stage.</td></tr>
+<tr><td>Budget confirmed</td><td>+20</td><td class="wrapok">Tick it in Edit Deal.</td></tr>
+<tr><td>Decision-maker engaged</td><td>+20</td><td class="wrapok">Tick it in Edit Deal.</td></tr>
+<tr><td>Deadline / timeline stated</td><td>+15</td><td class="wrapok">Enter the date in Edit Deal.</td></tr>
+<tr><td>No activity in 7+ days</td><td>−25</td><td class="wrapok">Automatic penalty when nobody has touched it for a week.</td></tr>
+</table></div>
+<p><b>60 and up = 🔴 Hot · 30 to 59 = 🟡 Warm · under 30 = ⚪ Cold.</b> The full explanation is under Leads › How Lead Scoring Works.</p>
+<figure><img src="/static/portal/tutorial/crm/c38_scoring.jpg" width="1100" height="1793" alt="How Lead Scoring Works." loading="lazy"><figcaption>How Lead Scoring Works.</figcaption></figure>
+<div class="box tip"><b class="t">Keep scores useful</b>Tick the signals as soon as you learn them, and touch every live deal at least once a week (a move or an edit) so the −25 penalty doesn't bury good deals.</div>
+</section>
+
+<!-- 8 -->
+<section class="part" id="crm-deal">
+<h2><span class="num">8</span>A deal's page</h2>
+<p class="where">Pipeline Board › ⋮ › Open Lead Page, or click a deal's name</p>
+<p>One page per deal, with everything about it.</p>
+<figure><img src="/static/portal/tutorial/crm/n08_lead_contact.jpg" width="1100" height="818" alt="The top of a deal&#x27;s page. &quot;Contact&quot; links to the person." loading="lazy"><figcaption>The top of a deal's page. "Contact" links to the person.</figcaption></figure>
+<figure><img src="/static/portal/tutorial/crm/c29_deal_page.jpg" width="1100" height="1158" alt="The whole page for a deal at the Proposal Sent stage." loading="lazy"><figcaption>The whole page for a deal at the Proposal Sent stage.</figcaption></figure>
+<ul>
+  <li><b>Header</b>: customer name, product of interest, the current stage badge (or WON / LOST / DROPPED), and <span class="ui">✏️ Edit Lead</span>.</li>
+  <li><b>Contact</b>: the contact this deal belongs to. Click the name to open their profile. If the deal has no phone, WhatsApp number or email yet, it says "No contact yet: add a phone, WhatsApp or email", with an <span class="ui">Add details →</span> button; once you add one, the deal is joined to a contact.</li>
+  <li><b>Details</b>: Contact Person, Phone, WhatsApp, Email, Source (WhatsApp, Facebook, Instagram or Manual), Campaign Source (the campaign that produced it, if any), Company, Created, Product / Service, Assigned Salesperson, Lead Score with its breakdown, and Deal Value.</li>
+  <li><b>Pipeline</b>: a progress line showing stages done (✓), the current stage (●) and the outcome. <span class="ui">Open on Pipeline Board →</span> jumps to it on the board.</li>
+  <li><b>Conversations</b>: the last WhatsApp message and a link to the full chat. Instagram and Facebook are marked "Soon".</li>
+  <li><b>Activity</b>: <b>Notes</b> (the deal's notes) and <b>Stage History</b>. Tasks and Calls are marked "New" and aren't available yet.</li>
+</ul>
+<p><span class="ui">✏️ Edit Lead</span> has the same fields as Edit Deal, plus <span class="f">Assigned Salesperson</span>. Type the name of the team member responsible. It's used on the Leads Overview team table.</p>
+<div class="box know"><b class="t">Not yet qualified?</b>If the page says "Awaiting qualification", the lead hasn't reached the Pipeline Board yet. Its <span class="ui">✅ Qualify</span> and <span class="ui">🚫 Not a Fit</span> buttons are explained in the Leads guide.</div>
+</section>
+
+<!-- 9 -->
+<section class="part" id="crm-segments">
+<h2><span class="num">9</span>Segments</h2>
+<p class="where">CRM › Segments · WhatsApp Campaigns › WhatsApp Segment · Email Campaign › Email Segment</p>
+<p>A segment is a named list of <b>people</b>, such as "Proposal follow-up" or "Monthly newsletter". You build it once and reuse it.</p>
+
+<h3 id="crm-s-kinds">Three kinds, one for each module</h3>
+<div class="tbl"><table>
+<tr><th>Segment</th><th>Where</th><th>Used for</th><th>Uses from each person</th><th>Controlled by</th></tr>
+<tr><td>CRM Segment</td><td class="wrapok">CRM › Segments</td><td class="wrapok">Organising and filtering contacts in the CRM</td><td class="wrapok">The contact</td><td class="wrapok">CRM › Segment ticks</td></tr>
+<tr><td>WhatsApp Segment</td><td class="wrapok">WhatsApp Campaigns › WhatsApp Segment</td><td class="wrapok">WhatsApp campaigns</td><td class="wrapok">WhatsApp number only</td><td class="wrapok">WhatsApp Campaigns › Segment ticks</td></tr>
+<tr><td>Email Segment</td><td class="wrapok">Email Campaign › Email Segment</td><td class="wrapok">Email campaigns</td><td class="wrapok">Email address only</td><td class="wrapok">Email Campaigns › Segment ticks</td></tr>
+</table></div>
+<p>Each kind lives only in its own module. A WhatsApp Segment never appears in Email or CRM, and the other way round. So you can give someone Email Campaign without WhatsApp, and they'll see Email Segments only.</p>
+<div class="box know"><b class="t">Rules that apply to all three</b>
+<ul>
+  <li><b>Private to whoever made it.</b> Staff see only the segments they made. The business owner, and anyone whose role can manage the Team (for example an IT Admin), see every segment, with "Made by …" on each.</li>
+  <li><b>Same names are fine.</b> Two staff members can each have a "Hot leads".</li>
+  <li><b>People, not deals.</b> A segment holds contacts. Leads and deals are added through their contact, so nobody is in a segment twice.</li>
+  <li>When a staff member is switched off, their segments stay, marked "no longer active: now belongs to the business owner". Other staff still can't see them.</li>
+  <li>Deleting a segment never deletes the people in it.</li>
+</ul></div>
+
+<h3 id="crm-s-crm">CRM Segments</h3>
+<figure><img src="/static/portal/tutorial/crm/c30_segments.jpg" width="1100" height="818" alt="CRM › Segments." loading="lazy"><figcaption>CRM › Segments.</figcaption></figure>
+<ul>
+  <li>Each card shows the member count, name and description, and (for the owner) who made it.</li>
+  <li><span class="ui">View &amp; Manage</span> opens the segment. The pencil edits the name, description and colour. The bin deletes the list after you confirm.</li>
+</ul>
+<h4>Creating a CRM Segment</h4>
+<ol class="steps">
+  <li>Press <span class="ui">New Segment</span>.</li>
+  <li>Type a <span class="f">Segment Name</span> (required) and, if you like, a <span class="f">Description</span>.</li>
+  <li>Pick a <span class="f">Colour</span>, then press <span class="ui">Create Segment</span>. It starts empty.</li>
+</ol>
+<figure><img src="/static/portal/tutorial/crm/c31_segment_new.jpg" width="1100" height="818" alt="New Segment." loading="lazy"><figcaption>New Segment.</figcaption></figure>
+<h4>Adding and removing people</h4>
+<figure><img src="/static/portal/tutorial/crm/c32_segment_detail.jpg" width="1100" height="818" alt="Inside a CRM Segment: members on the left, people you can add on the right." loading="lazy"><figcaption>Inside a CRM Segment: members on the left, people you can add on the right.</figcaption></figure>
+<ul>
+  <li><b>One at a time</b>: in <b>Add Contacts</b>, the first 500 contacts are listed. Type a name, number or email and press Enter to search <b>all</b> your contacts, then press <span class="ui">Add</span>.</li>
+  <li><b>Many at once</b>: on All Contacts, filter, tick the people and use <span class="ui">Add to Segment</span>.</li>
+  <li><b>From a profile</b>: use the drop-down in the Segments box.</li>
+  <li><b>Remove</b>: press ✕ next to a member and confirm.</li>
+</ul>
+
+<h3 id="crm-s-wa">WhatsApp Segments</h3>
+<p class="where">WhatsApp Campaigns › WhatsApp Segment (or the <span class="ui">📋 WhatsApp Segments</span> button on WhatsApp Campaigns)</p>
+<figure><img src="/static/portal/tutorial/crm/n01_wa_segments.jpg" width="1100" height="818" alt="WhatsApp Segments. Each card shows how many people can actually get a WhatsApp campaign." loading="lazy"><figcaption>WhatsApp Segments. Each card shows how many people can actually get a WhatsApp campaign.</figcaption></figure>
+<p>Each card shows the number of people, and <b>how many can get WhatsApp campaigns</b>: people with a WhatsApp number who haven't opted out. <span class="ui">Manage people</span> opens it, <span class="ui">📣 Use</span> starts a new WhatsApp campaign with it chosen, and <span class="ui">Delete</span> removes the list.</p>
+<h4>Creating one</h4>
+<p>Type a name in <span class="f">New segment name</span> at the top and press <span class="ui">+ Create</span>. The segment opens, ready for people.</p>
+<h4>Adding people: three sources</h4>
+<figure><img src="/static/portal/tutorial/crm/n02_wa_segment_detail.jpg" width="1100" height="818" alt="Inside a WhatsApp Segment. Choose where to add people from." loading="lazy"><figcaption>Inside a WhatsApp Segment. Choose where to add people from.</figcaption></figure>
+<div class="tbl"><table>
+<tr><th>Tab</th><th>How it works</th></tr>
+<tr><td>All Contacts</td><td class="wrapok">Search by name, WhatsApp number or email and click a person to add them.</td></tr>
+<tr><td>Leads</td><td class="wrapok">Search the Leads list (leads not yet qualified). Clicking one adds that lead's contact.</td></tr>
+<tr><td>CRM (Sales Pipeline stages)</td><td class="wrapok">Tick one or more stages, from New Opportunity to Won, and press <span class="ui">Add everyone in the ticked stages</span>. Each stage shows how many people it would add. Lost and dropped deals are left out.</td></tr>
+</table></div>
+<figure><img src="/static/portal/tutorial/crm/n03_src_leads.jpg" width="1100" height="818" alt="The Leads tab: search results from the Leads list." loading="lazy"><figcaption>The Leads tab: search results from the Leads list.</figcaption></figure>
+<figure><img src="/static/portal/tutorial/crm/n04_src_crm.jpg" width="1100" height="818" alt="The CRM tab: tick Sales Pipeline stages and add everyone in them." loading="lazy"><figcaption>The CRM tab: tick Sales Pipeline stages and add everyone in them.</figcaption></figure>
+<p>Only people with a WhatsApp number are offered. People without one are skipped, and the message says how many. To take someone out, press ✕ next to their name. A person who has opted out stays in the list with an <b>opted out</b> tag, but campaigns skip them.</p>
+<p>You can also fill a WhatsApp Segment from the Pipeline Board (<a href="#crm-b-bulk">Add to WhatsApp Segment</a>).</p>
+<h4>Sending a WhatsApp campaign to it</h4>
+<figure><img src="/static/portal/tutorial/crm/n10_wa_campaign_segment.jpg" width="584" height="433" alt="WhatsApp Campaigns › New Campaign › Recipients." loading="lazy"><figcaption>WhatsApp Campaigns › New Campaign › Recipients.</figcaption></figure>
+<p>In a new WhatsApp campaign, the Recipients step offers <b>Everyone in the Sales Pipeline</b> (contacts with an open lead and a WhatsApp number), <b>WhatsApp Segment</b>, or <b>Type WhatsApp numbers</b>. The number beside each segment is how many will actually receive it. Only WhatsApp numbers are used, never phone numbers, and opted-out people are left out.</p>
+
+<h3 id="crm-s-email">Email Segments</h3>
+<p class="where">Email Campaign › Email Segment (or the <span class="ui">📋 Email Segments</span> button on Email Campaigns)</p>
+<figure><img src="/static/portal/tutorial/crm/n05_email_segments.jpg" width="1100" height="818" alt="Email Segments, with any older email groups listed underneath." loading="lazy"><figcaption>Email Segments, with any older email groups listed underneath.</figcaption></figure>
+<p>Email Segments work exactly like WhatsApp Segments, with the same three sources, but they hold <b>email addresses</b>: only contacts with an email can be added, and the card shows how many can get email campaigns (people who haven't opted out of email).</p>
+<figure><img src="/static/portal/tutorial/crm/n06_email_segment_detail.jpg" width="1100" height="818" alt="Inside an Email Segment." loading="lazy"><figcaption>Inside an Email Segment.</figcaption></figure>
+<ul>
+  <li>In a new email campaign, choose <b>Email Segment</b> on the Recipients step. Contacts who opted out of email, and addresses that bounced, are left out. <b>Exclude labels</b> also leaves out anyone whose contact or deal carries that label (for example "Bounced").</li>
+  <li><b>Older groups.</b> Email groups made before Email Segments existed (lists of leads) are listed under "Older groups". They still work in campaigns until you delete them with <span class="ui">Delete</span>.</li>
+</ul>
+</section>
+
+<!-- 10 -->
+<section class="part" id="crm-labels">
+<h2><span class="num">10</span>Labels</h2>
+<p class="where">CRM › Labels</p>
+<p>Labels are short markers like <b>VIP</b>, <b>Follow-up</b> or <b>Bounced</b>. There is one shared list of labels, and you can put them on <b>contacts</b> and on <b>deals</b>.</p>
+<div class="box know"><b class="t">One list everywhere</b>Labels you add on a contact, on a deal, or here are the same labels. (They used to be called "Tags" on contacts.) The <b>Customers</b> label is added automatically when a deal is Won; you can also use it yourself.</div>
+<figure><img src="/static/portal/tutorial/crm/c33_labels.jpg" width="1100" height="818" alt="The Labels page." loading="lazy"><figcaption>The Labels page.</figcaption></figure>
+
+<h3>Creating a label</h3>
+<p>Type a name in <span class="f">New label name</span> and press <span class="ui">+ Create Label</span>. A warning appears if a similar label already exists.</p>
+
+<h3>The labels table</h3>
+<p>Each row shows the label, how many <b>people</b> (contacts) and <b>deals</b> have it, and when it was created. Three buttons:</p>
+<div class="tbl"><table>
+<tr><th>Button</th><th>What it does</th></tr>
+<tr><td><span class="ui">View / Edit</span></td><td class="wrapok">Opens a window with two tabs, <b>People</b> and <b>Deals</b>. Search to add someone to the label, remove someone, or use <b>Move to…</b> to shift them from this label to another in one step. (Staff who can only view see <span class="ui">View</span>.)</td></tr>
+<tr><td><span class="ui">Rename</span></td><td class="wrapok">Changes the label's name everywhere at once: Contacts, Pipeline Board and campaign pickers. Everyone keeps it.</td></tr>
+<tr><td><span class="ui">Delete</span></td><td class="wrapok">Removes the label from every contact and deal it's on. Nothing else about them changes.</td></tr>
+</table></div>
+<figure><img src="/static/portal/tutorial/crm/c34_label_members.jpg" width="1100" height="818" alt="View / Edit on the VIP label, People tab." loading="lazy"><figcaption>View / Edit on the VIP label, People tab.</figcaption></figure>
+<figure><img src="/static/portal/tutorial/crm/c35_label_rename.jpg" width="1100" height="818" alt="Rename a label." loading="lazy"><figcaption>Rename a label.</figcaption></figure>
+
+<h3>Import Bounces</h3>
+<p><span class="ui">📥 Import Bounces</span> is for email campaigns. When emails "bounce" (the address doesn't exist), upload the bounce report here:</p>
+<ol class="steps">
+  <li>Download the bounce report as CSV from your email sending service. It must have a "HARD BOUNCE" column and a "TO" column.</li>
+  <li>Choose the file and press <span class="ui">Import</span>.</li>
+  <li>The result shows how many hard bounces were in the file, how many matched a deal, and how many were newly labelled <b>Bounced</b>.</li>
+</ol>
+<p>Those addresses are blocked from future email campaigns, which protects your sending reputation.</p>
+<figure><img src="/static/portal/tutorial/crm/c36_bounces.jpg" width="1100" height="818" alt="Import Bounces." loading="lazy"><figcaption>Import Bounces.</figcaption></figure>
+</section>
+
+<!-- 11 -->
+<section class="part" id="crm-settings">
+<h2><span class="num">11</span>Pipeline Settings</h2>
+<p class="where">CRM › Pipeline Settings</p>
+<p>Use your own words for the pipeline. Only the <b>names</b> change. The order, meaning and maths stay the same.</p>
+<figure><img src="/static/portal/tutorial/crm/c37_settings.jpg" width="1100" height="1590" alt="Pipeline Settings." loading="lazy"><figcaption>Pipeline Settings.</figcaption></figure>
+<h3>Pipeline Stage Names</h3>
+<p>There's a box for each of the six active stages and the three outcomes (Won, Lost, Dropped). The grey text in each box is the default name, and the meaning is written underneath. Type a new name only where you want one, leave the rest blank, and press <span class="ui">💾 Save Stage Names</span>. Example: a property business might rename "Proposal Sent" to "Inspection Booked".</p>
+<p>To go back to a default, clear the box and save.</p>
+<h3>Lead Score Labels</h3>
+<p>Rename the words <b>Hot</b>, <b>Warm</b> and <b>Cold</b> (for example "Ready", "Thinking", "Not yet"), then press <span class="ui">💾 Save Score Labels</span>. The colours and the score ranges don't change: Hot is 60 and up, Warm 30 to 59, Cold under 30.</p>
+<p>Staff who can view but not edit see "Your role doesn't allow changing them" and greyed-out boxes.</p>
+</section>
+
+<!-- 12 -->
+<section class="part" id="crm-roles">
+<h2><span class="num">12</span>Who can do what</h2>
+<p class="where">Set by the owner or team admin under Team › Roles</p>
+<p>The business owner can always do everything. Team members can do only what their role has ticked. If a tick is missing, the button simply isn't shown to them.</p>
+<div class="tbl"><table>
+<tr><th>In Team › Roles</th><th>Tick</th><th>Allows</th></tr>
+<tr><td>Contact</td><td>View</td><td class="wrapok">See All Contacts and profiles, use search, filters and saved views.</td></tr>
+<tr><td></td><td>Create</td><td class="wrapok">Add Contact and Import CSV.</td></tr>
+<tr><td></td><td>Edit</td><td class="wrapok">Edit contacts, notes, consent, labels, status, CRM Segments on a profile; Create Sales Lead; bulk actions except delete.</td></tr>
+<tr><td></td><td>Delete</td><td class="wrapok">Delete contacts, one or many (never ones with open Sales Leads).</td></tr>
+<tr><td></td><td>Export</td><td class="wrapok">Export CSV on All Contacts.</td></tr>
+<tr><td>Company</td><td>View / Create / Edit / Delete</td><td class="wrapok">See companies; add one; edit name, website and notes; delete a company (its people and deals are kept, just unlinked).</td></tr>
+<tr><td>Pipeline Board</td><td>View</td><td class="wrapok">See the board and deal pages.</td></tr>
+<tr><td></td><td>Edit</td><td class="wrapok">Move, edit, close (Lost/Dropped) deals; Move Stage in bulk.</td></tr>
+<tr><td></td><td>Export</td><td class="wrapok">Export CSV on the Pipeline Board.</td></tr>
+<tr><td>Segment (under CRM)</td><td>View / Create / Edit / Delete</td><td class="wrapok">CRM Segments only: see; create; rename and change members; delete.</td></tr>
+<tr><td>Segment (under WhatsApp Campaigns)</td><td>View / Create / Edit / Delete</td><td class="wrapok">WhatsApp Segments only, including Add to WhatsApp Segment on the Pipeline Board.</td></tr>
+<tr><td>Segment (under Email Campaigns)</td><td>View / Create / Edit / Delete</td><td class="wrapok">Email Segments only, including Add to Email Segment on the Pipeline Board.</td></tr>
+<tr><td>Label</td><td>View / Create / Edit / Delete</td><td class="wrapok">See labels; create labels and import bounces; rename, add, remove and move people; delete.</td></tr>
+<tr><td>Duplicate Merge Review</td><td>View, Confirm, Reject</td><td class="wrapok">See suggestions; confirm a merge (permanent); reject one.</td></tr>
+<tr><td>Pipeline Settings</td><td>View / Edit</td><td class="wrapok">See the settings; change stage and score names.</td></tr>
+</table></div>
+<p>Pipeline Overview is controlled by the <b>Reports</b> row in Team › Roles. Whatever the ticks, staff only ever see segments they made, unless their role can manage the Team.</p>
+</section>
+
+<!-- 13 -->
+<section class="part" id="crm-recipes">
+<h2><span class="num">13</span>Everyday tasks</h2>
+
+<div class="recipe"><h4>Log a phone call with a customer</h4>
+<p>Open the contact (All Contacts › click the name), type what was said in the note box on the right ("Called, wants 40 units by Friday"), and press <span class="ui">Add Note</span>. If the call moved the deal forward, also move the deal on the Pipeline Board.</p></div>
+
+<div class="recipe"><h4>Import a list from a trade fair and message them on WhatsApp</h4>
+<ol><li>Put a <b>whatsapp_number</b> column and a <b>labels</b> column ("Trade fair Sept") in the spreadsheet. All Contacts › <span class="ui">Import CSV</span>.</li><li>WhatsApp Campaigns › WhatsApp Segment › create "Trade fair Sept".</li><li>All Contacts tab: search "Trade fair" or the names, and add them. (Or tick their deals on the Pipeline Board › <span class="ui">📱 Add to WhatsApp Segment</span>.)</li><li>Press <span class="ui">📣 Use</span> on the segment to start the campaign.</li></ol></div>
+
+<div class="recipe"><h4>Email everyone who has a proposal waiting</h4>
+<p>Email Campaign › Email Segment › create "Proposals out" › open it › CRM tab › tick <b>Proposal Sent</b> and <b>Negotiating</b> › <span class="ui">Add everyone in the ticked stages</span> › <span class="ui">📣 Use</span>.</p></div>
+
+<div class="recipe"><h4>Mark everyone you messaged as Contacted</h4>
+<p>Pipeline Board › List › filter or search to find them › tick them › <span class="ui">➡️ Move Stage</span> › Contacted › channel WhatsApp and today's date › <span class="ui">Move Contacts</span>.</p></div>
+
+<div class="recipe"><h4>Win a deal</h4>
+<p>Pipeline Board › ⋮ on the deal › <b>Move to Won</b> (from Negotiating) › enter the Won Date and final value › <span class="ui">Confirm</span>. The contact automatically gets the <b>Customers</b> label; their status isn't changed.</p></div>
+
+<div class="recipe"><h4>Someone asks you to stop sending offers</h4>
+<p>Open their contact › Consent › <span class="ui">Opt out of all</span> (or just the channel they mentioned). Don't delete them: the opt-out record is your proof.</p></div>
+
+<div class="recipe"><h4>Find contacts missing an email before an email campaign</h4>
+<p>All Contacts › Filters › Status: Customer, then compare with <b>Has Email</b> ticked. The difference is who needs an email added. Do the same with <b>Has WhatsApp Number</b> before a WhatsApp campaign.</p></div>
+
+<div class="recipe"><h4>Tidy two labels that mean the same thing</h4>
+<p>Labels › <span class="ui">View / Edit</span> on the one you'll remove › use <b>Move to…</b> to shift each person and deal onto the one you're keeping › then <span class="ui">Delete</span> the empty label.</p></div>
+
+<div class="recipe"><h4>Give the sales team a Monday update</h4>
+<p>Pipeline Overview › <span class="ui">Last 7 days</span> › <span class="ui">📄 PDF</span>, and share the file.</p></div>
+</section>
+
+<!-- 14 -->
+<section class="part" id="crm-faq">
+<h2><span class="num">14</span>Questions and problems</h2>
+<h4>I added a lead but can't find it on the Pipeline Board.</h4>
+<p>New leads wait on the <b>Leads</b> page until someone presses <span class="ui">Qualify</span>. Only then do they appear on the Pipeline Board.</p>
+<h4>The same customer appears twice in All Contacts.</h4>
+<p>Usually one has the number in the Phone number box and the other in the WhatsApp number box, or one number is missing its country code. Keep the one with the WhatsApp history, copy any missing details across with Edit, move their deals if needed, then delete the other. If a yellow "need a quick check" bar appears, use Merge Review.</p>
+<h4>My WhatsApp campaign count is lower than the number of people in the segment.</h4>
+<p>Campaigns only go to people with a <b>WhatsApp number</b> who haven't opted out. Someone whose number is only in the Phone number box won't receive it: edit them and put the number in the WhatsApp number box too, if it's on WhatsApp.</p>
+<h4>I can't see a segment my colleague made.</h4>
+<p>Segments are private to whoever made them. Ask them, or the business owner, who can see all segments.</p>
+<h4>I can't delete a contact.</h4>
+<p>They still have an open Sales Lead. Close it (Won, Lost or Dropped) or delete it on the Leads page first.</p>
+<h4>I changed the contact's status to Customer but the deal still shows Negotiating.</h4>
+<p>Status and deal stage are separate on purpose. Move the deal on the Pipeline Board.</p>
+<h4>Why is my good deal showing as Cold?</h4>
+<p>Probably nobody has touched it for over a week (−25), or the Sales Signals haven't been ticked. Open Edit Deal and tick what you know.</p>
+<h4>I can't move a deal backwards.</h4>
+<p>The ⋮ menu only moves forward. To move back, tick the deal in List view, use <span class="ui">➡️ Move Stage</span>, and pick the earlier stage.</p>
+<h4>I closed a deal by mistake.</h4>
+<p>Closed deals can't be reopened. Create a new Sales Lead from the contact's page and add a note explaining why.</p>
+<h4>The import said "N skipped (no valid phone number, WhatsApp number or email)".</h4>
+<p>Those rows had none of the three, or only a number shorter than 7 digits. Fix them in the spreadsheet and import again. Rows already imported won't be duplicated.</p>
+<h4>The import was refused: "The first row of the file must name the columns".</h4>
+<p>Add a first row with column names, at least one of <b>phone_number</b>, <b>whatsapp_number</b> or <b>email</b>, and import again.</p>
+<h4>A menu item has a gold padlock.</h4>
+<p>Your plan doesn't include it. The owner can see plans under Settings › My Plan.</p>
+<h4>A button I've seen in this guide isn't on my screen.</h4>
+<p>Your role doesn't include it. Ask your team admin (see <a href="#crm-roles">Who can do what</a>).</p>
+</section>
+
+</main>
+<a class="g-top" href="#crm-top">↑ Back to contents</a>
+</div>

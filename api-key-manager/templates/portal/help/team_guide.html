@@ -1,0 +1,576 @@
+{# Team How-To Guide. Generated from draft 1 (2026-09-29)
+   by backups/team_guide_portal_*/scripts/to_portal_team.py: ids are prefixed team-, pictures live in
+   static/portal/tutorial/team/. Shown to every team member in full. #}
+<style>
+.teamg{
+  --g-ink:#030C18; --g-navy:#0E2240; --g-gold:#B8860B; --g-gold-soft:#FBF3DE;
+  --g-card:#FFFFFF; --g-txt:#1A2433; --g-muted:#5B6678; --g-line:#DDE3EB;
+  --g-chip:#EEF2F7; --g-good:#0F9F5F; --g-good-soft:#E7F7EF; --g-bad:#D92D20; --g-bad-soft:#FDECEA;
+  --g-link:#1D4ED8; --g-shadow:0 1px 2px rgba(3,12,24,.06);
+  color:var(--g-txt); font-size:15px; line-height:1.65;
+}
+.teamg *{box-sizing:border-box}
+.teamg a{color:var(--g-link)}
+.teamg .g-head{margin:0 0 18px}
+.teamg .g-lede{max-width:72ch;color:var(--g-muted);margin:0 0 6px;font-size:14px}
+.teamg .g-meta{font-size:12px;color:var(--g-muted)}
+.teamg nav.toc{background:var(--g-card);border:1px solid var(--g-line);border-radius:12px;padding:6px 14px;margin:0 0 26px;font-size:13.5px}
+.teamg nav.toc summary{cursor:pointer;font-weight:750;color:var(--g-ink);padding:8px 0;list-style-position:inside}
+.teamg nav.toc .h{display:none}
+.teamg nav.toc ol{list-style:none;margin:0;padding:0 0 8px;columns:3 220px;column-gap:18px}
+.teamg nav.toc ol > li{break-inside:avoid;margin:0}
+.teamg nav.toc ol ol{columns:1;padding:0 0 6px 12px;font-size:12.5px}
+.teamg nav.toc a{display:block;padding:4px 8px;border-radius:6px;color:var(--g-txt);text-decoration:none}
+.teamg nav.toc a:hover{background:var(--g-chip)}
+.teamg nav.toc ol ol a{color:var(--g-muted);padding:2px 8px}
+.teamg main{display:block;max-width:860px}
+.teamg section.part{padding-top:8px;margin-bottom:52px}
+.teamg h2{font-size:23px;line-height:1.25;color:var(--g-ink);margin:0 0 6px;scroll-margin-top:80px;font-weight:800}
+.teamg h2 .num{color:var(--g-gold);font-weight:800;margin-right:8px}
+.teamg .where{font-size:13px;color:var(--g-muted);margin:0 0 16px}
+.teamg h3{font-size:18px;color:var(--g-ink);margin:32px 0 8px;scroll-margin-top:80px;font-weight:750}
+.teamg h4{font-size:15px;color:var(--g-ink);margin:20px 0 6px;font-weight:700}
+.teamg p,.teamg li{max-width:72ch}
+.teamg p{margin:0 0 12px}
+.teamg ul,.teamg ol{padding-left:22px;margin:0 0 12px}
+.teamg li{margin:4px 0}
+.teamg .ui{display:inline-block;font-size:.88em;font-weight:650;padding:1px 7px;border:1px solid var(--g-line);border-radius:5px;background:var(--g-card);color:var(--g-ink);white-space:nowrap;box-shadow:var(--g-shadow)}
+.teamg .f{font-weight:650;color:var(--g-ink)}
+.teamg figure{margin:16px 0 24px}
+.teamg figure img{display:block;width:100%;max-width:100%;height:auto;border:1px solid var(--g-line);border-radius:8px;background:var(--g-card)}
+.teamg figcaption{font-size:13px;color:var(--g-muted);margin-top:8px}
+.teamg .box{border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px;border:1px solid var(--g-line);background:var(--g-card)}
+.teamg .box > :first-child{margin-top:0}.teamg .box > :last-child{margin-bottom:0}
+.teamg .box b.t{display:block;font-size:12px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:4px}
+.teamg .tip{background:var(--g-good-soft);border-color:transparent}.teamg .tip b.t{color:var(--g-good)}
+.teamg .careful{background:var(--g-bad-soft);border-color:transparent}.teamg .careful b.t{color:var(--g-bad)}
+.teamg .know{background:var(--g-gold-soft);border-color:transparent}.teamg .know b.t{color:var(--g-gold)}
+.teamg .tbl{overflow-x:auto;margin:14px 0 22px;border:1px solid var(--g-line);border-radius:8px;background:var(--g-card)}
+.teamg table{border-collapse:collapse;width:100%;font-size:13.5px}
+.teamg th,.teamg td{text-align:left;vertical-align:top;padding:9px 12px;border-bottom:1px solid var(--g-line)}
+.teamg th{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--g-muted);background:var(--g-chip);font-weight:700}
+.teamg tr:last-child td{border-bottom:0}
+.teamg td:first-child{font-weight:650;color:var(--g-ink);white-space:nowrap}
+.teamg td.wrapok{white-space:normal}
+.teamg .need{display:inline-block;font-size:12px;color:var(--g-muted);border:1px dashed var(--g-line);border-radius:999px;padding:1px 9px;margin-top:2px}
+.teamg ol.steps{counter-reset:s;list-style:none;padding-left:0}
+.teamg ol.steps > li{counter-increment:s;position:relative;padding-left:36px;margin:10px 0}
+.teamg ol.steps > li::before{content:counter(s);position:absolute;left:0;top:1px;width:24px;height:24px;border-radius:50%;background:var(--g-navy);color:#fff;font-size:12.5px;font-weight:700;display:grid;place-items:center}
+.teamg .map{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:18px 0}
+.teamg .map div{background:var(--g-card);border:1px solid var(--g-line);border-radius:8px;padding:12px 14px;font-size:14px}
+.teamg .map b{display:block;color:var(--g-ink);margin-bottom:2px}
+.teamg .flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:16px 0;font-size:14px}
+.teamg .flow span{background:var(--g-card);border:1px solid var(--g-line);border-radius:6px;padding:6px 10px;font-weight:600;color:var(--g-ink)}
+.teamg .flow i{font-style:normal;color:var(--g-muted)}
+.teamg .recipe{border-left:3px solid var(--g-navy);padding:2px 0 2px 16px;margin:20px 0}
+.teamg .recipe h4{margin-top:0}
+.teamg{scroll-margin-top:80px}
+.teamg .g-top{position:sticky;bottom:90px;float:right;margin-top:-8px;font-size:12px;font-weight:700;background:var(--g-card);border:1px solid var(--g-line);border-radius:999px;padding:5px 12px;text-decoration:none;color:var(--g-ink);box-shadow:0 2px 8px rgba(3,12,24,.08)}
+</style>
+<div class="teamg" id="team-top">
+<div class="g-head">
+  <p class="g-lede">Everything under <b>Team</b> in the side menu, screen by screen and button by button: giving your staff their own logins, deciding exactly what each person can see and do with Roles, sharing chats with them, chat alerts, and organising people into Departments and Positions. Every picture is from the live portal.</p>
+  <div class="g-meta">Last checked against the live portal: 29 September 2026</div>
+</div>
+<nav class="toc" aria-label="Contents"><details open><summary>Contents</summary>
+  <p class="h">Contents</p>
+  <ol>
+    <li><a href="#team-start">1. How Team fits together</a></li>
+    <li><a href="#team-seats">2. Team seats and your plan</a></li>
+    <li><a href="#team-members">3. The Team Members page</a></li>
+    <li><a href="#team-add">4. Adding a team member</a></li>
+    <li><a href="#team-login">5. How your staff log in</a></li>
+    <li><a href="#team-edit">6. Editing a team member's details</a></li>
+    <li><a href="#team-role">7. Changing someone's role</a></li>
+    <li><a href="#team-access">8. Channel access: which chats they see</a></li>
+    <li><a href="#team-alerts">9. Chat alerts</a></li>
+    <li><a href="#team-reset">10. Reset Password</a></li>
+    <li><a href="#team-leave">11. Deactivate, Re-activate or Remove</a></li>
+    <li><a href="#team-roles">12. Roles</a>
+      <ol>
+        <li><a href="#team-r-list">The Roles page</a></li>
+        <li><a href="#team-r-new">Creating a role</a></li>
+        <li><a href="#team-r-grid">The tick grid</a></li>
+        <li><a href="#team-r-edit">Editing and deleting a role</a></li>
+      </ol></li>
+    <li><a href="#team-super">13. The Super User rule (IT Admin)</a></li>
+    <li><a href="#team-depts">14. Departments and Positions</a></li>
+    <li><a href="#team-ticks">15. Every Team tick explained</a></li>
+    <li><a href="#team-recipes">16. Step-by-step recipes</a></li>
+    <li><a href="#team-faq">17. Questions and problems</a></li>
+  </ol>
+</details></nav>
+
+<main>
+
+<!-- 1 -->
+<section class="part" id="team-start">
+<h2><span class="num">1</span>How Team fits together</h2>
+<p class="where">Give each member of staff their own login, and decide exactly what each person can see and do.</p>
+
+<p>Your business has one <b>account owner</b>: the person who signed up. The owner can always see and do everything. Everyone else gets a <b>team member</b> login, and what they can do depends on the <b>Role</b> you give them.</p>
+
+<div class="map">
+  <div><b>Team Members</b>Everyone on your team, their role, department, location and status. Add, edit, reset passwords, deactivate or remove people, and choose which chats they see.</div>
+  <div><b>New Team Member</b>The form for creating a new login.</div>
+  <div><b>Roles</b>Named sets of permissions, for example "Sales Rep" or "Support Agent". You tick exactly which pages and buttons the role can use.</div>
+  <div><b>Departments</b>Your own list of departments (Sales, Customer Support, IT…) to pick from when you add someone.</div>
+  <div><b>Positions</b>Your own list of job titles (Sales Executive, Support Officer…) to pick from when you add someone.</div>
+</div>
+
+<div class="flow"><span>Make departments and positions</span><i>→</i><span>Make roles</span><i>→</i><span>Add team members</span><i>→</i><span>Share their password</span><i>→</i><span>Choose which chats they see</span></div>
+
+<figure><img src="/static/portal/tutorial/team/t00_menu.jpg" width="260" height="900" alt="The Team group in the side menu (account owner&#x27;s view)." loading="lazy"><figcaption>The Team group in the side menu (account owner's view).</figcaption></figure>
+
+<div class="box know"><b class="t">Who sees the Team menu</b>
+<p>Ordinary staff never see Team at all. It only appears for the account owner, and for people whose role has Team ticks, for example an IT Admin. Your IT person (or the owner) decides who those "power users" are. Each person sees only the Team pages and buttons their own ticks allow.</p></div>
+</section>
+
+<!-- 2 -->
+<section class="part" id="team-seats">
+<h2><span class="num">2</span>Team seats and your plan</h2>
+<p class="where">Team Members page, the "Seats used on your plan" box.</p>
+
+<p>Each <b>active</b> team member uses one seat. The account owner never uses a seat, and deactivated people don't use one either.</p>
+<div class="tbl"><table>
+<thead><tr><th>Plan</th><th>Team seats</th></tr></thead>
+<tbody>
+<tr><td>Free</td><td>0 (no team members)</td></tr>
+<tr><td>PhiXtra Connect</td><td>1</td></tr>
+<tr><td>Startup (and Startup Dual Agent)</td><td>1</td></tr>
+<tr><td>Business (and Business Dual Agent)</td><td>3</td></tr>
+<tr><td>Enterprise (and Enterprise Dual Agent)</td><td>10</td></tr>
+<tr><td>Custom</td><td>Agreed with PhiXtra</td></tr>
+</tbody></table></div>
+
+<p>When every seat is used:</p>
+<ul>
+  <li>A red banner says <b>"You've used all 3 team seats on your plan."</b> with an <span class="ui">Upgrade to add more →</span> link.</li>
+  <li>The <span class="ui">+ New Team Member</span> button turns grey and can't be pressed.</li>
+  <li><span class="ui">Re-activate</span> is greyed out on deactivated people.</li>
+</ul>
+<p>To free a seat, deactivate or remove someone, or upgrade your plan. On a plan with no seats, the banner says "Your current plan doesn't include team seats."</p>
+</section>
+
+<!-- 3 -->
+<section class="part" id="team-members">
+<h2><span class="num">3</span>The Team Members page</h2>
+<p class="where">Side menu › Team › Team Members</p>
+
+<figure><img src="/static/portal/tutorial/team/t04_members_full.jpg" width="1100" height="1229" alt="The Team Members page: seat banner, four summary boxes, search and the list of people." loading="lazy"><figcaption>The Team Members page: seat banner, four summary boxes, search and the list of people.</figcaption></figure>
+
+<h3>Tabs</h3>
+<p><span class="ui">Members</span>, <span class="ui">Roles</span>, <span class="ui">Departments</span> and <span class="ui">Positions</span> switch between the four Team pages. You only see the tabs your role allows.</p>
+
+<h3>The four boxes</h3>
+<div class="tbl"><table>
+<thead><tr><th>Box</th><th>What it shows</th></tr></thead>
+<tbody>
+<tr><td>Team members</td><td class="wrapok">Everyone on the list, active or deactivated (not counting the owner).</td></tr>
+<tr><td>Active right now</td><td class="wrapok">People who can log in today.</td></tr>
+<tr><td>Seats used on your plan</td><td class="wrapok">Active people out of your plan's seats. The bar turns red when it's full.</td></tr>
+<tr><td>Roles defined</td><td class="wrapok">How many roles you have, with a <span class="ui">Manage roles →</span> link.</td></tr>
+</tbody></table></div>
+
+<h3>Search</h3>
+<p>Type in <span class="f">Search by name, email, department…</span> to narrow the list as you type. It searches the name, email, department and position. The count next to it shows how many people match.</p>
+
+<h3>The columns</h3>
+<div class="tbl"><table>
+<thead><tr><th>Column</th><th>What it shows</th></tr></thead>
+<tbody>
+<tr><td>Member</td><td class="wrapok">Photo (or first letter), name and login email.</td></tr>
+<tr><td>Role</td><td class="wrapok">Their role. If you're allowed to change roles, this is a drop-down (see <a href="#team-role">section 7</a>).</td></tr>
+<tr><td>Department / Position</td><td class="wrapok">Job title, department and "Reports to …" if a line manager is set.</td></tr>
+<tr><td>Location</td><td class="wrapok">City and country.</td></tr>
+<tr><td>Status</td><td class="wrapok"><b>Active</b> or <b>Deactivated</b>, plus "Last login" date or "Never logged in".</td></tr>
+<tr><td>Actions</td><td class="wrapok"><span class="ui">Edit</span>, <span class="ui">Deactivate</span> / <span class="ui">Re-activate</span>, <span class="ui">Reset Password</span>, <span class="ui">Remove</span>. You only see the buttons your role allows.</td></tr>
+</tbody></table></div>
+
+<h3>The account owner row</h3>
+<p>The owner sees themselves at the top in a yellow row marked <b>👑 Account owner</b>, "Full access · can't be changed or removed". Team members never see this row: staff only ever see the company name, never the owner's name or email.</p>
+
+<h3>Manage channel access &amp; chat alerts</h3>
+<p>Under each person is a fold-open line, <span class="ui">⚙️ Manage channel access &amp; chat alerts</span>. See <a href="#team-access">section 8</a> and <a href="#team-alerts">section 9</a>.</p>
+</section>
+
+<!-- 4 -->
+<section class="part" id="team-add">
+<h2><span class="num">4</span>Adding a team member</h2>
+<p class="where">Team Members › <span class="ui">+ New Team Member</span>, or side menu › Team › New Team Member</p>
+
+<div class="box tip"><b class="t">Before you start</b>
+<p>Make the department, position and role you want first (sections <a href="#team-depts">14</a> and <a href="#team-roles">12</a>). The form only offers ones that already exist.</p></div>
+
+<figure><img src="/static/portal/tutorial/team/t02_new_member_form.jpg" width="1100" height="1423" alt="The New Team Member form: Profile, Access and Chat alerts." loading="lazy"><figcaption>The New Team Member form: Profile, Access and Chat alerts.</figcaption></figure>
+
+<h3>Profile</h3>
+<div class="tbl"><table>
+<thead><tr><th>Box</th><th>What to put</th></tr></thead>
+<tbody>
+<tr><td>First name *</td><td class="wrapok">Required.</td></tr>
+<tr><td>Last name</td><td class="wrapok">Optional.</td></tr>
+<tr><td>Email address *</td><td class="wrapok">Required. This is what they log in with. It must not already be used anywhere on PhiXtra (by another business, another team member or an account owner), otherwise you'll see "That email is already registered on PhiXtra."</td></tr>
+<tr><td>Department</td><td class="wrapok">Pick from your list, or leave "None". <span class="ui">Manage departments →</span> opens the Departments page.</td></tr>
+<tr><td>Position / Title</td><td class="wrapok">Pick from your list, or leave "None". <span class="ui">Manage positions →</span> opens the Positions page.</td></tr>
+<tr><td>City, Country</td><td class="wrapok">Where they work. Optional.</td></tr>
+<tr><td>Line manager</td><td class="wrapok">Any active team member. Shows as "Reports to …" on the list.</td></tr>
+<tr><td>Photo</td><td class="wrapok">JPEG, PNG, GIF or WebP, under 2 MB. Optional.</td></tr>
+</tbody></table></div>
+
+<h3>Access</h3>
+<ul>
+  <li><span class="f">Role *</span>: what they can see and do. If you're not the owner, some roles may be missing here (see <a href="#team-super">section 13</a>).</li>
+  <li><span class="f">Which AI Agent(s) can they see?</span>: only shows when your business has more than one AI agent with a WhatsApp number. Tick the ones whose WhatsApp chats this person should see. If you have just one, they get it automatically.</li>
+</ul>
+
+<h3>Chat alerts</h3>
+<p>Only shows if you're allowed to manage chat alerts. You can set them now or later; see <a href="#team-alerts">section 9</a>.</p>
+
+<h3>Create</h3>
+<ol class="steps">
+  <li>Press <span class="ui">Create Team Member</span>.</li>
+  <li>A green message appears at the top with their <b>password</b>: 12 letters and numbers, made up by the system.</li>
+  <li><b>Copy it now.</b> It is shown only once and is never stored where anyone can see it again.</li>
+  <li>Send the email and password to the person yourself, for example by WhatsApp or in person.</li>
+</ol>
+<figure><img src="/static/portal/tutorial/team/t03_created_password.jpg" width="1080" height="75" alt="The one-time password message (blurred here). Copy it before you leave the page." loading="lazy"><figcaption>The one-time password message (blurred here). Copy it before you leave the page.</figcaption></figure>
+
+<div class="box careful"><b class="t">No invite email is sent</b>
+<p>PhiXtra doesn't email the new person. If you lose the password before passing it on, use <a href="#team-reset">Reset Password</a> to make a new one.</p></div>
+</section>
+
+<!-- 5 -->
+<section class="part" id="team-login">
+<h2><span class="num">5</span>How your staff log in</h2>
+<p class="where">portal.phixtra.com</p>
+
+<ol class="steps">
+  <li>They open <b>portal.phixtra.com</b> and use the normal login page, the same one the owner uses.</li>
+  <li>They type the email you entered and the password you gave them.</li>
+  <li>They land on the <b>Inbox</b>.</li>
+</ol>
+<p>Their side menu shows only what their role allows. For example, a Sales Rep with Inbox, CRM and Leads ticks sees just Dashboard, Inbox, CRM, Leads and Help &amp; Tutorials, and no Team menu at all:</p>
+<figure><img src="/static/portal/tutorial/team/t33_salesrep_menu.jpg" width="230" height="900" alt="What a Sales Rep sees in the side menu." loading="lazy"><figcaption>What a Sales Rep sees in the side menu.</figcaption></figure>
+<p>At the bottom of the menu they see their own name and the company name. Their settings page is called <b>My Settings</b> instead of Account Settings.</p>
+
+<div class="box know"><b class="t">Good to know</b>
+<ul>
+  <li>Staff can't use "Forgot password". If they forget it, someone with the Reset Password tick makes a new one for them (<a href="#team-reset">section 10</a>).</li>
+  <li>Deactivated people can't log in at all.</li>
+  <li>If you change someone's role, the change works from their very next click. They don't need to log out.</li>
+  <li><b>Help &amp; Tutorials</b> (including this guide) is open to every team member, whatever their role.</li>
+</ul></div>
+</section>
+
+<!-- 6 -->
+<section class="part" id="team-edit">
+<h2><span class="num">6</span>Editing a team member's details</h2>
+<p class="where">Team Members › <span class="ui">Edit</span> on the person's row</p>
+
+<p>Fix a spelling mistake, move someone to a new department, give them a new title or line manager, or change their photo.</p>
+<figure><img src="/static/portal/tutorial/team/t09_edit_member.jpg" width="1100" height="1023" alt="Edit Team Member: the same profile boxes as when you added them, already filled in." loading="lazy"><figcaption>Edit Team Member: the same profile boxes as when you added them, already filled in.</figcaption></figure>
+
+<ol class="steps">
+  <li>Press <span class="ui">Edit</span> next to the person.</li>
+  <li>Change any of: first name, last name, email, department, position, city, country, line manager, photo.</li>
+  <li>Press <span class="ui">Save Changes</span>. You'll see "'Name' updated."</li>
+</ol>
+<ul>
+  <li><b>Email:</b> this is their login. If you change it, tell them; their password stays the same. The new email must not already be used on PhiXtra.</li>
+  <li><b>Photo:</b> choose a new file to replace it, or tick <span class="f">Remove this photo</span>.</li>
+  <li><b>Line manager:</b> you can't pick the person as their own manager.</li>
+  <li>Role, channel access and chat alerts are not on this page. Change those on the Team Members page. Editing never changes the password.</li>
+</ul>
+<p class="need">Needs the tick: "Edit a team member's details"</p>
+</section>
+
+<!-- 7 -->
+<section class="part" id="team-role">
+<h2><span class="num">7</span>Changing someone's role</h2>
+<p class="where">Team Members › the drop-down in the Role column</p>
+<ol class="steps">
+  <li>Click the role drop-down on the person's row.</li>
+  <li>Pick the new role. It saves straight away, and you'll see "Role updated."</li>
+</ol>
+<p>If you're not the owner, roles you're not allowed to give show as <b>"(restricted)"</b> and can't be picked (see <a href="#team-super">section 13</a>). If you don't have the tick to change roles, you just see the role name as plain text.</p>
+<p class="need">Needs the tick: "Change a team member's role"</p>
+</section>
+
+<!-- 8 -->
+<section class="part" id="team-access">
+<h2><span class="num">8</span>Channel access: which chats they see</h2>
+<p class="where">Team Members › <span class="ui">⚙️ Manage channel access &amp; chat alerts</span> under the person</p>
+
+<p>The role decides whether someone can use the Inbox at all. Channel access decides <b>which conversations</b> they see in it.</p>
+<figure><img src="/static/portal/tutorial/team/t05_manage_open.jpg" width="1100" height="822" alt="The fold-open panel under Chioma: Web Chat and Chat alerts. AI Agents and Messenger appear here too when your business has them." loading="lazy"><figcaption>The fold-open panel under Chioma: Web Chat and Chat alerts. AI Agents and Messenger appear here too when your business has them.</figcaption></figure>
+
+<div class="tbl"><table>
+<thead><tr><th>Line</th><th>What it does</th><th>When it shows</th></tr></thead>
+<tbody>
+<tr><td>AI Agents</td><td class="wrapok">Tick the AI agents (WhatsApp numbers) whose chats this person sees, then press <span class="ui">Save</span>. The tags show what they have now. <b>"No agent assigned, sees nothing"</b> means they won't see any WhatsApp chats.</td><td class="wrapok">Only when you have more than one AI agent with a WhatsApp number. With just one, everyone gets it automatically.</td></tr>
+<tr><td>Messenger</td><td class="wrapok">Tick <span class="f">Can access Facebook Messenger</span>. It saves as soon as you tick or untick.</td><td class="wrapok">Only when a Facebook Page is connected.</td></tr>
+<tr><td>Web Chat</td><td class="wrapok">Tick <span class="f">Can access Web Chat (website AI chat handoffs)</span>: chats from your website chat widget that the AI handed to a person. Saves as soon as you tick.</td><td class="wrapok">Always.</td></tr>
+</tbody></table></div>
+<p>The label next to each line shows <b>Enabled</b> or <b>Off</b>.</p>
+<p class="need">Needs the ticks: "Manage a team member's AI Agent assignment", "… Messenger access", "… Web Chat access"</p>
+</section>
+
+<!-- 9 -->
+<section class="part" id="team-alerts">
+<h2><span class="num">9</span>Chat alerts</h2>
+<p class="where">Team Members › <span class="ui">⚙️ Manage channel access &amp; chat alerts</span> › 🔔 Chat alerts (also on the New Team Member form)</p>
+
+<p>Tell a person straight away when a customer's chat needs a reply, so nobody is left waiting. They are only alerted about chats they can see (<a href="#team-access">section 8</a>).</p>
+<ul>
+  <li><span class="f">Alert when a chat needs a reply</span>: switches alerts on. They get a <b>WhatsApp message and an email</b>.</li>
+  <li><span class="f">10-minute reminder</span>: one more alert if nobody has replied after 10 minutes. On by default.</li>
+  <li><span class="f">Personal WhatsApp number</span>: where WhatsApp alerts go. Use the full number with country code, for example +2348012345678 or +447700900123. A local number starting with 0 gets your business's country code added. Leave it empty for email alerts only.</li>
+</ul>
+<p>Press <span class="ui">Save</span>. The label changes to <b>On</b>, and you'll see "Chat alerts switched on ✅" (or "email only" if there's no number). Alerts come from PhiXtra's WhatsApp number; emails go to the person's login email.</p>
+<p>If the number is wrong you'll see "That WhatsApp number doesn't look right". Nothing is saved until you fix it.</p>
+<p class="need">Needs the tick: "Manage a team member's chat alerts"</p>
+</section>
+
+<!-- 10 -->
+<section class="part" id="team-reset">
+<h2><span class="num">10</span>Reset Password</h2>
+<p class="where">Team Members › <span class="ui">Reset Password</span></p>
+<p>Use this when someone forgot their password, never received it, or you think someone else knows it.</p>
+<ol class="steps">
+  <li>Press <span class="ui">Reset Password</span> and confirm.</li>
+  <li>Their old password stops working immediately.</li>
+  <li>A green message shows the <b>new password</b>, once. Copy it and send it to them.</li>
+</ol>
+<figure><img src="/static/portal/tutorial/team/t08_reset_flash.jpg" width="1100" height="301" alt="After a reset: the new password is shown once (blurred here)." loading="lazy"><figcaption>After a reset: the new password is shown once (blurred here).</figcaption></figure>
+<p class="need">Needs the tick: "Reset a team member's password"</p>
+</section>
+
+<!-- 11 -->
+<section class="part" id="team-leave">
+<h2><span class="num">11</span>Deactivate, Re-activate or Remove</h2>
+<p class="where">Team Members › Actions</p>
+
+<div class="tbl"><table>
+<thead><tr><th>Button</th><th>What happens</th><th>Use it when</th></tr></thead>
+<tbody>
+<tr><td>Deactivate</td><td class="wrapok">They can't log in any more. Everything about them is kept and their seat is freed. Status shows <b>Deactivated</b>.</td><td class="wrapok">Someone leaves, is on long leave, or you're not sure yet.</td></tr>
+<tr><td>Re-activate</td><td class="wrapok">They can log in again with the same password. Needs a free seat.</td><td class="wrapok">They come back.</td></tr>
+<tr><td>Remove</td><td class="wrapok">Deletes their login completely. <b>This can't be undone.</b></td><td class="wrapok">You're sure they'll never come back.</td></tr>
+</tbody></table></div>
+<figure><img src="/static/portal/tutorial/team/t07_deactivated_row.jpg" width="986" height="158" alt="A deactivated team member: grey &quot;Deactivated&quot; label and a Re-activate button." loading="lazy"><figcaption>A deactivated team member: grey "Deactivated" label and a Re-activate button.</figcaption></figure>
+<div class="box tip"><b class="t">Tip</b><p>When someone leaves, <b>Deactivate</b> first. It frees the seat straight away and keeps your options open.</p></div>
+<p class="need">Needs the ticks: "Deactivate / reactivate a team member", "Permanently remove a team member"</p>
+</section>
+
+<!-- 12 -->
+<section class="part" id="team-roles">
+<h2><span class="num">12</span>Roles</h2>
+<p class="where">Side menu › Team › Roles</p>
+<p>A role is a named set of permissions. Make it once, then give it to as many people as you like. A person can do exactly what their role has ticked, nothing more. A role with nothing ticked can log in but sees nothing.</p>
+
+<h3 id="team-r-list">The Roles page</h3>
+<figure><img src="/static/portal/tutorial/team/t15_roles_list.jpg" width="1100" height="822" alt="The Roles page: each role, how many features it grants and how many active people use it." loading="lazy"><figcaption>The Roles page: each role, how many features it grants and how many active people use it.</figcaption></figure>
+<ul>
+  <li><b>Features granted</b>: how many ticks the role has.</li>
+  <li><b>Team members</b>: how many active people have this role.</li>
+  <li><span class="ui">Edit</span> opens the role; <span class="ui">Delete</span> removes it (see <a href="#team-r-edit">below</a>).</li>
+  <li><span class="ui">+ New Role</span> makes a new one.</li>
+</ul>
+<p>The first time a business opens Team, PhiXtra makes a ready-made <b>Support Agent</b> role with the 6 Inbox ticks. Change it or add your own.</p>
+
+<h3 id="team-r-new">Creating a role</h3>
+<figure><img src="/static/portal/tutorial/team/t11_role_new_top.jpg" width="1100" height="822" alt="New Role: name the role, then tick features module by module." loading="lazy"><figcaption>New Role: name the role, then tick features module by module.</figcaption></figure>
+<ol class="steps">
+  <li>Press <span class="ui">+ New Role</span>.</li>
+  <li>Type a <span class="f">Role name</span>, for example "Sales Rep". Each name can only be used once.</li>
+  <li>Click a module (Inbox, CRM, Leads…) to open it, and tick what this role may do.</li>
+  <li>Press <span class="ui">Create Role</span> in the bar at the bottom. You'll see "Role 'Sales Rep' created with 17 features granted."</li>
+</ol>
+<p>The boxes at the top count the <b>Modules</b>, the <b>Features available</b> and how many are <b>Selected for this role</b>. The bar at the bottom shows the same count as you tick.</p>
+
+<h3 id="team-r-grid">The tick grid</h3>
+<figure><img src="/static/portal/tutorial/team/t12_role_grid.jpg" width="844" height="1927" alt="Inside a module: one row per page or item, with View, Create, Edit, Delete and Other." loading="lazy"><figcaption>Inside a module: one row per page or item, with View, Create, Edit, Delete and Other.</figcaption></figure>
+<div class="tbl"><table>
+<thead><tr><th>Column</th><th>Means</th></tr></thead>
+<tbody>
+<tr><td>View</td><td class="wrapok">Can open and look at the page.</td></tr>
+<tr><td>Create</td><td class="wrapok">Can add new things there.</td></tr>
+<tr><td>Edit</td><td class="wrapok">Can change existing things.</td></tr>
+<tr><td>Delete</td><td class="wrapok">Can delete. These boxes turn <b>red</b> when ticked, as a warning.</td></tr>
+<tr><td>Other</td><td class="wrapok">Actions that aren't view/create/edit/delete, written out in words, for example "Reply to conversations", "Export Contacts (download CSV)".</td></tr>
+</tbody></table></div>
+<p>An empty cell means that action doesn't exist for that row.</p>
+<h4>Helpful rules the grid follows for you</h4>
+<ul>
+  <li>Ticking Create, Edit, Delete or an Other box also ticks <b>View</b> on that row, because none of them work if the person can't open the page.</li>
+  <li>Unticking <b>View</b> unticks the whole row.</li>
+  <li>The number next to each module (for example <b>7/25</b>) shows how many of its boxes are ticked.</li>
+  <li><span class="ui">Select all</span> on a module ticks everything in it; it then turns into <span class="ui">Clear all</span>.</li>
+  <li><span class="f">Search permissions by name or key…</span> shows only matching rows and opens their modules. The big <span class="ui">Select all</span> / <span class="ui">Clear all</span> buttons next to it only affect the rows you can see, so you can search "export", then Select all.</li>
+</ul>
+<div class="box know"><b class="t">Plans and roles</b>
+<p>Roles can only give what your plan includes. If a page has a 🔒 padlock in the side menu, it isn't on your plan, and ticking it in a role won't open it.</p></div>
+
+<h3 id="team-r-edit">Editing and deleting a role</h3>
+<ul>
+  <li><span class="ui">Edit</span> opens the same grid. Modules that already have ticks open by themselves. Press <span class="ui">Save Role</span>. Everyone with this role gets the change from their next click.</li>
+  <li><span class="ui">Delete</span> is greyed out while any active person has the role. Move them to a different role first (<a href="#team-role">section 7</a>), then delete it. Deleting can't be undone.</li>
+</ul>
+</section>
+
+<!-- 13 -->
+<section class="part" id="team-super">
+<h2><span class="num">13</span>The Super User rule (IT Admin)</h2>
+<p class="where">Applies to every role that can manage other people</p>
+
+<p>You can let someone else, usually your IT person, manage staff for you. To keep your money and data safe, PhiXtra puts limits on any role that can manage people.</p>
+<div class="box careful"><b class="t">The rule</b>
+<p>If a role has <b>any Team tick apart from "Team: view"</b>, then when it's saved PhiXtra automatically removes <b>all Billing ticks</b> and <b>every Delete tick</b>, even if they were ticked. The same happens to any role saved by someone who isn't the account owner. The yellow warning at the top of the role form reminds you.</p></div>
+<figure><img src="/static/portal/tutorial/team/t14_role_team_ticks.jpg" width="844" height="477" alt="The Team module on the demo &quot;IT Admin (Super User)&quot; role: create, edit and manage ticks, but no Delete or Remove." loading="lazy"><figcaption>The Team module on the demo "IT Admin (Super User)" role: create, edit and manage ticks, but no Delete or Remove.</figcaption></figure>
+
+<h3>What an IT Admin sees and can't do</h3>
+<ul>
+  <li>No <b>Billing</b> module and no Delete boxes at all on the role form.</li>
+  <li>No <span class="ui">Remove</span> button on team members, and no Delete on roles, departments or positions.</li>
+  <li>They can only give people roles that have no Billing or Delete ticks. Other roles show as <b>"(restricted)"</b> in the drop-down and can't be picked.</li>
+  <li>They never see the account owner in the list.</li>
+</ul>
+<figure><img src="/static/portal/tutorial/team/t30_itadmin_team.jpg" width="1100" height="1105" alt="Team Members as the IT Admin sees it: Edit, Deactivate and Reset Password, but no Remove and no owner row." loading="lazy"><figcaption>Team Members as the IT Admin sees it: Edit, Deactivate and Reset Password, but no Remove and no owner row.</figcaption></figure>
+<figure><img src="/static/portal/tutorial/team/t31_itadmin_role_form.jpg" width="844" height="1633" alt="The role form as the IT Admin sees it: no Billing module and no Delete boxes." loading="lazy"><figcaption>The role form as the IT Admin sees it: no Billing module and no Delete boxes.</figcaption></figure>
+<figure><img src="/static/portal/tutorial/team/t34_itadmin_menu.jpg" width="230" height="900" alt="The IT Admin&#x27;s side menu, with the Team pages their role allows." loading="lazy"><figcaption>The IT Admin's side menu, with the Team pages their role allows.</figcaption></figure>
+<p>Only the account owner can remove people, delete things, or give Billing access.</p>
+</section>
+
+<!-- 14 -->
+<section class="part" id="team-depts">
+<h2><span class="num">14</span>Departments and Positions</h2>
+<p class="where">Side menu › Team › Departments, and Team › Positions</p>
+<p>Two simple lists you keep yourself. They appear as drop-downs when you add or edit a team member, and show on the Team Members list. They don't change what anyone can do; that's what Roles are for.</p>
+<figure><img src="/static/portal/tutorial/team/t22_depts.jpg" width="1100" height="822" alt="Departments: each one with how many active people are in it." loading="lazy"><figcaption>Departments: each one with how many active people are in it.</figcaption></figure>
+<ul>
+  <li><span class="ui">+ New Department</span>: type a name and press save. Each name can only be used once.</li>
+  <li><span class="ui">Edit</span>: rename it. Everyone in it moves with the new name.</li>
+  <li><span class="ui">Delete</span>: greyed out while any active person is in it. Move them first (<a href="#team-edit">section 6</a>).</li>
+</ul>
+<figure><img src="/static/portal/tutorial/team/t21_dept_new.jpg" width="1100" height="822" alt="Adding a department." loading="lazy"><figcaption>Adding a department.</figcaption></figure>
+<p><b>Positions</b> work exactly the same way, for job titles.</p>
+<figure><img src="/static/portal/tutorial/team/t23_positions.jpg" width="1100" height="822" alt="Positions: job titles to pick from." loading="lazy"><figcaption>Positions: job titles to pick from.</figcaption></figure>
+</section>
+
+<!-- 15 -->
+<section class="part" id="team-ticks">
+<h2><span class="num">15</span>Every Team tick explained</h2>
+<p class="where">Roles › Team module</p>
+<div class="tbl"><table>
+<thead><tr><th>Tick</th><th>Lets the person</th></tr></thead>
+<tbody>
+<tr><td>Team: view</td><td class="wrapok">Open the Team Members page. Needed for every Team Member action below.</td></tr>
+<tr><td>Create a team member</td><td class="wrapok">Use New Team Member.</td></tr>
+<tr><td>Edit a team member's details</td><td class="wrapok">Use the Edit button (name, email, department, position, manager, location, photo).</td></tr>
+<tr><td>Permanently remove a team member</td><td class="wrapok">Use Remove. A Delete tick: never allowed for Super Users.</td></tr>
+<tr><td>Change a team member's role</td><td class="wrapok">Use the role drop-down.</td></tr>
+<tr><td>Deactivate / reactivate a team member</td><td class="wrapok">Use Deactivate and Re-activate.</td></tr>
+<tr><td>Reset a team member's password</td><td class="wrapok">Use Reset Password.</td></tr>
+<tr><td>Manage a team member's AI Agent assignment</td><td class="wrapok">Choose which AI agents' WhatsApp chats someone sees.</td></tr>
+<tr><td>Manage a team member's Messenger access</td><td class="wrapok">Switch Messenger on or off for someone.</td></tr>
+<tr><td>Manage a team member's Web Chat access</td><td class="wrapok">Switch Web Chat on or off for someone.</td></tr>
+<tr><td>Manage a team member's chat alerts</td><td class="wrapok">Set someone's chat alerts and alert number.</td></tr>
+<tr><td>Role: Create / Edit / Delete</td><td class="wrapok">Make new roles, change their ticks, delete them. Any of these opens the Roles page.</td></tr>
+<tr><td>Department: Create / Edit / Delete</td><td class="wrapok">Same for departments.</td></tr>
+<tr><td>Position: Create / Edit / Delete</td><td class="wrapok">Same for positions.</td></tr>
+</tbody></table></div>
+<div class="box careful"><b class="t">Careful</b><p>Only give Team ticks to people you trust to manage staff. Anyone with them becomes a Super User (<a href="#team-super">section 13</a>).</p></div>
+</section>
+
+<!-- 16 -->
+<section class="part" id="team-recipes">
+<h2><span class="num">16</span>Step-by-step recipes</h2>
+
+<div class="recipe"><h4>Set up a new sales rep</h4>
+<ol class="steps">
+  <li>Roles › <span class="ui">+ New Role</span>, name it "Sales Rep". Tick Dashboard, the Inbox ticks, CRM Contacts (View, Create, Edit), Pipeline Board (View, Edit), and Leads. Press Create Role.</li>
+  <li>Team Members › <span class="ui">+ New Team Member</span>. Fill in their name and email, department "Sales", position "Sales Executive", role "Sales Rep". Press Create Team Member.</li>
+  <li>Copy the password and send it to them with the link portal.phixtra.com.</li>
+  <li>Open <span class="ui">⚙️ Manage channel access &amp; chat alerts</span> under their name and pick which chats they see, and switch on alerts if you want them.</li>
+</ol></div>
+
+<div class="recipe"><h4>Let your IT person manage staff</h4>
+<ol class="steps">
+  <li>Roles › <span class="ui">+ New Role</span>, name it "IT Admin (Super User)".</li>
+  <li>Open the Team module and tick what they should do: create and edit team members, change roles, deactivate, reset passwords, channel access, alerts, and create/edit roles, departments and positions. Add Dashboard and Inbox if they need them.</li>
+  <li>Press Create Role. Billing and every Delete tick are removed automatically.</li>
+  <li>Give your IT person that role.</li>
+</ol></div>
+
+<div class="recipe"><h4>Someone leaves the business</h4>
+<ol class="steps">
+  <li>Team Members › <span class="ui">Deactivate</span> on their row. They can't log in from that moment and their seat is free.</li>
+  <li>Check the Inbox for any chats they were handling and pick them up.</li>
+  <li>Later, when you're sure, the owner can press <span class="ui">Remove</span>.</li>
+</ol></div>
+
+<div class="recipe"><h4>A team member forgot their password</h4>
+<ol class="steps">
+  <li>Team Members › <span class="ui">Reset Password</span> on their row, and confirm.</li>
+  <li>Copy the new password from the green message and send it to them.</li>
+</ol></div>
+
+<div class="recipe"><h4>Someone moves to a new department or gets a new title</h4>
+<ol class="steps">
+  <li>Team Members › <span class="ui">Edit</span> on their row.</li>
+  <li>Change Department, Position and Line manager, then Save Changes.</li>
+  <li>If their job changes what they should see, also change their role (section 7).</li>
+</ol></div>
+
+<div class="recipe"><h4>You need one more seat</h4>
+<ol class="steps">
+  <li>Deactivate someone who no longer needs access, or</li>
+  <li>press <span class="ui">Upgrade to add more →</span> on the red banner to move to a bigger plan.</li>
+</ol></div>
+</section>
+
+<!-- 17 -->
+<section class="part" id="team-faq">
+<h2><span class="num">17</span>Questions and problems</h2>
+
+<h4>"+ New Team Member" is grey and won't click.</h4>
+<p>All your seats are used. Deactivate someone or upgrade (<a href="#team-seats">section 2</a>).</p>
+
+<h4>"That email is already registered on PhiXtra."</h4>
+<p>That email is already used by someone on PhiXtra, maybe on another business. Use a different email, for example their work address.</p>
+
+<h4>I lost the password before I sent it.</h4>
+<p>Press <span class="ui">Reset Password</span> on their row to make a new one.</p>
+
+<h4>My staff member logs in but sees nothing.</h4>
+<p>Their role has nothing ticked, or not the pages they need. Edit the role and tick what they need. If the Inbox is empty, check their channel access (<a href="#team-access">section 8</a>): with several AI agents and none ticked, they see no WhatsApp chats.</p>
+
+<h4>The Role column says "No role, no access".</h4>
+<p>Their role was deleted while they were deactivated. Pick a role from the drop-down.</p>
+
+<h4>I can't delete a role, department or position.</h4>
+<p>Someone active is still using it. Move them first. If you're not the owner, you don't have Delete at all (<a href="#team-super">section 13</a>).</p>
+
+<h4>A role shows "(restricted)" and I can't pick it.</h4>
+<p>It has Billing or Delete ticks, and only the account owner can give those roles.</p>
+
+<h4>I ticked Billing or a Delete box and it disappeared after saving.</h4>
+<p>That role can manage people, so PhiXtra removed them on purpose (<a href="#team-super">section 13</a>).</p>
+
+<h4>Does a new team member get an email?</h4>
+<p>No. You send them the email and password yourself.</p>
+
+<h4>Do I need to ask them to log out after changing their role?</h4>
+<p>No. The change works from their next click.</p>
+
+<h4>They aren't getting chat alerts.</h4>
+<p>Check alerts are <b>On</b>, the WhatsApp number is full with country code, and that they can see the chat (channel access). Alerts only come for chats they can see.</p>
+
+<h4>A button I've seen in this guide isn't on my screen.</h4>
+<p>Your role doesn't include it. Ask the account owner or your IT admin.</p>
+</section>
+
+</main>
+<a class="g-top" href="#team-top">↑ Back to contents</a>
+</div>

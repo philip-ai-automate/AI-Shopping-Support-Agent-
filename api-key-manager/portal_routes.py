@@ -292,27 +292,13 @@ def display_actor(label, key=None):
 
 def _require_plan_feature(customer: dict, plan_flag: str, min_plan_name: str):
     """
-    Gate a route by WhatsApp plan feature flag.
-
-    - Tenants with NO active WhatsApp Business connection bypass this gate —
-      they are web-only accounts billed via credit packages.
-    - Tenants WITH an active WA connection are subject to plan gating.
-    - Returns None if access is allowed, or a Response (upgrade page) if blocked.
+    Gate a route by a plan feat_* flag ("plan unlock" switch on the Plan
+    editor). Applies to every business: the old skip for businesses with no
+    WhatsApp number connected (from when web accounts were billed by credit
+    packages) was removed 2026-09-30 — plans decide features for everyone.
+    Returns None if access is allowed, or a Response (upgrade page) if blocked.
     """
     tenant_id = int(customer["tenant_id"])
-
-    # Only gate tenants that have an active WhatsApp Business connection
-    try:
-        _conn = get_db_connection()
-        _cur  = _conn.cursor()
-        _cur.execute("SELECT 1 FROM wa_tenants WHERE tenant_id=%s AND active=TRUE LIMIT 1", (tenant_id,))
-        _has_wa = bool(_cur.fetchone())
-        _cur.close(); _conn.close()
-    except Exception:
-        _has_wa = False
-
-    if not _has_wa:
-        return None  # no WA connection — web account, skip gate
 
     # Product-discovery period: CRM/broadcast access is free for all tenants
     if plan_flag == "feat_broadcasts" and os.getenv("CRM_OPEN_ACCESS", "").strip() == "1":
@@ -334,6 +320,10 @@ def _require_plan_feature(customer: dict, plan_flag: str, min_plan_name: str):
         "feat_email_campaigns":  "Email Campaigns",
     }
     feature_label = _FEATURE_LABELS.get(plan_flag, plan_flag.replace("feat_", "").replace("_", " ").title())
+    try:
+        min_plan_name = _min_plan_for_feature(f"legacy:{plan_flag}", _merchant_plan_mode(customer))
+    except Exception:
+        pass  # keep the name the route passed in
 
     return render_template(
         "portal/upgrade_required.html",
@@ -454,6 +444,10 @@ PLAN_FEATURE_CATALOG = {
         ("wa.history_import_view",   "Chat History Import — view"),
         ("wa.history_import_create", "Import a WhatsApp chat history"),
         ("wa.history_import_delete", "Delete an imported chat history"),
+        # Moved here from "WooCommerce Plugin" 2026-09-30: these are WhatsApp's
+        # own templates (used by campaigns), same keys as before.
+        ("woo.message_templates_view", "WhatsApp Message Templates — view"),
+        ("woo.message_templates_edit", "Edit WhatsApp Message Templates"),
     ],
     "Ecommerce & Integrations": [
         ("ecom.products_view",           "My Products — view"),
@@ -486,6 +480,7 @@ PLAN_FEATURE_CATALOG = {
     "Team": [
         ("team.manage",                    "Team — view"),
         ("team.members_create",            "Create a team member"),
+        ("team.members_edit",              "Edit a team member's details"),
         ("team.members_assign_role",       "Change a team member's role"),
         ("team.members_deactivate",        "Deactivate / reactivate a team member"),
         ("team.members_remove",            "Permanently remove a team member"),
@@ -534,8 +529,6 @@ PLAN_FEATURE_CATALOG = {
         ("woo.chat_archive_view",      "Chat Archive — view"),
         ("woo.chat_archive_30days",    "Chat Archive — 30 days history (plan unlock)"),
         ("woo.chat_archive_unlimited", "Chat Archive — Unlimited history (plan unlock, overrides 30 days)"),
-        ("woo.message_templates_view", "WhatsApp Message Templates — view"),
-        ("woo.message_templates_edit", "Edit WhatsApp Message Templates"),
     ],
     "Analytics": [
         ("analytics.page", "Analytics"),
@@ -677,7 +670,7 @@ ROLE_FORM_GRID = {
     ],
     "Team": [
         {"label": "Team", "view": "team.manage"},
-        {"label": "Team Member", "create": "team.members_create", "delete": "team.members_remove", "needs_view": "team.manage",
+        {"label": "Team Member", "create": "team.members_create", "edit": "team.members_edit", "delete": "team.members_remove", "needs_view": "team.manage",
          "other": ["team.members_assign_role", "team.members_deactivate", "team.members_reset_password",
                    "team.members_agent_access", "team.members_messenger_access", "team.members_webchat_access",
                    "team.members_alerts"]},
@@ -752,7 +745,12 @@ ROLE_FORM_GRID = {
 PLAN_ONLY_FEATURE_KEYS = {
     "woo.product_recommendation", "woo.cross_selling", "woo.cart_recovery",
     "woo.chat_archive_30days", "woo.chat_archive_unlimited",
+    "help.tutorials", "help.videos",
 }
+
+# Modules every team member can open whatever their role, so the Roles screen
+# doesn't offer tick-boxes for them (they would control nothing).
+ROLE_FREE_MODULES = {"Help & Tutorials"}
 
 
 # ── WooCommerce Plugin features: the merchant's PLAN decides ───────────────
@@ -943,6 +941,37 @@ def _lock_whatsapp_without_dual_plan():
         return jsonify({"error": "WhatsApp is part of the Dual Agent plan. "
                                  "Upgrade to a Dual Agent plan to connect WhatsApp."}), 403
     return _wa_dual_required_page(customer)
+
+
+_EMAIL_PAGE_ENDPOINTS = {"portal.email_campaigns", "portal.email_campaign_segments_page",
+                         "portal.email_campaigns_reports", "portal.email_campaign_report"}
+
+
+@portal_bp.before_request
+def _lock_email_marketing_without_plan():
+    """Blocks every route labelled ONLY with Email Marketing keys when the
+    merchant's plan ticks none of that route's keys. The Email Segments lists
+    and the campaign form's background lists had no plan lock (found
+    2026-09-30), so a plan without Email Marketing could still use them."""
+    view = current_app.view_functions.get(request.endpoint)
+    _kind, keys = route_access(view)
+    if not keys or not all(k.startswith("campaigns_email.") for k in keys):
+        return None
+    cid = _customer_id()
+    customer = _get_customer(cid) if cid else None
+    if not customer:
+        return None
+    try:
+        plan = _get_tenant_plan(int(customer["tenant_id"]))
+        if any(_plan_grants_feature(plan, k) for k in keys):
+            return None
+    except Exception as e:
+        print("⚠️ _lock_email_marketing_without_plan error:", e)
+        return None
+    if request.method == "GET" and request.endpoint in _EMAIL_PAGE_ENDPOINTS:
+        return _require_plan_sub_feature(customer, keys[0], "Email Marketing")
+    return jsonify({"error": "Email Marketing isn't included in your plan. "
+                             "Upgrade your plan to use Email Segments."}), 403
 
 
 def _plan_grants_feature(plan: dict, feature_key: str) -> bool:
@@ -1357,7 +1386,7 @@ DESTRUCTIVE_FEATURE_KEYS = {
 # "Super User" is just a role shaped like this) and is capped by
 # _cap_delegated_role_permissions regardless of who created it.
 TEAM_MANAGEMENT_FEATURE_KEYS = {
-    "team.members_create", "team.members_assign_role", "team.members_deactivate",
+    "team.members_create", "team.members_edit", "team.members_assign_role", "team.members_deactivate",
     "team.members_remove", "team.members_reset_password", "team.members_agent_access",
     "team.members_messenger_access", "team.members_webchat_access", "team.members_alerts",
     "team.roles_create", "team.roles_edit", "team.roles_delete",
@@ -1405,11 +1434,11 @@ def _feature_catalog_for_actor(acting_is_owner: bool) -> dict:
     a hint, since _parse_role_permissions_form only reads keys that were
     actually rendered as checkboxes."""
     if acting_is_owner:
-        return PLAN_FEATURE_CATALOG
+        return {m: f for m, f in PLAN_FEATURE_CATALOG.items() if m not in ROLE_FREE_MODULES}
     billing_keys = _billing_feature_keys()
     filtered = {}
     for module, feats in PLAN_FEATURE_CATALOG.items():
-        if module == "Billing":
+        if module == "Billing" or module in ROLE_FREE_MODULES:
             continue
         kept = [(k, l) for k, l in feats if k not in DESTRUCTIVE_FEATURE_KEYS and k not in billing_keys]
         if kept:
@@ -4092,6 +4121,109 @@ def team_create():
     return redirect(url_for("portal.team_page"))
 
 
+@portal_bp.route("/team/<int:member_id>/edit", methods=["GET", "POST"])
+@team_feature("team.members_edit")
+def team_edit(member_id: int):
+    """Change a team member's profile after creation (user 2026-09-29: there
+    was no way to fix a typo except Remove + re-create). Profile fields only —
+    role, channel access and chat alerts keep their own controls on /team.
+    The password is untouched."""
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
+    if r2: return r2
+    r3 = _require_team_permission("team.members_edit")
+    if r3: return r3
+    tenant_id = int(customer["tenant_id"])
+
+    member = next((m for m in _get_team_members(tenant_id) if m["id"] == member_id), None)
+    if not member:
+        flash("Team member not found.", "danger")
+        return redirect(url_for("portal.team_page"))
+
+    if request.method == "GET":
+        return render_template(
+            "portal/team_member_form.html",
+            customer=customer,
+            member=member,
+            roles=[],
+            departments=_get_tenant_departments(tenant_id),
+            positions=_get_tenant_positions(tenant_id),
+            countries=STAFF_COUNTRY_LIST,
+            managers=_get_team_members_for_manager_picker(tenant_id, exclude_id=member_id),
+            assignable_agents=[],
+            show_agent_picker=False,
+        )
+
+    first_name = (request.form.get("first_name") or "").strip()[:100]
+    last_name  = (request.form.get("last_name")  or "").strip()[:100]
+    email      = (request.form.get("email") or "").strip().lower()
+    location_city = (request.form.get("location_city") or "").strip()[:100] or None
+    location_country = (request.form.get("location_country") or "").strip()[:10] or None
+    name = f"{first_name} {last_name}".strip()
+    if not first_name or not email:
+        flash("First name and email address are required.", "danger")
+        return redirect(url_for("portal.team_edit", member_id=member_id))
+
+    dept_raw = (request.form.get("department_id") or "").strip()
+    department = _get_department(int(dept_raw), tenant_id) if dept_raw.isdigit() else None
+    pos_raw = (request.form.get("position_id") or "").strip()
+    position = _get_position(int(pos_raw), tenant_id) if pos_raw.isdigit() else None
+    line_manager_raw = (request.form.get("line_manager_id") or "").strip()
+    line_manager_id = None
+    if line_manager_raw.isdigit():
+        valid_managers = {m["id"] for m in _get_team_members_for_manager_picker(tenant_id, exclude_id=member_id)}
+        if int(line_manager_raw) in valid_managers:
+            line_manager_id = int(line_manager_raw)
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    if email != (member.get("email") or "").lower():
+        cur.execute("SELECT 1 FROM customers WHERE email=%s", (email,))
+        taken = cur.fetchone() is not None
+        if not taken:
+            cur.execute("SELECT 1 FROM team_members WHERE email=%s AND id<>%s", (email, member_id))
+            taken = cur.fetchone() is not None
+        if taken:
+            cur.close(); conn.close()
+            flash("That email is already registered on PhiXtra.", "danger")
+            return redirect(url_for("portal.team_edit", member_id=member_id))
+
+    # Photo: same checks as team_create(); keep the old one unless a new one
+    # is uploaded or "remove photo" is ticked.
+    avatar_data = member.get("avatar_data")
+    f = request.files.get("avatar")
+    if f and f.filename:
+        allowed_types = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+        if f.content_type not in allowed_types:
+            cur.close(); conn.close()
+            flash("Avatar must be a JPEG, PNG, GIF, or WebP image.", "danger")
+            return redirect(url_for("portal.team_edit", member_id=member_id))
+        data = f.read()
+        if len(data) > 2 * 1024 * 1024:
+            cur.close(); conn.close()
+            flash("Avatar image must be under 2 MB.", "danger")
+            return redirect(url_for("portal.team_edit", member_id=member_id))
+        avatar_data = f"data:{f.content_type};base64,{_base64.b64encode(data).decode('utf-8')}"
+    elif request.form.get("remove_avatar") == "on":
+        avatar_data = None
+
+    cur.execute("""
+        UPDATE team_members
+           SET name=%s, first_name=%s, last_name=%s, email=%s, department_id=%s, position_id=%s,
+               line_manager_id=%s, location_city=%s, location_country=%s, avatar_data=%s
+         WHERE id=%s AND tenant_id=%s
+    """, (name, first_name, last_name, email, department["id"] if department else None,
+          position["id"] if position else None, line_manager_id, location_city, location_country,
+          avatar_data, member_id, tenant_id))
+    conn.commit()
+    cur.close(); conn.close()
+
+    flash(f"'{name}' updated.", "success")
+    return redirect(url_for("portal.team_page"))
+
+
 @portal_bp.route("/team/<int:member_id>/role", methods=["POST"])
 @team_feature("team.members_assign_role")
 def team_update_role(member_id: int):
@@ -5724,20 +5856,23 @@ def stripe_webhook():
         plan_id    = int(meta.get("plan_id")   or 0)
         plan_slug  = meta.get("plan_slug", "")
         cycle      = meta.get("cycle", "monthly")
-        amount_usd = float(meta.get("amount_usd") or 0)
+        # What Stripe actually took, in its own currency (GBP since 2026-09-30).
+        sub_currency = (sess_obj.get("currency") or meta.get("currency") or "usd").upper()
+        sub_amount   = (float(sess_obj.get("amount_total") or 0) / 100
+                        or float(meta.get("amount_gbp") or meta.get("amount_usd") or 0))
         sub_id     = sess_obj.get("subscription", "")
         cus_id     = sess_obj.get("customer", "")
-        if tenant_id and plan_id:
+        if tenant_id and plan_id and sess_obj.get("payment_status") in ("paid", "no_payment_required", None):
             _activate_plan_subscription(
                 tenant_id=tenant_id,
                 plan_id=plan_id,
                 cycle=cycle,
-                currency="USD",
+                currency=sub_currency,
                 provider="stripe",
                 provider_subscription_id=sub_id,
                 provider_customer_id=cus_id,
-                tx_ref=None,
-                amount=amount_usd,
+                tx_ref=sess_obj.get("id"),
+                amount=sub_amount,
             )
         return "ok", 200
 
@@ -6320,6 +6455,102 @@ def _get_ai_agents_limit(tenant_id: int) -> int:
         return int(row.get("ai_agents_limit") or 1)
     except Exception:
         return 1
+
+
+# ── Plan limits: products, product imports, WhatsApp broadcasts ──────────────
+# Shown on the plan cards and set on the Plan editor (-1 = unlimited), but
+# nothing enforced them until 2026-09-30. Each *_left() returns how many more
+# are allowed, or None for unlimited. A database error also returns None, so
+# a hiccup never blocks a business.
+
+def _plan_limit(tenant_id: int, column: str):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(f"SELECT p.{column} FROM tenants t JOIN plans p ON p.id = t.plan_id WHERE t.id = %s",
+                    (tenant_id,))
+        row = cur.fetchone()
+        cur.close(); conn.close()
+        if not row or row[0] is None or int(row[0]) < 0:
+            return None
+        return int(row[0])
+    except Exception as e:
+        print(f"⚠️ _plan_limit {column} error:", e)
+        return None
+
+
+def _products_in_use(tenant_id: int) -> int:
+    """Own products + products picked from the PhiXtra catalogue."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT (SELECT COUNT(*) FROM products WHERE tenant_id = %s)
+             + (SELECT COUNT(*) FROM merchant_product_catalogue mpc
+                JOIN customers c ON c.id = mpc.merchant_id
+                WHERE c.tenant_id = %s AND mpc.is_active)
+    """, (tenant_id, tenant_id))
+    n = int(cur.fetchone()[0] or 0)
+    cur.close(); conn.close()
+    return n
+
+
+def _products_left(tenant_id: int):
+    limit = _plan_limit(tenant_id, "products_limit")
+    if limit is None:
+        return None
+    try:
+        return max(limit - _products_in_use(tenant_id), 0)
+    except Exception as e:
+        print("⚠️ _products_left error:", e)
+        return None
+
+
+def _data_sources_left(tenant_id: int):
+    limit = _plan_limit(tenant_id, "data_sources_limit")
+    if limit is None:
+        return None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM data_sources WHERE tenant_id = %s AND is_active", (tenant_id,))
+        used = int(cur.fetchone()[0] or 0)
+        cur.close(); conn.close()
+        return max(limit - used, 0)
+    except Exception as e:
+        print("⚠️ _data_sources_left error:", e)
+        return None
+
+
+def _broadcasts_left(tenant_id: int):
+    """WhatsApp campaign messages actually sent this plan month (same month
+    the AI-message allowance uses, never older than one month)."""
+    limit = _plan_limit(tenant_id, "broadcasts_limit")
+    if limit is None:
+        return None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COUNT(*) FROM wa_campaign_recipients r
+            JOIN tenants t ON t.id = r.tenant_id
+            WHERE r.tenant_id = %s AND r.meta_message_id IS NOT NULL
+              AND r.sent_at >= GREATEST(COALESCE(t.plan_period_start::timestamptz, date_trunc('month', NOW())),
+                                        NOW() - INTERVAL '1 month')
+        """, (tenant_id,))
+        used = int(cur.fetchone()[0] or 0)
+        cur.close(); conn.close()
+        return max(limit - used, 0)
+    except Exception as e:
+        print("⚠️ _broadcasts_left error:", e)
+        return None
+
+
+def _limit_msg(what: str, limit_left, needed: int = 1) -> str:
+    if limit_left == 0:
+        return (f"You've reached your plan's limit for {what}. "
+                f"Upgrade your plan (Billing › Plans) to add more.")
+    return (f"Your plan allows {limit_left} more {what}, but this needs {needed}. "
+            f"Upgrade your plan (Billing › Plans) for more.")
 
 
 def _get_agents_for_tenant(tenant_id: int) -> list:
@@ -10314,24 +10545,23 @@ ALLOWED_TIMEZONES = [
 ]
 
 
+# Help & Tutorials and Video Tutorials are open to every team member,
+# whatever their role (user 2026-09-28: every staff sees the complete guide).
+# The plan still decides them (help.tutorials / help.videos are plan-only).
 @portal_bp.route("/tutorials", methods=["GET"])
-@team_feature("help.tutorials")
+@any_team_member
 def tutorials():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("help.tutorials")
-    if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     return render_template("portal/tutorials.html", customer=customer)
 
 
 @portal_bp.route("/video-tutorials", methods=["GET"])
-@team_feature("help.videos")
+@any_team_member
 def video_tutorials():
     r = _require_login()
     if r: return r
-    _rperm = _require_team_permission("help.videos")
-    if _rperm: return _rperm
     customer = _get_customer(_customer_id())
     # Which product this gallery is being viewed as — controls which videos
     # show, per the "products" tag an admin sets at /admin/video-tutorials
@@ -16737,6 +16967,9 @@ def _send_campaign_now(campaign_id: int, tenant_id: int):
         phones = [p.strip() for p in (row["recipients"] or "").splitlines() if p.strip()]
         sent = failed = 0
         graph = os.getenv("META_GRAPH_URL", "https://graph.facebook.com/v19.0")
+        # Plan's monthly broadcast allowance (None = unlimited). Checked here
+        # too so a scheduled campaign that fires later can't go over it.
+        broadcasts_left = _broadcasts_left(tenant_id)
 
         # Personalization: only attach a body {{1}} parameter if the approved
         # template actually has one — Meta rejects the send outright on a
@@ -16829,6 +17062,22 @@ def _send_campaign_now(campaign_id: int, tenant_id: int):
                            VALUES (%s, %s, %s, %s, %s, NOW())""",
                         (campaign_id, tenant_id, norm_phone, "failed",
                          "No country code — add it to the number, or set your business country in Settings"),
+                    )
+                    rc.commit(); rcc.close(); rc.close()
+                except Exception:
+                    pass
+                failed += 1
+                continue
+
+            if broadcasts_left is not None and sent >= broadcasts_left:
+                try:
+                    rc = get_db_connection(); rcc = rc.cursor()
+                    rcc.execute(
+                        """INSERT INTO wa_campaign_recipients
+                               (campaign_id, tenant_id, phone, status, error_msg, sent_at)
+                           VALUES (%s, %s, %s, %s, %s, NOW())""",
+                        (campaign_id, tenant_id, norm_phone, "failed",
+                         "Not sent: your plan's monthly WhatsApp broadcast limit was reached"),
                     )
                     rc.commit(); rcc.close(); rc.close()
                 except Exception:
@@ -17121,6 +17370,12 @@ def whatsapp_campaigns_create():
     elif send_now:
         status = "draft"
 
+    if send_now or status == "scheduled":
+        _bleft = _broadcasts_left(tenant_id)
+        if _bleft is not None and _bleft < len(phones):
+            flash(_limit_msg("WhatsApp broadcast messages this month", _bleft, len(phones)), "warning")
+            return redirect(url_for("portal.whatsapp_campaigns"))
+
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
@@ -17169,6 +17424,21 @@ def whatsapp_campaigns_send(campaign_id: int):
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+
+    _bleft = _broadcasts_left(tenant_id)
+    if _bleft is not None:
+        try:
+            _bc = get_db_connection(); _bcc = _bc.cursor()
+            _bcc.execute("SELECT total_count FROM wa_campaigns WHERE id=%s AND tenant_id=%s",
+                         (campaign_id, tenant_id))
+            _row = _bcc.fetchone(); _bcc.close(); _bc.close()
+            _need = int((_row or [0])[0] or 0)
+        except Exception as _be:
+            print("⚠️ whatsapp_campaigns_send count error:", _be)
+            _need = 0
+        if _bleft < _need:
+            flash(_limit_msg("WhatsApp broadcast messages this month", _bleft, _need), "warning")
+            return redirect(url_for("portal.whatsapp_campaigns"))
 
     t = _threading.Thread(
         target=_send_campaign_now, args=(campaign_id, tenant_id), daemon=True
@@ -21434,6 +21704,11 @@ def product_add():
             elif not image_url:
                 flash("Invalid image format. Supported: JPG, PNG, WebP, GIF.", "warning")
 
+        _left = _products_left(tenant_id)
+        if _left == 0:
+            flash(_limit_msg("products", 0), "warning")
+            return redirect(url_for("portal.products"))
+
         product_id = str(_uuid.uuid4())
         try:
             conn = get_db_connection()
@@ -22160,6 +22435,9 @@ def onboarding_manual_product():
     except (ValueError, TypeError):
         return {"ok": False, "error": "Invalid price or stock"}, 400
 
+    if _products_left(tenant_id) == 0:
+        return {"ok": False, "error": _limit_msg("products", 0)}, 403
+
     import uuid as _ob_uuid
     product_id = str(_ob_uuid.uuid4())
     try:
@@ -22207,6 +22485,13 @@ def onboarding_catalogue_toggle_variant(variant_id: int):
     )
     existing = cur.fetchone()
     if existing is None:
+        cur.execute(
+            "SELECT 1 FROM merchant_product_catalogue WHERE merchant_id=%s AND product_id=%s AND is_active",
+            (merchant_id, variant["product_id"])
+        )
+        if not cur.fetchone() and _products_left(int(customer["tenant_id"])) == 0:
+            cur.close(); conn.close()
+            return {"ok": False, "error": _limit_msg("products", 0)}, 403
         cur.execute(
             "INSERT INTO merchant_product_variants (merchant_id, variant_id) VALUES (%s,%s)",
             (merchant_id, variant_id)
@@ -22256,6 +22541,14 @@ def onboarding_catalogue_toggle(category_id: int, product_id: int):
         (merchant_id, product_id)
     )
     existing = cur.fetchone()
+
+    if (existing is None or not existing["is_active"]) \
+            and _products_left(int(customer["tenant_id"])) == 0:
+        cur.close(); conn.close()
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return {"ok": False, "error": _limit_msg("products", 0)}, 403
+        flash(_limit_msg("products", 0), "warning")
+        return redirect(url_for("portal.onboarding_catalogue_products", category_id=category_id))
 
     if existing is None:
         cur.execute(
@@ -22536,6 +22829,14 @@ def catalogue_toggle(category_id: int, product_id: int):
         (merchant_id, product_id)
     )
     existing = cur.fetchone()
+
+    if (existing is None or not existing["is_active"]) \
+            and _products_left(int(customer["tenant_id"])) == 0:
+        cur.close(); conn.close()
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return {"ok": False, "error": _limit_msg("products", 0)}, 403
+        flash(_limit_msg("products", 0), "warning")
+        return redirect(url_for("portal.catalogue_category", category_id=category_id))
 
     if existing is None:
         # Insert as selected
@@ -23564,17 +23865,29 @@ def _preview_rows(rows: list[dict], column_map: dict) -> list[dict]:
     return preview
 
 
-def _import_rows(tenant_id: int, rows: list[dict], column_map: dict) -> int:
-    """Import rows into the products table. Returns count of rows upserted."""
+def _import_rows(tenant_id: int, rows: list[dict], column_map: dict) -> tuple[int, int]:
+    """Import rows into the products table. Returns (rows upserted, new
+    products skipped because the plan's product limit was reached).
+    Updates to products already in the store always go through."""
+    left = _products_left(tenant_id)
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    count = 0
+    cur.execute("SELECT name FROM products WHERE tenant_id=%s", (tenant_id,))
+    existing_names = {r["name"] for r in cur.fetchall()}
+    count = skipped = 0
     for raw in rows:
         name_col  = column_map.get("name", "")
         price_col = column_map.get("price", "")
         name  = str(raw.get(name_col, "")).strip()
         if not name:
             continue
+        if name not in existing_names:
+            if left is not None and left <= 0:
+                skipped += 1
+                continue
+            existing_names.add(name)
+            if left is not None:
+                left -= 1
         try:
             price = float(str(raw.get(price_col, "0")).replace(",", "").replace("₦", "").strip() or 0)
         except (ValueError, TypeError):
@@ -23605,7 +23918,7 @@ def _import_rows(tenant_id: int, rows: list[dict], column_map: dict) -> int:
         count += 1
     conn.commit()
     cur.close(); conn.close()
-    return count
+    return count, skipped
 
 
 # ─── DB helpers ───────────────────────────────────────────────────────────
@@ -24145,6 +24458,9 @@ def data_source_upload():
     tenant_id = int(customer["tenant_id"])
     r2 = _require_plan_sub_feature(customer, "ecom.data_sources_view", "Data Sources / Product Import")
     if r2: return r2
+    if _data_sources_left(tenant_id) == 0:
+        flash(_limit_msg("product import sources", 0), "warning")
+        return redirect(url_for("portal.data_sources"))
 
     f = request.files.get("file")
     if not f or not f.filename:
@@ -24283,7 +24599,7 @@ def data_source_sync(source_id: int):
         else:
             rows = _read_file_rows(source)
 
-        count = _import_rows(tenant_id, rows, source["column_map"])
+        count, skipped = _import_rows(tenant_id, rows, source["column_map"])
 
         cur.execute("""
             UPDATE data_sources
@@ -24293,6 +24609,9 @@ def data_source_sync(source_id: int):
         """, (count, source_id, tenant_id))
         conn.commit()
         flash(f"Imported {count} products successfully.", "success")
+        if skipped:
+            flash(f"{skipped} new product(s) were not added because your plan's product limit "
+                  f"was reached. Upgrade your plan (Billing › Plans) to add more.", "warning")
     except Exception as e:
         cur.execute("""
             UPDATE data_sources
@@ -24340,6 +24659,9 @@ def data_source_google_connect():
     if not _google_oauth_configured():
         flash("Google Sheets integration is not configured yet.", "warning")
         return redirect(url_for("portal.data_sources"))
+    if _data_sources_left(int(_get_customer(_customer_id())["tenant_id"])) == 0:
+        flash(_limit_msg("product import sources", 0), "warning")
+        return redirect(url_for("portal.data_sources"))
     flow = _google_flow()
     auth_url, state = flow.authorization_url(
         access_type="offline",
@@ -24376,6 +24698,10 @@ def data_source_google_callback():
         refresh_token_enc = _encrypt_ds(credentials.refresh_token)
     except Exception as e:
         flash(f"Failed to complete Google sign-in: {e}", "danger")
+        return redirect(url_for("portal.data_sources"))
+
+    if _data_sources_left(tenant_id) == 0:
+        flash(_limit_msg("product import sources", 0), "warning")
         return redirect(url_for("portal.data_sources"))
 
     # Store a placeholder source; user will fill in Sheet ID + tab on next step
@@ -26590,6 +26916,14 @@ def billing_plans():
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT * FROM plans WHERE is_active=TRUE ORDER BY sort_order")
     plans = cur.fetchall() or []
+    # The ticks each plan has in the Plan editor — WhatsApp plan cards are
+    # built from these (2026-09-30), so the cards always match the editor.
+    plan_feats = {}
+    if plans:
+        cur.execute("SELECT plan_id, feature_key FROM plan_feature_grants WHERE plan_id = ANY(%s)",
+                    ([p["id"] for p in plans],))
+        for g in cur.fetchall() or []:
+            plan_feats.setdefault(g["plan_id"], set()).add(g["feature_key"])
     cur.close(); conn.close()
 
     # Dual Agent Plan pricing (2026-09-18) — see project_dual_agent_pricing
@@ -26625,6 +26959,8 @@ def billing_plans():
         default_channel_mode=default_channel_mode,
         merchant_mode=merchant_mode,
         has_own_plans=has_own_plans,
+        plan_feats=plan_feats,
+        crm_keys=[k for k, _ in PLAN_FEATURE_CATALOG.get("CRM", []) if not k.startswith("legacy:")],
     )
 
 
@@ -26643,9 +26979,13 @@ def _fw_headers() -> dict:
 
 def _fw_get_or_create_plan(plan_id: int, plan_slug: str, plan_name: str,
                            cycle: str, amount_ngn: int) -> str | None:
-    """Return Flutterwave payment-plan ID for this plan+cycle, creating it if needed."""
+    """Return a Flutterwave payment-plan ID that charges exactly amount_ngn
+    for this plan+cycle. A stored ID is only reused after checking with
+    Flutterwave that it's still active and still the same amount — so a
+    price changed in the Plan editor never charges the old price."""
     import requests as _req
     col = "fw_plan_id_monthly" if cycle == "monthly" else "fw_plan_id_annual"
+    fw_interval = "monthly" if cycle == "monthly" else "yearly"
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute(f"SELECT {col} FROM plans WHERE id=%s", (plan_id,))
@@ -26654,15 +26994,26 @@ def _fw_get_or_create_plan(plan_id: int, plan_slug: str, plan_name: str,
 
     existing = (row or {}).get(col)
     if existing:
-        return existing
+        try:
+            r = _req.get(f"https://api.flutterwave.com/v3/payment-plans/{existing}",
+                         headers=_fw_headers(), timeout=15).json()
+            d = r.get("data") or {}
+            if (r.get("status") == "success" and d.get("status") == "active"
+                    and (d.get("currency") or "").upper() == "NGN"
+                    and d.get("interval") == fw_interval
+                    and round(float(d.get("amount") or 0)) == int(amount_ngn)):
+                return existing
+            print(f"ℹ️ FW plan {existing} no longer matches {plan_slug} {cycle} ₦{amount_ngn} — making a new one")
+        except Exception as e:
+            print("⚠️ _fw_get_or_create_plan check error:", e)
+            return None
 
-    fw_interval = "monthly" if cycle == "monthly" else "yearly"
-    label       = f"PhiXtra {plan_name} {'Monthly' if cycle=='monthly' else 'Annual'}"
+    label = f"PhiXtra {plan_name} {'Monthly' if cycle=='monthly' else 'Annual'}"
     try:
         resp = _req.post(
             "https://api.flutterwave.com/v3/payment-plans",
             headers=_fw_headers(),
-            json={"amount": amount_ngn, "name": label,
+            json={"amount": int(amount_ngn), "name": label,
                   "interval": fw_interval, "currency": "NGN"},
             timeout=15,
         )
@@ -26674,30 +27025,43 @@ def _fw_get_or_create_plan(plan_id: int, plan_slug: str, plan_name: str,
             cur2.execute(f"UPDATE plans SET {col}=%s WHERE id=%s", (fw_id, plan_id))
             conn2.commit(); cur2.close(); conn2.close()
             return fw_id
+        print("⚠️ FW payment-plan create failed:", data)
     except Exception as e:
         print("⚠️ _fw_get_or_create_plan error:", e)
     return None
 
 
 def _stripe_get_or_create_price(plan_id: int, plan_slug: str, plan_name: str,
-                                cycle: str, amount_usd: float) -> str | None:
-    """Return Stripe Price ID for this plan+cycle, creating product+price if needed."""
+                                cycle: str, amount_pence: int) -> str | None:
+    """Return a Stripe Price (GBP) that charges exactly amount_pence per
+    month/year for this plan. A stored Price is only reused after checking
+    with Stripe that it's still active, in pounds, and the same amount — so a
+    price changed in the Plan editor never charges the old price."""
     if not _stripe_ok():
         return None
     col = "stripe_price_id_monthly" if cycle == "monthly" else "stripe_price_id_annual"
+    interval = "month" if cycle == "monthly" else "year"
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute(f"SELECT {col} FROM plans WHERE id=%s", (plan_id,))
     row = cur.fetchone()
     cur.close(); conn.close()
 
+    stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
     existing = (row or {}).get(col)
     if existing:
-        return existing
+        try:
+            pr = stripe.Price.retrieve(existing)
+            if (pr.get("active") and pr.get("currency") == "gbp"
+                    and int(pr.get("unit_amount") or 0) == int(amount_pence)
+                    and (pr.get("recurring") or {}).get("interval") == interval):
+                return existing
+            print(f"ℹ️ Stripe price {existing} no longer matches {plan_slug} {cycle} {amount_pence}p — making a new one")
+        except Exception as e:
+            print("⚠️ _stripe_get_or_create_price check error:", e)
+            return None
 
     try:
-        stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
-        # Find or create product
         products = stripe.Product.search(query=f'metadata["phixtra_plan_slug"]:"{plan_slug}"', limit=1)
         if products.data:
             product_id = products.data[0].id
@@ -26708,28 +27072,18 @@ def _stripe_get_or_create_price(plan_id: int, plan_slug: str, plan_name: str,
             )
             product_id = prod.id
 
-        if cycle == "monthly":
-            unit_amount = round(amount_usd * 100)
-            interval, interval_count = "month", 1
-        else:
-            disc = plan.get("annual_discount_pct", 5) / 100
-            unit_amount = round(amount_usd * 12 * (1 - disc) * 100)
-            interval, interval_count = "year", 1
-
         price = stripe.Price.create(
             product=product_id,
-            unit_amount=unit_amount,
-            currency="usd",
-            recurring={"interval": interval, "interval_count": interval_count},
+            unit_amount=int(amount_pence),
+            currency="gbp",
+            recurring={"interval": interval, "interval_count": 1},
             metadata={"phixtra_plan_slug": plan_slug, "phixtra_cycle": cycle},
         )
-        price_id = price.id
-
         conn2 = get_db_connection()
         cur2  = conn2.cursor()
-        cur2.execute(f"UPDATE plans SET {col}=%s WHERE id=%s", (price_id, plan_id))
+        cur2.execute(f"UPDATE plans SET {col}=%s WHERE id=%s", (price.id, plan_id))
         conn2.commit(); cur2.close(); conn2.close()
-        return price_id
+        return price.id
     except Exception as e:
         print("⚠️ _stripe_get_or_create_price error:", e)
     return None
@@ -26836,7 +27190,9 @@ def billing_plan_upgrade():
 
     if cycle not in ("monthly", "annual"):
         cycle = "monthly"
-    if currency not in ("NGN", "USD"):
+    if currency == "USD":      # old form value — Stripe charges in pounds now
+        currency = "GBP"
+    if currency not in ("NGN", "GBP"):
         currency = "NGN"
 
     customer  = _get_customer(_customer_id())
@@ -26916,14 +27272,25 @@ def billing_plan_upgrade():
             flash("Could not reach payment provider. Please try again.", "danger")
         return redirect(url_for("portal.billing_plans"))
 
-    # ── Stripe (USD) ──────────────────────────────────────────────────────────
+    # ── Stripe (GBP) ──────────────────────────────────────────────────────────
+    # plans.price_usd holds the POUND price (the column name is historical;
+    # the Plan editor labels it £ since 2026-09-30).
     if not _stripe_ok():
-        flash("USD payments are not configured yet. Contact support.", "warning")
+        flash("Card payments in pounds are not set up yet. Contact support.", "warning")
         return redirect(url_for("portal.billing_plans"))
 
-    amount_usd = float(plan["price_usd"])
+    price_gbp = float(plan["price_usd"] or 0)
+    if price_gbp <= 0:
+        flash("This plan has no pound price yet. Please pay in Naira or contact support.", "warning")
+        return redirect(url_for("portal.billing_plans"))
+    if cycle == "monthly":
+        amount_pence = round(price_gbp * 100)
+    else:
+        disc = (plan.get("annual_discount_pct") or 0) / 100
+        amount_pence = round(price_gbp * 12 * (1 - disc) * 100)
+    amount_gbp = amount_pence / 100
     price_id   = _stripe_get_or_create_price(
-        plan["id"], plan_slug, plan["name"], cycle, amount_usd
+        plan["id"], plan_slug, plan["name"], cycle, amount_pence
     )
     if not price_id:
         flash("Could not initialise Stripe price. Please try again.", "danger")
@@ -26946,8 +27313,8 @@ def billing_plan_upgrade():
                 "plan_id":    str(plan["id"]),
                 "plan_slug":  plan_slug,
                 "cycle":      cycle,
-                "currency":   "USD",
-                "amount_usd": str(amount_usd),
+                "currency":   "GBP",
+                "amount_gbp": str(amount_gbp),
             },
             subscription_data={
                 "metadata": {
@@ -27009,6 +27376,15 @@ def billing_plan_upgrade_callback():
 
         if not tenant_id or not plan_id:
             flash("Payment verified but plan data missing. Contact support.", "danger")
+            return redirect(url_for("portal.billing_plans"))
+
+        # Only switch the plan on if Flutterwave really took the full Naira
+        # amount for this checkout (same reference we created).
+        paid_amt = float(txn.get("amount") or 0)
+        if (txn.get("tx_ref") != tx_ref or (txn.get("currency") or "").upper() != "NGN"
+                or paid_amt + 0.01 < float(meta.get("amount_ngn") or 0)):
+            print("⚠️ plan payment mismatch:", tx_ref, txn.get("tx_ref"), txn.get("currency"), paid_amt, meta.get("amount_ngn"))
+            flash("We couldn't match this payment to your plan. Contact support and we'll sort it out.", "danger")
             return redirect(url_for("portal.billing_plans"))
 
         _activate_plan_subscription(
@@ -27970,6 +28346,17 @@ PIPELINE_EXPORT_MAX_ROWS = 20000
 # contact to an ambassador (the 20% company-sourced-lead commission tier).
 PHIXTRA_SUPPORT_TENANT_ID = 19
 
+# SMS is switched OFF for everyone, PhiXtra's own account included (user
+# 2026-09-28: "I don't want it for the SaaS for now"). Nothing is deleted:
+# sms_campaigns, SMS Segments and SMS opt-outs stay stored. Set True to bring
+# the SMS menu back for PHIXTRA_SUPPORT_TENANT_ID. Templates read the same
+# switch as SMS_ENABLED (portal_app.py context processor).
+SMS_ENABLED = False
+
+
+def _sms_allowed(tenant_id) -> bool:
+    return SMS_ENABLED and int(tenant_id) == PHIXTRA_SUPPORT_TENANT_ID
+
 
 def _normalize_website_url(raw: str) -> str:
     """Make sure a website saved on a lead is a real absolute link (defaults
@@ -28564,7 +28951,7 @@ def sales_pipeline():
     # are support@phixtra.com-only, so this stays empty for every other tenant.
     lead_sms_segment_map = {}
     all_sms_segments = []
-    if tenant_id == PHIXTRA_SUPPORT_TENANT_ID:
+    if _sms_allowed(tenant_id):
         if lead_ids_on_page:
             cur.execute(
                 "SELECT sl.lead_id, s.name FROM sms_pipeline_segment_leads sl "
@@ -29417,7 +29804,7 @@ def sms_campaign_preview():
     if r: return jsonify({"error": "unauthorised"}), 401
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+    if not _sms_allowed(tenant_id):
         return jsonify({"error": "Not available on this account."}), 403
 
     message = (request.form.get("message") or "").strip()
@@ -29476,7 +29863,7 @@ def sms_campaign_send():
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+    if not _sms_allowed(tenant_id):
         flash("Not available on this account.", "danger")
         return redirect(url_for("portal.sms_campaigns"))
 
@@ -29516,7 +29903,7 @@ def sms_campaign_resend(campaign_id: int):
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+    if not _sms_allowed(tenant_id):
         flash("Not available on this account.", "danger")
         return redirect(url_for("portal.sms_campaigns"))
 
@@ -29558,7 +29945,7 @@ def sms_campaign_delete(campaign_id: int):
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+    if not _sms_allowed(tenant_id):
         flash("Not available on this account.", "danger")
         return redirect(url_for("portal.sms_campaigns"))
 
@@ -29582,7 +29969,7 @@ def sms_campaign_extract_numbers(campaign_id: int):
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+    if not _sms_allowed(tenant_id):
         return "Not available on this account.", 403
 
     conn = get_db_connection()
@@ -29611,7 +29998,7 @@ def sms_campaigns():
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+    if not _sms_allowed(tenant_id):
         flash("Not available on this account.", "danger")
         return redirect(url_for("portal.dashboard"))
 
@@ -29734,7 +30121,7 @@ def sms_pipeline_segments_list():
     if r: return jsonify({"error": "unauthorised"}), 401
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+    if not _sms_allowed(tenant_id):
         return jsonify({"error": "Not available on this account."}), 403
     try:
         conn = get_db_connection()
@@ -29768,7 +30155,7 @@ def sms_pipeline_segments_create():
     if r: return jsonify({"error": "unauthorised"}), 401
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+    if not _sms_allowed(tenant_id):
         return jsonify({"error": "Not available on this account."}), 403
     name = (request.form.get("name") or "").strip()
     if not name:
@@ -29795,7 +30182,7 @@ def sms_pipeline_segments_delete(segment_id: int):
     if r: return jsonify({"error": "unauthorised"}), 401
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+    if not _sms_allowed(tenant_id):
         return jsonify({"error": "Not available on this account."}), 403
     try:
         conn = get_db_connection()
@@ -29817,7 +30204,7 @@ def sms_pipeline_segments_members(segment_id: int):
     if r: return jsonify({"error": "unauthorised"}), 401
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+    if not _sms_allowed(tenant_id):
         return jsonify({"error": "Not available on this account."}), 403
     try:
         conn = get_db_connection()
@@ -29851,7 +30238,7 @@ def sms_pipeline_segments_add_member(segment_id: int):
     if r: return jsonify({"error": "unauthorised"}), 401
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+    if not _sms_allowed(tenant_id):
         return jsonify({"error": "Not available on this account."}), 403
     lead_id_raw = (request.form.get("lead_id") or "").strip()
     if not lead_id_raw.isdigit():
@@ -29897,7 +30284,7 @@ def sms_pipeline_segments_remove_member(segment_id: int):
     if r: return jsonify({"error": "unauthorised"}), 401
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+    if not _sms_allowed(tenant_id):
         return jsonify({"error": "Not available on this account."}), 403
     lead_id_raw = (request.form.get("lead_id") or "").strip()
     if not lead_id_raw.isdigit():
@@ -29929,7 +30316,7 @@ def sms_pipeline_segments_bulk_add_members(segment_id: int):
     if r: return jsonify({"error": "unauthorised"}), 401
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+    if not _sms_allowed(tenant_id):
         return jsonify({"error": "Not available on this account."}), 403
 
     lead_ids = list({int(v) for v in request.form.getlist("lead_ids") if v.isdigit()})
@@ -29968,7 +30355,7 @@ def sms_pipeline_segments_pipeline_leads_json():
     if r: return jsonify({"error": "unauthorised"}), 401
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
+    if not _sms_allowed(tenant_id):
         return jsonify({"error": "Not available on this account."}), 403
     q = (request.args.get("q") or "").strip()
     exclude_segment_id = (request.args.get("exclude_segment_id") or "").strip()

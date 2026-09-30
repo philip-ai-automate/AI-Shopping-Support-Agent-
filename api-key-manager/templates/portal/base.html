@@ -859,8 +859,8 @@
     </div>
     {% endif %}
 
-    <!-- ── SMS group (support@phixtra.com only) ── -->
-    {% if _portal_customer and _portal_customer.tenant_id == 19 %}
+    <!-- ── SMS group (support@phixtra.com only; switched off for now: SMS_ENABLED) ── -->
+    {% if SMS_ENABLED and _portal_customer and _portal_customer.tenant_id == 19 %}
     {% set _sms_group = request.endpoint == 'portal.sms_campaigns' %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _sms_group %}open{% endif %}"
@@ -1344,23 +1344,29 @@
     </a>
     {% endif %}
 
-    <!-- Help & Tutorials -->
-    {% if staff_can_open('portal.tutorials') %}
-    <a class="sb-link {% if request.endpoint == 'portal.tutorials' %}active{% endif %}"
-       href="{{ url_for('portal.tutorials') }}">
-      <span class="sb-icon">📚</span> Help & Tutorials
-      {% if 'help.tutorials' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
-    </a>
-    {% endif %}
-
-    <!-- Video Tutorials (available on both portal.phixtra.com and connect.phixtra.com) -->
-    {% if staff_can_open('portal.video_tutorials') %}
-    <a class="sb-link {% if request.endpoint == 'portal.video_tutorials' %}active{% endif %}"
-       href="{{ url_for('portal.video_tutorials') }}">
-      <span class="sb-icon">🎬</span> Video Tutorials
-      {% if 'help.videos' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
-    </a>
-    {% endif %}
+    <!-- Help & Tutorials — open to every team member (user 2026-09-28);
+         Video Tutorials merged in as a sub-menu item. -->
+    {% set _help_group = request.endpoint in ('portal.tutorials', 'portal.video_tutorials') %}
+    <div class="sb-group">
+      <div class="sb-group-toggle {% if _help_group %}open{% endif %}" onclick="sbToggle(this)">
+        <span class="sb-gtitle">
+          <span class="sb-icon">📚</span> Help &amp; Tutorials
+        </span>
+        <span class="sb-arrow">▾</span>
+      </div>
+      <div class="sb-sub {% if _help_group %}open{% endif %}">
+        <a href="{{ url_for('portal.tutorials') }}"
+           class="{% if request.endpoint == 'portal.tutorials' %}active{% endif %}">
+          How-To Guides
+          {% if 'help.tutorials' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
+        </a>
+        <a href="{{ url_for('portal.video_tutorials') }}"
+           class="{% if request.endpoint == 'portal.video_tutorials' %}active{% endif %}">
+          Video Tutorials
+          {% if 'help.videos' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
+        </a>
+      </div>
+    </div>
 
     <!-- PhiXtra Home -->
     <a class="sb-link" href="https://phixtra.com" target="_blank" rel="noopener">
@@ -1493,6 +1499,69 @@
         {% endfor %}
       {% endif %}
     {% endwith %}
+
+    {# "How to use this page": CRM, Social Media and Team pages open their guide at their own part #}
+    {% set _help_anchor = {
+         'portal.whatsapp_contacts': 'crm-contacts',
+         'portal.whatsapp_contact_detail': 'crm-profile',
+         'portal.crm_companies': 'crm-companies',
+         'portal.crm_company_detail': 'crm-companies',
+         'portal.crm_merge_review': 'crm-merge',
+         'portal.report_pipeline_overview': 'crm-overview',
+         'portal.sales_pipeline': 'crm-board',
+         'portal.lead_scoring_explainer': 'crm-b-score',
+         'portal.lead_detail': 'crm-deal',
+         'portal.whatsapp_segments': 'crm-s-crm',
+         'portal.whatsapp_segment_detail': 'crm-s-crm',
+         'portal.whatsapp_campaign_segments_page': 'crm-s-wa',
+         'portal.email_campaign_segments_page': 'crm-s-email',
+         'portal.lead_labels_page': 'crm-labels',
+         'portal.lead_labels_import_bounces': 'crm-labels',
+         'portal.sales_pipeline_settings': 'crm-settings',
+         'buffer.connect': 'soc-connect',
+         'socialcal.overview': 'soc-overview',
+         'social.new_post': 'soc-n-start',
+         'social.pick': 'soc-n-pick',
+         'social.again': 'soc-n-again',
+         'social.finish': 'soc-n-finish',
+         'upload.start': 'soc-u-start',
+         'upload.check': 'soc-u-check',
+         'upload.fix': 'soc-u-fix',
+         'upload.post': 'soc-u-post',
+         'upload.size_guide': 'soc-u-guide',
+         'socialcal.calendar': 'soc-calendar',
+         'socialcal.calendar_plan': 'soc-calendar',
+         'socialcal.plan_month': 'soc-plan',
+         'socialcal.plan_review': 'soc-plan',
+         'socialcal.make_picture': 'soc-plan',
+         'buffer.posts': 'soc-content',
+         'socialcal.post_view': 'soc-p-view',
+         'socialcal.approval': 'soc-approval',
+         'buffer.published': 'soc-published',
+         'socialcal.analytics': 'soc-analytics',
+         'social.brand_kit': 'soc-brand',
+         'social.usage': 'soc-usage',
+         'portal.team_page': 'team-members',
+         'portal.team_create': 'team-add',
+         'portal.team_edit': 'team-edit',
+         'portal.team_roles_page': 'team-r-list',
+         'portal.team_role_new': 'team-r-new',
+         'portal.team_role_edit': 'team-r-edit',
+         'portal.team_departments_page': 'team-depts',
+         'portal.team_department_new': 'team-depts',
+         'portal.team_department_edit': 'team-depts',
+         'portal.team_positions_page': 'team-depts',
+         'portal.team_position_new': 'team-depts',
+         'portal.team_position_edit': 'team-depts',
+       }.get(request.endpoint) %}
+    {% if _help_anchor %}
+    <div style="display:flex;justify-content:flex-end;margin:0 0 8px">
+      <a href="{{ url_for('portal.tutorials', topic=('social' if _help_anchor.startswith('soc-') else 'team' if _help_anchor.startswith('team-') else 'crm')) }}#{{ _help_anchor }}"
+         style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--ink);padding:5px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;text-decoration:none">
+        📚 How to use this page
+      </a>
+    </div>
+    {% endif %}
 
     {% block content %}{% endblock %}
 
@@ -1837,7 +1906,7 @@
     { icon:'🏷️', title:'Labels',                 desc:'Label Contacts and deals (Bounced, VIP…)',  url:'{{ url_for("portal.lead_labels_page") }}',           tags:'tags labels status bounced vip' },
     { icon:'⚙️', title:'Pipeline Settings',       desc:'Rename your pipeline stages and Lead Score labels', url:'{{ url_for("portal.sales_pipeline_settings") }}', tags:'settings stage names score hot warm cold rename' },
     { icon:'🎯', title:'How Lead Scoring Works',  desc:'What makes a Lead Hot, Warm, or Cold, explained',  url:'{{ url_for("portal.lead_scoring_explainer") }}', tags:'hot warm cold score points explainer signals' },
-    {% if _portal_customer and _portal_customer.tenant_id == 19 %}
+    {% if SMS_ENABLED and _portal_customer and _portal_customer.tenant_id == 19 %}
     { icon:'📟', title:'Sent SMS',                desc:'History of every SMS batch sent',               url:'{{ url_for("portal.sms_campaigns") }}',              tags:'sms text message history resend delete extract numbers' },
     { icon:'✏️', title:'Compose and Send SMS',    desc:'Write and send a new bulk SMS',                 url:'{{ url_for("portal.sms_campaigns", view="compose") }}', tags:'sms text message compose send bulk campaign' },
     { icon:'📋', title:'SMS Segments',            desc:'Saved groups of Sales Pipeline contacts for SMS', url:'{{ url_for("portal.sms_campaigns", view="segments") }}', tags:'sms segment audience group campaign' },
@@ -1867,8 +1936,8 @@
     { icon:'📋', title:'Subscription Plans',     desc:'View and manage your subscription',            url:'{{ url_for("portal.billing_subscribe") }}',          tags:'subscription plan monthly upgrade downgrade' },
     { icon:'💳', title:'Buy AI Credit',          desc:'Top up your AI credit balance',               url:'{{ url_for("portal.billing") }}',                    tags:'credits buy top up balance tokens recharge ai designs' },
     { icon:'🧾', title:'Invoices',               desc:'Download your billing receipts',               url:'{{ url_for("portal.invoices") }}',                   tags:'invoice receipt billing history download pdf payment' },
-    { icon:'📚', title:'Help & Tutorials',       desc:'Guides to get the most from PhiXtra',         url:'{{ url_for("portal.tutorials") }}',                  tags:'help guide tutorial support how to faq learn' },
-    { icon:'🎬', title:'Video Tutorials',        desc:'Watch short walkthroughs of key features',    url:'{{ url_for("portal.video_tutorials") }}',            tags:'video tutorial watch walkthrough demo guide' },
+    { icon:'📚', title:'How-To Guides',          desc:'Help & Tutorials: step-by-step guides, e.g. the full CRM guide',         url:'{{ url_for("portal.tutorials") }}',                  tags:'help guide tutorial support how to faq learn' },
+    { icon:'🎬', title:'Video Tutorials',        desc:'Help & Tutorials: short walkthrough videos',    url:'{{ url_for("portal.video_tutorials") }}',            tags:'video tutorial watch walkthrough demo guide' },
     { icon:'⚙️', title:'Account Settings',       desc:'Update profile, password and preferences',    url:'{{ url_for("portal.settings") }}',                   tags:'settings account profile password email notification preferences' },
     {% if _has_woocommerce %}
     { icon:'📂', title:'My Catalogue',           desc:'Browse and select products from catalogue',    url:'{{ url_for("portal.catalogue_browse") }}',           tags:'catalogue browse products select' },

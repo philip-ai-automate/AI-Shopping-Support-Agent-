@@ -1,0 +1,672 @@
+{# Social Media How-To Guide. Generated from draft 1 (2026-09-28)
+   by backups/social_guide_portal_*/scripts/to_portal_social.py: ids are prefixed soc-, pictures live in
+   static/portal/tutorial/social/. Shown to every team member in full. #}
+<style>
+.socg{
+  --g-ink:#030C18; --g-navy:#0E2240; --g-gold:#B8860B; --g-gold-soft:#FBF3DE;
+  --g-card:#FFFFFF; --g-txt:#1A2433; --g-muted:#5B6678; --g-line:#DDE3EB;
+  --g-chip:#EEF2F7; --g-good:#0F9F5F; --g-good-soft:#E7F7EF; --g-bad:#D92D20; --g-bad-soft:#FDECEA;
+  --g-link:#1D4ED8; --g-shadow:0 1px 2px rgba(3,12,24,.06);
+  color:var(--g-txt); font-size:15px; line-height:1.65;
+}
+.socg *{box-sizing:border-box}
+.socg a{color:var(--g-link)}
+.socg .g-head{margin:0 0 18px}
+.socg .g-lede{max-width:72ch;color:var(--g-muted);margin:0 0 6px;font-size:14px}
+.socg .g-meta{font-size:12px;color:var(--g-muted)}
+.socg nav.toc{background:var(--g-card);border:1px solid var(--g-line);border-radius:12px;padding:6px 14px;margin:0 0 26px;font-size:13.5px}
+.socg nav.toc summary{cursor:pointer;font-weight:750;color:var(--g-ink);padding:8px 0;list-style-position:inside}
+.socg nav.toc .h{display:none}
+.socg nav.toc ol{list-style:none;margin:0;padding:0 0 8px;columns:3 220px;column-gap:18px}
+.socg nav.toc ol > li{break-inside:avoid;margin:0}
+.socg nav.toc ol ol{columns:1;padding:0 0 6px 12px;font-size:12.5px}
+.socg nav.toc a{display:block;padding:4px 8px;border-radius:6px;color:var(--g-txt);text-decoration:none}
+.socg nav.toc a:hover{background:var(--g-chip)}
+.socg nav.toc ol ol a{color:var(--g-muted);padding:2px 8px}
+.socg main{display:block;max-width:860px}
+.socg section.part{padding-top:8px;margin-bottom:52px}
+.socg h2{font-size:23px;line-height:1.25;color:var(--g-ink);margin:0 0 6px;scroll-margin-top:80px;font-weight:800}
+.socg h2 .num{color:var(--g-gold);font-weight:800;margin-right:8px}
+.socg .where{font-size:13px;color:var(--g-muted);margin:0 0 16px}
+.socg h3{font-size:18px;color:var(--g-ink);margin:32px 0 8px;scroll-margin-top:80px;font-weight:750}
+.socg h4{font-size:15px;color:var(--g-ink);margin:20px 0 6px;font-weight:700}
+.socg p,.socg li{max-width:72ch}
+.socg p{margin:0 0 12px}
+.socg ul,.socg ol{padding-left:22px;margin:0 0 12px}
+.socg li{margin:4px 0}
+.socg .ui{display:inline-block;font-size:.88em;font-weight:650;padding:1px 7px;border:1px solid var(--g-line);border-radius:5px;background:var(--g-card);color:var(--g-ink);white-space:nowrap;box-shadow:var(--g-shadow)}
+.socg .f{font-weight:650;color:var(--g-ink)}
+.socg figure{margin:16px 0 24px}
+.socg figure img{display:block;width:100%;max-width:100%;height:auto;border:1px solid var(--g-line);border-radius:8px;background:var(--g-card)}
+.socg figcaption{font-size:13px;color:var(--g-muted);margin-top:8px}
+.socg .box{border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px;border:1px solid var(--g-line);background:var(--g-card)}
+.socg .box > :first-child{margin-top:0}.socg .box > :last-child{margin-bottom:0}
+.socg .box b.t{display:block;font-size:12px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:4px}
+.socg .tip{background:var(--g-good-soft);border-color:transparent}.socg .tip b.t{color:var(--g-good)}
+.socg .careful{background:var(--g-bad-soft);border-color:transparent}.socg .careful b.t{color:var(--g-bad)}
+.socg .know{background:var(--g-gold-soft);border-color:transparent}.socg .know b.t{color:var(--g-gold)}
+.socg .tbl{overflow-x:auto;margin:14px 0 22px;border:1px solid var(--g-line);border-radius:8px;background:var(--g-card)}
+.socg table{border-collapse:collapse;width:100%;font-size:13.5px}
+.socg th,.socg td{text-align:left;vertical-align:top;padding:9px 12px;border-bottom:1px solid var(--g-line)}
+.socg th{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--g-muted);background:var(--g-chip);font-weight:700}
+.socg tr:last-child td{border-bottom:0}
+.socg td:first-child{font-weight:650;color:var(--g-ink);white-space:nowrap}
+.socg td.wrapok{white-space:normal}
+.socg .need{display:inline-block;font-size:12px;color:var(--g-muted);border:1px dashed var(--g-line);border-radius:999px;padding:1px 9px;margin-top:2px}
+.socg ol.steps{counter-reset:s;list-style:none;padding-left:0}
+.socg ol.steps > li{counter-increment:s;position:relative;padding-left:36px;margin:10px 0}
+.socg ol.steps > li::before{content:counter(s);position:absolute;left:0;top:1px;width:24px;height:24px;border-radius:50%;background:var(--g-navy);color:#fff;font-size:12.5px;font-weight:700;display:grid;place-items:center}
+.socg .map{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:18px 0}
+.socg .map div{background:var(--g-card);border:1px solid var(--g-line);border-radius:8px;padding:12px 14px;font-size:14px}
+.socg .map b{display:block;color:var(--g-ink);margin-bottom:2px}
+.socg .flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:16px 0;font-size:14px}
+.socg .flow span{background:var(--g-card);border:1px solid var(--g-line);border-radius:6px;padding:6px 10px;font-weight:600;color:var(--g-ink)}
+.socg .flow i{font-style:normal;color:var(--g-muted)}
+.socg .recipe{border-left:3px solid var(--g-navy);padding:2px 0 2px 16px;margin:20px 0}
+.socg .recipe h4{margin-top:0}
+.socg{scroll-margin-top:80px}
+.socg .g-top{position:sticky;bottom:90px;float:right;margin-top:-8px;font-size:12px;font-weight:700;background:var(--g-card);border:1px solid var(--g-line);border-radius:999px;padding:5px 12px;text-decoration:none;color:var(--g-ink);box-shadow:0 2px 8px rgba(3,12,24,.08)}
+</style>
+<div class="socg" id="soc-top">
+<div class="g-head">
+  <p class="g-lede">Everything under <b>Social Media</b> in the side menu, screen by screen and button by button: connecting your pages, designing posts with AI or uploading your own, the calendar, planning a month with AI, approval, analytics and your Brand Kit. Every picture is from the live portal.</p>
+  <div class="g-meta">Last checked against the live portal: 28 September 2026</div>
+</div>
+<nav class="toc" aria-label="Contents"><details open><summary>Contents</summary>
+  <p class="h">Contents</p>
+  <ol>
+    <li><a href="#soc-start">1. How Social Media fits together</a></li>
+    <li><a href="#soc-connect">2. Connecting your pages (Buffer)</a></li>
+    <li><a href="#soc-overview">3. Overview</a></li>
+    <li><a href="#soc-new">4. New Post (AI Post Designer)</a>
+      <ol>
+        <li><a href="#soc-n-start">Step 1: what the post is about</a></li>
+        <li><a href="#soc-n-pick">Step 2: pick a design</a></li>
+        <li><a href="#soc-n-again">Make new designs</a></li>
+        <li><a href="#soc-n-finish">Step 3: finish and send</a></li>
+      </ol></li>
+    <li><a href="#soc-upload">5. Upload Design</a>
+      <ol>
+        <li><a href="#soc-u-start">Step 1: accounts and files</a></li>
+        <li><a href="#soc-u-check">Step 2: the size check</a></li>
+        <li><a href="#soc-u-fix">Fixing a network</a></li>
+        <li><a href="#soc-u-post">Step 3: captions and schedule</a></li>
+        <li><a href="#soc-u-guide">The size guide</a></li>
+      </ol></li>
+    <li><a href="#soc-calendar">6. Calendar</a></li>
+    <li><a href="#soc-plan">7. Plan my month with AI</a></li>
+    <li><a href="#soc-content">8. Content</a>
+      <ol>
+        <li><a href="#soc-p-status">What each status means</a></li>
+        <li><a href="#soc-p-view">A post's page</a></li>
+        <li><a href="#soc-p-edit">Edit, cancel, delete</a></li>
+      </ol></li>
+    <li><a href="#soc-people">9. Person responsible and due dates</a></li>
+    <li><a href="#soc-approval">10. Approval</a></li>
+    <li><a href="#soc-published">11. Published</a></li>
+    <li><a href="#soc-analytics">12. Analytics</a></li>
+    <li><a href="#soc-brand">13. Brand Kit</a></li>
+    <li><a href="#soc-usage">14. AI Design Usage</a></li>
+    <li><a href="#soc-roles">15. Who can do what</a></li>
+    <li><a href="#soc-recipes">16. Step-by-step recipes</a></li>
+    <li><a href="#soc-faq">17. Questions and problems</a></li>
+  </ol>
+</details></nav>
+
+<main>
+
+<!-- 1 -->
+<section class="part" id="soc-start">
+<h2><span class="num">1</span>How Social Media fits together</h2>
+<p class="where">Write, design, plan, approve and publish posts for Facebook, Instagram, LinkedIn and other networks, all from the portal.</p>
+
+<p>Open <b>Social Media</b> in the side menu and you'll see these pages:</p>
+<div class="map">
+  <div><b>Overview</b>This month at a glance: how many posts are at each stage, what needs someone now, and who is doing what.</div>
+  <div><b>New Post</b>The AI Post Designer. Describe a post or pick a product and the AI makes 4 designs plus a caption for each network.</div>
+  <div><b>Upload Design</b>Post a picture or video you made yourself, for example in Canva. No AI, nothing counted. Checks the size for each network.</div>
+  <div><b>Calendar</b>Every post on its day. Plan a post on any day, or let AI plan your whole month.</div>
+  <div><b>Content</b>Every post that hasn't gone out yet: drafts, posts waiting for approval, scheduled posts and failed ones.</div>
+  <div><b>Published</b>Posts that have gone out, with links to see them live.</div>
+  <div><b>Analytics</b>How each post performed: reach, likes, comments, clicks and more.</div>
+  <div><b>Approval</b>Switch approval on or off, and approve or send back posts that are waiting.</div>
+  <div><b>Brand Kit</b>Your logo, colours, business name and the voice the AI writes in.</div>
+  <div><b>AI Design Usage</b>How many AI designs you've used this month and how many are left.</div>
+</div>
+
+<h3>How a post moves along</h3>
+<div class="flow"><span>New Post, Upload Design or AI month plan</span><i>→</i><span>Draft</span><i>→</i><span>Awaiting approval (only if approval is on)</span><i>→</i><span>Scheduled</span><i>→</i><span>Posted</span></div>
+<ol>
+  <li>You make a post with <b>New Post</b> (AI) or <b>Upload Design</b> (your own picture), or AI suggests a month of posts for you.</li>
+  <li>You either send it now, schedule it for later, or save it as a <b>draft</b> to finish another time.</li>
+  <li>If your business has <b>approval</b> switched on, team members submit posts and an approver checks them first. See <a href="#soc-approval">section 10</a>.</li>
+  <li>Scheduled posts go to <b>Buffer</b>, which publishes them to your pages at the right time. Once Buffer confirms, the post moves to <b>Published</b>.</li>
+  <li>A few days later the numbers (reach, likes and so on) show under <b>Analytics</b>.</li>
+</ol>
+
+<div class="box know"><b class="t">What is Buffer?</b>
+<p>Buffer is the service PhiXtra uses to publish to the social networks for you. You connect your Facebook, Instagram, LinkedIn and other pages to Buffer once, then connect Buffer to PhiXtra (<a href="#soc-connect">section 2</a>). After that you do everything in PhiXtra; you don't need to open Buffer again.</p></div>
+
+<h3>Why you might not see Social Media, or a button</h3>
+<ul>
+  <li><b>No Social Media in the side menu at all</b> means Buffer isn't connected yet. The owner (or someone allowed) connects it under Integration › Buffer.</li>
+  <li><b>A gold padlock 🔒 next to a menu item</b> means your business's plan doesn't include that page.</li>
+  <li><b>A button is missing</b> means your role doesn't allow that action, for example only some staff may delete or approve posts. <a href="#soc-roles">Section 15</a> lists every permission.</li>
+</ul>
+</section>
+
+<!-- 2 -->
+<section class="part" id="soc-connect">
+<h2><span class="num">2</span>Connecting your pages (Buffer)</h2>
+<p class="where">Integration › Buffer. Usually done once, by the owner.</p>
+<figure><img src="/static/portal/tutorial/social/s02_buffer.jpg" width="1100" height="822" alt="Integration › Buffer when connected: the Buffer account details and the social accounts PhiXtra can post to." loading="lazy"><figcaption>Integration › Buffer when connected: the Buffer account details and the social accounts PhiXtra can post to.</figcaption></figure>
+
+<h3>Before you start</h3>
+<p>You need a Buffer account (buffer.com) with your social pages already added inside Buffer. Add your Facebook Page, Instagram business account, LinkedIn page and any others in Buffer first.</p>
+
+<h3>Connecting</h3>
+<ol class="steps">
+  <li>Log in to Buffer and open <b>Settings › API</b> (publish.buffer.com/settings/api).</li>
+  <li>Click <b>Generate API key</b> and copy it.</li>
+  <li>In PhiXtra, open <b>Integration › Buffer</b>, paste the key into <span class="f">Buffer API key</span> and press <span class="ui">Check key &amp; continue</span>.</li>
+  <li>If your key can see more than one Buffer organisation, press <span class="ui">Use this organisation</span> next to the right one.</li>
+  <li>Under <span class="f">Choose where PhiXtra can post</span>, switch off any account you don't want PhiXtra to post to, then press <span class="ui">Save &amp; finish</span>.</li>
+</ol>
+<p>The <b>Social Media</b> menu now appears. PhiXtra keeps the key locked (encrypted) and only ever shows its last 4 characters.</p>
+
+<h3>The connected page</h3>
+<div class="tbl"><table>
+<tr><th>Item</th><th>What it means</th></tr>
+<tr><td>Organisation</td><td class="wrapok">The Buffer organisation PhiXtra uses.</td></tr>
+<tr><td>Key</td><td class="wrapok">Only the last 4 characters are shown.</td></tr>
+<tr><td>Connected by</td><td class="wrapok">Who connected it and when.</td></tr>
+<tr><td>Working / Needs attention</td><td class="wrapok"><b>Working</b> means Buffer accepts the key. <b>Needs attention</b> means Buffer stopped accepting it (see below).</td></tr>
+<tr><td><span class="ui">Check connection now</span></td><td class="wrapok">Asks Buffer again right away. Use it after adding a new page in Buffer so it appears here. PhiXtra also re-checks by itself every few minutes when you open Social Media pages.</td></tr>
+<tr><td><span class="ui">Replace key</span></td><td class="wrapok">Paste a new key. The old one keeps working until Buffer accepts the new one.</td></tr>
+<tr><td><span class="ui">Disconnect</span></td><td class="wrapok">Removes the connection. The Social Media menu disappears until you connect again.</td></tr>
+<tr><td>Use in PhiXtra</td><td class="wrapok">One switch per social account. Switched off means that account isn't offered when making posts. Press <span class="ui">Save</span> after changing.</td></tr>
+<tr><td>Reconnect in Buffer</td><td class="wrapok">Shown next to an account that Buffer says needs reconnecting (for example a Facebook password change). Fix it inside Buffer.</td></tr>
+</table></div>
+
+<div class="box careful"><b class="t">"Buffer stopped accepting your saved key"</b>
+<p>This usually means the key was deleted in Buffer or the Buffer account was closed. Posts can't go out until it's fixed. Create a new key in Buffer (Settings › API) and paste it under <span class="ui">Replace key</span>. The owner also gets one email when this happens.</p></div>
+</section>
+
+<!-- 3 -->
+<section class="part" id="soc-overview">
+<h2><span class="num">3</span>Overview</h2>
+<p class="where">Social Media › Overview. The manager's page: where this month's posts are and who needs a nudge.</p>
+<figure><img src="/static/portal/tutorial/social/s03_overview.jpg" width="1100" height="822" alt="Overview: this month&#x27;s numbers, what needs attention now, and the team table." loading="lazy"><figcaption>Overview: this month's numbers, what needs attention now, and the team table.</figcaption></figure>
+
+<p>Use the arrows at the top to look at another month, and <span class="ui">This month</span> to come back. <span class="ui">Open calendar</span> and <span class="ui">+ New Post</span> are shortcuts.</p>
+
+<h3>The number tiles</h3>
+<div class="tbl"><table>
+<tr><th>Tile</th><th>What it counts</th></tr>
+<tr><td>Posts this month</td><td class="wrapok">Every post planned for, scheduled for, or sent in this month.</td></tr>
+<tr><td>Draft</td><td class="wrapok">Still being worked on.</td></tr>
+<tr><td>Changes requested</td><td class="wrapok">An approver sent it back with comments.</td></tr>
+<tr><td>Awaiting approval</td><td class="wrapok">Submitted and waiting for an approver.</td></tr>
+<tr><td>Scheduled</td><td class="wrapok">With Buffer, waiting for its time (includes posts publishing right now).</td></tr>
+<tr><td>Published</td><td class="wrapok">Went out (fully or partly).</td></tr>
+<tr><td>Failed</td><td class="wrapok">Only shows when Buffer refused a post.</td></tr>
+<tr><td>Overdue now</td><td class="wrapok">Every overdue post, from any month. Click it to see them under Content.</td></tr>
+</table></div>
+<p>The approval tiles are hidden when approval is off and nothing is waiting.</p>
+<div class="box know"><b class="t">Drafts with no date</b><p>A draft with no planned date isn't counted in any month. The page tells you how many there are; you'll find them at the bottom of the Calendar.</p></div>
+
+<h3>Needs attention now</h3>
+<p>Up to 5 posts in each group, from any month:</p>
+<ul>
+  <li><b>Awaiting approval</b>: approvers see a <span class="ui">Review</span> link.</li>
+  <li><b>Overdue</b>: past their due date and still not submitted or sent.</li>
+  <li><b>Sent back for changes</b>: the writer needs to edit and resubmit.</li>
+  <li><b>Buffer didn't accept</b>: failed posts to fix and try again.</li>
+  <li><b>Going out next</b>: the next 5 scheduled posts.</li>
+</ul>
+
+<h3>The team table</h3>
+<p>One row per person responsible, with this month's posts split into <span class="f">Being worked on</span>, <span class="f">Awaiting approval</span>, <span class="f">Scheduled</span> and <span class="f">Published</span>, plus <span class="f">Overdue now</span>. Click a name to see that person's posts under Content.</p>
+</section>
+
+<!-- 4 -->
+<section class="part" id="soc-new">
+<h2><span class="num">4</span>New Post (AI Post Designer)</h2>
+<p class="where">Social Media › New Post. Uses 1 AI design from your allowance each time the AI makes a set of designs.</p>
+
+<h3 id="soc-n-start">Step 1: what the post is about</h3>
+<figure><img src="/static/portal/tutorial/social/s04_new.jpg" width="1100" height="995" alt="New Post: choose a product or an idea, where it goes, and the picture." loading="lazy"><figcaption>New Post: choose a product or an idea, where it goes, and the picture.</figcaption></figure>
+<ol class="steps">
+  <li><b>What's this post about?</b> Choose <span class="ui">A product</span> and pick one from your products (use <span class="f">Find a product</span> to search), or choose <span class="ui">An idea</span> and describe the post in your own words, for example "We now deliver to Abuja".</li>
+  <li><b>Anything to highlight?</b> (optional) Add an offer or detail. Any price or number you type here is copied exactly. The AI never makes up prices.</li>
+  <li><b>Where will it go?</b> Tick the accounts. Each one gets a picture in the right size and its own caption.</li>
+  <li><b>Picture</b>, choose one (the first choice only appears when the post is about a product):
+    <ul>
+      <li><span class="f">Use my product photo on brand colours</span> (products only): your photo on a design in your Brand Kit colours.</li>
+      <li><span class="f">Let AI create the picture</span>: puts your product in a new AI scene, or makes a picture for your idea.</li>
+      <li><span class="f">Upload my own image</span>: JPG, PNG or WEBP, up to 15 MB.</li>
+    </ul></li>
+  <li>Press <span class="ui">✦ Create designs</span>. The button tells you how many AI designs you have left. It can take up to a minute.</li>
+</ol>
+<div class="box tip"><b class="t">No AI designs left?</b><p>Press <span class="ui">Use a ready-made layout (free)</span> instead. You still get designs in your brand colours, just without new AI words and pictures.</p></div>
+
+<h3 id="soc-n-pick">Step 2: pick a design</h3>
+<figure><img src="/static/portal/tutorial/social/s05_pick.jpg" width="1100" height="1077" alt="Pick a design: 4 designs, restyle for free, and rewrite the words." loading="lazy"><figcaption>Pick a design: 4 designs, restyle for free, and rewrite the words.</figcaption></figure>
+<p>You get 4 designs. Click one to select it. Then, all for free:</p>
+<div class="tbl"><table>
+<tr><th>Control</th><th>What it does</th></tr>
+<tr><td>Style</td><td class="wrapok"><b>Bold</b> (big words, strong colour), <b>Elegant</b> (calm, lots of space), <b>Playful</b> (stickers and tilted labels) or <b>Minimal</b> (clean, product first).</td></tr>
+<tr><td>Colours</td><td class="wrapok">4 colour choices made from your Brand Kit.</td></tr>
+<tr><td>Layout</td><td class="wrapok">Photo right, Photo centre, Photo top or Bigger photo.</td></tr>
+<tr><td>✎ Rewrite words</td><td class="wrapok"><span class="ui">Shorter</span>, <span class="ui">More fun</span>, <span class="ui">More professional</span>, <span class="ui">Add urgency</span> or <span class="ui">In Pidgin</span>. Changes the headline on the picture and all the captions together. 5 free rewrites per post.</td></tr>
+<tr><td>👍 / 👎</td><td class="wrapok">Tell the AI what you like. Future designs lean towards your taste.</td></tr>
+</table></div>
+<p>When you're happy, press <span class="ui">Use this design →</span>.</p>
+
+<h3 id="soc-n-again">Make new designs</h3>
+<p>None of the 4 right? Press <span class="ui">None of these? Make new designs</span> (uses 1 AI design).</p>
+<figure><img src="/static/portal/tutorial/social/s06_again.jpg" width="1100" height="818" alt="Make new designs: tell the AI what to fix." loading="lazy"><figcaption>Make new designs: tell the AI what to fix.</figcaption></figure>
+<ol class="steps">
+  <li>Tap everything that applies: Too busy, Wrong colours, Photo too small, Words too long, Doesn't look like my brand, Too plain, Want a different background.</li>
+  <li>Add anything else in <span class="f">Anything else?</span> (optional).</li>
+  <li>Press <span class="ui">✦ Make 4 new designs</span>. Your current designs are replaced. If the AI fails, it isn't counted.</li>
+</ol>
+
+<h3 id="soc-n-finish">Step 3: finish and send</h3>
+<figure><img src="/static/portal/tutorial/social/s07_finish.jpg" width="1100" height="1455" alt="Finish your post: previews, quick edits, captions, person responsible and when it goes out." loading="lazy"><figcaption>Finish your post: previews, quick edits, captions, person responsible and when it goes out.</figcaption></figure>
+<p>Everything on this page is free.</p>
+<ul>
+  <li><b>Preview</b>: the square picture (Instagram and square posts) and the wide picture (Facebook, LinkedIn, X).</li>
+  <li><b>Quick edits</b>: change the <span class="f">Headline</span> or <span class="f">Price label</span> (leave it empty for no price), tick <span class="f">Show logo</span> or <span class="f">Show contact line</span>, change colours or layout, then press <span class="ui">Update preview</span>.</li>
+  <li><b>Captions</b>: one box per account. Edit freely; a counter shows how long each one is.</li>
+  <li><b>Person responsible</b> and <b>Due date</b>: see <a href="#soc-people">section 9</a>.</li>
+  <li><b>When</b>: <span class="f">Post now</span> or <span class="f">Schedule for later</span> (pick a date and time, in your own time zone).</li>
+</ul>
+<p>Then press one of:</p>
+<div class="tbl"><table>
+<tr><th>Button</th><th>What happens</th></tr>
+<tr><td><span class="ui">Post now</span> / <span class="ui">Schedule post</span></td><td class="wrapok">Sends it to Buffer. It shows as Scheduled under Content, then moves to Published once it's out.</td></tr>
+<tr><td><span class="ui">Submit for approval</span></td><td class="wrapok">Shown instead when approval is on and you can't approve. The post waits for an approver (<a href="#soc-approval">section 10</a>).</td></tr>
+<tr><td><span class="ui">Save as draft</span></td><td class="wrapok">Keeps it under Content to finish later. If you chose "Schedule for later", the draft keeps that date and appears on the Calendar.</td></tr>
+</table></div>
+</section>
+
+<!-- 5 -->
+<section class="part" id="soc-upload">
+<h2><span class="num">5</span>Upload Design</h2>
+<p class="where">Social Media › Upload Design. For designs made in Canva or anywhere else. No AI, nothing counted.</p>
+
+<h3 id="soc-u-start">Step 1: accounts and files</h3>
+<figure><img src="/static/portal/tutorial/social/s08_upload.jpg" width="1100" height="885" alt="Upload Design: pick the accounts, then drop in your files. The best sizes for your accounts are shown on the right." loading="lazy"><figcaption>Upload Design: pick the accounts, then drop in your files. The best sizes for your accounts are shown on the right.</figcaption></figure>
+<ol class="steps">
+  <li><b>Where will it go?</b> Tick the accounts. Pinterest and YouTube can't be used here yet; they're shown greyed out with the reason.</li>
+  <li><b>Upload your design</b>: drag files in, paste (Ctrl / ⌘ + V), or press <span class="ui">Choose files</span>.
+    <ul>
+      <li>Images: JPG, PNG or WEBP, up to 20 MB each. Up to 10 images make a carousel.</li>
+      <li>Video: MP4 or MOV, up to 300 MB. Other formats (such as iPhone videos) are converted for you.</li>
+    </ul></li>
+</ol>
+<div class="box tip"><b class="t">Exporting from Canva</b><p>Share › Download › <b>PNG</b> for designs with text or logos, <b>JPG</b> for photos, <b>MP4</b> for video. Pick "Size ×1" or larger, never smaller. One design for everything? Use a <b>1:1 square, 1080 × 1080</b>. It fits every network, with at most a light trim on X.</p></div>
+
+<h3 id="soc-u-check">Step 2: the size check</h3>
+<figure><img src="/static/portal/tutorial/social/s09_check.jpg" width="1100" height="1205" alt="Check your design: each network gets a result, and the phone previews show how it will look." loading="lazy"><figcaption>Check your design: each network gets a result, and the phone previews show how it will look.</figcaption></figure>
+<p>Your files are checked against every network you picked:</p>
+<div class="tbl"><table>
+<tr><th>Result</th><th>What it means</th></tr>
+<tr><td>Fits perfectly</td><td class="wrapok">Nothing to do.</td></tr>
+<tr><td>May be cropped</td><td class="wrapok">The network may trim the edges. It never stops you posting. Press <span class="ui">Fix for …</span> only if you want to control what is trimmed.</td></tr>
+<tr><td>Needs fixing</td><td class="wrapok">Too small (under 1080 pixels wide) or a shape that network doesn't allow. That network is blocked until you fix it or untick it. Press <span class="ui">Fix for …</span>.</td></tr>
+</table></div>
+<p>Also on this page: <span class="ui">Remove</span> or <span class="ui">Replace</span> a file, <span class="ui">+ Add more images (carousel)</span>, and <span class="ui">Change accounts</span>. <span class="f">How it will look</span> shows a phone preview per network ("edges trimmed" marks where it's cut). Videos are processed in the background; the page updates by itself and you can leave and come back.</p>
+<p>When everything is OK, press <span class="ui">Continue to captions →</span>. <span class="ui">Start over</span> throws the upload away.</p>
+
+<h3 id="soc-u-fix">Fixing a network</h3>
+<figure><img src="/static/portal/tutorial/social/s10_fix.jpg" width="1100" height="846" alt="Fix for one network: crop, fit with borders, or upload a different version." loading="lazy"><figcaption>Fix for one network: crop, fit with borders, or upload a different version.</figcaption></figure>
+<p>Only that network changes. Other networks keep what they have, and your original file is never changed. Choose:</p>
+<ul>
+  <li><b>Crop</b>: pick the shape (the best one is marked), then drag the box to choose what stays. Some edges are lost.</li>
+  <li><b>Fit with borders</b>: nothing is lost; the empty space is filled with your brand background, main or highlight colour, white, black, or a blurred copy of the picture.</li>
+  <li><b>Use a different version</b>: upload another file just for this network, for example the same design resized in Canva.</li>
+</ul>
+<p>Press <span class="ui">Save for …</span>. To go back, open the fix again and press <span class="ui">Undo: use the original</span>.</p>
+
+<h3 id="soc-u-post">Step 3: captions and schedule</h3>
+<figure><img src="/static/portal/tutorial/social/s11_post.jpg" width="1100" height="818" alt="Captions and schedule: carousel order, one caption or one per network, and when it goes out." loading="lazy"><figcaption>Captions and schedule: carousel order, one caption or one per network, and when it goes out.</figcaption></figure>
+<ul>
+  <li><b>Carousel order</b>: drag, or use ◀ ▶. The first image is the cover. If a network takes fewer images (X takes 4), only the first ones go there.</li>
+  <li><b>Caption</b>: one caption for all networks, or tick <span class="f">Different caption per network</span>. Each box shows that network's limit.</li>
+  <li><b>Person responsible</b>, <b>Due date</b> and <b>When</b>: same as on New Post.</li>
+</ul>
+<p>Press <span class="ui">Post now</span> / <span class="ui">Schedule</span>, <span class="ui">Submit for approval</span> or <span class="ui">Save as draft</span>. The post shows under Content with an <b>Uploaded</b> label.</p>
+<div class="box know"><b class="t">Editing an uploaded post later</b><p>You can change its words, accounts and time. To change the picture or video, delete the post and upload again.</p></div>
+
+<h3 id="soc-u-guide">The size guide</h3>
+<p>Press <span class="ui">Full size guide</span> on the Upload page for every network's best shape and size in pixels, other shapes that work, the number of images allowed, video sizes and lengths, and the matching Canva preset name.</p>
+<figure><img src="/static/portal/tutorial/social/s12_sizes.jpg" width="1100" height="1668" alt="The size guide." loading="lazy"><figcaption>The size guide.</figcaption></figure>
+</section>
+
+<!-- 6 -->
+<section class="part" id="soc-calendar">
+<h2><span class="num">6</span>Calendar</h2>
+<p class="where">Social Media › Calendar</p>
+<figure><img src="/static/portal/tutorial/social/s13_calendar.jpg" width="1100" height="1048" alt="The Calendar: each post on its day, coloured by status, with the person responsible." loading="lazy"><figcaption>The Calendar: each post on its day, coloured by status, with the person responsible.</figcaption></figure>
+<ul>
+  <li>Each post sits on the day it's planned for, scheduled for, or went out, shown in <b>your own time zone</b>. Its colour shows its status, and it shows the person responsible. Click it to open the post.</li>
+  <li>Use the arrows or <span class="ui">Today</span> to move between months.</li>
+  <li><span class="f">Show</span>: pick a person to see only their posts.</li>
+  <li><b>N overdue</b>: how many posts are past their due date.</li>
+  <li><b>+ on a day</b>: plan a new post for that day. Choose the AI Post Designer or Upload Design; the day is filled in for you at 10:00.</li>
+  <li><b>Drafts with no date yet</b> are listed below the calendar. To put a draft on the calendar, open it, press Edit, choose "Schedule for later" with a date and save it as a draft.</li>
+</ul>
+<p>At the top: <span class="ui">✦ Plan my month with AI</span> (<a href="#soc-plan">section 7</a>), <span class="ui">Upload Design</span> and <span class="ui">+ New Post</span>.</p>
+</section>
+
+<!-- 7 -->
+<section class="part" id="soc-plan">
+<h2><span class="num">7</span>Plan my month with AI</h2>
+<p class="where">Social Media › Calendar › ✦ Plan my month with AI. Uses 1 AI design per plan, only if it works.</p>
+<p>The AI suggests a month of posts: the day, the topic, a caption for each network, a call to action and a note on what the picture should show. You choose which to keep. Nothing goes on the calendar until you add it.</p>
+<figure><img src="/static/portal/tutorial/social/s14_plan.jpg" width="1100" height="1370" alt="The plan form." loading="lazy"><figcaption>The plan form.</figcaption></figure>
+
+<h3>Filling in the form</h3>
+<div class="tbl"><table>
+<tr><th>Box</th><th>What to choose</th></tr>
+<tr><td>Month</td><td class="wrapok">This month or one of the next two.</td></tr>
+<tr><td>How many posts</td><td class="wrapok">4, 8, 12, 16 or 20.</td></tr>
+<tr><td>Planned time</td><td class="wrapok">The time of day every post is planned for.</td></tr>
+<tr><td>Days of the week</td><td class="wrapok">Posts are spread evenly over these days, from tomorrow onwards.</td></tr>
+<tr><td>Where will they go?</td><td class="wrapok">The accounts. Each post gets its own caption for each one.</td></tr>
+<tr><td>Mix of post types</td><td class="wrapok">Tips and how-tos, Products and services, Customer stories, Offers, Behind the scenes, News and updates, Questions to get people talking. Leave all unticked to let the AI choose.</td></tr>
+<tr><td>Anything to focus on?</td><td class="wrapok">Optional. Put any real prices, discounts or dates here. The AI never makes them up; where it needs a detail it doesn't have, it writes <b>[add detail]</b> for you to fill in.</td></tr>
+<tr><td>Person responsible / Content due</td><td class="wrapok">Who works on the posts, and how many days before each post it's due.</td></tr>
+</table></div>
+<p>Press <span class="ui">✦ Suggest my posts</span>. It can take up to a minute.</p>
+<div class="box tip"><b class="t">Better suggestions</b><p>The AI uses your Brand Kit voice, your About Us (Store Information), your products and your recent posts. If it knows little about your business, the page shows a tip. Add an About Us, add products, or describe what you do in "Anything to focus on".</p></div>
+
+<h3>Reviewing the suggestions</h3>
+<figure><img src="/static/portal/tutorial/social/s15_review.jpg" width="1100" height="1389" alt="Suggested posts: untick what you don&#x27;t want, change the day or person, then add them." loading="lazy"><figcaption>Suggested posts: untick what you don't want, change the day or person, then add them.</figcaption></figure>
+<ol class="steps">
+  <li>Each suggestion shows its topic, type, the picture idea, the call to action and the captions.</li>
+  <li>Untick any you don't want (or <span class="ui">Untick all</span>), and change the <span class="f">Day</span> or <span class="f">Person responsible</span> if you like.</li>
+  <li>Press <span class="ui">Add ticked posts as drafts</span>. They go on the calendar as drafts with no picture yet. Each person gets one email listing their new posts.</li>
+</ol>
+<p>Don't like the plan? Press <span class="ui">Make a different plan</span>. Old plans are listed under <span class="f">Plans already made</span> on the form page. Adding a plan twice doesn't create doubles.</p>
+
+<h3>Making the picture for a planned post</h3>
+<ol class="steps">
+  <li>Open the draft (from the Calendar or Content). It shows the plan's topic and picture idea.</li>
+  <li>Press <span class="ui">Make the picture with AI</span> or <span class="ui">Upload the picture</span>. The designer opens with the idea, accounts, person and due date filled in.</li>
+  <li>On the last step, keep <span class="f">Put this into the planned draft</span> ticked. The picture goes into that draft, and it keeps its day and person. Untick it to make a separate new post instead.</li>
+</ol>
+</section>
+
+<!-- 8 -->
+<section class="part" id="soc-content">
+<h2><span class="num">8</span>Content</h2>
+<p class="where">Social Media › Content. Every post that hasn't gone out yet.</p>
+<figure><img src="/static/portal/tutorial/social/s16_content.jpg" width="1100" height="1572" alt="Content: the tabs, the person filter, and each post with its status, person, due date and time." loading="lazy"><figcaption>Content: the tabs, the person filter, and each post with its status, person, due date and time.</figcaption></figure>
+<ul>
+  <li><b>Tabs</b>: All, Overdue, Drafts, Awaiting approval, Changes requested, Scheduled and Failed, each with a count. Empty tabs are hidden.</li>
+  <li><span class="f">Person</span>: see only one person's posts.</li>
+  <li>The strip above the list shows the order a post moves in. <b>Scheduled</b> and <b>Posted</b> are marked "auto" because Buffer updates them by itself.</li>
+  <li><span class="ui">Check for updates</span> asks Buffer right away for the latest status. It also happens by itself when you open the page.</li>
+</ul>
+<p>Each row shows the picture, the post, its status, <span class="f">Person responsible</span>, <span class="f">Due</span>, <span class="f">Goes out</span> (in your own time zone) and the accounts. Labels tell you how it was made: <b>AI design</b>, <b>Uploaded</b>, <b>Text only</b> or <b>▶ Video</b>.</p>
+
+<h3 id="soc-p-status">What each status means</h3>
+<div class="tbl"><table>
+<tr><th>Status</th><th>Meaning</th></tr>
+<tr><td>Draft</td><td class="wrapok">Being worked on. Not with Buffer.</td></tr>
+<tr><td>Awaiting approval</td><td class="wrapok">Submitted; waiting for an approver.</td></tr>
+<tr><td>Changes requested</td><td class="wrapok">An approver sent it back. Their comment shows under the post.</td></tr>
+<tr><td>Scheduled</td><td class="wrapok">With Buffer, waiting for its time.</td></tr>
+<tr><td>Publishing</td><td class="wrapok">Buffer is sending it right now.</td></tr>
+<tr><td>Failed</td><td class="wrapok">Buffer couldn't publish it. The reason shows in red. Press <span class="ui">Try again</span>.</td></tr>
+<tr><td>Overdue</td><td class="wrapok">A red tag on a draft whose due date has passed.</td></tr>
+</table></div>
+
+<h3 id="soc-p-view">A post's page</h3>
+<p>Press <span class="ui">Open</span> on any post.</p>
+<figure><img src="/static/portal/tutorial/social/s17_post.jpg" width="1100" height="1466" alt="A post&#x27;s page: its details, captions, person and due date, and its history." loading="lazy"><figcaption>A post's page: its details, captions, person and due date, and its history.</figcaption></figure>
+<ul>
+  <li>The picture, when it's planned for or goes out, the accounts, who made it and who approved it.</li>
+  <li>The caption, plus each network's own version.</li>
+  <li><b>From the AI month plan</b>: the topic and picture idea, with the "Make the picture" buttons (<a href="#soc-plan">section 7</a>).</li>
+  <li><b>Person responsible and due date</b>: change them and press <span class="ui">Save</span> (<a href="#soc-people">section 9</a>).</li>
+  <li><b>History</b>: every step, who did it and when (created, submitted, approved, sent back with the comment, person changed, and so on).</li>
+  <li>If it was sent back: the approver's comment and <span class="ui">Edit and submit again</span>.</li>
+  <li>Approvers see <span class="ui">Approve or send back</span> on waiting posts.</li>
+</ul>
+
+<h3 id="soc-p-edit">Edit, cancel, delete</h3>
+<div class="tbl"><table>
+<tr><th>Button</th><th>What it does</th></tr>
+<tr><td><span class="ui">Edit</span></td><td class="wrapok">Opens the post form at the top of Content: caption, image, accounts and time. For a scheduled post, saving replaces the copy in Buffer.</td></tr>
+<tr><td><span class="ui">Try again</span></td><td class="wrapok">For failed posts. Fix the problem shown, then send again.</td></tr>
+<tr><td><span class="ui">Cancel</span></td><td class="wrapok">Only for scheduled posts. Takes it back from Buffer; it becomes a draft again.</td></tr>
+<tr><td><span class="ui">Delete</span></td><td class="wrapok">Removes the post. A scheduled post is removed from Buffer first. A post that already went out stays on the social networks; delete it there if needed.</td></tr>
+</table></div>
+<div class="box careful"><b class="t">Saving a waiting post as a draft</b><p>If you edit a post that's awaiting approval and save it as a draft, it's taken back out of approval. Submit it again when it's ready.</p></div>
+<p><span class="ui">+ New Post</span> and <span class="ui">Upload Design</span> at the top are shortcuts to <a href="#soc-new">section 4</a> and <a href="#soc-upload">section 5</a>. When editing, remember Instagram needs an image.</p>
+</section>
+
+<!-- 9 -->
+<section class="part" id="soc-people">
+<h2><span class="num">9</span>Person responsible and due dates</h2>
+<p class="where">On New Post, Upload Design, the AI month plan, and each post's page.</p>
+<ul>
+  <li><b>Person responsible</b>: who is working on the post. You can pick the owner or any team member who can see Social Media. It starts as whoever made the post.</li>
+  <li><b>Due date</b> (optional): the day the post should be ready. When you pick a "Schedule for later" time, a due date 2 days earlier is suggested; you can change it.</li>
+  <li>The new person gets an email when a post is given to them (not when you give it to yourself).</li>
+  <li><b>Overdue</b> means the due date has passed and the post is still a draft (not submitted, not sent). Overdue posts are shown in red on the Calendar, Content and the Overview.</li>
+  <li>To change them later, open the post and use <span class="f">Person responsible and due date</span> (drafts, scheduled and failed posts only). This doesn't change anything in Buffer.</li>
+</ul>
+</section>
+
+<!-- 10 -->
+<section class="part" id="soc-approval">
+<h2><span class="num">10</span>Approval</h2>
+<p class="where">Social Media › Approval. An orange number next to Approval in the menu shows how many posts are waiting.</p>
+<figure><img src="/static/portal/tutorial/social/s18_approval.jpg" width="1100" height="822" alt="Approval: the on/off switch and a post waiting for approval." loading="lazy"><figcaption>Approval: the on/off switch and a post waiting for approval.</figcaption></figure>
+
+<h3>Switching approval on or off</h3>
+<p>The owner, or anyone with the approve tick, uses the <span class="f">Posts need approval before they go out</span> switch. It's <b>off</b> until you switch it on.</p>
+<ul>
+  <li><b>Off</b>: everyone who can post sends straight to Buffer.</li>
+  <li><b>On</b>: team members who can't approve can only <b>submit</b> posts. The owner and approvers can approve, and their own posts go straight out.</li>
+</ul>
+
+<h3>Submitting a post (writers)</h3>
+<ol class="steps">
+  <li>Make the post as normal and pick the time you want it to go out.</li>
+  <li>Press <span class="ui">Submit for approval</span>. It shows as <b>Awaiting approval</b> and approvers get an email.</li>
+  <li>You get an email when it's approved or sent back.</li>
+  <li>If it's sent back, open it, read the comment, press <span class="ui">Edit and submit again</span>, make the changes and submit.</li>
+</ol>
+
+<h3>Approving or sending back (approvers)</h3>
+<p>Each waiting post shows who submitted it, when it should go out, the accounts, the person responsible, the due date and the caption (<span class="ui">See each version</span> for per-network captions).</p>
+<div class="tbl"><table>
+<tr><th>Choice</th><th>What happens</th></tr>
+<tr><td>At the planned time</td><td class="wrapok">Goes to Buffer for the time the writer chose. Not possible if that time has passed ("time has passed" is shown).</td></tr>
+<tr><td>Post now</td><td class="wrapok">Goes out straight away.</td></tr>
+<tr><td>Pick another time</td><td class="wrapok">Choose a new date and time.</td></tr>
+<tr><td><span class="ui">✓ Approve</span></td><td class="wrapok">Sends it with the choice above.</td></tr>
+<tr><td><span class="ui">Request changes</span></td><td class="wrapok">Type what needs changing first (a comment is required). The writer sees it and gets it by email. The post shows as <b>Changes requested</b>.</td></tr>
+</table></div>
+<p><span class="ui">Open full post</span> shows everything, including the history. <span class="f">Decided in the last 14 days</span> lists recent approvals and send-backs.</p>
+<p>Team members who can't approve see this page too, with the posts they're waiting on.</p>
+</section>
+
+<!-- 11 -->
+<section class="part" id="soc-published">
+<h2><span class="num">11</span>Published</h2>
+<p class="where">Social Media › Published. Posts land here by themselves once Buffer confirms they went out.</p>
+<figure><img src="/static/portal/tutorial/social/s19_published.jpg" width="1100" height="822" alt="Published: each post, when it went out, links to the live posts, and who approved it." loading="lazy"><figcaption>Published: each post, when it went out, links to the live posts, and who approved it.</figcaption></figure>
+<ul>
+  <li>Newest first, 50 per page (<span class="ui">← Newer</span> / <span class="ui">Older →</span>).</li>
+  <li>Tabs: <b>All</b> and <b>Partly posted</b> (went out on some accounts but not all). Filter by <span class="f">Person</span>.</li>
+  <li><span class="f">Went out</span>: when it went out, in your own time zone.</li>
+  <li><span class="f">Accounts</span>: click an account name with ↗ to see the live post. An account marked "not posted" failed; the reason is shown.</li>
+  <li><span class="f">Approved by</span>: the approver, or "Not needed" if it went out without approval.</li>
+  <li><span class="ui">Open</span> shows the post's page; <span class="ui">Delete</span> removes it from PhiXtra only. It stays on the social networks.</li>
+</ul>
+</section>
+
+<!-- 12 -->
+<section class="part" id="soc-analytics">
+<h2><span class="num">12</span>Analytics</h2>
+<p class="where">Social Media › Analytics. The numbers come from Buffer, which collects them from each network.</p>
+<figure><img src="/static/portal/tutorial/social/s20_analytics.jpg" width="1100" height="822" alt="Analytics: one card per account with totals, and a table of each post&#x27;s numbers." loading="lazy"><figcaption>Analytics: one card per account with totals, and a table of each post's numbers.</figcaption></figure>
+<p>Pick the month at the top. For each account you see how many posts went out, the totals for each number, and the average engagement rate. Below, a table shows each post's numbers, a ↗ link to the live post, and when Buffer last updated it.</p>
+
+<h3>What the numbers mean</h3>
+<div class="tbl"><table>
+<tr><th>Number</th><th>Meaning</th></tr>
+<tr><td>Reach</td><td class="wrapok">How many different people saw it.</td></tr>
+<tr><td>Impressions</td><td class="wrapok">How many times it was seen, counting repeat views.</td></tr>
+<tr><td>Views</td><td class="wrapok">Video views.</td></tr>
+<tr><td>Reactions / Likes</td><td class="wrapok">Likes and other reactions.</td></tr>
+<tr><td>Comments</td><td class="wrapok">Comments.</td></tr>
+<tr><td>Shares</td><td class="wrapok">Shares or reposts.</td></tr>
+<tr><td>Saves</td><td class="wrapok">Times people saved it.</td></tr>
+<tr><td>Clicks</td><td class="wrapok">Clicks on the post or its link.</td></tr>
+<tr><td>Engagement rate</td><td class="wrapok">Reactions, comments, shares and clicks as a share of the people who saw it.</td></tr>
+</table></div>
+
+<div class="box know"><b class="t">"Not given" or "n/a" isn't zero</b><p>It means that network doesn't send that number. For example, LinkedIn gives reach but not clicks, and Facebook gives clicks but not reach.</p></div>
+<div class="box know"><b class="t">The numbers aren't live</b><p>Buffer updates them on its own schedule, often a few days after a post goes out. PhiXtra checks with Buffer when you open the page (at most every 6 hours). Press <span class="ui">Get the latest numbers</span> to check now. "Still waiting for Buffer's numbers" means Buffer hasn't sent any yet.</p></div>
+<p>Only posts made in PhiXtra are counted.</p>
+</section>
+
+<!-- 13 -->
+<section class="part" id="soc-brand">
+<h2><span class="num">13</span>Brand Kit</h2>
+<p class="where">Social Media › Brand Kit. Tells the AI how your brand looks and sounds. Every design follows it.</p>
+<figure><img src="/static/portal/tutorial/social/s21_brand.jpg" width="1100" height="1074" alt="The Brand Kit with a sample design on the right." loading="lazy"><figcaption>The Brand Kit with a sample design on the right.</figcaption></figure>
+<div class="tbl"><table>
+<tr><th>Part</th><th>What to do</th></tr>
+<tr><td>Logo</td><td class="wrapok"><span class="ui">Upload logo</span>: a PNG with a see-through background works best, up to 5 MB. Without a logo, designs show your business name.</td></tr>
+<tr><td>Brand colours</td><td class="wrapok"><b>Main colour</b> (your strongest brand colour), <b>Highlight colour</b> (for labels and touches that stand out) and <b>Background colour</b> (usually white or a very light shade). After uploading a logo, <span class="ui">Pick colours from my logo</span> fills them in for you.</td></tr>
+<tr><td>Name</td><td class="wrapok">The business name used on designs.</td></tr>
+<tr><td>Contact line</td><td class="wrapok">Optional, for example a phone number or website. Can be shown at the bottom of a design.</td></tr>
+<tr><td>How your captions should sound</td><td class="wrapok">Warm and friendly, Professional, Fun with some Nigerian Pidgin, or Calm and premium.</td></tr>
+<tr><td>Style</td><td class="wrapok">The style new designs start with: Bold, Elegant, Playful or Minimal.</td></tr>
+</table></div>
+<p>Press <span class="ui">Save Brand Kit</span>; the sample updates.</p>
+<p><b>What the AI has learned about your taste</b> shows what your 👍 / 👎 taught it (styles you like or skip, whether you prefer the photo large). <span class="ui">Reset what it learned</span> starts again.</p>
+<div class="box tip"><b class="t">Choosing colours</b><p>Pick a highlight colour that stands out clearly against your main colour. Two very similar dark colours make labels hard to read.</p></div>
+</section>
+
+<!-- 14 -->
+<section class="part" id="soc-usage">
+<h2><span class="num">14</span>AI Design Usage</h2>
+<p class="where">Social Media › AI Design Usage</p>
+<figure><img src="/static/portal/tutorial/social/s22_usage.jpg" width="1100" height="822" alt="AI Design Usage: this month&#x27;s allowance, extra designs, and the history." loading="lazy"><figcaption>AI Design Usage: this month's allowance, extra designs, and the history.</figcaption></figure>
+<ul>
+  <li>Your plan includes a number of <b>AI designs</b> per month. It starts again each month. These are separate from customer-chat message credits.</li>
+  <li><b>What uses 1 AI design</b>: pressing ✦ Create designs, Make new designs, and each AI month plan that works.</li>
+  <li><b>Free, never counted</b>: restyling (style, colours, layout), up to 5 word rewrites per post, quick edits, ready-made layouts, Upload Design, and anything that failed.</li>
+  <li><b>Extra AI designs</b>: press <span class="ui">Buy extra AI designs</span>. Extras are used after the monthly allowance and never expire.</li>
+  <li><b>History</b>: date, post, what was done, whether it came from the allowance or extras, who did it, and whether it counted.</li>
+</ul>
+<div class="box know"><b class="t">"Your plan doesn't include AI designs"</b><p>Some plans have no AI designs. You can start the 2-week AI trial (if not used yet), upgrade your plan, or buy extra AI designs. Upload Design and ready-made layouts still work.</p></div>
+</section>
+
+<!-- 15 -->
+<section class="part" id="soc-roles">
+<h2><span class="num">15</span>Who can do what</h2>
+<p class="where">Team › Roles. The owner can always do everything. For team members, their role's ticks decide.</p>
+<figure><img src="/static/portal/tutorial/social/s23_roles.jpg" width="844" height="373" alt="The Social Media ticks in Team › Roles." loading="lazy"><figcaption>The Social Media ticks in Team › Roles.</figcaption></figure>
+<p>Open a role and expand <b>Social Media</b>. It has 10 ticks in a grid:</p>
+<div class="tbl"><table>
+<tr><th>Row</th><th>Ticks and what they allow</th></tr>
+<tr><td>Social Post</td><td class="wrapok"><b>View</b>: see the Social Media pages (needed to be picked as a person responsible). <b>Create</b>: post now, schedule or save drafts. <b>Edit</b>: change, reschedule or cancel posts, and change person and due date. <b>Delete</b>: delete posts. <b>Other</b> ("Approve or send back social media posts"): approve, send back, and switch approval on or off; their own posts skip approval.</td></tr>
+<tr><td>Analytics</td><td class="wrapok">See Analytics.</td></tr>
+<tr><td>AI month plan</td><td class="wrapok">Use ✦ Plan my month with AI.</td></tr>
+<tr><td>AI designs</td><td class="wrapok">Use the AI Post Designer (uses the AI design allowance).</td></tr>
+<tr><td>Brand Kit</td><td class="wrapok"><b>View</b> or <b>Edit</b> the Brand Kit.</td></tr>
+<tr><td>AI Design Usage</td><td class="wrapok">See the usage page.</td></tr>
+</table></div>
+<p>Connecting Buffer has its own ticks under <b>Integration › Buffer</b>: view the page, connect / change the key / choose accounts, and disconnect.</p>
+<div class="box know"><b class="t">New ticks aren't switched on for you</b><p>When a new Social Media feature arrives, existing roles don't get its tick automatically. The owner or IT Admin ticks it in Team › Roles.</p></div>
+</section>
+
+<!-- 16 -->
+<section class="part" id="soc-recipes">
+<h2><span class="num">16</span>Step-by-step recipes</h2>
+
+<div class="recipe"><h4>Plan and prepare next month's posts</h4>
+<ol>
+  <li>Calendar › <span class="ui">✦ Plan my month with AI</span>. Pick next month, 12 posts, Mon/Wed/Fri, your accounts, a person, and "Content due 2 days before".</li>
+  <li>Review the suggestions, untick the weak ones, press <span class="ui">Add ticked posts as drafts</span>.</li>
+  <li>Each person opens their drafts and presses <span class="ui">Make the picture with AI</span> or <span class="ui">Upload the picture</span>.</li>
+  <li>Keep "Put this into the planned draft" ticked, choose Schedule for later (the day is already set) and send or submit.</li>
+  <li>Watch Overview for overdue posts.</li>
+</ol></div>
+
+<div class="recipe"><h4>Post a Canva design today</h4>
+<ol>
+  <li>In Canva, download as PNG (or MP4 for video).</li>
+  <li>Upload Design › tick your accounts › drop in the file.</li>
+  <li>Fix anything marked "Needs fixing", then <span class="ui">Continue to captions →</span>.</li>
+  <li>Write the caption, choose Post now, press <span class="ui">Post now</span>.</li>
+  <li>Check Published a few minutes later for the live links.</li>
+</ol></div>
+
+<div class="recipe"><h4>Have a manager check every post first</h4>
+<ol>
+  <li>Owner: Team › Roles, tick "Approve or send back" on the manager's role only.</li>
+  <li>Social Media › Approval, switch <span class="f">Posts need approval</span> On.</li>
+  <li>Staff make posts as normal and press <span class="ui">Submit for approval</span>.</li>
+  <li>The manager gets an email, opens Approval, and approves or sends back with a comment.</li>
+</ol></div>
+
+<div class="recipe"><h4>Promote a product</h4>
+<ol>
+  <li>New Post › A product › find the product.</li>
+  <li>Add the offer in "Anything to highlight?" (for example "10% off this weekend").</li>
+  <li>Picture: Use my product photo on brand colours › ✦ Create designs.</li>
+  <li>Pick a design, rewrite with <span class="ui">Add urgency</span> if you like, then finish and schedule.</li>
+</ol></div>
+
+<div class="recipe"><h4>See what worked last month</h4>
+<ol>
+  <li>Analytics › pick last month.</li>
+  <li>Compare each account's average engagement rate, then sort the post table by eye for the posts with the most reach and comments.</li>
+  <li>Make more posts like those. Use 👍 on designs like them so the AI learns.</li>
+</ol></div>
+</section>
+
+<!-- 17 -->
+<section class="part" id="soc-faq">
+<h2><span class="num">17</span>Questions and problems</h2>
+<h4>There's no Social Media in my side menu.</h4>
+<p>Buffer isn't connected yet, or your role doesn't include Social Media. Ask the owner.</p>
+<h4>My post says Failed.</h4>
+<p>Buffer refused it. Read the red message under the post (often a missing image for Instagram, a caption that's too long, or an account that needs reconnecting in Buffer), fix it and press <span class="ui">Try again</span>.</p>
+<h4>A post says "Partly posted".</h4>
+<p>It went out on some accounts but not others. Published shows which account said "not posted" and why.</p>
+<h4>I can't see "Post now", only "Submit for approval".</h4>
+<p>Approval is on and your role can't approve. Submit it; an approver will send it out.</p>
+<h4>The approver can't choose "At the planned time".</h4>
+<p>That time has already passed. Choose Post now or pick another time.</p>
+<h4>An Instagram post won't send.</h4>
+<p>Instagram needs a picture or video. Text-only posts can't go to Instagram.</p>
+<h4>My analytics show n/a or nothing.</h4>
+<p>n/a means that network doesn't give that number. Nothing at all usually means Buffer hasn't sent the numbers yet; they come a few days after posting.</p>
+<h4>A post I made directly in Buffer isn't in PhiXtra.</h4>
+<p>Only posts made in PhiXtra are shown and counted.</p>
+<h4>I deleted a published post but it's still on Facebook.</h4>
+<p>Deleting in PhiXtra doesn't remove it from the networks. Delete it on the network itself.</p>
+<h4>It says I have no AI designs left.</h4>
+<p>This month's allowance is used. Use Upload Design or a ready-made layout (free), wait for next month, or buy extra AI designs.</p>
+<h4>A new page I added in Buffer isn't showing.</h4>
+<p>Integration › Buffer › <span class="ui">Check connection now</span>, then switch it on under "Use in PhiXtra" and press Save.</p>
+<h4>A button I've seen in this guide isn't on my screen.</h4>
+<p>Your role doesn't include it. Ask your team admin (see <a href="#soc-roles">Who can do what</a>).</p>
+</section>
+
+</main>
+<a class="g-top" href="#soc-top">↑ Back to contents</a>
+</div>
