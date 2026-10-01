@@ -485,7 +485,7 @@ PLAN_FEATURE_CATALOG = {
         ("team.members_deactivate",        "Deactivate / reactivate a team member"),
         ("team.members_remove",            "Permanently remove a team member"),
         ("team.members_reset_password",    "Reset a team member's password"),
-        ("team.members_agent_access",      "Manage a team member's AI Agent assignment"),
+        ("team.members_agent_access",      "Manage which WhatsApp numbers a team member can answer"),
         ("team.members_messenger_access",  "Manage a team member's Messenger access"),
         ("team.members_webchat_access",    "Manage a team member's Web Chat access"),
         ("team.members_alerts",            "Manage a team member's chat alerts"),
@@ -1601,80 +1601,88 @@ def _get_conversation_assignment(tenant_id: int, phone: str):
         return None
 
 
-def _get_assignable_agents(tenant_id: int) -> list:
-    """AI agents that actually have an active WhatsApp number attached —
-    the only ones that can produce any conversations, so the only ones
-    worth offering in the team-member agent-assignment checklist."""
+def _get_assignable_numbers(tenant_id: int) -> list:
+    """The business's connected WhatsApp numbers, first-connected first —
+    what the Team page offers as "WhatsApp numbers" ticks (2026-10-01:
+    staff are given numbers, not AI Agents). `ai_on` drives the small
+    "AI replies" / "Staff only" label: AI only replies when both the
+    business switch and that number's own admin switch are on."""
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
-            SELECT DISTINCT ta.id, ta.name
-            FROM tenant_agents ta
-            JOIN wa_tenants wt ON wt.agent_id = ta.id AND wt.tenant_id = %s AND wt.active = TRUE
-            WHERE ta.tenant_id = %s
-            ORDER BY ta.name ASC
-        """, (tenant_id, tenant_id))
+            SELECT wt.phone_number_id,
+                   COALESCE(NULLIF(wt.display_phone_number, ''), wt.phone_number_id) AS display,
+                   NULLIF(TRIM(wt.label), '') AS label,
+                   (COALESCE(t.ai_enabled, TRUE) AND COALESCE(wt.ai_enabled, TRUE)) AS ai_on
+            FROM wa_tenants wt
+            JOIN tenants t ON t.id = wt.tenant_id
+            WHERE wt.tenant_id = %s AND wt.active = TRUE AND wt.phone_number_id IS NOT NULL
+            ORDER BY wt.id ASC
+        """, (tenant_id,))
         rows = list(cur.fetchall() or [])
         cur.close(); conn.close()
         return rows
     except Exception as e:
-        print("⚠️ _get_assignable_agents error:", e)
+        print("⚠️ _get_assignable_numbers error:", e)
         return []
 
 
-def _get_team_member_agent_ids(team_member_id: int) -> set:
+def _get_team_member_number_ids(team_member_id: int) -> set:
+    """phone_number_ids this team member may answer. Empty = no WhatsApp."""
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("SELECT tenant_agent_id FROM team_member_agents WHERE team_member_id=%s", (team_member_id,))
+        cur.execute("SELECT phone_number_id FROM team_member_numbers WHERE team_member_id=%s", (team_member_id,))
         ids = {r[0] for r in cur.fetchall()}
         cur.close(); conn.close()
         return ids
     except Exception as e:
-        print("⚠️ _get_team_member_agent_ids error:", e)
+        print("⚠️ _get_team_member_number_ids error:", e)
         return set()
 
 
-def _set_team_member_agent_ids(tenant_id: int, team_member_id: int, agent_ids: list):
-    """Replace a team member's agent assignments. `agent_ids` is trusted to
-    already be filtered to this tenant's own agents by the caller."""
+def _set_team_member_number_ids(tenant_id: int, team_member_id: int, phone_number_ids) -> list:
+    """Replace a team member's WhatsApp numbers. Anything that isn't one of
+    this business's own connected numbers is dropped here, so callers can
+    pass the raw form list. Returns what was actually saved."""
+    valid = {n["phone_number_id"] for n in _get_assignable_numbers(tenant_id)}
+    keep = [p for p in dict.fromkeys(phone_number_ids or []) if p in valid]
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("DELETE FROM team_member_agents WHERE team_member_id=%s", (team_member_id,))
-        for aid in agent_ids:
+        cur.execute("DELETE FROM team_member_numbers WHERE team_member_id=%s", (team_member_id,))
+        for pid in keep:
             cur.execute(
-                "INSERT INTO team_member_agents (team_member_id, tenant_agent_id) VALUES (%s,%s) "
+                "INSERT INTO team_member_numbers (team_member_id, phone_number_id) VALUES (%s,%s) "
                 "ON CONFLICT DO NOTHING",
-                (team_member_id, aid)
+                (team_member_id, pid)
             )
         conn.commit()
         cur.close(); conn.close()
     except Exception as e:
-        print("⚠️ _set_team_member_agent_ids error:", e)
+        print("⚠️ _set_team_member_number_ids error:", e)
+    return keep
 
 
-def _resolve_phone_agent_id(tenant_id: int, phone: str):
-    """Which tenant_agent_id this conversation's last message came in on,
-    or None if it can't be resolved (no messages yet, or that number has
-    no agent assigned) — used to gate a scoped team member's access to a
-    specific conversation for reply/claim/release actions."""
+def _resolve_phone_number_id(tenant_id: int, phone: str):
+    """Which of the business's WhatsApp numbers this conversation's last
+    message came in on (or None) — the same rule the Inbox list uses to
+    file a chat under a number, so reply/claim/release can't disagree
+    with what the list shows."""
     try:
         conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur = conn.cursor()
         cur.execute("""
-            SELECT wt.agent_id
-            FROM wa_message_log m
-            JOIN wa_tenants wt ON wt.tenant_id = %s AND wt.phone_number_id = m.phone_number_id
-            WHERE m.tenant_id = %s AND m.customer_phone = %s
-            ORDER BY m.created_at DESC LIMIT 1
-        """, (tenant_id, tenant_id, phone))
+            SELECT phone_number_id FROM wa_message_log
+            WHERE tenant_id = %s AND customer_phone = %s
+            ORDER BY created_at DESC LIMIT 1
+        """, (tenant_id, phone))
         row = cur.fetchone()
         cur.close(); conn.close()
-        return row["agent_id"] if row else None
+        return row[0] if row else None
     except Exception as e:
-        print("⚠️ _resolve_phone_agent_id error:", e)
+        print("⚠️ _resolve_phone_number_id error:", e)
         return None
 
 
@@ -1706,25 +1714,22 @@ def _team_member_has_webchat_access(team_member_id: int) -> bool:
 
 def _team_can_access_phone(tenant_id: int, actor: dict, phone: str) -> bool:
     """Owners always pass. A team member only passes if the conversation's
-    agent is in their assigned set — zero assignments means zero access,
-    by design (deny-by-default, per explicit requirement).
-    Facebook Messenger has no per-agent concept (a Page isn't tied to any
-    one AI Agent persona the way a WhatsApp number is), so it gets its own
-    explicit team_members.messenger_access switch instead — flagged urgent
-    2026-09-11, same day Phase 2 shipped without it. Web Chat (2026-09-18)
-    is the same story — a website-chat session isn't tied to an AI Agent
-    either — so it gets its own team_members.webchat_access switch too."""
+    WhatsApp number is one of theirs (team_member_numbers, 2026-10-01 —
+    was per AI Agent) — zero numbers means zero access, by design
+    (deny-by-default, per explicit requirement).
+    Facebook Messenger and Web Chat aren't tied to a WhatsApp number, so
+    each has its own explicit team_members switch (messenger_access,
+    webchat_access)."""
     if not actor["is_team"]:
         return True
     if phone.startswith("fb:"):
         return _team_member_has_messenger_access(actor["team_member_id"])
     if phone.startswith("web:"):
         return _team_member_has_webchat_access(actor["team_member_id"])
-    allowed = _get_team_member_agent_ids(actor["team_member_id"])
+    allowed = _get_team_member_number_ids(actor["team_member_id"])
     if not allowed:
         return False
-    agent_id = _resolve_phone_agent_id(tenant_id, phone)
-    return agent_id is not None and agent_id in allowed
+    return _resolve_phone_number_id(tenant_id, phone) in allowed
 
 
 def _get_tenant_balance_tokens(tenant_id: int) -> int:
@@ -3897,20 +3902,16 @@ def team_page():
         m["position_name"] = pos_name_by_id.get(m.get("position_id"))
         m["location_country_name"] = country_name_by_code.get(m.get("location_country"))
 
-    assignable_agents = _get_assignable_agents(tenant_id)
-    # Only worth showing the "which agents can they see" checklist once
-    # there's an actual choice to make — one-agent businesses don't need it
-    # (that agent is auto-assigned automatically, see team_create()).
-    show_agent_picker = len(assignable_agents) > 1
-    agent_name_by_id = {a["id"]: a["name"] for a in assignable_agents}
+    # WhatsApp numbers ticks (2026-10-01, was AI Agents) — shown whenever
+    # the business has at least one number, even just one, so access can
+    # always be seen and changed.
+    wa_numbers = _get_assignable_numbers(tenant_id)
     for m in members:
-        assigned_ids = _get_team_member_agent_ids(m["id"])
-        m["assigned_agent_ids"] = assigned_ids
-        m["assigned_agent_names"] = [agent_name_by_id.get(aid, "Unknown agent") for aid in assigned_ids]
+        m["wa_number_ids"] = _get_team_member_number_ids(m["id"])
 
     # Messenger access toggle — only worth showing once Facebook is actually
     # connected, same "don't show a choice that doesn't exist yet" logic as
-    # show_agent_picker above. Added urgently 2026-09-11 alongside Phase 2.
+    # the WhatsApp numbers row. Added urgently 2026-09-11 alongside Phase 2.
     messenger_connected = False
     try:
         _fb_conn = get_db_connection()
@@ -3932,8 +3933,7 @@ def team_page():
         staff_limit=limit,
         active_count=active_count,
         seats_left=max(0, limit - active_count),
-        assignable_agents=assignable_agents,
-        show_agent_picker=show_agent_picker,
+        wa_numbers=wa_numbers,
         messenger_connected=messenger_connected,
         roles=roles,
         assignable_role_ids=assignable_role_ids,
@@ -4005,8 +4005,7 @@ def team_create():
             positions=_get_tenant_positions(tenant_id),
             countries=STAFF_COUNTRY_LIST,
             managers=_get_team_members_for_manager_picker(tenant_id),
-            assignable_agents=_get_assignable_agents(tenant_id),
-            show_agent_picker=len(_get_assignable_agents(tenant_id)) > 1,
+            wa_numbers=_get_assignable_numbers(tenant_id),
         )
 
     first_name = (request.form.get("first_name") or "").strip()[:100]
@@ -4105,17 +4104,19 @@ def team_create():
     conn.commit()
     cur.close(); conn.close()
 
-    # Same agent-assignment logic as team_invite() — active from the moment
-    # the account is created, not a separate step to remember.
-    assignable = _get_assignable_agents(tenant_id)
-    if len(assignable) == 1:
-        agent_ids = [assignable[0]["id"]]
-    elif _team_member_has_permission("team.members_agent_access"):
-        valid_ids = {a["id"] for a in assignable}
-        agent_ids = [int(x) for x in request.form.getlist("agent_ids") if x.isdigit() and int(x) in valid_ids]
+    # WhatsApp numbers they can answer — active from the moment the account
+    # is created, not a separate step to remember. Whoever may set access
+    # sees the ticks (a one-number business has it ticked in advance and
+    # can untick it); anyone else can't choose, so a one-number business
+    # still gets its number and a bigger one waits for someone who can.
+    numbers = _get_assignable_numbers(tenant_id)
+    if _team_member_has_permission("team.members_agent_access"):
+        number_ids = request.form.getlist("wa_numbers")
+    elif len(numbers) == 1:
+        number_ids = [numbers[0]["phone_number_id"]]
     else:
-        agent_ids = []   # someone with AI-agent access assigns them later
-    _set_team_member_agent_ids(tenant_id, new_id, agent_ids)
+        number_ids = []
+    _set_team_member_number_ids(tenant_id, new_id, number_ids)
 
     flash(f"'{name}' created. Password: {generated_password} (shown once — share it securely, e.g. by WhatsApp or in person).", "success")
     return redirect(url_for("portal.team_page"))
@@ -4152,8 +4153,7 @@ def team_edit(member_id: int):
             positions=_get_tenant_positions(tenant_id),
             countries=STAFF_COUNTRY_LIST,
             managers=_get_team_members_for_manager_picker(tenant_id, exclude_id=member_id),
-            assignable_agents=[],
-            show_agent_picker=False,
+            wa_numbers=[],
         )
 
     first_name = (request.form.get("first_name") or "").strip()[:100]
@@ -4823,14 +4823,14 @@ def team_update_agents(member_id: int):
         return redirect(url_for("portal.team_page"))
     cur.close(); conn.close()
 
-    valid_ids = {a["id"] for a in _get_assignable_agents(tenant_id)}
-    agent_ids = [int(x) for x in request.form.getlist("agent_ids") if x.isdigit() and int(x) in valid_ids]
-    _set_team_member_agent_ids(tenant_id, member_id, agent_ids)
+    # 2026-10-01: saves WhatsApp numbers, not AI Agents. Endpoint name and
+    # permission key kept so existing roles keep working.
+    saved = _set_team_member_number_ids(tenant_id, member_id, request.form.getlist("wa_numbers"))
 
-    if agent_ids:
-        flash("Agent access updated. ✅", "success")
+    if saved:
+        flash("WhatsApp access updated. ✅", "success")
     else:
-        flash("Agent access updated — this person now sees nothing until an agent is assigned.", "warning")
+        flash("WhatsApp access updated — this person now sees no WhatsApp chats until a number is ticked.", "warning")
     return redirect(url_for("portal.team_page"))
 
 
@@ -4903,6 +4903,63 @@ def team_update_webchat(member_id: int):
         flash("Web Chat access granted. ✅", "success")
     else:
         flash("Web Chat access removed.", "warning")
+    return redirect(url_for("portal.team_page"))
+
+
+@portal_bp.route("/team/<int:member_id>/access", methods=["POST"])
+@team_feature("team.members_agent_access", "team.members_messenger_access",
+              "team.members_webchat_access", "team.members_alerts")
+def team_update_access(member_id: int):
+    """The Team page's single "Save changes" for one person's Access &
+    alerts panel (2026-10-01): WhatsApp numbers, Messenger, Web Chat and
+    chat alerts in one go. Each part is only saved if the person saving
+    is allowed to change it (same permission keys as the four older
+    one-part routes above, which stay for anything still posting to them);
+    parts they can't change are left exactly as they were."""
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.manage", "Team Management")
+    if r2: return r2
+    keys = ("team.members_agent_access", "team.members_messenger_access",
+            "team.members_webchat_access", "team.members_alerts")
+    may = {k: _team_member_has_permission(k) for k in keys}
+    if not any(may.values()):
+        flash("You don't have permission to change team access.", "danger")
+        return redirect(url_for("portal.team_page"))
+    tenant_id = int(customer["tenant_id"])
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("SELECT name FROM team_members WHERE id=%s AND tenant_id=%s", (member_id, tenant_id))
+    row = cur.fetchone()
+    if not row:
+        cur.close(); conn.close()
+        flash("Team member not found.", "danger")
+        return redirect(url_for("portal.team_page"))
+    name = row[0]
+
+    if may["team.members_alerts"]:
+        phone = _clean_alert_phone(request.form.get("alert_phone"), _tenant_country(tenant_id))
+        if phone is False:
+            cur.close(); conn.close()
+            flash("Nothing saved: that WhatsApp number for alerts doesn't look right. Use the full number, e.g. +2348012345678 or +447700900123.", "danger")
+            return redirect(url_for("portal.team_page", open=member_id))
+        cur.execute("UPDATE team_members SET alert_enabled=%s, alert_reminder=%s, alert_phone=%s WHERE id=%s",
+                    (request.form.get("alert_enabled") == "on", request.form.get("alert_reminder") == "on",
+                     phone, member_id))
+    if may["team.members_messenger_access"] and request.form.get("has_messenger"):
+        cur.execute("UPDATE team_members SET messenger_access=%s WHERE id=%s",
+                    (request.form.get("messenger_access") == "on", member_id))
+    if may["team.members_webchat_access"]:
+        cur.execute("UPDATE team_members SET webchat_access=%s WHERE id=%s",
+                    (request.form.get("webchat_access") == "on", member_id))
+    conn.commit()
+    cur.close(); conn.close()
+    if may["team.members_agent_access"]:
+        _set_team_member_number_ids(tenant_id, member_id, request.form.getlist("wa_numbers"))
+
+    flash(f"Access & alerts saved for {name}. ✅", "success")
     return redirect(url_for("portal.team_page"))
 
 
@@ -12406,7 +12463,7 @@ def _get_wa_connection(tenant_id: int) -> dict | None:
             FROM wa_tenants wt
             LEFT JOIN tenant_agents ta ON ta.id = wt.agent_id
             WHERE wt.tenant_id = %s AND wt.active = TRUE
-            ORDER BY wt.id DESC LIMIT 1
+            ORDER BY wt.id ASC LIMIT 1
         """, (tenant_id,))
         row = cur.fetchone()
         cur.close(); conn.close()
@@ -12425,7 +12482,7 @@ def _get_wa_connections_all(tenant_id: int) -> list:
             SELECT wt.id, wt.phone_number_id, wt.waba_id, wt.verify_token, wt.active,
                    wt.created_at, wt.signup_method, wt.display_phone_number,
                    wt.verified_name, wt.token_expires_at, wt.app_secret,
-                   wt.typing_ack_text, wt.agent_id, ta.name AS agent_name
+                   wt.typing_ack_text, wt.agent_id, ta.name AS agent_name, wt.label
             FROM wa_tenants wt
             LEFT JOIN tenant_agents ta ON ta.id = wt.agent_id
             WHERE wt.tenant_id = %s
@@ -12498,7 +12555,7 @@ def _get_wa_connection_any(tenant_id: int) -> dict | None:
                    wt.agent_id, ta.name AS agent_name
             FROM wa_tenants wt
             LEFT JOIN tenant_agents ta ON ta.id = wt.agent_id
-            WHERE wt.tenant_id = %s ORDER BY wt.id DESC LIMIT 1
+            WHERE wt.tenant_id = %s ORDER BY wt.active DESC, wt.id ASC LIMIT 1
         """, (tenant_id,))
         row = cur.fetchone()
         cur.close(); conn.close()
@@ -13346,6 +13403,36 @@ def whatsapp_history_import_delete(batch_id: int):
     return redirect(url_for("portal.whatsapp_history_import"))
 
 
+@portal_bp.route("/whatsapp/<int:wa_id>/name", methods=["POST"])
+@team_feature("wa.connect_manage")
+def whatsapp_name_number(wa_id: int):
+    """Give one WhatsApp number a short name, e.g. "Sales" or "Support
+    line" (2026-10-01). Shown under the number here and on the Team access
+    panel, so staff access is easy to tell apart. Blank clears it."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("wa.connect_manage")
+    if _rperm: return _rperm
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    label = " ".join((request.form.get("label") or "").split())[:60] or None
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("UPDATE wa_tenants SET label=%s WHERE id=%s AND tenant_id=%s", (label, wa_id, tenant_id))
+        found = cur.rowcount
+        conn.commit()
+        cur.close(); conn.close()
+        if not found:
+            flash("Number not found.", "danger")
+        else:
+            flash(f"Number named \"{label}\"." if label else "Number name removed.", "success")
+    except Exception as e:
+        print("⚠️ whatsapp_name_number error:", e)
+        flash("Could not save the name. Please try again.", "danger")
+    return redirect(url_for("portal.whatsapp_connect"))
+
+
 @portal_bp.route("/whatsapp/<int:wa_id>/assign-agent", methods=["POST"])
 @team_feature("wa.connect_manage")
 def whatsapp_assign_agent(wa_id: int):
@@ -13691,7 +13778,7 @@ def whatsapp_check_token():
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT access_token, phone_number_id FROM wa_tenants WHERE tenant_id=%s AND active=TRUE LIMIT 1",
+        cur.execute("SELECT access_token, phone_number_id FROM wa_tenants WHERE tenant_id=%s AND active=TRUE ORDER BY id ASC LIMIT 1",
                     (tenant_id,))
         row = cur.fetchone()
         cur.close(); conn.close()
@@ -13866,7 +13953,7 @@ def inbox_takeover():
         # Get phone_number_id to build the correct session_id
         cur.execute("""
             SELECT phone_number_id FROM wa_tenants
-            WHERE tenant_id = %s AND active = TRUE LIMIT 1
+            WHERE tenant_id = %s AND active = TRUE ORDER BY id ASC LIMIT 1
         """, (tenant_id,))
         wa_row = cur.fetchone()
         if not wa_row:
@@ -21260,7 +21347,7 @@ def _get_tenant_wa_creds(tenant_id: int) -> dict | None:
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             SELECT phone_number_id, access_token
-            FROM wa_tenants WHERE tenant_id = %s AND active = TRUE LIMIT 1
+            FROM wa_tenants WHERE tenant_id = %s AND active = TRUE ORDER BY id ASC LIMIT 1
         """, (tenant_id,))
         row = cur.fetchone()
         cur.close(); conn.close()
@@ -25897,21 +25984,22 @@ def _score_lead(conv: dict, messages: list | None = None) -> dict:
     return {"score": min(score, 100), "tier": tier, "signals": matched}
 
 
-def _get_inbox_conversations(tenant_id: int, allowed_agent_ids=None) -> list:
+def _get_inbox_conversations(tenant_id: int, allowed_number_ids=None) -> list:
     """Return one row per contact, sorted by most recent message, with display name and handoff status.
 
-    `allowed_agent_ids`: None = no restriction (the owner sees everything, as
+    `allowed_number_ids`: None = no restriction (the owner sees everything, as
     always). A set/list = a scoped team member — only conversations whose
-    resolved AI agent is in that set are returned. An EMPTY set means the
-    team member has no agents assigned yet, so they see nothing at all —
-    short-circuits before hitting the DB, per the explicit deny-by-default
-    requirement (a team member is never implicitly granted access)."""
-    if allowed_agent_ids is not None and len(allowed_agent_ids) == 0:
+    last message came in on one of those WhatsApp numbers (phone_number_id)
+    are returned (2026-10-01, was per AI Agent). An EMPTY set means no
+    numbers ticked, so they see nothing at all — short-circuits before
+    hitting the DB, per the explicit deny-by-default requirement (a team
+    member is never implicitly granted access)."""
+    if allowed_number_ids is not None and len(allowed_number_ids) == 0:
         return []
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        agent_filter_sql = "AND wt.agent_id = ANY(%s)" if allowed_agent_ids is not None else ""
+        number_filter_sql = "AND base.last_phone_number_id = ANY(%s)" if allowed_number_ids is not None else ""
         cur.execute(f"""
             SELECT
                 base.*,
@@ -25989,10 +26077,10 @@ def _get_inbox_conversations(tenant_id: int, allowed_agent_ids=None) -> list:
             LEFT JOIN wa_conversation_assignments asn
                    ON asn.tenant_id = %s
                   AND asn.customer_phone = base.customer_phone
-            WHERE 1=1 {agent_filter_sql}
+            WHERE 1=1 {number_filter_sql}
             ORDER BY base.last_message_at DESC
         """, (tenant_id, tenant_id, tenant_id, tenant_id, tenant_id, tenant_id, tenant_id, tenant_id, tenant_id)
-             + ((list(allowed_agent_ids),) if allowed_agent_ids is not None else ()))
+             + ((list(allowed_number_ids),) if allowed_number_ids is not None else ()))
         rows = cur.fetchall() or []
         cur.close(); conn.close()
         # Attach lead scores (lightweight — no extra DB queries)
@@ -26409,9 +26497,9 @@ def my_inbox():
     has_team = _tenant_has_team(tenant_id)
     actor    = _current_actor(customer)
 
-    # Agent-scoped access: a team member only sees conversations from the AI
-    # Agent(s) they've been assigned to. None = no restriction (owner).
-    allowed_agent_ids = _get_team_member_agent_ids(actor["team_member_id"]) if actor["is_team"] else None
+    # Number-scoped access: a team member only sees conversations on the
+    # WhatsApp number(s) ticked for them. None = no restriction (owner).
+    allowed_number_ids = _get_team_member_number_ids(actor["team_member_id"]) if actor["is_team"] else None
 
     # Mark all current messages as seen (stamp now so badge resets)
     from datetime import datetime as _dt
@@ -26424,7 +26512,7 @@ def my_inbox():
     is_webchat_active   = bool(active_phone and active_phone.startswith("web:"))
 
     if connection:
-        conversations = _get_inbox_conversations(tenant_id, allowed_agent_ids=allowed_agent_ids)
+        conversations = _get_inbox_conversations(tenant_id, allowed_number_ids=allowed_number_ids)
         for c in conversations:
             c["agent_color"] = agent_color_by_number.get(c.get("last_phone_number_id"))
         # A directly-typed ?phone= must also respect the agent scope — don't
@@ -26466,7 +26554,7 @@ def my_inbox():
     except Exception as e:
         print("⚠️ messenger_pages lookup error:", e)
 
-    # Same team gate as WhatsApp's allowed_agent_ids, via Messenger's own
+    # Same team gate as WhatsApp's allowed_number_ids, via Messenger's own
     # explicit switch (team_members.messenger_access) — owners are always
     # allowed. Read side, matching the write-side check already in
     # _team_can_access_phone for reply/claim/release. Urgent fix, 2026-09-11.
@@ -26511,7 +26599,7 @@ def my_inbox():
         has_team=has_team,
         current_actor_key=actor["key"],
         is_team_member=session.get("team_member_id") is not None,
-        no_agents_assigned=(actor["is_team"] and allowed_agent_ids is not None and len(allowed_agent_ids) == 0),
+        no_agents_assigned=(actor["is_team"] and allowed_number_ids is not None and len(allowed_number_ids) == 0),
         ai_enabled=ai_enabled,
         messenger_pages=messenger_pages,
         messenger_conversations=messenger_conversations,
@@ -26595,7 +26683,7 @@ def inbox_reply(phone: str):
             cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute(
                 "SELECT phone_number_id, access_token FROM wa_tenants "
-                "WHERE tenant_id=%s AND active=TRUE LIMIT 1",
+                "WHERE tenant_id=%s AND active=TRUE ORDER BY id ASC LIMIT 1",
                 (tenant_id,)
             )
             wa = cur.fetchone()
@@ -26720,9 +26808,9 @@ def inbox_api_poll():
     tenant_id = int(customer["tenant_id"])
     phone     = request.args.get("phone", "")
     actor     = _current_actor(customer)
-    allowed_agent_ids = _get_team_member_agent_ids(actor["team_member_id"]) if actor["is_team"] else None
+    allowed_number_ids = _get_team_member_number_ids(actor["team_member_id"]) if actor["is_team"] else None
 
-    convs = _get_inbox_conversations(tenant_id, allowed_agent_ids=allowed_agent_ids)
+    convs = _get_inbox_conversations(tenant_id, allowed_number_ids=allowed_number_ids)
     agent_color_by_number = {t["phone_number_id"]: t["color"] for t in _get_inbox_agent_tabs(tenant_id)}
     for c in convs:
         c["agent_color"] = agent_color_by_number.get(c.get("last_phone_number_id"))
@@ -27663,7 +27751,7 @@ def reports_page():
         FROM wa_product_cache wpc
         WHERE wpc.last_viewed_at IS NOT NULL
           AND wpc.session_id LIKE 'wa-meta-' || (
-              SELECT phone_number_id FROM wa_tenants WHERE tenant_id=%s LIMIT 1
+              SELECT phone_number_id FROM wa_tenants WHERE tenant_id=%s ORDER BY active DESC, id ASC LIMIT 1
           ) || '-%%'
         GROUP BY wpc.product_id
         ORDER BY views DESC

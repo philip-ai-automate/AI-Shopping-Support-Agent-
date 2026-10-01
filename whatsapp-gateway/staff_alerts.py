@@ -104,22 +104,19 @@ def init_staff_alert_tables() -> None:
 # ── Who is alerted ───────────────────────────────────────────────────────────
 
 def _recipients(cur, tenant_id: int, phone_number_id: str) -> list:
-    """Active team members with alerts on who can see chats on this number.
-    A number tied to an AI agent is only visible to members assigned that
-    agent (same "zero rows = zero access" rule as the Inbox)."""
-    cur.execute("SELECT agent_id FROM wa_tenants WHERE tenant_id=%s AND phone_number_id=%s LIMIT 1",
-                (tenant_id, phone_number_id))
-    row = cur.fetchone()
-    agent_id = row["agent_id"] if row else None
+    """Active team members with alerts on who can answer chats on this
+    number — i.e. have it ticked on the Team page (team_member_numbers,
+    2026-10-01, was per AI agent). Same "zero rows = zero access" rule as
+    the Inbox, so nobody is alerted about a chat they can't open; when
+    nobody qualifies the caller falls back to the owner's email."""
     cur.execute("""
         SELECT tm.id, tm.name, tm.email, tm.alert_phone, tm.alert_reminder
           FROM team_members tm
          WHERE tm.tenant_id = %s AND tm.is_active AND tm.alert_enabled
-           AND (%s::int IS NULL OR EXISTS (
-                 SELECT 1 FROM team_member_agents a
-                  WHERE a.team_member_id = tm.id AND a.tenant_agent_id = %s::int))
+           AND EXISTS (SELECT 1 FROM team_member_numbers n
+                        WHERE n.team_member_id = tm.id AND n.phone_number_id = %s)
          ORDER BY tm.id
-    """, (tenant_id, agent_id, agent_id))
+    """, (tenant_id, phone_number_id))
     return [dict(r, kind="member") for r in cur.fetchall() or []]
 
 

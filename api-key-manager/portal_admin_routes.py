@@ -1032,8 +1032,12 @@ def customer_detail(customer_id: int):
 
     conn4 = get_db_connection()
     cur4 = conn4.cursor()
-    cur4.execute("SELECT 1 FROM wa_tenants WHERE tenant_id=%s AND active=TRUE LIMIT 1", (tenant_id,))
-    wa_connected = cur4.fetchone() is not None
+    cur4.execute("""
+        SELECT id, display_phone_number, phone_number_id, COALESCE(ai_enabled, TRUE) AS ai_enabled
+          FROM wa_tenants WHERE tenant_id=%s AND active=TRUE ORDER BY id ASC
+    """, (tenant_id,))
+    wa_numbers = [{"id": r[0], "display": r[1] or r[2], "ai_enabled": r[3]} for r in cur4.fetchall()]
+    wa_connected = bool(wa_numbers)
     cur4.close(); conn4.close()
 
     # Meta Business AI migration wizard step — one number so the admin page
@@ -1063,6 +1067,7 @@ def customer_detail(customer_id: int):
                            email_sender=email_sender,
                            sales_managers=_portal_sales_managers(),
                            wa_connected=wa_connected,
+                           wa_numbers=wa_numbers,
                            meta_wizard_step=meta_wizard_step,
                            admin_new_plain_key=session.pop("admin_new_plain_key", None))
 
@@ -1398,6 +1403,48 @@ def customer_toggle_ai(customer_id: int):
                      tenant_id=tenant_id,
                      details={"customer_id": customer_id, "new_ai_enabled": new_val})
     flash(f"AI replies {'turned on' if new_val else 'turned off'} for this business.", "success")
+    return redirect(url_for("portal_admin.customer_detail", customer_id=customer_id))
+
+
+@portal_admin_bp.route("/customers/<int:customer_id>/numbers/<int:wa_id>/toggle-ai", methods=["POST"])
+def customer_toggle_number_ai(customer_id: int, wa_id: int):
+    """PhiXtra-admin-only switch, per WhatsApp number (2026-10-01): e.g. keep
+    AI on a sales number and make a support number staff-only. The business
+    switch above still wins — AI replies only when both are on."""
+    r = _require_admin("customers", "modify")
+    if r: return r
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT tenant_id FROM customers WHERE id=%s", (customer_id,))
+    row = cur.fetchone()
+    if not row:
+        cur.close(); conn.close()
+        flash("Customer not found.", "danger")
+        return redirect(url_for("portal_admin.customers"))
+    tenant_id = int(row["tenant_id"])
+
+    cur.execute("SELECT display_phone_number, COALESCE(ai_enabled, TRUE) AS ai_enabled "
+                "FROM wa_tenants WHERE id=%s AND tenant_id=%s", (wa_id, tenant_id))
+    wrow = cur.fetchone()
+    if not wrow:
+        cur.close(); conn.close()
+        flash("That number isn't connected to this business.", "danger")
+        return redirect(url_for("portal_admin.customer_detail", customer_id=customer_id))
+    new_val = not bool(wrow["ai_enabled"])
+
+    cur2 = conn.cursor()
+    cur2.execute("UPDATE wa_tenants SET ai_enabled=%s WHERE id=%s AND tenant_id=%s",
+                 (new_val, wa_id, tenant_id))
+    conn.commit()
+    cur2.close(); cur.close(); conn.close()
+
+    insert_audit_log(admin_username=_admin_user(),
+                     action="admin_toggle_number_ai",
+                     tenant_id=tenant_id,
+                     details={"customer_id": customer_id, "wa_id": wa_id,
+                              "number": wrow["display_phone_number"], "new_ai_enabled": new_val})
+    flash(f"AI replies {'turned on' if new_val else 'turned off'} for {wrow['display_phone_number']}.", "success")
     return redirect(url_for("portal_admin.customer_detail", customer_id=customer_id))
 
 

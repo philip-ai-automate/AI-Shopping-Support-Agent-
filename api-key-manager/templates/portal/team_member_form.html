@@ -125,12 +125,13 @@
           {% endfor %}
         </select>
       </div>
-      {% if show_agent_picker and staff_can_open('portal.team_update_agents') %}
+      {% if wa_numbers and staff_can_open('portal.team_update_agents') %}
       <div class="agent-picker" style="margin-top:0;padding-top:0;border-top:none">
-        <div class="agent-picker-label">Which AI Agent(s) can they see? (leave blank and they'll see nothing until you assign one)</div>
+        <div class="agent-picker-label">Which WhatsApp numbers can they answer? (leave all unticked and they won't see any WhatsApp chats until you tick one)</div>
         <div class="agent-picker-list">
-          {% for a in assignable_agents %}
-          <label class="agent-check"><input type="checkbox" name="agent_ids" value="{{ a.id }}"/> {{ a.name }}</label>
+          {% for n in wa_numbers %}
+          <label class="agent-check"><input type="checkbox" name="wa_numbers" value="{{ n.phone_number_id }}" {% if wa_numbers|length == 1 %}checked{% endif %}/> {{ n.display|with_plus }}
+            <span style="font-size:11px;font-weight:700;border-radius:999px;padding:1px 7px;{% if n.ai_on %}background:#EFF4FF;color:#1E3A8A{% else %}background:#FFF4E0;color:#9A5B00{% endif %}">{{ 'AI replies' if n.ai_on else 'Staff only' }}</span></label>
           {% endfor %}
         </div>
       </div>

@@ -39,7 +39,8 @@
 .tm-header-actions{display:flex;gap:8px;flex-wrap:wrap}
 
 /* ── Shared tab bar across Members / Roles / Departments / Positions ── */
-.tm-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:22px}
+.tm-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:22px;overflow-x:auto;scrollbar-width:none}
+.tm-tab{white-space:nowrap}
 .tm-tab{padding:9px 14px;font-size:13px;font-weight:600;color:var(--muted);
         text-decoration:none;border-bottom:2px solid transparent;margin-bottom:-1px}
 .tm-tab:hover{color:var(--ink)}
@@ -59,7 +60,10 @@
 .tm-count{font-size:12.5px;color:var(--muted)}
 
 /* ── Directory table ── */
-.tm-table-wrap{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.tm-table-wrap{background:#fff;border:1px solid var(--line);border-radius:16px}
+/* not overflow:hidden — the ••• menu has to be able to drop below the last row */
+.tm-table thead th:first-child{border-top-left-radius:16px}
+.tm-table thead th:last-child{border-top-right-radius:16px}
 .tm-table{width:100%;border-collapse:collapse}
 .tm-table th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;
              color:var(--muted);font-weight:700;padding:11px 16px;border-bottom:1px solid var(--line);
@@ -86,7 +90,8 @@
 .tm-meta-line{font-size:12.5px;color:var(--ink)}
 .tm-meta-sub{font-size:11.5px;color:var(--muted);margin-top:1px}
 
-.tm-actions-cell{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.tm-actions-cell{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;justify-content:flex-end}
+@media(max-width:760px){.tm-actions-cell{flex-wrap:wrap}}
 .btn-edit{background:#f4f4f6;color:var(--ink);border:1px solid var(--line);border-radius:8px;
           padding:6px 11px;font-size:11.5px;font-weight:600;cursor:pointer;
           text-decoration:none;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
@@ -95,25 +100,76 @@
          padding:6px 10px;font-size:11.5px;font-weight:600;cursor:pointer;transition:.15s}
 .btn-del:hover{background:#FEE4E2}
 
-/* ── Expandable "manage access" panel per row ── */
-.tm-manage{margin:0}
-.tm-manage > summary{list-style:none;cursor:pointer;font-size:11.5px;font-weight:600;
-                      color:var(--ink);display:inline-flex;align-items:center;gap:4px;padding:8px 16px}
-.tm-manage > summary::-webkit-details-marker{display:none}
-.tm-manage > summary::after{content:'▾';font-size:9px;opacity:.6;transition:transform .15s}
-.tm-manage[open] > summary::after{transform:rotate(180deg)}
-.tm-manage-row td{background:#fafbfc;padding:0}
-.tm-manage-body{padding:16px 20px;display:flex;flex-direction:column;gap:14px}
-.tm-manage-block{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
-.tm-manage-label{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);
-                  font-weight:700;min-width:110px}
-.tm-agent-tag{font-size:11px;font-weight:600;background:#EFF4FF;color:#1E3A8A;
-              border:1px solid #C7D7FD;border-radius:999px;padding:2px 9px}
-.tm-agent-tag.off{background:#F4F4F6;color:var(--muted);border-color:var(--line)}
-.agent-check{font-size:12.5px;display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;
-             color:var(--ink);white-space:nowrap}
-/* the portal's global input rule (width:100%, padding) stretched these tick boxes */
-.agent-check input[type=checkbox]{width:16px;height:16px;padding:0;margin:0;flex:none;accent-color:var(--ink)}
+/* ── Access & alerts panel per row (2026-10-01 enterprise redesign):
+     two cards with switches, one Save bar; risky actions in a ••• menu ── */
+.tm-manage-row td{background:#F8FAFC;padding:0;border-bottom:1px solid var(--line)}
+.tm-manage-row[hidden]{display:none!important}
+.tm-access-btn[aria-expanded="true"]{background:#E8EEF8;border-color:#C9D6EE;color:#0B1D40}
+.tm-ico{width:14px;height:14px;flex:none}
+.tm-access-form{padding:18px 20px;display:flex;flex-direction:column;gap:14px}
+.tm-cols{display:grid;grid-template-columns:1.35fr 1fr;gap:14px;align-items:start}
+@media(max-width:900px){.tm-cols{grid-template-columns:1fr}}
+.tm-card{background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;min-width:0}
+.tm-card-h{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:4px 12px;
+           padding:11px 16px;border-bottom:1px solid #EEF1F5}
+.tm-card-h h3{margin:0;font-size:13px;font-weight:700;color:var(--ink)}
+.tm-card-h span{font-size:12px;color:var(--muted)}
+.tm-group{padding:2px 16px 6px}
+.tm-group+.tm-group{border-top:1px solid #EEF1F5}
+.tm-g-title{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;letter-spacing:.06em;
+            text-transform:uppercase;color:var(--muted);padding:10px 0 2px}
+.tm-g-title .tm-ico{color:#0B1D40}
+.tm-item{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 0}
+.tm-item+.tm-item{border-top:1px dashed #EEF1F5}
+.tm-item-main{min-width:0}
+.tm-item-main b{font-size:13px;font-weight:600;color:var(--ink)}
+.tm-item-main small{display:block;font-size:12px;color:var(--muted);margin-top:1px}
+.tm-num{font-variant-numeric:tabular-nums;letter-spacing:.01em}
+.wa-mode{display:inline-block;font-size:10.5px;font-weight:700;border-radius:4px;padding:1px 6px;margin-left:8px;
+         vertical-align:1px;background:#E8EEF8;color:#0B1D40}
+.wa-mode.staff{background:#FEF6EE;color:#93370D}
+.tm-empty-line{font-size:12.5px;color:var(--muted);padding:6px 0 10px}
+/* switch */
+.tm-sw{position:relative;display:inline-block;width:36px;height:20px;flex:none;margin:0}
+.tm-sw input{position:absolute;inset:0;opacity:0;width:100%!important;height:100%!important;margin:0!important;padding:0!important;cursor:pointer;z-index:1}
+.tm-sw span{position:absolute;inset:0;border-radius:999px;background:#D0D5DD;transition:background .15s;pointer-events:none}
+.tm-sw span::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;
+                   box-shadow:0 1px 2px rgba(16,24,40,.3);transition:transform .15s}
+.tm-sw input:checked+span{background:#0B1D40}
+.tm-sw input:checked+span::after{transform:translateX(16px)}
+.tm-sw input:disabled{cursor:not-allowed}
+.tm-sw input:disabled+span{opacity:.4}
+.tm-sw input:focus-visible+span{outline:2px solid #0B1D40;outline-offset:2px}
+@media (prefers-reduced-motion: reduce){.tm-sw span,.tm-sw span::after{transition:none}}
+.tm-field{display:flex;flex-direction:column;gap:4px;padding:10px 0 14px}
+.tm-field label{font-size:12.5px;font-weight:600;color:var(--ink)}
+.tm-field input{font-size:13px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;width:100%;
+                font-variant-numeric:tabular-nums}
+.tm-field input:focus{outline:2px solid #0B1D40;outline-offset:0;border-color:#0B1D40}
+.tm-field small{font-size:12px;color:var(--muted)}
+.tm-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.tm-status{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
+.tm-dot{width:8px;height:8px;border-radius:50%;background:#98A2B3}
+.tm-access-form.dirty .tm-dot{background:#F79009}
+.tm-foot-btns{display:flex;gap:8px}
+.tm-save{background:#0B1D40;color:#fff;border:1px solid #0B1D40;border-radius:8px;padding:7px 14px;
+         font-size:12.5px;font-weight:600;cursor:pointer}
+.tm-save:hover{background:#1C3366}
+.tm-save:disabled,.tm-cancel:disabled{opacity:.45;cursor:not-allowed}
+/* ••• menu */
+.tm-more{position:relative}
+.tm-more-btn{letter-spacing:1px;padding:6px 10px}
+.tm-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:30;min-width:190px;background:#fff;border:1px solid var(--line);
+         border-radius:10px;box-shadow:0 12px 32px rgba(16,24,40,.14);padding:6px;display:flex;flex-direction:column}
+.tm-menu[hidden]{display:none}
+.tm-menu form{margin:0}
+.tm-menu-item{display:block;width:100%;text-align:left;background:none;border:0;border-radius:6px;padding:8px 10px;
+              font-size:12.5px;font-weight:500;color:var(--ink);cursor:pointer}
+.tm-menu-item:hover,.tm-menu-item:focus-visible{background:#F2F4F7;outline:none}
+.tm-menu-item:disabled{opacity:.45;cursor:not-allowed}
+.tm-menu-sep{height:1px;background:var(--line);margin:4px 2px}
+.tm-menu-item.danger{color:#B42318}
+.tm-menu-item.danger:hover{background:#FEF3F2}
 
 /* ── Empty state ── */
 .empty-state{text-align:center;padding:56px 24px;color:var(--muted)}
@@ -301,99 +357,140 @@
             </div>
           </td>
           <td>
+            {% set _ca = staff_can_open('portal.team_update_agents') %}{% set _cm = staff_can_open('portal.team_update_messenger') %}
+            {% set _cw = staff_can_open('portal.team_update_webchat') %}{% set _cal = staff_can_open('portal.team_update_alerts') %}
+            {% set _access = _ca or _cm or _cw or _cal %}
+            {% set _cd = staff_can_open('portal.team_deactivate') %}{% set _cr = staff_can_open('portal.team_reset_password') %}
+            {% set _cx = staff_can_open('portal.team_remove') %}
             <div class="tm-actions-cell">
+              {% if _access %}
+              <button type="button" class="btn-edit tm-access-btn" aria-expanded="false" aria-controls="tmAccess{{ m.id }}"
+                      onclick="tmToggleAccess({{ m.id }})">
+                <svg class="tm-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M8 2.5 3 4.5v3.2c0 3 2.1 5.2 5 5.8 2.9-.6 5-2.8 5-5.8V4.5z"/></svg>
+                Access &amp; alerts
+              </button>
+              {% endif %}
               {% if staff_can_open('portal.team_edit') %}
               <a href="{{ url_for('portal.team_edit', member_id=m.id) }}" class="btn-edit">Edit</a>
               {% endif %}
-              {% if not staff_can_open('portal.team_deactivate') %}
-              {% elif m.is_active %}
-              <form method="POST" action="{{ url_for('portal.team_deactivate', member_id=m.id) }}"
-                    onsubmit="return confirm('Deactivate {{ m.name }}? They will no longer be able to log in.')">
-                <button type="submit" class="btn-edit">Deactivate</button>
-              </form>
-              {% else %}
-              <form method="POST" action="{{ url_for('portal.team_activate', member_id=m.id) }}">
-                <button type="submit" class="btn-edit" {% if seats_left <= 0 %}disabled style="opacity:.5;cursor:not-allowed"{% endif %}>Re-activate</button>
-              </form>
-              {% endif %}
-              {% if staff_can_open('portal.team_reset_password') %}
-              <form method="POST" action="{{ url_for('portal.team_reset_password', member_id=m.id) }}"
-                    onsubmit="return confirm('Reset the password for {{ m.name }}? Their old password will stop working immediately, and the new one is only shown once.')">
-                <button type="submit" class="btn-edit">Reset Password</button>
-              </form>
-              {% endif %}
-              {% if staff_can_open('portal.team_remove') %}
-              <form method="POST" action="{{ url_for('portal.team_remove', member_id=m.id) }}"
-                    onsubmit="return confirm('Remove {{ m.name }} completely? This can\'t be undone.')">
-                <button type="submit" class="btn-del">Remove</button>
-              </form>
+              {% if _cd or _cr or _cx %}
+              <div class="tm-more">
+                <button type="button" class="btn-edit tm-more-btn" aria-haspopup="menu" aria-expanded="false"
+                        aria-label="More actions for {{ m.name }}" onclick="tmToggleMenu(this)">•••</button>
+                <div class="tm-menu" role="menu" hidden>
+                  {% if _cd and m.is_active %}
+                  <form method="POST" action="{{ url_for('portal.team_deactivate', member_id=m.id) }}"
+                        onsubmit="return confirm('Deactivate {{ m.name }}? They will no longer be able to log in.')">
+                    <button type="submit" class="tm-menu-item" role="menuitem">Deactivate</button>
+                  </form>
+                  {% elif _cd %}
+                  <form method="POST" action="{{ url_for('portal.team_activate', member_id=m.id) }}">
+                    <button type="submit" class="tm-menu-item" role="menuitem" {% if seats_left <= 0 %}disabled title="No seats left on your plan"{% endif %}>Re-activate</button>
+                  </form>
+                  {% endif %}
+                  {% if _cr %}
+                  <form method="POST" action="{{ url_for('portal.team_reset_password', member_id=m.id) }}"
+                        onsubmit="return confirm('Reset the password for {{ m.name }}? Their old password will stop working immediately, and the new one is only shown once.')">
+                    <button type="submit" class="tm-menu-item" role="menuitem">Reset password</button>
+                  </form>
+                  {% endif %}
+                  {% if _cx %}
+                  {% if _cd or _cr %}<div class="tm-menu-sep" role="separator"></div>{% endif %}
+                  <form method="POST" action="{{ url_for('portal.team_remove', member_id=m.id) }}"
+                        onsubmit="return confirm('Remove {{ m.name }} completely? This can\'t be undone.')">
+                    <button type="submit" class="tm-menu-item danger" role="menuitem">Remove</button>
+                  </form>
+                  {% endif %}
+                </div>
+              </div>
               {% endif %}
             </div>
           </td>
         </tr>
-        {# Manage row always renders — Web Chat's toggle has no gating
-           condition (unlike Agents/Messenger below), so it must never be
-           nested inside one or it becomes unreachable for a single-agent
-           business with no Messenger connected. #}
-        {% set _ca = staff_can_open('portal.team_update_agents') %}{% set _cm = staff_can_open('portal.team_update_messenger') %}
-        {% set _cw = staff_can_open('portal.team_update_webchat') %}{% set _cal = staff_can_open('portal.team_update_alerts') %}
-        {% if _ca or _cm or _cw or _cal %}
-        <tr class="tm-manage-row" data-search="{{ (m.name ~ ' ' ~ m.email)|lower }}">
+        {% if _access %}
+        {% set _first = (m.first_name or m.name.split(' ')[0]) %}
+        <tr class="tm-manage-row" id="tmAccess{{ m.id }}" data-search="{{ (m.name ~ ' ' ~ m.email)|lower }}" hidden>
           <td colspan="6">
-            <details class="tm-manage">
-              <summary>⚙️ Manage channel access &amp; chat alerts</summary>
-              <div class="tm-manage-body">
-                {% if show_agent_picker and _ca %}
-                <div class="tm-manage-block">
-                  <span class="tm-manage-label">AI Agents</span>
-                  {% if m.assigned_agent_names %}
-                    {% for nm in m.assigned_agent_names %}<span class="tm-agent-tag">🤖 {{ nm }}</span>{% endfor %}
-                  {% else %}
-                    <span class="tm-agent-tag off">No agent assigned — sees nothing</span>
-                  {% endif %}
-                  <form method="POST" action="{{ url_for('portal.team_update_agents', member_id=m.id) }}" style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-left:8px">
-                    {% for a in assignable_agents %}
-                    <label class="agent-check"><input type="checkbox" name="agent_ids" value="{{ a.id }}" {% if a.id in m.assigned_agent_ids %}checked{% endif %}/> {{ a.name }}</label>
+            <form method="POST" action="{{ url_for('portal.team_update_access', member_id=m.id) }}" class="tm-access-form">
+              <div class="tm-cols">
+                {% if _ca or _cm or _cw %}
+                <div class="tm-card">
+                  <div class="tm-card-h"><h3>Channel access</h3><span>Which conversations {{ _first }} can open and answer</span></div>
+                  {% if _ca %}
+                  <div class="tm-group">
+                    <div class="tm-g-title"><svg class="tm-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2.5 13.5l.9-2.9A5.5 5.5 0 1 1 5.6 12.7z"/></svg>WhatsApp numbers</div>
+                    {% for n in wa_numbers %}
+                    <div class="tm-item">
+                      <div class="tm-item-main">
+                        <b class="tm-num">{{ n.display|with_plus }}</b><span class="wa-mode{{ '' if n.ai_on else ' staff' }}">{{ 'AI replies' if n.ai_on else 'Staff only' }}</span>
+                        {% if n.label %}<small>{{ n.label }}</small>{% endif %}
+                      </div>
+                      <label class="tm-sw"><input type="checkbox" name="wa_numbers" value="{{ n.phone_number_id }}"
+                             {% if n.phone_number_id in m.wa_number_ids %}checked{% endif %}
+                             aria-label="{{ _first }} can answer {{ n.display|with_plus }}"><span></span></label>
+                    </div>
+                    {% else %}
+                    <div class="tm-empty-line">No WhatsApp number connected yet.</div>
                     {% endfor %}
-                    <button type="submit" class="btn-edit">Save</button>
-                  </form>
-                </div>
-                {% endif %}
-                {% if messenger_connected and _cm %}
-                <div class="tm-manage-block">
-                  <span class="tm-manage-label">Messenger</span>
-                  <span class="tm-agent-tag {{ '' if m.messenger_access else 'off' }}">{{ 'Enabled' if m.messenger_access else 'Off' }}</span>
-                  <form method="POST" action="{{ url_for('portal.team_update_messenger', member_id=m.id) }}">
-                    <label class="agent-check"><input type="checkbox" name="messenger_access" {% if m.messenger_access %}checked{% endif %} onchange="this.form.submit()"/> Can access Facebook Messenger</label>
-                  </form>
-                </div>
-                {% endif %}
-                {% if _cw %}
-                <div class="tm-manage-block">
-                  <span class="tm-manage-label">Web Chat</span>
-                  <span class="tm-agent-tag {{ '' if m.webchat_access else 'off' }}">{{ 'Enabled' if m.webchat_access else 'Off' }}</span>
-                  <form method="POST" action="{{ url_for('portal.team_update_webchat', member_id=m.id) }}">
-                    <label class="agent-check"><input type="checkbox" name="webchat_access" {% if m.webchat_access %}checked{% endif %} onchange="this.form.submit()"/> Can access Web Chat (website AI chat handoffs)</label>
-                  </form>
+                  </div>
+                  {% endif %}
+                  {% if _cw or _cm %}
+                  <div class="tm-group">
+                    <div class="tm-g-title"><svg class="tm-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="2" y="3" width="12" height="9" rx="1.5"/><path d="M5 14h6"/></svg>Website &amp; social</div>
+                    {% if _cw %}
+                    <div class="tm-item">
+                      <div class="tm-item-main"><b>Web Chat</b><small>Chats handed over from the website AI</small></div>
+                      <label class="tm-sw"><input type="checkbox" name="webchat_access" {% if m.webchat_access %}checked{% endif %}
+                             aria-label="{{ _first }} can answer Web Chat"><span></span></label>
+                    </div>
+                    {% endif %}
+                    {% if _cm %}
+                    <div class="tm-item">
+                      <div class="tm-item-main"><b>Facebook Messenger</b>
+                        <small>{{ 'Chats from your Facebook Page' if messenger_connected else 'Available once a Facebook Page is connected' }}</small></div>
+                      {% if messenger_connected %}<input type="hidden" name="has_messenger" value="1">{% endif %}
+                      <label class="tm-sw"><input type="checkbox" name="messenger_access"
+                             {% if messenger_connected and m.messenger_access %}checked{% endif %}
+                             {% if not messenger_connected %}disabled{% endif %}
+                             aria-label="{{ _first }} can answer Facebook Messenger"><span></span></label>
+                    </div>
+                    {% endif %}
+                  </div>
+                  {% endif %}
                 </div>
                 {% endif %}
                 {% if _cal %}
-                <div class="tm-manage-block" style="flex-wrap:wrap">
-                  <span class="tm-manage-label">🔔 Chat alerts</span>
-                  <span class="tm-agent-tag {{ '' if m.alert_enabled else 'off' }}">{{ 'On' if m.alert_enabled else 'Off' }}</span>
-                  <form method="POST" action="{{ url_for('portal.team_update_alerts', member_id=m.id) }}"
-                        style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-left:8px">
-                    <label class="agent-check"><input type="checkbox" name="alert_enabled" {% if m.alert_enabled %}checked{% endif %}/> Alert when a chat needs a reply</label>
-                    <label class="agent-check"><input type="checkbox" name="alert_reminder" {% if m.alert_reminder is none or m.alert_reminder %}checked{% endif %}/> 10-minute reminder</label>
-                    <input type="tel" name="alert_phone" value="{{ m.alert_phone or '' }}" inputmode="tel"
-                           placeholder="Personal WhatsApp, e.g. +2348012345678"
-                           style="max-width:230px;padding:6px 10px;font-size:13px"/>
-                    <button type="submit" class="btn-edit">Save</button>
-                  </form>
+                <div class="tm-card">
+                  <div class="tm-card-h"><h3>Chat alerts</h3><span>Only for chats {{ _first }} can open</span></div>
+                  <div class="tm-group">
+                    <div class="tm-item">
+                      <div class="tm-item-main"><b>Alert when a chat needs a reply</b><small>WhatsApp and email, within seconds</small></div>
+                      <label class="tm-sw"><input type="checkbox" name="alert_enabled" {% if m.alert_enabled %}checked{% endif %}
+                             aria-label="Alert {{ _first }} when a chat needs a reply"><span></span></label>
+                    </div>
+                    <div class="tm-item">
+                      <div class="tm-item-main"><b>10-minute reminder</b><small>Only if nobody has replied yet</small></div>
+                      <label class="tm-sw"><input type="checkbox" name="alert_reminder" {% if m.alert_reminder is none or m.alert_reminder %}checked{% endif %}
+                             aria-label="10-minute reminder for {{ _first }}"><span></span></label>
+                    </div>
+                    <div class="tm-field">
+                      <label for="tmAlertPhone{{ m.id }}">Personal WhatsApp for alerts</label>
+                      <input id="tmAlertPhone{{ m.id }}" type="tel" name="alert_phone" value="{{ m.alert_phone or '' }}"
+                             inputmode="tel" placeholder="e.g. +2348012345678">
+                      <small>Email alerts go to {{ m.email }}</small>
+                    </div>
+                  </div>
                 </div>
                 {% endif %}
               </div>
-            </details>
+              <div class="tm-foot">
+                <div class="tm-status"><span class="tm-dot"></span><span class="tm-status-text">All changes saved</span></div>
+                <div class="tm-foot-btns">
+                  <button type="button" class="btn-edit tm-cancel" disabled>Cancel</button>
+                  <button type="submit" class="tm-save" disabled>Save changes</button>
+                </div>
+              </div>
+            </form>
           </td>
         </tr>
         {% endif %}
@@ -427,5 +524,56 @@ function tmFilter(){
   });
   document.getElementById('tmCount').textContent = visibleMembers + ' member' + (visibleMembers !== 1 ? 's' : '');
 }
+
+/* Access & alerts panel (2026-10-01) */
+function tmToggleAccess(id, forceOpen){
+  var row = document.getElementById('tmAccess' + id);
+  var btn = document.querySelector('[aria-controls="tmAccess' + id + '"]');
+  if (!row) return;
+  var open = forceOpen === true ? true : row.hidden;
+  row.hidden = !open;
+  if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+function tmCloseMenus(except){
+  document.querySelectorAll('.tm-menu').forEach(function(m){
+    if (m === except) return;
+    m.hidden = true;
+    var b = m.previousElementSibling; if (b) b.setAttribute('aria-expanded', 'false');
+  });
+}
+function tmToggleMenu(btn){
+  var menu = btn.nextElementSibling;
+  tmCloseMenus(menu);
+  menu.hidden = !menu.hidden;
+  btn.setAttribute('aria-expanded', menu.hidden ? 'false' : 'true');
+  if (!menu.hidden) { var first = menu.querySelector('.tm-menu-item:not([disabled])'); if (first) first.focus(); }
+}
+document.addEventListener('click', function(e){ if (!e.target.closest('.tm-more')) tmCloseMenus(null); });
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape') tmCloseMenus(null); });
+document.querySelectorAll('.tm-access-form').forEach(function(form){
+  var save = form.querySelector('.tm-save'), cancel = form.querySelector('.tm-cancel');
+  var text = form.querySelector('.tm-status-text');
+  function changed(){
+    return Array.prototype.some.call(form.elements, function(el){
+      if (el.type === 'checkbox') return el.checked !== el.defaultChecked;
+      if (el.type === 'tel' || el.type === 'text') return el.value !== el.defaultValue;
+      return false;
+    });
+  }
+  function refresh(){
+    var d = changed();
+    form.classList.toggle('dirty', d);
+    text.textContent = d ? 'Unsaved changes' : 'All changes saved';
+    save.disabled = !d; cancel.disabled = !d;
+  }
+  form.addEventListener('input', refresh);
+  form.addEventListener('change', refresh);
+  cancel.addEventListener('click', function(){ form.reset(); refresh(); });
+  form.addEventListener('submit', function(){ save.disabled = true; save.textContent = 'Saving…'; });
+});
+(function(){
+  var m = /[?&]open=(\d+)/.exec(location.search);
+  if (m) { tmToggleAccess(m[1], true); var r = document.getElementById('tmAccess' + m[1]); if (r) r.scrollIntoView({block:'center'}); }
+})();
 </script>
 {% endblock %}

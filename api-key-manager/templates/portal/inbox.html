@@ -739,11 +739,7 @@ html, body { overflow: hidden; height: 100%; }
         <div class="conv-empty-msg">
           {% if no_agents_assigned %}
           <div style="font-size:36px;opacity:.25;margin-bottom:10px">🔒</div>
-          {% if ai_enabled %}
-          No AI Agent has been assigned to you yet. Ask the business owner to assign one on the Team page before you can see any conversations.
-          {% else %}
-          No WhatsApp number has been assigned to you yet. Ask the business owner to assign one on the Team page before you can see any conversations.
-          {% endif %}
+          No WhatsApp number has been assigned to you yet. Ask the business owner to tick one for you on the Team page before you can see any conversations.
           {% else %}
           <div style="font-size:36px;opacity:.25;margin-bottom:10px">💬</div>
           Send a WhatsApp message to {{ (connection.display_phone_number or connection.phone_number_id)|with_plus }} to get started.

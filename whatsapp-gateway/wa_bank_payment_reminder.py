@@ -52,7 +52,7 @@ def _get_wa_creds(tenant_id: int) -> dict | None:
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cur.execute(
-            "SELECT phone_number_id, access_token FROM wa_tenants WHERE tenant_id=%s AND active=TRUE LIMIT 1",
+            "SELECT phone_number_id, access_token FROM wa_tenants WHERE tenant_id=%s AND active=TRUE ORDER BY id ASC LIMIT 1",
             (tenant_id,),
         )
         return cur.fetchone()

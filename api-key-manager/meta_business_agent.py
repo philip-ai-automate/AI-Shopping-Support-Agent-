@@ -57,7 +57,7 @@ def _get_wa_credentials(cur, tenant_id: int):
     """Returns (entity_id, access_token) for this tenant's connected WhatsApp
     number, or (None, None) if not connected yet — sync is a no-op then."""
     cur.execute(
-        "SELECT phone_number_id, access_token FROM wa_tenants WHERE tenant_id=%s AND active=TRUE LIMIT 1",
+        "SELECT phone_number_id, access_token FROM wa_tenants WHERE tenant_id=%s AND active=TRUE ORDER BY id ASC LIMIT 1",
         (tenant_id,),
     )
     row = cur.fetchone()
@@ -413,7 +413,7 @@ def sync_product_search_connector(tenant_id: int) -> dict:
         if not entity_id:
             return {"ok": False, "error": "No connected WhatsApp number yet."}
 
-        cur.execute("SELECT phixtra_api_key FROM wa_tenants WHERE tenant_id=%s AND active=TRUE LIMIT 1", (tenant_id,))
+        cur.execute("SELECT phixtra_api_key FROM wa_tenants WHERE tenant_id=%s AND active=TRUE ORDER BY id ASC LIMIT 1", (tenant_id,))
         row = cur.fetchone()
         phixtra_key = row["phixtra_api_key"] if row else None
         if not phixtra_key:

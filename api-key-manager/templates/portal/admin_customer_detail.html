@@ -94,6 +94,30 @@
           {% if customer.ai_enabled %}Turn AI off{% else %}Turn AI on{% endif %}
         </button>
       </form>
+
+      {% if wa_numbers %}
+      <!-- Per-number switch (2026-10-01) — e.g. AI on the sales number,
+           staff-only on the support number. Business switch above still wins. -->
+      <div style="margin-top:12px">
+        <div style="font-size:13px;font-weight:700;margin-bottom:4px">Per WhatsApp number</div>
+        <p class="muted" style="margin:0 0 6px;font-size:12px">
+          Turn AI off for one number to make it staff-only. The AI only replies on a number
+          when both this and the business switch above are on.
+        </p>
+        {% for n in wa_numbers %}
+        <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--line)">
+          <span style="flex:1;font-size:13px">{{ n.display }}</span>
+          {% if n.ai_enabled and customer.ai_enabled %}<span class="pill pill-green">AI: On</span>
+          {% elif n.ai_enabled %}<span class="pill pill-grey">AI: Off (business switch)</span>
+          {% else %}<span class="pill pill-grey">AI: Off</span>{% endif %}
+          <form method="POST" action="{{ url_for('portal_admin.customer_toggle_number_ai', customer_id=customer.id, wa_id=n.id) }}"
+                onsubmit="return confirm('{% if n.ai_enabled %}Turn AI replies OFF for {{ n.display }}? That number becomes staff-only.{% else %}Turn AI replies ON for {{ n.display }}?{% endif %}')">
+            <button type="submit" class="btn btn-sm">{% if n.ai_enabled %}Turn off{% else %}Turn on{% endif %}</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
     </div>
 
     <!-- ── Meta Business AI migration wizard — PhiXtra-admin-only, business never sees this ── -->

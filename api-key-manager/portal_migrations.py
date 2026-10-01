@@ -478,6 +478,18 @@ def ensure_portal_tables():
             # Defaults TRUE so every existing AI-product tenant is unaffected;
             # PhiXtra Connect signups explicitly set this FALSE at registration.
             cur.execute("ALTER TABLE tenants ADD COLUMN ai_enabled BOOLEAN NOT NULL DEFAULT TRUE")
+        if not _column_exists(cur, "wa_tenants", "ai_enabled"):
+            # Same PhiXtra-admin-only switch, per WhatsApp number (2026-10-01):
+            # a business with two numbers can keep AI on one (sales) and make
+            # the other staff-only (support). AI replies only when BOTH this
+            # and tenants.ai_enabled are on. Defaults TRUE — no change for
+            # any existing number.
+            cur.execute("ALTER TABLE wa_tenants ADD COLUMN ai_enabled BOOLEAN NOT NULL DEFAULT TRUE")
+        if not _column_exists(cur, "wa_tenants", "label"):
+            # A short name the business gives each WhatsApp number, e.g.
+            # "Sales" or "Support line" (2026-10-01) — shown under the number
+            # on the Connect page and the Team access panel. Optional.
+            cur.execute("ALTER TABLE wa_tenants ADD COLUMN label VARCHAR(60)")
         if not _column_exists(cur, "tenants", "crm_enabled"):
             # PhiXtra-admin-controlled switch: whether this tenant's Sales
             # Pipeline (CRM) pages are unlocked on PhiXtra Connect. Defaults
@@ -1863,6 +1875,33 @@ def ensure_portal_tables():
                     tenant_agent_id INTEGER NOT NULL REFERENCES tenant_agents(id) ON DELETE CASCADE,
                     PRIMARY KEY (team_member_id, tenant_agent_id)
                 )
+            """)
+
+        # ── team_member_numbers: which WhatsApp number(s) a team member may
+        # answer (2026-10-01). Replaces team_member_agents as the access rule —
+        # staff are given numbers, not AI Agents. Keyed by Meta's
+        # phone_number_id (not wa_tenants.id) so a number that's disconnected
+        # and reconnected keeps its staff. Same deny-by-default rule: zero
+        # rows = no WhatsApp chats. team_member_agents is kept, unused, as a
+        # rollback record. One-off carry-over: everyone gets every number
+        # their agent(s) were linked to, so nobody loses access.
+        if not _table_exists(cur, "team_member_numbers"):
+            cur.execute("""
+                CREATE TABLE team_member_numbers (
+                    team_member_id  INTEGER NOT NULL REFERENCES team_members(id) ON DELETE CASCADE,
+                    phone_number_id VARCHAR(64) NOT NULL,
+                    PRIMARY KEY (team_member_id, phone_number_id)
+                )
+            """)
+            cur.execute("""
+                INSERT INTO team_member_numbers (team_member_id, phone_number_id)
+                SELECT DISTINCT tma.team_member_id, wt.phone_number_id
+                  FROM team_member_agents tma
+                  JOIN team_members tm ON tm.id = tma.team_member_id
+                  JOIN wa_tenants wt ON wt.agent_id = tma.tenant_agent_id
+                                    AND wt.tenant_id = tm.tenant_id
+                 WHERE wt.phone_number_id IS NOT NULL
+                ON CONFLICT DO NOTHING
             """)
 
         # ── wa_conversation_assignments: "who's handling this chat" ────────────

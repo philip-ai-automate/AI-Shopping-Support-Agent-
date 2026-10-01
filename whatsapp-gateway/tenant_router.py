@@ -50,7 +50,7 @@ def get_wa_tenant_by_tenant_id(tenant_id: int) -> dict | None:
             SELECT phone_number_id, access_token
             FROM wa_tenants
             WHERE tenant_id = %s AND active = TRUE
-            ORDER BY id DESC LIMIT 1
+            ORDER BY id ASC LIMIT 1
             """,
             (tenant_id,),
         )
@@ -77,7 +77,8 @@ def get_tenant_by_phone_number_id(phone_number_id: str) -> dict | None:
             """
             SELECT wt.tenant_id, wt.phixtra_api_key, wt.access_token, wt.verify_token, wt.waba_id,
                    wt.app_secret, wt.typing_ack_text, wt.agent_id,
-                   COALESCE(t.ai_enabled, TRUE) AS ai_enabled,
+                   -- business switch AND this number's own switch (2026-10-01)
+                   (COALESCE(t.ai_enabled, TRUE) AND COALESCE(wt.ai_enabled, TRUE)) AS ai_enabled,
                    COALESCE(t.campaign_reply_auto_actions, TRUE) AS campaign_reply_auto_actions
             FROM wa_tenants wt
             JOIN tenants t ON t.id = wt.tenant_id
