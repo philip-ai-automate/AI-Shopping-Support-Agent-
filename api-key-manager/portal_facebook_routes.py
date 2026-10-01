@@ -353,18 +353,18 @@ def messenger_callback():
     tenant_id = int(customer["tenant_id"])
 
     data = request.get_json(silent=True) or {}
-    code = (data.get("code") or "").strip()
-    if not code:
-        return jsonify({"error": "No auth code received. Please try again."}), 400
+    login_token = (data.get("access_token") or "").strip()
+    if not login_token:
+        return jsonify({"error": "Facebook didn't send the login back. Please try again."}), 400
 
     app_id     = os.getenv("META_APP_ID", "")
     app_secret = os.getenv("META_APP_SECRET", "")
     if not app_id or not app_secret:
         return jsonify({"error": "Meta App credentials are not configured on this server. Contact support."}), 500
 
-    token, _expires = _exchange_code_for_tokens(code, app_id, app_secret)
+    token, err = _long_lived_user_token(login_token, app_id, app_secret)
     if not token:
-        return jsonify({"error": "Failed to exchange auth code for access token. The code may have expired — please try again."}), 400
+        return jsonify({"error": err}), 400
 
     # Who authorized this — kept so the data-deletion callback above can
     # find and remove this connection if the owner ever requests it.
@@ -399,6 +399,39 @@ def messenger_callback():
         "status": "select_page",
         "page_options": [{"page_id": p["page_id"], "page_name": p["page_name"]} for p in pages],
     })
+
+
+def _long_lived_user_token(login_token: str, app_id: str, app_secret: str):
+    """The plain Facebook Login popup (FB.login without an Embedded Signup
+    config) hands back a short-lived user token. A `code` from that popup
+    can't be exchanged server-side — Meta demands the SDK's own redirect_uri
+    (error 36008, seen 2026-10-01) — which is why this doesn't reuse
+    _exchange_code_for_tokens like WhatsApp does. Checks the token was made
+    for OUR app, then swaps it for a 60-day one (Page tokens read with it
+    don't expire). Returns (token, None) or (None, plain error)."""
+    app_token = f"{app_id}|{app_secret}"
+    try:
+        dbg = _req.get(f"{_GRAPH}/debug_token", params={"input_token": login_token, "access_token": app_token},
+                       timeout=15).json().get("data") or {}
+    except Exception:
+        return None, "Couldn't reach Facebook. Please try again in a minute."
+    if not dbg.get("is_valid") or str(dbg.get("app_id")) != str(app_id):
+        print("⚠️ messenger login token rejected:", {k: dbg.get(k) for k in ("is_valid", "app_id", "error")})
+        return None, "Facebook didn't confirm the login. Please try again."
+    missing = [s for s in ("pages_show_list", "pages_messaging", "pages_manage_metadata") if s not in (dbg.get("scopes") or [])]
+    if missing:
+        return None, ("PhiXtra needs every permission Facebook asked about. Please try again and leave all of them "
+                      "switched on (missing: " + ", ".join(missing) + ").")
+    try:
+        r = _req.get(f"{_GRAPH}/oauth/access_token", params={
+            "grant_type": "fb_exchange_token", "client_id": app_id, "client_secret": app_secret,
+            "fb_exchange_token": login_token}, timeout=15)
+        if r.status_code == 200 and r.json().get("access_token"):
+            return r.json()["access_token"], None
+        print("⚠️ messenger long-lived token exchange failed:", r.text[:300])
+    except Exception as e:
+        print("⚠️ messenger long-lived token exchange error:", e)
+    return login_token, None   # short-lived still works for listing Pages right now
 
 
 @facebook_bp.route("/messenger/complete", methods=["POST"])
