@@ -3,13 +3,17 @@
    tick box whose value tells the save to fill that draft. #}
 {% if social_fill %}
 <div class="ad-alert info" style="display:flex;flex-direction:column;gap:6px">
+  {% if social_fill.replacing %}
+  <span>Making a new picture or video for the post <b>“{{ social_fill.title }}”</b>.</span>
+  {% else %}
   <span>Making the picture for the planned post <b>“{{ social_fill.title }}”</b>.</span>
+  {% endif %}
   {% if start %}
-  <span style="font-size:12.5px">When you finish, it goes into that draft, keeping its planned day and person responsible.</span>
+  <span style="font-size:12.5px">{% if social_fill.replacing %}When you finish, it replaces that post's old picture or video, keeping its day and person responsible.{% if social_fill.scheduled %} The old version stays scheduled until then.{% endif %}{% else %}When you finish, it goes into that draft, keeping its planned day and person responsible.{% endif %}</span>
   {% else %}
   <label style="display:inline-flex;gap:8px;align-items:center;font-size:13px;font-weight:600">
     <input type="checkbox" name="fill_post_id" value="{{ social_fill.id }}" checked style="width:auto;margin:0">
-    Put this into the planned draft (untick to make a separate new post)
+    {% if social_fill.replacing %}Replace the old version of this post (untick to make a separate new post){% else %}Put this into the planned draft (untick to make a separate new post){% endif %}
   </label>
   {% endif %}
 </div>

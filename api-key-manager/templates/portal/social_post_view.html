@@ -98,6 +98,10 @@
         {% if p.status in ('draft','scheduled','failed') and can_edit and not (p.approval == 'changes' and p.status == 'draft') %}
           <a class="btn" href="{{ url_for('buffer.posts', edit=p.id) }}">{{ 'Try again' if p.status == 'failed' else 'Edit' }}</a>
         {% endif %}
+        {% if p.status in ('draft','scheduled','failed') and p.approval != 'waiting' and can_edit and (p.image_filename or p.media) %}
+          {% if can_create %}<a class="btn" href="{{ url_for('socialcal.make_picture', post_id=p.id, via='upload') }}">Upload a new picture or video</a>{% endif %}
+          {% if can_ai %}<a class="btn" href="{{ url_for('socialcal.make_picture', post_id=p.id, via='ai') }}">Make a new picture with AI</a>{% endif %}
+        {% endif %}
       </div>
     </div>
   </div>

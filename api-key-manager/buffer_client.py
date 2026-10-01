@@ -162,13 +162,24 @@ def buffer_get_post_status(api_key: str, buffer_post_id: str) -> str:
 
 
 def buffer_delete_post(api_key: str, buffer_post_id: str) -> None:
-    """Removes a post from Buffer (used to cancel or replace a scheduled one)."""
+    """Removes a post from Buffer (used to cancel or replace a scheduled one).
+    Buffer answers a refusal inside `data` (VoidMutationError), not in
+    `errors[]` — checked live 2026-10-01: an id it doesn't have comes back as
+    "Document not found", raised here as code NOT_FOUND."""
     query = """
     mutation DeletePost($input: DeletePostInput!) {
-      deletePost(input: $input) { __typename }
+      deletePost(input: $input) {
+        __typename
+        ... on VoidMutationError { message }
+      }
     }
     """
-    _buffer_graphql(api_key, query, {"input": {"id": buffer_post_id}})
+    data = _buffer_graphql(api_key, query, {"input": {"id": buffer_post_id}})
+    result = data.get("deletePost") or {}
+    if result.get("__typename") == "DeletePostSuccess":
+        return
+    message = result.get("message") or "Buffer didn't confirm the post was removed."
+    raise BufferAPIError(message, code="NOT_FOUND" if "not found" in message.lower() else None)
 
 
 def buffer_sent_posts(api_key: str, organization_id: str, channel_ids: list, after: str = None,

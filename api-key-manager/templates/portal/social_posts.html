@@ -124,15 +124,42 @@
     </div>
 
     <div class="sp-two">
+      {% set caps = (editing.captions if editing else None) or {} %}
+      {% set per = caps and (caps.values()|unique|list|length > 1 or (caps.values()|first) != editing.caption) %}
       <div class="sp-field">
-        <label for="sp-caption">Caption</label>
-        <textarea id="sp-caption" name="caption" maxlength="5000" required placeholder="What do you want to tell your followers?">{{ editing.caption if editing else '' }}</textarea>
-        <span class="sp-count" id="sp-count" aria-live="polite"></span>
+        <div class="sp-row" style="justify-content:space-between">
+          <label for="sp-caption">Caption</label>
+          {% if cap_services|length > 1 %}
+          <label class="sp-hint" style="display:inline-flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" name="per_network" value="1" id="sp-per" style="width:auto;margin:0" {% if per %}checked{% endif %}> Different caption per network</label>
+          {% endif %}
+        </div>
+        <div id="sp-one" {% if per %}hidden{% endif %}>
+          <textarea id="sp-caption" name="caption" maxlength="5000" {% if not per %}required{% endif %} placeholder="What do you want to tell your followers?" aria-label="Caption for all networks">{{ editing.caption if editing else '' }}</textarea>
+          <span class="sp-count" id="sp-count" aria-live="polite"></span>
+        </div>
+        {% if cap_services|length > 1 %}
+        <div id="sp-many" style="display:flex;flex-direction:column;gap:10px" {% if not per %}hidden{% endif %}>
+          {% for svc, label, colour in cap_services %}
+          <div class="sp-field" data-capbox="{{ svc }}" style="gap:4px">
+            <label for="sp-cap-{{ svc }}" style="display:inline-flex;gap:6px;align-items:center"><span class="sp-dot" style="background:{{ colour }}"></span>{{ label }}</label>
+            <textarea id="sp-cap-{{ svc }}" name="caption__{{ svc }}" data-svc="{{ svc }}" maxlength="25000" aria-label="{{ label }} caption">{{ caps.get(svc) or (editing.caption if editing else '') }}</textarea>
+            <span class="sp-count" data-count="{{ svc }}" aria-live="polite"></span>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
       </div>
       {% if editing.media %}
       <div class="sp-field">
         <span class="sp-label">Design</span>
-        <p class="sp-hint" style="margin:0">This post was made with Upload Design and keeps its checked {{ 'video' if (editing.media.get('_default') or [{}])[0].get('kind') == 'video' else 'images' }}. To change them, delete it and upload again.</p>
+        <p class="sp-hint" style="margin:0">This post was made with Upload Design and keeps its checked {{ 'video' if (editing.media.get('_default') or [{}])[0].get('kind') == 'video' else 'images' }}.{% if editing.approval != 'waiting' %} To change {{ 'it' if (editing.media.get('_default') or [{}])[0].get('kind') == 'video' else 'them' }}:{% endif %}</p>
+        {% if editing.approval != 'waiting' %}
+        <div class="sp-row" style="gap:8px">
+          {% if can_create %}<a class="btn btn-sm" href="{{ url_for('socialcal.make_picture', post_id=editing.id, via='upload') }}">Upload a new picture or video</a>{% endif %}
+          {% if can_ai %}<a class="btn btn-sm" href="{{ url_for('socialcal.make_picture', post_id=editing.id, via='ai') }}">Make a new picture with AI</a>{% endif %}
+        </div>
+        {% if editing.status == 'scheduled' %}<span class="sp-hint">The post stays scheduled as it is until you finish the new one.</span>{% endif %}
+        {% endif %}
       </div>
       {% else %}
       <div class="sp-field">
@@ -263,16 +290,41 @@
   var form = document.getElementById('sp-form-panel');
   if (!form) return;
 
-  // Caption counter — X allows 280 characters, the others far more.
-  var cap = document.getElementById('sp-caption'), cnt = document.getElementById('sp-count');
-  function hasX(){ return !!form.querySelector('input[name=channel_ids][data-service=twitter]:checked'); }
+  // Caption counters, each network's own limit. "Different caption per
+  // network" shows one box per ticked network instead of the shared one.
+  var LIM = {{ cap_limits|tojson }};
+  var cap = document.getElementById('sp-caption'), cnt = document.getElementById('sp-count'),
+      per = document.getElementById('sp-per');
+  function len(svc, t){
+    if (svc === 'instagram') return t.length + (t.match(/\n/g) || []).length;
+    if (svc === 'twitter'){ t = t.replace(/https?:\/\/\S+/g, 'xxxxxxxxxxxxxxxxxxxxxxx'); var n = 0; for (var ch of t) n += ch.codePointAt(0) > 0x2FFF ? 2 : 1; return n; }
+    return t.length;
+  }
+  function picked(){ var o = {}; form.querySelectorAll('input[name=channel_ids]:checked').forEach(function(c){ o[c.dataset.service] = 1; }); return o; }
   function count(){
-    var n = cap.value.length, x = hasX();
-    cnt.textContent = n + (x ? ' / 280 (X limit)' : ' characters');
-    cnt.classList.toggle('over', x && n > 280);
+    var on = picked(), isPer = per && per.checked, worst = null;
+    document.getElementById('sp-one').hidden = isPer;
+    cap.required = !isPer;
+    if (per) document.getElementById('sp-many').hidden = !isPer;
+    Object.keys(on).forEach(function(s){ if (LIM[s] && (!worst || LIM[s] < LIM[worst])) worst = s; });
+    var n = worst ? len(worst, cap.value) : cap.value.length;
+    cnt.textContent = worst ? n.toLocaleString() + ' / ' + LIM[worst].toLocaleString() + ' (' + worst.charAt(0).toUpperCase() + worst.slice(1) + ' limit)' : n + ' characters';
+    cnt.classList.toggle('over', !!worst && n > LIM[worst]);
+    form.querySelectorAll('[data-capbox]').forEach(function(b){
+      var s = b.dataset.capbox, t = b.querySelector('textarea'), c = b.querySelector('[data-count]');
+      b.hidden = !on[s];
+      var m = len(s, t.value);
+      c.textContent = m.toLocaleString() + ' / ' + (LIM[s] || 0).toLocaleString();
+      c.classList.toggle('over', m > (LIM[s] || 1e9));
+    });
   }
   cap.addEventListener('input', count);
+  form.querySelectorAll('textarea[data-svc]').forEach(function(t){ t.addEventListener('input', count); });
   form.querySelectorAll('input[name=channel_ids]').forEach(function(c){ c.addEventListener('change', count); });
+  if (per) per.addEventListener('change', function(){
+    if (per.checked) form.querySelectorAll('textarea[data-svc]').forEach(function(t){ if (!t.value) t.value = cap.value; });
+    count();
+  });
   count();
 
   // Image preview

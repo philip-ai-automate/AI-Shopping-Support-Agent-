@@ -417,6 +417,14 @@ def _insert_or_fill(customer, cols: dict, action: str, when, actor: str):
     if target and not when and action == "draft":
         when = target.get("scheduled_for")      # a plain "save draft" keeps the planned day
     cols = dict(cols, scheduled_for=when, owner_key=person["key"], owner_label=person["label"], due_date=due)
+    if target and target["status"] != "draft":
+        # A scheduled / failed post getting a new design: the old copies come
+        # out of Buffer only now that the new one is ready.
+        errs = _delete_from_buffer(_owner(customer), target)
+        if errs:
+            return None, False, "Couldn't take the old version out of Buffer, so nothing was changed. " + " | ".join(errs)
+        cols = dict(cols, status="draft", buffer_post_ids=None, channel_results=None, buffer_error=None,
+                    approval=None if target.get("approval") == "approved" else target.get("approval"))
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     if target:
@@ -433,7 +441,8 @@ def _insert_or_fill(customer, cols: dict, action: str, when, actor: str):
     session.pop(PL.FILL_KEY, None)
     session.pop("social_plan_date", None)
     if target:
-        W.log_event(tenant_id, post["id"], "picture_added", actor)
+        W.log_event(tenant_id, post["id"], "picture_changed" if (target.get("image_filename") or target.get("media"))
+                    else "picture_added", actor)
         if person["key"] != (target.get("owner_key") or ""):
             W.log_event(tenant_id, post["id"], "assigned", actor, f"Now {person['label']}")
             W.notify_assignee(customer, post, person, actor)
@@ -608,8 +617,19 @@ def posts():
     if edit_id.isdigit():
         editing = next((p for p in rows if p["id"] == int(edit_id) and p["status"] in EDITABLE), None)
 
+    import upload_design as U
+    usable_chans = [c for c in channels if c["enabled"] and not c["is_disconnected"]]
+    cap_services, seen = [], set()
+    for c in usable_chans:
+        if c["service"] not in seen:
+            seen.add(c["service"])
+            cap_services.append((c["service"], (U.SPECS.get(c["service"]) or {}).get("label", c["label"]), c["colour"]))
+    has_video = bool(editing) and any(m.get("kind") == "video" for m in (editing.get("media") or {}).get("_default") or [])
+
     return render_template(
         "portal/social_posts.html",
+        cap_services=cap_services,
+        cap_limits={s: U.caption_limit(s, has_video) for s, _l, _c in cap_services},
         customer=customer,
         today=today,
         account=account,
@@ -623,6 +643,7 @@ def posts():
         editing=editing,
         editable=EDITABLE,
         can_create=_team_member_has_permission("social.posts_create"),
+        can_ai=_team_member_has_permission("social.ai_designs"),
         can_edit=_team_member_has_permission("social.posts_edit"),
         can_delete=_team_member_has_permission("social.posts_delete"),
     )
@@ -684,6 +705,39 @@ def _form_values(owner):
     return caption, picked, action, when, usable
 
 
+def _form_captions(caption, picked, usable):
+    """"Different caption per network" ticked: {network: caption} for every
+    network box on the form, and the main caption becomes the first picked
+    network's (what the list and calendar show). Unticked: None, and every
+    network gets the one caption. Returns (caption, captions)."""
+    if request.form.get("per_network") != "1":
+        return caption, None
+    captions = {}
+    for key in request.form:
+        if key.startswith("caption__"):
+            captions[key[len("caption__"):]] = (request.form.get(key) or "").strip()
+    picked_svcs = [usable[c]["service"] for c in picked]
+    main = next((captions[s] for s in picked_svcs if captions.get(s)), "") or next((t for t in captions.values() if t), "")
+    return main, captions
+
+
+def _caption_problems(caption, captions, picked, usable, has_video, action):
+    """Each picked network needs its own caption (when they differ) that fits its limit."""
+    import upload_design as U
+    probs, seen = [], set()
+    for c in picked:
+        svc = usable[c]["service"]
+        if svc in seen:
+            continue
+        seen.add(svc)
+        text = (captions or {}).get(svc, caption) if captions is not None else caption
+        label = (U.SPECS.get(svc) or {}).get("label", usable[c]["label"])
+        if not text and action != "draft" and not has_video:
+            probs.append(f"Write a caption for {label}.")
+        probs += U.caption_problems(svc, text, has_video)
+    return " ".join(probs) or None
+
+
 def wants_time(action: str) -> bool:
     """Schedule uses the picked time; a draft keeps it too as its planned
     date (shown on the calendar), if "Schedule for later" was chosen."""
@@ -731,6 +785,7 @@ def save_post(post_id: int = None):
             return redirect(url_for("buffer.posts"))
 
     caption, picked, action, when, usable = _form_values(owner)
+    caption, captions = _form_captions(caption, picked, usable)
     file = request.files.get("image_file")
     new_upload = bool(file and file.filename)
     remove_image = request.form.get("remove_image") == "1"
@@ -741,7 +796,9 @@ def save_post(post_id: int = None):
     has_image = new_upload or (existing and existing.get("image_filename") and not remove_image)
     back = url_for("buffer.posts", edit=post_id) if post_id else url_for("buffer.posts", new=1)
 
-    err = _validate(caption, picked, action, when, usable, has_image)
+    has_video = any(m.get("kind") == "video" for m in ((existing or {}).get("media") or {}).get("_default") or [])
+    err = (_validate(caption or (" " if has_video else ""), picked, action, when, usable, has_image)
+           or _caption_problems(caption, captions, picked, usable, has_video, action))
     if err:
         flash(err, "warning")
         return redirect(back)
@@ -771,21 +828,21 @@ def save_post(post_id: int = None):
     actor = _current_actor(customer)["label"]
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    caps_json = _json.dumps(captions) if captions is not None else None
     if existing:
-        caption_changed = caption != existing["caption"]
         cur.execute("""UPDATE tenant_social_posts SET caption=%s, image_filename=%s, original_filename=%s,
                               channel_ids=%s, status='draft', scheduled_for=%s, buffer_post_ids=NULL,
-                              channel_results=NULL, buffer_error=NULL, updated_at=NOW(),
-                              captions = CASE WHEN %s THEN NULL ELSE captions END,
+                              channel_results=NULL, buffer_error=NULL, updated_at=NOW(), captions=%s,
                               wide_image_filename = CASE WHEN %s THEN NULL ELSE wide_image_filename END
                        WHERE id=%s RETURNING *""",
-                    (caption, image_filename, original_filename, picked, when,
-                     caption_changed, bool(new_upload or remove_image), post_id))
+                    (caption or " ", image_filename, original_filename, picked, when, caps_json,
+                     bool(new_upload or remove_image), post_id))
     else:
-        cur.execute("""INSERT INTO tenant_social_posts (tenant_id, caption, image_filename, original_filename,
+        cur.execute("""INSERT INTO tenant_social_posts (tenant_id, caption, captions, image_filename, original_filename,
                               public_token, channel_ids, status, scheduled_for, created_by)
-                       VALUES (%s,%s,%s,%s,%s,%s,'draft',%s,%s) RETURNING *""",
-                    (tenant_id, caption, image_filename, original_filename, uuid.uuid4().hex, picked, when, actor))
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,'draft',%s,%s) RETURNING *""",
+                    (tenant_id, caption or " ", caps_json, image_filename, original_filename, uuid.uuid4().hex,
+                     picked, when, actor))
     post = cur.fetchone()
     conn.commit()
     cur.close(); conn.close()

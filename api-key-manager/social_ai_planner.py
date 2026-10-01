@@ -367,15 +367,17 @@ def start_fill(post: dict):
 
 
 def fill_target(tenant_id: int):
-    """The draft being given a picture, if it's still a draft that isn't
-    waiting for approval; else None."""
+    """The post being given a (new) picture, if it's still a draft, scheduled
+    or failed post that isn't waiting for approval; else None. A scheduled
+    one stays in Buffer until the new design is saved (_insert_or_fill)."""
     pid, _, at = (session.get(FILL_KEY) or "").partition("|")
     if not (pid.isdigit() and at.isdigit()) or datetime.now(timezone.utc).timestamp() - int(at) > 7200:
         return None
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
-        cur.execute("""SELECT * FROM tenant_social_posts WHERE id=%s AND tenant_id=%s AND status='draft'
+        cur.execute("""SELECT * FROM tenant_social_posts WHERE id=%s AND tenant_id=%s
+                         AND status IN ('draft','scheduled','failed')
                          AND approval IS DISTINCT FROM 'waiting'""", (int(pid), tenant_id))
         return cur.fetchone()
     finally:

@@ -399,8 +399,25 @@ def post(did):
         flash(msg, "success" if ok else "danger")
         return redirect(url_for("buffer.posts"))
     return render_template("portal/upload_post.html", **_common(
-        customer=customer, d=d, services=services, has_video=has_video, results=results, form={},
+        customer=customer, d=d, services=services, has_video=has_video, results=results,
+        form=_fill_captions(customer, services),
         limits={s: U.caption_limit(s, has_video) for s in services}))
+
+
+def _fill_captions(customer, services) -> dict:
+    """A post getting a new picture or video keeps its words: its captions
+    pre-fill the form (per network if they differed)."""
+    import social_ai_planner as PL
+    t = PL.fill_target(int(customer["tenant_id"]))
+    if not t or not (t.get("caption") or "").strip():
+        return {}
+    caps = t.get("captions") or {}
+    form = {"caption": t["caption"].strip()}
+    if caps and len({(caps.get(s) or form["caption"]) for s in services}) > 1:
+        form["per_network"] = "1"
+    for svc in services:
+        form["caption__" + svc] = caps.get(svc) or form["caption"]
+    return form
 
 
 @upload_bp.route("/social-posts/size-guide", methods=["GET"])

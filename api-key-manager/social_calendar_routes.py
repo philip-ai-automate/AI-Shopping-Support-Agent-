@@ -470,8 +470,9 @@ def plan_add(plan_id: int):
 @socialcal_bp.route("/social-posts/<int:post_id>/make-picture", methods=["GET"])
 @team_feature("social.ai_designs", "social.posts_edit")
 def make_picture(post_id: int):
-    """A planned draft has no picture yet: open the AI Post Designer or Upload
-    Design with it filled in; their last step fills this draft."""
+    """Open the AI Post Designer or Upload Design for this post: a planned
+    draft gets its first picture, a draft / scheduled / failed post a new
+    picture or video. Their last step fills this post."""
     via = request.args.get("via") or "ai"
     r = (_require_login() or _require_team_permission("social.posts_edit")
          or _require_team_permission("social.ai_designs" if via == "ai" else "social.posts_create"))
@@ -483,8 +484,8 @@ def make_picture(post_id: int):
     p = _get_post(int(customer["tenant_id"]), post_id)
     if not p:
         abort(404)
-    if p["status"] != "draft" or p.get("approval") == "waiting":
-        flash("This post can't be changed now: it's waiting for approval or has already gone to Buffer.", "warning")
+    if p["status"] not in ("draft", "scheduled", "failed") or p.get("approval") == "waiting":
+        flash("This post can't be changed now: it's waiting for approval or has already gone out.", "warning")
         return redirect(url_for("socialcal.post_view", post_id=post_id))
     PL.start_fill(p)
     return redirect(url_for("social.new_post") if via == "ai" else url_for("upload.start"))
@@ -758,7 +759,9 @@ def _inject_social_workflow():
                     out["social_fill"] = {"id": t["id"], "title": t.get("plan_topic") or W.title_of(t),
                                           "idea": PL.fill_idea(t), "channel_ids": list(t.get("channel_ids") or []),
                                           "owner_key": t.get("owner_key"),
-                                          "due": t["due_date"].isoformat() if t.get("due_date") else None}
+                                          "due": t["due_date"].isoformat() if t.get("due_date") else None,
+                                          "replacing": bool(t.get("image_filename") or t.get("media")),
+                                          "scheduled": t["status"] == "scheduled"}
             # The day picked with "+" on the calendar; forgotten after 2 hours
             # so an abandoned plan doesn't pre-fill some later, unrelated post.
             day, _, at = (session.get("social_plan_date") or "").partition("|")
