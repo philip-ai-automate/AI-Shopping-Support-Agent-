@@ -62,7 +62,7 @@ def run():
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
-            "SELECT id, title, content, sku, brand, categories_text FROM documents WHERE embedding IS NULL LIMIT %s",
+            "SELECT id, type, title, content, sku, brand, categories_text FROM documents WHERE embedding IS NULL LIMIT %s",
             (BATCH_SIZE,),
         )
         rows = cur.fetchall()
@@ -91,7 +91,10 @@ def run():
         if row["categories_text"]:
             parts.append(row["categories_text"])
         if row["content"]:
-            parts.append((row["content"] or "")[:2000])
+            # Same rule as main._make_embed_text: whole text for pages/posts/
+            # store info, first 2,000 characters for products (2026-10-01).
+            limit = 7000 if row.get("type") in ("page", "post", "store_info") else 2000
+            parts.append((row["content"] or "")[:limit])
         texts.append(" | ".join(parts) or "empty")
 
     vectors = _embed_batch(texts)

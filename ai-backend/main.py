@@ -24,7 +24,11 @@ import re as _re
 import psycopg2.extras
 
 from auth import verify_api_key
-from search import search_documents, search_documents_with_meta, search_related_products, upsert_verified_spec, _fmt_currency_val
+from search import search_documents, search_documents_with_meta, search_related_products, upsert_verified_spec, _fmt_currency_val, search_two_engines
+
+# Test runs set this to True/False to try the two-engine search without
+# switching it on for visitors (None = follow TWO_ENGINE_SEARCH in .env).
+_TWO_ENGINES_TEST = None
 from llm import ask_llm, classify_relevant_products, classify_campaign_reply
 from db import get_db_connection, insert_audit_log
 from memory_store import (
@@ -86,6 +90,7 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
     system_addon: str | None = None           # injected by WA gateway for pending-order context
     override_system_prompt: str | None = None  # per-WA-number agent prompt (overrides tenant default)
+    assistant_name: str | None = None          # name the website chat shows for the AI, e.g. "Kelvin"
 
 
 def record_usage_event(
@@ -277,9 +282,10 @@ def _strip_duplicate_product_lines(text: str, product_names: list) -> str:
 # ── System prompt instruction appended when feature is enabled ────────────────
 _PRODUCT_REC_INSTRUCTION = (
     "\n\n[PRODUCT DISPLAY — CRITICAL RULE]\n"
+    "This rule is ONLY for store data marked 'Type: Product'. "
     "The system automatically sends the customer rich product cards with images, full specs, "
     "prices, and an order button. YOU MUST NEVER write product names, prices, model numbers, "
-    "or URLs in your text reply. If you list products in text, the customer sees them TWICE "
+    "or URLs of a Product in your text reply. If you list products in text, the customer sees them TWICE "
     "(your text AND the automatic cards) which looks broken and unprofessional.\n\n"
     "When a customer asks about a product or wants to buy something:\n"
     "1. Write ONE short sentence introducing the results (e.g. 'Here are some great iPhone 13 options for you!')\n"
@@ -302,6 +308,12 @@ _PRODUCT_REC_INSTRUCTION = (
     "than you put in the tag. If you mention a number or range of options, the tag must contain "
     "that many (up to 6) — do not undercount. Customers can only tap what's in the tag, so anything "
     "you describe but don't tag is invisible and unreachable to them."
+    "\n\n[INFORMATION — website pages and store information]\n"
+    "Store data marked 'Type: Information' (plans and pricing, services, delivery, opening hours, "
+    "policies, FAQs) has NO card. Answer from it directly in your text reply, including the exact "
+    "prices, plan names and figures it gives. Never put an Information title in the product tag. "
+    "Exception: if the same item also appears in the store data as a 'Type: Product', show it as a "
+    "product card per the rule above and do not repeat its price in text."
 )
 
 _SCOPE_INSTRUCTION = (
@@ -315,6 +327,21 @@ _SCOPE_INSTRUCTION = (
     "business. Never use outside/general knowledge to answer a question about "
     "this business's products, prices, or policies — only use the store data "
     "provided to you."
+)
+
+# Website page links (2026-10-01, user-approved wording). Appended for every
+# business, whether or not product cards are on.
+_PAGE_LINK_INSTRUCTION = (
+    "\n\n[WEBSITE LINKS]\n"
+    "When your answer uses information from a website page (store data marked "
+    "'Type: Information' that has a URL: line), add a link to that page at the "
+    "end of your answer, using the page's web address exactly as given in the "
+    "store data, for example: \"More details: [Pricing — WhatsApp AI Sales Agent]"
+    "(https://phixtra.com/whatsapp-pricing/)\". If the answer uses more than one "
+    "page, link each of those pages. Never make up a web address. Don't add "
+    "links to greetings or small talk. Do not add a text link for a 'Type: "
+    "Product' item — its product card already has its own button. Store "
+    "information with no URL: line gets no link."
 )
 
 # ── WooCommerce Plugin features: the merchant's PLAN decides (2026-09-23) ──
@@ -500,6 +527,17 @@ def chat(req: ChatRequest):
     if req.system_addon:
         system_prompt = system_prompt + "\n\n" + req.system_addon
 
+    # The name the website chat shows above the AI's messages (set in the chat
+    # plugin, sent by its server-side relay), so what visitors see and what
+    # the AI calls itself always match — including after a rename (2026-10-01).
+    _assistant_name = _re.sub(r"[^\w .'-]", "", (req.assistant_name or ""), flags=_re.UNICODE).strip()[:40]
+    if _assistant_name:
+        system_prompt += (
+            f"\n\nYOUR NAME: You are {_assistant_name}, the assistant for {tenant.get('name') or 'this business'}. "
+            f"Use the name {_assistant_name} when you introduce yourself or are asked your name. "
+            "If a customer asks whether they are talking to a person, say honestly that you are an AI assistant."
+        )
+
     session_id = req.session_id or uuid.uuid4().hex
 
     print(f"✅ /chat tenant_id={tenant_id} session_id={session_id}")
@@ -524,6 +562,7 @@ def chat(req: ChatRequest):
     # so it carries maximum weight with the model.
     if rec_enabled:
         system_prompt = system_prompt + _PRODUCT_REC_INSTRUCTION + _SCOPE_INSTRUCTION
+    system_prompt = system_prompt + _PAGE_LINK_INSTRUCTION
 
     # ── Handoff rules injection ───────────────────────────────────────────────
     # Read the tenant's active handoff rules from the DB and append them to the
@@ -598,11 +637,21 @@ def chat(req: ChatRequest):
     # Store user message with its embedding (free — already computed above)
     add_message(session_id, tenant_id, "user", req.message, embedding=msg_embedding)
 
-    # Reuse precomputed embedding for product search — no second API call
-    context_chunks, raw_docs = search_documents_with_meta(
-        req.message, tenant_id,
-        precomputed_embedding=msg_embedding,
-    )
+    # Two separate engines (products / website information) — UNDER TEST,
+    # off unless TWO_ENGINE_SEARCH=1 or a test run sets _TWO_ENGINES_TEST.
+    _two_engines = (_TWO_ENGINES_TEST if _TWO_ENGINES_TEST is not None
+                    else os.getenv("TWO_ENGINE_SEARCH", "0") == "1")
+    _engines = None
+    if _two_engines:
+        _engines = search_two_engines(req.message, tenant_id, precomputed_embedding=msg_embedding)
+        context_chunks = _engines["info_chunks"] + _engines["product_chunks"]
+        raw_docs = _engines["info_docs"] + _engines["product_docs"]
+    else:
+        # Reuse precomputed embedding for product search — no second API call
+        context_chunks, raw_docs = search_documents_with_meta(
+            req.message, tenant_id,
+            precomputed_embedding=msg_embedding,
+        )
 
     # ── No-hallucination guard ───────────────────────────────────────────────
     # A single classification call, made BEFORE the customer-facing reply is
@@ -626,7 +675,22 @@ def chat(req: ChatRequest):
     # answers reappear, this is the mechanism to revisit.
     gen_chunks = context_chunks
     classify_usage = {}
-    if rec_enabled:
+    if _engines is not None:
+        # Website information goes straight to the AI. Only products go
+        # through the relevance check, so wrong product cards stay out.
+        _kept_products = _engines["product_chunks"]
+        if rec_enabled and _engines["product_docs"]:
+            _, _prod_ids, classify_usage = classify_relevant_products(req.message, _engines["product_docs"])
+            _kept_products = [c for c, d in zip(_engines["product_chunks"], _engines["product_docs"])
+                              if d.get("id") in _prod_ids]
+        gen_chunks = _engines["info_chunks"] + _kept_products
+        if not gen_chunks:
+            system_prompt += (
+                "\n\nNOTE: Nothing in this store's data answers the customer's question. "
+                "Do not guess or invent details. If it is a question about this business, say "
+                "honestly that you don't have that information and offer to help with something else."
+            )
+    elif rec_enabled:
         requires_store_data, relevant_ids, classify_usage = classify_relevant_products(req.message, raw_docs)
 
         if not requires_store_data:
@@ -755,8 +819,17 @@ def chat(req: ChatRequest):
     # ───────────────────────────────────────────────────────────────────────
 
 
+    # Answers that use website information (pages, Store Information) are
+    # longer than product answers, whose cards carry the detail. The limit
+    # includes the model's thinking, so at the product limit (600) a long
+    # website answer could come back blank (2026-10-01). Product-only
+    # answers and greetings keep LLM_MAX_OUTPUT_TOKENS.
+    _max_out = None
+    if _engines is not None and _engines["info_chunks"]:
+        _max_out = int(os.getenv("LLM_MAX_OUTPUT_TOKENS_INFO") or os.getenv("LLM_MAX_OUTPUT_TOKENS", "1200"))
     answer, needs_handoff, usage = ask_llm(
-        system_prompt, req.message, gen_chunks, history=history, structured_handoff=True
+        system_prompt, req.message, gen_chunks, history=history, structured_handoff=True,
+        max_output_tokens=_max_out,
     )
 
     # Fold the relevance-classification call's token cost (if any) into the
@@ -835,10 +908,14 @@ def chat(req: ChatRequest):
                     return ""
 
                 # Build a lookup dict from raw_docs: normalised title → doc
+                # Products only — a website page or store-information entry
+                # has no card (no image/price/order button), so a page title
+                # the AI tags by mistake must never become an empty card.
+                from search import _is_product_doc
                 doc_by_title = {}
                 for doc in raw_docs:
                     t = (doc.get("title") or "").strip().lower()
-                    if t:
+                    if t and _is_product_doc(doc):
                         doc_by_title[t] = doc
 
                 for name in recommended_names:
@@ -897,6 +974,8 @@ def chat(req: ChatRequest):
                                 s = _re_match.sub(r'[^a-z0-9 ]', '', s).strip(); return _re_match.sub(r' +', ' ', s)
                             name_stripped = _strip_punct(name_lower)
                             for fb_doc in fallback_docs:
+                                if not _is_product_doc(fb_doc):
+                                    continue   # pages/store info never become cards
                                 fb_title = (fb_doc.get("title") or "").strip().lower()
                                 fb_stripped = _strip_punct(fb_title)
                                 if name_stripped in fb_stripped or fb_stripped in name_stripped:

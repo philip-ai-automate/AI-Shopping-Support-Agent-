@@ -352,7 +352,11 @@ def _make_embed_text(d: Dict[str, Any], doc_type: str, title: str) -> str:
     if cats:
         parts.append(cats)
     if content:
-        parts.append(content[:2000])
+        # Products: the start says it all. Pages/posts/store info: index
+        # (nearly) the whole text so plans, FAQs etc. further down can be
+        # found too (2026-10-01; was 2,000 characters for everything).
+        info = doc_type in ("page", "post", "store_info")
+        parts.append(content[:7000] if info else content[:2000])
     return " | ".join(parts) or "empty"
 
 

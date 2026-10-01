@@ -120,8 +120,25 @@ def _fmt_currency_val(val: float, currency: str) -> str:
     return f"₦{val:,.0f}" if val > 5000 else f"£{val:,.2f}"
 
 
+# Information the AI should read in full and answer from in its own words
+# (website pages, blog posts, Store Information) — as opposed to products,
+# which the customer is shown as cards (2026-10-01).
+INFO_DOC_TYPES = ("page", "post", "store_info")
+
+
+def _is_product_doc(doc: Dict[str, Any]) -> bool:
+    return (doc.get("type") or "product") not in INFO_DOC_TYPES
+
+
 def _format_doc(doc: Dict[str, Any], max_chars: int) -> str:
+    """One search result as the AI sees it. Products keep the short
+    RAG_CHUNK_MAX_CHARS limit (their cards carry the detail); information
+    items get up to RAG_INFO_MAX_CHARS, since a pricing page or uploaded
+    price list cut at 900 characters loses most of its plans (2026-10-01)."""
     title = (doc.get("title") or "").strip()
+    is_product = _is_product_doc(doc)
+    if not is_product:
+        max_chars = max(max_chars, int(os.getenv("RAG_INFO_MAX_CHARS", "6000")))
     sku = (doc.get("sku") or "").strip()
     brand = (doc.get("brand") or "").strip()
     url = (doc.get("url") or "").strip()
@@ -129,7 +146,7 @@ def _format_doc(doc: Dict[str, Any], max_chars: int) -> str:
     price_min = doc.get("price_min")
     price_max = doc.get("price_max")
 
-    parts = []
+    parts = [f"Type: {'Product' if is_product else 'Information (website page or store information)'}"]
     if title:
         parts.append(f"Title: {title}")
     if sku:
@@ -513,6 +530,79 @@ def search_documents_with_meta(
             raw_docs.append(row)
 
     return chunks[:top_k + page_top_k], raw_docs[:top_k + page_top_k]
+
+
+def search_two_engines(
+    query: str, tenant_id: int,
+    precomputed_embedding: Optional[List[float]] = None,
+) -> Dict[str, list]:
+    """Two separate searches so products and website information never
+    compete for the same places (2026-10-01, under test):
+      - product engine: products only, with the usual price/brand/stock
+        filters; its results still go through the relevance check and
+        become product cards.
+      - website engine: website pages, posts and Store Information only,
+        no product filters; its best matches go straight to the AI.
+    Returns {"product_chunks", "product_docs", "info_chunks", "info_docs"}."""
+    product_top_k = int(os.getenv("RAG_TOP_K", "6"))
+    info_top_k = int(os.getenv("RAG_INFO_TOP_K", "5"))
+    max_chars = int(os.getenv("RAG_CHUNK_MAX_CHARS", "900"))
+    clean_query = _clean_search_query(query)
+    out: Dict[str, list] = {"product_chunks": [], "product_docs": [], "info_chunks": [], "info_docs": []}
+
+    q_vec = precomputed_embedding
+    if q_vec is None:
+        try:
+            q_vec = _embed_query(query)
+        except Exception as e:
+            print(f"   ⚠️ embedding failed — keyword-only search: {e}")
+
+    def _hybrid(fp: List[str], pp: List[Any], k: int) -> List[Dict[str, Any]]:
+        conn = _get_pg_conn()
+        try:
+            if q_vec is None:
+                return _run_keyword_search(conn, tenant_id, clean_query, k, fp, pp)
+            vec_rows = _run_vector_search(conn, tenant_id, q_vec, k * 2, fp, pp)
+            try:
+                kw_rows = _run_keyword_search(conn, tenant_id, clean_query, k * 2, fp, pp)
+            except Exception as kw_err:
+                print(f"   ⚠️ keyword search failed (vector-only fallback): {kw_err}")
+                kw_rows = []
+            return _rrf_merge(vec_rows, kw_rows, k)
+        finally:
+            conn.close()
+
+    # Product engine
+    try:
+        tenant_currency = _get_tenant_currency(tenant_id)
+        fp, pp = _parse_filters_sql(clean_query, tenant_currency)
+        rows = _hybrid(fp + ["type = 'product'"], pp, product_top_k)
+        if not rows and any("price_min" in p or "price_max" in p for p in fp):
+            removed = [p for p in fp if "price_min" in p or "price_max" in p]
+            n_removed = sum(p.count("%s") for p in removed)
+            keep = [p for p in fp if p not in removed]
+            rows = _hybrid(keep + ["type = 'product'"], pp[n_removed:] if n_removed else pp, product_top_k)
+        for row in rows:
+            chunk = _format_doc(row, max_chars=max_chars)
+            if chunk:
+                out["product_chunks"].append(chunk)
+                out["product_docs"].append(row)
+    except Exception as e:
+        print(f"   ⚠️ product engine failed: {e}")
+
+    # Website engine
+    try:
+        rows = _hybrid(["type IN ('page', 'post', 'store_info')"], [], info_top_k)
+        for row in rows:
+            chunk = _format_doc(row, max_chars=max_chars)
+            if chunk:
+                out["info_chunks"].append(chunk)
+                out["info_docs"].append(row)
+    except Exception as e:
+        print(f"   ⚠️ website engine failed: {e}")
+
+    print(f"   🔀 two engines: {len(out['product_docs'])} products + {len(out['info_docs'])} website items")
+    return out
 
 
 def search_related_products(

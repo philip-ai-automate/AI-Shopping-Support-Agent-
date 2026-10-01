@@ -4,6 +4,7 @@ estate_webhook.py — WhatsApp message handler for PhiXtra Real Estate.
 Called by meta_webhook.py when phone_number_id matches an estate tenant
 in re_tenants. Calls /estate-chat on the AI backend and dispatches replies.
 """
+from wa_format import to_whatsapp_text
 import asyncio
 import hashlib
 import hmac
@@ -676,7 +677,7 @@ async def handle_estate_message(
         _log_estate_wa(tenant_id, phone_number_id, customer_phone, "outbound", fallback)
         return
 
-    reply             = (result.get("reply") or "").strip()
+    reply             = to_whatsapp_text((result.get("reply") or "").strip())
     listings          = result.get("listings") or []
     handoff_triggered = bool(result.get("handoff_triggered"))
 

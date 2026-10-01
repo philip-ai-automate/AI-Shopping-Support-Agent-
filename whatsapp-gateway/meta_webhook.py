@@ -1,4 +1,5 @@
 import asyncio
+from wa_format import to_whatsapp_text
 import hashlib
 import hmac
 import json
@@ -1017,7 +1018,7 @@ async def receive_webhook(
         return {"status": "ok", "reason": "quota_exceeded"}
     # ─────────────────────────────────────────────────────────────────────────
 
-    reply             = (result.get("reply") or "").strip()
+    reply             = to_whatsapp_text((result.get("reply") or "").strip())
     handoff_triggered = bool(result.get("handoff_triggered"))
     products          = result.get("product_recommendations") or []
 

@@ -1,4 +1,5 @@
 import bcrypt
+import hashlib
 import psycopg2.extras
 from datetime import datetime, timedelta, timezone
 
@@ -62,17 +63,36 @@ def verify_api_key(api_key: str):
           AND t.status IN ('active', 'pending')
     """
 
-    cursor.execute(query)
-    rows = cursor.fetchall()
+    def _first_bcrypt_match(rows):
+        for row in rows:
+            try:
+                if bcrypt.checkpw(api_key.encode("utf-8"), row["api_key_hash"].encode("utf-8")):
+                    return dict(row)
+            except Exception:
+                continue
+        return None
 
-    matched_row = None
-    for row in rows:
-        try:
-            if bcrypt.checkpw(api_key.encode("utf-8"), row["api_key_hash"].encode("utf-8")):
-                matched_row = dict(row)
-                break
-        except Exception:
-            continue
+    # Find the key in one step by its quick-lookup label (sha256, filled by
+    # the api_keys_set_lookup trigger) and bcrypt-check just that key. This
+    # used to bcrypt-check every active key on the platform in turn, ~20s
+    # per message with 86 keys (2026-10-01). Keys without a label yet (no
+    # readable copy stored) fall back to the old one-by-one check, and get
+    # their label on first use.
+    lookup = hashlib.sha256(api_key.encode("utf-8")).hexdigest()
+    cursor.execute(query + " AND ak.api_key_lookup = %s", (lookup,))
+    matched_row = _first_bcrypt_match(cursor.fetchall())
+
+    if not matched_row:
+        cursor.execute(query + " AND ak.api_key_lookup IS NULL")
+        matched_row = _first_bcrypt_match(cursor.fetchall())
+        if matched_row:
+            try:
+                cursor.execute("UPDATE api_keys SET api_key_lookup=%s WHERE id=%s",
+                               (lookup, matched_row["api_key_id"]))
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                print(f"⚠️ verify_api_key: could not store lookup label: {e}")
 
     if not matched_row:
         cursor.close()
