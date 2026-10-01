@@ -217,9 +217,7 @@
 
 {% macro plan_card(plan, current) %}
 {% set is_current = plan.slug == current.plan_slug %}
-{% set disc = plan.annual_discount_pct / 100 %}
-{% set annual_ngn = (plan.price_ngn * (1 - disc))|int %}
-{% set annual_usd = (plan.price_usd|float * (1 - disc))|round(2) %}
+{% set annual_ngn = (plan.price_ngn * (100 - plan.annual_discount_pct) / 100 + 0.5)|int %}
 {% set is_popular = plan.slug in ('pro', 'enterprise_dual') %}
 
 <div class="plan-card {% if is_current %}current{% elif is_popular %}popular{% elif plan.is_custom %}custom{% endif %}">
@@ -517,16 +515,18 @@ function updatePrices() {
   var currency = document.querySelector('input[name="currency"]:checked').value;
   var ngn = _modalPlanNGN, usd = _modalPlanUSD;
 
-  var disc = _modalDiscPct / 100;
-  var annualNGN = Math.round(ngn * 12 * (1 - disc));
-  var annualUSD = Math.round(usd * 12 * (1 - disc) * 100) / 100;
+  // Yearly per month rounded to whole ₦/£ (same as website); yearly = that × 12
+  var monthNGN  = Math.round(ngn * (100 - _modalDiscPct) / 100);
+  var monthUSD  = Math.round(usd * (100 - _modalDiscPct) / 100);
+  var annualNGN = monthNGN * 12;
+  var annualUSD = monthUSD * 12;
 
   if (currency === 'GBP') {
     document.getElementById('priceMonthlyNGN').textContent = '£' + usd.toFixed(2) + '/mo';
-    document.getElementById('priceAnnualNGN').textContent  = '£' + (Math.round(usd*(1-disc)*100)/100).toFixed(2) + '/mo';
+    document.getElementById('priceAnnualNGN').textContent  = '£' + monthUSD.toLocaleString() + '/mo';
   } else {
     document.getElementById('priceMonthlyNGN').textContent = '₦' + ngn.toLocaleString() + '/mo';
-    document.getElementById('priceAnnualNGN').textContent  = '₦' + Math.round(ngn*(1-disc)).toLocaleString() + '/mo';
+    document.getElementById('priceAnnualNGN').textContent  = '₦' + monthNGN.toLocaleString() + '/mo';
   }
 
   // Highlight selected cycle
@@ -549,7 +549,7 @@ function updatePrices() {
       summary = '£' + usd.toFixed(2) + '/month';
       note    = 'Charged monthly via Stripe. Cancel anytime.';
     } else {
-      summary = '£' + annualUSD.toFixed(2) + '/year';
+      summary = '£' + annualUSD.toLocaleString() + '/year';
       note    = _modalDiscPct + '% off — billed annually via Stripe.';
     }
   }

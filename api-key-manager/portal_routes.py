@@ -27031,6 +27031,14 @@ def _fw_get_or_create_plan(plan_id: int, plan_slug: str, plan_name: str,
     return None
 
 
+def _yearly_per_month(price, disc_pct) -> int:
+    """Yearly price per month, rounded to the nearest whole ₦/£ (half up) —
+    same figure the website pricing pages show. Yearly charge = this × 12."""
+    from decimal import Decimal, ROUND_HALF_UP
+    v = Decimal(str(price)) * (Decimal(100) - Decimal(str(disc_pct or 0))) / Decimal(100)
+    return int(v.quantize(Decimal(1), rounding=ROUND_HALF_UP))
+
+
 def _stripe_get_or_create_price(plan_id: int, plan_slug: str, plan_name: str,
                                 cycle: str, amount_pence: int) -> str | None:
     """Return a Stripe Price (GBP) that charges exactly amount_pence per
@@ -27219,8 +27227,7 @@ def billing_plan_upgrade():
         if cycle == "monthly":
             amount_ngn = int(plan["price_ngn"])
         else:
-            disc = plan.get("annual_discount_pct", 5) / 100
-            amount_ngn = round(int(plan["price_ngn"]) * 12 * (1 - disc))
+            amount_ngn = _yearly_per_month(plan["price_ngn"], plan.get("annual_discount_pct", 5)) * 12
 
         fw_plan_id = _fw_get_or_create_plan(
             plan["id"], plan_slug, plan["name"], cycle, amount_ngn
@@ -27286,8 +27293,7 @@ def billing_plan_upgrade():
     if cycle == "monthly":
         amount_pence = round(price_gbp * 100)
     else:
-        disc = (plan.get("annual_discount_pct") or 0) / 100
-        amount_pence = round(price_gbp * 12 * (1 - disc) * 100)
+        amount_pence = _yearly_per_month(plan["price_usd"], plan.get("annual_discount_pct")) * 12 * 100
     amount_gbp = amount_pence / 100
     price_id   = _stripe_get_or_create_price(
         plan["id"], plan_slug, plan["name"], cycle, amount_pence
