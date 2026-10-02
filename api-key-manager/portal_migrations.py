@@ -1441,6 +1441,20 @@ def ensure_portal_tables():
                     ELSE 0 END""")
         if not _column_exists(cur, "plans", "allow_own_ai_key"):
             cur.execute("ALTER TABLE plans ADD COLUMN allow_own_ai_key BOOLEAN NOT NULL DEFAULT TRUE")
+        # Plan card (2026-10-02): the support line and the "Recommended" badge
+        # come from the Plan editor, not the pricing page. Filled once with
+        # the wording each card showed before, so nothing changes on day one.
+        if not _column_exists(cur, "plans", "support_line"):
+            cur.execute("ALTER TABLE plans ADD COLUMN support_line VARCHAR(120)")
+            cur.execute("""
+                UPDATE plans SET support_line = CASE
+                    WHEN slug IN ('starter', 'startup_dual') THEN 'Email support'
+                    WHEN slug IN ('growth', 'business_dual') THEN 'Priority email support'
+                    WHEN slug IN ('pro', 'enterprise_dual') THEN 'Priority support + onboarding call'
+                    ELSE 'Help Center support' END""")
+        if not _column_exists(cur, "plans", "is_recommended"):
+            cur.execute("ALTER TABLE plans ADD COLUMN is_recommended BOOLEAN NOT NULL DEFAULT FALSE")
+            cur.execute("UPDATE plans SET is_recommended = TRUE WHERE slug IN ('pro', 'enterprise_dual')")
         # Top-ups can have a naira price too (paid via Flutterwave), next to
         # the £ card price (Stripe). NULL = sold in £ only. 2026-09-25.
         if not _column_exists(cur, "credit_packages", "price_ngn"):
@@ -3026,10 +3040,10 @@ def ensure_portal_tables():
             cur.execute("ALTER TABLE team_members ADD COLUMN first_name VARCHAR(100)")
         if not _column_exists(cur, "team_members", "last_name"):
             cur.execute("ALTER TABLE team_members ADD COLUMN last_name VARCHAR(100)")
-        if not _column_exists(cur, "team_members", "department"):
-            cur.execute("ALTER TABLE team_members ADD COLUMN department VARCHAR(100)")
-        if not _column_exists(cur, "team_members", "position_title"):
-            cur.execute("ALTER TABLE team_members ADD COLUMN position_title VARCHAR(100)")
+        # department / position_title used to be added here and then dropped
+        # further down on every startup — each pass left 2 dead columns
+        # behind, and on 2026-10-01 team_members hit Postgres's 1600-column
+        # limit, which aborted these migrations. They're gone for good now.
         if not _column_exists(cur, "team_members", "avatar_data"):
             cur.execute("ALTER TABLE team_members ADD COLUMN avatar_data TEXT")
         if not _column_exists(cur, "team_members", "line_manager_id"):

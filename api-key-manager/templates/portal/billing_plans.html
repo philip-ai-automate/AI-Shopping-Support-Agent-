@@ -212,13 +212,13 @@
 <p class="channel-note">Running both the WhatsApp AI Sales Agent and the Website AI Sales Agent on one account? Switch to Dual Agent Plan pricing.</p>
 {% endif %}
 
-{% set support_map = {'free': 'Help Center support', 'starter': 'Email support', 'growth': 'Priority email support', 'pro': 'Priority support + onboarding call',
-                       'startup_dual': 'Email support', 'business_dual': 'Priority email support', 'enterprise_dual': 'Priority support + onboarding call'} %}
-
 {% macro plan_card(plan, current) %}
 {% set is_current = plan.slug == current.plan_slug %}
 {% set annual_ngn = (plan.price_ngn * (100 - plan.annual_discount_pct) / 100 + 0.5)|int %}
-{% set is_popular = plan.slug in ('pro', 'enterprise_dual') %}
+{# Every line on the card comes from the Plan editor (2026-10-02); only what
+   the plan includes is listed — the website has the full comparison. #}
+{% set is_popular = plan.is_recommended %}
+{% set f = plan_feats.get(plan.id, []) %}
 
 <div class="plan-card {% if is_current %}current{% elif is_popular %}popular{% elif plan.is_custom %}custom{% endif %}">
   {% if is_current %}<span class="current-badge">Current plan</span>
@@ -250,7 +250,7 @@
 
   <ul class="plan-features">
     {% set _no_ai = plan.ai_messages_limit == 0 %}
-    {% if not plan.is_custom and plan.channel_mode != 'woocommerce' %}
+    {% if 'wa.connect_manage' in f %}
     <li>
       <span class="feat-yes">✓</span>
       <span class="feat-lbl">Official WhatsApp Business API connection</span>
@@ -258,7 +258,7 @@
     {% endif %}
     {% if _no_ai %}
     <li><span class="feat-no">✗</span><span class="feat-lbl muted">No AI — your staff reply from the shared Inbox</span></li>
-    {% elif not plan.is_custom %}
+    {% else %}
     <li>
       <span class="feat-yes">✓</span>
       <span class="feat-lbl">
@@ -275,7 +275,7 @@
     </li>
     {% endif %}
 
-    {% if not _no_ai %}
+    {% if 'ecom.discount_settings_view' in f %}
     <li>
       <span class="feat-yes">✓</span>
       <span class="feat-lbl">Automated discount negotiation</span>
@@ -297,50 +297,26 @@
         WhatsApp broadcasts/mo
       </span>
     </li>
-    {% else %}
-    <li><span class="feat-no">✗</span><span class="feat-lbl muted">WhatsApp broadcast messaging</span></li>
     {% endif %}
 
-    {% set f = plan_feats.get(plan.id, []) %}
     {% set _crm_on = [] %}{% for k in crm_keys %}{% if k in f %}{% set _ = _crm_on.append(k) %}{% endif %}{% endfor %}
-    {% if _crm_on and _crm_on|length < crm_keys|length %}
-    <li><span class="feat-yes">✓</span><span class="feat-lbl">CRM</span></li>
-    {% endif %}
     {% for on, label in [
+        (_crm_on and _crm_on|length < crm_keys|length, 'CRM'),
         (crm_keys and _crm_on|length == crm_keys|length, 'Full CRM'),
         ('campaigns_email.all_view' in f, 'Email Marketing'),
         ('social.posts_view' in f,        'Social Media'),
         ('voice.calls' in f,              'Voice Calls'),
+        (plan.feat_advanced_ai,           'Custom AI personality'),
+        (plan.feat_integrations,          'Integrations'),
+        (plan.feat_visual_match,          'Shop by sending a photo'),
+        (plan.support_line,               plan.support_line),
     ] %}
-    <li>
-      {% if on %}
-      <span class="feat-yes">✓</span><span class="feat-lbl">{{ label }}</span>
-      {% else %}
-      <span class="feat-no">✗</span><span class="feat-lbl muted">{{ label }}</span>
-      {% endif %}
-    </li>
+    {% if on %}
+    <li><span class="feat-yes">✓</span><span class="feat-lbl">{{ label }}</span></li>
+    {% endif %}
     {% endfor %}
 
-    {% for flag, label in [
-        ('feat_advanced_ai', 'Custom AI personality'),
-        ('feat_integrations','Integrations'),
-        ('feat_visual_match','Shop by sending a photo'),
-    ] %}
-    <li>
-      {% if plan[flag] %}
-      <span class="feat-yes">✓</span><span class="feat-lbl">{{ label }}</span>
-      {% else %}
-      <span class="feat-no">✗</span><span class="feat-lbl muted">{{ label }}</span>
-      {% endif %}
-    </li>
-    {% endfor %}
-
-    <li>
-      <span class="feat-yes">✓</span>
-      <span class="feat-lbl">{{ support_map.get(plan.slug, 'Help Center support') }}</span>
-    </li>
-
-    {% if not plan.is_custom and not _no_ai %}
+    {% if not _no_ai %}
     <li>
       <span class="feat-yes">✓</span>
       <span class="feat-lbl">Overage: ₦{{ plan.overage_per_msg_ngn|int }}/msg</span>

@@ -212,6 +212,22 @@
   </div>
 
   <div class="pf-card">
+    <div class="pf-card-title"><span class="pf-badge" style="background:rgba(11,29,64,0.12)">🪪</span> Shown on the plan card</div>
+    <div class="pf-grid">
+      <div class="pf-field">
+        <label>Support line</label>
+        <input type="text" name="support_line" maxlength="120" value="{{ plan.support_line or '' }}" placeholder="e.g. Priority email support">
+        <div class="pf-hint">Leave empty to show no support line.</div>
+      </div>
+      <div class="pf-field">
+        <label>&nbsp;</label>
+        <label class="pf-check"><input type="checkbox" name="feat_integrations" {% if plan.feat_integrations %}checked{% endif %}> Show "Integrations"</label>
+        <label class="pf-check"><input type="checkbox" name="is_recommended" {% if plan.is_recommended %}checked{% endif %}> Show "Recommended" badge</label>
+      </div>
+    </div>
+  </div>
+
+  <div class="pf-card">
     <div class="pf-card-title"><span class="pf-badge" style="background:rgba(240,68,56,0.14)">🔓</span> Features unlocked on this plan</div>
     <p class="pf-hint" style="margin:-8px 0 14px">Tick every page/action this plan's merchants can use. Unchecked ones show an upgrade prompt instead.</p>
 

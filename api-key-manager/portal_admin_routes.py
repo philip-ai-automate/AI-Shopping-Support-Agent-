@@ -5086,6 +5086,10 @@ def _plan_form_to_dict(form) -> dict:
         "is_custom":           form.get("is_custom") == "on",
         "channel_mode":        form.get("channel_mode") if form.get("channel_mode") in ("whatsapp", "woocommerce", "dual", "both") else "whatsapp",
         "parent_plan_id":      int(form["parent_plan_id"]) if (form.get("parent_plan_id") or "").strip() else None,
+        # Shown on the merchant's plan card only (2026-10-02).
+        "feat_integrations":   form.get("feat_integrations") == "on",
+        "is_recommended":      form.get("is_recommended") == "on",
+        "support_line":        (form.get("support_line") or "").strip()[:120] or None,
     }
     # Legacy feat_* columns are still the real gate for WhatsApp Campaigns /
     # Email Campaigns / Checkout / Custom AI / Visual Match — see
@@ -5167,7 +5171,8 @@ def admin_plans_new():
              "products_limit": 50, "data_sources_limit": 1, "staff_limit": 0,
              "overage_per_msg_ngn": 10, "overage_per_msg_usd": 0.006,
              "annual_discount_pct": 5, "sort_order": 0, "is_active": True,
-             "is_custom": False, "channel_mode": "whatsapp", "parent_plan_id": None}
+             "is_custom": False, "channel_mode": "whatsapp", "parent_plan_id": None,
+             "feat_integrations": False, "is_recommended": False, "support_line": ""}
     for feature_key, _label in _ALL_CATALOG_ITEMS:
         if feature_key.startswith("legacy:"):
             blank[feature_key.split(":", 1)[1]] = False
