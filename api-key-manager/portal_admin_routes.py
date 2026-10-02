@@ -986,7 +986,7 @@ def customer_detail(customer_id: int):
         tenant_system_prompt = ""
 
     # Plan data for assignment panel
-    cur.execute("SELECT id, slug, name FROM plans WHERE is_active=TRUE ORDER BY sort_order")
+    cur.execute("SELECT id, slug, name, annual_discount_pct FROM plans WHERE is_active=TRUE ORDER BY sort_order")
     all_plans = cur.fetchall() or []
 
     # Messages used this billing period
