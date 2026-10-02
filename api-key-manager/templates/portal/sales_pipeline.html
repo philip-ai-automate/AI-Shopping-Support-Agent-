@@ -4,9 +4,9 @@
 {# Role-aware buttons — same route labels the save routes enforce. #}
 {% set can_edit_deal = staff_can_open('portal.sales_pipeline_edit') %}
 {% set can_bulk_email_seg = staff_can_open('portal.email_csegments_bulk_add_members') and 'campaigns_email.segments_edit' in (granted_features or []) %}
-{% set can_bulk_wa_seg    = staff_can_open('portal.whatsapp_pipeline_segments_bulk_add_members') %}
+{% set can_bulk_wa_seg    = staff_can_open('portal.whatsapp_pipeline_segments_bulk_add_members') and 'campaigns_wa.segments_edit' in (granted_features or []) %}
 {% set can_bulk_sms_seg   = staff_can_open('portal.sms_pipeline_segments_bulk_add_members') %}
-{% set can_bulk_label     = staff_can_open('portal.lead_labels_bulk_add_members') %}
+{% set can_bulk_label     = staff_can_open('portal.lead_labels_bulk_add_members') and 'crm.tags_edit' in (granted_features or []) %}
 {% set can_bulk_any = can_edit_deal or can_bulk_email_seg or can_bulk_wa_seg or can_bulk_sms_seg or can_bulk_label %}
 
 <style>

@@ -974,6 +974,54 @@ def _lock_email_marketing_without_plan():
                              "Upgrade your plan to use Email Segments."}), 403
 
 
+# Feature groups whose pages, lists and save actions had no plan lock (found
+# by the WhatsApp-plan page test 2026-10-02): Connect could open them and
+# Startup could open Chat History Import. key prefix → name on upgrade page.
+_PLAN_LOCKED_GROUPS = {
+    "wa.history_import_":         "Chat History Import",
+    "campaigns_wa.needs_review_": "Needs Review",
+    "campaigns_wa.segments_":     "WhatsApp Segments",
+    "crm.tags_":                  "Labels",
+    "channels.connect_messenger": "Facebook Messenger",
+}
+# Full pages in those groups; every other route (lists, saves) gets JSON 403.
+_PLAN_LOCKED_GROUP_PAGES = {
+    "portal.whatsapp_history_import", "portal.whatsapp_campaign_reviews",
+    "portal.whatsapp_campaign_segments_page", "portal.lead_labels_page",
+    "portal.lead_labels_import_bounces", "facebook.messenger_connect",
+}
+
+
+@portal_bp.before_app_request
+def _lock_feature_groups_without_plan():
+    """Blocks every route (any blueprint) labelled ONLY with keys from one
+    _PLAN_LOCKED_GROUPS group when the merchant's plan ticks none of that
+    route's keys. Pages → upgrade page; lists and save actions → JSON 403."""
+    view = current_app.view_functions.get(request.endpoint)
+    _kind, keys = route_access(view)
+    if not keys:
+        return None
+    group = next((g for g in _PLAN_LOCKED_GROUPS if keys[0].startswith(g)), None)
+    if not group or not all(k.startswith(group) for k in keys):
+        return None
+    cid = _customer_id()
+    customer = _get_customer(cid) if cid else None
+    if not customer:
+        return None
+    label = _PLAN_LOCKED_GROUPS[group]
+    try:
+        plan = _get_tenant_plan(int(customer["tenant_id"]))
+        if any(_plan_grants_feature(plan, k) for k in keys):
+            return None
+    except Exception as e:
+        print("⚠️ _lock_feature_groups_without_plan error:", e)
+        return None
+    if request.method == "GET" and request.endpoint in _PLAN_LOCKED_GROUP_PAGES:
+        return _require_plan_sub_feature(customer, keys[0], label)
+    return jsonify({"error": f"{label} isn't included in your plan. "
+                             "Upgrade your plan to use it."}), 403
+
+
 def _plan_grants_feature(plan: dict, feature_key: str) -> bool:
     """True if the tenant's plan grants this feature_key. Legacy keys read
     the existing feat_* boolean column on the plan row; new keys are looked
@@ -995,26 +1043,26 @@ def _plan_grants_feature(plan: dict, feature_key: str) -> bool:
 
 
 def _min_plan_for_feature(feature_key: str, merchant_mode: str = "whatsapp") -> str:
-    """Cheapest active plan of the merchant's own channel (see
-    _merchant_plan_mode) that grants feature_key, for the upgrade-required
-    message. Falls back to 'a higher' if none do (Custom-only)."""
+    """Cheapest active plan the merchant can buy (own channel first, see
+    _merchant_plan_mode, then Dual Agent) that grants feature_key, for the
+    upgrade-required message. Falls back to 'a higher' if none do (Custom-only)."""
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     if feature_key.startswith("legacy:"):
         col = feature_key.split(":", 1)[1]
         cur.execute(f"""
             SELECT name FROM plans
-            WHERE channel_mode IN (%s, CASE WHEN %s = 'whatsapp' THEN 'single' END)
+            WHERE channel_mode IN (%s, 'dual', CASE WHEN %s = 'whatsapp' THEN 'single' END)
               AND is_active=TRUE AND {col}=TRUE
-            ORDER BY sort_order LIMIT 1
+            ORDER BY (channel_mode = 'dual'), sort_order LIMIT 1
         """, (merchant_mode, merchant_mode))
     else:
         cur.execute("""
             SELECT p.name FROM plans p
             JOIN plan_feature_grants g ON g.plan_id = p.id AND g.feature_key=%s
-            WHERE p.channel_mode IN (%s, CASE WHEN %s = 'whatsapp' THEN 'single' END)
+            WHERE p.channel_mode IN (%s, 'dual', CASE WHEN %s = 'whatsapp' THEN 'single' END)
               AND p.is_active=TRUE
-            ORDER BY p.sort_order LIMIT 1
+            ORDER BY (p.channel_mode = 'dual'), p.sort_order LIMIT 1
         """, (feature_key, merchant_mode, merchant_mode))
     row = cur.fetchone()
     cur.close(); conn.close()
@@ -5919,7 +5967,7 @@ def stripe_webhook():
                         or float(meta.get("amount_gbp") or meta.get("amount_usd") or 0))
         sub_id     = sess_obj.get("subscription", "")
         cus_id     = sess_obj.get("customer", "")
-        if tenant_id and plan_id and sess_obj.get("payment_status") in ("paid", "no_payment_required", None):
+        if tenant_id and plan_id and sess_obj.get("payment_status") in ("paid", "no_payment_required"):
             _activate_plan_subscription(
                 tenant_id=tenant_id,
                 plan_id=plan_id,
