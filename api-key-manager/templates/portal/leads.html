@@ -1,7 +1,9 @@
 {% extends "portal/base.html" %}
+{% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
 {% block title %}Leads — PhiXtra Portal{% endblock %}
 {% block wrap_class %}page-wide{% endblock %}
 {% block content %}
+{% set can_bulk = staff_can('leads.qualify') or staff_can('leads.assign') %}
 
 <style>
 .leads-hero {
@@ -380,8 +382,8 @@
       <div><label class="flbl">Contact Person</label><input type="text" name="contact_person" class="finp"></div>
     </div>
     <div class="frow">
-      <div><label class="flbl">Phone Number</label><input type="tel" name="phone" class="finp"></div>
-      <div><label class="flbl">WhatsApp Number</label><input type="tel" name="whatsapp_number" class="finp"></div>
+      <div><label class="flbl">Phone Number</label>{{ phone_box('phone') }}</div>
+      <div><label class="flbl">WhatsApp Number</label>{{ phone_box('whatsapp_number') }}</div>
     </div>
     <div class="frow">
       <div><label class="flbl">Email</label><input type="email" name="email" class="finp"></div>
@@ -396,7 +398,16 @@
           <option value="instagram">Instagram</option>
         </select>
       </div>
-      <div><label class="flbl">Assigned Salesperson</label><input type="text" name="assigned_to" class="finp"></div>
+      <div><label class="flbl">Assigned Salesperson</label>
+        {% if staff_can('leads.assign') %}
+        <select name="assigned_key" class="finp">
+          <option value="">— Not assigned —</option>
+          {% for a in assignees %}<option value="{{ a.key }}">{{ a.display }}</option>{% endfor %}
+        </select>
+        {% else %}
+        <input type="text" class="finp" value="— Not assigned —" disabled>
+        {% endif %}
+      </div>
     </div>
     <div class="frow single">
       <div><label class="flbl">Product / Service Interested In</label><input type="text" name="product_interest" class="finp"></div>
@@ -416,26 +427,29 @@
     <span class="leads-search-icon">🔍</span>
     <input type="text" name="q" value="{{ search }}" placeholder="Search by business or contact…">
     {% if view_mode == 'board' %}<input type="hidden" name="view" value="board">{% endif %}
+    {% if tier_filter != 'all' %}<input type="hidden" name="tier" value="{{ tier_filter }}">{% endif %}
+    {% for k, v in fargs.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
   </form>
   <div class="view-switch">
-    <a href="{{ url_for('portal.leads_page', q=search, tier=(tier_filter if tier_filter != 'all' else none), view='list') }}"
+    <a href="{{ url_for('portal.leads_page', q=search, tier=(tier_filter if tier_filter != 'all' else none), view='list', **fargs) }}"
        class="{{ 'active' if view_mode == 'list' }}">☰ List</a>
     <a href="{{ url_for('portal.leads_page', q=search, tier=(tier_filter if tier_filter != 'all' else none), view='board') }}"
        class="{{ 'active' if view_mode == 'board' }}">▦ Board</a>
   </div>
   <div class="filter-bar">
-    <a href="{{ url_for('portal.leads_page', q=search, view=view_mode) }}" class="filter-btn {{ 'active' if tier_filter == 'all' }}">All ({{ tier_counts.values()|sum }})</a>
-    <a href="{{ url_for('portal.leads_page', q=search, view=view_mode, tier='hot') }}" class="filter-btn {{ 'active' if tier_filter == 'hot' }}">🔥 Hot ({{ tier_counts.get('hot', 0) }})</a>
-    <a href="{{ url_for('portal.leads_page', q=search, view=view_mode, tier='warm') }}" class="filter-btn {{ 'active' if tier_filter == 'warm' }}">🌤️ Warm ({{ tier_counts.get('warm', 0) }})</a>
-    <a href="{{ url_for('portal.leads_page', q=search, view=view_mode, tier='cold') }}" class="filter-btn {{ 'active' if tier_filter == 'cold' }}">❄️ Cold ({{ tier_counts.get('cold', 0) }})</a>
+    <a href="{{ url_for('portal.leads_page', q=search, view=view_mode, **fargs) }}" class="filter-btn {{ 'active' if tier_filter == 'all' }}">All ({{ tier_counts.values()|sum }})</a>
+    <a href="{{ url_for('portal.leads_page', q=search, view=view_mode, tier='hot', **fargs) }}" class="filter-btn {{ 'active' if tier_filter == 'hot' }}">🔥 Hot ({{ tier_counts.get('hot', 0) }})</a>
+    <a href="{{ url_for('portal.leads_page', q=search, view=view_mode, tier='warm', **fargs) }}" class="filter-btn {{ 'active' if tier_filter == 'warm' }}">🌤️ Warm ({{ tier_counts.get('warm', 0) }})</a>
+    <a href="{{ url_for('portal.leads_page', q=search, view=view_mode, tier='cold', **fargs) }}" class="filter-btn {{ 'active' if tier_filter == 'cold' }}">❄️ Cold ({{ tier_counts.get('cold', 0) }})</a>
   </div>
   {% if view_mode == 'list' %}
-  <a href="{{ url_for('portal.leads_page', q=search, tier=(tier_filter if tier_filter != 'all' else none), sort=(none if sort_by == 'score' else 'score')) }}"
+  <a href="{{ url_for('portal.leads_page', q=search, tier=(tier_filter if tier_filter != 'all' else none), sort=(none if sort_by == 'score' else 'score'), **fargs) }}"
      class="filter-btn {{ 'active' if sort_by == 'score' }}">📊 {{ 'Sorted by Score' if sort_by == 'score' else 'Sort by Score' }}</a>
   <form method="GET" style="display:flex;align-items:center;gap:6px;margin-left:auto">
     <input type="hidden" name="q" value="{{ search }}">
     {% if tier_filter != 'all' %}<input type="hidden" name="tier" value="{{ tier_filter }}">{% endif %}
     {% if sort_by == 'score' %}<input type="hidden" name="sort" value="score">{% endif %}
+    {% for k, v in fargs.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
     <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
       Per page
       <select name="per_page" onchange="this.form.submit()"
@@ -449,6 +463,69 @@
   {% endif %}
   <a href="{{ url_for('portal.lead_scoring_explainer') }}" class="filter-btn">🎯 How this works</a>
 </div>
+
+{% if view_mode == 'list' %}
+{# ── Filters (2026-10-02): Contact details tick-list, Assigned to, Date added ── #}
+{% set _ns = namespace(no_contact={}, no_date={}) %}
+{% for k, v in fargs.items() %}
+  {% if not k.startswith('has_') and k != 'check_numbers' %}{% set _ = _ns.no_contact.update({k: v}) %}{% endif %}
+  {% if k not in ('added_from', 'added_to') %}{% set _ = _ns.no_date.update({k: v}) %}{% endif %}
+{% endfor %}
+{% if lf.flagged_count and not lf.check_numbers %}
+<div style="margin:0 0 10px;padding:9px 12px;border-radius:10px;background:#fffbeb;border:1px solid #fde68a;color:#92400e;font-size:13px">
+  ⚠️ {{ lf.flagged_count }} lead{{ 's' if lf.flagged_count != 1 }} {{ 'have' if lf.flagged_count != 1 else 'has' }} a phone number to check (no country code, or not a real number). WhatsApp campaigns skip these numbers until they're fixed.
+  <a href="{{ url_for('portal.leads_page', check_numbers=1) }}" style="font-weight:600;color:#92400e;text-decoration:underline">Show them</a>
+</div>
+{% endif %}
+<form method="GET" class="lf-bar" id="leadFilterForm">
+  {% if search %}<input type="hidden" name="q" value="{{ search }}">{% endif %}
+  {% if tier_filter != 'all' %}<input type="hidden" name="tier" value="{{ tier_filter }}">{% endif %}
+  {% if sort_by == 'score' %}<input type="hidden" name="sort" value="score">{% endif %}
+  {% if per_page != '50' %}<input type="hidden" name="per_page" value="{{ per_page }}">{% endif %}
+
+  <details class="lf-dd">
+    <summary class="filter-btn {{ 'active' if lf.contact_filter_count }}">Contact details{% if lf.contact_filter_count %} ({{ lf.contact_filter_count }}){% endif %} ▾</summary>
+    <div class="lf-menu">
+      <label class="lf-item"><input type="checkbox" name="has_phone" value="1" {% if lf.has_phone %}checked{% endif %}> Has phone number</label>
+      <label class="lf-item"><input type="checkbox" name="has_email" value="1" {% if lf.has_email %}checked{% endif %}> Has email</label>
+      <label class="lf-item"><input type="checkbox" name="has_whatsapp" value="1" {% if lf.has_whatsapp %}checked{% endif %}> Has WhatsApp number</label>
+      <label class="lf-item"><input type="checkbox" name="has_company" value="1" {% if lf.has_company %}checked{% endif %}> Has company</label>
+      <label class="lf-item"><input type="checkbox" name="check_numbers" value="1" {% if lf.check_numbers %}checked{% endif %}> ⚠️ Numbers to check ({{ lf.flagged_count }})</label>
+      <div class="lf-foot">
+        <a class="btn btn-sm btn-ghost" href="{{ url_for('portal.leads_page', q=search or none, tier=(tier_filter if tier_filter != 'all' else none), sort=(sort_by or none), **_ns.no_contact) }}">Clear</a>
+        <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+      </div>
+    </div>
+  </details>
+
+  <label class="lf-sel">Assigned to
+    <select name="assigned" onchange="this.form.submit()">
+      <option value="">Anyone</option>
+      <option value="me" {% if lf.assigned == 'me' %}selected{% endif %}>Assigned to me</option>
+      <option value="none" {% if lf.assigned == 'none' %}selected{% endif %}>Unassigned</option>
+      {% for a in assignees %}
+      <option value="{{ a.key }}" {% if lf.assigned == a.key %}selected{% endif %}>{{ a.display }}</option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <details class="lf-dd">
+    <summary class="filter-btn {{ 'active' if lf.added_from or lf.added_to }}">Date added{% if lf.added_from or lf.added_to %}: {{ lf.added_from.strftime('%d %b %Y') if lf.added_from else '…' }} – {{ lf.added_to.strftime('%d %b %Y') if lf.added_to else '…' }}{% endif %} ▾</summary>
+    <div class="lf-menu">
+      <label class="lf-item lf-date">From <input type="date" name="added_from" value="{{ lf.added_from.isoformat() if lf.added_from else '' }}"></label>
+      <label class="lf-item lf-date">To <input type="date" name="added_to" value="{{ lf.added_to.isoformat() if lf.added_to else '' }}"></label>
+      <div class="lf-foot">
+        <a class="btn btn-sm btn-ghost" href="{{ url_for('portal.leads_page', q=search or none, tier=(tier_filter if tier_filter != 'all' else none), sort=(sort_by or none), **_ns.no_date) }}">Clear</a>
+        <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+      </div>
+    </div>
+  </details>
+
+  {% if fargs %}
+  <a class="lf-clear" href="{{ url_for('portal.leads_page', q=search or none, tier=(tier_filter if tier_filter != 'all' else none), sort=(sort_by or none)) }}">Clear all filters</a>
+  {% endif %}
+</form>
+{% endif %}
 
 {% if view_mode == 'board' %}
 {% macro cust_color(name) %}{% set _p=['#5C6BC0','#26A69A','#0288D1','#388E3C','#F57C00','#8E24AA','#E53935','#00838F'] %}{{ _p[(name|length)%8] }}{% endmacro %}
@@ -465,7 +542,8 @@
       <span class="score-dot tier-{{ l.lead_tier }}"></span><span class="score-dot-val">{{ l.lead_score }}</span>
     </button>
   </div>
-  <span class="stage-pill st-{{ l.stage }}">{{ stage_labels.get(l.stage, l.stage) }}</span>
+  {# Leads here are not Opportunities yet — never show the "New Opportunity" stage name (2026-10-02) #}
+  <span class="stage-pill st-{{ l.stage }}">{{ 'New Lead' if l.stage == 'new_lead' else stage_labels.get(l.stage, l.stage) }}</span>
   <div class="board-card-value" style="margin-top:6px">{{ '₦{:,.0f}'.format(l.deal_value) if l.deal_value else '—' }}</div>
   <div class="board-card-contact">{{ l.contact_person or l.phone or '—' }}</div>
   <div id="score-breakdown-{{ l.id }}" class="score-breakdown">
@@ -522,11 +600,24 @@
   <p style="max-width:380px;margin:0 auto">Add one by hand above, or create one from a Hot Conversation.</p>
 </div>
 {% else %}
+{% if can_bulk %}
+<div class="lb-bar" id="lbBar" hidden>
+  <strong><span id="lbCount">0</span> selected</strong>
+  <span id="lbAllOffer" hidden><a href="#" onclick="return lbSelectAllMatching()">Select all {{ '{:,}'.format(filtered_total) }} matching leads</a></span>
+  <span id="lbAllOn" hidden>All {{ '{:,}'.format(filtered_total) }} matching leads are selected. <a href="#" onclick="return lbClear()">Undo</a></span>
+  <span style="flex:1"></span>
+  {% if staff_can('leads.qualify') %}<button type="button" class="lb-btn lb-white" onclick="lbOpenQualify()">✓ Qualify</button>{% endif %}
+  {% if staff_can('leads.assign') %}<button type="button" class="lb-btn lb-ghost" onclick="lbOpenAssign()">👤 Assign to</button>{% endif %}
+  {% if staff_can('leads.qualify') %}<button type="button" class="lb-btn lb-red" onclick="lbOpenNaf()">Not a Fit</button>{% endif %}
+  <button type="button" class="lb-btn lb-ghost" onclick="lbClear()">Clear</button>
+</div>
+{% endif %}
 <div class="card" style="padding:0">
   <div class="table-wrap">
     <table class="rpt-table">
       <thead>
         <tr>
+          {% if can_bulk %}<th style="width:34px"><input type="checkbox" id="lbSelectPage" class="lb-ck" onchange="lbTogglePage(this)" aria-label="Select all leads on this page"></th>{% endif %}
           <th>Business</th><th>Contact</th><th>Phone Number</th><th>WhatsApp Number</th><th>Source</th>
           <th>Product / Service</th><th>Deal Value</th><th>Assigned To</th><th>Stage</th><th>Score</th><th>Added</th>
         </tr>
@@ -536,11 +627,12 @@
                             'instagram': ('#fce7f3','#be185d','Instagram'), 'manual': ('#f1f5f9','#64748b','Manual')} %}
         {% set _sb = {'hot': ('🔥','#fef2f2','#b91c1c'), 'warm': ('🌤️','#fffbeb','#b45309'), 'cold': ('❄️','#eff6ff','#1d4ed8')} %}
         {% for l in real_leads %}
-        <tr>
+        <tr class="lb-row" data-lead-id="{{ l.id }}">
+          {% if can_bulk %}<td><input type="checkbox" class="lb-ck lb-row-ck" onchange="lbUpdate()" aria-label="Select {{ l.customer_name }}"></td>{% endif %}
           <td><a href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" style="color:var(--ink);font-weight:700;text-decoration:none">{{ l.customer_name }}</a></td>
           <td class="muted">{{ l.contact_person or '—' }}</td>
-          <td class="muted" style="font-family:'SF Mono','Fira Code',monospace">{{ (l.phone|phone_display) or '—' }}</td>
-          <td class="muted" style="font-family:'SF Mono','Fira Code',monospace;color:#15803d">{{ (l.whatsapp_number|phone_display) or '—' }}</td>
+          <td class="muted" style="font-family:'SF Mono','Fira Code',monospace">{{ (l.phone|phone_display) or '—' }}{{ phone_flag(l.phone) }}</td>
+          <td class="muted" style="font-family:'SF Mono','Fira Code',monospace;color:#15803d">{{ (l.whatsapp_number|phone_display) or '—' }}{{ phone_flag(l.whatsapp_number) }}</td>
           <td>
             {% if l.source and l.source in src_meta %}
             {% set s_bg, s_fg, s_label = src_meta[l.source] %}
@@ -549,12 +641,12 @@
           </td>
           <td class="muted">{{ l.product_interest or '—' }}</td>
           <td class="muted">{{ '₦{:,.0f}'.format(l.deal_value) if l.deal_value else '—' }}</td>
-          <td class="muted">{{ l.assigned_to or '—' }}</td>
+          <td class="muted">{{ (l.assigned_to|who(l.assigned_key)) if l.assigned_to else '—' }}</td>
           <td>
             {% if l.outcome %}
             <span class="stage-pill" style="background:{{ '#f0fdf4' if l.outcome=='won' else '#f8fafc' }};color:{{ '#15803d' if l.outcome=='won' else '#64748b' }}">{{ stage_labels.get(l.outcome, l.outcome.capitalize()) }}</span>
             {% else %}
-            <span class="stage-pill st-{{ l.stage }}">{{ stage_labels.get(l.stage, l.stage) }}</span>
+            <span class="stage-pill st-{{ l.stage }}">{{ 'New Lead' if l.stage == 'new_lead' else stage_labels.get(l.stage, l.stage) }}</span>
             {% endif %}
           </td>
           <td>
@@ -576,6 +668,7 @@
     {% if total_pages > 1 %}
     {% set base_args = {'q': search, 'tier': (tier_filter if tier_filter != 'all' else none),
                          'sort': (sort_by or none), 'per_page': per_page} %}
+    {% set _ = base_args.update(fargs) %}
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
       <a href="{{ url_for('portal.leads_page', page=page-1, **base_args) if page > 1 else '#' }}"
          class="btn btn-sm btn-ghost" style="text-decoration:none;
@@ -614,6 +707,302 @@ function toggleScoreBreakdown(id) {
   var panel = document.getElementById('score-breakdown-' + id);
   if (panel) panel.classList.toggle('open');
 }
+</script>
+
+
+{# ══ Bulk lead work (2026-10-02): filters, tick boxes, bulk bar, confirm windows ══ #}
+<style>
+.lf-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:-6px 0 16px}
+.lf-dd{position:relative}
+.lf-dd>summary{list-style:none;cursor:pointer;user-select:none}
+.lf-dd>summary::-webkit-details-marker{display:none}
+.lf-menu{position:absolute;top:calc(100% + 6px);left:0;z-index:300;min-width:250px;background:#fff;border:1px solid var(--line);
+  border-radius:12px;box-shadow:0 12px 32px rgba(11,29,64,.16);padding:8px;display:flex;flex-direction:column}
+.lf-item{display:flex;align-items:center;gap:10px;font-size:13.5px;padding:9px 10px;border-radius:8px;cursor:pointer}
+.lf-item:hover{background:#f5f7fb}
+.lf-item input[type=checkbox]{width:17px;height:17px;accent-color:#0B1D40}
+.lf-date{justify-content:space-between}
+.lf-date input{padding:6px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:13px}
+.lf-foot{display:flex;justify-content:space-between;gap:8px;border-top:1px solid var(--line);margin-top:4px;padding:8px 4px 2px}
+.lf-sel{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
+.lf-sel select{padding:7px 10px;border:1.5px solid var(--line);border-radius:999px;font-size:12.5px;font-family:inherit;background:#fff;color:var(--ink)}
+.lf-clear{font-size:12.5px;color:var(--muted)}
+.lb-ck{width:17px;height:17px;accent-color:#0B1D40;cursor:pointer}
+tr.lb-sel td{background:#eef2fa}
+.lb-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#0B1D40;color:#fff;border-radius:12px;padding:10px 14px;margin-bottom:12px;font-size:13.5px}
+.lb-bar[hidden],.lm-box [hidden],.lf-bar [hidden]{display:none !important}
+.lb-bar a{color:#FFD873;text-decoration:underline}
+.lb-btn{border:0;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;min-height:38px}
+.lb-white{background:#fff;color:#0B1D40}.lb-ghost{background:rgba(255,255,255,.14);color:#fff}.lb-red{background:#fff;color:#A11B12}
+.lm-over{position:fixed;inset:0;background:rgba(11,29,64,.5);z-index:500;display:none;align-items:center;justify-content:center;padding:16px}
+.lm-over.open{display:flex}
+.lm-box{background:#fff;border-radius:16px;width:100%;max-width:560px;max-height:90vh;overflow:auto;padding:26px;box-shadow:0 20px 60px rgba(0,0,0,.3);display:flex;flex-direction:column;gap:14px}
+.lm-title{font-size:19px;font-weight:800;margin:0}
+.lm-sub{font-size:13.5px;color:var(--muted);margin:4px 0 0}
+.lm-sum{background:#f5f7fb;border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;font-size:13.5px}
+.lm-sec{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700;margin-top:4px}
+.lm-opt{text-transform:none;letter-spacing:0;font-weight:500}
+.lm-people{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;padding:4px 10px;max-height:220px;overflow:auto}
+.lm-person{display:flex;align-items:center;gap:10px;font-size:13.5px;padding:7px 0;border-bottom:1px solid #f0f2f5;cursor:pointer}
+.lm-person:last-child{border-bottom:0}
+.lm-person input,.lm-keep input,.lm-reason input{width:17px;height:17px;accent-color:#0B1D40}
+.lm-cnt{margin-left:auto;font-weight:700;font-size:12px;color:#0B1D40;background:#e6eef9;border-radius:999px;padding:1px 9px}
+.lm-cnt:empty{display:none}
+.lm-keep{display:flex;align-items:center;gap:8px;font-size:13px}
+.lm-reason{display:flex;align-items:center;gap:10px;font-size:13.5px;padding:7px 4px;cursor:pointer}
+.lm-note{font-size:12.5px;color:var(--muted)}
+.lm-acts{display:flex;justify-content:flex-end;gap:10px;margin-top:4px}
+.lm-acts .btn{min-height:40px}
+.lm-err{color:#A11B12;font-size:13px}
+.lm-err:empty{display:none}
+</style>
+
+{% macro assign_fields(p, allow_leave) %}
+<div class="lm-sec">Assign to {% if allow_leave %}<span class="lm-opt">(optional)</span>{% endif %}</div>
+<select id="{{ p }}Mode" class="finp" onchange="lbAssignMode('{{ p }}')" style="margin:0">
+  {% if allow_leave %}<option value="">Leave as they are</option>{% endif %}
+  <option value="one">One person</option>
+  <option value="even">Share evenly between…</option>
+</select>
+<div id="{{ p }}One" hidden>
+  <select id="{{ p }}Key" class="finp" style="margin:0">
+    {% for a in assignees %}<option value="{{ a.key }}">{{ a.display }}{% if a.key == actor_key %} (me){% endif %}</option>{% endfor %}
+  </select>
+</div>
+<div id="{{ p }}Even" class="lm-people" hidden>
+  {% for a in assignees %}
+  <label class="lm-person"><input type="checkbox" class="{{ p }}-pk" value="{{ a.key }}" onchange="lbEvenCounts('{{ p }}')"> {{ a.display }}{% if a.key == actor_key %} (me){% endif %}<span class="lm-cnt" data-k="{{ a.key }}"></span></label>
+  {% endfor %}
+</div>
+<label class="lm-keep" id="{{ p }}KeepWrap" hidden><input type="checkbox" id="{{ p }}Keep" checked onchange="lbEvenCounts('{{ p }}')"> Keep leads that already have someone (<span id="{{ p }}AssignedN">0</span>)</label>
+{% endmacro %}
+
+{% if can_bulk and view_mode == 'list' %}
+{% if staff_can('leads.qualify') %}
+<div class="lm-over" id="lmQualify" onclick="if(event.target===this)lbCloseModals()">
+  <div class="lm-box" role="dialog" aria-labelledby="lmQualifyTitle">
+    <div>
+      <h2 class="lm-title" id="lmQualifyTitle">Qualify <span class="lmN">0</span> leads?</h2>
+      <p class="lm-sub">They'll move to the Pipeline Board as <b>{{ stage_labels.get('new_lead', 'New Opportunity') }}</b>, ready for the team to work.</p>
+    </div>
+    <div class="lm-sum">
+      <div>✅ <b id="lmQOk">0</b> will be qualified</div>
+      <div id="lmQSkipRow">⚠️ <b id="lmQSkip">0</b> skipped: no phone, email or WhatsApp number</div>
+      <div>🏢 <b id="lmQCo">0</b> have a company. It stays linked.</div>
+    </div>
+    {% if staff_can('leads.assign') %}{{ assign_fields('qa', true) }}{% endif %}
+    <div class="lm-sec">Product / service interested in <span class="lm-opt">(optional, applies to all)</span></div>
+    <input type="text" id="lmQProduct" class="finp" style="margin:0" placeholder="e.g. AI Sales Agent">
+    <div class="lm-note">🕘 Each lead's history will show "Qualified (bulk)", who did it and when.</div>
+    <div class="lm-err" id="lmQErr"></div>
+    <div class="lm-acts">
+      <button type="button" class="btn btn-sm btn-ghost" onclick="lbCloseModals()">Cancel</button>
+      <button type="button" class="btn btn-primary" id="lmQGo" onclick="lbSubmitQualify()">Qualify</button>
+    </div>
+  </div>
+</div>
+
+<div class="lm-over" id="lmNaf" onclick="if(event.target===this)lbCloseModals()">
+  <div class="lm-box" role="dialog" aria-labelledby="lmNafTitle" style="max-width:500px">
+    <div>
+      <h2 class="lm-title" id="lmNafTitle">Mark <span class="lmN">0</span> leads Not a Fit?</h2>
+      <p class="lm-sub">Pick one reason. It's saved on every lead you ticked.</p>
+    </div>
+    <fieldset style="border:0;padding:0;margin:0">
+      <legend class="lm-sec" style="margin-bottom:4px">Reason</legend>
+      {% for r in not_a_fit_reasons %}
+      <label class="lm-reason"><input type="radio" name="lmNafReason" value="{{ r }}" onchange="document.getElementById('lmNafOther').hidden = (this.value !== 'Other')"> {{ r }}{% if r == 'Other' %}…{% endif %}</label>
+      {% endfor %}
+    </fieldset>
+    <input type="text" id="lmNafOther" class="finp" style="margin:0" placeholder="Type the reason" hidden>
+    <div class="lm-note">The leads close and leave the Leads list. Their contacts stay in All Contacts.</div>
+    <div class="lm-err" id="lmNafErr"></div>
+    <div class="lm-acts">
+      <button type="button" class="btn btn-sm btn-ghost" onclick="lbCloseModals()">Cancel</button>
+      <button type="button" class="btn" id="lmNafGo" style="background:#A11B12;color:#fff" onclick="lbSubmitNaf()">Mark Not a Fit</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if staff_can('leads.assign') %}
+<div class="lm-over" id="lmAssign" onclick="if(event.target===this)lbCloseModals()">
+  <div class="lm-box" role="dialog" aria-labelledby="lmAssignTitle">
+    <div>
+      <h2 class="lm-title" id="lmAssignTitle">Assign <span class="lmN">0</span> leads</h2>
+      <p class="lm-sub">Choose who works these leads. They'll find them with <b>Assigned to › Assigned to me</b>.</p>
+    </div>
+    {{ assign_fields('as', false) }}
+    <div class="lm-err" id="lmAErr"></div>
+    <div class="lm-acts">
+      <button type="button" class="btn btn-sm btn-ghost" onclick="lbCloseModals()">Cancel</button>
+      <button type="button" class="btn btn-primary" id="lmAGo" onclick="lbSubmitAssign()">Assign</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<script>
+var LB = { all: false, total: {{ filtered_total|int }}, preview: null,
+           filterKeys: ['q','tier','has_phone','has_email','has_whatsapp','has_company','check_numbers','assigned','added_from','added_to'] };
+function lbRows(){ return Array.prototype.slice.call(document.querySelectorAll('.lb-row')); }
+function lbIds(){ return lbRows().filter(function(r){ var c=r.querySelector('.lb-row-ck'); return c && c.checked; })
+                                 .map(function(r){ return r.dataset.leadId; }); }
+function lbCount(){ return LB.all ? LB.total : lbIds().length; }
+function lbFmt(n){ return Number(n).toLocaleString('en-GB'); }
+function lbUpdate(){
+  var rows = lbRows(), ids = lbIds();
+  if (LB.all && ids.length < rows.length) LB.all = false;     // unticking one row ends "all matching"
+  rows.forEach(function(r){ var c=r.querySelector('.lb-row-ck'); r.classList.toggle('lb-sel', !!(c && c.checked)); });
+  var pageAll = rows.length > 0 && ids.length === rows.length;
+  var head = document.getElementById('lbSelectPage'); if (head) head.checked = pageAll;
+  var bar = document.getElementById('lbBar'); if (!bar) return;
+  bar.hidden = ids.length === 0;
+  document.getElementById('lbCount').textContent = lbFmt(lbCount());
+  document.getElementById('lbAllOffer').hidden = !(pageAll && !LB.all && LB.total > rows.length);
+  document.getElementById('lbAllOn').hidden = !LB.all;
+}
+function lbTogglePage(cb){ lbRows().forEach(function(r){ r.querySelector('.lb-row-ck').checked = cb.checked; }); if(!cb.checked) LB.all=false; lbUpdate(); }
+function lbSelectAllMatching(){ LB.all = true; lbRows().forEach(function(r){ r.querySelector('.lb-row-ck').checked = true; }); lbUpdate(); return false; }
+function lbClear(){ LB.all = false; lbRows().forEach(function(r){ r.querySelector('.lb-row-ck').checked = false; }); lbUpdate(); return false; }
+function lbForm(){
+  var fd = new FormData();
+  fd.append('scope', 'leads');
+  if (LB.all) {
+    fd.append('all_matching', '1');
+    new URLSearchParams(location.search).forEach(function(v, k){ if (LB.filterKeys.indexOf(k) >= 0) fd.append(k, v); });
+  } else {
+    lbIds().forEach(function(id){ fd.append('lead_ids', id); });
+  }
+  return fd;
+}
+function lbPost(url, fd){
+  return fetch(url, { method: 'POST', body: fd, credentials: 'same-origin' })
+    .then(function(r){ return r.json().catch(function(){ return { error: 'Something went wrong (' + r.status + ').' }; }); });
+}
+function lbCloseModals(){ document.querySelectorAll('.lm-over.open').forEach(function(m){ m.classList.remove('open'); }); document.body.classList.remove('sh-hide'); }
+function lbOpen(id){
+  var n = lbCount(); if (!n) return;
+  document.querySelectorAll('#' + id + ' .lmN').forEach(function(el){ el.textContent = lbFmt(n); });
+  document.querySelectorAll('#' + id + ' .lm-err').forEach(function(el){ el.textContent = ''; });
+  document.getElementById(id).classList.add('open');
+  document.body.classList.add('sh-hide');   // hide "Need help?" so it can't cover the buttons
+}
+/* assign fields: p = 'qa' (inside Qualify) or 'as' (Assign window) */
+function lbAssignMode(p){
+  var m = document.getElementById(p + 'Mode').value;
+  document.getElementById(p + 'One').hidden = m !== 'one';
+  document.getElementById(p + 'Even').hidden = m !== 'even';
+  document.getElementById(p + 'KeepWrap').hidden = !m || !(LB.preview && LB.preview.assigned > 0);
+  lbEvenCounts(p);
+}
+function lbEvenCounts(p){
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('.' + p + '-pk'));
+  var picked = boxes.filter(function(b){ return b.checked; });
+  var pv = LB.preview || { count: lbCount(), assigned: 0, no_details: 0 };
+  var n = pv.count - (p === 'qa' ? pv.no_details : 0);
+  var keep = document.getElementById(p + 'Keep');
+  if (keep && keep.checked && !document.getElementById(p + 'KeepWrap').hidden) n -= pv.assigned;
+  n = Math.max(0, n);
+  boxes.forEach(function(b){ b.parentNode.querySelector('.lm-cnt').textContent = ''; });
+  picked.forEach(function(b, i){
+    var share = Math.floor(n / picked.length) + (i < n % picked.length ? 1 : 0);
+    b.parentNode.querySelector('.lm-cnt').textContent = lbFmt(share);
+  });
+}
+function lbAddAssign(p, fd){
+  var mEl = document.getElementById(p + 'Mode'); if (!mEl) return true;
+  var m = mEl.value; if (!m) return true;
+  fd.append('assign_mode', m);
+  if (m === 'one') fd.append('assign_key', document.getElementById(p + 'Key').value);
+  else {
+    var keys = Array.prototype.slice.call(document.querySelectorAll('.' + p + '-pk:checked')).map(function(b){ return b.value; });
+    if (!keys.length) return false;
+    keys.forEach(function(k){ fd.append('assign_keys', k); });
+  }
+  var keepWrap = document.getElementById(p + 'KeepWrap');
+  if (!keepWrap.hidden && document.getElementById(p + 'Keep').checked) fd.append('keep_existing', '1');
+  return true;
+}
+function lbLoadPreview(then){
+  LB.preview = null;
+  lbPost('/leads/bulk/preview', lbForm()).then(function(d){
+    if (d.error) { alert(d.error); return; }
+    LB.preview = d; then(d);
+  }).catch(function(){ alert('Could not reach the server. Check your connection.'); });
+}
+function lbOpenQualify(){
+  lbLoadPreview(function(d){
+    document.getElementById('lmQOk').textContent = lbFmt(d.count - d.no_details);
+    document.getElementById('lmQSkip').textContent = lbFmt(d.no_details);
+    document.getElementById('lmQSkipRow').style.display = d.no_details ? '' : 'none';
+    document.getElementById('lmQCo').textContent = lbFmt(d.with_company);
+    document.getElementById('lmQGo').textContent = 'Qualify ' + lbFmt(d.count - d.no_details) + ' leads';
+    document.getElementById('lmQGo').disabled = (d.count - d.no_details) === 0;
+    if (document.getElementById('qaMode')) { document.getElementById('qaAssignedN').textContent = lbFmt(d.assigned); lbAssignMode('qa'); }
+    lbOpen('lmQualify');
+  });
+}
+function lbOpenAssign(){
+  lbLoadPreview(function(d){
+    document.getElementById('asAssignedN').textContent = lbFmt(d.assigned);
+    lbAssignMode('as');
+    lbOpen('lmAssign');
+  });
+}
+function lbOpenNaf(){
+  LB.preview = null;
+  document.querySelectorAll('input[name=lmNafReason]').forEach(function(r){ r.checked = false; });
+  document.getElementById('lmNafOther').hidden = true; document.getElementById('lmNafOther').value = '';
+  lbOpen('lmNaf');
+}
+function lbBusy(btn, on, txt){ btn.disabled = on; if (txt) btn.textContent = txt; }
+function lbSubmitQualify(){
+  var fd = lbForm(), err = document.getElementById('lmQErr'), btn = document.getElementById('lmQGo');
+  if (!lbAddAssign('qa', fd)) { err.textContent = 'Tick at least one person to share the leads between.'; return; }
+  var prod = document.getElementById('lmQProduct').value.trim(); if (prod) fd.append('product_interest', prod);
+  lbBusy(btn, true, 'Qualifying…');
+  lbPost('/leads/bulk/qualify', fd).then(function(d){
+    if (d.error) { err.textContent = d.error; lbBusy(btn, false, 'Try again'); return; }
+    var msg = lbFmt(d.qualified) + ' leads qualified and moved to the Pipeline Board.';
+    if (d.skipped_no_details) msg += ' ' + lbFmt(d.skipped_no_details) + ' skipped (no contact details).';
+    if (d.assigned) msg += ' ' + lbFmt(d.assigned) + ' assigned.';
+    alert(msg); location.reload();
+  }).catch(function(){ err.textContent = 'Could not reach the server. Nothing was changed.'; lbBusy(btn, false, 'Try again'); });
+}
+function lbSubmitAssign(){
+  var fd = lbForm(), err = document.getElementById('lmAErr'), btn = document.getElementById('lmAGo');
+  if (!lbAddAssign('as', fd)) { err.textContent = 'Tick at least one person to share the leads between.'; return; }
+  lbBusy(btn, true, 'Assigning…');
+  lbPost('/leads/bulk/assign', fd).then(function(d){
+    if (d.error) { err.textContent = d.error; lbBusy(btn, false, 'Try again'); return; }
+    alert(lbFmt(d.assigned) + ' leads assigned.'); location.reload();
+  }).catch(function(){ err.textContent = 'Could not reach the server. Nothing was changed.'; lbBusy(btn, false, 'Try again'); });
+}
+function lbSubmitNaf(){
+  var fd = lbForm(), err = document.getElementById('lmNafErr'), btn = document.getElementById('lmNafGo');
+  var r = document.querySelector('input[name=lmNafReason]:checked');
+  if (!r) { err.textContent = 'Please choose a reason.'; return; }
+  fd.append('reason', r.value);
+  if (r.value === 'Other') {
+    var t = document.getElementById('lmNafOther').value.trim();
+    if (!t) { err.textContent = 'Type the reason for Other.'; return; }
+    fd.append('reason_other', t);
+  }
+  lbBusy(btn, true, 'Saving…');
+  lbPost('/leads/bulk/not-a-fit', fd).then(function(d){
+    if (d.error) { err.textContent = d.error; lbBusy(btn, false, 'Try again'); return; }
+    alert(lbFmt(d.closed) + ' leads marked Not a Fit.'); location.reload();
+  }).catch(function(){ err.textContent = 'Could not reach the server. Nothing was changed.'; lbBusy(btn, false, 'Try again'); });
+}
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape') lbCloseModals(); });
+</script>
+{% endif %}
+<script>
+/* close an open filter dropdown when clicking elsewhere */
+document.addEventListener('click', function(e){
+  document.querySelectorAll('details.lf-dd[open]').forEach(function(d){ if (!d.contains(e.target)) d.removeAttribute('open'); });
+});
 </script>
 
 {% endblock %}

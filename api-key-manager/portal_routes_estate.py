@@ -339,8 +339,13 @@ def register():
         confirm       = request.form.get("confirm_password", "").strip()
         ref_code      = (request.form.get("ref_code") or "").strip().lower()[:30]
 
+        # Country code forced (2026-10-02): picker or +number, never guessed.
+        from portal_routes import _phone_entry
+        phone, _perr = _phone_entry(phone, request.form.get("phone_country"), plus=True)
         if not all([first_name, business_name, email, password]):
             error = "First name, business name, email and password are required."
+        elif _perr:
+            error = f"Phone number: {_perr}"
         elif password != confirm:
             error = "Passwords do not match."
         elif len(password) < 8:
@@ -2468,6 +2473,14 @@ def settings():
                 contact_email = request.form.get("contact_email", "").strip() or None
                 contact_phone = request.form.get("contact_phone", "").strip() or None
                 state         = request.form.get("state", "").strip() or "Lagos"
+                from portal_routes import _phone_entry_keep_old
+                cur.execute("SELECT contact_phone FROM re_tenants WHERE id=%s", (tenant_id,))
+                _old = cur.fetchone()
+                contact_phone, _perr = _phone_entry_keep_old(contact_phone, request.form.get("contact_phone_country"),
+                                                             _old[0] if _old else None, allow_special=True, plus=True)
+                if _perr:
+                    flash(f"Not saved. Contact phone: {_perr}", "danger")
+                    return redirect(url_for("estate.settings"))
                 if business_name:
                     cur.execute("""
                         UPDATE re_tenants
@@ -3261,8 +3274,12 @@ def contacts():
             tags_raw   = request.form.get("tags", "").strip()
             tags       = [t.strip().lower() for t in tags_raw.split(",") if t.strip()]
             seg_ids    = [int(s) for s in request.form.getlist("segment_ids") if s.isdigit()]
-            if not phone:
+            from portal_routes import _phone_entry
+            phone, _perr = _phone_entry(phone, request.form.get("phone_country"))
+            if not phone and not _perr:
                 flash("Phone number is required.", "danger")
+            elif _perr:
+                flash(f"Contact not saved. {_perr}", "danger")
             else:
                 try:
                     cur.execute("""
@@ -3303,11 +3320,16 @@ def contacts():
             else:
                 content = f.read().decode("utf-8-sig", errors="replace")
                 reader  = csv.DictReader(io.StringIO(content))
-                added = 0; skipped = 0
+                added = 0; skipped = 0; to_check = 0
+                from portal_routes import _normalise_contact_phone, phone_problem
                 for row in reader:
                     phone = (row.get("Phone") or row.get("phone") or "").strip().replace(" ","").replace("-","")
                     if not phone:
                         skipped += 1; continue
+                    # Kept as written (digits) — never given a country code by guess (2026-10-02).
+                    phone = _normalise_contact_phone(phone) or phone
+                    if phone_problem(phone):
+                        to_check += 1
                     name   = (row.get("Name")   or row.get("name")   or "").strip() or None
                     email  = (row.get("Email")  or row.get("email")  or "").strip() or None
                     area   = (row.get("Area")   or row.get("area")   or "").strip() or None
@@ -3330,7 +3352,10 @@ def contacts():
                     except Exception:
                         conn.rollback(); skipped += 1; continue
                 conn.commit()
-                flash(f"Imported {added} contacts. {skipped} skipped.", "success" if added else "warning")
+                flash(f"Imported {added} contacts. {skipped} skipped."
+                      + (f" ⚠️ {to_check} with a number to check (no country code or not a real number) — "
+                         "edit them with the country code." if to_check else ""),
+                      "success" if added and not to_check else "warning")
 
         elif section == "delete_contact":
             cid = request.form.get("contact_id")

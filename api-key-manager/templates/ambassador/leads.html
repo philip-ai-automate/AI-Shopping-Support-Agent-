@@ -1,4 +1,5 @@
 {% extends "ambassador/base.html" %}
+{% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
 {% block title %}My Pipeline — Ambassador Hub{% endblock %}
 
 {% block head %}
@@ -177,7 +178,7 @@
       </div>
       <div>
         <label class="flbl">Phone</label>
-        <input type="tel" name="phone" class="finp"/>
+        {{ phone_box('phone') }}
       </div>
     </div>
     <div class="frow">
@@ -563,7 +564,7 @@ function openEditModal(id, data, linkableTenants) {
       <div><label class="flbl">Contact Name</label>
         <input type="text" name="contact_name" class="finp" value="${esc(data.contact_name)}"/></div>
       <div><label class="flbl">Phone</label>
-        <input type="tel" name="phone" class="finp" value="${esc(data.phone)}"/></div>
+        ${phBoxHtml(data.phone)}</div>
     </div>
     <div class="frow">
       <div><label class="flbl">Email</label>
@@ -845,5 +846,18 @@ ambTourInit([
     title: '🎉 You\'re ready!',
     body: 'That\'s My Pipeline covered. Click "🎓 Take a Tour" in the page header any time you want to run through this again.' },
 ], 'phixtra_amb_tour_my_pipeline', true);
+</script>
+<template id="phTpl">{{ phone_box('phone', cls='finp') }}</template>
+<script>
+/* Edit pop-ups are built by script: copy the same country + number box (2026-10-02). */
+function phBoxHtml(v){
+  var d=document.createElement('div'); d.appendChild(document.getElementById('phTpl').content.cloneNode(true));
+  var s=d.querySelector('script'); if(s) s.remove();
+  var i=d.querySelector('.ph-num'); v=(v||'').toString().trim(); var g=v.replace(/\D/g,'');
+  var shown=(!v)?'':(v.charAt(0)==='+'||g.charAt(0)==='0'||!g)?v:'+'+g;
+  i.setAttribute('value', shown);
+  if(v.charAt(0)==='+'||(g&&g.charAt(0)!=='0')){ var c=d.querySelector('.ph-cc'); c.setAttribute('disabled',''); c.style.opacity='.45'; }
+  return d.innerHTML;
+}
 </script>
 {% endblock %}

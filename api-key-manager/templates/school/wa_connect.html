@@ -1,4 +1,5 @@
 {% extends "school/base.html" %}
+{% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
 {% block title %}Connect WhatsApp — {{ school.school_name }}{% endblock %}
 
 {% block head %}
@@ -93,10 +94,7 @@
     {# Test message #}
     <form method="POST" action="{{ url_for('school.settings_wa_test') }}"
           style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap">
-      <input type="tel" name="test_number"
-             placeholder="Test phone number (e.g. 08012345678)"
-             style="flex:1;min-width:200px;padding:9px 12px;border:1.5px solid var(--line);
-                    border-radius:8px;font-size:14px;"/>
+      <div style="flex:1;min-width:260px">{{ phone_box('test_number', cls='', hint=False) }}</div>
       <button class="btn btn-outline" type="submit">📲 Send test</button>
     </form>
     {% else %}

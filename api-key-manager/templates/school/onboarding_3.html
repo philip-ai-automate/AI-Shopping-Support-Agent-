@@ -1,4 +1,5 @@
 {% extends "school/onboarding_base.html" %}
+{% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
 {% block title %}Test Connection — Setup{% endblock %}
 
 {% block content %}
@@ -26,9 +27,7 @@
   <form method="POST">
     <div class="form-group">
       <label>Send a test message to this number</label>
-      <input type="tel" name="test_number" required
-             placeholder="e.g. 08012345678 or +2348012345678"
-             style="max-width:320px">
+      {{ phone_box('test_number', cls='', required=True, style='max-width:440px') }}
       <span style="font-size:11.5px;color:var(--muted);margin-top:4px">
         Enter your own number or a colleague's to verify delivery.
       </span>

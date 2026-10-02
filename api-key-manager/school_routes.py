@@ -1214,6 +1214,12 @@ def parents_add():
     if not full_name or not wa_number:
         flash("Name and WhatsApp number are required.", "danger")
         return redirect(url_for("school.parents"))
+    # Country code forced (2026-10-02): country picker or +number, never guessed.
+    from portal_routes import _phone_entry
+    wa_number, _perr = _phone_entry(wa_number, request.form.get("whatsapp_number_country"))
+    if _perr:
+        flash(f"Parent not saved. {_perr}", "danger")
+        return redirect(url_for("school.parents"))
     conn = get_db_connection()
     cur  = conn.cursor()
     cur.execute("""
@@ -1260,6 +1266,7 @@ def parents_import():
     reader = csv.DictReader(io.StringIO(text))
     added  = 0
     errors = []
+    to_check = []
     conn   = get_db_connection()
     cur    = conn.cursor()
     for i, row in enumerate(reader, start=2):
@@ -1268,6 +1275,12 @@ def parents_import():
         if not name or not number:
             errors.append(f"Row {i}: missing name or number")
             continue
+        # Kept as written (digits), never given a country code by guess
+        # (2026-10-02); a number to check is listed so staff can fix it.
+        from portal_routes import _normalise_contact_phone, phone_problem
+        number = _normalise_contact_phone(number) or number
+        if phone_problem(number):
+            to_check.append(name)
         try:
             cur.execute("""
                 INSERT INTO school_parents (school_id, full_name, whatsapp_number, relationship)
@@ -1299,7 +1312,11 @@ def parents_import():
             errors.append(f"Row {i}: {e}")
     conn.commit()
     cur.close(); conn.close()
-    flash(f"{added} parents imported." + (f" {len(errors)} errors." if errors else ""), "success" if not errors else "warning")
+    flash(f"{added} parents imported." + (f" {len(errors)} errors." if errors else "")
+          + (f" ⚠️ {len(to_check)} with a WhatsApp number to check (no country code or not a real number): "
+             f"{', '.join(to_check[:5])}{' …' if len(to_check) > 5 else ''} — edit them with the country code."
+             if to_check else ""),
+          "success" if not (errors or to_check) else "warning")
     return redirect(url_for("school.parents"))
 
 
@@ -1455,8 +1472,17 @@ def parents_edit(parent_id):
     if not full_name or not wa_number:
         flash("Name and WhatsApp number are required.", "danger")
         return redirect(url_for("school.parents"))
+    from portal_routes import _phone_entry_keep_old
     conn = get_db_connection()
     cur  = conn.cursor()
+    cur.execute("SELECT whatsapp_number FROM school_parents WHERE id=%s AND school_id=%s", (parent_id, sid))
+    _old = cur.fetchone()
+    wa_number, _perr = _phone_entry_keep_old(wa_number, request.form.get("whatsapp_number_country"),
+                                             _old[0] if _old else None)
+    if _perr:
+        cur.close(); conn.close()
+        flash(f"Not saved. {_perr}", "danger")
+        return redirect(url_for("school.parents"))
     cur.execute("""
         UPDATE school_parents SET full_name=%s, whatsapp_number=%s, relationship=%s
         WHERE id=%s AND school_id=%s
@@ -3185,6 +3211,11 @@ def settings_wa_test():
     if not test_number:
         flash("Enter a phone number to test.", "warning")
         return redirect(url_for("school.settings") + "#wa-setup")
+    from portal_routes import _phone_entry
+    test_number, _perr = _phone_entry(test_number, request.form.get("test_number_country"))
+    if _perr:
+        flash(_perr, "danger")
+        return redirect(url_for("school.settings") + "#wa-setup")
     if not school.get("wa_phone_number_id"):
         flash("WhatsApp credentials not saved yet.", "warning")
         return redirect(url_for("school.settings") + "#wa-setup")
@@ -3311,6 +3342,12 @@ def onboarding(step):
     if step == 3:
         if request.method == "POST":
             test_number = request.form.get("test_number","").strip()
+            if test_number:
+                from portal_routes import _phone_entry
+                test_number, _perr = _phone_entry(test_number, request.form.get("test_number_country"))
+                if _perr:
+                    flash(_perr, "danger")
+                    return redirect(request.url)
             if test_number and school.get("wa_phone_number_id"):
                 from school_wa import send_wa_text
                 send_wa_text(

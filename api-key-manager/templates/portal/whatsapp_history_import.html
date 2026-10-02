@@ -1,4 +1,5 @@
 {% extends "portal/base.html" %}
+{% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
 {% block title %}Import Chat History — PhiXtra Portal{% endblock %}
 
 {% block head %}
@@ -104,8 +105,8 @@
 
     <div class="field-row">
       <label class="field-label">Customer's WhatsApp number</label>
-      <input type="text" name="customer_phone" class="field-input" placeholder="+2348012345678" required>
-      <div class="field-hint">Include the country code. This is the number the imported messages will be filed under.</div>
+      {{ phone_box('customer_phone', cls='field-input', required=True) }}
+      <div class="field-hint">This is the number the imported messages will be filed under.</div>
     </div>
 
     <div class="field-row">

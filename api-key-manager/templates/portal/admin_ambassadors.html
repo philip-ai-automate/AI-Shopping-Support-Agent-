@@ -1,4 +1,5 @@
 {% extends "portal/admin_base.html" %}
+{% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
 {% block title %}Ambassadors — PhiXtra Admin{% endblock %}
 {% block content %}
 <style>
@@ -499,13 +500,13 @@
         </div>
         <div class="modal-field">
           <label class="modal-label">Phone</label>
-          <input type="tel" name="phone" id="ef_phone" class="modal-input"/>
+          {{ phone_box('phone', cls='modal-input', id='ef_phone') }}
         </div>
       </div>
       <div class="modal-row">
         <div class="modal-field">
           <label class="modal-label">WhatsApp</label>
-          <input type="tel" name="whatsapp_number" id="ef_whatsapp" class="modal-input"/>
+          {{ phone_box('whatsapp_number', cls='modal-input', id='ef_whatsapp') }}
         </div>
         <div class="modal-field">
           <label class="modal-label">Operating Location</label>
@@ -1120,8 +1121,8 @@ function openEditModal() {
   document.getElementById('ef_nationality').value   = d.nationality   || '';
   document.getElementById('ef_qualification').value = d.highest_qualification || '';
   document.getElementById('ef_email').value         = d.email         || '';
-  document.getElementById('ef_phone').value         = d.phone         || '';
-  document.getElementById('ef_whatsapp').value      = d.whatsapp_number || '';
+  phSet('ef_phone', d.phone);
+  phSet('ef_whatsapp', d.whatsapp_number);
   document.getElementById('ef_location').value      = d.location      || '';
   document.getElementById('ef_address').value       = d.address       || '';
   document.getElementById('ef_bank_name').value     = d.bank_name     || '';

@@ -1,4 +1,5 @@
 {% extends "portal/base.html" %}
+{% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
 {% block title %}Sales Pipeline — PhiXtra Portal{% endblock %}
 {% block content %}
 {# Role-aware buttons — same route labels the save routes enforce. #}
@@ -7,7 +8,8 @@
 {% set can_bulk_wa_seg    = staff_can_open('portal.whatsapp_pipeline_segments_bulk_add_members') and 'campaigns_wa.segments_edit' in (granted_features or []) %}
 {% set can_bulk_sms_seg   = staff_can_open('portal.sms_pipeline_segments_bulk_add_members') %}
 {% set can_bulk_label     = staff_can_open('portal.lead_labels_bulk_add_members') and 'crm.tags_edit' in (granted_features or []) %}
-{% set can_bulk_any = can_edit_deal or can_bulk_email_seg or can_bulk_wa_seg or can_bulk_sms_seg or can_bulk_label %}
+{% set can_bulk_assign = staff_can('leads.assign') %}
+{% set can_bulk_any = can_edit_deal or can_bulk_email_seg or can_bulk_wa_seg or can_bulk_sms_seg or can_bulk_label or can_bulk_assign %}
 
 <style>
   .sp-hero { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; margin-bottom:22px }
@@ -93,6 +95,9 @@
     font-size:12px;font-weight:700;color:#fff;margin-right:10px;
   }
   .cust-cell{ display:flex; align-items:center }
+  /* Name keeps a readable width so a crowded table scrolls sideways instead
+     of breaking the name into a few letters per line (2026-10-02). */
+  .cust-cell .biz-name-cell{ min-width:130px; word-break:normal; overflow-wrap:break-word }
 
   .lead-form{background:#fff;border:1.5px solid var(--line);border-radius:16px;padding:24px;margin-bottom:20px}
   .lf-title{font-size:15px;font-weight:800;margin-bottom:16px;display:flex;align-items:center;gap:8px}
@@ -559,6 +564,7 @@
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="deal_value" checked>Deal Value</label>
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="stage" checked>Stage</label>
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="added" checked>Added</label>
+          <label class="col-picker-item"><input type="checkbox" data-col-toggle="assigned" checked>Assigned To</label>
         </div>
       </div>
       {% if view_mode == 'list' %}
@@ -588,12 +594,14 @@
 
 {% set is_phixtra_support_account = (customer.tenant_id == 19) %}
 {% set sms_cols = SMS_ENABLED and is_phixtra_support_account %}
-{% set empty_colspan = 13 + (1 if is_phixtra_support_account else 0) + (1 if sms_cols else 0) %}
+{% set empty_colspan = 14 + (1 if is_phixtra_support_account else 0) + (1 if sms_cols else 0) %}
 
 {% if view_mode == 'list' %}
 <div class="bulk-action-bar" id="bulkActionBar" style="display:none">
   <span><strong id="bulkSelectedCount">0</strong> selected</span>
   {% if can_edit_deal %}<button type="button" class="btn btn-sm btn-primary" onclick="openBulkAdvanceModal()">➡️ Move Stage</button>{% endif %}
+  {% if can_bulk_assign %}<button type="button" class="btn btn-sm btn-primary" onclick="openBpAssign()">👤 Assign to</button>{% endif %}
+  {% if can_edit_deal %}<button type="button" class="btn btn-sm" onclick="bpMoveToLeads()" title="Undo a Qualify: they go back to the Leads list">↩️ Move back to Leads</button>{% endif %}
   {% if can_bulk_email_seg %}<button type="button" class="btn btn-sm btn-primary" onclick="openBulkSegmentModal()">📋 Add to Email Segment</button>{% endif %}
   {% if can_bulk_wa_seg %}<button type="button" class="btn btn-sm btn-primary" onclick="openBulkWaSegmentModal()">📱 Add to WhatsApp Segment</button>{% endif %}
   {% if sms_cols and can_bulk_sms_seg %}
@@ -624,6 +632,7 @@
           <th data-col="deal_value">Deal Value</th>
           <th data-col="stage">Stage</th>
           <th data-col="added">Added</th>
+          <th data-col="assigned">Assigned To</th>
           {% if is_phixtra_support_account %}
           <th data-col="ambassador">Assigned Ambassador</th>
           {% endif %}
@@ -694,6 +703,7 @@
           <td data-col="deal_value" class="muted">{{ '₦{:,.0f}'.format(l.deal_value) if l.deal_value else '—' }}</td>
           <td data-col="stage"><span class="stage-pill st-{{ l.stage }}">{{ stage_labels[l.stage] }}</span></td>
           <td data-col="added" class="muted">{{ l.created_at.strftime('%d %b %Y') if l.created_at else '—' }}</td>
+          <td data-col="assigned" class="muted">{{ (l.assigned_to|who(l.assigned_key)) if l.assigned_to else '—' }}</td>
           {% if is_phixtra_support_account %}
           <td data-col="ambassador" style="font-size:12px">
             {% if l.assigned_ambassador_name %}
@@ -1116,15 +1126,15 @@
         <div><label class="flbl">Contact Person</label>
           <input type="text" name="contact_person" id="editContactPerson" class="finp"/></div>
       </div>
-      <div class="frow">
+      <div class="frow" style="grid-template-columns:1fr">
         <div><label class="flbl">Phone Number</label>
-          <input type="tel" name="phone" id="editPhone" class="finp"/></div>
+          {{ phone_box('phone', id='editPhone') }}</div>
         <div><label class="flbl">Email</label>
           <input type="email" name="email" id="editEmail" class="finp"/></div>
       </div>
-      <div class="frow">
+      <div class="frow" style="grid-template-columns:1fr">
         <div><label class="flbl">WhatsApp Number</label>
-          <input type="tel" name="whatsapp_number" id="editWhatsapp" class="finp"/></div>
+          {{ phone_box('whatsapp_number', id='editWhatsapp') }}</div>
         <div></div>
       </div>
       <label class="flbl">Deal Value <span style="font-weight:400;color:#9ca3af">(optional)</span></label>
@@ -1136,10 +1146,10 @@
       <div style="margin-top:14px">
         <label class="flbl" style="margin-bottom:6px">Sales Signals <span style="font-weight:400;color:#9ca3af">(feed the Lead Score — see "How Lead Scoring Works")</span></label>
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:8px;cursor:pointer">
-          <input type="checkbox" name="budget_confirmed" id="editBudgetConfirmed" value="1"> Budget confirmed
+          <input type="checkbox" name="budget_confirmed" style="width:16px;height:16px;flex:0 0 auto;margin:0" id="editBudgetConfirmed" value="1"> Budget confirmed
         </label>
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:10px;cursor:pointer">
-          <input type="checkbox" name="decision_maker_engaged" id="editDecisionMakerEngaged" value="1"> Decision-maker engaged
+          <input type="checkbox" name="decision_maker_engaged" style="width:16px;height:16px;flex:0 0 auto;margin:0" id="editDecisionMakerEngaged" value="1"> Decision-maker engaged
         </label>
         <label class="flbl">Deadline / timeline stated</label>
         <input type="date" name="deadline_date" id="editDeadlineDate" class="finp">
@@ -1519,9 +1529,9 @@ function openEditModal(id, customerName, contactPerson, phone, email, dealValue,
   document.getElementById('editTitle').textContent = `Edit — ${customerName}`;
   document.getElementById('editCustomerName').value  = customerName || '';
   document.getElementById('editContactPerson').value = contactPerson || '';
-  document.getElementById('editPhone').value         = phone || '';
+  phSet('editPhone', phone);
   document.getElementById('editEmail').value         = email || '';
-  document.getElementById('editWhatsapp').value       = whatsappNumber || '';
+  phSet('editWhatsapp', whatsappNumber);
   document.getElementById('editDealValue').value      = dealValue !== '' ? dealValue : '';
   document.getElementById('editNotes').value          = notes || '';
   document.getElementById('editProductInterest').value = productInterest || '';
@@ -2060,4 +2070,78 @@ function spTourOpenFirstRowMenu() {
   });
 })();
 </script>
+
+{# ── Bulk Assign + Move back to Leads (2026-10-02) ── #}
+{% if view_mode == 'list' and can_bulk_assign %}
+<div class="modal-over" id="bpAssignModal" onclick="if(event.target===this)closeBpAssign()">
+  <div class="modal-card">
+    <div class="modal-title">Assign <span id="bpAssignCount">0</span> deal(s)</div>
+    <div class="modal-sub" style="margin-bottom:12px">Pick one person, or share them evenly between several.</div>
+    <select id="bpAssignMode" class="finp" onchange="bpAssignModeChange()" style="margin-bottom:10px">
+      <option value="one">One person</option>
+      <option value="even">Share evenly between…</option>
+    </select>
+    <select id="bpAssignKey" class="finp" style="margin-bottom:10px">
+      {% for a in assignees %}<option value="{{ a.key }}">{{ a.display }}{% if a.key == actor_key %} (me){% endif %}</option>{% endfor %}
+    </select>
+    <div id="bpAssignEven" hidden style="border:1px solid var(--line);border-radius:10px;padding:4px 10px;margin-bottom:10px;max-height:220px;overflow:auto">
+      {% for a in assignees %}
+      <label style="display:flex;align-items:center;gap:10px;font-size:13px;padding:6px 0;cursor:pointer"><input type="checkbox" class="bp-pk" value="{{ a.key }}"> {{ a.display }}{% if a.key == actor_key %} (me){% endif %}</label>
+      {% endfor %}
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:6px"><input type="checkbox" id="bpAssignKeep"> Keep deals that already have someone</label>
+    <div class="modal-actions" style="display:flex;gap:10px;margin-top:12px">
+      <button type="button" class="modal-cancel" onclick="closeBpAssign()">Cancel</button>
+      <button type="button" class="modal-confirm" id="bpAssignGo" onclick="submitBpAssign()">Assign</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+<script>
+function openBpAssign(){
+  var n = getSelectedLeadIds().length; if (!n) return;
+  document.getElementById('bpAssignCount').textContent = n;
+  document.getElementById('bpAssignModal').classList.add('open');
+  document.body.classList.add('sh-hide');
+}
+function closeBpAssign(){ var m = document.getElementById('bpAssignModal'); if (m) m.classList.remove('open'); document.body.classList.remove('sh-hide'); }
+function bpAssignModeChange(){
+  var even = document.getElementById('bpAssignMode').value === 'even';
+  document.getElementById('bpAssignKey').hidden = even;
+  document.getElementById('bpAssignEven').hidden = !even;
+}
+function submitBpAssign(){
+  var fd = new FormData(), mode = document.getElementById('bpAssignMode').value;
+  fd.append('scope', 'opps'); fd.append('assign_mode', mode);
+  getSelectedLeadIds().forEach(function(id){ fd.append('lead_ids', id); });
+  if (mode === 'one') fd.append('assign_key', document.getElementById('bpAssignKey').value);
+  else {
+    var keys = [].slice.call(document.querySelectorAll('.bp-pk:checked')).map(function(b){ return b.value; });
+    if (!keys.length) { alert('Tick at least one person.'); return; }
+    keys.forEach(function(k){ fd.append('assign_keys', k); });
+  }
+  if (document.getElementById('bpAssignKeep').checked) fd.append('keep_existing', '1');
+  document.getElementById('bpAssignGo').disabled = true;
+  fetch('/leads/bulk/assign', { method: 'POST', body: fd, credentials: 'same-origin' })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.error) { alert(d.error); document.getElementById('bpAssignGo').disabled = false; return; }
+      alert(d.assigned + ' deal(s) assigned.'); location.reload();
+    })
+    .catch(function(){ alert('Could not reach the server. Nothing was changed.'); document.getElementById('bpAssignGo').disabled = false; });
+}
+function bpMoveToLeads(){
+  var ids = getSelectedLeadIds(); if (!ids.length) return;
+  if (!confirm('Move ' + ids.length + ' deal(s) back to the Leads list? They leave the Pipeline Board and start again as Leads. Closed deals (Won/Lost/Dropped) are skipped.')) return;
+  var fd = new FormData(); ids.forEach(function(id){ fd.append('lead_ids', id); });
+  fetch('/sales-pipeline/bulk-move-to-leads', { method: 'POST', body: fd, credentials: 'same-origin' })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.error) { alert(d.error); return; }
+      alert(d.moved + ' deal(s) moved back to Leads.'); location.reload();
+    })
+    .catch(function(){ alert('Could not reach the server. Nothing was changed.'); });
+}
+</script>
+
 {% endblock %}

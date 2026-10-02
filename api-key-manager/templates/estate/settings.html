@@ -1,4 +1,5 @@
 {% extends "estate/base.html" %}
+{% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
 {% block title %}Settings — PhiXtra Real Estate{% endblock %}
 
 {% block head %}
@@ -379,8 +380,7 @@
                 </div>
                 <div class="fg">
                   <label class="fg-label">Contact Phone</label>
-                  <input class="fg-input" type="text" name="contact_phone"
-                         value="{{ tenant.contact_phone or '' }}" placeholder="2348012345678"/>
+                  {{ phone_box('contact_phone', tenant.contact_phone, cls='fg-input') }}
                 </div>
               </div>
             </div>

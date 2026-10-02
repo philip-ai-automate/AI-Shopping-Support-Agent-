@@ -1,0 +1,717 @@
+{# Leads How-To Guide. Generated from draft 3 (2026-10-02)
+   by backups/leads_guide_draft3_20261002/to_portal_leads.py: ids are prefixed lead-, pictures live in
+   static/portal/tutorial/leads/. Shown to every team member in full. #}
+<style>
+.leadg{
+  --g-ink:#030C18; --g-navy:#0E2240; --g-gold:#B8860B; --g-gold-soft:#FBF3DE;
+  --g-card:#FFFFFF; --g-txt:#1A2433; --g-muted:#5B6678; --g-line:#DDE3EB;
+  --g-chip:#EEF2F7; --g-good:#0F9F5F; --g-good-soft:#E7F7EF; --g-bad:#D92D20; --g-bad-soft:#FDECEA;
+  --g-link:#1D4ED8; --g-shadow:0 1px 2px rgba(3,12,24,.06);
+  color:var(--g-txt); font-size:15px; line-height:1.65;
+}
+.leadg *{box-sizing:border-box}
+.leadg a{color:var(--g-link)}
+.leadg .g-head{margin:0 0 18px}
+.leadg .g-lede{max-width:72ch;color:var(--g-muted);margin:0 0 6px;font-size:14px}
+.leadg .g-meta{font-size:12px;color:var(--g-muted)}
+.leadg nav.toc{background:var(--g-card);border:1px solid var(--g-line);border-radius:12px;padding:6px 14px;margin:0 0 26px;font-size:13.5px}
+.leadg nav.toc summary{cursor:pointer;font-weight:750;color:var(--g-ink);padding:8px 0;list-style-position:inside}
+.leadg nav.toc .h{display:none}
+.leadg nav.toc ol{list-style:none;margin:0;padding:0 0 8px;columns:3 220px;column-gap:18px}
+.leadg nav.toc ol > li{break-inside:avoid;margin:0}
+.leadg nav.toc ol ol{columns:1;padding:0 0 6px 12px;font-size:12.5px}
+.leadg nav.toc a{display:block;padding:4px 8px;border-radius:6px;color:var(--g-txt);text-decoration:none}
+.leadg nav.toc a:hover{background:var(--g-chip)}
+.leadg nav.toc ol ol a{color:var(--g-muted);padding:2px 8px}
+.leadg main{display:block;max-width:860px}
+.leadg section.part{padding-top:8px;margin-bottom:52px}
+.leadg h2{font-size:23px;line-height:1.25;color:var(--g-ink);margin:0 0 6px;scroll-margin-top:80px;font-weight:800}
+.leadg h2 .num{color:var(--g-gold);font-weight:800;margin-right:8px}
+.leadg .where{font-size:13px;color:var(--g-muted);margin:0 0 16px}
+.leadg h3{font-size:18px;color:var(--g-ink);margin:32px 0 8px;scroll-margin-top:80px;font-weight:750}
+.leadg h4{font-size:15px;color:var(--g-ink);margin:20px 0 6px;font-weight:700}
+.leadg p,.leadg li{max-width:72ch}
+.leadg p{margin:0 0 12px}
+.leadg ul,.leadg ol{padding-left:22px;margin:0 0 12px}
+.leadg li{margin:4px 0}
+.leadg .ui{display:inline-block;font-size:.88em;font-weight:650;padding:1px 7px;border:1px solid var(--g-line);border-radius:5px;background:var(--g-card);color:var(--g-ink);white-space:nowrap;box-shadow:var(--g-shadow)}
+.leadg .f{font-weight:650;color:var(--g-ink)}
+.leadg figure{margin:16px 0 24px}
+.leadg figure img{display:block;width:100%;max-width:100%;height:auto;border:1px solid var(--g-line);border-radius:8px;background:var(--g-card)}
+.leadg figcaption{font-size:13px;color:var(--g-muted);margin-top:8px}
+.leadg .box{border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px;border:1px solid var(--g-line);background:var(--g-card)}
+.leadg .box > :first-child{margin-top:0}.leadg .box > :last-child{margin-bottom:0}
+.leadg .box b.t{display:block;font-size:12px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:4px}
+.leadg .tip{background:var(--g-good-soft);border-color:transparent}.leadg .tip b.t{color:var(--g-good)}
+.leadg .careful{background:var(--g-bad-soft);border-color:transparent}.leadg .careful b.t{color:var(--g-bad)}
+.leadg .know{background:var(--g-gold-soft);border-color:transparent}.leadg .know b.t{color:var(--g-gold)}
+.leadg .tbl{overflow-x:auto;margin:14px 0 22px;border:1px solid var(--g-line);border-radius:8px;background:var(--g-card)}
+.leadg table{border-collapse:collapse;width:100%;font-size:13.5px}
+.leadg th,.leadg td{text-align:left;vertical-align:top;padding:9px 12px;border-bottom:1px solid var(--g-line)}
+.leadg th{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--g-muted);background:var(--g-chip);font-weight:700}
+.leadg tr:last-child td{border-bottom:0}
+.leadg td:first-child{font-weight:650;color:var(--g-ink);white-space:nowrap}
+.leadg td.wrapok{white-space:normal}
+.leadg .need{display:inline-block;font-size:12px;color:var(--g-muted);border:1px dashed var(--g-line);border-radius:999px;padding:1px 9px;margin-top:2px}
+.leadg ol.steps{counter-reset:s;list-style:none;padding-left:0}
+.leadg ol.steps > li{counter-increment:s;position:relative;padding-left:36px;margin:10px 0}
+.leadg ol.steps > li::before{content:counter(s);position:absolute;left:0;top:1px;width:24px;height:24px;border-radius:50%;background:var(--g-navy);color:#fff;font-size:12.5px;font-weight:700;display:grid;place-items:center}
+.leadg .map{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:18px 0}
+.leadg .map div{background:var(--g-card);border:1px solid var(--g-line);border-radius:8px;padding:12px 14px;font-size:14px}
+.leadg .map b{display:block;color:var(--g-ink);margin-bottom:2px}
+.leadg .flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:16px 0;font-size:14px}
+.leadg .flow span{background:var(--g-card);border:1px solid var(--g-line);border-radius:6px;padding:6px 10px;font-weight:600;color:var(--g-ink)}
+.leadg .flow i{font-style:normal;color:var(--g-muted)}
+.leadg .recipe{border-left:3px solid var(--g-navy);padding:2px 0 2px 16px;margin:20px 0}
+.leadg .recipe h4{margin-top:0}
+.leadg{scroll-margin-top:80px}
+.leadg .g-top{position:sticky;bottom:90px;float:right;margin-top:-8px;font-size:12px;font-weight:700;background:var(--g-card);border:1px solid var(--g-line);border-radius:999px;padding:5px 12px;text-decoration:none;color:var(--g-ink);box-shadow:0 2px 8px rgba(3,12,24,.08)}
+</style>
+<div class="leadg" id="lead-top">
+<div class="g-head">
+  <p class="g-lede">Everything under <b>Leads</b> in the side menu, screen by screen and button by button: where leads come from, adding them, finding them, scoring them, deciding which ones are worth chasing (Qualify or Not a Fit), sharing them out to your team, fixing phone numbers to check, and reading the Leads Overview and Leads Report. Every picture is from the live portal.</p>
+  <div class="g-meta">Last checked against the live portal: 2 October 2026</div>
+</div>
+<nav class="toc" aria-label="Contents"><details open><summary>Contents</summary>
+  <p class="h">Contents</p>
+  <ol>
+    <li><a href="#lead-start">1. How Leads fit together</a></li>
+    <li><a href="#lead-sources">2. Where leads come from</a></li>
+    <li><a href="#lead-page">3. The All Leads page</a></li>
+    <li><a href="#lead-hot">4. Hot Conversations</a></li>
+    <li><a href="#lead-add">5. Adding a lead by hand</a></li>
+    <li><a href="#lead-find">6. Finding leads</a>
+      <ol>
+        <li><a href="#lead-f-search">Search, Hot/Warm/Cold, sort</a></li>
+        <li><a href="#lead-f-filters">Filters</a></li>
+      </ol></li>
+    <li><a href="#lead-list">7. Reading the list</a></li>
+    <li><a href="#lead-board">8. Board view</a></li>
+    <li><a href="#lead-lead">9. A lead's page</a>
+      <ol>
+        <li><a href="#lead-l-fields">The details</a></li>
+        <li><a href="#lead-l-edit">Edit Lead</a></li>
+        <li><a href="#lead-l-activity">Conversations, notes, history</a></li>
+        <li><a href="#lead-l-check">⚠️ Numbers to check</a></li>
+      </ol></li>
+    <li><a href="#lead-qualify">10. Qualify: turning a lead into an Opportunity</a></li>
+    <li><a href="#lead-naf">11. Not a Fit (and Reopen)</a></li>
+    <li><a href="#lead-bulk">12. Many leads at once</a>
+      <ol>
+        <li><a href="#lead-b-select">Ticking leads</a></li>
+        <li><a href="#lead-b-qualify">Qualify many</a></li>
+        <li><a href="#lead-b-naf">Not a Fit many</a></li>
+      </ol></li>
+    <li><a href="#lead-assign">13. Giving leads to your team</a></li>
+    <li><a href="#lead-after">14. After Qualify: the Sales Pipeline</a></li>
+    <li><a href="#lead-score">15. Lead score (Hot, Warm, Cold)</a></li>
+    <li><a href="#lead-overview">16. Leads Overview</a></li>
+    <li><a href="#lead-report">17. Leads Report</a></li>
+    <li><a href="#lead-roles">18. Who can do what</a></li>
+    <li><a href="#lead-recipes">19. Everyday tasks</a></li>
+    <li><a href="#lead-faq">20. Questions and problems</a></li>
+  </ol>
+</details></nav>
+
+<main>
+
+<!-- 1 -->
+<section class="part" id="lead-start">
+<h2><span class="num">1</span>How Leads fit together</h2>
+<p class="where">A lead is someone who might buy. This module is where you decide which ones are worth your team's time.</p>
+
+<p>Every enquiry starts life as a <b>Lead</b>. A lead waits on the <span class="ui">All Leads</span> page until someone decides what to do with it. There are only two choices:</p>
+<ul>
+  <li><b>Qualify</b> it: "yes, this is a real chance of a sale". It becomes an <b>Opportunity</b>, leaves the Leads list and appears on your <b>Sales Pipeline</b>, where your team works it through to Won or Lost.</li>
+  <li>Mark it <b>Not a Fit</b>: "no, not worth chasing", with a reason. It closes and leaves the Leads list. It still counts in your reports.</li>
+</ul>
+
+<div class="flow"><span>Enquiry comes in</span><i>→</i><span>Lead (All Leads page)</span><i>→</i><span>Qualify</span><i>→</i><span>Opportunity (Sales Pipeline)</span><i>→</i><span>Won / Lost</span></div>
+
+<p>Every lead is also linked to a <b>contact</b> in your CRM address book. If the person isn't in your contacts yet, the portal adds them for you. Qualifying or closing a lead never removes the contact.</p>
+
+<div class="map">
+  <div><b>Leads Overview</b>A management dashboard: how many leads, how fast they move, where they come from, how each team member is doing, and your sales results.</div>
+  <div><b>All Leads</b>Every lead waiting for a decision. Add, search, filter, score, assign, Qualify or mark Not a Fit, one at a time or many at once.</div>
+  <div><b>How Lead Scoring Works</b>What makes a lead Hot, Warm or Cold, explained on one page.</div>
+  <div><b>Leads Report</b> (in the <span class="ui">Reports</span> menu)New leads over time and which channels they came from, with CSV, Excel and PDF download.</div>
+</div>
+
+<div class="box know"><b class="t">Lead or Opportunity?</b>
+<p>Same person, two moments. A <b>Lead</b> is "not decided yet". An <b>Opportunity</b> is "we're working on this sale". The Leads pages only show leads; the Sales Pipeline only shows opportunities. If you can't find someone on one, look on the other.</p></div>
+</section>
+
+<!-- 2 -->
+<section class="part" id="lead-sources">
+<h2><span class="num">2</span>Where leads come from</h2>
+<p class="where">Some leads you add yourself. Others are added for you.</p>
+
+<div class="tbl"><table>
+<thead><tr><th>How</th><th>What happens</th><th>Source shown</th></tr></thead>
+<tbody>
+<tr><td>You press <span class="ui">➕ Add Lead</span> (section 5)</td><td class="wrapok">A new lead with whatever you type in.</td><td>Whatever you choose: Manual Entry, WhatsApp, Facebook or Instagram</td></tr>
+<tr><td><span class="ui">+ Create Lead</span> on a Hot Conversation (section 4)</td><td class="wrapok">A new lead for the person who chatted on WhatsApp, linked to their contact.</td><td>WhatsApp</td></tr>
+<tr><td><span class="ui">Create Sales Lead</span> on a contact in CRM › All Contacts</td><td class="wrapok">A new lead copied from the contact's details. Works even if they already have a lead.</td><td>WhatsApp if they have a WhatsApp number, otherwise Manual</td></tr>
+<tr><td>Someone replies "interested" to a WhatsApp campaign</td><td class="wrapok">A lead is made automatically, with their reply saved in its notes. If your campaign is set to check replies first, it's made when someone approves the reply under <span class="ui">Needs Review</span>. If that person already has an open lead, the reply is linked to it instead of making a second one.</td><td>WhatsApp, and the campaign's name under Campaign Source</td></tr>
+<tr><td><span class="ui">Move back to Leads</span> on the Sales Pipeline (section 14)</td><td class="wrapok">An opportunity goes back to being a lead, for example if it was qualified by mistake.</td><td>Unchanged</td></tr>
+<tr><td><span class="ui">+ Add Lead</span> / <span class="ui">+ Add deal</span> on the Sales Pipeline</td><td class="wrapok">Opens the same Add Lead form on the Leads page.</td><td>Whatever you choose</td></tr>
+</tbody></table></div>
+
+<div class="box tip"><b class="t">Fill in the Source</b>
+<p>The "Where leads come from" part of Leads Overview and the Leads Report only work when Source is recorded. Leads added before source tracking existed, or bulk-imported, show as "Not recorded".</p></div>
+</section>
+
+<!-- 3 -->
+<section class="part" id="lead-page">
+<h2><span class="num">3</span>The All Leads page</h2>
+<p class="where">Side menu › Leads › All Leads</p>
+
+<p>The page has two parts: <b>Hot Conversations</b> at the top (WhatsApp chats that sound like buying), and <b>Your Leads</b> underneath (the leads themselves). At the top right:</p>
+<ul>
+  <li><span class="ui">⚙️ Settings</span> opens Pipeline Settings, where you can rename the pipeline stages and the Hot/Warm/Cold names. See the CRM guide, section 11.</li>
+  <li><span class="ui">➕ Add Lead</span> opens the Add Lead form (section 5).</li>
+</ul>
+
+<figure><img src="/static/portal/tutorial/leads/l01_top_c.jpg" width="1100" height="466" alt="The top of the All Leads page. The demo account has no WhatsApp number connected, so Hot Conversations is empty." loading="lazy"><figcaption>The top of the All Leads page. The demo account has no WhatsApp number connected, so Hot Conversations is empty.</figcaption></figure>
+</section>
+
+<!-- 4 -->
+<section class="part" id="lead-hot">
+<h2><span class="num">4</span>Hot Conversations</h2>
+<p class="where">All Leads › top of the page</p>
+
+<p>The portal reads your WhatsApp chats and picks out the ones that sound like someone wants to buy: asking a price, checking stock, saying they want to order. Those chats show here as cards, Hot ones first.</p>
+
+<p>Three counters sit above the cards: <b>Hot — reply now</b>, <b>Warm — worth reading</b> and <b>Conversations flagged</b> (the two added together). Each card shows:</p>
+<ul>
+  <li>the person's name, their last message (↙ from them, ↗ from you) and the buying words that were spotted;</li>
+  <li>a red or orange ribbon (🔥 Hot or ⭐ Warm) and a score ring out of 100;</li>
+  <li><span class="ui">Open chat →</span> to go straight to the conversation in your Inbox;</li>
+  <li><span class="ui">+ Create Lead</span> to turn them into a lead in one click. If they're already a lead, you see <b>✓ Already a Lead</b> instead, so you never make a duplicate.</li>
+</ul>
+
+<div class="box know"><b class="t">Two different scores</b>
+<p>The ring on a Hot Conversation card scores <b>the chat</b> (how much it sounds like buying). The Hot/Warm/Cold on <b>a lead</b> is a different score, built from your team's work on that lead (section 15). A hot chat can become a cold lead if nobody follows it up.</p></div>
+
+<p>You only see Hot Conversations once a WhatsApp number is connected. Without one, you see "No WhatsApp connection" and a <span class="ui">Connect WhatsApp →</span> button.</p>
+</section>
+
+<!-- 5 -->
+<section class="part" id="lead-add">
+<h2><span class="num">5</span>Adding a lead by hand</h2>
+<p class="where">All Leads › ➕ Add Lead (or + Add Lead on the Board, or + Add Lead on the Sales Pipeline)</p>
+<p class="need">Needs the tick: "Create a Lead (manually or from a Hot Conversation)"</p>
+
+<figure><img src="/static/portal/tutorial/leads/l02_add_form.jpg" width="1100" height="474" alt="The Add Lead form, filled in for a new enquiry that came from Instagram. Phone Number uses the country list (Nigeria); WhatsApp Number was typed with + so its list is greyed out." loading="lazy"><figcaption>The Add Lead form, filled in for a new enquiry that came from Instagram. Phone Number uses the country list (Nigeria); WhatsApp Number was typed with + so its list is greyed out.</figcaption></figure>
+
+<div class="tbl"><table>
+<thead><tr><th>Box</th><th>What to put</th></tr></thead>
+<tbody>
+<tr><td><span class="f">Business Name</span></td><td class="wrapok">The only box you must fill in. For a private person, type their name.</td></tr>
+<tr><td><span class="f">Contact Person</span></td><td class="wrapok">The person you're talking to at that business.</td></tr>
+<tr><td><span class="f">Phone Number</span> / <span class="f">WhatsApp Number</span></td><td class="wrapok">Two separate boxes. Fill in both if they're the same number. Each box has a <span class="f">Country…</span> list next to it, and nothing is chosen for you. Either <b>choose the country</b> and type the number (803 123 4567 or 0803 123 4567 both work), or <b>type the full number starting with +</b> (for example +234 803 123 4567). As soon as you type a +, the country list greys out because the number already carries its country code. A number with no country, a number that isn't real, or a premium-rate, free-phone or personal line is not saved, and you're told why. The portal never adds a country code by itself.</td></tr>
+<tr><td><span class="f">Email</span></td><td class="wrapok">Their email address.</td></tr>
+<tr><td><span class="f">Deal Value</span></td><td class="wrapok">Roughly how much the sale is worth, numbers only (450000, not ₦450,000).</td></tr>
+<tr><td><span class="f">Source</span></td><td class="wrapok">Where they found you: Manual Entry, WhatsApp, Facebook or Instagram.</td></tr>
+<tr><td><span class="f">Assigned Salesperson</span></td><td class="wrapok">Pick the team member who will follow it up. Only people with the "Assign Leads…" tick can choose; everyone else sees "— Not assigned —".</td></tr>
+<tr><td><span class="f">Product / Service Interested In</span></td><td class="wrapok">What they want, in a few words.</td></tr>
+<tr><td><span class="f">Notes</span></td><td class="wrapok">Anything useful: what they asked, when they need it, budget hints.</td></tr>
+</tbody></table></div>
+
+<p>Press <span class="ui">Create Lead</span>. You'll see "Lekki Event Centre added as a new Lead." and the lead appears at the top of the list. If the person isn't in your contacts yet, they're added to CRM › All Contacts at the same time. <span class="ui">Cancel</span> closes the form without saving.</p>
+</section>
+
+<!-- 6 -->
+<section class="part" id="lead-find">
+<h2><span class="num">6</span>Finding leads</h2>
+<p class="where">All Leads › Your Leads</p>
+
+<h3 id="lead-f-search">Search, Hot/Warm/Cold and sorting</h3>
+<ul>
+  <li><span class="f">Search by business or contact…</span>: type and press Enter. It looks at the business name and the contact person's name (not phone numbers or email).</li>
+  <li><span class="ui">☰ List</span> / <span class="ui">▦ Board</span>: switch between the table and the Hot/Warm/Cold board (section 8).</li>
+  <li><span class="ui">All</span>, <span class="ui">🔥 Hot</span>, <span class="ui">🌤️ Warm</span>, <span class="ui">❄️ Cold</span>: show only leads with that score. The number in brackets is how many there are.</li>
+  <li><span class="ui">📊 Sort by Score</span>: highest score first. Press again to go back to newest first.</li>
+  <li><span class="f">Per page</span>: 10, 25, 50, 100, 200, 500 or All. Page buttons (← Prev, 1 2 3…, Next →) appear underneath when there's more than one page.</li>
+  <li><span class="ui">🎯 How this works</span>: opens How Lead Scoring Works (section 15).</li>
+</ul>
+
+<h3 id="lead-f-filters">Filters</h3>
+<p>The second row has three filters. They work together and with the search and Hot/Warm/Cold buttons.</p>
+
+<figure><img src="/static/portal/tutorial/leads/l04_filter_contact_c.jpg" width="1100" height="338" alt="Contact details opened: tick any of the five, then press Apply." loading="lazy"><figcaption>Contact details opened: tick any of the five, then press Apply.</figcaption></figure>
+
+<ul>
+  <li><span class="ui">Contact details ▾</span>: tick <b>Has phone number</b>, <b>Has email</b>, <b>Has WhatsApp number</b>, <b>Has company</b> and/or <b>⚠️ Numbers to check</b> (the number in brackets is how many leads have one; see section 9), then <span class="ui">Apply</span>. Ticking two means "has both". The button shows how many are ticked, e.g. "Contact details (2)". <span class="ui">Clear</span> removes just these ticks.</li>
+  <li><span class="f">Assigned to</span>: <b>Anyone</b>, <b>Assigned to me</b>, <b>Unassigned</b>, or one person by name. It applies as soon as you choose.</li>
+  <li><span class="ui">Date added ▾</span>: pick a <b>From</b> and/or <b>To</b> date, then <span class="ui">Apply</span>. The button then shows the dates you chose.</li>
+  <li><span class="ui">Clear all filters</span> appears once any filter is on, and removes them all.</li>
+</ul>
+
+<figure><img src="/static/portal/tutorial/leads/l05_filter_date_c.jpg" width="1100" height="323" alt="Date added opened." loading="lazy"><figcaption>Date added opened.</figcaption></figure>
+
+<figure><img src="/static/portal/tutorial/leads/l21_filter_amaka.jpg" width="1100" height="676" alt="Assigned to set to Amaka Eze: only her leads are shown." loading="lazy"><figcaption>Assigned to set to Amaka Eze: only her leads are shown.</figcaption></figure>
+
+<div class="box tip"><b class="t">Your own to-do list</b>
+<p>Salespeople: set <span class="f">Assigned to</span> to <b>Assigned to me</b> and press <span class="ui">📊 Sort by Score</span>. That's your leads, most promising first.</p></div>
+</section>
+
+<!-- 7 -->
+<section class="part" id="lead-list">
+<h2><span class="num">7</span>Reading the list</h2>
+<p class="where">All Leads › Your Leads (List view)</p>
+
+<figure><img src="/static/portal/tutorial/leads/l20_list_final.jpg" width="1100" height="1268" alt="The Leads list on the demo account." loading="lazy"><figcaption>The Leads list on the demo account.</figcaption></figure>
+
+<div class="tbl"><table>
+<thead><tr><th>Column</th><th>What it shows</th></tr></thead>
+<tbody>
+<tr><td>Tick box</td><td class="wrapok">Only if your role can Qualify or Assign. Used for working on many leads at once (section 12).</td></tr>
+<tr><td>Business</td><td class="wrapok">The lead's name. Click it to open the lead's page.</td></tr>
+<tr><td>Contact</td><td class="wrapok">The contact person.</td></tr>
+<tr><td>Phone Number / WhatsApp Number</td><td class="wrapok">The two numbers, kept separate. The WhatsApp number is in green. <b>⚠️ Check number</b> under a number means it needs fixing (section 9).</td></tr>
+<tr><td>Source</td><td class="wrapok">WhatsApp, Facebook, Instagram or Manual. A dash means not recorded.</td></tr>
+<tr><td>Product / Service, Deal Value</td><td class="wrapok">From the lead's details.</td></tr>
+<tr><td>Assigned To</td><td class="wrapok">The team member responsible.</td></tr>
+<tr><td>Stage</td><td class="wrapok"><b>New Lead</b> for a lead waiting for a decision. A few older leads may show Contacted.</td></tr>
+<tr><td>Score</td><td class="wrapok">🔥 Hot, 🌤️ Warm or ❄️ Cold with the number (section 15).</td></tr>
+<tr><td>Added</td><td class="wrapok">The date the lead was made. Newest are at the top.</td></tr>
+</tbody></table></div>
+
+<p>The table is wide. On a smaller screen, scroll sideways to see the last columns. Underneath, "Showing 1–15 of 15" tells you how many leads match.</p>
+</section>
+
+<!-- 8 -->
+<section class="part" id="lead-board">
+<h2><span class="num">8</span>Board view</h2>
+<p class="where">All Leads › ▦ Board</p>
+
+<p>The same leads, as cards in three columns: <b>🔥 Hot</b>, <b>🌤️ Warm</b> and <b>❄️ Cold</b>. Each column shows how many leads it holds.</p>
+
+<figure><img src="/static/portal/tutorial/leads/l22_board.jpg" width="1100" height="676" alt="Board view: Kano Textiles is Hot after its sales signals were ticked." loading="lazy"><figcaption>Board view: Kano Textiles is Hot after its sales signals were ticked.</figcaption></figure>
+
+<ul>
+  <li>Each card shows the name, stage, deal value and contact person or phone. Click the name to open the lead.</li>
+  <li>Click the small score bubble (e.g. "● 70") to see <b>why</b> it has that score, signal by signal. Click again to hide it.</li>
+  <li>A long column shows the first cards and then "+6 more". Click it to see the rest in the List view.</li>
+  <li><span class="ui">+ Add Lead</span> at the bottom of each column opens the Add Lead form.</li>
+</ul>
+<p>Cards can't be dragged on this board, because a lead's column comes from its score, not from where you put it. The filters, tick boxes and bulk buttons are only in List view.</p>
+</section>
+
+<!-- 9 -->
+<section class="part" id="lead-lead">
+<h2><span class="num">9</span>A lead's page</h2>
+<p class="where">All Leads › click a lead's name</p>
+
+<figure><img src="/static/portal/tutorial/leads/l12_lead_before.jpg" width="1100" height="1228" alt="A lead waiting for a decision. The badge says AWAITING QUALIFICATION." loading="lazy"><figcaption>A lead waiting for a decision. The badge says AWAITING QUALIFICATION.</figcaption></figure>
+
+<p>At the top: the lead's name, what they're interested in, and a status badge. While a lead is waiting, you also see <span class="ui">✅ Qualify</span> and <span class="ui">🚫 Not a Fit</span> (sections 10 and 11), and <span class="ui">✏️ Edit Lead</span>. <span class="ui">Leads</span> in the breadcrumb takes you back to the list.</p>
+
+<h3 id="lead-l-fields">The details</h3>
+<div class="tbl"><table>
+<thead><tr><th>Field</th><th>What it means</th></tr></thead>
+<tbody>
+<tr><td>Contact</td><td class="wrapok">The linked contact in your address book. Click to open their contact page. If there's no contact yet you'll see "No contact yet: add a phone, WhatsApp or email" and <span class="ui">Add details →</span>.</td></tr>
+<tr><td>Contact Person, Phone Number, WhatsApp Number, Email</td><td class="wrapok">From the lead's details. A number that needs fixing shows <b>⚠️ Check number</b> and a <span class="ui">Remove number</span> link (see "Numbers to check" below).</td></tr>
+<tr><td>Source</td><td class="wrapok">Where the lead came from, or "Not recorded".</td></tr>
+<tr><td>Campaign Source</td><td class="wrapok">The WhatsApp campaign the lead replied to, if it came from one.</td></tr>
+<tr><td>Company</td><td class="wrapok">The company it's linked to. Click to open the company in CRM.</td></tr>
+<tr><td>Created, Product / Service, Assigned Salesperson</td><td class="wrapok">From the lead's details.</td></tr>
+<tr><td>Ambassador</td><td class="wrapok">Always "Not applicable" for your business. Only used on PhiXtra's own account.</td></tr>
+<tr><td>Lead Score</td><td class="wrapok">The score and, underneath, every signal with its points: green adds, red takes away, grey is 0. This tells you exactly what to do to raise it.</td></tr>
+<tr><td>Deal Value</td><td class="wrapok">In big numbers at the bottom.</td></tr>
+</tbody></table></div>
+
+<h3 id="lead-l-edit">Edit Lead</h3>
+<p class="need">Needs the tick: "Pipeline Board — Edit" (in the CRM part of Roles)</p>
+<p>Press <span class="ui">✏️ Edit Lead</span> to change any detail. The phone boxes work the same way as on Add Lead (section 5): saved numbers are shown with their + and country code. If a saved number still needs checking and you leave it exactly as it is, the lead still saves. Only a new or changed number has to pass the check. The window also holds the three <b>Sales Signals</b> that feed the score:</p>
+
+<figure><img src="/static/portal/tutorial/leads/l13_edit.jpg" width="520" height="792" alt="Edit Lead. Ticking Budget confirmed, Decision-maker engaged and a deadline adds 55 points." loading="lazy"><figcaption>Edit Lead. Ticking Budget confirmed, Decision-maker engaged and a deadline adds 55 points.</figcaption></figure>
+
+<ul>
+  <li><b>Budget confirmed</b>: tick once they've told you what they can spend (+20).</li>
+  <li><b>Decision-maker engaged</b>: tick once you're talking to the person who can say yes (+20).</li>
+  <li><b>Deadline / timeline stated</b>: the date they need to decide by (+15).</li>
+</ul>
+<p>Press <span class="ui">Save Changes</span>. Saving also counts as "touched in the last 48 hours" (+15), so a lead you've just worked on goes up straight away.</p>
+
+<figure><img src="/static/portal/tutorial/leads/l14_lead_hot.jpg" width="1100" height="1228" alt="After saving: Kano Textiles scores 70 and is now 🔥 Hot." loading="lazy"><figcaption>After saving: Kano Textiles scores 70 and is now 🔥 Hot.</figcaption></figure>
+
+<h3 id="lead-l-activity">Conversations, notes and history</h3>
+<ul>
+  <li><b>Pipeline</b>: for a waiting lead, "Not yet qualified — this Lead isn't in the Sales Pipeline yet" with the Qualify and Not a Fit buttons again. For an opportunity, a progress bar of the stages (section 14).</li>
+  <li><b>Conversations</b>: the last WhatsApp message with this number and <span class="ui">View full conversation →</span>. Instagram and Facebook show "SOON" (not built yet).</li>
+  <li><b>Activity</b>: <span class="ui">📝 Notes</span> shows the lead's notes (change them with Edit Lead). <span class="ui">🕒 Stage History</span> lists every change: when the lead was made, qualified, moved or closed, by whom and when. Tasks and Calls show "NEW" and aren't built yet.</li>
+</ul>
+
+<figure><img src="/static/portal/tutorial/leads/l19_history.jpg" width="1100" height="822" alt="Stage History on a qualified lead." loading="lazy"><figcaption>Stage History on a qualified lead.</figcaption></figure>
+
+<h3 id="lead-l-check">⚠️ Numbers to check</h3>
+<p>Some numbers were saved before the country list existed: older imports, numbers typed as 0803…, or numbers that were given the wrong country code. The portal never guesses what they should be. It keeps them exactly as they were and marks them <b>⚠️ Check number</b> when:</p>
+<ul>
+  <li>the number has <b>no country code</b> (it starts with 0),</li>
+  <li>it <b>isn't a real number</b> (wrong length, or no such number in that country), or</li>
+  <li>it's a <b>premium-rate, free-phone or personal line</b>, which is usually a mobile that was given the wrong country code.</li>
+</ul>
+
+<figure><img src="/static/portal/tutorial/leads/l29_check_banner_c.jpg" width="1100" height="248" alt="The yellow note above the list says how many leads have a number to check. &quot;Show them&quot; lists just those leads." loading="lazy"><figcaption>The yellow note above the list says how many leads have a number to check. "Show them" lists just those leads.</figcaption></figure>
+
+<figure><img src="/static/portal/tutorial/leads/l30_check_filter_c.jpg" width="1100" height="255" alt="&quot;Show them&quot; (or Contact details › Numbers to check) leaves only the leads to fix." loading="lazy"><figcaption>"Show them" (or Contact details › Numbers to check) leaves only the leads to fix.</figcaption></figure>
+
+<p>For each one, open the lead and choose:</p>
+<ul>
+  <li><b>Fix it</b>: press <span class="ui">✏️ Edit Lead</span>, choose the right country next to the number (or retype it starting with +), and <span class="ui">Save Changes</span>. Only do this when you know the right country, for example after asking the customer.</li>
+  <li><b>Remove it</b>: press <span class="ui">Remove number</span> under the number and confirm. Only that number is cleared; the lead and everything else on it stay.</li>
+</ul>
+
+<figure><img src="/static/portal/tutorial/leads/l31_lead_flag_c.jpg" width="1080" height="320" alt="A lead whose numbers have no country code: each shows ⚠️ Check number and a Remove number link." loading="lazy"><figcaption>A lead whose numbers have no country code: each shows ⚠️ Check number and a Remove number link.</figcaption></figure>
+
+<div class="box careful"><b class="t">WhatsApp campaigns skip these numbers</b>
+<p>Until a number is fixed, WhatsApp campaigns don't send to it. The campaign report lists it as "Skipped — number to check". CRM › All Contacts has the same yellow note and filter for contacts.</p></div>
+</section>
+
+<!-- 10 -->
+<section class="part" id="lead-qualify">
+<h2><span class="num">10</span>Qualify: turning a lead into an Opportunity</h2>
+<p class="where">A lead's page › ✅ Qualify</p>
+<p class="need">Needs the tick: "Qualify a Lead into an Opportunity / mark it Not a Fit"</p>
+
+<p>Qualify when you're confident there's a real chance of a sale: they have a need, a budget, and you can reach the person who decides.</p>
+
+<figure><img src="/static/portal/tutorial/leads/l15_qualify.jpg" width="520" height="330" alt="The Qualify window. Fill in a Contact Person, a Company, or both." loading="lazy"><figcaption>The Qualify window. Fill in a Contact Person, a Company, or both.</figcaption></figure>
+
+<ol class="steps">
+  <li>Open the lead and press <span class="ui">✅ Qualify</span>.</li>
+  <li>Check or fill in <span class="f">Contact Person</span> and/or <span class="f">Company</span>. You need <b>at least one</b>. If you type a company name that already exists in CRM › Companies, the lead is linked to it; if not, a new company is made. Capital letters don't matter, so you won't get duplicates.</li>
+  <li>Press <span class="ui">Qualify</span>.</li>
+</ol>
+
+<p>You'll see "Ibadan Bakery qualified — now an Opportunity on the Sales Pipeline." The badge changes to the first pipeline stage, the lead leaves the All Leads list, and it appears on the Sales Pipeline. The history shows "Qualified — became an Opportunity", with your name and the date.</p>
+
+<figure><img src="/static/portal/tutorial/leads/l16_after_qualify.jpg" width="1100" height="1200" alt="After Qualify: the progress bar shows where the deal is, and &quot;Open on Pipeline Board →&quot; takes you there." loading="lazy"><figcaption>After Qualify: the progress bar shows where the deal is, and "Open on Pipeline Board →" takes you there.</figcaption></figure>
+</section>
+
+<!-- 11 -->
+<section class="part" id="lead-naf">
+<h2><span class="num">11</span>Not a Fit</h2>
+<p class="where">A lead's page › 🚫 Not a Fit</p>
+<p class="need">Needs the tick: "Qualify a Lead into an Opportunity / mark it Not a Fit"</p>
+
+<p>Use Not a Fit for leads that aren't worth chasing. You can undo it later with Reopen. You must choose a reason:</p>
+<ul>
+  <li>Not our target customer</li>
+  <li>No budget</li>
+  <li>Wrong product or service fit</li>
+  <li>Unresponsive</li>
+  <li>Duplicate</li>
+  <li>Other… (a box appears for you to type the reason)</li>
+</ul>
+
+<figure><img src="/static/portal/tutorial/leads/l17_naf.jpg" width="520" height="508" alt="The Not a Fit window." loading="lazy"><figcaption>The Not a Fit window.</figcaption></figure>
+
+<p>Press <span class="ui">Mark Not a Fit</span>. The lead closes, leaves the Leads list and never reaches the Sales Pipeline. Its page shows <b>NOT A FIT</b> and the reason. It still counts in Leads Overview under "Marked not a fit", and the contact stays in your address book.</p>
+
+<figure><img src="/static/portal/tutorial/leads/l18_after_naf.jpg" width="1100" height="1219" alt="A lead marked Not a Fit, with its reason." loading="lazy"><figcaption>A lead marked Not a Fit, with its reason.</figcaption></figure>
+
+<h3 id="lead-n-reopen">Changed your mind? Reopen it</h3>
+<p class="need">Needs the same tick: "Qualify a Lead into an Opportunity / mark it Not a Fit"</p>
+<p>Open the lead and press <span class="ui">↩️ Reopen as Lead</span> (at the top, or under the reason), then OK. The lead goes back on the All Leads list, waiting for a decision again, with its details, notes and assigned person unchanged. Its history shows "Reopened — back on the Leads list" and the old reason.</p>
+<figure><img src="/static/portal/tutorial/leads/l28_reopen.jpg" width="1100" height="1002" alt="A Not a Fit lead: Reopen as Lead at the top and under the reason." loading="lazy"><figcaption>A Not a Fit lead: Reopen as Lead at the top and under the reason.</figcaption></figure>
+
+<div class="box know"><b class="t">Not a Fit, Lost and Dropped</b>
+<p><b>Not a Fit</b> is for a lead that never became an opportunity. Once something is on the Sales Pipeline, you close it as <b>Lost</b> (they chose someone else or said no) or <b>Dropped</b> (you stopped chasing it). See the CRM guide, section 7.</p></div>
+</section>
+
+<!-- 12 -->
+<section class="part" id="lead-bulk">
+<h2><span class="num">12</span>Many leads at once</h2>
+<p class="where">All Leads › List view › tick boxes</p>
+<p class="need">Tick boxes appear for anyone who can Qualify or Assign. Each button needs its own tick.</p>
+
+<h3 id="lead-b-select">Ticking leads</h3>
+<p>Tick the box at the start of each row you want. A navy bar appears above the table showing how many you've ticked, with buttons <span class="ui">✓ Qualify</span>, <span class="ui">👤 Assign to</span>, <span class="ui">Not a Fit</span> and <span class="ui">Clear</span> (unticks everything).</p>
+
+<figure><img src="/static/portal/tutorial/leads/l06_bulk_bar_c.jpg" width="1100" height="199" alt="Five leads ticked: the bar shows what you can do with them." loading="lazy"><figcaption>Five leads ticked: the bar shows what you can do with them.</figcaption></figure>
+
+<p>The tick box in the table's heading ticks every lead <b>on this page</b>. If more leads match your filters than fit on one page, the bar offers <span class="ui">Select all 15 matching leads</span>. Click it to include all of them, even those on other pages. <span class="ui">Undo</span> goes back.</p>
+
+<figure><img src="/static/portal/tutorial/leads/l10_select_page_c.jpg" width="1100" height="331" alt="The whole page ticked (10 leads), with the offer to select all 15 matching leads." loading="lazy"><figcaption>The whole page ticked (10 leads), with the offer to select all 15 matching leads.</figcaption></figure>
+<figure><img src="/static/portal/tutorial/leads/l11_select_all_c.jpg" width="1100" height="331" alt="All 15 matching leads selected." loading="lazy"><figcaption>All 15 matching leads selected.</figcaption></figure>
+
+<div class="box tip"><b class="t">Filter first, then select all</b>
+<p>To share out every unassigned Instagram lead from last week, set <span class="f">Assigned to</span> › Unassigned and <span class="ui">Date added</span>, tick the heading box, then <span class="ui">Select all … matching leads</span>.</p></div>
+
+<h3 id="lead-b-qualify">Qualify many</h3>
+<p>Press <span class="ui">✓ Qualify</span>. A window shows what will happen before anything changes:</p>
+
+<figure><img src="/static/portal/tutorial/leads/l08_bulk_qualify.jpg" width="560" height="534" alt="Qualifying three leads at once, giving them all to Amaka Eze." loading="lazy"><figcaption>Qualifying three leads at once, giving them all to Amaka Eze.</figcaption></figure>
+
+<ul>
+  <li><b>✅ … will be qualified</b>.</li>
+  <li><b>⚠️ … skipped: no phone, email or WhatsApp number</b>: a lead you can't contact won't be qualified. Add their details first. (This line only shows if there are any.)</li>
+  <li><b>🏢 … have a company. It stays linked.</b></li>
+  <li><span class="f">Assign to</span> (optional, only with the Assign tick): <b>Leave as they are</b>, <b>One person</b>, or <b>Share evenly between…</b> (section 13).</li>
+  <li><span class="f">Product / service interested in</span> (optional): typed once, saved on all of them.</li>
+</ul>
+<p>Press <span class="ui">Qualify</span>. A message tells you how many were qualified and skipped, and the page reloads. Unlike one-at-a-time Qualify, you don't need a contact person or company here. Each lead's history shows "Qualified (bulk)", who did it and when.</p>
+
+<h3 id="lead-b-naf">Not a Fit many</h3>
+<p>Press <span class="ui">Not a Fit</span> on the bar, choose one reason (it's saved on every lead you ticked), and press <span class="ui">Mark Not a Fit</span>. Their contacts stay in All Contacts.</p>
+
+<figure><img src="/static/portal/tutorial/leads/l09_bulk_naf.jpg" width="500" height="494" alt="Marking ticked leads Not a Fit with one reason." loading="lazy"><figcaption>Marking ticked leads Not a Fit with one reason.</figcaption></figure>
+</section>
+
+<!-- 13 -->
+<section class="part" id="lead-assign">
+<h2><span class="num">13</span>Giving leads to your team</h2>
+<p class="where">All Leads, a lead's page, and the Sales Pipeline</p>
+<p class="need">Needs the tick: "Assign Leads and Opportunities to team members"</p>
+
+<p>Each lead can have one <b>Assigned Salesperson</b>: you, or any active member of your team. There are four ways to set it:</p>
+<ol>
+  <li>When adding a lead: <span class="f">Assigned Salesperson</span> on the Add Lead form.</li>
+  <li>On one lead: <span class="ui">✏️ Edit Lead</span> › <span class="f">Assigned Salesperson</span>.</li>
+  <li>On many leads: tick them, then <span class="ui">👤 Assign to</span> on the bar.</li>
+  <li>While qualifying many: the <span class="f">Assign to</span> part of the Qualify window.</li>
+</ol>
+
+<figure><img src="/static/portal/tutorial/leads/l07_assign.jpg" width="560" height="460" alt="Sharing five leads evenly between Amaka and Chioma. The numbers show how many each will get." loading="lazy"><figcaption>Sharing five leads evenly between Amaka and Chioma. The numbers show how many each will get.</figcaption></figure>
+
+<ul>
+  <li><b>One person</b>: they all go to the person you pick. "(me)" marks you.</li>
+  <li><b>Share evenly between…</b>: tick two or more people and the leads are dealt out in turn, like cards. The small number next to each name shows how many they'll get before you confirm.</li>
+  <li><b>Keep leads that already have someone</b> (ticked by default, shown when some ticked leads are already assigned): leaves those alone and only shares out the unassigned ones. Untick it to reassign everything.</li>
+</ul>
+<p>Press <span class="ui">Assign</span>. Each person then finds their leads with <span class="f">Assigned to</span> › <b>Assigned to me</b>.</p>
+
+<div class="box know"><b class="t">Good to know</b>
+<p>Assigning doesn't change a lead's score. Staff can see <b>all</b> leads, not only their own; the "Assigned to me" filter is how they focus on theirs. Your staff never see your (the owner's) name: where you are the assigned person, they see your company name instead. If someone leaves your team, their old leads show their name with "(no longer active)" in Edit Lead, so you can give them to someone else.</p></div>
+</section>
+
+<!-- 14 -->
+<section class="part" id="lead-after">
+<h2><span class="num">14</span>After Qualify: the Sales Pipeline</h2>
+<p class="where">Side menu › CRM › Pipeline Board</p>
+
+<p>Once qualified, a lead is worked on the Sales Pipeline, through the stages Opportunity (or New Opportunity) › Contacted › Qualified › Proposal Sent › Negotiating › Won, or closed as Lost or Dropped. The CRM guide (sections 6 to 8) explains the Pipeline in full. Two buttons there belong with Leads:</p>
+
+<figure><img src="/static/portal/tutorial/leads/l23_pipeline_moveback_c.jpg" width="1060" height="290" alt="Pipeline Board (List view) with one deal ticked: Assign to and Move back to Leads." loading="lazy"><figcaption>Pipeline Board (List view) with one deal ticked: Assign to and Move back to Leads.</figcaption></figure>
+
+<ul>
+  <li><span class="ui">👤 Assign to</span>: same as on the Leads page, for opportunities (needs the Assign tick).</li>
+  <li><span class="ui">↩️ Move back to Leads</span>: undoes a Qualify. The ticked deals leave the Pipeline and go back to the All Leads list, starting at the first stage again. Their history shows "Moved back to Leads". Closed deals (Won, Lost, Dropped) can't be moved back and are skipped. Needs the "Pipeline Board — Edit" tick.</li>
+</ul>
+</section>
+
+<!-- 15 -->
+<section class="part" id="lead-score">
+<h2><span class="num">15</span>Lead score (Hot, Warm, Cold)</h2>
+<p class="where">Side menu › Leads › How Lead Scoring Works</p>
+
+<p>Every lead gets a score from six signals. The score decides its colour:</p>
+<ul>
+  <li><b>🔥 Hot</b>: 60 and up. Act now.</li>
+  <li><b>🌤️ Warm</b>: 30 to 59. Keep going.</li>
+  <li><b>❄️ Cold</b>: under 30. Needs attention or a decision.</li>
+</ul>
+
+<div class="tbl"><table>
+<thead><tr><th>Signal</th><th>Points</th><th>How it's set</th></tr></thead>
+<tbody>
+<tr><td>Touched in the last 48 hours</td><td>+15</td><td class="wrapok">Automatic: someone saved a change to the lead in the last 2 days.</td></tr>
+<tr><td>Reached Proposal Sent or later</td><td>+25</td><td class="wrapok">Automatic: the deal is at Proposal Sent, Negotiating or Won on the Pipeline. A lead that hasn't been qualified never gets these points.</td></tr>
+<tr><td>Budget confirmed</td><td>+20</td><td class="wrapok">You tick it in Edit Lead.</td></tr>
+<tr><td>Decision-maker engaged</td><td>+20</td><td class="wrapok">You tick it in Edit Lead.</td></tr>
+<tr><td>Deadline / timeline stated</td><td>+15</td><td class="wrapok">You enter the date in Edit Lead.</td></tr>
+<tr><td>No activity in 7+ days</td><td>−25</td><td class="wrapok">Automatic penalty when nobody has saved a change for over a week.</td></tr>
+</tbody></table></div>
+
+<p>So a lead that nobody has touched for a week starts at −25, which is why most old leads are Cold. A waiting lead can reach 70 at most (15 + 20 + 20 + 15); the extra 25 for "Proposal Sent or later" only comes on the Pipeline.</p>
+
+<figure><img src="/static/portal/tutorial/leads/l26_explainer.jpg" width="1100" height="1856" alt="The How Lead Scoring Works page: every signal as a bar, the Hot/Warm/Cold ruler, and a worked example." loading="lazy"><figcaption>The How Lead Scoring Works page: every signal as a bar, the Hot/Warm/Cold ruler, and a worked example.</figcaption></figure>
+
+<div class="box tip"><b class="t">Warming a lead up</b>
+<p>Open the lead, look at the grey lines under Lead Score, and do what they say: confirm the budget, find the decision-maker, ask for a deadline. Then tick them in Edit Lead. Just saving a real update counts too.</p></div>
+<p>To rename "Hot", "Warm" and "Cold" (for example to "Ready", "Interested", "Early"), use Pipeline Settings. The points and the 60 / 30 limits can't be changed.</p>
+</section>
+
+<!-- 16 -->
+<section class="part" id="lead-overview">
+<h2><span class="num">16</span>Leads Overview</h2>
+<p class="where">Side menu › Leads › Leads Overview</p>
+
+<p>A one-page summary for managers. Pick the period at the top right: the same choices as the Dashboard (Today, This week, This month and so on, or <b>Custom…</b> with your own dates and <span class="ui">Apply</span>). Arrows compare with the period before (▲ up, ▼ down).</p>
+
+<figure><img src="/static/portal/tutorial/leads/l24_overview.jpg" width="1100" height="1458" alt="Leads Overview on the demo account, This month." loading="lazy"><figcaption>Leads Overview on the demo account, This month.</figcaption></figure>
+
+<ol>
+  <li><b>Leads at a glance</b>: <b>Total leads</b> (all-time), <b>New leads</b> in the period, <b>Not yet decided</b> (waiting for Qualify or Not a Fit), and <b>Average days waiting</b>. Then <b>Where your leads stand</b> (Became an opportunity / Not yet decided / Marked not a fit, all-time) and a <b>Hot, warm &amp; cold</b> ring for today.</li>
+  <li><b>How fast leads move</b>: of the leads added in the period, how many <b>became opportunities</b> and how many were <b>marked not a fit</b>, plus <b>time to first contact</b> and <b>time to become an opportunity</b>, in days.</li>
+  <li><b>Where leads come from</b>: <b>Leads by source</b> and <b>Which source works best</b> (the share of each source's leads that became opportunities).</li>
+  <li><b>Team performance</b>: each team member's <b>leads given</b>, <b>opportunities</b>, <b>won</b> and <b>win rate</b>. It fills in once leads are assigned.</li>
+  <li><b>Sales results</b>: <b>Win rate</b> (won ÷ won + lost), <b>Average sale amount</b>, <b>Average time to close a sale</b>, and <b>Revenue speed</b>: roughly how much money your pipeline brings in per day (open opportunities × win rate × average sale ÷ average days to close).</li>
+</ol>
+
+<div class="box know"><b class="t">"Not enough data yet"</b>
+<p>When there aren't at least 3 records to work from, a tile says "Not enough data yet" instead of showing a misleading number. Filling in Source, Deal Value and Assigned Salesperson on your leads is what makes these tiles come alive.</p></div>
+</section>
+
+<!-- 17 -->
+<section class="part" id="lead-report">
+<h2><span class="num">17</span>Leads Report</h2>
+<p class="where">Side menu › Reports › Leads Report</p>
+<p class="need">Needs the tick: "Leads Sources" (in the Reports part of Roles)</p>
+
+<figure><img src="/static/portal/tutorial/leads/l25_report.jpg" width="1100" height="822" alt="Leads &amp;amp; Sources: new leads over time and where they came from." loading="lazy"><figcaption>Leads &amp; Sources: new leads over time and where they came from.</figcaption></figure>
+
+<ul>
+  <li>Choose <span class="ui">Last 7 days</span>, <span class="ui">Last 30 days</span> or <span class="ui">Last 90 days</span>, or pick two dates and press <span class="ui">Apply custom range</span>.</li>
+  <li><b>New Leads</b>: how many came in during that time.</li>
+  <li><b>New leads over time</b>: a line, day by day.</li>
+  <li><b>Lead source</b>: how many came from WhatsApp, Manual Entry, Facebook, Instagram, or Not recorded. "WhatsApp" includes leads made from a contact and approved campaign replies.</li>
+  <li><b>Export</b>: <span class="ui">🧾 CSV</span>, <span class="ui">📊 Excel</span> or <span class="ui">📄 PDF</span> download the report for the period you've chosen.</li>
+</ul>
+</section>
+
+<!-- 18 -->
+<section class="part" id="lead-roles">
+<h2><span class="num">18</span>Who can do what</h2>
+<p class="where">Side menu › Team › Roles</p>
+
+<p>The account owner can do everything. For staff, it depends on the ticks in their role. Leads has its own row in the Roles grid, and a few related ticks live under CRM and Reports.</p>
+
+<div class="tbl"><table>
+<thead><tr><th>Tick</th><th>Where in Roles</th><th>What it allows</th></tr></thead>
+<tbody>
+<tr><td>Leads — view</td><td>Leads › View</td><td class="wrapok">Open Leads Overview, All Leads, lead pages and How Lead Scoring Works.</td></tr>
+<tr><td>Create a Lead</td><td>Leads › Create</td><td class="wrapok">Add Lead, and Create Lead on Hot Conversations.</td></tr>
+<tr><td>Qualify a Lead / mark it Not a Fit</td><td>Leads › other</td><td class="wrapok">Qualify and Not a Fit, one at a time and in bulk. Shows the tick boxes.</td></tr>
+<tr><td>Assign Leads and Opportunities</td><td>Leads › other</td><td class="wrapok">Choose the Assigned Salesperson anywhere, and Assign to in bulk. Shows the tick boxes.</td></tr>
+<tr><td>Pipeline Board — Edit</td><td>CRM › Pipeline Board › Edit</td><td class="wrapok">Edit Lead (details and sales signals), Remove number on a number to check, and Move back to Leads.</td></tr>
+<tr><td>Leads Sources</td><td>Reports</td><td class="wrapok">Open the Leads Report and download it.</td></tr>
+</tbody></table></div>
+
+<p>Your plan also has to include Leads. If it doesn't, the menu items show a 🔒 padlock and open an upgrade page.</p>
+
+<div class="box careful"><b class="t">The Assign tick is new</b>
+<p>"Assign Leads and Opportunities to team members" was added on 2 October 2026. No existing role has it ticked. Tick it on your sales manager's role (and IT Admin's, if they should share out leads).</p></div>
+</section>
+
+<!-- 19 -->
+<section class="part" id="lead-recipes">
+<h2><span class="num">19</span>Everyday tasks</h2>
+
+<div class="recipe"><h4>Morning: share out yesterday's new leads</h4>
+<ol class="steps">
+  <li>All Leads › <span class="f">Assigned to</span> › Unassigned.</li>
+  <li><span class="ui">Date added ▾</span> › From and To = yesterday › Apply.</li>
+  <li>Tick the heading box (and <span class="ui">Select all … matching leads</span> if offered).</li>
+  <li><span class="ui">👤 Assign to</span> › Share evenly between… › tick your salespeople › Assign.</li>
+</ol></div>
+
+<div class="recipe"><h4>Salesperson: work your own leads</h4>
+<ol class="steps">
+  <li>All Leads › <span class="f">Assigned to</span> › Assigned to me › <span class="ui">📊 Sort by Score</span>.</li>
+  <li>Open each lead, contact them, and record what you learn in <span class="ui">✏️ Edit Lead</span> (notes, budget, decision-maker, deadline).</li>
+  <li>When it's a real chance, <span class="ui">✅ Qualify</span>. If not, <span class="ui">🚫 Not a Fit</span> with the reason.</li>
+</ol></div>
+
+<div class="recipe"><h4>Turn a WhatsApp enquiry into a lead</h4>
+<ol class="steps">
+  <li>All Leads › Hot Conversations › <span class="ui">Open chat →</span> to read it.</li>
+  <li>Back on All Leads, press <span class="ui">+ Create Lead</span> on that card.</li>
+  <li>Open the new lead (top of the list) and fill in the rest with Edit Lead.</li>
+</ol></div>
+
+<div class="recipe"><h4>Clean out old, dead leads</h4>
+<ol class="steps">
+  <li>All Leads › <span class="ui">❄️ Cold</span>, and <span class="ui">Date added ▾</span> › To = three months ago › Apply.</li>
+  <li>Check the list, untick any you still want to chase.</li>
+  <li><span class="ui">Not a Fit</span> on the bar › Unresponsive › Mark Not a Fit.</li>
+</ol></div>
+
+<div class="recipe"><h4>Qualify a batch after a campaign</h4>
+<ol class="steps">
+  <li>All Leads › <span class="ui">Contact details ▾</span> › tick Has WhatsApp number › Apply; filter by Date added to the campaign week.</li>
+  <li>Tick the leads who replied with real interest (open them to check).</li>
+  <li><span class="ui">✓ Qualify</span> › choose who gets them under Assign to › type the product › Qualify.</li>
+</ol></div>
+
+<div class="recipe"><h4>Fix the numbers to check</h4>
+<ol class="steps">
+  <li>All Leads › press <b>Show them</b> in the yellow note (or Contact details › Numbers to check › Apply).</li>
+  <li>Open each lead. If you know the country, <span class="ui">✏️ Edit Lead</span> › choose the country next to the number › Save Changes.</li>
+  <li>If the number is wrong or you can't tell, press <span class="ui">Remove number</span>. Add the right one later with Edit Lead.</li>
+</ol></div>
+
+<div class="recipe"><h4>Undo a mistaken Qualify</h4>
+<ol class="steps">
+  <li>CRM › Pipeline Board › List view, find the deal.</li>
+  <li>Tick it › <span class="ui">↩️ Move back to Leads</span> › OK.</li>
+</ol></div>
+
+<div class="recipe"><h4>Monthly check on the team</h4>
+<ol class="steps">
+  <li>Leads › Leads Overview › period "This month" (or Custom…).</li>
+  <li>Look at Team performance and Sales results; compare with the arrows for last month.</li>
+  <li>For a board meeting, Reports › Leads Report › Last 30 days › 📄 PDF.</li>
+</ol></div>
+</section>
+
+<!-- 20 -->
+<section class="part" id="lead-faq">
+<h2><span class="num">20</span>Questions and problems</h2>
+
+<h4>I qualified a lead and now I can't find it.</h4>
+<p>That's expected: qualified leads move to CRM › Pipeline Board. Search for them there. If it was a mistake, use <span class="ui">Move back to Leads</span> (section 14).</p>
+
+<h4>Why are almost all my leads Cold?</h4>
+<p>Any lead nobody has saved a change to in 7 days loses 25 points. Work the lead and record it (Edit Lead) and it goes up again. See section 15.</p>
+
+<h4>Why can't I see the tick boxes?</h4>
+<p>Your role needs either the Qualify tick or the Assign tick. Also, tick boxes are only in List view, not Board view.</p>
+
+<h4>Why does Assigned Salesperson say "— Not assigned —" and I can't change it?</h4>
+<p>Your role doesn't have the "Assign Leads and Opportunities to team members" tick. Ask the owner or your IT Admin.</p>
+
+<h4>The Qualify window says some leads were skipped.</h4>
+<p>Leads with no phone, email or WhatsApp number can't be qualified in bulk. Open them, add a way to reach them with Edit Lead, and try again.</p>
+
+<h4>Qualify one lead says "Enter a Contact Person and/or a Company".</h4>
+<p>One-at-a-time Qualify needs at least one of the two. Type the person's name or their company in the window.</p>
+
+<h4>I marked a lead Not a Fit by mistake.</h4>
+<p>Open it and press <span class="ui">↩️ Reopen as Lead</span>. It goes straight back on your Leads list (section 11).</p>
+
+<h4>Add Lead says the number "has no country code".</h4>
+<p>Choose the country in the list next to the number, or type the whole number starting with +, for example +234 803 123 4567. The portal never picks a country for you, not even your business's own country.</p>
+
+<h4>It says the number "doesn't look like a real number".</h4>
+<p>Check the digits and the country you chose. A Nigerian mobile typed with the UK chosen (or the other way round) is refused, because it isn't a real number in that country.</p>
+
+<h4>Why does a lead show ⚠️ Check number?</h4>
+<p>It was saved before the country list existed, or came from an import, and has no country code or isn't a real number. Fix it with Edit Lead or press Remove number (section 9, "Numbers to check").</p>
+
+<h4>Why did my WhatsApp campaign skip some people?</h4>
+<p>Numbers to check are skipped until they're fixed. The campaign report shows "Skipped — number to check" and the reason.</p>
+
+<h4>Can I delete a lead?</h4>
+<p>No. Use Not a Fit (reason "Duplicate" for a double entry). It closes the lead and keeps your reports honest, and it can be reopened if needed.</p>
+
+<h4>Does creating a lead message the customer?</h4>
+<p>No. Nothing on the Leads pages sends anything to the customer.</p>
+
+<h4>The same person shows up twice.</h4>
+<p>Hot Conversations and campaign replies check for an existing lead first, but Add Lead and Create Sales Lead always make a new one. Mark the extra one Not a Fit › Duplicate. Duplicate <i>contacts</i> are handled in CRM › Merge Review.</p>
+
+<h4>Leads Overview says "Not enough data yet".</h4>
+<p>There are fewer than 3 records for that number. Fill in Source, Deal Value and Assigned Salesperson on your leads, and record Won and Lost on the Pipeline.</p>
+
+<h4>Where do Instagram and Facebook leads come from?</h4>
+<p>For now, add them with Add Lead and choose Instagram or Facebook as the Source. Automatic Instagram and Facebook conversations on the lead's page are marked "SOON".</p>
+</section>
+
+</main>
+<a class="g-top" href="#lead-top">↑ Back to contents</a>
+</div>

@@ -752,6 +752,14 @@ def register():
                 address, location, qualification, id_doc_type, bank_name, account_num, account_name]
     if not all(required):
         return _bail("All required fields must be completed.")
+    # Country code forced (2026-10-02): picker or +number, never guessed.
+    from portal_routes import _phone_entry
+    phone, _perr = _phone_entry(phone, request.form.get("phone_country"), plus=True)
+    if _perr:
+        return _bail(f"Phone number: {_perr}")
+    whatsapp, _werr = _phone_entry(whatsapp, request.form.get("whatsapp_number_country"), plus=True)
+    if _werr:
+        return _bail(f"WhatsApp number: {_werr}")
     if len(pw) < 8:
         return _bail("Password must be at least 8 characters.")
     if pw != pw2:
@@ -1726,6 +1734,12 @@ def team_lead_create():
     if not recruit_id_raw.isdigit() or not business_name:
         flash("Ambassador and business name are required.", "danger")
         return redirect(url_for("ambassador.team_pipeline"))
+    from portal_routes import _phone_entry
+    phone, _perr = _phone_entry(phone, request.form.get("phone_country"), plus=True)
+    if _perr:
+        flash(f"Lead not saved. {_perr}", "danger")
+        return redirect(url_for("ambassador.team_pipeline"))
+    phone = phone or None
     recruit_id = int(recruit_id_raw)
 
     conn = get_db_connection()
@@ -1943,11 +1957,23 @@ def team_lead_edit(lead_id: int):
         cur.close(); conn.close()
         flash("Business name is required.", "danger")
         return redirect(url_for("ambassador.team_pipeline"))
+    # Country code forced (2026-10-02); a number left as saved is kept.
+    from portal_routes import _phone_entry_keep_old
+    _pc = conn.cursor()
+    _pc.execute("SELECT phone FROM ambassador_leads WHERE id=%s", (lead_id,))
+    _old = _pc.fetchone(); _pc.close()
+    _phone, _perr = _phone_entry_keep_old(f.get("phone"), f.get("phone_country"),
+                                          (_old[0] if not isinstance(_old, dict) else _old["phone"]) if _old else None,
+                                          plus=True)
+    if _perr:
+        cur.close(); conn.close()
+        flash(f"Not saved. {_perr}", "danger")
+        return redirect(url_for("ambassador.team_pipeline"))
     updates.update(
         business_name = business_name,
         industry      = (f.get("industry")     or "").strip() or None,
         contact_name  = (f.get("contact_name") or "").strip() or None,
-        phone         = (f.get("phone")        or "").strip() or None,
+        phone         = _phone,
         email         = (f.get("email")        or "").strip() or None,
         notes         = (f.get("notes")        or "").strip() or None,
     )
@@ -2722,6 +2748,12 @@ def leads():
         if not business_name:
             flash("Business name is required.", "danger")
             return redirect(url_for("ambassador.leads", product=product))
+        from portal_routes import _phone_entry
+        phone, _perr = _phone_entry(phone, request.form.get("phone_country"), plus=True)
+        if _perr:
+            flash(f"Lead not saved. {_perr}", "danger")
+            return redirect(url_for("ambassador.leads", product=product))
+        phone = phone or None
 
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -3020,11 +3052,23 @@ def lead_edit(lead_id: int):
         cur.close(); conn.close()
         flash("Business name is required.", "danger")
         return redirect(url_for("ambassador.leads", product=lead_product))
+    # Country code forced (2026-10-02); a number left as saved is kept.
+    from portal_routes import _phone_entry_keep_old
+    _pc = conn.cursor()
+    _pc.execute("SELECT phone FROM ambassador_leads WHERE id=%s", (lead_id,))
+    _old = _pc.fetchone(); _pc.close()
+    _phone, _perr = _phone_entry_keep_old(f.get("phone"), f.get("phone_country"),
+                                          (_old[0] if not isinstance(_old, dict) else _old["phone"]) if _old else None,
+                                          plus=True)
+    if _perr:
+        cur.close(); conn.close()
+        flash(f"Not saved. {_perr}", "danger")
+        return redirect(url_for("ambassador.leads", product=lead_product))
     updates.update(
         business_name = business_name,
         industry      = (f.get("industry")     or "").strip() or None,
         contact_name  = (f.get("contact_name") or "").strip() or None,
-        phone         = (f.get("phone")        or "").strip() or None,
+        phone         = _phone,
         email         = (f.get("email")        or "").strip() or None,
         notes         = (f.get("notes")        or "").strip() or None,
     )

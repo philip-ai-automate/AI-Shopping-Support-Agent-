@@ -1,4 +1,5 @@
 {% extends "estate/base.html" %}
+{% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
 {% block title %}Contacts — PhiXtra Real Estate{% endblock %}
 
 {% block head %}
@@ -306,7 +307,7 @@
           </div>
           <div>
             <div class="ct-name-main">{{ c.name or '—' }}</div>
-            <div class="ct-name-sub">{{ c.phone_number }}</div>
+            <div class="ct-name-sub">{{ c.phone_number }}{{ phone_flag(c.phone_number) }}</div>
             {% if c.email %}<div style="font-size:11px;color:rgba(3,12,24,0.38)">{{ c.email }}</div>{% endif %}
           </div>
         </div>
@@ -404,7 +405,7 @@
           </div>
           <div class="mfg">
             <label>Phone Number *</label>
-            <input type="text" name="phone" required placeholder="2348012345678"/>
+            {{ phone_box('phone', cls='', required=True) }}
           </div>
         </div>
         <div class="mfg2">

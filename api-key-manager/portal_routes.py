@@ -407,6 +407,7 @@ PLAN_FEATURE_CATALOG = {
         ("leads.page",   "Leads — view"),
         ("leads.create", "Create a Lead (manually or from a Hot Conversation)"),
         ("leads.qualify", "Qualify a Lead into an Opportunity / mark it Not a Fit"),
+        ("leads.assign",  "Assign Leads and Opportunities to team members"),
     ],
     "Voice Calls": [
         ("voice.calls", "Voice Calls (PressOne)"),
@@ -624,7 +625,7 @@ ROLE_FORM_GRID = {
         {"label": "Pipeline Settings", "view": "crm.pipeline_settings_view", "edit": "crm.pipeline_settings_edit"},
     ],
     "Leads": [
-        {"label": "Leads", "view": "leads.page", "create": "leads.create", "other": ["leads.qualify"]},
+        {"label": "Leads", "view": "leads.page", "create": "leads.create", "other": ["leads.qualify", "leads.assign"]},
     ],
     "Voice Calls": [
         {"label": "Voice Calls (PressOne)", "view": "voice.calls"},
@@ -1383,14 +1384,45 @@ def _require_any_team_permission(feature_keys):
     return _team_member_denied("You don't have permission to do that.")
 
 
+# A team member's "home": the first of these pages their role can open
+# (2026-10-02 — staff without the Inbox tick, e.g. a Social Media role, used
+# to land on a "no access" page right after logging in).
+STAFF_HOME_PAGES = [
+    ("inbox.page",              "portal.my_inbox"),
+    ("dashboard.page",          "portal.dashboard"),
+    ("leads.page",              "portal.leads_page"),
+    ("crm.pipeline_board_view", "portal.sales_pipeline"),
+    ("crm.contacts_view",       "portal.whatsapp_contacts"),
+    ("social.posts_view",       "buffer.posts"),
+    ("campaigns_wa.all_view",   "portal.whatsapp_campaigns"),
+    ("campaigns_email.all_view", "portal.email_campaigns"),
+    ("voice.calls",             "pressone.call_log"),
+    ("analytics.page",          "portal.analytics"),
+    ("ecom.orders_view",        "portal.orders"),
+    ("ecom.products_view",      "portal.products"),
+    ("settings.account",        "portal.settings"),
+]
+
+
+def _staff_home_endpoint():
+    """First page in STAFF_HOME_PAGES the current team member may open, or
+    None if their role opens none of them. The owner's home is the Inbox."""
+    for key, endpoint in STAFF_HOME_PAGES:
+        if _team_member_has_permission(key):
+            return endpoint
+    return None
+
+
 def _team_member_denied(message: str):
-    """Where a team member lands when a page is off-limits: the Inbox, if
-    their role can open it. If it can't (or this IS the Inbox), a plain "no
-    access" page instead — redirecting to the Inbox there looped forever
-    (found 2026-09-26 for a role without the Inbox tick)."""
+    """Where a team member lands when a page is off-limits: their home page
+    (the first page their role can open — the Inbox for most). If there is
+    none, or this IS their home page, a plain "no access" page instead —
+    redirecting there looped forever (found 2026-09-26 for a role without
+    the Inbox tick)."""
     flash(message, "warning")
-    if request.endpoint != "portal.my_inbox" and _team_member_has_permission("inbox.page"):
-        return redirect(url_for("portal.my_inbox"))
+    home = _staff_home_endpoint()
+    if home and request.endpoint != home:
+        return redirect(url_for(home))
     return render_template("portal/team_no_access.html"), 403
 
 
@@ -3731,7 +3763,8 @@ def login():
         session["team_member_role_id"] = tm_role_id
         role_row = _get_role(int(tm_role_id), int(tm["tenant_id"])) if tm_role_id else None
         session["team_member_permissions"] = role_row["permissions"] if role_row else {}
-        return redirect(nxt or url_for("portal.my_inbox"))
+        _home = _staff_home_endpoint()
+        return redirect(nxt or (url_for(_home) if _home else url_for("portal.my_inbox")))
 
     if not verify_password(password, c.get("password_hash") or ""):
         flash("Incorrect email or password.", "danger")
@@ -4066,9 +4099,9 @@ def team_create():
     _may_alerts = _team_member_has_permission("team.members_alerts")
     alert_enabled  = _may_alerts and request.form.get("alert_enabled") == "on"
     alert_reminder = (request.form.get("alert_reminder") == "on") if _may_alerts else True
-    alert_phone    = _clean_alert_phone(request.form.get("alert_phone"), _tenant_country(tenant_id)) if _may_alerts else None
+    alert_phone    = _clean_alert_phone(request.form.get("alert_phone"), request.form.get("alert_phone_country")) if _may_alerts else None
     if alert_phone is False:
-        flash("That WhatsApp number for alerts doesn't look right — use the full number, e.g. +2348012345678 or +447700900123.", "danger")
+        flash("Nothing saved: that WhatsApp number for alerts has no country code or isn't a real number. Choose the country next to it, or type it starting with + (e.g. +234 803 123 4567).", "danger")
         return redirect(url_for("portal.team_create"))
     name = f"{first_name} {last_name}".strip()
 
@@ -4988,10 +5021,10 @@ def team_update_access(member_id: int):
     name = row[0]
 
     if may["team.members_alerts"]:
-        phone = _clean_alert_phone(request.form.get("alert_phone"), _tenant_country(tenant_id))
+        phone = _clean_alert_phone(request.form.get("alert_phone"), request.form.get("alert_phone_country"))
         if phone is False:
             cur.close(); conn.close()
-            flash("Nothing saved: that WhatsApp number for alerts doesn't look right. Use the full number, e.g. +2348012345678 or +447700900123.", "danger")
+            flash("Nothing saved: that WhatsApp number for alerts has no country code or isn't a real number. Choose the country next to it, or type it starting with + (e.g. +234 803 123 4567).", "danger")
             return redirect(url_for("portal.team_page", open=member_id))
         cur.execute("UPDATE team_members SET alert_enabled=%s, alert_reminder=%s, alert_phone=%s WHERE id=%s",
                     (request.form.get("alert_enabled") == "on", request.form.get("alert_reminder") == "on",
@@ -5012,16 +5045,14 @@ def team_update_access(member_id: int):
 
 
 def _clean_alert_phone(raw: str, country: str = None):
-    """A personal WhatsApp number for chat alerts, as digits with a leading +,
-    or None. Rejects anything that isn't a plausible international number.
-    A local 0… number gets the business's country code (any country); with
-    no business country set it's rejected rather than guessed."""
+    """A personal WhatsApp number for chat alerts, as '+<country code>…', or
+    None when left empty, or False when it can't be used. `country` is what
+    the person CHOSE in the picker next to the box (2026-10-02) — never the
+    business country; a number typed with + needs no country."""
     if not (raw or "").strip():
         return None
-    digits = _normalise_contact_phone(raw, country)
-    if not digits or digits.startswith("0"):
-        return False
-    return "+" + digits if 10 <= len(digits) <= 15 else False
+    val, err = _phone_entry(raw, country, plus=True)
+    return val if val and not err else False
 
 
 @portal_bp.route("/team/<int:member_id>/alerts", methods=["POST"])
@@ -5041,9 +5072,9 @@ def team_update_alerts(member_id: int):
 
     enabled  = request.form.get("alert_enabled") == "on"
     reminder = request.form.get("alert_reminder") == "on"
-    phone    = _clean_alert_phone(request.form.get("alert_phone"), _tenant_country(tenant_id))
+    phone    = _clean_alert_phone(request.form.get("alert_phone"), request.form.get("alert_phone_country"))
     if phone is False:
-        flash("That WhatsApp number doesn't look right — use the full number, e.g. +2348012345678 or +447700900123.", "danger")
+        flash("Nothing saved: that WhatsApp number for alerts has no country code or isn't a real number. Choose the country next to it, or type it starting with + (e.g. +234 803 123 4567).", "danger")
         return redirect(url_for("portal.team_page"))
 
     conn = get_db_connection()
@@ -7935,7 +7966,7 @@ def _get_dashboard_crm_kpis(tenant_id: int, date_from, date_to, prev_from, prev_
 
         cur.execute("""
             SELECT COUNT(*) AS n, COALESCE(SUM(deal_value),0) AS v
-            FROM merchant_pipeline_leads WHERE tenant_id=%s AND outcome IS NULL
+            FROM merchant_pipeline_leads WHERE tenant_id=%s AND outcome IS NULL AND is_opportunity
         """, (tenant_id,))
         pl = cur.fetchone() or {}
 
@@ -7983,7 +8014,7 @@ def _get_dashboard_pipeline_snapshot(tenant_id: int) -> list:
         cur.execute("""
             SELECT stage, COUNT(*) AS n, COALESCE(SUM(deal_value),0) AS total_value
             FROM merchant_pipeline_leads
-            WHERE tenant_id = %s AND outcome IS NULL
+            WHERE tenant_id = %s AND outcome IS NULL AND is_opportunity
             GROUP BY stage
         """, (tenant_id,))
         by_stage = {r["stage"]: r for r in (cur.fetchall() or [])}
@@ -8240,7 +8271,7 @@ def _get_dashboard_needs_attention(tenant_id: int) -> dict:
             SELECT l.stage, COALESCE(la.last_change, l.created_at) AS last_activity_at
             FROM merchant_pipeline_leads l
             LEFT JOIN last_activity la ON la.lead_id = l.id
-            WHERE l.tenant_id = %s AND l.outcome IS NULL
+            WHERE l.tenant_id = %s AND l.outcome IS NULL AND l.is_opportunity
         """, (tenant_id,))
         rows = cur.fetchall() or []
         cur.close(); conn.close()
@@ -8411,7 +8442,7 @@ def _get_pipeline_overview_data(tenant_id: int, date_from, date_to) -> dict:
             SELECT stage, COUNT(*) AS n, COALESCE(SUM(deal_value),0) AS total_value,
                    COALESCE(AVG(deal_value),0) AS avg_value
             FROM merchant_pipeline_leads
-            WHERE tenant_id = %s AND outcome IS NULL
+            WHERE tenant_id = %s AND outcome IS NULL AND is_opportunity
             GROUP BY stage
         """, (tenant_id,))
         by_stage = {r["stage"]: r for r in (cur.fetchall() or [])}
@@ -10872,6 +10903,13 @@ def settings_profile():
     if not phone:
         flash("Mobile phone number is required and cannot be left blank.", "danger")
         return redirect(url_for("portal.settings"))
+    # Country code forced (2026-10-02): picker or +number; the saved number
+    # left unchanged is kept as it is.
+    _old_phone = (_get_customer(cid) or {}).get("phone_number")
+    phone, _perr = _phone_entry_keep_old(phone, request.form.get("phone_number_country"), _old_phone, plus=True)
+    if _perr:
+        flash(f"Mobile phone not saved. {_perr}", "danger")
+        return redirect(url_for("portal.settings"))
 
     if timezone not in ALLOWED_TIMEZONES:
         timezone = "UTC"
@@ -11047,7 +11085,12 @@ def settings_notifications():
         customer2     = _get_customer(cid)
         tenant_id2    = int(customer2["tenant_id"])
         daily_enabled = bool(request.form.get("daily_report_enabled"))
-        report_phone2 = (request.form.get("report_phone") or "").strip() or None
+        report_phone2, _rerr = _phone_entry(request.form.get("report_phone"),
+                                            request.form.get("report_phone_country"), plus=True)
+        report_phone2 = report_phone2 or None
+        if _rerr:
+            flash(f"Daily summary number not saved. {_rerr}", "danger")
+            return redirect(url_for("portal.settings"))
         try:
             conn2 = get_db_connection()
             cur2  = conn2.cursor()
@@ -12806,17 +12849,12 @@ def whatsapp_save_notify_phone():
     r2 = _require_plan_sub_feature(customer, "wa.connect_view", "WhatsApp Connect")
     if r2: return r2
 
-    raw = (request.form.get("report_phone") or "").strip()
-    # Normalise: strip spaces, dashes, ensure it starts with country code
-    import re as _re
-    digits = _re.sub(r"[^\d+]", "", raw)
-    # Accept blank (to clear) or a valid-looking number (7+ digits)
-    if digits and not digits.startswith("+"):
-        digits = "+" + digits
-    phone_to_save = digits if len(digits) >= 8 else (None if not digits else None)
-
-    if raw and not phone_to_save:
-        flash("Please enter a valid WhatsApp number including country code, e.g. +2348012345678", "danger")
+    # Country code forced (2026-10-02): picker or +number, never guessed.
+    phone_to_save, _perr = _phone_entry(request.form.get("report_phone"),
+                                        request.form.get("report_phone_country"), plus=True)
+    phone_to_save = phone_to_save or None
+    if _perr:
+        flash(f"Not saved. {_perr}", "danger")
         return redirect(url_for("portal.whatsapp_connect"))
 
     try:
@@ -13331,9 +13369,10 @@ def whatsapp_history_import_upload():
 
     # Same format as live WhatsApp messages and contacts (digits, country
     # code first, no '+') so an imported chat joins the live conversation.
-    digits = _normalise_contact_phone(customer_phone, _tenant_country(tenant_id))
-    if len(digits) < 8:
-        flash("Please enter a valid phone number including country code, e.g. +2348012345678.", "danger")
+    # Country code forced (2026-10-02): picker or +number, never guessed.
+    digits, _perr = _phone_entry(customer_phone, request.form.get("customer_phone_country"))
+    if _perr or not digits:
+        flash(_perr or "Please enter the customer's WhatsApp number.", "danger")
         return redirect(url_for("portal.whatsapp_history_import"))
     customer_phone = digits
 
@@ -14239,6 +14278,44 @@ def business_country_not_set() -> bool:
         return False
 
 
+def _lead_phone_international(raw: str, country: str = None):
+    """Lead Phone / WhatsApp numbers must be saved in international form
+    (digits, country code first, no '+'; user 2026-10-02). Returns
+    (digits, None) or ("", error message). Never guesses: a local '0…'
+    number only gets the business's own country code when the result is a
+    valid number in that country — a Nigerian 0803… typed on a UK business
+    is refused with a message instead of becoming a wrong +44 number."""
+    import re
+    s = (raw or "").strip()
+    if not s:
+        return "", None
+    digits = re.sub(r"[^\d]", "", s)
+    ask = (f"\"{s}\" isn't a full international number. Type it with its country "
+           f"code, starting with + (for example +234 803 123 4567 or +44 7700 900123).")
+    if not digits:
+        return "", ask
+    if s.startswith("+") or digits.startswith("00"):
+        intl = digits[2:] if (not s.startswith("+") and digits.startswith("00")) else digits
+    elif digits.startswith("0"):
+        c = (country or "").upper()
+        if c in _pn.SUPPORTED_REGIONS:
+            try:
+                p = _pn.parse(digits, c)
+                if _pn.is_valid_number(p):
+                    return _pn.format_number(p, _pn.PhoneNumberFormat.E164)[1:], None
+            except Exception:
+                pass
+        return "", ask
+    else:
+        intl = digits
+    try:
+        if _pn.is_possible_number(_pn.parse("+" + intl, None)):
+            return intl, None
+    except Exception:
+        pass
+    return "", ask
+
+
 def _normalise_contact_phone(raw: str, country: str = None) -> str:
     """Contact phone format: digits only, country code first, no '+'
     (2348012345678 / 447700900123) — the same format WhatsApp-created
@@ -14262,29 +14339,9 @@ def _normalise_contact_phone(raw: str, country: str = None) -> str:
         return digits
     if digits.startswith("00"):
         return digits[2:]
-    country = (country or "").upper()
-    if country not in _pn.SUPPORTED_REGIONS:
-        return digits
-    if digits.startswith("0"):
-        try:
-            return _pn.format_number(_pn.parse(digits, country), _pn.PhoneNumberFormat.E164)[1:]
-        except Exception:
-            return digits
-    # No '+' and no leading 0: normally already has its country code (what
-    # WhatsApp sends). Only read it as a local number when it isn't a valid
-    # international number but IS valid for the business's country
-    # (e.g. a US business typing 4155552671).
-    try:
-        if _pn.is_valid_number(_pn.parse("+" + digits, None)):
-            return digits
-    except Exception:
-        pass
-    try:
-        n = _pn.parse(digits, country)
-        if _pn.is_valid_number(n):
-            return _pn.format_number(n, _pn.PhoneNumberFormat.E164)[1:]
-    except Exception:
-        pass
+    # 2026-10-02 (user: "THE PORTAL SHOULD NOT BE GUESSING"): `country` is
+    # no longer used — a local 0… number is kept exactly as written and
+    # shown as "⚠️ Check number" (phone_problem) for staff to fix.
     return digits
 
 
@@ -14311,19 +14368,130 @@ def _phone_from_form(raw: str, country: str):
     return _pn.format_number(n, _pn.PhoneNumberFormat.E164), None
 
 
-def _contact_numbers_from_form(form, tenant_id: int):
+# ── Country codes forced everywhere (user 2026-10-02) ───────────────────────
+# "The system should force entry of phone numbers using country codes every
+# where in the portal" + "THE PORTAL SHOULD NOT BE GUESSING". Every phone
+# box has a country picker (nothing pre-chosen) OR takes a full number
+# starting with +. Nothing ever adds a country code by itself. Numbers saved
+# before this (or imported from a file) are kept exactly as written and
+# shown with "⚠️ Check number" until staff correct or remove them.
+_SPECIAL_LINE_TYPES = {
+    _pn.PhoneNumberType.PREMIUM_RATE, _pn.PhoneNumberType.TOLL_FREE,
+    _pn.PhoneNumberType.PERSONAL_NUMBER, _pn.PhoneNumberType.SHARED_COST,
+    _pn.PhoneNumberType.UAN, _pn.PhoneNumberType.VOICEMAIL,
+    _pn.PhoneNumberType.PAGER,
+}
+PHONE_ENTRY_HINT = "Choose the country, or type the full number starting with +"
+
+
+def phone_problem(value, allow_special: bool = False):
+    """Why a SAVED number needs a person to check it, or None when it's fine.
+    Saved numbers are digits with the country code first ('234803…'), with
+    or without '+'. Reasons: 'No country code' (starts with 0), 'Not a real
+    number', 'Special or personal line' (premium-rate / free-phone /
+    personal — e.g. a Nigerian mobile that was given +44), 'Not a number'.
+    allow_special: a business's own phone may be a free-phone line."""
+    import re
+    s = str(value or "").strip()
+    if not s:
+        return None
+    digits = re.sub(r"\D", "", s)
+    if not digits:
+        return "Not a number"
+    if s.startswith("00") or (not s.startswith("+") and digits.startswith("00")):
+        digits = digits[2:]
+    elif digits.startswith("0"):
+        return "No country code"
+    try:
+        n = _pn.parse("+" + digits, None)
+    except Exception:
+        return "Not a real number"
+    if not _pn.is_valid_number(n):
+        return "Not a real number"
+    if not allow_special and _pn.number_type(n) in _SPECIAL_LINE_TYPES:
+        return "Special or personal line"
+    return None
+
+
+def _phone_entry(raw: str, country: str = None, allow_special: bool = False,
+                 plus: bool = False):
+    """A number TYPED in any phone box. Accepted only when the person chose
+    the country in the picker next to the box, or typed the full number
+    starting with + (or 00). Never guessed from the business country.
+    Returns (number, None) — digits with country code first, '+' in front
+    when plus=True — or ("", error message). Empty box → ("", None)."""
+    import re
+    s = (raw or "").strip()
+    if not s:
+        return "", None
+    digits = re.sub(r"\D", "", s)
+    if not digits:
+        return "", f"\"{s}\" is not a phone number."
+    if s.startswith("+") or s.startswith("00"):
+        intl = digits[2:] if s.startswith("00") else digits
+    else:
+        c = (country or "").strip().upper()
+        if c not in _pn.SUPPORTED_REGIONS:
+            return "", (f"\"{s}\" has no country code. Choose the country next to the "
+                        "number, or type it starting with + (for example +234 803 123 4567).")
+        try:
+            intl = _pn.format_number(_pn.parse(s, c), _pn.PhoneNumberFormat.E164)[1:]
+        except Exception:
+            intl = ""
+        if not intl:
+            return "", f"\"{s}\" doesn't look like a phone number. Please check it."
+    why = phone_problem(intl, allow_special=allow_special)
+    if why == "Special or personal line":
+        return "", (f"\"{s}\" is a premium-rate, free-phone or personal line. "
+                    "Please enter a real mobile or landline number.")
+    if why:
+        where = _PHONE_COUNTRY_NAMES.get((country or "").upper()) if not s.startswith(("+", "00")) else None
+        return "", (f"\"{s}\" doesn't look like a real {where + ' ' if where else ''}number. "
+                    "Please check the number and the country.")
+    return ("+" + intl if plus else intl), None
+
+
+def _phone_entry_keep_old(raw: str, country: str, old, **kw):
+    """Edit forms: a number left as it was saved (same digits) is kept
+    exactly as saved, so an old number that still needs checking never
+    blocks saving other changes. A new or changed number must pass
+    _phone_entry. Returns (value_or_None, error)."""
+    import re
+    s = (raw or "").strip()
+    if s and old and re.sub(r"\D", "", s) == re.sub(r"\D", "", str(old)) and \
+            not (country or "").strip():
+        return old, None
+    val, err = _phone_entry(s, country, **kw)
+    return (val or None), err
+
+
+@portal_bp.app_template_global("phone_problem")
+def _tpl_phone_problem(value, allow_special=False):
+    return phone_problem(value, allow_special)
+
+
+@portal_bp.app_context_processor
+def _inject_phone_hint():
+    return {"PHONE_ENTRY_HINT": PHONE_ENTRY_HINT}
+
+
+def _contact_numbers_from_form(form, tenant_id: int, old: dict = None):
     """The two separate number boxes every contact has (2026-09-28, One
     Address Book Phase 1a): Phone number and WhatsApp number, same as leads.
     Returns (phone, whatsapp_number, error) — each number in contact format
     (digits, country code first) or None when left empty. Nothing is copied
     from one box to the other."""
-    country = _tenant_country(tenant_id)
-    phone = _normalise_contact_phone(form.get("phone") or "", country) or None
-    whatsapp_number = _normalise_contact_phone(form.get("whatsapp_number") or "", country) or None
-    if phone and len(phone) < 7:
-        return None, None, "That phone number looks too short. Please check it."
-    if whatsapp_number and len(whatsapp_number) < 7:
-        return None, None, "That WhatsApp number looks too short. Please check it."
+    # Country picker or full +number (2026-10-02). `old` (edit forms): a
+    # number left as it was saved is kept even if it still needs checking.
+    old = old or {}
+    phone, err = _phone_entry_keep_old(form.get("phone"), form.get("phone_country"), old.get("phone"))
+    if err:
+        return None, None, f"Phone number: {err}"
+    whatsapp_number, err = _phone_entry_keep_old(form.get("whatsapp_number"),
+                                                 form.get("whatsapp_number_country"),
+                                                 old.get("whatsapp_number"))
+    if err:
+        return None, None, f"WhatsApp number: {err}"
     return phone, whatsapp_number, None
 
 
@@ -14440,6 +14608,9 @@ def _local_number_on_contact(cur, tenant_id: int, raw: str):
     the business's country code. None when it isn't a local number, or when
     no contact / more than one contact matches (then the normal rule
     applies). Same for every business."""
+    # Switched off 2026-10-02: matching 0816… to someone's 234816… assumes
+    # the country — guessing. The lead keeps its number as written (flagged).
+    return None
     import re
     s = (raw or "").strip()
     digits = re.sub(r"[^\d]", "", s)
@@ -14792,6 +14963,7 @@ def whatsapp_contacts():
     has_whatsapp   = request.args.get("has_whatsapp") == "1"
     has_email      = request.args.get("has_email") == "1"
     has_pers       = request.args.get("has_pers") == "1"
+    check_numbers  = request.args.get("check_numbers") == "1"
     date_from      = (request.args.get("date_from") or "").strip()
     date_to        = (request.args.get("date_to") or "").strip()
     import re as _re_date
@@ -14834,6 +15006,14 @@ def whatsapp_contacts():
             clauses.append("(c.email IS NOT NULL AND c.email <> '')")
         if has_pers:
             clauses.append("(c.personalization_note IS NOT NULL AND c.personalization_note <> '')")
+        # "⚠️ Numbers to check" (2026-10-02) — same rule as the badge.
+        cur.execute("SELECT id, phone, whatsapp_number FROM wa_contacts WHERE tenant_id=%s "
+                    "AND (COALESCE(phone,'') <> '' OR COALESCE(whatsapp_number,'') <> '')", (tenant_id,))
+        flagged_contact_ids = [r["id"] for r in cur.fetchall()
+                               if phone_problem(r["phone"]) or phone_problem(r["whatsapp_number"])]
+        if check_numbers:
+            clauses.append("c.id = ANY(%s)")
+            where_params.append(flagged_contact_ids or [0])
         if date_from:
             clauses.append("c.created_at >= %s::date")
             where_params.append(date_from)
@@ -15023,6 +15203,7 @@ def whatsapp_contacts():
         contacts, total, new_week, all_tags, segments, all_companies, dedupe_tags = [], 0, 0, [], [], [], []
         filtered_total, total_pages = 0, 1
         pending_review_count, company_count = 0, 0
+        flagged_contact_ids = []
         selected_tags, status_counts, saved_views = [], {}, []
         selected_segments, selected_statuses = [], []
         dedupe_contacts = []
@@ -15041,6 +15222,8 @@ def whatsapp_contacts():
         has_whatsapp=has_whatsapp,
         has_email=has_email,
         has_pers=has_pers,
+        check_numbers=check_numbers,
+        flagged_contact_count=len(flagged_contact_ids),
         date_from=date_from,
         date_to=date_to,
         all_tags=all_tags,
@@ -15178,7 +15361,7 @@ def whatsapp_contacts_edit(contact_id: int):
             cur.execute("SELECT phone, whatsapp_number FROM wa_contacts WHERE id=%s AND tenant_id=%s",
                         (contact_id, tenant_id))
             current = cur.fetchone() or {}
-            phone, whatsapp_number, num_err = _contact_numbers_from_form(request.form, tenant_id)
+            phone, whatsapp_number, num_err = _contact_numbers_from_form(request.form, tenant_id, old=current)
             if "phone" not in request.form:
                 phone = current.get("phone")
             if "whatsapp_number" not in request.form:
@@ -15318,19 +15501,20 @@ def whatsapp_contacts_import():
         return row[col].strip() if col is not None and col < len(row) else ""
 
     country = _tenant_country(tenant_id)
-    imported = updated = skipped = errors = 0
+    imported = updated = skipped = errors = to_check = 0
     conn = get_db_connection()
     cur  = conn.cursor()
 
     for row in data_rows:
         if not row or not any((c or "").strip() for c in row):
             continue
-        phone = _normalise_contact_phone(_cell(row, phone_col), country) or None
-        whatsapp_number = _normalise_contact_phone(_cell(row, wa_col), country) or None
-        if phone and len(phone) < 7:
-            phone = None
-        if whatsapp_number and len(whatsapp_number) < 7:
-            whatsapp_number = None
+        # Kept exactly as written in the file (digits) — never given a
+        # country code by guess (2026-10-02); unclear ones are flagged
+        # "⚠️ Check number" for staff to fix or remove.
+        phone = _normalise_contact_phone(_cell(row, phone_col)) or None
+        whatsapp_number = _normalise_contact_phone(_cell(row, wa_col)) or None
+        if (phone and phone_problem(phone)) or (whatsapp_number and phone_problem(whatsapp_number)):
+            to_check += 1
         email = _cell(row, email_col)[:200] or None
         if not (phone or whatsapp_number or email):
             skipped += 1
@@ -15380,6 +15564,9 @@ def whatsapp_contacts_import():
     if updated: parts.append(f"{updated} already in your contacts (details updated)")
     if skipped: parts.append(f"{skipped} skipped (no valid phone number, WhatsApp number or email)")
     if errors:  parts.append(f"{errors} errors")
+    if to_check:
+        parts.append(f"⚠️ {to_check} row{'s' if to_check != 1 else ''} with a number to check "
+                     "(no country code or not a real number) — see \"Numbers to check\"")
     flash(" · ".join(parts) + ".", "success" if (imported or updated) else "warning")
 
     return redirect(url_for("portal.whatsapp_contacts"))
@@ -17128,7 +17315,7 @@ def _send_campaign_now(campaign_id: int, tenant_id: int):
             # old '+'-prefixed lookup never matched digits-only contacts, so
             # names and opt-outs were silently missed. WhatsApp number ONLY
             # (Phase 1a) — a contact's Phone number is never used by WhatsApp.
-            contacts_by_phone = {_normalise_contact_phone(c["whatsapp_number"], _tenant_country(tenant_id)): c
+            contacts_by_phone = {_normalise_contact_phone(c["whatsapp_number"]): c
                                  for c in pcc.fetchall()}
             pcc.close(); pc.close()
         except Exception as _pe:
@@ -17176,27 +17363,26 @@ def _send_campaign_now(campaign_id: int, tenant_id: int):
             })
 
         for phone in phones:
-            # Any country (2026-09-28): a local 0… number gets the business's
-            # own country code; +/00/full international numbers keep theirs.
-            # Was Nigeria-only (0… -> 234…), which sent a UK business's
-            # 07700… to a wrong +2347700… number.
-            norm_phone = _normalise_contact_phone(phone, _tenant_country(tenant_id))
+            # Never guessed (2026-10-02): the number is used exactly as saved.
+            # A number that needs checking (no country code, not a real
+            # number, premium/personal line) is SKIPPED with the reason, until
+            # staff fix it — user: "yes skip flagged numbers".
+            norm_phone = _normalise_contact_phone(phone)
             contact    = contacts_by_phone.get(norm_phone)
             rec_status = "failed"
             rec_error  = None
             rec_msg_id = None
 
-            if norm_phone.startswith("0"):
-                # Local number and the business hasn't set its country: never
-                # guess a country code — skip it with a clear reason.
+            _why = phone_problem(norm_phone) if norm_phone else "Not a number"
+            if _why:
                 try:
                     rc = get_db_connection(); rcc = rc.cursor()
                     rcc.execute(
                         """INSERT INTO wa_campaign_recipients
                                (campaign_id, tenant_id, phone, status, error_msg, sent_at)
                            VALUES (%s, %s, %s, %s, %s, NOW())""",
-                        (campaign_id, tenant_id, norm_phone, "failed",
-                         "No country code — add it to the number, or set your business country in Settings"),
+                        (campaign_id, tenant_id, norm_phone or phone, "failed",
+                         f"Skipped — number to check ({_why}). Fix it with the country code on the lead or contact"),
                     )
                     rc.commit(); rcc.close(); rc.close()
                 except Exception:
@@ -17477,6 +17663,20 @@ def whatsapp_campaigns_create():
         flash("No recipients found. Only contacts with a WhatsApp number can receive a WhatsApp campaign — "
               "select a segment with WhatsApp numbers or enter WhatsApp numbers.", "danger")
         return redirect(url_for("portal.whatsapp_campaigns"))
+
+    # Country codes forced (2026-10-02): typed numbers must carry their
+    # country code; numbers from Leads/Contacts that need checking are kept
+    # on the list but skipped when sending (reason shown in the report).
+    _flagged = [p for p in phones if phone_problem(p)]
+    if _flagged and recipient_source not in ("pipeline", "segment"):
+        _show = ", ".join(_flagged[:5]) + (f" and {len(_flagged) - 5} more" if len(_flagged) > 5 else "")
+        flash(f"Campaign not saved. {len(_flagged)} number{'s' if len(_flagged) != 1 else ''} "
+              f"without a country code or not real: {_show}. Type each number with its country code, "
+              "starting with + (for example +234 803 123 4567).", "danger")
+        return redirect(url_for("portal.whatsapp_campaigns"))
+    if _flagged:
+        flash(f"⚠️ {len(_flagged)} of {len(phones)} numbers need checking (no country code or not a real "
+              "number) and will be skipped. Fix them on the lead or contact, using “Numbers to check”.", "warning")
 
     # Which connected number this campaign sends from. Must belong to this
     # tenant and be active — never trust the posted id blindly. Falls back to
@@ -18511,10 +18711,17 @@ def _get_email_sender(tenant_id: int):
     """Return {'from_email','from_name','token','domain_id'} for this tenant's ZeptoMail
     sending identity, falling back to the shared platform identity (ZEPTOMAIL_FALLBACK_*
     env vars) if the tenant has none configured via the admin panel. Returns None if
-    neither exists — the caller must then refuse to send."""
+    neither exists — the caller must then refuse to send.
+    A training (staff practice) account never gets a sender, so practice
+    campaigns can't email anyone through the shared platform identity."""
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT is_training FROM tenants WHERE id=%s", (tenant_id,))
+        _t = cur.fetchone()
+        if _t and _t["is_training"]:
+            cur.close(); conn.close()
+            return None
         cur.execute("SELECT * FROM email_domains WHERE tenant_id=%s AND status='active'", (tenant_id,))
         row = cur.fetchone()
         cur.close(); conn.close()
@@ -25118,9 +25325,10 @@ def _normalise_phone(raw: str) -> str:
     digits = _re.sub(r"\D", "", raw or "")
     if not digits:
         return ""
-    # Nigerian local format: starts with 0 and 11 digits
-    if digits.startswith("0") and len(digits) == 11:
-        digits = "234" + digits[1:]
+    # A local number (starts with 0) has no country code. It used to be
+    # turned into a Nigerian +234 number — guessing (removed 2026-10-02).
+    if digits.startswith("0"):
+        return ""
     # Bare country code without +
     if not digits.startswith("+"):
         digits = "+" + digits
@@ -27946,8 +28154,10 @@ def _get_leads_overview_data(tenant_id: int, date_from, date_to, prev_from, prev
         for rr in cur.fetchall():
             safe["tier_counts"][rr["lead_tier"]] = int(rr["c"])
 
+        # A Contacted date picked before the lead was added (e.g. imported
+        # later) counts as same-day, never as negative days.
         cur.execute("""
-            SELECT count(*) AS n, AVG(contact_date - created_at::date) AS d
+            SELECT count(*) AS n, AVG(GREATEST(contact_date - created_at::date, 0)) AS d
             FROM merchant_pipeline_leads WHERE tenant_id=%s AND contact_date IS NOT NULL
         """, (tenant_id,))
         r = cur.fetchone()
@@ -28138,7 +28348,11 @@ def leads_page():
         email            = (f.get("email") or "").strip()
         deal_value_raw   = (f.get("deal_value") or "").strip()
         product_interest = (f.get("product_interest") or "").strip()
-        assigned_to      = (f.get("assigned_to") or "").strip()
+        _akey            = (f.get("assigned_key") or "").strip()
+        _apeople         = {a["key"]: a["label"] for a in _lead_assignees(tenant_id, customer)}
+        if _akey not in _apeople or not _team_member_has_permission("leads.assign"):
+            _akey = ""
+        assigned_to      = _apeople.get(_akey, "")
         notes            = (f.get("notes") or "").strip()
         source           = (f.get("source") or "manual").strip()
         if source not in ("whatsapp", "facebook", "instagram", "manual"):
@@ -28146,6 +28360,11 @@ def leads_page():
         if not customer_name:
             flash("Business name is required.", "danger")
             return redirect(url_for("portal.leads_page"))
+        phone, _perr = _phone_entry(phone, f.get("phone_country"))
+        whatsapp_number, _werr = _phone_entry(whatsapp_number, f.get("whatsapp_number_country"))
+        if _perr or _werr:
+            flash(f"Lead not saved. {_perr or _werr}", "danger")
+            return redirect(url_for("portal.leads_page", open_add=1))
         deal_value = None
         if deal_value_raw:
             try:
@@ -28157,12 +28376,12 @@ def leads_page():
         cur.execute("""
             INSERT INTO merchant_pipeline_leads
                 (tenant_id, customer_name, contact_person, phone, whatsapp_number, email, notes,
-                 deal_value, product_interest, assigned_to, source)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 deal_value, product_interest, assigned_to, assigned_key, source)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """, (tenant_id, customer_name, contact_person or None, phone or None,
               whatsapp_number or None, email or None, notes or None, deal_value,
-              product_interest or None, assigned_to or None, source))
+              product_interest or None, assigned_to or None, _akey or None, source))
         new_id = cur.fetchone()[0]
         _link_lead_to_contact(cur, tenant_id, new_id)   # Phase 1b: every lead gets a contact
         conn.commit()
@@ -28203,10 +28422,9 @@ def leads_page():
 
     # ── Real Leads list — same scoring/filtering engine Sales Pipeline used
     # to show, now living here instead. ─────────────────────────────────────
-    search      = (request.args.get("q") or "").strip()
-    tier_filter = (request.args.get("tier") or "all").strip().lower()
-    if tier_filter not in ("all", "hot", "warm", "cold"):
-        tier_filter = "all"
+    actor = _current_actor(customer)
+    _lf_clauses, _lf_params, lf = _leads_list_filters(tenant_id, request.args, actor["key"])
+    search, tier_filter = lf["search"], lf["tier"]
     sort_by = (request.args.get("sort") or "").strip().lower()
     if sort_by not in ("score",):
         sort_by = ""
@@ -28244,11 +28462,7 @@ def leads_page():
         # that concept doesn't apply once Hot is already its own column.
         board_columns, tier_counts = _build_leads_tier_board(cur, tenant_id, search)
     else:
-        clauses, params = _pipeline_filter_clauses(
-            tenant_id, search, "all", False, False, False,
-            tier_filter=tier_filter if tier_filter != "all" else None,
-            opportunity_only=False,
-        )
+        clauses, params = _lf_clauses, _lf_params
         where = " AND ".join(clauses)
         scored_from = _pipeline_scored_from_sql()
 
@@ -28292,6 +28506,8 @@ def leads_page():
         score_labels=pipeline_effective_score_labels(tenant_id),
         view_mode=view_mode, board_columns=board_columns, hot_leads_smart=hot_leads_smart,
         stage_order=PIPELINE_STAGE_ORDER,
+        lf=lf, fargs=lf["fargs"], assignees=_lead_assignees(tenant_id, customer),
+        actor_key=actor["key"], not_a_fit_reasons=PIPELINE_NOT_A_FIT_REASONS,
     )
 
 
@@ -28461,6 +28677,417 @@ def leads_not_a_fit(lead_id: int):
     pipeline_record_stage_change(lead_id, lead["stage"], "not_a_fit", changed_by, reason)
     flash(f"{lead['customer_name']} marked Not a Fit.", "success")
     return redirect(url_for("portal.lead_detail", lead_id=lead_id))
+
+
+@portal_bp.route("/leads/<int:lead_id>/reopen", methods=["POST"])
+@team_feature("leads.qualify")
+def leads_reopen(lead_id: int):
+    """Undo Not a Fit (2026-10-02): the lead goes back on the Leads list,
+    waiting for a decision again. Only Not a Fit — Lost/Dropped deals are
+    Sales Pipeline outcomes, closed from there."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("leads.qualify")
+    if _rperm: return _rperm
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    lead = _pipeline_lead_owned_by_tenant(lead_id, tenant_id)
+    if not lead:
+        flash("Lead not found.", "danger")
+        return redirect(url_for("portal.leads_page"))
+    if lead.get("outcome") != "not_a_fit":
+        flash(f"{lead['customer_name']} isn't marked Not a Fit.", "warning")
+        return redirect(url_for("portal.lead_detail", lead_id=lead_id))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("""
+        UPDATE merchant_pipeline_leads
+           SET dropped_at=NULL, dropped_reason=NULL, outcome=NULL, is_opportunity=FALSE,
+               opportunity_at=NULL, updated_at=NOW()
+         WHERE id=%s AND tenant_id=%s AND outcome='not_a_fit'
+    """, (lead_id, tenant_id))
+    conn.commit()
+    cur.close(); conn.close()
+
+    pipeline_record_stage_change(lead_id, "not_a_fit", lead["stage"], _current_actor(customer)["label"],
+                                  f"Reopened — back on the Leads list (was Not a Fit: {lead.get('dropped_reason') or 'no reason'})")
+    flash(f"{lead['customer_name']} reopened — it's back on your Leads list.", "success")
+    return redirect(url_for("portal.lead_detail", lead_id=lead_id))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BULK LEAD WORK (2026-10-02) — tick many Leads and Qualify / Assign / mark
+# Not a Fit in one go, the way Pipedrive / Salesforce / Zoho / HubSpot do it.
+# A selection is either ticked ids or "all leads matching the current
+# filters" (all_matching=1 + the same filter fields the Leads list uses),
+# recomputed here so the server never trusts a client-side count.
+# ══════════════════════════════════════════════════════════════════════════════
+
+LEADS_LIST_FILTER_ARGS = ("q", "tier", "has_phone", "has_email", "has_whatsapp", "check_numbers",
+                          "has_company", "assigned", "added_from", "added_to")
+
+
+def _lead_assignees(tenant_id: int, customer: dict = None) -> list:
+    """Everyone a Lead can be assigned to: the business owner and every active
+    team member, keyed the same way inbox claims are ('owner:<id>' /
+    'team:<id>'). `label` is the real name (stored on the lead); `display`
+    is what the current viewer may see (staff never see the owner's name)."""
+    if customer is None:
+        customer = _get_customer(_customer_id())
+    owner_key   = f"owner:{customer['id']}"
+    owner_label = (f"{customer.get('first_name') or ''} {customer.get('last_name') or ''}").strip() or "Business owner"
+    people = [{"key": owner_key, "label": owner_label, "display": display_actor(owner_label, owner_key)}]
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT id, name, first_name, last_name FROM team_members
+        WHERE tenant_id=%s AND is_active ORDER BY lower(COALESCE(NULLIF(trim(first_name),''), name))
+    """, (tenant_id,))
+    for r in cur.fetchall():
+        label = (f"{r['first_name'] or ''} {r['last_name'] or ''}").strip() or r["name"]
+        people.append({"key": f"team:{r['id']}", "label": label, "display": label})
+    cur.close(); conn.close()
+    return people
+
+
+def _parse_iso_date(raw):
+    try:
+        return datetime.strptime((raw or "").strip(), "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _flagged_lead_ids(tenant_id: int) -> list:
+    """Open, not-yet-qualified Leads whose Phone or WhatsApp number needs a
+    person to check it (phone_problem: no country code / not a real number /
+    special or personal line). Checked in Python — the same rule the
+    "⚠️ Check number" badge uses — so the filter and the badge always agree."""
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("""SELECT id, phone, whatsapp_number FROM merchant_pipeline_leads
+                    WHERE tenant_id=%s AND NOT is_opportunity AND dropped_at IS NULL
+                      AND outcome IS NULL
+                      AND (COALESCE(phone,'') <> '' OR COALESCE(whatsapp_number,'') <> '')""",
+                (tenant_id,))
+    ids = [i for i, ph, wa in cur.fetchall() if phone_problem(ph) or phone_problem(wa)]
+    cur.close(); conn.close()
+    return ids
+
+
+def _leads_list_filters(tenant_id: int, args, actor_key: str):
+    """WHERE clauses for the Leads list (not-yet-qualified Leads) from the
+    page's filter fields. Shared by the list itself and every bulk action's
+    "all matching" selection so both always mean the same leads. Returns
+    (clauses, params, state) — state = the cleaned values + `fargs`, the
+    non-empty ones to carry on every link."""
+    search = (args.get("q") or "").strip()
+    tier   = (args.get("tier") or "all").strip().lower()
+    if tier not in ("all", "hot", "warm", "cold"):
+        tier = "all"
+    has_phone    = args.get("has_phone") == "1"
+    has_email    = args.get("has_email") == "1"
+    has_whatsapp = args.get("has_whatsapp") == "1"
+    has_company  = args.get("has_company") == "1"
+    check_numbers = args.get("check_numbers") == "1"
+    assigned     = (args.get("assigned") or "").strip()
+    added_from   = _parse_iso_date(args.get("added_from"))
+    added_to     = _parse_iso_date(args.get("added_to"))
+
+    clauses, params = _pipeline_filter_clauses(
+        tenant_id, search, "all", has_phone, has_whatsapp, has_email,
+        tier_filter=tier if tier != "all" else None, opportunity_only=False,
+    )
+    if has_company:
+        clauses.append("mpl.company_id IS NOT NULL")
+    flagged_ids = _flagged_lead_ids(tenant_id)
+    if check_numbers:
+        clauses.append("mpl.id = ANY(%s)"); params.append(flagged_ids or [0])
+    if assigned == "me":
+        clauses.append("mpl.assigned_key=%s"); params.append(actor_key)
+    elif assigned == "none":
+        clauses.append("(mpl.assigned_key IS NULL OR mpl.assigned_key='')")
+    elif assigned.startswith(("team:", "owner:")):
+        clauses.append("mpl.assigned_key=%s"); params.append(assigned)
+    else:
+        assigned = ""
+    if added_from:
+        clauses.append("mpl.created_at::date >= %s"); params.append(added_from)
+    if added_to:
+        clauses.append("mpl.created_at::date <= %s"); params.append(added_to)
+
+    fargs = {k: v for k, v in {
+        "has_phone": "1" if has_phone else None, "has_email": "1" if has_email else None,
+        "has_whatsapp": "1" if has_whatsapp else None, "has_company": "1" if has_company else None,
+        "check_numbers": "1" if check_numbers else None,
+        "assigned": assigned or None,
+        "added_from": added_from.isoformat() if added_from else None,
+        "added_to": added_to.isoformat() if added_to else None,
+    }.items() if v}
+    state = {"search": search, "tier": tier, "has_phone": has_phone, "has_email": has_email,
+             "has_whatsapp": has_whatsapp, "has_company": has_company, "assigned": assigned,
+             "check_numbers": check_numbers, "flagged_count": len(flagged_ids),
+             "added_from": added_from, "added_to": added_to, "fargs": fargs,
+             "contact_filter_count": sum([has_phone, has_email, has_whatsapp, has_company, check_numbers])}
+    return clauses, params, state
+
+
+_BULK_SCOPES = {
+    # scope -> extra condition a selected row must meet
+    "leads": "NOT mpl.is_opportunity AND mpl.dropped_at IS NULL AND mpl.outcome IS NULL",
+    "opps":  "mpl.is_opportunity AND mpl.dropped_at IS NULL AND mpl.outcome IS NULL",
+    "open":  "mpl.dropped_at IS NULL AND mpl.outcome IS NULL",
+}
+
+
+def _bulk_selected_lead_ids(cur, tenant_id: int, form, scope: str, actor_key: str) -> list:
+    """The lead ids a bulk action applies to, re-checked against this tenant
+    and scope. "all_matching" = every Lead the Leads list filters match."""
+    if form.get("all_matching") == "1" and scope == "leads":
+        clauses, params, _ = _leads_list_filters(tenant_id, form, actor_key)
+        cur.execute(f"SELECT mpl.id FROM {_pipeline_scored_from_sql()} mpl "
+                    f"WHERE {' AND '.join(clauses)} AND {_BULK_SCOPES['leads']}",
+                    [tenant_id] + params)
+    else:
+        ids = sorted({int(v) for v in form.getlist("lead_ids") if str(v).isdigit()})
+        if not ids:
+            return []
+        cur.execute(f"SELECT mpl.id FROM merchant_pipeline_leads mpl "
+                    f"WHERE mpl.tenant_id=%s AND mpl.id = ANY(%s) AND {_BULK_SCOPES[scope]}",
+                    (tenant_id, ids))
+    rows = cur.fetchall()
+    return sorted(r["id"] if isinstance(r, dict) else r[0] for r in rows)
+
+
+def _bulk_json_guard(feature_key: str):
+    """Login + plan + team-permission checks for the JSON bulk routes.
+    Returns (customer, tenant_id, None) or (None, None, error response)."""
+    if _require_login():
+        return None, None, (jsonify({"error": "Please log in again."}), 401)
+    if not _team_member_has_permission(feature_key):
+        return None, None, (jsonify({"error": "Your role doesn't allow this."}), 403)
+    customer = _get_customer(_customer_id())
+    if _require_plan_sub_feature(customer, "leads.page", "Leads"):
+        return None, None, (jsonify({"error": "Leads aren't included in your plan."}), 403)
+    return customer, int(customer["tenant_id"]), None
+
+
+def _bulk_assign(cur, tenant_id: int, lead_ids: list, form, assignees: list) -> dict:
+    """Assign lead_ids to one person (assign_mode=one, assign_key) or share
+    them evenly in turn between several (assign_mode=even, assign_keys).
+    keep_existing=1 leaves leads that already have someone alone.
+    Returns {key: count}. Never touches updated_at (that feeds the score)."""
+    valid = {a["key"]: a["label"] for a in assignees}
+    mode  = (form.get("assign_mode") or "").strip()
+    if mode == "one":
+        keys = [k for k in [(form.get("assign_key") or "").strip()] if k in valid]
+    elif mode == "even":
+        keys = [k for k in form.getlist("assign_keys") if k in valid]
+        keys = list(dict.fromkeys(keys))
+    else:
+        return {}
+    if not keys or not lead_ids:
+        return {}
+    if form.get("keep_existing") == "1":
+        cur.execute("SELECT id FROM merchant_pipeline_leads WHERE tenant_id=%s AND id = ANY(%s) "
+                    "AND (assigned_key IS NULL OR assigned_key='') ORDER BY id", (tenant_id, lead_ids))
+        rows = cur.fetchall()
+        lead_ids = [r["id"] if isinstance(r, dict) else r[0] for r in rows]
+    groups = {k: [] for k in keys}
+    for i, lid in enumerate(sorted(lead_ids)):
+        groups[keys[i % len(keys)]].append(lid)
+    for k, ids in groups.items():
+        if ids:
+            cur.execute("UPDATE merchant_pipeline_leads SET assigned_key=%s, assigned_to=%s "
+                        "WHERE tenant_id=%s AND id = ANY(%s)", (k, valid[k], tenant_id, ids))
+    return {k: len(v) for k, v in groups.items() if v}
+
+
+_HAS_ANY_DETAIL_SQL = ("(COALESCE(mpl.phone,'')<>'' OR COALESCE(mpl.email,'')<>'' "
+                       "OR COALESCE(mpl.whatsapp_number,'')<>'')")
+
+
+@portal_bp.route("/leads/bulk/preview", methods=["POST"])
+@team_feature("leads.page")
+def leads_bulk_preview():
+    """Counts for the confirm screens before anything changes."""
+    if not _team_member_has_permission("leads.page"):
+        return jsonify({"error": "Your role doesn't allow this."}), 403
+    customer, tenant_id, err = _bulk_json_guard("leads.page")
+    if err: return err
+    scope = request.form.get("scope") if request.form.get("scope") in _BULK_SCOPES else "leads"
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    ids = _bulk_selected_lead_ids(cur, tenant_id, request.form, scope, _current_actor(customer)["key"])
+    out = {"count": len(ids), "no_details": 0, "with_company": 0, "assigned": 0}
+    if ids:
+        cur.execute(f"""
+            SELECT count(*) FILTER (WHERE NOT {_HAS_ANY_DETAIL_SQL}) AS no_details,
+                   count(*) FILTER (WHERE mpl.company_id IS NOT NULL) AS with_company,
+                   count(*) FILTER (WHERE COALESCE(mpl.assigned_key,'')<>'') AS assigned
+            FROM merchant_pipeline_leads mpl WHERE mpl.tenant_id=%s AND mpl.id = ANY(%s)
+        """, (tenant_id, ids))
+        out.update({k: int(v) for k, v in cur.fetchone().items()})
+    cur.close(); conn.close()
+    return jsonify(out)
+
+
+@portal_bp.route("/leads/bulk/qualify", methods=["POST"])
+@team_feature("leads.qualify")
+def leads_bulk_qualify():
+    """Qualify many Leads at once → Opportunities (New Opportunity on the
+    Pipeline Board). Unlike the one-at-a-time Qualify, Contact Person /
+    Company aren't required (Salesforce's Mass Convert doesn't block on them
+    either); a lead with no phone, email or WhatsApp number is skipped.
+    Optional for all of them: assign people, set Product / Service."""
+    customer, tenant_id, err = _bulk_json_guard("leads.qualify")
+    if err: return err
+    f = request.form
+    actor = _current_actor(customer)
+    product = (f.get("product_interest") or "").strip()
+    wants_assign = f.get("assign_mode") in ("one", "even")
+    if wants_assign and not _team_member_has_permission("leads.assign"):
+        return jsonify({"error": "Your role can't assign leads. Leave 'Assign to' as it is."}), 403
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        ids = _bulk_selected_lead_ids(cur, tenant_id, f, "leads", actor["key"])
+        if not ids:
+            return jsonify({"error": "No leads selected."}), 400
+        cur.execute(f"SELECT mpl.id FROM merchant_pipeline_leads mpl WHERE mpl.tenant_id=%s "
+                    f"AND mpl.id = ANY(%s) AND {_HAS_ANY_DETAIL_SQL} ORDER BY mpl.id", (tenant_id, ids))
+        ok_ids = [r["id"] for r in cur.fetchall()]
+        skipped = len(ids) - len(ok_ids)
+        assigned = {}
+        if ok_ids:
+            sets = "is_opportunity=TRUE, opportunity_at=NOW(), updated_at=NOW()"
+            vals = []
+            if product:
+                sets += ", product_interest=%s"; vals.append(product)
+            cur.execute(f"UPDATE merchant_pipeline_leads SET {sets} WHERE tenant_id=%s AND id = ANY(%s) "
+                        f"AND NOT is_opportunity", vals + [tenant_id, ok_ids])
+            cur.execute("""
+                INSERT INTO merchant_pipeline_stage_history (lead_id, from_stage, to_stage, changed_by, notes)
+                SELECT id, stage, 'opportunity', %s, 'Qualified (bulk) — became an Opportunity'
+                FROM merchant_pipeline_leads WHERE tenant_id=%s AND id = ANY(%s)
+            """, (actor["label"], tenant_id, ok_ids))
+            if wants_assign:
+                assigned = _bulk_assign(cur, tenant_id, ok_ids, f, _lead_assignees(tenant_id, customer))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print("⚠️ leads_bulk_qualify error:", e)
+        return jsonify({"error": "Something went wrong — nothing was changed."}), 500
+    finally:
+        cur.close(); conn.close()
+    return jsonify({"ok": True, "qualified": len(ok_ids), "skipped_no_details": skipped,
+                    "assigned": sum(assigned.values())})
+
+
+@portal_bp.route("/leads/bulk/assign", methods=["POST"])
+@team_feature("leads.assign")
+def leads_bulk_assign():
+    """Assign ticked Leads (scope=leads) or Opportunities (scope=opps) to one
+    person, or share them evenly in turn between several."""
+    if not _team_member_has_permission("leads.assign"):
+        return jsonify({"error": "Your role doesn't allow this."}), 403
+    customer, tenant_id, err = _bulk_json_guard("leads.assign")
+    if err: return err
+    f = request.form
+    scope = f.get("scope") if f.get("scope") in ("leads", "opps") else "leads"
+    if f.get("assign_mode") not in ("one", "even"):
+        return jsonify({"error": "Choose who to assign them to."}), 400
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        ids = _bulk_selected_lead_ids(cur, tenant_id, f, scope, _current_actor(customer)["key"])
+        if not ids:
+            return jsonify({"error": "Nothing selected."}), 400
+        assigned = _bulk_assign(cur, tenant_id, ids, f, _lead_assignees(tenant_id, customer))
+        if not assigned and f.get("keep_existing") != "1":
+            conn.rollback()
+            return jsonify({"error": "Choose at least one person."}), 400
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print("⚠️ leads_bulk_assign error:", e)
+        return jsonify({"error": "Something went wrong — nothing was changed."}), 500
+    finally:
+        cur.close(); conn.close()
+    return jsonify({"ok": True, "assigned": sum(assigned.values()), "selected": len(ids)})
+
+
+@portal_bp.route("/leads/bulk/not-a-fit", methods=["POST"])
+@team_feature("leads.qualify")
+def leads_bulk_not_a_fit():
+    """Close many Leads as Not a Fit with one shared reason (same reasons and
+    columns as the single Not a Fit). Their contacts stay."""
+    if not _team_member_has_permission("leads.qualify"):
+        return jsonify({"error": "Your role doesn't allow this."}), 403
+    customer, tenant_id, err = _bulk_json_guard("leads.qualify")
+    if err: return err
+    f = request.form
+    reason = (f.get("reason") or "").strip()
+    if reason == "Other":
+        other = (f.get("reason_other") or "").strip()
+        reason = f"Other: {other}" if other else ""
+    if not reason or (reason not in PIPELINE_NOT_A_FIT_REASONS and not reason.startswith("Other:")):
+        return jsonify({"error": "Please choose a reason (type one in for Other)."}), 400
+    actor = _current_actor(customer)
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        ids = _bulk_selected_lead_ids(cur, tenant_id, f, "leads", actor["key"])
+        if not ids:
+            return jsonify({"error": "No leads selected."}), 400
+        cur.execute("""
+            INSERT INTO merchant_pipeline_stage_history (lead_id, from_stage, to_stage, changed_by, notes)
+            SELECT id, stage, 'not_a_fit', %s, %s FROM merchant_pipeline_leads WHERE tenant_id=%s AND id = ANY(%s)
+        """, (actor["label"], reason, tenant_id, ids))
+        cur.execute("UPDATE merchant_pipeline_leads SET dropped_at=NOW(), dropped_reason=%s, outcome='not_a_fit' "
+                    "WHERE tenant_id=%s AND id = ANY(%s)", (reason, tenant_id, ids))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print("⚠️ leads_bulk_not_a_fit error:", e)
+        return jsonify({"error": "Something went wrong — nothing was changed."}), 500
+    finally:
+        cur.close(); conn.close()
+    return jsonify({"ok": True, "closed": len(ids)})
+
+
+@portal_bp.route("/sales-pipeline/bulk-move-to-leads", methods=["POST"])
+@team_feature("crm.pipeline_board_edit")
+def sales_pipeline_bulk_move_to_leads():
+    """Undo for Qualify: ticked open Opportunities go back to the Leads list
+    (stage back to the first one). Closed deals (Won/Lost/Dropped) can't."""
+    if _require_login():
+        return jsonify({"error": "Please log in again."}), 401
+    if not _team_member_has_permission("crm.pipeline_board_edit"):
+        return jsonify({"error": "Your role doesn't allow this."}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    actor = _current_actor(customer)
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        ids = _bulk_selected_lead_ids(cur, tenant_id, request.form, "opps", actor["key"])
+        if not ids:
+            return jsonify({"error": "None of the ticked deals can move back (only open ones can)."}), 400
+        cur.execute("""
+            INSERT INTO merchant_pipeline_stage_history (lead_id, from_stage, to_stage, changed_by, notes)
+            SELECT id, stage, 'new_lead', %s, 'Moved back to Leads' FROM merchant_pipeline_leads
+            WHERE tenant_id=%s AND id = ANY(%s)
+        """, (actor["label"], tenant_id, ids))
+        cur.execute("UPDATE merchant_pipeline_leads SET is_opportunity=FALSE, opportunity_at=NULL, "
+                    "stage='new_lead', updated_at=NOW() WHERE tenant_id=%s AND id = ANY(%s)", (tenant_id, ids))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print("⚠️ sales_pipeline_bulk_move_to_leads error:", e)
+        return jsonify({"error": "Something went wrong — nothing was changed."}), 500
+    finally:
+        cur.close(); conn.close()
+    return jsonify({"ok": True, "moved": len(ids)})
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -29217,6 +29844,8 @@ def sales_pipeline():
         filtered_total        = filtered_total,
         per_page_options      = PIPELINE_PER_PAGE_OPTIONS,
         all_ambassadors       = all_ambassadors,
+        assignees             = _lead_assignees(tenant_id, customer),
+        actor_key             = _current_actor(customer)["key"],
     )
 
 
@@ -29287,6 +29916,83 @@ def sales_pipeline_export():
     )
 
 
+_NUMBER_FIELDS = {"phone": "Phone number", "whatsapp_number": "WhatsApp number"}
+
+
+@portal_bp.route("/leads/<int:lead_id>/remove-number", methods=["POST"])
+@team_feature("crm.pipeline_board_edit")
+def lead_remove_number(lead_id: int):
+    """"Remove number" (2026-10-02): staff discard a number that needs
+    checking. Clears ONLY that number — the lead itself is kept. Only for a
+    number that is actually flagged, so a good number can't go by mistake."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("crm.pipeline_board_edit")
+    if _rperm: return _rperm
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    field = (request.form.get("field") or "").strip()
+    lead = _pipeline_lead_owned_by_tenant(lead_id, tenant_id)
+    if not lead or field not in _NUMBER_FIELDS:
+        flash("Lead not found.", "danger")
+        return redirect(url_for("portal.leads_page"))
+    old = lead.get(field)
+    if not old or not phone_problem(old):
+        flash("That number doesn't need checking, so it wasn't removed. Use Edit Lead to change it.", "warning")
+        return redirect(url_for("portal.lead_detail", lead_id=lead_id))
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute(f"UPDATE merchant_pipeline_leads SET {field}=NULL, updated_at=NOW() "
+                "WHERE id=%s AND tenant_id=%s", (lead_id, tenant_id))
+    conn.commit(); cur.close(); conn.close()
+    insert_audit_log(action="lead_number_removed", tenant_id=tenant_id,
+                     details={"lead_id": lead_id, "field": field, "old": old,
+                              "by": _current_actor(customer)["label"]})
+    flash(f"{_NUMBER_FIELDS[field]} {old} removed from {lead['customer_name']}. The lead is kept.", "success")
+    return redirect(request.referrer or url_for("portal.lead_detail", lead_id=lead_id))
+
+
+@portal_bp.route("/whatsapp/contacts/<int:contact_id>/remove-number", methods=["POST"])
+@team_feature("crm.contacts_edit")
+def contact_remove_number(contact_id: int):
+    """Same as lead_remove_number, for a contact: clears only the flagged
+    number, the contact is kept."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("crm.contacts_edit")
+    if _rperm: return _rperm
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    field = (request.form.get("field") or "").strip()
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT id, display_name, phone, whatsapp_number FROM wa_contacts "
+                "WHERE id=%s AND tenant_id=%s", (contact_id, tenant_id))
+    c = cur.fetchone()
+    if not c or field not in _NUMBER_FIELDS:
+        cur.close(); conn.close()
+        flash("Contact not found.", "danger")
+        return redirect(url_for("portal.whatsapp_contacts"))
+    old = c.get(field)
+    if not old or not phone_problem(old):
+        cur.close(); conn.close()
+        flash("That number doesn't need checking, so it wasn't removed. Use Edit to change it.", "warning")
+        return redirect(url_for("portal.whatsapp_contact_detail", contact_id=contact_id))
+    try:
+        cur.execute(f"UPDATE wa_contacts SET {field}=NULL, updated_at=NOW() "
+                    "WHERE id=%s AND tenant_id=%s", (contact_id, tenant_id))
+        conn.commit()
+    except Exception as e:
+        conn.rollback(); cur.close(); conn.close()
+        print("⚠️ contact_remove_number error:", e)
+        flash("Couldn't remove the number. Please try again.", "danger")
+        return redirect(url_for("portal.whatsapp_contact_detail", contact_id=contact_id))
+    cur.close(); conn.close()
+    insert_audit_log(action="contact_number_removed", tenant_id=tenant_id,
+                     details={"contact_id": contact_id, "field": field, "old": old,
+                              "by": _current_actor(customer)["label"]})
+    flash(f"{_NUMBER_FIELDS[field]} {old} removed. The contact is kept.", "success")
+    return redirect(request.referrer or url_for("portal.whatsapp_contact_detail", contact_id=contact_id))
+
+
 @portal_bp.route("/sales-pipeline/<int:lead_id>/edit", methods=["POST"])
 @team_feature("crm.pipeline_board_edit")
 def sales_pipeline_edit(lead_id: int):
@@ -29307,6 +30013,17 @@ def sales_pipeline_edit(lead_id: int):
     if not customer_name:
         flash("Customer/business name is required.", "danger")
         return redirect(url_for("portal.sales_pipeline"))
+
+    # Numbers must be international (2026-10-02). A number left exactly as
+    # it was saved is kept, so an old local-format number never blocks
+    # saving other changes; a new or changed one must pass the check.
+    _nums = {}
+    for _fld in ("phone", "whatsapp_number"):
+        _val, _err = _phone_entry_keep_old(f.get(_fld), f.get(_fld + "_country"), lead.get(_fld))
+        if _err:
+            flash(f"Not saved. {_err}", "danger")
+            return redirect(request.referrer or url_for("portal.sales_pipeline"))
+        _nums[_fld] = _val
 
     deal_value_raw = (f.get("deal_value") or "").strip()
     deal_value = None
@@ -29330,27 +30047,40 @@ def sales_pipeline_edit(lead_id: int):
     budget_confirmed        = "budget_confirmed" in f
     decision_maker_engaged  = "decision_maker_engaged" in f
 
+    # Assigned Salesperson = a pick of a real person (2026-10-02). Only a
+    # role with "Assign Leads" can change it; otherwise it stays as it was.
+    _assign_sql, _assign_vals = "", []
+    if "assigned_key" in f and _team_member_has_permission("leads.assign"):
+        _apeople = {a["key"]: a["label"] for a in _lead_assignees(tenant_id, customer)}
+        _akey = (f.get("assigned_key") or "").strip()
+        if _akey == lead.get("assigned_key"):
+            pass                      # unchanged (also keeps an inactive member's name)
+        else:
+            _akey = _akey if _akey in _apeople else ""
+            _assign_sql = ", assigned_key=%s, assigned_to=%s"
+            _assign_vals = [_akey or None, _apeople.get(_akey)]
+
     conn = get_db_connection()
     cur  = conn.cursor()
     cur.execute("""
         UPDATE merchant_pipeline_leads
            SET customer_name=%s, contact_person=%s, phone=%s, whatsapp_number=%s, email=%s, website=%s, deal_value=%s, notes=%s,
-               product_interest=%s, assigned_to=%s, budget_confirmed=%s, decision_maker_engaged=%s, deadline_date=%s, updated_at=NOW()
+               product_interest=%s, budget_confirmed=%s, decision_maker_engaged=%s, deadline_date=%s, updated_at=NOW()""" + _assign_sql + """
          WHERE id=%s AND tenant_id=%s
     """, (
         customer_name,
         (f.get("contact_person") or "").strip() or None,
-        (f.get("phone") or "").strip() or None,
-        (f.get("whatsapp_number") or "").strip() or None,
+        _nums["phone"],
+        _nums["whatsapp_number"],
         (f.get("email") or "").strip() or None,
         _normalize_website_url(f.get("website") or "") or None,
         deal_value,
         (f.get("notes") or "").strip() or None,
         (f.get("product_interest") or "").strip() or None,
-        (f.get("assigned_to") or "").strip() or None,
         budget_confirmed,
         decision_maker_engaged,
         deadline_date,
+        *_assign_vals,
         lead_id, tenant_id,
     ))
     conn.commit()
@@ -29790,8 +30520,14 @@ def lead_detail(lead_id: int):
     # Score — same math as the Leads list, just for this one lead.
     scored_from = _pipeline_scored_from_sql()
     cur.execute(f"SELECT lead_score, lead_tier FROM {scored_from} mpl WHERE mpl.id=%s", [tenant_id, lead_id])
-    score_row = cur.fetchone() or {"lead_score": 0, "lead_tier": "cold"}
     score_breakdown = _pipeline_score_breakdown(lead)
+    score_row = cur.fetchone()
+    if not score_row:
+        # Closed leads (Not a Fit / Lost / Dropped) are outside the scored
+        # list — add up the same breakdown shown under it so the two agree.
+        _total = sum(s["points"] for s in score_breakdown)
+        score_row = {"lead_score": _total,
+                     "lead_tier": "hot" if _total >= 60 else ("warm" if _total >= 30 else "cold")}
 
     # Campaign, if a WhatsApp campaign reply is what created this Lead
     # (Campaign Intelligence link) — checked by the link itself, not by
@@ -29885,6 +30621,7 @@ def lead_detail(lead_id: int):
         stage_history=stage_history,
         last_worked_by=last_worked_by,
         not_a_fit_reasons=PIPELINE_NOT_A_FIT_REASONS,
+        assignees=_lead_assignees(tenant_id, customer),
     )
 
 

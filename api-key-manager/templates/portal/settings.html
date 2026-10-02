@@ -1,4 +1,5 @@
 {% extends "portal/base.html" %}
+{% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
 {% block title %}Account Settings — PhiXtra Portal{% endblock %}
 
 {% block head %}
@@ -159,11 +160,7 @@
         </div>
         <div class="form-group">
           <label>Mobile Phone Number *</label>
-          <input type="tel" name="phone_number"
-                 value="{{ customer.phone_number or '' }}" required
-                 placeholder="+44 7700 900000"
-                 oninvalid="this.setCustomValidity('Mobile phone number is required and cannot be blank.')"
-                 oninput="this.setCustomValidity('')"/>
+          {{ phone_box('phone_number', customer.phone_number, cls='', required=True, style='max-width:520px') }}
           <p class="muted" style="font-size:12px;margin-top:4px">Required — used for account recovery and alerts.</p>
         </div>
         <div class="form-group">
@@ -329,11 +326,7 @@
              style="margin-top:12px;{% if not daily_report_enabled %}display:none;{% endif %}">
           <div class="form-group" style="margin-bottom:4px">
             <label style="font-size:13px;font-weight:650">Send the daily summary to this WhatsApp number</label>
-            <input type="tel" name="report_phone"
-                   value="{{ report_phone or '' }}"
-                   placeholder="e.g. +2348012345678"
-                   style="max-width:280px"
-                   inputmode="tel"/>
+            {{ phone_box('report_phone', report_phone, cls='', style='max-width:420px') }}
             <p class="muted" style="font-size:12px;margin-top:6px;line-height:1.5">
               📱 Your <strong>personal</strong> WhatsApp number (not your business number).
             </p>
@@ -497,12 +490,11 @@
         </div>
 
         <div class="form-group" id="business-country">
-          <label>Business country (for phone numbers)</label>
+          <label>Business country</label>
           {% set pc_name = 'business_country' %}{% set pc_id = 'fBusinessCountry' %}{% set pc_required = false %}
           {% set pc_selected = customer.business_country or '' %}{% set pc_style = '' %}{% set pc_placeholder = 'Choose your country…' %}
           {% include "portal/_phone_country_select.html" %}
-          <p class="muted" style="font-size:12px;margin-top:4px">When a number is typed without a country code (e.g. 0803… or 07700…), we add this country's code.
-            {% if not customer.business_country %}<strong style="color:#b54708">Not set yet: numbers starting with 0 are kept as typed until you choose.</strong>{% endif %}</p>
+          <p class="muted" style="font-size:12px;margin-top:4px">Where your business is based. Phone numbers never take this country's code automatically: every number is typed with its own country code.</p>
         </div>
 
         <div style="padding-top:16px;border-top:1px solid var(--line);margin:20px 0 16px;">

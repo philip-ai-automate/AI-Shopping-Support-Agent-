@@ -1,4 +1,5 @@
 {% extends "portal/base.html" %}
+{% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
 {% block title %}WhatsApp Connect — PhiXtra Portal{% endblock %}
 
 {% block head %}
@@ -12,6 +13,7 @@
 <script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js"></script>
 {% endif %}
 <style>
+.wa-ph{padding:10px 13px;border-radius:10px;border:1px solid rgba(3,12,24,.18);font-size:14px;font-family:inherit;box-sizing:border-box;background:#fff}
   .wa-signup-btn {
     display: inline-flex; align-items: center; gap: 10px;
     padding: 12px 22px; border-radius: 12px; border: none; cursor: pointer;
@@ -873,15 +875,7 @@ function useApiKey(evt) {
       <label style="font-weight:700;font-size:13px;display:block;margin-bottom:6px">
         Personal WhatsApp number
       </label>
-      <input type="tel" name="report_phone"
-             value="{{ report_phone or '' }}"
-             placeholder="+2348012345678"
-             style="width:100%;padding:10px 13px;border-radius:10px;
-                    border:1px solid rgba(3,12,24,.18);font-size:14px;
-                    font-family:inherit;outline:none;transition:.15s;box-sizing:border-box"
-             onfocus="this.style.borderColor='rgba(3,12,24,.35)'"
-             onblur="this.style.borderColor='rgba(3,12,24,.18)'"
-      />
+      {{ phone_box('report_phone', report_phone, cls='wa-ph') }}
       <div style="font-size:12px;color:var(--muted);margin-top:6px">
         Include your country code — e.g. <strong>+234</strong> for Nigeria, <strong>+44</strong> for UK.
         Leave blank to disable alerts.

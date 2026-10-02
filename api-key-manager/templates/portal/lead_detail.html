@@ -1,4 +1,5 @@
 {% extends "portal/base.html" %}
+{% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
 {% block title %}{{ lead.customer_name }} — Lead — PhiXtra Portal{% endblock %}
 
 {% block head %}
@@ -68,6 +69,13 @@
       {% else %}
       <span class="stage-pill" style="background:#fffbeb;color:#b45309;font-size:13px;padding:7px 16px">AWAITING QUALIFICATION</span>
       {% endif %}
+      {% if outc == 'not_a_fit' and staff_can_open('portal.leads_reopen') %}
+      {# Undo Not a Fit (2026-10-02) #}
+      <form method="POST" action="{{ url_for('portal.leads_reopen', lead_id=lead.id) }}" style="margin:0"
+            onsubmit="return confirm('Reopen this lead? It goes back on your Leads list, waiting for a decision again.')">
+        <button type="submit" class="lc-edit-btn" style="background:#0B1D40;color:#fff;border-color:#0B1D40">↩️ Reopen as Lead</button>
+      </form>
+      {% endif %}
       {% if not outc and not lead.is_opportunity and staff_can_open('portal.leads_qualify') %}
       <button type="button" class="lc-edit-btn" style="background:#15803d;color:#fff;border-color:#15803d" onclick="document.getElementById('qualifyModal').classList.add('open')">✅ Qualify</button>
       <button type="button" class="lc-edit-btn" style="background:#b91c1c;color:#fff;border-color:#b91c1c" onclick="document.getElementById('notAFitModal').classList.add('open')">🚫 Not a Fit</button>
@@ -95,8 +103,8 @@
       {% endif %}
     </div>
     <div><div class="lc-field-label">Contact Person</div><div class="lc-field-value">{{ lead.contact_person or '—' }}</div></div>
-    <div><div class="lc-field-label">Phone Number</div><div class="lc-field-value" style="font-family:'SF Mono','Fira Code',monospace">{{ lead.phone|phone_display or '—' }}</div></div>
-    <div><div class="lc-field-label">WhatsApp Number</div><div class="lc-field-value" style="font-family:'SF Mono','Fira Code',monospace;color:#15803d">{{ lead.whatsapp_number|phone_display or '—' }}</div></div>
+    <div><div class="lc-field-label">Phone Number</div><div class="lc-field-value" style="font-family:'SF Mono','Fira Code',monospace">{{ lead.phone|phone_display or '—' }}{{ phone_flag(lead.phone) }}{% if lead.phone and phone_problem(lead.phone) and staff_can_open('portal.lead_remove_number') %}<form method="POST" action="{{ url_for('portal.lead_remove_number', lead_id=lead.id) }}" style="display:inline;margin:0" onsubmit="return confirm('Remove this number? Only the number is removed — the lead is kept.')"><input type="hidden" name="field" value="phone"><button type="submit" style="margin-left:6px;background:none;border:0;padding:0;color:#b91c1c;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;text-decoration:underline">Remove number</button></form>{% endif %}</div></div>
+    <div><div class="lc-field-label">WhatsApp Number</div><div class="lc-field-value" style="font-family:'SF Mono','Fira Code',monospace;color:#15803d">{{ lead.whatsapp_number|phone_display or '—' }}{{ phone_flag(lead.whatsapp_number) }}{% if lead.whatsapp_number and phone_problem(lead.whatsapp_number) and staff_can_open('portal.lead_remove_number') %}<form method="POST" action="{{ url_for('portal.lead_remove_number', lead_id=lead.id) }}" style="display:inline;margin:0" onsubmit="return confirm('Remove this number? Only the number is removed — the lead is kept.')"><input type="hidden" name="field" value="whatsapp_number"><button type="submit" style="margin-left:6px;background:none;border:0;padding:0;color:#b91c1c;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;text-decoration:underline">Remove number</button></form>{% endif %}</div></div>
     <div><div class="lc-field-label">Email</div><div class="lc-field-value">{{ lead.email or '—' }}</div></div>
 
     <div>
@@ -128,7 +136,7 @@
     <div><div class="lc-field-label">Created</div><div class="lc-field-value">{{ lead.created_at.strftime('%d %b %Y') if lead.created_at else '—' }}</div></div>
 
     <div><div class="lc-field-label">Product / Service</div><div class="lc-field-value">{{ lead.product_interest or '—' }}</div></div>
-    <div><div class="lc-field-label">Assigned Salesperson</div><div class="lc-field-value">{{ lead.assigned_to or '—' }}</div></div>
+    <div><div class="lc-field-label">Assigned Salesperson</div><div class="lc-field-value">{{ (lead.assigned_to|who(lead.assigned_key)) if lead.assigned_to else '—' }}</div></div>
     <div style="opacity:.55">
       <div class="lc-field-label">Ambassador</div>
       {% if is_phixtra_support_account and ambassador %}
@@ -170,6 +178,13 @@
     {% if lead.dropped_reason %}
     <div style="margin-top:8px;font-size:12px;color:var(--muted)">Reason: <strong style="color:var(--ink)">{{ lead.dropped_reason }}</strong></div>
     {% endif %}
+    {% if staff_can_open('portal.leads_reopen') %}
+    <div style="margin-top:4px;font-size:12px;color:var(--muted)">Changed your mind? Reopen it and it goes back on your Leads list.</div>
+    <form method="POST" action="{{ url_for('portal.leads_reopen', lead_id=lead.id) }}" style="margin:0;margin-top:10px"
+            onsubmit="return confirm('Reopen this lead? It goes back on your Leads list, waiting for a decision again.')">
+        <button type="submit" class="lc-edit-btn" style="background:#0B1D40;color:#fff;border-color:#0B1D40">↩️ Reopen as Lead</button>
+      </form>
+    {% endif %}
     {% else %}
     <div style="font-size:13px;font-weight:600;color:var(--ink)">Not yet qualified — this Lead isn't in the Sales Pipeline yet.</div>
     <div style="margin-top:4px;font-size:12px;color:var(--muted)">Decide whether it's worth pursuing: <strong>Qualify</strong> it to turn it into a real Opportunity, or mark it <strong>Not a Fit</strong>.</div>
@@ -184,7 +199,9 @@
   {% else %}
   <div style="padding:22px 24px;border-bottom:1px solid var(--line);overflow-x:auto">
     <div style="display:flex;align-items:flex-start;min-width:640px">
-      {% for s in stage_order %}
+      {# 'won' is left out of the steps: the separate Won / Lost / Dropped circles
+         after them show it, so it never appears twice (2026-10-02). #}
+      {% for s in stage_order if s != 'won' %}
       {% set s_idx = stage_order.index(s) %}
       {% set cur_idx = stage_order.index(lead.stage) if lead.stage in stage_order else -1 %}
       {% if not loop.first %}<div class="step-line {{ 'done' if s_idx <= cur_idx }}"></div>{% endif %}
@@ -273,8 +290,14 @@
       {% if stage_history %}
       {% for h in stage_history %}
       <div style="font-size:12.5px;color:var(--ink);background:#f8fafc;border-radius:10px;padding:10px 14px;margin-bottom:8px">
-        <strong>{{ stage_labels.get(h.to_stage, h.to_stage) }}</strong>
-        {% if h.from_stage %}<span style="color:var(--muted)"> (from {{ stage_labels.get(h.from_stage, h.from_stage) }})</span>{% endif %}
+        {# Before Qualify the first stage is the Lead itself, so it reads "New Lead",
+           not "New Opportunity": when a lead is made / moved back / reopened, and as
+           the "from" of Qualify or Not a Fit (2026-10-02). Pipeline moves keep the
+           business's own stage names. #}
+        {% set _to_lead = h.to_stage == 'new_lead' and (not h.from_stage or h.from_stage == 'not_a_fit' or (h.notes or '').startswith(('Moved back to Leads', 'Reopened'))) %}
+        {% set _from_lead = h.from_stage == 'new_lead' and h.to_stage in ('opportunity', 'not_a_fit') %}
+        <strong>{{ 'New Lead' if _to_lead else stage_labels.get(h.to_stage, h.to_stage) }}</strong>
+        {% if h.from_stage %}<span style="color:var(--muted)"> (from {{ 'New Lead' if _from_lead else stage_labels.get(h.from_stage, h.from_stage) }})</span>{% endif %}
         <span style="color:var(--muted)"> — {{ h.changed_by or 'Unknown' }}, {{ h.created_at.strftime('%d %b %Y') if h.created_at else '' }}</span>
         {% if h.notes %}<div style="color:var(--muted);margin-top:3px">{{ h.notes }}</div>{% endif %}
       </div>
@@ -297,9 +320,9 @@
         <div><label class="flbl">Business Name</label><input type="text" name="customer_name" class="finp" value="{{ lead.customer_name or '' }}" required></div>
         <div><label class="flbl">Contact Person</label><input type="text" name="contact_person" class="finp" value="{{ lead.contact_person or '' }}"></div>
       </div>
-      <div class="frow">
-        <div><label class="flbl">Phone Number</label><input type="tel" name="phone" class="finp" value="{{ lead.phone or '' }}"></div>
-        <div><label class="flbl">WhatsApp Number</label><input type="tel" name="whatsapp_number" class="finp" value="{{ lead.whatsapp_number or '' }}"></div>
+      <div class="frow" style="grid-template-columns:1fr">
+        <div><label class="flbl">Phone Number</label>{{ phone_box('phone', lead.phone) }}</div>
+        <div><label class="flbl">WhatsApp Number</label>{{ phone_box('whatsapp_number', lead.whatsapp_number) }}</div>
       </div>
       <div class="frow">
         <div><label class="flbl">Email</label><input type="email" name="email" class="finp" value="{{ lead.email or '' }}"></div>
@@ -307,7 +330,22 @@
       </div>
       <div class="frow">
         <div><label class="flbl">Product / Service Interested In</label><input type="text" name="product_interest" class="finp" value="{{ lead.product_interest or '' }}"></div>
-        <div><label class="flbl">Assigned Salesperson</label><input type="text" name="assigned_to" class="finp" value="{{ lead.assigned_to or '' }}"></div>
+        <div><label class="flbl">Assigned Salesperson</label>
+          {% if staff_can('leads.assign') %}
+          <select name="assigned_key" class="finp">
+            <option value="">— Not assigned —</option>
+            {% set _known = assignees|map(attribute='key')|list %}
+            {% if lead.assigned_key and lead.assigned_key not in _known %}
+            <option value="{{ lead.assigned_key }}" selected>{{ lead.assigned_to|who(lead.assigned_key) }} (no longer active)</option>
+            {% endif %}
+            {% for a in assignees %}
+            <option value="{{ a.key }}" {% if a.key == lead.assigned_key %}selected{% endif %}>{{ a.display }}</option>
+            {% endfor %}
+          </select>
+          {% else %}
+          <input type="text" class="finp" value="{{ (lead.assigned_to|who(lead.assigned_key)) if lead.assigned_to else '— Not assigned —' }}" disabled>
+          {% endif %}
+        </div>
       </div>
       <div class="frow single">
         <div><label class="flbl">Notes</label><textarea name="notes" class="finp">{{ lead.notes or '' }}</textarea></div>
@@ -315,10 +353,10 @@
       <div class="frow single">
         <div class="flbl" style="margin-bottom:6px">Sales Signals <span style="font-weight:400;color:#9ca3af">(feed the Lead Score — see "How Lead Scoring Works")</span></div>
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:8px;cursor:pointer">
-          <input type="checkbox" name="budget_confirmed" value="1" {{ 'checked' if lead.budget_confirmed }}> Budget confirmed
+          <input type="checkbox" name="budget_confirmed" style="width:16px;height:16px;flex:0 0 auto;margin:0" value="1" {{ 'checked' if lead.budget_confirmed }}> Budget confirmed
         </label>
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:10px;cursor:pointer">
-          <input type="checkbox" name="decision_maker_engaged" value="1" {{ 'checked' if lead.decision_maker_engaged }}> Decision-maker engaged
+          <input type="checkbox" name="decision_maker_engaged" style="width:16px;height:16px;flex:0 0 auto;margin:0" value="1" {{ 'checked' if lead.decision_maker_engaged }}> Decision-maker engaged
         </label>
         <label class="flbl">Deadline / timeline stated <span style="font-weight:400;color:#9ca3af">(e.g. "needs to decide by end of month")</span></label>
         <input type="date" name="deadline_date" class="finp" value="{{ lead.deadline_date.strftime('%Y-%m-%d') if lead.deadline_date else '' }}">

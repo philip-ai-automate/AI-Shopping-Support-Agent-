@@ -1,4 +1,5 @@
 {% extends "portal/base.html" %}
+{% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
 {% block title %}{{ contact.display_name or contact.whatsapp_number or contact.phone or contact.email }} — Contact — PhiXtra Portal{% endblock %}
 
 {% block head %}
@@ -325,7 +326,7 @@
         <div class="pc-row">
           <span class="pc-ic" aria-hidden="true">📞</span><span class="pc-k">Phone number</span>
           <span class="pc-v pc-num">
-            {% if contact.phone %}{{ contact.phone|phone_display }}{% if (contact.phone or '')|string|trim|first == '0' %}{{ cc_badge|safe }}{% endif %}
+            {% if contact.phone %}{{ contact.phone|phone_display }}{{ phone_flag(contact.phone) }}{% if phone_problem(contact.phone) and can_edit_contact %}<form method="POST" action="{{ url_for('portal.contact_remove_number', contact_id=contact.id) }}" style="display:inline;margin:0" onsubmit="return confirm('Remove this number? Only the number is removed — the contact is kept.')"><input type="hidden" name="field" value="phone"><button type="submit" style="margin-left:6px;background:none;border:0;padding:0;color:#b91c1c;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;text-decoration:underline">Remove number</button></form>{% endif %}
             {% elif can_edit_contact %}<button type="button" class="pc-add" onclick="openEdit('ep-phone')">+ Add phone number</button>
             {% else %}<span class="pc-none">—</span>{% endif %}
           </span>
@@ -333,7 +334,7 @@
         <div class="pc-row">
           <span class="pc-ic" aria-hidden="true">💬</span><span class="pc-k">WhatsApp number</span>
           <span class="pc-v pc-num pc-wa">
-            {% if contact.whatsapp_number %}{{ contact.whatsapp_number|phone_display }}{% if (contact.whatsapp_number or '')|string|trim|first == '0' %}{{ cc_badge|safe }}{% endif %}
+            {% if contact.whatsapp_number %}{{ contact.whatsapp_number|phone_display }}{{ phone_flag(contact.whatsapp_number) }}{% if phone_problem(contact.whatsapp_number) and can_edit_contact %}<form method="POST" action="{{ url_for('portal.contact_remove_number', contact_id=contact.id) }}" style="display:inline;margin:0" onsubmit="return confirm('Remove this number? Only the number is removed — the contact is kept.')"><input type="hidden" name="field" value="whatsapp_number"><button type="submit" style="margin-left:6px;background:none;border:0;padding:0;color:#b91c1c;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;text-decoration:underline">Remove number</button></form>{% endif %}
             {% elif can_edit_contact %}<button type="button" class="pc-add" onclick="openEdit('ep-whatsapp')">+ Add WhatsApp number</button>
             {% else %}<span class="pc-none">—</span>{% endif %}
           </span>
@@ -738,18 +739,16 @@
 
       <fieldset class="ep-sec">
         <legend>How to reach them <span>· any one is enough</span></legend>
-        <div class="ep-2">
+        <div class="ep-2" style="grid-template-columns:1fr">
           <div class="field">
             <label class="field-label" for="ep-phone">📞 Phone number</label>
-            <input class="field-input" type="text" name="phone" id="ep-phone" inputmode="numeric"
-                   value="{{ contact.phone or '' }}" placeholder="2348012345678">
-            <div style="font-size:11px;color:#94a3b8;margin-top:4px">For phone calls{{ ' and SMS' if SMS_ENABLED }}</div>
+            {{ phone_box('phone', contact.phone, cls='field-input', id='ep-phone', hint=False) }}
+            <div style="font-size:11px;color:#94a3b8;margin-top:4px">For phone calls{{ ' and SMS' if SMS_ENABLED }} · {{ PHONE_ENTRY_HINT }}</div>
           </div>
           <div class="field">
             <label class="field-label" for="ep-whatsapp">💬 WhatsApp number</label>
-            <input class="field-input" type="text" name="whatsapp_number" id="ep-whatsapp" inputmode="numeric"
-                   value="{{ contact.whatsapp_number or '' }}" placeholder="2348012345678">
-            <div style="font-size:11px;color:#94a3b8;margin-top:4px">For WhatsApp chats and campaigns</div>
+            {{ phone_box('whatsapp_number', contact.whatsapp_number, cls='field-input', id='ep-whatsapp', hint=False) }}
+            <div style="font-size:11px;color:#94a3b8;margin-top:4px">For WhatsApp chats and campaigns · {{ PHONE_ENTRY_HINT }}</div>
           </div>
         </div>
         <div class="field" style="margin-bottom:0">

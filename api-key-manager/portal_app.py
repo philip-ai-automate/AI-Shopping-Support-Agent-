@@ -421,27 +421,30 @@ def create_app():
     def inject_is_demo_tenant():
         """True when the logged-in customer belongs to a demo (ambassador sandbox) tenant."""
         if not _session.get("portal_logged_in"):
-            return {"_is_demo_tenant": False}
+            return {"_is_demo_tenant": False, "_is_training_tenant": False}
         cid = _session.get("impersonate_customer_id") or _session.get("customer_id")
         if not cid:
-            return {"_is_demo_tenant": False}
+            return {"_is_demo_tenant": False, "_is_training_tenant": False}
         if not hasattr(_g, "_cached_is_demo_tenant"):
             try:
                 from db import get_db_connection
                 conn = get_db_connection()
                 cur  = conn.cursor()
                 cur.execute("""
-                    SELECT t.is_demo FROM tenants t
+                    SELECT t.is_demo, t.is_training FROM tenants t
                     JOIN customers c ON c.tenant_id = t.id
                     WHERE c.id = %s
                 """, (int(cid),))
                 row = cur.fetchone()
                 cur.close(); conn.close()
                 _g._cached_is_demo_tenant = bool(row[0]) if row else False
+                _g._cached_is_training_tenant = bool(row[1]) if row else False
             except Exception as e:
                 print("⚠️ inject_is_demo_tenant error:", e)
                 _g._cached_is_demo_tenant = False
-        return {"_is_demo_tenant": _g._cached_is_demo_tenant}
+                _g._cached_is_training_tenant = False
+        return {"_is_demo_tenant": _g._cached_is_demo_tenant,
+                "_is_training_tenant": getattr(_g, "_cached_is_training_tenant", False)}
 
     @flask_app.context_processor
     def inject_inbox_unread():

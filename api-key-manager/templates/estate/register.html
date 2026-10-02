@@ -1,4 +1,5 @@
 {% extends "estate/base.html" %}
+{% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
 {% block title %}Create Account — PhiXtra Real Estate{% endblock %}
 {% block auth_topbar %}{% endblock %}
 {% block wrap_class %}auth-fullpage{% endblock %}
@@ -218,7 +219,7 @@
 
         <div class="ef-group">
           <label class="ef-label">Phone Number</label>
-          <input class="ef-input" type="tel" name="phone" placeholder="+234 801 234 5678"/>
+          {{ phone_box('phone', cls='ef-input') }}
         </div>
 
         <div class="ef-row">

@@ -1,4 +1,5 @@
 {% extends "portal/admin_base.html" %}
+{% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
 {% block title %}Onboard WhatsApp Merchant — PhiXtra Admin{% endblock %}
 {% block content %}
 
@@ -19,11 +20,9 @@
 
     <div class="form-group">
       <label>WhatsApp Number <span style="color:var(--bad)">*</span></label>
-      <input type="tel" name="phone" required
-             placeholder="+2348012345678  or  08012345678"
-             inputmode="tel"/>
+      {{ phone_box('phone', cls='', required=True) }}
       <div style="font-size:11px;color:var(--muted);margin-top:4px">
-        Nigerian numbers: start with 0 or +234. International: include country code.
+        The number must include its country code — nothing is assumed.
       </div>
     </div>
 

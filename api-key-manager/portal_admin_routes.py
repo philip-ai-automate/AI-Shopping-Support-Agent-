@@ -2871,9 +2871,11 @@ def onboard_wa():
             flash("Phone number and business name are both required.", "danger")
             return redirect(url_for("portal_admin.onboard_wa"))
 
-        phone = _normalise_phone(raw_phone)
-        if not phone:
-            flash(f"Could not parse phone number: {raw_phone!r}. Use +234… or 0801… format.", "danger")
+        # Country code forced (2026-10-02): picker or +number, never guessed.
+        from portal_routes import _phone_entry
+        phone, _perr = _phone_entry(raw_phone, request.form.get("phone_country"), plus=True)
+        if _perr or not phone:
+            flash(_perr or "Please enter the WhatsApp number.", "danger")
             return redirect(url_for("portal_admin.onboard_wa"))
 
         try:
@@ -6431,6 +6433,16 @@ def ambassador_edit(amb_id: int):
     conn = get_db_connection()
     cur  = conn.cursor()
     recruited_by_id = (f.get("recruited_by_id") or "").strip()
+    # Country code forced (2026-10-02); a number left as saved is kept.
+    from portal_routes import _phone_entry_keep_old
+    cur.execute("SELECT phone, whatsapp_number FROM ambassadors WHERE id=%s", (amb_id,))
+    _old = cur.fetchone() or (None, None)
+    _phone, _perr = _phone_entry_keep_old(f.get("phone"), f.get("phone_country"), _old[0], plus=True)
+    _wa, _werr = _phone_entry_keep_old(f.get("whatsapp_number"), f.get("whatsapp_number_country"), _old[1], plus=True)
+    if _perr or _werr:
+        cur.close(); conn.close()
+        flash(f"Not saved. {'Phone' if _perr else 'WhatsApp'}: {_perr or _werr}", "danger")
+        return redirect(request.referrer or url_for("portal_admin.ambassadors"))
     try:
         cur.execute("""
             UPDATE ambassadors SET
@@ -6443,8 +6455,8 @@ def ambassador_edit(amb_id: int):
             (f.get("first_name") or "").strip(),
             (f.get("last_name")  or "").strip(),
             (f.get("email")      or "").strip().lower(),
-            (f.get("phone")      or "").strip() or None,
-            (f.get("whatsapp_number") or "").strip() or None,
+            _phone,
+            _wa,
             (f.get("date_of_birth")   or "").strip() or None,
             (f.get("gender")     or "").strip() or None,
             (f.get("nationality") or "").strip() or None,
@@ -8043,6 +8055,12 @@ def admin_lead_create():
     if not ambassador_id_raw.isdigit() or not business_name:
         flash("Ambassador and business name are required.", "danger")
         return redirect(url_for("portal_admin.admin_leads"))
+    from portal_routes import _phone_entry
+    phone, _perr = _phone_entry(phone, request.form.get("phone_country"), plus=True)
+    if _perr:
+        flash(f"Lead not saved. {_perr}", "danger")
+        return redirect(url_for("portal_admin.admin_leads"))
+    phone = phone or None
     ambassador_id = int(ambassador_id_raw)
 
     conn = get_db_connection()

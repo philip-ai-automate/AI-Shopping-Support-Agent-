@@ -752,6 +752,13 @@ def ensure_portal_tables():
             cur.execute(
                 "ALTER TABLE tenants ADD COLUMN is_demo BOOLEAN NOT NULL DEFAULT FALSE"
             )
+        # Staff practice account (2026-10-02): a private copy of a business's
+        # setup with made-up data. Also is_demo (kept out of customer reports);
+        # is_training shows the training banner and blocks real email sending.
+        if not _column_exists(cur, "tenants", "is_training"):
+            cur.execute(
+                "ALTER TABLE tenants ADD COLUMN is_training BOOLEAN NOT NULL DEFAULT FALSE"
+            )
         if _table_exists(cur, "ambassadors"):
             if not _column_exists(cur, "ambassadors", "demo_tenant_id"):
                 cur.execute(
@@ -2414,6 +2421,14 @@ def ensure_portal_tables():
             # model to half-build) rather than the earlier ambassador-only
             # or derived-from-history stand-ins.
             cur.execute("ALTER TABLE merchant_pipeline_leads ADD COLUMN assigned_to TEXT")
+        if not _column_exists(cur, "merchant_pipeline_leads", "assigned_key"):
+            # Bulk lead work (2026-10-02): Assigned Salesperson becomes a pick
+            # of a real person -- same actor keys the inbox claims use
+            # ('owner:<customer id>' / 'team:<team member id>'). assigned_to
+            # keeps the display name alongside it for reports and exports.
+            cur.execute("ALTER TABLE merchant_pipeline_leads ADD COLUMN assigned_key VARCHAR(40)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_mpl_tenant_assigned_key "
+                        "ON merchant_pipeline_leads (tenant_id, assigned_key)")
 
         # ══════════════════════════════════════════════════════════════════
         # Facebook Messenger — Phase 1 of the omnichannel plan (2026-09-11):

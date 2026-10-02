@@ -995,11 +995,11 @@
           <div class="field">
             <label class="field-label">
               Phone Numbers
-              <span class="field-hint">One per line · Include country code · No + or spaces</span>
+              <span class="field-hint">One per line · Every number must start with its country code (e.g. +234…, +44…) · numbers without it are refused</span>
             </label>
             <div class="recip-wrap">
               <textarea class="field-textarea" name="recipients" id="f-recipients"
-                        placeholder="2348012345678&#10;2347098765432&#10;447911123456&#10;19175551234"
+                        placeholder="+2348012345678&#10;+2347098765432&#10;+447911123456&#10;+19175551234"
                         oninput="countRecipients(this)" rows="10"></textarea>
               <div class="recip-counter" id="recipCounter">0 numbers</div>
             </div>

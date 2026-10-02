@@ -1465,7 +1465,11 @@
 {% endif %}
 
 <!-- ══════════════ DEMO MODE BANNER ══════════════ -->
-{% if _is_demo_tenant %}
+{% if _is_training_tenant %}
+  <div class="demo-bar">
+    <span>🎓 <strong>Training account</strong>: practise freely. Everything here is made-up data, and nothing is sent to real customers.</span>
+  </div>
+{% elif _is_demo_tenant %}
   <div class="demo-bar">
     <span>🎮 <strong>Demo Account</strong> — this is your personal playground. Add products, change settings, and test anything freely.</span>
     <a href="{{ url_for('ambassador.getting_started_topic', topic='understand-phixtra') }}">← Return to Ambassador Hub</a>
@@ -1500,7 +1504,7 @@
       {% endif %}
     {% endwith %}
 
-    {# "How to use this page": CRM, Social Media and Team pages open their guide at their own part #}
+    {# "How to use this page": CRM, Social Media, Team and Leads pages open their guide at their own part #}
     {% set _help_anchor = {
          'portal.whatsapp_contacts': 'crm-contacts',
          'portal.whatsapp_contact_detail': 'crm-profile',
@@ -1509,8 +1513,11 @@
          'portal.crm_merge_review': 'crm-merge',
          'portal.report_pipeline_overview': 'crm-overview',
          'portal.sales_pipeline': 'crm-board',
-         'portal.lead_scoring_explainer': 'crm-b-score',
-         'portal.lead_detail': 'crm-deal',
+         'portal.lead_scoring_explainer': 'lead-score',
+         'portal.lead_detail': 'lead-lead',
+         'portal.leads_page': 'lead-page',
+         'portal.leads_overview': 'lead-overview',
+         'portal.report_leads_sources': 'lead-report',
          'portal.whatsapp_segments': 'crm-s-crm',
          'portal.whatsapp_segment_detail': 'crm-s-crm',
          'portal.whatsapp_campaign_segments_page': 'crm-s-wa',
@@ -1556,7 +1563,7 @@
        }.get(request.endpoint) %}
     {% if _help_anchor %}
     <div style="display:flex;justify-content:flex-end;margin:0 0 8px">
-      <a href="{{ url_for('portal.tutorials', topic=('social' if _help_anchor.startswith('soc-') else 'team' if _help_anchor.startswith('team-') else 'crm')) }}#{{ _help_anchor }}"
+      <a href="{{ url_for('portal.tutorials', topic=('social' if _help_anchor.startswith('soc-') else 'team' if _help_anchor.startswith('team-') else 'leads' if _help_anchor.startswith('lead-') else 'crm')) }}#{{ _help_anchor }}"
          style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--ink);padding:5px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;text-decoration:none">
         📚 How to use this page
       </a>
@@ -2123,5 +2130,30 @@ document.addEventListener('DOMContentLoaded', function() {
 <script src="{{ url_for('static', filename='portal/crm-dedupe.js') }}"></script>
 <script src="{{ url_for('static', filename='portal/label-picker.js') }}"></script>
 
+<script>
+/* Phone boxes (2026-10-02): a full number typed with + (or 00) carries its
+   own country code, so the country picker next to it is switched off. */
+(function(){
+  function sync(inp){
+    var box = inp.closest('.ph-box'); if(!box) return;
+    var sel = box.querySelector('.ph-cc'); if(!sel) return;
+    var v = (inp.value||'').trim(), intl = v.charAt(0)==='+' || v.slice(0,2)==='00';
+    if(intl){ sel.value=''; }
+    sel.disabled = intl; sel.style.opacity = intl ? '.45' : '';
+  }
+  document.addEventListener('input', function(e){ if(e.target.classList && e.target.classList.contains('ph-num')) sync(e.target); });
+  /* For forms filled in by script (edit pop-ups): shows a saved number with "+"
+     unless it still needs checking (starts with 0), and resets the picker. */
+  window.phSet = function(inp, value){
+    if(typeof inp==='string') inp=document.getElementById(inp);
+    if(!inp) return;
+    var v=(value||'').toString().trim(), d=v.replace(/\D/g,'');
+    inp.value = (!v) ? '' : (v.charAt(0)==='+' || d.charAt(0)==='0' || !d) ? v : '+'+d;
+    var box=inp.closest('.ph-box'), sel=box&&box.querySelector('.ph-cc'); if(sel) sel.value='';
+    sync(inp);
+  };
+  document.addEventListener('DOMContentLoaded', function(){ document.querySelectorAll('.ph-num').forEach(sync); });
+})();
+</script>
 </body>
 </html>

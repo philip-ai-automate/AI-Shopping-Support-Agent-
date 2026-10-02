@@ -1,0 +1,37 @@
+{# One phone box used everywhere (2026-10-02, "force country codes every
+   where in the portal"): a country picker with NOTHING pre-chosen + the
+   number. Typing a full number starting with + switches the picker off.
+   Import WITH CONTEXT:  {% from "portal/_phone_box.html" import phone_box with context %}
+   value: the saved number (digits, country code first) — shown with "+".
+   A saved number that still needs checking is shown as written. #}
+{% macro phone_box(name, value='', cls='finp', id=None, placeholder='e.g. 803 123 4567', required=False, hint=True, style='') -%}
+{%- set _v = (value or '')|string -%}
+{%- set _shown = (_v|phone_display) if (_v and not phone_problem(_v, True)) else _v -%}
+{%- set _pop = PHONE_COUNTRIES_POPULAR | map(attribute=0) | list -%}
+<div class="ph-box" style="display:flex;gap:6px;align-items:stretch;{{ style }}">
+  <select name="{{ name }}_country" class="{{ cls }} ph-cc" aria-label="Country for this number"
+          style="flex:0 0 132px;width:132px;max-width:42%;min-width:0;padding-right:4px">
+    <option value="">Country…</option>
+    <optgroup label="Most used">
+      {%- for iso, cname, cc in PHONE_COUNTRIES_POPULAR %}<option value="{{ iso }}">{{ cname }} (+{{ cc }})</option>{% endfor %}
+    </optgroup>
+    <optgroup label="All countries">
+      {%- for iso, cname, cc in PHONE_COUNTRIES %}{% if iso not in _pop %}<option value="{{ iso }}">{{ cname }} (+{{ cc }})</option>{% endif %}{% endfor %}
+    </optgroup>
+  </select>
+  <input type="tel" name="{{ name }}" {% if id %}id="{{ id }}"{% endif %} class="{{ cls }} ph-num"
+         value="{{ _shown }}" placeholder="{{ placeholder }}" autocomplete="off"
+         {% if required %}required{% endif %} style="flex:1 1 auto;min-width:0;width:0">
+</div>
+<script>if(!window.phSet){(function(){function sync(i){var b=i.closest('.ph-box');if(!b)return;var s=b.querySelector('.ph-cc');if(!s)return;var v=(i.value||'').trim(),x=v.charAt(0)==='+'||v.slice(0,2)==='00';if(x){s.value='';}s.disabled=x;s.style.opacity=x?'.45':'';}
+document.addEventListener('input',function(e){if(e.target.classList&&e.target.classList.contains('ph-num'))sync(e.target);});
+window.phSet=function(i,v){if(typeof i==='string')i=document.getElementById(i);if(!i)return;v=(v||'').toString().trim();var d=v.replace(/\D/g,'');i.value=(!v)?'':(v.charAt(0)==='+'||d.charAt(0)==='0'||!d)?v:'+'+d;var b=i.closest('.ph-box'),s=b&&b.querySelector('.ph-cc');if(s)s.value='';sync(i);};})();}</script>
+{%- if hint %}<div class="ph-hint" style="font-size:11px;color:#94a3b8;margin-top:3px">{{ PHONE_ENTRY_HINT }}</div>{% endif %}
+{%- endmacro %}
+
+{# "⚠️ Check number" beside a saved number that has no country code, isn't a
+   real number, or is a premium/free-phone/personal line. Never changes it. #}
+{% macro phone_flag(value) -%}
+{%- set _why = phone_problem(value) if value else None -%}
+{%- if _why %}<span class="ph-flag" title="{{ _why }} — edit it with the country code, or remove the number" style="display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;background:#fef3c7;color:#92400e;font-size:11px;font-weight:600;white-space:nowrap">⚠️ Check number</span>{% endif -%}
+{%- endmacro %}

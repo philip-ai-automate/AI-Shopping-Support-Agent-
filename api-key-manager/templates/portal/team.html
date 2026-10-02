@@ -1,4 +1,5 @@
 {% extends "portal/base.html" %}
+{% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
 {% block title %}Team — PhiXtra Portal{% endblock %}
 
 {% block head %}
@@ -475,8 +476,7 @@
                     </div>
                     <div class="tm-field">
                       <label for="tmAlertPhone{{ m.id }}">Personal WhatsApp for alerts</label>
-                      <input id="tmAlertPhone{{ m.id }}" type="tel" name="alert_phone" value="{{ m.alert_phone or '' }}"
-                             inputmode="tel" placeholder="e.g. +2348012345678">
+                      {{ phone_box('alert_phone', m.alert_phone, cls='', id='tmAlertPhone' ~ m.id) }}
                       <small>Email alerts go to {{ m.email }}</small>
                     </div>
                   </div>

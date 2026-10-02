@@ -1,3 +1,4 @@
+{% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -479,12 +480,12 @@
     <div class="field-row">
       <div class="field">
         <label class="lbl">Phone Number <span class="req">*</span></label>
-        <input type="tel" name="phone" id="phone" placeholder="+234 800 000 0000"/>
+        {{ phone_box('phone', id='phone', cls='') }}
         <div class="err-msg" id="err_phone">Please enter your phone number</div>
       </div>
       <div class="field">
         <label class="lbl">WhatsApp Number <span class="req">*</span></label>
-        <input type="tel" name="whatsapp_number" id="whatsapp_number" placeholder="+234 800 000 0000"/>
+        {{ phone_box('whatsapp_number', id='whatsapp_number', cls='') }}
         <div class="err-msg" id="err_whatsapp_number">Please enter your WhatsApp number</div>
       </div>
     </div>
