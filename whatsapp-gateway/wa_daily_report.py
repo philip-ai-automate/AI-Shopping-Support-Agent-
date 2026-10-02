@@ -45,6 +45,15 @@ _INTERNAL_TOKEN      = os.getenv("PHIXTRA_INTERNAL_TOKEN", "")
 _LOW_STOCK_THRESHOLD = 5   # items at or below this qty are flagged (< 999 = not unlimited)
 
 
+# Every real Meta access token starts with "EAA". Demo shops, the presale
+# sandbox and tutorial accounts are seeded with placeholders
+# ("DEMO_ACCESS_TOKEN_PLACEHOLDER", "tutorial-test-token") that Meta always
+# rejects — they're skipped for template submission and daily reports
+# (2026-10-02; they were retried, and rejected, on every gateway restart).
+def _is_real_meta_token(access_token) -> bool:
+    return bool(access_token) and str(access_token).startswith("EAA")
+
+
 # ─── DB queries ───────────────────────────────────────────────────────────────
 
 def _get_active_wa_tenants() -> list[dict]:
@@ -65,6 +74,7 @@ def _get_active_wa_tenants() -> list[dict]:
             FROM wa_tenants wt
             JOIN tenants t ON t.id = wt.tenant_id
             WHERE wt.active = TRUE
+              AND wt.access_token LIKE 'EAA%%'
               AND t.daily_report_enabled = TRUE
               AND t.status != 'cancelled'
         """)
@@ -322,6 +332,8 @@ def _upsert_template_record(tenant_id: int) -> None:
 
 async def submit_template_for_tenant(tenant_id: int, waba_id: str, access_token: str) -> None:
     """Submit the daily report template to a single tenant's WABA and record it."""
+    if not _is_real_meta_token(access_token):
+        return
     ok = await _submit_template_to_meta(waba_id, access_token)
     if ok:
         _upsert_template_record(tenant_id)
@@ -346,7 +358,7 @@ async def ensure_templates_submitted() -> None:
             JOIN tenants t ON wt.tenant_id = t.id
             WHERE t.daily_report_enabled = TRUE
               AND wt.waba_id IS NOT NULL
-              AND wt.access_token IS NOT NULL
+              AND wt.access_token LIKE 'EAA%%'
               AND NOT EXISTS (
                   SELECT 1 FROM wa_templates tmpl
                   WHERE tmpl.tenant_id = wt.tenant_id
