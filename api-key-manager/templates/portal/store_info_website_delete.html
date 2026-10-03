@@ -1,0 +1,35 @@
+{% extends "portal/base.html" %}
+{% block title %}Delete Website — PhiXtra Portal{% endblock %}
+{% block content %}
+{% include "portal/_website_styles.html" %}
+
+<div class="si-header">
+  <div class="si-title">🗑 Delete Website</div>
+  <div class="si-sub">Disconnect your website from your AI.</div>
+</div>
+
+{% if not source %}
+<div class="ws-card">No website is connected. <a href="{{ url_for('portal.store_info_website_connect') }}">Connect your website</a>.</div>
+{% else %}
+<form method="POST" class="ws-card" style="max-width:760px">
+  <div class="ws-k">Connected website</div>
+  <div class="ws-v">{{ source.url }}</div>
+  <div class="ws-meta" style="margin-bottom:16px">{{ pages }} page{{ 's' if pages != 1 }} · re-read {{ source.frequency }}{% if source.created_label %} · connected {{ source.created_at.strftime('%d %b') }} by {{ source.created_label }}{% endif %}</div>
+
+  <div class="ws-warn">
+    <strong style="display:block;margin-bottom:4px">What happens when you delete</strong>
+    Your AI stops using all {{ pages }} page{{ 's' if pages != 1 }} straight away, and we stop re-reading your website. Your website itself is not changed. Store Information you typed yourself, uploaded documents, corrections and products are not affected.
+  </div>
+
+  <label style="display:flex;align-items:flex-start;gap:10px;font-size:14px;margin:16px 0">
+    <input type="checkbox" name="confirm" value="1" required style="width:18px;height:18px;margin:1px 0 0"/>
+    <span>I understand my AI will no longer answer from my website</span>
+  </label>
+
+  <div style="display:flex;gap:10px;flex-wrap:wrap">
+    <a href="{{ url_for('portal.store_info_website_sync') }}" class="btn">Cancel</a>
+    <button type="submit" class="btn" style="background:#B42318;color:#fff;border-color:#B42318">Delete website</button>
+  </div>
+</form>
+{% endif %}
+{% endblock %}

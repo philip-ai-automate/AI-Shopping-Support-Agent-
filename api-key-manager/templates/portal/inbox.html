@@ -898,7 +898,8 @@ html, body { overflow: hidden; height: 100%; }
           <div>No messages yet in this conversation</div>
         </div>
         {% else %}
-          {% set ns = namespace(last_date=None) %}
+          {% set ns = namespace(last_date=None, last_q='') %}
+          {% set wa_can_send = not (has_team and not (active_conv and active_conv.assigned_to_key == current_actor_key)) %}
           {% for msg in messages %}
             {% set msg_date = msg.created_at.strftime('%d %b %Y') if msg.created_at else None %}
             {% if msg_date and msg_date != ns.last_date %}
@@ -912,6 +913,7 @@ html, body { overflow: hidden; height: 100%; }
               <span class="bubble-time" style="margin-left:8px;opacity:.7">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}</span>
             </div>
             {% elif msg.direction == 'inbound' %}
+            {% if msg.content %}{% set ns.last_q = msg.content %}{% endif %}
             <div class="msg-wrap inbound" data-ts="{{ msg.created_at.isoformat() if msg.created_at else '' }}">
               <div class="msg-avatar" style="background:{{ _hcol }}">{{ _hini }}</div>
               <div class="bubble-col">
@@ -944,6 +946,16 @@ html, body { overflow: hidden; height: 100%; }
                   {{ msg_body(msg) }}
                   <span class="bubble-time">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}</span>
                 </div>
+                {% set _fref = 'wa:' ~ msg.id %}
+                {% if corrections_map.get(_fref) %}
+                <a class="fix-tag" href="{{ url_for('portal.store_info', view='corrections') }}">✓ Corrected by {{ corrections_map[_fref] }} · view</a>
+                {% elif msg.content and not (msg.content|trim).startswith('[') and staff_can('store.info_create') %}
+                {# skip system notes such as "[Product card sent for product 123]" #}
+                <button type="button" class="fix-ans-btn" data-channel="wa" data-conv="{{ active_phone }}" data-ref="{{ _fref }}"
+                        data-q="{{ ns.last_q }}" data-a="{{ msg.content }}"
+                        data-reply-url="{{ url_for('portal.inbox_reply', phone=active_phone) if wa_can_send else '' }}"
+                        data-no-send="{{ '' if wa_can_send else 'Claim this conversation first to send a reply.' }}">✏️ Fix this answer</button>
+                {% endif %}
               </div>
             </div>
             {% endif %}
@@ -1292,7 +1304,8 @@ html, body { overflow: hidden; height: 100%; }
             <div>No messages yet in this conversation</div>
           </div>
           {% else %}
-          {% set ns3 = namespace(last_date=None) %}
+          {% set ns3 = namespace(last_date=None, last_q='') %}
+          {% set web_can_send = (not (has_team and not (active_webchat_conv and active_webchat_conv.assigned_to_key == current_actor_key))) and (active_webchat_conv and active_webchat_conv.visitor_email) %}
           {% for msg in webchat_messages %}
             {% set msg_date = msg.created_at.strftime('%d %b %Y') if msg.created_at else None %}
             {% if msg_date and msg_date != ns3.last_date %}
@@ -1300,6 +1313,7 @@ html, body { overflow: hidden; height: 100%; }
               {% set ns3.last_date = msg_date %}
             {% endif %}
             {% if msg.direction == 'inbound' %}
+            {% if msg.content %}{% set ns3.last_q = msg.content %}{% endif %}
             <div class="msg-wrap inbound">
               <div class="msg-avatar" style="background:#7C3AED"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
               <div class="bubble-col">
@@ -1318,6 +1332,16 @@ html, body { overflow: hidden; height: 100%; }
                   {{ msg.content or '(message)' }}
                   <span class="bubble-time">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}</span>
                 </div>
+                {% if msg.is_ai %}
+                {% if corrections_map.get(msg.msg_ref) %}
+                <a class="fix-tag" href="{{ url_for('portal.store_info', view='corrections') }}">✓ Corrected by {{ corrections_map[msg.msg_ref] }} · view</a>
+                {% elif msg.content and staff_can('store.info_create') %}
+                <button type="button" class="fix-ans-btn" data-channel="web" data-conv="{{ active_phone }}" data-ref="{{ msg.msg_ref }}"
+                        data-q="{{ ns3.last_q }}" data-a="{{ msg.content }}"
+                        data-reply-url="{{ url_for('portal.inbox_reply', phone=active_phone) if web_can_send else '' }}"
+                        data-no-send="{{ '' if web_can_send else ('This visitor left no email address, so a reply cannot be sent.' if not (active_webchat_conv and active_webchat_conv.visitor_email) else 'Claim this conversation first to send a reply.') }}">✏️ Fix this answer</button>
+                {% endif %}
+                {% endif %}
               </div>
             </div>
             {% endif %}
@@ -1919,4 +1943,5 @@ document.addEventListener('visibilitychange',function(){
 });
 RT.timer=setTimeout(rtTick,RT.FAST);
 </script>
+{% include "portal/_fix_answer_modal.html" %}
 {% endblock %}

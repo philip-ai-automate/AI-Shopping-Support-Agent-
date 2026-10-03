@@ -374,6 +374,9 @@
   var TIER              = '{{ tier }}';
   var SUMMARIES_ALLOWED = {{ 'true' if summaries_allowed else 'false' }};
   var EXPORTS_ALLOWED   = '{{ exports_allowed }}';
+  var FIX_ALLOWED       = {{ 'true' if staff_can('store.info_create') else 'false' }};
+  var FIXED_REFS        = {{ fixed_refs_json | safe }};
+  var STORE_INFO_FIXES  = '{{ url_for("portal.store_info", view="corrections") }}';
 
   function openChat(sessionId) {
     var data = SESSION_DATA[sessionId];
@@ -398,11 +401,26 @@
 
     // Messages
     if (data.messages && data.messages.length > 0) {
+      var lastQ = '';
       data.messages.forEach(function(m) {
         var roleLabel = m.role === 'user' ? '🧑 Visitor' : '🤖 AI Agent';
+        if (m.role === 'user' && m.content) { lastQ = m.content; }
+        var fixHtml = '';
+        if (m.role === 'assistant' && m.id) {
+          var ref = 'cm:' + m.id;
+          if (FIXED_REFS[ref]) {
+            fixHtml = '<a class="fix-tag" href="' + STORE_INFO_FIXES + '">✓ Corrected by ' + escHtml(FIXED_REFS[ref]) + ' · view</a>';
+          } else if (FIX_ALLOWED && m.content) {
+            fixHtml = '<button type="button" class="fix-ans-btn" data-channel="archive"' +
+                      ' data-conv="' + escAttr('web:' + sessionId) + '" data-ref="' + ref + '"' +
+                      ' data-q="' + escAttr(lastQ) + '" data-a="' + escAttr(m.content) + '"' +
+                      ' data-no-send="Replies can be sent from the Inbox.">✏️ Fix this answer</button>';
+          }
+        }
         html += '<div class="msg-bubble ' + m.role + '">' +
                   '<div class="msg-content">' + escHtml(m.content) + '</div>' +
                   '<div class="msg-meta">' + roleLabel + ' · ' + (m.created_at || '') + '</div>' +
+                  fixHtml +
                 '</div>';
       });
     } else {
@@ -433,6 +451,9 @@
   function closeChatModal() {
     document.getElementById('chatOverlay').classList.remove('open');
   }
+  function escAttr(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
   function escHtml(s) {
     return String(s)
       .replace(/&/g, '&amp;')
@@ -453,4 +474,5 @@
     }
   })();
 </script>
+{% include "portal/_fix_answer_modal.html" %}
 {% endblock %}

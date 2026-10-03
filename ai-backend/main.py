@@ -331,6 +331,15 @@ _SCOPE_INSTRUCTION = (
 
 # Website page links (2026-10-01, user-approved wording). Appended for every
 # business, whether or not product cards are on.
+_CORRECTION_INSTRUCTION = (
+    "\n\n[CORRECTIONS FROM THE BUSINESS]\n"
+    "Store data marked 'Type: Correction from the business' is an answer the business's "
+    "own team wrote to fix an earlier mistake. When one matches the customer's question, "
+    "answer from it: it overrides website pages, store information and anything else, "
+    "even if they say something different. Answer it in your text reply (it has no product "
+    "card and no web link). Ignore a correction that is about a different question."
+)
+
 _PAGE_LINK_INSTRUCTION = (
     "\n\n[WEBSITE LINKS]\n"
     "When your answer uses information from a website page (store data marked "
@@ -562,7 +571,7 @@ def chat(req: ChatRequest):
     # so it carries maximum weight with the model.
     if rec_enabled:
         system_prompt = system_prompt + _PRODUCT_REC_INSTRUCTION + _SCOPE_INSTRUCTION
-    system_prompt = system_prompt + _PAGE_LINK_INSTRUCTION
+    system_prompt = system_prompt + _PAGE_LINK_INSTRUCTION + _CORRECTION_INSTRUCTION
 
     # ── Handoff rules injection ───────────────────────────────────────────────
     # Read the tenant's active handoff rules from the DB and append them to the
@@ -1103,6 +1112,58 @@ def chat(req: ChatRequest):
         response["product_recommendations"] = product_recommendations
 
     return response
+
+
+# ── Word-by-word website chat ────────────────────────────────────────────────
+# Same as /chat (same checks, memory, search, usage and handoff), but the reply
+# text is sent to the browser as it is written (Server-Sent Events):
+#   event: delta  data: "<next piece of reply text>"
+#   event: done   data: {<exactly what /chat returns>}
+#   event: error  data: {"status": <code>, "detail": "<message>"}
+# The answer model uses STREAM_REASONING_EFFORT (default "low"). Only websites
+# whose plugin has word-by-word answers switched on call this; /chat is unchanged.
+import queue as _stream_queue
+import threading as _stream_threading
+import llm as _llm_module
+from fastapi.responses import StreamingResponse as _StreamingResponse
+
+
+@app.post("/chat/stream")
+def chat_stream(req: ChatRequest):
+    events = _stream_queue.Queue()
+
+    def _work():
+        _llm_module.STREAM_CTX.sink = events
+        _llm_module.STREAM_CTX.reasoning_effort = (os.getenv("STREAM_REASONING_EFFORT", "low") or "").strip() or None
+        try:
+            events.put(("done", chat(req)))
+        except HTTPException as e:
+            events.put(("error", {"status": e.status_code, "detail": str(e.detail)}))
+        except Exception as e:
+            print("⚠️ /chat/stream error:", e)
+            events.put(("error", {"status": 500, "detail": "Sorry, something went wrong."}))
+        finally:
+            _llm_module.STREAM_CTX.sink = None
+            _llm_module.STREAM_CTX.reasoning_effort = None
+
+    _stream_threading.Thread(target=_work, daemon=True).start()
+
+    def _events():
+        while True:
+            try:
+                kind, data = events.get(timeout=15)
+            except _stream_queue.Empty:
+                yield ": keep-alive\n\n"
+                continue
+            yield f"event: {kind}\ndata: {_json.dumps(data, default=str)}\n\n"
+            if kind in ("done", "error"):
+                return
+
+    return _StreamingResponse(
+        _events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════

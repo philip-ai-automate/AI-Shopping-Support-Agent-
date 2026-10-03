@@ -477,6 +477,7 @@ PLAN_FEATURE_CATALOG = {
         ("store.info_delete",            "Delete a Store Information entry"),
         ("store.info_documents_upload",  "Upload an AI knowledge document"),
         ("store.info_documents_delete",  "Delete an AI knowledge document"),
+        ("store.website_schedule",       "Website — automatic re-reading (daily / weekly / monthly)"),
     ],
     "Team": [
         ("team.manage",                    "Team — view"),
@@ -668,6 +669,7 @@ ROLE_FORM_GRID = {
         {"label": "Store Information",  "view": "store.info", "create": "store.info_create", "edit": "store.info_edit", "delete": "store.info_delete"},
         {"label": "Knowledge Document", "create": "store.info_documents_upload", "delete": "store.info_documents_delete",
          "needs_view": "store.info"},
+        {"label": "Website automatic re-reading (plan unlock)", "other": ["store.website_schedule"]},
     ],
     "Team": [
         {"label": "Team", "view": "team.manage"},
@@ -747,6 +749,7 @@ PLAN_ONLY_FEATURE_KEYS = {
     "woo.product_recommendation", "woo.cross_selling", "woo.cart_recovery",
     "woo.chat_archive_30days", "woo.chat_archive_unlimited",
     "help.tutorials", "help.videos",
+    "store.website_schedule",
 }
 
 # Modules every team member can open whatever their role, so the Roles screen
@@ -5221,6 +5224,7 @@ def dashboard():
 
     # ── Plan quota for the banner ──────────────────────────────────────────
     plan_info = _get_tenant_plan(tenant_id)
+    dash_top_plan, dash_connect_website = _dashboard_plan_flags(tenant_id, plan_info)
 
     # ── Sales Overview KPI row (Dashboard redesign Phase 1, 2026-09-10) ────
     _crm_on = True
@@ -5255,6 +5259,8 @@ def dashboard():
 
     return render_template(
         "portal/dashboard.html",
+        dash_top_plan        = dash_top_plan,
+        dash_connect_website = dash_connect_website,
         customer        = customer,
         balance_credits = balance_credits,
         today_credits   = tokens_to_credits(summary["today_tokens"]),
@@ -10166,7 +10172,7 @@ def _get_session_messages(tenant_id: int, session_id: str):
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
-            SELECT role, content, created_at
+            SELECT id, role, content, created_at
             FROM chat_messages
             WHERE session_id = %s AND tenant_id = %s
             ORDER BY created_at ASC
@@ -10180,6 +10186,335 @@ def _get_session_messages(tenant_id: int, session_id: str):
     except Exception as e:
         print("⚠️ _get_session_messages error:", e)
         return []
+
+
+def _archive_fixed_refs(tenant_id: int) -> dict:
+    """{'cm:<chat_messages id>': who fixed it} for AI replies the team has
+    corrected ("Fix this answer") whose correction still exists."""
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT c.source_ref, c.created_label
+            FROM ai_corrections c
+            JOIN documents d ON d.id = c.doc_id AND d.tenant_id = c.tenant_id
+            WHERE c.tenant_id = %s AND c.source_ref LIKE 'cm:%%'
+        """, (tenant_id,))
+        rows = cur.fetchall() or []
+        cur.close(); conn.close()
+        return {r["source_ref"]: (r["created_label"] or "your team") for r in rows}
+    except Exception as e:
+        print("⚠️ _archive_fixed_refs:", e)
+        return {}
+
+
+def _dashboard_plan_flags(tenant_id: int, plan_info) -> tuple:
+    """(on_top_plan, show_connect_website) for the Dashboard (2026-10-03).
+    Top plan = the dearest active paid, non-custom plan of its own kind
+    (channel_mode) — Enterprise / Enterprise Dual today — so it follows the
+    Plan editor as plans are added; there the Upgrade button is hidden.
+    Connect Website box = the plan covers a website (dual / custom 'both' /
+    woocommerce), includes Store Information, and no website is connected
+    and the Export plugin isn't sending pages."""
+    top, connect = False, False
+    try:
+        plan = plan_info or {}
+        plan_id = int(plan.get("plan_id") or 0)
+        conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT id, channel_mode, price_ngn, is_custom FROM plans WHERE id=%s", (plan_id,))
+        row = cur.fetchone()
+        if row and not row["is_custom"] and float(row["price_ngn"] or 0) > 0:
+            cur.execute("""SELECT MAX(price_ngn) AS top FROM plans
+                           WHERE is_active AND NOT COALESCE(is_custom, FALSE) AND channel_mode = %s""",
+                        (row["channel_mode"],))
+            top = float(row["price_ngn"] or 0) >= float((cur.fetchone() or {}).get("top") or 0)
+        website_plan = bool(row) and (row["channel_mode"] or "") in ("dual", "both", "woocommerce")
+        cur.execute("SELECT 1 FROM website_sources WHERE tenant_id=%s", (tenant_id,))
+        has_site = cur.fetchone() is not None
+        cur.close(); conn.close()
+        if website_plan and not has_site and _plan_grants_feature(plan, "store.info"):
+            connect = not _website_plugin_sends_pages(tenant_id)
+    except Exception as e:
+        print("⚠️ _dashboard_plan_flags:", e)
+    return top, connect
+
+
+# ── Connect Website (2026-10-03) ─────────────────────────────────────────────
+# Store Information › Connect Website / Sync Website / Delete Website. The
+# reading itself is website_reader.py (headless browser, run in the
+# background); its pages are documents type 'page', id site-<tenant>-<hash>.
+WEBSITE_FREQUENCIES = [("manual", "Only when I click Sync now"), ("daily", "Daily"), ("weekly", "Weekly"), ("monthly", "Monthly")]
+_WEBSITE_FREQ_DAYS = {"daily": 1, "weekly": 7, "monthly": 30}
+
+
+def _website_plugin_sends_pages(tenant_id: int) -> int:
+    """How many website pages the PhiXtra Export plugin (WooCommerce sync)
+    sends for this business (ids page-<wp id> / post-<wp id>). While it sends
+    pages, Connect Website stays switched off so the AI never gets two copies."""
+    try:
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("""SELECT COUNT(*) FROM documents WHERE tenant_id=%s AND type IN ('page','post')
+                       AND (id LIKE 'page-%%' OR id LIKE 'post-%%')""", (tenant_id,))
+        n = int(cur.fetchone()[0]); cur.close(); conn.close()
+        return n
+    except Exception as e:
+        print("⚠️ _website_plugin_sends_pages:", e)
+        return 0
+
+
+def _website_schedule_allowed(tenant_id: int) -> bool:
+    """Daily / weekly / monthly re-reading: Plan editor key store.website_schedule (paid plans)."""
+    try:
+        return _plan_grants_feature(_get_tenant_plan(tenant_id), "store.website_schedule")
+    except Exception as e:
+        print("⚠️ _website_schedule_allowed:", e)
+        return False
+
+
+def _website_source(tenant_id: int):
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM website_sources WHERE tenant_id=%s", (tenant_id,))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    return row
+
+
+def _start_website_reader(tenant_id: int):
+    import subprocess
+    subprocess.Popen(
+        f"cd /root/phixtra-app/api-key-manager && /usr/bin/python3 website_reader.py --tenant {int(tenant_id)} "
+        f">> /var/log/website_reader.log 2>&1",
+        shell=True, start_new_session=True,
+    )
+
+
+def _check_website_connection(raw: str) -> dict:
+    """Connection check only (reads nothing): website_reader.py --check runs in
+    the system python (it has the headless browser). Never raises."""
+    import subprocess, json as _json
+    try:
+        out = subprocess.run(["/usr/bin/python3", "website_reader.py", "--check", raw],
+                             cwd="/root/phixtra-app/api-key-manager", capture_output=True,
+                             text=True, timeout=75)
+        lines = [ln for ln in (out.stdout or "").splitlines() if ln.startswith("{")]
+        if lines:
+            return _json.loads(lines[-1])
+        err = (out.stderr or "").strip().splitlines()
+        detail = err[-1] if err else f"checker exited with code {out.returncode}"
+    except subprocess.TimeoutExpired:
+        detail = "Website check took longer than 75 seconds"
+    except Exception as e:
+        detail = f"{type(e).__name__}: {e}"
+    return {"ok": False, "url": raw, "reason": "We couldn't finish checking your website. Please try again in a minute.",
+            "detail": detail, "http_status": None, "title": "", "pages_found": 0}
+
+
+def _website_reader_ids() -> dict:
+    """What a business allows in its firewall (shown on Connect + in the guide)."""
+    from website_reader import READER_IP, READER_NAME
+    return {"reader_ip": READER_IP, "reader_name": READER_NAME}
+
+
+def _website_connect_attempts(tenant_id: int, limit: int = 5) -> list:
+    try:
+        conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""SELECT * FROM website_connect_attempts WHERE tenant_id=%s
+                       ORDER BY created_at DESC LIMIT %s""", (tenant_id, limit))
+        rows = cur.fetchall() or []
+        cur.close(); conn.close()
+        return rows
+    except Exception as e:
+        print("⚠️ _website_connect_attempts:", e)
+        return []
+
+
+@portal_bp.route("/store-info/website/connect", methods=["GET", "POST"])
+@team_feature("store.info_create")
+def store_info_website_connect():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "store.info", "Store Information")
+    if r2: return r2
+    r3 = _require_team_permission("store.info_create")
+    if r3: return r3
+
+    plugin_pages = _website_plugin_sends_pages(tenant_id)
+    source = _website_source(tenant_id)
+    if request.method == "POST":
+        if plugin_pages:
+            flash("Your website pages already reach your AI through the PhiXtra plugin.", "warning")
+            return redirect(url_for("portal.store_info_website_connect"))
+        if source:
+            return redirect(url_for("portal.store_info_website_sync"))
+        raw = (request.form.get("url") or "").strip()
+        actor = _store_info_actor(customer)
+        if not raw:
+            flash("Please type your website address.", "warning")
+            return redirect(url_for("portal.store_info_website_connect"))
+        # The checker handles every problem itself (bad address, no DNS,
+        # private address…) so the real reason is always shown.
+        result = _check_website_connection(raw)
+        site_url = result.get("final_url") or result.get("url") or raw
+        if result.get("ok"):
+            from website_reader import normalise_start
+            site_url = normalise_start(site_url)
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("""INSERT INTO website_connect_attempts
+                       (tenant_id, url, ok, reason, detail, http_status, created_by, created_label)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                    (tenant_id, site_url, bool(result.get("ok")), result.get("reason") or None,
+                     result.get("detail") or None, result.get("http_status"),
+                     actor["audit_username"], actor["display_name"]))
+        if result.get("ok"):
+            cur.execute("""INSERT INTO website_sources (tenant_id, url, frequency, status, site_title, pages_found,
+                                                        created_by, created_label)
+                           VALUES (%s, %s, 'manual', 'connected', %s, %s, %s, %s)
+                           ON CONFLICT (tenant_id) DO NOTHING""",
+                        (tenant_id, site_url, result.get("title") or None, result.get("pages_found"),
+                         actor["audit_username"], actor["display_name"]))
+        conn.commit(); cur.close(); conn.close()
+        insert_audit_log(admin_username=actor["audit_username"],
+                         action="website_connected" if result.get("ok") else "website_connect_failed",
+                         tenant_id=tenant_id, details={"url": site_url, "reason": result.get("reason"),
+                                                       "detail": result.get("detail")})
+        return render_template("portal/store_info_website_connect.html", customer=customer, **_website_reader_ids(), plugin_pages=0,
+                               source=_website_source(tenant_id), result=result,
+                               attempts=_website_connect_attempts(tenant_id),
+                               form_url="" if result.get("ok") else raw)
+
+    return render_template("portal/store_info_website_connect.html", customer=customer, **_website_reader_ids(),
+                           plugin_pages=plugin_pages, source=source, result=None,
+                           attempts=_website_connect_attempts(tenant_id), form_url="")
+
+
+@portal_bp.route("/store-info/website/sync", methods=["GET", "POST"])
+@team_feature("store.info", "store.info_edit")
+def store_info_website_sync():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "store.info", "Store Information")
+    if r2: return r2
+    r3 = _require_team_permission("store.info")
+    if r3: return r3
+
+    source = _website_source(tenant_id)
+    if request.method == "POST":
+        r4 = _require_team_permission("store.info_edit")
+        if r4: return r4
+        if not source:
+            return redirect(url_for("portal.store_info_website_connect"))
+        action = request.form.get("action")
+        actor = _store_info_actor(customer)
+        conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        if action == "sync_now":
+            if source["status"] == "reading":
+                flash("We're already reading your website.", "success")
+            else:
+                cur.execute("UPDATE website_sources SET status='pending', status_detail=NULL WHERE tenant_id=%s", (tenant_id,))
+                conn.commit()
+                _start_website_reader(tenant_id)
+                insert_audit_log(admin_username=actor["audit_username"], action="website_sync_now", tenant_id=tenant_id)
+                flash("Reading your website now — this usually takes a few minutes.", "success")
+        elif action == "frequency":
+            freq = request.form.get("frequency")
+            if freq in _WEBSITE_FREQ_DAYS and not _website_schedule_allowed(tenant_id):
+                flash("Automatic re-reading is on paid plans. Upgrade your plan to use it.", "warning")
+            elif freq == "manual" or freq in _WEBSITE_FREQ_DAYS:
+                # The schedule starts only after the first Sync now.
+                days = _WEBSITE_FREQ_DAYS.get(freq)
+                cur.execute("""UPDATE website_sources SET frequency=%s,
+                               next_read_at = CASE WHEN %s IS NULL OR last_read_at IS NULL THEN NULL
+                                                   ELSE last_read_at + (%s || ' days')::interval END
+                               WHERE tenant_id=%s""", (freq, days, str(days or 0), tenant_id))
+                conn.commit()
+                insert_audit_log(admin_username=actor["audit_username"], action="website_frequency",
+                                 tenant_id=tenant_id, details={"frequency": freq})
+                if freq == "manual":
+                    flash("Your website will only be read when you click Sync now.", "success")
+                elif source.get("last_read_at"):
+                    flash(f"We'll re-read your website {freq}.", "success")
+                else:
+                    flash(f"Saved. We'll re-read your website {freq}, starting after your first Sync now.", "success")
+        elif action in ("remove", "restore"):
+            try:
+                page_id = int(request.form.get("page_id") or 0)
+            except ValueError:
+                page_id = 0
+            cur.execute("SELECT * FROM website_pages WHERE id=%s AND tenant_id=%s", (page_id, tenant_id))
+            pg = cur.fetchone()
+            if pg and action == "remove":
+                if pg.get("doc_id"):
+                    cur.execute("DELETE FROM documents WHERE id=%s AND tenant_id=%s", (pg["doc_id"], tenant_id))
+                cur.execute("UPDATE website_pages SET status='removed', doc_id=NULL WHERE id=%s", (page_id,))
+                conn.commit()
+                insert_audit_log(admin_username=actor["audit_username"], action="website_page_removed",
+                                 tenant_id=tenant_id, details={"url": pg["url"]})
+                flash(f"Your AI will no longer use \"{pg.get('title') or pg['url']}\".", "success")
+            elif pg and action == "restore":
+                cur.execute("DELETE FROM website_pages WHERE id=%s", (page_id,))
+                conn.commit()
+                insert_audit_log(admin_username=actor["audit_username"], action="website_page_restored",
+                                 tenant_id=tenant_id, details={"url": pg["url"]})
+                flash("That page will be read again on the next sync. Click Sync now to do it straight away.", "success")
+        cur.close(); conn.close()
+        return redirect(url_for("portal.store_info_website_sync"))
+
+    pages_read, pages_skipped, pages_removed = [], [], []
+    if source:
+        conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT * FROM website_pages WHERE tenant_id=%s ORDER BY status, lower(coalesce(title, url))", (tenant_id,))
+        for pg in cur.fetchall():
+            {"read": pages_read, "skipped": pages_skipped, "removed": pages_removed}.get(pg["status"], []).append(pg)
+        cur.close(); conn.close()
+    schedule_ok = _website_schedule_allowed(tenant_id)
+    return render_template("portal/store_info_website_sync.html", customer=customer, source=source,
+                           pages_read=pages_read, pages_skipped=pages_skipped, pages_removed=pages_removed,
+                           frequencies=WEBSITE_FREQUENCIES, max_pages=100, schedule_ok=schedule_ok,
+                           schedule_plan=None if schedule_ok else _min_plan_for_feature(
+                               "store.website_schedule", _merchant_plan_mode(customer)),
+                           plugin_pages=_website_plugin_sends_pages(tenant_id))
+
+
+@portal_bp.route("/store-info/website/delete", methods=["GET", "POST"])
+@team_feature("store.info_delete")
+def store_info_website_delete():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "store.info", "Store Information")
+    if r2: return r2
+    r3 = _require_team_permission("store.info_delete")
+    if r3: return r3
+
+    source = _website_source(tenant_id)
+    if request.method == "POST" and source:
+        if request.form.get("confirm") != "1":
+            flash("Please tick the box to confirm.", "warning")
+            return redirect(url_for("portal.store_info_website_delete"))
+        actor = _store_info_actor(customer)
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("DELETE FROM documents WHERE tenant_id=%s AND id LIKE %s", (tenant_id, f"site-{tenant_id}-%"))
+        removed_docs = cur.rowcount
+        cur.execute("DELETE FROM website_pages WHERE tenant_id=%s", (tenant_id,))
+        cur.execute("DELETE FROM website_sources WHERE tenant_id=%s", (tenant_id,))
+        conn.commit(); cur.close(); conn.close()
+        insert_audit_log(admin_username=actor["audit_username"], action="website_deleted",
+                         tenant_id=tenant_id, details={"url": source["url"], "pages_removed": removed_docs})
+        flash("Your website has been disconnected. Your AI no longer uses its pages.", "success")
+        return redirect(url_for("portal.store_info_website_connect"))
+
+    pages = 0
+    if source:
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM website_pages WHERE tenant_id=%s AND status='read'", (tenant_id,))
+        pages = int(cur.fetchone()[0]); cur.close(); conn.close()
+    return render_template("portal/store_info_website_delete.html", customer=customer, source=source, pages=pages)
 
 
 def _get_session_summary(tenant_id: int, session_id: str):
@@ -10306,6 +10641,7 @@ def chat_archive():
         filter_qs         = filter_qs,
         open_session_id   = open_session_id or "",
         session_data_json = _json_mod.dumps(session_data, default=str),
+        fixed_refs_json   = _json_mod.dumps(_archive_fixed_refs(tenant_id)),
         tier              = tier,
         free_days         = FREE_DAYS,
         exports_allowed   = exports_allowed,
@@ -10690,7 +11026,7 @@ def tutorials():
     r = _require_login()
     if r: return r
     customer = _get_customer(_customer_id())
-    return render_template("portal/tutorials.html", customer=customer)
+    return render_template("portal/tutorials.html", customer=customer, **_website_reader_ids())
 
 
 @portal_bp.route("/video-tutorials", methods=["GET"])
@@ -24386,7 +24722,103 @@ def _store_info_entry_id_is_custom(entry_id: str, tenant_id: int) -> bool:
     """True for a custom entry created via store_info_create (rename/delete-
     able); False for one of the 7 fixed sections (edit-only, never deletable
     or renamable — Meta sync keys off their fixed id/title)."""
-    return entry_id.startswith(f"store_info-{tenant_id}-entry-")
+    return (entry_id.startswith(f"store_info-{tenant_id}-entry-")
+            or entry_id.startswith(f"store_info-{tenant_id}-fix-"))
+
+
+def _kick_reembed():
+    """Index new/changed Store Information for the AI now instead of at the
+    next 5-minute run of re_embed_worker (it only touches rows whose
+    embedding is NULL), so a correction works from the next question."""
+    try:
+        import subprocess
+        subprocess.Popen(
+            "cd /root/phixtra-app/phixtra-data-sync && ./venv/bin/python re_embed_worker.py >> /var/log/re_embed_worker.log 2>&1",
+            shell=True, start_new_session=True,
+        )
+    except Exception as e:
+        print("⚠️ _kick_reembed:", e)
+
+
+def _corrections_for_conv(tenant_id: int, conv_key: str) -> dict:
+    """{source_ref: label} for AI replies in this conversation that the
+    team has fixed and whose correction still exists."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT c.source_ref, c.created_label
+            FROM ai_corrections c
+            JOIN documents d ON d.id = c.doc_id AND d.tenant_id = c.tenant_id
+            WHERE c.tenant_id = %s AND c.conv_key = %s AND c.source_ref IS NOT NULL
+        """, (tenant_id, conv_key))
+        rows = cur.fetchall() or []
+        cur.close(); conn.close()
+        return {r["source_ref"]: (r["created_label"] or "your team") for r in rows}
+    except Exception as e:
+        print("⚠️ _corrections_for_conv:", e)
+        return {}
+
+
+@portal_bp.route("/ai-corrections/create", methods=["POST"])
+@team_feature("store.info_create")
+def ai_correction_create():
+    """Save a "Fix this answer" correction from the Inbox or Chat Archive as
+    a Store Information entry the AI uses ahead of everything else."""
+    r = _require_login()
+    if r:
+        return jsonify({"ok": False, "error": "Please log in again."}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    if _require_plan_sub_feature(customer, "store.info", "Store Information"):
+        return jsonify({"ok": False, "error": "Your plan does not include Store Information."}), 403
+    if not _team_member_has_permission("store.info_create"):
+        return jsonify({"ok": False, "error": "You don't have permission to add corrections. Ask the account owner or IT Admin."}), 403
+    data = request.get_json(silent=True) or {}
+    question = (data.get("question") or "").strip()[:500]
+    wrong    = (data.get("wrong_answer") or "").strip()[:4000]
+    correct  = (data.get("correct_answer") or "").strip()[:4000]
+    channel  = (data.get("channel") or "").strip()[:10]
+    conv_key = (data.get("conv_key") or "").strip()[:200]
+    source_ref = (data.get("source_ref") or "").strip()[:40] or None
+    if not correct:
+        return jsonify({"ok": False, "error": "Please type the correct answer."}), 400
+    if not question:
+        question = "Customer question"
+    if channel not in ("wa", "web", "fb", "archive"):
+        return jsonify({"ok": False, "error": "Unknown conversation type."}), 400
+
+    import uuid
+    doc_id = f"store_info-{tenant_id}-fix-{uuid.uuid4().hex[:8]}"
+    actor = _store_info_actor(customer)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO documents (id, tenant_id, type, title, content, updated_by, updated_at)
+            VALUES (%s, %s, 'store_info', %s, %s, %s, NOW())
+        """, (doc_id, tenant_id, question[:250], correct, actor["audit_username"]))
+        cur.execute("""
+            INSERT INTO ai_corrections
+                (tenant_id, doc_id, channel, conv_key, source_ref, question, wrong_answer, created_by, created_label)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (tenant_id, doc_id, channel, conv_key, source_ref, question, wrong,
+              actor["audit_username"], actor["display_name"]))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print("⚠️ ai_correction_create:", e)
+        return jsonify({"ok": False, "error": "Could not save the correction. Please try again."}), 500
+    finally:
+        cur.close(); conn.close()
+
+    insert_audit_log(
+        admin_username=actor["audit_username"], action="ai_correction_created",
+        tenant_id=tenant_id, details={"entry_id": doc_id, "question": question, "channel": channel},
+    )
+    _kick_reembed()
+    flash("Correction saved. The AI will use it from the next question onwards.", "success")
+    return jsonify({"ok": True, "entry_id": doc_id})
 
 
 @portal_bp.route("/store-info", methods=["GET", "POST"])
@@ -24514,12 +24946,18 @@ def store_info():
         r for r in all_docs
         if r["id"].startswith(f"store_info-{tenant_id}-upload-")
     ]
+    corrections = [
+        r for r in all_docs
+        if r["id"].startswith(f"store_info-{tenant_id}-fix-")
+    ]
     return render_template(
         "portal/store_info.html",
         customer=customer,
         section_rows=section_rows,
         custom_entries=custom_entries,
         uploaded_docs=uploaded_docs,
+        corrections=corrections,
+        si_view="corrections" if request.args.get("view") == "corrections" else "all",
     )
 
 
@@ -24684,6 +25122,10 @@ def store_info_modify_entry(entry_id):
             details={"entry_id": entry_id, "title": title, "renamed": renamed},
         )
         sync_all_to_meta(tenant_id, wizard_marker=_WIZARD_MARKER)
+        if entry_id.startswith(f"store_info-{tenant_id}-fix-"):
+            _kick_reembed()
+            flash(f"Correction '{title}' saved.", "success")
+            return redirect(url_for("portal.store_info", view="corrections"))
         flash(f"'{title}' saved.", "success")
         return redirect(url_for("portal.store_info"))
 
@@ -24764,6 +25206,8 @@ def store_info_delete_entry(entry_id):
     )
     sync_all_to_meta(tenant_id, wizard_marker=_WIZARD_MARKER)
     flash(f"'{row['title']}' deleted.", "success")
+    if entry_id.startswith(f"store_info-{tenant_id}-fix-") or request.form.get("back") == "corrections":
+        return redirect(url_for("portal.store_info", view="corrections"))
     return redirect(url_for("portal.store_info_delete"))
 
 
@@ -26366,9 +26810,9 @@ def _get_inbox_messages(tenant_id: int, phone: str, limit: int = 100) -> list:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
-            SELECT direction, content, message_type, media_url, is_historical, created_at, sent_by_label
+            SELECT id, direction, content, message_type, media_url, is_historical, created_at, sent_by_label
             FROM (
-                SELECT direction, content, message_type, media_url, is_historical, created_at, sent_by_label
+                SELECT id, direction, content, message_type, media_url, is_historical, created_at, sent_by_label
                 FROM wa_message_log
                 WHERE tenant_id = %s AND customer_phone = %s
                 ORDER BY created_at DESC
@@ -26642,15 +27086,18 @@ def _get_webchat_messages(tenant_id: int, key: str, limit: int = 200) -> list:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
-            SELECT direction, content, created_at, sent_by_label FROM (
+            SELECT msg_ref, direction, content, created_at, sent_by_label, is_ai FROM (
                 SELECT
+                    'cm:' || id::text AS msg_ref,
                     CASE WHEN role = 'user' THEN 'inbound' ELSE 'outbound' END AS direction,
                     content, created_at,
-                    CASE WHEN role = 'assistant' THEN 'AI Assistant' ELSE NULL END AS sent_by_label
+                    CASE WHEN role = 'assistant' THEN 'AI Assistant' ELSE NULL END AS sent_by_label,
+                    (role = 'assistant') AS is_ai
                 FROM chat_messages
                 WHERE tenant_id = %s AND session_id = %s
                 UNION ALL
-                SELECT 'outbound' AS direction, content, created_at, sent_by_label
+                SELECT 'wr:' || id::text AS msg_ref, 'outbound' AS direction, content, created_at, sent_by_label,
+                       FALSE AS is_ai
                 FROM web_chat_replies
                 WHERE tenant_id = %s AND session_id = %s
             ) merged
@@ -26863,6 +27310,9 @@ def my_inbox():
         is_messenger_active=is_messenger_active,
         webchat_conversations=webchat_conversations,
         webchat_messages=webchat_messages,
+        # "Fix this answer": which AI replies in the open conversation the
+        # team has already corrected ({source_ref: who fixed it}).
+        corrections_map=_corrections_for_conv(tenant_id, active_phone) if active_phone else {},
         is_webchat_active=is_webchat_active,
     )
 

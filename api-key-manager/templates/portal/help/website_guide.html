@@ -1,0 +1,159 @@
+{# Website & Firewall How-To Guide (2026-10-03): how a business lets PhiXtra's
+   website reader through its firewall so Connect Website works. ids are
+   prefixed web-, CSS scoped .webg. reader_ip / reader_name come from
+   website_reader.py (READER_IP / READER_NAME) via the tutorials route. #}
+<style>
+.webg{--g-ink:#030C18;--g-txt:#1A2433;--g-muted:#5B6678;--g-line:#DDE3EB;--g-chip:#EEF2F7;--g-gold:#B8860B;
+  --g-good:#0F9F5F;--g-good-soft:#E7F7EF;--g-warn-soft:#FFF4D6;--g-link:#1D4ED8;color:var(--g-txt);font-size:15px;line-height:1.65}
+.webg *{box-sizing:border-box}
+.webg a{color:var(--g-link)}
+.webg .g-lede{max-width:72ch;color:var(--g-muted);margin:0 0 16px;font-size:14px}
+.webg nav.toc{background:#fff;border:1px solid var(--g-line);border-radius:12px;padding:10px 14px;margin:0 0 26px;font-size:13.5px}
+.webg nav.toc ol{margin:0;padding-left:20px;columns:2 240px;column-gap:18px}
+.webg nav.toc li{margin:3px 0;break-inside:avoid}
+.webg section.part{margin-bottom:40px}
+.webg h2{font-size:21px;line-height:1.25;color:var(--g-ink);margin:0 0 8px;scroll-margin-top:80px;font-weight:800}
+.webg h2 .num{color:var(--g-gold);margin-right:8px}
+.webg h3{font-size:16.5px;color:var(--g-ink);margin:22px 0 6px;scroll-margin-top:80px;font-weight:750}
+.webg p,.webg li{max-width:72ch}
+.webg p{margin:0 0 12px}
+.webg ol,.webg ul{padding-left:22px;margin:0 0 12px}
+.webg li{margin:4px 0}
+.webg .ui{display:inline-block;font-size:.88em;font-weight:650;padding:1px 7px;border:1px solid var(--g-line);border-radius:5px;background:#fff;color:var(--g-ink)}
+.webg code,.webg pre{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;background:#F4F6FA;border:1px solid var(--g-line);border-radius:6px}
+.webg code{padding:1px 6px}
+.webg pre{padding:10px 12px;white-space:pre-wrap;margin:0 0 12px;max-width:72ch}
+.webg .box{border-radius:10px;padding:12px 14px;margin:12px 0 16px;max-width:72ch;font-size:14px}
+.webg .tip{background:var(--g-good-soft)}
+.webg .warn{background:var(--g-warn-soft)}
+.webg .ids{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;align-items:center;background:#fff;border:1px solid var(--g-line);border-radius:10px;padding:12px 14px;max-width:560px;margin:0 0 14px}
+.webg .ids span{font-size:13px;color:var(--g-muted);font-weight:700}
+.webg .ids code{font-size:14.5px;justify-self:start}
+@media(max-width:560px){.webg .ids{grid-template-columns:1fr}}
+</style>
+
+<div class="webg">
+<p class="g-lede">Connect Website opens your website the same way a visitor does, so your AI can learn from it. Some websites have a firewall or a "bot blocker" that stops automatic visitors, including PhiXtra. This guide shows you, or whoever looks after your website, how to let PhiXtra in. It usually takes about 2 minutes.</p>
+
+<nav class="toc" aria-label="In this guide">
+  <ol>
+    <li><a href="#web-why">Why the connection failed</a></li>
+    <li><a href="#web-allow">The two things to allow</a></li>
+    <li><a href="#web-cloudflare">Cloudflare</a></li>
+    <li><a href="#web-wordpress">WordPress security plugins</a></li>
+    <li><a href="#web-hosting">Your hosting company's firewall</a></li>
+    <li><a href="#web-builders">Wix, Shopify, Squarespace</a></li>
+    <li><a href="#web-robots">robots.txt</a></li>
+    <li><a href="#web-again">Try again</a></li>
+    <li><a href="#web-other">If you can't change the firewall</a></li>
+  </ol>
+</nav>
+
+<section class="part" id="web-why">
+  <h2><span class="num">1</span>Why the connection failed</h2>
+  <p>When you click <span class="ui">Connect</span> in <strong>Store Information › Connect Website</strong>, a red box shows the <strong>Reason</strong> and a <strong>Technical detail</strong>. These reasons usually mean a firewall is blocking us:</p>
+  <ul>
+    <li>"The website refused our visit (403 Forbidden)"</li>
+    <li>"Cloudflare's bot protection on your website stopped us"</li>
+    <li>"The website's server or firewall cut the connection off"</li>
+    <li>"The website says we've visited too often (429)"</li>
+  </ul>
+  <p>Your website is fine for your customers. It's only automatic visitors that get stopped, and PhiXtra is one of them.</p>
+</section>
+
+<section class="part" id="web-allow">
+  <h2><span class="num">2</span>The two things to allow</h2>
+  <p>Every visit from PhiXtra comes from the same server address and carries the same name. Allow one or both of these in your firewall:</p>
+  <div class="ids">
+    <span>Our server address (IP)</span><code>{{ reader_ip }}</code>
+    <span>Our reader's name (user agent)</span><code>{{ reader_name }}</code>
+  </div>
+  <div class="box tip"><strong>Tip:</strong> the server address is the safer choice. Only PhiXtra can visit from it, while anyone could copy a name.</div>
+  <p>PhiXtra only reads public pages: up to 100 pages each time you sync, slowly, one page at a time. It never fills in forms, logs in or buys anything.</p>
+</section>
+
+<section class="part" id="web-cloudflare">
+  <h2><span class="num">3</span>Cloudflare</h2>
+  <p>If the reason mentions Cloudflare, or the technical detail says <code>server: cloudflare</code>, your website uses Cloudflare. Log in at <strong>dash.cloudflare.com</strong> and choose your website. Cloudflare sometimes renames its menus, so the names below may be slightly different.</p>
+
+  <h3>Option A: IP Access Rule (simplest)</h3>
+  <ol>
+    <li>Go to <span class="ui">Security</span> › <span class="ui">WAF</span> › <span class="ui">Tools</span>.</li>
+    <li>Under <strong>IP Access Rules</strong>, type <code>{{ reader_ip }}</code>.</li>
+    <li>Set the action to <span class="ui">Allow</span>, choose <em>This website</em>, and add a note: "PhiXtra website reader".</li>
+    <li>Click <span class="ui">Add</span>.</li>
+  </ol>
+
+  <h3>Option B: Custom rule</h3>
+  <ol>
+    <li>Go to <span class="ui">Security</span> › <span class="ui">WAF</span> › <span class="ui">Custom rules</span> › <span class="ui">Create rule</span>.</li>
+    <li>Name it "Allow PhiXtra". Set the field to <strong>IP Source Address</strong>, the operator to <strong>equals</strong> and the value to <code>{{ reader_ip }}</code>.</li>
+    <li>Choose the action <span class="ui">Skip</span> and tick every protection it lists (all remaining custom rules, rate limiting, managed rules, Super Bot Fight Mode where shown).</li>
+    <li>Click <span class="ui">Deploy</span>.</li>
+  </ol>
+
+  <div class="box warn"><strong>"Bot Fight Mode" (free Cloudflare plans):</strong> this setting can't be skipped by a rule. If it's switched on and PhiXtra is still blocked after Option A or B, go to <span class="ui">Security</span> › <span class="ui">Bots</span> and switch <strong>Bot Fight Mode</strong> off. On paid Cloudflare plans, "Super Bot Fight Mode" can be skipped with the rule in Option B.</div>
+  <p>Also check <span class="ui">Security</span> › <span class="ui">Settings</span>. If "I'm Under Attack" mode is on, every visitor has to pass a check first. Switch it off when you no longer need it.</p>
+</section>
+
+<section class="part" id="web-wordpress">
+  <h2><span class="num">4</span>WordPress security plugins</h2>
+  <p>Log in to your WordPress dashboard and find your security plugin in the left-hand menu.</p>
+  <h3>Wordfence</h3>
+  <ol>
+    <li>Go to <span class="ui">Wordfence</span> › <span class="ui">Firewall</span> › <span class="ui">All Firewall Options</span>.</li>
+    <li>Find <strong>Allowlisted IP addresses that bypass all rules</strong> and add <code>{{ reader_ip }}</code> on its own line.</li>
+    <li>Click <span class="ui">Save Changes</span>.</li>
+  </ol>
+  <h3>Sucuri</h3>
+  <p>In your Sucuri Firewall dashboard, go to <span class="ui">Access Control</span> › <span class="ui">Allowlist IP</span> (some accounts say "Whitelist IP"), add <code>{{ reader_ip }}</code> and save.</p>
+  <h3>Other plugins (Solid Security, All-In-One Security, Shield and others)</h3>
+  <p>Look in the plugin's settings for a list called <strong>Allowlist</strong>, <strong>Whitelist</strong>, <strong>Authorized IPs</strong> or <strong>Trusted IPs</strong>, then add <code>{{ reader_ip }}</code>.</p>
+  <div class="box tip"><strong>Tip:</strong> if your website also uses Cloudflare, do the <a href="#web-cloudflare">Cloudflare</a> step as well. Both can block us.</div>
+</section>
+
+<section class="part" id="web-hosting">
+  <h2><span class="num">5</span>Your hosting company's firewall</h2>
+  <p>Some hosting companies run their own firewall (for example Imunify360, ModSecurity or cPHulk). You can't usually change it yourself, so send them this message:</p>
+<pre>Hello, please allowlist the IP address {{ reader_ip }} (user agent "{{ reader_name }}") for my website in your firewall / bot protection. It is PhiXtra, the AI assistant service my business uses, and it needs to read my public pages. Thank you.</pre>
+</section>
+
+<section class="part" id="web-builders">
+  <h2><span class="num">6</span>Wix, Shopify, Squarespace</h2>
+  <p>These website builders don't give you a firewall to change, and they usually let PhiXtra in without any setup. If the connection still fails:</p>
+  <ul>
+    <li>Check your website is <strong>published</strong> and not password-protected or in "coming soon" mode.</li>
+    <li>If you've connected your own domain through Cloudflare, follow the <a href="#web-cloudflare">Cloudflare</a> steps.</li>
+    <li>Otherwise, send the builder's support team the message in <a href="#web-hosting">part 5</a>.</li>
+  </ul>
+</section>
+
+<section class="part" id="web-robots">
+  <h2><span class="num">7</span>robots.txt</h2>
+  <p>If the reason says your website's <strong>robots.txt</strong> file asks readers not to read it, your website is telling every automatic reader to stay away. You can let PhiXtra in and still keep the others out. Add these lines at the <strong>top</strong> of the file:</p>
+<pre>User-agent: {{ reader_name }}
+Allow: /</pre>
+  <p>Where to change it: on WordPress, use your SEO plugin (Yoast: <span class="ui">Yoast SEO</span> › <span class="ui">Tools</span> › <span class="ui">File editor</span>; Rank Math: <span class="ui">Rank Math</span> › <span class="ui">General Settings</span> › <span class="ui">Edit robots.txt</span>). On other websites, ask whoever looks after your website. You can see the file at <code>yourwebsite.com/robots.txt</code>.</p>
+</section>
+
+<section class="part" id="web-again">
+  <h2><span class="num">8</span>Try again</h2>
+  <ol>
+    <li>Go back to <strong>Store Information › Connect Website</strong>.</li>
+    <li>Type your website address and click <span class="ui">Connect</span>.</li>
+    <li>A green box saying "Connection successful" means you're done. Go to <strong>Sync Website</strong> and click <span class="ui">Sync now</span> to let your AI read your pages.</li>
+  </ol>
+  <p>If it still fails, look at the new reason. It may be a different problem. Every attempt is listed under <strong>Recent connection attempts</strong>, so you can send that list to whoever looks after your website.</p>
+  <div class="box tip"><strong>After you've connected:</strong> keep the rule in place. PhiXtra visits again each time you click Sync now, and on paid plans also on your daily, weekly or monthly schedule.</div>
+</section>
+
+<section class="part" id="web-other">
+  <h2><span class="num">9</span>If you can't change the firewall</h2>
+  <p>Your AI can still learn about your business without Connect Website:</p>
+  <ul>
+    <li><strong>Store Information:</strong> add your key information (opening hours, delivery, prices, policies, contact details) as entries.</li>
+    <li><strong>AI knowledge documents:</strong> upload documents such as a price list, brochure or FAQ.</li>
+    <li><strong>WordPress / WooCommerce shops:</strong> use the PhiXtra plugin, which sends your pages from inside your website.</li>
+  </ul>
+</section>
+</div>

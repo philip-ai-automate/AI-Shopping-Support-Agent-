@@ -1,0 +1,116 @@
+{% extends "portal/base.html" %}
+{% block title %}Connect Website — PhiXtra Portal{% endblock %}
+{% block content %}
+{% include "portal/_website_styles.html" %}
+
+<div class="si-header">
+  <div class="si-title">🌐 Connect Website</div>
+  <div class="si-sub">Connect your website so your AI can learn from it. Connecting only checks that we can reach your website — nothing is read until you click <strong>Sync now</strong> in Sync Website.</div>
+</div>
+
+{% if result and result.ok %}
+<div class="ws-ok" role="status">
+  <div class="ws-res-h">✅ Connection successful</div>
+  <div>We reached <strong>{{ source.url if source else result.url }}</strong>{% if result.title %} — “{{ result.title }}”{% endif %}.
+    {% if result.pages_found %}We found about <strong>{{ result.pages_found }}{% if result.pages_found >= 100 %}+{% endif %} page{{ 's' if result.pages_found != 1 }}</strong> we can read.{% endif %}</div>
+  <div style="margin-top:6px">Nothing has been read yet. When you're ready, go to Sync Website and click <strong>Sync now</strong>.</div>
+  <a class="btn btn-primary" style="margin-top:12px;display:inline-block;padding:10px 20px" href="{{ url_for('portal.store_info_website_sync') }}">Go to Sync Website →</a>
+</div>
+{% elif result %}
+<div class="ws-fail" role="alert">
+  <div class="ws-res-h">❌ Connection failed</div>
+  <div><strong>Reason:</strong> {{ result.reason }}</div>
+  {% if result.detail %}<div class="ws-tech"><strong>Technical detail:</strong> {{ result.detail }}</div>{% endif %}
+  {% if result.kind in ('firewall', 'cloudflare') %}
+  <div class="ws-allow">
+    <div style="font-weight:800;margin-bottom:4px">Ask whoever looks after your website to allow PhiXtra</div>
+    <div>Your website's {% if result.kind == 'cloudflare' %}Cloudflare protection{% else %}firewall or security settings{% endif %} may be blocking us. Allow these two in it, then click Connect again:</div>
+    <div class="ws-allow-row"><span class="ws-allow-k">Our server address (IP)</span><code id="ws_ip">{{ reader_ip }}</code><button type="button" class="btn btn-sm ws-copy" data-copy="{{ reader_ip }}">Copy</button></div>
+    <div class="ws-allow-row"><span class="ws-allow-k">Our reader's name</span><code id="ws_name">{{ reader_name }}</code><button type="button" class="btn btn-sm ws-copy" data-copy="{{ reader_name }}">Copy</button></div>
+    <a href="{{ url_for('portal.tutorials') }}?topic=website#{{ 'web-cloudflare' if result.kind == 'cloudflare' else 'web-allow' }}" target="_blank" rel="noopener" style="font-weight:700">📘 Show me how →</a>
+  </div>
+  {% elif result.kind == 'robots' %}
+  <div class="ws-allow">
+    <div>Your website's robots.txt file can allow just PhiXtra and keep other readers out.</div>
+    <a href="{{ url_for('portal.tutorials') }}?topic=website#web-robots" target="_blank" rel="noopener" style="font-weight:700">📘 Show me how →</a>
+  </div>
+  {% endif %}
+  <div style="margin-top:6px">Nothing was saved. Fix the problem, then try again.</div>
+</div>
+<script>
+  document.querySelectorAll('.ws-copy').forEach(function(b){
+    b.addEventListener('click', function(){
+      var v = b.getAttribute('data-copy');
+      var done = function(){ b.textContent = 'Copied ✓'; setTimeout(function(){ b.textContent = 'Copy'; }, 1800); };
+      if (navigator.clipboard) navigator.clipboard.writeText(v).then(done, done); else done();
+    });
+  });
+</script>
+{% endif %}
+
+{% if plugin_pages %}
+<div class="ws-note" role="status">
+  <div style="font-size:18px;line-height:1">ℹ️</div>
+  <div><strong>Your website pages already reach your AI</strong> through the PhiXtra Export plugin on your WooCommerce site ({{ plugin_pages }} page{{ 's' if plugin_pages != 1 }}). To avoid giving your AI two copies of the same pages, Connect Website is switched off while the plugin is sending pages.</div>
+</div>
+{% elif source and not result %}
+<div class="ws-note" role="status">
+  <div style="font-size:18px;line-height:1">✅</div>
+  <div><strong>{{ source.url }}</strong> is connected{% if source.status == 'connected' %} but not synced yet{% endif %}. Go to <a href="{{ url_for('portal.store_info_website_sync') }}">Sync Website</a>{% if source.status == 'connected' %} and click Sync now{% endif %}. To connect a different website, first use <a href="{{ url_for('portal.store_info_website_delete') }}">Delete Website</a>.</div>
+</div>
+{% endif %}
+
+{% if not source %}
+<form method="POST" class="ws-card" id="ws_form" {% if plugin_pages %}aria-disabled="true" style="opacity:.5;pointer-events:none"{% endif %}>
+  <label class="ws-lbl" for="ws_url">Your website address</label>
+  <input class="ws-input" type="text" id="ws_url" name="url" value="{{ form_url }}" placeholder="example.com" {% if plugin_pages %}disabled{% else %}required{% endif %}/>
+  <div class="ws-help">Works with any website: Wix, Shopify, Squarespace, WordPress or a custom site. Website has a firewall or Cloudflare? <a href="{{ url_for('portal.tutorials') }}?topic=website#web-allow" target="_blank" rel="noopener">Let PhiXtra in first</a>.</div>
+
+  <div class="ws-info" style="margin-top:18px">
+    <div><strong style="display:block;margin-bottom:2px">What we read (after Sync now)</strong>Public pages on your website: about, services, delivery, prices, policies, FAQs, contact. Up to 100 pages.</div>
+    <div><strong style="display:block;margin-bottom:2px">What we skip</strong>Menus, headers, footers, cookie notices, pages behind a login, product pages (products come from your catalogue).</div>
+  </div>
+
+  <div style="margin-top:18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+    <button type="submit" id="ws_btn" class="btn btn-primary" style="padding:11px 24px;font-size:14px" {% if plugin_pages %}disabled{% endif %}>Connect</button>
+    <span id="ws_checking" class="ws-meta" style="display:none"><span class="ws-spin" style="display:inline-block;vertical-align:middle;margin-right:6px"></span>Checking your website… this can take up to 30 seconds.</span>
+  </div>
+</form>
+<script>
+  (function(){
+    var f = document.getElementById('ws_form');
+    if (!f) return;
+    f.addEventListener('submit', function(){
+      var b = document.getElementById('ws_btn');
+      b.disabled = true; b.textContent = 'Checking…';
+      document.getElementById('ws_checking').style.display = 'inline';
+    });
+  })();
+</script>
+{% endif %}
+
+{% if attempts %}
+<section class="ws-card" style="padding:0;overflow:hidden">
+  <div style="padding:14px 20px;border-bottom:1px solid var(--line)">
+    <div style="font-size:15px;font-weight:800">Recent connection attempts</div>
+    <div class="ws-meta">Use these to troubleshoot, or send them to whoever looks after your website.</div>
+  </div>
+  <div style="overflow-x:auto">
+    <table class="ws-table">
+      <thead><tr><th>When</th><th>Address</th><th>Result</th><th>Reason / technical detail</th><th>By</th></tr></thead>
+      <tbody>
+        {% for at in attempts %}
+        <tr>
+          <td style="white-space:nowrap">{{ at.created_at.strftime('%d %b, %H:%M') }}</td>
+          <td>{{ at.url|replace('https://','')|replace('http://','') }}</td>
+          <td>{% if at.ok %}<span class="ws-pill read">Successful</span>{% else %}<span class="ws-pill fail">Failed</span>{% endif %}</td>
+          <td style="font-size:12.5px">{% if at.reason %}{{ at.reason }}{% else %}—{% endif %}{% if at.detail and not at.ok %}<div class="ws-tech" style="margin-top:3px">{{ at.detail }}</div>{% endif %}</td>
+          <td>{{ at.created_label|who }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

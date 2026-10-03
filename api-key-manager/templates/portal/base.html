@@ -1081,6 +1081,15 @@
         {% if staff_can_open('portal.store_info_delete') %}
         <a href="{{ url_for('portal.store_info_delete') }}" class="{% if request.endpoint and request.endpoint.startswith('portal.store_info_delete') %}active{% endif %}">Delete</a>
         {% endif %}
+        {% if staff_can_open('portal.store_info_website_connect') %}
+        <a href="{{ url_for('portal.store_info_website_connect') }}" class="{% if request.endpoint == 'portal.store_info_website_connect' %}active{% endif %}">Connect Website</a>
+        {% endif %}
+        {% if staff_can_open('portal.store_info_website_sync') %}
+        <a href="{{ url_for('portal.store_info_website_sync') }}" class="{% if request.endpoint == 'portal.store_info_website_sync' %}active{% endif %}">Sync Website</a>
+        {% endif %}
+        {% if staff_can_open('portal.store_info_website_delete') %}
+        <a href="{{ url_for('portal.store_info_website_delete') }}" class="{% if request.endpoint == 'portal.store_info_website_delete' %}active{% endif %}">Delete Website</a>
+        {% endif %}
       </div>
     </div>
 
@@ -1933,6 +1942,9 @@
     { icon:'➕', title:'Create Store Information', desc:'Add your own custom knowledge base entry',   url:'{{ url_for("portal.store_info_create") }}',          tags:'business store info create new custom entry' },
     { icon:'✏️', title:'Modify Store Information', desc:'Edit or rename a Store Information entry',   url:'{{ url_for("portal.store_info_modify") }}',          tags:'business store info edit modify rename' },
     { icon:'🗑️', title:'Delete Store Information', desc:'Remove a custom Store Information entry',    url:'{{ url_for("portal.store_info_delete") }}',          tags:'business store info delete remove' },
+    { icon:'🌐', title:'Connect Website', desc:'Let your AI learn from your website',               url:'{{ url_for("portal.store_info_website_connect") }}', tags:'website connect read crawl site pages wix shopify ai knowledge' },
+    { icon:'🔄', title:'Sync Website',    desc:'See and refresh the pages your AI uses',             url:'{{ url_for("portal.store_info_website_sync") }}',    tags:'website sync refresh pages read again schedule' },
+    { icon:'🗑️', title:'Delete Website',  desc:'Disconnect your website from your AI',              url:'{{ url_for("portal.store_info_website_delete") }}',  tags:'website delete disconnect remove pages' },
     { icon:'💳', title:'Payment Gateways',       desc:'Connect Stripe or Paystack',                   url:'{{ url_for("portal.payment_settings") }}',           tags:'payment gateway stripe paystack checkout' },
     { icon:'🔑', title:'API Keys',               desc:'Manage your AI integration keys',              url:'{{ url_for("portal.api_keys") }}',                   tags:'api keys developer integration access token' },
     { icon:'🤖', title:'AI System Instruction',  desc:'Customise your AI assistant personality',      url:'{{ url_for("portal.ai_instruction") }}',             tags:'ai bot personality system prompt instruction custom behaviour' },

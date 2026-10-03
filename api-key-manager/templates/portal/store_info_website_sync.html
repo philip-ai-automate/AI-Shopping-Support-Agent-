@@ -1,0 +1,107 @@
+{% extends "portal/base.html" %}
+{% block title %}Sync Website — PhiXtra Portal{% endblock %}
+{% block content %}
+{% include "portal/_website_styles.html" %}
+{% if source and source.status in ('pending', 'reading') %}<meta http-equiv="refresh" content="8">{% endif %}
+
+<div class="si-header">
+  <div class="si-title">🔄 Sync Website</div>
+  <div class="si-sub">The pages your AI has learned from your website.</div>
+</div>
+
+{% if not source %}
+<div class="ws-card">
+  {% if plugin_pages %}
+  Your website pages reach your AI through the PhiXtra Export plugin on your WooCommerce site, so there is nothing to sync here.
+  {% else %}
+  No website connected yet. <a href="{{ url_for('portal.store_info_website_connect') }}">Connect your website</a> so your AI can learn from it.
+  {% endif %}
+</div>
+{% else %}
+
+{% if source.status in ('pending', 'reading') %}
+<div class="ws-reading" role="status"><div class="ws-spin"></div><div><strong>Reading your website…</strong> {{ source.pages_read or 0 }} page{{ 's' if (source.pages_read or 0) != 1 }} read so far. This page updates by itself.</div></div>
+{% elif source.status == 'connected' %}
+<div class="ws-note" role="status"><div style="font-size:18px;line-height:1">🔗</div>
+  <div><strong>Connected — not synced yet.</strong> Your AI isn't using any pages from this website yet. Click <strong>Sync now</strong> to read it{% if source.pages_found %} (we found about {{ source.pages_found }} page{{ 's' if source.pages_found != 1 }}){% endif %}.</div></div>
+{% elif source.status == 'error' and source.status_detail %}
+<div class="ws-warn" role="status" style="margin-bottom:16px"><strong>We couldn't read your website.</strong> {{ source.status_detail }}</div>
+{% endif %}
+
+<section class="ws-card ws-site">
+  <div>
+    <div class="ws-k">Connected website</div>
+    <div class="ws-v">{{ source.url }}</div>
+    <div class="ws-meta">
+      {% if source.last_read_at %}Last read {{ source.last_read_at.strftime('%d %b, %H:%M') }}{% else %}Not read yet{% endif %}
+      {% if source.next_read_at %} · next read {{ source.next_read_at.strftime('%d %b') }}{% elif source.frequency != 'manual' and schedule_ok and not source.last_read_at %} · re-reads {{ source.frequency }} after your first sync{% endif %}
+      · <strong style="color:var(--txt)">{{ pages_read|length }} of {{ max_pages }} pages</strong>
+    </div>
+  </div>
+  {% if staff_can('store.info_edit') %}
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <form method="POST" style="display:flex;gap:8px;align-items:center;margin:0">
+      <input type="hidden" name="action" value="frequency"/>
+      <label for="ws_freq" style="font-size:13px;font-weight:700">Re-read</label>
+      <select id="ws_freq" name="frequency" onchange="this.form.submit()" style="font:inherit;font-size:14px;min-height:40px;padding:0 10px;border:1px solid rgba(3,12,24,.18);border-radius:9px;background:#fff">
+        {% for val, label in frequencies %}<option value="{{ val }}" {% if val == (source.frequency if schedule_ok else 'manual') %}selected{% endif %} {% if val != 'manual' and not schedule_ok %}disabled{% endif %}>{{ label }}{% if val != 'manual' and not schedule_ok %} 🔒{% endif %}</option>{% endfor %}
+      </select>
+    </form>
+    <form method="POST" style="margin:0">
+      <input type="hidden" name="action" value="sync_now"/>
+      <button type="submit" class="btn btn-primary" style="padding:10px 18px" {% if source.status in ('pending', 'reading') %}disabled{% endif %}>🔄 Sync now</button>
+    </form>
+  </div>
+  {% endif %}
+  {% if not schedule_ok %}
+  <div class="ws-meta" style="flex-basis:100%">🔒 Automatic re-reading (daily, weekly or monthly) is on paid plans{% if schedule_plan and schedule_plan != 'a higher' %} from {{ schedule_plan }}{% endif %}. On your plan, click Sync now whenever your website changes. <a href="{{ url_for('portal.billing_plans') }}">See plans</a></div>
+  {% endif %}
+</section>
+
+<section class="ws-card" style="padding:0;overflow:hidden">
+  <div style="padding:14px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
+    <div style="font-size:15px;font-weight:800">Pages your AI uses ({{ pages_read|length }})</div>
+    <div class="ws-meta">Remove a page to stop the AI using it. It stays removed on future syncs.</div>
+  </div>
+  {% if not pages_read and not pages_skipped and not pages_removed %}
+  <div style="padding:18px 20px" class="ws-meta">{% if source.status in ('pending', 'reading') %}Pages will appear here as we read them.{% else %}No pages yet.{% endif %}</div>
+  {% else %}
+  <div style="overflow-x:auto">
+    <table class="ws-table">
+      <thead><tr><th>Page</th><th>Address</th><th>Status</th><th><span style="position:absolute;left:-9999px">Actions</span></th></tr></thead>
+      <tbody>
+        {% for pg in pages_read %}
+        <tr>
+          <td style="font-weight:700">{{ pg.title or pg.url }}</td>
+          <td><a href="{{ pg.url }}" target="_blank" rel="noopener" style="color:var(--muted)">{{ pg.url|replace('https://','')|replace('http://','') }}</a></td>
+          <td><span class="ws-pill read">Read{% if pg.last_read_at %} · {{ pg.last_read_at.strftime('%d %b') }}{% endif %}</span></td>
+          <td style="text-align:right">{% if staff_can('store.info_edit') %}
+            <form method="POST" style="margin:0"><input type="hidden" name="action" value="remove"/><input type="hidden" name="page_id" value="{{ pg.id }}"/>
+              <button type="submit" class="btn btn-sm">Remove</button></form>{% endif %}</td>
+        </tr>
+        {% endfor %}
+        {% for pg in pages_skipped %}
+        <tr>
+          <td style="font-weight:700;color:var(--muted)">{{ pg.title or '—' }}</td>
+          <td><a href="{{ pg.url }}" target="_blank" rel="noopener" style="color:var(--muted)">{{ pg.url|replace('https://','')|replace('http://','') }}</a></td>
+          <td><span class="ws-pill skip">Skipped · {{ pg.skip_reason }}</span></td>
+          <td></td>
+        </tr>
+        {% endfor %}
+        {% for pg in pages_removed %}
+        <tr style="color:var(--muted)">
+          <td style="font-weight:700">{{ pg.title or pg.url }}</td>
+          <td>{{ pg.url|replace('https://','')|replace('http://','') }}</td>
+          <td><span class="ws-pill removed">Removed by you</span></td>
+          <td style="text-align:right">{% if staff_can('store.info_edit') %}
+            <form method="POST" style="margin:0"><input type="hidden" name="action" value="restore"/><input type="hidden" name="page_id" value="{{ pg.id }}"/>
+              <button type="submit" class="btn btn-sm">Use again</button></form>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

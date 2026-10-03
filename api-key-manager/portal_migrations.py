@@ -3762,6 +3762,82 @@ def ensure_portal_tables():
             )""")
         cur.execute("CREATE INDEX IF NOT EXISTS chat_alerts_open_idx ON chat_alerts (tenant_id, channel, chat_key, first_alert_at)")
 
+        # "Fix this answer" (2026-10-03): which AI reply a correction came
+        # from. The correction itself is a Store Information entry
+        # (documents id store_info-<tenant>-fix-…), so the AI finds it.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS ai_corrections (
+                id             SERIAL PRIMARY KEY,
+                tenant_id      INTEGER NOT NULL,
+                doc_id         VARCHAR(120) NOT NULL,
+                channel        VARCHAR(10) NOT NULL,
+                conv_key       TEXT NOT NULL,
+                source_ref     VARCHAR(40),
+                question       TEXT,
+                wrong_answer   TEXT,
+                created_by     VARCHAR(160),
+                created_label  VARCHAR(160),
+                created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS ai_corrections_conv_idx ON ai_corrections (tenant_id, conv_key)")
+
+        # Connect Website (2026-10-03): a business's own website, read by
+        # website_reader.py into documents (type 'page', id site-<tenant>-…).
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS website_sources (
+                tenant_id      INTEGER PRIMARY KEY,
+                url            TEXT NOT NULL,
+                frequency      VARCHAR(10) NOT NULL DEFAULT 'weekly',
+                status         VARCHAR(12) NOT NULL DEFAULT 'pending',
+                status_detail  TEXT,
+                pages_read     INTEGER NOT NULL DEFAULT 0,
+                started_at     TIMESTAMPTZ,
+                last_read_at   TIMESTAMPTZ,
+                next_read_at   TIMESTAMPTZ,
+                created_by     VARCHAR(160),
+                created_label  VARCHAR(160),
+                created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )""")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS website_pages (
+                id             SERIAL PRIMARY KEY,
+                tenant_id      INTEGER NOT NULL,
+                url            TEXT NOT NULL,
+                title          TEXT,
+                doc_id         VARCHAR(80),
+                status         VARCHAR(12) NOT NULL,
+                skip_reason    TEXT,
+                last_read_at   TIMESTAMPTZ,
+                UNIQUE (tenant_id, url)
+            )""")
+
+        # Connect Website v2 (2026-10-03): Connect only checks the website can
+        # be reached; reading starts from Sync Website. 'connected' = checked,
+        # never read. 'manual' = read only when Sync now is clicked.
+        cur.execute("ALTER TABLE website_sources ALTER COLUMN frequency SET DEFAULT 'manual'")
+        cur.execute("ALTER TABLE website_sources ADD COLUMN IF NOT EXISTS site_title TEXT")
+        cur.execute("ALTER TABLE website_sources ADD COLUMN IF NOT EXISTS pages_found INTEGER")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS website_connect_attempts (
+                id             SERIAL PRIMARY KEY,
+                tenant_id      INTEGER NOT NULL,
+                url            TEXT NOT NULL,
+                ok             BOOLEAN NOT NULL,
+                reason         TEXT,
+                detail         TEXT,
+                http_status    INTEGER,
+                created_by     VARCHAR(160),
+                created_label  VARCHAR(160),
+                created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS website_connect_attempts_t_idx ON website_connect_attempts (tenant_id, created_at DESC)")
+        # Automatic re-reading (daily/weekly/monthly) = paid plans only; the
+        # Plan editor tick decides from here on (granted once, never again).
+        cur.execute("""SELECT id FROM plans WHERE COALESCE(price_ngn, 0) > 0 OR COALESCE(is_custom, FALSE)""")
+        for (pid,) in cur.fetchall():
+            cur.execute(_GRANT_ONCE_SQL, (pid, "store.website_schedule"))
+        cur.execute("INSERT INTO feature_catalog_seen (feature_key) VALUES ('store.website_schedule') ON CONFLICT DO NOTHING")
+
         # Anything a backfill above granted this run is now "seen" — never
         # re-granted on a later start (see _GRANT_ONCE_SQL).
         cur.execute("""

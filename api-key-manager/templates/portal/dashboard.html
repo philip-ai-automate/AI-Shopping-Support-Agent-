@@ -296,9 +296,26 @@ a.act-row:hover .act-text{ text-decoration:underline }
     {% if customer.tenant_source_type == 'whatsapp' %}
     <a href="{{ url_for('portal.onboarding_catalogue_start') }}" class="btn btn-primary btn-sm">⚙ Run Setup Wizard</a>
     {% endif %}
+    {% if not dash_top_plan %}
     <a href="{{ url_for('portal.billing_plans') }}" class="btn btn-sm">↑ Upgrade Plan</a>
+    {% endif %}
   </div>
 </div>
+
+{# Connect Website prompt (2026-10-03): website plan, no website connected yet #}
+{% if dash_connect_website and staff_can_open('portal.store_info_website_connect') %}
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;
+            padding:16px 18px;margin-bottom:18px;border-radius:14px;background:#EEF2FA;border:1px solid #C9D3E6">
+  <div style="display:flex;align-items:flex-start;gap:12px">
+    <span style="font-size:20px;line-height:1">🌐</span>
+    <div>
+      <div style="font-size:14px;font-weight:800;color:#0B1D40">Connect your website</div>
+      <div style="font-size:13px;color:#475467;margin-top:2px">Let your AI learn from your website so it can answer customers about your services, prices and policies.</div>
+    </div>
+  </div>
+  <a href="{{ url_for('portal.store_info_website_connect') }}" style="display:inline-block;background:#0B1D40;color:#fff;padding:9px 16px;border-radius:10px;text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap">Connect website →</a>
+</div>
+{% endif %}
 
 {# ═══════════════════════════════════════════════════════════════
    SALES OVERVIEW — Sales / Pipeline Value / New Leads / Conversion Rate,

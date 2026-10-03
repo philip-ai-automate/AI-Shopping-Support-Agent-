@@ -130,6 +130,108 @@ def _is_product_doc(doc: Dict[str, Any]) -> bool:
     return (doc.get("type") or "product") not in INFO_DOC_TYPES
 
 
+def _is_correction_doc(doc: Dict[str, Any]) -> bool:
+    """A "Fix this answer" correction saved by the business from the Inbox
+    or Chat Archive (Store Information entry id store_info-<tenant>-fix-…)."""
+    return "-fix-" in str(doc.get("id") or "") and doc.get("type") == "store_info"
+
+
+def _find_corrections(tenant_id: int, q_vec: Optional[List[float]], clean_query: str) -> List[Dict[str, Any]]:
+    """The business's own corrections closest to this question. They are
+    looked up on their own so they always reach the AI when they match,
+    instead of competing with website pages for the website engine's places.
+    CORRECTION_MAX_DISTANCE (cosine distance, default 0.5) keeps unrelated
+    corrections out."""
+    top_k = int(os.getenv("CORRECTION_TOP_K", "2"))
+    max_dist = float(os.getenv("CORRECTION_MAX_DISTANCE", "0.5"))
+    conn = _get_pg_conn()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cols = """id, title, content, url, sku, brand, price_min, price_max, in_stock, type,
+                  categories_text, site_url, tenant_id, image_url, COALESCE(currency, '') AS currency"""
+        if q_vec is not None:
+            vec_literal = "[" + ",".join(str(x) for x in q_vec) + "]"
+            cur.execute(f"""
+                SELECT {cols}, embedding <=> %s::vector AS dist
+                FROM documents
+                WHERE tenant_id = %s AND type = 'store_info' AND id LIKE %s AND embedding IS NOT NULL
+                ORDER BY embedding <=> %s::vector
+                LIMIT %s
+            """, (vec_literal, tenant_id, f"store_info-{tenant_id}-fix-%", vec_literal, top_k))
+            rows = [r for r in cur.fetchall() if r["dist"] is not None and float(r["dist"]) <= max_dist]
+        else:
+            cur.execute(f"""
+                SELECT {cols}
+                FROM documents
+                WHERE tenant_id = %s AND type = 'store_info' AND id LIKE %s
+                  AND to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(content,''))
+                      @@ plainto_tsquery('simple', %s)
+                LIMIT %s
+            """, (tenant_id, f"store_info-{tenant_id}-fix-%", clean_query, top_k))
+            rows = cur.fetchall()
+        cur.close()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+_TITLE_STOPWORDS = {
+    "what", "when", "where", "which", "who", "whom", "whose", "why", "how", "does", "do", "did", "have", "has",
+    "your", "yours", "you", "with", "from", "this", "that", "these", "those", "there", "their", "they", "them",
+    "about", "into", "than", "then", "will", "would", "could", "should", "can", "please", "tell", "give",
+    "want", "need", "like", "just", "also", "much", "many", "more", "most", "some", "any", "for", "and", "the",
+    "are", "is", "was", "were", "been", "being", "get", "got", "know", "help", "phixtra", "page", "website",
+}
+
+
+_TITLE_SYNONYMS = [
+    (r"\b(phone|call|email|e-mail|address|location|located|office|reach|whatsapp number|number)\b", ["contact"]),
+    (r"\b(deliver|delivery|shipping|ship|dispatch|courier)\b", ["delivery", "shipping"]),
+    (r"\b(refund|refunds|return|returns|exchange)\b", ["return", "refund"]),
+    (r"\b(price|prices|pricing|cost|costs|how much|fee|fees|plan|plans|package|packages)\b", ["pricing", "price", "plans"]),
+    (r"\b(warranty|guarantee)\b", ["warranty"]),
+    (r"\b(who are you|about you|your company|your business)\b", ["about"]),
+    (r"\b(open|opening|hours|close|closing)\b", ["hours", "opening"]),
+    (r"\b(pay|payment|payments|bank transfer|card)\b", ["payment"]),
+]
+
+
+def _find_title_matches(tenant_id: int, query: str) -> List[Dict[str, Any]]:
+    """Website pages whose TITLE contains an important word of the question
+    ("contact", "delivery", "pricing", "returns"…), so e.g. the Contact page
+    always reaches the AI for a contact question even when other pages read
+    similarly (2026-10-03). At most TITLE_MATCH_TOP_K (default 2)."""
+    q = (query or "").lower()
+    words = [w for w in re.findall(r"[a-zA-Z]{4,}", q) if w not in _TITLE_STOPWORDS]
+    # Everyday words for the same page as a usual page title.
+    for pattern, title_words in _TITLE_SYNONYMS:
+        if re.search(pattern, q):
+            words += title_words
+    words = list(dict.fromkeys(words))
+    if not words:
+        return []
+    top_k = int(os.getenv("TITLE_MATCH_TOP_K", "2"))
+    conn = _get_pg_conn()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        conds = " OR ".join(["title ~* %s"] * len(words))
+        params = [r"\m" + re.escape(w) for w in words]
+        cur.execute(f"""
+            SELECT id, title, content, url, sku, brand, price_min, price_max, in_stock, type,
+                   categories_text, site_url, tenant_id, image_url, COALESCE(currency, '') AS currency
+            FROM documents
+            WHERE tenant_id = %s AND type IN ('page', 'post', 'store_info')
+              AND id NOT LIKE %s AND ({conds})
+            ORDER BY length(coalesce(title, '')) ASC
+            LIMIT %s
+        """, [tenant_id, f"store_info-{tenant_id}-fix-%"] + params + [top_k])
+        rows = [dict(r) for r in cur.fetchall()]
+        cur.close()
+        return rows
+    finally:
+        conn.close()
+
+
 def _format_doc(doc: Dict[str, Any], max_chars: int) -> str:
     """One search result as the AI sees it. Products keep the short
     RAG_CHUNK_MAX_CHARS limit (their cards carry the detail); information
@@ -146,7 +248,13 @@ def _format_doc(doc: Dict[str, Any], max_chars: int) -> str:
     price_min = doc.get("price_min")
     price_max = doc.get("price_max")
 
-    parts = [f"Type: {'Product' if is_product else 'Information (website page or store information)'}"]
+    if _is_correction_doc(doc):
+        doc_type_label = "Correction from the business (use this over anything else)"
+    elif is_product:
+        doc_type_label = "Product"
+    else:
+        doc_type_label = "Information (website page or store information)"
+    parts = [f"Type: {doc_type_label}"]
     if title:
         parts.append(f"Title: {title}")
     if sku:
@@ -593,6 +701,26 @@ def search_two_engines(
     # Website engine
     try:
         rows = _hybrid(["type IN ('page', 'post', 'store_info')"], [], info_top_k)
+        # The business's own corrections ("Fix this answer") go first.
+        try:
+            fixes = _find_corrections(tenant_id, q_vec, clean_query)
+        except Exception as fix_err:
+            print(f"   ⚠️ correction lookup failed: {fix_err}")
+            fixes = []
+        if fixes:
+            fix_ids = {f["id"] for f in fixes}
+            rows = fixes + [r for r in rows if r.get("id") not in fix_ids]
+            print(f"   ✏️ {len(fixes)} correction(s) matched")
+        # Pages whose title names what was asked (Contact, Delivery, Pricing…).
+        try:
+            titled = [t for t in _find_title_matches(tenant_id, query) if t["id"] not in {r.get("id") for r in rows}]
+        except Exception as title_err:
+            print(f"   ⚠️ title match failed: {title_err}")
+            titled = []
+        if titled:
+            n_fix = len(fixes)
+            rows = rows[:n_fix] + titled + rows[n_fix:]
+            print(f"   🏷️ {len(titled)} page(s) added by title: {[t.get('title') for t in titled]}")
         for row in rows:
             chunk = _format_doc(row, max_chars=max_chars)
             if chunk:

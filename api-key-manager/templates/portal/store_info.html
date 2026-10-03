@@ -51,6 +51,53 @@
   </div>
 </div>
 
+{# Tabs: all information / "Fix this answer" corrections (2026-10-03) #}
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 6px">
+  <a href="{{ url_for('portal.store_info') }}" class="btn btn-sm{% if si_view != 'corrections' %} btn-primary{% endif %}">All information</a>
+  <a href="{{ url_for('portal.store_info', view='corrections') }}" class="btn btn-sm{% if si_view == 'corrections' %} btn-primary{% endif %}">✏️ Corrections ({{ corrections|length }})</a>
+</div>
+
+{% if si_view == 'corrections' %}
+<div class="si-section-title">Corrections</div>
+<div style="font-size:13px;color:var(--muted);margin:-4px 0 10px">Answers your team fixed from the Inbox or Chat Archive with <strong>Fix this answer</strong>. The AI uses these first.</div>
+{% if not corrections %}
+<div style="font-size:13px;color:var(--muted);padding:14px;background:#fff;border:1px solid var(--line);border-radius:10px">No corrections yet. When the AI gives a wrong answer, open the conversation in the Inbox and click <strong>✏️ Fix this answer</strong> under it.</div>
+{% else %}
+<div style="background:#fff;border:1px solid var(--line);border-radius:10px;overflow-x:auto">
+  <table style="width:100%;border-collapse:collapse;font-size:13.5px;min-width:680px">
+    <thead>
+      <tr style="background:#F7F8FB;text-align:left">
+        <th style="padding:10px 14px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Visitor question</th>
+        <th style="padding:10px 14px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Correct answer</th>
+        <th style="padding:10px 14px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Fixed by</th>
+        <th style="padding:10px 14px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in corrections %}
+      <tr style="border-top:1px solid var(--line)">
+        <td style="padding:12px 14px;vertical-align:top;font-weight:600">{{ c.title }}</td>
+        <td style="padding:12px 14px;vertical-align:top;white-space:pre-wrap">{{ c.content }}</td>
+        <td style="padding:12px 14px;vertical-align:top;color:var(--muted);white-space:nowrap">{% if c.updated_by %}{{ c.updated_by|changed_by }}{% endif %}{% if c.updated_at %} · {{ c.updated_at.strftime('%d %b, %H:%M') }}{% endif %}</td>
+        <td style="padding:8px 14px;vertical-align:top;white-space:nowrap">
+          {% if staff_can_open('portal.store_info_modify_entry') %}
+          <a href="{{ url_for('portal.store_info_modify_entry', entry_id=c.id) }}" class="btn btn-sm">Edit</a>
+          {% endif %}
+          {% if staff_can_open('portal.store_info_delete_entry') %}
+          <form method="POST" action="{{ url_for('portal.store_info_delete_entry', entry_id=c.id) }}" style="display:inline;margin:0"
+                onsubmit="return confirm('Delete this correction? The AI will stop using it.');">
+            <input type="hidden" name="back" value="corrections">
+            <button type="submit" class="btn btn-sm" style="color:var(--bad,#b02020);border-color:rgba(240,68,56,.3)">Delete</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% else %}
 <div class="si-section-title">Store Information</div>
 {% for s in section_rows %}
 <div class="si-section">
@@ -128,4 +175,5 @@
   </div>
   {% endif %}
 </div>
+{% endif %}{# end: all information view #}
 {% endblock %}

@@ -2,6 +2,7 @@ from openai import OpenAI
 import json
 import re
 import os
+import threading
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -394,9 +395,29 @@ def ask_llm(system_prompt, user_message, context_chunks, history=None, structure
             "json_schema": _HANDOFF_RESPONSE_SCHEMA,
         }
 
-    response = _get_client().chat.completions.create(**create_kwargs)
-
-    raw_content = response.choices[0].message.content
+    # Word-by-word website chat (/chat/stream) sets STREAM_CTX for this
+    # request only: the reply text is passed on as it is written, and the
+    # answer model may use a lighter thinking level. /chat never sets it,
+    # so every other caller behaves exactly as before.
+    _effort = getattr(STREAM_CTX, "reasoning_effort", None)
+    if _effort:
+        create_kwargs["reasoning_effort"] = _effort
+    _sink = getattr(STREAM_CTX, "sink", None)
+    if _sink is None:
+        response = _get_client().chat.completions.create(**create_kwargs)
+        raw_content = response.choices[0].message.content
+    else:
+        _streamer = ReplyStreamer(_sink) if structured_handoff else _PlainStreamer(_sink)
+        _parts, response = [], None
+        for _chunk in _get_client().chat.completions.create(
+            stream=True, stream_options={"include_usage": True}, **create_kwargs
+        ):
+            if _chunk.choices and _chunk.choices[0].delta and _chunk.choices[0].delta.content:
+                _parts.append(_chunk.choices[0].delta.content)
+                _streamer.feed(_chunk.choices[0].delta.content)
+            if getattr(_chunk, "usage", None):
+                response = _chunk
+        raw_content = "".join(_parts)
     needs_handoff = None
     if structured_handoff:
         try:
@@ -422,3 +443,83 @@ def ask_llm(system_prompt, user_message, context_chunks, history=None, structure
         usage = {}
 
     return answer, needs_handoff, usage
+
+
+# ── Word-by-word replies (/chat/stream) ─────────────────────────────────────
+STREAM_CTX = threading.local()   # .sink (queue) and .reasoning_effort, per request
+
+
+class ReplyStreamer:
+    """Pass on the "reply" text of the structured JSON reply as it arrives.
+
+    The model writes {"reply": "...", "needs_handoff": ...}; only the reply
+    string is visible to the visitor, so JSON escapes are decoded and the
+    hidden product tag (<<<PHIXTRA_PRODUCTS ...) is never passed on — the
+    final, cleaned reply and product cards are sent when /chat finishes.
+    """
+
+    def __init__(self, sink):
+        self.sink, self.raw, self.pos, self.state = sink, "", 0, "seek"
+        self.text, self.sent, self.stopped = "", 0, False
+
+    def feed(self, piece):
+        self.raw += piece
+        if self.state == "seek":
+            m = re.search(r'"reply"\s*:\s*"', self.raw)
+            if not m:
+                return
+            self.pos, self.state = m.end(), "in"
+        if self.state != "in":
+            return
+        raw = self.raw
+        while self.pos < len(raw):
+            ch = raw[self.pos]
+            if ch == "\\":
+                if self.pos + 1 >= len(raw):
+                    break
+                nxt = raw[self.pos + 1]
+                if nxt == "u":
+                    if self.pos + 6 > len(raw):
+                        break
+                    try:
+                        self.text += chr(int(raw[self.pos + 2:self.pos + 6], 16))
+                    except ValueError:
+                        pass
+                    self.pos += 6
+                else:
+                    self.text += {"n": "\n", "t": "\t", "r": "", '"': '"', "\\": "\\", "/": "/"}.get(nxt, nxt)
+                    self.pos += 2
+            elif ch == '"':
+                self.state = "done"
+                self.pos += 1
+                break
+            else:
+                self.text += ch
+                self.pos += 1
+        self._send(final=self.state == "done")
+
+    def _send(self, final=False):
+        if self.stopped:
+            return
+        visible = self.text
+        cut = visible.find("<<<")
+        if cut >= 0:
+            visible, self.stopped = visible[:cut], True
+        elif not final:
+            while visible.endswith("<"):   # could be the start of the hidden tag
+                visible = visible[:-1]
+        if len(visible) > self.sent:
+            self.sink.put(("delta", visible[self.sent:]))
+            self.sent = len(visible)
+
+
+class _PlainStreamer(ReplyStreamer):
+    """Same as ReplyStreamer for a plain-text (non-JSON) reply."""
+
+    def __init__(self, sink):
+        super().__init__(sink)
+        self.state = "in"
+
+    def feed(self, piece):
+        self.text += piece
+        self._send()
