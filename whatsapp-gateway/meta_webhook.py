@@ -17,7 +17,7 @@ from fastapi.responses import PlainTextResponse
 from tenant_router import get_tenant_by_phone_number_id
 from wa_db import get_db_connection as _get_db
 from message_normalizer import normalize, extract_statuses
-from meta_sender import send_text, send_template, mark_as_read
+from meta_sender import send_text, send_template, mark_as_read, send_typing
 from response_formatter import dispatch_response
 from interactive_handler import handle_addcart, handle_details, handle_list_select
 from wa_db import log_message, is_handoff_active, is_campaign_recipient, create_handoff, cache_products, get_wa_shop_session, delete_wa_shop_session, get_viewed_products, get_active_template, update_campaign_recipient_status, get_session_products, mark_product_viewed, record_cross_channel_optout, get_latest_campaign_recipient_for_reply, record_campaign_reply_flag, queue_campaign_reply_for_review, create_pipeline_opportunity_from_reply, ensure_contact_from_inbound
@@ -80,6 +80,19 @@ def _contact_phone(raw: str) -> str:
     no local-number guessing is needed here."""
     return re.sub(r"[^\d]", "", raw or "")
 
+
+
+
+def _fast_reply_on(tenant_id) -> bool:
+    """Typing indicator + faster AI answers (2026-10-03), switched on per
+    business by WA_FAST_REPLY_TENANTS in .env: "all", a list of tenant ids, or
+    empty (off). Change it in .env, then restart the gateway."""
+    raw = (os.getenv("WA_FAST_REPLY_TENANTS", "") or "").strip().lower()
+    if not raw:
+        return False
+    if raw == "all":
+        return True
+    return str(tenant_id) in {x.strip() for x in raw.split(",") if x.strip()}
 
 async def _handle_opt_out(tenant_id: int, customer_phone: str, phone_number_id: str, access_token: str) -> None:
     """Records the opt-out (upsert — the customer may not have an existing
@@ -969,7 +982,15 @@ async def receive_webhook(
         await send_text(phone_number_id, access_token, customer_phone, _ack)
 
     # ── Call Phixtra AI backend ───────────────────────────────────────────────
+    # 2026-10-03: show "typing…" while the AI writes, and ask for the faster
+    # answer setting (WHATSAPP_REASONING_EFFORT in ai-backend). Businesses in
+    # WA_FAST_REPLY_TENANTS ("all", or ids like "19,17"); empty = off.
+    _fast = _fast_reply_on(tenant_id)
+    if _fast:
+        asyncio.create_task(send_typing(phone_number_id, access_token, meta_message_id))
     _chat_payload: dict = {"api_key": api_key, "message": ai_message, "session_id": session_id}
+    if _fast:
+        _chat_payload["channel"] = "whatsapp"
     if _override_to_ai and shop_session:
         _chat_payload["system_addon"] = _order_ctx
     # Per-number agent: fetch assigned agent's system prompt and override the tenant default

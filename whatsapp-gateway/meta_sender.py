@@ -112,6 +112,26 @@ async def mark_as_read(phone_number_id: str, access_token: str, message_id: str)
 
 
 
+async def send_typing(phone_number_id: str, access_token: str, message_id: str) -> None:
+    """Show "typing…" to the customer while the AI writes its reply (2026-10-03).
+    WhatsApp shows it until our reply arrives or 25 seconds pass, and it also
+    marks their message read (blue ticks). Never raises."""
+    url     = f"{_GRAPH_BASE}/{phone_number_id}/messages"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            r = await client.post(url, headers=headers, json={
+                "messaging_product": "whatsapp",
+                "status": "read",
+                "message_id": message_id,
+                "typing_indicator": {"type": "text"},
+            })
+            if r.status_code >= 400:
+                print(f"⚠️ [META] typing indicator refused {r.status_code}: {r.text[:200]}")
+    except Exception as e:
+        print(f"⚠️ [META] typing indicator failed: {e}")
+
+
 # ── Approved template (works outside the 24h session window) ──────────────────
 
 async def send_template(

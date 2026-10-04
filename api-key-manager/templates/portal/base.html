@@ -1082,13 +1082,13 @@
         <a href="{{ url_for('portal.store_info_delete') }}" class="{% if request.endpoint and request.endpoint.startswith('portal.store_info_delete') %}active{% endif %}">Delete</a>
         {% endif %}
         {% if staff_can_open('portal.store_info_website_connect') %}
-        <a href="{{ url_for('portal.store_info_website_connect') }}" class="{% if request.endpoint == 'portal.store_info_website_connect' %}active{% endif %}">Connect Website</a>
+        <a href="{{ url_for('portal.store_info_website_connect') }}" class="{% if request.endpoint == 'portal.store_info_website_connect' %}active{% endif %}">Connect Website{% if 'store.website_connect' not in granted_features %}<span class="sb-lock" title="Dual Agent plans">🔒</span>{% endif %}</a>
         {% endif %}
         {% if staff_can_open('portal.store_info_website_sync') %}
-        <a href="{{ url_for('portal.store_info_website_sync') }}" class="{% if request.endpoint == 'portal.store_info_website_sync' %}active{% endif %}">Sync Website</a>
+        <a href="{{ url_for('portal.store_info_website_sync') }}" class="{% if request.endpoint == 'portal.store_info_website_sync' %}active{% endif %}">Sync Website{% if 'store.website_connect' not in granted_features %}<span class="sb-lock" title="Dual Agent plans">🔒</span>{% endif %}</a>
         {% endif %}
         {% if staff_can_open('portal.store_info_website_delete') %}
-        <a href="{{ url_for('portal.store_info_website_delete') }}" class="{% if request.endpoint == 'portal.store_info_website_delete' %}active{% endif %}">Delete Website</a>
+        <a href="{{ url_for('portal.store_info_website_delete') }}" class="{% if request.endpoint == 'portal.store_info_website_delete' %}active{% endif %}">Delete Website{% if 'store.website_connect' not in granted_features %}<span class="sb-lock" title="Dual Agent plans">🔒</span>{% endif %}</a>
         {% endif %}
       </div>
     </div>

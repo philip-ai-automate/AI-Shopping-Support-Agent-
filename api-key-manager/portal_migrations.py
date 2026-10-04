@@ -3837,6 +3837,14 @@ def ensure_portal_tables():
         for (pid,) in cur.fetchall():
             cur.execute(_GRANT_ONCE_SQL, (pid, "store.website_schedule"))
         cur.execute("INSERT INTO feature_catalog_seen (feature_key) VALUES ('store.website_schedule') ON CONFLICT DO NOTHING")
+        # Connect Website itself = website plans only (Dual Agent, WooCommerce,
+        # Custom). WhatsApp-only plans are for businesses that don't connect a
+        # website (user, 2026-10-03). Granted once; the Plan editor decides after.
+        cur.execute("""SELECT id FROM plans WHERE channel_mode IN ('dual', 'both', 'woocommerce')
+                       OR COALESCE(is_custom, FALSE)""")
+        for (pid,) in cur.fetchall():
+            cur.execute(_GRANT_ONCE_SQL, (pid, "store.website_connect"))
+        cur.execute("INSERT INTO feature_catalog_seen (feature_key) VALUES ('store.website_connect') ON CONFLICT DO NOTHING")
 
         # Anything a backfill above granted this run is now "seen" — never
         # re-granted on a later start (see _GRANT_ONCE_SQL).

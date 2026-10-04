@@ -91,6 +91,7 @@ class ChatRequest(BaseModel):
     system_addon: str | None = None           # injected by WA gateway for pending-order context
     override_system_prompt: str | None = None  # per-WA-number agent prompt (overrides tenant default)
     assistant_name: str | None = None          # name the website chat shows for the AI, e.g. "Kelvin"
+    channel: str | None = None                 # "whatsapp" from the WA gateway → faster answer setting
 
 
 def record_usage_event(
@@ -329,7 +330,8 @@ _SCOPE_INSTRUCTION = (
     "provided to you."
 )
 
-# Website page links (2026-10-01, user-approved wording). Appended for every
+# Website page links (2026-10-01, user-approved; narrowed 2026-10-03: only pages
+# mainly about the question, never home/About/blog). Appended for every
 # business, whether or not product cards are on.
 _CORRECTION_INSTRUCTION = (
     "\n\n[CORRECTIONS FROM THE BUSINESS]\n"
@@ -342,16 +344,59 @@ _CORRECTION_INSTRUCTION = (
 
 _PAGE_LINK_INSTRUCTION = (
     "\n\n[WEBSITE LINKS]\n"
-    "When your answer uses information from a website page (store data marked "
-    "'Type: Information' that has a URL: line), add a link to that page at the "
-    "end of your answer, using the page's web address exactly as given in the "
-    "store data, for example: \"More details: [Pricing — WhatsApp AI Sales Agent]"
-    "(https://phixtra.com/whatsapp-pricing/)\". If the answer uses more than one "
-    "page, link each of those pages. Never make up a web address. Don't add "
-    "links to greetings or small talk. Do not add a text link for a 'Type: "
-    "Product' item — its product card already has its own button. Store "
-    "information with no URL: line gets no link."
+    "Only add a link when a website page (store data marked 'Type: Information' "
+    "that has a URL: line) is MAINLY ABOUT what the customer asked — for example "
+    "a price question links the pricing page, 'how do I contact you' links the "
+    "contact page, a cart recovery question links the cart recovery page. Put it "
+    "at the end of your answer, using the page's web address exactly as given in "
+    "the store data, for example: \"More details: [Pricing — WhatsApp AI Sales Agent]"
+    "(https://phixtra.com/whatsapp-pricing/)\". "
+    "Never link a general page just because your answer used it: the home page, an "
+    "About Us / About page, blog or resources list pages, or the terms, privacy or "
+    "cookie pages (unless the customer asked about terms, privacy or cookies). "
+    "If no page is mainly about the topic, give the answer with no link. "
+    "Never make up a web address. Don't add links to greetings "
+    "or small talk. Do not add a text link for a 'Type: Product' item — its product "
+    "card already has its own button. Store information with no URL: line gets no link."
 )
+
+# General pages are never linked (2026-10-03, user): the AI may use them, but a
+# link to the home / About Us / blog page doesn't help someone who asked about
+# one thing. The instruction above says so; this makes sure. Terms, privacy and
+# cookie pages stay only when the customer asked about them.
+import re as _re_mod
+_GENERAL_PAGE_PATH = _re_mod.compile(
+    r"^/(?:about|about-us|about-[a-z0-9-]+|who-we-are|our-story|company|blog|news|resources|"
+    r"(?P<legal>terms[a-z0-9-]*|privacy[a-z0-9-]*|cookie[a-z0-9-]*))?/?$", _re_mod.I)
+_LEGAL_WORDS = _re_mod.compile(r"\b(terms|conditions|privacy|cookie|cookies|policy|data protection|gdpr)\b", _re_mod.I)
+_MD_LINK = _re_mod.compile(r"\[([^\]]*)\]\((https?://[^\s)]+)\)")
+_BARE_URL = _re_mod.compile(r"(?<![(\[])https?://[^\s)\]]+")
+
+
+def _drop_general_page_links(answer: str, question: str) -> str:
+    if not answer or "http" not in answer:
+        return answer
+    from urllib.parse import urlparse
+    legal_ok = bool(_LEGAL_WORDS.search(question or ""))
+
+    def _general(url: str) -> bool:
+        m = _GENERAL_PAGE_PATH.match(urlparse(url.rstrip(".,;:!")).path or "/")
+        return bool(m) and not (m.group("legal") and legal_ok)
+
+    out = _MD_LINK.sub(lambda m: "\x00" if _general(m.group(2)) else m.group(0), answer)
+    out = _BARE_URL.sub(lambda m: "\x00" if _general(m.group(0)) else m.group(0), out)
+    if "\x00" not in out:
+        return answer
+    # Tidy what's left: "More details: \x00" / "\x00 and [x](y)" / a label like "About PhiXtra: \x00".
+    out = _re_mod.sub(r"[^\S\n]*(?:,|and|&)?[^\S\n]*\x00[^\S\n]*(?:,|and|&)?", " ", out)
+    out = _re_mod.sub(r"(?im)^[^\S\n]*(?:more details|more info(?:rmation)?|learn more|read more|see)[^\S\n]*:?[^\S\n]*[.]?[^\S\n]*$", "", out)
+    out = _re_mod.sub(r"(?i)\s*(?:more details|more info(?:rmation)?|learn more|read more)\s*:\s*(?=\n|$)", "", out)
+    out = _re_mod.sub(r"(?<=\S)[^\S\n]{2,}", " ", out)
+    out = _re_mod.sub(r"[^\S\n]+\n", "\n", out)
+    out = _re_mod.sub(r"\n{3,}", "\n\n", out).strip()
+    print("   🔗 removed general-page link(s) from the answer")
+    return out
+
 
 # ── WooCommerce Plugin features: the merchant's PLAN decides (2026-09-23) ──
 # Identical copy of api-key-manager/portal_routes.py PLUGIN_FEATURE_PLAN_KEYS
@@ -505,6 +550,21 @@ def _log_overage_event(tenant_id: int, quota: dict) -> None:
 
 @app.post("/chat")
 def chat(req: ChatRequest):
+    """WhatsApp replies (gateway sends channel="whatsapp") use the faster answer
+    setting WHATSAPP_REASONING_EFFORT (default "low"), like word-by-word website
+    chat (2026-10-03). Everything else is unchanged. The setting is per request
+    thread and always cleared afterwards."""
+    import llm as _llm
+    if req.channel == "whatsapp" and getattr(_llm.STREAM_CTX, "reasoning_effort", None) is None:
+        _llm.STREAM_CTX.reasoning_effort = (os.getenv("WHATSAPP_REASONING_EFFORT", "low") or "").strip() or None
+        try:
+            return _chat(req)
+        finally:
+            _llm.STREAM_CTX.reasoning_effort = None
+    return _chat(req)
+
+
+def _chat(req: ChatRequest):
     tenant, error = verify_api_key(req.api_key)
     if error:
         raise HTTPException(status_code=401, detail=error)
@@ -867,6 +927,7 @@ def chat(req: ChatRequest):
         print("⚠️ handoff detection error:", _hf_err)
     # ─────────────────────────────────────────────────────────────────────────
 
+    answer = _drop_general_page_links(answer, req.message)
     add_message(session_id, tenant_id, "assistant", answer)
 
     # ── Parse and strip product recommendation tag ───────────────────────────

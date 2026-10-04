@@ -329,7 +329,7 @@
     {% if is_current %}
     <span class="btn-upgrade btn-current">Current plan</span>
     {% elif plan.is_custom %}
-    <a href="mailto:sales@phixtra.com?subject=Custom%20plan%20enquiry" class="btn-upgrade btn-upgrade-outline">Talk to Sales</a>
+    <a href="https://outlook.office.com/book/TalktoUs1@phixtra.com/?ismsaljsauthenabled" target="_blank" rel="noopener" class="btn-upgrade btn-upgrade-outline">Talk to Sales</a>
     {% elif plan.slug in ('free', 'connect') %}
     <span class="btn-upgrade btn-upgrade-outline" style="cursor:default">Downgrade</span>
     {% elif is_popular %}

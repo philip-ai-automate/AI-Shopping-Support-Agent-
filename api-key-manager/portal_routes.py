@@ -477,6 +477,7 @@ PLAN_FEATURE_CATALOG = {
         ("store.info_delete",            "Delete a Store Information entry"),
         ("store.info_documents_upload",  "Upload an AI knowledge document"),
         ("store.info_documents_delete",  "Delete an AI knowledge document"),
+        ("store.website_connect",        "Connect Website (Connect / Sync / Delete Website)"),
         ("store.website_schedule",       "Website — automatic re-reading (daily / weekly / monthly)"),
     ],
     "Team": [
@@ -669,6 +670,7 @@ ROLE_FORM_GRID = {
         {"label": "Store Information",  "view": "store.info", "create": "store.info_create", "edit": "store.info_edit", "delete": "store.info_delete"},
         {"label": "Knowledge Document", "create": "store.info_documents_upload", "delete": "store.info_documents_delete",
          "needs_view": "store.info"},
+        {"label": "Connect Website (plan unlock)", "other": ["store.website_connect"]},
         {"label": "Website automatic re-reading (plan unlock)", "other": ["store.website_schedule"]},
     ],
     "Team": [
@@ -749,7 +751,7 @@ PLAN_ONLY_FEATURE_KEYS = {
     "woo.product_recommendation", "woo.cross_selling", "woo.cart_recovery",
     "woo.chat_archive_30days", "woo.chat_archive_unlimited",
     "help.tutorials", "help.videos",
-    "store.website_schedule",
+    "store.website_connect", "store.website_schedule",
 }
 
 # Modules every team member can open whatever their role, so the Roles screen
@@ -10232,7 +10234,8 @@ def _dashboard_plan_flags(tenant_id: int, plan_info) -> tuple:
         cur.execute("SELECT 1 FROM website_sources WHERE tenant_id=%s", (tenant_id,))
         has_site = cur.fetchone() is not None
         cur.close(); conn.close()
-        if website_plan and not has_site and _plan_grants_feature(plan, "store.info"):
+        if website_plan and not has_site and _plan_grants_feature(plan, "store.info") \
+                and _plan_grants_feature(plan, "store.website_connect"):
             connect = not _website_plugin_sends_pages(tenant_id)
     except Exception as e:
         print("⚠️ _dashboard_plan_flags:", e)
@@ -10336,7 +10339,8 @@ def store_info_website_connect():
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "store.info", "Store Information")
+    r2 = _require_plan_sub_feature(customer, "store.info", "Store Information") \
+        or _require_plan_sub_feature(customer, "store.website_connect", "Connect Website")
     if r2: return r2
     r3 = _require_team_permission("store.info_create")
     if r3: return r3
@@ -10397,7 +10401,8 @@ def store_info_website_sync():
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "store.info", "Store Information")
+    r2 = _require_plan_sub_feature(customer, "store.info", "Store Information") \
+        or _require_plan_sub_feature(customer, "store.website_connect", "Connect Website")
     if r2: return r2
     r3 = _require_team_permission("store.info")
     if r3: return r3
@@ -10487,7 +10492,8 @@ def store_info_website_delete():
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "store.info", "Store Information")
+    r2 = _require_plan_sub_feature(customer, "store.info", "Store Information") \
+        or _require_plan_sub_feature(customer, "store.website_connect", "Connect Website")
     if r2: return r2
     r3 = _require_team_permission("store.info_delete")
     if r3: return r3

@@ -180,8 +180,23 @@ _TITLE_STOPWORDS = {
     "your", "yours", "you", "with", "from", "this", "that", "these", "those", "there", "their", "they", "them",
     "about", "into", "than", "then", "will", "would", "could", "should", "can", "please", "tell", "give",
     "want", "need", "like", "just", "also", "much", "many", "more", "most", "some", "any", "for", "and", "the",
-    "are", "is", "was", "were", "been", "being", "get", "got", "know", "help", "phixtra", "page", "website",
+    "are", "is", "was", "were", "been", "being", "get", "got", "know", "help", "page", "website",
 }
+# How much of the top of a page counts as its heading (the small label above
+# the main heading + the main heading itself), 2026-10-03.
+_TOP_OF_PAGE_CHARS = int(os.getenv("TITLE_MATCH_TOP_CHARS", "200"))
+
+
+def _business_name_words(cur, tenant_id: int) -> set:
+    """Words of the business's own name and web address (e.g. "phixtra"):
+    they are on almost every page, so they never pick a page."""
+    cur.execute("""SELECT t.name, t.domain,
+                          (SELECT site_url FROM documents WHERE tenant_id=t.id AND site_url IS NOT NULL LIMIT 1) AS site
+                   FROM tenants t WHERE t.id=%s""", (tenant_id,))
+    row = cur.fetchone() or {}
+    text = " ".join(str(v or "") for v in row.values()).lower()
+    return {w for w in re.findall(r"[a-z]{4,}", text)
+            if w not in {"https", "http", "www", "com", "limited", "ltd"}}
 
 
 _TITLE_SYNONYMS = [
@@ -197,10 +212,14 @@ _TITLE_SYNONYMS = [
 
 
 def _find_title_matches(tenant_id: int, query: str) -> List[Dict[str, Any]]:
-    """Website pages whose TITLE contains an important word of the question
-    ("contact", "delivery", "pricing", "returns"…), so e.g. the Contact page
-    always reaches the AI for a contact question even when other pages read
-    similarly (2026-10-03). At most TITLE_MATCH_TOP_K (default 2)."""
+    """Website pages whose TITLE — or the top of the page (its label + main
+    heading) — contains an important word of the question ("contact",
+    "delivery", "pricing", "connect"…), so e.g. the Contact page always reaches
+    the AI for a contact question even when other pages read similarly
+    (2026-10-03). The top of the page counts because page titles are often
+    written for Google ("WhatsApp Business API") while the heading names the
+    product ("PhiXtra Connect"). Words of the business's own name never count.
+    Title matches come first. At most TITLE_MATCH_TOP_K (default 2)."""
     q = (query or "").lower()
     words = [w for w in re.findall(r"[a-zA-Z]{4,}", q) if w not in _TITLE_STOPWORDS]
     # Everyday words for the same page as a usual page title.
@@ -214,20 +233,43 @@ def _find_title_matches(tenant_id: int, query: str) -> List[Dict[str, Any]]:
     conn = _get_pg_conn()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        conds = " OR ".join(["title ~* %s"] * len(words))
-        params = [r"\m" + re.escape(w) for w in words]
-        cur.execute(f"""
+        own = _business_name_words(cur, tenant_id)
+        words = [w for w in words if w not in own]
+        if not words:
+            cur.close()
+            return []
+        pattern = r"\m(" + "|".join(re.escape(w) for w in words) + ")"
+        cur.execute("""
             SELECT id, title, content, url, sku, brand, price_min, price_max, in_stock, type,
                    categories_text, site_url, tenant_id, image_url, COALESCE(currency, '') AS currency
             FROM documents
             WHERE tenant_id = %s AND type IN ('page', 'post', 'store_info')
-              AND id NOT LIKE %s AND ({conds})
-            ORDER BY length(coalesce(title, '')) ASC
-            LIMIT %s
-        """, [tenant_id, f"store_info-{tenant_id}-fix-%"] + params + [top_k])
-        rows = [dict(r) for r in cur.fetchall()]
+              AND id NOT LIKE %s
+              AND (title ~* %s OR left(coalesce(content, ''), %s) ~* %s)
+            LIMIT 60
+        """, [tenant_id, f"store_info-{tenant_id}-fix-%", pattern, _TOP_OF_PAGE_CHARS, pattern])
+        cands = [dict(r) for r in cur.fetchall()]
         cur.close()
-        return rows
+
+        def _score(d):
+            # Title word = 3; word in the page's first 60 characters (its label
+            # / heading) = 2; further down the top of the page = 1. More of the
+            # question's words matched = higher.
+            title = (d.get("title") or "").lower()
+            top = (d.get("content") or "")[:_TOP_OF_PAGE_CHARS].lower()
+            score = 0
+            for w in words:
+                if re.search(r"\b" + re.escape(w), title):
+                    score += 3
+                else:
+                    m = re.search(r"\b" + re.escape(w), top)
+                    if m:
+                        score += 2 if m.start() < 60 else 1
+            return score
+
+        scored = sorted(((_score(d), d) for d in cands), key=lambda x: (-x[0], len(x[1].get("title") or "")))
+        return [d for sc, d in scored if sc >= 2][:top_k]
+
     finally:
         conn.close()
 

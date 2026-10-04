@@ -397,8 +397,9 @@ def ask_llm(system_prompt, user_message, context_chunks, history=None, structure
 
     # Word-by-word website chat (/chat/stream) sets STREAM_CTX for this
     # request only: the reply text is passed on as it is written, and the
-    # answer model may use a lighter thinking level. /chat never sets it,
-    # so every other caller behaves exactly as before.
+    # answer model may use a lighter thinking level. /chat sets only the
+    # thinking level, and only for WhatsApp replies (channel="whatsapp");
+    # every other caller behaves exactly as before.
     _effort = getattr(STREAM_CTX, "reasoning_effort", None)
     if _effort:
         create_kwargs["reasoning_effort"] = _effort

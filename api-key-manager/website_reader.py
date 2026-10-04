@@ -65,7 +65,9 @@ EXTRACT_JS = r"""
                '[role=navigation],[role=banner],[role=contentinfo],[role=dialog],' +
                '.menu,.nav,.navbar,.site-header,.site-footer,.breadcrumb,.breadcrumbs,.sidebar,.widget-area,' +
                '.elementor-location-header,.elementor-location-footer,#header,#footer,#masthead,#colophon,' +
-               '[id^="phixtra-welcome"],[id^="phixtra-chat"],[class*="phixtra-widget"],[class*="phixtra-chat"],[class*="phixtra-msg"]';
+               '[id^="phixtra-welcome"],[id^="phixtra-chat"],[class*="phixtra-widget"],[class*="phixtra-chat"],[class*="phixtra-msg"],' +
+               // PhiXtra AI plugin chat bubble (ids phixaish-…) + breadcrumb trails ("Home / Digital /"), 2026-10-03
+               '[id^="phixaish"],[class*="phixaish"],[class*="breadcrumb"],.woocommerce-breadcrumb,[aria-label="breadcrumb" i],[aria-label="breadcrumbs" i]';
   const doc = document.cloneNode(true);
   doc.querySelectorAll(kill).forEach(e => e.remove());
   doc.querySelectorAll('[id],[class]').forEach(e => {
@@ -484,9 +486,9 @@ def schedule_allowed(tenant_id: int) -> bool:
     conn = db()
     cur = conn.cursor()
     cur.execute("""SELECT 1 FROM tenants t JOIN plan_feature_grants g
-                   ON g.plan_id = COALESCE(t.plan_id, 1) AND g.feature_key = 'store.website_schedule'
-                   WHERE t.id = %s""", (tenant_id,))
-    ok = cur.fetchone() is not None
+                   ON g.plan_id = COALESCE(t.plan_id, 1) AND g.feature_key = ANY(%s)
+                   WHERE t.id = %s""", (["store.website_schedule", "store.website_connect"], tenant_id))
+    ok = len(cur.fetchall()) == 2   # both: re-reading AND Connect Website still in the plan
     conn.close()
     return ok
 
