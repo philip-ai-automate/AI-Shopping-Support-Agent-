@@ -230,6 +230,7 @@
 
       <script src="https://www.google.com/recaptcha/api.js" async defer></script>
       <div class="g-recaptcha" data-sitekey="6LdARassAAAAAE2riEDaWAuK-g2DY7e67qoAjOUc"></div>
+      <p class="rg-err" id="hRecaptcha" hidden>Please tick "I'm not a robot" first.</p>
 
       <button type="submit" class="rg-submit" id="submitBtn">Create free account</button>
 
@@ -392,6 +393,9 @@ el('regForm').addEventListener('submit', function(e){
   var first = null;
   RULES.forEach(function(r){ if (!check(r) && !first) first = el(r[0]); });
   if (first) { e.preventDefault(); first.focus(); first.scrollIntoView({behavior:'smooth', block:'center'}); return; }
+  if (window.grecaptcha && grecaptcha.getResponse && grecaptcha.getResponse() === '') {
+    e.preventDefault(); var rc = el('hRecaptcha'); rc.hidden = false; rc.scrollIntoView({behavior:'smooth', block:'center'}); return;
+  }
   var b = el('submitBtn'); b.disabled = true; b.textContent = 'Creating account…';
 });
 

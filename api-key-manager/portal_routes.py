@@ -2606,6 +2606,129 @@ def _send_founder_welcome_email_wa(
     )
 
 
+def _send_account_ready_email(
+    email: str,
+    first_name: str,
+    business_name: str,
+    kind: str,              # "whatsapp" | "both" | "website"
+    domain: str = "",
+    website_platform: str = "",
+) -> None:
+    """Welcome email sent once, right after a new business verifies its email
+    (2026-10-06). Everyone starts on PhiXtra Connect (Free, no AI) and starts
+    the 2-week AI trial themselves from the dashboard."""
+    import html as _h
+    greeting = _h.escape(first_name.strip()) if first_name and first_name.strip() else "there"
+    biz  = _h.escape((business_name or "").strip() or (domain or ""))
+    site = _h.escape(domain or "your website")
+    wp   = (website_platform or "") == "wordpress"
+    trial_link = f"{_PORTAL_BASE_URL}/login?next=/dashboard"
+    plans_link = f"{_PORTAL_BASE_URL}/login?next=/billing/plans"
+    login_link = f"{_PORTAL_BASE_URL}/login"
+
+    if kind == "both":
+        account_for = biz
+        features = ["The official WhatsApp Business API. You keep your number.",
+                    f"A chat box on {site}",
+                    "One shared inbox for WhatsApp and website chats",
+                    "A free CRM with a sales pipeline"]
+        team_line = "Your team replies to customers on WhatsApp and your website. There's no AI on this plan."
+        product, who, trial_plan = ("PhiXtra AI Sales Agent for WhatsApp and Website",
+                                    "your customers on WhatsApp and your website", "Enterprise Dual Agent plan")
+    elif kind == "website":
+        account_for = site
+        features = ["A chat box on your website",
+                    "One shared inbox where your team answers website chats",
+                    "A free CRM with a sales pipeline"]
+        team_line = ("Your team answers website visitors. Replies show in the visitor's chat box, "
+                     "or go by email if they've left. There's no AI on this plan.")
+        product, who, trial_plan = ("PhiXtra AI Sales Agent for Website",
+                                    "your website visitors", "Enterprise Website plan")
+    else:
+        account_for = biz
+        features = ["The official WhatsApp Business API. You keep your number.",
+                    "One shared inbox for your whole team",
+                    "A free CRM with a sales pipeline"]
+        team_line = "Your team replies to your customers. There's no AI on this plan."
+        product, who, trial_plan = ("PhiXtra AI Sales Agent for WhatsApp",
+                                    "your WhatsApp customers", "Enterprise plan")
+
+    steps = [("Log in to the PhiXtra portal.", "")]
+    if kind in ("whatsapp", "both"):
+        steps.append(("Connect your WhatsApp number.",
+                      "Use Meta's official sign-up window inside the portal. You keep your number."))
+    if kind in ("both", "website"):
+        steps.append(("Connect your website.",
+                      f"We check we can reach {site}. Then click Sync now so the AI can read your pages."))
+        if wp:
+            steps.append(("Add the chat box.", "Install the free PhiXtra plugin in WordPress, then paste in "
+                                               "the API key from the portal's API Keys page."))
+            steps.append(("Your WooCommerce products sync through the plugin.", ""))
+        else:
+            steps.append(("Add the chat box.", "Copy one line of code from the portal's Add Chat Box page into "
+                                               "your website. There's a step-by-step guide for your platform."))
+            steps.append(("Upload your product list.", "Excel, CSV or Google Sheets."))
+    else:
+        steps.append(("Upload your product list.", "Excel, CSV or Google Sheets."))
+    steps.append(("Start your 2-week AI trial when you're ready.", ""))
+
+    trial_head = "Increase your revenue and customer satisfaction"
+    trial_text = (f"Start your free 2-week trial of {product}. It answers {who} straight away, "
+                  f"day and night, and helps them buy.")
+    trial_small = (f"Full {trial_plan} for 14 days. No card needed. One trial per business. "
+                   f"After 14 days you go back to PhiXtra Connect unless you choose a plan.")
+
+    feat_html = "".join(f"<li>{f}</li>" for f in features)
+    steps_html = "".join(
+        f'<li style="margin-bottom:4px">{t}'
+        + (f'<br><span style="color:#5A6577;font-size:13px;line-height:1.5">{s}</span>' if s else "")
+        + "</li>" for t, s in steps)
+    html = f"""
+    <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;background:#ffffff;color:#111E2D;font-size:15px;line-height:1.6;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden">
+      <div style="background:#0B1D40;color:#ffffff;padding:16px 24px;font-weight:700;font-size:18px">PhiXtra</div>
+      <div style="padding:24px">
+        <h2 style="font-size:21px;line-height:1.3;color:#0B1D40;margin:0 0 14px">Your account is ready</h2>
+        <p style="margin:0 0 14px">Hi {greeting},</p>
+        <p style="margin:0 0 14px">Your email is verified and your PhiXtra account for <b>{account_for}</b> is ready.</p>
+        <div style="border:1px solid #D6DEEC;background:#F4F7FC;border-radius:10px;padding:14px 16px;margin:0 0 16px">
+          <div style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#4A5B78;margin-bottom:4px">Your plan</div>
+          <div style="font-weight:700;font-size:16px;color:#0B1D40;margin-bottom:6px">PhiXtra Connect (Free)</div>
+          <ul style="margin:0 0 8px;padding-left:18px">{feat_html}</ul>
+          <p style="margin:0;font-size:14px">{team_line}</p>
+        </div>
+        <div style="background:#0B1D40;color:#ffffff;border-radius:12px;padding:22px 22px 18px;margin:0 0 20px;text-align:center">
+          <div style="font-weight:700;font-size:19px;line-height:1.3;color:#ffffff;margin:0 0 8px">{trial_head}</div>
+          <p style="margin:0 0 16px;font-size:14.5px;color:#DCE4F2">{trial_text}</p>
+          <a href="{trial_link}" style="display:inline-block;background:#ffffff;color:#0B1D40;padding:13px 26px;border-radius:10px;font-weight:700;font-size:15px;text-decoration:none">Start my free 2-week trial</a>
+          <p style="margin:12px 0 0;font-size:12.5px;color:#AFC0DC">{trial_small}</p>
+        </div>
+        <h3 style="font-size:15px;margin:0 0 8px;color:#111E2D">What to do next</h3>
+        <ol style="margin:0 0 18px;padding-left:20px;line-height:1.75">{steps_html}</ol>
+        <p style="margin:0 0 18px">
+          <a href="{login_link}" style="display:inline-block;background:#0B1D40;color:#ffffff;padding:12px 22px;border-radius:10px;font-weight:700;text-decoration:none;margin:0 10px 8px 0">Log in to PhiXtra</a>
+          <a href="{plans_link}" style="display:inline-block;background:#ffffff;color:#0B1D40;padding:10px 20px;border-radius:10px;font-weight:700;text-decoration:none;border:2px solid #0B1D40;margin:0 0 8px 0">See plans</a>
+        </p>
+        <p style="color:#6B7280;font-size:13px;margin:0">Questions? Email <a href="mailto:support@phixtra.com" style="color:#0B1D40">support@phixtra.com</a></p>
+      </div>
+    </div>"""
+
+    plain_name = (business_name or "").strip() or (domain or "") if kind != "website" else (domain or "your website")
+    text_steps = "\n".join(f"{i}. {t}" + (f" {s}" if s else "") for i, (t, s) in enumerate(steps, 1))
+    text = (
+        f"Hi {first_name.strip() if first_name and first_name.strip() else 'there'},\n\n"
+        f"Your email is verified and your PhiXtra account for {plain_name} is ready.\n\n"
+        f"YOUR PLAN: PhiXtra Connect (Free)\n"
+        + "".join(f"- {f}\n" for f in features).replace("&amp;", "&")
+        + f"{team_line}\n\n"
+        f"{trial_head.upper()}\n{trial_text}\n"
+        f"Start my free 2-week trial: {trial_link}\n{trial_small}\n\n"
+        f"WHAT TO DO NEXT\n{text_steps}\n\n"
+        f"Log in: {login_link}\nSee plans: {plans_link}\n\n"
+        f"Questions? Email support@phixtra.com"
+    )
+    send_email(email, "Your PhiXtra account is ready", html, text_body=text)
+
+
 def _send_verified_welcome_email_web(
     email: str,
     first_name: str,
@@ -2814,6 +2937,18 @@ def _send_registration_otp_sms(phone: str, otp: str) -> bool:
     return True
 
 
+def _email_in_use(cur, email: str) -> bool:
+    """True when this email already logs in somewhere — as a business owner
+    or as an active team member (any capitals). Sign-ups refuse it
+    (2026-10-06): the database doesn't stop a second account with the same
+    email, and log-in would then open the wrong one."""
+    cur.execute("SELECT 1 FROM customers WHERE lower(email) = lower(%s) LIMIT 1", (email,))
+    if cur.fetchone():
+        return True
+    cur.execute("SELECT 1 FROM team_members WHERE lower(email) = lower(%s) AND is_active LIMIT 1", (email,))
+    return cur.fetchone() is not None
+
+
 def _register_whatsapp_merchant(
     first_name: str, last_name: str, email: str, password: str,
     business_name: str, phone_number: str = "",
@@ -2844,8 +2979,7 @@ def _register_whatsapp_merchant(
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     # Check email not already registered
-    cur.execute("SELECT id FROM customers WHERE email=%s LIMIT 1", (email,))
-    if cur.fetchone():
+    if _email_in_use(cur, email):
         cur.close(); conn.close()
         flash("An account with that email already exists. Please log in.", "warning")
         return redirect(url_for("portal.login"))
@@ -2992,6 +3126,12 @@ def _register_web_merchant(first_name, last_name, email, password, phone_number,
 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # One email = one login: checked before anything is created, so a
+    # refused sign-up never leaves a business behind (2026-10-06).
+    if _email_in_use(cur, email):
+        cur.close(); conn.close()
+        return {"ok": False, "reason": "duplicate_email"}
 
     # A website address that already belongs to a business is refused
     # (2026-10-05): this used to add the new sign-up as a second owner login
@@ -3173,8 +3313,9 @@ def wp_connect():
     import requests as _req
     recaptcha_response = request.form.get("g-recaptcha-response", "")
     if not recaptcha_response:
-        flash("Please complete the reCAPTCHA check.", "danger")
-        return redirect(url_for("portal.wp_connect"))
+        flash("Please tick \"I'm not a robot\" before creating your account.", "danger")
+        return render_template("portal/wp_connect.html", domain=(request.form.get("tenant_domain") or "").strip(),
+                               email=(request.form.get("email") or "").strip(), form_data=request.form)
     try:
         rv = _req.post("https://www.google.com/recaptcha/api/siteverify",
                        data={"secret": os.getenv("RECAPTCHA_SECRET_KEY", ""), "response": recaptcha_response},
@@ -3219,6 +3360,7 @@ def wp_connect():
         phone_number=phone_number, tenant_domain=tenant_domain,
         hear_about_us="wordpress_plugin", business_country=phone_country,
         signup_channel="website" if NEW_WEBSITE_SIGNUP else None,
+        website_platform="wordpress",
     )
 
     if not result["ok"]:
@@ -3277,7 +3419,9 @@ def wp_connect_status():
         SELECT c.email_verified
         FROM tenants t
         JOIN customers c ON c.tenant_id = t.id
-        WHERE t.domain = %s AND lower(c.email) = %s
+        WHERE regexp_replace(lower(t.domain), '^www\\.', '') = regexp_replace(%s, '^www\\.', '')
+          AND lower(c.email) = %s
+        ORDER BY c.email_verified DESC
         LIMIT 1
     """, (domain, admin_email))
     row = cur.fetchone()
@@ -3431,8 +3575,8 @@ def register():
     import requests as _req
     recaptcha_response = request.form.get("g-recaptcha-response", "")
     if not recaptcha_response:
-        flash("Please complete the reCAPTCHA check.", "danger")
-        return redirect(_register_url())
+        flash("Please tick \"I'm not a robot\" before creating your account.", "danger")
+        return _register_page(request.form, form_data=request.form)
     try:
         rv = _req.post("https://www.google.com/recaptcha/api/siteverify",
                        data={"secret": os.getenv("RECAPTCHA_SECRET_KEY", ""), "response": recaptcha_response},
@@ -3811,6 +3955,7 @@ def verify_email():
         cur_wa.execute("""
             SELECT c.first_name, c.email, c.phone_number,
                    t.name AS business_name, t.domain, t.source_type,
+                   t.signup_channel, t.website_platform,
                    k.trial_expires_at
             FROM customers c
             JOIN tenants t ON t.id = c.tenant_id
@@ -3821,12 +3966,19 @@ def verify_email():
         wa_row = cur_wa.fetchone()
         cur_wa.close(); conn2.close()
 
-        if wa_row and wa_row.get("source_type") == "whatsapp":
-            _send_welcome_trial_email_wa(
+        # Every new sign-up starts on PhiXtra Connect (AI off) → the new
+        # "account is ready" email. The old emails below are kept only for
+        # web businesses on the old automatic-trial system (no signup_channel).
+        if wa_row and (wa_row.get("source_type") == "whatsapp" or wa_row.get("signup_channel")):
+            _kind = ("both" if wa_row.get("signup_channel") == "both"
+                     else "whatsapp" if wa_row.get("source_type") == "whatsapp" else "website")
+            _send_account_ready_email(
                 email=wa_row["email"],
                 first_name=wa_row["first_name"] or "",
                 business_name=wa_row["business_name"] or "",
-                trial_expires_at=wa_row["trial_expires_at"],
+                kind=_kind,
+                domain=wa_row.get("domain") or "",
+                website_platform=wa_row.get("website_platform") or "",
             )
         elif wa_row:
             _send_verified_welcome_email_web(
@@ -5635,7 +5787,7 @@ def _setup_checklist(tenant_id: int):
                           url=url_for("portal.data_sources")))
     paid = t["plan_slug"] not in AI_OFF_FREE_PLAN_SLUGS
     steps.append(dict(key="trial", title="Start your 2-week AI trial", done=bool(t["trial_granted_at"]) or paid,
-                      text="Full features for 14 days, no card needed. The chat box appears on your website once your trial or a paid plan starts.",
+                      text="Full features for 14 days, no card needed. Until then your team answers website chats from the Inbox.",
                       action=None, url=None, trial=not t["trial_granted_at"] and not paid))
     for i, st in enumerate(steps, 1):
         st["n"] = i
