@@ -5,6 +5,12 @@
 
 {% block head %}
 <style>
+/* Website chat presence + AI trial nudge (2026-10-06) */
+.web-presence{display:inline-block;font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;margin-top:4px;white-space:nowrap}
+.web-presence.on{background:#E7F8EF;color:#027A48}
+.web-presence.off{background:#FEF3E2;color:#B54708}
+.web-trial{margin:0 16px 10px;border:1px solid var(--line);background:#F5F7FB;border-radius:10px;padding:10px 12px;font-size:13px;display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center}
+.web-trial-btn{background:#12B76A;color:#fff;border-radius:8px;padding:6px 10px;font-weight:600;font-size:12.5px;text-decoration:none;white-space:nowrap}
 /* ── Force full-screen layout ─────────────────────────────────────────────── */
 html, body { overflow: hidden; height: 100%; }
 .site-main  { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
@@ -1230,8 +1236,8 @@ html, body { overflow: hidden; height: 100%; }
         {% if not webchat_conversations %}
         <div class="empty-pane">
           <div class="empty-icon" style="font-size:36px">💬</div>
-          <div>No Web Chat handoffs yet</div>
-          <p style="font-size:12.5px;color:var(--muted);margin-top:6px">When a visitor asks your AI website chat assistant something it can't answer and asks for a human, it'll show up here.</p>
+          <div>No website chats yet</div>
+          <p style="font-size:12.5px;color:var(--muted);margin-top:6px">When a visitor messages you from the chat box on your website, or the AI hands a website chat to your team, it shows up here.</p>
         </div>
         {% else %}
         {% for c in webchat_conversations %}
@@ -1252,6 +1258,7 @@ html, body { overflow: hidden; height: 100%; }
               {% endif %}
               {% if c.needs_reply %}<span class="conv-badge" title="Waiting for a reply">●</span>{% endif %}
             </div>
+            {% if c.presence_words %}<div><span class="web-presence {{ 'on' if c.online else 'off' }}">{{ c.presence_words }}</span></div>{% endif %}
           </div>
         </a>
         {% endfor %}
@@ -1275,8 +1282,12 @@ html, body { overflow: hidden; height: 100%; }
               <div class="chat-name">{{ (active_webchat_conv.visitor_name if active_webchat_conv else None) or 'Website visitor' }}</div>
               <div class="chat-sub">
                 {% if active_webchat_conv and active_webchat_conv.visitor_email %}{{ active_webchat_conv.visitor_email }} · {% endif %}
+                {% if active_webchat_conv and active_webchat_conv.whatsapp_number %}{{ active_webchat_conv.whatsapp_number }} · {% endif %}
                 {{ webchat_messages|length }} message{{ 's' if webchat_messages|length != 1 }}
               </div>
+              {% if active_webchat_conv and active_webchat_conv.presence_words %}
+              <div><span class="web-presence {{ 'on' if active_webchat_conv.online else 'off' }}" id="webPresence">{{ active_webchat_conv.presence_words }}</span></div>
+              {% else %}<div><span class="web-presence off" id="webPresence" hidden></span></div>{% endif %}
             </div>
           </div>
           {% if has_team %}
@@ -1297,7 +1308,7 @@ html, body { overflow: hidden; height: 100%; }
           {% endif %}
         </div>
 
-        <div class="chat-messages">
+        <div class="chat-messages" id="webchatMessages" data-key="{{ active_phone }}" data-count="{{ webchat_messages|length }}">
           {% if not webchat_messages %}
           <div class="empty-pane">
             <div class="empty-icon" style="font-size:36px">💬</div>
@@ -1305,7 +1316,7 @@ html, body { overflow: hidden; height: 100%; }
           </div>
           {% else %}
           {% set ns3 = namespace(last_date=None, last_q='') %}
-          {% set web_can_send = (not (has_team and not (active_webchat_conv and active_webchat_conv.assigned_to_key == current_actor_key))) and (active_webchat_conv and active_webchat_conv.visitor_email) %}
+          {% set web_can_send = not (has_team and not (active_webchat_conv and active_webchat_conv.assigned_to_key == current_actor_key)) %}
           {% for msg in webchat_messages %}
             {% set msg_date = msg.created_at.strftime('%d %b %Y') if msg.created_at else None %}
             {% if msg_date and msg_date != ns3.last_date %}
@@ -1339,7 +1350,7 @@ html, body { overflow: hidden; height: 100%; }
                 <button type="button" class="fix-ans-btn" data-channel="web" data-conv="{{ active_phone }}" data-ref="{{ msg.msg_ref }}"
                         data-q="{{ ns3.last_q }}" data-a="{{ msg.content }}"
                         data-reply-url="{{ url_for('portal.inbox_reply', phone=active_phone) if web_can_send else '' }}"
-                        data-no-send="{{ '' if web_can_send else ('This visitor left no email address, so a reply cannot be sent.' if not (active_webchat_conv and active_webchat_conv.visitor_email) else 'Claim this conversation first to send a reply.') }}">✏️ Fix this answer</button>
+                        data-no-send="{{ '' if web_can_send else 'Claim this conversation first to send a reply.' }}">✏️ Fix this answer</button>
                 {% endif %}
                 {% endif %}
               </div>
@@ -1365,23 +1376,31 @@ html, body { overflow: hidden; height: 100%; }
             </form>
             {% endif %}
           </div>
-          {% elif not (active_webchat_conv and active_webchat_conv.visitor_email) %}
-          <div style="padding:16px 20px;text-align:center">
-            <p style="font-size:13px;color:var(--muted)">No email address on file for this visitor — there's no way to reply to them.</p>
-          </div>
           {% else %}
+          {% set _wc_online = active_webchat_conv and active_webchat_conv.online %}
+          {% set _wc_email = active_webchat_conv.visitor_email if active_webchat_conv else None %}
+          {% set _wc_phone = active_webchat_conv.whatsapp_number if active_webchat_conv else None %}
+          {% set _wc_away = ('Your reply will be emailed to ' ~ _wc_email ~ '.') if _wc_email else ('They gave no email address, so they see your reply only if they come back to the website.' ~ ((' You can call them on ' ~ _wc_phone ~ '.') if _wc_phone else '')) %}
+          {% if webchat_trial_available %}
+          <div class="web-trial">
+            <span>Tired of answering every chat yourself? Let the AI answer website visitors instantly.</span>
+            <a href="{{ url_for('portal.billing_plans') }}" class="web-trial-btn">Start my 2-week AI trial</a>
+          </div>
+          {% endif %}
           <div class="reply-wrap">
             <div class="reply-inner">
               <form method="POST" action="{{ url_for('portal.inbox_reply', phone=active_phone) }}">
                 <div class="reply-toolbar">
-                  <span class="reply-to-label">Reply by email to {{ active_webchat_conv.visitor_email }}</span>
+                  <span class="reply-to-label" id="webReplyLabel"
+                        data-online="The visitor is on the website. Your reply shows in their chat box straight away."
+                        data-away="The visitor has left. {{ _wc_away }}">{% if _wc_online %}The visitor is on the website. Your reply shows in their chat box straight away.{% else %}The visitor has left. {{ _wc_away }}{% endif %}</span>
                 </div>
                 <div class="reply-textarea-wrap">
-                  <textarea name="reply" rows="3" placeholder="Type your reply… it will be emailed to the visitor, since they've left the chat widget."
+                  <textarea name="reply" rows="3" placeholder="Type your reply…"
                             onkeydown="if(event.ctrlKey&&event.key==='Enter'){this.form.submit()}"></textarea>
                 </div>
                 <div class="reply-actions">
-                  <span class="reply-hint">Ctrl+Enter to send · sent by email</span>
+                  <span class="reply-hint">Ctrl+Enter to send</span>
                   <button type="submit" class="send-btn">Send&nbsp;➤</button>
                 </div>
               </form>
@@ -1942,6 +1961,44 @@ document.addEventListener('visibilitychange',function(){
   if(!document.hidden){ clearTimeout(RT.timer); RT.timer=setTimeout(rtTick,800); }
 });
 RT.timer=setTimeout(rtTick,RT.FAST);
+</script>
+<script>
+/* Live Web Chat thread (2026-10-06): new visitor messages and replies appear
+   without a refresh, and the "on the website" label stays current. */
+(function(){
+  var box=document.getElementById('webchatMessages'); if(!box) return;
+  var key=box.getAttribute('data-key'), count=parseInt(box.getAttribute('data-count')||'0',10);
+  var pres=document.getElementById('webPresence'), lbl=document.getElementById('webReplyLabel');
+  var icon='<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+  function esc(t){return String(t).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function add(m,visitor){
+    var empty=box.querySelector('.empty-pane'); if(empty) empty.remove();
+    var w=document.createElement('div');
+    if(m.direction==='inbound'){
+      w.className='msg-wrap inbound';
+      w.innerHTML='<div class="msg-avatar" style="background:#7C3AED">'+icon+'</div><div class="bubble-col"><div class="bubble-sender">'+esc(visitor)+'</div><div class="chat-bubble bubble-in">'+esc(m.content)+' <span class="bubble-time">'+esc(m.time)+'</span></div></div>';
+    } else {
+      w.className='msg-wrap outbound';
+      w.innerHTML='<div class="bubble-col"><div class="bubble-sender">'+esc(m.is_ai?'AI Assistant':(m.by||'You'))+'</div><div class="chat-bubble bubble-agent">'+esc(m.content)+' <span class="bubble-time">'+esc(m.time)+'</span></div></div>';
+    }
+    box.appendChild(w);
+  }
+  function tick(){
+    fetch('/inbox/api/webchat-poll?key='+encodeURIComponent(key)+'&count='+count)
+      .then(function(r){return r.ok?r.json():null;})
+      .then(function(d){
+        if(!d) return;
+        var near=box.scrollHeight-box.scrollTop-box.clientHeight<120;
+        (d.new||[]).forEach(function(m){add(m,d.visitor);});
+        count=d.count||count;
+        if((d.new||[]).length&&near) box.scrollTop=box.scrollHeight;
+        if(pres){ pres.hidden=!d.presence; pres.textContent=d.presence; pres.className='web-presence '+(d.online?'on':'off'); }
+        if(lbl){ lbl.textContent=lbl.getAttribute(d.online?'data-online':'data-away'); }
+      }).catch(function(){})
+      .finally(function(){ setTimeout(tick,document.hidden?15000:4000); });
+  }
+  setTimeout(tick,4000);
+})();
 </script>
 {% include "portal/_fix_answer_modal.html" %}
 {% endblock %}

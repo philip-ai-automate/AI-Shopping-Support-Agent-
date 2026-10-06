@@ -19,7 +19,9 @@ from wa_daily_report import (
 from wa_plan_reset import router as plan_reset_router, run_plan_resets
 from pressone_calls import router as pressone_router
 
-from staff_alerts import run_alert_reminders, init_staff_alert_tables
+from staff_alerts import (run_alert_reminders, init_staff_alert_tables,
+                          process_web_chat_alerts, email_unseen_web_replies)
+from apscheduler.triggers.interval import IntervalTrigger
 
 # ── Scheduler ─────────────────────────────────────────────────────────────────
 _scheduler = AsyncIOScheduler()
@@ -29,6 +31,25 @@ _scheduler.add_job(
     run_alert_reminders,
     CronTrigger(minute="*", timezone="UTC"),
     id="staff_alert_reminders",
+    replace_existing=True,
+    misfire_grace_time=120,
+    max_instances=1,
+)
+
+# Website chats (2026-10-06): staff alerts within seconds, and replies the
+# visitor never saw in the chat box go by email after 2 minutes
+_scheduler.add_job(
+    process_web_chat_alerts,
+    IntervalTrigger(seconds=8),
+    id="web_chat_alerts",
+    replace_existing=True,
+    misfire_grace_time=30,
+    max_instances=1,
+)
+_scheduler.add_job(
+    email_unseen_web_replies,
+    CronTrigger(minute="*", timezone="UTC"),
+    id="web_chat_unseen_replies",
     replace_existing=True,
     misfire_grace_time=120,
     max_instances=1,

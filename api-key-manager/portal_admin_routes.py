@@ -2637,8 +2637,9 @@ def admin_change_password():
         flash("New passwords do not match.", "danger")
         return redirect(url_for("portal_admin.admin_settings"))
 
-    if len(new_pw) < 8:
-        flash("New password must be at least 8 characters.", "danger")
+    from portal_routes import _password_problem
+    if _password_problem(new_pw):
+        flash(_password_problem(new_pw), "danger")
         return redirect(url_for("portal_admin.admin_settings"))
 
     conn = get_db_connection()
@@ -5244,12 +5245,13 @@ def admin_plans_edit(plan_id: int):
 
 
 # Plans the system itself relies on (wa_plan_reset.py, portal_routes.py):
-# every WhatsApp sign-up starts on 'connect' and drops back to it when the
-# 2-week AI trial or a plan ends; WooCommerce merchants drop to 'free'; both
-# trials grant 'pro'. Deleting any of them breaks those steps.
-SYSTEM_PLAN_SLUGS = {"connect": "Every WhatsApp sign-up starts here, and WhatsApp trials and plans end here",
-                     "free":    "WooCommerce merchants drop to this plan when a trial or plan ends",
-                     "pro":     "The 2-week WhatsApp AI trial and the WooCommerce trial use this plan"}
+# every sign-up (WhatsApp and website) starts on 'connect', the only free
+# plan since 2026-10-06, and drops back to it when a trial or plan ends; the
+# trial plans are granted from here. Deleting any of them breaks those steps.
+SYSTEM_PLAN_SLUGS = {"connect":         "The only free plan: every sign-up starts here, and every trial and plan ends here",
+                     "pro":             "The 2-week WhatsApp AI trial uses this plan",
+                     "web_enterprise":  "The 2-week website AI trial uses this plan",
+                     "enterprise_dual": "The 2-week AI trial for WhatsApp and website businesses uses this plan"}
 
 
 def _trim_staff_to_connect_seats_sql(cur, tenant_ids) -> None:
@@ -5266,20 +5268,22 @@ def _trim_staff_to_connect_seats_sql(cur, tenant_ids) -> None:
                   JOIN tenants t ON t.id = m.tenant_id
                   JOIN plans   p ON p.id = t.plan_id
                  WHERE m.is_active AND t.id = ANY(%s)
-                   AND t.source_type = 'whatsapp' AND p.slug = 'connect') r
+                   AND p.slug IN ('connect', 'web_free')) r
          WHERE tm.id = r.id AND r.rn > r.lim
         RETURNING tm.tenant_id, tm.id
     """, (list(tenant_ids),))
 
 
 def _sync_wa_ai_to_plan_sql(cur, where_sql: str, params) -> None:
-    """Same rule as portal_routes._sync_wa_ai_to_plan: a WhatsApp merchant's
-    AI is off on PhiXtra Connect and on for any other plan."""
+    """Same rule as portal_routes._sync_wa_ai_to_plan: the AI is off on the
+    free AI-off plans (PhiXtra Connect, Website Free) and on for any other
+    plan. Older website businesses (no signup_channel) are not touched."""
     cur.execute(f"""
         UPDATE tenants t
-           SET ai_enabled = (p.slug IS DISTINCT FROM 'connect')
+           SET ai_enabled = NOT (p.slug IN ('connect', 'web_free'))
           FROM plans p
-         WHERE p.id = t.plan_id AND t.source_type = 'whatsapp' AND {where_sql}
+         WHERE p.id = t.plan_id
+           AND (t.source_type = 'whatsapp' OR t.signup_channel IS NOT NULL) AND {where_sql}
     """, params)
 PLAN_DELETE_BACKUP_DIR = "/root/backups/plan_deletes"
 

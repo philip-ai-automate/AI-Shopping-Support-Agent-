@@ -1,5 +1,6 @@
 {% extends "portal/base.html" %}
 {% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
+{% from "portal/_address_box.html" import emails_cell, other_emails_box, address_box, location_cell, address_filters with context %}
 {% block title %}Leads — PhiXtra Portal{% endblock %}
 {% block wrap_class %}page-wide{% endblock %}
 {% block content %}
@@ -378,8 +379,11 @@
   <div class="lf-title">➕ Add Lead</div>
   <form method="POST" action="{{ url_for('portal.leads_page') }}">
     <div class="frow">
-      <div><label class="flbl">Business Name</label><input type="text" name="customer_name" class="finp" required></div>
+      <div><label class="flbl">Company Name</label><input type="text" name="customer_name" class="finp" required></div>
       <div><label class="flbl">Contact Person</label><input type="text" name="contact_person" class="finp"></div>
+    </div>
+    <div class="frow single">
+      <div><label class="flbl">Website</label><input type="text" name="website" class="finp" placeholder="e.g. www.company.com"></div>
     </div>
     <div class="frow">
       <div><label class="flbl">Phone Number</label>{{ phone_box('phone') }}</div>
@@ -388,6 +392,15 @@
     <div class="frow">
       <div><label class="flbl">Email</label><input type="email" name="email" class="finp"></div>
       <div><label class="flbl">Deal Value</label><input type="number" step="0.01" name="deal_value" class="finp" placeholder="e.g. 450000"></div>
+    </div>
+    <div class="frow single">
+      <div>{{ other_emails_box('', id='addLeadOtherEmails') }}</div>
+    </div>
+    <div class="frow single">
+      <div>
+        <label class="flbl" style="font-size:13px">Address</label>
+        {{ address_box(None, id='addLeadAddr') }}
+      </div>
     </div>
     <div class="frow">
       <div><label class="flbl">Source</label>
@@ -509,6 +522,8 @@
     </select>
   </label>
 
+  {{ address_filters(lf.addr, addr_opts) }}
+
   <details class="lf-dd">
     <summary class="filter-btn {{ 'active' if lf.added_from or lf.added_to }}">Date added{% if lf.added_from or lf.added_to %}: {{ lf.added_from.strftime('%d %b %Y') if lf.added_from else '…' }} – {{ lf.added_to.strftime('%d %b %Y') if lf.added_to else '…' }}{% endif %} ▾</summary>
     <div class="lf-menu">
@@ -608,6 +623,7 @@
   <span style="flex:1"></span>
   {% if staff_can('leads.qualify') %}<button type="button" class="lb-btn lb-white" onclick="lbOpenQualify()">✓ Qualify</button>{% endif %}
   {% if staff_can('leads.assign') %}<button type="button" class="lb-btn lb-ghost" onclick="lbOpenAssign()">👤 Assign to</button>{% endif %}
+  {% if staff_can('crm.pipeline_board_edit') %}<button type="button" class="lb-btn lb-ghost" onclick="lbOpenAddr()">📍 Set address</button>{% endif %}
   {% if staff_can('leads.qualify') %}<button type="button" class="lb-btn lb-red" onclick="lbOpenNaf()">Not a Fit</button>{% endif %}
   <button type="button" class="lb-btn lb-ghost" onclick="lbClear()">Clear</button>
 </div>
@@ -618,7 +634,7 @@
       <thead>
         <tr>
           {% if can_bulk %}<th style="width:34px"><input type="checkbox" id="lbSelectPage" class="lb-ck" onchange="lbTogglePage(this)" aria-label="Select all leads on this page"></th>{% endif %}
-          <th>Business</th><th>Contact</th><th>Phone Number</th><th>WhatsApp Number</th><th>Source</th>
+          <th>Company</th><th>Website</th><th>Location</th><th>Contact</th><th>Phone Number</th><th>WhatsApp Number</th><th>Email</th><th>Source</th>
           <th>Product / Service</th><th>Deal Value</th><th>Assigned To</th><th>Stage</th><th>Score</th><th>Added</th>
         </tr>
       </thead>
@@ -630,9 +646,12 @@
         <tr class="lb-row" data-lead-id="{{ l.id }}">
           {% if can_bulk %}<td><input type="checkbox" class="lb-ck lb-row-ck" onchange="lbUpdate()" aria-label="Select {{ l.customer_name }}"></td>{% endif %}
           <td><a href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" style="color:var(--ink);font-weight:700;text-decoration:none">{{ l.customer_name }}</a></td>
+          <td class="muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{% set _w = (l.website or '')|replace('https://','')|replace('http://','') %}{% if _w %}<a href="{{ l.website }}" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:none" title="{{ l.website }}">{{ _w.rstrip('/') }}</a>{% else %}—{% endif %}</td>
+          <td class="muted" style="max-width:220px">{{ location_cell(l) }}</td>
           <td class="muted">{{ l.contact_person or '—' }}</td>
           <td class="muted" style="font-family:'SF Mono','Fira Code',monospace">{{ (l.phone|phone_display) or '—' }}{{ phone_flag(l.phone) }}</td>
           <td class="muted" style="font-family:'SF Mono','Fira Code',monospace;color:#15803d">{{ (l.whatsapp_number|phone_display) or '—' }}{{ phone_flag(l.whatsapp_number) }}</td>
+          <td class="muted" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ emails_cell(l.email, l.other_emails) }}</td>
           <td>
             {% if l.source and l.source in src_meta %}
             {% set s_bg, s_fg, s_label = src_meta[l.source] %}
@@ -778,6 +797,24 @@ tr.lb-sel td{background:#eef2fa}
 {% endmacro %}
 
 {% if can_bulk and view_mode == 'list' %}
+{% if staff_can('crm.pipeline_board_edit') %}
+<div class="lm-over" id="lmAddr" onclick="if(event.target===this)lbCloseModals()">
+  <div class="lm-box" role="dialog" aria-labelledby="lmAddrTitle" style="max-width:560px">
+    <div>
+      <h2 class="lm-title" id="lmAddrTitle">Set the address for <span class="lmN">0</span> leads</h2>
+      <p class="lm-sub">For leads in the same place. It's also saved on each lead's company and contact.</p>
+    </div>
+    {{ address_box(None, id='lmAddrBox') }}
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox" id="lmAddrReplace"> Replace the address on leads that already have one</label>
+    <div class="lm-note">Leads that already have an address are skipped unless you tick the box above.</div>
+    <div class="lm-err" id="lmAddrErr"></div>
+    <div class="lm-acts">
+      <button type="button" class="btn btn-sm btn-ghost" onclick="lbCloseModals()">Cancel</button>
+      <button type="button" class="btn btn-primary" id="lmAddrGo" onclick="lbSubmitAddr()">Set address</button>
+    </div>
+  </div>
+</div>
+{% endif %}
 {% if staff_can('leads.qualify') %}
 <div class="lm-over" id="lmQualify" onclick="if(event.target===this)lbCloseModals()">
   <div class="lm-box" role="dialog" aria-labelledby="lmQualifyTitle">
@@ -844,7 +881,7 @@ tr.lb-sel td{background:#eef2fa}
 
 <script>
 var LB = { all: false, total: {{ filtered_total|int }}, preview: null,
-           filterKeys: ['q','tier','has_phone','has_email','has_whatsapp','has_company','check_numbers','assigned','added_from','added_to'] };
+           filterKeys: ['q','tier','has_phone','has_email','has_whatsapp','has_company','check_numbers','assigned','added_from','added_to','country','state','city','addr_missing'] };
 function lbRows(){ return Array.prototype.slice.call(document.querySelectorAll('.lb-row')); }
 function lbIds(){ return lbRows().filter(function(r){ var c=r.querySelector('.lb-row-ck'); return c && c.checked; })
                                  .map(function(r){ return r.dataset.leadId; }); }
@@ -977,6 +1014,24 @@ function lbSubmitAssign(){
   lbPost('/leads/bulk/assign', fd).then(function(d){
     if (d.error) { err.textContent = d.error; lbBusy(btn, false, 'Try again'); return; }
     alert(lbFmt(d.assigned) + ' leads assigned.'); location.reload();
+  }).catch(function(){ err.textContent = 'Could not reach the server. Nothing was changed.'; lbBusy(btn, false, 'Try again'); });
+}
+function lbOpenAddr(){
+  if (window.addrSet) addrSet('lmAddrBox', {});
+  document.getElementById('lmAddrReplace').checked = false;
+  var b = document.getElementById('lmAddrGo'); b.disabled = false; b.textContent = 'Set address';
+  lbOpen('lmAddr');
+}
+function lbSubmitAddr(){
+  var fd = lbForm(), err = document.getElementById('lmAddrErr'), btn = document.getElementById('lmAddrGo');
+  document.querySelectorAll('#lmAddrBox input, #lmAddrBox select').forEach(function(el){ if (!el.disabled && el.name) fd.append(el.name, el.value); });
+  if (document.getElementById('lmAddrReplace').checked) fd.append('replace', '1');
+  lbBusy(btn, true, 'Saving…');
+  lbPost('/leads/bulk/set-address', fd).then(function(d){
+    if (d.error) { err.textContent = d.error; lbBusy(btn, false, 'Try again'); return; }
+    var msg = 'Address saved on ' + lbFmt(d.saved) + ' leads.';
+    if (d.skipped) msg += ' ' + lbFmt(d.skipped) + ' skipped (they already had an address).';
+    alert(msg); location.reload();
   }).catch(function(){ err.textContent = 'Could not reach the server. Nothing was changed.'; lbBusy(btn, false, 'Try again'); });
 }
 function lbSubmitNaf(){

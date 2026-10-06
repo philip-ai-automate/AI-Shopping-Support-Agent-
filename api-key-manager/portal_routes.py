@@ -1104,6 +1104,9 @@ def _require_plan_sub_feature(customer: dict, feature_key: str, feature_label: s
         is_trial=plan.get("is_trial", False),
         ai_trial_available=plan.get("ai_trial_available", False),
         ai_trial_used=plan.get("ai_trial_used", False),
+        free_plan_name=plan.get("free_plan_name", "PhiXtra Connect"),
+        trial_plan_name=plan.get("trial_plan_name", "Enterprise"),
+        ai_customers_words=plan.get("ai_customers_words", "your WhatsApp customers"),
     )
 
 
@@ -2310,9 +2313,11 @@ def _grant_trial_upgrade(tenant_id: int, source_type: str) -> bool:
     """
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT is_founder, source_type FROM tenants WHERE id=%s", (tenant_id,))
+    cur.execute("SELECT is_founder, source_type, signup_channel FROM tenants WHERE id=%s", (tenant_id,))
     row = cur.fetchone()
-    if not row or row.get("source_type") == "whatsapp":
+    if not row or row.get("source_type") == "whatsapp" or row.get("signup_channel"):
+        # Website businesses on the new system (signup_channel set) start
+        # their own 2-week trial too — no automatic 30-day trial.
         # WhatsApp merchants never get an automatic trial — they start the
         # 2-week AI trial themselves (_start_wa_ai_trial). This also stops a
         # WhatsApp merchant's catalogue sync from triggering the web trial.
@@ -2347,18 +2352,75 @@ def _grant_trial_upgrade(tenant_id: int, source_type: str) -> bool:
 
 WA_AI_TRIAL_DAYS = 14
 
+# ── Free start + 2-week trial for every sign-up (2026-10-05) ────────────────
+# Every new business starts on a free plan with the AI off and can start one
+# 2-week AI trial itself:
+#   WhatsApp only         → PhiXtra Connect ('connect') / trial 'pro' (Enterprise)
+#   Website only          → PhiXtra Connect ('connect') / trial 'web_enterprise'
+#   WhatsApp and website  → PhiXtra Connect ('connect') / trial 'enterprise_dual'
+# tenants.signup_channel ('whatsapp' | 'website' | 'both') marks website
+# businesses on this system. Older website businesses (signup_channel NULL)
+# keep the old automatic 30-day trial and also drop back to 'connect'.
+# Since 2026-10-06 PhiXtra Connect is the ONLY free plan (WhatsApp and
+# website, staff answer, no AI); 'web_free' and the old 'free' are retired.
+# NEW_WEBSITE_SIGNUP=1 switches website sign-ups onto it (off until go-live).
+AI_OFF_FREE_PLAN_SLUGS = ("connect", "web_free")
+NEW_WEBSITE_SIGNUP = os.getenv("NEW_WEBSITE_SIGNUP", "0") == "1"
+TRIAL_PLAN_NAMES = {"pro": "Enterprise", "web_enterprise": "Enterprise — Website",
+                    "enterprise_dual": "Enterprise — Dual Agent"}
+
+
+def _free_plan_slug(source_type, signup_channel) -> str:
+    return "connect"
+
+
+def _trial_plan_slug(source_type, signup_channel) -> str:
+    if signup_channel == "both":
+        return "enterprise_dual"
+    if source_type != "whatsapp" and signup_channel:
+        return "web_enterprise"
+    return "pro"
+
+
+# Passwords (2026-10-05): at least 8 characters including a special character.
+PASSWORD_RULE_TEXT = "at least 8 characters, including a special character such as ! @ # $ %"
+
+
+def _password_problem(pw: str):
+    """None when the password is allowed, else the message to show."""
+    pw = pw or ""
+    if len(pw) < 8 or not _re.search(r"[^A-Za-z0-9\s]", pw):
+        return "Your password must be " + PASSWORD_RULE_TEXT + "."
+    return None
+
+
+def _new_temp_password(length: int = 12) -> str:
+    """A random password that meets the password rule (has a special character)."""
+    alphabet = string.ascii_letters + string.digits
+    pw = [secrets.choice(alphabet) for _ in range(length - 1)]
+    pw.insert(secrets.randbelow(length), secrets.choice("!@#$%&*?"))
+    return "".join(pw)
+
 
 def _start_wa_ai_trial(tenant_id: int) -> bool:
-    """Start a WhatsApp merchant's 2-week AI trial: Enterprise (slug 'pro')
-    for WA_AI_TRIAL_DAYS days with the AI switched on. Founders get the same
-    2 weeks. Only from PhiXtra Connect, and once per business ever — the
+    """Start a business's one 2-week AI trial (WA_AI_TRIAL_DAYS days, AI on):
+    Enterprise for WhatsApp, Enterprise — Website for website businesses,
+    Enterprise — Dual Agent for WhatsApp and website (_trial_plan_slug).
+    Only from the free AI-off plan, and once per business ever — the
     trial_granted_at guard lives in the UPDATE itself, so a double click or
-    two tabs can't start it twice. Returns True if this call started it."""
+    two tabs can't start it twice. Older website businesses (no
+    signup_channel) are not on this system. Returns True if this call started it."""
     conn = get_db_connection()
     cur  = conn.cursor()
+    cur.execute("SELECT source_type, signup_channel FROM tenants WHERE id=%s", (tenant_id,))
+    t = cur.fetchone()
+    if not t or (t[0] != "whatsapp" and not t[1]):
+        cur.close(); conn.close()
+        return False
+    trial_slug = _trial_plan_slug(t[0], t[1])
     cur.execute(f"""
         UPDATE tenants
-           SET plan_id              = (SELECT id FROM plans WHERE slug='pro' LIMIT 1),
+           SET plan_id              = (SELECT id FROM plans WHERE slug=%s LIMIT 1),
                plan_period_start    = CURRENT_DATE,
                trial_ends_at        = CURRENT_DATE + INTERVAL '{WA_AI_TRIAL_DAYS} days',
                trial_granted_at     = NOW(),
@@ -2368,25 +2430,27 @@ def _start_wa_ai_trial(tenant_id: int) -> bool:
                trial_reminder_0d_at = NULL,
                trial_ended_email_at = NULL
          WHERE id = %s
-           AND source_type = 'whatsapp'
            AND trial_granted_at IS NULL
-           AND plan_id = (SELECT id FROM plans WHERE slug='connect' LIMIT 1)
+           AND plan_id IN (SELECT id FROM plans WHERE slug IN %s)
+           AND EXISTS (SELECT 1 FROM plans WHERE slug=%s)
          RETURNING trial_ends_at
-    """, (tenant_id,))
+    """, (trial_slug, tenant_id, AI_OFF_FREE_PLAN_SLUGS, trial_slug))
     row = cur.fetchone()
     conn.commit()
     cur.close(); conn.close()
     if row:
         insert_audit_log(action="wa_ai_trial_started", tenant_id=tenant_id,
-                         details={"days": WA_AI_TRIAL_DAYS, "trial_ends_at": str(row[0])})
+                         details={"days": WA_AI_TRIAL_DAYS, "trial_ends_at": str(row[0]),
+                                  "trial_plan": trial_slug})
     return row is not None
 
 
 def _sync_wa_ai_to_plan(tenant_ids) -> None:
-    """The plan decides whether a WhatsApp merchant's AI answers: off on
-    PhiXtra Connect, on for every other plan. Call after any plan change.
-    WooCommerce merchants are never touched. The admin AI switch still works
-    as an override between plan changes."""
+    """The plan decides whether a business's AI answers: off on the free
+    AI-off plans (PhiXtra Connect, Website Free), on for every other plan.
+    Call after any plan change. Older website businesses (no signup_channel)
+    are never touched. The admin AI switch still works as an override
+    between plan changes."""
     ids = [int(t) for t in (tenant_ids or [])]
     if not ids:
         return
@@ -2395,10 +2459,11 @@ def _sync_wa_ai_to_plan(tenant_ids) -> None:
         cur  = conn.cursor()
         cur.execute("""
             UPDATE tenants t
-               SET ai_enabled = (p.slug IS DISTINCT FROM 'connect')
+               SET ai_enabled = NOT (p.slug IN %s)
               FROM plans p
-             WHERE p.id = t.plan_id AND t.id = ANY(%s) AND t.source_type = 'whatsapp'
-        """, (ids,))
+             WHERE p.id = t.plan_id AND t.id = ANY(%s)
+               AND (t.source_type = 'whatsapp' OR t.signup_channel IS NOT NULL)
+        """, (AI_OFF_FREE_PLAN_SLUGS, ids))
         conn.commit()
         cur.close(); conn.close()
     except Exception as e:
@@ -2426,7 +2491,7 @@ def _trim_staff_to_connect_seats(tenant_ids) -> None:
                   JOIN tenants t ON t.id = m.tenant_id
                   JOIN plans   p ON p.id = t.plan_id
                  WHERE m.is_active AND t.id = ANY(%s)
-                   AND t.source_type = 'whatsapp' AND p.slug = 'connect') r
+                   AND p.slug IN ('connect', 'web_free')) r
          WHERE tm.id = r.id AND r.rn > r.lim
         RETURNING tm.tenant_id, tm.id
         """, (ids,))
@@ -2753,6 +2818,7 @@ def _register_whatsapp_merchant(
     first_name: str, last_name: str, email: str, password: str,
     business_name: str, phone_number: str = "",
     is_founder: bool = False, hear_about_us: str = "", business_country: str = None,
+    signup_channel: str = None, domain: str = None, website_platform: str = None,
 ):
     """
     Self-service registration path for WhatsApp-only merchants.
@@ -2784,6 +2850,17 @@ def _register_whatsapp_merchant(
         flash("An account with that email already exists. Please log in.", "warning")
         return redirect(url_for("portal.login"))
 
+    # WhatsApp and website: the website address must not already belong to a
+    # business (same rule as website sign-ups).
+    if domain:
+        cur.execute("SELECT 1 FROM tenants WHERE regexp_replace(lower(domain), '^www\\.', '')"
+                    " = regexp_replace(%s, '^www\\.', '') LIMIT 1", (domain,))
+        if cur.fetchone():
+            cur.close(); conn.close()
+            flash("This website already has a PhiXtra account. Please log in, or contact "
+                  "support@phixtra.com if you need access.", "warning")
+            return redirect(url_for("portal.login"))
+
     system_prompt_text = DEFAULT_SYSTEM_PROMPT.replace("{{business_name}}", business_name)
 
     free_features = _json.dumps(_build_free_features("whatsapp"))
@@ -2805,11 +2882,14 @@ def _register_whatsapp_merchant(
     # only switches on when they start their 2-week trial or pay for a plan.
     cur2 = conn.cursor()
     cur2.execute(f"""
-        INSERT INTO tenants (name, domain, status, source_type, features, system_prompt, is_demo, ai_enabled, signup_product, plan_id{founder_flags})
-        VALUES (%s, NULL, 'pending', 'whatsapp', %s, %s, %s, FALSE, %s,
-                COALESCE((SELECT id FROM plans WHERE slug='connect' LIMIT 1), 1){founder_vals})
+        INSERT INTO tenants (name, domain, status, source_type, features, system_prompt, is_demo, ai_enabled, signup_product, plan_id,
+                             signup_channel, website_platform{founder_flags})
+        VALUES (%s, %s, 'pending', 'whatsapp', %s, %s, %s, FALSE, %s,
+                COALESCE((SELECT id FROM plans WHERE slug='connect' LIMIT 1), 1),
+                %s, %s{founder_vals})
         RETURNING id
-    """, (business_name, free_features, system_prompt_text, is_demo_signup, signup_product))
+    """, (business_name, domain or None, free_features, system_prompt_text, is_demo_signup, signup_product,
+          signup_channel, website_platform))
     row = cur2.fetchone()
     tenant_id      = int(row[0])
     trial_ends_at  = None
@@ -2896,7 +2976,8 @@ def _register_whatsapp_merchant(
 
 
 def _register_web_merchant(first_name, last_name, email, password, phone_number,
-                            tenant_domain, hear_about_us="", ref_code="", business_country=None):
+                            tenant_domain, hear_about_us="", ref_code="", business_country=None,
+                            signup_channel=None, business_name=None, website_platform=None):
     """
     Self-service registration path for web (WooCommerce/Shopify/custom site)
     merchants. Creates tenant (if needed) + customer + trial api_key, and
@@ -2912,17 +2993,32 @@ def _register_web_merchant(first_name, last_name, email, password, phone_number,
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    cur.execute("SELECT id, name FROM tenants WHERE domain=%s", (tenant_domain,))
-    tenant = cur.fetchone()
+    # A website address that already belongs to a business is refused
+    # (2026-10-05): this used to add the new sign-up as a second owner login
+    # on that existing business, so anyone typing in someone else's address
+    # could get into their account.
+    cur.execute("SELECT id, name FROM tenants WHERE regexp_replace(lower(domain), '^www\\.', '')"
+                " = regexp_replace(%s, '^www\\.', '')", (tenant_domain,))
+    if cur.fetchone():
+        cur.close(); conn.close()
+        return {"ok": False, "reason": "domain_taken"}
+    tenant = None
     if not tenant:
-        tenant_name = tenant_domain
+        tenant_name = (business_name or "").strip() or tenant_domain
         free_features = _build_free_features("web")
         system_prompt_text = DEFAULT_SYSTEM_PROMPT.replace("{{business_name}}", tenant_name)
         cur2 = conn.cursor()
+        # signup_channel set = the new system: PhiXtra Connect, AI off, the
+        # business starts its own 2-week trial. None = the old automatic trial.
+        free_slug = _free_plan_slug("web", signup_channel)
         cur2.execute(
-            "INSERT INTO tenants (name, domain, status, features, system_prompt, ref_code, is_demo) VALUES (%s, %s, 'pending', %s, %s, %s, %s) RETURNING id",
+            "INSERT INTO tenants (name, domain, status, features, system_prompt, ref_code, is_demo,"
+            " signup_channel, ai_enabled, plan_id, website_platform)"
+            " VALUES (%s, %s, 'pending', %s, %s, %s, %s, %s, %s,"
+            " COALESCE((SELECT id FROM plans WHERE slug=%s LIMIT 1), 1), %s) RETURNING id",
             (tenant_name, tenant_domain, _json.dumps(free_features), system_prompt_text, ref_code or None,
-             _is_presale_test_signup(email))
+             _is_presale_test_signup(email), signup_channel, signup_channel is None, free_slug,
+             website_platform)
         )
         new_tenant_id = cur2.fetchone()[0]
         conn.commit()
@@ -3101,8 +3197,8 @@ def wp_connect():
         return render_template("portal/wp_connect.html", domain=tenant_domain, email=email,
                                form_data=request.form)
 
-    if len(password) < 8:
-        flash("Password must be at least 8 characters.", "danger")
+    if _password_problem(password):
+        flash(_password_problem(password), "danger")
         return render_template("portal/wp_connect.html", domain=tenant_domain, email=email,
                                form_data=request.form)
 
@@ -3122,10 +3218,15 @@ def wp_connect():
         first_name=first_name, last_name=last_name, email=email, password=password,
         phone_number=phone_number, tenant_domain=tenant_domain,
         hear_about_us="wordpress_plugin", business_country=phone_country,
+        signup_channel="website" if NEW_WEBSITE_SIGNUP else None,
     )
 
     if not result["ok"]:
-        flash("An account with that email already exists. Please log in.", "warning")
+        if result.get("reason") == "domain_taken":
+            flash("This website already has a PhiXtra account. Please log in, or contact "
+                  "support@phixtra.com if you need access.", "warning")
+        else:
+            flash("An account with that email already exists. Please log in.", "warning")
         return redirect(url_for("portal.login"))
 
     if result["needs_phone_verify"]:
@@ -3261,6 +3362,53 @@ HEAR_ABOUT_US_OPTIONS = [
 ]
 
 
+WEBSITE_PLATFORMS = ("wordpress", "shopify", "wix", "squarespace", "other")
+
+
+def _clean_domain(raw) -> str:
+    """'https://www.Example.com/shop?x' → 'www.example.com'; '' if it isn't a web address."""
+    d = (raw or "").strip().lower()
+    d = _re.sub(r"^[a-z]+://", "", d).split("/")[0].split("?")[0].split("#")[0].split(":")[0]
+    return d if _re.fullmatch(r"[a-z0-9\-]+(\.[a-z0-9\-]+)*\.[a-z]{2,}", d or "") else ""
+
+
+def _register_url():
+    """The sign-up page address, keeping ?preview=1 while previewing."""
+    if request.values.get("preview") == "1":
+        return url_for("portal.register", preview="1")
+    return url_for("portal.register")
+
+
+def _register_page(form=None, **extra):
+    """The sign-up page. Once website sign-ups are on (NEW_WEBSITE_SIGNUP), the
+    one-page sign-up with the pop-up choice; until then the old WhatsApp page,
+    with the new page available as a preview at /register?preview=1."""
+    preview = (not NEW_WEBSITE_SIGNUP) and request.values.get("preview") == "1"
+    ctx = _build_register_ctx(form)
+    ctx.update(extra)
+    if NEW_WEBSITE_SIGNUP or preview:
+        ctx["preview"] = preview
+        return render_template("portal/register_new.html", **ctx)
+    return render_template("portal/register.html", **ctx)
+
+
+def _account_created_redirect(email, email_sent):
+    resend_url = url_for('portal.resend_verify')
+    if email_sent:
+        flash(
+            f"Account created! ✅ A verification link has been sent to <strong>{email}</strong>. "
+            f"Click the link in that email to activate your account. "
+            f"Can't find it? Check spam, or "
+            f"<a href='{resend_url}' style='text-decoration:underline'>resend the email</a>.",
+            "success")
+    else:
+        flash(
+            f"Account created! However we could not send the verification email to <strong>{email}</strong>. "
+            f"<a href='{resend_url}' style='text-decoration:underline'>Click here to resend</a>.",
+            "warning")
+    return redirect(url_for("portal.login"))
+
+
 def _build_register_ctx(form_data=None):
     """Build template context for register.html — used by GET and POST re-renders on error."""
     return dict(offer="", founder_spots_left=None, hear_about_us_options=HEAR_ABOUT_US_OPTIONS)
@@ -3271,29 +3419,27 @@ def _build_register_ctx(form_data=None):
 def register():
     if request.method == "GET":
         ref = (request.args.get("ref") or "").strip().lower()[:30]
-        ctx = _build_register_ctx()
-        ctx["ref_code"] = ref
-        return render_template("portal/register.html", **ctx)
+        return _register_page(ref_code=ref)
 
-    if request.form.get("website"): return redirect(url_for("portal.register"))
+    if request.form.get("website"): return redirect(_register_url())
     client_ip = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
     if not _reg_rate_ok(client_ip):
         flash("Too many attempts. Try later.", "danger")
-        return redirect(url_for("portal.register"))
+        return redirect(_register_url())
 
     # ── reCAPTCHA verification ──────────────────────────────────────────────
     import requests as _req
     recaptcha_response = request.form.get("g-recaptcha-response", "")
     if not recaptcha_response:
         flash("Please complete the reCAPTCHA check.", "danger")
-        return redirect(url_for("portal.register"))
+        return redirect(_register_url())
     try:
         rv = _req.post("https://www.google.com/recaptcha/api/siteverify",
                        data={"secret": os.getenv("RECAPTCHA_SECRET_KEY", ""), "response": recaptcha_response},
                        timeout=5)
         if not rv.json().get("success"):
             flash("reCAPTCHA failed. Please try again.", "danger")
-            return redirect(url_for("portal.register"))
+            return redirect(_register_url())
     except Exception:
         pass  # If Google is unreachable, allow through
     # ── end reCAPTCHA ───────────────────────────────────────────────────────
@@ -3309,31 +3455,80 @@ def register():
     # ── Common validation ───────────────────────────────────────────────────
     if not first_name or not last_name or not email or not password:
         flash("First name, last name, email, and password are all required.", "danger")
-        return render_template("portal/register.html", **_build_register_ctx(request.form), form_data=request.form)
+        return _register_page(request.form, form_data=request.form)
 
-    if len(password) < 8:
-        flash("Password must be at least 8 characters.", "danger")
-        return render_template("portal/register.html", **_build_register_ctx(request.form), form_data=request.form)
+    if _password_problem(password):
+        flash(_password_problem(password), "danger")
+        return _register_page(request.form, form_data=request.form)
 
     if hear_about_us not in dict(HEAR_ABOUT_US_OPTIONS):
         flash("Please tell us how you heard about us.", "danger")
-        return render_template("portal/register.html", **_build_register_ctx(request.form), form_data=request.form)
+        return _register_page(request.form, form_data=request.form)
+
+    # ── Website and "WhatsApp and website" sign-ups (2026-10-05) ────────────
+    business_name = (request.form.get("business_name") or "").strip()
+    if merchant_type in ("web", "both"):
+        if not NEW_WEBSITE_SIGNUP:
+            flash("Website sign-ups open soon. For now choose WhatsApp only, or sign up "
+                  "from the PhiXtra plugin inside WordPress.", "info")
+            return _register_page(request.form, form_data=request.form)
+        if not business_name:
+            flash("Business name is required.", "danger")
+            return _register_page(request.form, form_data=request.form)
+        website_platform = (request.form.get("website_platform") or "").strip().lower()
+        if website_platform not in WEBSITE_PLATFORMS:
+            flash("Please choose what your website is built on.", "danger")
+            return _register_page(request.form, form_data=request.form)
+        site = _clean_domain(request.form.get("tenant_domain"))
+        if not site:
+            flash("Please enter your website address, for example example.com.", "danger")
+            return _register_page(request.form, form_data=request.form)
+
+    if merchant_type == "web":
+        based = (request.form.get("business_based") or "").strip().upper()
+        if based not in _pn.SUPPORTED_REGIONS:
+            flash("Please choose where your business is based.", "danger")
+            return _register_page(request.form, form_data=request.form)
+        phone_country = (request.form.get("phone_country") or "").strip().upper()
+        mobile, _perr = _phone_from_form(request.form.get("phone_number"), phone_country)
+        if _perr:
+            flash(_perr, "danger")
+            return _register_page(request.form, form_data=request.form)
+        result = _register_web_merchant(
+            first_name=first_name, last_name=last_name, email=email, password=password,
+            phone_number=mobile, tenant_domain=site, hear_about_us=hear_about_us,
+            ref_code=ref_code, business_country=based, signup_channel="website",
+            business_name=business_name, website_platform=website_platform,
+        )
+        if not result["ok"]:
+            if result.get("reason") == "domain_taken":
+                flash("This website already has a PhiXtra account. Please log in, or contact "
+                      "support@phixtra.com if you need access.", "warning")
+            else:
+                flash("An account with that email already exists. Please log in.", "warning")
+            return _register_page(request.form, form_data=request.form)
+        if result["needs_phone_verify"]:
+            return redirect(url_for("portal.register_verify_phone"))
+        return _account_created_redirect(email, result["email_sent"])
 
     # ── WhatsApp-only merchant registration ─────────────────────────────────
-    if merchant_type == "whatsapp":
+    if merchant_type in ("whatsapp", "both"):
         wa_phone_country = (request.form.get("wa_phone_country") or "").strip().upper()
         wa_phone_number, _perr = _phone_from_form(request.form.get("wa_phone_number"), wa_phone_country)
         if _perr:
             flash(_perr, "danger")
-            return render_template("portal/register.html", **_build_register_ctx(request.form), form_data=request.form)
+            return _register_page(request.form, form_data=request.form)
         return _register_whatsapp_merchant(
             business_country=wa_phone_country,
             first_name=first_name, last_name=last_name,
             email=email, password=password,
-            business_name=(request.form.get("business_name") or "").strip(),
+            business_name=business_name,
             phone_number=wa_phone_number,
             is_founder=False,
             hear_about_us=hear_about_us,
+            signup_channel="both" if merchant_type == "both" else None,
+            domain=site if merchant_type == "both" else None,
+            website_platform=website_platform if merchant_type == "both" else None,
         )
 
     # ── Website stores: WooCommerce merchants sign up only through the
@@ -3341,7 +3536,7 @@ def register():
     # never through this form.
     flash("Website stores sign up from the PhiXtra plugin inside WordPress. "
           "This form is for WhatsApp businesses.", "info")
-    return redirect(url_for("portal.register"))
+    return redirect(_register_url())
 
     phone_number    = (request.form.get("phone_number")    or "").strip()
     tenant_domain   = (request.form.get("tenant_domain")   or "").strip().lower()
@@ -3912,8 +4107,8 @@ def reset_password():
         return render_template("portal/reset.html", token=token)
 
     password = (request.form.get("password") or "").strip()
-    if len(password) < 8:
-        flash("Password must be at least 8 characters.", "danger")
+    if _password_problem(password):
+        flash(_password_problem(password), "danger")
         return redirect(url_for("portal.reset_password", token=token))
 
     conn = get_db_connection()
@@ -4173,8 +4368,7 @@ def team_create():
         b64 = _base64.b64encode(data).decode("utf-8")
         avatar_data = f"data:{f.content_type};base64,{b64}"
 
-    alphabet = string.ascii_letters + string.digits
-    generated_password = ''.join(secrets.choice(alphabet) for _ in range(12))
+    generated_password = _new_temp_password(12)
 
     cur.execute("""
         INSERT INTO team_members
@@ -4875,8 +5069,7 @@ def team_reset_password(member_id: int):
         flash("Team member not found.", "danger")
         return redirect(url_for("portal.team_page"))
 
-    alphabet = string.ascii_letters + string.digits
-    new_password = ''.join(secrets.choice(alphabet) for _ in range(12))
+    new_password = _new_temp_password(12)
     cur2 = conn.cursor()
     cur2.execute("UPDATE team_members SET password_hash=%s WHERE id=%s AND tenant_id=%s",
                  (hash_password(new_password), member_id, tenant_id))
@@ -5196,6 +5389,8 @@ def dashboard():
     series          = _usage_timeseries(tenant_id, days=30)
     ob              = _onboarding_status(tenant_id, int(customer["id"]))
     keys            = _get_api_keys(tenant_id)
+    _maybe_start_auto_website_check(tenant_id)
+    setup           = _setup_checklist(tenant_id)
 
     chart_points = [{"d": str(r["d"]), "credits": tokens_to_credits(int(r["tokens"]))} for r in series]
 
@@ -5289,7 +5484,235 @@ def dashboard():
         dash_attention           = dash_attention,
         dash_activity            = dash_activity,
         dashboard_period_options = DASHBOARD_PERIOD_LABELS,
+        setup                    = setup,
     )
+
+
+# ── Setup checklist for website sign-ups (2026-10-05, phase 3) ──────────────
+# Website and "WhatsApp and website" businesses (signup_channel set) see a
+# "Get set up" box on the Dashboard, in the same order for every platform:
+# connect WhatsApp (both only) → connect the website → add the chat box →
+# products → 2-week AI trial. Each step ticks itself from real data.
+# WhatsApp-only and older businesses never see it.
+CHATBOX_MARKERS = ("phixaish", "PHIXAISH", "chat.phixtra.com/widget")
+
+
+def _site_url_for(domain: str) -> str:
+    d = (domain or "").strip()
+    return d if d.startswith(("http://", "https://")) else "https://" + d
+
+
+def _chatbox_on_site(domain: str) -> tuple:
+    """(found, message). Opens the business's home page and looks for the
+    PhiXtra chat box code (the WordPress plugin, or the paste-in code)."""
+    import requests as _rq
+    try:
+        r = _rq.get(_site_url_for(domain), timeout=20, allow_redirects=True,
+                    headers={"User-Agent": "Mozilla/5.0 (compatible; PhiXtraWebsiteReader/1.0)"})
+        html = r.text or ""
+        if any(m in html for m in CHATBOX_MARKERS):
+            return True, "Found the PhiXtra chat box on your website."
+        if r.status_code >= 400:
+            return False, f"Your website answered with an error ({r.status_code}), so we couldn't look for the chat box."
+        return False, "We couldn't find the PhiXtra chat box on your home page yet."
+    except Exception as e:
+        return False, f"We couldn't open your website to look for the chat box ({type(e).__name__})."
+
+
+def _run_auto_website_check(tenant_id: int, domain: str) -> None:
+    """The same check as Connect Website, run once by itself after the first
+    log-in. Reads nothing: the business clicks Sync now for that."""
+    try:
+        result = _check_website_connection(domain)
+        site_url = result.get("final_url") or result.get("url") or domain
+        if result.get("ok"):
+            from website_reader import normalise_start
+            site_url = normalise_start(site_url)
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("""INSERT INTO website_connect_attempts
+                       (tenant_id, url, ok, reason, detail, http_status, created_by, created_label)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                    (tenant_id, site_url, bool(result.get("ok")), result.get("reason") or None,
+                     result.get("detail") or None, result.get("http_status"),
+                     "system:auto_website_check", "Automatic check"))
+        if result.get("ok"):
+            cur.execute("""INSERT INTO website_sources (tenant_id, url, frequency, status, site_title, pages_found,
+                                                        created_by, created_label)
+                           VALUES (%s, %s, 'manual', 'connected', %s, %s, %s, %s)
+                           ON CONFLICT (tenant_id) DO NOTHING""",
+                        (tenant_id, site_url, result.get("title") or None, result.get("pages_found"),
+                         "system:auto_website_check", "Automatic check"))
+        conn.commit(); cur.close(); conn.close()
+        insert_audit_log(admin_username="system:auto_website_check",
+                         action="website_connected" if result.get("ok") else "website_connect_failed",
+                         tenant_id=tenant_id, details={"url": site_url, "reason": result.get("reason"),
+                                                       "detail": result.get("detail"), "automatic": True})
+    except Exception as e:
+        print("⚠️ _run_auto_website_check:", e)
+
+
+def _maybe_start_auto_website_check(tenant_id: int) -> None:
+    """Start the automatic website check once per business (the claim is in
+    the UPDATE, so two workers or two tabs can't start it twice)."""
+    try:
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("""UPDATE tenants t SET website_autocheck_at = NOW()
+                        WHERE t.id = %s AND t.website_autocheck_at IS NULL
+                          AND t.signup_channel IN ('website', 'both') AND COALESCE(t.domain, '') <> ''
+                          AND NOT EXISTS (SELECT 1 FROM website_sources w WHERE w.tenant_id = t.id)
+                    RETURNING t.domain""", (tenant_id,))
+        row = cur.fetchone(); conn.commit(); cur.close(); conn.close()
+        if row:
+            import threading
+            threading.Thread(target=_run_auto_website_check, args=(tenant_id, row[0]), daemon=True).start()
+    except Exception as e:
+        print("⚠️ _maybe_start_auto_website_check:", e)
+
+
+def _setup_checklist(tenant_id: int):
+    """The Dashboard "Get set up" steps, or None for businesses that don't get it."""
+    try:
+        conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""SELECT t.signup_channel, t.website_platform, t.domain, t.source_type, t.trial_granted_at,
+                              t.website_autocheck_at, t.chatbox_seen_at, p.slug AS plan_slug
+                         FROM tenants t LEFT JOIN plans p ON p.id = t.plan_id WHERE t.id = %s""", (tenant_id,))
+        t = cur.fetchone()
+        if not t or t["signup_channel"] not in ("website", "both"):
+            cur.close(); conn.close()
+            return None
+        cur.execute("SELECT 1 FROM wa_tenants WHERE tenant_id=%s AND active LIMIT 1", (tenant_id,))
+        wa_on = cur.fetchone() is not None
+        cur.execute("SELECT * FROM website_sources WHERE tenant_id=%s", (tenant_id,))
+        src = cur.fetchone()
+        cur.execute("""SELECT ok, reason FROM website_connect_attempts WHERE tenant_id=%s
+                       ORDER BY created_at DESC LIMIT 1""", (tenant_id,))
+        last = cur.fetchone()
+        cur.execute("SELECT COUNT(*) AS n FROM documents WHERE tenant_id=%s AND type='product'", (tenant_id,))
+        n_products = int(cur.fetchone()["n"])
+        cur.execute("SELECT COUNT(*) AS n FROM data_sources WHERE tenant_id=%s", (tenant_id,))
+        n_lists = int(cur.fetchone()["n"])
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ _setup_checklist:", e)
+        return None
+
+    wp = t["website_platform"] == "wordpress"
+    names = {"shopify": "Shopify", "wix": "Wix", "squarespace": "Squarespace", "other": "your website"}
+    steps = []
+    if t["signup_channel"] == "both":
+        steps.append(dict(key="whatsapp", title="Connect your WhatsApp", done=wa_on,
+                          text="Use Meta's official sign-up window. You keep your number.",
+                          action="Connect WhatsApp", url=url_for("portal.whatsapp_connect")))
+    # Website: automatic check → connected (pages found) → read (Sync now)
+    if src and src.get("last_read_at"):
+        site = dict(done=True, state="done", text=f"We've read {src.get('pages_read') or 0} pages of your website.",
+                    action="Sync website", url=url_for("portal.store_info_website_sync"))
+    elif src:
+        site = dict(done=False, state="sync", text=f"We can reach your website and found {src.get('pages_found') or 0} pages. Click Sync now so the AI reads them.",
+                    action="Sync now", url=url_for("portal.store_info_website_sync"))
+    elif last and not last["ok"]:
+        site = dict(done=False, state="failed", text=f"We couldn't reach your website: {last['reason'] or 'unknown reason'}",
+                    action="See how to fix it", url=url_for("portal.store_info_website_connect"))
+    elif t["website_autocheck_at"]:
+        site = dict(done=False, state="checking", text=f"We're checking that we can reach {t['domain']}. This takes up to a minute.",
+                    action=None, url=None)
+    else:
+        site = dict(done=False, state="todo", text="We'll check that we can reach your website.",
+                    action="Connect website", url=url_for("portal.store_info_website_connect"))
+    steps.append(dict(key="website", title="Connect your website", **site))
+    steps.append(dict(key="chatbox", title="Add the chat box", done=bool(t["chatbox_seen_at"]),
+                      text=("Install the free PhiXtra plugin on WordPress and paste in your API key."
+                            if wp else f"Copy one line of code into {names.get(t['website_platform'], 'your website')}."),
+                      action=("Get your API key" if wp else "Get your chat box code"),
+                      url=(url_for("portal.api_keys") if wp else url_for("portal.store_info_website_chatbox")),
+                      check=True))
+    if wp:
+        steps.append(dict(key="products", title="Your products sync by themselves", done=n_products > 0,
+                          text="The plugin sends your WooCommerce products to the AI.", action=None, url=None))
+    else:
+        steps.append(dict(key="products", title="Upload your product list", done=(n_lists > 0 or n_products > 0),
+                          text="Excel, CSV or Google Sheets.", action="Upload product list",
+                          url=url_for("portal.data_sources")))
+    paid = t["plan_slug"] not in AI_OFF_FREE_PLAN_SLUGS
+    steps.append(dict(key="trial", title="Start your 2-week AI trial", done=bool(t["trial_granted_at"]) or paid,
+                      text="Full features for 14 days, no card needed. The chat box appears on your website once your trial or a paid plan starts.",
+                      action=None, url=None, trial=not t["trial_granted_at"] and not paid))
+    for i, st in enumerate(steps, 1):
+        st["n"] = i
+        st.setdefault("state", "done" if st["done"] else "todo")
+    done = sum(1 for st in steps if st["done"])
+    return {"steps": steps, "done": done, "total": len(steps), "complete": done == len(steps),
+            "checking": any(st.get("state") == "checking" for st in steps), "domain": t["domain"]}
+
+
+# ── Add the chat box: paste-in code for any website (2026-10-05, phase 4) ──
+WIDGET_SCRIPT_URL = os.getenv("PHIXTRA_WIDGET_URL", "https://chat.phixtra.com/widget.js")
+
+
+def _site_widget_key(tenant_id: int) -> str:
+    """The business's public website key, made the first time it's needed."""
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("SELECT site_key FROM site_widget_keys WHERE tenant_id=%s", (tenant_id,))
+    row = cur.fetchone()
+    if not row:
+        cur.execute("""INSERT INTO site_widget_keys (tenant_id, site_key) VALUES (%s, %s)
+                       ON CONFLICT (tenant_id) DO NOTHING""", (tenant_id, "pk_" + secrets.token_urlsafe(18)))
+        conn.commit()
+        cur.execute("SELECT site_key FROM site_widget_keys WHERE tenant_id=%s", (tenant_id,))
+        row = cur.fetchone()
+    cur.close(); conn.close()
+    return row[0]
+
+
+@portal_bp.route("/store-info/website/chat-box")
+@team_feature("store.info")
+def store_info_website_chatbox():
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "store.info", "Store Information") \
+        or _require_plan_sub_feature(customer, "store.website_connect", "Connect Website")
+    if r2: return r2
+    r3 = _require_team_permission("store.info")
+    if r3: return r3
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT domain, website_platform, chatbox_seen_at FROM tenants WHERE id=%s", (tenant_id,))
+    t = cur.fetchone() or {}
+    cur.close(); conn.close()
+    plan = _get_tenant_plan(tenant_id)
+    code = f'<script src="{WIDGET_SCRIPT_URL}" data-site="{_site_widget_key(tenant_id)}" async></script>'
+    return render_template("portal/store_info_website_chatbox.html", customer=customer, code=code,
+                           domain=t.get("domain") or "", platform=t.get("website_platform") or "",
+                           seen=t.get("chatbox_seen_at"), ai_off=plan.get("plan_slug") in AI_OFF_FREE_PLAN_SLUGS,
+                           trial_available=plan.get("ai_trial_available"))
+
+
+@portal_bp.route("/setup/check-chatbox", methods=["POST"])
+@team_feature("dashboard.page")
+def setup_check_chatbox():
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("dashboard.page")
+    if _rperm: return _rperm
+    customer = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("SELECT domain FROM tenants WHERE id=%s", (tenant_id,))
+    row = cur.fetchone(); cur.close(); conn.close()
+    if not row or not row[0]:
+        flash("We don't have a website address for your business yet.", "warning")
+        return redirect(url_for("portal.dashboard"))
+    found, msg = _chatbox_on_site(row[0])
+    if found:
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("UPDATE tenants SET chatbox_seen_at = COALESCE(chatbox_seen_at, NOW()) WHERE id=%s", (tenant_id,))
+        conn.commit(); cur.close(); conn.close()
+        insert_audit_log(action="chatbox_found_on_site", tenant_id=tenant_id, details={"domain": row[0]})
+    flash(msg, "success" if found else "warning")
+    if request.form.get("back") == "chatbox":
+        return redirect(url_for("portal.store_info_website_chatbox"))
+    return redirect(url_for("portal.dashboard"))
 
 
 # ── Dismiss onboarding wizard ──────────────────────────────────────────────────
@@ -5930,10 +6353,7 @@ def stripe_webhook():
                 # (AI off); WooCommerce merchants to Free as before.
                 cur2.execute("""
                     UPDATE tenants
-                       SET plan_id=COALESCE(
-                               CASE WHEN source_type='whatsapp'
-                                    THEN (SELECT id FROM plans WHERE slug='connect' LIMIT 1) END,
-                               (SELECT id FROM plans WHERE slug='free' LIMIT 1))
+                       SET plan_id=(SELECT id FROM plans WHERE slug='connect' LIMIT 1)
                      WHERE id=%s
                 """, (int(row["tenant_id"]),))
                 conn.commit(); cur2.close()
@@ -11125,8 +11545,8 @@ def _settings_me_save(kind: str):
                 flash("All password fields are required.", "danger")
             elif new_pw != conf_pw:
                 flash("New passwords do not match.", "danger")
-            elif len(new_pw) < 8:
-                flash("New password must be at least 8 characters.", "danger")
+            elif _password_problem(new_pw):
+                flash(_password_problem(new_pw), "danger")
             elif not verify_password(cur_pw, me.get("password_hash") or ""):
                 flash("Current password is incorrect.", "danger")
             else:
@@ -11301,8 +11721,8 @@ def settings_password():
         flash("New passwords do not match.", "danger")
         return redirect(url_for("portal.settings"))
 
-    if len(new_pw) < 8:
-        flash("New password must be at least 8 characters.", "danger")
+    if _password_problem(new_pw):
+        flash(_password_problem(new_pw), "danger")
         return redirect(url_for("portal.settings"))
 
     # Verify current password
@@ -14577,6 +14997,21 @@ def _inject_phone_countries():
             "PHONE_COUNTRIES_POPULAR": PHONE_COUNTRIES_POPULAR}
 
 
+# Addresses (2026-10-04) — see portal_address.py.
+import portal_address as _addr
+
+
+@portal_bp.app_context_processor
+def _inject_address_helpers():
+    return {"ADDRESS_COUNTRIES": _addr.ADDRESS_COUNTRIES,
+            "ADDRESS_COUNTRIES_POPULAR": _addr.ADDRESS_COUNTRIES_POPULAR,
+            "ADDRESS_STATES": _addr.ADDRESS_STATES,
+            "address_state_label": _addr.state_label,
+            "address_country_name": _addr.country_name,
+            "location_text": _addr.location_text,
+            "has_address": _addr.has_address}
+
+
 _tenant_country_cache = {}
 
 
@@ -15086,6 +15521,9 @@ def _link_lead_to_contact(cur, tenant_id: int, lead_id: int):
     if lead.get("wa_contact_id") != contact_id:
         cur.execute("UPDATE merchant_pipeline_leads SET wa_contact_id=%s WHERE id=%s AND tenant_id=%s",
                     (contact_id, lead_id, tenant_id))
+    # Address (2026-10-04): the lead, its contact and its company share one —
+    # whichever already has it fills the others' empty address.
+    _addr.copy_address_if_missing(cur, tenant_id, lead_id)
     return contact_id
 
 
@@ -15312,6 +15750,9 @@ def whatsapp_contacts():
     if not _re_date.match(r"^\d{4}-\d{2}-\d{2}$", date_from): date_from = ""
     if not _re_date.match(r"^\d{4}-\d{2}-\d{2}$", date_to): date_to = ""
 
+    addr_clauses, addr_params, addr_state, addr_fargs = _addr.address_filter_clauses("c", request.args)
+    addr_opts = {"countries": [], "states": {}, "missing": 0}
+
     PER_PAGE_OPTIONS = ["25", "50", "100", "300", "500", "all"]
     per_page_raw = (request.args.get("per_page") or "100").strip().lower()
     if per_page_raw not in PER_PAGE_OPTIONS:
@@ -15326,8 +15767,9 @@ def whatsapp_contacts():
         clauses = ["c.tenant_id = %s"]
         where_params = [tenant_id]
         if search:
-            clauses.append("(c.phone ILIKE %s OR c.whatsapp_number ILIKE %s OR c.display_name ILIKE %s OR c.email ILIKE %s)")
-            where_params += [f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%"]
+            clauses.append("(c.phone ILIKE %s OR c.whatsapp_number ILIKE %s OR c.display_name ILIKE %s OR c.email ILIKE %s "
+                           "OR c.other_emails ILIKE %s)")
+            where_params += [f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%"]
         if status_filter:
             clauses.append("c.status = ANY(%s)")
             where_params.append(status_filter)
@@ -15362,6 +15804,9 @@ def whatsapp_contacts():
         if date_to:
             clauses.append("c.created_at < (%s::date + INTERVAL '1 day')")
             where_params.append(date_to)
+        # Address filters (2026-10-04).
+        clauses += addr_clauses; where_params += addr_params
+        addr_opts = _addr.address_filter_options(cur, "wa_contacts", tenant_id)
 
         where = " AND ".join(clauses)
 
@@ -15400,6 +15845,7 @@ def whatsapp_contacts():
             SELECT c.*,
                    co.id   AS company_id_join,
                    co.name AS company_name,
+                   co.website AS company_website,
                    pl.id         AS pipeline_lead_id,
                    pl.stage      AS pipeline_stage,
                    pl.deal_value AS pipeline_deal_value,
@@ -15553,6 +15999,7 @@ def whatsapp_contacts():
 
     return render_template(
         "portal/whatsapp_contacts.html",
+        addr_state=addr_state, addr_fargs=addr_fargs, addr_opts=addr_opts,
         contacts=contacts,
         total=total,
         new_week=new_week,
@@ -15613,6 +16060,14 @@ def whatsapp_contacts_add():
     if num_err:
         flash(num_err, "danger")
         return redirect(url_for("portal.whatsapp_contacts"))
+    address, _aerr = _addr.address_from_form(request.form)
+    if _aerr:
+        flash(f"Contact not saved. {_aerr}", "danger")
+        return redirect(url_for("portal.whatsapp_contacts"))
+    other_emails, _bad = _addr.parse_other_emails(request.form.get("other_emails"), email)
+    if _bad:
+        flash(f"Contact not saved. Not an email address: {', '.join(_bad[:3])}", "danger")
+        return redirect(url_for("portal.whatsapp_contacts"))
     # Any one of phone number, WhatsApp number or email is enough (email-only
     # contacts are allowed — One Address Book decision, 2026-09-28).
     if not (phone or whatsapp_number or email):
@@ -15659,6 +16114,12 @@ def whatsapp_contacts_add():
         if company_id:
             cur.execute("UPDATE merchant_pipeline_leads SET company_id=%s WHERE wa_contact_id=%s AND company_id IS NULL",
                         (company_id, new_contact_id))
+        _addr.save_address_family(cur, tenant_id, address, contact_id=new_contact_id, company_id=company_id)
+        if other_emails:
+            cur.execute("SELECT other_emails, email FROM wa_contacts WHERE id=%s", (new_contact_id,))
+            _oc = cur.fetchone()
+            _addr.save_other_emails(cur, tenant_id, _addr.merge_other_emails(
+                _oc["other_emails"], _addr.other_emails_list(other_emails), _oc["email"]), contact_id=new_contact_id)
         conn.commit()
         cur.close(); conn.close()
         label = display_name or whatsapp_number or phone or email
@@ -15692,6 +16153,19 @@ def whatsapp_contacts_edit(contact_id: int):
     if status not in ("lead", "prospect", "customer", "inactive"):
         status = "lead"
     tags_csv = (request.form.get("tags_csv") or "").strip()
+    # Address (2026-10-04): only forms that show the address boxes change it.
+    address = None
+    if "addr_country" in request.form:
+        address, _aerr = _addr.address_from_form(request.form)
+        if _aerr:
+            flash(f"Not saved. {_aerr}", "danger")
+            return redirect(request.referrer or url_for("portal.whatsapp_contacts"))
+    other_emails, _oe_sent = None, "other_emails" in request.form
+    if _oe_sent:
+        other_emails, _bad = _addr.parse_other_emails(request.form.get("other_emails"), email)
+        if _bad:
+            flash(f"Not saved. Not an email address: {', '.join(_bad[:3])}", "danger")
+            return redirect(request.referrer or url_for("portal.whatsapp_contacts"))
 
     try:
         conn = get_db_connection()
@@ -15733,6 +16207,10 @@ def whatsapp_contacts_edit(contact_id: int):
         # the standalone set-company action used to apply.
         cur.execute("UPDATE merchant_pipeline_leads SET company_id=%s WHERE wa_contact_id=%s",
                     (company_id, contact_id))
+        if address:
+            _addr.save_address_family(cur, tenant_id, address, contact_id=contact_id, company_id=company_id)
+        if _oe_sent:
+            _addr.save_other_emails(cur, tenant_id, other_emails, contact_id=contact_id)
         conn.commit()
         cur.close(); conn.close()
         flash("Contact updated.", "success")
@@ -15833,6 +16311,14 @@ def whatsapp_contacts_import():
     # Labels (was "Tags" before 2026-09-28 — both headers accepted), several
     # in one cell separated by commas or semicolons. Only ADDS labels.
     labels_col = next((i for i, h in enumerate(first) if h in ("labels", "label", "tags", "tag")), None)
+    # Address columns (2026-10-04). Only fill a contact's EMPTY address.
+    street_col  = next((i for i, h in enumerate(first) if h in ("street", "streetaddress", "address", "address1", "addressline1")), None)
+    city_col    = next((i for i, h in enumerate(first) if h in ("city", "town", "citytown", "lga")), None)
+    state_col   = next((i for i, h in enumerate(first) if h in ("state", "county", "province", "region",
+                                                                 "statecountyprovince", "stateprovince")), None)
+    country_col = next((i for i, h in enumerate(first) if h in ("country", "countrycode")), None)
+    post_col    = next((i for i, h in enumerate(first) if h in ("postcode", "postalcode", "zip", "zipcode")), None)
+    addr_added = addr_missing = addr_bad = 0
     if wa_col is None and phone_col is None and email_col is None:
         flash("The first row of the file must name the columns, with at least one of: "
               "phone_number, whatsapp_number, email.", "danger")
@@ -15894,6 +16380,25 @@ def whatsapp_contacts_import():
                 imported += 1
             _add_contact_labels(cur, tenant_id, row_contact_id,
                                 _re_hdr.split(r"[,;]", _cell(row, labels_col)))
+            # Address: kept only when country and state are recognised; a row
+            # is never dropped because of its address.
+            _c_iso = _addr.match_country(_cell(row, country_col))
+            _c_state = _addr.match_state(_c_iso, _cell(row, state_col)) if _c_iso else None
+            cur.execute("SELECT COALESCE(addr_country,'')<>'' AND COALESCE(addr_state,'')<>'' FROM wa_contacts WHERE id=%s",
+                        (row_contact_id,))
+            _had = cur.fetchone()[0]
+            if _c_iso and _c_state:
+                if not _had:
+                    _addr.save_address_family(cur, tenant_id, {
+                        "addr_street": _cell(row, street_col)[:255] or None, "addr_city": _cell(row, city_col)[:120] or None,
+                        "addr_state": _c_state, "addr_country": _c_iso, "addr_postcode": _cell(row, post_col)[:20] or None,
+                    }, contact_id=row_contact_id)
+                    addr_added += 1
+            elif not _had:
+                if _cell(row, country_col) or _cell(row, state_col):
+                    addr_bad += 1
+                else:
+                    addr_missing += 1
             cur.execute("RELEASE SAVEPOINT csv_row")
         except Exception:
             cur.execute("ROLLBACK TO SAVEPOINT csv_row")
@@ -15909,6 +16414,12 @@ def whatsapp_contacts_import():
     if to_check:
         parts.append(f"⚠️ {to_check} row{'s' if to_check != 1 else ''} with a number to check "
                      "(no country code or not a real number) — see \"Numbers to check\"")
+    if addr_added:
+        parts.append(f"{addr_added} with an address")
+    if addr_missing:
+        parts.append(f"📍 {addr_missing} with no country or state — marked \"Address missing\"")
+    if addr_bad:
+        parts.append(f"📍 {addr_bad} with a country or state we didn't recognise — left empty, see \"Address missing\"")
     flash(" · ".join(parts) + ".", "success" if (imported or updated) else "warning")
 
     return redirect(url_for("portal.whatsapp_contacts"))
@@ -15947,8 +16458,9 @@ def whatsapp_contacts_export():
         clauses = ["c.tenant_id = %s"]
         where_params = [tenant_id]
         if search:
-            clauses.append("(c.phone ILIKE %s OR c.whatsapp_number ILIKE %s OR c.display_name ILIKE %s OR c.email ILIKE %s)")
-            where_params += [f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%"]
+            clauses.append("(c.phone ILIKE %s OR c.whatsapp_number ILIKE %s OR c.display_name ILIKE %s OR c.email ILIKE %s "
+                           "OR c.other_emails ILIKE %s)")
+            where_params += [f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%"]
         if status_filter:
             clauses.append("c.status = ANY(%s)")
             where_params.append(status_filter)
@@ -15975,11 +16487,14 @@ def whatsapp_contacts_export():
         if date_to:
             clauses.append("c.created_at < (%s::date + INTERVAL '1 day')")
             where_params.append(date_to)
+        _ac, _ap, _, _ = _addr.address_filter_clauses("c", request.args)
+        clauses += _ac; where_params += _ap
 
         where = " AND ".join(clauses)
 
         cur.execute(f"""
             SELECT c.phone, c.whatsapp_number, c.email, c.display_name, c.contact_person, c.notes, c.created_at,
+                   c.addr_street, c.addr_city, c.addr_state, c.addr_country, c.addr_postcode, c.other_emails,
                    (SELECT string_agg(lb.name, ', ' ORDER BY lb.name) FROM lead_label_contacts lc
                     JOIN lead_labels lb ON lb.id = lc.label_id WHERE lc.contact_id = c.id) AS labels
             FROM wa_contacts c
@@ -15994,7 +16509,8 @@ def whatsapp_contacts_export():
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["phone_number", "whatsapp_number", "email", "name", "contact_person", "notes", "labels", "added"])
+    writer.writerow(["phone_number", "whatsapp_number", "email", "name", "contact_person", "notes", "labels", "added",
+                     "street", "city", "state", "country", "postcode", "other_emails"])
     for row in rows:
         writer.writerow([
             row["phone"] or "",
@@ -16005,6 +16521,9 @@ def whatsapp_contacts_export():
             row["notes"] or "",
             row["labels"] or "",
             row["created_at"].strftime("%Y-%m-%d") if row["created_at"] else "",
+            row["addr_street"] or "", row["addr_city"] or "", row["addr_state"] or "",
+            _addr.country_name(row["addr_country"]) or "", row["addr_postcode"] or "",
+            row["other_emails"] or "",
         ])
 
     return Response(
@@ -16592,6 +17111,10 @@ def crm_companies_add():
     if not name:
         flash("A company name is required.", "danger")
         return redirect(url_for("portal.crm_companies"))
+    address, _aerr = _addr.address_from_form(request.form)
+    if _aerr:
+        flash(f"Company not saved. {_aerr}", "danger")
+        return redirect(url_for("portal.crm_companies"))
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -16607,6 +17130,7 @@ def crm_companies_add():
                 (tenant_id, name, website),
             )
             company_id = cur.fetchone()["id"]
+            _addr.save_address_family(cur, tenant_id, address, company_id=company_id)
             conn.commit()
             flash(f"{name} added.", "success")
         cur.close(); conn.close()
@@ -16709,6 +17233,12 @@ def crm_company_edit(company_id: int):
     if not name:
         flash("A company name is required.", "danger")
         return redirect(url_for("portal.crm_company_detail", company_id=company_id))
+    address = None
+    if "addr_country" in request.form:
+        address, _aerr = _addr.address_from_form(request.form)
+        if _aerr:
+            flash(f"Not saved. {_aerr}", "danger")
+            return redirect(url_for("portal.crm_company_detail", company_id=company_id))
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
@@ -16716,6 +17246,8 @@ def crm_company_edit(company_id: int):
             "UPDATE crm_companies SET name=%s, website=%s, updated_at=NOW() WHERE id=%s AND tenant_id=%s",
             (name, website, company_id, tenant_id),
         )
+        if address and cur.rowcount:
+            _addr.save_address_family(cur, tenant_id, address, company_id=company_id)
         conn.commit(); cur.close(); conn.close()
         flash("Company updated.", "success")
     except Exception as e:
@@ -27039,7 +27571,9 @@ def _get_webchat_conversations(tenant_id: int) -> list:
                 GREATEST(sub.last_handoff_at, COALESCE(cm.last_msg_at, sub.last_handoff_at)) AS last_at,
                 COALESCE(cm.last_content, sub.last_visitor_message) AS last_content,
                 COALESCE(cm.last_role, 'user') AS last_role,
-                a.assigned_to_key, a.assigned_to_label
+                a.assigned_to_key, a.assigned_to_label,
+                pr.last_seen_at,
+                (pr.last_seen_at > NOW() - INTERVAL '30 seconds') AS online
             FROM (
                 SELECT
                     session_id,
@@ -27067,16 +27601,35 @@ def _get_webchat_conversations(tenant_id: int) -> list:
             ) cm ON true
             LEFT JOIN wa_conversation_assignments a
                    ON a.tenant_id = %s AND a.customer_phone = 'web:' || sub.session_id
+            LEFT JOIN web_chat_presence pr
+                   ON pr.tenant_id = %s AND pr.session_id = sub.session_id
             ORDER BY last_at DESC
-        """, (tenant_id, tenant_id, tenant_id))
+        """, (tenant_id, tenant_id, tenant_id, tenant_id))
         rows = cur.fetchall() or []
         cur.close(); conn.close()
         for r in rows:
             r["needs_reply"] = (r["status"] == "pending")
+            r["online"] = bool(r.get("online"))
+            r["presence_words"] = _webchat_presence_words(r["online"], r.get("last_seen_at"))
         return rows
     except Exception as e:
         print("⚠️ _get_webchat_conversations error:", e)
         return []
+
+
+def _webchat_presence_words(online: bool, last_seen_at) -> str:
+    """'On the website now' / 'Left 12 min ago' for the Inbox (2026-10-06)."""
+    if online:
+        return "On the website now"
+    if not last_seen_at:
+        return ""
+    from datetime import datetime as _dtp, timezone as _tzp
+    mins = max(int((_dtp.now(_tzp.utc) - last_seen_at).total_seconds() // 60), 1)
+    if mins < 60:
+        return f"Left {mins} min ago"
+    if mins < 60 * 24:
+        return f"Left {mins // 60} h ago"
+    return f"Left {mins // (60 * 24)} d ago"
 
 
 def _get_webchat_messages(tenant_id: int, key: str, limit: int = 200) -> list:
@@ -27119,13 +27672,15 @@ def _get_webchat_messages(tenant_id: int, key: str, limit: int = 200) -> list:
 
 
 def _send_webchat_reply(tenant_id: int, key: str, text: str, actor: dict):
-    """Handle an Inbox reply to a website-chat handoff. Unlike WhatsApp/
-    Messenger there's no live session to push a message back into — the
-    visitor has left the site — so the reply goes out by email to whatever
-    address they left on the handoff contact form. Marks any pending
-    handoff_requests rows for this session as handled, same as the
-    Dashboard's existing 'Mark as handled' action, so the Dashboard card
-    and the Inbox never disagree about whether this is done."""
+    """Handle an Inbox reply to a website chat (2026-10-06). While the
+    visitor is on the page (their chat box checked in within 30 seconds) the
+    reply shows in their chat box live. If they've left, it goes by email to
+    the address they gave, with the business's own email as Reply-To. With
+    neither, it's kept and shows if they come back on the same device. A
+    reply sent live that the chat box never picked up is emailed after 2
+    minutes by the WhatsApp gateway (staff_alerts.email_unseen_web_replies).
+    Marks the chat's pending handoff_requests rows handled, as before."""
+    import html as _h
     try:
         _, session_id = key.split(":", 1)
     except ValueError:
@@ -27135,51 +27690,97 @@ def _send_webchat_reply(tenant_id: int, key: str, text: str, actor: dict):
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
-        SELECT visitor_email, visitor_name FROM handoff_requests
-        WHERE tenant_id=%s AND session_id=%s AND visitor_email IS NOT NULL
-        ORDER BY created_at DESC LIMIT 1
+        SELECT (ARRAY_AGG(visitor_email ORDER BY id DESC) FILTER (WHERE COALESCE(visitor_email,'') <> ''))[1] AS email,
+               (ARRAY_AGG(visitor_name  ORDER BY id DESC) FILTER (WHERE COALESCE(visitor_name,'')  <> ''))[1] AS name,
+               (ARRAY_AGG(whatsapp_number ORDER BY id DESC) FILTER (WHERE COALESCE(whatsapp_number,'') <> ''))[1] AS phone
+          FROM handoff_requests WHERE tenant_id=%s AND session_id=%s
     """, (tenant_id, session_id))
-    contact = cur.fetchone()
-    cur.execute("SELECT name FROM tenants WHERE id=%s", (tenant_id,))
-    tenant_row = cur.fetchone()
+    contact = cur.fetchone() or {}
+    cur.execute("""SELECT last_seen_at > NOW() - INTERVAL '30 seconds' AS online
+                     FROM web_chat_presence WHERE tenant_id=%s AND session_id=%s""", (tenant_id, session_id))
+    online = bool((cur.fetchone() or {}).get("online"))
+    cur.execute("""SELECT t.name, t.domain, COALESCE(c.handoff_notify_email, c.email) AS owner_email
+                     FROM tenants t LEFT JOIN customers c ON c.tenant_id = t.id AND c.is_active
+                    WHERE t.id=%s ORDER BY c.id LIMIT 1""", (tenant_id,))
+    t = cur.fetchone() or {}
+    cur.execute("""
+        INSERT INTO web_chat_replies (tenant_id, session_id, content, sent_by_label)
+        VALUES (%s, %s, %s, %s) RETURNING id
+    """, (tenant_id, session_id, text, actor["label"]))
+    reply_id = cur.fetchone()["id"]
+    cur.execute("""
+        UPDATE handoff_requests SET status='handled', handled_at=NOW()
+        WHERE tenant_id=%s AND session_id=%s AND status='pending'
+    """, (tenant_id, session_id))
+    conn.commit()
     cur.close(); conn.close()
 
-    if not contact or not contact.get("visitor_email"):
-        flash("No email address on file for this visitor — can't send a reply.", "danger")
+    if online:
+        flash("Sent. It shows in the visitor's chat box now.", "success")
         return redirect(url_for("portal.my_inbox", phone=key))
 
-    tenant_name = (tenant_row or {}).get("name") or "us"
-    greeting = f"Hi {contact['visitor_name']}," if contact.get("visitor_name") else "Hi,"
-    html_body = f"""
-      <p>{greeting}</p>
-      <p>{text.replace(chr(10), '<br>')}</p>
-      <p style="color:#888;font-size:12px;margin-top:24px">
-        This is a reply to the question you asked our AI chat assistant on the {tenant_name} website.
-      </p>
-    """
-    ok = send_email(contact["visitor_email"], f"Re: your question to {tenant_name}", html_body, text_body=text)
+    email = contact.get("email")
+    if not email:
+        phone = contact.get("phone")
+        flash("Saved. The visitor has left and gave no email address, so they'll see it only if they "
+              "come back to the website." + (f" You can call them on {phone}." if phone else ""), "warning")
+        return redirect(url_for("portal.my_inbox", phone=key))
 
+    business = (t.get("name") or "us").strip()
+    first = (contact.get("name") or "").strip().split(" ")[0]
+    who = (actor.get("label") or "").strip().split(" ")[0]
+    who = "" if (not who or "@" in who) else who
+    site = (t.get("domain") or "").strip()
+    greet = f"Hi {first}," if first else "Hi,"
+    lead = f"{who} from {business} replied to your message:" if who else f"{business} replied to your message:"
+    again = f"You can reply to this email, or chat with us again at {site}." if site else "You can reply to this email."
+    html_body = (f'<div style="font-family:Arial,sans-serif;max-width:560px;color:#111E2D;font-size:15px;line-height:1.55">'
+                 f'<p>{_h.escape(greet)}</p><p>{_h.escape(lead)}</p>'
+                 f'<p style="border-left:3px solid #0B1D40;padding-left:12px;white-space:pre-wrap">{_h.escape(text)}</p>'
+                 f'<p>{_h.escape(again)}</p></div>')
+    ok = send_email(email, f"Reply from {business}", html_body,
+                    text_body=f"{greet}\n\n{lead}\n\n{text}\n\n{again}", reply_to=t.get("owner_email"))
     if ok:
         try:
-            conn = get_db_connection()
-            cur  = conn.cursor()
-            cur.execute("""
-                INSERT INTO web_chat_replies (tenant_id, session_id, content, sent_by_label)
-                VALUES (%s, %s, %s, %s)
-            """, (tenant_id, session_id, text, actor["label"]))
-            cur.execute("""
-                UPDATE handoff_requests SET status='handled', handled_at=NOW()
-                WHERE tenant_id=%s AND session_id=%s AND status='pending'
-            """, (tenant_id, session_id))
-            conn.commit()
-            cur.close(); conn.close()
+            conn = get_db_connection(); cur = conn.cursor()
+            cur.execute("UPDATE web_chat_replies SET emailed_at=NOW() WHERE id=%s", (reply_id,))
+            conn.commit(); cur.close(); conn.close()
         except Exception as e:
             print("⚠️ _send_webchat_reply log error:", e)
-        flash(f"Reply emailed to {contact['visitor_email']}. ✅", "success")
+        flash(f"The visitor has left, so your reply was emailed to {email}.", "success")
     else:
-        flash("Failed to send — check the email settings.", "danger")
-
+        flash("Saved, but the email didn't send. Check the email settings.", "danger")
     return redirect(url_for("portal.my_inbox", phone=key))
+
+
+@portal_bp.route("/inbox/api/webchat-poll")
+@team_feature("inbox.page")
+def inbox_api_webchat_poll():
+    """Live Web Chat thread for the Inbox (2026-10-06): messages after the
+    ones already on screen, and whether the visitor is on the page."""
+    from flask import jsonify
+    r = _require_login()
+    if r: return jsonify({"error": "login_required"}), 401
+    if not _team_member_has_permission("inbox.page"):
+        return jsonify({"error": "forbidden"}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    key = request.args.get("key", "")
+    actor = _current_actor(customer)
+    if not key.startswith("web:") or not _team_can_access_phone(tenant_id, actor, key):
+        return jsonify({"error": "forbidden"}), 403
+    seen = int(request.args.get("count") or 0)
+    msgs = _get_webchat_messages(tenant_id, key)
+    conv = next((c for c in _get_webchat_conversations(tenant_id) if c["key"] == key), None) or {}
+    out = []
+    for m in msgs[seen:]:
+        out.append({"direction": m["direction"], "content": m["content"] or "",
+                    "time": m["created_at"].strftime("%H:%M") if m.get("created_at") else "",
+                    "by": display_actor(m.get("sent_by_label")) or "",
+                    "is_ai": bool(m.get("is_ai"))})
+    return jsonify({"count": len(msgs), "new": out, "online": bool(conv.get("online")),
+                    "presence": conv.get("presence_words") or "",
+                    "visitor": conv.get("visitor_name") or "Visitor"})
 
 
 @portal_bp.route("/inbox")
@@ -27316,6 +27917,9 @@ def my_inbox():
         is_messenger_active=is_messenger_active,
         webchat_conversations=webchat_conversations,
         webchat_messages=webchat_messages,
+        # PhiXtra Connect: nudge to the 2-week AI trial in Web Chat (2026-10-06)
+        webchat_trial_available=bool(is_webchat_active and _get_tenant_plan(tenant_id).get("ai_trial_available")
+                                     and _team_member_has_permission("billing.subscription_manage")),
         # "Fix this answer": which AI replies in the open conversation the
         # team has already corrected ({source_ref: who fixed it}).
         corrections_map=_corrections_for_conv(tenant_id, active_phone) if active_phone else {},
@@ -27607,7 +28211,7 @@ def _get_tenant_plan(tenant_id: int) -> dict:
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             SELECT t.id AS tenant_id, t.plan_period_start, t.billing_cycle, t.quota_notified_at,
-                   t.trial_ends_at, t.trial_granted_at, t.source_type,
+                   t.trial_ends_at, t.trial_granted_at, t.source_type, t.signup_channel,
                    COALESCE(p.id,                1)       AS plan_id,
                    COALESCE(p.slug,          'free')      AS plan_slug,
                    COALESCE(p.name,          'Free')      AS plan_name,
@@ -27662,12 +28266,20 @@ def _get_tenant_plan(tenant_id: int) -> dict:
             row["trial_days_left"] = 0
             row["is_trial"]        = False
 
-        # PhiXtra Connect (WhatsApp, no AI) and its one-off 2-week AI trial
-        is_wa = row.get("source_type") == "whatsapp"
-        row["is_connect_plan"]    = is_wa and row.get("plan_slug") == "connect"
-        row["ai_trial_available"] = row["is_connect_plan"] and not row.get("trial_granted_at")
-        row["ai_trial_used"]      = row["is_connect_plan"] and bool(row.get("trial_granted_at"))
-        row["is_wa_ai_trial"]     = is_wa and row["is_trial"]
+        # The free AI-off plan (PhiXtra Connect / Website Free) and its
+        # one-off 2-week AI trial. Older website businesses aren't on it.
+        is_wa   = row.get("source_type") == "whatsapp"
+        channel = row.get("signup_channel")
+        on_free_start = is_wa or bool(channel)
+        row["is_connect_plan"]    = row.get("plan_slug") in AI_OFF_FREE_PLAN_SLUGS
+        row["ai_trial_available"] = row["is_connect_plan"] and on_free_start and not row.get("trial_granted_at")
+        row["ai_trial_used"]      = row["is_connect_plan"] and on_free_start and bool(row.get("trial_granted_at"))
+        row["is_wa_ai_trial"]     = on_free_start and row["is_trial"]
+        # Words for the trial banners and emails
+        row["free_plan_name"]     = "PhiXtra Connect"
+        row["trial_plan_name"]    = TRIAL_PLAN_NAMES[_trial_plan_slug(row.get("source_type"), channel)]
+        row["ai_customers_words"] = ("your WhatsApp customers and website visitors" if channel == "both"
+                                     else "your WhatsApp customers" if is_wa else "your website visitors")
         # The daily check switches the trial off early on trial_ends_at, so
         # the last full day the merchant has is the day before.
         row["trial_last_day"]     = (trial_ends - timedelta(days=1)) if trial_ends else None
@@ -27734,8 +28346,13 @@ def billing_plans():
     merchant_mode = _merchant_plan_mode(customer)
     single_plans = [p for p in plans if _plan_mode(p) == merchant_mode]
     dual_plans   = [p for p in plans if _plan_mode(p) == "dual"]
-    custom_plans = [p for p in plans if _plan_mode(p) == "both"]
     has_own_plans = bool(single_plans)
+    # A free plan for everyone (PhiXtra Connect, 2026-10-06) leads the
+    # merchant's own line-up; other "everyone" plans (Custom) go last.
+    free_for_all = [p for p in plans if _plan_mode(p) == "both" and not p.get("is_custom")
+                    and float(p.get("price_ngn") or 0) == 0]
+    single_plans = free_for_all + single_plans
+    custom_plans = [p for p in plans if _plan_mode(p) == "both" and p not in free_for_all]
     # Always show the merchant's current plan, even when it belongs to the
     # other channel (e.g. a WooCommerce merchant on the Enterprise trial, or
     # dropped to Free afterwards) — shown as "Current plan", never buyable
@@ -28804,6 +29421,7 @@ def leads_page():
         email            = (f.get("email") or "").strip()
         deal_value_raw   = (f.get("deal_value") or "").strip()
         product_interest = (f.get("product_interest") or "").strip()
+        website          = _normalize_website_url(f.get("website") or "")
         _akey            = (f.get("assigned_key") or "").strip()
         _apeople         = {a["key"]: a["label"] for a in _lead_assignees(tenant_id, customer)}
         if _akey not in _apeople or not _team_member_has_permission("leads.assign"):
@@ -28821,6 +29439,14 @@ def leads_page():
         if _perr or _werr:
             flash(f"Lead not saved. {_perr or _werr}", "danger")
             return redirect(url_for("portal.leads_page", open_add=1))
+        address, _aerr = _addr.address_from_form(f)
+        if _aerr:
+            flash(f"Lead not saved. {_aerr}", "danger")
+            return redirect(url_for("portal.leads_page", open_add=1))
+        other_emails, _bad = _addr.parse_other_emails(f.get("other_emails"), email)
+        if _bad:
+            flash(f"Lead not saved. Not an email address: {', '.join(_bad[:3])}", "danger")
+            return redirect(url_for("portal.leads_page", open_add=1))
         deal_value = None
         if deal_value_raw:
             try:
@@ -28832,14 +29458,16 @@ def leads_page():
         cur.execute("""
             INSERT INTO merchant_pipeline_leads
                 (tenant_id, customer_name, contact_person, phone, whatsapp_number, email, notes,
-                 deal_value, product_interest, assigned_to, assigned_key, source)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 deal_value, product_interest, assigned_to, assigned_key, source, website)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """, (tenant_id, customer_name, contact_person or None, phone or None,
               whatsapp_number or None, email or None, notes or None, deal_value,
-              product_interest or None, assigned_to or None, _akey or None, source))
+              product_interest or None, assigned_to or None, _akey or None, source, website or None))
         new_id = cur.fetchone()[0]
         _link_lead_to_contact(cur, tenant_id, new_id)   # Phase 1b: every lead gets a contact
+        _addr.save_address_family(cur, tenant_id, address, lead_id=new_id)
+        _addr.save_other_emails(cur, tenant_id, other_emails, lead_id=new_id)
         conn.commit()
         cur.close(); conn.close()
         pipeline_record_stage_change(new_id, None, "new_lead",
@@ -28948,10 +29576,13 @@ def leads_page():
         )
         tier_counts = {row["lead_tier"]: row["c"] for row in cur.fetchall()}
 
+    addr_opts = _addr.address_filter_options(
+        cur, "merchant_pipeline_leads", tenant_id,
+        "NOT t.is_opportunity AND t.dropped_at IS NULL AND t.outcome IS NULL")
     cur.close(); conn.close()
 
     return render_template(
-        "portal/leads.html",
+        "portal/leads.html", addr_opts=addr_opts,
         customer=customer, connection=connection,
         hot_leads=hot_leads, hot_count=hot_count, warm_count=warm_count,
         real_leads=real_leads, search=search,
@@ -29270,6 +29901,8 @@ def _leads_list_filters(tenant_id: int, args, actor_key: str):
         clauses.append("mpl.created_at::date >= %s"); params.append(added_from)
     if added_to:
         clauses.append("mpl.created_at::date <= %s"); params.append(added_to)
+    a_clauses, a_params, a_state, a_fargs = _addr.address_filter_clauses("mpl", args)
+    clauses += a_clauses; params += a_params
 
     fargs = {k: v for k, v in {
         "has_phone": "1" if has_phone else None, "has_email": "1" if has_email else None,
@@ -29279,7 +29912,8 @@ def _leads_list_filters(tenant_id: int, args, actor_key: str):
         "added_from": added_from.isoformat() if added_from else None,
         "added_to": added_to.isoformat() if added_to else None,
     }.items() if v}
-    state = {"search": search, "tier": tier, "has_phone": has_phone, "has_email": has_email,
+    fargs.update(a_fargs)
+    state = {"search": search, "tier": tier, "has_phone": has_phone, "has_email": has_email, "addr": a_state,
              "has_whatsapp": has_whatsapp, "has_company": has_company, "assigned": assigned,
              "check_numbers": check_numbers, "flagged_count": len(flagged_ids),
              "added_from": added_from, "added_to": added_to, "fargs": fargs,
@@ -29470,6 +30104,46 @@ def leads_bulk_assign():
     finally:
         cur.close(); conn.close()
     return jsonify({"ok": True, "assigned": sum(assigned.values()), "selected": len(ids)})
+
+
+@portal_bp.route("/leads/bulk/set-address", methods=["POST"])
+@team_feature("crm.pipeline_board_edit")
+def leads_bulk_set_address():
+    """Give ticked Leads (or all matching) one address (2026-10-04). Leads
+    that already have an address are skipped unless replace=1. Each save
+    also goes to the lead's company, contact and their other leads."""
+    if not _team_member_has_permission("crm.pipeline_board_edit"):
+        return jsonify({"error": "Your role doesn't allow this."}), 403
+    customer, tenant_id, err = _bulk_json_guard("crm.pipeline_board_edit")
+    if err: return err
+    f = request.form
+    address, aerr = _addr.address_from_form(f)
+    if aerr:
+        return jsonify({"error": aerr}), 400
+    replace = f.get("replace") == "1"
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        ids = _bulk_selected_lead_ids(cur, tenant_id, f, "leads", _current_actor(customer)["key"])
+        if not ids:
+            return jsonify({"error": "Nothing selected."}), 400
+        cur.execute("SELECT id FROM merchant_pipeline_leads WHERE tenant_id=%s AND id = ANY(%s) "
+                    "AND COALESCE(addr_country,'')<>'' AND COALESCE(addr_state,'')<>''", (tenant_id, ids))
+        had = {r["id"] for r in cur.fetchall()}
+        done = 0
+        for lid in ids:
+            if lid in had and not replace:
+                continue
+            _addr.save_address_family(cur, tenant_id, address, lead_id=lid)
+            done += 1
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print("⚠️ leads_bulk_set_address error:", e)
+        return jsonify({"error": "Something went wrong — nothing was changed."}), 500
+    finally:
+        cur.close(); conn.close()
+    return jsonify({"ok": True, "saved": done, "skipped": len(ids) - done, "selected": len(ids)})
 
 
 @portal_bp.route("/leads/bulk/not-a-fit", methods=["POST"])
@@ -29695,9 +30369,10 @@ def _pipeline_filter_clauses(tenant_id, search, stage_filter, has_phone, has_wha
         clauses.append("mpl.lead_tier=%s")
         params.append(tier_filter)
     if search:
-        clauses.append("(mpl.customer_name ILIKE %s OR mpl.contact_person ILIKE %s)")
+        clauses.append("(mpl.customer_name ILIKE %s OR mpl.contact_person ILIKE %s "
+                       "OR mpl.email ILIKE %s OR mpl.other_emails ILIKE %s)")
         like = f"%{search}%"
-        params += [like, like]
+        params += [like, like, like, like]
     if stage_filter != "all":
         clauses.append("mpl.stage=%s")
         params.append(stage_filter)
@@ -30066,11 +30741,17 @@ def sales_pipeline():
         hide_wa_segment_ids, tier_filter=tier_filter if tier_filter != "all" else None,
         opportunity_only=True,
     )
+    # Address filters (2026-10-04) — list view.
+    a_clauses, a_params, addr_state, addr_fargs = _addr.address_filter_clauses("mpl", request.args)
+    clauses += a_clauses; params += a_params
     where = " AND ".join(clauses)
     scored_from = _pipeline_scored_from_sql()
 
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    addr_opts = _addr.address_filter_options(
+        cur, "merchant_pipeline_leads", tenant_id,
+        "t.is_opportunity AND t.dropped_at IS NULL AND t.outcome IS NULL")
 
     cur.execute(f"SELECT count(*) AS c FROM {scored_from} mpl WHERE {where}", [tenant_id] + params)
     filtered_total = cur.fetchone()["c"]
@@ -30263,6 +30944,9 @@ def sales_pipeline():
 
     return render_template(
         "portal/sales_pipeline.html",
+        addr_state            = addr_state,
+        addr_fargs            = addr_fargs,
+        addr_opts             = addr_opts,
         customer              = customer,
         leads                 = leads,
         dropped_leads         = dropped_leads,
@@ -30481,6 +31165,20 @@ def sales_pipeline_edit(lead_id: int):
             return redirect(request.referrer or url_for("portal.sales_pipeline"))
         _nums[_fld] = _val
 
+    # Address (2026-10-04): only forms that show the address boxes change it.
+    address = None
+    if "addr_country" in f:
+        address, _aerr = _addr.address_from_form(f)
+        if _aerr:
+            flash(f"Not saved. {_aerr}", "danger")
+            return redirect(request.referrer or url_for("portal.sales_pipeline"))
+    other_emails, _oe_sent = None, "other_emails" in f
+    if _oe_sent:
+        other_emails, _bad = _addr.parse_other_emails(f.get("other_emails"), f.get("email"))
+        if _bad:
+            flash(f"Not saved. Not an email address: {', '.join(_bad[:3])}", "danger")
+            return redirect(request.referrer or url_for("portal.sales_pipeline"))
+
     deal_value_raw = (f.get("deal_value") or "").strip()
     deal_value = None
     if deal_value_raw:
@@ -30529,7 +31227,9 @@ def sales_pipeline_edit(lead_id: int):
         _nums["phone"],
         _nums["whatsapp_number"],
         (f.get("email") or "").strip() or None,
-        _normalize_website_url(f.get("website") or "") or None,
+        # Only forms with a Website box may change it — the Sales Pipeline
+        # "Edit Deal" window has none, so it must not wipe a saved website.
+        (_normalize_website_url(f.get("website") or "") or None) if "website" in f else lead.get("website"),
         deal_value,
         (f.get("notes") or "").strip() or None,
         (f.get("product_interest") or "").strip() or None,
@@ -30544,6 +31244,13 @@ def sales_pipeline_edit(lead_id: int):
     # Phase 1b: a lead that now has a phone/WhatsApp/email gets joined to a
     # contact; one already joined only fills the contact's empty boxes.
     _link_lead_to_contact_now(tenant_id, lead_id)
+    if address or _oe_sent:
+        conn = get_db_connection(); cur = conn.cursor()
+        if address:
+            _addr.save_address_family(cur, tenant_id, address, lead_id=lead_id)
+        if _oe_sent:
+            _addr.save_other_emails(cur, tenant_id, other_emails, lead_id=lead_id)
+        conn.commit(); cur.close(); conn.close()
 
     flash(f"{customer_name} updated.", "success")
     # Editing can happen from the Lead's own page or from Sales Pipeline —
@@ -31000,7 +31707,7 @@ def lead_detail(lead_id: int):
     # Company (CRM merge link).
     company = None
     if lead.get("company_id"):
-        cur.execute("SELECT id, name FROM crm_companies WHERE id=%s", (lead["company_id"],))
+        cur.execute("SELECT id, name, website FROM crm_companies WHERE id=%s", (lead["company_id"],))
         company = cur.fetchone()
 
     # Ambassador — PhiXtra's own account only, never shown as if it applies elsewhere.

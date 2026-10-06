@@ -407,9 +407,12 @@ def update_handoff_contact(
     visitor_phone: str,
     visitor_email: str,
     store_domain: str = "",
+    send_alert: bool = True,
 ) -> bool:
     """
     Called when the visitor submits OR skips the in-widget contact form.
+    send_alert=False (website chat answered by the team, 2026-10-06): the
+    staff chat alerts already cover it, so no hand-over email here.
 
     1. Updates the handoff_requests row with whatever contact details were provided
        (all fields may be empty if the visitor clicked Skip — that is fine).
@@ -464,8 +467,8 @@ def update_handoff_contact(
                 cur.execute(
                     """
                     UPDATE handoff_requests
-                    SET visitor_name    = %s,
-                        visitor_email   = %s,
+                    SET visitor_name    = COALESCE(NULLIF(%s,''), visitor_name),
+                        visitor_email   = COALESCE(NULLIF(%s,''), visitor_email),
                         whatsapp_number = COALESCE(NULLIF(%s,''), whatsapp_number)
                     WHERE id = (
                         SELECT id FROM handoff_requests
@@ -511,6 +514,8 @@ def update_handoff_contact(
     save_web_visitor_contact(tenant_id, visitor_name, final_phone, visitor_email)
 
     # ── 3. Send the ONE alert email with everything we know
+    if not send_alert:
+        return updated
     contact_email = _get_tenant_contact_email(tenant_id)
     if contact_email:
         chat_summary = _get_chat_summary(tenant_id, session_id)

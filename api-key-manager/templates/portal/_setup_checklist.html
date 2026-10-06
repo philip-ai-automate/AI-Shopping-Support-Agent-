@@ -1,0 +1,64 @@
+{# "Get set up" box for website and WhatsApp-and-website sign-ups (2026-10-05).
+   Steps come from _setup_checklist(); each ticks itself from real data. #}
+<style>
+.su-card{border:1px solid var(--line);border-radius:16px;background:#fff;padding:20px 22px;margin-bottom:20px}
+.su-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.su-title{font-size:17px;font-weight:800;color:#0B1D40;margin:0}
+.su-count{font-size:13px;font-weight:700;color:#4A5B78}
+.su-bar{height:6px;border-radius:99px;background:#E8EEF8;overflow:hidden;margin:10px 0 14px}
+.su-bar span{display:block;height:100%;background:#0B1D40;border-radius:99px}
+.su-step{display:grid;grid-template-columns:32px minmax(0,1fr) auto;gap:14px;align-items:start;padding:14px 0;border-top:1px solid var(--line)}
+.su-step:first-of-type{border-top:0}
+.su-n{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;background:#E8EEF8;color:#0B1D40}
+.su-step.done .su-n{background:#127A4A;color:#fff}
+.su-step.done .su-name{color:#4A5B78}
+.su-name{font-size:14.5px;font-weight:750;color:#111E2D}
+.su-text{font-size:13.5px;color:#4A5B78;margin-top:2px;line-height:1.5}
+.su-text.failed{color:#B42318}
+.su-acts{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
+.su-btn{font:inherit;display:inline-flex;align-items:center;min-height:38px;padding:0 14px;border-radius:10px;font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap;cursor:pointer;border:1px solid #0B1D40;background:#0B1D40;color:#fff}
+.su-btn.line{background:#fff;color:#0B1D40}
+.su-btn:hover{text-decoration:none;opacity:.92}
+.su-spin{display:inline-block;width:12px;height:12px;border:2px solid #9DB8E8;border-top-color:#0B1D40;border-radius:50%;animation:su-r 0.9s linear infinite;vertical-align:-1px;margin-right:6px}
+@keyframes su-r{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.su-spin{animation:none}}
+@media (max-width:640px){.su-step{grid-template-columns:32px minmax(0,1fr)}.su-acts{grid-column:2;justify-content:flex-start}}
+</style>
+<div class="su-card" id="getSetUp">
+  <div class="su-head">
+    <h2 class="su-title">{% if setup.complete %}You're all set up{% else %}Get set up{% endif %}</h2>
+    <span class="su-count">{{ setup.done }} of {{ setup.total }} done</span>
+  </div>
+  <div class="su-bar" role="progressbar" aria-valuemin="0" aria-valuemax="{{ setup.total }}" aria-valuenow="{{ setup.done }}"><span style="width:{{ (100 * setup.done / setup.total)|round|int }}%"></span></div>
+  {% for st in setup.steps %}
+  <div class="su-step{% if st.done %} done{% endif %}">
+    <div class="su-n">{% if st.done %}✓{% else %}{{ st.n }}{% endif %}</div>
+    <div>
+      <div class="su-name">{{ st.title }}</div>
+      <div class="su-text{% if st.state == 'failed' %} failed{% endif %}">{% if st.state == 'checking' %}<span class="su-spin" aria-hidden="true"></span>{% endif %}{{ st.text }}</div>
+    </div>
+    {% if not st.done or (st.key == 'website' and st.url) %}
+    <div class="su-acts">
+      {% if not st.done %}
+        {% if st.url and st.action %}<a class="su-btn{% if st.check %} line{% endif %}" href="{{ st.url }}">{{ st.action }}</a>{% endif %}
+        {% if st.check %}
+        <form method="POST" action="{{ url_for('portal.setup_check_chatbox') }}" style="margin:0">
+          <button type="submit" class="su-btn">Check it's installed</button>
+        </form>
+        {% endif %}
+        {% if st.trial %}
+        <form method="POST" action="{{ url_for('portal.billing_start_ai_trial') }}" style="margin:0">
+          <button type="submit" class="su-btn">Start my 2-week AI trial</button>
+        </form>
+        {% endif %}
+      {% elif st.key == 'website' and st.url %}
+        <a class="su-btn line" href="{{ st.url }}">{{ st.action }}</a>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% if setup.checking %}
+<script>setTimeout(function(){ location.reload(); }, 20000);</script>
+{% endif %}

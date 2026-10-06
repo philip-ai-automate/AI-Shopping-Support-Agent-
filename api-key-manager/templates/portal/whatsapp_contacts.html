@@ -1,5 +1,6 @@
 {% extends "portal/base.html" %}
 {% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
+{% from "portal/_address_box.html" import emails_cell, other_emails_box, address_box, location_cell, address_filters with context %}
 {% block title %}Contacts — PhiXtra Portal{% endblock %}
 
 {% block head %}
@@ -393,7 +394,7 @@
   </div>
   <div class="hero-actions">
     {% if staff_can_open('portal.whatsapp_contacts_export') %}
-    <a href="{{ url_for('portal.whatsapp_contacts_export', q=search, status_filter=status_filter, tag_filter=tag_filter, segment_filter=segment_filter, date_from=date_from, date_to=date_to, has_phone='1' if has_phone else '', has_whatsapp='1' if has_whatsapp else '', has_email='1' if has_email else '', has_pers='1' if has_pers else '') }}" class="btn-outline-white" title="Exports contacts matching your current search/filters">
+    <a href="{{ url_for('portal.whatsapp_contacts_export', q=search, status_filter=status_filter, tag_filter=tag_filter, segment_filter=segment_filter, date_from=date_from, date_to=date_to, has_phone='1' if has_phone else '', has_whatsapp='1' if has_whatsapp else '', has_email='1' if has_email else '', has_pers='1' if has_pers else '', **(addr_fargs or {})) }}" class="btn-outline-white" title="Exports contacts matching your current search/filters">
       <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
       Export CSV
     </a>
@@ -462,6 +463,8 @@
       <input type="text" name="q" value="{{ search }}" placeholder="Search by name, number or email…" autocomplete="off">
     </div>
     <button type="submit" class="btn-save" style="padding:9px 16px">Search</button>
+
+    {{ address_filters(addr_state, addr_opts) }}
 
     <button type="button" class="filters-btn {{ 'has-active' if active_filter_count else '' }}" onclick="toggleFilterPanel()">
       <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
@@ -729,11 +732,12 @@
                 Columns
               </button>
               <div class="col-picker-menu" id="colPickerMenu">
-                <label class="col-picker-item"><input type="checkbox" data-col-toggle="company" checked>Company</label>
+                <label class="col-picker-item"><input type="checkbox" data-col-toggle="website" checked>Website</label>
+                <label class="col-picker-item"><input type="checkbox" data-col-toggle="location" checked>Location</label>
                 <label class="col-picker-item"><input type="checkbox" data-col-toggle="contact_person" checked>Contact Person</label>
                 <label class="col-picker-item"><input type="checkbox" data-col-toggle="phone" checked>Phone Number</label>
                 <label class="col-picker-item"><input type="checkbox" data-col-toggle="whatsapp" checked>WhatsApp Number</label>
-                <label class="col-picker-item"><input type="checkbox" data-col-toggle="email">Email</label>
+                <label class="col-picker-item"><input type="checkbox" data-col-toggle="email" checked>Email</label>
                 <label class="col-picker-item"><input type="checkbox" data-col-toggle="status" checked>Status</label>
                 <label class="col-picker-item"><input type="checkbox" data-col-toggle="tags" checked>Labels</label>
                 <label class="col-picker-item"><input type="checkbox" data-col-toggle="stage" checked>Stage</label>
@@ -767,13 +771,13 @@
             <thead>
               <tr>
                 <th style="width:36px">{% if can_bulk %}<input type="checkbox" class="select-all-check" id="selectAll" title="Select all">{% endif %}</th>
-                <th style="width:40px"></th>
-                <th>Name</th>
-                <th data-col="company">Company</th>
+                <th>Company</th>
+                <th data-col="website">Website</th>
+                <th data-col="location">Location</th>
                 <th data-col="contact_person">Contact Person</th>
                 <th data-col="phone">Phone Number</th>
                 <th data-col="whatsapp">WhatsApp Number</th>
-                <th data-col="email" class="col-hidden">Email</th>
+                <th data-col="email">Email</th>
                 <th data-col="status">Status</th>
                 <th data-col="tags">Labels</th>
                 <th data-col="stage">Stage</th>
@@ -786,29 +790,33 @@
               {% for c in contacts %}
               <tr>
                 <td>{% if can_bulk %}<input type="checkbox" class="row-check" name="contact_ids" value="{{ c.id }}">{% endif %}</td>
+                {# Company is the main column (the old Name column was removed); no company → the contact's own name #}
+                {% set row_name = c.company_name or c.display_name %}
                 <td>
-                  <div class="avatar">
-                    {% if c.display_name %}{{ c.display_name[0] }}{% else %}#{% endif %}
+                  <div style="display:flex;align-items:center;gap:6px;max-width:220px">
+                    <a href="{{ url_for('portal.whatsapp_contact_detail', contact_id=c.id) }}" title="Open contact"
+                       style="font-weight:700;font-size:13px;color:var(--ink);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                       onmouseover="this.style.color='#6366f1'" onmouseout="this.style.color='var(--ink)'">
+                      {{ row_name or '<span style="color:var(--muted);font-weight:400;font-style:italic">Unnamed</span>'|safe }}
+                    </a>
+                    {% if c.company_name %}
+                    <a href="{{ url_for('portal.crm_company_detail', company_id=c.company_id_join) }}" title="Open company page"
+                       style="font-size:12px;text-decoration:none;flex-shrink:0">🏢</a>
+                    {% endif %}
                   </div>
-                </td>
-                <td>
-                  <a href="{{ url_for('portal.whatsapp_contact_detail', contact_id=c.id) }}"
-                     style="font-weight:700;font-size:13px;color:var(--ink);text-decoration:none;display:block;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                     onmouseover="this.style.color='#6366f1'" onmouseout="this.style.color='var(--ink)'">
-                    {{ c.display_name or '<span style="color:var(--muted);font-weight:400;font-style:italic">Unnamed</span>'|safe }}
-                  </a>
                   {% if c.notes %}
-                  <div style="font-size:11px;color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px" title="{{ c.notes }}">{{ c.notes }}</div>
+                  <div style="font-size:11px;color:var(--muted);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px" title="{{ c.notes }}">{{ c.notes }}</div>
                   {% endif %}
                 </td>
-                <td data-col="company">
-                  {% if c.company_name %}
-                  <a href="{{ url_for('portal.crm_company_detail', company_id=c.company_id_join) }}"
-                     style="font-size:12px;font-weight:600;color:#334155;text-decoration:none">🏢 {{ c.company_name }}</a>
+                <td data-col="website" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                  {% if c.company_website %}
+                  <a href="{{ c.company_website }}" target="_blank" rel="noopener noreferrer" title="{{ c.company_website }}"
+                     style="font-size:12px;color:#2563eb;text-decoration:none">{{ c.company_website|replace('https://','')|replace('http://','') }}</a>
                   {% else %}
                   <span style="font-size:11px;color:var(--muted)">—</span>
                   {% endif %}
                 </td>
+                <td data-col="location" style="font-size:12px;max-width:200px">{{ location_cell(c) }}</td>
                 <td data-col="contact_person">
                   {% if c.contact_person %}
                   <span style="font-size:12px;color:var(--ink)">{{ c.contact_person }}</span>
@@ -836,13 +844,7 @@
                   <span style="font-size:11px;color:var(--muted)">—</span>
                   {% endif %}
                 </td>
-                <td data-col="email" class="col-hidden">
-                  {% if c.email %}
-                  <span style="font-size:12px;color:var(--ink)">{{ c.email }}</span>
-                  {% else %}
-                  <span style="font-size:11px;color:var(--muted)">—</span>
-                  {% endif %}
-                </td>
+                <td data-col="email" style="font-size:12px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ emails_cell(c.email, c.other_emails) }}</td>
                 <td data-col="status">
                   <span class="status-badge badge-{{ c.status or 'lead' }}">
                     <span class="status-dot"></span>{{ (c.status or 'lead')|title }}
@@ -897,7 +899,7 @@
                     </button>
                   </form>
                   <button type="button" class="icon-btn" title="Edit contact"
-                          onclick="openEdit({{ c.id }}, '{{ (c.display_name or '')|replace("'","\\'")|replace('"','\\"') }}', '{{ (c.notes or '')|replace("'","\\'")|replace('"','\\"')|replace('\n',' ') }}', '{{ c.status or 'lead' }}', '{{ (c.tags_list or [])|join(',') }}', '{{ (c.email or '')|replace("'","\\'") }}', '{{ (c.personalization_note or '')|replace("'","\\'")|replace('"','\\"')|replace('\n',' ') }}', {{ c.company_id or 'null' }}, '{{ (c.contact_person or '')|replace("'","\\'")|replace('"','\\"') }}', '{{ c.phone or '' }}', '{{ c.whatsapp_number or '' }}')">
+                          onclick="openEdit({{ c.id }}, '{{ (c.display_name or '')|replace("'","\\'")|replace('"','\\"') }}', '{{ (c.notes or '')|replace("'","\\'")|replace('"','\\"')|replace('\n',' ') }}', '{{ c.status or 'lead' }}', '{{ (c.tags_list or [])|join(',') }}', '{{ (c.email or '')|replace("'","\\'") }}', '{{ (c.personalization_note or '')|replace("'","\\'")|replace('"','\\"')|replace('\n',' ') }}', {{ c.company_id or 'null' }}, '{{ (c.contact_person or '')|replace("'","\\'")|replace('"','\\"') }}', '{{ c.phone or '' }}', '{{ c.whatsapp_number or '' }}', {{ dict(addr_street=c.addr_street or '', addr_city=c.addr_city or '', addr_state=c.addr_state or '', addr_country=c.addr_country or '', addr_postcode=c.addr_postcode or '')|tojson|forceescape }}, {{ (c.other_emails or '')|tojson|forceescape }})">
                     <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                   </button>
                   {% endif %}
@@ -925,6 +927,7 @@
                                'date_from': date_from, 'date_to': date_to,
                                'has_phone': '1' if has_phone else '', 'has_whatsapp': '1' if has_whatsapp else '', 'has_email': '1' if has_email else '',
                                'has_pers': '1' if has_pers else ''} %}
+          {% set _ = base_args.update(addr_fargs or {}) %}
           <a href="{{ url_for('portal.whatsapp_contacts', page=page-1, **base_args) if page > 1 else '#' }}"
              class="btn-ghost" style="text-decoration:none;padding:6px 12px;font-size:12px;
              {% if page <= 1 %}pointer-events:none;opacity:.4{% endif %}">← Prev</a>
@@ -1041,6 +1044,13 @@
         </div>
       </fieldset>
 
+      <div class="field" style="margin:-6px 0 14px">{{ other_emails_box('', id='af-other-emails', cls='field-input', label_cls='field-label') }}</div>
+
+      <fieldset class="ep-sec">
+        <legend>Address</legend>
+        {{ address_box(None, id='af-addr', cls='field-input', label_cls='field-label', note="Saved on the company when one is chosen — every contact and lead of that company shares it.") }}
+      </fieldset>
+
       <fieldset class="ep-sec">
         <legend>Status and labels</legend>
         <div class="field">
@@ -1098,7 +1108,9 @@
         </div>
         <div class="format-box">
           <strong>The first row must name the columns:</strong> <code>phone_number</code> · <code>whatsapp_number</code> · <code>email</code> · <code>name</code> · <code>notes</code> · <code>personalization</code><br>
-          Each row needs at least a phone number, a WhatsApp number or an email. Numbers should include the country code.
+          Each row needs at least a phone number, a WhatsApp number or an email. Numbers should include the country code.<br>
+          <strong>Address (optional columns):</strong> <code>street</code> · <code>city</code> · <code>state</code> (or county / province / region) · <code>country</code> (name or code, e.g. Nigeria or NG) · <code>postcode</code>.
+          Rows without a recognised country and state are still imported and marked "Address missing".
         </div>
       </form>
     </div>
@@ -1162,6 +1174,13 @@
             <label class="field-label" for="ef-email">✉️ Email</label>
             <input class="field-input" type="email" name="email" id="ef-email" placeholder="e.g. amira@business.com">
           </div>
+        </fieldset>
+
+        <div class="field" style="margin:-6px 0 14px">{{ other_emails_box('', id='ef-other-emails', cls='field-input', label_cls='field-label') }}</div>
+
+        <fieldset class="ep-sec">
+          <legend>Address</legend>
+          {{ address_box(None, id='ef-addr', cls='field-input', label_cls='field-label', note="Saved on the company when one is chosen — every contact and lead of that company shares it.") }}
         </fieldset>
 
         <fieldset class="ep-sec">
@@ -1342,15 +1361,30 @@ function applyColumnVisibility() {
 
 function saveColumnPrefs() {
   const visible = colCheckboxes.filter(cb => cb.checked).map(cb => cb.dataset.colToggle)
-  localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(visible))
+  const known   = colCheckboxes.map(cb => cb.dataset.colToggle)
+  try { localStorage.setItem(COL_STORAGE_KEY, JSON.stringify({visible: visible, known: known})) } catch (e) {}
 }
 
 function loadColumnPrefs() {
   const raw = localStorage.getItem(COL_STORAGE_KEY)
   if (!raw) return
   try {
-    const visible = JSON.parse(raw)
-    colCheckboxes.forEach(cb => { cb.checked = visible.includes(cb.dataset.colToggle) })
+    const saved   = JSON.parse(raw)
+    // Older saves were a plain list, made before the Website column existed.
+    const visible = Array.isArray(saved) ? saved : (saved.visible || [])
+    const known   = Array.isArray(saved) ? null : (saved.known || [])
+    colCheckboxes.forEach(cb => {
+      const col = cb.dataset.colToggle
+      const wasKnown = known ? known.includes(col) : !['website', 'location'].includes(col)
+      if (wasKnown) cb.checked = visible.includes(col)   // new columns keep their default
+    })
+    // Email became a default column on 2026-10-04 (it used to start hidden):
+    // show it once for everyone; after that their own choice is kept.
+    if (localStorage.getItem('phixtra_contacts_email_default_v1') !== '1') {
+      colCheckboxes.forEach(cb => { if (cb.dataset.colToggle === 'email') cb.checked = true })
+      localStorage.setItem('phixtra_contacts_email_default_v1', '1')
+      saveColumnPrefs()
+    }
   } catch (e) {}
 }
 
@@ -1497,7 +1531,9 @@ if (dz) {
 }
 
 /* ── Edit modal ──────────────────────────────────────────────────────── */
-function openEdit(id, name, notes, status, tagsStr, email, personalizationNote, companyId, contactPerson, phone, whatsappNumber) {
+function openEdit(id, name, notes, status, tagsStr, email, personalizationNote, companyId, contactPerson, phone, whatsappNumber, address, otherEmails) {
+  if (window.addrSet) addrSet('ef-addr', address || {})
+  document.getElementById('ef-other-emails').value = (otherEmails || '').split(', ').filter(Boolean).join('\n')
   phSet('ef-phone', phone)
   phSet('ef-whatsapp', whatsappNumber)
   document.getElementById('editForm').action   = '/whatsapp/contacts/' + id + '/edit'

@@ -1,4 +1,5 @@
 {% extends "portal/base.html" %}
+{% from "portal/_address_box.html" import address_box, location_cell with context %}
 {% block title %}Companies — CRM — PhiXtra Portal{% endblock %}
 
 {% block head %}
@@ -161,7 +162,9 @@
       <div class="modal-body">
         <input class="field-input" type="text" name="name" id="addCoName" placeholder="Company name" required autocomplete="off">
         <div class="dedupe-warn" id="addCoDedupe"></div>
-        <input class="field-input" type="text" name="website" placeholder="Website (optional)" style="margin-bottom:0">
+        <input class="field-input" type="text" name="website" placeholder="Website (optional)" style="margin-bottom:12px">
+        <div style="font-size:13px;font-weight:700;margin:4px 0 8px">Address</div>
+        {{ address_box(None, id='addCoAddr', cls='field-input', label_cls='field-label') }}
       </div>
       <div class="modal-foot">
         <button type="button" class="btn-ghost" onclick="document.getElementById('addModal').classList.remove('open')">Cancel</button>

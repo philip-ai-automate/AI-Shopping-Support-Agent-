@@ -180,6 +180,17 @@ def _wa_trial_owner(cur, tenant_id: int):
     return cur.fetchone()
 
 
+def _trial_words(t) -> tuple:
+    """(free plan name, who the AI answers) for a trial business — WhatsApp,
+    website (2026-10-05) or both."""
+    channel = t.get("signup_channel")
+    if t.get("source_type") == "whatsapp":
+        words = ("your WhatsApp customers and website visitors" if channel == "both"
+                 else "your WhatsApp customers")
+        return "PhiXtra Connect", words
+    return "Website Free", "your website visitors"
+
+
 def _run_wa_ai_trials(conn) -> dict:
     out = {"wa_trial_3d": 0, "wa_trial_last_day": 0, "wa_trials_ended": 0}
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -189,13 +200,15 @@ def _run_wa_ai_trials(conn) -> dict:
         for days, col, key in ((3, "trial_reminder_3d_at", "wa_trial_3d"),
                                (1, "trial_reminder_0d_at", "wa_trial_last_day")):
             cur.execute(f"""
-                SELECT id, name, trial_ends_at FROM tenants
-                 WHERE source_type = 'whatsapp' AND trial_ends_at IS NOT NULL
+                SELECT id, name, trial_ends_at, source_type, signup_channel FROM tenants
+                 WHERE (source_type = 'whatsapp' OR signup_channel IS NOT NULL)
+                   AND trial_ends_at IS NOT NULL
                    AND trial_ends_at - CURRENT_DATE = %s AND {col} IS NULL
             """, (days,))
             for t in cur.fetchall() or []:
                 owner = _wa_trial_owner(cur, int(t["id"]))
                 business = t["name"] or "your business"
+                free, words = _trial_words(t)
                 if owner and owner.get("email"):
                     if days == 3:
                         _trial_email(
@@ -204,15 +217,15 @@ def _run_wa_ai_trials(conn) -> dict:
                             heading="3 days left on your AI trial",
                             paragraphs=[
                                 f"Your 2-week AI trial for <b>{business}</b> ends in <b>3 days</b>.",
-                                "Choose a plan now to keep the AI answering your WhatsApp customers. "
+                                f"Choose a plan now to keep the AI answering {words}. "
                                 "If you don't, your AI features will lock and your account goes back "
-                                "to PhiXtra Connect, where only your staff can reply.",
+                                f"to {free}, where only your staff can reply.",
                                 "Your chats, contacts and AI settings are always kept.",
                             ],
                             button="Choose a plan",
                             text=(f"Your 2-week AI trial for {business} ends in 3 days. Choose a plan "
-                                  "to keep the AI answering your WhatsApp customers. If you don't, "
-                                  "your AI features lock and you go back to PhiXtra Connect."))
+                                  f"to keep the AI answering {words}. If you don't, "
+                                  f"your AI features lock and you go back to {free}."))
                     else:
                         _trial_email(
                             owner["email"], owner.get("first_name") or "",
@@ -220,7 +233,7 @@ def _run_wa_ai_trials(conn) -> dict:
                             heading="Your AI trial ends today",
                             paragraphs=[
                                 f"Today is the last day of your 2-week AI trial for <b>{business}</b>.",
-                                "From tomorrow the AI stops answering your WhatsApp customers and your "
+                                f"From tomorrow the AI stops answering {words} and your "
                                 "AI features lock, unless you choose a plan today.",
                                 "Your chats, contacts and AI settings are always kept.",
                             ],
@@ -232,19 +245,20 @@ def _run_wa_ai_trials(conn) -> dict:
                 conn.commit()
                 out[key] += 1
 
-        # Trial over and not paid: back to PhiXtra Connect, AI off.
+        # Trial over and not paid: back to the free AI-off plan, AI off —
+        # PhiXtra Connect, the only free plan (WhatsApp and website, 2026-10-06).
         cur.execute("""
             UPDATE tenants
-               SET plan_id           = (SELECT id FROM plans WHERE slug='connect' LIMIT 1),
+               SET plan_id           = (SELECT id FROM plans WHERE slug = 'connect' LIMIT 1),
                    ai_enabled        = FALSE,
                    trial_ends_at     = NULL,
                    quota_notified_at = NULL,
                    features          = %s
-             WHERE source_type = 'whatsapp'
+             WHERE (source_type = 'whatsapp' OR signup_channel IS NOT NULL)
                AND trial_ends_at IS NOT NULL
                AND trial_ends_at <= CURRENT_DATE
-               AND EXISTS (SELECT 1 FROM plans WHERE slug='connect')
-         RETURNING id, name
+               AND EXISTS (SELECT 1 FROM plans WHERE slug = 'connect')
+         RETURNING id, name, source_type, signup_channel
         """, (_FREE_PLAN_FEATURES_JSON,))
         ended = cur.fetchall() or []
         conn.commit()
@@ -264,7 +278,7 @@ def _run_wa_ai_trials(conn) -> dict:
                           JOIN tenants t ON t.id = m.tenant_id
                           JOIN plans   p ON p.id = t.plan_id
                          WHERE m.is_active AND t.id = ANY(%s)
-                           AND t.source_type = 'whatsapp' AND p.slug = 'connect') r
+                           AND p.slug IN ('connect', 'web_free')) r
                  WHERE tm.id = r.id AND r.rn > r.lim
                 RETURNING tm.tenant_id, tm.id
             """, ([int(t["id"]) for t in ended],))
@@ -282,6 +296,7 @@ def _run_wa_ai_trials(conn) -> dict:
             try:
                 owner = _wa_trial_owner(cur, int(t["id"]))
                 business = t["name"] or "your business"
+                free, words = _trial_words(t)
                 team_line = []
                 n_off = len(switched_off.get(int(t["id"]), []))
                 if n_off:
@@ -291,7 +306,7 @@ def _run_wa_ai_trials(conn) -> dict:
                     kept_txt = (", ".join(f"<b>{_html.escape(k)}</b>" for k in kept) + (" stays" if len(kept) == 1 else " stay")
                                 + " active") if kept else "No staff stay active"
                     team_line = [
-                        f"PhiXtra Connect includes a limited number of team seats, so {kept_txt} and "
+                        f"{free} includes a limited number of team seats, so {kept_txt} and "
                         f"{n_off} other staff member{'s were' if n_off != 1 else ' was'} switched off. "
                         "No one was deleted: you can swap who is active on the Team page, or upgrade "
                         "to switch everyone back on."
@@ -303,14 +318,14 @@ def _run_wa_ai_trials(conn) -> dict:
                         heading="Your AI trial has ended",
                         paragraphs=[
                             f"Your 2-week AI trial for <b>{business}</b> has ended, and your account "
-                            "is now on PhiXtra Connect.",
-                            "The AI has stopped answering your WhatsApp customers and your AI features "
+                            f"is now on {free}.",
+                            f"The AI has stopped answering {words} and your AI features "
                             "are locked. Your staff can still reply from the Inbox as normal.",
                             "Your AI settings are saved. Choose a plan and the AI switches back on straight away.",
                         ] + team_line,
                         button="Upgrade to unlock",
                         text=(f"Your 2-week AI trial for {business} has ended and your account is now "
-                              "on PhiXtra Connect. The AI has stopped answering and your AI features "
+                              f"on {free}. The AI has stopped answering and your AI features "
                               "are locked. Choose a plan to switch the AI back on."))
                 cur.execute("UPDATE tenants SET trial_ended_email_at = NOW() WHERE id = %s", (int(t["id"]),))
                 conn.commit()
@@ -367,7 +382,7 @@ def run_plan_resets() -> dict:
         # ── WhatsApp 2-week AI trials: reminders + end → PhiXtra Connect ─────
         results.update(_run_wa_ai_trials(conn))
 
-        # ── Founder Year 1 expiry: move to Year 2, downgrade to Free ────────
+        # ── Founder Year 1 expiry: move to Year 2, down to PhiXtra Connect ──
         # (WooCommerce only now — WhatsApp founders get the 2-week trial above.)
         # Fetch founders first so we can send transition emails
         cur.execute("""
@@ -376,6 +391,7 @@ def run_plan_resets() -> dict:
             WHERE is_founder = TRUE
               AND founder_year = 1
               AND COALESCE(source_type, 'web') <> 'whatsapp'
+              AND signup_channel IS NULL
               AND trial_ends_at IS NOT NULL
               AND trial_ends_at <= CURRENT_DATE
         """)
@@ -386,7 +402,8 @@ def run_plan_resets() -> dict:
             cur.execute("""
                 UPDATE tenants
                 SET founder_year      = 2,
-                    plan_id           = (SELECT id FROM plans WHERE slug='free' LIMIT 1),
+                    plan_id           = (SELECT id FROM plans WHERE slug='connect' LIMIT 1),
+                    ai_enabled        = FALSE,
                     trial_ends_at     = NULL,
                     quota_notified_at = NULL,
                     features          = %s
@@ -421,15 +438,17 @@ def run_plan_resets() -> dict:
 
         results["founders_year2"] = len(founders_transitioning)
 
-        # ── Regular trial expiry (WooCommerce): downgrade Pro trial to Free ──
+        # ── Regular trial expiry (older WooCommerce shops) → PhiXtra Connect ─
         cur.execute("""
             UPDATE tenants
-            SET plan_id       = (SELECT id FROM plans WHERE slug='free' LIMIT 1),
+            SET plan_id       = (SELECT id FROM plans WHERE slug='connect' LIMIT 1),
+                ai_enabled    = FALSE,
                 trial_ends_at = NULL,
                 quota_notified_at = NULL,
                 features      = %s
             WHERE (is_founder = FALSE OR is_founder IS NULL)
               AND COALESCE(source_type, 'web') <> 'whatsapp'
+              AND signup_channel IS NULL
               AND trial_ends_at IS NOT NULL
               AND trial_ends_at <= CURRENT_DATE
         """, (_FREE_PLAN_FEATURES_JSON,))

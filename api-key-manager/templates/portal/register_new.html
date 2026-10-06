@@ -1,0 +1,402 @@
+{% extends "portal/base.html" %}
+{% block title %}Create account — PhiXtra Portal{% endblock %}
+{% block wrap_class %}page{% endblock %}
+
+{#  One sign-up page for every business (2026-10-05, approved mock-up):
+    a pop-up asks WhatsApp only / Website only / WhatsApp and website, then
+    (website choices) the platform; the form then shows only the matching
+    fields. Brand: navy #0B1D40, ink #111E2D; Poppins headings, Inter body. #}
+
+{% block head %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  .rg{--navy:#0B1D40;--ink:#111E2D;--muted:#4A5B78;--line:#D9E1EE;--field:#C3CEDF;--tint:#E8EEF8;--pale:#F4F6FA;
+      font-family:Inter,system-ui,sans-serif;color:var(--ink)}
+  .rg h1,.rg h2,.rg .rg-display{font-family:Poppins,system-ui,sans-serif}
+  .rg [hidden]{display:none!important}
+  .rg-shell{max-width:1080px;margin:16px auto 48px;display:flex;flex-wrap:wrap;background:#fff;
+            border:1px solid var(--line);border-radius:20px;overflow:hidden}
+  .rg-aside{flex:1 1 340px;background:var(--navy);color:#fff;padding:48px 40px;box-sizing:border-box;
+            display:flex;flex-direction:column;gap:18px}
+  .rg-kicker{font-size:12px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9DB8E8}
+  .rg-aside h2{margin:0;font-weight:700;font-size:28px;line-height:1.22;color:#fff}
+  .rg-aside p{margin:0;font-size:15px;line-height:1.6;color:#C9D6EC}
+  .rg-benefits{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:14px}
+  .rg-benefits li{display:flex;gap:12px;align-items:flex-start;font-size:14px;line-height:1.5}
+  .rg-benefits svg{flex-shrink:0;margin-top:1px}
+  .rg-trust{margin-top:auto;padding-top:20px;border-top:1px solid rgba(255,255,255,.18);font-size:13px;color:#C9D6EC}
+  .rg-main{flex:999 1 520px;min-width:0;padding:44px 44px 40px;box-sizing:border-box}
+  .rg-main h1{margin:0 0 6px;font-weight:700;font-size:26px;color:var(--navy)}
+  .rg-sub{margin:0 0 22px;font-size:15px;color:var(--muted)}
+  .rg-chosen{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 16px;
+             background:var(--tint);border:1px solid #C9D6EC;border-radius:12px;margin-bottom:22px}
+  .rg-chosen small{display:block;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .rg-chosen b{font-family:Poppins,system-ui,sans-serif;font-weight:600;font-size:16px;color:var(--navy)}
+  .rg-btn-line{min-height:44px;padding:0 16px;border:1px solid var(--navy);border-radius:10px;background:#fff;color:var(--navy);
+               font:inherit;font-weight:600;font-size:14px;cursor:pointer}
+  .rg form{display:flex;flex-direction:column;gap:18px}
+  .rg-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+  .rg-f{display:flex;flex-direction:column;gap:6px}
+  .rg-f>label,.rg-f>.rg-lbl{font-size:14px;font-weight:500;color:var(--ink)}
+  .rg input[type=text],.rg input[type=email],.rg input[type=password],.rg input[type=tel],.rg select{
+      height:44px;padding:0 12px;border:1px solid var(--field);border-radius:10px;font:inherit;font-size:15px;
+      background:#fff;color:var(--ink);box-sizing:border-box;width:100%}
+  .rg input:focus,.rg select:focus,.rg button:focus-visible{outline:2px solid var(--navy);outline-offset:2px}
+  .rg-phone{display:flex;gap:8px;flex-wrap:wrap}
+  .rg-phone select{flex:0 1 200px;min-width:0}
+  .rg-phone input{flex:1 1 180px;min-width:0}
+  .rg-hint{font-size:13px;color:var(--muted);margin:0}
+  .rg-err{font-size:13px;color:#B42318;margin:0}
+  .rg .f-invalid{border-color:#B42318!important}
+  .rg-pw{position:relative}
+  .rg-pw input{padding-right:46px}
+  .rg-pw button{position:absolute;right:4px;top:0;width:40px;height:44px;border:0;background:none;color:var(--muted);cursor:pointer}
+  .rg-submit{height:50px;border:0;border-radius:12px;background:var(--navy);color:#fff;font-family:Poppins,system-ui,sans-serif;
+             font-weight:600;font-size:16px;cursor:pointer}
+  .rg-submit:disabled{opacity:.6;cursor:default}
+  .rg-next{border-top:1px solid var(--line);padding-top:20px;display:flex;flex-direction:column;gap:12px}
+  .rg-next h3{margin:0;font-family:Poppins,system-ui,sans-serif;font-weight:600;font-size:15px;color:var(--navy)}
+  .rg-next ol{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px}
+  .rg-next li{display:flex;gap:12px;align-items:flex-start;font-size:14px;line-height:1.5}
+  .rg-next li span.n{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:var(--tint);color:var(--navy);
+                     font-weight:600;font-size:13px;display:flex;align-items:center;justify-content:center}
+  .rg-login{margin-top:24px;border-top:1px solid var(--line);padding-top:18px;font-size:14px;color:var(--muted);text-align:center}
+  .rg-login a{color:var(--navy);font-weight:600}
+  .rg-preview{max-width:1080px;margin:0 auto;background:#FFFAEB;border:1px solid #FEDF89;color:#93370D;border-radius:10px;
+              padding:10px 14px;font-size:13px;font-weight:600}
+  /* pop-up */
+  .rg-overlay{position:fixed;inset:0;background:rgba(11,29,64,.55);display:flex;justify-content:center;align-items:flex-start;
+              padding:80px 16px 16px;box-sizing:border-box;z-index:1000;overflow-y:auto}
+  .rg-overlay[hidden]{display:none}
+  .rg-dialog{width:100%;max-width:620px;background:#fff;border-radius:20px;padding:32px;box-sizing:border-box;
+             box-shadow:0 30px 70px -20px rgba(11,29,64,.6);display:flex;flex-direction:column;gap:18px}
+  .rg-dialog-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .rg-step{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .rg-x{width:44px;height:44px;border:0;border-radius:10px;background:var(--pale);cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .rg-dialog h2{margin:0 0 6px;font-weight:700;font-size:24px;color:var(--navy)}
+  .rg-dialog p{margin:0;font-size:15px;color:var(--muted)}
+  .rg-choices{display:flex;flex-direction:column;gap:10px}
+  .rg-choice{display:flex;gap:16px;align-items:center;text-align:left;padding:18px;border:2px solid var(--line);border-radius:14px;
+             background:#fff;cursor:pointer;font:inherit;width:100%}
+  .rg-choice:hover{border-color:var(--navy)}
+  .rg-choice .ic{flex-shrink:0;width:48px;height:48px;border-radius:12px;background:var(--tint);display:flex;align-items:center;justify-content:center}
+  .rg-choice .tx{display:flex;flex-direction:column;gap:3px;flex:1}
+  .rg-choice .tx b{font-family:Poppins,system-ui,sans-serif;font-weight:600;font-size:16px;color:var(--navy)}
+  .rg-choice .tx span{font-size:14px;color:var(--muted);line-height:1.45}
+  .rg-plats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+  .rg-plat{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;min-height:84px;padding:14px 16px;
+           border:2px solid var(--line);border-radius:14px;background:#fff;cursor:pointer;font:inherit}
+  .rg-plat:hover{border-color:var(--navy)}
+  .rg-plat b{font-family:Poppins,system-ui,sans-serif;font-weight:600;font-size:15px;color:var(--navy)}
+  .rg-plat span{font-size:13px;color:var(--muted);line-height:1.4}
+  .rg-back{align-self:flex-start;min-height:44px;padding:0 4px;border:0;background:none;color:var(--navy);font:inherit;font-weight:600;font-size:14px;cursor:pointer}
+  @media(max-width:640px){.rg-aside{padding:30px 24px}.rg-main{padding:28px 20px 30px}.rg-dialog{padding:24px 18px}}
+</style>
+{% endblock %}
+
+{% block content %}
+{% set fd = form_data or {} %}
+<div class="rg">
+{% if preview %}
+  <div class="rg-preview">Preview: website sign-ups are not switched on yet. Only "WhatsApp only" accounts can be created from this page.</div>
+{% endif %}
+<div class="rg-shell">
+
+  <aside class="rg-aside">
+    <div class="rg-kicker" id="asKicker">PhiXtra AI</div>
+    <h2 id="asTitle">Your WhatsApp, website and CRM on one platform.</h2>
+    <p id="asSub">AI answers your customers, and your team sees every conversation in one place.</p>
+    <ul class="rg-benefits" id="asList"></ul>
+    <div class="rg-trust">PhiXtra is an official Meta-approved WhatsApp Tech Provider. A trading name of ProfitBuyz Limited.</div>
+  </aside>
+
+  <main class="rg-main">
+    <h1>Create your free account</h1>
+    <p class="rg-sub">Free to start. No credit card needed.</p>
+
+    <div class="rg-chosen" id="chosenBar" hidden>
+      <div><small>You are signing up for</small><b id="chosenLabel"></b></div>
+      <button type="button" class="rg-btn-line" onclick="openPicker()">Change</button>
+    </div>
+
+    <form method="POST" action="{{ url_for('portal.register') }}" novalidate id="regForm">
+      <input type="hidden" name="ref_code" value="{{ ref_code or '' }}"/>
+      {% if preview %}<input type="hidden" name="preview" value="1"/>{% endif %}
+      <input type="hidden" name="merchant_type" id="fType" value="{{ fd.get('merchant_type', '') }}"/>
+      <input type="hidden" name="website_platform" id="fPlatform" value="{{ fd.get('website_platform', '') }}"/>
+
+      <div class="rg-row">
+        <div class="rg-f">
+          <label for="fFirstName">First name</label>
+          <input type="text" name="first_name" id="fFirstName" required placeholder="Sarah" autocomplete="given-name" value="{{ fd.get('first_name', '') }}"/>
+          <p class="rg-err" id="hFirstName" hidden>First name is required.</p>
+        </div>
+        <div class="rg-f">
+          <label for="fLastName">Last name</label>
+          <input type="text" name="last_name" id="fLastName" required placeholder="Jones" autocomplete="family-name" value="{{ fd.get('last_name', '') }}"/>
+          <p class="rg-err" id="hLastName" hidden>Last name is required.</p>
+        </div>
+      </div>
+
+      <div class="rg-f">
+        <label for="fBusinessName">Business name</label>
+        <input type="text" name="business_name" id="fBusinessName" required placeholder="e.g. Unity Foods Distribution" autocomplete="organization" value="{{ fd.get('business_name', '') }}"/>
+        <p class="rg-err" id="hBusinessName" hidden>Business name is required.</p>
+      </div>
+
+      <div class="rg-f" id="blkWeb" hidden>
+        <label for="fDomain">Website address</label>
+        <input type="text" name="tenant_domain" id="fDomain" placeholder="example.com" autocomplete="url" value="{{ fd.get('tenant_domain', '') }}"/>
+        <p class="rg-hint" id="platformNote"></p>
+        <p class="rg-err" id="hDomain" hidden>Please enter your website address, for example example.com.</p>
+      </div>
+
+      <div class="rg-f" id="blkWa" hidden>
+        <label for="fPhoneWa">WhatsApp number for your business</label>
+        <div class="rg-phone">
+          {% set pc_name = 'wa_phone_country' %}{% set pc_id = 'fPhoneWaCountry' %}{% set pc_required = false %}
+          {% set pc_selected = fd.get('wa_phone_country', '') %}{% set pc_style = '' %}{% set pc_placeholder = 'Country…' %}
+          {% include "portal/_phone_country_select.html" %}
+          <input type="tel" name="wa_phone_number" id="fPhoneWa" placeholder="801 234 5678" autocomplete="tel-national" value="{{ fd.get('wa_phone_number', '') }}"/>
+        </div>
+        <p class="rg-hint">Use the number your customers already message. You keep it. Choose your country, then type your number. We add the country code for you.</p>
+        <p class="rg-err" id="hPhoneWa" hidden>Please choose the country and enter your WhatsApp number.</p>
+      </div>
+
+      <div class="rg-f" id="blkBased" hidden>
+        <label for="fBased">Where is your business based?</label>
+        {% set based = fd.get('business_based', '') %}
+        <select name="business_based" id="fBased">
+          <option value="">Country…</option>
+          <optgroup label="Most used">
+            {% for iso, name, cc in PHONE_COUNTRIES_POPULAR %}<option value="{{ iso }}" {% if based == iso %}selected{% endif %}>{{ name }}</option>{% endfor %}
+          </optgroup>
+          <optgroup label="All countries">
+            {% set _pop = PHONE_COUNTRIES_POPULAR | map(attribute=0) | list %}{% for iso, name, cc in PHONE_COUNTRIES %}<option value="{{ iso }}" {% if based == iso and iso not in _pop %}selected{% endif %}>{{ name }}</option>{% endfor %}
+          </optgroup>
+        </select>
+        <p class="rg-hint">You choose to pay in naira (₦) or pounds (£) when you pick a plan.</p>
+        <p class="rg-err" id="hBased" hidden>Please choose where your business is based.</p>
+      </div>
+
+      <div class="rg-f" id="blkMobile" hidden>
+        <label for="fPhone">Mobile phone</label>
+        <div class="rg-phone">
+          {% set pc_name = 'phone_country' %}{% set pc_id = 'fPhoneCountry' %}{% set pc_required = false %}
+          {% set pc_selected = fd.get('phone_country', '') %}{% set pc_style = '' %}{% set pc_placeholder = 'Country…' %}
+          {% include "portal/_phone_country_select.html" %}
+          <input type="tel" name="phone_number" id="fPhone" placeholder="801 234 5678" autocomplete="tel-national" value="{{ fd.get('phone_number', '') }}"/>
+        </div>
+        <p class="rg-hint">Choose your country, then type your number. We add the country code for you.</p>
+        <p class="rg-err" id="hPhone" hidden>Please choose the country and enter your mobile number.</p>
+      </div>
+
+      <div class="rg-row">
+        <div class="rg-f">
+          <label for="fEmail">Email address</label>
+          <input type="email" name="email" id="fEmail" required placeholder="sarah@yourbusiness.com" autocomplete="email" value="{{ fd.get('email', '') }}"/>
+          <p class="rg-err" id="hEmail" hidden>Please enter a valid email address.</p>
+        </div>
+        <div class="rg-f">
+          <label for="fPassword">Password</label>
+          <div class="rg-pw">
+            <input type="password" name="password" id="fPassword" required minlength="8" placeholder="••••••••" autocomplete="new-password"/>
+            <button type="button" onclick="togglePw(this)" aria-label="Show password">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+          <p class="rg-hint">At least 8 characters, including a special character such as ! @ # $ %</p>
+          <p class="rg-err" id="hPassword" hidden>Your password needs at least 8 characters, including a special character such as ! @ # $ %.</p>
+        </div>
+      </div>
+
+      {% set hau = fd.get('hear_about_us', '') %}
+      <div class="rg-f">
+        <label for="fHearAboutUs">How did you hear about us?</label>
+        <select name="hear_about_us" id="fHearAboutUs" required>
+          <option value="" {% if not hau %}selected{% endif %}>Select an option</option>
+          {% for value, label in hear_about_us_options if value != 'sales_ambassador' %}
+          <option value="{{ value }}" {% if hau == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <p class="rg-err" id="hHearAboutUs" hidden>Please tell us how you heard about us.</p>
+      </div>
+
+      <div style="display:none;visibility:hidden;position:absolute;left:-9999px">
+        <input type="text" name="website" tabindex="-1" autocomplete="off"/>
+      </div>
+
+      <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+      <div class="g-recaptcha" data-sitekey="6LdARassAAAAAE2riEDaWAuK-g2DY7e67qoAjOUc"></div>
+
+      <button type="submit" class="rg-submit" id="submitBtn">Create free account</button>
+
+      <section class="rg-next" aria-label="What happens next">
+        <h3>What happens next</h3>
+        <ol id="nextSteps"></ol>
+      </section>
+    </form>
+
+    <div class="rg-login">Already have an account? <a href="{{ url_for('portal.login') }}">Log in</a> · <a href="{{ url_for('portal.wa_login') }}">Log in with WhatsApp</a></div>
+  </main>
+</div>
+
+<!-- Pop-up: what the business is signing up for -->
+<div class="rg-overlay" id="picker" hidden>
+  <div class="rg-dialog" role="dialog" aria-modal="true" aria-labelledby="pickTitle">
+    <div class="rg-dialog-top">
+      <span class="rg-step" id="stepLabel">Step 1</span>
+      <button type="button" class="rg-x" id="pickClose" aria-label="Close" onclick="closePicker()" hidden>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#111E2D" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+
+    <div id="stepType">
+      <h2 id="pickTitle">Where do your customers reach you?</h2>
+      <p>Choose one. We will set up your account for it.</p>
+      <div class="rg-choices" style="margin-top:18px">
+        <button type="button" class="rg-choice" onclick="pickType('whatsapp')">
+          <span class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0B1D40" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.4A8.4 8.4 0 1 1 21 11.5z"/></svg></span>
+          <span class="tx"><b>WhatsApp only</b><span>Official WhatsApp number, shared team inbox and free CRM.</span></span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4A5B78" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+        <button type="button" class="rg-choice" onclick="pickType('web')">
+          <span class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0B1D40" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M2.5 12h19M12 2.5c2.6 2.7 3.9 5.9 3.9 9.5s-1.3 6.8-3.9 9.5c-2.6-2.7-3.9-5.9-3.9-9.5S9.4 5.2 12 2.5z"/></svg></span>
+          <span class="tx"><b>Website only</b><span>AI chat on your website: WordPress, Shopify, Wix, Squarespace or any site.</span></span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4A5B78" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+        <button type="button" class="rg-choice" onclick="pickType('both')">
+          <span class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0B1D40" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="13" height="10" rx="2"/><path d="M21.5 13.5a5 5 0 0 1-7.4 4.4L11 19l1.1-3"/><path d="M6 17.5h4"/></svg></span>
+          <span class="tx"><b>WhatsApp and website</b><span>One AI on both, one shared inbox. Dual Agent plans.</span></span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4A5B78" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div id="stepPlatform" hidden>
+      <h2>What is your website built on?</h2>
+      <p>This tells us how to add the chat box to your site.</p>
+      <div class="rg-plats" style="margin-top:18px">
+        <button type="button" class="rg-plat" onclick="pickPlatform('wordpress')"><b>WordPress / WooCommerce</b><span>Install one free PhiXtra plugin</span></button>
+        <button type="button" class="rg-plat" onclick="pickPlatform('shopify')"><b>Shopify</b><span>Paste one line of code</span></button>
+        <button type="button" class="rg-plat" onclick="pickPlatform('wix')"><b>Wix</b><span>Paste one line of code</span></button>
+        <button type="button" class="rg-plat" onclick="pickPlatform('squarespace')"><b>Squarespace</b><span>Paste one line of code</span></button>
+        <button type="button" class="rg-plat" onclick="pickPlatform('other')"><b>Other or custom-built</b><span>Paste one line of code</span></button>
+      </div>
+      <button type="button" class="rg-back" onclick="showStep('type')" style="margin-top:12px">← Back</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+(function(){
+var TYPE = document.getElementById('fType').value || '';
+var PLAT = document.getElementById('fPlatform').value || '';
+var PLAT_NAMES = {wordpress:'WordPress / WooCommerce', shopify:'Shopify', wix:'Wix', squarespace:'Squarespace', other:'Other or custom-built'};
+var PLAT_SHORT = {shopify:'Shopify', wix:'Wix', squarespace:'Squarespace', other:'your website'};
+var TYPE_NAMES = {whatsapp:'WhatsApp only', web:'Website only', both:'WhatsApp and website'};
+var ASIDE = {
+  '':      ['PhiXtra AI', 'Your WhatsApp, website and CRM on one platform.', 'AI answers your customers, and your team sees every conversation in one place.',
+            ['Official WhatsApp Business API, keep your number', 'AI chat for WordPress, Shopify, Wix, Squarespace or any site', 'A free CRM with a sales pipeline', 'Try the AI free for 2 weeks, whenever you are ready']],
+  whatsapp:['WhatsApp AI + CRM', 'Turn every WhatsApp message into a sale.', 'Your team works from one official WhatsApp number and a free CRM. Add the AI when you are ready.',
+            ['Keep the number your customers already message', 'One shared inbox for your whole team', 'Every customer saved in a free CRM, with a sales pipeline', 'Try the AI free for 2 weeks, whenever you are ready']],
+  web:     ['Website AI', 'Let AI answer every visitor on your website.', 'Works on WordPress, Shopify, Wix, Squarespace or a site built for you.',
+            ['Answers from your own website pages and product list', 'Recommends products and passes serious buyers to your team', 'Every visitor conversation in one inbox, with a free CRM', 'Try the AI free for 2 weeks, whenever you are ready']],
+  both:    ['WhatsApp + Website AI', 'One AI on WhatsApp and your website.', 'The same AI answers on both, and your team sees every conversation in one inbox.',
+            ['Keep the number your customers already message', 'Chat on WordPress, Shopify, Wix, Squarespace or any site', 'One shared inbox and a free CRM for both channels', 'Try the AI free for 2 weeks, whenever you are ready']]
+};
+var CHECK = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9DB8E8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M7.5 12.5l3 3 6-6.5"/></svg>';
+function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function el(id){ return document.getElementById(id); }
+
+function steps() {
+  var wp = PLAT === 'wordpress', short = PLAT_SHORT[PLAT] || 'your website';
+  var verify = ['Verify your email.', 'Click the link we send you, then log in.'];
+  var wa = ['Connect your WhatsApp.', "Use Meta's official sign-up window. You keep your number."];
+  var site = ['Connect your website.', 'We check we can reach it, then you click Sync now and we read your pages. If something blocks us, we tell you the reason and how to fix it.'];
+  var box = ['Add the chat box.', wp ? 'Install the free PhiXtra plugin on WordPress and connect it to the account you have just created.' : 'Copy one line of code into ' + short + ', with a step-by-step guide.'];
+  var prod = wp ? ['Your products sync by themselves.', 'The plugin sends your WooCommerce products to the AI.'] : ['Upload your product list.', 'Excel, CSV or Google Sheets.'];
+  var free = ['Your team replies free', 'on PhiXtra Connect, with the shared inbox and CRM.'];
+  var trial = ['Start your 2-week AI trial', 'from your dashboard when you are ready. No card needed.'];
+  var webFree = ['Your team replies free', 'on PhiXtra Connect: website chats come to your shared inbox, and replies show in the visitor\'s chat box.'];
+  return {'': [verify, trial], whatsapp: [verify, wa, free, trial], web: [verify, site, box, prod, webFree, trial], both: [verify, wa, site, box, prod, webFree, trial]}[TYPE];
+}
+
+function render() {
+  var a = ASIDE[TYPE];
+  el('asKicker').textContent = a[0]; el('asTitle').textContent = a[1]; el('asSub').textContent = a[2];
+  el('asList').innerHTML = a[3].map(function(t){ return '<li>' + CHECK + '<span>' + esc(t) + '</span></li>'; }).join('');
+  var isWeb = TYPE === 'web' || TYPE === 'both';
+  el('chosenBar').hidden = !TYPE;
+  el('chosenLabel').textContent = (TYPE_NAMES[TYPE] || '') + (isWeb && PLAT ? ' · ' + PLAT_NAMES[PLAT] : '');
+  el('blkWa').hidden = !(TYPE === 'whatsapp' || TYPE === 'both');
+  el('blkWeb').hidden = !isWeb;
+  el('blkBased').hidden = TYPE !== 'web';
+  el('blkMobile').hidden = TYPE !== 'web';
+  el('platformNote').textContent = PLAT === 'wordpress'
+    ? 'Built on WordPress / WooCommerce. You will install one free PhiXtra plugin. It adds the chat box and, on WooCommerce shops, syncs your products and adds cart recovery.'
+    : (PLAT ? 'Built on ' + PLAT_NAMES[PLAT] + '. You will paste one short line of code into ' + (PLAT_SHORT[PLAT] || 'your website') + '. It only works on this website address.' : '');
+  el('nextSteps').innerHTML = steps().map(function(s, i){
+    return '<li><span class="n">' + (i + 1) + '</span><span><b style="font-weight:600">' + esc(s[0]) + '</b> ' + esc(s[1]) + '</span></li>';
+  }).join('');
+  el('fType').value = TYPE; el('fPlatform').value = isWeb ? PLAT : '';
+}
+
+window.showStep = function(which) {
+  el('stepType').hidden = which !== 'type';
+  el('stepPlatform').hidden = which !== 'platform';
+  el('stepLabel').textContent = which === 'platform' ? 'Step 2 of 2' : 'Step 1';
+};
+window.openPicker = function() { showStep('type'); el('picker').hidden = false; el('pickClose').hidden = !TYPE; };
+window.closePicker = function() { if (!TYPE) return; el('picker').hidden = true; };
+window.pickType = function(t) {
+  if (t === 'whatsapp') { TYPE = t; PLAT = ''; el('picker').hidden = true; render(); el('fFirstName').focus(); return; }
+  TYPE = t; showStep('platform');
+};
+window.pickPlatform = function(p) { PLAT = p; el('picker').hidden = true; render(); el('fFirstName').focus(); };
+window.togglePw = function(btn) {
+  var i = el('fPassword'); var show = i.type === 'password'; i.type = show ? 'text' : 'password';
+  btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+};
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !el('picker').hidden) closePicker(); });
+
+// Validation: each visible field, on blur and again on submit.
+var RULES = [
+  ['fFirstName', 'hFirstName', function(v){ return v.trim().length > 0; }],
+  ['fLastName', 'hLastName', function(v){ return v.trim().length > 0; }],
+  ['fBusinessName', 'hBusinessName', function(v){ return v.trim().length > 0; }],
+  ['fDomain', 'hDomain', function(v){ return /^[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,}$/.test(v.trim().replace(/^https?:\/\//i,'').replace(/\/.*$/,'')); }],
+  ['fPhoneWa', 'hPhoneWa', function(v){ return v.trim().length > 0 && el('fPhoneWaCountry').value !== ''; }],
+  ['fBased', 'hBased', function(v){ return v !== ''; }],
+  ['fPhone', 'hPhone', function(v){ return v.trim().length > 0 && el('fPhoneCountry').value !== ''; }],
+  ['fEmail', 'hEmail', function(v){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()); }],
+  ['fPassword', 'hPassword', function(v){ return v.length >= 8 && /[^A-Za-z0-9\s]/.test(v); }],
+  ['fHearAboutUs', 'hHearAboutUs', function(v){ return v !== ''; }]
+];
+function visible(e){ return !!(e && e.offsetParent !== null); }
+function check(r){
+  var f = el(r[0]); if (!visible(f)) return true;
+  var ok = r[2](f.value); f.classList.toggle('f-invalid', !ok); el(r[1]).hidden = ok; return ok;
+}
+RULES.forEach(function(r){
+  var f = el(r[0]); if (!f) return; var touched = false;
+  f.addEventListener('blur', function(){ touched = true; check(r); });
+  f.addEventListener('input', function(){ if (touched) check(r); });
+  f.addEventListener('change', function(){ touched = true; check(r); });
+});
+el('regForm').addEventListener('submit', function(e){
+  if (!TYPE) { e.preventDefault(); openPicker(); return; }
+  var first = null;
+  RULES.forEach(function(r){ if (!check(r) && !first) first = el(r[0]); });
+  if (first) { e.preventDefault(); first.focus(); first.scrollIntoView({behavior:'smooth', block:'center'}); return; }
+  var b = el('submitBtn'); b.disabled = true; b.textContent = 'Creating account…';
+});
+
+render();
+if (!TYPE) openPicker();
+})();
+</script>
+{% endblock %}

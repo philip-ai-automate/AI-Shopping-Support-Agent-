@@ -571,6 +571,20 @@ def _chat(req: ChatRequest):
 
     tenant_id = tenant["tenant_id"]
 
+    # ── Website chat answered by the team (2026-10-06) ───────────────────────
+    # PhiXtra Connect / AI switched off: a website visitor's message (the
+    # WordPress plugin) goes to the Inbox's Web Chat with a polite reply,
+    # instead of an empty reply the plugin shows as an error. WhatsApp
+    # (channel / 'wa-' sessions) and Chatwoot ('cw-') never come here.
+    _sid0 = (req.session_id or "")
+    if (req.channel or "") != "whatsapp" and not _sid0.startswith(("wa-", "cw-")):
+        from web_team_chat import ai_is_off as _tc_ai_off, plugin_reply as _tc_plugin_reply
+        if _tc_ai_off(int(tenant_id)):
+            _tc_msg = (req.message or "").strip()
+            if not _tc_msg:
+                raise HTTPException(status_code=400, detail="Please type a message")
+            return _tc_plugin_reply(int(tenant_id), (_sid0 or "w-" + uuid.uuid4().hex[:24])[:64], _tc_msg[:2000])
+
     # ── Quota check ───────────────────────────────────────────────────────────
     _quota = _check_quota(int(tenant_id))
     if not _quota["allowed"]:
@@ -925,6 +939,17 @@ def _chat(req: ChatRequest):
         )
     except Exception as _hf_err:
         print("⚠️ handoff detection error:", _hf_err)
+    if handoff_triggered and (req.channel or "") != "whatsapp" and not str(session_id).startswith(("wa-", "cw-")):
+        try:
+            from web_team_chat import queue_alert as _tc_queue
+            _tc_conn = get_db_connection()
+            if _tc_conn:
+                _tc_cur = _tc_conn.cursor()
+                _tc_queue(_tc_cur, int(tenant_id), str(session_id), "Website visitor", req.message,
+                          reason="handoff", allow_owner=False)
+                _tc_conn.commit(); _tc_cur.close(); _tc_conn.close()
+        except Exception as _tc_err:
+            print("⚠️ web handoff alert queue error:", _tc_err)
     # ─────────────────────────────────────────────────────────────────────────
 
     answer = _drop_general_page_links(answer, req.message)
@@ -1643,6 +1668,7 @@ def handoff_contact(req: HandoffContactRequest):
 
     try:
         from handoff import update_handoff_contact
+        from web_team_chat import ai_is_off as _tc_ai_off
         update_handoff_contact(
             tenant_id=tenant_id,
             session_id=req.session_id,
@@ -1650,6 +1676,7 @@ def handoff_contact(req: HandoffContactRequest):
             visitor_phone=(req.visitor_phone or "").strip(),
             visitor_email=raw_email,
             store_domain=tenant.get("website") or "",
+            send_alert=not _tc_ai_off(tenant_id),
         )
     except Exception as _hc_err:
         print("⚠️ handoff_contact error:", _hc_err)
@@ -2087,3 +2114,188 @@ def meta_connector_search_products(
 
 
 
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PASTE-IN CHAT BOX FOR ANY WEBSITE (2026-10-05)
+#   <script src="https://chat.phixtra.com/widget.js" data-site="<website key>" async></script>
+# The website key (site_widget_keys) is public. Every call is checked against
+# it AND the business's own website address (the browser's Origin), limited per
+# visitor, and refused while the business's AI is off. The secret API key never
+# leaves the server: the chat itself goes through the same /chat engine.
+# ══════════════════════════════════════════════════════════════════════════════
+import time as _w_time
+from collections import defaultdict as _w_dd, deque as _w_deque
+from urllib.parse import urlparse as _w_urlparse
+from fastapi import Request as _WRequest
+from fastapi.responses import FileResponse as _WFileResponse, JSONResponse as _WJSON
+
+_WIDGET_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "phixtra-widget.js")
+_W_AI_OFF_PLANS = ("connect", "web_free")
+_W_RATE = _w_dd(_w_deque)          # (ip, site) -> recent message times
+_W_RATE_MAX, _W_RATE_WINDOW = 20, 300   # 20 messages per visitor per 5 minutes
+
+
+def _w_host(value: str) -> str:
+    v = (value or "").strip().lower()
+    if not v:
+        return ""
+    if "://" not in v:
+        v = "https://" + v
+    h = (_w_urlparse(v).hostname or "").strip(".")
+    return h[4:] if h.startswith("www.") else h
+
+
+def _w_site(site_key: str, request) -> tuple:
+    """(site dict, None) when the key is real and the call comes from the
+    business's own website, else (None, (status, message))."""
+    key = (site_key or "").strip()
+    if not key or len(key) > 64:
+        return None, (400, "Missing website key")
+    conn = get_db_connection()
+    if not conn:
+        return None, (503, "Please try again in a moment")
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("""
+            SELECT t.id AS tenant_id, t.name, t.domain, t.status, t.ai_enabled, t.source_type,
+                   t.signup_channel, COALESCE(p.slug, 'free') AS plan_slug
+              FROM site_widget_keys k JOIN tenants t ON t.id = k.tenant_id
+              LEFT JOIN plans p ON p.id = t.plan_id
+             WHERE k.site_key = %s
+        """, (key,))
+        row = cur.fetchone()
+        if not row or row["status"] not in ("active", "pending"):
+            return None, (403, "Unknown website key")
+        origin = request.headers.get("origin") or request.headers.get("referer") or ""
+        if not row["domain"] or _w_host(origin) != _w_host(row["domain"]):
+            return None, (403, "This chat box only works on its own website")
+        cur.execute("""
+            SELECT api_key_plain FROM api_keys
+             WHERE tenant_id = %s AND is_active AND api_key_plain IS NOT NULL
+             ORDER BY (lower(COALESCE(website, '')) LIKE %s) DESC, id DESC LIMIT 1
+        """, (row["tenant_id"], "%" + _w_host(row["domain"]) + "%"))
+        k = cur.fetchone()
+        row = dict(row)
+        row["api_key"] = k["api_key_plain"] if k else None
+        row["ai_on"] = bool(row["api_key"]) and row["plan_slug"] not in _W_AI_OFF_PLANS and row["ai_enabled"] is not False
+        return row, None
+    finally:
+        cur.close(); conn.close()
+
+
+def _w_rate_ok(request, site_key: str) -> bool:
+    ip = (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "") or "").split(",")[0].strip()
+    q, now = _W_RATE[(ip, site_key)], _w_time.time()
+    while q and now - q[0] > _W_RATE_WINDOW:
+        q.popleft()
+    if len(q) >= _W_RATE_MAX:
+        return False
+    q.append(now)
+    return True
+
+
+@app.get("/widget.js")
+def widget_js():
+    return _WFileResponse(_WIDGET_FILE, media_type="application/javascript; charset=utf-8",
+                          headers={"Cache-Control": "public, max-age=300"})
+
+
+@app.get("/widget/config")
+def widget_config(site: str, request: _WRequest):
+    row, err = _w_site(site, request)
+    if err:
+        return _WJSON({"enabled": False, "detail": err[1]}, status_code=err[0])
+    # The box always shows (2026-10-06). AI off (PhiXtra Connect) = "team"
+    # mode: the business's staff answer from the Inbox.
+    if row["ai_on"]:
+        return {"enabled": True, "mode": "ai", "title": row["name"] or "Chat with us",
+                "subtitle": "We usually reply straight away", "greeting": "Hello! How can I help you today?",
+                "color": "#0B1D40"}
+    return {"enabled": bool(row["api_key"]), "mode": "team", "title": row["name"] or "Chat with us",
+            "subtitle": "Our team replies here",
+            "greeting": "Hello! Send us a message and our team will reply here.",
+            "color": "#0B1D40"}
+
+
+class WidgetChatRequest(BaseModel):
+    site: str
+    message: str
+    session_id: str | None = None
+
+
+@app.post("/widget/chat/stream")
+def widget_chat_stream(req: WidgetChatRequest, request: _WRequest):
+    row, err = _w_site(req.site, request)
+    if err:
+        raise HTTPException(status_code=err[0], detail=err[1])
+    if not row["ai_on"]:
+        raise HTTPException(status_code=403, detail="Chat is not available on this website right now")
+    msg = (req.message or "").strip()
+    if not msg or len(msg) > 1000:
+        raise HTTPException(status_code=400, detail="Please send a message of up to 1,000 characters")
+    if not _w_rate_ok(request, req.site):
+        raise HTTPException(status_code=429, detail="Too many messages. Please wait a few minutes.")
+    sid = (req.session_id or "").strip()[:80] or None
+    return chat_stream(ChatRequest(api_key=row["api_key"], message=msg, session_id=sid, channel="website"))
+
+
+@app.post("/widget/message")
+def widget_message(req: WidgetChatRequest, request: _WRequest):
+    """A visitor's message while the AI is off: kept for the team (Inbox →
+    Web Chat) and staff are alerted. Their reply arrives through /widget/poll."""
+    row, err = _w_site(req.site, request)
+    if err:
+        raise HTTPException(status_code=err[0], detail=err[1])
+    if not row["api_key"]:
+        raise HTTPException(status_code=403, detail="Chat is not available on this website right now")
+    msg = (req.message or "").strip()
+    if not msg or len(msg) > 1000:
+        raise HTTPException(status_code=400, detail="Please send a message of up to 1,000 characters")
+    sid = (req.session_id or "").strip()[:64]
+    if not sid:
+        raise HTTPException(status_code=400, detail="Missing chat session")
+    if not _w_rate_ok(request, req.site):
+        raise HTTPException(status_code=429, detail="Too many messages. Please wait a few minutes.")
+    from web_team_chat import save_visitor_message
+    saved = save_visitor_message(int(row["tenant_id"]), sid, msg)
+    c = saved["contact"]
+    return {"status": "ok", "first": saved["first"], "has_contact": bool(c["email"] or c["phone"]),
+            "name": c["name"], "email": c["email"], "phone": c["phone"]}
+
+
+@app.get("/widget/poll")
+def widget_poll(site: str, session_id: str, request: _WRequest, after: int = 0, history: int = 0):
+    """The chat box checks in every few seconds while a chat is open: the
+    visitor counts as on the page, and new staff replies come back."""
+    row, err = _w_site(site, request)
+    if err:
+        return _WJSON({"replies": [], "detail": err[1]}, status_code=err[0])
+    sid = (session_id or "").strip()[:64]
+    if not sid:
+        return {"replies": [], "history": [], "last_id": 0}
+    from web_team_chat import poll as _tc_poll
+    return _tc_poll(int(row["tenant_id"]), sid, max(int(after or 0), 0), row["name"] or "", history=bool(history))
+
+
+class WidgetHandoffRequest(BaseModel):
+    site: str
+    session_id: str
+    visitor_name: str | None = None
+    visitor_phone: str | None = None
+    visitor_email: str | None = None
+
+
+@app.post("/widget/handoff-contact")
+def widget_handoff_contact(req: WidgetHandoffRequest, request: _WRequest):
+    row, err = _w_site(req.site, request)
+    if err:
+        raise HTTPException(status_code=err[0], detail=err[1])
+    if not row["api_key"]:
+        raise HTTPException(status_code=403, detail="Chat is not available on this website right now")
+    if not _w_rate_ok(request, req.site):
+        raise HTTPException(status_code=429, detail="Too many messages. Please wait a few minutes.")
+    return handoff_contact(HandoffContactRequest(
+        api_key=row["api_key"], session_id=(req.session_id or "")[:64],
+        visitor_name=(req.visitor_name or "")[:120], visitor_phone=(req.visitor_phone or "")[:40],
+        visitor_email=(req.visitor_email or "")[:160]))

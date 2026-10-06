@@ -216,7 +216,7 @@ async def _send_whatsapp(to_phone: str, template_type: str, params: list, text: 
 
 
 async def _deliver(recipients: list, *, account: str, label: str, preview: str,
-                   when: str, reminder: bool) -> None:
+                   when: str, reminder: bool, channel: str = "WhatsApp") -> None:
     preview80 = (preview or "")[:80]
     for r in recipients:
         if reminder and not r.get("alert_reminder"):
@@ -244,7 +244,7 @@ async def _deliver(recipients: list, *, account: str, label: str, preview: str,
                 print(f"⚠️ [STAFF ALERT] WhatsApp to member {r.get('id')} failed: {e}")
         if r.get("email"):
             await asyncio.to_thread(_send_email, r["email"], subject, heading, account,
-                                    [("From", label), ("Channel", "WhatsApp"),
+                                    [("From", label), ("Channel", channel),
                                      ("Message", preview or "-"), ("Received", when)], footer)
 
 
@@ -314,13 +314,19 @@ async def run_alert_reminders() -> int:
         cur.execute("""
             SELECT a.id, a.tenant_id, a.chat_key, a.customer_label, a.preview, a.recipients,
                    a.first_alert_at, t.name AS account,
+                   a.channel,
+                   CASE WHEN a.channel = 'web' THEN
+                   EXISTS (SELECT 1 FROM web_chat_replies w
+                            WHERE w.tenant_id = a.tenant_id AND w.session_id = a.chat_key
+                              AND w.created_at > a.first_alert_at)
+                   ELSE
                    EXISTS (SELECT 1 FROM wa_message_log m
                             WHERE m.tenant_id = a.tenant_id
                               AND regexp_replace(m.customer_phone, '\\D', '', 'g') = a.chat_key
                               AND m.direction = 'outbound'
                               AND COALESCE(m.is_historical, FALSE) = FALSE
                               AND COALESCE(m.message_type, '') NOT IN ('ai_reply', 'campaign')
-                              AND m.created_at > a.first_alert_at) AS replied
+                              AND m.created_at > a.first_alert_at) END AS replied
               FROM chat_alerts a JOIN tenants t ON t.id = a.tenant_id
              WHERE a.reminder_sent_at IS NULL AND a.replied_at IS NULL
                AND a.first_alert_at <= NOW() - %s
@@ -342,10 +348,173 @@ async def run_alert_reminders() -> int:
     for a in due:
         await _deliver(a["recipients"] or [], account=(a["account"] or "Your business"),
                        label=a["customer_label"] or f"+{a['chat_key']}", preview=a["preview"] or "",
-                       when="", reminder=True)
+                       when="", reminder=True,
+                       channel="Website chat" if a["channel"] == "web" else "WhatsApp")
     if due:
         print(f"✅ [STAFF ALERT] {len(due)} reminder(s) sent")
     return len(due)
+
+
+# ── Website chats (2026-10-06) ───────────────────────────────────────────────
+# The AI backend queues a row in web_chat_alert_queue for every website chat
+# message that needs a person (AI off, or the AI handed over). Checked every
+# few seconds; one alert per chat per NEW_CHAT_WINDOW, same as WhatsApp.
+
+def _web_recipients(cur, tenant_id: int) -> list:
+    """Active team members with alerts on who can open Web Chat (the Web
+    Chat tick on the Team page)."""
+    cur.execute("""
+        SELECT tm.id, tm.name, tm.email, tm.alert_phone, tm.alert_reminder
+          FROM team_members tm
+         WHERE tm.tenant_id = %s AND tm.is_active AND tm.alert_enabled
+           AND COALESCE(tm.webchat_access, FALSE)
+         ORDER BY tm.id
+    """, (tenant_id,))
+    return [dict(r, kind="member") for r in cur.fetchall() or []]
+
+
+async def process_web_chat_alerts() -> int:
+    conn = get_db_connection()
+    if not conn:
+        return 0
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    todo = []
+    try:
+        cur.execute("""
+            UPDATE web_chat_alert_queue SET processed_at = NOW()
+             WHERE id IN (SELECT id FROM web_chat_alert_queue WHERE processed_at IS NULL
+                           ORDER BY id LIMIT 100 FOR UPDATE SKIP LOCKED)
+            RETURNING id, tenant_id, session_id, label, preview, reason, allow_owner, created_at
+        """)
+        seen = set()
+        for q in sorted(cur.fetchall() or [], key=lambda r: r["id"]):
+            k = (q["tenant_id"], q["session_id"])
+            if k in seen:
+                continue
+            seen.add(k)
+            cur.execute("""SELECT 1 FROM chat_alerts WHERE tenant_id=%s AND channel='web' AND chat_key=%s
+                             AND first_alert_at > NOW() - %s LIMIT 1""",
+                        (q["tenant_id"], q["session_id"], NEW_CHAT_WINDOW))
+            if cur.fetchone():
+                continue
+            recips = _web_recipients(cur, q["tenant_id"])
+            if not recips and q["allow_owner"]:
+                recips = _owner_fallback(cur, q["tenant_id"])
+            if not recips:
+                continue
+            cur.execute("SELECT name FROM tenants WHERE id=%s", (q["tenant_id"],))
+            account = ((cur.fetchone() or {}).get("name") or "Your business").strip()
+            cur.execute("""
+                INSERT INTO chat_alerts (tenant_id, channel, chat_key, reason, customer_label, preview, recipients)
+                VALUES (%s, 'web', %s, %s, %s, %s, %s)
+            """, (q["tenant_id"], q["session_id"], q["reason"], q["label"], q["preview"],
+                  psycopg2.extras.Json(recips)))
+            todo.append((recips, account, q))
+        cur.execute("DELETE FROM web_chat_alert_queue WHERE processed_at < NOW() - INTERVAL '7 days'")
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"⚠️ [STAFF ALERT] web queue error: {e}")
+        return 0
+    finally:
+        cur.close(); conn.close()
+    for recips, account, q in todo:
+        when = q["created_at"].astimezone(_WAT).strftime("%-d %b, %H:%M WAT")
+        await _deliver(recips, account=account, label=q["label"] or "Website visitor",
+                       preview=q["preview"] or "", when=when, reminder=False, channel="Website chat")
+        print(f"✅ [STAFF ALERT] tenant={q['tenant_id']} web chat={q['session_id']} → {len(recips)} recipient(s) ({q['reason']})")
+    return len(todo)
+
+
+def web_reply_email(cur, tenant_id: int, session_id: str, text: str, staff_label: str):
+    """(to, subject, html, text, reply_to) for a staff reply that has to go
+    by email because the visitor left the page — or None without an email.
+    Same wording as the portal's _send_webchat_reply."""
+    cur.execute("""
+        SELECT (ARRAY_AGG(visitor_email ORDER BY id DESC) FILTER (WHERE COALESCE(visitor_email,'') <> ''))[1] AS email,
+               (ARRAY_AGG(visitor_name  ORDER BY id DESC) FILTER (WHERE COALESCE(visitor_name,'')  <> ''))[1] AS name
+          FROM handoff_requests WHERE tenant_id=%s AND session_id=%s
+    """, (tenant_id, session_id))
+    v = cur.fetchone() or {}
+    if not v.get("email"):
+        return None
+    cur.execute("""SELECT t.name, t.domain, COALESCE(c.handoff_notify_email, c.email) AS owner_email
+                     FROM tenants t LEFT JOIN customers c ON c.tenant_id = t.id AND c.is_active
+                    WHERE t.id=%s ORDER BY c.id LIMIT 1""", (tenant_id,))
+    t = cur.fetchone() or {}
+    business = (t.get("name") or "us").strip()
+    first = (v.get("name") or "").strip().split(" ")[0]
+    who = (staff_label or "").strip().split(" ")[0]
+    who = "" if (not who or "@" in who) else who
+    site = (t.get("domain") or "").strip()
+    greet = f"Hi {first}," if first else "Hi,"
+    lead = f"{who} from {business} replied to your message:" if who else f"{business} replied to your message:"
+    again = f"You can reply to this email, or chat with us again at {site}." if site else "You can reply to this email."
+    html_body = (f'<div style="font-family:Arial,sans-serif;max-width:560px;color:#111E2D;font-size:15px;line-height:1.55">'
+                 f'<p>{_html.escape(greet)}</p><p>{_html.escape(lead)}</p>'
+                 f'<p style="border-left:3px solid #0B1D40;padding-left:12px;white-space:pre-wrap">{_html.escape(text)}</p>'
+                 f'<p>{_html.escape(again)}</p></div>')
+    text_body = f"{greet}\n\n{lead}\n\n{text}\n\n{again}"
+    return v["email"], f"Reply from {business}", html_body, text_body, t.get("owner_email")
+
+
+def _send_visitor_email(to_email, subject, html_body, text_body, reply_to) -> bool:
+    host = os.getenv("SMTP_HOST", "").strip()
+    port = int(os.getenv("SMTP_PORT", "587"))
+    user = os.getenv("SMTP_USER", "").strip()
+    password = os.getenv("SMTP_PASSWORD", "").strip()
+    sender = os.getenv("SMTP_FROM", user or "no-reply@phixtra.com").strip()
+    if not host or not to_email:
+        return False
+    msg = EmailMessage()
+    msg["From"], msg["To"], msg["Subject"] = sender, to_email, subject
+    if reply_to:
+        msg["Reply-To"] = reply_to
+    msg.set_content(text_body)
+    msg.add_alternative(html_body, subtype="html")
+    try:
+        with smtplib.SMTP(host, port, timeout=15) as s:
+            s.starttls()
+            if user and password:
+                s.login(user, password)
+            s.send_message(msg)
+        return True
+    except Exception as e:
+        print(f"⚠️ [WEB CHAT] reply email to {to_email} failed: {e}")
+        return False
+
+
+async def email_unseen_web_replies() -> int:
+    """A staff reply sent while the visitor was on the page but never shown
+    in their chat box (they left in the meantime) goes by email after 2
+    minutes, once."""
+    conn = get_db_connection()
+    if not conn:
+        return 0
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    sent = 0
+    try:
+        cur.execute("""
+            SELECT id, tenant_id, session_id, content, sent_by_label FROM web_chat_replies
+             WHERE delivered_at IS NULL AND emailed_at IS NULL
+               AND created_at < NOW() - INTERVAL '2 minutes' AND created_at > NOW() - INTERVAL '1 day'
+             ORDER BY id LIMIT 50
+        """)
+        for r in cur.fetchall() or []:
+            mail = web_reply_email(cur, r["tenant_id"], r["session_id"], r["content"], r["sent_by_label"])
+            if not mail:
+                continue
+            if await asyncio.to_thread(_send_visitor_email, *mail):
+                cur.execute("UPDATE web_chat_replies SET emailed_at = NOW() WHERE id=%s", (r["id"],))
+                conn.commit()
+                sent += 1
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"⚠️ [WEB CHAT] unseen reply sweep error: {e}")
+    finally:
+        cur.close(); conn.close()
+    return sent
 
 
 def is_staff_alert_reply(phone_number_id: str, customer_phone: str) -> bool:

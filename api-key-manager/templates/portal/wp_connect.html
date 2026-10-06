@@ -93,9 +93,9 @@
       </div>
 
       <div style="display:flex;flex-direction:column;gap:6px">
-        <label style="font-size:12.5px;font-weight:700">Password <span style="font-weight:400;color:var(--muted)">(minimum 8 characters)</span></label>
+        <label style="font-size:12.5px;font-weight:700">Password <span style="font-weight:400;color:var(--muted)">(8 characters or more, with a special character such as ! @ # $ %)</span></label>
         <div style="position:relative">
-          <input type="password" name="password" id="fPassword" required minlength="8" placeholder="••••••••" autocomplete="new-password"
+          <input type="password" name="password" id="fPassword" required minlength="8" pattern="(?=.*[^A-Za-z0-9\s]).{8,}" title="At least 8 characters, including a special character such as ! @ # $ %" placeholder="••••••••" autocomplete="new-password"
                  style="width:100%;padding:11px 40px 11px 13px;border:1px solid var(--line);border-radius:10px;font-size:14px"/>
           <button type="button" onclick="var f=document.getElementById('fPassword'); f.type = f.type==='password' ? 'text' : 'password';" aria-label="Show password"
                   style="position:absolute;right:9px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:4px;color:var(--muted);display:flex">

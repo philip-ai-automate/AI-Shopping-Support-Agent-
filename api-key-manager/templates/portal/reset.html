@@ -4,12 +4,12 @@
 {% block content %}
 <div class="card" style="margin-top:12px">
   <h1 style="font-size:22px;font-weight:800;margin-bottom:6px">Set new password</h1>
-  <p class="muted" style="margin-bottom:22px">At least 8 characters.</p>
+  <p class="muted" style="margin-bottom:22px">At least 8 characters, including a special character such as ! @ # $ %.</p>
   <form method="POST">
     <input type="hidden" name="token" value="{{ token }}"/>
     <div class="form-group">
       <label>New password</label>
-      <input type="password" name="password" required minlength="8" autofocus placeholder="••••••••"/>
+      <input type="password" name="password" required minlength="8" pattern="(?=.*[^A-Za-z0-9\s]).{8,}" title="At least 8 characters, including a special character such as ! @ # $ %" autofocus placeholder="••••••••"/>
     </div>
     <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">Update password</button>
   </form>

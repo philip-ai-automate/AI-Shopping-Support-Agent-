@@ -52,15 +52,15 @@
     {% if ai_trial_used %}
     <div class="upgrade-title">Your 2-week AI trial has ended</div>
     <div class="upgrade-sub">
-      <strong>{{ feature_label }}</strong> is locked on PhiXtra Connect. The AI has
-      stopped answering your WhatsApp customers, but your staff can still reply
+      <strong>{{ feature_label }}</strong> is locked on {{ free_plan_name }}. The AI has
+      stopped answering {{ ai_customers_words }}, but your staff can still reply
       from the Inbox. Your AI settings are saved and come back as soon as you upgrade.
     </div>
     {% elif ai_trial_available %}
     <div class="upgrade-title">Try this free for 2 weeks</div>
     <div class="upgrade-sub">
       <strong>{{ feature_label }}</strong> is an AI feature, not included in
-      PhiXtra Connect. Start your 2-week AI trial to use it free, or choose a plan.
+      {{ free_plan_name }}. Start your 2-week AI trial to use it free, or choose a plan.
     </div>
     {% else %}
     <div class="upgrade-title">Upgrade to unlock this feature</div>
@@ -85,7 +85,7 @@
     <div class="upgrade-actions">
       {% if ai_trial_available %}
       <form method="POST" action="{{ url_for('portal.billing_start_ai_trial') }}" style="margin:0"
-            onsubmit="return confirm('Start your 2-week AI trial now? Your plan becomes Enterprise for 14 days and the AI starts answering your WhatsApp customers. You can only do this once.')">
+            onsubmit="return confirm('Start your 2-week AI trial now? Your plan becomes {{ trial_plan_name }} for 14 days and the AI starts answering {{ ai_customers_words }}. You can only do this once.')">
         <button type="submit" class="btn-upgrade-main" style="width:100%;border:0;cursor:pointer;background:#12B76A">
           Start my 2-week AI trial
         </button>

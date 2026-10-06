@@ -110,7 +110,7 @@
 
 <div class="color-legend">
   <span><span class="dot" style="background:#12A150"></span> WhatsApp merchants</span>
-  <span><span class="dot" style="background:#7F54B3"></span> WooCommerce merchants</span>
+  <span><span class="dot" style="background:#7F54B3"></span> Website merchants</span>
   <span><span class="dot" style="background:#7C3AED"></span> Dual Agent</span>
   <span><span class="dot" style="background:#2E90FA"></span> Custom</span>
   <span style="margin-left:8px"><span class="dot" style="background:#12B76A"></span> Good / complete</span>
@@ -131,7 +131,7 @@
         <div class="pc-slug">{{ p.slug }}</div>
       </div>
       <span class="pill {% if mode == 'dual' %}pill-purple{% elif mode == 'custom' %}pill-blue{% else %}pill-grey{% endif %}">
-        {% if mode == 'custom' %}Custom{% elif mode == 'dual' %}Dual Agent{% elif mode == 'everyone' %}Everyone{% elif mode == 'woocommerce' %}WooCommerce merchants{% else %}WhatsApp merchants{% endif %}
+        {% if mode == 'custom' %}Custom{% elif mode == 'dual' %}Dual Agent{% elif mode == 'everyone' %}Everyone{% elif mode == 'woocommerce' %}Website merchants{% else %}WhatsApp merchants{% endif %}
       </span>
     </div>
 

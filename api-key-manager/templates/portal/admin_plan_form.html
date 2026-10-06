@@ -126,7 +126,7 @@
         <label>Who sees this plan</label>
         <select name="channel_mode" id="channelModeSelect" onchange="toggleParentField()">
           <option value="whatsapp" {% if plan.channel_mode in ('whatsapp', 'single') %}selected{% endif %}>WhatsApp merchants</option>
-          <option value="woocommerce" {% if plan.channel_mode == 'woocommerce' %}selected{% endif %}>WooCommerce merchants</option>
+          <option value="woocommerce" {% if plan.channel_mode == 'woocommerce' %}selected{% endif %}>Website merchants</option>
           <option value="dual" {% if plan.channel_mode == 'dual' %}selected{% endif %}>Dual Agent (WhatsApp + Website) — shown to both</option>
           <option value="both" {% if plan.channel_mode == 'both' %}selected{% endif %}>Everyone (e.g. Custom)</option>
         </select>
@@ -243,7 +243,7 @@
                             '#F63D68','#DC6803','#667085'] %}
 
     <div id="pfWaNote" style="{% if plan.channel_mode != 'woocommerce' %}display:none;{% endif %}background:#FFFAEB;border:1px solid #FEDF89;color:#93370D;border-radius:10px;padding:12px 14px;font-size:13px;font-weight:600;margin-bottom:14px">
-      🔒 WhatsApp needs a Dual Agent plan. The WhatsApp ticks (greyed out below) do nothing on a WooCommerce plan — WooCommerce merchants on this plan won't get WhatsApp.
+      🔒 WhatsApp needs a Dual Agent plan. The WhatsApp ticks (greyed out below) do nothing on a Website plan — website merchants on this plan won't get WhatsApp.
     </div>
     <style>.pf-wa-off .pf-wa{opacity:.4;pointer-events:none}</style>
     {% for group_name, items in feature_catalog.items() %}

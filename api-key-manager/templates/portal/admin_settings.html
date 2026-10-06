@@ -66,9 +66,9 @@
       </div>
 
       <div class="form-group">
-        <label>New Password * <span style="font-size:11px;color:var(--muted)">(min 8 characters)</span></label>
+        <label>New Password * <span style="font-size:11px;color:var(--muted)">(8 characters or more, with a special character such as ! @ # $ %)</span></label>
         <input type="password" name="new_password" id="newPw"
-               required minlength="8" autocomplete="new-password"
+               required minlength="8" pattern="(?=.*[^A-Za-z0-9\s]).{8,}" title="At least 8 characters, including a special character such as ! @ # $ %" autocomplete="new-password"
                oninput="adminStrength(this.value)"/>
         <div id="adm-strength" style="height:5px;border-radius:999px;background:#eee;margin:6px 0 3px;overflow:hidden">
           <div id="adm-strength-bar" style="height:100%;border-radius:999px;width:0;transition:.3s"></div>

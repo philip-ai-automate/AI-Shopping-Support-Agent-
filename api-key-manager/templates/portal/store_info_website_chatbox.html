@@ -1,0 +1,143 @@
+{% extends "portal/base.html" %}
+{% block title %}Add the chat box — PhiXtra Portal{% endblock %}
+{% block content %}
+{% include "portal/_website_styles.html" %}
+<style>
+.cb-card{border:1px solid var(--line);border-radius:14px;background:#fff;padding:20px 22px;margin-bottom:18px;max-width:860px}
+.cb-h{font-size:16px;font-weight:800;color:#0B1D40;margin:0 0 6px}
+.cb-p{font-size:14px;color:#4A5B78;margin:0 0 12px;line-height:1.55}
+.cb-code{position:relative;background:#0B1D40;color:#E6ECF5;border-radius:12px;padding:16px 16px 16px 16px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.6;overflow-x:auto;white-space:pre}
+.cb-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.cb-btn{display:inline-flex;align-items:center;min-height:40px;padding:0 16px;border-radius:10px;font:inherit;font-size:14px;font-weight:700;cursor:pointer;border:1px solid #0B1D40;background:#0B1D40;color:#fff;text-decoration:none}
+.cb-btn.line{background:#fff;color:#0B1D40}
+.cb-btn:hover{text-decoration:none;opacity:.92}
+.cb-note{border-radius:12px;padding:12px 14px;font-size:14px;line-height:1.5;margin-bottom:18px;max-width:860px}
+.cb-note.soon{background:#FFF4D6;color:#5B3D00}
+.cb-note.ok{background:#E7F5EE;color:#0C5A36}
+.cb-steps{margin:0;padding-left:20px;font-size:14px;line-height:1.6;color:#111E2D}
+.cb-steps li{margin-bottom:6px}
+.cb-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 14px}
+.cb-tab{min-height:38px;padding:0 14px;border-radius:999px;border:1px solid #C3CEDF;background:#fff;color:#111E2D;font:inherit;font-size:13.5px;font-weight:700;cursor:pointer}
+.cb-tab[aria-selected="true"]{background:#0B1D40;border-color:#0B1D40;color:#fff}
+.cb-small{font-size:13px;color:#4A5B78;margin:10px 0 0;line-height:1.5}
+.cb-small a{color:#0B1D40;font-weight:700}
+
+</style>
+
+<div class="si-header">
+  <div class="si-title">💬 Add the chat box</div>
+  <div class="si-sub">Copy one line of code into your website. The chat box only works on <strong>{{ domain or 'your own website address' }}</strong>, so it is safe to paste anywhere on your site.</div>
+</div>
+
+{% if seen %}
+<div class="cb-note ok" role="status">✅ We found the PhiXtra chat box on your website.</div>
+{% endif %}
+{% if ai_off %}
+<div class="cb-note soon" role="status">
+  Your plan has no AI, so your team answers website visitors from the Inbox (Web Chat). Replies show in the visitor's chat box while they're on your site, or go by email if they've left. Turn on Chat alerts for your team on the Team page so no chat is missed.
+  {% if trial_available %}
+  <form method="POST" action="{{ url_for('portal.billing_start_ai_trial') }}" style="margin:10px 0 0">
+    <button type="submit" class="cb-btn">Start my 2-week AI trial</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="cb-card">
+  <h2 class="cb-h">Your chat box code</h2>
+  <p class="cb-p">Paste it just before the closing <code>&lt;/body&gt;</code> tag of your website, or in your website builder's "custom code" setting for all pages.</p>
+  <div class="cb-code" id="cbCode">{{ code }}</div>
+  <div class="cb-row">
+    <button type="button" class="cb-btn" id="cbCopy">Copy code</button>
+    <form method="POST" action="{{ url_for('portal.setup_check_chatbox') }}" style="margin:0">
+      <input type="hidden" name="back" value="chatbox">
+      <button type="submit" class="cb-btn line">Check it's installed</button>
+    </form>
+  </div>
+</div>
+
+<div class="cb-card" id="where">
+  <h2 class="cb-h">Where to paste it</h2>
+  {% if platform == 'wordpress' %}
+  <p class="cb-p">On WordPress, use the free PhiXtra plugin instead of this code: it adds the chat box and, on WooCommerce shops, syncs your products. Install it from your WordPress dashboard and paste in your API key.</p>
+  <a class="cb-btn line" href="{{ url_for('portal.api_keys') }}">Get your API key</a>
+  {% else %}
+  {% set start = platform if platform in ('shopify', 'wix', 'squarespace') else 'other' %}
+  <div class="cb-tabs" role="tablist" aria-label="Website platform">
+    <button type="button" role="tab" class="cb-tab" data-tab="shopify" aria-selected="{{ 'true' if start == 'shopify' else 'false' }}">Shopify</button>
+    <button type="button" role="tab" class="cb-tab" data-tab="wix" aria-selected="{{ 'true' if start == 'wix' else 'false' }}">Wix</button>
+    <button type="button" role="tab" class="cb-tab" data-tab="squarespace" aria-selected="{{ 'true' if start == 'squarespace' else 'false' }}">Squarespace</button>
+    <button type="button" role="tab" class="cb-tab" data-tab="other" aria-selected="{{ 'true' if start == 'other' else 'false' }}">Other or custom-built</button>
+  </div>
+
+  <div class="cb-panel" data-panel="shopify" role="tabpanel" {% if start != 'shopify' %}hidden{% endif %}>
+    <ol class="cb-steps">
+      <li>Copy your chat box code above.</li>
+      <li>In your Shopify admin, go to <strong>Online Store</strong>.</li>
+      <li>Next to your live theme, click the <strong>…</strong> (more) button, then <strong>Edit code</strong>.</li>
+      <li>In the <strong>Layout</strong> folder, click <strong>theme.liquid</strong>.</li>
+      <li>Find <code>&lt;/body&gt;</code> near the bottom of the file, and paste the code on the line just above it.</li>
+      <li>Click <strong>Save</strong>.</li>
+      <li>Come back here and click <strong>Check it's installed</strong>.</li>
+    </ol>
+    <p class="cb-small">If you're trying a paid Shopify theme, Shopify only lets you edit its code after you've bought the theme.
+      <a href="https://help.shopify.com/en/manual/online-store/themes/theme-code" target="_blank" rel="noopener">Shopify's own guide</a></p>
+  </div>
+
+  <div class="cb-panel" data-panel="wix" role="tabpanel" {% if start != 'wix' %}hidden{% endif %}>
+    <ol class="cb-steps">
+      <li>Copy your chat box code above.</li>
+      <li>In your Wix site's dashboard, go to <strong>Settings</strong>.</li>
+      <li>Under <strong>Development &amp; integrations</strong>, click <strong>Custom Code</strong>.</li>
+      <li>Click <strong>+ Add Custom Code</strong> at the top right.</li>
+      <li>Paste the code in the text box, and name it <strong>PhiXtra chat box</strong>.</li>
+      <li>Under <strong>Add Code to Pages</strong>, choose <strong>All pages</strong>.</li>
+      <li>Under <strong>Place Code in</strong>, choose <strong>Body – end</strong>.</li>
+      <li>Click <strong>Apply</strong>, then come back here and click <strong>Check it's installed</strong>.</li>
+    </ol>
+    <p class="cb-small">Wix only runs custom code on a published site with its own connected domain. If you later connect a different domain, Wix removes the code, so add it again.
+      <a href="https://support.wix.com/en/article/embedding-custom-code-on-your-site" target="_blank" rel="noopener">Wix's own guide</a></p>
+  </div>
+
+  <div class="cb-panel" data-panel="squarespace" role="tabpanel" {% if start != 'squarespace' %}hidden{% endif %}>
+    <ol class="cb-steps">
+      <li>Copy your chat box code above.</li>
+      <li>In Squarespace, open <strong>Website Tools</strong>, then <strong>Code Injection</strong>.</li>
+      <li>Paste the code in the <strong>Footer</strong> box. Squarespace adds it to every page.</li>
+      <li>Click <strong>Save</strong>, then come back here and click <strong>Check it's installed</strong>.</li>
+    </ol>
+    <p class="cb-small">Code Injection is on Squarespace's Core, Plus and Advanced plans and some older plans, not on the Basic plan.
+      <a href="https://support.squarespace.com/hc/en-us/articles/205815908-Using-code-injection" target="_blank" rel="noopener">Squarespace's own guide</a></p>
+  </div>
+
+  <div class="cb-panel" data-panel="other" role="tabpanel" {% if start != 'other' %}hidden{% endif %}>
+    <ol class="cb-steps">
+      <li>Copy your chat box code above.</li>
+      <li>Open your website's main template, the file or setting that every page shares.</li>
+      <li>Paste the code on the line just above <code>&lt;/body&gt;</code>.</li>
+      <li>Publish the change, then come back here and click <strong>Check it's installed</strong>.</li>
+    </ol>
+    <p class="cb-small">Not sure where that is? Send the code to whoever built or looks after your website. It's one line and goes once on every page.</p>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+(function(){
+  var tabs = document.querySelectorAll('.cb-tab');
+  tabs.forEach(function(t){ t.addEventListener('click', function(){
+    tabs.forEach(function(x){ x.setAttribute('aria-selected', x === t ? 'true' : 'false'); });
+    document.querySelectorAll('.cb-panel').forEach(function(p){ p.hidden = p.getAttribute('data-panel') !== t.getAttribute('data-tab'); });
+  }); });
+})();
+(function(){
+  var b = document.getElementById('cbCopy'), c = document.getElementById('cbCode');
+  b.addEventListener('click', function(){
+    var t = c.textContent;
+    function done(m){ var o = b.textContent; b.textContent = m; setTimeout(function(){ b.textContent = o; }, 1800); }
+    function sel(){ var r = document.createRange(); r.selectNodeContents(c); var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); done('Selected: press Ctrl+C'); }
+    try { navigator.clipboard.writeText(t).then(function(){ done('Copied'); }, sel); } catch (e) { sel(); }
+  });
+})();
+</script>
+{% endblock %}

@@ -2106,6 +2106,25 @@ def ensure_portal_tables():
             )
             cur.execute("CREATE INDEX idx_mpl_wa_contact ON merchant_pipeline_leads(wa_contact_id)")
 
+        # Address (2026-10-04): so businesses can be filtered by country and
+        # state / county / province. Same five boxes on companies, leads and
+        # contacts; a company's address is copied onto its leads and contacts
+        # (see _save_address_family in portal_routes.py) so every list filters
+        # on its own row. addr_country = ISO code ('NG', 'GB', …).
+        for _t in ("crm_companies", "merchant_pipeline_leads", "wa_contacts"):
+            for _col, _typ in (("addr_street", "VARCHAR(255)"), ("addr_city", "VARCHAR(120)"),
+                               ("addr_state", "VARCHAR(120)"), ("addr_country", "VARCHAR(2)"),
+                               ("addr_postcode", "VARCHAR(20)")):
+                if not _column_exists(cur, _t, _col):
+                    cur.execute(f"ALTER TABLE {_t} ADD COLUMN {_col} {_typ}")
+            cur.execute(f"CREATE INDEX IF NOT EXISTS idx_{_t}_addr ON {_t} (tenant_id, addr_country, addr_state)")
+
+        # Other emails (2026-10-04): every extra email a company uses, besides
+        # the main Email (campaigns keep using the main one). Comma-separated.
+        for _t in ("merchant_pipeline_leads", "wa_contacts"):
+            if not _column_exists(cur, _t, "other_emails"):
+                cur.execute(f"ALTER TABLE {_t} ADD COLUMN other_emails TEXT")
+
         if not _table_exists(cur, "crm_company_notes"):
             cur.execute("""
                 CREATE TABLE crm_company_notes (
@@ -2562,6 +2581,37 @@ def ensure_portal_tables():
                 )
             """)
             cur.execute("CREATE INDEX idx_web_chat_replies_session ON web_chat_replies(tenant_id, session_id, created_at)")
+
+        # Website team chat (2026-10-06): on PhiXtra Connect (AI off) staff
+        # answer website visitors themselves, and their replies show in the
+        # visitor's chat box live. web_chat_presence = when the visitor's
+        # chat box last checked in (on the page now = within 30 seconds);
+        # delivered_at = the chat box showed the reply; emailed_at = it went
+        # by email because the visitor had left. web_chat_alert_queue hands
+        # new website chats to the WhatsApp gateway's staff alerts.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS web_chat_presence (
+                tenant_id    INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                session_id   VARCHAR(64) NOT NULL,
+                last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (tenant_id, session_id)
+            )""")
+        for _col in ("delivered_at", "emailed_at"):
+            if not _column_exists(cur, "web_chat_replies", _col):
+                cur.execute(f"ALTER TABLE web_chat_replies ADD COLUMN {_col} TIMESTAMPTZ")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS web_chat_alert_queue (
+                id           BIGSERIAL PRIMARY KEY,
+                tenant_id    INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                session_id   VARCHAR(64) NOT NULL,
+                label        TEXT,
+                preview      TEXT,
+                reason       VARCHAR(20) NOT NULL DEFAULT 'new_chat',
+                allow_owner  BOOLEAN NOT NULL DEFAULT TRUE,
+                created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                processed_at TIMESTAMPTZ
+            )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS web_chat_alert_queue_open_idx ON web_chat_alert_queue (processed_at, id)")
 
         # ══════════════════════════════════════════════════════════════════
         # Meta Business AI connector (2026-09-12). Lets a tenant hand their
@@ -3737,6 +3787,116 @@ def ensure_portal_tables():
         for _col in ("trial_reminder_3d_at", "trial_reminder_0d_at", "trial_ended_email_at"):
             if not _column_exists(cur, "tenants", _col):
                 cur.execute(f"ALTER TABLE tenants ADD COLUMN {_col} TIMESTAMPTZ")
+
+        # ── Website sign-ups (2026-10-05) ────────────────────────────────────
+        # signup_channel = 'whatsapp' | 'website' | 'both' for businesses on
+        # the free-start + 2-week-trial system; NULL = older website businesses.
+        if not _column_exists(cur, "tenants", "signup_channel"):
+            cur.execute("ALTER TABLE tenants ADD COLUMN signup_channel VARCHAR(10)")
+        # What the website is built on: wordpress | shopify | wix | squarespace | other
+        if not _column_exists(cur, "tenants", "website_platform"):
+            cur.execute("ALTER TABLE tenants ADD COLUMN website_platform VARCHAR(20)")
+        # Setup checklist (phase 3): when the automatic website check started,
+        # and when the PhiXtra chat box was first found on the website.
+        for _col in ("website_autocheck_at", "chatbox_seen_at"):
+            if not _column_exists(cur, "tenants", _col):
+                cur.execute(f"ALTER TABLE tenants ADD COLUMN {_col} TIMESTAMPTZ")
+        # Paste-in chat box (phase 4): one public website key per business.
+        # Public on purpose (it sits in the page's code); the AI service only
+        # answers it from the business's own website address.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS site_widget_keys (
+                tenant_id  INTEGER PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+                site_key   VARCHAR(64) UNIQUE NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )""")
+
+        # Website-only plans, seeded once and switched OFF until go-live (the
+        # admin switches them on in the Plan editor). Prices/limits from the
+        # website pricing page; features = the matching Dual Agent plan minus
+        # WhatsApp and WhatsApp Campaigns, plus product list upload on every
+        # plan. Website Free = PhiXtra Connect's features minus WhatsApp, plus
+        # Store Information + Connect Website + the API key page, AI off.
+        _seed_plans_once(cur, ["web_free", "web_startup", "web_business", "web_enterprise"], """
+            INSERT INTO plans
+                (slug, name, price_ngn, price_usd, ai_messages_limit, ai_agents_limit,
+                 broadcasts_limit, products_limit, data_sources_limit,
+                 feat_crm, feat_advanced_ai, feat_integrations, feat_broadcasts,
+                 feat_full_reports, feat_multi_agents, overage_per_msg_ngn,
+                 overage_per_msg_usd, is_active, sort_order, annual_discount_pct,
+                 feat_visual_match, feat_fw_checkout, feat_email_campaigns,
+                 staff_limit, channel_mode, is_custom, ai_designs_limit, allow_own_ai_key)
+            SELECT 'web_free', 'Website Free', 0, 0, 0, ai_agents_limit,
+                   0, products_limit, data_sources_limit,
+                   feat_crm, FALSE, feat_integrations, FALSE,
+                   feat_full_reports, feat_multi_agents, 0, 0, FALSE, -1,
+                   0, FALSE, FALSE, feat_email_campaigns,
+                   1, 'woocommerce', FALSE, ai_designs_limit, allow_own_ai_key
+              FROM plans WHERE slug='connect'
+            ON CONFLICT (slug) DO NOTHING;
+
+            INSERT INTO plans
+                (slug, name, price_ngn, price_usd, ai_messages_limit, ai_agents_limit,
+                 broadcasts_limit, products_limit, data_sources_limit,
+                 feat_crm, feat_advanced_ai, feat_integrations, feat_broadcasts,
+                 feat_full_reports, feat_multi_agents, overage_per_msg_ngn,
+                 overage_per_msg_usd, is_active, sort_order, annual_discount_pct,
+                 feat_visual_match, feat_fw_checkout, feat_email_campaigns,
+                 staff_limit, channel_mode, is_custom, ai_designs_limit, allow_own_ai_key)
+            SELECT v.slug, v.name, v.ngn, v.gbp, v.msgs, v.agents,
+                   0, d.products_limit, d.data_sources_limit,
+                   d.feat_crm, d.feat_advanced_ai, d.feat_integrations, FALSE,
+                   d.feat_full_reports, d.feat_multi_agents, d.overage_per_msg_ngn,
+                   d.overage_per_msg_usd, FALSE, v.sort, d.annual_discount_pct,
+                   d.feat_visual_match, FALSE, d.feat_email_campaigns,
+                   d.staff_limit, 'woocommerce', FALSE, d.ai_designs_limit, d.allow_own_ai_key
+              FROM (VALUES ('web_startup',    'Startup — Website',     45000,  39.00,  2000,  1, 21, 'startup_dual'),
+                           ('web_business',   'Business — Website',   150000, 129.00, 10000,  3, 22, 'business_dual'),
+                           ('web_enterprise', 'Enterprise — Website', 450000, 379.00, 50000, 10, 23, 'enterprise_dual'))
+                   AS v(slug, name, ngn, gbp, msgs, agents, sort, dual)
+              JOIN plans d ON d.slug = v.dual
+            ON CONFLICT (slug) DO NOTHING;
+
+            INSERT INTO plan_feature_grants (plan_id, feature_key)
+            SELECT w.id, g.feature_key
+              FROM (VALUES ('web_startup', 'startup_dual'), ('web_business', 'business_dual'),
+                           ('web_enterprise', 'enterprise_dual')) AS m(web, dual)
+              JOIN plans w ON w.slug = m.web
+              JOIN plans d ON d.slug = m.dual
+              JOIN plan_feature_grants g ON g.plan_id = d.id
+             WHERE g.feature_key NOT LIKE 'wa.%'
+               AND g.feature_key NOT LIKE 'campaigns_wa.%'
+               AND g.feature_key NOT LIKE 'woo.message_templates_%'
+            ON CONFLICT DO NOTHING;
+
+            INSERT INTO plan_feature_grants (plan_id, feature_key)
+            SELECT w.id, g.feature_key
+              FROM plans w
+              JOIN plans c ON c.slug = 'connect'
+              JOIN plan_feature_grants g ON g.plan_id = c.id
+             WHERE w.slug = 'web_free'
+               AND g.feature_key NOT LIKE 'wa.%'
+               AND g.feature_key NOT LIKE 'campaigns_wa.%'
+               AND g.feature_key NOT LIKE 'woo.message_templates_%'
+            ON CONFLICT DO NOTHING;
+
+            INSERT INTO plan_feature_grants (plan_id, feature_key)
+            SELECT w.id, k.key
+              FROM plans w
+              CROSS JOIN (VALUES ('store.info'), ('store.info_create'), ('store.info_edit'),
+                                 ('store.info_delete'), ('store.info_documents_upload'),
+                                 ('store.info_documents_delete'), ('store.website_connect'),
+                                 ('ai.api_keys_view')) AS k(key)
+             WHERE w.slug = 'web_free'
+            ON CONFLICT DO NOTHING;
+
+            INSERT INTO plan_feature_grants (plan_id, feature_key)
+            SELECT w.id, k.key
+              FROM plans w
+              CROSS JOIN (VALUES ('ecom.data_sources_view'), ('ecom.data_sources_create')) AS k(key)
+             WHERE w.slug IN ('web_free', 'web_startup', 'web_business', 'web_enterprise')
+            ON CONFLICT DO NOTHING;
+        """)
 
         # ── Staff chat alerts (2026-09-25): per-team-member alert settings and
         # the per-chat alert log the WhatsApp gateway's reminder sweep reads.

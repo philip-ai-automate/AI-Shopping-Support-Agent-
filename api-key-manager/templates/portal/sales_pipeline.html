@@ -1,5 +1,6 @@
 {% extends "portal/base.html" %}
 {% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
+{% from "portal/_address_box.html" import emails_cell, other_emails_box, address_box, location_cell, address_filters with context %}
 {% block title %}Sales Pipeline — PhiXtra Portal{% endblock %}
 {% block content %}
 {# Role-aware buttons — same route labels the save routes enforce. #}
@@ -373,6 +374,7 @@
                        'label': show_label_ids or none, 'hide_sms_segment': hide_sms_segment_ids or none,
                        'hide_wa_segment': hide_wa_segment_ids or none,
                        'tier': tier_filter if tier_filter != 'all' else none} %}
+{% set _ = filter_args.update(addr_fargs or {}) %}
 
 <!-- Stage funnel summary — click a stage to filter -->
 <div class="stage-funnel" data-sptour="stage-funnel">
@@ -462,6 +464,7 @@
           </label>
         </div>
       </div>
+      {% if view_mode == 'list' %}{{ address_filters(addr_state, addr_opts) }}{% endif %}
       {% if all_segments %}
       <div class="col-picker-wrap seg-picker-wrap">
         <button type="button" class="col-picker-btn" onclick="toggleSegPicker()">
@@ -557,6 +560,7 @@
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="sms_segment" checked>SMS Segment</label>
           {% endif %}
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="label" checked>Label</label>
+          <label class="col-picker-item"><input type="checkbox" data-col-toggle="location" checked>Location</label>
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="contact_person" checked>Contact Person</label>
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="phone" checked>Phone Number</label>
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="whatsapp" checked>WhatsApp Number</label>
@@ -625,6 +629,7 @@
           <th data-col="sms_segment">SMS Segment</th>
           {% endif %}
           <th data-col="label">Label</th>
+          <th data-col="location">Location</th>
           <th data-col="contact_person">Contact Person</th>
           <th data-col="phone">Phone Number</th>
           <th data-col="whatsapp">WhatsApp Number</th>
@@ -696,10 +701,11 @@
               <span class="muted">—</span>
             {% endif %}
           </td>
+          <td data-col="location" class="muted" style="font-size:12px;max-width:200px">{{ location_cell(l) }}</td>
           <td data-col="contact_person" class="muted" style="font-size:12px">{{ l.contact_person or '—' }}</td>
           <td data-col="phone" class="muted" style="font-size:12px">{{ l.phone|phone_display or '—' }}</td>
           <td data-col="whatsapp" class="muted" style="font-size:12px">{{ l.whatsapp_number|phone_display or '—' }}</td>
-          <td data-col="email" class="col-hidden muted" style="font-size:12px">{{ l.email or '—' }}</td>
+          <td data-col="email" class="col-hidden muted" style="font-size:12px">{{ emails_cell(l.email, l.other_emails) }}</td>
           <td data-col="deal_value" class="muted">{{ '₦{:,.0f}'.format(l.deal_value) if l.deal_value else '—' }}</td>
           <td data-col="stage"><span class="stage-pill st-{{ l.stage }}">{{ stage_labels[l.stage] }}</span></td>
           <td data-col="added" class="muted">{{ l.created_at.strftime('%d %b %Y') if l.created_at else '—' }}</td>
@@ -733,7 +739,7 @@
                 </button>
                 {% endif %}
 {% if can_edit_deal %}                <button type="button" class="row-action-item" {% if loop.first %}data-sptour="edit-btn"{% endif %}
-                        onclick='closeAllRowMenus(); openEditModal({{ l.id }}, {{ (l.customer_name or "")|tojson }}, {{ (l.contact_person or "")|tojson }}, {{ (l.phone or "")|tojson }}, {{ (l.email or "")|tojson }}, {{ (l.deal_value if l.deal_value is not none else "")|tojson }}, {{ (l.notes or "")|tojson }}, {{ (l.whatsapp_number or "")|tojson }}, {{ (l.product_interest or "")|tojson }}, {{ l.budget_confirmed|tojson }}, {{ l.decision_maker_engaged|tojson }}, {{ (l.deadline_date.strftime('%Y-%m-%d') if l.deadline_date else "")|tojson }})'>
+                        onclick='closeAllRowMenus(); openEditModal({{ l.id }}, {{ (l.customer_name or "")|tojson }}, {{ (l.contact_person or "")|tojson }}, {{ (l.phone or "")|tojson }}, {{ (l.email or "")|tojson }}, {{ (l.deal_value if l.deal_value is not none else "")|tojson }}, {{ (l.notes or "")|tojson }}, {{ (l.whatsapp_number or "")|tojson }}, {{ (l.product_interest or "")|tojson }}, {{ l.budget_confirmed|tojson }}, {{ l.decision_maker_engaged|tojson }}, {{ (l.deadline_date.strftime('%Y-%m-%d') if l.deadline_date else "")|tojson }}, {{ dict(addr_street=l.addr_street or '', addr_city=l.addr_city or '', addr_state=l.addr_state or '', addr_country=l.addr_country or '', addr_postcode=l.addr_postcode or '')|tojson }}, {{ (l.other_emails or '')|tojson }})'>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                   Edit Deal
                 </button>{% endif %}
@@ -778,6 +784,7 @@
                          'hide_sms_segment': hide_sms_segment_ids or none,
                          'hide_wa_segment': hide_wa_segment_ids or none,
                          'hide_label': hide_label_ids or none, 'label': show_label_ids or none} %}
+    {% set _ = base_args.update(addr_fargs or {}) %}
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
       <a href="{{ url_for('portal.sales_pipeline', page=page-1, **base_args) if page > 1 else '#' }}"
          class="btn btn-sm btn-ghost" style="text-decoration:none;
@@ -905,7 +912,7 @@
               </button>
               {% endif %}
 {% if can_edit_deal %}              <button type="button" class="row-action-item"
-                      onclick='closeAllRowMenus(); openEditModal({{ l.id }}, {{ (l.customer_name or "")|tojson }}, {{ (l.contact_person or "")|tojson }}, {{ (l.phone or "")|tojson }}, {{ (l.email or "")|tojson }}, {{ (l.deal_value if l.deal_value is not none else "")|tojson }}, {{ (l.notes or "")|tojson }}, {{ (l.whatsapp_number or "")|tojson }}, {{ (l.product_interest or "")|tojson }}, {{ l.budget_confirmed|tojson }}, {{ l.decision_maker_engaged|tojson }}, {{ (l.deadline_date.strftime('%Y-%m-%d') if l.deadline_date else "")|tojson }})'>
+                      onclick='closeAllRowMenus(); openEditModal({{ l.id }}, {{ (l.customer_name or "")|tojson }}, {{ (l.contact_person or "")|tojson }}, {{ (l.phone or "")|tojson }}, {{ (l.email or "")|tojson }}, {{ (l.deal_value if l.deal_value is not none else "")|tojson }}, {{ (l.notes or "")|tojson }}, {{ (l.whatsapp_number or "")|tojson }}, {{ (l.product_interest or "")|tojson }}, {{ l.budget_confirmed|tojson }}, {{ l.decision_maker_engaged|tojson }}, {{ (l.deadline_date.strftime('%Y-%m-%d') if l.deadline_date else "")|tojson }}, {{ dict(addr_street=l.addr_street or '', addr_city=l.addr_city or '', addr_state=l.addr_state or '', addr_country=l.addr_country or '', addr_postcode=l.addr_postcode or '')|tojson }}, {{ (l.other_emails or '')|tojson }})'>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                 Edit Deal
               </button>{% endif %}
@@ -1137,6 +1144,9 @@
           {{ phone_box('whatsapp_number', id='editWhatsapp') }}</div>
         <div></div>
       </div>
+      <div style="margin-bottom:14px">{{ other_emails_box('', id='editOtherEmails') }}</div>
+      <label class="flbl" style="font-size:13px">Address</label>
+      <div style="margin-bottom:14px">{{ address_box(None, id='editAddr') }}</div>
       <label class="flbl">Deal Value <span style="font-weight:400;color:#9ca3af">(optional)</span></label>
       <input type="number" step="0.01" name="deal_value" id="editDealValue" class="finp" style="margin-bottom:14px"/>
       <label class="flbl">Product / Service Interested In</label>
@@ -1524,7 +1534,9 @@ function createLabelAndBulkAdd() {
     .catch(function(){ alert('Could not create label — check your connection'); });
 }
 
-function openEditModal(id, customerName, contactPerson, phone, email, dealValue, notes, whatsappNumber, productInterest, budgetConfirmed, decisionMakerEngaged, deadlineDate) {
+function openEditModal(id, customerName, contactPerson, phone, email, dealValue, notes, whatsappNumber, productInterest, budgetConfirmed, decisionMakerEngaged, deadlineDate, address, otherEmails) {
+  if (window.addrSet) addrSet('editAddr', address || {});
+  document.getElementById('editOtherEmails').value = (otherEmails || '').split(', ').filter(Boolean).join('\n');
   document.getElementById('editForm').action = `/sales-pipeline/${id}/edit`;
   document.getElementById('editTitle').textContent = `Edit — ${customerName}`;
   document.getElementById('editCustomerName').value  = customerName || '';

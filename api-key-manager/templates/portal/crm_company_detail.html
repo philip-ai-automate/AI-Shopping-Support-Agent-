@@ -1,4 +1,5 @@
 {% extends "portal/base.html" %}
+{% from "portal/_address_box.html" import address_box, location_cell with context %}
 {% block title %}{{ company.name }} — CRM — PhiXtra Portal{% endblock %}
 
 {% block head %}
@@ -67,6 +68,7 @@
     <div>
       <div class="p-name">{{ company.name }}</div>
       {% if company.website %}<div class="p-sub">{{ company.website }}</div>{% endif %}
+      <div class="p-sub">{% if has_address(company) %}📍 {{ location_text(company, with_street=True) }}{% if company.addr_postcode %} · {{ company.addr_postcode }}{% endif %}{% else %}{{ location_cell(company) }}{% endif %}</div>
     </div>
   </div>
   <div class="ph-stats">
@@ -135,7 +137,9 @@
     <form method="POST" action="{{ url_for('portal.crm_company_edit', company_id=company.id) }}">
       <div class="modal-body">
         <input class="field-input" type="text" name="name" value="{{ company.name }}" required>
-        <input class="field-input" type="text" name="website" value="{{ company.website or '' }}" placeholder="Website" style="margin-bottom:0">
+        <input class="field-input" type="text" name="website" value="{{ company.website or '' }}" placeholder="Website" style="margin-bottom:12px">
+        <div style="font-size:13px;font-weight:700;margin:4px 0 8px">Address</div>
+        {{ address_box(company, id='editCoAddr', cls='field-input', label_cls='field-label', note="Every contact and lead of this company shares this address.") }}
       </div>
       <div class="modal-foot">
         <button type="button" class="btn-ghost" onclick="document.getElementById('editModal').classList.remove('open')">Cancel</button>

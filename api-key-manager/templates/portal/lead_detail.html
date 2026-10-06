@@ -1,5 +1,6 @@
 {% extends "portal/base.html" %}
 {% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
+{% from "portal/_address_box.html" import emails_cell, other_emails_box, address_box, location_cell with context %}
 {% block title %}{{ lead.customer_name }} — Lead — PhiXtra Portal{% endblock %}
 
 {% block head %}
@@ -106,6 +107,7 @@
     <div><div class="lc-field-label">Phone Number</div><div class="lc-field-value" style="font-family:'SF Mono','Fira Code',monospace">{{ lead.phone|phone_display or '—' }}{{ phone_flag(lead.phone) }}{% if lead.phone and phone_problem(lead.phone) and staff_can_open('portal.lead_remove_number') %}<form method="POST" action="{{ url_for('portal.lead_remove_number', lead_id=lead.id) }}" style="display:inline;margin:0" onsubmit="return confirm('Remove this number? Only the number is removed — the lead is kept.')"><input type="hidden" name="field" value="phone"><button type="submit" style="margin-left:6px;background:none;border:0;padding:0;color:#b91c1c;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;text-decoration:underline">Remove number</button></form>{% endif %}</div></div>
     <div><div class="lc-field-label">WhatsApp Number</div><div class="lc-field-value" style="font-family:'SF Mono','Fira Code',monospace;color:#15803d">{{ lead.whatsapp_number|phone_display or '—' }}{{ phone_flag(lead.whatsapp_number) }}{% if lead.whatsapp_number and phone_problem(lead.whatsapp_number) and staff_can_open('portal.lead_remove_number') %}<form method="POST" action="{{ url_for('portal.lead_remove_number', lead_id=lead.id) }}" style="display:inline;margin:0" onsubmit="return confirm('Remove this number? Only the number is removed — the lead is kept.')"><input type="hidden" name="field" value="whatsapp_number"><button type="submit" style="margin-left:6px;background:none;border:0;padding:0;color:#b91c1c;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;text-decoration:underline">Remove number</button></form>{% endif %}</div></div>
     <div><div class="lc-field-label">Email</div><div class="lc-field-value">{{ lead.email or '—' }}</div></div>
+    <div><div class="lc-field-label">Other emails</div><div class="lc-field-value" style="word-break:break-all">{% if lead.other_emails %}{% for e in lead.other_emails.split(', ') %}<a href="mailto:{{ e }}" style="color:#2563eb;text-decoration:none">{{ e }}</a>{% if not loop.last %}<br>{% endif %}{% endfor %}{% else %}—{% endif %}</div></div>
 
     <div>
       <div class="lc-field-label">Source</div>
@@ -132,6 +134,17 @@
       {% else %}
       <div class="lc-field-value" style="color:var(--muted)">—</div>
       {% endif %}
+    </div>
+    <div><div class="lc-field-label">Website</div>
+      {% set _site = lead.website or (company.website if company else '') %}
+      {% if _site %}
+      <a href="{{ _site }}" target="_blank" rel="noopener noreferrer" class="lc-field-value" style="color:#2563eb;text-decoration:none;word-break:break-all">{{ _site|replace('https://','')|replace('http://','') }}</a>
+      {% else %}
+      <div class="lc-field-value" style="color:var(--muted)">—</div>
+      {% endif %}
+    </div>
+    <div><div class="lc-field-label">Address{% if company %} <span style="font-weight:400;text-transform:none;letter-spacing:0">(company's)</span>{% endif %}</div>
+      <div class="lc-field-value">{% if has_address(lead) %}{{ location_text(lead, with_street=True) }}{% if lead.addr_postcode %} · {{ lead.addr_postcode }}{% endif %}{% else %}{{ location_cell(lead) }}{% endif %}</div>
     </div>
     <div><div class="lc-field-label">Created</div><div class="lc-field-value">{{ lead.created_at.strftime('%d %b %Y') if lead.created_at else '—' }}</div></div>
 
@@ -317,8 +330,11 @@
     <div class="modal-title">Edit Lead — {{ lead.customer_name }}</div>
     <form method="POST" action="{{ url_for('portal.sales_pipeline_edit', lead_id=lead.id) }}">
       <div class="frow">
-        <div><label class="flbl">Business Name</label><input type="text" name="customer_name" class="finp" value="{{ lead.customer_name or '' }}" required></div>
+        <div><label class="flbl">Company Name</label><input type="text" name="customer_name" class="finp" value="{{ lead.customer_name or '' }}" required></div>
         <div><label class="flbl">Contact Person</label><input type="text" name="contact_person" class="finp" value="{{ lead.contact_person or '' }}"></div>
+      </div>
+      <div class="frow" style="grid-template-columns:1fr">
+        <div><label class="flbl">Website</label><input type="text" name="website" class="finp" value="{{ lead.website or '' }}" placeholder="e.g. www.company.com"></div>
       </div>
       <div class="frow" style="grid-template-columns:1fr">
         <div><label class="flbl">Phone Number</label>{{ phone_box('phone', lead.phone) }}</div>
@@ -327,6 +343,12 @@
       <div class="frow">
         <div><label class="flbl">Email</label><input type="email" name="email" class="finp" value="{{ lead.email or '' }}"></div>
         <div><label class="flbl">Deal Value</label><input type="number" step="0.01" name="deal_value" class="finp" value="{{ lead.deal_value if lead.deal_value is not none else '' }}"></div>
+      </div>
+      <div class="frow" style="grid-template-columns:1fr">
+        <div>{{ other_emails_box(lead.other_emails, id='editLeadOtherEmails') }}</div>
+      </div>
+      <div class="frow" style="grid-template-columns:1fr">
+        <div><label class="flbl" style="font-size:13px">Address</label>{{ address_box(lead, id='editLeadAddr') }}</div>
       </div>
       <div class="frow">
         <div><label class="flbl">Product / Service Interested In</label><input type="text" name="product_interest" class="finp" value="{{ lead.product_interest or '' }}"></div>

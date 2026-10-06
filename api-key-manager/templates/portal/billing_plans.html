@@ -131,17 +131,17 @@
   <div style="background:rgba(18,183,106,0.08);border:1px solid rgba(18,183,106,0.35);border-radius:10px;
               padding:14px 16px;font-size:13.5px;color:#030C18;margin-top:14px;display:flex;
               justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-    <div><strong>Let AI answer your WhatsApp customers for 2 weeks, free.</strong><br>
-      Full Enterprise features for 14 days. No card needed. You can only start this once.</div>
+    <div><strong>Let AI answer {{ current.ai_customers_words }} for 2 weeks, free.</strong><br>
+      Full {{ current.trial_plan_name }} features for 14 days. No card needed. You can only start this once.</div>
     <form method="POST" action="{{ url_for('portal.billing_start_ai_trial') }}" style="margin:0"
-          onsubmit="return confirm('Start your 2-week AI trial now? Your plan becomes Enterprise for 14 days and the AI starts answering your WhatsApp customers. You can only do this once.')">
+          onsubmit="return confirm('Start your 2-week AI trial now? Your plan becomes {{ current.trial_plan_name }} for 14 days and the AI starts answering {{ current.ai_customers_words }}. You can only do this once.')">
       <button type="submit" style="background:#12B76A;color:#fff;border:0;padding:10px 16px;border-radius:10px;font-weight:700;cursor:pointer">Start my 2-week AI trial</button>
     </form>
   </div>
   {% else %}
   <div style="background:#F2F4F7;border:1px solid #D0D5DD;border-radius:10px;
               padding:12px 16px;font-size:13px;color:#344054;margin-top:14px">
-    🔒 Your 2-week AI trial has ended. AI features are locked on PhiXtra Connect — choose a plan below to switch the AI back on. Your AI settings are saved.
+    🔒 Your 2-week AI trial has ended. AI features are locked on {{ current.free_plan_name }} — choose a plan below to switch the AI back on. Your AI settings are saved.
   </div>
   {% endif %}
 </div>
@@ -170,7 +170,7 @@
   <div style="background:#FFFAEB;border:1px solid #FEC84B;border-radius:10px;
               padding:12px 16px;font-size:13px;color:#93370D;margin-top:14px">
     ⏳ Your AI trial has <strong>{{ current.trial_days_left }} day{{ 's' if current.trial_days_left != 1 }}</strong> left.
-    Choose a plan to keep the AI answering. If you don't, your AI features lock and you go back to PhiXtra Connect.
+    Choose a plan to keep the AI answering. If you don't, your AI features lock and you go back to {{ current.free_plan_name }}.
   </div>
   {% elif current.is_trial and current.trial_days_left <= 7 %}
   <div style="background:#FDF4FF;border:1px solid #E9D5FF;border-radius:10px;

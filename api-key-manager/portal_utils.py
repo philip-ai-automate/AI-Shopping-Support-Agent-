@@ -27,7 +27,7 @@ def utc_now_naive():
 
 
 def send_email(to_email: str, subject: str, html_body: str, text_body: str | None = None,
-               cc_email: str | None = None) -> bool:
+               cc_email: str | None = None, reply_to: str | None = None) -> bool:
     """Send an email. Returns True on success, False on failure.
     Failures are printed to server logs but never raise exceptions so calling
     code decides how to surface the error to the customer."""
@@ -48,6 +48,8 @@ def send_email(to_email: str, subject: str, html_body: str, text_body: str | Non
     msg["To"] = to_email
     if cc_email:
         msg["Cc"] = cc_email
+    if reply_to:
+        msg["Reply-To"] = reply_to
     msg["Subject"] = subject
     msg.set_content(text_body or "Please view this email in an HTML-capable client.")
     msg.add_alternative(html_body, subtype="html")

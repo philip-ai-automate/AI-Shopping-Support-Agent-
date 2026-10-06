@@ -1,5 +1,6 @@
 {% extends "portal/base.html" %}
 {% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
+{% from "portal/_address_box.html" import emails_cell, other_emails_box, address_box, location_cell with context %}
 {% block title %}{{ contact.display_name or contact.whatsapp_number or contact.phone or contact.email }} — Contact — PhiXtra Portal{% endblock %}
 
 {% block head %}
@@ -345,6 +346,20 @@
             {% if contact.email %}{{ contact.email }}
             {% elif can_edit_contact %}<button type="button" class="pc-add" onclick="openEdit('ep-email')">+ Add email</button>
             {% else %}<span class="pc-none">—</span>{% endif %}
+          </span>
+        </div>
+        {% if contact.other_emails %}
+        <div class="pc-row">
+          <span class="pc-ic" aria-hidden="true">📧</span><span class="pc-k">Other emails</span>
+          <span class="pc-v" style="word-break:break-all">{% for e in contact.other_emails.split(', ') %}<a href="mailto:{{ e }}" style="color:#2563eb;text-decoration:none">{{ e }}</a>{% if not loop.last %}<br>{% endif %}{% endfor %}</span>
+        </div>
+        {% endif %}
+        <div class="pc-row">
+          <span class="pc-ic" aria-hidden="true">📍</span><span class="pc-k">Address</span>
+          <span class="pc-v">
+            {% if has_address(contact) %}{{ location_text(contact, with_street=True) }}{% if contact.addr_postcode %} · {{ contact.addr_postcode }}{% endif %}
+            {% elif can_edit_contact %}{{ location_cell(contact) }} <button type="button" class="pc-add" onclick="openEdit('ep-addr-country')">+ Add address</button>
+            {% else %}{{ location_cell(contact) }}{% endif %}
           </span>
         </div>
         <div class="pc-row">
@@ -756,6 +771,13 @@
           <input class="field-input" type="email" name="email" id="ep-email"
                  value="{{ contact.email or '' }}" placeholder="e.g. amira@business.com">
         </div>
+      </fieldset>
+
+      <div class="field" style="margin:-6px 0 14px">{{ other_emails_box(contact.other_emails, id='ep-other-emails', cls='field-input', label_cls='field-label') }}</div>
+
+      <fieldset class="ep-sec">
+        <legend>Address</legend>
+        {{ address_box(contact, id='ep-addr', cls='field-input', label_cls='field-label', note="Saved on the company when the contact has one — every contact and lead of that company shares it.") }}
       </fieldset>
 
       <fieldset class="ep-sec">

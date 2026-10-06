@@ -1,0 +1,115 @@
+{# One address box used on every lead / contact / company form (2026-10-04).
+   Import WITH CONTEXT:  {% from "portal/_address_box.html" import address_box with context %}
+   row: a dict with addr_street / addr_city / addr_state / addr_country /
+   addr_postcode (or None). Country + state are required unless
+   required=False. The state box is a pick-list for countries that have one
+   (ADDRESS_STATES) and a typed box for the rest; its label follows the
+   country (State / County / Region / Province). JS-filled modals call
+   window.addrSet(boxId, {addr_country:…, addr_state:…, …}). #}
+{% macro address_box(row=None, id='addr', cls='finp', required=True, label_cls='flbl', note='') -%}
+{%- set r = row or {} -%}
+{%- set _c = (r.addr_country or '') -%}
+{%- set _s = (r.addr_state or '') -%}
+{%- set _pop = ADDRESS_COUNTRIES_POPULAR | map(attribute=0) | list -%}
+<div class="addr-box" id="{{ id }}" data-required="{{ '1' if required else '' }}"
+     style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px">
+  <div style="grid-column:1 / -1">
+    <label class="{{ label_cls }}" style="display:block;margin-bottom:4px" for="{{ id }}-street">Street address <span style="font-weight:400;color:#94a3b8">(optional)</span></label>
+    <input type="text" id="{{ id }}-street" name="addr_street" class="{{ cls }}" value="{{ r.addr_street or '' }}" maxlength="255" placeholder="e.g. 12 Example Street" autocomplete="off">
+  </div>
+  <div>
+    <label class="{{ label_cls }}" style="display:block;margin-bottom:4px" for="{{ id }}-country">Country{% if required %} <span style="color:#b42318">*</span>{% endif %}</label>
+    <select id="{{ id }}-country" name="addr_country" class="{{ cls }} addr-country" {% if required %}required{% endif %}>
+      <option value="">Choose country…</option>
+      <optgroup label="Most used">
+        {%- for iso, cname in ADDRESS_COUNTRIES_POPULAR %}<option value="{{ iso }}" {% if iso == _c %}selected{% endif %}>{{ cname }}</option>{% endfor %}
+      </optgroup>
+      <optgroup label="All countries">
+        {%- for iso, cname in ADDRESS_COUNTRIES %}{% if iso not in _pop %}<option value="{{ iso }}" {% if iso == _c %}selected{% endif %}>{{ cname }}</option>{% endif %}{% endfor %}
+      </optgroup>
+    </select>
+  </div>
+  <div>
+    <label class="{{ label_cls }} addr-state-label" style="display:block;margin-bottom:4px" for="{{ id }}-state">{{ address_state_label(_c) if _c else 'State / County / Province' }}{% if required %} <span style="color:#b42318">*</span>{% endif %}</label>
+    <select id="{{ id }}-state" name="addr_state" class="{{ cls }} addr-state-pick" {% if not (_c in ADDRESS_STATES) %}disabled style="display:none"{% endif %} {% if required and (_c in ADDRESS_STATES) %}required{% endif %}>
+      <option value="">Choose…</option>
+      {%- if _c in ADDRESS_STATES %}{% for s in ADDRESS_STATES[_c] %}<option value="{{ s }}" {% if s == _s %}selected{% endif %}>{{ s }}</option>{% endfor %}{% endif %}
+    </select>
+    <input type="text" id="{{ id }}-state-text" name="addr_state_text" class="{{ cls }} addr-state-text" value="{{ _s if not (_c in ADDRESS_STATES) else '' }}" maxlength="120"
+           placeholder="{{ 'Choose the country first' if not _c else 'Type it' }}" autocomplete="off"
+           {% if _c in ADDRESS_STATES %}disabled style="display:none"{% endif %} {% if required and not (_c in ADDRESS_STATES) %}required{% endif %}>
+  </div>
+  <div>
+    <label class="{{ label_cls }}" style="display:block;margin-bottom:4px" for="{{ id }}-city">City / Town <span style="font-weight:400;color:#94a3b8">(optional)</span></label>
+    <input type="text" id="{{ id }}-city" name="addr_city" class="{{ cls }}" value="{{ r.addr_city or '' }}" maxlength="120" autocomplete="off">
+  </div>
+  <div>
+    <label class="{{ label_cls }}" style="display:block;margin-bottom:4px" for="{{ id }}-postcode">Postcode <span style="font-weight:400;color:#94a3b8">(optional)</span></label>
+    <input type="text" id="{{ id }}-postcode" name="addr_postcode" class="{{ cls }}" value="{{ r.addr_postcode or '' }}" maxlength="20" autocomplete="off">
+  </div>
+  {%- if note %}<div style="grid-column:1 / -1;font-size:12px;color:#64748b">{{ note }}</div>{% endif %}
+</div>
+<script>if(!window.addrSet){(function(){
+var LISTS={{ ADDRESS_STATES|tojson }},LABELS={NG:'State',US:'State',GB:'County',GH:'Region',KE:'County',IE:'County',ZA:'Province',CA:'Province',CN:'Province'};
+function setup(box,keep){var c=box.querySelector('.addr-country'),p=box.querySelector('.addr-state-pick'),t=box.querySelector('.addr-state-text'),l=box.querySelector('.addr-state-label');if(!c||!p||!t)return;
+var iso=c.value,req=box.getAttribute('data-required')==='1',list=LISTS[iso],cur=keep!=null?keep:(p.disabled?t.value:p.value);
+if(l){l.innerHTML=(LABELS[iso]||'State / County / Province')+(req?' <span style="color:#b42318">*</span>':'');}
+if(list){p.innerHTML='<option value="">Choose…</option>';list.forEach(function(s){var o=document.createElement('option');o.value=s;o.textContent=s;if(cur&&s.toLowerCase()===String(cur).toLowerCase())o.selected=true;p.appendChild(o);});
+p.disabled=false;p.style.display='';p.required=req;t.disabled=true;t.style.display='none';t.required=false;}
+else{t.disabled=false;t.style.display='';t.required=req;t.placeholder=iso?'Type it':'Choose the country first';if(keep!=null)t.value=keep||'';p.disabled=true;p.style.display='none';p.required=false;}}
+document.addEventListener('change',function(e){if(e.target.classList&&e.target.classList.contains('addr-country')){var b=e.target.closest('.addr-box');if(b)setup(b,'');}});
+window.addrSet=function(id,a){var b=typeof id==='string'?document.getElementById(id):id;if(!b)return;a=a||{};
+var f=function(n,v){var i=b.querySelector('[name="'+n+'"]');if(i)i.value=v||'';};
+f('addr_street',a.addr_street);f('addr_city',a.addr_city);f('addr_postcode',a.addr_postcode);f('addr_country',a.addr_country);setup(b,a.addr_state||'');};
+})();}</script>
+{%- endmacro %}
+
+{# "City, State, Country" for lists and pages — whatever part is known
+   (e.g. just "Nigeria"), or "—" when nothing is (no "Address missing" tag,
+   user 2026-10-04). #}
+{% macro location_cell(row) -%}
+{%- set _t = location_text(row) if row else '' -%}
+{%- if _t %}{{ _t }}{% else %}<span style="color:#94a3b8">—</span>{% endif -%}
+{%- endmacro %}
+
+{# Country / State / City / Address-missing filters for a list page's GET
+   form (2026-10-04). af = the cleaned filter values, ao = options from
+   address_filter_options() (only places that actually occur, with counts).
+   Changing the country clears the state. #}
+{% macro address_filters(af, ao) -%}
+{%- set _sl = address_state_label(af.country) if af.country else 'State / County / Province' -%}
+<style>.af-wrap{display:inline-flex;flex-wrap:wrap;gap:8px;align-items:center}.af-sel{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:#475569}.af-sel select,.af-sel input{font:inherit;font-weight:400;font-size:12.5px;padding:6px 8px;border:1.5px solid #cbd5e1;border-radius:8px;background:#fff;color:#111e2d;max-width:200px}.af-sel select:disabled{opacity:.55}.af-miss{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;border:1px solid #f5c26b;background:#fff8e6;color:#7a4b00;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap}</style>
+<span class="af-wrap">
+<label class="af-sel">Country
+  <select name="country" onchange="var s=this.form.querySelector('[name=state]');if(s)s.value='';this.form.submit()">
+    <option value="">All countries</option>
+    {% for iso, cname, n in ao.countries %}<option value="{{ iso }}" {% if af.country == iso %}selected{% endif %}>{{ cname }} ({{ '{:,}'.format(n) }})</option>{% endfor %}
+  </select>
+</label>
+<label class="af-sel">{{ _sl }}
+  <select name="state" onchange="this.form.submit()" {% if not af.country %}disabled title="Choose a country first"{% endif %}>
+    <option value="">{{ 'All' if af.country else 'Choose a country first' }}</option>
+    {% for s, n in (ao.states.get(af.country) or []) %}<option value="{{ s }}" {% if af.state|lower == s|lower %}selected{% endif %}>{{ s }} ({{ '{:,}'.format(n) }})</option>{% endfor %}
+  </select>
+</label>
+<label class="af-sel">City / Town
+  <input type="text" name="city" value="{{ af.city }}" placeholder="Any" style="width:110px" onchange="this.form.submit()">
+</label>
+<label class="af-miss">
+  <input type="checkbox" name="addr_missing" value="1" {% if af.addr_missing %}checked{% endif %} onchange="this.form.submit()"> Address missing ({{ '{:,}'.format(ao.missing) }})
+</label>
+</span>
+{%- endmacro %}
+
+{# Main email + "+N more" for lists (Other emails, 2026-10-04). #}
+{% macro emails_cell(main, others) -%}
+{%- set _o = (others or '').split(', ') | select | list -%}
+{%- if main %}<a href="mailto:{{ main }}" style="color:#2563eb;text-decoration:none" title="{{ main }}">{{ main }}</a>{% elif _o %}<a href="mailto:{{ _o[0] }}" style="color:#2563eb;text-decoration:none" title="{{ _o[0] }}">{{ _o[0] }}</a>{% set _o = _o[1:] %}{% else %}<span style="color:#94a3b8">—</span>{% endif -%}
+{%- if _o %} <span title="Other emails: {{ _o|join(', ') }}" style="display:inline-block;margin-left:4px;padding:0 6px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:11px;font-weight:600;cursor:help">+{{ _o|length }}</span>{% endif -%}
+{%- endmacro %}
+
+{# Other emails box for forms. #}
+{% macro other_emails_box(value='', id='otherEmails', cls='finp', label_cls='flbl') -%}
+<label class="{{ label_cls }}" for="{{ id }}" style="display:block;margin-bottom:4px">Other emails <span style="font-weight:400;color:#94a3b8">(optional — one per line or separated by commas)</span></label>
+<textarea name="other_emails" id="{{ id }}" class="{{ cls }}" rows="2" placeholder="e.g. sales@company.com, accounts@company.com" style="min-height:52px">{{ (value or '')|replace(', ', '\n') }}</textarea>
+{%- endmacro %}
