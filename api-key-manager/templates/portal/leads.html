@@ -1,6 +1,7 @@
 {% extends "portal/base.html" %}
 {% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
 {% from "portal/_address_box.html" import emails_cell, other_emails_box, address_box, location_cell, address_filters with context %}
+{% from "portal/_biz_fields.html" import biz_inputs, biz_filters with context %}
 {% block title %}Leads — PhiXtra Portal{% endblock %}
 {% block wrap_class %}page-wide{% endblock %}
 {% block content %}
@@ -271,6 +272,9 @@
     {% if staff_can_open('portal.sales_pipeline_settings') %}
     <a href="{{ url_for('portal.sales_pipeline_settings') }}" class="btn btn-sm" style="text-decoration:none">⚙️ Settings</a>
     {% endif %}
+    {% if staff_can('crm.import') and staff_can('leads.create') %}
+    <a href="{{ url_for('portal.crm_import_start', target='leads') }}" class="btn btn-sm" style="text-decoration:none">⇪ Import</a>
+    {% endif %}
     {% if staff_can('leads.create') %}
     <button type="button" class="btn btn-primary btn-sm" onclick="document.getElementById('addLeadForm').classList.add('open'); document.getElementById('addLeadForm').scrollIntoView({behavior:'smooth'})">➕ Add Lead</button>
     {% endif %}
@@ -384,6 +388,9 @@
     </div>
     <div class="frow single">
       <div><label class="flbl">Website</label><input type="text" name="website" class="finp" placeholder="e.g. www.company.com"></div>
+    </div>
+    <div class="frow single">
+      <div>{{ biz_inputs(None, id='addLeadBiz') }}</div>
     </div>
     <div class="frow">
       <div><label class="flbl">Phone Number</label>{{ phone_box('phone') }}</div>
@@ -524,6 +531,8 @@
 
   {{ address_filters(lf.addr, addr_opts) }}
 
+  {{ biz_filters(lf.biz) }}
+
   <details class="lf-dd">
     <summary class="filter-btn {{ 'active' if lf.added_from or lf.added_to }}">Date added{% if lf.added_from or lf.added_to %}: {{ lf.added_from.strftime('%d %b %Y') if lf.added_from else '…' }} – {{ lf.added_to.strftime('%d %b %Y') if lf.added_to else '…' }}{% endif %} ▾</summary>
     <div class="lf-menu">
@@ -634,18 +643,21 @@
       <thead>
         <tr>
           {% if can_bulk %}<th style="width:34px"><input type="checkbox" id="lbSelectPage" class="lb-ck" onchange="lbTogglePage(this)" aria-label="Select all leads on this page"></th>{% endif %}
-          <th>Company</th><th>Website</th><th>Location</th><th>Contact</th><th>Phone Number</th><th>WhatsApp Number</th><th>Email</th><th>Source</th>
+          <th>Company</th><th>Business category</th><th>Employees</th><th>Website</th><th>Location</th><th>Contact</th><th>Phone Number</th><th>WhatsApp Number</th><th>Email</th><th>Source</th>
           <th>Product / Service</th><th>Deal Value</th><th>Assigned To</th><th>Stage</th><th>Score</th><th>Added</th>
         </tr>
       </thead>
       <tbody>
         {% set src_meta = {'whatsapp': ('#dcfce7','#15803d','WhatsApp'), 'facebook': ('#dbeafe','#1d4ed8','Facebook'),
-                            'instagram': ('#fce7f3','#be185d','Instagram'), 'manual': ('#f1f5f9','#64748b','Manual')} %}
+                            'instagram': ('#fce7f3','#be185d','Instagram'), 'manual': ('#f1f5f9','#64748b','Manual'),
+                            'import': ('#eef2ff','#3730a3','Import')} %}
         {% set _sb = {'hot': ('🔥','#fef2f2','#b91c1c'), 'warm': ('🌤️','#fffbeb','#b45309'), 'cold': ('❄️','#eff6ff','#1d4ed8')} %}
         {% for l in real_leads %}
         <tr class="lb-row" data-lead-id="{{ l.id }}">
           {% if can_bulk %}<td><input type="checkbox" class="lb-ck lb-row-ck" onchange="lbUpdate()" aria-label="Select {{ l.customer_name }}"></td>{% endif %}
           <td><a href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" style="color:var(--ink);font-weight:700;text-decoration:none">{{ l.customer_name }}</a></td>
+          <td class="muted" style="white-space:nowrap">{{ l.business_category or '—' }}</td>
+          <td class="muted" style="white-space:nowrap">{{ l.employees or '—' }}</td>
           <td class="muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{% set _w = (l.website or '')|replace('https://','')|replace('http://','') %}{% if _w %}<a href="{{ l.website }}" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:none" title="{{ l.website }}">{{ _w.rstrip('/') }}</a>{% else %}—{% endif %}</td>
           <td class="muted" style="max-width:220px">{{ location_cell(l) }}</td>
           <td class="muted">{{ l.contact_person or '—' }}</td>
@@ -881,7 +893,7 @@ tr.lb-sel td{background:#eef2fa}
 
 <script>
 var LB = { all: false, total: {{ filtered_total|int }}, preview: null,
-           filterKeys: ['q','tier','has_phone','has_email','has_whatsapp','has_company','check_numbers','assigned','added_from','added_to','country','state','city','addr_missing'] };
+           filterKeys: ['q','tier','has_phone','has_email','has_whatsapp','has_company','check_numbers','assigned','added_from','added_to','country','state','city','addr_missing','biz_category','employees','label','import'] };
 function lbRows(){ return Array.prototype.slice.call(document.querySelectorAll('.lb-row')); }
 function lbIds(){ return lbRows().filter(function(r){ var c=r.querySelector('.lb-row-ck'); return c && c.checked; })
                                  .map(function(r){ return r.dataset.leadId; }); }

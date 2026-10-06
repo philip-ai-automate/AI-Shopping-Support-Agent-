@@ -1,6 +1,7 @@
 {% extends "portal/base.html" %}
 {% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
 {% from "portal/_address_box.html" import emails_cell, other_emails_box, address_box, location_cell with context %}
+{% from "portal/_biz_fields.html" import biz_inputs with context %}
 {% block title %}{{ lead.customer_name }} — Lead — PhiXtra Portal{% endblock %}
 
 {% block head %}
@@ -112,7 +113,8 @@
     <div>
       <div class="lc-field-label">Source</div>
       {% set src_meta = {'whatsapp': ('#dcfce7','#15803d','WhatsApp'), 'facebook': ('#dbeafe','#1d4ed8','Facebook'),
-                          'instagram': ('#fce7f3','#be185d','Instagram'), 'manual': ('#f1f5f9','#64748b','Manual')} %}
+                          'instagram': ('#fce7f3','#be185d','Instagram'), 'manual': ('#f1f5f9','#64748b','Manual'),
+                          'import': ('#eef2ff','#3730a3','Import')} %}
       {% if lead.source and lead.source in src_meta %}
       {% set s_bg, s_fg, s_label = src_meta[lead.source] %}
       <span class="stage-pill" style="background:{{ s_bg }};color:{{ s_fg }}">{{ s_label }}</span>
@@ -143,6 +145,8 @@
       <div class="lc-field-value" style="color:var(--muted)">—</div>
       {% endif %}
     </div>
+    <div><div class="lc-field-label">Business category</div><div class="lc-field-value">{{ lead.business_category or '—' }}</div></div>
+    <div><div class="lc-field-label">Number of employees</div><div class="lc-field-value">{{ lead.employees or '—' }}</div></div>
     <div><div class="lc-field-label">Address{% if company %} <span style="font-weight:400;text-transform:none;letter-spacing:0">(company's)</span>{% endif %}</div>
       <div class="lc-field-value">{% if has_address(lead) %}{{ location_text(lead, with_street=True) }}{% if lead.addr_postcode %} · {{ lead.addr_postcode }}{% endif %}{% else %}{{ location_cell(lead) }}{% endif %}</div>
     </div>
@@ -335,6 +339,9 @@
       </div>
       <div class="frow" style="grid-template-columns:1fr">
         <div><label class="flbl">Website</label><input type="text" name="website" class="finp" value="{{ lead.website or '' }}" placeholder="e.g. www.company.com"></div>
+      </div>
+      <div class="frow" style="grid-template-columns:1fr">
+        <div>{{ biz_inputs(lead, id='editLeadBiz') }}</div>
       </div>
       <div class="frow" style="grid-template-columns:1fr">
         <div><label class="flbl">Phone Number</label>{{ phone_box('phone', lead.phone) }}</div>

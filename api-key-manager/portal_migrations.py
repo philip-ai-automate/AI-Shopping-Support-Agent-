@@ -2125,6 +2125,63 @@ def ensure_portal_tables():
             if not _column_exists(cur, _t, "other_emails"):
                 cur.execute(f"ALTER TABLE {_t} ADD COLUMN other_emails TEXT")
 
+        # Business category + Number of employees (2026-10-06): free text with
+        # a pick-list built from what each business already uses, so any
+        # business's own categories / size bands work.
+        for _t in ("merchant_pipeline_leads", "wa_contacts"):
+            if not _column_exists(cur, _t, "business_category"):
+                cur.execute(f"ALTER TABLE {_t} ADD COLUMN business_category VARCHAR(120)")
+            if not _column_exists(cur, _t, "employees"):
+                cur.execute(f"ALTER TABLE {_t} ADD COLUMN employees VARCHAR(40)")
+            cur.execute(f"CREATE INDEX IF NOT EXISTS idx_{_t}_bizcat ON {_t} (tenant_id, business_category)")
+            # Which Import made the row (crm_imports.id) — "View imported leads".
+            if not _column_exists(cur, _t, "import_id"):
+                cur.execute(f"ALTER TABLE {_t} ADD COLUMN import_id INTEGER")
+            cur.execute(f"CREATE INDEX IF NOT EXISTS idx_{_t}_import ON {_t} (tenant_id, import_id)")
+
+        # Import history (2026-10-06): one row per finished Import (Leads or
+        # Contacts), with the skipped rows / numbers to check kept as CSV text
+        # so they can be downloaded afterwards.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS crm_imports (
+                id            SERIAL PRIMARY KEY,
+                tenant_id     INTEGER NOT NULL,
+                file_name     VARCHAR(255),
+                sheets        TEXT,
+                created_mode  VARCHAR(20),
+                label         VARCHAR(120),
+                assigned_text TEXT,
+                added         INTEGER NOT NULL DEFAULT 0,
+                updated       INTEGER NOT NULL DEFAULT 0,
+                joined        INTEGER NOT NULL DEFAULT 0,
+                skipped       INTEGER NOT NULL DEFAULT 0,
+                to_check      INTEGER NOT NULL DEFAULT 0,
+                errors        INTEGER NOT NULL DEFAULT 0,
+                skipped_csv   TEXT,
+                check_csv     TEXT,
+                created_by    VARCHAR(160),
+                status        VARCHAR(20) NOT NULL DEFAULT 'running',
+                total_rows    INTEGER NOT NULL DEFAULT 0,
+                done_rows     INTEGER NOT NULL DEFAULT 0,
+                error_text    TEXT,
+                finished_at   TIMESTAMPTZ,
+                created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS crm_imports_t_idx ON crm_imports (tenant_id, created_at DESC)")
+
+        # New role ticks, set ONCE on roles that already exist (user 2026-10-06):
+        # "See all leads" starts ON wherever a role could already open Leads (so
+        # nobody loses leads overnight), "Import" starts ON wherever a role could
+        # already import contacts. New roles start with both off.
+        cur.execute("CREATE TABLE IF NOT EXISTS role_key_backfill_seen (feature_key TEXT PRIMARY KEY)")
+        for _new, _from in (("leads.see_all", "leads.page"), ("crm.import", "crm.contacts_create")):
+            cur.execute("SELECT 1 FROM role_key_backfill_seen WHERE feature_key=%s", (_new,))
+            if cur.fetchone():
+                continue
+            cur.execute("""UPDATE tenant_roles SET permissions = permissions || jsonb_build_object(%s::text, true)
+                           WHERE (permissions->>%s) = 'true'""", (_new, _from))
+            cur.execute("INSERT INTO role_key_backfill_seen (feature_key) VALUES (%s)", (_new,))
+
         if not _table_exists(cur, "crm_company_notes"):
             cur.execute("""
                 CREATE TABLE crm_company_notes (

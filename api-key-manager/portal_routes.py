@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 import bcrypt
 from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, send_file, jsonify, send_from_directory, Response,
-                   current_app)
+                   current_app, g)
 
 from db import get_db_connection, insert_audit_log
 from feature_access import team_feature, any_team_member, owner_only, public_route, team_member_may_enter, route_access
@@ -382,6 +382,7 @@ PLAN_FEATURE_CATALOG = {
         ("crm.contacts_edit",          "Edit a Contact (notes, consent, tags, status, segment, move to pipeline)"),
         ("crm.contacts_delete",        "Delete a Contact"),
         ("crm.contacts_export",        "Export Contacts (download CSV)"),
+        ("crm.import",                 "Import leads and contacts (CSV or Excel)"),
         ("crm.companies_view",         "Companies — view"),
         ("crm.companies_create",       "Create a Company"),
         ("crm.companies_edit",         "Edit a Company (incl. notes)"),
@@ -408,6 +409,7 @@ PLAN_FEATURE_CATALOG = {
         ("leads.create", "Create a Lead (manually or from a Hot Conversation)"),
         ("leads.qualify", "Qualify a Lead into an Opportunity / mark it Not a Fit"),
         ("leads.assign",  "Assign Leads and Opportunities to team members"),
+        ("leads.see_all", "See all leads, not just their own (off = only leads assigned to them)"),
     ],
     "Voice Calls": [
         ("voice.calls", "Voice Calls (PressOne)"),
@@ -618,6 +620,7 @@ ROLE_FORM_GRID = {
     "CRM": [
         {"label": "Contact",        "view": "crm.contacts_view",        "create": "crm.contacts_create",  "edit": "crm.contacts_edit",  "delete": "crm.contacts_delete",
          "other": ["crm.contacts_export"]},
+        {"label": "Import (leads and contacts)", "create": "crm.import"},
         {"label": "Company",        "view": "crm.companies_view",       "create": "crm.companies_create", "edit": "crm.companies_edit", "delete": "crm.companies_delete"},
         {"label": "Pipeline Board", "view": "crm.pipeline_board_view",  "edit": "crm.pipeline_board_edit",
          "other": ["crm.pipeline_board_export"]},
@@ -627,7 +630,7 @@ ROLE_FORM_GRID = {
         {"label": "Pipeline Settings", "view": "crm.pipeline_settings_view", "edit": "crm.pipeline_settings_edit"},
     ],
     "Leads": [
-        {"label": "Leads", "view": "leads.page", "create": "leads.create", "other": ["leads.qualify", "leads.assign"]},
+        {"label": "Leads", "view": "leads.page", "create": "leads.create", "other": ["leads.qualify", "leads.assign", "leads.see_all"]},
     ],
     "Voice Calls": [
         {"label": "Voice Calls (PressOne)", "view": "voice.calls"},
@@ -752,6 +755,9 @@ PLAN_ONLY_FEATURE_KEYS = {
     "woo.chat_archive_30days", "woo.chat_archive_unlimited",
     "help.tutorials", "help.videos",
     "store.website_connect", "store.website_schedule",
+    # Not a page: a Roles tick read in code (_leads_see_all) that limits which
+    # leads every Leads / Pipeline / Reports page shows (2026-10-06).
+    "leads.see_all",
 }
 
 # Modules every team member can open whatever their role, so the Roles screen
@@ -947,6 +953,26 @@ def _lock_whatsapp_without_dual_plan():
         return jsonify({"error": "WhatsApp is part of the Dual Agent plan. "
                                  "Upgrade to a Dual Agent plan to connect WhatsApp."}), 403
     return _wa_dual_required_page(customer)
+
+
+@portal_bp.before_request
+def _staff_only_their_own_leads():
+    """Staff without "See all leads" may only open / act on leads assigned to
+    them (user 2026-10-06). Covers every /leads/<id>… and /sales-pipeline/<id>…
+    route at once, typed URLs and direct posts included."""
+    if not session.get("team_member_id") or "lead_id" not in (request.view_args or {}):
+        return None
+    if _leads_see_all():
+        return None
+    cid = _customer_id()
+    customer = _get_customer(cid) if cid else None
+    if not customer or _lead_visible(int(customer["tenant_id"]), int(request.view_args["lead_id"])):
+        return None
+    msg = "This lead is assigned to someone else. Ask your manager if you need it."
+    if request.method != "GET" or request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"ok": False, "error": msg}), 403
+    flash(msg, "warning")
+    return redirect(url_for("portal.leads_page"))
 
 
 _EMAIL_PAGE_ENDPOINTS = {"portal.email_campaigns", "portal.email_campaign_segments_page",
@@ -8511,21 +8537,21 @@ def _get_dashboard_crm_kpis(tenant_id: int, date_from, date_to, prev_from, prev_
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         def _won_sum(d_from, d_to):
-            cur.execute("""
+            _ls_exec(cur, """
                 SELECT COALESCE(SUM(deal_value),0) AS v FROM merchant_pipeline_leads
                 WHERE tenant_id=%s AND outcome='won' AND won_date BETWEEN %s AND %s
             """, (tenant_id, d_from, d_to))
             return float((cur.fetchone() or {}).get("v") or 0)
 
         def _new_leads(d_from, d_to):
-            cur.execute("""
+            _ls_exec(cur, """
                 SELECT COUNT(*) AS n FROM merchant_pipeline_leads
                 WHERE tenant_id=%s AND created_at::date BETWEEN %s AND %s
             """, (tenant_id, d_from, d_to))
             return int((cur.fetchone() or {}).get("n") or 0)
 
         def _win_rate(d_from, d_to):
-            cur.execute("""
+            _ls_exec(cur, """
                 SELECT outcome, COUNT(*) AS n FROM merchant_pipeline_leads
                 WHERE tenant_id=%s AND outcome IN ('won','lost')
                   AND COALESCE(won_date, dropped_at::date) BETWEEN %s AND %s
@@ -8544,7 +8570,7 @@ def _get_dashboard_crm_kpis(tenant_id: int, date_from, date_to, prev_from, prev_
         conv      = _win_rate(date_from, date_to)
         conv_prev = _win_rate(prev_from, prev_to)
 
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT COUNT(*) AS n, COALESCE(SUM(deal_value),0) AS v
             FROM merchant_pipeline_leads WHERE tenant_id=%s AND outcome IS NULL AND is_opportunity
         """, (tenant_id,))
@@ -8639,7 +8665,7 @@ def _get_dashboard_lead_sources(tenant_id: int, date_from, date_to) -> list:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT source, COUNT(*) AS n
             FROM merchant_pipeline_leads
             WHERE tenant_id = %s AND created_at::date BETWEEN %s AND %s
@@ -8647,7 +8673,7 @@ def _get_dashboard_lead_sources(tenant_id: int, date_from, date_to) -> list:
         """, (tenant_id, date_from, date_to))
         raw_counts = {(r["source"] or "none"): int(r["n"]) for r in (cur.fetchall() or [])}
 
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT source, COALESCE(SUM(deal_value),0) AS v
             FROM merchant_pipeline_leads
             WHERE tenant_id = %s AND outcome = 'won' AND won_date BETWEEN %s AND %s
@@ -8889,7 +8915,7 @@ def _get_dashboard_recent_activity(tenant_id: int, limit: int = 8) -> list:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT id, customer_name, source, created_at
             FROM merchant_pipeline_leads
             WHERE tenant_id=%s ORDER BY created_at DESC LIMIT %s
@@ -8903,7 +8929,7 @@ def _get_dashboard_recent_activity(tenant_id: int, limit: int = 8) -> list:
             })
 
         labels = pipeline_effective_stage_labels(tenant_id)
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT h.to_stage, h.created_at, l.id AS lead_id, l.customer_name
             FROM merchant_pipeline_stage_history h
             JOIN merchant_pipeline_leads l ON l.id = h.lead_id
@@ -8917,7 +8943,7 @@ def _get_dashboard_recent_activity(tenant_id: int, limit: int = 8) -> list:
                 "url": url_for("portal.lead_detail", lead_id=r["lead_id"]),
             })
 
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT id, customer_name, deal_value, won_date
             FROM merchant_pipeline_leads
             WHERE tenant_id=%s AND outcome='won' ORDER BY won_date DESC LIMIT %s
@@ -8932,7 +8958,7 @@ def _get_dashboard_recent_activity(tenant_id: int, limit: int = 8) -> list:
                 "url": url_for("portal.lead_detail", lead_id=r["id"]),
             })
 
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT m.customer_phone, m.created_at, c.display_name
             FROM wa_message_log m
             LEFT JOIN wa_contacts c ON c.tenant_id = m.tenant_id AND c.whatsapp_number = m.customer_phone
@@ -9018,7 +9044,7 @@ def _get_pipeline_overview_data(tenant_id: int, date_from, date_to) -> dict:
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         # ── Open pipeline snapshot (right now, not period-scoped) ───────────
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT stage, COUNT(*) AS n, COALESCE(SUM(deal_value),0) AS total_value,
                    COALESCE(AVG(deal_value),0) AS avg_value
             FROM merchant_pipeline_leads
@@ -9042,7 +9068,7 @@ def _get_pipeline_overview_data(tenant_id: int, date_from, date_to) -> dict:
             open_value   += total_value
 
         # ── Won, this period ─────────────────────────────────────────────────
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT COUNT(*) AS n, COALESCE(SUM(deal_value),0) AS total_value
             FROM merchant_pipeline_leads
             WHERE tenant_id = %s AND outcome = 'won'
@@ -9053,7 +9079,7 @@ def _get_pipeline_overview_data(tenant_id: int, date_from, date_to) -> dict:
         won_value  = float(won_row.get("total_value") or 0)
 
         # ── Lost / Dropped, this period ──────────────────────────────────────
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT outcome, COUNT(*) AS n
             FROM merchant_pipeline_leads
             WHERE tenant_id = %s AND outcome IN ('lost','dropped')
@@ -9069,7 +9095,7 @@ def _get_pipeline_overview_data(tenant_id: int, date_from, date_to) -> dict:
         avg_deal_size = round(won_value / won_count, 2) if won_count > 0 else 0.0
 
         # ── Avg time to close (won deals, this period) ───────────────────────
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT AVG(won_date - created_at::date) AS avg_days
             FROM merchant_pipeline_leads
             WHERE tenant_id = %s AND outcome = 'won'
@@ -9087,7 +9113,7 @@ def _get_pipeline_overview_data(tenant_id: int, date_from, date_to) -> dict:
         # For each lead, how long it sat at a stage before its NEXT recorded
         # change (whether that's advancing forward or closing as Won/Lost/
         # Dropped) — a real measurement, not a guess.
-        cur.execute("""
+        _ls_exec(cur, """
             WITH ranked AS (
                 SELECT h.to_stage, h.created_at,
                        LEAD(h.created_at) OVER (PARTITION BY h.lead_id ORDER BY h.created_at) AS next_at
@@ -9143,14 +9169,14 @@ def _get_leads_sources_data(tenant_id: int, date_from, date_to) -> dict:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT COUNT(*) AS n
             FROM merchant_pipeline_leads
             WHERE tenant_id = %s AND created_at::date BETWEEN %s AND %s
         """, (tenant_id, date_from, date_to))
         new_leads = int((cur.fetchone() or {}).get("n") or 0)
 
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT source, COUNT(*) AS n
             FROM merchant_pipeline_leads
             WHERE tenant_id = %s AND created_at::date BETWEEN %s AND %s
@@ -9169,7 +9195,7 @@ def _get_leads_sources_data(tenant_id: int, date_from, date_to) -> dict:
 
         span_days = (date_to - date_from).days + 1
         bucket = "week" if span_days > 60 else "day"
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT DATE_TRUNC(%s, created_at)::date AS bucket, COUNT(*) AS n
             FROM merchant_pipeline_leads
             WHERE tenant_id = %s AND created_at::date BETWEEN %s AND %s
@@ -9230,6 +9256,8 @@ CUSTOM_REPORT_ENTITIES = {
             {"key": "source",         "label": "Source",         "expr": "l.source",      "fmt": "source_label"},
             {"key": "assigned_to",    "label": "Assigned To",    "expr": "l.assigned_to"},
             {"key": "company_name",   "label": "Company",        "expr": "co.name"},
+            {"key": "business_category", "label": "Business Category", "expr": "l.business_category"},
+            {"key": "employees",      "label": "Number of Employees", "expr": "l.employees"},
             {"key": "created_at",     "label": "Created Date",   "expr": "l.created_at",  "fmt": "date"},
         ],
         "default_columns": ["customer_name", "phone", "whatsapp_number", "deal_value", "stage", "created_at"],
@@ -9246,6 +9274,8 @@ CUSTOM_REPORT_ENTITIES = {
             {"key": "email",          "label": "Email",          "expr": "c.email"},
             {"key": "status",         "label": "Status",         "expr": "c.status",      "fmt": "title"},
             {"key": "company_name",   "label": "Company",        "expr": "co.name"},
+            {"key": "business_category", "label": "Business Category", "expr": "c.business_category"},
+            {"key": "employees",      "label": "Number of Employees", "expr": "c.employees"},
             {"key": "tags",           "label": "Tags",
              "expr": "(SELECT string_agg(ll.name, ', ') FROM lead_label_contacts llc "
                       "JOIN lead_labels ll ON ll.id = llc.label_id WHERE llc.contact_id = c.id)"},
@@ -9416,17 +9446,17 @@ def _run_custom_report(tenant_id: int, entity: str, columns: list, filters: dict
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute(f"SELECT COUNT(*) AS n FROM {from_clause} WHERE {where}", params)
+        _ls_exec(cur, f"SELECT COUNT(*) AS n FROM {from_clause} WHERE {where}", params)
         total = int((cur.fetchone() or {}).get("n") or 0)
 
         if limit_only:
-            cur.execute(
+            _ls_exec(cur, 
                 f"SELECT {select_exprs} FROM {from_clause} WHERE {where} ORDER BY {order} LIMIT %s",
                 params + [limit_only],
             )
         else:
             offset = max(0, (page - 1)) * per_page
-            cur.execute(
+            _ls_exec(cur, 
                 f"SELECT {select_exprs} FROM {from_clause} WHERE {where} ORDER BY {order} LIMIT %s OFFSET %s",
                 params + [per_page, offset],
             )
@@ -9780,7 +9810,7 @@ def _run_custom_report_grouped(tenant_id: int, entity: str, group_by: str, filte
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         if entity == "leads" and group_by == "stage":
-            cur.execute(f"""
+            _ls_exec(cur, f"""
                 SELECT l.stage AS grp, COUNT(*) AS n, COALESCE(SUM(l.deal_value),0) AS total_value
                 FROM {from_clause} WHERE {where} GROUP BY l.stage
             """, params)
@@ -9793,7 +9823,7 @@ def _run_custom_report_grouped(tenant_id: int, entity: str, group_by: str, filte
             has_value = True
 
         elif entity == "leads" and group_by == "source":
-            cur.execute(f"""
+            _ls_exec(cur, f"""
                 SELECT COALESCE(l.source, 'none') AS grp, COUNT(*) AS n, COALESCE(SUM(l.deal_value),0) AS total_value
                 FROM {from_clause} WHERE {where} GROUP BY COALESCE(l.source, 'none')
                 ORDER BY n DESC
@@ -9805,7 +9835,7 @@ def _run_custom_report_grouped(tenant_id: int, entity: str, group_by: str, filte
             has_value = True
 
         elif entity == "contacts" and group_by == "status":
-            cur.execute(f"""
+            _ls_exec(cur, f"""
                 SELECT COALESCE(c.status, 'unknown') AS grp, COUNT(*) AS n
                 FROM {from_clause} WHERE {where} GROUP BY COALESCE(c.status, 'unknown')
                 ORDER BY n DESC
@@ -9814,7 +9844,7 @@ def _run_custom_report_grouped(tenant_id: int, entity: str, group_by: str, filte
                 rows.append({"label": str(r["grp"]).replace("_", " ").title(), "count": int(r["n"]), "value": None})
 
         elif entity == "contacts" and group_by == "tag":
-            cur.execute(f"""
+            _ls_exec(cur, f"""
                 SELECT COALESCE(ll.name, 'No tag') AS grp, COUNT(DISTINCT c.id) AS n
                 FROM {from_clause}
                 LEFT JOIN lead_label_contacts llc ON llc.contact_id = c.id
@@ -9827,7 +9857,7 @@ def _run_custom_report_grouped(tenant_id: int, entity: str, group_by: str, filte
                 rows.append({"label": r["grp"], "count": int(r["n"]), "value": None})
 
         elif entity == "campaigns" and group_by == "campaign":
-            cur.execute(f"""
+            _ls_exec(cur, f"""
                 SELECT COALESCE(wc.name, 'Unknown campaign') AS grp, COUNT(*) AS n
                 FROM {from_clause} WHERE {where}
                 GROUP BY COALESCE(wc.name, 'Unknown campaign')
@@ -9837,7 +9867,7 @@ def _run_custom_report_grouped(tenant_id: int, entity: str, group_by: str, filte
             # Revenue summed off DISTINCT leads only -- a lead touched by 2+
             # recipient rows in the same campaign (checked live: none exist
             # today, but not guaranteed forever) must not be double-counted.
-            cur.execute(f"""
+            _ls_exec(cur, f"""
                 SELECT grp, COALESCE(SUM(deal_value), 0) AS total_value FROM (
                     SELECT DISTINCT ON (l.id) COALESCE(wc.name, 'Unknown campaign') AS grp, l.id, l.deal_value
                     FROM {from_clause} WHERE {where} AND l.id IS NOT NULL
@@ -9850,7 +9880,7 @@ def _run_custom_report_grouped(tenant_id: int, entity: str, group_by: str, filte
             has_value = True
 
         elif entity == "campaigns" and group_by == "status":
-            cur.execute(f"""
+            _ls_exec(cur, f"""
                 SELECT r.status AS grp, COUNT(*) AS n
                 FROM {from_clause} WHERE {where} GROUP BY r.status
             """, params)
@@ -15595,7 +15625,8 @@ def _link_lead_to_contact(cur, tenant_id: int, lead_id: int):
     contact stays with it. Returns the contact id or None. Caller commits."""
     cur.execute(
         "SELECT id, customer_name, contact_person, phone, whatsapp_number, email, company_id, "
-        "wa_contact_id, source FROM merchant_pipeline_leads WHERE id=%s AND tenant_id=%s",
+        "wa_contact_id, source, business_category, employees "
+        "FROM merchant_pipeline_leads WHERE id=%s AND tenant_id=%s",
         (lead_id, tenant_id),
     )
     lead = cur.fetchone()
@@ -15641,7 +15672,8 @@ def _link_lead_to_contact(cur, tenant_id: int, lead_id: int):
     if contact_id:
         # Fill in only what the contact is missing. A number that already
         # belongs to a different contact is left off (one number, one person).
-        cur.execute("SELECT phone, whatsapp_number, email, display_name, contact_person, company_id "
+        cur.execute("SELECT phone, whatsapp_number, email, display_name, contact_person, company_id, "
+                    "business_category, employees "
                     "FROM wa_contacts WHERE id=%s AND tenant_id=%s", (contact_id, tenant_id))
         c = cur.fetchone()
         if not c:
@@ -15653,7 +15685,8 @@ def _link_lead_to_contact(cur, tenant_id: int, lead_id: int):
             if val and not c.get(col) and not _find_existing_contact(cur, tenant_id, **{col: val}, exclude_id=contact_id)[0]:
                 sets.append(f"{col}=%s"); vals.append(val)
         for col, val in (("email", email), ("display_name", lead.get("customer_name")),
-                         ("contact_person", lead.get("contact_person")), ("company_id", lead.get("company_id"))):
+                         ("contact_person", lead.get("contact_person")), ("company_id", lead.get("company_id")),
+                         ("business_category", lead.get("business_category")), ("employees", lead.get("employees"))):
             if val and not c.get(col):
                 sets.append(f"{col}=%s"); vals.append(val)
         if sets:
@@ -15662,10 +15695,11 @@ def _link_lead_to_contact(cur, tenant_id: int, lead_id: int):
     else:
         cur.execute(
             """INSERT INTO wa_contacts (tenant_id, phone, whatsapp_number, email, display_name, contact_person,
-                                        company_id, source)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                                        company_id, source, business_category, employees)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
             (tenant_id, phone, wa, email, lead.get("customer_name"), lead.get("contact_person"),
-             lead.get("company_id"), "whatsapp" if lead.get("source") == "whatsapp" else "lead"),
+             lead.get("company_id"), "whatsapp" if lead.get("source") == "whatsapp" else "lead",
+             lead.get("business_category"), lead.get("employees")),
         )
         row = cur.fetchone()
         contact_id = row["id"] if isinstance(row, dict) else row[0]
@@ -15904,6 +15938,11 @@ def whatsapp_contacts():
 
     addr_clauses, addr_params, addr_state, addr_fargs = _addr.address_filter_clauses("c", request.args)
     addr_opts = {"countries": [], "states": {}, "missing": 0}
+    # Business category / Employees / Import (2026-10-06); Labels has its own filter here.
+    biz_clauses, biz_params, biz_state, biz_fargs = _biz_filter_clauses("c", request.args, tenant_id, "contact", with_label=False)
+    addr_clauses = addr_clauses + biz_clauses
+    addr_params = addr_params + biz_params
+    addr_fargs = dict(addr_fargs or {}, **biz_fargs)
 
     PER_PAGE_OPTIONS = ["25", "50", "100", "300", "500", "all"]
     per_page_raw = (request.args.get("per_page") or "100").strip().lower()
@@ -16151,7 +16190,7 @@ def whatsapp_contacts():
 
     return render_template(
         "portal/whatsapp_contacts.html",
-        addr_state=addr_state, addr_fargs=addr_fargs, addr_opts=addr_opts,
+        addr_state=addr_state, addr_fargs=addr_fargs, addr_opts=addr_opts, biz_state=biz_state,
         contacts=contacts,
         total=total,
         new_week=new_week,
@@ -16263,6 +16302,7 @@ def whatsapp_contacts_add():
                   notes or None, personalization_note, status, company_id))
         new_contact_id = cur.fetchone()["id"]
         _sync_contact_tags(cur, tenant_id, new_contact_id, tags_csv)
+        _save_biz_fields(cur, tenant_id, request.form, contact_id=new_contact_id)
         if company_id:
             cur.execute("UPDATE merchant_pipeline_leads SET company_id=%s WHERE wa_contact_id=%s AND company_id IS NULL",
                         (company_id, new_contact_id))
@@ -16355,6 +16395,7 @@ def whatsapp_contacts_edit(contact_id: int):
         """, (display_name or None, contact_person, email, notes or None, personalization_note, status,
               company_id, contact_id, tenant_id))
         _sync_contact_tags(cur, tenant_id, contact_id, tags_csv)
+        _save_biz_fields(cur, tenant_id, request.form, contact_id=contact_id)
         # Keep a linked deal's company in step with the contact's — same rule
         # the standalone set-company action used to apply.
         cur.execute("UPDATE merchant_pipeline_leads SET company_id=%s WHERE wa_contact_id=%s",
@@ -16641,12 +16682,15 @@ def whatsapp_contacts_export():
             where_params.append(date_to)
         _ac, _ap, _, _ = _addr.address_filter_clauses("c", request.args)
         clauses += _ac; where_params += _ap
+        _bc, _bp, _, _ = _biz_filter_clauses("c", request.args, tenant_id, "contact", with_label=False)
+        clauses += _bc; where_params += _bp
 
         where = " AND ".join(clauses)
 
         cur.execute(f"""
             SELECT c.phone, c.whatsapp_number, c.email, c.display_name, c.contact_person, c.notes, c.created_at,
                    c.addr_street, c.addr_city, c.addr_state, c.addr_country, c.addr_postcode, c.other_emails,
+                   c.business_category, c.employees,
                    (SELECT string_agg(lb.name, ', ' ORDER BY lb.name) FROM lead_label_contacts lc
                     JOIN lead_labels lb ON lb.id = lc.label_id WHERE lc.contact_id = c.id) AS labels
             FROM wa_contacts c
@@ -16662,7 +16706,8 @@ def whatsapp_contacts_export():
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["phone_number", "whatsapp_number", "email", "name", "contact_person", "notes", "labels", "added",
-                     "street", "city", "state", "country", "postcode", "other_emails"])
+                     "street", "city", "state", "country", "postcode", "other_emails",
+                     "business_category", "employees"])
     for row in rows:
         writer.writerow([
             row["phone"] or "",
@@ -16676,6 +16721,7 @@ def whatsapp_contacts_export():
             row["addr_street"] or "", row["addr_city"] or "", row["addr_state"] or "",
             _addr.country_name(row["addr_country"]) or "", row["addr_postcode"] or "",
             row["other_emails"] or "",
+            row["business_category"] or "", row["employees"] or "",
         ])
 
     return Response(
@@ -16793,7 +16839,7 @@ def whatsapp_contact_detail(contact_id: int):
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT c.*, co.name AS company_name, co.website AS company_website,
                    (SELECT array_agg(lb.name ORDER BY lb.name) FROM lead_label_contacts lc
                     JOIN lead_labels lb ON lb.id = lc.label_id WHERE lc.contact_id = c.id) AS tags_list
@@ -16807,7 +16853,7 @@ def whatsapp_contact_detail(contact_id: int):
             return redirect(url_for("portal.whatsapp_contacts"))
 
         # Activity notes
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT n.*,
                    COALESCE(NULLIF(TRIM(c.first_name || ' ' || COALESCE(c.last_name,'')), ''), c.email) AS author_name
             FROM wa_contact_notes n
@@ -16818,7 +16864,7 @@ def whatsapp_contact_detail(contact_id: int):
         notes = cur.fetchall()
 
         # Recent conversation messages (last 10)
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT direction, content, message_type, created_at
             FROM (
                 SELECT direction, content, message_type, created_at
@@ -16830,7 +16876,7 @@ def whatsapp_contact_detail(contact_id: int):
         recent_messages = cur.fetchall()
 
         # Segments this contact belongs to
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT s.id, s.name, s.color
             FROM wa_segments s
             JOIN wa_segment_members m ON m.segment_id = s.id
@@ -16840,7 +16886,7 @@ def whatsapp_contact_detail(contact_id: int):
         contact_segments = cur.fetchall()
 
         # All segments (for "add to segment" dropdown)
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT s.id, s.name, s.color FROM wa_segments s
             WHERE s.tenant_id=%s
               AND s.id NOT IN (
@@ -16851,7 +16897,7 @@ def whatsapp_contact_detail(contact_id: int):
         available_segments = cur.fetchall()
 
         # Message count
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT COUNT(*) AS msg_count
             FROM wa_message_log
             WHERE tenant_id=%s AND customer_phone=%s
@@ -16876,10 +16922,10 @@ def whatsapp_contact_detail(contact_id: int):
         """
         import re as _re_cd
         _nums_digits = [_re_cd.sub(r"[^0-9]", "", n) for n in _contact_nums]
-        cur.execute(f"SELECT * FROM merchant_pipeline_leads WHERE {_lead_match_sql} ORDER BY updated_at DESC LIMIT 1",
+        _ls_exec(cur, f"SELECT * FROM merchant_pipeline_leads WHERE {_lead_match_sql} ORDER BY updated_at DESC LIMIT 1",
                     (tenant_id, contact_id, _nums_digits, _nums_digits))
         pipeline_lead = cur.fetchone()
-        cur.execute(f"SELECT COUNT(*) AS c FROM merchant_pipeline_leads WHERE {_lead_match_sql}",
+        _ls_exec(cur, f"SELECT COUNT(*) AS c FROM merchant_pipeline_leads WHERE {_lead_match_sql}",
                     (tenant_id, contact_id, _nums_digits, _nums_digits))
         pipeline_lead_count = cur.fetchone()["c"]
         stage_history = pipeline_get_stage_history(pipeline_lead["id"]) if pipeline_lead else []
@@ -16913,7 +16959,7 @@ def whatsapp_contact_detail(contact_id: int):
         timeline.sort(key=lambda t: t["created_at"], reverse=True)
 
         # Consent history — most recent first, for the Consent panel
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT channel, action, reason, source, created_at
             FROM contact_consent_log
             WHERE contact_id=%s
@@ -16923,17 +16969,17 @@ def whatsapp_contact_detail(contact_id: int):
         consent_log = cur.fetchall()
 
         # All companies, for the Company field on the Edit Profile panel
-        cur.execute("SELECT id, name FROM crm_companies WHERE tenant_id=%s ORDER BY name", (tenant_id,))
+        _ls_exec(cur, "SELECT id, name FROM crm_companies WHERE tenant_id=%s ORDER BY name", (tenant_id,))
         all_companies = cur.fetchall()
 
         # Every tag this tenant has, for the Tags field's client-side
         # duplicate-name check on the Edit Profile panel.
-        cur.execute("SELECT id, name FROM lead_labels WHERE tenant_id=%s ORDER BY name", (tenant_id,))
+        _ls_exec(cur, "SELECT id, name FROM lead_labels WHERE tenant_id=%s ORDER BY name", (tenant_id,))
         dedupe_tags = cur.fetchall()
 
         # Every label with how many contacts carry it, for the label picker
         # (Add/Edit Contact forms + contact page About section, 2026-09-28).
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT lb.name, COUNT(lc.contact_id) AS count
             FROM lead_labels lb LEFT JOIN lead_label_contacts lc ON lc.label_id = lb.id
             WHERE lb.tenant_id=%s GROUP BY lb.id, lb.name ORDER BY lb.name
@@ -17308,7 +17354,7 @@ def crm_company_detail(company_id: int):
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT * FROM crm_companies WHERE id=%s AND tenant_id=%s", (company_id, tenant_id))
+        _ls_exec(cur, "SELECT * FROM crm_companies WHERE id=%s AND tenant_id=%s", (company_id, tenant_id))
         company = cur.fetchone()
         if not company:
             flash("Company not found.", "warning")
@@ -17317,7 +17363,7 @@ def crm_company_detail(company_id: int):
         # People at this company, with whichever deal (if any) each is linked to.
         # Same LATERAL fix as the Contacts list (2026-09-09) — a person with more
         # than one open deal was appearing once per deal here too.
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT c.*, pl.id AS pipeline_lead_id, pl.stage AS pipeline_stage,
                    pl.deal_value AS pipeline_deal_value, pl.contact_person,
                    COALESCE(pl_count.deal_count, 0) AS active_deal_count
@@ -17341,7 +17387,7 @@ def crm_company_detail(company_id: int):
         # Company-level notes (stored the same way as contact notes, just
         # attached to the company instead of a person — see crm_companies.html /
         # crm_company_add_note below)
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT n.*,
                    COALESCE(NULLIF(TRIM(c.first_name || ' ' || COALESCE(c.last_name,'')), ''), c.email) AS author_name
             FROM crm_company_notes n
@@ -17351,7 +17397,7 @@ def crm_company_detail(company_id: int):
         """, (company_id,))
         notes = cur.fetchall()
 
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT COUNT(*) FILTER (WHERE pl.dropped_at IS NULL) AS open_deal_count,
                    COALESCE(SUM(pl.deal_value) FILTER (WHERE pl.dropped_at IS NULL), 0) AS open_deal_value
             FROM merchant_pipeline_leads pl WHERE pl.company_id=%s
@@ -17856,7 +17902,7 @@ _OPEN_LEAD_SQL = ("l.dropped_at IS NULL AND (l.outcome IS NULL OR "
 
 def _wa_pipeline_audience(cur, tenant_id: int) -> list:
     """"Everyone in the Sales Pipeline": contacts with an open Sales Lead."""
-    cur.execute(
+    _ls_exec(cur, 
         "SELECT DISTINCT c.whatsapp_number AS phone FROM wa_contacts c "
         "JOIN merchant_pipeline_leads l ON l.wa_contact_id = c.id AND l.tenant_id = c.tenant_id "
         "WHERE c.tenant_id=%s AND " + _WA_AUDIENCE_OK + " AND " + _OPEN_LEAD_SQL, (tenant_id,))
@@ -18201,7 +18247,7 @@ def sales_pipeline_contacts_json():
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT whatsapp_number AS phone FROM merchant_pipeline_leads
             WHERE tenant_id=%s AND whatsapp_number IS NOT NULL AND whatsapp_number <> '' AND dropped_at IS NULL
         """, (tenant_id,))
@@ -19020,13 +19066,13 @@ def whatsapp_campaign_segments_page():
     try:
         vis, vp = _seg_vis("s", "whatsapp")
         if seg_id_raw.isdigit():
-            cur.execute("SELECT s.* FROM wa_segments s WHERE s.id=%s AND s.tenant_id=%s" + vis,
+            _ls_exec(cur, "SELECT s.* FROM wa_segments s WHERE s.id=%s AND s.tenant_id=%s" + vis,
                         [int(seg_id_raw), tenant_id] + vp)
             segment = cur.fetchone()
             if not segment:
                 flash("Segment not found.", "warning")
                 return redirect(url_for("portal.whatsapp_campaign_segments_page"))
-            cur.execute(
+            _ls_exec(cur, 
                 "SELECT c.id, COALESCE(c.display_name, c.whatsapp_number, c.email) AS name, c.whatsapp_number AS contact_value, "
                 "COALESCE(c.opted_out, FALSE) AS opted_out FROM wa_segment_members m "
                 "JOIN wa_contacts c ON c.id = m.contact_id WHERE m.segment_id=%s "
@@ -19034,7 +19080,7 @@ def whatsapp_campaign_segments_page():
             members = cur.fetchall()
             # CRM source: how many Opportunities' contacts (with a WhatsApp
             # number, not in the segment yet) sit in each stage.
-            cur.execute(
+            _ls_exec(cur, 
                 "SELECT l.stage, COUNT(DISTINCT c.id) AS n FROM merchant_pipeline_leads l "
                 "JOIN wa_contacts c ON c.id = l.wa_contact_id "
                 "WHERE l.tenant_id=%s AND " + _opportunity_stage_sql("l") + " AND " + _WA_HAS_NUMBER +
@@ -19046,7 +19092,7 @@ def whatsapp_campaign_segments_page():
             return render_template("portal/channel_segments.html", ch=_WA_SEG_CH, active_segment=segment,
                                    members=members, stages=stages, segments=None, old_groups=None,
                                    segments_see_all=_segments_see_all())
-        cur.execute(
+        _ls_exec(cur, 
             "SELECT s.id, s.name, s.created_by_member_id, tm.name AS created_by_name, tm.is_active AS created_by_active, "
             "COUNT(m.contact_id) AS member_count, "
             "COUNT(m.contact_id) FILTER (WHERE " + _WA_AUDIENCE_OK + ") AS reach_count "
@@ -19177,7 +19223,7 @@ def whatsapp_segment_source_search(segment_id: int):
             return jsonify({"error": "Segment not found."}), 404
         not_in = " AND c.id NOT IN (SELECT contact_id FROM wa_segment_members WHERE segment_id=%s)"
         if source == "leads":
-            cur.execute(
+            _ls_exec(cur, 
                 "SELECT l.id AS lead_id, c.id AS contact_id, COALESCE(l.customer_name, c.display_name) AS name, "
                 "c.whatsapp_number AS value FROM merchant_pipeline_leads l JOIN wa_contacts c ON c.id = l.wa_contact_id "
                 "WHERE l.tenant_id=%s AND NOT l.is_opportunity AND l.dropped_at IS NULL AND " + _WA_HAS_NUMBER +
@@ -19185,7 +19231,7 @@ def whatsapp_segment_source_search(segment_id: int):
                 + not_in + " ORDER BY l.customer_name LIMIT 25",
                 (tenant_id, like, like, like, like, segment_id))
         else:
-            cur.execute(
+            _ls_exec(cur, 
                 "SELECT c.id AS contact_id, COALESCE(c.display_name, c.whatsapp_number) AS name, c.whatsapp_number AS value "
                 "FROM wa_contacts c WHERE c.tenant_id=%s AND " + _WA_HAS_NUMBER +
                 " AND (c.display_name ILIKE %s OR c.whatsapp_number ILIKE %s OR c.email ILIKE %s OR c.contact_person ILIKE %s)"
@@ -19266,13 +19312,13 @@ def whatsapp_pipeline_segments_add_stage(segment_id: int):
     try:
         if not _wa_seg_or_404(cur, tenant_id, segment_id):
             return jsonify({"error": "Segment not found."}), 404
-        cur.execute(
+        _ls_exec(cur, 
             "SELECT COUNT(DISTINCT l.wa_contact_id) FROM merchant_pipeline_leads l "
             "LEFT JOIN wa_contacts c ON c.id = l.wa_contact_id "
             "WHERE l.tenant_id=%s AND l.stage = ANY(%s) AND " + _opportunity_stage_sql("l") +
             " AND (l.wa_contact_id IS NULL OR NOT (" + _WA_HAS_NUMBER + "))", (tenant_id, stages))
         no_wa = cur.fetchone()[0]
-        cur.execute(
+        _ls_exec(cur, 
             "INSERT INTO wa_segment_members (segment_id, contact_id) "
             "SELECT DISTINCT %s, c.id FROM merchant_pipeline_leads l JOIN wa_contacts c ON c.id = l.wa_contact_id "
             "WHERE l.tenant_id=%s AND l.stage = ANY(%s) AND " + _opportunity_stage_sql("l") + " AND " + _WA_HAS_NUMBER +
@@ -19305,11 +19351,11 @@ def whatsapp_pipeline_segments_bulk_add_members(segment_id: int):
         if not _wa_seg_or_404(cur, tenant_id, segment_id):
             cur.close(); conn.close()
             return jsonify({"error": "Segment not found."}), 404
-        cur.execute("SELECT count(*) FROM merchant_pipeline_leads l LEFT JOIN wa_contacts c ON c.id = l.wa_contact_id "
+        _ls_exec(cur, "SELECT count(*) FROM merchant_pipeline_leads l LEFT JOIN wa_contacts c ON c.id = l.wa_contact_id "
                     "WHERE l.id = ANY(%s) AND l.tenant_id=%s AND (l.wa_contact_id IS NULL OR NOT (" + _WA_HAS_NUMBER + "))",
                     (lead_ids, tenant_id))
         no_wa = cur.fetchone()[0]
-        cur.execute(
+        _ls_exec(cur, 
             "INSERT INTO wa_segment_members (segment_id, contact_id) "
             "SELECT DISTINCT %s, c.id FROM merchant_pipeline_leads l JOIN wa_contacts c ON c.id = l.wa_contact_id "
             "WHERE l.id = ANY(%s) AND l.tenant_id=%s AND " + _WA_HAS_NUMBER + " ON CONFLICT DO NOTHING",
@@ -19351,7 +19397,7 @@ def whatsapp_campaigns_pipeline_leads_json():
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute(
+        _ls_exec(cur, 
             "SELECT id, customer_name, contact_person, whatsapp_number AS phone "
             "FROM merchant_pipeline_leads l "
             "WHERE " + " AND ".join(where) + " ORDER BY customer_name LIMIT 20",
@@ -20369,12 +20415,12 @@ def email_campaigns():
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute(
+        _ls_exec(cur, 
             "SELECT * FROM email_campaigns WHERE tenant_id=%s ORDER BY created_at DESC LIMIT 100",
             (tenant_id,),
         )
         campaigns = cur.fetchall()
-        cur.execute(
+        _ls_exec(cur, 
             "SELECT count(*) AS c FROM merchant_pipeline_leads "
             "WHERE tenant_id=%s AND email IS NOT NULL AND dropped_at IS NULL",
             (tenant_id,),
@@ -20442,7 +20488,7 @@ def _parse_campaign_form(tenant_id: int, customer: dict, form):
             if exclude_label_ids:
                 excl_clause = " AND id NOT IN (SELECT lead_id FROM lead_label_leads WHERE label_id = ANY(%s))"
                 params.append(exclude_label_ids)
-            cur.execute(
+            _ls_exec(cur, 
                 "SELECT email FROM merchant_pipeline_leads "
                 "WHERE tenant_id=%s AND email IS NOT NULL AND dropped_at IS NULL" + excl_clause,
                 params,
@@ -20468,7 +20514,7 @@ def _parse_campaign_form(tenant_id: int, customer: dict, form):
             if exclude_label_ids:
                 excl_clause = " AND l.id NOT IN (SELECT lead_id FROM lead_label_leads WHERE label_id = ANY(%s))"
                 params.append(exclude_label_ids)
-            cur.execute(
+            _ls_exec(cur, 
                 "SELECT l.email FROM email_segment_leads sl "
                 "JOIN email_segments s ON s.id = sl.segment_id AND s.tenant_id=%s "
                 "JOIN merchant_pipeline_leads l ON l.id = sl.lead_id "
@@ -20989,7 +21035,7 @@ def email_campaigns_contacts_json():
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute(
+        _ls_exec(cur, 
             "SELECT email FROM merchant_pipeline_leads "
             "WHERE tenant_id=%s AND email IS NOT NULL AND dropped_at IS NULL",
             (tenant_id,),
@@ -21021,7 +21067,7 @@ def email_segments_list():
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute(
+        _ls_exec(cur, 
             """
             SELECT s.id, s.name,
                    count(sl.lead_id) FILTER (
@@ -21105,12 +21151,12 @@ def email_segments_members(segment_id: int):
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT id, name FROM email_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
+        _ls_exec(cur, "SELECT id, name FROM email_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
         seg = cur.fetchone()
         if not seg:
             cur.close(); conn.close()
             return jsonify({"error": "Segment not found."}), 404
-        cur.execute(
+        _ls_exec(cur, 
             "SELECT l.id, l.customer_name, l.contact_person, l.email "
             "FROM email_segment_leads sl JOIN merchant_pipeline_leads l ON l.id = sl.lead_id "
             "WHERE sl.segment_id=%s ORDER BY l.customer_name",
@@ -21145,11 +21191,11 @@ def email_segments_add_member(segment_id: int):
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT id FROM email_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
+        _ls_exec(cur, "SELECT id FROM email_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
         if not cur.fetchone():
             cur.close(); conn.close()
             return jsonify({"error": "Segment not found."}), 404
-        cur.execute(
+        _ls_exec(cur, 
             "SELECT id, customer_name, contact_person, email FROM merchant_pipeline_leads "
             "WHERE id=%s AND tenant_id=%s AND email IS NOT NULL AND dropped_at IS NULL",
             (lead_id, tenant_id),
@@ -21158,7 +21204,7 @@ def email_segments_add_member(segment_id: int):
         if not lead:
             cur.close(); conn.close()
             return jsonify({"error": "Contact not found."}), 404
-        cur.execute(
+        _ls_exec(cur, 
             "INSERT INTO email_segment_leads (segment_id, lead_id) VALUES (%s, %s) "
             "ON CONFLICT (segment_id, lead_id) DO NOTHING",
             (segment_id, lead_id),
@@ -21225,11 +21271,11 @@ def email_segments_bulk_add_members(segment_id: int):
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
-        cur.execute("SELECT id FROM email_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
+        _ls_exec(cur, "SELECT id FROM email_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
         if not cur.fetchone():
             cur.close(); conn.close()
             return jsonify({"error": "Segment not found."}), 404
-        cur.execute(
+        _ls_exec(cur, 
             "INSERT INTO email_segment_leads (segment_id, lead_id) "
             "SELECT %s, l.id FROM merchant_pipeline_leads l "
             "WHERE l.id = ANY(%s) AND l.tenant_id=%s AND l.email IS NOT NULL AND l.dropped_at IS NULL "
@@ -21282,7 +21328,7 @@ def _email_segment_audience(cur, tenant_id: int, seg_id: int, exclude_label_ids=
                 " AND NOT EXISTS (SELECT 1 FROM merchant_pipeline_leads l2 JOIN lead_label_leads ll ON ll.lead_id = l2.id"
                 " WHERE l2.wa_contact_id = c.id AND ll.label_id = ANY(%s))")
         params += [exclude_label_ids, exclude_label_ids]
-    cur.execute("SELECT DISTINCT c.email FROM wa_segment_members m JOIN wa_contacts c ON c.id = m.contact_id AND c.tenant_id=%s "
+    _ls_exec(cur, "SELECT DISTINCT c.email FROM wa_segment_members m JOIN wa_contacts c ON c.id = m.contact_id AND c.tenant_id=%s "
                 "WHERE m.segment_id=%s AND " + _EMAIL_AUDIENCE_OK + excl, params)
     return [r["email"] if isinstance(r, dict) else r[0] for r in cur.fetchall()]
 
@@ -21317,19 +21363,19 @@ def email_campaign_segments_page():
     try:
         vis, vp = _seg_vis("s", "email")
         if seg_id_raw.isdigit():
-            cur.execute("SELECT s.* FROM wa_segments s WHERE s.id=%s AND s.tenant_id=%s" + vis,
+            _ls_exec(cur, "SELECT s.* FROM wa_segments s WHERE s.id=%s AND s.tenant_id=%s" + vis,
                         [int(seg_id_raw), tenant_id] + vp)
             segment = cur.fetchone()
             if not segment:
                 flash("Segment not found.", "warning")
                 return redirect(url_for("portal.email_campaign_segments_page"))
-            cur.execute(
+            _ls_exec(cur, 
                 "SELECT c.id, COALESCE(c.display_name, c.email) AS name, c.email AS contact_value, "
                 "COALESCE(c.email_opted_out, FALSE) AS opted_out FROM wa_segment_members m "
                 "JOIN wa_contacts c ON c.id = m.contact_id WHERE m.segment_id=%s "
                 "ORDER BY lower(COALESCE(c.display_name, '')), c.id", (segment["id"],))
             members = cur.fetchall()
-            cur.execute(
+            _ls_exec(cur, 
                 "SELECT l.stage, COUNT(DISTINCT c.id) AS n FROM merchant_pipeline_leads l "
                 "JOIN wa_contacts c ON c.id = l.wa_contact_id "
                 "WHERE l.tenant_id=%s AND " + _opportunity_stage_sql("l") + " AND " + _EMAIL_HAS +
@@ -21341,7 +21387,7 @@ def email_campaign_segments_page():
             return render_template("portal/channel_segments.html", ch=_EMAIL_SEG_CH, active_segment=segment,
                                    members=members, stages=stages, segments=None, old_groups=None,
                                    segments_see_all=_segments_see_all())
-        cur.execute(
+        _ls_exec(cur, 
             "SELECT s.id, s.name, s.created_by_member_id, tm.name AS created_by_name, tm.is_active AS created_by_active, "
             "COUNT(m.contact_id) AS member_count, "
             "COUNT(m.contact_id) FILTER (WHERE " + _EMAIL_AUDIENCE_OK + ") AS reach_count "
@@ -21352,7 +21398,7 @@ def email_campaign_segments_page():
             [tenant_id] + vp)
         segments = cur.fetchall()
         # The older lead-based groups, shown until the business deletes them
-        cur.execute("SELECT s.id, s.name, count(sl.lead_id) AS member_count FROM email_segments s "
+        _ls_exec(cur, "SELECT s.id, s.name, count(sl.lead_id) AS member_count FROM email_segments s "
                     "LEFT JOIN email_segment_leads sl ON sl.segment_id = s.id WHERE s.tenant_id=%s "
                     "GROUP BY s.id, s.name ORDER BY s.name", (tenant_id,))
         old_groups = cur.fetchall()
@@ -21378,7 +21424,7 @@ def email_csegments_list():
     conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         vis, vp = _seg_vis("s", "email")
-        cur.execute(
+        _ls_exec(cur, 
             "SELECT s.id, s.name, COUNT(m.contact_id) AS member_count, "
             "COUNT(m.contact_id) FILTER (WHERE " + _EMAIL_AUDIENCE_OK + ") AS reach_count "
             "FROM wa_segments s LEFT JOIN wa_segment_members m ON m.segment_id = s.id "
@@ -21386,7 +21432,7 @@ def email_csegments_list():
             "WHERE s.tenant_id=%s" + vis + " GROUP BY s.id, s.name ORDER BY lower(s.name), s.id", [tenant_id] + vp)
         out = {"segments": cur.fetchall()}
         if request.args.get("with_old") == "1":
-            cur.execute("SELECT s.id, s.name, count(sl.lead_id) FILTER (WHERE l.email IS NOT NULL AND l.dropped_at IS NULL) AS member_count "
+            _ls_exec(cur, "SELECT s.id, s.name, count(sl.lead_id) FILTER (WHERE l.email IS NOT NULL AND l.dropped_at IS NULL) AS member_count "
                         "FROM email_segments s LEFT JOIN email_segment_leads sl ON sl.segment_id = s.id "
                         "LEFT JOIN merchant_pipeline_leads l ON l.id = sl.lead_id WHERE s.tenant_id=%s "
                         "GROUP BY s.id, s.name ORDER BY s.name", (tenant_id,))
@@ -21451,14 +21497,14 @@ def email_csegments_source_search(segment_id: int):
             return jsonify({"error": "Segment not found."}), 404
         not_in = " AND c.id NOT IN (SELECT contact_id FROM wa_segment_members WHERE segment_id=%s)"
         if source == "leads":
-            cur.execute(
+            _ls_exec(cur, 
                 "SELECT l.id AS lead_id, c.id AS contact_id, COALESCE(l.customer_name, c.display_name) AS name, "
                 "c.email AS value FROM merchant_pipeline_leads l JOIN wa_contacts c ON c.id = l.wa_contact_id "
                 "WHERE l.tenant_id=%s AND NOT l.is_opportunity AND l.dropped_at IS NULL AND " + _EMAIL_HAS +
                 " AND (l.customer_name ILIKE %s OR l.contact_person ILIKE %s OR c.email ILIKE %s OR l.email ILIKE %s)"
                 + not_in + " ORDER BY l.customer_name LIMIT 25", (tenant_id, like, like, like, like, segment_id))
         else:
-            cur.execute(
+            _ls_exec(cur, 
                 "SELECT c.id AS contact_id, COALESCE(c.display_name, c.email) AS name, c.email AS value "
                 "FROM wa_contacts c WHERE c.tenant_id=%s AND " + _EMAIL_HAS +
                 " AND (c.display_name ILIKE %s OR c.email ILIKE %s OR c.contact_person ILIKE %s)"
@@ -21536,11 +21582,11 @@ def email_csegments_add_stage(segment_id: int):
     try:
         if not _email_seg_ok(cur, tenant_id, segment_id):
             return jsonify({"error": "Segment not found."}), 404
-        cur.execute("SELECT COUNT(DISTINCT l.id) FROM merchant_pipeline_leads l LEFT JOIN wa_contacts c ON c.id = l.wa_contact_id "
+        _ls_exec(cur, "SELECT COUNT(DISTINCT l.id) FROM merchant_pipeline_leads l LEFT JOIN wa_contacts c ON c.id = l.wa_contact_id "
                     "WHERE l.tenant_id=%s AND l.stage = ANY(%s) AND " + _opportunity_stage_sql("l") +
                     " AND (l.wa_contact_id IS NULL OR NOT (" + _EMAIL_HAS + "))", (tenant_id, stages))
         missing = cur.fetchone()[0]
-        cur.execute("INSERT INTO wa_segment_members (segment_id, contact_id) "
+        _ls_exec(cur, "INSERT INTO wa_segment_members (segment_id, contact_id) "
                     "SELECT DISTINCT %s, c.id FROM merchant_pipeline_leads l JOIN wa_contacts c ON c.id = l.wa_contact_id "
                     "WHERE l.tenant_id=%s AND l.stage = ANY(%s) AND " + _opportunity_stage_sql("l") + " AND " + _EMAIL_HAS +
                     " ON CONFLICT DO NOTHING", (segment_id, tenant_id, stages))
@@ -21569,11 +21615,11 @@ def email_csegments_bulk_add_members(segment_id: int):
     try:
         if not _email_seg_ok(cur, tenant_id, segment_id):
             return jsonify({"error": "Segment not found."}), 404
-        cur.execute("SELECT count(*) FROM merchant_pipeline_leads l LEFT JOIN wa_contacts c ON c.id = l.wa_contact_id "
+        _ls_exec(cur, "SELECT count(*) FROM merchant_pipeline_leads l LEFT JOIN wa_contacts c ON c.id = l.wa_contact_id "
                     "WHERE l.id = ANY(%s) AND l.tenant_id=%s AND (l.wa_contact_id IS NULL OR NOT (" + _EMAIL_HAS + "))",
                     (lead_ids, tenant_id))
         missing = cur.fetchone()[0]
-        cur.execute("INSERT INTO wa_segment_members (segment_id, contact_id) "
+        _ls_exec(cur, "INSERT INTO wa_segment_members (segment_id, contact_id) "
                     "SELECT DISTINCT %s, c.id FROM merchant_pipeline_leads l JOIN wa_contacts c ON c.id = l.wa_contact_id "
                     "WHERE l.id = ANY(%s) AND l.tenant_id=%s AND " + _EMAIL_HAS + " ON CONFLICT DO NOTHING",
                     (segment_id, lead_ids, tenant_id))
@@ -21917,7 +21963,7 @@ def lead_labels_search_leads_json():
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute(
+        _ls_exec(cur, 
             "SELECT id, customer_name, contact_person, email FROM merchant_pipeline_leads l "
             "WHERE " + " AND ".join(where) + " ORDER BY customer_name LIMIT 20",
             params,
@@ -22256,7 +22302,7 @@ def email_campaigns_pipeline_leads_json():
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute(
+        _ls_exec(cur, 
             "SELECT id, customer_name, contact_person, email FROM merchant_pipeline_leads l "
             "WHERE " + " AND ".join(where) + " ORDER BY customer_name LIMIT 20",
             params,
@@ -29310,12 +29356,12 @@ def _get_leads_overview_data(tenant_id: int, date_from, date_to, prev_from, prev
                 return round((curr - prev) / prev * 100, 1)
             return None
 
-        cur.execute("SELECT count(*) AS c FROM merchant_pipeline_leads WHERE tenant_id=%s", (tenant_id,))
+        _ls_exec(cur, "SELECT count(*) AS c FROM merchant_pipeline_leads WHERE tenant_id=%s", (tenant_id,))
         total_leads = int(cur.fetchone()["c"])
         safe["total_leads"] = total_leads
 
         def _count_created(d_from, d_to):
-            cur.execute(
+            _ls_exec(cur, 
                 "SELECT count(*) AS c FROM merchant_pipeline_leads "
                 "WHERE tenant_id=%s AND created_at::date BETWEEN %s AND %s",
                 (tenant_id, d_from, d_to),
@@ -29329,7 +29375,7 @@ def _get_leads_overview_data(tenant_id: int, date_from, date_to, prev_from, prev
 
         # Where every lead stands right now (all-time snapshot, not period-scoped —
         # "what's true today" isn't a sum over a date range).
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT
               count(*) FILTER (WHERE NOT is_opportunity AND dropped_at IS NULL) AS undecided,
               count(*) FILTER (WHERE is_opportunity) AS opportunities,
@@ -29346,7 +29392,7 @@ def _get_leads_overview_data(tenant_id: int, date_from, date_to, prev_from, prev
             safe["became_opportunity_pct"] = round(opportunities / total_leads * 100, 1)
             safe["not_a_fit_pct"]          = round(naf / total_leads * 100, 1)
 
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT AVG(EXTRACT(EPOCH FROM (NOW() - created_at)) / 86400.0) AS d
             FROM merchant_pipeline_leads WHERE tenant_id=%s AND NOT is_opportunity AND dropped_at IS NULL
         """, (tenant_id,))
@@ -29358,7 +29404,7 @@ def _get_leads_overview_data(tenant_id: int, date_from, date_to, prev_from, prev
         # period (cohort basis), same convention real CRMs use for lead
         # conversion rate reporting.
         def _cohort_rates(d_from, d_to):
-            cur.execute("""
+            _ls_exec(cur, """
                 SELECT count(*) AS total,
                        count(*) FILTER (WHERE is_opportunity) AS opp,
                        count(*) FILTER (WHERE outcome='not_a_fit') AS naf
@@ -29375,13 +29421,13 @@ def _get_leads_overview_data(tenant_id: int, date_from, date_to, prev_from, prev
 
         # Hot / Warm / Cold — current, every active (non-dropped) lead.
         scored_from = _pipeline_scored_from_sql()
-        cur.execute(f"SELECT lead_tier, count(*) AS c FROM {scored_from} mpl GROUP BY lead_tier", [tenant_id])
+        _ls_exec(cur, f"SELECT lead_tier, count(*) AS c FROM {scored_from} mpl GROUP BY lead_tier", [tenant_id])
         for rr in cur.fetchall():
             safe["tier_counts"][rr["lead_tier"]] = int(rr["c"])
 
         # A Contacted date picked before the lead was added (e.g. imported
         # later) counts as same-day, never as negative days.
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT count(*) AS n, AVG(GREATEST(contact_date - created_at::date, 0)) AS d
             FROM merchant_pipeline_leads WHERE tenant_id=%s AND contact_date IS NOT NULL
         """, (tenant_id,))
@@ -29389,7 +29435,7 @@ def _get_leads_overview_data(tenant_id: int, date_from, date_to, prev_from, prev
         if int(r["n"]) >= LEADS_OVERVIEW_MIN_SAMPLE:
             safe["time_to_first_contact"] = round(float(r["d"]), 1)
 
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT count(*) AS n, AVG(EXTRACT(EPOCH FROM (opportunity_at - created_at)) / 86400.0) AS d
             FROM merchant_pipeline_leads WHERE tenant_id=%s AND is_opportunity AND opportunity_at IS NOT NULL
         """, (tenant_id,))
@@ -29397,7 +29443,7 @@ def _get_leads_overview_data(tenant_id: int, date_from, date_to, prev_from, prev
         if int(r["n"]) >= LEADS_OVERVIEW_MIN_SAMPLE:
             safe["time_to_become_opportunity"] = round(float(r["d"]), 1)
 
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT source, count(*) AS c FROM merchant_pipeline_leads
             WHERE tenant_id=%s AND source IS NOT NULL AND created_at::date BETWEEN %s AND %s
             GROUP BY source ORDER BY c DESC
@@ -29410,7 +29456,7 @@ def _get_leads_overview_data(tenant_id: int, date_from, date_to, prev_from, prev
                 {"source": rr["source"], "count": int(rr["c"]), "pct": round(int(rr["c"]) / src_total * 100, 1)}
                 for rr in src_rows
             ]
-            cur.execute("""
+            _ls_exec(cur, """
                 SELECT source, count(*) AS total, count(*) FILTER (WHERE is_opportunity) AS opp
                 FROM merchant_pipeline_leads
                 WHERE tenant_id=%s AND source IS NOT NULL AND created_at::date BETWEEN %s AND %s
@@ -29424,7 +29470,7 @@ def _get_leads_overview_data(tenant_id: int, date_from, date_to, prev_from, prev
             conv_rows.sort(key=lambda x: -x["rate"])
             safe["source_conversion"] = conv_rows
 
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT assigned_to,
                    count(*) AS leads,
                    count(*) FILTER (WHERE is_opportunity) AS opportunities,
@@ -29451,7 +29497,7 @@ def _get_leads_overview_data(tenant_id: int, date_from, date_to, prev_from, prev
             safe["by_rep"] = reps
 
         def _win_rate(d_from, d_to):
-            cur.execute("""
+            _ls_exec(cur, """
                 SELECT outcome, COUNT(*) AS n FROM merchant_pipeline_leads
                 WHERE tenant_id=%s AND outcome IN ('won','lost')
                   AND COALESCE(won_date, dropped_at::date) BETWEEN %s AND %s
@@ -29470,7 +29516,7 @@ def _get_leads_overview_data(tenant_id: int, date_from, date_to, prev_from, prev
         safe["won_count"]  = won_count
         safe["lost_count"] = lost_count
 
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT count(*) AS n, AVG(deal_value) AS v FROM merchant_pipeline_leads
             WHERE tenant_id=%s AND outcome='won' AND won_date BETWEEN %s AND %s AND deal_value IS NOT NULL
         """, (tenant_id, date_from, date_to))
@@ -29478,7 +29524,7 @@ def _get_leads_overview_data(tenant_id: int, date_from, date_to, prev_from, prev
         if int(r["n"]) >= LEADS_OVERVIEW_MIN_SAMPLE:
             safe["avg_deal_size"] = float(r["v"])
 
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT count(*) AS n, AVG(won_date - created_at::date) AS d FROM merchant_pipeline_leads
             WHERE tenant_id=%s AND outcome='won' AND won_date BETWEEN %s AND %s
         """, (tenant_id, date_from, date_to))
@@ -29490,7 +29536,7 @@ def _get_leads_overview_data(tenant_id: int, date_from, date_to, prev_from, prev
         # given how it's currently winning. Only shown once every lever it's
         # built from (win rate, deal size, cycle length) is itself real.
         if safe["win_rate"] is not None and safe["avg_deal_size"] is not None and safe["sales_cycle_days"]:
-            cur.execute("""
+            _ls_exec(cur, """
                 SELECT count(*) AS n FROM merchant_pipeline_leads
                 WHERE tenant_id=%s AND is_opportunity AND outcome IS NULL
             """, (tenant_id,))
@@ -29578,7 +29624,12 @@ def leads_page():
         _apeople         = {a["key"]: a["label"] for a in _lead_assignees(tenant_id, customer)}
         if _akey not in _apeople or not _team_member_has_permission("leads.assign"):
             _akey = ""
+        if not _leads_see_all():
+            # Staff who only see their own leads: what they add is theirs.
+            _akey = _current_actor(customer)["key"]
         assigned_to      = _apeople.get(_akey, "")
+        business_category = _clean_biz_field(f.get("business_category"), 120)
+        employees         = _clean_biz_field(f.get("employees"), 40)
         notes            = (f.get("notes") or "").strip()
         source           = (f.get("source") or "manual").strip()
         if source not in ("whatsapp", "facebook", "instagram", "manual"):
@@ -29610,12 +29661,14 @@ def leads_page():
         cur.execute("""
             INSERT INTO merchant_pipeline_leads
                 (tenant_id, customer_name, contact_person, phone, whatsapp_number, email, notes,
-                 deal_value, product_interest, assigned_to, assigned_key, source, website)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 deal_value, product_interest, assigned_to, assigned_key, source, website,
+                 business_category, employees)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """, (tenant_id, customer_name, contact_person or None, phone or None,
               whatsapp_number or None, email or None, notes or None, deal_value,
-              product_interest or None, assigned_to or None, _akey or None, source, website or None))
+              product_interest or None, assigned_to or None, _akey or None, source, website or None,
+              business_category, employees))
         new_id = cur.fetchone()[0]
         _link_lead_to_contact(cur, tenant_id, new_id)   # Phase 1b: every lead gets a contact
         _addr.save_address_family(cur, tenant_id, address, lead_id=new_id)
@@ -29791,6 +29844,11 @@ def leads_create_from_conversation():
           contact.get("email") if contact else None, contact.get("notes") if contact else None,
           contact["id"] if contact else None, contact.get("company_id") if contact else None))
     lead_id = cur.fetchone()["id"]
+    if not _leads_see_all():
+        # Staff who only see their own leads: what they create is theirs.
+        _me = _current_actor(customer)
+        cur.execute("UPDATE merchant_pipeline_leads SET assigned_key=%s, assigned_to=%s WHERE id=%s",
+                    (_me["key"], _me["label"], lead_id))
     _link_lead_to_contact(cur, tenant_id, lead_id)   # Phase 1b: makes the contact if there wasn't one
     conn.commit()
     cur.close(); conn.close()
@@ -29964,7 +30022,40 @@ def leads_reopen(lead_id: int):
 # ══════════════════════════════════════════════════════════════════════════════
 
 LEADS_LIST_FILTER_ARGS = ("q", "tier", "has_phone", "has_email", "has_whatsapp", "check_numbers",
-                          "has_company", "assigned", "added_from", "added_to")
+                          "has_company", "assigned", "added_from", "added_to",
+                          "biz_category", "employees", "label", "import")
+
+
+def _biz_filter_clauses(alias: str, args, tenant_id: int, label_link: str = "lead", with_label: bool = True):
+    """Business category / Number of employees / Label / Import filters
+    (2026-10-06), shared by Leads, Sales Pipeline and Contacts. label_link:
+    'lead' = lead_label_leads, 'contact' = lead_label_contacts.
+    Returns (clauses, params, state, fargs)."""
+    clauses, params, fargs = [], [], {}
+    cat = (args.get("biz_category") or "").strip()
+    emp = (args.get("employees") or "").strip()
+    lab = (args.get("label") or "").strip() if with_label else ""
+    imp = (args.get("import") or "").strip()
+    if cat == "__none__":
+        clauses.append(f"COALESCE({alias}.business_category,'')=''"); fargs["biz_category"] = cat
+    elif cat:
+        clauses.append(f"{alias}.business_category=%s"); params.append(cat); fargs["biz_category"] = cat
+    if emp == "__none__":
+        clauses.append(f"COALESCE({alias}.employees,'')=''"); fargs["employees"] = emp
+    elif emp:
+        clauses.append(f"{alias}.employees=%s"); params.append(emp); fargs["employees"] = emp
+    label_id = int(lab) if lab.isdigit() else None
+    if label_id:
+        if label_link == "contact":
+            clauses.append(f"{alias}.id IN (SELECT contact_id FROM lead_label_contacts WHERE label_id=%s)")
+        else:
+            clauses.append(f"{alias}.id IN (SELECT lead_id FROM lead_label_leads WHERE label_id=%s)")
+        params.append(label_id); fargs["label"] = str(label_id)
+    import_id = int(imp) if imp.isdigit() else None
+    if import_id:
+        clauses.append(f"{alias}.import_id=%s"); params.append(import_id); fargs["import"] = str(import_id)
+    state = {"biz_category": cat, "employees": emp, "label": label_id, "import": import_id}
+    return clauses, params, state, fargs
 
 
 def _lead_assignees(tenant_id: int, customer: dict = None) -> list:
@@ -29988,6 +30079,164 @@ def _lead_assignees(tenant_id: int, customer: dict = None) -> list:
         people.append({"key": f"team:{r['id']}", "label": label, "display": label})
     cur.close(); conn.close()
     return people
+
+
+def _clean_biz_field(raw, max_len: int):
+    """Business category / Number of employees as typed: trimmed, inner
+    spaces tidied, None when empty."""
+    v = " ".join(str(raw or "").split())[:max_len]
+    return v or None
+
+
+def _save_biz_fields(cur, tenant_id: int, form, contact_id: int = None, lead_id: int = None):
+    """Business category / Number of employees from a form that shows those
+    boxes. They describe the business, so a contact and the leads joined to
+    it are kept the same: saving on one updates the other(s)."""
+    sets, vals = [], []
+    for col, ln in (("business_category", 120), ("employees", 40)):
+        if col in form:
+            sets.append(f"{col}=%s"); vals.append(_clean_biz_field(form.get(col), ln))
+    if not sets:
+        return
+    sql = ", ".join(sets)
+    if contact_id:
+        cur.execute(f"UPDATE wa_contacts SET {sql} WHERE id=%s AND tenant_id=%s", vals + [contact_id, tenant_id])
+        cur.execute(f"UPDATE merchant_pipeline_leads SET {sql} WHERE wa_contact_id=%s AND tenant_id=%s",
+                    vals + [contact_id, tenant_id])
+    if lead_id:
+        cur.execute(f"UPDATE merchant_pipeline_leads SET {sql} WHERE id=%s AND tenant_id=%s", vals + [lead_id, tenant_id])
+        cur.execute(f"""UPDATE wa_contacts SET {sql} WHERE tenant_id=%s AND id =
+                        (SELECT wa_contact_id FROM merchant_pipeline_leads WHERE id=%s AND tenant_id=%s)""",
+                    vals + [tenant_id, lead_id, tenant_id])
+
+
+def _biz_field_options(tenant_id: int) -> dict:
+    """Pick-lists for Business category and Number of employees: every value
+    this business already uses on its leads or contacts (2026-10-06)."""
+    out = {"business_category": [], "employees": []}
+    conn = get_db_connection(); cur = conn.cursor()
+    for col in out:
+        cur.execute(f"""SELECT v FROM (
+                          SELECT {col} AS v FROM merchant_pipeline_leads WHERE tenant_id=%s
+                          UNION SELECT {col} FROM wa_contacts WHERE tenant_id=%s) x
+                        WHERE COALESCE(v,'') <> '' """, (tenant_id, tenant_id))
+        vals = [r[0] for r in cur.fetchall()]
+        if col == "employees":
+            def _k(v):
+                d = "".join(ch if ch.isdigit() else " " for ch in v).split()
+                return (0, int(d[0])) if d else (1, v.lower())
+            vals.sort(key=_k)
+        else:
+            vals.sort(key=str.lower)
+        out[col] = vals
+    cur.close(); conn.close()
+    return out
+
+
+# Suggested size bands for Number of employees, shown until a business has
+# its own values (any value can still be typed).
+BIZ_EMPLOYEE_BANDS = ["1-5", "6-10", "11-15", "16-25", "26-50", "51-100", "101-200",
+                      "201-500", "501-1000", "1001-2000", "2001-5000", "5000+"]
+
+
+@portal_bp.app_context_processor
+def _inject_biz_fields():
+    """biz_field_options() and lead_label_list() for the shared form/filter
+    macros (_biz_fields.html); looked up once per request, only when used."""
+    def biz_field_options():
+        if "_biz_opts" not in g:
+            cid = _customer_id()
+            cust = _get_customer(cid) if cid else None
+            g._biz_opts = _biz_field_options(int(cust["tenant_id"])) if cust else \
+                {"business_category": [], "employees": []}
+        return g._biz_opts
+
+    def lead_label_list():
+        if "_lbl_list" not in g:
+            cid = _customer_id()
+            cust = _get_customer(cid) if cid else None
+            rows = []
+            if cust:
+                conn = get_db_connection(); cur = conn.cursor()
+                cur.execute("SELECT id, name FROM lead_labels WHERE tenant_id=%s ORDER BY lower(name)",
+                            (int(cust["tenant_id"]),))
+                rows = [{"id": r[0], "name": r[1]} for r in cur.fetchall()]
+                cur.close(); conn.close()
+            g._lbl_list = rows
+        return g._lbl_list
+    return {"biz_field_options": biz_field_options, "lead_label_list": lead_label_list,
+            "BIZ_EMPLOYEE_BANDS": BIZ_EMPLOYEE_BANDS}
+
+
+def _leads_see_all() -> bool:
+    """Staff see only the Leads/Opportunities assigned to them unless their
+    role has "See all leads" (user 2026-10-06). The business owner, and any
+    team member whose role can manage the Team (e.g. IT Admin), always see
+    every lead — same rule as Segments (_segments_see_all). Background jobs
+    (no request, e.g. a scheduled campaign) are never limited here."""
+    from flask import has_request_context
+    if not has_request_context() or not session.get("team_member_id"):
+        return True
+    perms = session.get("team_member_permissions") or {}
+    if perms.get("leads.see_all"):
+        return True
+    return any(v for k, v in perms.items() if k.startswith("team."))
+
+
+def _lead_scope(alias: str = "mpl"):
+    """(" AND …", params) limiting a merchant_pipeline_leads query to the
+    viewer's own leads when they can't see all. Empty for everyone else."""
+    if _leads_see_all():
+        return "", []
+    col = f"{alias}.assigned_key" if alias else "assigned_key"
+    return f" AND {col}=%s", [f"team:{int(session['team_member_id'])}"]
+
+
+def _lead_visible(tenant_id: int, lead_id: int) -> bool:
+    """True if the viewer may open/act on this one lead (see _lead_scope)."""
+    if _leads_see_all():
+        return True
+    sql, params = _lead_scope("")
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("SELECT 1 FROM merchant_pipeline_leads WHERE tenant_id=%s AND id=%s" + sql,
+                [tenant_id, lead_id] + params)
+    ok = cur.fetchone() is not None
+    cur.close(); conn.close()
+    return ok
+
+
+def _visible_lead_ids(tenant_id: int, lead_ids: list) -> list:
+    """Drop ids the viewer can't see (bulk actions on ticked leads)."""
+    if _leads_see_all() or not lead_ids:
+        return lead_ids
+    sql, params = _lead_scope("")
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("SELECT id FROM merchant_pipeline_leads WHERE tenant_id=%s AND id = ANY(%s)" + sql,
+                [tenant_id, list(lead_ids)] + params)
+    ids = [r[0] for r in cur.fetchall()]
+    cur.close(); conn.close()
+    return ids
+
+
+import re as _re_mpl
+_MPL_FROM_RE = _re_mpl.compile(
+    r"\b(FROM|JOIN)\s+merchant_pipeline_leads\b(?:\s+(?:AS\s+)?(?!(?i:as|where|group|order|left|right|inner|full|cross|join|on|limit|offset|union|having|for|returning)\b)([a-z_][a-z0-9_]*))?")
+
+
+def _scope_leads_sql(sql: str) -> str:
+    """Staff without "See all leads" (2026-10-06): every FROM/JOIN of
+    merchant_pipeline_leads in this SQL reads only their own leads. Used by
+    the dashboard / reports / company & contact pages, which build their lead
+    SQL by hand. Unchanged for anyone who can see all leads."""
+    if _leads_see_all():
+        return sql
+    sub = f"(SELECT * FROM merchant_pipeline_leads WHERE assigned_key = 'team:{int(session['team_member_id'])}')"
+    return _MPL_FROM_RE.sub(lambda m: f"{m.group(1)} {sub} {m.group(2) or 'merchant_pipeline_leads'}", sql)
+
+
+def _ls_exec(cur, sql, params=None):
+    """cur.execute with _scope_leads_sql applied."""
+    return cur.execute(_scope_leads_sql(sql), params)
 
 
 def _parse_iso_date(raw):
@@ -30055,6 +30304,8 @@ def _leads_list_filters(tenant_id: int, args, actor_key: str):
         clauses.append("mpl.created_at::date <= %s"); params.append(added_to)
     a_clauses, a_params, a_state, a_fargs = _addr.address_filter_clauses("mpl", args)
     clauses += a_clauses; params += a_params
+    b_clauses, b_params, b_state, b_fargs = _biz_filter_clauses("mpl", args, tenant_id, "lead")
+    clauses += b_clauses; params += b_params
 
     fargs = {k: v for k, v in {
         "has_phone": "1" if has_phone else None, "has_email": "1" if has_email else None,
@@ -30065,7 +30316,9 @@ def _leads_list_filters(tenant_id: int, args, actor_key: str):
         "added_to": added_to.isoformat() if added_to else None,
     }.items() if v}
     fargs.update(a_fargs)
+    fargs.update(b_fargs)
     state = {"search": search, "tier": tier, "has_phone": has_phone, "has_email": has_email, "addr": a_state,
+             "biz": b_state,
              "has_whatsapp": has_whatsapp, "has_company": has_company, "assigned": assigned,
              "check_numbers": check_numbers, "flagged_count": len(flagged_ids),
              "added_from": added_from, "added_to": added_to, "fargs": fargs,
@@ -30093,9 +30346,10 @@ def _bulk_selected_lead_ids(cur, tenant_id: int, form, scope: str, actor_key: st
         ids = sorted({int(v) for v in form.getlist("lead_ids") if str(v).isdigit()})
         if not ids:
             return []
+        _ssql, _sparams = _lead_scope("mpl")
         cur.execute(f"SELECT mpl.id FROM merchant_pipeline_leads mpl "
-                    f"WHERE mpl.tenant_id=%s AND mpl.id = ANY(%s) AND {_BULK_SCOPES[scope]}",
-                    (tenant_id, ids))
+                    f"WHERE mpl.tenant_id=%s AND mpl.id = ANY(%s) AND {_BULK_SCOPES[scope]}" + _ssql,
+                    [tenant_id, ids] + _sparams)
     rows = cur.fetchall()
     return sorted(r["id"] if isinstance(r, dict) else r[0] for r in rows)
 
@@ -30381,7 +30635,9 @@ def sales_pipeline_bulk_move_to_leads():
 def _pipeline_lead_owned_by_tenant(lead_id: int, tenant_id: int):
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT * FROM merchant_pipeline_leads WHERE id=%s AND tenant_id=%s", (lead_id, tenant_id))
+    _ssql, _sparams = _lead_scope("")
+    cur.execute("SELECT * FROM merchant_pipeline_leads WHERE id=%s AND tenant_id=%s" + _ssql,
+                [lead_id, tenant_id] + _sparams)
     row = cur.fetchone()
     cur.close(); conn.close()
     return dict(row) if row else None
@@ -30455,7 +30711,11 @@ def _pipeline_scored_from_sql() -> str:
     (tenant_id); every caller must supply it as the FIRST param, before
     whatever _pipeline_filter_clauses params come after it. The
     'mpl.tenant_id=%s AND mpl.dropped_at IS NULL' clause those callers still
-    apply on top is redundant here (already true) but harmless."""
+    apply on top is redundant here (already true) but harmless.
+    Staff without "See all leads" only get their own leads (2026-10-06) —
+    written inline (an int id) so the one-placeholder contract above holds."""
+    _own = "" if _leads_see_all() else \
+        f" AND mpl.assigned_key = 'team:{int(session['team_member_id'])}'"
     return f"""
         (
             SELECT scored.*,
@@ -30473,7 +30733,7 @@ def _pipeline_scored_from_sql() -> str:
                            + CASE WHEN mpl.updated_at < NOW() - INTERVAL '7 days' THEN -25 ELSE 0 END
                        )::int AS lead_score
                 FROM merchant_pipeline_leads mpl
-                WHERE mpl.tenant_id = %s AND mpl.dropped_at IS NULL
+                WHERE mpl.tenant_id = %s AND mpl.dropped_at IS NULL{_own}
             ) scored
         )
     """
@@ -30514,6 +30774,10 @@ def _pipeline_filter_clauses(tenant_id, search, stage_filter, has_phone, has_wha
     genuinely wants both."""
     clauses = ["mpl.tenant_id=%s", "mpl.dropped_at IS NULL"]
     params  = [tenant_id]
+    _scope_sql, _scope_params = _lead_scope("mpl")
+    if _scope_sql:
+        clauses.append(_scope_sql[5:])
+        params += _scope_params
     if opportunity_only is not None:
         clauses.append("mpl.is_opportunity=%s")
         params.append(bool(opportunity_only))
@@ -30896,6 +31160,10 @@ def sales_pipeline():
     # Address filters (2026-10-04) — list view.
     a_clauses, a_params, addr_state, addr_fargs = _addr.address_filter_clauses("mpl", request.args)
     clauses += a_clauses; params += a_params
+    # Business category / Employees / Import (2026-10-06); Label has its own picker here.
+    b_clauses, b_params, biz_state, biz_fargs = _biz_filter_clauses("mpl", request.args, tenant_id, "lead", with_label=False)
+    clauses += b_clauses; params += b_params
+    addr_fargs = dict(addr_fargs or {}, **biz_fargs)
     where = " AND ".join(clauses)
     scored_from = _pipeline_scored_from_sql()
 
@@ -30905,7 +31173,7 @@ def sales_pipeline():
         cur, "merchant_pipeline_leads", tenant_id,
         "t.is_opportunity AND t.dropped_at IS NULL AND t.outcome IS NULL")
 
-    cur.execute(f"SELECT count(*) AS c FROM {scored_from} mpl WHERE {where}", [tenant_id] + params)
+    _ls_exec(cur, f"SELECT count(*) AS c FROM {scored_from} mpl WHERE {where}", [tenant_id] + params)
     filtered_total = cur.fetchone()["c"]
 
     if per_page_raw == "all":
@@ -30924,7 +31192,7 @@ def sales_pipeline():
     # imports), and ORDER BY created_at DESC alone is non-deterministic across
     # separate paginated queries when ties exist, which duplicates/skips rows
     # between pages.
-    cur.execute(
+    _ls_exec(cur, 
         f"""SELECT mpl.*, a.first_name AS assigned_ambassador_first_name,
                    a.last_name AS assigned_ambassador_last_name
               FROM {scored_from} mpl
@@ -30941,7 +31209,7 @@ def sales_pipeline():
 
     all_ambassadors = []
     if tenant_id == PHIXTRA_SUPPORT_TENANT_ID:
-        cur.execute("""
+        _ls_exec(cur, """
             SELECT id, first_name, last_name, ref_code FROM ambassadors
             WHERE status='active' ORDER BY first_name, last_name
         """)
@@ -30954,7 +31222,7 @@ def sales_pipeline():
     lead_ids_on_page = [l["id"] for l in leads]
     lead_segment_map = {}
     if lead_ids_on_page:
-        cur.execute(
+        _ls_exec(cur, 
             "SELECT sl.lead_id, s.name FROM email_segment_leads sl "
             "JOIN email_segments s ON s.id = sl.segment_id "
             "WHERE sl.lead_id = ANY(%s) AND s.tenant_id=%s",
@@ -30963,7 +31231,7 @@ def sales_pipeline():
         for row in cur.fetchall():
             lead_segment_map.setdefault(row["lead_id"], []).append(row["name"])
         # …and the new Email Segments the deal's contact is in
-        cur.execute(
+        _ls_exec(cur, 
             "SELECT l.id AS lead_id, s.name FROM merchant_pipeline_leads l "
             "JOIN wa_segment_members m ON m.contact_id = l.wa_contact_id "
             "JOIN wa_segments s ON s.id = m.segment_id "
@@ -30975,10 +31243,10 @@ def sales_pipeline():
     for l in leads:
         l["segment_names"] = lead_segment_map.get(l["id"], [])
 
-    cur.execute("SELECT -s.id AS id, s.name FROM wa_segments s WHERE s.tenant_id=%s" + _seg_vis("s", "email")[0]
+    _ls_exec(cur, "SELECT -s.id AS id, s.name FROM wa_segments s WHERE s.tenant_id=%s" + _seg_vis("s", "email")[0]
                 + " ORDER BY lower(s.name)", [tenant_id] + _seg_vis("s", "email")[1])
     all_segments = cur.fetchall()
-    cur.execute("SELECT id, name || ' (older group)' AS name FROM email_segments WHERE tenant_id=%s ORDER BY name", (tenant_id,))
+    _ls_exec(cur, "SELECT id, name || ' (older group)' AS name FROM email_segments WHERE tenant_id=%s ORDER BY name", (tenant_id,))
     all_segments += cur.fetchall()
 
     # Which WhatsApp Segment(s), if any, each lead on this page already belongs to —
@@ -30986,7 +31254,7 @@ def sales_pipeline():
     # email segments (unlike SMS Segments below, which are support@phixtra.com-only).
     lead_wa_segment_map = {}
     if lead_ids_on_page:
-        cur.execute(
+        _ls_exec(cur, 
             # WhatsApp Segments the deal's contact is in, only ones this person may see
             "SELECT l.id AS lead_id, s.name FROM merchant_pipeline_leads l "
             "JOIN wa_segment_members m ON m.contact_id = l.wa_contact_id "
@@ -30999,7 +31267,7 @@ def sales_pipeline():
     for l in leads:
         l["wa_segment_names"] = lead_wa_segment_map.get(l["id"], [])
 
-    cur.execute("SELECT s.id, s.name FROM wa_segments s WHERE s.tenant_id=%s" + _seg_vis("s", "whatsapp")[0]
+    _ls_exec(cur, "SELECT s.id, s.name FROM wa_segments s WHERE s.tenant_id=%s" + _seg_vis("s", "whatsapp")[0]
                 + " ORDER BY lower(s.name), s.id", [tenant_id] + _seg_vis("s", "whatsapp")[1])
     all_wa_segments = cur.fetchall()
 
@@ -31011,7 +31279,7 @@ def sales_pipeline():
     all_sms_segments = []
     if _sms_allowed(tenant_id):
         if lead_ids_on_page:
-            cur.execute(
+            _ls_exec(cur, 
                 "SELECT sl.lead_id, s.name FROM sms_pipeline_segment_leads sl "
                 "JOIN sms_pipeline_segments s ON s.id = sl.segment_id "
                 "WHERE sl.lead_id = ANY(%s) AND s.tenant_id=%s",
@@ -31019,7 +31287,7 @@ def sales_pipeline():
             )
             for row in cur.fetchall():
                 lead_sms_segment_map.setdefault(row["lead_id"], []).append(row["name"])
-        cur.execute("SELECT id, name FROM sms_pipeline_segments WHERE tenant_id=%s ORDER BY name", (tenant_id,))
+        _ls_exec(cur, "SELECT id, name FROM sms_pipeline_segments WHERE tenant_id=%s ORDER BY name", (tenant_id,))
         all_sms_segments = cur.fetchall()
     for l in leads:
         l["sms_segment_names"] = lead_sms_segment_map.get(l["id"], [])
@@ -31029,7 +31297,7 @@ def sales_pipeline():
     # audience.
     lead_label_map = {}
     if lead_ids_on_page:
-        cur.execute(
+        _ls_exec(cur, 
             "SELECT ll.lead_id, lb.name FROM lead_label_leads ll "
             "JOIN lead_labels lb ON lb.id = ll.label_id "
             "WHERE ll.lead_id = ANY(%s) AND lb.tenant_id=%s",
@@ -31040,21 +31308,21 @@ def sales_pipeline():
     for l in leads:
         l["label_names"] = lead_label_map.get(l["id"], [])
 
-    cur.execute("SELECT id, name FROM lead_labels WHERE tenant_id=%s ORDER BY name", (tenant_id,))
+    _ls_exec(cur, "SELECT id, name FROM lead_labels WHERE tenant_id=%s ORDER BY name", (tenant_id,))
     all_labels = cur.fetchall()
 
     # Stage tallies and pipeline value are always over the FULL active (non-dropped)
     # pipeline, independent of the current search/stage/channel filters or pagination —
     # they describe the whole pipeline's shape, not just what's currently displayed.
     # AND is_opportunity: a not-yet-qualified Lead must never count toward these.
-    cur.execute(
+    _ls_exec(cur, 
         "SELECT stage, count(*) AS c FROM merchant_pipeline_leads "
         "WHERE tenant_id=%s AND dropped_at IS NULL AND is_opportunity GROUP BY stage",
         (tenant_id,),
     )
     stage_counts = {row["stage"]: row["c"] for row in cur.fetchall()}
 
-    cur.execute(
+    _ls_exec(cur, 
         "SELECT COALESCE(SUM(deal_value) FILTER (WHERE stage != 'won'), 0) AS pv, "
         "       COALESCE(SUM(deal_value) FILTER (WHERE stage  = 'won'), 0) AS wv "
         "FROM merchant_pipeline_leads WHERE tenant_id=%s AND dropped_at IS NULL AND is_opportunity",
@@ -31067,7 +31335,7 @@ def sales_pipeline():
     # is_opportunity here excludes Leads marked "Not a Fit" (dropped before ever
     # qualifying) — those belong to the Leads page's own history, not the Sales
     # Pipeline's Lost/Dropped list.
-    cur.execute("""
+    _ls_exec(cur, """
         SELECT * FROM merchant_pipeline_leads
         WHERE tenant_id=%s AND dropped_at IS NOT NULL AND is_opportunity
         ORDER BY dropped_at DESC
@@ -31098,6 +31366,7 @@ def sales_pipeline():
         "portal/sales_pipeline.html",
         addr_state            = addr_state,
         addr_fargs            = addr_fargs,
+        biz_state             = biz_state,
         addr_opts             = addr_opts,
         customer              = customer,
         leads                 = leads,
@@ -31173,6 +31442,8 @@ def sales_pipeline_export():
         hide_segment_ids, hide_label_ids, show_label_ids, hide_sms_segment_ids,
         hide_wa_segment_ids, opportunity_only=True,
     )
+    b_clauses, b_params, _bs, _bf = _biz_filter_clauses("mpl", request.args, tenant_id, "lead", with_label=False)
+    clauses += b_clauses; params += b_params
     where = " AND ".join(clauses)
 
     conn = get_db_connection()
@@ -31191,11 +31462,13 @@ def sales_pipeline_export():
     buf = _io.StringIO()
     _export_stage_labels = pipeline_effective_stage_labels(tenant_id)
     writer = _csv.writer(buf)
-    writer.writerow(['Customer', 'Contact Person', 'Phone', 'WhatsApp Number', 'Email', 'Deal Value', 'Stage', 'Added'])
+    writer.writerow(['Customer', 'Contact Person', 'Phone', 'WhatsApp Number', 'Email',
+                     'Business Category', 'Number of Employees', 'Deal Value', 'Stage', 'Added'])
     for l in leads:
         writer.writerow([
             l["customer_name"] or "", l["contact_person"] or "", l["phone"] or "",
             l["whatsapp_number"] or "", l["email"] or "",
+            l.get("business_category") or "", l.get("employees") or "",
             l["deal_value"] if l["deal_value"] is not None else "",
             _export_stage_labels.get(l["stage"], l["stage"]),
             l["created_at"].strftime("%Y-%m-%d") if l["created_at"] else "",
@@ -31396,6 +31669,10 @@ def sales_pipeline_edit(lead_id: int):
     # Phase 1b: a lead that now has a phone/WhatsApp/email gets joined to a
     # contact; one already joined only fills the contact's empty boxes.
     _link_lead_to_contact_now(tenant_id, lead_id)
+    if "business_category" in f or "employees" in f:
+        conn = get_db_connection(); cur = conn.cursor()
+        _save_biz_fields(cur, tenant_id, f, lead_id=lead_id)
+        conn.commit(); cur.close(); conn.close()
     if address or _oe_sent:
         conn = get_db_connection(); cur = conn.cursor()
         if address:
@@ -31627,7 +31904,7 @@ def sales_pipeline_bulk_advance():
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute(
+        _ls_exec(cur, 
             "SELECT id, stage, customer_name FROM merchant_pipeline_leads "
             "WHERE id = ANY(%s) AND tenant_id=%s AND dropped_at IS NULL AND is_opportunity",
             (lead_ids, tenant_id),
@@ -31640,7 +31917,7 @@ def sales_pipeline_bulk_advance():
         set_clause = ", ".join(f"{k}=%s" for k in updates) + ", updated_at=NOW()"
         values = list(updates.values())
         for lead in leads:
-            cur.execute(f"UPDATE merchant_pipeline_leads SET {set_clause} WHERE id=%s",
+            _ls_exec(cur, f"UPDATE merchant_pipeline_leads SET {set_clause} WHERE id=%s",
                         values + [lead["id"]])
         conn.commit()
 
@@ -31964,7 +32241,7 @@ def _sms_pipeline_numbers(tenant_id: int) -> list:
     'pipeline'). Normalized + de-duplicated by the caller."""
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute(
+    _ls_exec(cur, 
         "SELECT phone FROM merchant_pipeline_leads "
         "WHERE tenant_id=%s AND phone IS NOT NULL AND phone <> '' AND dropped_at IS NULL",
         (tenant_id,),
@@ -31978,7 +32255,7 @@ def _sms_segment_numbers(tenant_id: int, segment_id: int) -> list:
     """Every member's phone number in a saved SMS Segment (source = 'segment')."""
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute(
+    _ls_exec(cur, 
         "SELECT l.phone FROM sms_pipeline_segment_leads sl "
         "JOIN merchant_pipeline_leads l ON l.id = sl.lead_id "
         "JOIN sms_pipeline_segments s ON s.id = sl.segment_id "
@@ -32198,7 +32475,7 @@ def sms_campaigns():
 
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute(
+    _ls_exec(cur, 
         "SELECT * FROM sms_campaigns WHERE tenant_id=%s ORDER BY created_at DESC LIMIT 200",
         (tenant_id,),
     )
@@ -32207,7 +32484,7 @@ def sms_campaigns():
         parts, _chars = bulksmsng_api.count_sms_parts(c["message"] or "")
         c["parts"] = parts
 
-    cur.execute(
+    _ls_exec(cur, 
         "SELECT count(*) AS c FROM merchant_pipeline_leads "
         "WHERE tenant_id=%s AND phone IS NOT NULL AND phone <> '' AND dropped_at IS NULL",
         (tenant_id,),
@@ -32217,7 +32494,7 @@ def sms_campaigns():
     duplicate_message = None
     dup_id_raw = (request.args.get("duplicate") or "").strip()
     if dup_id_raw.isdigit():
-        cur.execute("SELECT message FROM sms_campaigns WHERE id=%s AND tenant_id=%s", (int(dup_id_raw), tenant_id))
+        _ls_exec(cur, "SELECT message FROM sms_campaigns WHERE id=%s AND tenant_id=%s", (int(dup_id_raw), tenant_id))
         dup_row = cur.fetchone()
         if dup_row:
             duplicate_message = dup_row["message"]
@@ -32320,7 +32597,7 @@ def sms_pipeline_segments_list():
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute(
+        _ls_exec(cur, 
             """
             SELECT s.id, s.name,
                    count(sl.lead_id) FILTER (
@@ -32403,12 +32680,12 @@ def sms_pipeline_segments_members(segment_id: int):
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT id, name FROM sms_pipeline_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
+        _ls_exec(cur, "SELECT id, name FROM sms_pipeline_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
         seg = cur.fetchone()
         if not seg:
             cur.close(); conn.close()
             return jsonify({"error": "Segment not found."}), 404
-        cur.execute(
+        _ls_exec(cur, 
             "SELECT l.id, l.customer_name, l.contact_person, l.phone "
             "FROM sms_pipeline_segment_leads sl JOIN merchant_pipeline_leads l ON l.id = sl.lead_id "
             "WHERE sl.segment_id=%s ORDER BY l.customer_name",
@@ -32441,11 +32718,11 @@ def sms_pipeline_segments_add_member(segment_id: int):
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT id FROM sms_pipeline_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
+        _ls_exec(cur, "SELECT id FROM sms_pipeline_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
         if not cur.fetchone():
             cur.close(); conn.close()
             return jsonify({"error": "Segment not found."}), 404
-        cur.execute(
+        _ls_exec(cur, 
             "SELECT id, customer_name, contact_person, phone "
             "FROM merchant_pipeline_leads "
             "WHERE id=%s AND tenant_id=%s AND phone IS NOT NULL AND phone <> '' AND dropped_at IS NULL",
@@ -32455,7 +32732,7 @@ def sms_pipeline_segments_add_member(segment_id: int):
         if not lead:
             cur.close(); conn.close()
             return jsonify({"error": "Contact not found."}), 404
-        cur.execute(
+        _ls_exec(cur, 
             "INSERT INTO sms_pipeline_segment_leads (segment_id, lead_id) VALUES (%s, %s) "
             "ON CONFLICT (segment_id, lead_id) DO NOTHING",
             (segment_id, lead_id),
@@ -32520,11 +32797,11 @@ def sms_pipeline_segments_bulk_add_members(segment_id: int):
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
-        cur.execute("SELECT id FROM sms_pipeline_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
+        _ls_exec(cur, "SELECT id FROM sms_pipeline_segments WHERE id=%s AND tenant_id=%s", (segment_id, tenant_id))
         if not cur.fetchone():
             cur.close(); conn.close()
             return jsonify({"error": "Segment not found."}), 404
-        cur.execute(
+        _ls_exec(cur, 
             "INSERT INTO sms_pipeline_segment_leads (segment_id, lead_id) "
             "SELECT %s, l.id FROM merchant_pipeline_leads l "
             "WHERE l.id = ANY(%s) AND l.tenant_id=%s "
@@ -32567,7 +32844,7 @@ def sms_pipeline_segments_pipeline_leads_json():
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute(
+        _ls_exec(cur, 
             "SELECT id, customer_name, contact_person, phone "
             "FROM merchant_pipeline_leads l "
             "WHERE " + " AND ".join(where) + " ORDER BY customer_name LIMIT 20",
@@ -32772,3 +33049,601 @@ def wa_discount_product_save(product_id: str):
         cur.close(); conn.close()
 
     return redirect(url_for("portal.wa_discount_settings"))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# IMPORT LEADS AND CONTACTS (2026-10-06)
+# One Import for Leads and Contacts, CSV or Excel, in 4 steps: Upload (and
+# choose sheets) → Match columns → Options (label, country, who works the
+# leads) → Check & import. The file part lives in crm_import.py; nothing is
+# saved until "Import". The saving runs in the background with a progress bar
+# so a large file can't time out the page. Same for every business.
+# ══════════════════════════════════════════════════════════════════════════════
+
+import crm_import as _ci
+import threading as _ci_threading
+
+CRM_IMPORT_TARGETS = {"leads": "Leads", "contacts": "Contacts"}
+
+
+def _crm_import_guard(target: str):
+    """(customer, tenant_id, None) or (None, None, response). Leads imports
+    need Leads + Create a Lead; Contacts imports need Contacts + Create a
+    Contact; both need "Import leads and contacts"."""
+    r = _require_login()
+    if r:
+        return None, None, r
+    customer = _get_customer(_customer_id())
+    if target == "leads":
+        r2 = _require_plan_sub_feature(customer, "leads.page", "Leads")
+        perm = "leads.create"
+    else:
+        r2 = _require_plan_sub_feature(customer, "crm.contacts_view", "All Contacts")
+        perm = "crm.contacts_create"
+    if r2:
+        return None, None, r2
+    for k in ("crm.import", perm):
+        rp = _require_team_permission(k)
+        if rp:
+            return None, None, rp
+    return customer, int(customer["tenant_id"]), None
+
+
+def _crm_import_state():
+    st = session.get("crm_import") or {}
+    staged = _ci.stage_load(st.get("token")) if st.get("token") else None
+    return st, staged
+
+
+def _crm_import_target():
+    t = (request.values.get("target") or (session.get("crm_import") or {}).get("target") or "leads").strip()
+    return t if t in CRM_IMPORT_TARGETS else "leads"
+
+
+def _crm_import_back_url(target):
+    return url_for("portal.leads_page") if target == "leads" else url_for("portal.whatsapp_contacts")
+
+
+def _crm_import_history(tenant_id: int, limit: int = 10) -> list:
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""SELECT id, file_name, created_mode, label, added, updated, joined, skipped, to_check,
+                          created_by, status, created_at
+                     FROM crm_imports WHERE tenant_id=%s ORDER BY created_at DESC LIMIT %s""", (tenant_id, limit))
+    rows = [dict(r) for r in cur.fetchall()]
+    cur.close(); conn.close()
+    return rows
+
+
+def _crm_import_render(step, target, **kw):
+    return render_template("portal/crm_import.html", step=step, target=target,
+                           target_label=CRM_IMPORT_TARGETS[target], back_url=_crm_import_back_url(target),
+                           field_choices=_ci.FIELDS, **kw)
+
+
+@portal_bp.route("/crm/import")
+@team_feature("crm.import")
+def crm_import_start():
+    target = _crm_import_target()
+    if not _team_member_has_permission("crm.import"):
+        return _team_member_denied("You don't have permission to do that.")
+    customer, tenant_id, err = _crm_import_guard(target)
+    if err:
+        return err
+    st, staged = _crm_import_state()
+    if request.args.get("new") or st.get("target") != target or (staged and staged.get("tenant_id") != tenant_id):
+        if st.get("token"):
+            _ci.stage_delete(st["token"])
+        session.pop("crm_import", None)
+        staged = None
+    return _crm_import_render("upload", target, staged=staged, history=_crm_import_history(tenant_id))
+
+
+@portal_bp.route("/crm/import/upload", methods=["POST"])
+@team_feature("crm.import")
+def crm_import_upload():
+    target = _crm_import_target()
+    if not _team_member_has_permission("crm.import"):
+        return _team_member_denied("You don't have permission to do that.")
+    customer, tenant_id, err = _crm_import_guard(target)
+    if err:
+        return err
+    f = request.files.get("file")
+    if not f or not f.filename:
+        flash("Choose a CSV or Excel file first.", "danger")
+        return redirect(url_for("portal.crm_import_start", target=target))
+    try:
+        staged = _ci.read_file(f.filename, f.read(_ci.MAX_BYTES + 1))
+    except ValueError as e:
+        flash(str(e), "danger")
+        return redirect(url_for("portal.crm_import_start", target=target))
+    except Exception as e:
+        print("⚠️ crm_import_upload error:", e)
+        flash("This file couldn't be read. Save it as .xlsx or CSV and try again.", "danger")
+        return redirect(url_for("portal.crm_import_start", target=target))
+    staged["tenant_id"] = tenant_id
+    staged["target"] = target
+    staged["chosen_sheets"] = [s["name"] for s in staged["sheets"] if s["looks_like_list"]] or \
+                              [s["name"] for s in staged["sheets"] if s["rows"]][:1]
+    old = (session.get("crm_import") or {}).get("token")
+    if old:
+        _ci.stage_delete(old)
+    token = _ci.stage_save(staged)
+    session["crm_import"] = {"token": token, "target": target}
+    return redirect(url_for("portal.crm_import_start", target=target))
+
+
+@portal_bp.route("/crm/import/sheets", methods=["POST"])
+@team_feature("crm.import")
+def crm_import_sheets():
+    target = _crm_import_target()
+    if not _team_member_has_permission("crm.import"):
+        return _team_member_denied("You don't have permission to do that.")
+    customer, tenant_id, err = _crm_import_guard(target)
+    if err:
+        return err
+    st, staged = _crm_import_state()
+    if not staged:
+        flash("Upload the file again, please. (Files are kept for 24 hours.)", "warning")
+        return redirect(url_for("portal.crm_import_start", target=target))
+    names = {s["name"] for s in staged["sheets"] if s["rows"]}
+    chosen = [n for n in request.form.getlist("sheets") if n in names]
+    if not chosen:
+        flash("Tick at least one sheet to import.", "danger")
+        return redirect(url_for("portal.crm_import_start", target=target))
+    if chosen != staged.get("chosen_sheets"):
+        staged.pop("mapping", None)
+    staged["chosen_sheets"] = chosen
+    _ci.stage_save(staged, st["token"])
+    return redirect(url_for("portal.crm_import_match", target=target))
+
+
+@portal_bp.route("/crm/import/match", methods=["GET", "POST"])
+@team_feature("crm.import")
+def crm_import_match():
+    target = _crm_import_target()
+    if not _team_member_has_permission("crm.import"):
+        return _team_member_denied("You don't have permission to do that.")
+    customer, tenant_id, err = _crm_import_guard(target)
+    if err:
+        return err
+    st, staged = _crm_import_state()
+    if not staged or not staged.get("chosen_sheets"):
+        return redirect(url_for("portal.crm_import_start", target=target))
+    headers, rows, origin = _ci.combined_table(staged)
+    valid = {k for k, _ in _ci.FIELDS}
+    if request.method == "POST":
+        mapping = [(request.form.get(f"col{i}") or "skip") for i in range(len(headers))]
+        mapping = [m if m in valid else "skip" for m in mapping]
+        staged["mapping"] = mapping
+        _ci.stage_save(staged, st["token"])
+        probs = _ci.mapping_problems(mapping)
+        if probs:
+            for p in probs:
+                flash(p, "danger")
+            return redirect(url_for("portal.crm_import_match", target=target))
+        return redirect(url_for("portal.crm_import_options", target=target))
+    mapping = staged.get("mapping") or _ci.guess_mapping(headers)
+    if len(mapping) != len(headers):
+        mapping = _ci.guess_mapping(headers)
+    samples = []
+    for i in range(len(headers)):
+        samples.append(next((r[i] for r in rows if r[i]), ""))
+    return _crm_import_render("match", target, staged=staged, headers=headers, mapping=mapping,
+                              samples=samples, row_total=len(rows))
+
+
+def _crm_import_assign_choices(tenant_id, customer):
+    """Who the new leads may be given to, or None when this person can't
+    assign (then they go to the importer if they only see their own leads)."""
+    if not _team_member_has_permission("leads.assign"):
+        return None
+    return _lead_assignees(tenant_id, customer)
+
+
+@portal_bp.route("/crm/import/options", methods=["GET", "POST"])
+@team_feature("crm.import")
+def crm_import_options():
+    target = _crm_import_target()
+    if not _team_member_has_permission("crm.import"):
+        return _team_member_denied("You don't have permission to do that.")
+    customer, tenant_id, err = _crm_import_guard(target)
+    if err:
+        return err
+    st, staged = _crm_import_state()
+    if not staged or not staged.get("mapping"):
+        return redirect(url_for("portal.crm_import_match", target=target))
+    assignees = _crm_import_assign_choices(tenant_id, customer) if target == "leads" else None
+    opts = staged.get("options") or {
+        "create": "both" if target == "leads" else "contacts",
+        "label": "", "country": _tenant_country(tenant_id) or "",
+        "assign_mode": "none", "assign_key": "", "assign_keys": [],
+    }
+    if request.method == "POST":
+        f = request.form
+        create = f.get("create") if target == "leads" else "contacts"
+        opts = {
+            "create": create if create in ("both", "contacts") else "both",
+            "label": " ".join((f.get("label") or "").split())[:50],
+            "country": (f.get("country") or "").strip().upper()[:2],
+            "assign_mode": "none", "assign_key": "", "assign_keys": [],
+        }
+        if opts["country"] and opts["country"] not in dict(_addr.ADDRESS_COUNTRIES):
+            opts["country"] = ""
+        if assignees is not None and opts["create"] == "both":
+            valid = {a["key"] for a in assignees}
+            mode = f.get("assign_mode")
+            if mode == "one" and f.get("assign_key") in valid:
+                opts.update(assign_mode="one", assign_key=f.get("assign_key"))
+            elif mode == "even":
+                keys = list(dict.fromkeys(k for k in f.getlist("assign_keys") if k in valid))
+                if keys:
+                    opts.update(assign_mode="even", assign_keys=keys)
+                else:
+                    flash("Tick at least one person to share the leads between.", "danger")
+                    staged["options"] = opts
+                    _ci.stage_save(staged, st["token"])
+                    return redirect(url_for("portal.crm_import_options", target=target))
+        staged["options"] = opts
+        _ci.stage_save(staged, st["token"])
+        return redirect(url_for("portal.crm_import_check", target=target))
+    return _crm_import_render("options", target, staged=staged, opts=opts, assignees=assignees,
+                              has_country_col="country" in staged["mapping"],
+                              has_city_col=any(k in staged["mapping"] for k in ("city", "state", "street")),
+                              own_leads_only=not _leads_see_all())
+
+
+def _crm_import_existing(tenant_id: int, create: str) -> dict:
+    """{key: id} for what the business already has: open leads (Contacts and
+    Leads) or contacts (Contacts only). Keys as crm_import.record_keys."""
+    conn = get_db_connection(); cur = conn.cursor()
+    if create == "both":
+        cur.execute("""SELECT id, phone, whatsapp_number, email FROM merchant_pipeline_leads
+                        WHERE tenant_id=%s AND dropped_at IS NULL AND outcome IS NULL ORDER BY id""", (tenant_id,))
+    else:
+        cur.execute("SELECT id, phone, whatsapp_number, email FROM wa_contacts WHERE tenant_id=%s ORDER BY id",
+                    (tenant_id,))
+    out = {}
+    for rid, ph, wa, em in cur.fetchall():
+        for n in (ph, wa):
+            k = _ci.number_key(n)
+            if len(k) >= 7:
+                out.setdefault("n:" + k, rid)
+        if em and em.strip():
+            out.setdefault("e:" + em.strip().lower(), rid)
+    cur.close(); conn.close()
+    return out
+
+
+def _crm_import_plan(tenant_id, staged):
+    headers, rows, origin = _ci.combined_table(staged)
+    opts = staged["options"]
+    recs = _ci.build_records(headers, rows, origin, staged["mapping"], opts.get("country") or None,
+                             _addr.match_country, _addr.match_state)
+    plan = _ci.plan(recs, _crm_import_existing(tenant_id, opts["create"]), phone_problem)
+    return headers, rows, plan
+
+
+def _crm_import_assign_text(opts, assignees_by_key) -> str:
+    if opts.get("create") != "both":
+        return ""
+    if opts.get("assign_mode") == "one":
+        return assignees_by_key.get(opts["assign_key"], "")
+    if opts.get("assign_mode") == "even":
+        return "Shared between " + ", ".join(assignees_by_key.get(k, "") for k in opts["assign_keys"])
+    return ""
+
+
+@portal_bp.route("/crm/import/check")
+@team_feature("crm.import")
+def crm_import_check():
+    target = _crm_import_target()
+    if not _team_member_has_permission("crm.import"):
+        return _team_member_denied("You don't have permission to do that.")
+    customer, tenant_id, err = _crm_import_guard(target)
+    if err:
+        return err
+    st, staged = _crm_import_state()
+    if not staged or not staged.get("options"):
+        return redirect(url_for("portal.crm_import_options", target=target))
+    headers, rows, plan = _crm_import_plan(tenant_id, staged)
+    opts = staged["options"]
+    people = {a["key"]: a["display"] for a in _lead_assignees(tenant_id, customer)}
+    assign_text = _crm_import_assign_text(opts, people)
+    if opts["create"] == "both" and not assign_text and not _leads_see_all():
+        assign_text = "You (you only see leads assigned to you)"
+    return _crm_import_render(
+        "check", target, staged=staged, plan=plan, preview=plan["items"][:10], opts=opts,
+        assign_text=assign_text or "Nobody yet",
+        country_name=_addr.country_name(opts.get("country")) if opts.get("country") else "",
+        notes_text=_ci.notes_text, phone_problem=phone_problem, cnames=dict(_addr.ADDRESS_COUNTRIES))
+
+
+def _crm_import_execute(import_id, tenant_id, opts, items, actor_label, assign_plan, start_ts):
+    """Saves the planned rows (runs in a background thread). assign_plan:
+    list of (key, label) handed out in turn to NEW leads, or []."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    added = updated = errors = 0
+    label_id = None
+    try:
+        if opts.get("label"):
+            cur.execute("SELECT id FROM lead_labels WHERE tenant_id=%s AND lower(name)=lower(%s)",
+                        (tenant_id, opts["label"]))
+            r = cur.fetchone()
+            if not r:
+                cur.execute("INSERT INTO lead_labels (tenant_id, name) VALUES (%s,%s) RETURNING id",
+                            (tenant_id, opts["label"]))
+                r = cur.fetchone()
+            label_id = r[0]
+            conn.commit()
+        turn = 0
+        for n, rec in enumerate(items, 1):
+            try:
+                cur.execute("SAVEPOINT imp_row")
+                notes = _ci.notes_text(rec) or None
+                other_emails = ", ".join(rec["other_emails"]) or None
+                website = _normalize_website_url(rec["website"] or "") or None
+                if opts["create"] == "both":
+                    if rec["status"] == "new":
+                        akey = alabel = None
+                        if assign_plan:
+                            akey, alabel = assign_plan[turn % len(assign_plan)]
+                            turn += 1
+                        cur.execute("""
+                            INSERT INTO merchant_pipeline_leads
+                                (tenant_id, customer_name, contact_person, phone, whatsapp_number, email, other_emails,
+                                 website, notes, deal_value, product_interest, source, stage, assigned_key, assigned_to,
+                                 business_category, employees, addr_street, addr_city, addr_state, addr_country,
+                                 addr_postcode, import_id)
+                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'import','new_lead',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                            RETURNING id""",
+                            (tenant_id, rec["company"] or "Unnamed", rec["contact_person"], rec["phone"],
+                             rec["whatsapp"], rec["email"], other_emails, website, notes, rec["deal_value"],
+                             rec["product_interest"], akey, alabel, rec["business_category"], rec["employees"],
+                             rec["street"], rec["city"], rec["state"], rec["country"], rec["postcode"], import_id))
+                        lead_id = cur.fetchone()[0]
+                        cur.execute("""INSERT INTO merchant_pipeline_stage_history (lead_id, from_stage, to_stage, changed_by, notes)
+                                       VALUES (%s, NULL, 'new_lead', %s, 'Imported from a file')""", (lead_id, actor_label))
+                        added += 1
+                    else:
+                        lead_id = rec["existing_id"]
+                        cur.execute("""
+                            UPDATE merchant_pipeline_leads SET
+                                contact_person=COALESCE(NULLIF(contact_person,''), %s),
+                                phone=COALESCE(NULLIF(phone,''), %s),
+                                whatsapp_number=COALESCE(NULLIF(whatsapp_number,''), %s),
+                                email=COALESCE(NULLIF(email,''), %s),
+                                website=COALESCE(NULLIF(website,''), %s),
+                                notes=COALESCE(NULLIF(notes,''), %s),
+                                product_interest=COALESCE(NULLIF(product_interest,''), %s),
+                                deal_value=COALESCE(deal_value, %s),
+                                business_category=COALESCE(NULLIF(business_category,''), %s),
+                                employees=COALESCE(NULLIF(employees,''), %s)
+                            WHERE id=%s AND tenant_id=%s""",
+                            (rec["contact_person"], rec["phone"], rec["whatsapp"], rec["email"], website, notes,
+                             rec["product_interest"], rec["deal_value"], rec["business_category"], rec["employees"],
+                             lead_id, tenant_id))
+                        cur.execute("""UPDATE merchant_pipeline_leads SET addr_street=%s, addr_city=%s, addr_state=%s,
+                                              addr_country=%s, addr_postcode=%s
+                                        WHERE id=%s AND tenant_id=%s AND COALESCE(addr_country,'')='' AND COALESCE(addr_city,'')=''""",
+                                    (rec["street"], rec["city"], rec["state"], rec["country"], rec["postcode"],
+                                     lead_id, tenant_id))
+                        updated += 1
+                    contact_id = _link_lead_to_contact(cur, tenant_id, lead_id)
+                    if label_id:
+                        cur.execute("INSERT INTO lead_label_leads (label_id, lead_id) VALUES (%s,%s) ON CONFLICT DO NOTHING",
+                                    (label_id, lead_id))
+                else:
+                    phone = _normalise_contact_phone(rec["phone"] or "") or None
+                    wa = _normalise_contact_phone(rec["whatsapp"] or "") or None
+                    if rec["status"] == "new":
+                        cur.execute("""
+                            INSERT INTO wa_contacts (tenant_id, phone, whatsapp_number, email, other_emails, display_name,
+                                                     contact_person, notes, source, business_category, employees,
+                                                     addr_street, addr_city, addr_state, addr_country, addr_postcode, import_id)
+                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'csv',%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                            (tenant_id, phone, wa, rec["email"], other_emails, (rec["company"] or "")[:200] or None,
+                             rec["contact_person"], notes, rec["business_category"], rec["employees"],
+                             rec["street"], rec["city"], rec["state"], rec["country"], rec["postcode"], import_id))
+                        contact_id = cur.fetchone()[0]
+                        added += 1
+                    else:
+                        contact_id = rec["existing_id"]
+                        sets, vals = [], []
+                        for col, val in (("phone", phone), ("whatsapp_number", wa)):
+                            if val and not _find_existing_contact(cur, tenant_id, **{col: val}, exclude_id=contact_id)[0]:
+                                sets.append(f"{col}=COALESCE(NULLIF({col},''), %s)"); vals.append(val)
+                        for col, val in (("email", rec["email"]), ("display_name", (rec["company"] or "")[:200] or None),
+                                         ("contact_person", rec["contact_person"]), ("notes", notes),
+                                         ("business_category", rec["business_category"]), ("employees", rec["employees"])):
+                            sets.append(f"{col}=COALESCE(NULLIF({col},''), %s)"); vals.append(val)
+                        cur.execute(f"UPDATE wa_contacts SET {', '.join(sets)}, updated_at=NOW() WHERE id=%s AND tenant_id=%s",
+                                    vals + [contact_id, tenant_id])
+                        cur.execute("""UPDATE wa_contacts SET addr_street=%s, addr_city=%s, addr_state=%s,
+                                              addr_country=%s, addr_postcode=%s
+                                        WHERE id=%s AND tenant_id=%s AND COALESCE(addr_country,'')='' AND COALESCE(addr_city,'')=''""",
+                                    (rec["street"], rec["city"], rec["state"], rec["country"], rec["postcode"],
+                                     contact_id, tenant_id))
+                        updated += 1
+                if contact_id:
+                    cur.execute("""UPDATE wa_contacts SET import_id=%s
+                                    WHERE id=%s AND tenant_id=%s AND import_id IS NULL AND created_at >= %s""",
+                                (import_id, contact_id, tenant_id, start_ts))
+                    labels = list(rec["labels"]) + ([opts["label"]] if opts.get("label") else [])
+                    if labels:
+                        _add_contact_labels(cur, tenant_id, contact_id, labels)
+                    if opts["create"] == "both" and rec["labels"]:
+                        for lb in rec["labels"]:
+                            cur.execute("SELECT id FROM lead_labels WHERE tenant_id=%s AND lower(name)=lower(%s)",
+                                        (tenant_id, lb))
+                            r = cur.fetchone()
+                            if r:
+                                cur.execute("INSERT INTO lead_label_leads (label_id, lead_id) VALUES (%s,%s) "
+                                            "ON CONFLICT DO NOTHING", (r[0], lead_id))
+                cur.execute("RELEASE SAVEPOINT imp_row")
+            except Exception as e:
+                cur.execute("ROLLBACK TO SAVEPOINT imp_row")
+                errors += 1
+                print(f"⚠️ crm import {import_id} row {rec.get('origin')}: {e}")
+            if n % 50 == 0 or n == len(items):
+                cur.execute("UPDATE crm_imports SET done_rows=%s, added=%s, updated=%s, errors=%s WHERE id=%s",
+                            (n, added, updated, errors, import_id))
+                conn.commit()
+        cur.execute("""UPDATE crm_imports SET status='done', finished_at=NOW(), done_rows=%s, added=%s,
+                              updated=%s, errors=%s WHERE id=%s""",
+                    (len(items), added, updated, errors, import_id))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"⚠️ crm import {import_id} stopped: {e}")
+        try:
+            cur.execute("UPDATE crm_imports SET status='failed', error_text=%s, finished_at=NOW(), "
+                        "added=%s, updated=%s, errors=%s WHERE id=%s",
+                        (str(e)[:500], added, updated, errors, import_id))
+            conn.commit()
+        except Exception:
+            pass
+    finally:
+        cur.close(); conn.close()
+
+
+@portal_bp.route("/crm/import/run", methods=["POST"])
+@team_feature("crm.import")
+def crm_import_run():
+    target = _crm_import_target()
+    if not _team_member_has_permission("crm.import"):
+        return _team_member_denied("You don't have permission to do that.")
+    customer, tenant_id, err = _crm_import_guard(target)
+    if err:
+        return err
+    st, staged = _crm_import_state()
+    if not staged or not staged.get("options"):
+        flash("Upload the file again, please. (Files are kept for 24 hours.)", "warning")
+        return redirect(url_for("portal.crm_import_start", target=target))
+    headers, rows, plan = _crm_import_plan(tenant_id, staged)
+    opts = staged["options"]
+    actor = _current_actor(customer)
+    people = {a["key"]: a["label"] for a in _lead_assignees(tenant_id, customer)}
+    assign_plan = []
+    if opts["create"] == "both":
+        if opts.get("assign_mode") == "one" and opts.get("assign_key") in people:
+            assign_plan = [(opts["assign_key"], people[opts["assign_key"]])]
+        elif opts.get("assign_mode") == "even":
+            assign_plan = [(k, people[k]) for k in opts.get("assign_keys", []) if k in people]
+        if not assign_plan and not _leads_see_all():
+            assign_plan = [(actor["key"], actor["label"])]
+    assign_text = ("Shared between " + ", ".join(l for _, l in assign_plan)) if len(assign_plan) > 1 else \
+                  (assign_plan[0][1] if assign_plan else "")
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("SELECT NOW()")
+    start_ts = cur.fetchone()[0]
+    cur.execute("""INSERT INTO crm_imports (tenant_id, file_name, sheets, created_mode, label, assigned_text,
+                                            joined, skipped, to_check, skipped_csv, check_csv, created_by,
+                                            status, total_rows)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'running',%s) RETURNING id""",
+                (tenant_id, staged["file_name"][:255], ", ".join(staged["chosen_sheets"]), opts["create"],
+                 opts.get("label") or None, assign_text or None, plan["joined"], len(plan["skipped"]),
+                 plan["to_check"], _ci.skipped_csv(headers, rows, plan["skipped"]) if plan["skipped"] else None,
+                 _ci.check_csv(plan["items"], phone_problem) if plan["to_check"] else None,
+                 actor["label"][:160], len(plan["items"])))
+    import_id = cur.fetchone()[0]
+    conn.commit(); cur.close(); conn.close()
+    try:
+        insert_audit_log(action="crm_import_started", tenant_id=tenant_id,
+                         details={"by": actor["label"], "import_id": import_id, "file": staged["file_name"],
+                                  "new": plan["new"], "existing": plan["existing"],
+                                  "skipped": len(plan["skipped"])})
+    except Exception as e:
+        print("⚠️ crm_import audit log:", e)
+    _ci_threading.Thread(target=_crm_import_execute, daemon=True,
+                         args=(import_id, tenant_id, opts, plan["items"], actor["label"], assign_plan,
+                               start_ts)).start()
+    _ci.stage_delete(st["token"])
+    session.pop("crm_import", None)
+    return redirect(url_for("portal.crm_import_result", import_id=import_id, target=target))
+
+
+def _crm_import_row(tenant_id: int, import_id: int):
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM crm_imports WHERE id=%s AND tenant_id=%s", (import_id, tenant_id))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    if row and row["status"] == "running" and row["created_at"] < datetime.now(timezone.utc) - timedelta(minutes=30):
+        row["status"] = "stopped"
+    return dict(row) if row else None
+
+
+@portal_bp.route("/crm/import/<int:import_id>")
+@team_feature("crm.import")
+def crm_import_result(import_id: int):
+    target = _crm_import_target()
+    if not _team_member_has_permission("crm.import"):
+        return _team_member_denied("You don't have permission to do that.")
+    customer, tenant_id, err = _crm_import_guard(target)
+    if err:
+        return err
+    imp = _crm_import_row(tenant_id, import_id)
+    if not imp:
+        flash("Import not found.", "danger")
+        return redirect(url_for("portal.crm_import_start", target=target))
+    target = "leads" if imp["created_mode"] == "both" else "contacts"
+    return _crm_import_render("done", target, imp=imp, history=_crm_import_history(tenant_id))
+
+
+@portal_bp.route("/crm/import/<int:import_id>/status")
+@team_feature("crm.import")
+def crm_import_status(import_id: int):
+    if _require_login():
+        return jsonify({"error": "Please log in again."}), 401
+    if not _team_member_has_permission("crm.import"):
+        return jsonify({"error": "Your role doesn't allow this."}), 403
+    customer = _get_customer(_customer_id())
+    imp = _crm_import_row(int(customer["tenant_id"]), import_id)
+    if not imp:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify({k: imp[k] for k in ("status", "total_rows", "done_rows", "added", "updated", "errors")})
+
+
+@portal_bp.route("/crm/import/<int:import_id>/download/<kind>")
+@team_feature("crm.import")
+def crm_import_download(import_id: int, kind: str):
+    target = _crm_import_target()
+    if not _team_member_has_permission("crm.import"):
+        return _team_member_denied("You don't have permission to do that.")
+    customer, tenant_id, err = _crm_import_guard(target)
+    if err:
+        return err
+    imp = _crm_import_row(tenant_id, import_id)
+    col = {"skipped": "skipped_csv", "check": "check_csv"}.get(kind)
+    if not imp or not col or not imp.get(col):
+        flash("Nothing to download.", "warning")
+        return redirect(url_for("portal.crm_import_result", import_id=import_id))
+    base = _re.sub(r"[^A-Za-z0-9_-]+", "_", (imp["file_name"] or "import").rsplit(".", 1)[0])[:60]
+    name = f"{base}_{'skipped_rows' if kind == 'skipped' else 'numbers_to_check'}.csv"
+    return Response("﻿" + imp[col], mimetype="text/csv",
+                    headers={"Content-Disposition": f"attachment; filename={name}"})
+
+
+@portal_bp.route("/crm/import/template.<fmt>")
+@team_feature("crm.import")
+def crm_import_template(fmt: str):
+    """The ready-made file to fill in (Excel with a "How to fill it in" sheet,
+    or CSV). Leads adds Deal value and Product / Service."""
+    target = _crm_import_target()
+    if not _team_member_has_permission("crm.import"):
+        return _team_member_denied("You don't have permission to do that.")
+    customer, tenant_id, err = _crm_import_guard(target)
+    if err:
+        return err
+    base = f"{CRM_IMPORT_TARGETS[target]}_import_template"
+    if fmt == "xlsx":
+        return Response(_ci.template_xlsx(target),
+                        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        headers={"Content-Disposition": f"attachment; filename={base}.xlsx"})
+    if fmt == "csv":
+        return Response("﻿" + _ci.template_csv(target), mimetype="text/csv",
+                        headers={"Content-Disposition": f"attachment; filename={base}.csv"})
+    flash("Choose the Excel or CSV template.", "warning")
+    return redirect(url_for("portal.crm_import_start", target=target))

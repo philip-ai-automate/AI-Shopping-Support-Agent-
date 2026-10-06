@@ -1,0 +1,51 @@
+{# Business category + Number of employees (2026-10-06), used on every lead /
+   contact form and list. Import WITH CONTEXT:
+   {% from "portal/_biz_fields.html" import biz_inputs, biz_filters with context %}
+   Pick-lists = every value the business already uses (biz_field_options()). #}
+{% macro biz_inputs(row=None, id='biz', cls='finp', label_cls='flbl') -%}
+{%- set r = row or {} -%}
+{%- set _o = biz_field_options() -%}
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px">
+  <div>
+    <label class="{{ label_cls }}" style="display:block;margin-bottom:4px" for="{{ id }}-cat">Business category</label>
+    <input type="text" id="{{ id }}-cat" name="business_category" class="{{ cls }}" list="{{ id }}-catl" maxlength="120"
+           value="{{ r.business_category or '' }}" placeholder="Pick or type, e.g. Legal" autocomplete="off">
+    <datalist id="{{ id }}-catl">{% for v in _o.business_category %}<option value="{{ v }}">{% endfor %}</datalist>
+  </div>
+  <div>
+    <label class="{{ label_cls }}" style="display:block;margin-bottom:4px" for="{{ id }}-emp">Number of employees</label>
+    <input type="text" id="{{ id }}-emp" name="employees" class="{{ cls }}" list="{{ id }}-empl" maxlength="40"
+           value="{{ r.employees or '' }}" placeholder="Pick or type, e.g. 6-10" autocomplete="off">
+    <datalist id="{{ id }}-empl">{% for v in (_o.employees or BIZ_EMPLOYEE_BANDS) %}<option value="{{ v }}">{% endfor %}{% if _o.employees %}{% for v in BIZ_EMPLOYEE_BANDS %}{% if v not in _o.employees %}<option value="{{ v }}">{% endif %}{% endfor %}{% endif %}</datalist>
+  </div>
+</div>
+{%- endmacro %}
+
+{# Filters for a list page's GET form. bs = {'biz_category','employees','label'}. #}
+{% macro biz_filters(bs, show_label=True) -%}
+{%- set _o = biz_field_options() -%}
+<style>.bf-sel{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:#475569;white-space:nowrap}.bf-sel select{font:inherit;font-weight:400;font-size:12.5px;padding:6px 8px;border:1.5px solid #cbd5e1;border-radius:8px;background:#fff;color:#111e2d;max-width:210px}</style>
+<label class="bf-sel">Business category
+  <select name="biz_category" onchange="this.form.submit()">
+    <option value="">All</option>
+    {% for v in _o.business_category %}<option value="{{ v }}" {% if bs.biz_category == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+    <option value="__none__" {% if bs.biz_category == '__none__' %}selected{% endif %}>No category</option>
+  </select>
+</label>
+<label class="bf-sel">Employees
+  <select name="employees" onchange="this.form.submit()">
+    <option value="">All</option>
+    {% for v in _o.employees %}<option value="{{ v }}" {% if bs.employees == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+    <option value="__none__" {% if bs.employees == '__none__' %}selected{% endif %}>Not set</option>
+  </select>
+</label>
+{% if show_label %}
+<label class="bf-sel">Label
+  <select name="label" onchange="this.form.submit()">
+    <option value="">All</option>
+    {% for lb in lead_label_list() %}<option value="{{ lb.id }}" {% if bs.label == lb.id %}selected{% endif %}>{{ lb.name }}</option>{% endfor %}
+  </select>
+</label>
+{% endif %}
+{% if bs.import %}<input type="hidden" name="import" value="{{ bs.import }}">{% endif %}
+{%- endmacro %}

@@ -70,7 +70,7 @@
 <div class="leadg" id="lead-top">
 <div class="g-head">
   <p class="g-lede">Everything under <b>Leads</b> in the side menu, screen by screen and button by button: where leads come from, adding them, finding them, scoring them, deciding which ones are worth chasing (Qualify or Not a Fit), sharing them out to your team, fixing phone numbers to check, and reading the Leads Overview and Leads Report. Every picture is from the live portal.</p>
-  <div class="g-meta">Last checked against the live portal: 2 October 2026</div>
+  <div class="g-meta">Last checked against the live portal: 6 October 2026</div>
 </div>
 <nav class="toc" aria-label="Contents"><details open><summary>Contents</summary>
   <p class="h">Contents</p>
@@ -80,36 +80,42 @@
     <li><a href="#lead-page">3. The All Leads page</a></li>
     <li><a href="#lead-hot">4. Hot Conversations</a></li>
     <li><a href="#lead-add">5. Adding a lead by hand</a></li>
-    <li><a href="#lead-find">6. Finding leads</a>
+    <li><a href="#lead-import">6. Importing a list (CSV or Excel)</a>
+      <ol>
+        <li><a href="#lead-i-prepare">Preparing your file</a></li>
+        <li><a href="#lead-i-steps">The 4 steps</a></li>
+        <li><a href="#lead-i-after">After the import</a></li>
+      </ol></li>
+    <li><a href="#lead-find">7. Finding leads</a>
       <ol>
         <li><a href="#lead-f-search">Search, Hot/Warm/Cold, sort</a></li>
         <li><a href="#lead-f-filters">Filters</a></li>
       </ol></li>
-    <li><a href="#lead-list">7. Reading the list</a></li>
-    <li><a href="#lead-board">8. Board view</a></li>
-    <li><a href="#lead-lead">9. A lead's page</a>
+    <li><a href="#lead-list">8. Reading the list</a></li>
+    <li><a href="#lead-board">9. Board view</a></li>
+    <li><a href="#lead-lead">10. A lead's page</a>
       <ol>
         <li><a href="#lead-l-fields">The details</a></li>
         <li><a href="#lead-l-edit">Edit Lead</a></li>
         <li><a href="#lead-l-activity">Conversations, notes, history</a></li>
         <li><a href="#lead-l-check">⚠️ Numbers to check</a></li>
       </ol></li>
-    <li><a href="#lead-qualify">10. Qualify: turning a lead into an Opportunity</a></li>
-    <li><a href="#lead-naf">11. Not a Fit (and Reopen)</a></li>
-    <li><a href="#lead-bulk">12. Many leads at once</a>
+    <li><a href="#lead-qualify">11. Qualify: turning a lead into an Opportunity</a></li>
+    <li><a href="#lead-naf">12. Not a Fit (and Reopen)</a></li>
+    <li><a href="#lead-bulk">13. Many leads at once</a>
       <ol>
         <li><a href="#lead-b-select">Ticking leads</a></li>
         <li><a href="#lead-b-qualify">Qualify many</a></li>
         <li><a href="#lead-b-naf">Not a Fit many</a></li>
       </ol></li>
-    <li><a href="#lead-assign">13. Giving leads to your team</a></li>
-    <li><a href="#lead-after">14. After Qualify: the Sales Pipeline</a></li>
-    <li><a href="#lead-score">15. Lead score (Hot, Warm, Cold)</a></li>
-    <li><a href="#lead-overview">16. Leads Overview</a></li>
-    <li><a href="#lead-report">17. Leads Report</a></li>
-    <li><a href="#lead-roles">18. Who can do what</a></li>
-    <li><a href="#lead-recipes">19. Everyday tasks</a></li>
-    <li><a href="#lead-faq">20. Questions and problems</a></li>
+    <li><a href="#lead-assign">14. Giving leads to your team</a></li>
+    <li><a href="#lead-after">15. After Qualify: the Sales Pipeline</a></li>
+    <li><a href="#lead-score">16. Lead score (Hot, Warm, Cold)</a></li>
+    <li><a href="#lead-overview">17. Leads Overview</a></li>
+    <li><a href="#lead-report">18. Leads Report</a></li>
+    <li><a href="#lead-roles">19. Who can do what</a></li>
+    <li><a href="#lead-recipes">20. Everyday tasks</a></li>
+    <li><a href="#lead-faq">21. Questions and problems</a></li>
   </ol>
 </details></nav>
 
@@ -222,8 +228,70 @@
 </section>
 
 <!-- 6 -->
+<section class="part" id="lead-import">
+<h2><span class="num">6</span>Importing a list (CSV or Excel)</h2>
+<p class="where">All Leads › ⇪ Import (or CRM › All Contacts › Import)</p>
+<p class="need">Needs the ticks: "Import leads and contacts (CSV or Excel)" and "Create a Lead" (for Contacts: "Create / import a Contact")</p>
+
+<p>Bring a whole list into the portal at once: a trade-fair list, a directory you bought, an old spreadsheet. Each business becomes a contact and a lead at stage New Lead, linked together. You can use the portal's template, or your own file with your own column names. Nothing is saved until the last step.</p>
+
+<h3 id="lead-i-prepare">Preparing your file</h3>
+<figure><img src="/static/portal/tutorial/leads/l40_import_prepare.jpg" width="1044" height="206" alt="The Preparing your file box at the top of the Import page, with the two template buttons." loading="lazy"><figcaption>The Preparing your file box at the top of the Import page, with the two template buttons.</figcaption></figure>
+<ul>
+  <li><b>Start from the template</b>: <span class="ui">⤓ Download template (Excel)</span> gives you a sheet called <b>Your list</b> with the column names already in row 1, and a sheet called <b>How to fill it in</b>. <span class="ui">⤓ Download template (CSV)</span> has the same columns, for people without Excel. The Leads template has two extra columns: Deal value and Product / Service.</li>
+  <li><b>One business or person per row</b>, with the column names in the first row.</li>
+  <li><b>Every row needs a Phone number, WhatsApp number or Email.</b> Rows with none of the three are skipped. You can download them afterwards to fix them.</li>
+  <li><b>Numbers with the country code</b>, starting with + (for example +234 803 123 4567 or +44 20 7946 0000). A number without it is still imported, but marked "⚠️ Check number". The portal never guesses a country code.</li>
+  <li><b>WhatsApp number only if it's on WhatsApp.</b> The phone number is never copied into WhatsApp. Extra numbers go in <span class="f">Other numbers</span>, separated by commas; they're saved in the lead's Notes.</li>
+  <li><b>Business category and Number of employees</b> are free text: use the words your business uses, for example "Legal" or "6-10".</li>
+  <li><b>Labels</b>: several in one cell, separated by commas.</li>
+  <li>The two grey example rows in the template (Example Foods Ltd and Example Legal Partners) are skipped by the import if you forget to delete them.</li>
+</ul>
+<div class="box tip"><b class="t">Already have a list?</b>
+<p>Upload it as it is. Any column names work: you tell the portal what each column is in step 2. Excel files with several sheets are fine too; you pick which sheets to bring in.</p></div>
+
+<h3 id="lead-i-steps">The 4 steps</h3>
+<p><b>1. Upload.</b> Choose the file (CSV or Excel .xlsx, up to 15 MB and 20,000 rows). For Excel, tick the sheets to import. Sheets whose columns don't look like a list (for example a summary or the instructions sheet) are left unticked. Sheets with the same column names are imported together.</p>
+<figure><img src="/static/portal/tutorial/leads/l41_import_sheets.jpg" width="1044" height="480" alt="Step 1 with the filled-in template: Your list is ticked; How to fill it in is left out." loading="lazy"><figcaption>Step 1 with the filled-in template: Your list is ticked; How to fill it in is left out.</figcaption></figure>
+<p><b>2. Match columns.</b> Each column in your file has a <span class="f">Save it as</span> list, already filled in from its name. Check them and change any that are wrong. <b>Don't import</b> leaves a column out. You must match at least one of Phone number, WhatsApp number or Email, and the Company name (or Contact Person).</p>
+<figure><img src="/static/portal/tutorial/leads/l42_import_match.jpg" width="1044" height="1304" alt="Step 2: every column of the template was matched by itself. The Example column shows the first value from your file." loading="lazy"><figcaption>Step 2: every column of the template was matched by itself. The Example column shows the first value from your file.</figcaption></figure>
+<p><b>3. Options.</b></p>
+<ul>
+  <li><span class="f">What should be created?</span> Contacts and Leads, or Contacts only.</li>
+  <li><span class="f">Add this label to every row</span>: lets you find this whole import later with one filter.</li>
+  <li><span class="f">Country</span>: used for rows whose file has no country. Check it: it starts on your business's country.</li>
+  <li><span class="f">Who should work these leads?</span> Nobody yet, one person, or shared evenly between the people you tick (handed out in turn). Only people with the Assign tick see this. Staff who see only their own leads get the new leads themselves.</li>
+</ul>
+<figure><img src="/static/portal/tutorial/leads/l43_import_options.jpg" width="1044" height="896" alt="Step 3: a label, Nigeria for rows with no country, and the new leads shared between Amaka and Chioma." loading="lazy"><figcaption>Step 3: a label, Nigeria for rows with no country, and the new leads shared between Amaka and Chioma.</figcaption></figure>
+<p><b>4. Check &amp; import.</b> Before anything is saved you see:</p>
+<div class="tbl"><table>
+<thead><tr><th>Count</th><th>What happens</th></tr></thead>
+<tbody>
+<tr><td>New</td><td class="wrapok">Becomes a contact and a lead.</td></tr>
+<tr><td>Already an open lead</td><td class="wrapok">Same phone, WhatsApp number or email as a lead you already have. Only its empty details are filled in; nothing is replaced, no second lead is made and it keeps its owner.</td></tr>
+<tr><td>Repeat an earlier row</td><td class="wrapok">Two rows in your file with the same number or email are joined into one. The later row fills the first one's empty details, and its extra numbers go into Notes.</td></tr>
+<tr><td>Skipped</td><td class="wrapok">No phone, WhatsApp or email, or a template example row.</td></tr>
+<tr><td>Check number</td><td class="wrapok">Imported, but marked "⚠️ Check number" (no country code, or not a real number).</td></tr>
+<tr><td>Have a WhatsApp number</td><td class="wrapok">How many WhatsApp campaigns can reach.</td></tr>
+</tbody></table></div>
+<figure><img src="/static/portal/tutorial/leads/l44_import_check.jpg" width="1044" height="624" alt="Step 4: four new businesses, the two example rows skipped, and one number to check." loading="lazy"><figcaption>Step 4: four new businesses, the two example rows skipped, and one number to check.</figcaption></figure>
+<p>Press <span class="ui">Import</span>. A progress bar shows while it saves; you can leave the page and the import carries on.</p>
+
+<h3 id="lead-i-after">After the import</h3>
+<ul>
+  <li><span class="ui">View imported leads</span> / <span class="ui">View imported contacts</span> open the lists showing only this import.</li>
+  <li><span class="ui">Download skipped rows</span> gives the skipped rows in your file's own columns, plus a Reason column, so you can fix them and import that file.</li>
+  <li><span class="ui">Download numbers to check</span> lists every number marked "Check number".</li>
+  <li><b>Past imports</b> on the Import page lists every import: when, which file, by whom, how many were added and skipped. Open one to download its files again.</li>
+  <li>Imported leads show <b>Import</b> as their Source.</li>
+</ul>
+<div class="box know"><b class="t">Importing the same file twice</b>
+<p>Rows already imported count as "Already an open lead" the second time, so nothing is added twice.</p></div>
+</section>
+
+<!-- 7 -->
 <section class="part" id="lead-find">
-<h2><span class="num">6</span>Finding leads</h2>
+<h2><span class="num">7</span>Finding leads</h2>
 <p class="where">All Leads › Your Leads</p>
 
 <h3 id="lead-f-search">Search, Hot/Warm/Cold and sorting</h3>
@@ -256,9 +324,9 @@
 <p>Salespeople: set <span class="f">Assigned to</span> to <b>Assigned to me</b> and press <span class="ui">📊 Sort by Score</span>. That's your leads, most promising first.</p></div>
 </section>
 
-<!-- 7 -->
+<!-- 8 -->
 <section class="part" id="lead-list">
-<h2><span class="num">7</span>Reading the list</h2>
+<h2><span class="num">8</span>Reading the list</h2>
 <p class="where">All Leads › Your Leads (List view)</p>
 
 <figure><img src="/static/portal/tutorial/leads/l20_list_final.jpg" width="1100" height="1268" alt="The Leads list on the demo account." loading="lazy"><figcaption>The Leads list on the demo account.</figcaption></figure>
@@ -281,9 +349,9 @@
 <p>The table is wide. On a smaller screen, scroll sideways to see the last columns. Underneath, "Showing 1–15 of 15" tells you how many leads match.</p>
 </section>
 
-<!-- 8 -->
+<!-- 9 -->
 <section class="part" id="lead-board">
-<h2><span class="num">8</span>Board view</h2>
+<h2><span class="num">9</span>Board view</h2>
 <p class="where">All Leads › ▦ Board</p>
 
 <p>The same leads, as cards in three columns: <b>🔥 Hot</b>, <b>🌤️ Warm</b> and <b>❄️ Cold</b>. Each column shows how many leads it holds.</p>
@@ -299,9 +367,9 @@
 <p>Cards can't be dragged on this board, because a lead's column comes from its score, not from where you put it. The filters, tick boxes and bulk buttons are only in List view.</p>
 </section>
 
-<!-- 9 -->
+<!-- 10 -->
 <section class="part" id="lead-lead">
-<h2><span class="num">9</span>A lead's page</h2>
+<h2><span class="num">10</span>A lead's page</h2>
 <p class="where">All Leads › click a lead's name</p>
 
 <figure><img src="/static/portal/tutorial/leads/l12_lead_before.jpg" width="1100" height="1228" alt="A lead waiting for a decision. The badge says AWAITING QUALIFICATION." loading="lazy"><figcaption>A lead waiting for a decision. The badge says AWAITING QUALIFICATION.</figcaption></figure>
@@ -371,9 +439,9 @@
 <p>Until a number is fixed, WhatsApp campaigns don't send to it. The campaign report lists it as "Skipped — number to check". CRM › All Contacts has the same yellow note and filter for contacts.</p></div>
 </section>
 
-<!-- 10 -->
+<!-- 11 -->
 <section class="part" id="lead-qualify">
-<h2><span class="num">10</span>Qualify: turning a lead into an Opportunity</h2>
+<h2><span class="num">11</span>Qualify: turning a lead into an Opportunity</h2>
 <p class="where">A lead's page › ✅ Qualify</p>
 <p class="need">Needs the tick: "Qualify a Lead into an Opportunity / mark it Not a Fit"</p>
 
@@ -392,9 +460,9 @@
 <figure><img src="/static/portal/tutorial/leads/l16_after_qualify.jpg" width="1100" height="1200" alt="After Qualify: the progress bar shows where the deal is, and &quot;Open on Pipeline Board →&quot; takes you there." loading="lazy"><figcaption>After Qualify: the progress bar shows where the deal is, and "Open on Pipeline Board →" takes you there.</figcaption></figure>
 </section>
 
-<!-- 11 -->
+<!-- 12 -->
 <section class="part" id="lead-naf">
-<h2><span class="num">11</span>Not a Fit</h2>
+<h2><span class="num">12</span>Not a Fit</h2>
 <p class="where">A lead's page › 🚫 Not a Fit</p>
 <p class="need">Needs the tick: "Qualify a Lead into an Opportunity / mark it Not a Fit"</p>
 
@@ -423,9 +491,9 @@
 <p><b>Not a Fit</b> is for a lead that never became an opportunity. Once something is on the Sales Pipeline, you close it as <b>Lost</b> (they chose someone else or said no) or <b>Dropped</b> (you stopped chasing it). See the CRM guide, section 7.</p></div>
 </section>
 
-<!-- 12 -->
+<!-- 13 -->
 <section class="part" id="lead-bulk">
-<h2><span class="num">12</span>Many leads at once</h2>
+<h2><span class="num">13</span>Many leads at once</h2>
 <p class="where">All Leads › List view › tick boxes</p>
 <p class="need">Tick boxes appear for anyone who can Qualify or Assign. Each button needs its own tick.</p>
 
@@ -462,9 +530,9 @@
 <figure><img src="/static/portal/tutorial/leads/l09_bulk_naf.jpg" width="500" height="494" alt="Marking ticked leads Not a Fit with one reason." loading="lazy"><figcaption>Marking ticked leads Not a Fit with one reason.</figcaption></figure>
 </section>
 
-<!-- 13 -->
+<!-- 14 -->
 <section class="part" id="lead-assign">
-<h2><span class="num">13</span>Giving leads to your team</h2>
+<h2><span class="num">14</span>Giving leads to your team</h2>
 <p class="where">All Leads, a lead's page, and the Sales Pipeline</p>
 <p class="need">Needs the tick: "Assign Leads and Opportunities to team members"</p>
 
@@ -486,12 +554,12 @@
 <p>Press <span class="ui">Assign</span>. Each person then finds their leads with <span class="f">Assigned to</span> › <b>Assigned to me</b>.</p>
 
 <div class="box know"><b class="t">Good to know</b>
-<p>Assigning doesn't change a lead's score. Staff can see <b>all</b> leads, not only their own; the "Assigned to me" filter is how they focus on theirs. Your staff never see your (the owner's) name: where you are the assigned person, they see your company name instead. If someone leaves your team, their old leads show their name with "(no longer active)" in Edit Lead, so you can give them to someone else.</p></div>
+<p>Assigning doesn't change a lead's score. Whether staff see <b>all</b> leads or <b>only the leads assigned to them</b> depends on the "See all leads" tick on their role (see Who can do what). Staff who see all leads use the "Assigned to me" filter to focus on theirs. Your staff never see your (the owner's) name: where you are the assigned person, they see your company name instead. If someone leaves your team, their old leads show their name with "(no longer active)" in Edit Lead, so you can give them to someone else.</p></div>
 </section>
 
-<!-- 14 -->
+<!-- 15 -->
 <section class="part" id="lead-after">
-<h2><span class="num">14</span>After Qualify: the Sales Pipeline</h2>
+<h2><span class="num">15</span>After Qualify: the Sales Pipeline</h2>
 <p class="where">Side menu › CRM › Pipeline Board</p>
 
 <p>Once qualified, a lead is worked on the Sales Pipeline, through the stages Opportunity (or New Opportunity) › Contacted › Qualified › Proposal Sent › Negotiating › Won, or closed as Lost or Dropped. The CRM guide (sections 6 to 8) explains the Pipeline in full. Two buttons there belong with Leads:</p>
@@ -504,9 +572,9 @@
 </ul>
 </section>
 
-<!-- 15 -->
+<!-- 16 -->
 <section class="part" id="lead-score">
-<h2><span class="num">15</span>Lead score (Hot, Warm, Cold)</h2>
+<h2><span class="num">16</span>Lead score (Hot, Warm, Cold)</h2>
 <p class="where">Side menu › Leads › How Lead Scoring Works</p>
 
 <p>Every lead gets a score from six signals. The score decides its colour:</p>
@@ -536,9 +604,9 @@
 <p>To rename "Hot", "Warm" and "Cold" (for example to "Ready", "Interested", "Early"), use Pipeline Settings. The points and the 60 / 30 limits can't be changed.</p>
 </section>
 
-<!-- 16 -->
+<!-- 17 -->
 <section class="part" id="lead-overview">
-<h2><span class="num">16</span>Leads Overview</h2>
+<h2><span class="num">17</span>Leads Overview</h2>
 <p class="where">Side menu › Leads › Leads Overview</p>
 
 <p>A one-page summary for managers. Pick the period at the top right: the same choices as the Dashboard (Today, This week, This month and so on, or <b>Custom…</b> with your own dates and <span class="ui">Apply</span>). Arrows compare with the period before (▲ up, ▼ down).</p>
@@ -557,9 +625,9 @@
 <p>When there aren't at least 3 records to work from, a tile says "Not enough data yet" instead of showing a misleading number. Filling in Source, Deal Value and Assigned Salesperson on your leads is what makes these tiles come alive.</p></div>
 </section>
 
-<!-- 17 -->
+<!-- 18 -->
 <section class="part" id="lead-report">
-<h2><span class="num">17</span>Leads Report</h2>
+<h2><span class="num">18</span>Leads Report</h2>
 <p class="where">Side menu › Reports › Leads Report</p>
 <p class="need">Needs the tick: "Leads Sources" (in the Reports part of Roles)</p>
 
@@ -574,9 +642,9 @@
 </ul>
 </section>
 
-<!-- 18 -->
+<!-- 19 -->
 <section class="part" id="lead-roles">
-<h2><span class="num">18</span>Who can do what</h2>
+<h2><span class="num">19</span>Who can do what</h2>
 <p class="where">Side menu › Team › Roles</p>
 
 <p>The account owner can do everything. For staff, it depends on the ticks in their role. Leads has its own row in the Roles grid, and a few related ticks live under CRM and Reports.</p>
@@ -588,6 +656,8 @@
 <tr><td>Create a Lead</td><td>Leads › Create</td><td class="wrapok">Add Lead, and Create Lead on Hot Conversations.</td></tr>
 <tr><td>Qualify a Lead / mark it Not a Fit</td><td>Leads › other</td><td class="wrapok">Qualify and Not a Fit, one at a time and in bulk. Shows the tick boxes.</td></tr>
 <tr><td>Assign Leads and Opportunities</td><td>Leads › other</td><td class="wrapok">Choose the Assigned Salesperson anywhere, and Assign to in bulk. Shows the tick boxes.</td></tr>
+<tr><td>See all leads, not just their own</td><td>Leads › other</td><td class="wrapok">Ticked: sees every lead. Not ticked: sees only the leads assigned to them, everywhere (Leads, Sales Pipeline, Dashboard, Reports, and the lead pickers in campaigns, segments and labels), and leads they add are assigned to them. The owner and anyone who can manage the Team (IT Admin) always see every lead.</td></tr>
+<tr><td>Import leads and contacts (CSV or Excel)</td><td>CRM › Import (leads and contacts)</td><td class="wrapok">The Import button on All Leads and All Contacts, and the templates.</td></tr>
 <tr><td>Pipeline Board — Edit</td><td>CRM › Pipeline Board › Edit</td><td class="wrapok">Edit Lead (details and sales signals), Remove number on a number to check, and Move back to Leads.</td></tr>
 <tr><td>Leads Sources</td><td>Reports</td><td class="wrapok">Open the Leads Report and download it.</td></tr>
 </tbody></table></div>
@@ -598,9 +668,9 @@
 <p>"Assign Leads and Opportunities to team members" was added on 2 October 2026. No existing role has it ticked. Tick it on your sales manager's role (and IT Admin's, if they should share out leads).</p></div>
 </section>
 
-<!-- 19 -->
+<!-- 20 -->
 <section class="part" id="lead-recipes">
-<h2><span class="num">19</span>Everyday tasks</h2>
+<h2><span class="num">20</span>Everyday tasks</h2>
 
 <div class="recipe"><h4>Morning: share out yesterday's new leads</h4>
 <ol class="steps">
@@ -659,9 +729,9 @@
 </ol></div>
 </section>
 
-<!-- 20 -->
+<!-- 21 -->
 <section class="part" id="lead-faq">
-<h2><span class="num">20</span>Questions and problems</h2>
+<h2><span class="num">21</span>Questions and problems</h2>
 
 <h4>I qualified a lead and now I can't find it.</h4>
 <p>That's expected: qualified leads move to CRM › Pipeline Board. Search for them there. If it was a mistake, use <span class="ui">Move back to Leads</span> (section 14).</p>

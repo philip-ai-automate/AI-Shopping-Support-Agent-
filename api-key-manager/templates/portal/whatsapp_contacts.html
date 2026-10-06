@@ -1,6 +1,7 @@
 {% extends "portal/base.html" %}
 {% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
 {% from "portal/_address_box.html" import emails_cell, other_emails_box, address_box, location_cell, address_filters with context %}
+{% from "portal/_biz_fields.html" import biz_inputs, biz_filters with context %}
 {% block title %}Contacts — PhiXtra Portal{% endblock %}
 
 {% block head %}
@@ -399,11 +400,11 @@
       Export CSV
     </a>
     {% endif %}
-    {% if can_add_contact %}
-    <button class="btn-outline-white" onclick="openImport()">
+    {% if can_add_contact and staff_can('crm.import') %}
+    <a class="btn-outline-white" href="{{ url_for('portal.crm_import_start', target='contacts') }}">
       <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-      Import CSV
-    </button>
+      Import
+    </a>
     {% endif %}
     {% if can_add_company %}
     <a href="{{ url_for('portal.crm_companies') }}" class="btn-outline-white">
@@ -465,6 +466,7 @@
     <button type="submit" class="btn-save" style="padding:9px 16px">Search</button>
 
     {{ address_filters(addr_state, addr_opts) }}
+    {{ biz_filters(biz_state, show_label=False) }}
 
     <button type="button" class="filters-btn {{ 'has-active' if active_filter_count else '' }}" onclick="toggleFilterPanel()">
       <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
@@ -733,6 +735,8 @@
               </button>
               <div class="col-picker-menu" id="colPickerMenu">
                 <label class="col-picker-item"><input type="checkbox" data-col-toggle="website" checked>Website</label>
+                <label class="col-picker-item"><input type="checkbox" data-col-toggle="biz_category" checked>Business category</label>
+                <label class="col-picker-item"><input type="checkbox" data-col-toggle="employees" checked>Employees</label>
                 <label class="col-picker-item"><input type="checkbox" data-col-toggle="location" checked>Location</label>
                 <label class="col-picker-item"><input type="checkbox" data-col-toggle="contact_person" checked>Contact Person</label>
                 <label class="col-picker-item"><input type="checkbox" data-col-toggle="phone" checked>Phone Number</label>
@@ -757,10 +761,10 @@
           {% else %}
           <h3>No contacts yet</h3>
           {% if can_add_contact %}
-          <p>Add your first contact manually or import a CSV file.</p>
+          <p>Add your first contact manually or import a CSV or Excel file.</p>
           <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;justify-content:center">
             <button type="button" class="btn-primary-green" onclick="openAddDrawer()">+ Add Contact</button>
-            <button type="button" class="btn-ghost" onclick="openImport()">Import CSV</button>
+            {% if staff_can('crm.import') %}<a class="btn-ghost" href="{{ url_for('portal.crm_import_start', target='contacts') }}">Import</a>{% endif %}
           </div>
           {% endif %}
           {% endif %}
@@ -772,6 +776,8 @@
               <tr>
                 <th style="width:36px">{% if can_bulk %}<input type="checkbox" class="select-all-check" id="selectAll" title="Select all">{% endif %}</th>
                 <th>Company</th>
+                <th data-col="biz_category">Business category</th>
+                <th data-col="employees">Employees</th>
                 <th data-col="website">Website</th>
                 <th data-col="location">Location</th>
                 <th data-col="contact_person">Contact Person</th>
@@ -808,6 +814,8 @@
                   <div style="font-size:11px;color:var(--muted);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px" title="{{ c.notes }}">{{ c.notes }}</div>
                   {% endif %}
                 </td>
+                <td data-col="biz_category" style="font-size:12px;white-space:nowrap">{% if c.business_category %}{{ c.business_category }}{% else %}<span style="font-size:11px;color:var(--muted)">—</span>{% endif %}</td>
+                <td data-col="employees" style="font-size:12px;white-space:nowrap">{% if c.employees %}{{ c.employees }}{% else %}<span style="font-size:11px;color:var(--muted)">—</span>{% endif %}</td>
                 <td data-col="website" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
                   {% if c.company_website %}
                   <a href="{{ c.company_website }}" target="_blank" rel="noopener noreferrer" title="{{ c.company_website }}"
@@ -899,7 +907,7 @@
                     </button>
                   </form>
                   <button type="button" class="icon-btn" title="Edit contact"
-                          onclick="openEdit({{ c.id }}, '{{ (c.display_name or '')|replace("'","\\'")|replace('"','\\"') }}', '{{ (c.notes or '')|replace("'","\\'")|replace('"','\\"')|replace('\n',' ') }}', '{{ c.status or 'lead' }}', '{{ (c.tags_list or [])|join(',') }}', '{{ (c.email or '')|replace("'","\\'") }}', '{{ (c.personalization_note or '')|replace("'","\\'")|replace('"','\\"')|replace('\n',' ') }}', {{ c.company_id or 'null' }}, '{{ (c.contact_person or '')|replace("'","\\'")|replace('"','\\"') }}', '{{ c.phone or '' }}', '{{ c.whatsapp_number or '' }}', {{ dict(addr_street=c.addr_street or '', addr_city=c.addr_city or '', addr_state=c.addr_state or '', addr_country=c.addr_country or '', addr_postcode=c.addr_postcode or '')|tojson|forceescape }}, {{ (c.other_emails or '')|tojson|forceescape }})">
+                          onclick="openEdit({{ c.id }}, '{{ (c.display_name or '')|replace("'","\\'")|replace('"','\\"') }}', '{{ (c.notes or '')|replace("'","\\'")|replace('"','\\"')|replace('\n',' ') }}', '{{ c.status or 'lead' }}', '{{ (c.tags_list or [])|join(',') }}', '{{ (c.email or '')|replace("'","\\'") }}', '{{ (c.personalization_note or '')|replace("'","\\'")|replace('"','\\"')|replace('\n',' ') }}', {{ c.company_id or 'null' }}, '{{ (c.contact_person or '')|replace("'","\\'")|replace('"','\\"') }}', '{{ c.phone or '' }}', '{{ c.whatsapp_number or '' }}', {{ dict(addr_street=c.addr_street or '', addr_city=c.addr_city or '', addr_state=c.addr_state or '', addr_country=c.addr_country or '', addr_postcode=c.addr_postcode or '')|tojson|forceescape }}, {{ (c.other_emails or '')|tojson|forceescape }}, {{ (c.business_category or '')|tojson|forceescape }}, {{ (c.employees or '')|tojson|forceescape }})">
                     <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                   </button>
                   {% endif %}
@@ -1007,6 +1015,7 @@
             <input class="field-input" type="text" name="contact_person" id="af-person" placeholder="Who you deal with there" autocomplete="off">
           </div>
         </div>
+        <div class="field">{{ biz_inputs(None, id='af-biz', cls='field-input', label_cls='field-label') }}</div>
         <div class="field" style="margin-bottom:0">
           <label class="field-label" for="af-company-select">Company <span class="field-hint">optional</span></label>
           <select class="field-select" name="company_id" id="af-company-select" onchange="toggleNewCompanyBox(this,'af-new-company')">
@@ -1141,6 +1150,7 @@
               <input class="field-input" type="text" name="contact_person" id="ef-contact-person" placeholder="Who you deal with there">
             </div>
           </div>
+          <div class="field">{{ biz_inputs(None, id='ef-biz', cls='field-input', label_cls='field-label') }}</div>
           <div class="field" style="margin-bottom:0">
             <label class="field-label" for="ef-company-select">Company <span class="field-hint">optional</span></label>
             <select class="field-select" name="company_id" id="ef-company-select" onchange="toggleNewCompanyBox(this,'ef-new-company')">
@@ -1531,8 +1541,10 @@ if (dz) {
 }
 
 /* ── Edit modal ──────────────────────────────────────────────────────── */
-function openEdit(id, name, notes, status, tagsStr, email, personalizationNote, companyId, contactPerson, phone, whatsappNumber, address, otherEmails) {
+function openEdit(id, name, notes, status, tagsStr, email, personalizationNote, companyId, contactPerson, phone, whatsappNumber, address, otherEmails, bizCategory, employees) {
   if (window.addrSet) addrSet('ef-addr', address || {})
+  document.getElementById('ef-biz-cat').value = bizCategory || ''
+  document.getElementById('ef-biz-emp').value = employees || '' 
   document.getElementById('ef-other-emails').value = (otherEmails || '').split(', ').filter(Boolean).join('\n')
   phSet('ef-phone', phone)
   phSet('ef-whatsapp', whatsappNumber)

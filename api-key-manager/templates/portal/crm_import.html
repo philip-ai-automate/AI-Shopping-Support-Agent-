@@ -1,0 +1,365 @@
+{% extends "portal/base.html" %}
+{% block title %}Import {{ target_label|lower }} — PhiXtra Portal{% endblock %}
+{% block content %}
+{# Import leads and contacts (2026-10-06): Upload → Match columns → Options → Check & import → Finished. #}
+<style>
+  .ci-head { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-start; justify-content:space-between; margin-bottom:14px }
+  .ci-head h1 { font-size:22px; font-weight:800; letter-spacing:-.3px; margin:0; color:var(--ink) }
+  .ci-head p { margin:3px 0 0; font-size:13.5px; color:var(--muted) }
+  .ci-steps { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:16px }
+  .ci-steps span { font-size:12.5px; padding:5px 12px; border-radius:999px; background:#f1f5f9; color:#64748b; font-weight:600 }
+  .ci-steps span.on { background:var(--ink); color:#fff }
+  .ci-steps span.done { background:#dcfce7; color:#166534 }
+  .ci-panel { background:#fff; border:1px solid var(--line); border-radius:14px; padding:20px; display:flex; flex-direction:column; gap:14px; margin-bottom:18px }
+  .ci-panel h2 { font-size:16px; font-weight:800; margin:0; color:var(--ink) }
+  .ci-help { font-size:12.5px; color:var(--muted); margin:0 }
+  .ci-drop { border:2px dashed #cbd5e1; border-radius:12px; padding:18px; background:#f8fafc; display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between }
+  .ci-file { display:flex; gap:12px; align-items:center; min-width:0 }
+  .ci-file .ic { width:40px; height:40px; border-radius:9px; color:#fff; display:grid; place-items:center; font-weight:800; font-size:11px; flex:none }
+  .ci-file b { word-break:break-all; color:var(--ink) }
+  .ci-opts { display:flex; flex-direction:column; gap:8px }
+  .ci-opt { display:flex; gap:10px; align-items:flex-start; border:1px solid var(--line); border-radius:10px; padding:11px 13px; cursor:pointer }
+  .ci-opt input, .ci-sub input[type=checkbox] { width:16px !important; height:16px !important; min-width:0; margin:3px 0 0 !important; padding:0 !important; flex:0 0 auto !important; box-shadow:none }
+  .ci-opt > div, .ci-opt > span { min-width:0; flex:1 1 auto }
+  .ci-sub label { display:flex; gap:8px; align-items:center; font-size:13.5px }
+  .ci-opt.dim { opacity:.65 }
+  .ci-opt b { color:var(--ink) }
+  .ci-sub { padding:8px 0 0 26px; display:flex; flex-direction:column; gap:6px }
+  .ci-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px }
+  .ci-field { display:flex; flex-direction:column; gap:5px }
+  .ci-field label { font-weight:700; font-size:13px; color:var(--ink) }
+  .ci-field input, .ci-field select, .ci-map select, .ci-sub select { font:inherit; font-size:13.5px; border:1.5px solid #cbd5e1; border-radius:8px; padding:8px 10px; background:#fff; color:#111e2d; width:100%; max-width:420px }
+  .ci-map select.ign { color:#64748b; background:#f8fafc }
+  .ci-tw { overflow-x:auto; border:1px solid var(--line); border-radius:10px }
+  .ci-tw table { border-collapse:collapse; width:100%; font-size:13px }
+  .ci-tw th, .ci-tw td { text-align:left; padding:9px 11px; border-bottom:1px solid var(--line); white-space:nowrap; vertical-align:middle }
+  .ci-tw th { background:#f8fafc; font-weight:700; font-size:12px; color:#64748b }
+  .ci-tw tr:last-child td { border-bottom:0 }
+  .ci-sample { color:#64748b; max-width:280px; overflow:hidden; text-overflow:ellipsis }
+  .ci-note { background:#f8fafc; border-radius:10px; padding:12px 14px; font-size:13px; display:flex; flex-direction:column; gap:4px }
+  .ci-note.blue { background:#eff6ff; border:1px solid #bfdbfe }
+  .ci-tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px }
+  .ci-tile { border:1.5px solid var(--line); border-radius:12px; padding:12px 14px; display:flex; flex-direction:column; gap:2px }
+  .ci-tile b { font-size:24px; font-weight:800; color:var(--ink); font-variant-numeric:tabular-nums }
+  .ci-tile span { font-size:12.5px; color:#64748b }
+  .ci-tile.g { border-color:#86efac } .ci-tile.w { border-color:#fcd34d }
+  .ci-pill { display:inline-block; border-radius:999px; padding:2px 9px; font-size:11.5px; font-weight:700 }
+  .ci-pill.new { background:#dcfce7; color:#166534 } .ci-pill.old { background:#f1f5f9; color:#475569 }
+  .ci-chk { color:#b45309; font-weight:700; font-size:12px }
+  .ci-foot { display:flex; flex-wrap:wrap; gap:8px; justify-content:space-between; align-items:center; border-top:1px solid var(--line); padding-top:14px }
+  .ci-bar { height:10px; border-radius:999px; background:#e2e8f0; overflow:hidden }
+  .ci-bar i { display:block; height:100%; background:var(--ink); width:0; transition:width .4s }
+  .ci-done { background:#ecfdf3; border:1px solid #a6f4c5; border-radius:12px; padding:14px 16px; display:flex; flex-direction:column; gap:6px; font-size:13.5px }
+  .ci-fail { background:#fef2f2; border:1px solid #fecaca; border-radius:12px; padding:14px 16px; font-size:13.5px }
+  .ci-row { display:flex; flex-wrap:wrap; gap:8px; align-items:center }
+  @media (prefers-reduced-motion:reduce){ .ci-bar i { transition:none } }
+  .ci-prep { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(0,1fr); gap:16px; border:1.5px solid #bfdbfe; background:#f5f8ff; border-radius:14px; padding:16px 18px; margin-bottom:18px }
+  .ci-prep h3 { font-size:14.5px; font-weight:800; margin:0 0 8px; color:var(--ink) }
+  .ci-prep ul { margin:0; padding-left:18px; display:flex; flex-direction:column; gap:6px; font-size:13.2px }
+  .ci-prep .dl { display:flex; flex-direction:column; gap:8px; align-items:flex-start; border-left:1px solid #c7d7fe; padding-left:16px; min-width:0 }
+  .ci-prep .dl .ci-help { max-width:36ch }
+  .ci-xl { background:#1d6f42 !important; border-color:#1d6f42 !important; color:#fff !important }
+  @media (max-width:760px){ .ci-prep { grid-template-columns:1fr } .ci-prep .dl { border-left:0; padding-left:0; border-top:1px solid #c7d7fe; padding-top:12px } }
+</style>
+
+{% set _steps = ['Upload', 'Match columns', 'Options', 'Check & import'] %}
+{% set _cur = {'upload':0, 'match':1, 'options':2, 'check':3, 'done':4}[step] %}
+
+<div class="ci-head">
+  <div>
+    <h1>{{ 'Import finished' if step == 'done' else 'Import ' ~ target_label|lower }}</h1>
+    <p>{% if step == 'done' %}{{ imp.file_name }} · {{ imp.sheets }}{% else %}Bring in a list from a CSV or Excel file. Nothing is saved until the last step.{% endif %}</p>
+  </div>
+  <a href="{{ back_url }}" class="btn btn-sm" style="text-decoration:none">{{ 'Back to ' ~ target_label if step == 'done' else 'Cancel' }}</a>
+</div>
+
+{% if step != 'done' %}
+<div class="ci-steps">
+  {% for s in _steps %}<span class="{{ 'done' if loop.index0 < _cur else ('on' if loop.index0 == _cur else '') }}">{% if loop.index0 < _cur %}✓ {% endif %}{{ loop.index }}. {{ s }}</span>{% endfor %}
+</div>
+{% endif %}
+
+{# ═════════════════ 1. UPLOAD ═════════════════ #}
+{% if step == 'upload' %}
+<div class="ci-prep">
+  <div>
+    <h3>Preparing your file</h3>
+    <ul>
+      <li>One business or person per row. The first row holds the column names.</li>
+      <li>Every row needs a <b>Phone number</b>, <b>WhatsApp number</b> or <b>Email</b>. Rows with none are skipped.</li>
+      <li>Write numbers with the country code, starting with + (for example +234 803 123 4567).</li>
+      <li>Only put a number under WhatsApp number if it is on WhatsApp.</li>
+    </ul>
+  </div>
+  <div class="dl">
+    <a class="btn btn-sm ci-xl" style="text-decoration:none" href="{{ url_for('portal.crm_import_template', fmt='xlsx', target=target) }}">⤓ Download template (Excel)</a>
+    <a class="btn btn-sm" style="text-decoration:none" href="{{ url_for('portal.crm_import_template', fmt='csv', target=target) }}">⤓ Download template (CSV)</a>
+    <p class="ci-help">Already have a list? Upload it as it is. You match your own column names in the next step.</p>
+    {% if staff_can_open('portal.tutorials') %}<a href="{{ url_for('portal.tutorials', topic='leads') }}#lead-import" style="font-size:13px;font-weight:700;color:#1d4ed8">Read the full guide →</a>{% endif %}
+  </div>
+</div>
+<div class="ci-panel">
+  <h2>Choose your file</h2>
+  {% if staged %}
+  <div class="ci-drop">
+    {% set _x = staged.file_name.lower().endswith(('.xlsx', '.xlsm')) %}
+    <div class="ci-file"><div class="ic" style="background:{{ '#1d6f42' if _x else '#475569' }}">{{ 'XLSX' if _x else 'CSV' }}</div>
+      <div><b>{{ staged.file_name }}</b><div class="ci-help">{{ 'Excel file' if _x else 'CSV file' }} · {{ staged.sheets|length }} sheet{{ 's' if staged.sheets|length != 1 }}</div></div></div>
+    <form method="POST" action="{{ url_for('portal.crm_import_upload', target=target) }}" enctype="multipart/form-data" id="ciReForm">
+      <label class="btn btn-sm" style="cursor:pointer">Choose another file
+        <input type="file" name="file" accept=".csv,.xlsx,.xlsm,.txt" hidden onchange="this.form.submit()">
+      </label>
+    </form>
+  </div>
+  <form method="POST" action="{{ url_for('portal.crm_import_sheets', target=target) }}" style="display:flex;flex-direction:column;gap:14px">
+    <h2>Which sheets?</h2>
+    <div class="ci-opts">
+      {% for s in staged.sheets %}
+      <label class="ci-opt {{ '' if s.looks_like_list else 'dim' }}">
+        <input type="checkbox" name="sheets" value="{{ s.name }}" id="sheet{{ loop.index }}" {% if s.name in staged.chosen_sheets %}checked{% endif %} {% if not s.rows %}disabled{% endif %}>
+        <div><b>{{ s.name }}</b> <span class="ci-help" style="display:inline">· {{ '{:,}'.format(s.row_count) }} row{{ 's' if s.row_count != 1 }}</span>
+          <div class="ci-help">{% if not s.rows %}Empty.{% elif s.looks_like_list %}{{ s.headers|join(', ') }}{% else %}Its columns don't look like a list of businesses or people, so it's not ticked.{% endif %}</div></div>
+      </label>
+      {% endfor %}
+    </div>
+    <p class="ci-help">Sheets with the same column names are imported together.</p>
+    <div class="ci-foot"><span class="ci-help">The first row of each sheet must hold the column names.</span>
+      <button type="submit" class="btn btn-primary">Next: match columns →</button></div>
+  </form>
+  {% else %}
+  <form method="POST" action="{{ url_for('portal.crm_import_upload', target=target) }}" enctype="multipart/form-data" style="display:flex;flex-direction:column;gap:12px">
+    <div class="ci-drop">
+      <div class="ci-file"><div class="ic" style="background:#94a3b8">⇪</div>
+        <div><b>CSV or Excel (.xlsx)</b><div class="ci-help">Up to 15 MB and {{ '{:,}'.format(20000) }} rows. The first row must hold the column names.</div></div></div>
+      <input type="file" name="file" id="ciFile" accept=".csv,.xlsx,.xlsm,.txt" required aria-label="File to import">
+    </div>
+    <div class="ci-foot"><span class="ci-help">Any column names work: you match them to the portal in the next step.</span>
+      <button type="submit" class="btn btn-primary">Upload →</button></div>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
+{# ═════════════════ 2. MATCH COLUMNS ═════════════════ #}
+{% if step == 'match' %}
+<form method="POST" action="{{ url_for('portal.crm_import_match', target=target) }}" class="ci-panel">
+  <h2>Match your columns to the portal</h2>
+  <p class="ci-help">We've guessed each one from its name. Change any that are wrong. A column set to "Don't import" is left out. {{ '{:,}'.format(row_total) }} rows from {{ staged.chosen_sheets|join(', ') }}.</p>
+  <div class="ci-tw ci-map">
+    <table>
+      <thead><tr><th>Column in your file</th><th>Example</th><th>Save it as</th></tr></thead>
+      <tbody>
+        {% for h in headers %}{% set ci = loop.index0 %}
+        <tr>
+          <td><b>{{ h }}</b></td>
+          <td class="ci-sample" title="{{ samples[ci] }}">{{ samples[ci] or '—' }}</td>
+          <td><select name="col{{ ci }}" id="col{{ ci }}" aria-label="Save {{ h }} as" class="{{ 'ign' if mapping[ci] == 'skip' }}" onchange="this.classList.toggle('ign', this.value==='skip')">
+            {% for k, lbl in field_choices %}{% if target == 'leads' or k not in ('deal_value', 'product_interest') %}<option value="{{ k }}" {% if mapping[ci] == k %}selected{% endif %}>{{ lbl }}</option>{% endif %}{% endfor %}
+          </select></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="ci-note"><b>How numbers are handled</b>
+    <span>Words such as "no whatsapp" or "no cell phone" are left empty, not saved as a number.</span>
+    <span>Phone numbers are never copied into WhatsApp. Only the column you choose for WhatsApp number fills it.</span>
+    <span>Numbers are saved as written. Ones with no country code, or that aren't real numbers, are marked "⚠️ Check number". A country code is never guessed.</span>
+  </div>
+  <div class="ci-foot">
+    <a href="{{ url_for('portal.crm_import_start', target=target) }}" class="btn btn-sm" style="text-decoration:none">← Back</a>
+    <button type="submit" class="btn btn-primary">Next: options →</button>
+  </div>
+</form>
+{% endif %}
+
+{# ═════════════════ 3. OPTIONS ═════════════════ #}
+{% if step == 'options' %}
+<form method="POST" action="{{ url_for('portal.crm_import_options', target=target) }}" class="ci-panel" id="ciOptForm">
+  {% if target == 'leads' %}
+  <h2>What should be created?</h2>
+  <div class="ci-opts">
+    <label class="ci-opt"><input type="radio" name="create" value="both" id="cr-both" {% if opts.create == 'both' %}checked{% endif %} onchange="ciShowAssign()">
+      <div><b>Contacts and Leads</b><div class="ci-help">Each business becomes a contact and a lead at stage "New lead", linked together.</div></div></label>
+    <label class="ci-opt"><input type="radio" name="create" value="contacts" id="cr-contacts" {% if opts.create == 'contacts' %}checked{% endif %} onchange="ciShowAssign()">
+      <div><b>Contacts only</b><div class="ci-help">Adds them to your address book with no sales lead.</div></div></label>
+  </div>
+  {% endif %}
+  <div class="ci-grid">
+    <div class="ci-field"><label for="ciLabel">Add this label to every row</label>
+      <input type="text" name="label" id="ciLabel" maxlength="50" value="{{ opts.label }}" placeholder="e.g. Lagos List Oct 2026" list="ciLabelList">
+      <datalist id="ciLabelList">{% for lb in lead_label_list() %}<option value="{{ lb.name }}">{% endfor %}</datalist>
+      <span class="ci-help">Lets you find this import later with one filter. Leave it empty for no label.</span></div>
+    <div class="ci-field"><label for="ciCountry">{{ 'Country for rows with none' if has_country_col else 'Country for every row' }}</label>
+      <select name="country" id="ciCountry">
+        <option value="">— No country —</option>
+        <optgroup label="Most used">{% for iso, cname in ADDRESS_COUNTRIES_POPULAR %}<option value="{{ iso }}" {% if opts.country == iso %}selected{% endif %}>{{ cname }}</option>{% endfor %}</optgroup>
+        <optgroup label="All countries">{% for iso, cname in ADDRESS_COUNTRIES %}<option value="{{ iso }}" {% if opts.country == iso %}selected{% endif %}>{{ cname }}</option>{% endfor %}</optgroup>
+      </select>
+      <span class="ci-help">{% if has_country_col %}Used where the Country column is empty.{% elif has_city_col %}Your file has a City column but no Country.{% else %}Your file has no address columns.{% endif %} Rows with no state are marked "Address missing", as today.</span></div>
+  </div>
+
+  {% if target == 'leads' %}
+  <div id="ciAssign" {% if opts.create != 'both' %}hidden{% endif %} style="display:flex;flex-direction:column;gap:10px">
+    <h2>Who should work these leads?</h2>
+    {% if assignees is not none %}
+    <div class="ci-opts">
+      <label class="ci-opt"><input type="radio" name="assign_mode" value="none" id="as-none" {% if opts.assign_mode == 'none' %}checked{% endif %} onchange="ciShowAssign()">
+        <div><b>Nobody yet</b><div class="ci-help">You can assign them later from the Leads page.</div></div></label>
+      <label class="ci-opt" style="flex-direction:column"><span style="display:flex;gap:10px"><input type="radio" name="assign_mode" value="one" id="as-one" {% if opts.assign_mode == 'one' %}checked{% endif %} onchange="ciShowAssign()"><b>One person</b></span>
+        <div class="ci-sub" id="ciOne" {% if opts.assign_mode != 'one' %}hidden{% endif %}>
+          <select name="assign_key" id="ciOneSel" aria-label="Person">
+            {% for a in assignees %}<option value="{{ a.key }}" {% if opts.assign_key == a.key %}selected{% endif %}>{{ a.display }}</option>{% endfor %}
+          </select></div></label>
+      <label class="ci-opt" style="flex-direction:column"><span style="display:flex;gap:10px"><input type="radio" name="assign_mode" value="even" id="as-even" {% if opts.assign_mode == 'even' %}checked{% endif %} onchange="ciShowAssign()"><b>Share evenly between</b></span>
+        <div class="ci-sub" id="ciEven" {% if opts.assign_mode != 'even' %}hidden{% endif %}>
+          {% for a in assignees %}<label style="display:flex;gap:8px;align-items:center;font-size:13.5px"><input type="checkbox" name="assign_keys" value="{{ a.key }}" id="ev{{ loop.index }}" {% if a.key in opts.assign_keys %}checked{% endif %}> {{ a.display }}</label>{% endfor %}
+          <span class="ci-help">Leads are handed out in turn, so each person gets about the same number.</span></div></label>
+    </div>
+    <p class="ci-help">Only leads that are new in this import are assigned. Leads you already have keep their current owner.</p>
+    {% elif own_leads_only %}
+    <p class="ci-help">The new leads will be assigned to you, because your role sees only the leads assigned to you.</p>
+    {% else %}
+    <p class="ci-help">The new leads won't be assigned to anyone. Someone whose role can assign leads can do it from the Leads page.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+  <div class="ci-foot">
+    <a href="{{ url_for('portal.crm_import_match', target=target) }}" class="btn btn-sm" style="text-decoration:none">← Back</a>
+    <button type="submit" class="btn btn-primary">Next: check →</button>
+  </div>
+</form>
+<script>
+function ciShowAssign(){
+  var f = document.getElementById('ciOptForm');
+  var both = f.querySelector('[name=create][value=both]');
+  var box = document.getElementById('ciAssign');
+  if (box) box.hidden = !(both && both.checked);
+  var m = f.querySelector('[name=assign_mode]:checked');
+  var one = document.getElementById('ciOne'), even = document.getElementById('ciEven');
+  if (one) one.hidden = !(m && m.value === 'one');
+  if (even) even.hidden = !(m && m.value === 'even');
+}
+</script>
+{% endif %}
+
+{# ═════════════════ 4. CHECK ═════════════════ #}
+{% if step == 'check' %}
+{% set _both = opts.create == 'both' %}
+<form method="POST" action="{{ url_for('portal.crm_import_run', target=target) }}" class="ci-panel" onsubmit="var b=this.querySelector('button[type=submit]');b.disabled=true;b.textContent='Starting…'">
+  <h2>Check before importing</h2>
+  <div class="ci-tiles">
+    <div class="ci-tile g"><b>{{ '{:,}'.format(plan.new) }}</b><span>New: become {{ 'a contact + lead' if _both else 'a contact' }}</span></div>
+    <div class="ci-tile"><b>{{ '{:,}'.format(plan.existing) }}</b><span>Already {{ 'an open lead' if _both else 'a contact' }}: empty details filled in, nothing replaced</span></div>
+    <div class="ci-tile"><b>{{ '{:,}'.format(plan.joined) }}</b><span>Repeat an earlier row in this file (same number or email): joined into that one</span></div>
+    <div class="ci-tile w"><b>{{ '{:,}'.format(plan.skipped|length) }}</b><span>Skipped: no phone, WhatsApp or email{% if plan.examples %} (incl. {{ plan.examples }} example row{{ 's' if plan.examples != 1 }} from the template){% endif %}</span></div>
+    <div class="ci-tile w"><b>{{ '{:,}'.format(plan.to_check) }}</b><span>Will be marked "⚠️ Check number"</span></div>
+    <div class="ci-tile"><b>{{ '{:,}'.format(plan.with_whatsapp) }}</b><span>Have a WhatsApp number (WhatsApp campaigns can reach these)</span></div>
+  </div>
+  <div class="ci-note blue"><span><b>Label:</b> {{ opts.label or 'none' }} · <b>Country:</b> {{ country_name or 'none' }} · <b>Create:</b> {{ 'Contacts and Leads' if _both else 'Contacts only' }}{% if _both %} · <b>New leads assigned to:</b> {{ assign_text }}{% endif %}</span></div>
+  <h2>First {{ preview|length }} rows, as they'll be saved</h2>
+  <div class="ci-tw">
+    <table>
+      <thead><tr><th></th><th>Company</th><th>Contact Person</th><th>Phone Number</th><th>WhatsApp Number</th><th>Email</th><th>Business category</th><th>Employees</th><th>Location</th><th>Notes</th></tr></thead>
+      <tbody>
+        {% for r in preview %}
+        <tr>
+          <td>{% if r.status == 'new' %}<span class="ci-pill new">New</span>{% else %}<span class="ci-pill old">Already there</span>{% endif %}</td>
+          <td><b>{{ r.company or '—' }}</b></td>
+          <td>{{ r.contact_person or '—' }}</td>
+          <td>{{ r.phone or '—' }}{% if 'phone' in r.check %} <span class="ci-chk">⚠️ Check number</span>{% endif %}</td>
+          <td>{% if r.whatsapp %}{{ r.whatsapp }}{% if 'whatsapp' in r.check %} <span class="ci-chk">⚠️ Check number</span>{% endif %}{% else %}<span style="color:#94a3b8">empty</span>{% endif %}</td>
+          <td>{{ r.email or '—' }}</td>
+          <td>{{ r.business_category or '—' }}</td>
+          <td>{{ r.employees or '—' }}</td>
+          <td>{{ [r.city, r.state, cnames.get(r.country, r.country) if r.country else None]|select|join(', ') or '—' }}</td>
+          <td style="color:#64748b;max-width:280px;overflow:hidden;text-overflow:ellipsis" title="{{ notes_text(r) }}">{{ notes_text(r)|replace('\n', ' · ') or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="ci-foot">
+    <a href="{{ url_for('portal.crm_import_options', target=target) }}" class="btn btn-sm" style="text-decoration:none">← Back</a>
+    {% set _n = plan.new + plan.existing %}
+    <button type="submit" class="btn btn-primary" {% if not _n %}disabled{% endif %}>
+      {% if plan.new %}Import {{ '{:,}'.format(plan.new) }} new {{ 'business' if plan.new == 1 else 'businesses' }}{% if plan.existing %} and fill in {{ '{:,}'.format(plan.existing) }}{% endif %}{% elif plan.existing %}Fill in {{ '{:,}'.format(plan.existing) }} existing{% else %}Nothing to import{% endif %}
+    </button>
+  </div>
+</form>
+{% endif %}
+
+{# ═════════════════ FINISHED ═════════════════ #}
+{% if step == 'done' %}
+{% set _both = imp.created_mode == 'both' %}
+<div class="ci-panel" id="ciProgress" {% if imp.status != 'running' %}hidden{% endif %}>
+  <h2>Importing…</h2>
+  <div class="ci-bar" role="progressbar" aria-label="Import progress" aria-valuemin="0" aria-valuemax="{{ imp.total_rows }}" aria-valuenow="{{ imp.done_rows }}"><i id="ciBar" style="width:{{ (100 * imp.done_rows / imp.total_rows)|round|int if imp.total_rows else 0 }}%"></i></div>
+  <p class="ci-help" id="ciProgText">{{ '{:,}'.format(imp.done_rows) }} of {{ '{:,}'.format(imp.total_rows) }} done. You can leave this page; the import carries on.</p>
+</div>
+{% if imp.status != 'running' %}
+  {% if imp.status in ('failed', 'stopped') %}
+  <div class="ci-fail"><b>The import stopped before the end.</b> {{ '{:,}'.format(imp.added) }} were added before it stopped. Import the same file again: rows already added count as "already there" and aren't added twice.</div>
+  {% else %}
+  <div class="ci-done">
+    <b>{{ '{:,}'.format(imp.added) }} {{ 'contacts and leads' if _both else 'contacts' }} added{% if imp.updated %} · {{ '{:,}'.format(imp.updated) }} existing filled in{% endif %}{% if imp.joined %} · {{ '{:,}'.format(imp.joined) }} joined with an earlier row{% endif %}{% if imp.skipped %} · {{ '{:,}'.format(imp.skipped) }} skipped{% endif %}{% if imp.errors %} · {{ imp.errors }} couldn't be saved{% endif %}</b>
+    {% if imp.assigned_text %}<span>New leads assigned to {{ imp.assigned_text|who }}.</span>{% endif %}
+    {% if imp.label %}<span>Labelled "{{ imp.label }}".</span>{% endif %}
+    {% if imp.to_check %}<span>⚠️ {{ '{:,}'.format(imp.to_check) }} number{{ 's' if imp.to_check != 1 }} to check. You'll find them under the "Numbers to check" filter.</span>{% endif %}
+  </div>
+  {% endif %}
+  <div class="ci-row" style="margin:14px 0 18px">
+    {% if _both %}<a class="btn btn-primary" style="text-decoration:none" href="{{ url_for('portal.leads_page', **{'import': imp.id}) }}">View imported leads</a>{% endif %}
+    <a class="btn {{ '' if _both else 'btn-primary' }}" style="text-decoration:none" href="{{ url_for('portal.whatsapp_contacts', **{'import': imp.id}) }}">View imported contacts</a>
+    {% if imp.skipped %}<a class="btn" style="text-decoration:none" href="{{ url_for('portal.crm_import_download', import_id=imp.id, kind='skipped', target=target) }}">Download skipped rows ({{ '{:,}'.format(imp.skipped) }})</a>{% endif %}
+    {% if imp.to_check %}<a class="btn" style="text-decoration:none" href="{{ url_for('portal.crm_import_download', import_id=imp.id, kind='check', target=target) }}">Download numbers to check ({{ '{:,}'.format(imp.to_check) }})</a>{% endif %}
+  </div>
+  {% if imp.skipped %}<p class="ci-help" style="margin-bottom:18px">The skipped-rows file has the same columns as your file, so you can fill in the missing details and import it again.</p>{% endif %}
+{% endif %}
+{% endif %}
+
+{# ═════════════════ PAST IMPORTS ═════════════════ #}
+{% if step in ('upload', 'done') and history %}
+<div class="ci-panel">
+  <h2>Past imports</h2>
+  <div class="ci-tw">
+    <table>
+      <thead><tr><th>Date</th><th>File</th><th>By</th><th>Created</th><th>Added</th><th>Skipped</th><th>Label</th><th></th></tr></thead>
+      <tbody>
+        {% for h in history %}
+        <tr>
+          <td>{{ h.created_at.strftime('%d %b %Y %H:%M') }}</td>
+          <td>{{ h.file_name }}</td>
+          <td>{{ h.created_by|who }}</td>
+          <td>{{ 'Contacts and Leads' if h.created_mode == 'both' else 'Contacts' }}</td>
+          <td>{{ '{:,}'.format(h.added) }}{% if h.status == 'running' %} <span class="ci-help" style="display:inline">(running)</span>{% endif %}</td>
+          <td>{{ '{:,}'.format(h.skipped) }}</td>
+          <td>{{ h.label or '—' }}</td>
+          <td><a href="{{ url_for('portal.crm_import_result', import_id=h.id) }}">Open</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if step == 'done' and imp.status == 'running' %}
+<script>
+(function(){
+  var url = {{ url_for('portal.crm_import_status', import_id=imp.id)|tojson }};
+  function tick(){
+    fetch(url, {headers:{'X-Requested-With':'XMLHttpRequest'}}).then(function(r){ return r.json(); }).then(function(d){
+      if (d.total_rows) {
+        document.getElementById('ciBar').style.width = Math.round(100 * d.done_rows / d.total_rows) + '%';
+        document.getElementById('ciProgText').textContent = Number(d.done_rows).toLocaleString('en-GB') + ' of ' +
+          Number(d.total_rows).toLocaleString('en-GB') + ' done. You can leave this page; the import carries on.';
+      }
+      if (d.status === 'running') setTimeout(tick, 1500); else location.reload();
+    }).catch(function(){ setTimeout(tick, 4000); });
+  }
+  setTimeout(tick, 1200);
+})();
+</script>
+{% endif %}
+{% endblock %}

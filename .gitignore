@@ -56,3 +56,6 @@ rd-log/rdlog.db
 
 # ── Separate standalone project with its own git history — belongs in its own repo ──
 stocklist-tool/
+
+# ── CRM import: uploaded files kept 24h between the Import steps ──
+api-key-manager/import_staging/

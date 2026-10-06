@@ -1,6 +1,7 @@
 {% extends "portal/base.html" %}
 {% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
 {% from "portal/_address_box.html" import emails_cell, other_emails_box, address_box, location_cell with context %}
+{% from "portal/_biz_fields.html" import biz_inputs with context %}
 {% block title %}{{ contact.display_name or contact.whatsapp_number or contact.phone or contact.email }} — Contact — PhiXtra Portal{% endblock %}
 
 {% block head %}
@@ -372,6 +373,14 @@
             {% if contact.company_name %}<a href="{{ url_for('portal.crm_company_detail', company_id=contact.company_id) }}" class="pc-link">{{ contact.company_name }}</a>
             {% else %}<span class="pc-none">—</span>{% endif %}
           </span>
+        </div>
+        <div class="pc-row">
+          <span class="pc-ic" aria-hidden="true">🏷️</span><span class="pc-k">Business category</span>
+          <span class="pc-v">{{ contact.business_category or '' }}{% if not contact.business_category %}<span class="pc-none">—</span>{% endif %}</span>
+        </div>
+        <div class="pc-row">
+          <span class="pc-ic" aria-hidden="true">👥</span><span class="pc-k">Employees</span>
+          <span class="pc-v">{{ contact.employees or '' }}{% if not contact.employees %}<span class="pc-none">—</span>{% endif %}</span>
         </div>
       </div>
 
@@ -750,6 +759,7 @@
                  placeholder="New company name" style="display:none;margin-top:8px" autocomplete="off" aria-label="New company name">
           <div class="dedupe-warn" id="ep-dedupe"></div>
         </div>
+        <div class="field" style="margin:12px 0 0">{{ biz_inputs(contact, id='ep-biz', cls='field-input', label_cls='field-label') }}</div>
       </fieldset>
 
       <fieldset class="ep-sec">
